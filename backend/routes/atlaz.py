@@ -67,19 +67,15 @@ class AtlazConfig(BaseModel):
     """Configuração da integração Atlaz por empresa."""
     enabled: bool = False
     api_key: Optional[str] = None
+    # Domínio do painel web do tenant Atlaz (usado para gerar links "Abrir no Atlaz")
+    # Ex.: "https://ligofibra.atlaz.com.br" (sem trailing slash)
+    tenant_domain: str = ""
     # Filiais (cidades) a sincronizar. Vazio = todas.
-    # Ex.: ["Rio de Janeiro", "Guaratinguetá", "Osasco"]
     filiais: List[str] = Field(default_factory=list)
-    # Mapeamento Filial(cidade) → ID do colaborador local
     filial_to_collaborator: Dict[str, str] = Field(default_factory=dict)
-    # Mapeamento por nome do técnico (case-insensitive sem acento) → colaborador local
-    # Ex.: {"diogo henrique": "col-123", "junior guimaraes": "col-456"}
     technician_to_collaborator: Dict[str, str] = Field(default_factory=dict)
-    # Mapeamento de tipos
     type_map: Dict[str, str] = Field(default_factory=lambda: DEFAULT_TYPE_MAP.copy())
-    # Janela de busca em dias retroativos
     lookback_days: int = Field(default=30, ge=1, le=365)
-    # Sync periódico
     sync_interval_minutes: int = Field(default=15, ge=1, le=1440)
     auto_create_bubbles: bool = True
     timeout_seconds: int = Field(default=20, ge=2, le=120)
@@ -88,6 +84,7 @@ class AtlazConfig(BaseModel):
 class AtlazConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
     api_key: Optional[str] = None
+    tenant_domain: Optional[str] = None
     filiais: Optional[List[str]] = None
     filial_to_collaborator: Optional[Dict[str, str]] = None
     technician_to_collaborator: Optional[Dict[str, str]] = None
@@ -409,6 +406,113 @@ async def test_connection(user: dict = Depends(require_role("gestor"))):
 async def sync_now(user: dict = Depends(require_role("gestor"))):
     company_id = user.get("company_id") or DEMO_COMPANY_ID
     return await run_sync(company_id)
+
+
+@router.post("/sync-technicians")
+async def sync_technicians(user: dict = Depends(require_role("gestor"))):
+    """Cria/atualiza colaboradores locais a partir dos técnicos do Atlaz.
+
+    Lê todos os chamados do lookback, extrai técnicos únicos (nome+email),
+    e cria um Colaborador interno para cada um que ainda não existe (match
+    por email). Também atualiza o mapeamento technician_to_collaborator
+    automaticamente para que o pull seguinte já atribua corretamente.
+    """
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(company_id)
+    if not cfg.api_key:
+        return {"ok": False, "reason": "missing_api_key"}
+
+    try:
+        chamados = await _fetch_chamados(cfg)
+    except Exception as e:
+        await _log_sync(company_id, "sync_tec", "error", str(e)[:300])
+        return {"ok": False, "error": str(e)[:200]}
+
+    # Extrai técnicos únicos (chave = email; fallback nome)
+    seen: Dict[str, Dict[str, Any]] = {}
+    for c in chamados:
+        tec = c.get("tecnico") or {}
+        nome = (tec.get("nome") or "").strip()
+        email = (tec.get("email") or "").strip().lower()
+        if not nome:
+            continue
+        key = email or nome.lower()
+        if key not in seen:
+            seen[key] = {"nome": nome, "email": email}
+
+    created: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, Any]] = []
+    new_mapping = dict(cfg.technician_to_collaborator or {})
+
+    for tec in seen.values():
+        nome = tec["nome"]
+        email = tec["email"]
+        # Match por email primeiro, depois por nome exato
+        existing = None
+        if email:
+            existing = await db.collaborators.find_one(
+                {"company_id": company_id, "email": email}, {"_id": 0, "id": 1, "name": 1},
+            )
+        if not existing:
+            existing = await db.collaborators.find_one(
+                {"company_id": company_id, "name": nome}, {"_id": 0, "id": 1, "name": 1},
+            )
+
+        if existing:
+            new_mapping[nome] = existing["id"]
+            skipped.append({"nome": nome, "email": email, "matched_collaborator_id": existing["id"]})
+            continue
+
+        # Cria novo colaborador
+        cid = f"col-{uuid.uuid4().hex[:8]}"
+        now = now_iso()
+        coll_doc = {
+            "id": cid,
+            "name": nome,
+            "cpf": f"ATLAZ-{cid[-8:]}",  # placeholder único — gestor edita depois
+            "email": email or f"{cid}@atlaz.local",
+            "phone": "",
+            "role": "Técnico (Atlaz)",
+            "company": "Atlaz Sync",
+            "schedule": {
+                "weekdays": [1, 2, 3, 4, 5],
+                "start": "08:00", "end": "18:00",
+                "lunch_start": "12:00", "lunch_end": "13:00",
+            },
+            "overtime_policy": {"enabled": False, "max_minutes_per_day": 120},
+            "city": None, "state": None, "praca_id": None,
+            "is_test_mode": False,
+            "company_id": company_id,
+            "avatar_data_url": None,
+            "reference_face": None,
+            "atlaz_synced": True,
+            "atlaz_synced_at": now,
+            "created_at": now,
+            "updated_at": now,
+        }
+        try:
+            await db.collaborators.insert_one(coll_doc)
+            created.append({"id": cid, "nome": nome, "email": email})
+            new_mapping[nome] = cid
+        except Exception as e:
+            skipped.append({"nome": nome, "email": email, "error": str(e)[:100]})
+
+    # Persiste o mapeamento atualizado
+    new_cfg = cfg.model_copy(update={"technician_to_collaborator": new_mapping})
+    await _save_config(company_id, new_cfg)
+
+    await _log_sync(
+        company_id, "sync_tec", "ok" if not any("error" in s for s in skipped) else "partial",
+        f"created={len(created)} skipped={len(skipped)}",
+    )
+    return {
+        "ok": True,
+        "total_atlaz_technicians": len(seen),
+        "created": len(created),
+        "matched_existing": sum(1 for s in skipped if "matched_collaborator_id" in s),
+        "errors": [s for s in skipped if "error" in s],
+        "items_created": created,
+    }
 
 
 @router.get("/sync-logs")

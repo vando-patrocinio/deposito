@@ -61,6 +61,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectedDate, setSelectedDate] = useState(() => todayLocalISO());
+  const [atlazTenantDomain, setAtlazTenantDomain] = useState("");
   const prevOverdueRef = useRef(0);
   const isLocked = systemStatus.offline || systemStatus.drift_blocked;
   const isToday = selectedDate === todayLocalISO();

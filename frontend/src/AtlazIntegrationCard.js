@@ -20,6 +20,7 @@ export default function AtlazIntegrationCard() {
   const [sync, setSync] = useState(null);
   const [logs, setLogs] = useState([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [syncTec, setSyncTec] = useState(null);
 
   async function reload() {
     try {
@@ -32,6 +33,7 @@ export default function AtlazIntegrationCard() {
       setForm({
         enabled: !!c.enabled,
         api_key: "",
+        tenant_domain: c.tenant_domain || "",
         filiais_text: (c.filiais || []).join(", "),
         filial_to_collaborator: { ...(c.filial_to_collaborator || {}) },
         technician_to_collaborator: { ...(c.technician_to_collaborator || {}) },
@@ -50,6 +52,7 @@ export default function AtlazIntegrationCard() {
     setBusy(true); setMsg("");
     const payload = {
       enabled: form.enabled,
+      tenant_domain: (form.tenant_domain || "").replace(/\/$/, ""),
       filiais: form.filiais_text.split(",").map((x) => x.trim()).filter(Boolean),
       filial_to_collaborator: form.filial_to_collaborator || {},
       technician_to_collaborator: form.technician_to_collaborator || {},
@@ -81,6 +84,14 @@ export default function AtlazIntegrationCard() {
     try { setSync(await api.atlazSyncNow()); }
     catch (e) { setSync({ ok: false, error: e?.response?.data?.detail || e.message }); }
     setBusy(false);
+  }
+
+  async function runSyncTec() {
+    setBusy(true); setSyncTec(null); setMsg("");
+    try { setSyncTec(await api.atlazSyncTechnicians()); }
+    catch (e) { setSyncTec({ ok: false, error: e?.response?.data?.detail || e.message }); }
+    setBusy(false);
+    await reload();
   }
 
   async function loadLogs() {
@@ -148,6 +159,19 @@ export default function AtlazIntegrationCard() {
         </small>
       </Field>
 
+      <Field label="🌐 Domínio do seu painel Atlaz">
+        <input
+          data-testid="atlaz-tenant-domain"
+          placeholder="https://ligofibra.atlaz.com.br"
+          value={form.tenant_domain}
+          onChange={(e) => setForm({ ...form, tenant_domain: e.target.value })}
+          style={inputStyle}
+        />
+        <small style={{ color: "#94a3b8", fontSize: 11 }}>
+          Usado para gerar o link <strong>"🔗 Abrir no Atlaz"</strong> direto da bolha (chamados sincronizados ganham atalho rápido para fechar manualmente lá).
+        </small>
+      </Field>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
         <Field label="📅 Janela retroativa (dias)">
           <input data-testid="atlaz-lookback" type="number" min={1} max={365}
@@ -208,6 +232,10 @@ export default function AtlazIntegrationCard() {
         </Button>
         <Button variant="soft" onClick={runTest} disabled={busy} data-testid="atlaz-test-btn">🔌 Testar conexão</Button>
         <Button variant="soft" onClick={runSync} disabled={busy} data-testid="atlaz-sync-btn">🔄 Sincronizar agora</Button>
+        <Button variant="soft" onClick={runSyncTec} disabled={busy} data-testid="atlaz-sync-tec-btn"
+          style={{ background: "#fef3c7", border: "1px solid #fcd34d", color: "#78350f" }}>
+          👷 Sincronizar técnicos → Cadastro
+        </Button>
         <Button variant="soft" onClick={loadLogs} data-testid="atlaz-logs-btn">📋 Ver logs</Button>
         {msg && <span style={{ color: msg.startsWith("✓") ? "#166534" : "#be123c", fontWeight: 700, fontSize: 13 }}>{msg}</span>}
       </div>
@@ -254,6 +282,35 @@ export default function AtlazIntegrationCard() {
               )}
             </>
           ) : (<>❌ {sync.reason || sync.error}</>)}
+        </div>
+      )}
+
+      {syncTec && (
+        <div data-testid="atlaz-synctec-result" style={{
+          marginTop: 12, padding: 12, borderRadius: 10,
+          background: syncTec.ok ? "#fef9c3" : "#fee2e2",
+          border: `1px solid ${syncTec.ok ? "#fde68a" : "#fecaca"}`,
+          color: syncTec.ok ? "#713f12" : "#7f1d1d", fontSize: 12,
+        }}>
+          {syncTec.ok ? (
+            <>
+              <strong>👷 Técnicos sincronizados</strong> — total Atlaz: <strong>{syncTec.total_atlaz_technicians}</strong>,
+              {" "}criados: <strong>{syncTec.created}</strong>,
+              {" "}já existentes: <strong>{syncTec.matched_existing}</strong>
+              {syncTec.items_created?.length > 0 && (
+                <ul style={{ marginTop: 6, paddingLeft: 18 }}>
+                  {syncTec.items_created.map((i) => (
+                    <li key={i.id}><strong>{i.nome}</strong> {i.email && <span style={{ opacity: 0.7 }}>· {i.email}</span>} → <code>{i.id}</code></li>
+                  ))}
+                </ul>
+              )}
+              <div style={{ marginTop: 6, fontStyle: "italic", opacity: 0.8 }}>
+                Os colaboradores aparecem agora em <strong>Cadastro</strong>. O mapeamento Técnico→Colab foi atualizado automaticamente.
+              </div>
+            </>
+          ) : (
+            <>❌ {syncTec.reason || syncTec.error}</>
+          )}
         </div>
       )}
 
