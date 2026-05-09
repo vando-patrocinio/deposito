@@ -140,16 +140,34 @@ class Company(BaseModel):
 # -------------------------------------------------------------------------
 # Helpers de tempo
 # -------------------------------------------------------------------------
+# Fuso de exibição/registro: o backend é UTC-only para timestamps ISO (boa
+# prática), mas para os campos legíveis pelo usuário (`time` HH:MM, `date`
+# YYYY-MM-DD) precisamos casar com o relógio que o app mostra (ServerClock,
+# canto superior direito). O ServerClock usa toLocaleTimeString("pt-BR",
+# timeZone="America/Sao_Paulo"). Sem esse alinhamento, todo registro de ponto
+# era persistido em UTC e ficava 3h adiantado vs. o que o técnico vê na tela.
+import os
+try:
+    from zoneinfo import ZoneInfo
+    APP_TZ = ZoneInfo(os.environ.get("APP_TZ", "America/Sao_Paulo"))
+except Exception:  # zoneinfo indisponível em algumas distros
+    APP_TZ = timezone.utc
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def today_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    """Data atual no FUSO LOCAL DO APP (não UTC) — usada para particionar
+    registros do dia. Garante que '2026-05-09 23:30 BR' não vire '2026-05-10' UTC.
+    """
+    return datetime.now(APP_TZ).strftime("%Y-%m-%d")
 
 
 def now_hhmm() -> str:
-    return datetime.now(timezone.utc).strftime("%H:%M")
+    """Hora HH:MM no FUSO LOCAL DO APP — bate com o ServerClock exibido no app."""
+    return datetime.now(APP_TZ).strftime("%H:%M")
 
 
 def strip_data_url(b64: str) -> tuple[str, str]:
