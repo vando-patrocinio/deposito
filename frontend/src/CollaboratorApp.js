@@ -28,6 +28,19 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   const [cameraKey, setCameraKey] = useState(0);
   const [forceCloseOpen, setForceCloseOpen] = useState(false);
   const [exitConfirm, setExitConfirm] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFlash, setRefreshFlash] = useState(false);
+
+  async function doRefresh() {
+    setRefreshing(true);
+    try {
+      await refresh(collabId);
+      setRefreshFlash(true);
+      setTimeout(() => setRefreshFlash(false), 1200);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   // Carrega colaboradores + praças
   useEffect(() => {
@@ -435,11 +448,17 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 <Button variant="soft" onClick={() => setScreen("home")} data-testid="back-home-btn">← Voltar</Button>
                 <Button
                   variant="soft"
-                  onClick={() => refresh(collabId)}
+                  onClick={doRefresh}
+                  disabled={refreshing}
                   data-testid="history-refresh-btn"
-                  style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" }}
+                  style={{
+                    background: refreshFlash ? "#dcfce7" : refreshing ? "#fef9c3" : "#dbeafe",
+                    color: refreshFlash ? "#166534" : refreshing ? "#92400e" : "#1e40af",
+                    border: `1px solid ${refreshFlash ? "#86efac" : refreshing ? "#fde68a" : "#93c5fd"}`,
+                    transition: "background-color .25s",
+                  }}
                 >
-                  🔄 Atualizar
+                  {refreshing ? "⏳ Atualizando..." : refreshFlash ? "✓ Atualizado" : "🔄 Atualizar"}
                 </Button>
               </div>
               <h2>Hoje ({today.date})</h2>

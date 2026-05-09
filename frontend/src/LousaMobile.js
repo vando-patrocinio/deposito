@@ -13,15 +13,22 @@ export default function LousaMobile({ collaboratorId, onBack }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [openTicket, setOpenTicket] = useState(null); // ticket clicked
+  const [openTicket, setOpenTicket] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFlash, setRefreshFlash] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!collaboratorId) return;
+    setRefreshing(true);
     try {
       const d = await api.lousaByCollaborator(collaboratorId);
       setData(d);
+      setRefreshFlash(true);
+      setTimeout(() => setRefreshFlash(false), 1200);
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
+    } finally {
+      setRefreshing(false);
     }
   }, [collaboratorId]);
 
@@ -109,10 +116,16 @@ export default function LousaMobile({ collaboratorId, onBack }) {
           <Button
             variant="soft"
             onClick={refresh}
+            disabled={refreshing}
             data-testid="lousa-refresh-btn"
-            style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" }}
+            style={{
+              background: refreshFlash ? "#dcfce7" : refreshing ? "#fef9c3" : "#dbeafe",
+              color: refreshFlash ? "#166534" : refreshing ? "#92400e" : "#1e40af",
+              border: `1px solid ${refreshFlash ? "#86efac" : refreshing ? "#fde68a" : "#93c5fd"}`,
+              transition: "background-color .25s",
+            }}
           >
-            🔄 Atualizar
+            {refreshing ? "⏳ Atualizando..." : refreshFlash ? "✓ Atualizado" : "🔄 Atualizar"}
           </Button>
         </div>
         <h2 style={{ marginTop: 14, marginBottom: 4 }}>📋 Lousa de Serviços</h2>
@@ -141,11 +154,16 @@ export default function LousaMobile({ collaboratorId, onBack }) {
         <Button
           variant="soft"
           onClick={refresh}
-          disabled={busy}
+          disabled={busy || refreshing}
           data-testid="lousa-refresh-btn"
-          style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" }}
+          style={{
+            background: refreshFlash ? "#dcfce7" : refreshing ? "#fef9c3" : "#dbeafe",
+            color: refreshFlash ? "#166534" : refreshing ? "#92400e" : "#1e40af",
+            border: `1px solid ${refreshFlash ? "#86efac" : refreshing ? "#fde68a" : "#93c5fd"}`,
+            transition: "background-color .25s",
+          }}
         >
-          🔄 Atualizar
+          {refreshing ? "⏳ Atualizando..." : refreshFlash ? "✓ Atualizado" : "🔄 Atualizar"}
         </Button>
       </div>
       <h2 style={{ marginTop: 14, marginBottom: 4 }}>📋 Lousa de Serviços</h2>

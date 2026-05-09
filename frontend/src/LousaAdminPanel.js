@@ -37,15 +37,23 @@ export default function LousaAdminPanel() {
   const [dragOverCol, setDragOverCol] = useState(null);
   const [logs, setLogs] = useState([]);
   const [tick, setTick] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFlash, setRefreshFlash] = useState(false);
 
   const refresh = useCallback(async () => {
+    setRefreshing(true);
     try {
       const [g, cs, lg] = await Promise.all([api.lousaGrid(), api.listCollaborators(), api.lousaLogs({ limit: 50 })]);
       setGrid(g);
       setCollabs(cs);
       setLogs(lg.items || []);
+      setRefreshFlash(true);
+      setTimeout(() => setRefreshFlash(false), 1200);
     } catch (e) {
       console.error("Erro lousa", e);
+      alert("Erro ao atualizar: " + (e?.message || e));
+    } finally {
+      setRefreshing(false);
     }
   }, []);
 
@@ -128,11 +136,16 @@ export default function LousaAdminPanel() {
           <Button
             variant="soft"
             onClick={refresh}
-            disabled={busy}
+            disabled={refreshing}
             data-testid="lousa-refresh-btn"
-            style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" }}
+            style={{
+              background: refreshFlash ? "#dcfce7" : refreshing ? "#fef9c3" : "#dbeafe",
+              color: refreshFlash ? "#166534" : refreshing ? "#92400e" : "#1e40af",
+              border: `1px solid ${refreshFlash ? "#86efac" : refreshing ? "#fde68a" : "#93c5fd"}`,
+              transition: "background-color .25s, color .25s",
+            }}
           >
-            🔄 Atualizar
+            {refreshing ? "⏳ Atualizando..." : refreshFlash ? "✓ Atualizado" : "🔄 Atualizar"}
           </Button>
           <Button onClick={() => setShowCreate(true)} data-testid="lousa-create-btn">
             <Icon name="plus" /> Nova nota
