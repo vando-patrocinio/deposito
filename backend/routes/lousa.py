@@ -1545,7 +1545,10 @@ async def ai_evaluate_ticket(ticket_id: str,
         details=f"IA: {result['verdict']} ({result['ai_score']}) — {result['summary'][:120]}",
         company_id=company_id,
     )
-    _ai_cache_set(ticket_id, result)
+    # Cache somente se LLM funcionou; se for fallback heurístico, deixa cair
+    # para a próxima call e dar chance do LLM voltar.
+    if result.get("method") != "heuristic_fallback":
+        _ai_cache_set(ticket_id, result)
     return result
 
 

@@ -1,8 +1,17 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 16)
+**Última atualização**: 2026-05-09 (iteração 17)
 
 ## Histórico de iterações
+
+### Iter 17 — 4 features P1 do backlog (2026-05-09)
+- ✅ **#1 Mapeamento Filial→Colaborador via UI amigável**: substituído textarea JSON cru por componente `FilialCollabMapper` em `AtlazIntegrationCard.js` — cada filial digitada gera linha com dropdown de colaboradores (carregado de `api.listCollaborators`). Filiais "órfãs" (mapeadas mas sumidas da lista) aparecem destacadas em amarelo com botão remover.
+- ✅ **#2 Atalho "Selecionar atrasadas"**: novo botão `lousa-select-overdue-btn` visível só em modo seleção, mostra contagem `⚠ Atrasadas (N)`, click marca todos os tickets `sla.status='overdue'` selecionáveis. Disabled quando N=0.
+- ✅ **#3 Aba "Avaliação IA 🤖" dedicada**: novo `AiRankingPanel.js` + endpoint `GET /api/lousa/ai-rankings?days=N`. Ranking de técnicos por score IA médio com KPIs (total avaliados / score médio geral / técnicos / período), filtros 7d/30d/90d, distribuição por verdict (Excelente/Bom/Atenção/Crítico) com porcentagem, melhor/pior ticket por técnico, medalhas 🥇🥈🥉.
+- ✅ **#4 Cache 5min em /ai-evaluate**: `_AI_EVAL_CACHE` in-memory com TTL=300s por ticket_id. Resposta cacheada inclui `cached: true`. **Refinamento**: fallback heurístico NÃO é cacheado (deixa LLM voltar a próxima call em vez de "grudar" estado degradado).
+- ⏳ **#5 P2 Refactor lousa.py >2200 linhas** — adiado para iteração dedicada (alto risco de regressão; merece testes + planning separado).
+- Backend: 12/12 (iter17) verde + regressão.
+- Frontend: 100% smoke + Playwright (29 ranking rows, KPIs, mapper substituiu textarea, botão Atrasadas hidden→visible no toggle).
 
 ### Iter 16 — Integração Atlaz configurável (pull periódico + push de baixa) (2026-05-09)
 - ✅ **Novo módulo** `/app/backend/routes/atlaz.py` (~430 linhas) com modelo `AtlazConfig` totalmente configurável: base_url, api_key + header customizável, paths de list/close/cancel/reschedule, mapeamento de filiais→colaborador, mapeamento de tipos (REPARO→reparo etc.), mapeamento de campos (cliente_nome→client_name etc.), intervalo de sync, timeouts.
