@@ -1,8 +1,15 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 21)
+**Última atualização**: 2026-05-09 (iteração 22)
 
 ## Histórico de iterações
+
+### Iter 22 — Sync Atlaz a cada 30s + Botão "Nova nota" abre painel Atlaz (2026-05-09) ✅
+- ✅ **Sync Atlaz em segundos**: novo campo `sync_interval_seconds: Optional[int] = Field(default=30, ge=10, le=86400)` em `AtlazConfig` e `AtlazConfigUpdate`. Worker usa este valor com **precedência sobre `sync_interval_minutes`**. Tick interno do worker reduzido de 60s para **5s** para suportar intervalos sub-minuto sem hammering (cada empresa só dispara quando o intervalo configurado é alcançado).
+- ✅ **Botão "+ Nova nota" na Lousa abre painel Atlaz externo**: quando `tenant_domain` está configurado, o botão (`data-testid="lousa-create-btn"`) dispara `window.open(${tenant_domain}/admin/tickets/list?new=1, '_blank', 'noopener,noreferrer')`. Texto fica "**Nova nota 🔗**". Quando vazio, fallback para o `CreateTicketModal` local — comportamento original preservado.
+- ✅ **UI Settings/Atlaz**: input de intervalo agora em **segundos** (`atlaz-interval-seconds`, default 30, mín 10, máx 86400). Card "📋 Bolhas (Lousa)" mostra "A cada **Xs**".
+- ✅ **`tenant_domain` da empresa demo** salvo como `https://ligofibra.atlaz.com.br`.
+- Backend: 17/17 verde (validação 422 boundaries 10/86400, precedência worker, regressão completa). Frontend: 100% (campo segundos, window.open URL/target verificado via hook).
 
 ### Iter 21 — Fix bug HIGH validação Atlaz + auto-cura (2026-05-09) ✅
 - ✅ **Field constraints em AtlazConfigUpdate**: `tech_sync_interval_minutes (ge=5,le=1440)`, `sync_interval_minutes (ge=1,le=1440)`, `lookback_days (ge=1,le=365)`, `timeout_seconds (ge=2,le=120)`. PUT com valores inválidos agora retorna 422 (era 200 + cascata 500).
