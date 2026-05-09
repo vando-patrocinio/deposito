@@ -75,7 +75,10 @@ export default function LousaHistoryModal({ onClose }) {
     const cols = ["created_at", "closed_at", "client_name", "address", "neighborhood", "type", "priority", "status", "duration_minutes", "collaborator_name", "scheduled_time", "admin_action", "admin_notes"];
     const head = cols.join(";");
     const lines = data.items.map((it) =>
-      cols.map((c) => `"${(it[c] ?? "").toString().replace(/"/g, '""')}"`).join(";")
+      cols.map((c) => {
+        const raw = (it[c] ?? "").toString().replace(/[\r\n]+/g, " | ").replace(/"/g, '""');
+        return `"${raw}"`;
+      }).join(";")
     );
     const blob = new Blob(["\uFEFF" + head + "\n" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);

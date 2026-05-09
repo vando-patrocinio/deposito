@@ -39,7 +39,10 @@ class TestHistoryDay:
         assert d["granularity"] == "day"
         assert d["label"] == today
         assert d["from_iso"].startswith(today)
-        assert d["to_iso"].startswith(today)
+        # to_iso agora usa intervalo SEMI-ABERTO (próximo dia 00:00) — consistente com month/year
+        from datetime import datetime as _dt, timedelta as _td
+        next_day = (_dt.fromisoformat(today) + _td(days=1)).strftime("%Y-%m-%d")
+        assert d["to_iso"].startswith(next_day)
         assert isinstance(d["items"], list)
         assert isinstance(d["summary"], dict)
 
@@ -128,7 +131,8 @@ class TestHistoryRange:
         d = r.json()
         assert d["granularity"] == "range"
         assert d["from_iso"].startswith("2026-01-01")
-        assert d["to_iso"].startswith("2026-01-31")
+        # to_iso agora é SEMI-ABERTO: 2026-02-01 (1 dia após 2026-01-31)
+        assert d["to_iso"].startswith("2026-02-01")
         assert "→" in d["label"]
 
 

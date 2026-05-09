@@ -1,8 +1,19 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 11)
+**Última atualização**: 2026-05-09 (iteração 12)
 
 ## Histórico de iterações
+
+### Iter 12 — Histórico da Lousa por Dia/Mês/Ano/Período (2026-05-09)
+- ✅ **Endpoint** `GET /api/lousa/history?granularity={day|month|year|range}` com filtros opcionais por status/type/collaborator_id, retorna items[] e summary agregado
+- ✅ **Modal** "📚 Histórico da Lousa" acessível via botão `lousa-history-btn` no header da Lousa
+- ✅ Filtros visuais: 4 chips (Dia/Mês/Ano/Período) + dropdowns Status + Tipo
+- ✅ KPIs: Total, Finalizadas, Encerradas, Reagendadas, Canceladas, Tempo médio, Top técnico
+- ✅ Tabela com Cliente/Tipo/Técnico/Status/Duração/Datas/Notas
+- ✅ Exportar CSV (BOM UTF-8 + escape de newlines em campos)
+- ✅ Intervalos padronizados em **semi-aberto** (consistência day/month/year/range)
+- Backend: 14/14 (iter12) + 94/94 regressão = **108/108 verde**
+- Frontend deep test: 100%
 
 ### Iter 11 — Cancelamento mobile + Modal Reschedule + KPIs Gestão + Insights IA (2026-05-09)
 - ✅ **Notas canceladas/reagendadas pela gestão SAEM da Lousa do app do colaborador**: `_lousa_for_collaborator` agora filtra apenas `TECH_RESOLVED` (finalizada/encerrada pelo técnico), excluindo `cancelada`/`reagendada` que são ações de gestão

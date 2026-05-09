@@ -1802,7 +1802,10 @@ async def lousa_history(
     if granularity == "day":
         d = date or today_dt.strftime("%Y-%m-%d")
         from_iso = f"{d}T00:00:00"
-        to_iso = f"{d}T23:59:59.999"
+        # Próximo dia 00:00 (intervalo semi-aberto, igual month/year)
+        from datetime import timedelta as _td
+        next_d = (datetime.fromisoformat(d) + _td(days=1)).strftime("%Y-%m-%d")
+        to_iso = f"{next_d}T00:00:00"
         label = d
     elif granularity == "month":
         m = month or today_dt.strftime("%Y-%m")
@@ -1824,7 +1827,9 @@ async def lousa_history(
         if not date_from or not date_to:
             raise HTTPException(400, "date_from e date_to obrigatórios para granularity=range")
         from_iso = f"{date_from}T00:00:00"
-        to_iso = f"{date_to}T23:59:59.999"
+        from datetime import timedelta as _td
+        next_d = (datetime.fromisoformat(date_to) + _td(days=1)).strftime("%Y-%m-%d")
+        to_iso = f"{next_d}T00:00:00"
         label = f"{date_from} → {date_to}"
 
     # Query: ticket criado OU encerrado dentro do período
