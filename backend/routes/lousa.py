@@ -195,6 +195,12 @@ async def _create_notification(
     }
     await db.notifications.insert_one(n)
     n.pop("_id", None)
+    # Push real-time via SSE para gestores conectados (best-effort)
+    try:
+        from routes.events import publish_event
+        await publish_event(company_id, "notification", n)
+    except Exception as e:
+        logger.warning("[lousa] SSE publish falhou: %s", e)
     return n
 
 

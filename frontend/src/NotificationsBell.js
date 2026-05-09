@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
+import useEventStream from "@/useEventStream";
 
 export default function NotificationsBell() {
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
+  const [pulse, setPulse] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -20,6 +22,22 @@ export default function NotificationsBell() {
     return () => clearInterval(t);
   }, [refresh]);
 
+  // SSE — recebe notificação ao vivo, faz pulse na bell + insert no topo
+  const { connected } = useEventStream({
+    onNotification: (n) => {
+      setItems((prev) => [n, ...prev.filter((x) => x.id !== n.id)].slice(0, 200));
+      setUnread((u) => u + 1);
+      setPulse(true);
+      setTimeout(() => setPulse(false), 2400);
+      // tenta tocar beep de notificação (best-effort)
+      try {
+        const audio = new Audio("data:audio/mp3;base64,SUQzAwAAAAAAEFRJVDIAAAAGAAAATm90aWY=");
+        audio.volume = 0.3;
+        audio.play().catch(() => {});
+      } catch {}
+    },
+  });
+
   async function markRead(nid) {
     await api.notificationRead(nid);
     refresh();
@@ -32,16 +50,33 @@ export default function NotificationsBell() {
 
   return (
     <div style={{ position: "relative" }} data-testid="notifications-bell-wrapper">
+      <style>{`
+        @keyframes notif-pulse {
+          0%, 100% { transform: scale(1); }
+          25% { transform: scale(1.2) rotate(-12deg); }
+          50% { transform: scale(1.15) rotate(10deg); }
+          75% { transform: scale(1.1) rotate(-6deg); }
+        }
+        .notif-pulse { animation: notif-pulse 0.9s ease-in-out 2; }
+      `}</style>
       <button
         data-testid="notifications-bell-btn"
         onClick={() => setOpen(!open)}
+        className={pulse ? "notif-pulse" : ""}
         style={{
           position: "relative", background: "white", border: "1px solid #e2e8f0",
           borderRadius: 999, padding: "6px 10px", cursor: "pointer", fontSize: 16,
         }}
-        title="Notificações"
+        title={connected ? "Notificações · ao vivo" : "Notificações · offline"}
       >
         🔔
+        <span data-testid="notifications-live-dot" style={{
+          position: "absolute", bottom: -1, left: -1,
+          width: 10, height: 10, borderRadius: "50%",
+          background: connected ? "#10b981" : "#94a3b8",
+          border: "2px solid white",
+          boxShadow: connected ? "0 0 0 2px rgba(16,185,129,.18)" : "none",
+        }} />
         {unread > 0 && (
           <span style={{
             position: "absolute", top: -4, right: -4,

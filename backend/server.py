@@ -43,6 +43,7 @@ from routes import (
     clock as routes_clock,
     collab_auth as routes_collab_auth,
     dashboard as routes_dashboard,
+    events as routes_events,
     locations as routes_locations,
     logs as routes_logs,
     lousa as routes_lousa,
@@ -265,6 +266,7 @@ app.include_router(routes_collab_auth.router)
 app.include_router(routes_logs.router)
 app.include_router(routes_lousa.router)
 app.include_router(routes_atlaz.router)
+app.include_router(routes_events.router)
 app.include_router(routes_saas.router)
 app.include_router(routes_saas.webhook_router)
 
