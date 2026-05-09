@@ -568,8 +568,8 @@ function ServiceStatsSection() {
       {stats.timeline?.length > 0 && (
         <div>
           <h4 style={{ fontSize: 13, margin: "12px 0 8px", color: "#475569" }}>📈 Volume diário</h4>
-          <div style={{ height: 110 }}>
-            <ResponsiveContainer width="100%" height="100%">
+          <div style={{ height: 110, minHeight: 110 }}>
+            <ResponsiveContainer width="100%" height="100%" minHeight={110}>
               <BarChart data={stats.timeline.slice(-14)}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="day" tickFormatter={(d) => d.slice(5)} fontSize={10} />

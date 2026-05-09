@@ -1,6 +1,97 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 7)
+**Última atualização**: 2026-05-09 (iteração 8)
+
+## Histórico de iterações
+
+### Iter 8 — Duração + Gap + Score IA + Stats Painel + Mobile (2026-05-09)
+- ✅ **Rename** "bolha"→"serviço" em headers, badges, tooltips e alerta
+- ✅ **Duplo-clique** em serviço pendente abre via admin-open
+- ✅ **Duração** (HH:MM) no canto inf-direito do BubbleCard quando ticket aberto/fechado
+- ✅ **Gap entre serviços** texto centralizado entre BubbleCards no mesmo slot + bloco "📒 Encerrados (24h)" por técnico (gap entre cada serviço fechado)
+- ✅ **Mobile colaborador**: card "🧾 Último serviço encerrado" com duração + tempo desde encerramento (gap até bater Saída)
+- ✅ **Painel — Estatísticas de serviços** (`/api/lousa/stats?days=N`): KPIs (total/executados/finalizados/cancelados/tempo médio), ranking de tipos com barras coloridas, gráfico recharts de volume diário (criados vs finalizados), seletor 7d/30d/90d
+- ✅ **IA Heurística (sempre)**: score 0-10 por ticket no `/api/lousa/grid` com sinais cumulativos:
+  - Distância da posição atual ao endereço (haversine)
+  - Tempo decorrido vs SLA (overshoot %)
+  - Histórico de duração média do técnico para o tipo (últimos 30d)
+  - Gap longo desde último serviço encerrado (>90min)
+  - Geo-fence violations recentes (24h)
+- ✅ **IA Profunda (sob demanda)**: botão 🤖 IA chama `POST /api/lousa/tickets/{id}/ai-evaluate` (Emergent LLM via emergentintegrations) e retorna verdict + summary + recomendações + sinais. Modal `ai-detail-modal` exibe tudo.
+- Backend: 10/10 pytest novos (iter8) + 11/11 iter5 regression verde
+
+### Iter 7 — Polish + Alertas Sonoros + Refactor + Bug Fixes
+- 🔔 Alertas sonoros SLA (slaAlerts.js) + toggle ON/OFF persistido em localStorage
+- 🧹 Refactor: EditTicketModal e CreateTicketModal extraídos
+- 🐛 4 bugs do code review iter5/6 corrigidos (PUT settings 422, PATCH grid_slot, drift skip admin-only, defaults SLA)
+
+### Iter 6 — Code Review + Bug Fix
+- Identificou e corrigiu PUT /api/settings 500→422
+
+### Iter 5 — Time-Sync + Admin Open/Edit + Novos Tipos
+- /api/server-time + drift validation 412 + admin-open/edit + 6 tipos de serviço
+
+### Iter 4 — Grade Fixa de Horários + Slots Configuráveis
+- Lousa em grade configurável + drag&drop entre slots
+
+### Iter 3 — SLA + Logs + Praça NOTA
+- SLA piscando + logs auditoria + cerca dinâmica NOTA
+
+### Iter 2 — Per-collaborator test mode + Kanban Grid + Transfer
+- is_test_mode + kanban + transfer drag&drop
+
+### Iter 1 — Mesclagem inicial Smart1+Smart2
+- 3 perfis + state machine clock vs lousa
+
+## Endpoints chave
+- `GET /api/lousa/grid` — kanban com SLA + duration_minutes + gap_minutes_to_prev + ai_score (heurística) + recent_resolved
+- `GET /api/lousa/by-collaborator/{cid}` — para mobile, com last_closed_at + minutes_since_last_close
+- `GET /api/lousa/stats?days=N` — KPIs e ranking
+- `POST /api/lousa/tickets/{id}/ai-evaluate` — análise LLM (Emergent)
+- `GET /api/server-time` — sync horário
+- `POST /api/lousa/tickets/{id}/admin-open` + `PATCH` + `transfer` + `admin-close`
+
+## Backlog priorizado
+
+### P0 — Concluído ✅
+- IA score + duração + gap + Painel stats (FEITO iter 8)
+- Mobile resumo último serviço (FEITO iter 8)
+
+### P1 — Próximas
+- Aba "Avaliação IA" dedicada (lista por técnico + média)
+- Card de score por técnico no Painel com alertas
+- Cache curto para /ai-evaluate (5min) por ticket_id
+- Reordenação visual dentro da própria coluna (drag vertical)
+- Push real-time gestor
+
+### P2 — Backlog
+- Refatorar `routes/lousa.py` (~1418 linhas) em sub-módulos: lousa_grid, lousa_stats, lousa_ai, lousa_admin
+- Sentinel para limpar `scheduled_time` via PATCH
+- Rate limit em endpoints públicos (slowapi)
+- Helper `_is_admin_request` em clock.py
+- WhatsApp real (Twilio)
+- Object storage para fotos
+- PWA offline queue ativada
+
+## Credenciais demo
+| Email | Senha | Perfil |
+|---|---|---|
+| `admin@empresa.com` | `123456` | Administrador |
+| `gestor@empresa.com` | `123456` | Gestor |
+| `colaborador@empresa.com` | `123456` | Colaborador |
+
+## Arquivos críticos
+- `/app/backend/routes/lousa.py` — main lousa (~1422 linhas)
+- `/app/backend/routes/lousa_score.py` — heurística + duração
+- `/app/backend/routes/clock.py` — clock-records + state machine
+- `/app/backend/routes/admin.py` — Settings com Field constraint
+- `/app/backend/core.py` — Settings model + LLM helpers
+- `/app/frontend/src/LousaAdminPanel.js` — Kanban + IA + duração + gap
+- `/app/frontend/src/DashboardPanel.js` — Painel + ServiceStatsSection
+- `/app/frontend/src/CollaboratorApp.js` — Mobile + last-service-summary
+- `/app/frontend/src/lousa/EditTicketModal.js` + `CreateTicketModal.js`
+- `/app/frontend/src/slaAlerts.js` — Web Audio API + Notification API
+- `/app/frontend/src/OfflineTimeBanner.js` — banner offline/drift
 
 ## Histórico de iterações
 

@@ -449,6 +449,9 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
         has_entrada = "Entrada" in s["types"]
         ended_day = "Saída" in s["types"]
         # Adiciona SLA + slot + duração + gap + ai_score por bolha
+        # Inicializa gap_minutes_to_prev=None em todos para conformidade com a spec
+        for t in tickets:
+            t["gap_minutes_to_prev"] = None
         # Gaps: ordem cronológica dos resolvidos depois pelas ativas (por opened_at)
         chrono_for_gaps = list(recent_resolved) + sorted(
             [t for t in tickets if t.get("opened_at")],
