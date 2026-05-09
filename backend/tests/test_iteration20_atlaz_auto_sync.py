@@ -74,26 +74,87 @@ class TestAtlazConfigNewFields:
                      },
                      headers=auth_headers, timeout=15)
 
-    @pytest.mark.xfail(reason="BUG iter20: AtlazConfigUpdate.tech_sync_interval_minutes lacks Field(ge=5). PUT 4 returns 200 e persiste valor inválido.")
     def test_put_settings_rejects_low_interval(self, auth_headers):
-        try:
-            r = requests.put(f"{BASE_URL}/api/atlaz/settings",
-                             json={"tech_sync_interval_minutes": 4},
-                             headers=auth_headers, timeout=15)
-            assert r.status_code == 422, f"BUG: expected 422, got {r.status_code}"
-        finally:
-            # Force-restore via direct call (PUT may now 500 because db has invalid value)
-            self._restore_db()
+        r = requests.put(f"{BASE_URL}/api/atlaz/settings",
+                         json={"tech_sync_interval_minutes": 4},
+                         headers=auth_headers, timeout=15)
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text}"
+        # GET should still 200 (no corruption persisted)
+        g = requests.get(f"{BASE_URL}/api/atlaz/settings", headers=auth_headers, timeout=15)
+        assert g.status_code == 200
 
-    @pytest.mark.xfail(reason="BUG iter20: AtlazConfigUpdate.tech_sync_interval_minutes lacks Field(le=1440). PUT 1500 returns 200 e persiste, quebrando _get_config.")
     def test_put_settings_rejects_high_interval(self, auth_headers):
+        r = requests.put(f"{BASE_URL}/api/atlaz/settings",
+                         json={"tech_sync_interval_minutes": 1500},
+                         headers=auth_headers, timeout=15)
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text}"
+        g = requests.get(f"{BASE_URL}/api/atlaz/settings", headers=auth_headers, timeout=15)
+        assert g.status_code == 200
+
+    @pytest.mark.parametrize("field,bad_value", [
+        ("tech_sync_interval_minutes", 4),
+        ("tech_sync_interval_minutes", 2000),
+        ("sync_interval_minutes", 0),
+        ("sync_interval_minutes", 2000),
+        ("lookback_days", 0),
+        ("lookback_days", 400),
+        ("timeout_seconds", 1),
+        ("timeout_seconds", 200),
+    ])
+    def test_put_settings_rejects_out_of_range(self, auth_headers, field, bad_value):
+        r = requests.put(f"{BASE_URL}/api/atlaz/settings",
+                         json={field: bad_value},
+                         headers=auth_headers, timeout=15)
+        assert r.status_code == 422, f"{field}={bad_value} expected 422, got {r.status_code}: {r.text}"
+        # GET ainda 200
+        g = requests.get(f"{BASE_URL}/api/atlaz/settings", headers=auth_headers, timeout=15)
+        assert g.status_code == 200, f"GET broke after invalid {field}={bad_value}: {g.text}"
+
+    def test_get_settings_auto_heals_corrupt_config(self, auth_headers):
+        """Insere via Mongo direto um doc corrompido (tech_sync_interval_minutes=99999)
+        e valida que GET /atlaz/settings retorna 200 com valor clampado para default 60.
+        """
+        import subprocess
+        # 1) Snapshot original
+        orig = requests.get(f"{BASE_URL}/api/atlaz/settings", headers=auth_headers, timeout=15).json()
+        orig_tsim = int(orig.get("tech_sync_interval_minutes") or 60)
+
+        # 2) Corrompe via pymongo direto (sync — db.py é motor/async)
+        corrupt_cmd = (
+            "import os;from pymongo import MongoClient;"
+            "c=MongoClient(os.environ.get('MONGO_URL','mongodb://localhost:27017'));"
+            "c[os.environ.get('DB_NAME','test_database')].atlaz_config.update_one("
+            "{'company_id':'co-demo'},"
+            "{'$set':{'tech_sync_interval_minutes':99999}}, upsert=True)"
+        )
+        env = {**os.environ, "MONGO_URL": "mongodb://localhost:27017", "DB_NAME": "test_database"}
+        cp = subprocess.run(["python3", "-c", corrupt_cmd], capture_output=True, timeout=15, text=True, env=env)
+        assert cp.returncode == 0, f"corrupt insert failed: {cp.stderr}"
+
         try:
-            r = requests.put(f"{BASE_URL}/api/atlaz/settings",
-                             json={"tech_sync_interval_minutes": 1500},
-                             headers=auth_headers, timeout=15)
-            assert r.status_code == 422
+            # 3) GET /settings deve responder 200 (auto-heal) e devolver valor sanitizado
+            r = requests.get(f"{BASE_URL}/api/atlaz/settings", headers=auth_headers, timeout=15)
+            assert r.status_code == 200, f"auto-heal falhou: {r.status_code} {r.text}"
+            d = r.json()
+            assert d["tech_sync_interval_minutes"] == 60, (
+                f"expected default 60 after auto-heal, got {d['tech_sync_interval_minutes']}"
+            )
         finally:
-            self._restore_db()
+            # 4) Restore original
+            requests.put(f"{BASE_URL}/api/atlaz/settings",
+                         json={"tech_sync_interval_minutes": orig_tsim},
+                         headers=auth_headers, timeout=15)
+
+    @staticmethod
+    def _restore_db():
+        """Direct DB restore — required because PUT pode dar 500 enquanto config inválida no DB."""
+        import subprocess
+        subprocess.run(["python3", "-c",
+            "import asyncio,sys;sys.path.insert(0,'/app/backend');"
+            "from database import db;"
+            "asyncio.run(db.atlaz_config.update_one({'company_id':'co-demo'},"
+            "{'$set':{'tech_sync_interval_minutes':60,'sync_interval_minutes':15}}))"
+        ], capture_output=True, timeout=10)
 
     @staticmethod
     def _restore_db():
@@ -123,6 +184,28 @@ class TestAtlazConfigNewFields:
         requests.put(f"{BASE_URL}/api/atlaz/settings",
                      json={"tech_sync_interval_minutes": 60},
                      headers=auth_headers, timeout=15)
+
+    def test_put_settings_valid_regression(self, auth_headers):
+        """Regressão: PUT com valores válidos persiste; last_auto_sync_technicians_at presente."""
+        orig = requests.get(f"{BASE_URL}/api/atlaz/settings", headers=auth_headers, timeout=15).json()
+        try:
+            r = requests.put(f"{BASE_URL}/api/atlaz/settings",
+                             json={"auto_sync_technicians": True, "tech_sync_interval_minutes": 30},
+                             headers=auth_headers, timeout=15)
+            assert r.status_code == 200, r.text
+            d = r.json()
+            assert d["auto_sync_technicians"] is True
+            assert d["tech_sync_interval_minutes"] == 30
+            g = requests.get(f"{BASE_URL}/api/atlaz/settings", headers=auth_headers, timeout=15).json()
+            assert g["tech_sync_interval_minutes"] == 30
+            assert "last_auto_sync_technicians_at" in g
+        finally:
+            requests.put(f"{BASE_URL}/api/atlaz/settings",
+                         json={
+                             "auto_sync_technicians": orig.get("auto_sync_technicians", True),
+                             "tech_sync_interval_minutes": orig.get("tech_sync_interval_minutes", 60),
+                         },
+                         headers=auth_headers, timeout=15)
 
 
 # ---------------- sync-technicians shape ----------------

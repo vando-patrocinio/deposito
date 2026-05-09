@@ -113,12 +113,12 @@ class AtlazConfigUpdate(BaseModel):
     filial_to_collaborator: Optional[Dict[str, str]] = None
     technician_to_collaborator: Optional[Dict[str, str]] = None
     type_map: Optional[Dict[str, str]] = None
-    lookback_days: Optional[int] = None
-    sync_interval_minutes: Optional[int] = None
+    lookback_days: Optional[int] = Field(default=None, ge=1, le=365)
+    sync_interval_minutes: Optional[int] = Field(default=None, ge=1, le=1440)
     auto_create_bubbles: Optional[bool] = None
     auto_sync_technicians: Optional[bool] = None
-    tech_sync_interval_minutes: Optional[int] = None
-    timeout_seconds: Optional[int] = None
+    tech_sync_interval_minutes: Optional[int] = Field(default=None, ge=5, le=1440)
+    timeout_seconds: Optional[int] = Field(default=None, ge=2, le=120)
 
 
 # -------------------------------------------------------------------------
@@ -133,7 +133,24 @@ async def _get_config(company_id: str) -> AtlazConfig:
     # filtra campos legados que não existem mais no modelo
     valid = set(AtlazConfig.model_fields.keys())
     raw = {k: v for k, v in raw.items() if k in valid}
-    return AtlazConfig(**raw)
+    try:
+        return AtlazConfig(**raw)
+    except Exception as e:
+        # Auto-cura: documento legado/corrompido no Mongo. Clamp valores fora
+        # do range e tenta de novo. Loga o motivo para auditoria.
+        logger.warning("[atlaz] config corrompida (%s) — sanitizando para defaults", e)
+        defaults = AtlazConfig().model_dump()
+        sanitized: Dict[str, Any] = {}
+        for k, v in raw.items():
+            try:
+                AtlazConfig(**{**defaults, k: v})
+                sanitized[k] = v
+            except Exception:
+                sanitized[k] = defaults.get(k)
+        clean = AtlazConfig(**{**defaults, **sanitized})
+        # Persiste a versão limpa para evitar 500 nos próximos GETs
+        await _save_config(company_id, clean)
+        return clean
 
 
 async def _save_config(company_id: str, cfg: AtlazConfig) -> None:
@@ -502,7 +519,9 @@ async def put_atlaz_settings(payload: AtlazConfigUpdate,
     update_dict = payload.model_dump(exclude_unset=True)
     if update_dict.get("api_key") == "":
         update_dict.pop("api_key", None)
-    new_cfg = current.model_copy(update=update_dict)
+    # Reconstrói o modelo (em vez de model_copy) para FORÇAR re-validação dos
+    # constraints do AtlazConfig — defesa em profundidade contra valores fora do range.
+    new_cfg = AtlazConfig(**{**current.model_dump(), **update_dict})
     await _save_config(company_id, new_cfg)
     return _public_config(new_cfg)
 

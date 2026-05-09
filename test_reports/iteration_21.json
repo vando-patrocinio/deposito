@@ -1,0 +1,34 @@
+{
+  "summary": "Retest do bug HIGH iter20 (validação Field em AtlazConfigUpdate). Fix do main agent VERIFICADO: 23/23 testes passaram (era 11 passed + 2 xfail). Os 2 testes xfail (low/high interval rejection) agora PASSAM normalmente. Adicionados 8 testes parametrizados cobrindo todos os campos numéricos (tech_sync_interval_minutes, sync_interval_minutes, lookback_days, timeout_seconds) com valores fora do range — todos retornam 422. Adicionado teste crítico de auto-cura (_get_config sanitiza config corrompida no Mongo: tech_sync_interval_minutes=99999 → clampa para default 60 e GET /atlaz/settings retorna 200). Regressão: PUT válido persiste, /sync-technicians shape OK, /test-connection, /sync-now, /sync-logs OK, /lousa/grid OK, SSE conecta, worker periódico continua rodando (logs confirmam start + auto-heal warnings).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration20_atlaz_auto_sync.py",
+    "/app/test_reports/pytest/iter21_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "atlaz.py:108-121 — AtlazConfigUpdate agora replica os Field(ge,le) constraints do AtlazConfig (lookback_days, sync_interval_minutes, tech_sync_interval_minutes, timeout_seconds). Bug HIGH iter20 RESOLVIDO. ✓",
+    "atlaz.py:524 — put_atlaz_settings reconstrói AtlazConfig(**{**current.model_dump(), **update_dict}) em vez de model_copy(update=...) — força re-validação como defesa em profundidade. ✓",
+    "atlaz.py:127-153 — _get_config tem fallback de auto-cura para configs legadas/corrompidas: itera por campo, mantém os que validam, substitui inválidos por default e persiste a versão limpa via _save_config. Corrige issue de empresas com docs Mongo legados sem precisar migration manual. ✓",
+    "atlaz.py:619-624 — worker também usa try/except em torno de AtlazConfig(**...) com `logger.exception` e `continue` — empresa com config quebrada não derruba todo o tick. ✓",
+    "Nota minor: o worker NÃO chama _get_config (que tem auto-heal); reconstrói AtlazConfig direto do doc. Isso é OK porque _get_config já é chamado no GET /settings, então qualquer empresa que tenha logado via UI já teve seu doc sanitizado antes do próximo tick do worker. Cenário edge: empresa com config corrompida que NUNCA chama GET /settings — o worker faria `continue` indefinidamente. Não é regressão (não há fluxo onde isso quebre algo), apenas observação."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration20_atlaz_auto_sync.py (removido @xfail dos 2 testes; adicionado test_put_settings_rejects_out_of_range parametrizado x8; test_get_settings_auto_heals_corrupt_config; test_put_settings_valid_regression)"
+  ],
+  "success_rate": {"backend": "100% (23/23 passed)", "frontend": "N/A (skipped per request)"},
+  "test_credentials": "admin@empresa.com / 123456 (válido)",
+  "seed_data_creation": "Test test_get_settings_auto_heals_corrupt_config corrompe doc atlaz_config (tech_sync_interval_minutes=99999) via pymongo direto, dispara auto-cura via GET /atlaz/settings, e restaura via PUT no finally. Outros testes mexem em auto_sync_technicians e tech_sync_interval_minutes e restauram para defaults (true/60).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 21: bug HIGH de iter20 validação Field em AtlazConfigUpdate fechado. 23 testes passam. Auto-cura em _get_config validada. Pytest precisa rodar com REACT_APP_BACKEND_URL no env (cd /app/backend && REACT_APP_BACKEND_URL=https://dual-combine-3.preview.emergentagent.com python -m pytest tests/test_iteration20_atlaz_auto_sync.py). Frontend não foi retestado conforme pedido (já 100% verde em iter20). Worker periódico continua rodando, logs de auto-heal aparecem em backend.err.log quando a config é corrompida — comportamento esperado.",
+  "rca of the issue": "Resolvido. Fix aplicado em 3 frentes: (1) Field(ge,le) em todos os ints do AtlazConfigUpdate — bloqueia 422 na entrada; (2) reconstrução do AtlazConfig via constructor em vez de model_copy — força re-validação caso fix #1 seja burlado; (3) auto-heal em _get_config — sanitiza configs legadas que possam estar corrompidas no DB de iterações anteriores. Verificação: PUT 4/2000/0/200/400 → 422; GET após valor inválido → 200; corrupt insert via pymongo (99999) → GET clampa para 60; PUT válido (30) → persiste; sync-technicians/sync-now/test-connection/sync-logs todos 200; SSE conecta; worker continua rodando."
+}
