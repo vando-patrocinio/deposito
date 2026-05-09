@@ -50,6 +50,7 @@ from routes import (
     pracas as routes_pracas,
     push as routes_push,
     saas as routes_saas,
+    stok as routes_stok,
     users as routes_users,
 )
 
@@ -86,6 +87,14 @@ async def ensure_indexes() -> None:
     await db.atlaz_config.create_index("company_id", unique=True)
     await db.atlaz_sync_logs.create_index([("company_id", 1), ("at", -1)])
     await db.tickets.create_index([("company_id", 1), ("atlaz_external_id", 1)])
+    # Estoque (stok) — coleções isoladas
+    await db.stok_onts.create_index([("company_id", 1), ("mac", 1)], unique=True)
+    await db.stok_onts.create_index("location_id")
+    await db.stok_stock.create_index([("company_id", 1), ("location", 1)], unique=True)
+    await db.stok_services.create_index("id", unique=True)
+    await db.stok_services.create_index([("company_id", 1), ("status", 1)])
+    await db.stok_services.create_index("ticket_id")
+    await db.stok_history.create_index([("company_id", 1), ("date", -1)])
 
 
 # -------------------------------------------------------------------------
@@ -269,6 +278,7 @@ app.include_router(routes_atlaz.router)
 app.include_router(routes_events.router)
 app.include_router(routes_saas.router)
 app.include_router(routes_saas.webhook_router)
+app.include_router(routes_stok.router)
 
 app.add_middleware(
     CORSMiddleware,

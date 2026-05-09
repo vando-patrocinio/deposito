@@ -955,6 +955,14 @@ async def public_open_ticket(ticket_id: str, payload: PublicOpenIn):
         details=f"Iniciou atendimento de {t['client_snapshot']['name']}",
         company_id=t.get("company_id") or DEMO_COMPANY_ID,
     )
+    # Bridge Estoque ↔ Lousa: cria OS de estoque automaticamente (parte b)
+    try:
+        from routes.stok import auto_open_service_for_ticket
+        full_t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+        await auto_open_service_for_ticket(full_t)
+    except Exception as e:
+        # Sync best-effort — não derruba abertura da bolha se estoque falhar
+        logger.warning("[lousa] auto_open_service_for_ticket falhou: %s", e)
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 

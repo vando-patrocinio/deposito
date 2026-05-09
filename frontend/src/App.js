@@ -71,6 +71,7 @@ function setSessionMode(mode) {
 const ALL_TABS = [
   { id: "dashboard", icon: "sheet", label: "Painel", roles: ["gestor", "auditor", "administrador"] },
   { id: "lousa", icon: "users", label: "Lousa 📋", roles: ["administrador"] },
+  { id: "estoque", icon: "sheet", label: "Estoque 📦", roles: ["gestor", "administrador"] },
   { id: "ai-ranking", icon: "shield", label: "Avaliação IA 🤖", roles: ["gestor", "auditor", "administrador"] },
   { id: "cadastro", icon: "users", label: "Cadastro", roles: ["gestor", "auditor", "administrador"] },
   { id: "pracas", icon: "map", label: "Praças", roles: ["gestor", "auditor", "administrador"] },
