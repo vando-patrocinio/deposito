@@ -167,6 +167,7 @@ export const api = {
   lousaBriefing: (useAi = true) => client.get(`/lousa/briefing`, { params: { use_ai: useAi } }).then((r) => r.data),
   lousaManagementKpis: (days = 30) => client.get(`/lousa/management-kpis`, { params: { days } }).then((r) => r.data),
   lousaManagementInsights: (days = 30) => client.post(`/lousa/management-insights`, null, { params: { days } }).then((r) => r.data),
+  lousaHistory: (params) => client.get(`/lousa/history`, { params }).then((r) => r.data),
   // Notificações
   notificationsList: (unreadOnly = false) => client.get(`/notifications`, { params: { unread_only: unreadOnly } }).then((r) => r.data),
   notificationRead: (nid) => client.post(`/notifications/${nid}/read`).then((r) => r.data),

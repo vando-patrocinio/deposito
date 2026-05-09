@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from core import (
@@ -1772,4 +1772,144 @@ async def lousa_management_insights(user: dict = Depends(require_role("gestor"))
         },
         "method": "llm" if insights else "fallback",
         "computed_at": now_iso(),
+    }
+
+
+
+# -------------------------------------------------------------------------
+# HISTÓRICO DA LOUSA — filtros por dia/mês/ano/período
+# -------------------------------------------------------------------------
+@router.get("/lousa/history")
+async def lousa_history(
+    user: dict = Depends(require_role("gestor")),
+    granularity: Literal["day", "month", "year", "range"] = "day",
+    date: Optional[str] = None,        # YYYY-MM-DD (granularity=day)
+    month: Optional[str] = None,       # YYYY-MM (granularity=month)
+    year: Optional[str] = None,        # YYYY (granularity=year)
+    date_from: Optional[str] = None,   # YYYY-MM-DD (range)
+    date_to: Optional[str] = None,     # YYYY-MM-DD (range, inclusive)
+    collaborator_id: Optional[str] = None,
+    status: Optional[str] = None,      # filter by status
+    type_filter: Optional[str] = Query(default=None, alias="type"),
+):
+    """Histórico de notas da lousa com filtros temporais e por técnico/tipo/status.
+    Considera tickets criados OU finalizados no período.
+    """
+    q = tenant_filter(user)
+
+    # Determina from_iso e to_iso baseado em granularity
+    today_dt = datetime.now(timezone.utc)
+    if granularity == "day":
+        d = date or today_dt.strftime("%Y-%m-%d")
+        from_iso = f"{d}T00:00:00"
+        to_iso = f"{d}T23:59:59.999"
+        label = d
+    elif granularity == "month":
+        m = month or today_dt.strftime("%Y-%m")
+        from_iso = f"{m}-01T00:00:00"
+        # last day of month — primeiro dia do mês seguinte minus 1ms
+        y, mo = m.split("-")
+        if int(mo) == 12:
+            ny, nm = int(y) + 1, 1
+        else:
+            ny, nm = int(y), int(mo) + 1
+        to_iso = f"{ny}-{nm:02d}-01T00:00:00"
+        label = m
+    elif granularity == "year":
+        yr = year or today_dt.strftime("%Y")
+        from_iso = f"{yr}-01-01T00:00:00"
+        to_iso = f"{int(yr) + 1}-01-01T00:00:00"
+        label = yr
+    else:  # range
+        if not date_from or not date_to:
+            raise HTTPException(400, "date_from e date_to obrigatórios para granularity=range")
+        from_iso = f"{date_from}T00:00:00"
+        to_iso = f"{date_to}T23:59:59.999"
+        label = f"{date_from} → {date_to}"
+
+    # Query: ticket criado OU encerrado dentro do período
+    base_q = dict(q)
+    base_q["$or"] = [
+        {"created_at": {"$gte": from_iso, "$lt": to_iso}},
+        {"closed_at": {"$gte": from_iso, "$lt": to_iso}},
+    ]
+    if collaborator_id:
+        base_q["assigned_collaborator_id"] = collaborator_id
+    if status:
+        base_q["status"] = status
+    if type_filter:
+        base_q["type"] = type_filter
+
+    docs = await db.tickets.find(base_q, {"_id": 0}).sort("created_at", -1).to_list(5000)
+
+    # Enriquecer com nome do técnico e duration_minutes
+    cids = list({d.get("assigned_collaborator_id") for d in docs if d.get("assigned_collaborator_id")})
+    coll_map = {}
+    if cids:
+        for c in await db.collaborators.find({"id": {"$in": cids}}, {"_id": 0, "id": 1, "name": 1}).to_list(500):
+            coll_map[c["id"]] = c.get("name", "")
+
+    items = []
+    summary = {
+        "total": 0, "finalizada": 0, "encerrada": 0, "cancelada": 0,
+        "reagendada": 0, "pendente": 0, "aberta": 0,
+        "aguardando_atendimento": 0,
+        "by_type": {}, "by_collaborator": {},
+        "total_duration_minutes": 0.0, "durations_count": 0,
+    }
+    for d in docs:
+        dur = compute_duration_minutes(d)
+        cid = d.get("assigned_collaborator_id")
+        items.append({
+            "id": d.get("id"),
+            "client_name": (d.get("client_snapshot") or {}).get("name"),
+            "address": (d.get("client_snapshot") or {}).get("address"),
+            "neighborhood": (d.get("client_snapshot") or {}).get("neighborhood"),
+            "type": d.get("type"),
+            "priority": d.get("priority"),
+            "status": d.get("status"),
+            "scheduled_time": d.get("scheduled_time"),
+            "created_at": d.get("created_at"),
+            "opened_at": d.get("opened_at"),
+            "closed_at": d.get("closed_at"),
+            "duration_minutes": round(dur, 1) if dur is not None else None,
+            "admin_action": d.get("admin_action"),
+            "admin_notes": d.get("admin_notes"),
+            "collaborator_id": cid,
+            "collaborator_name": coll_map.get(cid, "—"),
+        })
+        st = d.get("status", "pendente")
+        summary[st] = summary.get(st, 0) + 1
+        summary["total"] += 1
+        ttype = d.get("type", "?")
+        summary["by_type"][ttype] = summary["by_type"].get(ttype, 0) + 1
+        if cid:
+            summary["by_collaborator"][cid] = summary["by_collaborator"].get(cid, 0) + 1
+        if dur is not None and d.get("status") in ("finalizada", "encerrada"):
+            summary["total_duration_minutes"] += dur
+            summary["durations_count"] += 1
+
+    # Avg duration
+    summary["avg_duration_minutes"] = (
+        round(summary["total_duration_minutes"] / summary["durations_count"], 1)
+        if summary["durations_count"] > 0 else None
+    )
+
+    # Top collaborator (named)
+    top_collab = None
+    if summary["by_collaborator"]:
+        top_id = max(summary["by_collaborator"].items(), key=lambda x: x[1])[0]
+        top_collab = {
+            "id": top_id, "name": coll_map.get(top_id, "—"),
+            "count": summary["by_collaborator"][top_id],
+        }
+    summary["top_collaborator"] = top_collab
+
+    return {
+        "granularity": granularity,
+        "label": label,
+        "from_iso": from_iso,
+        "to_iso": to_iso,
+        "items": items,
+        "summary": summary,
     }

@@ -4,6 +4,7 @@ import { Button, Icon } from "@/ui";
 import EditTicketModal from "./lousa/EditTicketModal";
 import CreateTicketModal from "./lousa/CreateTicketModal";
 import RescheduleModal from "./lousa/RescheduleModal";
+import LousaHistoryModal from "./lousa/LousaHistoryModal";
 import { isAlertsEnabled, setAlertsEnabled, maybeFireOverdueAlerts } from "./slaAlerts";
 
 const TYPE_LABELS = {
@@ -47,6 +48,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [showCreate, setShowCreate] = useState(false);
   const [editingTicket, setEditingTicket] = useState(null);
   const [reschedTicket, setReschedTicket] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -206,6 +208,14 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         <div style={{ display: "flex", gap: 8 }}>
           <Button
             variant="soft"
+            onClick={() => setShowHistory(true)}
+            data-testid="lousa-history-btn"
+            title="Histórico completo de notas (dia/mês/ano/período)"
+          >
+            📚 Histórico
+          </Button>
+          <Button
+            variant="soft"
             onClick={toggleAlerts}
             data-testid="lousa-sla-alerts-toggle"
             title={alertsOn ? "Alertas sonoros ativos — clique para desligar" : "Ativar alertas sonoros para serviços atrasados"}
@@ -306,6 +316,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           busy={busy}
         />
       )}
+      {showHistory && <LousaHistoryModal onClose={() => setShowHistory(false)} />}
     </div>
   );
 }

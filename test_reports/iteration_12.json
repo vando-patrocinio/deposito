@@ -1,0 +1,43 @@
+{
+  "summary": "Iter12 — Histórico da Lousa: BACKEND 14/14 PASS + FRONTEND 100% verified. Backend (/app/backend/tests/test_iteration12_lousa_history.py) cobre: GET /api/lousa/history retornando shape correto {granularity, label, from_iso, to_iso, items[], summary}; granularity=day usa from=YYYY-MM-DDT00:00:00 / to=YYYY-MM-DDT23:59:59.999; granularity=month YYYY-MM expande para [YYYY-MM-01T00:00:00, próximo_mês-01T00:00:00) — testado mês normal (2026-01) e rollover dezembro→janeiro (2025-12 → to=2026-01-01); granularity=year YYYY expande para [YYYY-01-01, (YYYY+1)-01-01); granularity=range retorna 400 quando date_from OU date_to faltam, 200 quando ambos presentes; items[] contém todos os 15 campos esperados (id, client_name, address, neighborhood, type, priority, status, scheduled_time, created_at, opened_at, closed_at, duration_minutes, admin_action, admin_notes, collaborator_id, collaborator_name); summary contém total/finalizada/encerrada/cancelada/reagendada/pendente/aberta/by_type/by_collaborator/total_duration_minutes/durations_count/avg_duration_minutes/top_collaborator{id,name,count}; filtros status (cancelada → todos rows são cancelada), type (alias de type_filter, reparo → todos rows são reparo), collaborator_id limitam corretamente; auth obrigatória — sem token retorna 401, token inválido retorna 401/403. FRONTEND (gestor@empresa.com / 123456 em /login → tab-lousa): lousa-history-btn presente no header; clique abre lousa-history-modal; 4 botões de granularidade history-gran-day/month/year/range presentes e alternam o input apropriado (history-date-day/month/year/from+to confirmados em cada switch); history-status-filter aplicou cancelada → 14 rows (de 125); history-type-filter aplicou reparo → 106 rows; history-summary mostra 6 KPIs visíveis (Total 125, Finalizadas 1, Encerradas 8, Reagendadas 6, Canceladas 14, Tempo médio 1h45, Top técnico Carlos 20); history-table renderizou 125 rows com data-testid='history-row-{id}' único para cada; history-export-csv não disabled (CSV gerado client-side via Blob — não testei download real); history-close-btn fecha modal (DOM removido). Screenshot anexado mostra layout limpo: header com título, botões Exportar CSV+Fechar, 4 chips de granularidade, input mês 2026-05, dois dropdowns de filtro, 6 KPI cards, tabela com Cliente/Tipo/Técnico/Status/Duração/Encerrada/Notas, footer '125 nota(s) — período: 2026-05'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Painel — Estatísticas (carry-over iter10/11)", "issues": ["10× warnings persistentes 'The width(-1) and height(-1) of chart should be greater than 0' (Recharts ResponsiveContainer sem minHeight). Sugestão (3ª iteração): adicionar minHeight={250}/{110} aos containers conforme já indicado no warning. Não bloqueia mas polui console."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration12_lousa_history.py",
+    "/app/test_reports/pytest/iter12_results.xml"
+  ],
+  "action_items": [
+    "[CARRY-OVER iter10/11] Adicionar minHeight aos ResponsiveContainer no DashboardPanel para silenciar warnings recorrentes do Recharts."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routes/lousa.py agora 1916 linhas (+140 vs iter11). PRIORIDADE ALTA: refactor em módulos (lousa_history.py, lousa_kpis.py, lousa_admin_actions.py, lousa_briefing.py, lousa_grid.py) — passou de qualquer threshold sustentável.",
+    "lousa_history (linha 1804-1805) usa intervalo INCLUSIVO 'YYYY-MM-DDT00:00:00' até 'YYYY-MM-DDT23:59:59.999' (com $lt) — funciona, mas é inconsistente com month/year que usam intervalo SEMI-ABERTO até primeiro segundo do próximo período. Considerar padronizar todos para semi-aberto: para day usar to_iso = (date+1day)T00:00:00. Edge case atual: ticket criado exatamente em 23:59:59.999 fica fora.",
+    "lousa_history linha 1843 hard-codeia .to_list(5000) — em produção com >5k tickets/mês itens podem ser truncados silenciosamente sem aviso. Adicionar limit param + flag 'truncated:true' no response quando atingir o cap.",
+    "lousa_history NÃO tem paginação — 125 itens já trafegam em 1 payload; com 1 ano + 5000 itens o payload pode ficar grande (~3MB). Considerar paginação cursor-based ou limit/offset.",
+    "Frontend LousaHistoryModal.js linha 90: <div onClick={onClose}> em raiz é um padrão arriscado — depende de stopPropagation no inner content. Funciona hoje (testado, modal não fecha em clicks dentro), mas qualquer componente filho novo sem stopPropagation pode fechar o modal acidentalmente. Sugestão: usar onClick no backdrop específico + onClick={(e)=>e.stopPropagation()} no card interno, OU usar shadcn Dialog.",
+    "Frontend exportCsv (linha 73-87) NÃO escapa newlines em campos de texto livre (admin_notes pode ter \\n) — quebra o CSV. Sugestão: replace /[\\r\\n]/ por espaço antes de stringify.",
+    "Backend item.client_name lê de client_snapshot — tickets criados antes do snapshot serem populados ficam com null. Ok como fallback, mas considerar JOIN com clients quando snapshot vazio."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration12_lousa_history.py"
+  ],
+  "success_rate": {
+    "backend": "100% (14/14 iter12)",
+    "frontend": "100% — todos data-testid esperados verificados (lousa-history-btn, lousa-history-modal, history-gran-day/month/year/range, history-date-day/month/year/from/to, history-status-filter, history-type-filter, history-summary, history-table, history-row-{id} ×125, history-export-csv, history-close-btn)"
+  },
+  "test_credentials": "gestor@empresa.com / 123456 (login em /login, role gestor obrigatória para /api/lousa/history)",
+  "seed_data_creation": "Nenhum ticket novo criado nesta iteração — usados os 125 tickets pré-existentes em 2026-05 (carry-over de iters anteriores incluindo TEST_*).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter12 backend suite: /app/backend/tests/test_iteration12_lousa_history.py (14/14). Endpoint: GET /api/lousa/history?granularity={day|month|year|range}. Public param 'type' é alias para 'type_filter' interno (Query alias). Auth via Bearer token (role gestor). Frontend testids confirmados: lousa-history-btn (tab-lousa header) → lousa-history-modal contendo history-gran-{day|month|year|range}, history-date-{day|month|year|from|to} (visibility depende da granularity selecionada), history-status-filter, history-type-filter, history-summary, history-table com history-row-{id} para cada item, history-export-csv (não disabled quando há items), history-close-btn. Modal tem ondaClick={onClose} no backdrop — funciona OK pq inner content tem stopPropagation, mas frágil. CSV é gerado client-side via Blob (sem chamada de API).",
+  "rca of the issue": "Sem bugs encontrados. Todas as funcionalidades de iter12 funcionam corretamente — tanto o endpoint backend quanto o modal frontend. Único débito técnico recorrente: 10 warnings do Recharts no DashboardPanel (carry-over de iters 10 e 11 sem fix aplicado). Observações de code review: routes/lousa.py atingiu 1916 linhas e precisa de refactor urgente em módulos; lousa_history sem paginação e com hard limit de 5000 sem flag de truncamento; intervalo de granularity=day usa formato inclusivo enquanto month/year usam semi-aberto (inconsistência sutil); exportCsv frontend não escapa newlines em admin_notes."
+}
