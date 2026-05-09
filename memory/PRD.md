@@ -1,8 +1,34 @@
-# PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
+# PRD — Sistema Mesclado: SmartProv + PontoIA + Estoque (Lousa + Ponto + Stok)
 
-**Última atualização**: 2026-05-09 (iteração 24)
+**Última atualização**: 2026-05-09 (iteração 25)
 
 ## Histórico de iterações
+
+### Iter 25 — Integração profunda de Estoque (Stok) (2026-05-09) ✅
+- ✅ **Backend `/api/stok/*` (~545 linhas)** em `/app/backend/routes/stok.py`:
+  - Catálogo de 6 insumos (drop, cabo_rede, conector_fast, conector_fibra, esticador, conector_rede) com pack_label/pack_qty.
+  - `GET /catalog` `GET /dashboard` `GET /technicians` (exclui colaboradores com `atlaz_inbox=true`).
+  - ONTs: `GET /onts` · `POST /onts/bulk` (validação MAC duplicado) · `PATCH /onts/{mac}` (apenas no estoque empresa) · `POST /onts/transfer-to-tech` · `POST /onts/{mac}/return-to-company`.
+  - Insumos: `GET /stock` · `POST /consumables/purchase` (pack_qty * pack_size) · `POST /consumables/transfer`.
+  - Serviços (OS): `GET /services` · `POST /services` · `POST /services/{id}/close` (move ONT, baixa insumos do técnico).
+  - Histórico: `GET /history?tag=&type=&q=&limit=`.
+- ✅ **Coleções isoladas com prefixo `stok_*`** (stok_onts, stok_stock, stok_services, stok_history) — não colidem com lousa/clock/atlaz.
+- ✅ **DEEP integration**: usa coleção `collaborators` existente como técnicos; usa `require_role("gestor")` existente; `clock_in_enabled` é respeitado.
+- ✅ **Bridge Lousa ↔ Estoque** (3 hooks):
+  - `auto_open_service_for_ticket(ticket)` chamado em `admin_open_ticket` E `public_open_ticket` → cria OS automaticamente com `auto_opened=true`. Mapeamento: instalacao→instalacao, retirada→retirada, troca_endereco/troca_titularidade→troca, outros→reparo.
+  - `mark_service_ticket_finalized(ticket_id)` chamado em `public_finalize_ticket` → marca OS associada com `ticket_finalized=true` (gestor encerra com MAC+insumos depois).
+  - `cancel_service_for_ticket(ticket_id, reason)` chamado em `admin_close_ticket` (action=cancelar/reagendar) → cancela OS associada SEM baixa de estoque.
+- ✅ **Frontend nova aba `📦 Estoque`** em `/app/frontend/src/EstoquePanel.js` (~600 linhas):
+  - Roles: administrador + gestor (escondida de colaborador/auditor).
+  - 5 sub-abas: Dashboard / ONTs / Insumos / Serviços / Histórico.
+  - Dashboard: 5 KPIs + estoque empresa (cards) + lista por técnico (tech_rows com stock per consumable).
+  - ONTs: filtros (texto + localização), dialog AddOnts (bulk), dialog Transfer, edit/return inline.
+  - Insumos: tabela cruzada empresa+técnicos × consumíveis, dialogs Compra (com cálculo total) e Transfer.
+  - Serviços: lista, dialog Create OS, dialog Close OS (MAC + insumos por consumable).
+  - Histórico: filtros (texto + tipo), tabela cronológica.
+- ✅ **Helpers de api** em `/app/frontend/src/api.js`: 14 métodos `stok*`.
+- ✅ **Pytest e2e**: 8 testes em `/app/backend/tests/test_iteration25_stok.py` cobrindo CRUD + bridge + role-based auth. **8/8 passed**.
+- ✅ **Testing agent**: 12 backend + frontend e2e (Playwright) — 100% verde. Aba escondida para colaborador validada.
 
 ### Iter 24 — Toggle CLT por colaborador + Modal Pontos + Bolhas SaaS (2026-05-09) ✅
 - ✅ **Toggle "Bate ponto" por colaborador** (`clock_in_enabled: bool = True` no `CollaboratorIn`). Quando false, o app do colaborador abre direto na Lousa (tela `screen-home-no-clock` com card roxo gradient "COLABORADOR EXTERNO / Você não bate ponto" + botão azul grande "📋 Abrir Lousa de Serviços"). Backend libera `lousa_unlocked=true` + `needs_clock_in=false` independentemente de Entrada. Endpoint `public_open_ticket` pula validação 412 para esse caso.
