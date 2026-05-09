@@ -10,6 +10,16 @@
 - State machine: Entrada → Lousa liberada / Saída com bolha aberta → confirma → notifica gestor
 - Backend: 26/27 pytest
 
+### Iter 4 — Grade Fixa de Horários + Slots Configuráveis (2026-05-09)
+- ✅ **Configurações da Grade**: novo card em Settings com 4 campos (hora_inicio, hora_fim, duracao_slot_min, max_bolhas_slot) + prévia visual em verde
+- ✅ **Lousa em grade fixa**: cada coluna do técnico exibe TODOS os slots configurados (08:00, 09:00,..., 17:00) — sempre visíveis, mesmo vazios
+- ✅ **Drag & drop entre slots**: arrastar bolha para slot vazio dentro da mesma coluna ou para outra coluna+slot
+- ✅ **Capacidade configurável**: máximo N bolhas por slot (default 2). Slot cheio fica amarelo com badge "🔒 cheio" e bloqueia drop com erro 409
+- ✅ **Bolhas sem horário**: ficam num bloco "📋 Sem horário" abaixo dos slots (sem limite)
+- ✅ **Auto-categorização**: bolhas com `scheduled_time` caem no slot que contém o horário (ex: 09:30 → slot 09:00)
+- 🔄 Endpoint `/api/lousa/tickets/{id}/transfer` aceita `new_grid_slot` (com ou sem trocar técnico)
+- Backend: 14/14 pytest (100%)
+
 ### Iter 3 — SLA + Logs + Praça NOTA (2026-05-09)
 - ✅ **Card Tempos de Referência** em Configurações: SLA por tipo (reparo=60min, instalacao=120min, retirada=30min) + slider warning% + checkbox piscar overdue + raio cerca NOTA
 - ✅ **Bolhas agrupadas por horário** no painel admin: 🌅 Manhã / ☀️ Tarde / 🌙 Noite / 📋 Sem horário, com cabeçalhos por slot
