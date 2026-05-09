@@ -501,9 +501,22 @@ async def create_clock_record(payload: ClockRecordIn, request: __import__('fasta
         raise HTTPException(404, "Colaborador não encontrado")
 
     # ---- TIME SYNC: valida horário do dispositivo vs servidor (se configurado) ----
+    # Pulado apenas para admin/auditor logado (modo teste de sessão admin).
+    # Colaborador com is_test_mode AINDA valida drift (pula só cerca/selfie).
     company_id = coll.get("company_id") or "co-demo"
     settings_doc = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
-    if settings_doc.get("time_sync_enabled") and payload.client_time_ms:
+    skip_time_sync = False
+    try:
+        from auth import decode_token
+        _ah = (request.headers.get("Authorization") or "")
+        if _ah.startswith("Bearer "):
+            _pj = decode_token(_ah[7:])
+            _au = await db.users.find_one({"id": _pj["sub"]}, {"_id": 0, "role": 1})
+            if _au and _au.get("role") in ("administrador", "auditor"):
+                skip_time_sync = True
+    except Exception:
+        pass
+    if settings_doc.get("time_sync_enabled") and payload.client_time_ms and not skip_time_sync:
         from datetime import datetime as _dt, timezone as _tz
         server_ms = int(_dt.now(_tz.utc).timestamp() * 1000)
         drift_s = abs(server_ms - payload.client_time_ms) / 1000

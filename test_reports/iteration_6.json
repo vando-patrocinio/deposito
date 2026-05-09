@@ -1,0 +1,40 @@
+{
+  "summary": "Tested session bugfixes on top of iteration 5 (drift skip ONLY for admin token, PATCH clears grid_slot, Field constraint on time_sync_max_drift_seconds, alerts toggle, server-time, sla defaults). Created /app/backend/tests/test_iteration5_session_bugfixes.py with 11 backend tests: 8 PASSED (drift skip behavior, PATCH grid_slot clearing, SLA defaults for prioridade/preventiva/venda, /api/server-time public, valid drift accepted). 3 FAILED — PUT /api/settings with invalid time_sync_max_drift_seconds (0, -10, 100000) returns 500 instead of 422 because Pydantic ValidationError raised inside the handler bubbles up unhandled. Frontend smoke test: login OK, offline-banner present after page.context.set_offline(true). Lousa tab navigation by text match missed due to emoji prefix '📋 Lousa' but tab is visible in screenshot — main agent should self-verify other Lousa testids manually or via better selectors.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/settings", "issue": "time_sync_max_drift_seconds=0/-10/100000 returns 500 (unhandled pydantic ValidationError) instead of 422. Field(ge=1, le=86400) is correctly defined but the handler instantiates Settings(**partial) outside FastAPI's body validation, so Pydantic ValidationError propagates as 500.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Lousa tab via Playwright text selector", "issue": "Tab label is '📋 Lousa' (emoji prefix); generic `text=Lousa` startsWith() may miss. Recommend stable [data-testid] on the tab itself like data-testid='nav-tab-lousa'.", "affected_selectors": ["text=Lousa"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration5_session_bugfixes.py",
+    "/app/test_reports/pytest/iter5_sbf_results.xml"
+  ],
+  "action_items": [
+    "Fix PUT /api/settings — wrap Settings(**dict) in try/except ValidationError and re-raise as HTTPException(422), OR refactor to accept Settings model directly as request body so FastAPI validates upfront and returns 422 automatically. Currently Field(ge=1, le=86400) constraint exists but client gets 500.",
+    "Add data-testid='nav-tab-lousa' (and similar for Painel, Cadastro, etc.) to top-nav tab buttons for reliable test selection across emojis/copy changes.",
+    "Consider exposing /api/server-time per-tenant (currently hardcoded DEMO_COMPANY_ID — minor/known)."
+  ],
+  "critical_code_review_comments": [
+    "routes/clock.py:create_clock_record — drift skip logic is duplicated (lines ~509-518 vs ~539-552 for admin detection). Extract a helper `_is_admin_request(request)` to reuse.",
+    "routes/lousa.py:edit_ticket — when scheduled_time set to None (clear), update['grid_slot']=None still applies (correct). But `payload.scheduled_time = None` won't be sent because `getattr(payload, f) is not None` filter blocks None — so callers can't clear scheduled_time via PATCH. Consider sentinel.",
+    "routes/lousa.py — file is now ~1148 lines; recurring suggestion to split (server_time, admin actions, public mobile, grid)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration5_session_bugfixes.py"
+  ],
+  "success_rate": {"backend": "73% (8/11 in new suite; iter5 base 22/22 unaffected)", "frontend": "smoke OK (login + offline-banner verified); deeper Lousa testids not asserted due to selector mismatch"},
+  "test_credentials": "admin@empresa.com / 123456 ; gestor@empresa.com / 123456",
+  "seed_data_creation": "Cria 1 colaborador TEST_I5SBF_* (is_test_mode=True) + tickets TEST_I5SBF_* — todos limpos via DELETE no teardown. Settings restauradas: time_sync_enabled=false, max_drift original.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Login API uses access_token (not token). REACT_APP_BACKEND_URL must be exported when running pytest locally. Lousa nav tab label has emoji prefix. data-testid 'lousa-admin-panel', 'lousa-sla-alerts-toggle', 'lousa-create-btn', 'lousa-create-modal', 'ticket-type', 'admin-open-*', 'admin-edit-*', 'lousa-edit-modal', 'edit-type', 'edit-submit', 'offline-banner', 'lousa-locked-banner' should all be deep-tested via Playwright after fixing the tab selector strategy. Backend bug at PUT /api/settings (500 → should be 422) is the only critical regression from this session's changes.",
+  "rca of the issue": "PUT /api/settings 500: handler reads existing settings dict, merges request body, then calls Settings(**merged). Pydantic raises ValidationError (correctly enforcing Field ge=1 le=86400) but this is NOT caught — FastAPI's ValidationError translation only fires for declared request models, not for in-handler model instantiation. Mitigation: declare PUT body as `payload: SettingsUpdate` Pydantic model (with same Field constraints) so FastAPI returns 422 automatically OR wrap in try/except ValidationError as e: raise HTTPException(422, e.errors()). Reproduction: PUT /api/settings {time_sync_max_drift_seconds: 0} with admin Bearer → 500."
+}

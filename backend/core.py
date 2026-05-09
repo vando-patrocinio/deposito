@@ -18,7 +18,7 @@ from typing import Any, Optional
 import httpx
 from emergentintegrations.llm.chat import ImageContent, LlmChat, UserMessage
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from auth import make_dependencies
 from database import db
@@ -103,7 +103,7 @@ class Settings(BaseModel):
     sla_blink_when_overdue: bool = True
     # ---- Sincronização de horário (servidor Brasil) ----
     time_sync_enabled: bool = False             # bloqueia ações se relógio do dispositivo dessincronizado
-    time_sync_max_drift_seconds: int = 60       # diferença máxima permitida em segundos
+    time_sync_max_drift_seconds: int = Field(default=60, ge=1, le=86400)  # diferença máxima permitida em segundos
     time_sync_timezone: str = "America/Sao_Paulo"  # fuso usado como referência
     # ---- Grade fixa de horários da lousa ----
     lousa_grid_start_hour: int = 8       # hora de início da grade (ex: 8 = 08:00)

@@ -218,7 +218,10 @@ async def _sla_minutes_for_type(ttype: str, company_id: str) -> int:
     s = await db.settings.find_one({"id": company_id}, {"_id": 0})
     if not s:
         s = {}
-    defaults = {"reparo": 60, "instalacao": 120, "retirada": 30}
+    defaults = {
+        "reparo": 60, "instalacao": 120, "retirada": 30,
+        "prioridade": 45, "preventiva": 90, "venda": 60,
+    }
     key = f"sla_{ttype}_minutes"
     return int(s.get(key, defaults.get(ttype, 60)))
 
@@ -1014,6 +1017,11 @@ async def edit_ticket(ticket_id: str, payload: TicketEditIn,
         v = getattr(payload, f, None)
         if v is not None:
             update[f] = v
+
+    # Se scheduled_time mudou, limpa grid_slot persistido para que o cálculo
+    # automático no /api/lousa/grid recompute corretamente (evita slot obsoleto).
+    if "scheduled_time" in update:
+        update["grid_slot"] = None
 
     if not update:
         return t
