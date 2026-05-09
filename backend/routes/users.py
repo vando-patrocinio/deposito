@@ -1,4 +1,5 @@
 """Endpoints de auth + users (gerenciamento de usuários do sistema)."""
+import logging
 import os
 import uuid
 from typing import Optional
@@ -131,7 +132,7 @@ async def google_login(payload: GoogleLoginIn):
             "google_email": google_email,
         }
         await db.users.insert_one(user)
-        logger = __import__("logging").getLogger("ponto")
+        logger = logging.getLogger("ponto")
         logger.info("[google-login] Super admin auto-provisionado: %s (%s)", google_email, new_uid)
 
     if not user:

@@ -617,6 +617,41 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
   );
 }
 
+function ConsumableField({ label, fieldKey, consumableId, step, consMap, form, setForm }) {
+  const cur = consMap[consumableId];
+  const used = Number(form[fieldKey]) || 0;
+  const after = cur ? cur.qty - used : null;
+  const insufficient = cur && used > cur.qty;
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+        <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>{label}</label>
+        {cur && (
+          <span style={{ fontSize: 11, color: insufficient ? "#dc2626" : "#64748b", fontWeight: 600 }} data-testid={`bal-${consumableId}`}>
+            📦 {cur.qty} {cur.unit}
+            {used > 0 && (
+              <span style={{ color: insufficient ? "#dc2626" : "#16a34a", marginLeft: 6 }}>
+                → <strong>{after} {cur.unit}</strong>
+              </span>
+            )}
+          </span>
+        )}
+      </div>
+      <input
+        data-testid={`finalize-${fieldKey}`}
+        type="number" step={step || "1"} min="0"
+        value={form[fieldKey]} onChange={(e) => setForm({ ...form, [fieldKey]: e.target.value })}
+        style={{
+          width: "100%", padding: "10px 12px",
+          border: `1px solid ${insufficient ? "#fca5a5" : "#cbd5e1"}`,
+          background: insufficient ? "#fef2f2" : "white",
+          borderRadius: 10, fontSize: 14, boxSizing: "border-box",
+        }}
+      />
+    </div>
+  );
+}
+
 function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
   const [form, setForm] = useState({
     sinal: -25, qtd_drop: 1, esticadores: 1, conectores_fast: 2,
@@ -702,42 +737,6 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
   }
 
   const consMap = Object.fromEntries((stock?.consumables || []).map((c) => [c.id, c]));
-
-  // Renderiza um campo de insumo com saldo e cálculo "atual → após"
-  function ConsumableField({ label, fieldKey, consumableId, step }) {
-    const cur = consMap[consumableId];
-    const used = Number(form[fieldKey]) || 0;
-    const after = cur ? cur.qty - used : null;
-    const insufficient = cur && used > cur.qty;
-    return (
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-          <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>{label}</label>
-          {cur && (
-            <span style={{ fontSize: 11, color: insufficient ? "#dc2626" : "#64748b", fontWeight: 600 }} data-testid={`bal-${consumableId}`}>
-              📦 {cur.qty} {cur.unit}
-              {used > 0 && (
-                <span style={{ color: insufficient ? "#dc2626" : "#16a34a", marginLeft: 6 }}>
-                  → <strong>{after} {cur.unit}</strong>
-                </span>
-              )}
-            </span>
-          )}
-        </div>
-        <input
-          data-testid={`finalize-${fieldKey}`}
-          type="number" step={step || "1"} min="0"
-          value={form[fieldKey]} onChange={(e) => setForm({ ...form, [fieldKey]: e.target.value })}
-          style={{
-            width: "100%", padding: "10px 12px",
-            border: `1px solid ${insufficient ? "#fca5a5" : "#cbd5e1"}`,
-            background: insufficient ? "#fef2f2" : "white",
-            borderRadius: 10, fontSize: 14, boxSizing: "border-box",
-          }}
-        />
-      </div>
-    );
-  }
 
   const macColors = {
     loading: { bg: "#dbeafe", color: "#1e40af", border: "#93c5fd", icon: "🔍", txt: "Validando…" },
@@ -862,11 +861,11 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
           {stock && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 500, marginLeft: 6 }}>· estoque: {stock.collaborator_name}</span>}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <ConsumableField label="Drop (m)" fieldKey="qtd_drop" consumableId="drop" />
-          <ConsumableField label="Esticador (un)" fieldKey="esticadores" consumableId="esticador" />
-          <ConsumableField label="Conector fast (un)" fieldKey="conectores_fast" consumableId="conector_fast" />
-          <ConsumableField label="Cabo rede (m)" fieldKey="cabo_rede" consumableId="cabo_rede" step="0.5" />
-          <ConsumableField label="Conector rede (un)" fieldKey="conectores_rede" consumableId="conector_rede" />
+          <ConsumableField label="Drop (m)" fieldKey="qtd_drop" consumableId="drop" consMap={consMap} form={form} setForm={setForm} />
+          <ConsumableField label="Esticador (un)" fieldKey="esticadores" consumableId="esticador" consMap={consMap} form={form} setForm={setForm} />
+          <ConsumableField label="Conector fast (un)" fieldKey="conectores_fast" consumableId="conector_fast" consMap={consMap} form={form} setForm={setForm} />
+          <ConsumableField label="Cabo rede (m)" fieldKey="cabo_rede" consumableId="cabo_rede" step="0.5" consMap={consMap} form={form} setForm={setForm} />
+          <ConsumableField label="Conector rede (un)" fieldKey="conectores_rede" consumableId="conector_rede" consMap={consMap} form={form} setForm={setForm} />
         </div>
       </div>
 

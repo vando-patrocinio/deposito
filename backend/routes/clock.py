@@ -15,7 +15,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 import resend
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 from reportlab.lib import colors
@@ -241,7 +241,7 @@ async def _scope_for_request(request_user: Optional[dict]) -> dict:
 
 
 @router.get("/collaborators")
-async def list_collaborators(request: __import__('fastapi').Request):
+async def list_collaborators(request: Request):
     """Lista colaboradores. Se autenticado, filtra por tenant; senão, lista todos
     (compat com PWA mobile que ainda usa este endpoint para popular dropdown legado).
     Respeita o header X-Active-Company para drill-down de super admin.
@@ -497,7 +497,7 @@ def _build_record(*, rid, cid, ev, today, hhmm, geofence, distance, status, note
 
 
 @router.post("/clock-records")
-async def create_clock_record(payload: ClockRecordIn, request: __import__('fastapi').Request):
+async def create_clock_record(payload: ClockRecordIn, request: Request):
     if payload.type not in EVENT_TYPES:
         raise HTTPException(400, "Tipo de evento inválido.")
     coll = await db.collaborators.find_one({"id": payload.collaborator_id})
@@ -577,8 +577,8 @@ async def create_clock_record(payload: ClockRecordIn, request: __import__('fasta
         if open_tk and not payload.force_close_open_tickets:
             raise HTTPException(
                 409,
-                f"Você tem nota(s) em aberto. Confirme com 'force_close_open_tickets=true' "
-                f"para encerrar e bater Saída.",
+                "Você tem nota(s) em aberto. Confirme com 'force_close_open_tickets=true' "
+                "para encerrar e bater Saída.",
             )
 
     today = today_str()
@@ -637,7 +637,6 @@ async def create_clock_record(payload: ClockRecordIn, request: __import__('fasta
 
     fence, distance = await resolve_geofence_for(payload.collaborator_id, payload.lat, payload.lng)
     # ---- PRAÇA "NOTA": cerca virtual dinâmica no endereço da bolha ativa ou da próxima ----
-    nota_fence_used = False
     if not fence and coll.get("praca_id") == "NOTA":
         # Tenta usar endereço da bolha aberta primeiro, senão a próxima pendente.
         # Sem coordenadas do dispositivo, não dá pra calcular distância à nota.
@@ -675,7 +674,6 @@ async def create_clock_record(payload: ClockRecordIn, request: __import__('fasta
                     "active": True,
                 }
                 distance = dist_to_note
-                nota_fence_used = True
                 audit.append({
                     "at": now_iso(), "actor": "sistema",
                     "action": f"praca=NOTA → cerca dinâmica em '{snap.get('name','')}': {dist_to_note}m de {radius}m"
