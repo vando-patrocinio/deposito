@@ -29,12 +29,13 @@ export default function AtlazIntegrationCard() {
         enabled: !!c.enabled,
         base_url: c.base_url || "",
         api_key: "",
-        api_key_header: c.api_key_header || "X-API-Key",
-        list_path: c.list_path || "/v1/ordens-servico",
+        api_key_header: c.api_key_header || "Authorization",
+        api_key_prefix: c.api_key_prefix ?? "Bearer ",
+        list_path: c.list_path || "/ordens-servico",
         list_query_status: c.list_query_status || "aberta",
-        close_path: c.close_path || "/v1/ordens-servico/{id}/concluir",
-        cancel_path: c.cancel_path || "/v1/ordens-servico/{id}/cancelar",
-        reschedule_path: c.reschedule_path || "/v1/ordens-servico/{id}/reagendar",
+        close_path: c.close_path || "/ordens-servico/{id}/concluir",
+        cancel_path: c.cancel_path || "/ordens-servico/{id}/cancelar",
+        reschedule_path: c.reschedule_path || "/ordens-servico/{id}/reagendar",
         filiais_text: (c.filiais || []).join(", "),
         filial_to_collaborator: { ...(c.filial_to_collaborator || {}) },
         type_map_text: JSON.stringify(c.type_map || {}, null, 2),
@@ -56,6 +57,7 @@ export default function AtlazIntegrationCard() {
       enabled: form.enabled,
       base_url: form.base_url,
       api_key_header: form.api_key_header,
+      api_key_prefix: form.api_key_prefix,
       list_path: form.list_path,
       list_query_status: form.list_query_status,
       close_path: form.close_path,
@@ -166,27 +168,39 @@ export default function AtlazIntegrationCard() {
         </label>
       </Field>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 }}>
         <Field label="🌐 Base URL da API">
           <input
             data-testid="atlaz-base-url"
-            placeholder="https://api.atlaz.com.br"
+            placeholder="https://ligofibra.atlaz.com.br/api/v1"
             value={form.base_url}
             onChange={(e) => setForm({ ...form, base_url: e.target.value })}
             style={inputStyle}
           />
           <small style={{ color: "#94a3b8", fontSize: 11 }}>
-            Conforme doc do seu provedor (substitua o placeholder "seuatlaz" pela URL real).
+            Ex.: <code>https://SEU-PROVEDOR.atlaz.com.br/api/v1</code>
           </small>
         </Field>
         <Field label="Header de auth">
           <input
             data-testid="atlaz-api-key-header"
-            placeholder="X-API-Key"
+            placeholder="Authorization"
             value={form.api_key_header}
             onChange={(e) => setForm({ ...form, api_key_header: e.target.value })}
             style={inputStyle}
           />
+        </Field>
+        <Field label="Prefixo">
+          <input
+            data-testid="atlaz-api-key-prefix"
+            placeholder="Bearer "
+            value={form.api_key_prefix}
+            onChange={(e) => setForm({ ...form, api_key_prefix: e.target.value })}
+            style={inputStyle}
+          />
+          <small style={{ color: "#94a3b8", fontSize: 10 }}>
+            <code>Bearer </code> (com espaço) para JWT/Bearer; vazio para API-Key.
+          </small>
         </Field>
       </div>
 
@@ -321,6 +335,15 @@ export default function AtlazIntegrationCard() {
           <div style={{ fontWeight: 800, marginBottom: 4 }}>
             {test.ok ? `✅ Conectado (HTTP ${test.status})` : `❌ Falha — ${test.reason || test.error || `HTTP ${test.status}`}`}
           </div>
+          {test.diagnosis && (
+            <div data-testid="atlaz-test-diagnosis" style={{
+              marginTop: 6, padding: 8, background: "rgba(255,255,255,.6)",
+              borderRadius: 8, color: "#1e293b", fontSize: 12, lineHeight: 1.5,
+              borderLeft: "3px solid #f59e0b",
+            }}>
+              💡 <strong>Diagnóstico:</strong> {test.diagnosis}
+            </div>
+          )}
           {test.url && <div><strong>URL:</strong> <code>{test.url}</code></div>}
           {test.sample_count != null && <div><strong>Itens recebidos:</strong> {test.sample_count}</div>}
           {test.sample_keys?.length > 0 && (

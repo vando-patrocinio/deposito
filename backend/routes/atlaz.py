@@ -63,15 +63,16 @@ DEFAULT_FIELD_MAP: Dict[str, str] = {
 class AtlazConfig(BaseModel):
     """Configuração da integração Atlaz por empresa."""
     enabled: bool = False
-    base_url: str = "https://api.seuatlaz.com"
+    base_url: str = "https://ligofibra.atlaz.com.br/api/v1"
     api_key: Optional[str] = None
-    api_key_header: str = "X-API-Key"
+    api_key_header: str = "Authorization"
+    api_key_prefix: str = "Bearer "  # prefixo aplicado antes da chave (ex: "Bearer ")
     # Path templates (compatíveis com .format(filial=..., id=..., status=...))
-    list_path: str = "/v1/ordens-servico"
+    list_path: str = "/ordens-servico"
     list_query_status: str = "aberta"  # status filtrado no GET ?status=
-    close_path: str = "/v1/ordens-servico/{id}/concluir"
-    cancel_path: str = "/v1/ordens-servico/{id}/cancelar"
-    reschedule_path: str = "/v1/ordens-servico/{id}/reagendar"
+    close_path: str = "/ordens-servico/{id}/concluir"
+    cancel_path: str = "/ordens-servico/{id}/cancelar"
+    reschedule_path: str = "/ordens-servico/{id}/reagendar"
     # Mapeamento de filiais → colaborador padrão (opcional)
     # Ex.: {"FILIAL_CENTRO": "col-001", "FILIAL_NORTE": "col-002"}
     filial_to_collaborator: Dict[str, str] = Field(default_factory=dict)
@@ -93,6 +94,7 @@ class AtlazConfigUpdate(BaseModel):
     base_url: Optional[str] = None
     api_key: Optional[str] = None
     api_key_header: Optional[str] = None
+    api_key_prefix: Optional[str] = None
     list_path: Optional[str] = None
     list_query_status: Optional[str] = None
     close_path: Optional[str] = None
@@ -158,7 +160,9 @@ def _build_url(base: str, path: str, **kwargs) -> str:
 def _http_headers(cfg: AtlazConfig) -> Dict[str, str]:
     h = {"Accept": "application/json", "Content-Type": "application/json"}
     if cfg.api_key:
-        h[cfg.api_key_header or "X-API-Key"] = cfg.api_key
+        header_name = cfg.api_key_header or "Authorization"
+        prefix = cfg.api_key_prefix or ""
+        h[header_name] = f"{prefix}{cfg.api_key}"
     return h
 
 
@@ -429,6 +433,29 @@ async def test_connection(user: dict = Depends(require_role("gestor"))):
             r = await client.get(url, headers=_http_headers(cfg), params=params)
         body_preview = r.text[:300]
         ok = r.status_code < 400
+
+        # Diagnóstico amigável
+        diagnosis = None
+        if r.status_code == 401:
+            diagnosis = "Token rejeitado. Verifique: (a) a chave está correta; (b) header de auth está certo (default agora é 'Authorization' com prefixo 'Bearer ')."
+        elif r.status_code == 403:
+            diagnosis = "Token válido mas sem permissão para esta rota. Confirme com o suporte do Atlaz se a sua chave tem escopo para listar OSs."
+        elif r.status_code == 404:
+            try:
+                j = r.json()
+                if "could not be found" in (j.get("message") or ""):
+                    diagnosis = (
+                        f"Auth funcionou, mas a rota '{cfg.list_path}' NÃO existe na API. "
+                        "Você precisa descobrir o path correto. Use F12 → Network no painel web do Atlaz "
+                        "(em uma tela de OSs) e copie o path da chamada que aparece. Cole ele em 'Path para listar OSs'."
+                    )
+            except Exception:
+                pass
+            if not diagnosis:
+                diagnosis = "Rota não encontrada (404). O auth pode estar OK — verifique o path em 'Path para listar OSs'."
+        elif r.status_code == 405:
+            diagnosis = "Método HTTP errado. A API espera POST em vez de GET para esta rota. Contate o suporte para confirmar."
+
         await _log_sync(
             company_id, "test", "ok" if ok else "error",
             f"GET {url} → {r.status_code} | {body_preview[:200]}",
@@ -459,6 +486,7 @@ async def test_connection(user: dict = Depends(require_role("gestor"))):
             "body_preview": body_preview,
             "sample_count": sample_count,
             "sample_keys": sample_keys,
+            "diagnosis": diagnosis,
         }
     except Exception as e:
         await _log_sync(company_id, "test", "error", f"GET {url}: {e}")
