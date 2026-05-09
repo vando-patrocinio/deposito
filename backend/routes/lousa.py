@@ -1514,6 +1514,123 @@ async def ai_evaluate_ticket(ticket_id: str,
     return result
 
 
+# -------------------------------------------------------------------------
+# BULK ACTIONS — ações coletivas em várias bolhas selecionadas
+# -------------------------------------------------------------------------
+class BulkActionIn(BaseModel):
+    ticket_ids: List[str] = Field(..., min_length=1, max_length=200)
+    action: Literal["encerrar", "reagendar", "cancelar"]
+    notes: Optional[str] = None
+    new_scheduled_time: Optional[str] = None
+    new_date: Optional[str] = None
+    new_time: Optional[str] = None
+
+
+class BulkAiEvaluateIn(BaseModel):
+    ticket_ids: List[str] = Field(..., min_length=1, max_length=50)
+
+
+@router.post("/lousa/tickets/bulk-action")
+async def lousa_bulk_action(payload: BulkActionIn,
+                            user: dict = Depends(require_role("gestor"))):
+    """Aplica encerrar/reagendar/cancelar em várias bolhas de uma só vez.
+
+    Ignora silenciosamente bolhas já encerradas (registradas em `errors`).
+    Retorna lista de sucesso e erros por ID para o frontend mostrar feedback.
+    """
+    status_map = {"encerrar": "encerrada", "reagendar": "reagendada", "cancelar": "cancelada"}
+    new_status = status_map[payload.action]
+
+    sched = payload.new_scheduled_time
+    if payload.action == "reagendar" and not sched and payload.new_date and payload.new_time:
+        sched = f"{payload.new_date}T{payload.new_time}:00"
+
+    success: List[str] = []
+    errors: List[Dict[str, str]] = []
+
+    for tid in payload.ticket_ids:
+        t = await db.tickets.find_one({"id": tid}, {"_id": 0})
+        if not t:
+            errors.append({"id": tid, "error": "Nota não encontrada"})
+            continue
+        if t["status"] in ("finalizada", "encerrada", "cancelada"):
+            errors.append({"id": tid, "error": f"Já {t['status']}"})
+            continue
+        update = {
+            "status": new_status,
+            "outcome": "informada",
+            "closed_at": now_iso(),
+            "closed_by": user["id"],
+            "admin_action": payload.action,
+            "admin_notes": payload.notes,
+        }
+        if payload.action == "reagendar" and sched:
+            update["scheduled_time"] = sched
+            update["grid_slot"] = None
+        await db.tickets.update_one({"id": tid}, {"$set": update})
+        await _log_ticket_action(
+            ticket_id=tid, action=payload.action,
+            actor_id=user["id"], actor_name=user.get("name", "Gestor"),
+            actor_role=user.get("role", "gestor"),
+            details=(payload.notes or "") + " [bulk]",
+            company_id=t.get("company_id") or DEMO_COMPANY_ID,
+        )
+        if payload.action in ("cancelar", "reagendar"):
+            client_name = (t.get("client_snapshot") or {}).get("name") or "Cliente"
+            verb = "cancelada" if payload.action == "cancelar" else "reagendada"
+            await _create_notification(
+                type_=f"ticket_{payload.action}_by_admin",
+                title=f"Nota {verb} pela gestão",
+                message=f"Nota de {client_name} foi {verb} por {user.get('name', 'gestão')}. " + (payload.notes or ""),
+                collaborator_id=t.get("assigned_collaborator_id"),
+                ticket_id=tid,
+                company_id=t.get("company_id") or DEMO_COMPANY_ID,
+                severity="info" if payload.action == "reagendar" else "warning",
+            )
+        success.append(tid)
+
+    return {
+        "action": payload.action,
+        "processed": len(success),
+        "failed": len(errors),
+        "success": success,
+        "errors": errors,
+    }
+
+
+@router.post("/lousa/tickets/bulk-ai-evaluate")
+async def lousa_bulk_ai_evaluate(payload: BulkAiEvaluateIn,
+                                 user: dict = Depends(require_role("gestor"))):
+    """Roda avaliação heurística (rápida) em várias bolhas de uma só vez.
+
+    Para evitar custo/latência alto de LLM em lote, usa apenas o score
+    heurístico aqui. O gestor pode abrir a IA profunda em uma bolha
+    individual depois se quiser.
+    """
+    results: List[Dict[str, Any]] = []
+    for tid in payload.ticket_ids:
+        t = await db.tickets.find_one({"id": tid}, {"_id": 0})
+        if not t:
+            results.append({"ticket_id": tid, "error": "não encontrada"})
+            continue
+        company_id = t.get("company_id") or DEMO_COMPANY_ID
+        settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
+        sla_min = int(settings.get(f"sla_{t.get('type', 'reparo')}_minutes", 60))
+        heur = await heuristic_score_for_ticket(t, sla_minutes=sla_min)
+        duration = compute_duration_minutes(t)
+        results.append({
+            "ticket_id": tid,
+            "client_name": (t.get("client_snapshot") or {}).get("name") or "—",
+            "type": t.get("type"),
+            "status": t.get("status"),
+            "ai_score": heur["score"],
+            "verdict": heur["label"],
+            "duration_minutes": duration,
+            "signals": heur.get("signals", []),
+            "method": "heuristic",
+        })
+    return {"count": len(results), "items": results}
+
 
 # -------------------------------------------------------------------------
 # BRIEFING DIÁRIO — relatório resumido para o gestor

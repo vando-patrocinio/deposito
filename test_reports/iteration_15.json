@@ -1,0 +1,43 @@
+{
+  "summary": "Iter15 — Seleção múltipla + Ações coletivas (encerrar/reagendar/cancelar/IA) na Lousa. BACKEND 13/13 PASS (test_iteration15_bulk_actions) + 34/34 regressão (iter11_lousa_mgmt + iter12_lousa_history + iter14_lousa_grid_historical). FRONTEND smoke 100%: lousa-select-mode-toggle alterna modo, 10 bubble-checkboxes aparecem em bolhas selecionáveis, seleção múltipla marca cards com borda azul, bulk-actions-bar flutuante mostra '2 selecionadas' + 4 botões de ação + bulk-clear, bulk-ai-modal renderiza 2 itens com score 8.5/verdict Excelente/signals (heurística), bulk-action-modal abre para Reagendar (com bulk-resched-date/time + bulk-action-notes + bulk-action-confirm), Cancelar (sem inputs de data, com motivo obrigatório) e Encerrar (notas opcionais).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "BulkActionModal", "issues": ["Botão 'Voltar' (cancelar/fechar modal) não tem data-testid — adicionar data-testid='bulk-action-back' ou 'bulk-action-cancel' facilitaria automação. Não bloqueia funcionalidade."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration15_bulk_actions.py",
+    "/app/test_reports/pytest/iter15_results.xml",
+    "/app/test_reports/pytest/iter15_regression.xml"
+  ],
+  "action_items": [
+    "[OPCIONAL] Adicionar data-testid no botão 'Voltar' do BulkActionModal para automação mais robusta (cosmético)."
+  ],
+  "critical_code_review_comments": [
+    "[CARRY-OVER iter12/13/14] /app/backend/routes/lousa.py >2080 linhas — refactor pendente.",
+    "[OK] BulkActionIn (Pydantic min_length=1, max_length=200) e BulkAiEvaluateIn (max_length=50) validam corretamente — 422 retornado conforme esperado.",
+    "[OK] Reuso correto de _log_ticket_action e _create_notification — sem duplicação de admin-close.",
+    "[OK] Skip de já encerrada/cancelada/finalizada implementado e testado (mensagem 'Já encerrada' retornada em errors[].error).",
+    "[OK] Role-guard via require_role('gestor') confirmado (colaborador → 403).",
+    "[INFO] Bulk-AI usa apenas heurística (sem LLM em lote) — design correto para evitar custo/latência."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration15_bulk_actions.py (novo)"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 iter15 + 34/34 regressão lousa)",
+    "frontend": "100% smoke (toggle, checkboxes, bar, AI modal com items reais, todos os 3 modais de ação abrem com testids corretos)"
+  },
+  "test_credentials": "gestor@empresa.com / 123456",
+  "seed_data_creation": "13 tickets TEST_BULK_* criados via POST /api/lousa/tickets para testar encerrar (2), reagendar (2) e cancelar (1). Os tickets ficam com status final encerrada/reagendada/cancelada após o teste — não interferem em testes futuros pois são filtrados por status.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter15 fechado VERDE.\n\nValidações concluídas:\n• BACKEND POST /api/lousa/tickets/bulk-action:\n  - ticket_ids=[] → 422 (Pydantic min_length=1)\n  - ticket_ids com 201 IDs → 422 (max_length=200)\n  - action='delete' (não literal) → 422\n  - colaborador token → 403\n  - IDs falsos → 200 com processed=0/failed=2/errors[2]\n  - encerrar 2 tickets reais → processed=2, failed=0; reaplicar → falha 'Já encerrada'\n  - reagendar com new_date+new_time → processed=2\n  - cancelar com notes → processed=1\n• BACKEND POST /api/lousa/tickets/bulk-ai-evaluate:\n  - empty → 422\n  - 51 IDs → 422\n  - IDs falsos → items[].error preenchido\n  - IDs reais → items[] com ai_score, verdict, signals[], duration_minutes, method='heuristic'\n  - colaborador → 403\n• FRONTEND Lousa (gestor@empresa.com):\n  - lousa-select-mode-toggle ativa modo seleção; 10 bubble-checkbox-{id} aparecem\n  - Click em card seleciona/deseleciona (borda azul + checkmark)\n  - bulk-actions-bar mostra 'N selecionadas' + 4 botões de ação + bulk-clear\n  - bulk-action-ia → bulk-ai-modal com bulk-ai-item-{id} para cada selecionado, mostrando score, verdict, signals; bulk-ai-close fecha\n  - bulk-action-reagendar → bulk-action-modal com bulk-resched-date + bulk-resched-time + bulk-action-notes (obrigatório) + bulk-action-confirm\n  - bulk-action-cancelar → bulk-action-modal SEM data, com bulk-action-notes obrigatório\n  - bulk-action-encerrar → bulk-action-modal com notes opcional\n\nRegressão iter11/12/14 confirmada: 34/34 pass.\n\nNão testado (fora de escopo):\n• Smoke do drag&drop com modo seleção OFF (regressão visual) — não automatizado\n• Confirmação real de bulk-action via UI (apenas modal opening foi validado; backend do confirm já 100% testado via pytest)",
+  "rca of the issue": "Sem bugs em iter15. Implementação de feature verde:\n1. /app/backend/routes/lousa.py linhas 1517-1632: BulkActionIn/BulkAiEvaluateIn com Pydantic Field(min_length, max_length); endpoints /lousa/tickets/bulk-action e /lousa/tickets/bulk-ai-evaluate corretos, reusando _log_ticket_action e _create_notification.\n2. /app/frontend/src/lousa/BulkActionsBar.js: BulkActionsBar (barra flutuante), BulkActionModal (3 ações com inputs corretos), BulkAiModal (avaliação heurística em lote). Todos data-testid conforme spec.\n3. /app/frontend/src/LousaAdminPanel.js: estados selectMode/selectedIds, propagação para BubbleCard, lógica de checkbox renderizado apenas em status pendente/aberta/aguardando_atendimento, draggable=false e doubleClick desabilitado em modo seleção."
+}

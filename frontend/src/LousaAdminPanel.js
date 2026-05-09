@@ -5,6 +5,7 @@ import EditTicketModal from "./lousa/EditTicketModal";
 import CreateTicketModal from "./lousa/CreateTicketModal";
 import RescheduleModal from "./lousa/RescheduleModal";
 import LousaHistoryModal from "./lousa/LousaHistoryModal";
+import BulkActionsBar from "./lousa/BulkActionsBar";
 import { isAlertsEnabled, setAlertsEnabled, maybeFireOverdueAlerts } from "./slaAlerts";
 
 const TYPE_LABELS = {
@@ -57,6 +58,8 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFlash, setRefreshFlash] = useState(false);
   const [alertsOn, setAlertsOnState] = useState(() => isAlertsEnabled());
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
   const prevOverdueRef = useRef(0);
   const isLocked = systemStatus.offline || systemStatus.drift_blocked;
 
@@ -64,6 +67,23 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
     const next = !alertsOn;
     setAlertsEnabled(next);
     setAlertsOnState(next);
+  }
+
+  function toggleSelectMode() {
+    setSelectMode((prev) => {
+      if (prev) setSelectedIds([]);
+      return !prev;
+    });
+  }
+  function toggleTicketSelected(id) {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }
+  function clearSelection() {
+    setSelectedIds([]);
+  }
+  function exitSelectMode() {
+    setSelectedIds([]);
+    setSelectMode(false);
   }
 
   const refresh = useCallback(async () => {
@@ -208,6 +228,19 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         <div style={{ display: "flex", gap: 8 }}>
           <Button
             variant="soft"
+            onClick={toggleSelectMode}
+            data-testid="lousa-select-mode-toggle"
+            title={selectMode ? "Sair do modo seleção" : "Selecionar várias bolhas para ação coletiva"}
+            style={{
+              background: selectMode ? "#e0e7ff" : "#f1f5f9",
+              color: selectMode ? "#3730a3" : "#475569",
+              border: `1px solid ${selectMode ? "#a5b4fc" : "#cbd5e1"}`,
+            }}
+          >
+            {selectMode ? "✕ Sair seleção" : "🔲 Selecionar"}
+          </Button>
+          <Button
+            variant="soft"
             onClick={() => setShowHistory(true)}
             data-testid="lousa-history-btn"
             title="Histórico completo de notas (dia/mês/ano/período)"
@@ -286,6 +319,9 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             onEdit={(t) => setEditingTicket(t)}
             onReschedule={(t) => setReschedTicket(t)}
             busy={busy}
+            selectMode={selectMode}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleTicketSelected}
           />
         ))}
       </div>
@@ -317,11 +353,18 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         />
       )}
       {showHistory && <LousaHistoryModal onClose={() => setShowHistory(false)} />}
+      {selectMode && (
+        <BulkActionsBar
+          selectedIds={selectedIds}
+          onClear={clearSelection}
+          onDone={() => { exitSelectMode(); refresh(); }}
+        />
+      )}
     </div>
   );
 }
 
-function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, maxPerSlot, onSlotDrop }) {
+function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, maxPerSlot, onSlotDrop, selectMode, selectedIds, onToggleSelect }) {
   const c = column.collaborator;
   const state = column.clock_state;
   const slots = column.slots || [];
@@ -431,6 +474,9 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
             onEdit={onEdit}
             onReschedule={onReschedule}
             busy={busy}
+            selectMode={selectMode}
+            selectedIds={selectedIds}
+            onToggleSelect={onToggleSelect}
           />
         ))}
         {unscheduled.length > 0 && (
@@ -452,6 +498,9 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
                 onEdit={onEdit}
                 onReschedule={onReschedule}
                 busy={busy}
+                selectMode={selectMode}
+                isSelected={selectedIds?.includes(t.id)}
+                onToggleSelect={onToggleSelect}
               />
             ))}
           </div>
@@ -461,7 +510,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
   );
 }
 
-function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart, onDragEnd, blinkOverdue, onAdminClose, onAdminOpen, onEdit, onReschedule, busy }) {
+function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart, onDragEnd, blinkOverdue, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, selectedIds, onToggleSelect }) {
   const [over, setOver] = useState(false);
   const isFull = slot.full;
   const isEmpty = slot.tickets.length === 0;
@@ -519,6 +568,9 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
             onEdit={onEdit}
             onReschedule={onReschedule}
             busy={busy}
+            selectMode={selectMode}
+            isSelected={selectedIds?.includes(t.id)}
+            onToggleSelect={onToggleSelect}
           />
         </React.Fragment>
       ))}
@@ -526,7 +578,7 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
   );
 }
 
-function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, onReschedule, busy }) {
+function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, isSelected, onToggleSelect }) {
   const c = PRIORITY_COLORS[ticket.priority] || PRIORITY_COLORS.normal;
   const st = STATUS_LABEL[ticket.status] || { label: ticket.status, color: "#64748b" };
   const sla = ticket.sla || {};
@@ -537,6 +589,7 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
   const [aiOpen, setAiOpen] = useState(false);
   const [aiDetail, setAiDetail] = useState(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const isSelectable = selectMode && ["pendente", "aberta", "aguardando_atendimento"].includes(ticket.status);
 
   async function runAiAnalysis() {
     setAiBusy(true);
@@ -552,33 +605,65 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
 
   function handleDoubleClick(e) {
     e.stopPropagation();
+    if (selectMode) return;
     if (onEdit) onEdit(ticket);
+  }
+
+  function handleClick(e) {
+    if (selectMode) {
+      e.stopPropagation();
+      if (isSelectable && onToggleSelect) onToggleSelect(ticket.id);
+      return;
+    }
+    setShowActions(!showActions);
   }
 
   return (
     <div
-      draggable={!ticket.in_execution}
+      draggable={!ticket.in_execution && !selectMode}
       onDragStart={(e) => {
-        if (ticket.in_execution) { e.preventDefault(); return; }
+        if (ticket.in_execution || selectMode) { e.preventDefault(); return; }
         e.dataTransfer.effectAllowed = "move"; onDragStart();
       }}
       onDragEnd={onDragEnd}
-      onClick={() => setShowActions(!showActions)}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
+      onClick={handleClick}
+      onMouseEnter={() => { if (!selectMode) setShowActions(true); }}
+      onMouseLeave={() => { if (!selectMode) setShowActions(false); }}
       onDoubleClick={handleDoubleClick}
       data-testid={`bubble-card-${ticket.id}`}
-      title={ticket.in_execution
-        ? "Em execução pelo técnico — bloqueado para mover/excluir · Duplo-clique para editar"
-        : "Passe o mouse para ver ações · Duplo-clique para editar"}
+      data-selected={isSelected ? "true" : "false"}
+      title={selectMode
+        ? (isSelectable ? (isSelected ? "Clique para desmarcar" : "Clique para selecionar") : "Não selecionável neste status")
+        : ticket.in_execution
+          ? "Em execução pelo técnico — bloqueado para mover/excluir · Duplo-clique para editar"
+          : "Passe o mouse para ver ações · Duplo-clique para editar"}
       className={isOverdue && blinkOverdue ? "sla-overdue" : ""}
       style={{
-        background: c.bg, border: `2px solid ${isOverdue ? "#dc2626" : c.border}`,
+        background: c.bg,
+        border: `2px solid ${isSelected ? "#3b82f6" : isOverdue ? "#dc2626" : c.border}`,
         borderRadius: 14, padding: 10, marginBottom: 6,
-        cursor: "grab", opacity: isDragging ? 0.4 : 1, position: "relative",
-        boxShadow: isDragging ? "none" : "0 2px 6px rgba(15,23,42,.08)",
+        cursor: selectMode ? (isSelectable ? "pointer" : "not-allowed") : "grab",
+        opacity: isDragging ? 0.4 : (selectMode && !isSelectable ? 0.55 : 1),
+        position: "relative",
+        boxShadow: isSelected
+          ? "0 0 0 3px rgba(59,130,246,.25), 0 4px 12px rgba(59,130,246,.18)"
+          : isDragging ? "none" : "0 2px 6px rgba(15,23,42,.08)",
+        transition: "box-shadow .15s, border-color .15s",
       }}
     >
+      {selectMode && (
+        <div data-testid={`bubble-checkbox-${ticket.id}`} style={{
+          position: "absolute", top: 6, left: 6,
+          width: 22, height: 22, borderRadius: 6,
+          background: isSelected ? "#3b82f6" : "rgba(255,255,255,.92)",
+          border: `2px solid ${isSelected ? "#1d4ed8" : "#94a3b8"}`,
+          display: "grid", placeItems: "center",
+          color: "white", fontWeight: 900, fontSize: 14, zIndex: 2,
+          pointerEvents: "none",
+        }}>
+          {isSelected ? "✓" : ""}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", gap: 4, alignItems: "start" }}>
         {c.label && (
           <span style={{ fontSize: 9, fontWeight: 900, color: c.text }}>{c.label}{ticket.scheduled_time ? ` · ${ticket.scheduled_time.substr(11, 5)}` : ""}</span>
@@ -634,7 +719,7 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
 
       {ticket.in_execution && (
         <div data-testid={`in-execution-${ticket.id}`} style={{
-          position: "absolute", top: 6, left: 6,
+          position: "absolute", top: 6, left: selectMode ? 34 : 6,
           fontSize: 9, fontWeight: 900, color: "white",
           background: "linear-gradient(90deg,#10b981,#059669)",
           padding: "2px 7px", borderRadius: 999,
@@ -648,7 +733,7 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
       {ticket.locked && (
         <span style={{ position: "absolute", top: 6, right: 6, fontSize: 14 }}>🔒</span>
       )}
-      {showActions && ["pendente", "aberta", "aguardando_atendimento"].includes(ticket.status) && (
+      {!selectMode && showActions && ["pendente", "aberta", "aguardando_atendimento"].includes(ticket.status) && (
         <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
           {ticket.status === "pendente" && onAdminOpen && (
             <button data-testid={`admin-open-${ticket.id}`} disabled={busy}
