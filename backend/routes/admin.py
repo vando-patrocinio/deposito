@@ -10,7 +10,7 @@ from typing import Any, Optional
 import httpx
 import resend
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from core import (
     DEMO_COMPANY_ID,
@@ -70,7 +70,7 @@ class SettingsUpdate(BaseModel):
     sla_red_after_minutes: Optional[int] = None
     sla_blink_when_overdue: Optional[bool] = None
     time_sync_enabled: Optional[bool] = None
-    time_sync_max_drift_seconds: Optional[int] = None
+    time_sync_max_drift_seconds: Optional[int] = Field(default=None, ge=1, le=86400)
     time_sync_timezone: Optional[str] = None
     nota_fence_radius_m: Optional[int] = None
     lousa_grid_start_hour: Optional[int] = None

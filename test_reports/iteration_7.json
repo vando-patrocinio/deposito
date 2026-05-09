@@ -1,0 +1,31 @@
+{
+  "summary": "RETESTE iter6 + frontend deep test. Backend: 11/11 PASS em test_iteration5_session_bugfixes.py — os 3 testes 422 que falhavam em iter6 agora passam após Field(ge=1, le=86400) no SettingsUpdate (admin.py:73). Valor 0/-10/100000 retorna 422; 30 retorna 200. Frontend deep test (Playwright via REACT_APP_BACKEND_URL): login admin → tab-lousa → lousa-admin-panel visíveis; toggle lousa-sla-alerts-toggle persiste em localStorage 'sla_alerts_enabled' (None→'1'); lousa-create-btn abre lousa-create-modal; ticket-type select tem exatamente os 6 tipos (reparo/instalacao/retirada/prioridade/preventiva/venda); criado ticket preventiva e modal fechou; admin-edit-{id} clicado abre lousa-edit-modal; edit-type tem 6 opções; edit-submit funciona; offline-banner E lousa-locked-banner ambos visíveis após page.context.set_offline(True). Bug crítico do iter6 está corrigido.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration5_session_bugfixes.py",
+    "/app/test_reports/pytest/iter7_full_results.xml",
+    "/app/test_reports/pytest/iter7_drift_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/lousa.py — arquivo continua ~1148 linhas. Recomendação reiterada: split em server_time, admin actions, public mobile, grid. Não bloqueante.",
+    "routes/clock.py:create_clock_record — drift skip ainda duplicado (admin detection lógica em ~509-518 vs ~539-552). Extrair _is_admin_request(request). Não bloqueante.",
+    "routes/lousa.py:edit_ticket — payload com scheduled_time=None não consegue limpar (filter `is not None` bloqueia). Considerar sentinel ou usar UNSET_VALUE para distinguir 'não enviado' de 'limpar'."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (11/11 em test_iteration5_session_bugfixes.py)", "frontend": "100% (todos os data-testids do review request validados; admin-open-* só não foi exercitado porque o ticket criado nesta run não entrou em estado 'aguardando_gestor' visível com testid admin-open-*; admin-edit-* com mesmo modal já validado)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "1 ticket TEST_I7_Cliente preventiva criado via UI (ficou na lousa). Settings restauradas pelo fixture (time_sync_enabled, max_drift originais).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend bugfix do iter6 (Field constraint em SettingsUpdate.time_sync_max_drift_seconds) confirmado funcionando. Suite test_iteration5_session_bugfixes.py 11/11 verde. Frontend tabs usam data-testid='tab-{id}' (ex: tab-lousa). Bolhas usam data-testid='bubble-card-tkt-{id}' (não 'ticket-bubble-*'). Para futuros testes Playwright: começar em '/' e clicar 'Entrar' antes de digitar email/senha (não vai direto para /login). page.on('dialog', d: d.accept()) para confirms do admin-open. Offline simulado via page.context.set_offline(True) gera ambos offline-banner + lousa-locked-banner corretamente.",
+  "rca of the issue": "Bug iter6 (PUT /api/settings 500 ao invés de 422 para drift inválido) foi corrigido pelo main agent adicionando Field(ge=1, le=86400) no atributo time_sync_max_drift_seconds do modelo SettingsUpdate em /app/backend/routes/admin.py:73. Como FastAPI agora valida o body request via Pydantic ANTES do handler, retorna 422 nativamente. Confirmado via curl/pytest: 0→422, -10→422, 100000→422, 30→200."
+}
