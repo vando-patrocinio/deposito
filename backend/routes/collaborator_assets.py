@@ -42,6 +42,7 @@ class AssetIn(BaseModel):
     tamanho: Optional[str] = None
     serial: Optional[str] = None
     qty: int = Field(default=1, ge=1, le=999)
+    unit_value_brl: Optional[float] = Field(default=None, ge=0)
     delivered_at: Optional[str] = None  # ISO; default = agora
     notes: Optional[str] = None
 
@@ -54,6 +55,7 @@ class AssetUpdate(BaseModel):
     tamanho: Optional[str] = None
     serial: Optional[str] = None
     qty: Optional[int] = Field(default=None, ge=1, le=999)
+    unit_value_brl: Optional[float] = Field(default=None, ge=0)
     status: Optional[Literal["ativo", "devolvido", "danificado", "perdido"]] = None
     notes: Optional[str] = None
 
@@ -117,6 +119,7 @@ async def create_asset(payload: AssetIn,
         "tamanho": (payload.tamanho or "").strip() or None,
         "serial": (payload.serial or "").strip() or None,
         "qty": payload.qty,
+        "unit_value_brl": payload.unit_value_brl,
         "status": "ativo",
         "delivered_at": delivered,
         "delivered_by": user.get("name") or user.get("email"),

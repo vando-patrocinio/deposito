@@ -403,7 +403,75 @@ function AssetsOverviewSection() {
           </tbody>
         </table>
       </Card>
+      <PendingLossesCard pl={d.pending_losses} />
     </>
+  );
+}
+
+function PendingLossesCard({ pl }) {
+  if (!pl) return null;
+  const empty = !pl.rows || pl.rows.length === 0;
+  return (
+    <Card title="🚨 Perdas pendentes — colaboradores desativados com pertences ativos"
+          data-testid="pending-losses-card">
+      {empty ? (
+        <div style={{ padding: 16, textAlign: "center", color: "#16a34a", fontWeight: 600 }}>
+          ✓ Nenhuma perda pendente. Todos os colaboradores desativados devolveram seus pertences.
+        </div>
+      ) : (
+        <>
+          <div style={{ ...css.kpiGrid, marginBottom: 12 }}>
+            <Metric label="Colaboradores desativados" value={pl.inactive_collaborators} />
+            <Metric label="Itens não devolvidos" value={pl.items_count} />
+            <Metric label="Prejuízo estimado" value={fmtBRL(pl.total_brl)} />
+          </div>
+          <table style={css.table}>
+            <thead><tr>
+              <th style={css.th}>Colaborador</th>
+              <th style={css.th}>Desativado em</th>
+              <th style={css.th}>Itens</th>
+              <th style={css.th}>Valor estimado</th>
+              <th style={css.th}>Detalhes</th>
+            </tr></thead>
+            <tbody>
+              {pl.rows.map((r) => (
+                <tr key={r.collaborator_id}>
+                  <td style={css.td}>
+                    <strong>{r.name}</strong>
+                    {r.role && <div style={{ fontSize: 10, color: "#64748b" }}>{r.role}</div>}
+                  </td>
+                  <td style={css.td}>
+                    {r.deactivated_at ? r.deactivated_at.slice(0, 10) : "—"}
+                  </td>
+                  <td style={css.td}>
+                    <span style={css.pill("#fee2e2", "#991b1b")}>{r.items.length}</span>
+                  </td>
+                  <td style={{ ...css.td, fontWeight: 800, color: "#991b1b" }}>
+                    {fmtBRL(r.value_brl)}
+                  </td>
+                  <td style={css.td}>
+                    {r.items.slice(0, 5).map((it) => (
+                      <div key={it.id} style={{ fontSize: 11, color: "#475569" }}>
+                        · {it.item} ({it.qty}× — {fmtBRL(it.value_brl)})
+                      </div>
+                    ))}
+                    {r.items.length > 5 && (
+                      <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                        … +{r.items.length - 5} item(ns)
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 8 }}>
+            Valor padrão por categoria: {Object.entries(pl.default_values_brl || {}).map(([k, v]) => `${k}=${fmtBRL(v)}`).join(" · ")}.
+            Use o campo <em>Valor unitário (R$)</em> ao cadastrar para sobrescrever.
+          </div>
+        </>
+      )}
+    </Card>
   );
 }
 

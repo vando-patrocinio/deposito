@@ -20,7 +20,7 @@ const STATUS_PILL = {
 
 const EMPTY_FORM = {
   category: "uniforme", item: "", marca: "", modelo: "",
-  tamanho: "", serial: "", qty: 1, notes: "",
+  tamanho: "", serial: "", qty: 1, unit_value_brl: "", notes: "",
 };
 
 export default function AssetsSection({ collaborator, onClose }) {
@@ -48,11 +48,17 @@ export default function AssetsSection({ collaborator, onClose }) {
     }
     setBusy(true); setMsg(null);
     try {
+      const payload = { ...form };
+      if (payload.unit_value_brl === "" || payload.unit_value_brl == null) {
+        delete payload.unit_value_brl;
+      } else {
+        payload.unit_value_brl = Number(payload.unit_value_brl);
+      }
       if (editingId) {
-        await api.assetUpdate(editingId, form);
+        await api.assetUpdate(editingId, payload);
         setMsg({ type: "ok", text: "Atualizado." });
       } else {
-        await api.assetCreate({ ...form, collaborator_id: collaborator.id });
+        await api.assetCreate({ ...payload, collaborator_id: collaborator.id });
         setMsg({ type: "ok", text: "Item adicionado." });
       }
       setForm(EMPTY_FORM); setEditingId(null); setCreating(false);
@@ -68,7 +74,9 @@ export default function AssetsSection({ collaborator, onClose }) {
       category: a.category || "outro", item: a.item || "",
       marca: a.marca || "", modelo: a.modelo || "",
       tamanho: a.tamanho || "", serial: a.serial || "",
-      qty: a.qty || 1, notes: a.notes || "", status: a.status,
+      qty: a.qty || 1,
+      unit_value_brl: a.unit_value_brl != null ? a.unit_value_brl : "",
+      notes: a.notes || "", status: a.status,
     });
     setCreating(true);
   };
@@ -168,6 +176,8 @@ export default function AssetsSection({ collaborator, onClose }) {
               {fld("modelo", "Modelo")}
               {fld("tamanho", "Tamanho", { placeholder: "P/M/G/40/41" })}
               {fld("qty", "Qtd", { type: "number", min: 1 })}
+              {fld("unit_value_brl", "Valor unit. (R$)",
+                   { type: "number", step: "0.01", min: 0, placeholder: "Ex.: 80.00" })}
               <div style={{ gridColumn: "span 4" }}>
                 {fld("serial", "Nº série / patrimônio")}
               </div>

@@ -504,4 +504,65 @@ async def assets_overview(user: dict = Depends(require_role("gestor"))):
         "by_status": [{"status": k, "count": v}
                       for k, v in by_status.most_common()],
         "rows": rows_collab,
+        "pending_losses": await _pending_losses(cid, tid_to),
+    }
+
+
+# Default value-by-category (BRL) used when asset has no unit_value_brl set.
+_DEFAULT_VALUES = {"uniforme": 80, "epi": 150, "ferramenta": 200,
+                   "veiculo": 10000, "eletronico": 500, "outro": 100}
+
+
+async def _pending_losses(cid: str, tid_to: Dict[str, dict]) -> dict:
+    """Lista colaboradores inativos (active=False) que ainda têm pertences
+    com status='ativo'. Calcula valor estimado em BRL.
+    """
+    inactive = await db.collaborators.find(
+        {"company_id": cid, "active": False, "atlaz_inbox": {"$ne": True}},
+        {"_id": 0, "id": 1, "name": 1, "role": 1, "deactivated_at": 1, "updated_at": 1},
+    ).to_list(500)
+    inactive_ids = [c["id"] for c in inactive]
+    if not inactive_ids:
+        return {"rows": [], "total_brl": 0.0, "items_count": 0,
+                "inactive_collaborators": 0,
+                "default_values_brl": _DEFAULT_VALUES}
+    pending = await db.collaborator_assets.find(
+        {"company_id": cid, "collaborator_id": {"$in": inactive_ids},
+         "status": "ativo"},
+        {"_id": 0},
+    ).to_list(2000)
+    by_collab: Dict[str, Dict[str, Any]] = {}
+    total_value = 0.0
+    for a in pending:
+        unit = a.get("unit_value_brl")
+        if unit is None:
+            unit = _DEFAULT_VALUES.get(a.get("category"), 100)
+        line_value = float(unit) * int(a.get("qty") or 1)
+        total_value += line_value
+        cid2 = a["collaborator_id"]
+        coll = next((c for c in inactive if c["id"] == cid2), {})
+        b = by_collab.setdefault(cid2, {
+            "collaborator_id": cid2,
+            "name": coll.get("name") or "?",
+            "role": coll.get("role"),
+            "deactivated_at": coll.get("deactivated_at") or coll.get("updated_at"),
+            "items": [], "value_brl": 0.0,
+        })
+        b["items"].append({
+            "id": a["id"], "category": a.get("category"),
+            "item": a.get("item"), "marca": a.get("marca"),
+            "modelo": a.get("modelo"), "qty": a.get("qty"),
+            "value_brl": round(line_value, 2),
+            "delivered_at": a.get("delivered_at"),
+        })
+        b["value_brl"] += line_value
+    rows = sorted([{**v, "value_brl": round(v["value_brl"], 2)}
+                   for v in by_collab.values()],
+                  key=lambda r: r["value_brl"], reverse=True)
+    return {
+        "rows": rows,
+        "total_brl": round(total_value, 2),
+        "items_count": len(pending),
+        "inactive_collaborators": len(rows),
+        "default_values_brl": _DEFAULT_VALUES,
     }

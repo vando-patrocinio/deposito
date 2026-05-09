@@ -84,6 +84,7 @@ class CollaboratorIn(BaseModel):
     praca_id: Optional[str] = None
     is_test_mode: bool = False  # ADMIN: marca colaborador como TESTE — bypassa cerca/selfie
     clock_in_enabled: bool = True  # CLT bate ponto. False = freelancer/MEI/3rd party — Lousa direta sem ponto.
+    active: bool = True  # False = colaborador inativo (desligado, em férias longas, etc)
 
 
 class Collaborator(CollaboratorIn):
@@ -303,12 +304,45 @@ async def update_collaborator(cid: str, payload: CollaboratorIn, user: dict = De
         existing = await db.collaborators.find_one({"id": cid}, {"company_id": 1})
         if not existing or existing.get("company_id") != user.get("company_id"):
             raise HTTPException(404, "Colaborador não encontrado")
+    prev = await db.collaborators.find_one({"id": cid},
+                                           {"_id": 0, "active": 1, "name": 1,
+                                            "company_id": 1})
     data = payload.model_dump()
     data["updated_at"] = now_iso()
+    # Marca quando foi desativado (para o KPI de perdas pendentes)
+    if data.get("active") is False and (prev or {}).get("active") is not False:
+        data["deactivated_at"] = now_iso()
     res = await db.collaborators.update_one({"id": cid}, {"$set": data})
     if res.matched_count == 0:
         raise HTTPException(404, "Colaborador não encontrado")
+    # Notifica gestor se desativou e há pertences ativos pendentes de devolução
+    if data.get("active") is False and (prev or {}).get("active") is not False:
+        try:
+            await _notify_pending_assets_on_deactivation(prev or {}, cid)
+        except Exception as _e:
+            logger.warning("[assets] notify pending falhou: %s", _e)
     return await get_collaborator(cid)
+
+
+async def _notify_pending_assets_on_deactivation(prev: dict, cid: str) -> None:
+    """Cria notificação para o gestor quando um colaborador desativado tem
+    pertences ativos não devolvidos."""
+    company_id = prev.get("company_id") or "co-demo"
+    pending = await db.collaborator_assets.count_documents(
+        {"company_id": company_id, "collaborator_id": cid, "status": "ativo"})
+    if pending == 0:
+        return
+    await db.notifications.insert_one({
+        "id": f"notif-{uuid.uuid4().hex[:10]}",
+        "company_id": company_id,
+        "type": "assets_pending_return",
+        "audience_role": "gestor",
+        "title": f"⚠ {prev.get('name', 'Colaborador')} foi desativado com {pending} pertence(s) ativo(s)",
+        "body": "Cobrança/devolução pendente. Acesse Cadastro → Pertences para iniciar o processo.",
+        "data": {"collaborator_id": cid, "pending_count": pending},
+        "created_at": now_iso(),
+        "read_by": [],
+    })
 
 
 @router.delete("/collaborators/{cid}")
