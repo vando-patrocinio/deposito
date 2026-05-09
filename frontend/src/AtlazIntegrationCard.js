@@ -40,6 +40,8 @@ export default function AtlazIntegrationCard() {
         lookback_days: c.lookback_days ?? 30,
         sync_interval_minutes: c.sync_interval_minutes ?? 15,
         auto_create_bubbles: c.auto_create_bubbles ?? true,
+        auto_sync_technicians: c.auto_sync_technicians ?? true,
+        tech_sync_interval_minutes: c.tech_sync_interval_minutes ?? 60,
         timeout_seconds: c.timeout_seconds ?? 20,
       });
     } catch (e) {
@@ -59,6 +61,8 @@ export default function AtlazIntegrationCard() {
       lookback_days: Number(form.lookback_days) || 30,
       sync_interval_minutes: Number(form.sync_interval_minutes) || 15,
       auto_create_bubbles: form.auto_create_bubbles,
+      auto_sync_technicians: !!form.auto_sync_technicians,
+      tech_sync_interval_minutes: Number(form.tech_sync_interval_minutes) || 60,
       timeout_seconds: Number(form.timeout_seconds) || 20,
     };
     if (form.api_key) payload.api_key = form.api_key;
@@ -225,6 +229,62 @@ export default function AtlazIntegrationCard() {
           Criar bolhas automaticamente no pull (recomendado)
         </label>
       </Field>
+
+      <div data-testid="atlaz-auto-sync-section" style={{
+        marginTop: 12, padding: 12, background: "linear-gradient(135deg,#ecfdf5,#d1fae5)",
+        border: "1px solid #6ee7b7", borderRadius: 12,
+      }}>
+        <div style={{ fontWeight: 800, fontSize: 13, color: "#064e3b", marginBottom: 6 }}>
+          🔄 Atualizações automáticas
+        </div>
+        <p style={{ fontSize: 11, color: "#065f46", margin: "0 0 10px" }}>
+          O sistema sincroniza automaticamente em segundo plano enquanto a integração estiver ativa.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ background: "white", padding: 10, borderRadius: 10, border: "1px solid #a7f3d0" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 12, color: "#065f46" }}>
+              <span>📋 Bolhas (Lousa)</span>
+            </label>
+            <div style={{ fontSize: 10, color: "#047857", marginTop: 4 }}>
+              A cada <strong>{form.sync_interval_minutes || 15} min</strong>
+            </div>
+            <div data-testid="atlaz-last-bubble-sync" style={{ fontSize: 10, color: "#475569", marginTop: 4 }}>
+              Último: <strong>{cfg?.last_auto_sync_bubbles_at ? new Date(cfg.last_auto_sync_bubbles_at).toLocaleString("pt-BR") : "—"}</strong>
+            </div>
+          </div>
+
+          <div style={{ background: "white", padding: 10, borderRadius: 10, border: "1px solid #a7f3d0" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 12, color: "#065f46", cursor: "pointer" }}>
+              <input data-testid="atlaz-auto-sync-tec" type="checkbox" checked={!!form.auto_sync_technicians}
+                onChange={(e) => setForm({ ...form, auto_sync_technicians: e.target.checked })} />
+              <span>👷 Técnicos (Cadastro)</span>
+            </label>
+            {form.auto_sync_technicians ? (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                  <span style={{ fontSize: 10, color: "#047857" }}>A cada</span>
+                  <input
+                    data-testid="atlaz-tec-interval"
+                    type="number" min={5} max={1440}
+                    value={form.tech_sync_interval_minutes}
+                    onChange={(e) => setForm({ ...form, tech_sync_interval_minutes: e.target.value })}
+                    style={{ width: 60, padding: "2px 6px", border: "1px solid #cbd5e1", borderRadius: 4, fontSize: 11 }}
+                  />
+                  <span style={{ fontSize: 10, color: "#047857" }}>min</span>
+                </div>
+                <div data-testid="atlaz-last-tec-sync" style={{ fontSize: 10, color: "#475569", marginTop: 4 }}>
+                  Último: <strong>{cfg?.last_auto_sync_technicians_at ? new Date(cfg.last_auto_sync_technicians_at).toLocaleString("pt-BR") : "—"}</strong>
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4, fontStyle: "italic" }}>
+                Desligado — use o botão "Sincronizar técnicos" manualmente.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <Button onClick={save} disabled={busy} data-testid="atlaz-save-btn">

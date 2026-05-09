@@ -10,7 +10,9 @@ Doc oficial: https://app.atlaz.com.br/docs/api
   • data_criacao_inicio é OBRIGATÓRIO em /listachamados
 
 Fluxos suportados:
-  • PULL periódico: importa chamados abertos como bolhas na Lousa
+  • PULL periódico de bolhas: importa chamados abertos como bolhas na Lousa
+  • PULL periódico de técnicos: cria/atualiza colaboradores a partir dos
+    técnicos listados nos chamados (auto, intervalo > intervalo de bolhas)
   • Filtro por filial: usado nome da cidade (campo ponto.cidade)
   • Mapeamento técnico Atlaz → colaborador interno (por nome)
 """
@@ -32,6 +34,23 @@ from database import db
 
 logger = logging.getLogger("ponto.atlaz")
 router = APIRouter(prefix="/api/atlaz", tags=["atlaz"])
+
+# Import local (lazy) para evitar ciclo: events.py não depende de atlaz.py.
+try:
+    from routes.events import publish_event as _publish_event
+except Exception:  # pragma: no cover
+    _publish_event = None
+
+
+async def _safe_publish(company_id: str, event: str, data: Dict[str, Any]) -> None:
+    """Publica evento SSE — best-effort, não derruba sync se falhar."""
+    if not _publish_event:
+        return
+    try:
+        await _publish_event(company_id, event, data)
+    except Exception as e:
+        logger.warning("[atlaz] publish_event falhou: %s", e)
+
 
 ATLAZ_BASE_URL = "https://app.atlaz.com.br/api/v2"
 
@@ -78,6 +97,11 @@ class AtlazConfig(BaseModel):
     lookback_days: int = Field(default=30, ge=1, le=365)
     sync_interval_minutes: int = Field(default=15, ge=1, le=1440)
     auto_create_bubbles: bool = True
+    # NOVO (iter 20): auto-sincronização de técnicos do Atlaz para a aba Colaborador
+    auto_sync_technicians: bool = True
+    tech_sync_interval_minutes: int = Field(default=60, ge=5, le=1440)
+    last_auto_sync_bubbles_at: Optional[str] = None
+    last_auto_sync_technicians_at: Optional[str] = None
     timeout_seconds: int = Field(default=20, ge=2, le=120)
 
 
@@ -92,6 +116,8 @@ class AtlazConfigUpdate(BaseModel):
     lookback_days: Optional[int] = None
     sync_interval_minutes: Optional[int] = None
     auto_create_bubbles: Optional[bool] = None
+    auto_sync_technicians: Optional[bool] = None
+    tech_sync_interval_minutes: Optional[int] = None
     timeout_seconds: Optional[int] = None
 
 
@@ -314,12 +340,14 @@ async def run_sync(company_id: str, cfg: Optional[AtlazConfig] = None) -> Dict[s
     chamados = _filter_by_filial(chamados, cfg.filiais)
     summary["fetched"] = len(chamados)
 
+    created_ids: List[str] = []
     for c in chamados:
         try:
             if cfg.auto_create_bubbles:
                 res = await _import_one(c, cfg, company_id)
                 if res == "created":
                     summary["created"] += 1
+                    created_ids.append(str(c.get("id")))
                 else:
                     summary["skipped"] += 1
             else:
@@ -332,7 +360,122 @@ async def run_sync(company_id: str, cfg: Optional[AtlazConfig] = None) -> Dict[s
         company_id, "pull", status,
         f"fetched={summary.get('fetched',0)} created={summary['created']} skipped={summary['skipped']} errors={len(summary['errors'])}",
     )
+    # Publica evento SSE se bolhas novas foram criadas — UI faz refresh em tempo real
+    if summary["created"] > 0:
+        await _safe_publish(company_id, "atlaz_bubbles_synced", {
+            "created": summary["created"],
+            "skipped": summary["skipped"],
+            "fetched": summary.get("fetched", 0),
+            "ticket_external_ids": created_ids,
+            "at": now_iso(),
+        })
     return {"ok": True, **summary}
+
+
+async def _run_tech_sync_internal(company_id: str, cfg: AtlazConfig) -> Dict[str, Any]:
+    """Lógica interna de sync de técnicos — reusada pelo endpoint manual e pelo worker.
+
+    Retorna o mesmo shape do endpoint /sync-technicians.
+    """
+    if not cfg.api_key:
+        return {"ok": False, "reason": "missing_api_key"}
+
+    try:
+        chamados = await _fetch_chamados(cfg)
+    except Exception as e:
+        await _log_sync(company_id, "sync_tec", "error", str(e)[:300])
+        return {"ok": False, "error": str(e)[:200]}
+
+    # Extrai técnicos únicos (chave = email; fallback nome)
+    seen: Dict[str, Dict[str, Any]] = {}
+    for c in chamados:
+        tec = c.get("tecnico") or {}
+        nome = (tec.get("nome") or "").strip()
+        email = (tec.get("email") or "").strip().lower()
+        if not nome:
+            continue
+        key = email or nome.lower()
+        if key not in seen:
+            seen[key] = {"nome": nome, "email": email}
+
+    created: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, Any]] = []
+    new_mapping = dict(cfg.technician_to_collaborator or {})
+
+    for tec in seen.values():
+        nome = tec["nome"]
+        email = tec["email"]
+        existing = None
+        if email:
+            existing = await db.collaborators.find_one(
+                {"company_id": company_id, "email": email}, {"_id": 0, "id": 1, "name": 1},
+            )
+        if not existing:
+            existing = await db.collaborators.find_one(
+                {"company_id": company_id, "name": nome}, {"_id": 0, "id": 1, "name": 1},
+            )
+
+        if existing:
+            new_mapping[nome] = existing["id"]
+            skipped.append({"nome": nome, "email": email, "matched_collaborator_id": existing["id"]})
+            continue
+
+        cid = f"col-{uuid.uuid4().hex[:8]}"
+        now = now_iso()
+        coll_doc = {
+            "id": cid,
+            "name": nome,
+            "cpf": f"ATLAZ-{cid[-8:]}",
+            "email": email or f"{cid}@atlaz.local",
+            "phone": "",
+            "role": "Técnico (Atlaz)",
+            "company": "Atlaz Sync",
+            "schedule": {
+                "weekdays": [1, 2, 3, 4, 5],
+                "start": "08:00", "end": "18:00",
+                "lunch_start": "12:00", "lunch_end": "13:00",
+            },
+            "overtime_policy": {"enabled": False, "max_minutes_per_day": 120},
+            "city": None, "state": None, "praca_id": None,
+            "is_test_mode": False,
+            "company_id": company_id,
+            "avatar_data_url": None,
+            "reference_face": None,
+            "atlaz_synced": True,
+            "atlaz_synced_at": now,
+            "created_at": now,
+            "updated_at": now,
+        }
+        try:
+            await db.collaborators.insert_one(coll_doc)
+            created.append({"id": cid, "nome": nome, "email": email})
+            new_mapping[nome] = cid
+        except Exception as e:
+            skipped.append({"nome": nome, "email": email, "error": str(e)[:100]})
+
+    # Persiste mapeamento atualizado
+    new_cfg = cfg.model_copy(update={"technician_to_collaborator": new_mapping})
+    await _save_config(company_id, new_cfg)
+
+    await _log_sync(
+        company_id, "sync_tec", "ok" if not any("error" in s for s in skipped) else "partial",
+        f"created={len(created)} skipped={len(skipped)}",
+    )
+    # SSE: publica evento se algum técnico novo foi criado, para a aba Colaborador refrescar
+    if created:
+        await _safe_publish(company_id, "atlaz_technicians_synced", {
+            "created_count": len(created),
+            "items_created": created,
+            "at": now_iso(),
+        })
+    return {
+        "ok": True,
+        "total_atlaz_technicians": len(seen),
+        "created": len(created),
+        "matched_existing": sum(1 for s in skipped if "matched_collaborator_id" in s),
+        "errors": [s for s in skipped if "error" in s],
+        "items_created": created,
+    }
 
 
 # Stub mantido para compatibilidade com hooks de admin-close em lousa.py.
@@ -416,103 +559,13 @@ async def sync_technicians(user: dict = Depends(require_role("gestor"))):
     e cria um Colaborador interno para cada um que ainda não existe (match
     por email). Também atualiza o mapeamento technician_to_collaborator
     automaticamente para que o pull seguinte já atribua corretamente.
+
+    Internamente chama _run_tech_sync_internal — mesma lógica usada pelo
+    worker periódico (auto_sync_technicians).
     """
     company_id = user.get("company_id") or DEMO_COMPANY_ID
     cfg = await _get_config(company_id)
-    if not cfg.api_key:
-        return {"ok": False, "reason": "missing_api_key"}
-
-    try:
-        chamados = await _fetch_chamados(cfg)
-    except Exception as e:
-        await _log_sync(company_id, "sync_tec", "error", str(e)[:300])
-        return {"ok": False, "error": str(e)[:200]}
-
-    # Extrai técnicos únicos (chave = email; fallback nome)
-    seen: Dict[str, Dict[str, Any]] = {}
-    for c in chamados:
-        tec = c.get("tecnico") or {}
-        nome = (tec.get("nome") or "").strip()
-        email = (tec.get("email") or "").strip().lower()
-        if not nome:
-            continue
-        key = email or nome.lower()
-        if key not in seen:
-            seen[key] = {"nome": nome, "email": email}
-
-    created: List[Dict[str, Any]] = []
-    skipped: List[Dict[str, Any]] = []
-    new_mapping = dict(cfg.technician_to_collaborator or {})
-
-    for tec in seen.values():
-        nome = tec["nome"]
-        email = tec["email"]
-        # Match por email primeiro, depois por nome exato
-        existing = None
-        if email:
-            existing = await db.collaborators.find_one(
-                {"company_id": company_id, "email": email}, {"_id": 0, "id": 1, "name": 1},
-            )
-        if not existing:
-            existing = await db.collaborators.find_one(
-                {"company_id": company_id, "name": nome}, {"_id": 0, "id": 1, "name": 1},
-            )
-
-        if existing:
-            new_mapping[nome] = existing["id"]
-            skipped.append({"nome": nome, "email": email, "matched_collaborator_id": existing["id"]})
-            continue
-
-        # Cria novo colaborador
-        cid = f"col-{uuid.uuid4().hex[:8]}"
-        now = now_iso()
-        coll_doc = {
-            "id": cid,
-            "name": nome,
-            "cpf": f"ATLAZ-{cid[-8:]}",  # placeholder único — gestor edita depois
-            "email": email or f"{cid}@atlaz.local",
-            "phone": "",
-            "role": "Técnico (Atlaz)",
-            "company": "Atlaz Sync",
-            "schedule": {
-                "weekdays": [1, 2, 3, 4, 5],
-                "start": "08:00", "end": "18:00",
-                "lunch_start": "12:00", "lunch_end": "13:00",
-            },
-            "overtime_policy": {"enabled": False, "max_minutes_per_day": 120},
-            "city": None, "state": None, "praca_id": None,
-            "is_test_mode": False,
-            "company_id": company_id,
-            "avatar_data_url": None,
-            "reference_face": None,
-            "atlaz_synced": True,
-            "atlaz_synced_at": now,
-            "created_at": now,
-            "updated_at": now,
-        }
-        try:
-            await db.collaborators.insert_one(coll_doc)
-            created.append({"id": cid, "nome": nome, "email": email})
-            new_mapping[nome] = cid
-        except Exception as e:
-            skipped.append({"nome": nome, "email": email, "error": str(e)[:100]})
-
-    # Persiste o mapeamento atualizado
-    new_cfg = cfg.model_copy(update={"technician_to_collaborator": new_mapping})
-    await _save_config(company_id, new_cfg)
-
-    await _log_sync(
-        company_id, "sync_tec", "ok" if not any("error" in s for s in skipped) else "partial",
-        f"created={len(created)} skipped={len(skipped)}",
-    )
-    return {
-        "ok": True,
-        "total_atlaz_technicians": len(seen),
-        "created": len(created),
-        "matched_existing": sum(1 for s in skipped if "matched_collaborator_id" in s),
-        "errors": [s for s in skipped if "error" in s],
-        "items_created": created,
-    }
+    return await _run_tech_sync_internal(company_id, cfg)
 
 
 @router.get("/sync-logs")
@@ -534,7 +587,8 @@ _worker_stop = asyncio.Event()
 
 async def _worker_loop():
     logger.info("[atlaz] worker started")
-    last_run: Dict[str, datetime] = {}
+    last_run_bubbles: Dict[str, datetime] = {}
+    last_run_tech: Dict[str, datetime] = {}
     while not _worker_stop.is_set():
         try:
             now = datetime.now(timezone.utc)
@@ -543,17 +597,43 @@ async def _worker_loop():
                 cid = cfg_doc.get("company_id")
                 if not cid:
                     continue
-                interval = int(cfg_doc.get("sync_interval_minutes") or 15)
-                last = last_run.get(cid)
-                if last and (now - last).total_seconds() < interval * 60:
-                    continue
+                valid = set(AtlazConfig.model_fields.keys())
                 try:
-                    valid = set(AtlazConfig.model_fields.keys())
                     cfg = AtlazConfig(**{k: v for k, v in cfg_doc.items() if k in valid})
-                    await run_sync(cid, cfg)
                 except Exception as e:
-                    logger.exception("[atlaz] sync falhou para %s: %s", cid, e)
-                last_run[cid] = now
+                    logger.exception("[atlaz] config inválida para %s: %s", cid, e)
+                    continue
+
+                # 1) Bubble pull (intervalo configurável)
+                interval_b = max(1, int(cfg.sync_interval_minutes or 15))
+                last_b = last_run_bubbles.get(cid)
+                if not last_b or (now - last_b).total_seconds() >= interval_b * 60:
+                    try:
+                        await run_sync(cid, cfg)
+                        # marca timestamp do último pull no doc da empresa
+                        await db.atlaz_config.update_one(
+                            {"company_id": cid},
+                            {"$set": {"last_auto_sync_bubbles_at": now_iso()}},
+                        )
+                    except Exception as e:
+                        logger.exception("[atlaz] bubble sync falhou para %s: %s", cid, e)
+                    last_run_bubbles[cid] = now
+
+                # 2) Technician auto-sync (intervalo separado, default 60min)
+                if cfg.auto_sync_technicians:
+                    interval_t = max(5, int(cfg.tech_sync_interval_minutes or 60))
+                    last_t = last_run_tech.get(cid)
+                    if not last_t or (now - last_t).total_seconds() >= interval_t * 60:
+                        try:
+                            res = await _run_tech_sync_internal(cid, cfg)
+                            if res.get("ok"):
+                                await db.atlaz_config.update_one(
+                                    {"company_id": cid},
+                                    {"$set": {"last_auto_sync_technicians_at": now_iso()}},
+                                )
+                        except Exception as e:
+                            logger.exception("[atlaz] tech sync falhou para %s: %s", cid, e)
+                        last_run_tech[cid] = now
         except Exception as e:
             logger.exception("[atlaz] worker tick falhou: %s", e)
         try:

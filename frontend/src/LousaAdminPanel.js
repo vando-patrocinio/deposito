@@ -6,6 +6,7 @@ import CreateTicketModal from "./lousa/CreateTicketModal";
 import RescheduleModal from "./lousa/RescheduleModal";
 import LousaHistoryModal from "./lousa/LousaHistoryModal";
 import BulkActionsBar from "./lousa/BulkActionsBar";
+import useEventStream from "@/useEventStream";
 import { isAlertsEnabled, setAlertsEnabled, maybeFireOverdueAlerts } from "./slaAlerts";
 
 const TYPE_LABELS = {
@@ -139,6 +140,18 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
     const t2 = setInterval(() => setTick((x) => x + 1), 5000);  // re-render p/ animação SLA
     return () => { clearInterval(t1); clearInterval(t2); };
   }, [refresh]);
+
+  // SSE: refresh imediato quando o worker Atlaz cria novas bolhas
+  const [atlazFlash, setAtlazFlash] = useState("");
+  useEventStream({
+    onEvent: (name, data) => {
+      if (name === "atlaz_bubbles_synced" && data?.created > 0) {
+        setAtlazFlash(`🔗 ${data.created} nova(s) bolha(s) sincronizada(s) do Atlaz`);
+        refresh();
+        setTimeout(() => setAtlazFlash(""), 6000);
+      }
+    },
+  });
 
   async function handleDrop(targetCollabId) {
     if (!draggingId) return;
@@ -347,6 +360,19 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         }}>
           🔒 LOUSA TRANCADA — {systemStatus.offline ? "dispositivo offline" : "horário dessincronizado"}.
           Todas as ações estão bloqueadas até a normalização.
+        </div>
+      )}
+
+      {atlazFlash && (
+        <div data-testid="lousa-atlaz-flash" style={{
+          background: "linear-gradient(135deg,#ecfdf5,#d1fae5)",
+          border: "1px solid #6ee7b7", borderRadius: 12,
+          padding: "10px 14px", marginBottom: 14,
+          color: "#064e3b", fontWeight: 700, fontSize: 13,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <span>{atlazFlash}</span>
+          <span style={{ fontSize: 11, opacity: 0.7 }}>atualizado em tempo real</span>
         </div>
       )}
 

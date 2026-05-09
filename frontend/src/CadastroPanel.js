@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "@/api";
 import { AvatarZoomModal, Button, Card, Field, Icon, inputStyle, Row, StatusBadge } from "@/ui";
 import GeofenceMap from "@/GeofenceMap";
+import useEventStream from "@/useEventStream";
 
 const EMPTY = {
   name: "",
@@ -56,6 +57,18 @@ export default function CadastroPanel() {
     }
   }
   useEffect(() => { reload(); }, []);
+
+  // Auto-refresh quando o worker Atlaz cria novos técnicos (SSE)
+  const [atlazFlash, setAtlazFlash] = useState("");
+  useEventStream({
+    onEvent: (name, data) => {
+      if (name === "atlaz_technicians_synced" && data?.created_count > 0) {
+        setAtlazFlash(`👷 ${data.created_count} novo(s) técnico(s) sincronizado(s) do Atlaz`);
+        reload();
+        setTimeout(() => setAtlazFlash(""), 6000);
+      }
+    },
+  });
 
   function startNew() {
     setForm(EMPTY);
@@ -162,6 +175,16 @@ export default function CadastroPanel() {
           {flash && (
             <div data-testid="collab-flash" style={{ background: flash.startsWith("✅") ? "#dcfce7" : "#fee2e2", color: flash.startsWith("✅") ? "#166534" : "#991b1b", padding: 10, borderRadius: 12, marginBottom: 10, fontWeight: 700 }}>
               {flash}
+            </div>
+          )}
+          {atlazFlash && (
+            <div data-testid="atlaz-flash" style={{
+              background: "linear-gradient(135deg,#ecfdf5,#d1fae5)",
+              color: "#064e3b", padding: 10, borderRadius: 12, marginBottom: 10,
+              fontWeight: 700, border: "1px solid #6ee7b7",
+              animation: "fadeIn .3s ease-out",
+            }}>
+              {atlazFlash}
             </div>
           )}
           {list.length === 0 && <p style={{ color: "#64748b" }}>Nenhum colaborador cadastrado.</p>}

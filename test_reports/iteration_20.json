@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 20 — Atlaz auto-sync de técnicos + 4 novos campos AtlazConfig + SSE refresh em tempo real. Backend: 11 passed + 2 xfail (bug de validação). Frontend: 100% verde — atlaz-auto-sync-section renderiza com ambos os boxes, toggle/intervalo/persistência OK, last_auto_sync_technicians_at já populado pelo worker (09/05/2026 09:56:21), Lousa+Cadastro montam sem erros (zero page errors/console errors). Encontrado 1 bug de validação MÉDIO/ALTO no backend.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "PUT /api/atlaz/settings",
+        "issue": "AtlazConfigUpdate.tech_sync_interval_minutes (e sync_interval_minutes) declarado apenas como Optional[int] = None — SEM Field(ge=5, le=1440). Valores inválidos como 4 ou 1500 retornam 200 e SÃO PERSISTIDOS no MongoDB. Isso causa bug em cascata: chamadas subsequentes a QUALQUER endpoint Atlaz (/settings, /test-connection, /sync-now, /sync-technicians, /sync-logs) caem em 500 Internal Server Error porque _get_config() executa AtlazConfig(**raw) que reválida e levanta ValidationError. Worker periódico também explode no próximo tick.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration20_atlaz_auto_sync.py",
+    "/app/test_reports/pytest/iter20_results.xml"
+  ],
+  "action_items": [
+    "FIX URGENTE em /app/backend/routes/atlaz.py linhas 108-121: adicionar Field(ge=5, le=1440) em tech_sync_interval_minutes e Field(ge=1, le=1440) em sync_interval_minutes na classe AtlazConfigUpdate (mesmo constraint do AtlazConfig). Sem isso, qualquer gestor consegue corromper a config Atlaz da empresa via API ou UI (input min/max só protege HTML, atacante pode burlar) e derrubar TODA a integração Atlaz com 500.",
+    "Considerar usar new_cfg = AtlazConfig(**{**current.model_dump(), **update_dict}) em vez de current.model_copy(update=update_dict) — model_copy() NÃO re-valida; reconstruir o modelo via constructor sim. Isso é defesa em profundidade caso outros campos novos sejam adicionados sem constraint no Update model.",
+    "Adicionar migration/cleanup: ao iniciar o worker ou em _get_config, sanitizar valores fora do range (clamp ou reset para default) para evitar 500 em empresas com config legada corrompida."
+  ],
+  "critical_code_review_comments": [
+    "atlaz.py:45-52 — _safe_publish com try/except correto, não derruba sync se SSE falhar. ✓",
+    "atlaz.py:101-104 — AtlazConfig (modelo principal) tem Field(ge=5, le=1440) corretamente. ✓",
+    "atlaz.py:108-121 — AtlazConfigUpdate (modelo de PATCH) NÃO replica os constraints — BUG. Pydantic não herda constraints automaticamente entre modelos.",
+    "atlaz.py:497-507 — put_atlaz_settings usa current.model_copy(update=update_dict). model_copy é raw e NÃO valida — reforça o bug acima.",
+    "atlaz.py:565-636 — worker com 2 timestamps separados (last_run_bubbles/last_run_tech) está bem estruturado. _safe_publish chamado apenas quando created>0 — correto.",
+    "useEventStream.js:45-55 — listener de atlaz_bubbles_synced/atlaz_technicians_synced funcionando, addEventListener específico por evento (correto para SSE com event: name).",
+    "AtlazIntegrationCard.js:233-287 — atlaz-auto-sync-section bem testável (todos data-testids presentes), toggle desliga input corretamente via render condicional."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration20_atlaz_auto_sync.py (criado)"
+  ],
+  "success_rate": {"backend": "85% (11/13 passed; 2 xfail documentando bug)", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456 (válido). Atlaz LIGO FIBRA já configurada e ativa em co-demo, com last_auto_sync_technicians_at=2026-05-09T09:54:23 (worker já rodou no startup).",
+  "seed_data_creation": "Nenhum dado de seed criado. Tests mexem apenas em atlaz_config (auto_sync_technicians, tech_sync_interval_minutes) e restauram para defaults (60min, true) ao final. Em xfail, test usa subprocess.run para restaurar via DB direto porque PUT pode ficar 500 quando config pollua.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 20 frontend 100% verde. Backend tem 1 bug HIGH de validação em AtlazConfigUpdate (descrito acima). Após o main agent corrigir adicionando Field(ge=5,le=1440) em AtlazConfigUpdate.tech_sync_interval_minutes e sync_interval_minutes, basta remover @pytest.mark.xfail dos 2 testes em test_iteration20_atlaz_auto_sync.py (test_put_settings_rejects_low_interval e test_put_settings_rejects_high_interval) e re-rodar — devem passar. SSE stream verificado funcionalmente (endpoint conecta, retorna text/event-stream). Eventos atlaz_bubbles_synced/atlaz_technicians_synced só são emitidos quando created>0 — não testado integralmente porque empresa demo já tem todos técnicos matched_existing (esperado).",
+  "rca of the issue": "ROOT CAUSE: Em Pydantic, modelos PATCH normalmente espelham as constraints do modelo principal. Em AtlazConfig (linha 102), tech_sync_interval_minutes tem Field(default=60, ge=5, le=1440). Mas em AtlazConfigUpdate (linha 120) está apenas como Optional[int] = None — sem constraint. RESULTADO: PUT /api/atlaz/settings com {tech_sync_interval_minutes: 1500} é validado pelo AtlazConfigUpdate (que aceita qualquer int), depois current.model_copy(update={'tech_sync_interval_minutes':1500}) retorna AtlazConfig com 1500 — model_copy NÃO chama __init__ nem re-valida. _save_config persiste {tech_sync_interval_minutes:1500} no Mongo. Próxima chamada qualquer: _get_config() → AtlazConfig(**raw) RE-valida → ValidationError → 500. REPRO: PUT /api/atlaz/settings {tech_sync_interval_minutes:4} → 200; depois GET /api/atlaz/settings → 500. MITIGAÇÃO IMEDIATA: trocar AtlazConfigUpdate.tech_sync_interval_minutes para `Optional[int] = Field(default=None, ge=5, le=1440)` (e idem para sync_interval_minutes ge=1 le=1440). DEFESA EM PROFUNDIDADE: em put_atlaz_settings, substituir current.model_copy(update=update_dict) por AtlazConfig(**{**current.model_dump(), **update_dict}) para forçar re-validação."
+}

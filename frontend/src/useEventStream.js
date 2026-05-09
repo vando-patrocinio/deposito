@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 
-export default function useEventStream({ onNotification, onConnect, onDisconnect } = {}) {
+export default function useEventStream({ onNotification, onConnect, onDisconnect, onEvent } = {}) {
   const [connected, setConnected] = useState(false);
   const [lastEventAt, setLastEventAt] = useState(null);
   const esRef = useRef(null);
@@ -40,6 +40,18 @@ export default function useEventStream({ onNotification, onConnect, onDisconnect
           } catch (e) {
             console.warn("[sse] parse fail", e);
           }
+        });
+        // Eventos genéricos do backend (ex.: atlaz_bubbles_synced, atlaz_technicians_synced)
+        ["atlaz_bubbles_synced", "atlaz_technicians_synced"].forEach((evName) => {
+          es.addEventListener(evName, (ev) => {
+            setLastEventAt(Date.now());
+            try {
+              const data = JSON.parse(ev.data);
+              if (onEvent) onEvent(evName, data);
+            } catch (e) {
+              console.warn("[sse] parse fail", evName, e);
+            }
+          });
         });
         es.addEventListener("ping", () => {
           // heartbeat — só atualiza timestamp
