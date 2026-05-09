@@ -431,7 +431,17 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
           {screen === "history" && today && (
             <div data-testid="screen-history">
-              <Button variant="soft" onClick={() => setScreen("home")} data-testid="back-home-btn">← Voltar</Button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <Button variant="soft" onClick={() => setScreen("home")} data-testid="back-home-btn">← Voltar</Button>
+                <Button
+                  variant="soft"
+                  onClick={() => refresh(collabId)}
+                  data-testid="history-refresh-btn"
+                  style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" }}
+                >
+                  🔄 Atualizar
+                </Button>
+              </div>
               <h2>Hoje ({today.date})</h2>
               {today.records.length === 0 && <p style={{ color: "#64748b" }}>Sem registros ainda.</p>}
               {today.records.map((r) => (

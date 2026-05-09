@@ -82,6 +82,13 @@ export default function LousaMobile({ collaboratorId, onBack }) {
         ticket={openTicket}
         onClose={() => setOpenTicket(null)}
         onFinalize={(cd) => handleFinalize(openTicket, cd)}
+        onRefresh={async () => {
+          try {
+            const fresh = await api.lousaTicket(openTicket.id);
+            setOpenTicket(fresh);
+            await refresh();
+          } catch (e) { setErr(e?.response?.data?.detail || e.message); }
+        }}
         busy={busy}
         err={err}
       />
@@ -265,7 +272,7 @@ function Bubble({ ticket, onClick, disabled }) {
   );
 }
 
-function TicketDetail({ ticket, onClose, onFinalize, busy, err }) {
+function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
   const [form, setForm] = useState({
     sinal: -25, qtd_drop: 1, esticadores: 1, conectores_fast: 2,
     cabo_rede: 10, conectores_rede: 2, ont: "", observacoes: "",
@@ -296,7 +303,19 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err }) {
 
   return (
     <div data-testid="ticket-detail">
-      <Button variant="soft" onClick={onClose} data-testid="ticket-close-btn">← Voltar à lousa</Button>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <Button variant="soft" onClick={onClose} data-testid="ticket-close-btn">← Voltar à lousa</Button>
+        {onRefresh && (
+          <Button
+            variant="soft"
+            onClick={onRefresh}
+            data-testid="ticket-refresh-btn"
+            style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" }}
+          >
+            🔄 Atualizar
+          </Button>
+        )}
+      </div>
       <h2 style={{ marginTop: 14, marginBottom: 4 }}>{ticket.client_snapshot.name}</h2>
       <p style={{ color: "#64748b", fontSize: 12, margin: 0 }}>
         {ticket.type.toUpperCase()} · {ticket.client_snapshot.address}
