@@ -408,9 +408,19 @@ async def _import_one(
 
     existing = await db.tickets.find_one(
         {"company_id": company_id, "atlaz_external_id": ext_id},
-        {"_id": 0, "id": 1, "status": 1},
+        {"_id": 0, "id": 1, "status": 1, "client_snapshot": 1},
     )
     if existing:
+        # Backfill: se a bolha existente está sem pppoe_user, atualiza com o ponto.username atual
+        ponto_now = chamado.get("ponto") or {}
+        new_pppoe = str(ponto_now.get("username") or "").strip()
+        cur_pppoe = (existing.get("client_snapshot") or {}).get("pppoe_user") or ""
+        if new_pppoe and not cur_pppoe:
+            await db.tickets.update_one(
+                {"id": existing["id"]},
+                {"$set": {"client_snapshot.pppoe_user": new_pppoe,
+                          "atlaz_synced_at": now_iso()}},
+            )
         return "skipped"
 
     assigned = await _resolve_collaborator(chamado, cfg, company_id)
@@ -462,7 +472,8 @@ async def _import_one(
             "relato": str(chamado.get("detalhes") or ""),
             "test_history": [],
             "pppoe_user": str(
-                assinante.get("login")
+                ponto.get("username")            # Atlaz V2: PPPoE fica em chamado.ponto.username
+                or assinante.get("login")
                 or assinante.get("usuario")
                 or assinante.get("usuario_pppoe")
                 or chamado.get("login")

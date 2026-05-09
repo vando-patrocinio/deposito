@@ -1,8 +1,21 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA + Estoque + SmartOLT
 
-**Última atualização**: 2026-05-09 (iteração 27)
+**Última atualização**: 2026-05-09 (iteração 28)
 
 ## Histórico de iterações
+
+### Iter 28 — Bugfix crítico: PPPoE do Atlaz (2026-05-09) ✅
+- 🐛 **Bug descoberto**: importação Atlaz buscava PPPoE em `assinante.login | usuario | usuario_pppoe` que **NÃO EXISTEM** no payload V2. Resultado: 100% das bolhas Atlaz vinham com `pppoe_user=""` → match SmartOLT só funcionava em bolhas manuais.
+- 🔍 **Inspeção real do endpoint** `https://app.atlaz.com.br/api/v2/listachamados`:
+  ```
+  chamado.ponto.username  ← 🎯 PPPoE fica AQUI
+  chamado.assinante.{cpf_cnpj,nome,email,telefone,id_assinante}  ← sem PPPoE
+  ```
+- ✅ **Fix em `routes/atlaz.py`**: prioriza `ponto.username` antes dos outros fallbacks no `client_snapshot.pppoe_user`.
+- ✅ **Backfill automático no sync**: bolhas Atlaz já existentes sem `pppoe_user` recebem `ponto.username` no próximo passe do worker (sem necessidade de migração manual).
+- 📊 **Resultado real Ligo Fibra após sync**:
+  - **Antes**: 1 pill SmartOLT na Lousa
+  - **Depois**: **26 pills** (5 🟢 / 6 🟡 / 5 🔴 / 10 outros) — 61/65 bolhas Atlaz com PPPoE preenchido (94%)
 
 ### Iter 27 — Auto-baixa do estoque ao finalizar bolha (2026-05-09) ✅
 - ✅ **`auto_close_service_from_ticket(ticket, completion_data, technician)`** em `routes/stok.py`:
