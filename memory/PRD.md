@@ -1,8 +1,17 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 12)
+**Última atualização**: 2026-05-09 (iteração 13)
 
 ## Histórico de iterações
+
+### Iter 13 — Cards Clicáveis + Busca Textual no Histórico (2026-05-09)
+- ✅ **Cards de KPI no Histórico viraram filtros**: clicar em "Encerradas 8" filtra a tabela para só as 8; clicar de novo limpa; clicar em "Total" sempre limpa qualquer filtro de status. Card ativo destacado com gradient escuro + sombra colorida
+- ✅ **Busca textual** com `🔍 Buscar cliente, endereço, bairro, notas, técnico` — filtro client-side instantâneo + botão X para limpar
+- ✅ **Filtros 100% client-side** (status + busca) — cards mantêm contagens reais mesmo com filtro ativo (resolve o pain point de UX onde clicar Cancelada zerava os outros cards)
+- ✅ Footer dinâmico: "X de Y nota(s)" quando há filtro/busca, ou "X nota(s)" quando sem filtros
+- ✅ Export CSV agora exporta **filteredItems** (respeitando filtros ativos)
+- Backend: 14/14 regressão iter12 verde
+- Frontend deep test: 100% (8/8 cenários)
 
 ### Iter 12 — Histórico da Lousa por Dia/Mês/Ano/Período (2026-05-09)
 - ✅ **Endpoint** `GET /api/lousa/history?granularity={day|month|year|range}` com filtros opcionais por status/type/collaborator_id, retorna items[] e summary agregado

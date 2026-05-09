@@ -56,10 +56,10 @@ export default function LousaHistoryModal({ onClose }) {
     if (granularity === "month") p.month = month;
     if (granularity === "year") p.year = year;
     if (granularity === "range") { p.date_from = dateFrom; p.date_to = dateTo; }
-    if (statusFilter) p.status = statusFilter;
+    // status filter NÃO vai pro backend — fazemos client-side para os cards continuarem mostrando contagens reais
     if (typeFilter) p.type = typeFilter;
     return p;
-  }, [granularity, date, month, year, dateFrom, dateTo, statusFilter, typeFilter]);
+  }, [granularity, date, month, year, dateFrom, dateTo, typeFilter]);
 
   useEffect(() => {
     let alive = true;
@@ -71,19 +71,23 @@ export default function LousaHistoryModal({ onClose }) {
     return () => { alive = false; };
   }, [params]);
 
-  // Filtro client-side por busca textual (cliente, endereço, bairro, notas, técnico)
+  // Filtro client-side: status (do toggle de cards / dropdown) + busca textual
   const filteredItems = useMemo(() => {
     if (!data?.items) return [];
+    let arr = data.items;
+    if (statusFilter) arr = arr.filter((it) => it.status === statusFilter);
     const q = search.trim().toLowerCase();
-    if (!q) return data.items;
-    return data.items.filter((it) => {
-      const hay = [
-        it.client_name, it.address, it.neighborhood, it.admin_notes,
-        it.collaborator_name, it.type, it.status,
-      ].filter(Boolean).join(" ").toLowerCase();
-      return hay.includes(q);
-    });
-  }, [data, search]);
+    if (q) {
+      arr = arr.filter((it) => {
+        const hay = [
+          it.client_name, it.address, it.neighborhood, it.admin_notes,
+          it.collaborator_name, it.type, it.status,
+        ].filter(Boolean).join(" ").toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    return arr;
+  }, [data, search, statusFilter]);
 
   function exportCsv() {
     if (!filteredItems.length) return;
