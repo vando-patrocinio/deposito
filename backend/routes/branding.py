@@ -30,6 +30,10 @@ class CompanyBranding(BaseModel):
     email: Optional[str] = None
     website: Optional[str] = None
     logo_data_url: Optional[str] = None  # "data:image/png;base64,...."
+    default_asset_values_brl: dict = Field(default_factory=lambda: {
+        "uniforme": 80.0, "epi": 150.0, "ferramenta": 200.0,
+        "veiculo": 10000.0, "eletronico": 500.0, "outro": 100.0,
+    })
     romaneio_footer: Optional[str] = Field(
         default=("Declaro ter recebido os itens listados acima em perfeito estado e me "
                  "responsabilizo por sua guarda, conservação e devolução em caso de "
@@ -49,6 +53,7 @@ class CompanyBrandingUpdate(BaseModel):
     email: Optional[str] = None
     website: Optional[str] = None
     logo_data_url: Optional[str] = None
+    default_asset_values_brl: Optional[dict] = None
     romaneio_footer: Optional[str] = None
 
 

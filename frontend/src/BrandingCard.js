@@ -111,6 +111,8 @@ export default function BrandingCard() {
                            fontFamily: "inherit", resize: "vertical" }} />
       </label>
 
+      <DefaultAssetValues data={data} setData={setData} />
+
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
         <Button onClick={save} disabled={busy} data-testid="branding-save-btn">
           {busy ? "Salvando…" : "💾 Salvar"}
@@ -124,5 +126,54 @@ export default function BrandingCard() {
         }}>{msg.text}</div>
       )}
     </Card>
+  );
+}
+
+const ASSET_CATEGORIES = [
+  { id: "uniforme", label: "👕 Uniforme" },
+  { id: "epi", label: "🦺 EPI" },
+  { id: "ferramenta", label: "🔧 Ferramenta" },
+  { id: "veiculo", label: "🚗 Veículo" },
+  { id: "eletronico", label: "📱 Eletrônico" },
+  { id: "outro", label: "📦 Outro" },
+];
+
+function DefaultAssetValues({ data, setData }) {
+  const values = data.default_asset_values_brl || {};
+  const onChange = (cat, raw) => {
+    const num = raw === "" ? null : Number(raw);
+    setData({
+      ...data,
+      default_asset_values_brl: { ...values, [cat]: num },
+    });
+  };
+  return (
+    <div style={{ marginTop: 16, padding: 14, background: "#fdf4ff",
+                  borderRadius: 12, border: "1px solid #f0abfc" }}
+         data-testid="default-asset-values">
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#86198f", marginBottom: 4 }}>
+        💰 Valor padrão por categoria (R$)
+      </div>
+      <div style={{ fontSize: 11, color: "#86198f", marginBottom: 10, opacity: 0.85 }}>
+        Usado pra calcular <strong>perdas pendentes</strong> quando o pertence não tem
+        valor unitário cadastrado. Ajuste conforme o custo médio dos itens da sua operação.
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        {ASSET_CATEGORIES.map((c) => (
+          <label key={c.id}>
+            <div style={{ fontSize: 11, color: "#475569", fontWeight: 700, marginBottom: 3 }}>
+              {c.label}
+            </div>
+            <input data-testid={`default-value-${c.id}`}
+                   type="number" step="0.01" min="0"
+                   value={values[c.id] ?? ""}
+                   onChange={(e) => onChange(c.id, e.target.value)}
+                   style={{ width: "100%", padding: "7px 10px", border: "1px solid #f0abfc",
+                            borderRadius: 8, fontSize: 13, boxSizing: "border-box",
+                            background: "white" }} />
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }

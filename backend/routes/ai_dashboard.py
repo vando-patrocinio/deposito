@@ -517,6 +517,12 @@ async def _pending_losses(cid: str, tid_to: Dict[str, dict]) -> dict:
     """Lista colaboradores inativos (active=False) que ainda têm pertences
     com status='ativo'. Calcula valor estimado em BRL.
     """
+    # Pull the per-company custom value table; fall back to global defaults.
+    branding_doc = await db.company_branding.find_one(
+        {"company_id": cid}, {"_id": 0, "default_asset_values_brl": 1})
+    custom = (branding_doc or {}).get("default_asset_values_brl") or {}
+    values = {**_DEFAULT_VALUES, **{k: float(v) for k, v in custom.items() if v is not None}}
+
     inactive = await db.collaborators.find(
         {"company_id": cid, "active": False, "atlaz_inbox": {"$ne": True}},
         {"_id": 0, "id": 1, "name": 1, "role": 1, "deactivated_at": 1, "updated_at": 1},
@@ -525,7 +531,7 @@ async def _pending_losses(cid: str, tid_to: Dict[str, dict]) -> dict:
     if not inactive_ids:
         return {"rows": [], "total_brl": 0.0, "items_count": 0,
                 "inactive_collaborators": 0,
-                "default_values_brl": _DEFAULT_VALUES}
+                "default_values_brl": values}
     pending = await db.collaborator_assets.find(
         {"company_id": cid, "collaborator_id": {"$in": inactive_ids},
          "status": "ativo"},
@@ -536,7 +542,7 @@ async def _pending_losses(cid: str, tid_to: Dict[str, dict]) -> dict:
     for a in pending:
         unit = a.get("unit_value_brl")
         if unit is None:
-            unit = _DEFAULT_VALUES.get(a.get("category"), 100)
+            unit = values.get(a.get("category"), 100)
         line_value = float(unit) * int(a.get("qty") or 1)
         total_value += line_value
         cid2 = a["collaborator_id"]
@@ -564,5 +570,5 @@ async def _pending_losses(cid: str, tid_to: Dict[str, dict]) -> dict:
         "total_brl": round(total_value, 2),
         "items_count": len(pending),
         "inactive_collaborators": len(rows),
-        "default_values_brl": _DEFAULT_VALUES,
+        "default_values_brl": values,
     }
