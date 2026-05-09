@@ -105,6 +105,11 @@ class AtlazConfig(BaseModel):
     # NOVO (iter 22): intervalo em SEGUNDOS — permite sync rápido (default 30s)
     # Quando setado, tem precedência sobre sync_interval_minutes.
     sync_interval_seconds: Optional[int] = Field(default=30, ge=10, le=86400)
+    # NOVO (iter 25): fuso horário usado pelo Atlaz para `visit_date`. Sem tz na
+    # string, o backend assume este fuso. Valores válidos: "UTC" (padrão) ou um
+    # IANA TZ ("America/Sao_Paulo"). Mude se as horas das bolhas não baterem
+    # com o painel Atlaz.
+    atlaz_visit_date_tz: str = "America/Sao_Paulo"
     timeout_seconds: int = Field(default=20, ge=2, le=120)
 
 
@@ -122,6 +127,7 @@ class AtlazConfigUpdate(BaseModel):
     auto_create_bubbles: Optional[bool] = None
     auto_sync_technicians: Optional[bool] = None
     tech_sync_interval_minutes: Optional[int] = Field(default=None, ge=5, le=1440)
+    atlaz_visit_date_tz: Optional[str] = None
     timeout_seconds: Optional[int] = Field(default=None, ge=2, le=120)
 
 
@@ -348,6 +354,46 @@ async def _resolve_collaborator(
     return None
 
 
+def _resolve_schedule(chamado: Dict[str, Any], visit_tz: str = "America/Sao_Paulo") -> tuple:
+    """A partir do chamado Atlaz, decide priority/position/scheduled_time da bolha.
+
+    - Se o Atlaz informou `visit_date` (formato 'YYYY-MM-DD HH:MM:SS' sem tz),
+      a bolha entra como `priority='horario'` e `position` recebe o epoch UTC
+      da visita. Resultado: bolhas com agendamento ficam ordenadas
+      automaticamente pelo horário do reparo dentro da coluna do técnico.
+    - O fuso assumido para strings sem tz é `visit_tz` (default 'America/Sao_Paulo';
+      configurável via `AtlazConfig.atlaz_visit_date_tz` quando o painel Atlaz
+      retornar em UTC ou outro fuso).
+    - Sem `visit_date` válido, a bolha permanece `priority='normal'`.
+
+    Retorna (priority, position, scheduled_time_iso_or_raw).
+    """
+    raw = chamado.get("visit_date") or chamado.get("data_visita")
+    if not raw:
+        return "normal", 0, None
+    raw_str = str(raw).strip()
+    if not raw_str:
+        return "normal", 0, None
+    # Resolve tz alvo
+    try:
+        from zoneinfo import ZoneInfo
+        tzinfo = ZoneInfo(visit_tz) if visit_tz != "UTC" else timezone.utc
+    except Exception:
+        tzinfo = timezone.utc
+    # Tenta vários formatos: ISO ou "YYYY-MM-DD HH:MM:SS"
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M",
+                "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            dt = datetime.strptime(raw_str, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=tzinfo)
+            return "horario", int(dt.timestamp()), dt.astimezone(timezone.utc).isoformat()
+        except ValueError:
+            continue
+    # Não conseguiu parsear — preserva string crua sem reposicionar
+    return "normal", 0, raw_str
+
+
 async def _import_one(
     chamado: Dict[str, Any], cfg: AtlazConfig, company_id: str,
 ) -> str:
@@ -394,6 +440,15 @@ async def _import_one(
         except (ValueError, IndexError):
             pass
 
+    # Horário agendado do Atlaz (`visit_date`) → bolha entra como prioridade
+    # "horario" e a `position` recebe o epoch da visita. Assim, dentro da coluna
+    # do técnico, as bolhas com agendamento ficam automaticamente ordenadas pelo
+    # horário REAL do reparo (13h antes de 14h antes de 16h), sem precisar
+    # arrastar manualmente.
+    sched_priority, sched_position, sched_iso = _resolve_schedule(
+        chamado, cfg.atlaz_visit_date_tz or "America/Sao_Paulo",
+    )
+
     doc = {
         "id": f"tkt-{uuid.uuid4().hex[:10]}",
         "client_id": str(uuid.uuid4()),
@@ -408,9 +463,9 @@ async def _import_one(
             "test_history": [],
         },
         "type": ticket_type,
-        "priority": "normal",
-        "scheduled_time": chamado.get("visit_date"),
-        "position": 0,
+        "priority": sched_priority,
+        "scheduled_time": sched_iso,
+        "position": sched_position,
         "status": "pendente",
         "assigned_collaborator_id": assigned,
         "company_id": company_id,
@@ -427,6 +482,7 @@ async def _import_one(
         "atlaz_tecnico_nome": ((chamado.get("tecnico") or {}).get("nome") or ""),
         "atlaz_id_assinante": assinante.get("id_assinante"),
         "atlaz_id_ponto": ponto.get("id_ponto"),
+        "atlaz_visit_date": chamado.get("visit_date"),  # raw — usado em reassign-existing
         "atlaz_synced_at": now_iso(),
         "atlaz_unassigned": is_unassigned,
     }
@@ -693,29 +749,52 @@ async def reassign_existing_tickets(user: dict = Depends(require_role("gestor"))
     moved = 0
     unchanged = 0
     moved_to_inbox = 0
+    rescheduled = 0  # bolhas que tiveram priority/position reaplicados pelo visit_date
     items: List[Dict[str, Any]] = []
     async for t in cursor:
         # Reconstrói "shape Atlaz" mínimo para passar pelo _resolve_collaborator
+        # `data_visita` é o nome do campo que persistimos no _import_one
+        atlaz_visit_date = t.get("atlaz_visit_date") or t.get("scheduled_time")
         chamado = {
             "tecnico": {"nome": t.get("atlaz_tecnico_nome") or ""},
             "ponto": {"cidade": t.get("atlaz_filial") or ""},
+            "visit_date": atlaz_visit_date,
         }
         new_cid = await _resolve_collaborator(chamado, cfg, company_id)
         old_cid = t.get("assigned_collaborator_id")
+
+        # Schedule: re-aplica priority/position pelo visit_date
+        sched_priority, sched_position, sched_iso = _resolve_schedule(
+            chamado, cfg.atlaz_visit_date_tz or "America/Sao_Paulo",
+        )
+        sched_change: Dict[str, Any] = {}
+        if (
+            sched_priority != t.get("priority")
+            or sched_position != t.get("position", 0)
+            or (sched_iso and sched_iso != t.get("scheduled_time"))
+        ):
+            sched_change = {
+                "priority": sched_priority,
+                "position": sched_position,
+            }
+            if sched_iso:
+                sched_change["scheduled_time"] = sched_iso
+
         if not new_cid:
             # Sem técnico mapeável → manda pro inbox Atlaz
             if inbox_id is None:
                 inbox_id = await _get_or_create_unassigned_inbox(company_id)
             if old_cid != inbox_id:
-                await db.tickets.update_one(
-                    {"id": t["id"]},
-                    {"$set": {
-                        "assigned_collaborator_id": inbox_id,
-                        "atlaz_unassigned": True,
-                        "atlaz_reassigned_at": now_iso(),
-                    }},
-                )
+                update = {
+                    "assigned_collaborator_id": inbox_id,
+                    "atlaz_unassigned": True,
+                    "atlaz_reassigned_at": now_iso(),
+                    **sched_change,
+                }
+                await db.tickets.update_one({"id": t["id"]}, {"$set": update})
                 moved_to_inbox += 1
+                if sched_change:
+                    rescheduled += 1
                 items.append({
                     "id": t["id"], "ext": t.get("atlaz_external_id"),
                     "from": old_cid, "to": inbox_id,
@@ -724,17 +803,23 @@ async def reassign_existing_tickets(user: dict = Depends(require_role("gestor"))
                     "client": (t.get("client_snapshot") or {}).get("name"),
                 })
             else:
-                unchanged += 1
+                # já no inbox; mas pode ter precisar reagendar
+                if sched_change:
+                    await db.tickets.update_one({"id": t["id"]}, {"$set": sched_change})
+                    rescheduled += 1
+                else:
+                    unchanged += 1
         elif new_cid != old_cid:
-            await db.tickets.update_one(
-                {"id": t["id"]},
-                {"$set": {
-                    "assigned_collaborator_id": new_cid,
-                    "atlaz_unassigned": False,
-                    "atlaz_reassigned_at": now_iso(),
-                }},
-            )
+            update = {
+                "assigned_collaborator_id": new_cid,
+                "atlaz_unassigned": False,
+                "atlaz_reassigned_at": now_iso(),
+                **sched_change,
+            }
+            await db.tickets.update_one({"id": t["id"]}, {"$set": update})
             moved += 1
+            if sched_change:
+                rescheduled += 1
             items.append({
                 "id": t["id"], "ext": t.get("atlaz_external_id"),
                 "from": old_cid, "to": new_cid,
@@ -743,16 +828,22 @@ async def reassign_existing_tickets(user: dict = Depends(require_role("gestor"))
                 "client": (t.get("client_snapshot") or {}).get("name"),
             })
         else:
-            unchanged += 1
+            # Mesmo técnico — pode precisar só reagendar
+            if sched_change:
+                await db.tickets.update_one({"id": t["id"]}, {"$set": sched_change})
+                rescheduled += 1
+            else:
+                unchanged += 1
 
     await _log_sync(
         company_id, "reassign", "ok",
-        f"moved={moved} to_inbox={moved_to_inbox} unchanged={unchanged}",
+        f"moved={moved} to_inbox={moved_to_inbox} rescheduled={rescheduled} unchanged={unchanged}",
     )
     return {
         "ok": True,
         "moved": moved,
         "moved_to_inbox": moved_to_inbox,
+        "rescheduled": rescheduled,
         "unchanged": unchanged,
         "inbox_collaborator_id": inbox_id,
         "items": items[:50],
