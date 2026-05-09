@@ -9,6 +9,7 @@ import { Button, Card, Field, inputStyle } from "@/ui";
 export default function AtlazIntegrationCard() {
   const [cfg, setCfg] = useState(null);
   const [form, setForm] = useState(null);
+  const [collabs, setCollabs] = useState([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [test, setTest] = useState(null);
@@ -18,8 +19,12 @@ export default function AtlazIntegrationCard() {
 
   async function reload() {
     try {
-      const c = await api.atlazGetSettings();
+      const [c, cs] = await Promise.all([
+        api.atlazGetSettings(),
+        api.listCollaborators().catch(() => []),
+      ]);
       setCfg(c);
+      setCollabs(cs || []);
       setForm({
         enabled: !!c.enabled,
         base_url: c.base_url || "",
@@ -31,7 +36,7 @@ export default function AtlazIntegrationCard() {
         cancel_path: c.cancel_path || "/v1/ordens-servico/{id}/cancelar",
         reschedule_path: c.reschedule_path || "/v1/ordens-servico/{id}/reagendar",
         filiais_text: (c.filiais || []).join(", "),
-        filial_to_collaborator_text: JSON.stringify(c.filial_to_collaborator || {}, null, 2),
+        filial_to_collaborator: { ...(c.filial_to_collaborator || {}) },
         type_map_text: JSON.stringify(c.type_map || {}, null, 2),
         field_map_text: JSON.stringify(c.field_map || {}, null, 2),
         sync_interval_minutes: c.sync_interval_minutes ?? 10,
@@ -63,9 +68,7 @@ export default function AtlazIntegrationCard() {
       timeout_seconds: Number(form.timeout_seconds) || 15,
     };
     if (form.api_key) payload.api_key = form.api_key;
-    try {
-      payload.filial_to_collaborator = JSON.parse(form.filial_to_collaborator_text || "{}");
-    } catch { setMsg("Mapeamento Filial→Colab inválido (não é JSON)"); setBusy(false); return; }
+    payload.filial_to_collaborator = form.filial_to_collaborator || {};
     try {
       payload.type_map = JSON.parse(form.type_map_text || "{}");
     } catch { setMsg("Mapeamento de tipos inválido (não é JSON)"); setBusy(false); return; }
@@ -240,6 +243,13 @@ export default function AtlazIntegrationCard() {
         </small>
       </Field>
 
+      <FilialCollabMapper
+        filiais={form.filiais_text.split(",").map((x) => x.trim()).filter(Boolean)}
+        mapping={form.filial_to_collaborator || {}}
+        collabs={collabs}
+        onChange={(m) => setForm({ ...form, filial_to_collaborator: m })}
+      />
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
         <Field label="⏱ Intervalo (min)">
           <input data-testid="atlaz-interval" type="number" min={1} max={1440}
@@ -267,14 +277,6 @@ export default function AtlazIntegrationCard() {
         <summary style={{ cursor: "pointer", fontWeight: 700, color: "#475569", fontSize: 13 }}>
           🛠 Mapeamentos avançados (JSON) — só altere se a doc do Atlaz usar nomes diferentes
         </summary>
-        <Field label="Mapeamento Filial → Colaborador (JSON)">
-          <textarea data-testid="atlaz-filial-collab" rows={3} value={form.filial_to_collaborator_text}
-            onChange={(e) => setForm({ ...form, filial_to_collaborator_text: e.target.value })}
-            style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12 }} />
-          <small style={{ color: "#94a3b8", fontSize: 11 }}>
-            Ex.: <code>{`{"FILIAL_CENTRO": "col-001"}`}</code> — define qual técnico recebe OSs de cada filial.
-          </small>
-        </Field>
         <Field label="Mapeamento de tipos (JSON)">
           <textarea data-testid="atlaz-type-map" rows={4} value={form.type_map_text}
             onChange={(e) => setForm({ ...form, type_map_text: e.target.value })}
@@ -374,5 +376,89 @@ export default function AtlazIntegrationCard() {
         </div>
       )}
     </Card>
+  );
+}
+
+function FilialCollabMapper({ filiais, mapping, collabs, onChange }) {
+  const list = Array.isArray(filiais) ? filiais : [];
+
+  function setForFilial(filial, collabId) {
+    const next = { ...(mapping || {}) };
+    if (collabId) next[filial] = collabId;
+    else delete next[filial];
+    onChange(next);
+  }
+
+  // Filiais "órfãs" no mapeamento que não estão mais na lista de filiais
+  const orphaned = Object.keys(mapping || {}).filter((f) => !list.includes(f));
+
+  if (list.length === 0 && orphaned.length === 0) {
+    return (
+      <div data-testid="atlaz-filial-collab-empty" style={{
+        background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 10,
+        padding: 14, color: "#94a3b8", fontSize: 13, textAlign: "center", marginTop: 8,
+      }}>
+        Adicione filiais acima para mapear cada uma a um técnico responsável.
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="atlaz-filial-collab-mapper" style={{
+      marginTop: 10, background: "#f8fafc", border: "1px solid #e2e8f0",
+      borderRadius: 12, padding: 12,
+    }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a", marginBottom: 8 }}>
+        🔗 Filial → Técnico responsável
+      </div>
+      <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 10px" }}>
+        Define qual técnico recebe as bolhas importadas de cada filial.
+        Filiais sem mapeamento usam o primeiro técnico ativo da empresa como fallback.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {list.map((filial) => (
+          <div key={filial} data-testid={`atlaz-fc-row-${filial}`} style={{
+            display: "grid", gridTemplateColumns: "1fr 1.4fr",
+            gap: 10, alignItems: "center",
+            padding: 8, background: "white", borderRadius: 8, border: "1px solid #e2e8f0",
+          }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{filial}</div>
+            <select
+              data-testid={`atlaz-fc-select-${filial}`}
+              value={(mapping || {})[filial] || ""}
+              onChange={(e) => setForFilial(filial, e.target.value)}
+              style={{
+                padding: "6px 8px", border: "1px solid #cbd5e1",
+                borderRadius: 8, fontSize: 13, background: "white",
+              }}
+            >
+              <option value="">— Sem mapeamento (usa fallback) —</option>
+              {(collabs || []).map((c) => (
+                <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
+              ))}
+            </select>
+          </div>
+        ))}
+        {orphaned.map((filial) => (
+          <div key={filial} data-testid={`atlaz-fc-orphan-${filial}`} style={{
+            display: "grid", gridTemplateColumns: "1fr auto",
+            gap: 10, alignItems: "center",
+            padding: 8, background: "#fef3c7", borderRadius: 8, border: "1px solid #fde68a",
+          }}>
+            <div style={{ fontSize: 12, color: "#78350f" }}>
+              ⚠ <strong>{filial}</strong> mapeada para <code style={{ background: "white", padding: "1px 4px", borderRadius: 4 }}>{mapping[filial]}</code> mas não está mais na lista de filiais ativas.
+            </div>
+            <button
+              data-testid={`atlaz-fc-remove-${filial}`}
+              type="button"
+              onClick={() => setForFilial(filial, null)}
+              style={{ background: "#dc2626", color: "white", border: 0, borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+            >
+              Remover
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

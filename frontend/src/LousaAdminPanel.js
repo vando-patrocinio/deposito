@@ -81,6 +81,17 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   function clearSelection() {
     setSelectedIds([]);
   }
+  function selectAllOverdue() {
+    const overdueIds = [];
+    for (const col of grid.columns || []) {
+      for (const t of col.tickets || []) {
+        if (t.sla?.status === "overdue" && ["pendente", "aberta", "aguardando_atendimento"].includes(t.status)) {
+          overdueIds.push(t.id);
+        }
+      }
+    }
+    setSelectedIds(overdueIds);
+  }
   function exitSelectMode() {
     setSelectedIds([]);
     setSelectMode(false);
@@ -239,6 +250,21 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           >
             {selectMode ? "✕ Sair seleção" : "🔲 Selecionar"}
           </Button>
+          {selectMode && (
+            <Button
+              variant="soft"
+              onClick={selectAllOverdue}
+              data-testid="lousa-select-overdue-btn"
+              title="Selecionar todas as bolhas atrasadas (SLA estourado)"
+              style={{
+                background: "#fee2e2", color: "#7f1d1d",
+                border: "1px solid #fca5a5", fontWeight: 700,
+              }}
+              disabled={overdueCount === 0}
+            >
+              ⚠ Atrasadas ({overdueCount})
+            </Button>
+          )}
           <Button
             variant="soft"
             onClick={() => setShowHistory(true)}

@@ -1430,12 +1430,36 @@ async def lousa_stats(user: dict = Depends(require_role("gestor")),
 # -------------------------------------------------------------------------
 # AI EVALUATION — Avaliação profunda via LLM (Claude/GPT/Gemini)
 # -------------------------------------------------------------------------
+# Cache em memória (TTL 5min) para evitar chamadas LLM repetidas no mesmo ticket
+_AI_EVAL_CACHE: Dict[str, Dict[str, Any]] = {}
+_AI_EVAL_TTL_SECONDS = 300
+
+
+def _ai_cache_get(ticket_id: str) -> Optional[Dict[str, Any]]:
+    entry = _AI_EVAL_CACHE.get(ticket_id)
+    if not entry:
+        return None
+    age = (datetime.now(timezone.utc) - entry["at"]).total_seconds()
+    if age > _AI_EVAL_TTL_SECONDS:
+        _AI_EVAL_CACHE.pop(ticket_id, None)
+        return None
+    return entry["result"]
+
+
+def _ai_cache_set(ticket_id: str, result: Dict[str, Any]) -> None:
+    _AI_EVAL_CACHE[ticket_id] = {"at": datetime.now(timezone.utc), "result": result}
+
+
 @router.post("/lousa/tickets/{ticket_id}/ai-evaluate")
 async def ai_evaluate_ticket(ticket_id: str,
                              user: dict = Depends(require_role("gestor"))):
     """Roda LLM para gerar análise textual da execução do serviço com sugestões.
     Usa o score heurístico como contexto e devolve um parecer + nota IA.
+    Cache em memória de 5 minutos por ticket_id para reduzir custo/latência.
     """
+    cached = _ai_cache_get(ticket_id)
+    if cached:
+        return {**cached, "cached": True}
     t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
     if not t:
         raise HTTPException(404, "Serviço não encontrado")
@@ -1521,7 +1545,101 @@ async def ai_evaluate_ticket(ticket_id: str,
         details=f"IA: {result['verdict']} ({result['ai_score']}) — {result['summary'][:120]}",
         company_id=company_id,
     )
+    _ai_cache_set(ticket_id, result)
     return result
+
+
+@router.get("/lousa/ai-rankings")
+async def lousa_ai_rankings(user: dict = Depends(require_role("gestor")),
+                             days: int = 30):
+    """Rankings de IA por colaborador nos últimos N dias.
+
+    Computa score heurístico de cada ticket (mesma fórmula do grid) e agrega
+    por técnico: média, total avaliado, pior/melhor score, distribuição por
+    nível (Excelente / Bom / Atenção / Crítico).
+    """
+    q = tenant_filter(user)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max(1, days))).isoformat()
+    q_recent = dict(q)
+    q_recent["$or"] = [
+        {"created_at": {"$gte": cutoff}},
+        {"closed_at": {"$gte": cutoff}},
+    ]
+    docs = await db.tickets.find(q_recent, {"_id": 0}).to_list(5000)
+
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
+
+    # Agregação por colaborador
+    by_coll: Dict[str, Dict[str, Any]] = {}
+    for t in docs:
+        cid = t.get("assigned_collaborator_id")
+        if not cid:
+            continue
+        sla_min = int(settings.get(f"sla_{t.get('type', 'reparo')}_minutes", 60))
+        try:
+            heur = await heuristic_score_for_ticket(t, sla_minutes=sla_min)
+        except Exception:
+            continue
+        score = float(heur.get("score") or 0.0)
+        verdict = heur.get("label") or "—"
+        b = by_coll.setdefault(cid, {
+            "collaborator_id": cid,
+            "scores": [], "verdicts": {"Excelente": 0, "Bom": 0, "Atenção": 0, "Crítico": 0},
+            "min": 10.0, "max": 0.0,
+            "worst_ticket": None, "best_ticket": None,
+        })
+        b["scores"].append(score)
+        if verdict in b["verdicts"]:
+            b["verdicts"][verdict] += 1
+        if score < b["min"]:
+            b["min"] = score
+            b["worst_ticket"] = {"id": t.get("id"), "client": (t.get("client_snapshot") or {}).get("name"), "score": score}
+        if score > b["max"]:
+            b["max"] = score
+            b["best_ticket"] = {"id": t.get("id"), "client": (t.get("client_snapshot") or {}).get("name"), "score": score}
+
+    # Resolve nomes dos colaboradores
+    coll_ids = list(by_coll.keys())
+    if coll_ids:
+        colls = await db.collaborators.find(
+            {"id": {"$in": coll_ids}}, {"_id": 0, "id": 1, "name": 1, "avatar": 1, "praca_name": 1},
+        ).to_list(len(coll_ids))
+        coll_map = {c["id"]: c for c in colls}
+    else:
+        coll_map = {}
+
+    items = []
+    for cid, b in by_coll.items():
+        scores = b["scores"]
+        avg = round(sum(scores) / len(scores), 2) if scores else 0.0
+        coll = coll_map.get(cid, {})
+        items.append({
+            "collaborator_id": cid,
+            "collaborator_name": coll.get("name") or cid,
+            "avatar": coll.get("avatar"),
+            "praca": coll.get("praca_name"),
+            "total_evaluated": len(scores),
+            "avg_score": avg,
+            "min_score": round(b["min"], 2) if scores else None,
+            "max_score": round(b["max"], 2) if scores else None,
+            "verdicts": b["verdicts"],
+            "best_ticket": b["best_ticket"],
+            "worst_ticket": b["worst_ticket"],
+        })
+    items.sort(key=lambda x: x["avg_score"], reverse=True)
+
+    overall_avg = (
+        round(sum(x["avg_score"] * x["total_evaluated"] for x in items)
+              / max(sum(x["total_evaluated"] for x in items), 1), 2)
+        if items else 0.0
+    )
+    return {
+        "days": days,
+        "total_evaluated": sum(x["total_evaluated"] for x in items),
+        "overall_avg": overall_avg,
+        "items": items,
+    }
 
 
 # -------------------------------------------------------------------------

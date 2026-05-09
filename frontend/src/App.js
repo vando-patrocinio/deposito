@@ -12,6 +12,7 @@ import PracasPanel from "@/PracasPanel";
 import LogsPanel from "@/LogsPanel";
 import PlatformAdminPanel from "@/PlatformAdminPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
+import AiRankingPanel from "@/AiRankingPanel";
 import NotificationsBell from "@/NotificationsBell";
 import OfflineTimeBanner from "@/OfflineTimeBanner";
 import ServerClock from "@/ServerClock";
@@ -68,6 +69,7 @@ function setSessionMode(mode) {
 const ALL_TABS = [
   { id: "dashboard", icon: "sheet", label: "Painel", roles: ["gestor", "auditor", "administrador"] },
   { id: "lousa", icon: "users", label: "Lousa 📋", roles: ["gestor", "auditor", "administrador"] },
+  { id: "ai-ranking", icon: "shield", label: "Avaliação IA 🤖", roles: ["gestor", "auditor", "administrador"] },
   { id: "cadastro", icon: "users", label: "Cadastro", roles: ["gestor", "auditor", "administrador"] },
   { id: "pracas", icon: "map", label: "Praças", roles: ["gestor", "auditor", "administrador"] },
   { id: "users", icon: "shield", label: "Usuários", roles: ["auditor", "administrador"] },
@@ -320,7 +322,7 @@ function AppContent() {
   // Garante que a aba inicial corresponde ao papel do usuário (para gestor não cair em aba inexistente)
   useEffect(() => {
     if (!user) return;
-    if (user.role === "gestor" && !["dashboard", "lousa", "cadastro", "pracas", "sheet", "logs"].includes(view)) {
+    if (user.role === "gestor" && !["dashboard", "lousa", "ai-ranking", "cadastro", "pracas", "sheet", "logs"].includes(view)) {
       setView("dashboard");
     }
   }, [user, view]);
@@ -382,6 +384,7 @@ function AppContent() {
         <>
           {view === "dashboard" && <DashboardPanel />}
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} />}
+          {view === "ai-ranking" && <AiRankingPanel />}
           {view === "cadastro" && <CadastroPanel />}
           {view === "pracas" && <PracasPanel />}
           {view === "users" && <UsersPanel />}

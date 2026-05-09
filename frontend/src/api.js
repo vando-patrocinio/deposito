@@ -163,6 +163,7 @@ export const api = {
   lousaAdminClose: (tid, data) => client.post(`/lousa/tickets/${tid}/admin-close`, data).then((r) => r.data),
   lousaStats: (days = 30) => client.get(`/lousa/stats`, { params: { days } }).then((r) => r.data),
   lousaAiEvaluate: (tid) => client.post(`/lousa/tickets/${tid}/ai-evaluate`).then((r) => r.data),
+  lousaAiRankings: (days = 30) => client.get(`/lousa/ai-rankings`, { params: { days } }).then((r) => r.data),
   lousaBulkAction: (data) => client.post(`/lousa/tickets/bulk-action`, data).then((r) => r.data),
   lousaBulkAiEvaluate: (ticket_ids) => client.post(`/lousa/tickets/bulk-ai-evaluate`, { ticket_ids }).then((r) => r.data),
   // Atlaz integração
