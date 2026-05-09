@@ -239,4 +239,27 @@ export const api = {
   aiInsight: (dashboard, context_days = 30) =>
     client.post(`/ai/dashboard/insight`, { dashboard, context_days }).then((r) => r.data),
   aiInsightsHistory: () => client.get(`/ai/dashboard/insights/history`).then((r) => r.data),
+  aiDashAssetsOverview: () => client.get(`/ai/dashboard/assets-overview`).then((r) => r.data),
+
+  // Branding (empresa + logo)
+  brandingGet: () => client.get(`/branding/settings`).then((r) => r.data),
+  brandingUpdate: (d) => client.put(`/branding/settings`, d).then((r) => r.data),
+
+  // Collaborator assets (pertences/EPIs/uniforme)
+  assetsList: (cid) => client.get(`/collab-assets/by-collaborator/${cid}`).then((r) => r.data),
+  assetCreate: (d) => client.post(`/collab-assets`, d).then((r) => r.data),
+  assetUpdate: (aid, d) => client.patch(`/collab-assets/${aid}`, d).then((r) => r.data),
+  assetDelete: (aid) => client.delete(`/collab-assets/${aid}`).then((r) => r.data),
+  assetRomaneioUrl: (cid, only_active = false) => {
+    const base = client.defaults.baseURL.replace(/\/$/, "");
+    return `${base}/collab-assets/romaneio/${cid}${only_active ? "?only_active=true" : ""}`;
+  },
+  // Public mobile (no auth)
+  publicAssetsList: (cid) => client.get(`/collab-assets/public/by-collaborator/${cid}`).then((r) => r.data),
+  publicAssetSign: (d) => client.post(`/collab-assets/public/sign`, d).then((r) => r.data),
+  publicBranding: () => client.get(`/branding/public`).then((r) => r.data),
+  publicRomaneioUrl: (cid, only_active = false) => {
+    const base = client.defaults.baseURL.replace(/\/$/, "");
+    return `${base}/collab-assets/public/romaneio/${cid}${only_active ? "?only_active=true" : ""}`;
+  },
 };

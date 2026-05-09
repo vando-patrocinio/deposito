@@ -431,3 +431,77 @@ async def insights_history(limit: int = 20,
     cid = _cid(user)
     cur = db.ai_insights.find({"company_id": cid}, {"_id": 0}).sort("generated_at", -1).limit(limit)
     return await cur.to_list(limit)
+
+
+# ---------------------------------------------------------------------------
+# 8) Assets overview — pertences/EPIs por colaborador
+# ---------------------------------------------------------------------------
+@router.get("/assets-overview")
+async def assets_overview(user: dict = Depends(require_role("gestor"))):
+    """Resumo de pertences/EPIs por colaborador.
+    - KPIs globais (total de itens, ativos, pendentes de assinatura, devolvidos)
+    - Itens agrupados por categoria
+    - Por colaborador: contagem ativa, pendente assinatura, devolvido
+    """
+    cid = _cid(user)
+    techs = await db.collaborators.find(
+        {"company_id": cid, "atlaz_inbox": {"$ne": True}},
+        {"_id": 0, "id": 1, "name": 1, "role": 1, "avatar_data_url": 1},
+    ).to_list(500)
+    tid_to = {t["id"]: t for t in techs}
+    rows = await db.collaborator_assets.find(
+        {"company_id": cid}, {"_id": 0},
+    ).to_list(5000)
+    by_collab: Dict[str, Dict[str, Any]] = {}
+    by_category: Counter = Counter()
+    by_status: Counter = Counter()
+    pending_signature = 0
+    total_qty = 0
+    for r in rows:
+        tid = r.get("collaborator_id")
+        coll = tid_to.get(tid) or {}
+        b = by_collab.setdefault(tid, {
+            "collaborator_id": tid,
+            "name": coll.get("name") or "?",
+            "role": coll.get("role"),
+            "avatar_data_url": coll.get("avatar_data_url"),
+            "total": 0, "ativo": 0, "devolvido": 0,
+            "danificado": 0, "perdido": 0,
+            "pending_signature": 0, "signed": 0,
+            "categories": Counter(),
+        })
+        b["total"] += 1
+        st = r.get("status", "ativo")
+        b[st] = b.get(st, 0) + 1
+        b["categories"][r.get("category") or "outro"] += 1
+        if not r.get("signed_at"):
+            b["pending_signature"] += 1
+            pending_signature += 1
+        else:
+            b["signed"] += 1
+        by_category[r.get("category") or "outro"] += 1
+        by_status[st] += 1
+        total_qty += int(r.get("qty") or 1)
+
+    rows_collab = sorted([
+        {**v, "categories": dict(v["categories"])}
+        for v in by_collab.values()
+    ], key=lambda r: r["total"], reverse=True)
+
+    return {
+        "kpis": {
+            "total_assets": len(rows),
+            "total_qty": total_qty,
+            "active": by_status.get("ativo", 0),
+            "returned": by_status.get("devolvido", 0),
+            "damaged": by_status.get("danificado", 0),
+            "lost": by_status.get("perdido", 0),
+            "pending_signature": pending_signature,
+            "techs_with_assets": len(rows_collab),
+        },
+        "by_category": [{"category": k, "count": v}
+                        for k, v in by_category.most_common()],
+        "by_status": [{"status": k, "count": v}
+                      for k, v in by_status.most_common()],
+        "rows": rows_collab,
+    }

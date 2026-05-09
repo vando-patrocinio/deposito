@@ -53,6 +53,8 @@ from routes import (
     smartolt as routes_smartolt,
     ai_preventive as routes_ai_preventive,
     ai_dashboard as routes_ai_dashboard,
+    branding as routes_branding,
+    collaborator_assets as routes_collab_assets,
     stok as routes_stok,
     users as routes_users,
 )
@@ -300,6 +302,8 @@ app.include_router(routes_stok.router)
 app.include_router(routes_smartolt.router)
 app.include_router(routes_ai_preventive.router)
 app.include_router(routes_ai_dashboard.router)
+app.include_router(routes_branding.router)
+app.include_router(routes_collab_assets.router)
 
 app.add_middleware(
     CORSMiddleware,

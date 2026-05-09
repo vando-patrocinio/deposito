@@ -3,6 +3,7 @@ import { api } from "@/api";
 import { AvatarZoomModal, Button, Card, Field, Icon, inputStyle, Row, StatusBadge } from "@/ui";
 import GeofenceMap from "@/GeofenceMap";
 import useEventStream from "@/useEventStream";
+import AssetsSection from "@/AssetsSection";
 
 const EMPTY = {
   name: "",
@@ -36,6 +37,7 @@ export default function CadastroPanel() {
   const [allFences, setAllFences] = useState([]);     // todas as cercas do sistema (para reaproveitar)
   const [reuseSelected, setReuseSelected] = useState({}); // {fence_id: bool} marcadas para clonar ao salvar
   const [clockHistoryFor, setClockHistoryFor] = useState(null);   // colaborador selecionado para ver batidas
+  const [assetsFor, setAssetsFor] = useState(null);   // colaborador selecionado para gerenciar pertences
   const [togglingId, setTogglingId] = useState(null);             // colab cujo toggle CLT está em flight
 
   async function toggleClockInEnabled(c) {
@@ -385,6 +387,15 @@ export default function CadastroPanel() {
                         🕐 Pontos
                       </Button>
                     )}
+                    <Button
+                      variant="soft"
+                      onClick={() => setAssetsFor(c)}
+                      data-testid={`view-assets-${c.id}`}
+                      title="Pertences/EPIs entregues a este colaborador"
+                      style={{ background: "#fdf4ff", color: "#86198f", border: "1px solid #f0abfc" }}
+                    >
+                      🎒 Pertences
+                    </Button>
                     <Button variant="secondary" onClick={() => startEdit(c)} data-testid={`edit-${c.id}`}>
                       <Icon name="gear" /> Editar
                     </Button>
@@ -418,6 +429,13 @@ export default function CadastroPanel() {
         <ClockHistoryModal
           collaborator={clockHistoryFor}
           onClose={() => setClockHistoryFor(null)}
+        />
+      )}
+
+      {assetsFor && (
+        <AssetsSection
+          collaborator={assetsFor}
+          onClose={() => setAssetsFor(null)}
         />
       )}
 

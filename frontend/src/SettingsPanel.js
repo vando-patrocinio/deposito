@@ -3,6 +3,7 @@ import { api } from "@/api";
 import { Button, Card, Field, Icon, inputStyle, StatusBadge } from "@/ui";
 import AtlazIntegrationCard from "@/AtlazIntegrationCard";
 import SmartoltIntegrationCard from "@/SmartoltIntegrationCard";
+import BrandingCard from "@/BrandingCard";
 
 export default function SettingsPanel() {
   const [s, setS] = useState(null);
@@ -562,6 +563,7 @@ export default function SettingsPanel() {
         </div>
       </Card>
 
+      <BrandingCard />
       <AtlazIntegrationCard />
       <SmartoltIntegrationCard />
     </div>

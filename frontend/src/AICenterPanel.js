@@ -22,6 +22,7 @@ const SUB_TABS = [
   { id: "defective", label: "🔧 Equipamentos" },
   { id: "common_issues", label: "📞 Reclamações" },
   { id: "recurring", label: "🔁 Reincidência" },
+  { id: "assets", label: "🎒 Pertences" },
   { id: "insights", label: "💡 Insights LLM" },
 ];
 
@@ -327,6 +328,85 @@ function RecurringSection({ days }) {
   );
 }
 
+function AssetsOverviewSection() {
+  const d = useFetch(() => api.aiDashAssetsOverview(), []);
+  if (!d) return <Card>Carregando…</Card>;
+  const k = d.kpis || {};
+  return (
+    <>
+      <div style={css.kpiGrid}>
+        <Metric label="Itens cadastrados" value={k.total_assets} />
+        <Metric label="Quantidade total" value={k.total_qty} />
+        <Metric label="Ativos (em uso)" value={k.active} />
+        <Metric label="Pendentes assinatura" value={k.pending_signature} />
+        <Metric label="Devolvidos" value={k.returned} />
+        <Metric label="Danificados/Perdidos" value={(k.damaged || 0) + (k.lost || 0)} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Card title="📦 Distribuição por categoria">
+          {(d.by_category || []).length === 0
+            ? <div style={{ color: "#64748b" }}>Sem itens cadastrados ainda.</div>
+            : d.by_category.map((c) => (
+              <div key={c.category} style={{ display: "flex", justifyContent: "space-between",
+                                              padding: "6px 0", borderBottom: "1px solid #f1f5f9" }}>
+                <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{c.category}</span>
+                <strong>{c.count}</strong>
+              </div>
+            ))}
+        </Card>
+        <Card title="📊 Status">
+          {(d.by_status || []).map((c) => (
+            <div key={c.status} style={{ display: "flex", justifyContent: "space-between",
+                                          padding: "6px 0", borderBottom: "1px solid #f1f5f9" }}>
+              <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{c.status}</span>
+              <strong>{c.count}</strong>
+            </div>
+          ))}
+        </Card>
+      </div>
+      <Card title="👷 Pertences por colaborador">
+        <table style={css.table}>
+          <thead><tr>
+            <th style={css.th}>Colaborador</th>
+            <th style={css.th}>Total</th>
+            <th style={css.th}>Ativos</th>
+            <th style={css.th}>Pendentes assin.</th>
+            <th style={css.th}>Devolvidos</th>
+            <th style={css.th}>Categorias</th>
+          </tr></thead>
+          <tbody>
+            {(d.rows || []).length === 0
+              ? <tr><td colSpan={6} style={css.emptyTd}>Nenhum colaborador com pertences.</td></tr>
+              : d.rows.map((r) => (
+                <tr key={r.collaborator_id}>
+                  <td style={css.td}>
+                    <strong>{r.name}</strong>
+                    {r.role && <div style={{ fontSize: 10, color: "#64748b" }}>{r.role}</div>}
+                  </td>
+                  <td style={css.td}><strong>{r.total}</strong></td>
+                  <td style={css.td}><span style={css.pill("#dcfce7", "#166534")}>{r.ativo}</span></td>
+                  <td style={css.td}>
+                    {r.pending_signature > 0
+                      ? <span style={css.pill("#fef3c7", "#92400e")}>{r.pending_signature}</span>
+                      : <span style={{ color: "#94a3b8" }}>0</span>}
+                  </td>
+                  <td style={css.td}>{r.devolvido}</td>
+                  <td style={css.td}>
+                    {Object.entries(r.categories || {}).map(([k2, v]) => (
+                      <span key={k2} style={{ marginRight: 6, fontSize: 11 }}>
+                        {k2}: <strong>{v}</strong>
+                      </span>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </Card>
+    </>
+  );
+}
+
 function InsightsSection({ days }) {
   const [generating, setGenerating] = useState(false);
   const [history, setHistory] = useState([]);
@@ -393,6 +473,7 @@ const TAB_COMPONENTS = {
   defective: DefectiveSection,
   common_issues: CommonIssuesSection,
   recurring: RecurringSection,
+  assets: AssetsOverviewSection,
   insights: InsightsSection,
 };
 

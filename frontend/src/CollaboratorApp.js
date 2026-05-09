@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
 import SelfieCamera from "@/SelfieCamera";
 import LousaMobile from "@/LousaMobile";
+import MyAssetsModal from "@/MyAssetsModal";
 import ServerClock from "@/ServerClock";
 import { serverNow } from "@/serverTime";
 import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Row, softButtonStyle, StatusBadge } from "@/ui";
@@ -48,6 +49,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   const [lousaSummary, setLousaSummary] = useState(null);  // {last_closed_at, minutes_since_last_close, last_finished_ticket}
   const [pendingCount, setPendingCount] = useState(() => offlineCount());  // batidas offline aguardando reenvio
   const [flushingOffline, setFlushingOffline] = useState(false);
+  const [showMyAssets, setShowMyAssets] = useState(false);
 
   // Worker que tenta reenviar a fila offline. Chamado quando: (a) GPS muda, (b) volta online.
   const flushPending = useCallback(async () => {
@@ -480,6 +482,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 onLogoutGoogle={onLogout}
                 onExitMobile={mobile && !forcedCollabId ? exitMobile : null}
                 onOpenHistory={() => setScreen("history")}
+                onOpenAssets={() => setShowMyAssets(true)}
               />
             </div>
           </div>
@@ -829,6 +832,10 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
         caption={collab?.name}
         onClose={() => setAvatarZoom(false)}
       />
+
+      {showMyAssets && (
+        <MyAssetsModal collaboratorId={collabId} onClose={() => setShowMyAssets(false)} />
+      )}
     </div>
   );
 }
@@ -864,7 +871,7 @@ function parseDevice(ua) {
 }
 
 
-function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, onOpenHistory }) {
+function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, onOpenHistory, onOpenAssets }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
 
@@ -877,6 +884,9 @@ function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, 
 
   const items = [];
   items.push({ key: "history", label: "Histórico", icon: "📋", onClick: () => { onOpenHistory && onOpenHistory(); setOpen(false); } });
+  if (onOpenAssets) {
+    items.push({ key: "assets", label: "Meus pertences", icon: "🎒", onClick: () => { onOpenAssets(); setOpen(false); } });
+  }
   if (forcedCollabId && onLogoutGoogle) {
     items.push({ key: "logout", label: "Sair da conta Google", icon: "🚪", onClick: () => { onLogoutGoogle(); setOpen(false); } });
   }
