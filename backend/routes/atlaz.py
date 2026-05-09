@@ -222,17 +222,84 @@ async def _fetch_chamados(cfg: AtlazConfig) -> List[Dict[str, Any]]:
     return data.get("chamados") or []
 
 
+def _filial_tokens(s: str) -> set:
+    """Tokeniza nome de filial/cidade: palavras com 3+ chars, sem acento, em UPPER.
+    Ignora token genérico 'LIGO' (prefixo comum em filiais LIGO FIBRA)."""
+    norm = _strip_accents(s).upper()
+    for sep in "/-,()":
+        norm = norm.replace(sep, " ")
+    return {w for w in norm.split() if len(w) >= 3 and w != "LIGO"}
+
+
 def _filter_by_filial(chamados: List[Dict[str, Any]], filiais: List[str]) -> List[Dict[str, Any]]:
-    """Filtra chamados pela cidade do ponto, comparando case/acento-insensitive."""
+    """Filtra chamados pela cidade do ponto via tokenização case/acento-insensitive.
+
+    Match: pelo menos UM token (≥3 chars, ignorando 'LIGO') do nome da filial
+    coincide com algum token do nome da cidade. Resolve casos como:
+      filial='LIGO RIO' → token={'RIO'} bate com cidade='Rio de Janeiro' (token RIO).
+      filial='LIGO MAGÉ' → token={'MAGE'} bate com cidade='Magé'.
+      filial='LIGO CACHOEIRAS DE MACACÚ' → token={'CACHOEIRAS','MACACU'} bate com 'Cachoeiras de Macacu'.
+    """
     if not filiais:
         return chamados
-    norm_filiais = {_strip_accents(f).upper().strip() for f in filiais}
+    filial_token_sets = [_filial_tokens(f) for f in filiais if f.strip()]
+    filial_token_sets = [t for t in filial_token_sets if t]
+    if not filial_token_sets:
+        return chamados
     out = []
     for c in chamados:
         cidade = ((c.get("ponto") or {}).get("cidade") or "").strip()
-        if _strip_accents(cidade).upper() in norm_filiais:
+        if not cidade:
+            continue
+        cidade_toks = _filial_tokens(cidade)
+        if not cidade_toks:
+            continue
+        if any(ftoks & cidade_toks for ftoks in filial_token_sets):
             out.append(c)
     return out
+
+
+async def _get_or_create_unassigned_inbox(company_id: str) -> str:
+    """Retorna o ID do colaborador placeholder '📥 Sem técnico (Atlaz)' da empresa.
+    Cria se não existir. Esse colaborador é o destino das bolhas Atlaz sem técnico
+    atribuído — gestor arrasta para o técnico real via drag&drop da Lousa.
+    """
+    inbox = await db.collaborators.find_one(
+        {"company_id": company_id, "atlaz_inbox": True}, {"_id": 0, "id": 1},
+    )
+    if inbox:
+        return inbox["id"]
+    cid = "col-atlaz-inbox"
+    # Verifica colisão (improvável, mas seguro)
+    while await db.collaborators.find_one({"id": cid}, {"_id": 0, "id": 1}):
+        cid = f"col-atlaz-inbox-{uuid.uuid4().hex[:6]}"
+    now = now_iso()
+    await db.collaborators.insert_one({
+        "id": cid,
+        "name": "📥 Sem técnico (Atlaz)",
+        "cpf": f"INBOX-{cid[-6:]}",
+        "email": f"{cid}@atlaz.local",
+        "phone": "",
+        "role": "Inbox Atlaz",
+        "company": "Atlaz",
+        "schedule": {
+            "weekdays": [1, 2, 3, 4, 5],
+            "start": "00:00", "end": "23:59",
+            "lunch_start": "12:00", "lunch_end": "13:00",
+        },
+        "overtime_policy": {"enabled": False, "max_minutes_per_day": 0},
+        "city": None, "state": None, "praca_id": None,
+        "is_test_mode": False,
+        "company_id": company_id,
+        "avatar_data_url": None,
+        "reference_face": None,
+        "atlaz_synced": True,
+        "atlaz_inbox": True,
+        "active": True,
+        "created_at": now,
+        "updated_at": now,
+    })
+    return cid
 
 
 async def _resolve_collaborator(
@@ -241,33 +308,54 @@ async def _resolve_collaborator(
     """Decide qual colaborador local recebe o chamado.
 
     Ordem de prioridade:
-      1. mapeamento explícito por nome do técnico (technician_to_collaborator)
-      2. mapeamento por filial/cidade (filial_to_collaborator)
-      3. primeiro colaborador ativo da empresa (fallback)
+      1. Mapeamento EXPLÍCITO por nome do técnico (technician_to_collaborator).
+         Match case/acento-insensitive.
+      2. Mapeamento por filial/cidade (filial_to_collaborator) com matching
+         por TOKEN — chave 'LIGO RIO' bate com cidade 'Rio de Janeiro'.
+      3. Match automático por nome do técnico Atlaz contra colaboradores
+         já cadastrados (db.collaborators) — case/acento-insensitive.
+
+    Se NENHUM dos 3 funcionar, retorna None (chamado fica sem técnico e o
+    sync usa skip 'unassigned' em vez de jogar para o primeiro colaborador
+    aleatório — que causava 32 bolhas atribuídas erradas).
     """
     tec_name = ((chamado.get("tecnico") or {}).get("nome") or "").strip()
     if tec_name:
         key = _strip_accents(tec_name).lower().strip()
+        # 1) Mapping explícito
         for k, v in (cfg.technician_to_collaborator or {}).items():
             if _strip_accents(k).lower().strip() == key:
                 return v
+        # 3) Match automático em db.collaborators por nome (insensitive)
+        async for coll in db.collaborators.find(
+            {"company_id": company_id, "active": {"$ne": False}}, {"_id": 0, "id": 1, "name": 1},
+        ):
+            if _strip_accents(coll.get("name", "")).lower().strip() == key:
+                return coll["id"]
 
+    # 2) Mapping por filial via tokenização — 'LIGO RIO' bate com 'Rio de Janeiro'
     cidade = ((chamado.get("ponto") or {}).get("cidade") or "").strip()
-    if cidade:
-        for k, v in (cfg.filial_to_collaborator or {}).items():
-            if _strip_accents(k).lower().strip() == _strip_accents(cidade).lower().strip():
-                return v
+    if cidade and cfg.filial_to_collaborator:
+        cidade_toks = _filial_tokens(cidade)
+        if cidade_toks:
+            for k, v in cfg.filial_to_collaborator.items():
+                ftoks = _filial_tokens(k)
+                if ftoks and ftoks & cidade_toks:
+                    return v
 
-    any_coll = await db.collaborators.find_one(
-        {"company_id": company_id, "active": {"$ne": False}}, {"_id": 0, "id": 1},
-    )
-    return any_coll["id"] if any_coll else None
+    # SEM fallback automático — devolve None para que o caller pule o chamado
+    # com motivo claro, em vez de errar a atribuição.
+    return None
 
 
 async def _import_one(
     chamado: Dict[str, Any], cfg: AtlazConfig, company_id: str,
 ) -> str:
-    """Importa 1 chamado como bolha local."""
+    """Importa 1 chamado como bolha local. Retorna:
+      - 'skipped'      → já existia (dedupe por atlaz_external_id)
+      - 'unassigned'   → atribuído ao inbox Atlaz (sem técnico mapeável)
+      - 'created'      → bolha criada com sucesso
+    """
     ext_id = str(chamado.get("id"))
     if not ext_id:
         raise ValueError("Chamado sem ID")
@@ -280,8 +368,10 @@ async def _import_one(
         return "skipped"
 
     assigned = await _resolve_collaborator(chamado, cfg, company_id)
+    is_unassigned = False
     if not assigned:
-        raise ValueError("Sem colaborador disponível na empresa")
+        assigned = await _get_or_create_unassigned_inbox(company_id)
+        is_unassigned = True
 
     ticket_type = _normalize_type(chamado.get("tipo"), cfg.type_map or DEFAULT_TYPE_MAP)
     assinante = chamado.get("assinante") or {}
@@ -338,9 +428,10 @@ async def _import_one(
         "atlaz_id_assinante": assinante.get("id_assinante"),
         "atlaz_id_ponto": ponto.get("id_ponto"),
         "atlaz_synced_at": now_iso(),
+        "atlaz_unassigned": is_unassigned,
     }
     await db.tickets.insert_one(doc)
-    return "created"
+    return "unassigned" if is_unassigned else "created"
 
 
 async def run_sync(company_id: str, cfg: Optional[AtlazConfig] = None) -> Dict[str, Any]:
@@ -360,6 +451,7 @@ async def run_sync(company_id: str, cfg: Optional[AtlazConfig] = None) -> Dict[s
 
     chamados = _filter_by_filial(chamados, cfg.filiais)
     summary["fetched"] = len(chamados)
+    summary["unassigned"] = 0
 
     created_ids: List[str] = []
     for c in chamados:
@@ -368,6 +460,10 @@ async def run_sync(company_id: str, cfg: Optional[AtlazConfig] = None) -> Dict[s
                 res = await _import_one(c, cfg, company_id)
                 if res == "created":
                     summary["created"] += 1
+                    created_ids.append(str(c.get("id")))
+                elif res == "unassigned":
+                    summary["created"] += 1
+                    summary["unassigned"] += 1
                     created_ids.append(str(c.get("id")))
                 else:
                     summary["skipped"] += 1
@@ -379,7 +475,7 @@ async def run_sync(company_id: str, cfg: Optional[AtlazConfig] = None) -> Dict[s
     status = "ok" if not summary["errors"] else ("partial" if summary["created"] else "error")
     await _log_sync(
         company_id, "pull", status,
-        f"fetched={summary.get('fetched',0)} created={summary['created']} skipped={summary['skipped']} errors={len(summary['errors'])}",
+        f"fetched={summary.get('fetched',0)} created={summary['created']} (unassigned={summary['unassigned']}) skipped={summary['skipped']} errors={len(summary['errors'])}",
     )
     # Publica evento SSE se bolhas novas foram criadas — UI faz refresh em tempo real
     if summary["created"] > 0:
@@ -572,6 +668,95 @@ async def test_connection(user: dict = Depends(require_role("gestor"))):
 async def sync_now(user: dict = Depends(require_role("gestor"))):
     company_id = user.get("company_id") or DEMO_COMPANY_ID
     return await run_sync(company_id)
+
+
+@router.post("/reassign-existing")
+async def reassign_existing_tickets(user: dict = Depends(require_role("gestor"))):
+    """Re-resolve o colaborador de TODAS as bolhas Atlaz pendentes da empresa
+    aplicando a lógica atual de mapping (technician_to_collaborator + filial).
+
+    Usado quando o gestor altera o mapping ou quando bolhas chegaram com
+    fallback errado em versões antigas. Não toca em bolhas já abertas/finalizadas.
+    """
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(company_id)
+
+    cursor = db.tickets.find(
+        {"company_id": company_id,
+         "atlaz_external_id": {"$ne": None},
+         "status": "pendente"},
+        {"_id": 0},
+    )
+
+    inbox_id: Optional[str] = None  # lazy-init, só cria placeholder se precisar
+
+    moved = 0
+    unchanged = 0
+    moved_to_inbox = 0
+    items: List[Dict[str, Any]] = []
+    async for t in cursor:
+        # Reconstrói "shape Atlaz" mínimo para passar pelo _resolve_collaborator
+        chamado = {
+            "tecnico": {"nome": t.get("atlaz_tecnico_nome") or ""},
+            "ponto": {"cidade": t.get("atlaz_filial") or ""},
+        }
+        new_cid = await _resolve_collaborator(chamado, cfg, company_id)
+        old_cid = t.get("assigned_collaborator_id")
+        if not new_cid:
+            # Sem técnico mapeável → manda pro inbox Atlaz
+            if inbox_id is None:
+                inbox_id = await _get_or_create_unassigned_inbox(company_id)
+            if old_cid != inbox_id:
+                await db.tickets.update_one(
+                    {"id": t["id"]},
+                    {"$set": {
+                        "assigned_collaborator_id": inbox_id,
+                        "atlaz_unassigned": True,
+                        "atlaz_reassigned_at": now_iso(),
+                    }},
+                )
+                moved_to_inbox += 1
+                items.append({
+                    "id": t["id"], "ext": t.get("atlaz_external_id"),
+                    "from": old_cid, "to": inbox_id,
+                    "reason": "no_technician_match",
+                    "tecnico_atlaz": t.get("atlaz_tecnico_nome"),
+                    "client": (t.get("client_snapshot") or {}).get("name"),
+                })
+            else:
+                unchanged += 1
+        elif new_cid != old_cid:
+            await db.tickets.update_one(
+                {"id": t["id"]},
+                {"$set": {
+                    "assigned_collaborator_id": new_cid,
+                    "atlaz_unassigned": False,
+                    "atlaz_reassigned_at": now_iso(),
+                }},
+            )
+            moved += 1
+            items.append({
+                "id": t["id"], "ext": t.get("atlaz_external_id"),
+                "from": old_cid, "to": new_cid,
+                "reason": "remapped",
+                "tecnico_atlaz": t.get("atlaz_tecnico_nome"),
+                "client": (t.get("client_snapshot") or {}).get("name"),
+            })
+        else:
+            unchanged += 1
+
+    await _log_sync(
+        company_id, "reassign", "ok",
+        f"moved={moved} to_inbox={moved_to_inbox} unchanged={unchanged}",
+    )
+    return {
+        "ok": True,
+        "moved": moved,
+        "moved_to_inbox": moved_to_inbox,
+        "unchanged": unchanged,
+        "inbox_collaborator_id": inbox_id,
+        "items": items[:50],
+    }
 
 
 @router.post("/sync-technicians")

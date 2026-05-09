@@ -100,6 +100,16 @@ export default function AtlazIntegrationCard() {
     await reload();
   }
 
+  async function runReassign() {
+    if (!window.confirm("Re-resolver técnico de TODAS as bolhas Atlaz pendentes? Bolhas sem técnico no Atlaz serão movidas para a coluna '📥 Sem técnico (Atlaz)' na Lousa, onde você pode arrastar para o técnico real.")) return;
+    setBusy(true); setMsg("");
+    try {
+      const r = await api.atlazReassignExisting();
+      setMsg(`✓ Reatribuição: ${r.moved} movidas para o técnico correto, ${r.moved_to_inbox} para a caixa de entrada, ${r.unchanged} já estavam OK.`);
+    } catch (e) { setMsg("Erro: " + (e?.response?.data?.detail || e.message)); }
+    setBusy(false);
+  }
+
   async function loadLogs() {
     try {
       const r = await api.atlazSyncLogs(30);
@@ -298,6 +308,11 @@ export default function AtlazIntegrationCard() {
         <Button variant="soft" onClick={runSyncTec} disabled={busy} data-testid="atlaz-sync-tec-btn"
           style={{ background: "#fef3c7", border: "1px solid #fcd34d", color: "#78350f" }}>
           👷 Sincronizar técnicos → Cadastro
+        </Button>
+        <Button variant="soft" onClick={runReassign} disabled={busy} data-testid="atlaz-reassign-btn"
+          style={{ background: "#fae8ff", border: "1px solid #f0abfc", color: "#86198f" }}
+          title="Re-resolve o técnico de todas as bolhas Atlaz pendentes baseado no mapping atual">
+          🔁 Reatribuir bolhas existentes
         </Button>
         <Button variant="soft" onClick={loadLogs} data-testid="atlaz-logs-btn">📋 Ver logs</Button>
         {msg && <span style={{ color: msg.startsWith("✓") ? "#166534" : "#be123c", fontWeight: 700, fontSize: 13 }}>{msg}</span>}

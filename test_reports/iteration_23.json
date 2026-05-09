@@ -1,0 +1,38 @@
+{
+  "summary": "Iter 23 testado backend+frontend. Backend: 16/16 testes passaram (tokenização _filial_tokens correta — 'LIGO RIO'→{'RIO'}, 'LIGO MAGÉ'→{'MAGE'}, 'LIGO CACHOEIRAS DE MACACÚ'→{'CACHOEIRAS','MACACU'}, 'LIGO' isolado→∅; _filter_by_filial bate 'LIGO RIO' com 'Rio de Janeiro', 'LIGO MAGÉ' com 'Magé', 'LIGO CACHOEIRAS DE MACACÚ' com 'Cachoeiras de Macacu', filiais=[]→retorna todos, 'LIGO PENHA' não bate; POST /atlaz/reassign-existing retorna 200 com shape correto {ok,moved,moved_to_inbox,unchanged,items≤50}, idempotente (2a chamada moved=0/to_inbox=0), exige role gestor (sem auth→401/403); regressão GET /atlaz/settings, POST /sync-now, GET /sync-logs, POST /test-connection, GET /lousa/grid OK; distribuição na Lousa exatamente como spec: 8 DIOGO + 2 EMANUELLE + 5 Eddy + 2 Hudson + 9 JEFFERSON + 2 JUNIOR + 32 inbox = 60 total. Frontend: login admin→Configurações renderiza atlaz-reassign-btn '🔁 Reatribuir bolhas existentes' ao lado de atlaz-sync-tec-btn; click dispara POST /atlaz/reassign-existing (HTTP 200, ok=true) e mostra msg '✓ Reatribuição: 0 movidas para o técnico correto, 0 para a caixa de entrada, 60 já estavam OK.' no setMsg do card. Lousa renderiza coluna inbox via data-testid='tech-column-col-atlaz-inbox' com nome '📥 Sem técnico (Atlaz)' e todos os slots horários (08-17). Empresa demo permanece em estado pós-fix (32 bolhas no inbox, conforme contexto do main agent).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration23_atlaz_reassign.py",
+    "/app/test_reports/pytest/iter23_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "atlaz.py:225-231 — _filial_tokens tokeniza, ignora 'LIGO' e palavras <3 chars, normaliza acentos+upper. Cobre os edge cases do spec. ✓",
+    "atlaz.py:234-259 — _filter_by_filial faz interseção de tokens via 'any(ftoks & cidade_toks for ftoks in filial_token_sets)'. Filiais=[] retorna todos chamados, filiais com tokens vazios (ex: ['LIGO']) também retorna todos (graceful degradation). ✓",
+    "atlaz.py:262-302 — _get_or_create_unassigned_inbox usa lookup por (company_id, atlaz_inbox=True) e cria com id 'col-atlaz-inbox' (com fallback para colisão). Inbox tem schedule completo (00:00-23:59) e atlaz_inbox=True flag. ✓",
+    "atlaz.py:305-348 — _resolve_collaborator: ordem 1) explicit technician_to_collaborator 2) match auto em db.collaborators por nome (case/acento-insensitive) 3) filial mapping com tokens. Removido fallback 'primeiro colaborador' — retorna None corretamente. ✓",
+    "atlaz.py:351-434 — _import_one trata None de _resolve usando inbox + atlaz_unassigned=true. Retorna 'unassigned' separado de 'created'. run_sync soma ambos em created e expõe 'unassigned' no log. ✓",
+    "atlaz.py:673-759 — POST /reassign-existing: cursor sobre tickets pendentes Atlaz, lazy-init do inbox, atualiza assigned_collaborator_id+atlaz_unassigned+atlaz_reassigned_at quando muda, conta moved/moved_to_inbox/unchanged. Retorna items[≤50] com from/to/reason. Role gestor. ✓",
+    "AtlazIntegrationCard.js:103-111 — runReassign() abre window.confirm e chama api.atlazReassignExisting(); msg formatada com r.moved/r.moved_to_inbox/r.unchanged. setBusy correto. ✓",
+    "AtlazIntegrationCard.js:312-316 — botão data-testid='atlaz-reassign-btn' renderizado ao lado dos demais com cor distinta (fae8ff/86198f) e tooltip explicativo. ✓",
+    "Observação minor (não bloqueante): inbox col-atlaz-inbox aparece na Lousa como uma coluna técnica completa com slots de horário fixos 08:00–17:00, mesmo sendo placeholder. Isso é cosmético e funciona — gestor pode arrastar bolhas para outras colunas. Se quiser, no futuro renderizar inbox como coluna 'unassigned' com layout próprio (sem grade horária)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration23_atlaz_reassign.py (criado)"
+  ],
+  "success_rate": {"backend": "100% (16/16 passed)", "frontend": "100% — botão renderizado, click dispara POST /reassign-existing 200 OK, msg de sucesso exibida, coluna inbox visível na Lousa"},
+  "test_credentials": "admin@empresa.com / 123456 (válido)",
+  "seed_data_creation": "Nenhum dado novo persistente. Os testes apenas chamam endpoints de leitura/idempotentes. Reassign chamado 2x mas como já estava em estado convergido (32 inbox + 28 corretas), nada foi movido.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 23: tokenização de filial + endpoint reassign-existing + inbox placeholder validados. Empresa demo está em estado pós-fix (32 bolhas em col-atlaz-inbox, 28 distribuídas corretamente). Pytest: cd /app/backend && python -m pytest tests/test_iteration23_atlaz_reassign.py -v. Para validar via UI: login admin→Configurações→scroll até card Atlaz→botão 'atlaz-reassign-btn' (cor lilás)→click confirma e exibe msg verde. Lousa renderiza '📥 Sem técnico (Atlaz)' como 7a coluna técnica via data-testid='tech-column-col-atlaz-inbox'. Drag&drop não foi explicitamente testado mas a coluna tem slots completos e ticket cards 'Pendente' na seção 'Sem horário' — a infraestrutura existente da Lousa cobre o move.",
+  "rca of the issue": "N/A — fix iter23 está correto e alinhado com spec. Sem regressões identificadas."
+}

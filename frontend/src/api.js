@@ -173,6 +173,7 @@ export const api = {
   atlazTestConnection: () => client.post(`/atlaz/test-connection`).then((r) => r.data),
   atlazSyncNow: () => client.post(`/atlaz/sync-now`).then((r) => r.data),
   atlazSyncTechnicians: () => client.post(`/atlaz/sync-technicians`).then((r) => r.data),
+  atlazReassignExisting: () => client.post(`/atlaz/reassign-existing`).then((r) => r.data),
   atlazSyncLogs: (limit = 30) => client.get(`/atlaz/sync-logs`, { params: { limit } }).then((r) => r.data),
   lousaBriefing: (useAi = true) => client.get(`/lousa/briefing`, { params: { use_ai: useAi } }).then((r) => r.data),
   lousaManagementKpis: (days = 30) => client.get(`/lousa/management-kpis`, { params: { days } }).then((r) => r.data),
