@@ -189,13 +189,22 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
   async function onSelfieCaptured(dataUrl) {
     setBusy(true); setError("");
+    // Pré-validação: avisa cedo se geolocalização não está disponível
+    if (collab?.is_test_mode !== true && collab?.clock_in_enabled !== false) {
+      if (position?.lat == null || position?.lng == null) {
+        setError("Não conseguimos obter sua localização. Permita o GPS no navegador (ícone do cadeado na barra de endereço) e tente novamente.");
+        setScreen("selfie-error");
+        setBusy(false);
+        return;
+      }
+    }
     try {
       const rec = await api.createClockRecord({
         collaborator_id: collabId,
         type: eventType,
         selfie_base64: dataUrl,
-        lat: position.lat,
-        lng: position.lng,
+        lat: position?.lat ?? null,
+        lng: position?.lng ?? null,
         public_ip: null,
         force_close_open_tickets: forceCloseOpen,
         client_time_ms: serverNow(),  // sincronizado com servidor (anti-tampering local)
@@ -209,12 +218,25 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
       setForceCloseOpen(false);
       await refresh(collabId);
     } catch (e) {
-      const detail = e?.response?.data?.detail || e.message;
       const status = e?.response?.status;
+      const raw = e?.response?.data?.detail;
+      // Trata mensagens estruturadas do FastAPI (Pydantic 422 vem como array)
+      let detail;
+      if (Array.isArray(raw)) {
+        detail = raw.map((d) => `${(d.loc || []).slice(-1)[0] || "campo"}: ${d.msg}`).join(" · ");
+      } else if (typeof raw === "string") {
+        detail = raw;
+      } else {
+        detail = e.message || "Erro desconhecido";
+      }
       // Status 409 ao bater Saída com bolha aberta → confirma
       if (status === 409 && eventType === "Saída") {
         setExitConfirm(true);
         setError("");
+      } else if (status === 422) {
+        // Validação Pydantic — explica claramente
+        setError(`Falha na validação dos dados enviados (${detail}). Recarregue a página e tente novamente.`);
+        setScreen("selfie-error");
       } else {
         setError(detail);
         setScreen("selfie-error");
