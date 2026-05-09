@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
 import SelfieCamera from "@/SelfieCamera";
 import LousaMobile from "@/LousaMobile";
 import ServerClock from "@/ServerClock";
 import { serverNow } from "@/serverTime";
 import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Row, softButtonStyle, StatusBadge } from "@/ui";
+import { enqueue as enqueueOffline, count as offlineCount, flush as flushOffline } from "@/offlineClockQueue";
 
 const EVENT_TYPES = ["Entrada", "Início intervalo", "Fim intervalo", "Saída"];
 const GEOFENCE_REQUIRED = new Set(["Entrada", "Saída"]);
@@ -45,6 +46,54 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFlash, setRefreshFlash] = useState(false);
   const [lousaSummary, setLousaSummary] = useState(null);  // {last_closed_at, minutes_since_last_close, last_finished_ticket}
+  const [pendingCount, setPendingCount] = useState(() => offlineCount());  // batidas offline aguardando reenvio
+  const [flushingOffline, setFlushingOffline] = useState(false);
+
+  // Worker que tenta reenviar a fila offline. Chamado quando: (a) GPS muda, (b) volta online.
+  const flushPending = useCallback(async () => {
+    if (offlineCount() === 0) return;
+    setFlushingOffline(true);
+    try {
+      await flushOffline(async (item) => {
+        // Reenvio precisa de GPS — se ainda indisponível, falha cedo (queue mantém)
+        if (item.lat == null || item.lng == null) {
+          if (position?.lat == null || position?.lng == null) {
+            throw new Error("GPS ainda indisponível");
+          }
+          item = { ...item, lat: position.lat, lng: position.lng };
+        }
+        await api.createClockRecord({
+          collaborator_id: item.collaborator_id,
+          type: item.type,
+          selfie_base64: item.selfie_base64,
+          lat: item.lat,
+          lng: item.lng,
+          offline_created_at: item.captured_at,
+          public_ip: null,
+          client_time_ms: serverNow(),
+        });
+      });
+    } catch (e) {
+      console.warn("[offline-clock] flush erro:", e);
+    }
+    setPendingCount(offlineCount());
+    setFlushingOffline(false);
+    // refresh será disparado naturalmente pelos próximos polls/useEffect dos dados.
+  }, [position?.lat, position?.lng]);
+
+  // Dispara flush quando GPS fica disponível
+  useEffect(() => {
+    if (position?.lat != null && position?.lng != null && pendingCount > 0) {
+      flushPending();
+    }
+  }, [position?.lat, position?.lng, pendingCount, flushPending]);
+
+  // Dispara flush quando navegador volta online
+  useEffect(() => {
+    function onOnline() { flushPending(); }
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [flushPending]);
 
   async function loadLousaSummary(cid = collabId) {
     if (!cid) return;
@@ -189,15 +238,29 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
   async function onSelfieCaptured(dataUrl) {
     setBusy(true); setError("");
-    // Pré-validação: avisa cedo se geolocalização não está disponível
-    if (collab?.is_test_mode !== true && collab?.clock_in_enabled !== false) {
-      if (position?.lat == null || position?.lng == null) {
-        setError("Não conseguimos obter sua localização. Permita o GPS no navegador (ícone do cadeado na barra de endereço) e tente novamente.");
+    const needsGps = collab?.is_test_mode !== true && collab?.clock_in_enabled !== false;
+    const gpsMissing = needsGps && (position?.lat == null || position?.lng == null);
+
+    // GPS indisponível → enfileira offline e avisa o usuário (não perde a selfie)
+    if (gpsMissing) {
+      try {
+        const len = enqueueOffline({
+          collaborator_id: collabId,
+          type: eventType,
+          selfie_base64: dataUrl,
+          captured_at: new Date().toISOString(),
+        });
+        setPendingCount(len);
+        setError(`Sua selfie foi salva (${len} pendente${len > 1 ? "s" : ""}). Quando o GPS for liberado, vamos reenviar automaticamente.`);
         setScreen("selfie-error");
-        setBusy(false);
-        return;
+      } catch (e) {
+        setError("Não foi possível salvar localmente. Verifique o armazenamento do navegador.");
+        setScreen("selfie-error");
       }
+      setBusy(false);
+      return;
     }
+
     try {
       const rec = await api.createClockRecord({
         collaborator_id: collabId,
@@ -234,8 +297,24 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
         setExitConfirm(true);
         setError("");
       } else if (status === 422) {
-        // Validação Pydantic — explica claramente
         setError(`Falha na validação dos dados enviados (${detail}). Recarregue a página e tente novamente.`);
+        setScreen("selfie-error");
+      } else if (!status) {
+        // Erro de rede (offline ou backend indisponível) → enfileira
+        try {
+          const len = enqueueOffline({
+            collaborator_id: collabId,
+            type: eventType,
+            selfie_base64: dataUrl,
+            lat: position?.lat ?? null,
+            lng: position?.lng ?? null,
+            captured_at: new Date().toISOString(),
+          });
+          setPendingCount(len);
+          setError(`Sem internet — sua selfie foi salva (${len} pendente${len > 1 ? "s" : ""}). Reenvio automático ao reconectar.`);
+        } catch {
+          setError("Sem internet e não conseguimos salvar localmente.");
+        }
         setScreen("selfie-error");
       } else {
         setError(detail);
@@ -378,6 +457,22 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
             {/* Server clock + Kebab menu */}
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+              {pendingCount > 0 && (
+                <button
+                  data-testid="offline-pending-badge"
+                  onClick={flushPending}
+                  disabled={flushingOffline}
+                  title={`${pendingCount} batida(s) salvas localmente — clique para tentar reenviar agora`}
+                  style={{
+                    border: 0, padding: "4px 10px", borderRadius: 999,
+                    background: flushingOffline ? "#fde68a" : "#fef3c7",
+                    color: "#78350f", fontSize: 11, fontWeight: 800,
+                    cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+                  }}
+                >
+                  {flushingOffline ? "↻" : "📥"} {pendingCount} pend.
+                </button>
+              )}
               <ServerClock compact />
               <KebabMenu
                 isAdminTest={isAdminTest}
