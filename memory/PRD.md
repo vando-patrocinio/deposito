@@ -1,8 +1,18 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA + Estoque + SmartOLT + IA Preventivas
 
-**Última atualização**: 2026-05-09 (iteração 30)
+**Última atualização**: 2026-05-09 (iteração 31)
 
 ## Histórico de iterações
+
+### Iter 31 — Scanner QR/Barcode da ONT pela câmera (mobile) (2026-05-09) ✅
+- ✅ **Lib `html5-qrcode@2.3.8`** instalada via yarn (cobre QR + Code128 + Code39 + EAN13 — todos formatos comuns em etiquetas de ONT/ONU).
+- ✅ **`QRScannerModal.js`** novo componente:
+  - Detecta câmeras automaticamente, prefere câmera **traseira** (`/back|environment|rear/i`).
+  - Painel modal full-screen dark com viewport 280×180 e fps 10.
+  - Seletor de câmera (se houver mais de uma).
+  - **Fallback galeria**: usuário pode selecionar foto da etiqueta caso câmera não funcione.
+  - Mensagens de erro amigáveis (sem câmera, falha permissão, código não decodificado).
+- ✅ **Integração no `TicketDetail`**: botão `📷` gradient azul ao lado do input MAC. Ao escanear, normaliza o texto (uppercase, remove caracteres não-alfanum/`:`) e dispara automaticamente a validação SmartOLT em tempo real.
 
 ### Iter 30 — Modal Finalizar Serviço pro técnico (mobile) com saldo ao vivo (2026-05-09) ✅
 - ✅ **Backend novos endpoints públicos** (mobile, sem auth):

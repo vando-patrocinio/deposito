@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
 import { Button, Icon } from "@/ui";
+import QRScannerModal from "@/QRScannerModal";
 
 /**
  * LousaMobile — vista da Lousa (bolhas) no app do colaborador.
@@ -624,6 +625,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
   const [stock, setStock] = useState(null);
   const [macStatus, setMacStatus] = useState(null); // null|loading|ok|warn|error
   const [macInfo, setMacInfo] = useState(null);
+  const [showQR, setShowQR] = useState(false);
 
   const cid = ticket.assigned_collaborator_id;
   const isInstall = ticket.type === "instalacao" || ticket.type === "troca_endereco";
@@ -802,17 +804,32 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
           <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
             📡 MAC/SN da ONT {isWithdraw ? "(retirada do cliente)" : "(do estoque do técnico)"} *
           </label>
-          <input
-            data-testid="finalize-ont"
-            value={form.ont} onChange={(e) => setForm({ ...form, ont: e.target.value.trim().toUpperCase() })}
-            placeholder="Ex.: ALCLFC090E99 ou AA:BB:CC:DD:EE:FF"
-            style={{
-              width: "100%", padding: "10px 12px",
-              border: `1px solid ${macStyle?.border || "#cbd5e1"}`,
-              borderRadius: 10, fontSize: 14, marginTop: 4, marginBottom: 6,
-              fontFamily: "monospace", textTransform: "uppercase", boxSizing: "border-box",
-            }}
-          />
+          <div style={{ display: "flex", gap: 6, marginTop: 4, marginBottom: 6 }}>
+            <input
+              data-testid="finalize-ont"
+              value={form.ont} onChange={(e) => setForm({ ...form, ont: e.target.value.trim().toUpperCase() })}
+              placeholder="Ex.: ALCLFC090E99 ou AA:BB:CC:DD:EE:FF"
+              style={{
+                flex: 1, padding: "10px 12px",
+                border: `1px solid ${macStyle?.border || "#cbd5e1"}`,
+                borderRadius: 10, fontSize: 14,
+                fontFamily: "monospace", textTransform: "uppercase", boxSizing: "border-box",
+              }}
+            />
+            <button
+              type="button"
+              data-testid="qr-open-btn"
+              onClick={() => setShowQR(true)}
+              title="Escanear código de barras/QR"
+              style={{
+                padding: "10px 14px", border: "none", borderRadius: 10,
+                background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white",
+                fontWeight: 800, fontSize: 16, cursor: "pointer", flexShrink: 0,
+              }}
+            >
+              📷
+            </button>
+          </div>
           {macStyle && (
             <div data-testid="mac-validation" style={{
               padding: "8px 12px", borderRadius: 10, fontSize: 12,
@@ -870,6 +887,18 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
       <Button onClick={submit} disabled={busy} style={{ width: "100%", marginTop: 6, height: 52, fontSize: 15 }} data-testid="finalize-btn">
         <Icon name="check" /> {busy ? "Finalizando..." : "Finalizar nota"}
       </Button>
+
+      {showQR && (
+        <QRScannerModal
+          onClose={() => setShowQR(false)}
+          onScan={(text) => {
+            // Normaliza: maiúsculas + remove espaços, mantém alfanum + ":"
+            const cleaned = (text || "").trim().toUpperCase().replace(/[^A-Z0-9:]/g, "");
+            setForm((f) => ({ ...f, ont: cleaned }));
+            setShowQR(false);
+          }}
+        />
+      )}
     </div>
   );
 }
