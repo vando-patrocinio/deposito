@@ -228,16 +228,22 @@ def test_grid_returns_groups_and_sla(s, gestor_h, collab_a):
 
 
 # ---------------------- 4. SLA: overdue / warning / n/a ----------------------
-def test_sla_status_na_when_pending(s, gestor_h, collab_a):
-    """Bolha 'pendente' (sem opened_at) → sla.status='n/a'."""
+def test_sla_pending_uses_queue_mode_when_no_schedule(s, gestor_h, collab_a):
+    """Bolha 'pendente' sem scheduled_time → SLA mode='queue', status='ok' (recém-criada).
+
+    Regra: pendentes/aguardando agora também rodam SLA usando created_at + grace period
+    (default 60min). Assim o gestor vê bolhas paradas demais piscando, igual às em execução.
+    """
     cid = collab_a["id"]
     tk = _create_ticket(s, gestor_h, cid, type_="reparo", priority="normal")
     try:
         r = s.get(f"{API}/lousa/grid", headers=gestor_h, timeout=15)
         cols = [c for c in r.json()["columns"] if c["collaborator"]["id"] == cid]
         t = next(t for t in cols[0]["tickets"] if t["id"] == tk["id"])
-        assert t["sla"]["status"] == "n/a"
-        assert t["sla"]["elapsed_minutes"] is None
+        assert t["sla"]["status"] == "ok"
+        assert t["sla"]["mode"] == "queue"
+        # elapsed_minutes deve ser número (não None) já que agora há referência
+        assert t["sla"]["elapsed_minutes"] is not None
     finally:
         s.delete(f"{API}/lousa/tickets/{tk['id']}", headers=gestor_h, timeout=10)
 

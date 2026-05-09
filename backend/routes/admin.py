@@ -70,6 +70,7 @@ class SettingsUpdate(BaseModel):
     sla_warning_pct: Optional[int] = None
     sla_yellow_minutes: Optional[int] = None
     sla_red_after_minutes: Optional[int] = None
+    sla_pending_grace_minutes: Optional[int] = Field(default=None, ge=0, le=1440)
     sla_blink_when_overdue: Optional[bool] = None
     time_sync_enabled: Optional[bool] = None
     time_sync_max_drift_seconds: Optional[int] = Field(default=None, ge=1, le=86400)

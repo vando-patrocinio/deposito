@@ -243,24 +243,55 @@ async def _sla_minutes_for_type(ttype: str, company_id: str) -> int:
     return int(s.get(key, defaults.get(ttype, 60)))
 
 
-def _compute_sla(ticket: dict, sla_minutes: int, yellow_minutes: int = 15, red_after_minutes: int = 0) -> dict:
+def _compute_sla(ticket: dict, sla_minutes: int, yellow_minutes: int = 15,
+                 red_after_minutes: int = 0, pending_grace_minutes: int = 60) -> dict:
     """Retorna info SLA usando minutos absolutos:
     - 🟢 ok: dentro do tempo, sem alerta
     - 🟡 warning: faltam <= yellow_minutes para estourar
     - 🔴 overdue: passou (sla_minutes + red_after_minutes)
+
+    Reference time chosen by ticket state:
+    - status == "aberta" + opened_at  → relógio de execução (tempo desde o técnico iniciar)
+    - pendente/aguardando + scheduled_time → atraso de agenda (deadline = scheduled_time + sla_minutes)
+    - sem scheduled_time + created_at → fila parada (deadline = created_at + pending_grace_minutes + sla_minutes)
+    Status finalizado/cancelado/encerrado/reagendado retorna n/a.
     """
-    if not ticket.get("opened_at") or ticket.get("status") != "aberta":
+    status_raw = ticket.get("status")
+    if status_raw in ("finalizada", "cancelada", "encerrada", "reagendada"):
         return {"sla_minutes": sla_minutes, "elapsed_minutes": None, "remaining_minutes": None,
                 "pct": None, "status": "n/a"}
+
+    # Pick reference timestamp + effective deadline
+    ref_iso = None
+    deadline_minutes = sla_minutes
+    mode = None
+    if status_raw == "aberta" and ticket.get("opened_at"):
+        ref_iso = ticket["opened_at"]
+        mode = "execution"
+    elif ticket.get("scheduled_time"):
+        ref_iso = ticket["scheduled_time"]
+        mode = "schedule"
+    elif ticket.get("created_at"):
+        ref_iso = ticket["created_at"]
+        deadline_minutes = sla_minutes + pending_grace_minutes
+        mode = "queue"
+    if not ref_iso:
+        return {"sla_minutes": sla_minutes, "elapsed_minutes": None, "remaining_minutes": None,
+                "pct": None, "status": "n/a"}
+
     try:
-        opened = datetime.fromisoformat(ticket["opened_at"].replace("Z", "+00:00"))
-        if opened.tzinfo is None:
-            opened = opened.replace(tzinfo=timezone.utc)
-        elapsed_sec = (datetime.now(timezone.utc) - opened).total_seconds()
-        elapsed_min = round(elapsed_sec / 60, 1)
-        remaining = round(sla_minutes - elapsed_min, 1)
-        pct = (elapsed_min / sla_minutes) * 100 if sla_minutes > 0 else 0
-        red_threshold = sla_minutes + red_after_minutes
+        ref = datetime.fromisoformat(str(ref_iso).replace("Z", "+00:00"))
+        if ref.tzinfo is None:
+            ref = ref.replace(tzinfo=timezone.utc)
+        elapsed_min = round((datetime.now(timezone.utc) - ref).total_seconds() / 60, 1)
+        # `scheduled_time` no futuro → ainda não começou a correr
+        if elapsed_min < 0:
+            return {"sla_minutes": sla_minutes, "elapsed_minutes": elapsed_min,
+                    "remaining_minutes": round(deadline_minutes - elapsed_min, 1),
+                    "pct": 0.0, "status": "ok", "mode": mode}
+        remaining = round(deadline_minutes - elapsed_min, 1)
+        pct = (elapsed_min / deadline_minutes) * 100 if deadline_minutes > 0 else 0
+        red_threshold = deadline_minutes + red_after_minutes
         if elapsed_min >= red_threshold:
             status = "overdue"
         elif remaining <= yellow_minutes:
@@ -268,7 +299,8 @@ def _compute_sla(ticket: dict, sla_minutes: int, yellow_minutes: int = 15, red_a
         else:
             status = "ok"
         return {"sla_minutes": sla_minutes, "elapsed_minutes": elapsed_min,
-                "remaining_minutes": remaining, "pct": round(pct, 1), "status": status}
+                "remaining_minutes": remaining, "pct": round(pct, 1),
+                "status": status, "mode": mode}
     except Exception:
         return {"sla_minutes": sla_minutes, "elapsed_minutes": None, "remaining_minutes": None,
                 "pct": None, "status": "n/a"}
@@ -460,6 +492,7 @@ async def lousa_grid(
     warning_pct = int(settings.get("sla_warning_pct", 80))
     yellow_min = int(settings.get("sla_yellow_minutes", 15))
     red_after_min = int(settings.get("sla_red_after_minutes", 0))
+    pending_grace_min = int(settings.get("sla_pending_grace_minutes", 60))
     blink = bool(settings.get("sla_blink_when_overdue", True))
     grid_start = int(settings.get("lousa_grid_start_hour", 8))
     grid_end = int(settings.get("lousa_grid_end_hour", 18))
@@ -549,7 +582,7 @@ async def lousa_grid(
                 t["locked"] = (i in locked_idx) or in_intervalo or (not has_entrada) or ended_day
             t["in_execution"] = t.get("status") == "aberta"
             sla_min = sla_map.get(t.get("type", "reparo"), 60)
-            t["sla"] = _compute_sla(t, sla_min, yellow_min, red_after_min)
+            t["sla"] = _compute_sla(t, sla_min, yellow_min, red_after_min, pending_grace_min)
             t["grid_slot"] = _slot_for_ticket(t, fixed_slots, slot_minutes)
             t["duration_minutes"] = compute_duration_minutes(t)
             t["ai_score"] = await heuristic_score_for_ticket(t, sla_minutes=sla_min)

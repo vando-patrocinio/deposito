@@ -100,6 +100,7 @@ class Settings(BaseModel):
     sla_warning_pct: int = 80           # % do tempo onde alerta amarelo dispara (legado, mantido p/ compat)
     sla_yellow_minutes: int = 15        # 🟡 Bolha pisca AMARELO quando faltam X min p/ estourar
     sla_red_after_minutes: int = 0      # 🔴 Bolha pisca VERMELHO X min APÓS estourar (0 = imediato)
+    sla_pending_grace_minutes: int = Field(default=60, ge=0, le=1440)  # bolhas sem horário marcado: SLA começa após X min de criação
     sla_blink_when_overdue: bool = True
     # ---- Sincronização de horário (servidor Brasil) ----
     time_sync_enabled: bool = False             # bloqueia ações se relógio do dispositivo dessincronizado
