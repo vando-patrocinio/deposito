@@ -70,7 +70,7 @@ function setSessionMode(mode) {
 
 const ALL_TABS = [
   { id: "dashboard", icon: "sheet", label: "Painel", roles: ["gestor", "auditor", "administrador"] },
-  { id: "lousa", icon: "users", label: "Lousa 📋", roles: ["gestor", "auditor", "administrador"] },
+  { id: "lousa", icon: "users", label: "Lousa 📋", roles: ["administrador"] },
   { id: "ai-ranking", icon: "shield", label: "Avaliação IA 🤖", roles: ["gestor", "auditor", "administrador"] },
   { id: "cadastro", icon: "users", label: "Cadastro", roles: ["gestor", "auditor", "administrador"] },
   { id: "pracas", icon: "map", label: "Praças", roles: ["gestor", "auditor", "administrador"] },
@@ -324,7 +324,11 @@ function AppContent() {
   // Garante que a aba inicial corresponde ao papel do usuário (para gestor não cair em aba inexistente)
   useEffect(() => {
     if (!user) return;
-    if (user.role === "gestor" && !["dashboard", "lousa", "ai-ranking", "cadastro", "pracas", "sheet", "logs"].includes(view)) {
+    // Lousa agora é exclusiva de administrador. Gestor/auditor não veem mais essa aba.
+    if (user.role === "gestor" && !["dashboard", "ai-ranking", "cadastro", "pracas", "sheet", "logs"].includes(view)) {
+      setView("dashboard");
+    }
+    if (user.role === "auditor" && view === "lousa") {
       setView("dashboard");
     }
   }, [user, view]);
