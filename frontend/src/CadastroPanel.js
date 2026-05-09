@@ -258,9 +258,19 @@ export default function CadastroPanel() {
                   <>
                     <Button variant="soft" onClick={() => setSelectedId(c.id)} data-testid={`fences-${c.id}`}>
                       <Icon name="map" /> Cercas
-                      <span style={{ marginLeft: 6, background: fenceCounts[c.id] ? "#0ea5e9" : "#94a3b8", color: "white", borderRadius: 999, padding: "1px 7px", fontSize: 10, fontWeight: 900 }}>
-                        {fenceCounts[c.id] ?? 0}
-                      </span>
+                      {(() => {
+                        const indiv = fenceCounts[c.id] ?? 0;
+                        const hasPraca = c.praca_id && c.praca_id !== "NOTA";
+                        const total = indiv + (hasPraca ? 1 : 0);
+                        const title = hasPraca
+                          ? `${indiv} cerca(s) individual(is) + 1 praça vinculada`
+                          : `${indiv} cerca(s) individual(is)`;
+                        return (
+                          <span title={title} data-testid={`fence-count-${c.id}`} style={{ marginLeft: 6, background: total ? "#0ea5e9" : "#94a3b8", color: "white", borderRadius: 999, padding: "1px 7px", fontSize: 10, fontWeight: 900 }}>
+                            {total}
+                          </span>
+                        );
+                      })()}
                     </Button>
                     <Button
                       variant="soft"
