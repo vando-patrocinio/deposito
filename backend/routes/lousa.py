@@ -1418,3 +1418,137 @@ async def ai_evaluate_ticket(ticket_id: str,
         company_id=company_id,
     )
     return result
+
+
+
+# -------------------------------------------------------------------------
+# BRIEFING DIÁRIO — relatório resumido para o gestor
+# -------------------------------------------------------------------------
+@router.get("/lousa/briefing")
+async def lousa_briefing(user: dict = Depends(require_role("gestor")),
+                         use_ai: bool = True):
+    """Gera resumo do dia para o gestor: top 3 serviços, técnico do dia,
+    pior score IA, atrasos pendentes. Opcionalmente usa LLM para texto natural.
+    """
+    q = tenant_filter(user)
+    today = today_str()
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+
+    # Tickets do dia (criados hoje OU fechados hoje)
+    todays = await db.tickets.find(
+        {**q, "$or": [
+            {"created_at": {"$regex": f"^{today}"}},
+            {"closed_at": {"$regex": f"^{today}"}},
+        ]},
+        {"_id": 0},
+    ).to_list(2000)
+
+    finalized = [t for t in todays if t.get("status") == "finalizada"]
+    open_late = [t for t in todays if t.get("status") in ("aberta", "aguardando_atendimento")]
+    canceled = [t for t in todays if t.get("status") == "cancelada"]
+
+    # Top técnicos por #finalizados
+    by_tech: dict = {}
+    for t in finalized:
+        cid = t["assigned_collaborator_id"]
+        by_tech.setdefault(cid, []).append(t)
+    tech_ranking = sorted(by_tech.items(), key=lambda x: -len(x[1]))
+
+    top_collab_id, top_collab_count = (tech_ranking[0][0], len(tech_ranking[0][1])) if tech_ranking else (None, 0)
+    top_collab_name = None
+    if top_collab_id:
+        c = await db.collaborators.find_one({"id": top_collab_id}, {"_id": 0, "name": 1})
+        top_collab_name = c.get("name") if c else None
+
+    # Score IA por bolha aberta — pega o pior score
+    settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
+    sla_map = {
+        "reparo": int(settings.get("sla_reparo_minutes", 60)),
+        "instalacao": int(settings.get("sla_instalacao_minutes", 120)),
+        "retirada": int(settings.get("sla_retirada_minutes", 30)),
+        "prioridade": int(settings.get("sla_prioridade_minutes", 45)),
+        "preventiva": int(settings.get("sla_preventiva_minutes", 90)),
+        "venda": int(settings.get("sla_venda_minutes", 60)),
+    }
+    worst_score = None
+    worst_ticket = None
+    for t in open_late:
+        sla = sla_map.get(t.get("type", "reparo"), 60)
+        s = await heuristic_score_for_ticket(t, sla_minutes=sla)
+        if worst_score is None or s["score"] < worst_score["score"]:
+            worst_score = s
+            worst_ticket = t
+
+    # Top 3 serviços por duração (finalizados hoje)
+    top3 = sorted(
+        [t for t in finalized if compute_duration_minutes(t) is not None],
+        key=lambda t: compute_duration_minutes(t) or 0,
+        reverse=True,
+    )[:3]
+    top3_payload = [{
+        "client": (t.get("client_snapshot") or {}).get("name"),
+        "type": t.get("type"),
+        "duration_minutes": compute_duration_minutes(t),
+        "tech_id": t.get("assigned_collaborator_id"),
+    } for t in top3]
+
+    avg_dur = (sum(compute_duration_minutes(t) or 0 for t in finalized) / len(finalized)) if finalized else None
+
+    summary_data = {
+        "date": today,
+        "total_today": len(todays),
+        "finalized_count": len(finalized),
+        "still_open_count": len(open_late),
+        "canceled_count": len(canceled),
+        "avg_duration_minutes": round(avg_dur, 1) if avg_dur else None,
+        "top_collaborator": {
+            "id": top_collab_id, "name": top_collab_name, "count": top_collab_count,
+        } if top_collab_id else None,
+        "worst_score_ticket": ({
+            "ticket_id": worst_ticket.get("id"),
+            "client": (worst_ticket.get("client_snapshot") or {}).get("name"),
+            "type": worst_ticket.get("type"),
+            "score": worst_score["score"],
+            "label": worst_score["label"],
+            "signals": worst_score.get("signals", [])[:3],
+        }) if worst_ticket else None,
+        "top3_services": top3_payload,
+    }
+
+    # Texto narrativo via LLM (se solicitado)
+    narrative = None
+    if use_ai:
+        try:
+            from emergentintegrations.llm.chat import UserMessage
+            chat = await llm_chat(
+                session_id=f"briefing-{today}-{company_id}",
+                system=(
+                    "Você é um analista sênior de operações de campo. "
+                    "Crie um briefing executivo curto (max 4 parágrafos curtos, em PT-BR) com tom profissional. "
+                    "Destaque número de serviços, top performer, atrasos, alertas. Use bullets ou frases curtas. "
+                    "NÃO repita os números brutos do JSON; INTERPRETE-OS."
+                ),
+            )
+            prompt = (
+                f"Dados do dia ({today}):\n"
+                f"- Total de serviços hoje: {summary_data['total_today']}\n"
+                f"- Finalizados: {summary_data['finalized_count']}\n"
+                f"- Em aberto/aguardando: {summary_data['still_open_count']}\n"
+                f"- Cancelados: {summary_data['canceled_count']}\n"
+                f"- Tempo médio: {summary_data['avg_duration_minutes']}min\n"
+                f"- Top técnico: {top_collab_name} com {top_collab_count} finalizadas\n"
+                f"- Pior score IA: {worst_score['score'] if worst_score else 'N/A'} "
+                f"({(worst_ticket.get('client_snapshot') or {}).get('name') if worst_ticket else 'N/A'})\n"
+                f"- Top serviços por duração: {[(s['client'], int(s['duration_minutes'])) for s in top3_payload]}"
+            )
+            narrative = (await chat.send_message(UserMessage(text=prompt))).strip()
+        except Exception as e:
+            logger.warning("[briefing] LLM falhou: %s", e)
+            narrative = None
+
+    return {
+        "summary_data": summary_data,
+        "narrative": narrative,
+        "method": "llm" if narrative else "data-only",
+        "computed_at": now_iso(),
+    }

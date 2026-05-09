@@ -1,0 +1,40 @@
+{
+  "summary": "Iter9 testing complete. Backend: created /app/backend/tests/test_iteration9_briefing.py — 4/4 PASS (no-auth→401, gestor use_ai=false → summary_data com todas as chaves date/total_today/finalized_count/still_open_count/canceled_count/avg_duration_minutes/top3_services + narrative=null + method='data-only', admin pode acessar [super-role], use_ai=true retorna narrative LLM real ~5s + method='llm'). Regression: iter4(14/14)+iter5(11/11+22/22)+iter8(10/10)+iter9(4/4) = 61/61 verde. 3 falhas em test_iteration2.py são LEGADAS (admin-login com admin123 + /api/settings sem auth) — pré-existentes, não relacionadas a iter9. Frontend Painel (gestor login): generate-briefing-btn visível no header de stats, clicar abre briefing-modal com brief-total=98, brief-finalized=0, brief-open=6, brief-canceled=0, briefing-narrative com texto LLM completo em PT-BR (4 parágrafos profissionais), briefing-close-btn fecha o modal. Frontend Mobile (?mode=app, viewport 420x850): user-avatar-btn presente; kebab-menu-btn visível; clicar abre kebab-menu-dropdown com kebab-history + kebab-exit-mobile; clicar kebab-history navega para screen-history; open-history-btn (botão central antigo) REMOVIDO conforme spec; open-clock-btn altura=72px com texto '🤳 Bater Início intervalo'; open-lousa-btn presente. kebab-logout não presente (esperado, sem forcedCollabId).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration9_briefing.py",
+    "/app/test_reports/pytest/iter9_briefing_results.xml",
+    "/app/test_reports/pytest/iter9_full_regression.xml"
+  ],
+  "action_items": [
+    "(Pré-existente, não-iter9) test_iteration2.py:TestAdminAuthRegression e TestSettingsRegression falham (3 testes) usando endpoints legados /api/auth/admin-login e /api/settings sem auth. Decidir se desativa o arquivo legado ou atualiza para o fluxo de auth atual (Authorization: Bearer)."
+  ],
+  "critical_code_review_comments": [
+    "routes/lousa.py — agora ~1555 linhas (cresceu mais com briefing). Reiterada recomendação de splitting em lousa_grid.py / lousa_stats.py / lousa_ai.py / lousa_briefing.py.",
+    "lousa_briefing — try/except amplo (Exception) ao redor da chamada LLM engole erros de parse/timeout. Melhor capturar exceções específicas (TimeoutError, ValueError) e logar stack trace; expor 'fallback_reason' no payload para depuração no frontend.",
+    "lousa_briefing — não há cache. Cada clique no botão 'Briefing IA' dispara nova chamada LLM (~5-15s + custo). Sugiro cache de ~10min por (company_id, today, use_ai) em Redis ou Mongo TTL collection.",
+    "lousa_briefing — query .to_list(2000) sem limite real; em empresas com >2000 tickets/dia o resumo silenciosamente trunca. Adicionar paginação ou agregação MongoDB ($facet) para escalar.",
+    "DashboardPanel.js BriefingModal — não há estado de 'loading' visível no botão generate-briefing-btn enquanto LLM roda (5-15s). Usuário clica e espera; recomendo desabilitar o botão + spinner."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration9_briefing.py"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4 iter9 + 57/57 regression iter4/5/8). 3 falhas em iter2 são legadas/pré-existentes.",
+    "frontend": "100% (Painel briefing-modal end-to-end com LLM real OK; mobile redesign avatar/kebab/screen-history/open-clock-btn 72px todos verificados)"
+  },
+  "test_credentials": "gestor@empresa.com / 123456 (Painel briefing); admin@empresa.com / 123456 (super-role validado em backend); ?mode=app sem login (mobile)",
+  "seed_data_creation": "Nenhum seed novo. Tickets demo existentes (98 hoje) já produzem summary_data e narrative significativos.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter9 backend suite: /app/backend/tests/test_iteration9_briefing.py (4/4). LLM call leva ~5s na produção; usar timeout >=45s no requests. Frontend testids iter9: generate-briefing-btn (header stats no Painel), briefing-modal, brief-total/finalized/open/canceled, briefing-narrative, briefing-close-btn; mobile: kebab-menu-btn, kebab-menu-dropdown, kebab-history, kebab-exit-mobile, kebab-logout (só se forcedCollabId), screen-history, open-clock-btn (72px gradient verde), open-lousa-btn, user-avatar-btn (64px gradient azul). open-history-btn foi REMOVIDO (não testar). Para login Painel a URL é /login (não raiz — raiz é landing page marketing). test_iteration2.py tem 3 falhas legadas pré-existentes (admin-login + settings sem auth) — ignorar ou atualizar arquivo separadamente.",
+  "rca of the issue": "Nenhum bug encontrado em iter9. As 3 falhas em test_iteration2.py são pré-existentes (não-iter9): TestAdminAuthRegression usa /api/auth/admin-login com password 'admin123' (provavelmente endpoint deprecado/removido), e TestSettingsRegression chama /api/settings sem header Authorization (agora todos endpoints exigem auth). Mitigação: arquivo deve ser atualizado para usar /api/auth/login (Bearer token) ou ser marcado @pytest.mark.skip se os endpoints legados foram removidos."
+}

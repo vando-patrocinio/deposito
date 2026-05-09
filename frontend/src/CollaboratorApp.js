@@ -85,12 +85,17 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     api.listPracas().then(setPracas).catch(() => setPracas([]));
   }, [forcedCollabId]);
 
-  // Atualiza today + fences ao trocar colaborador
+  // Atualiza today + fences + colaborador (avatar) ao trocar colaborador
   async function refresh(cid = collabId) {
     if (!cid) return;
-    const [t, f] = await Promise.all([api.todayStatus(cid), api.listGeofences(cid)]);
+    const [t, f, cs] = await Promise.all([
+      api.todayStatus(cid),
+      api.listGeofences(cid),
+      api.listCollaborators(),
+    ]);
     setToday(t);
     setFences(f);
+    setCollabs(cs);  // pega avatar_data_url atualizado da 1ª selfie válida
     loadLousaSummary(cid);
   }
   useEffect(() => {
@@ -287,44 +292,49 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
           </div>
         )}
         <div style={{ padding: mobile ? "16px 16px 32px" : 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div>
-              <div style={{ fontSize: 12, color: "#64748b" }}>Olá</div>
-              <strong style={{ fontSize: 18 }}>{collab?.name}</strong>
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{collab?.role}</div>
-            </div>
-            <button
-              type="button"
-              onDoubleClick={() => { if (collab?.avatar_data_url) setAvatarZoom(true); }}
-              onClick={(e) => {
-                // No mobile/touch o duplo toque é registrado como dois clicks rápidos — detectamos via detail
-                if (e.detail === 2 && collab?.avatar_data_url) setAvatarZoom(true);
-              }}
-              title={collab?.avatar_data_url ? "Toque 2x para ampliar" : "Sem foto cadastrada"}
-              data-testid="user-avatar-btn"
-              style={{
-                width: 50, height: 50, borderRadius: "50%", overflow: "hidden",
-                background: "linear-gradient(135deg,#e2e8f0,#cbd5e1)",
-                display: "grid", placeItems: "center", fontSize: 23,
-                border: "3px solid white", boxShadow: "0 8px 18px rgba(15,23,42,.12)",
-                padding: 0, cursor: collab?.avatar_data_url ? "zoom-in" : "default",
-              }}
-            >
-              {collab?.avatar_data_url ? <img src={collab.avatar_data_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Icon name="user" />}
-            </button>
-          </div>
-
-          {forcedCollabId && onLogout && (
-            <div style={{ marginBottom: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, position: "relative" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
               <button
-                onClick={onLogout}
-                data-testid="logout-collab-btn"
-                style={{ background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 8, padding: "4px 10px", fontSize: 11, cursor: "pointer", fontWeight: 700 }}
+                type="button"
+                onDoubleClick={() => { if (collab?.avatar_data_url) setAvatarZoom(true); }}
+                onClick={(e) => {
+                  if (e.detail === 2 && collab?.avatar_data_url) setAvatarZoom(true);
+                }}
+                title={collab?.avatar_data_url ? "Toque 2x para ampliar" : "Sem foto cadastrada — bata seu primeiro ponto"}
+                data-testid="user-avatar-btn"
+                style={{
+                  width: 64, height: 64, borderRadius: "50%", overflow: "hidden",
+                  background: "linear-gradient(135deg,#0ea5e9,#0284c7)",
+                  display: "grid", placeItems: "center", fontSize: 26, color: "white",
+                  border: "3px solid white", boxShadow: "0 8px 18px rgba(14,165,233,.35)",
+                  padding: 0, cursor: collab?.avatar_data_url ? "zoom-in" : "default",
+                  flexShrink: 0,
+                }}
               >
-                Sair da conta Google
+                {collab?.avatar_data_url
+                  ? <img src={collab.avatar_data_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : (collab?.name?.[0] || "?").toUpperCase()}
               </button>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Olá,</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {collab?.name?.split(" ")[0] || "—"}
+                </div>
+                <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {collab?.role || ""}
+                </div>
+              </div>
             </div>
-          )}
+
+            {/* Kebab menu (3 pontinhos) */}
+            <KebabMenu
+              isAdminTest={isAdminTest}
+              forcedCollabId={forcedCollabId}
+              onLogoutGoogle={onLogout}
+              onExitMobile={mobile && !forcedCollabId ? exitMobile : null}
+              onOpenHistory={() => setScreen("history")}
+            />
+          </div>
 
           {/* Seletor de colaborador — escondido quando autenticado via Google (mobile) */}
           {!forcedCollabId && collabs.length > 1 && (
@@ -349,22 +359,18 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 data-testid="open-clock-btn"
                 onClick={quickClock}
                 disabled={busy || !collabId}
-                style={{ width: "100%", height: 62, borderRadius: 32, border: 0, background: "#10b981", color: "#050b16", fontWeight: 950, fontSize: 16, marginBottom: 8, boxShadow: "0 16px 30px rgba(16,185,129,.4)", cursor: "pointer", opacity: busy ? 0.6 : 1 }}
+                style={{ width: "100%", height: 72, borderRadius: 36, border: 0, background: "linear-gradient(135deg, #10b981, #059669)", color: "white", fontWeight: 950, fontSize: 18, marginBottom: 10, boxShadow: "0 18px 36px rgba(16,185,129,.45)", cursor: "pointer", opacity: busy ? 0.6 : 1, letterSpacing: 0.4 }}
               >
-                <Icon name="camera" /> {busy ? "..." : "Bater Ponto"}
+                <Icon name="camera" /> {busy ? "..." : `Bater ${today.next_expected || "Ponto"}`}
               </button>
               {geoError && <div style={{ color: "#be123c", fontSize: 11, marginBottom: 8 }}><Icon name="alert" /> {geoError}</div>}
-
-              <button data-testid="open-history-btn" onClick={() => setScreen("history")} style={{ ...softButtonStyle(), width: "100%", height: 58 }}>
-                <div style={{ fontSize: 18 }}><Icon name="history" /></div><strong>Histórico</strong>
-              </button>
 
               <button
                 data-testid="open-lousa-btn"
                 onClick={() => setScreen("lousa")}
                 style={{
                   ...softButtonStyle(),
-                  width: "100%", height: 58, marginTop: 8,
+                  width: "100%", height: 56, marginTop: 4,
                   background: "linear-gradient(135deg, #fef3c7, #fde68a)",
                   border: "1px solid #f59e0b",
                   color: "#78350f",
@@ -641,4 +647,73 @@ function parseDevice(ua) {
   else if (/firefox/.test(u)) browser = "Firefox";
   else if (/safari/.test(u)) browser = "Safari";
   return { device: `${device} · ${browser}`, os };
+}
+
+
+function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, onOpenHistory }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const items = [];
+  items.push({ key: "history", label: "Histórico", icon: "📋", onClick: () => { onOpenHistory && onOpenHistory(); setOpen(false); } });
+  if (forcedCollabId && onLogoutGoogle) {
+    items.push({ key: "logout", label: "Sair da conta Google", icon: "🚪", onClick: () => { onLogoutGoogle(); setOpen(false); } });
+  }
+  if (onExitMobile) {
+    items.push({ key: "exit-mobile", label: "Voltar ao painel", icon: "↩️", onClick: () => { onExitMobile(); setOpen(false); } });
+  }
+
+  return (
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        data-testid="kebab-menu-btn"
+        aria-label="Mais opções"
+        title="Mais opções"
+        style={{
+          width: 38, height: 38, borderRadius: "50%",
+          border: "1px solid #e2e8f0", background: open ? "#f1f5f9" : "white",
+          display: "grid", placeItems: "center", cursor: "pointer",
+          fontSize: 20, color: "#475569", padding: 0, lineHeight: 0,
+          transition: "background-color .15s, transform .15s",
+          transform: open ? "rotate(90deg)" : "rotate(0deg)",
+        }}
+      >⋮</button>
+      {open && (
+        <div data-testid="kebab-menu-dropdown" style={{
+          position: "absolute", top: 44, right: 0, zIndex: 60,
+          background: "white", border: "1px solid #e2e8f0",
+          borderRadius: 14, boxShadow: "0 14px 30px rgba(15,23,42,.18)",
+          minWidth: 200, padding: 6, animation: "fadeIn .15s",
+        }}>
+          {items.map((it) => (
+            <button
+              key={it.key}
+              data-testid={`kebab-${it.key}`}
+              onClick={it.onClick}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, width: "100%",
+                background: "transparent", border: 0, padding: "10px 12px",
+                fontSize: 13, fontWeight: 600, color: "#0f172a",
+                cursor: "pointer", borderRadius: 8, textAlign: "left",
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.background = "#f1f5f9")}
+              onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <span style={{ fontSize: 16 }}>{it.icon}</span>
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

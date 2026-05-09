@@ -493,6 +493,19 @@ function ServiceStatsSection() {
   const [days, setDays] = React.useState(30);
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState("");
+  const [briefing, setBriefing] = React.useState(null);
+  const [briefingBusy, setBriefingBusy] = React.useState(false);
+
+  async function generateBriefing() {
+    setBriefingBusy(true);
+    try {
+      const b = await api.lousaBriefing(true);
+      setBriefing(b);
+    } catch (e) {
+      alert("Erro ao gerar briefing: " + (e?.response?.data?.detail || e.message));
+    }
+    setBriefingBusy(false);
+  }
 
   React.useEffect(() => {
     let alive = true;
@@ -516,6 +529,19 @@ function ServiceStatsSection() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         <h3 style={{ margin: 0, fontSize: 16 }}>📊 Estatísticas de serviços</h3>
         <div style={{ display: "flex", gap: 6 }}>
+          <button
+            data-testid="generate-briefing-btn"
+            onClick={generateBriefing}
+            disabled={briefingBusy}
+            style={{
+              padding: "6px 14px", borderRadius: 10, fontSize: 12, fontWeight: 700,
+              border: "1px solid #a855f7", cursor: "pointer",
+              background: briefingBusy ? "#f3e8ff" : "linear-gradient(135deg,#a855f7,#7c3aed)",
+              color: briefingBusy ? "#7c3aed" : "white",
+            }}
+          >
+            🤖 {briefingBusy ? "Gerando..." : "Briefing IA"}
+          </button>
           {[7, 30, 90].map((n) => (
             <button
               key={n}
@@ -582,7 +608,75 @@ function ServiceStatsSection() {
           </div>
         </div>
       )}
+
+      {briefing && <BriefingModal briefing={briefing} onClose={() => setBriefing(null)} />}
     </Card>
+  );
+}
+
+function BriefingModal({ briefing, onClose }) {
+  const sd = briefing.summary_data || {};
+  return (
+    <div data-testid="briefing-modal" onClick={onClose} style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 110,
+      display: "grid", placeItems: "center", padding: 20,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "white", borderRadius: 18, padding: 24, maxWidth: 640, width: "100%",
+        maxHeight: "90vh", overflowY: "auto",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h2 style={{ margin: 0, fontSize: 20 }}>🤖 Briefing diário · {sd.date}</h2>
+          <span style={{ fontSize: 11, color: "#64748b" }}>{briefing.method}</span>
+        </div>
+
+        {briefing.narrative && (
+          <div data-testid="briefing-narrative" style={{
+            background: "linear-gradient(135deg,#faf5ff,#f3e8ff)",
+            border: "1px solid #d8b4fe", borderRadius: 12, padding: 14,
+            fontSize: 13, color: "#3b0764", whiteSpace: "pre-wrap",
+            marginBottom: 14, lineHeight: 1.6,
+          }}>{briefing.narrative}</div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginBottom: 14 }}>
+          <KpiCard label="Total" value={sd.total_today || 0} color="#0f172a" testId="brief-total" />
+          <KpiCard label="Finalizados" value={sd.finalized_count || 0} color="#10b981" testId="brief-finalized" />
+          <KpiCard label="Em aberto" value={sd.still_open_count || 0} color="#f59e0b" testId="brief-open" />
+          <KpiCard label="Cancelados" value={sd.canceled_count || 0} color="#dc2626" testId="brief-canceled" />
+        </div>
+
+        {sd.top_collaborator && (
+          <div style={{ background: "#dcfce7", padding: 10, borderRadius: 10, marginBottom: 10, fontSize: 13 }}>
+            🏆 <strong>Top técnico:</strong> {sd.top_collaborator.name} — {sd.top_collaborator.count} finalizadas
+          </div>
+        )}
+        {sd.worst_score_ticket && (
+          <div style={{ background: "#fee2e2", padding: 10, borderRadius: 10, marginBottom: 10, fontSize: 13 }}>
+            ⚠️ <strong>Pior score IA:</strong> {sd.worst_score_ticket.client} ({sd.worst_score_ticket.type}) — {sd.worst_score_ticket.score}/10 ({sd.worst_score_ticket.label})
+          </div>
+        )}
+        {sd.top3_services?.length > 0 && (
+          <div>
+            <h4 style={{ fontSize: 13, margin: "10px 0 6px" }}>Top 3 serviços por duração</h4>
+            {sd.top3_services.map((s, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", background: "#f8fafc", borderRadius: 8, marginBottom: 4, fontSize: 12 }}>
+                <span>{i + 1}º {s.client} · <span style={{ color: "#64748b" }}>{s.type}</span></span>
+                <strong>{Math.round(s.duration_minutes || 0)}min</strong>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button
+            onClick={onClose}
+            data-testid="briefing-close-btn"
+            style={{ padding: "8px 16px", borderRadius: 10, border: "1px solid #cbd5e1", background: "white", fontWeight: 700, cursor: "pointer" }}
+          >Fechar</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
