@@ -119,6 +119,11 @@ class FinalizeIn(BaseModel):
     outcome: Outcome = "sucesso"
 
 
+class PublicReorderIn(BaseModel):
+    collaborator_id: str
+    items: List[ReorderItem]
+
+
 class AdminCloseIn(BaseModel):
     action: Literal["encerrar", "reagendar", "cancelar"]
     notes: Optional[str] = None
@@ -1004,6 +1009,39 @@ async def public_exit_resolve(payload: PublicOpenIn):
         severity="critical",
     )
     return {"ok": True, "moved": len(ids), "ticket_ids": ids}
+
+
+@router.post("/lousa/public/reorder")
+async def public_reorder_tickets(payload: PublicReorderIn):
+    """Mobile reorder — sem JWT, valida que o colaborador existe e os tickets pertencem a ele.
+    Mesmas regras do /lousa/reorder: bolhas com priority != 'normal' ou 'travadas pela posição' não podem mudar de posição.
+    """
+    cid = payload.collaborator_id
+    coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "id": 1})
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado")
+    raw = await db.tickets.find(
+        {"assigned_collaborator_id": cid,
+         "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]}},
+        {"_id": 0},
+    ).to_list(500)
+    raw.sort(key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]))
+    by_id = {t["id"]: t for t in raw}
+    locked_ids = {raw[i]["id"] for i in compute_locked_positions(raw)}
+
+    for item in payload.items:
+        t = by_id.get(item.id)
+        if not t:
+            raise HTTPException(400, f"Ticket {item.id} não pertence a este colaborador")
+        is_locked = t["priority"] != "normal" or t["id"] in locked_ids
+        if is_locked and item.position != raw.index(t):
+            raise HTTPException(400, f"Bolha travada não pode ser movida ({t['client_snapshot']['name']})")
+
+    for item in payload.items:
+        t = by_id[item.id]
+        if t["priority"] == "normal" and item.id not in locked_ids:
+            await db.tickets.update_one({"id": item.id}, {"$set": {"position": item.position}})
+    return {"ok": True}
 
 
 # -------------------------------------------------------------------------

@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 19 — testes do Inline Date Navigator (admin Lousa) e Mobile Reorder (técnico). Backend: 13/13 testes pytest passaram (3 grid date-nav + 4 public reorder + 6 regressão). Frontend: DateNavigator no admin renderiza todos os data-testids; ao clicar prev abre banner amarelo 'Visualizando dia passado' com botão 'Voltar para hoje' (lousa-back-today-btn) que retorna ao dia atual. Mobile: após Entrada e com 3+ bolhas ativas, botão lousa-reorder-toggle aparece, abre lousa-reorder-bar (cancel/save), cada bolha vira bubble-reorder-{id} com bubble-up-{id}/bubble-down-{id}; clicar ↓ reordena visualmente e Save chama POST /api/lousa/public/reorder e persiste a nova ordem.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Lousa Admin header", "issues": ["Quando data == hoje, o data-testid='lousa-date-today' não é renderizado (mostra-se um badge 'Ho' diferente). Não bloqueia testes — toggle entre dia atual e passado funciona via lousa-back-today-btn. Considere expor lousa-date-today permanentemente para consistência com a spec, ou documentar que ele só aparece quando date != today."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration19_date_nav_reorder.py",
+    "/app/test_reports/pytest/iter19_results.xml"
+  ],
+  "action_items": [
+    "(opcional) Renderizar data-testid='lousa-date-today' também quando já estiver em hoje, ou documentar que aparece somente quando data != hoje."
+  ],
+  "critical_code_review_comments": [
+    "lousa.py:1014-1044 (public/reorder) reusa corretamente compute_locked_positions e PRIORITY_RANK — mantém paridade com /lousa/reorder autenticado. Boa prática.",
+    "lousa.py:392-446 (grid com date_from/date_to) usa $or de created_at/closed_at/closed_at:None que captura tickets ativos sobrepondo o range — lógica consistente para visão histórica read-only.",
+    "Validação OK: priority='horario'/'prioridade' bloqueia reorder com HTTP 400 e mensagem amigável; ticket inexistente para o colaborador → 400; colaborador inexistente → 404; chamada idempotente retorna ok=true."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration19_date_nav_reorder.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456 (válido). col-demo-001 (Carlos) com Entrada já registrada no dia.",
+  "seed_data_creation": "Backend test cria 0-3 TEST_REORDER_* tickets normais via fixture e os deleta no teardown. Para o teste manual de UI mobile foram criados 3 tickets normais ('TEST_RE_0/1/2') via API e removidos depois do teste (cleanup confirmado: 200 OK em cada DELETE).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 19 features (Date Navigator admin + Mobile Reorder) totalmente verdes em backend e frontend. Próxima iteração pode focar em outras áreas; manter test_iteration19_date_nav_reorder.py como regressão. Para reorder mobile, é necessário >1 ticket ativo normal; o backend cria/limpa via fixture seed_normal_tickets. Endpoint /api/lousa/public/reorder é sem auth — apenas valida ownership pelo collaborator_id.",
+  "rca of the issue": "N/A — nenhum bug encontrado nesta iteração."
+}

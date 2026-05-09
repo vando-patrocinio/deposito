@@ -16,6 +16,10 @@ export default function LousaMobile({ collaboratorId, onBack }) {
   const [openTicket, setOpenTicket] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFlash, setRefreshFlash] = useState(false);
+  const [reorderMode, setReorderMode] = useState(false);
+  const [orderedIds, setOrderedIds] = useState([]);   // ordem local em modo reorder
+  const [dragId, setDragId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
 
   const refresh = useCallback(async () => {
     if (!collaboratorId) return;
@@ -23,6 +27,10 @@ export default function LousaMobile({ collaboratorId, onBack }) {
     try {
       const d = await api.lousaByCollaborator(collaboratorId);
       setData(d);
+      // Quando recarrega fora do modo reorder, sincroniza orderedIds
+      if (!reorderMode) {
+        setOrderedIds((d.tickets || []).map((t) => t.id));
+      }
       setRefreshFlash(true);
       setTimeout(() => setRefreshFlash(false), 1200);
     } catch (e) {
@@ -30,9 +38,79 @@ export default function LousaMobile({ collaboratorId, onBack }) {
     } finally {
       setRefreshing(false);
     }
-  }, [collaboratorId]);
+  }, [collaboratorId, reorderMode]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // --- Reorder helpers (modo "Reordenar") ---
+  function isLockedTicket(t) {
+    return t.locked || t.priority !== "normal" || ["aberta", "aguardando_atendimento", "finalizada"].includes(t.status);
+  }
+  function moveTicket(ticketId, delta) {
+    setOrderedIds((prev) => {
+      const idx = prev.indexOf(ticketId);
+      if (idx < 0) return prev;
+      const targetIdx = idx + delta;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      // Não atravessar bolhas travadas
+      const tickets = data?.tickets || [];
+      const targetTicket = tickets.find((t) => t.id === prev[targetIdx]);
+      if (!targetTicket || isLockedTicket(targetTicket)) return prev;
+      const next = [...prev];
+      [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+      return next;
+    });
+  }
+  async function saveReorder() {
+    if (!data || !orderedIds.length) return;
+    setBusy(true); setErr("");
+    try {
+      const items = orderedIds.map((id, position) => ({ id, position }));
+      await api.lousaPublicReorder(collaboratorId, items);
+      setReorderMode(false);
+      await refresh();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    }
+    setBusy(false);
+  }
+  function cancelReorder() {
+    setReorderMode(false);
+    setOrderedIds((data?.tickets || []).map((t) => t.id));
+    setDragId(null); setDragOverId(null);
+  }
+  function enterReorder() {
+    setOrderedIds((data?.tickets || []).map((t) => t.id));
+    setReorderMode(true);
+  }
+
+  // --- Touch/Mouse drag handlers (HTML5 DnD) ---
+  function handleDragStart(id) {
+    if (!reorderMode) return;
+    const t = (data?.tickets || []).find((x) => x.id === id);
+    if (!t || isLockedTicket(t)) return;
+    setDragId(id);
+  }
+  function handleDragOver(e, overId) {
+    if (!reorderMode || !dragId || dragId === overId) return;
+    e.preventDefault();
+    setDragOverId(overId);
+  }
+  function handleDrop(overId) {
+    if (!reorderMode || !dragId) return;
+    setOrderedIds((prev) => {
+      const fromIdx = prev.indexOf(dragId);
+      const toIdx = prev.indexOf(overId);
+      if (fromIdx < 0 || toIdx < 0) return prev;
+      const targetTicket = (data?.tickets || []).find((t) => t.id === overId);
+      if (!targetTicket || isLockedTicket(targetTicket)) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+    setDragId(null); setDragOverId(null);
+  }
 
   async function handleOpen(ticket) {
     if (ticket.locked) return;
@@ -154,7 +232,7 @@ export default function LousaMobile({ collaboratorId, onBack }) {
         <Button
           variant="soft"
           onClick={refresh}
-          disabled={busy || refreshing}
+          disabled={busy || refreshing || reorderMode}
           data-testid="lousa-refresh-btn"
           style={{
             background: refreshFlash ? "#dcfce7" : refreshing ? "#fef9c3" : "#dbeafe",
@@ -165,11 +243,51 @@ export default function LousaMobile({ collaboratorId, onBack }) {
         >
           {refreshing ? "⏳ Atualizando..." : refreshFlash ? "✓ Atualizado" : "🔄 Atualizar"}
         </Button>
+        {!reorderMode && data.tickets.length > 1 && unlocked && (
+          <Button
+            variant="soft"
+            onClick={enterReorder}
+            disabled={busy}
+            data-testid="lousa-reorder-toggle"
+            style={{ background: "#ede9fe", color: "#5b21b6", border: "1px solid #c4b5fd", fontWeight: 700 }}
+          >
+            ↕ Reordenar
+          </Button>
+        )}
       </div>
       <h2 style={{ marginTop: 14, marginBottom: 4 }}>📋 Lousa de Serviços</h2>
       <p style={{ color: "#64748b", fontSize: 12, margin: 0 }}>
         {data.tickets.length} serviço(s) — {unlocked ? "🔓 lousa liberada" : "🔒 lousa travada"}
+        {reorderMode && <span style={{ marginLeft: 8, color: "#5b21b6", fontWeight: 700 }}>· ↕ modo reordenar</span>}
       </p>
+
+      {reorderMode && (
+        <div data-testid="lousa-reorder-bar" style={{
+          marginTop: 12, padding: "10px 14px",
+          background: "linear-gradient(90deg, #ede9fe, #ddd6fe)",
+          border: "1px solid #c4b5fd", borderRadius: 14,
+          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap",
+        }}>
+          <div style={{ fontSize: 12, color: "#4c1d95", fontWeight: 600 }}>
+            Use ↑/↓ ou arraste para reordenar. 🔒 indica bolhas travadas.
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <Button
+              variant="soft"
+              onClick={cancelReorder}
+              disabled={busy}
+              data-testid="lousa-reorder-cancel"
+              style={{ background: "white", color: "#475569", border: "1px solid #cbd5e1" }}
+            >Cancelar</Button>
+            <Button
+              onClick={saveReorder}
+              disabled={busy}
+              data-testid="lousa-reorder-save"
+              style={{ background: "#7c3aed", color: "white", fontWeight: 700 }}
+            >{busy ? "Salvando..." : "✓ Salvar"}</Button>
+          </div>
+        </div>
+      )}
 
       {!state.has_entrada && (
         <Banner color="#fef3c7" border="#f59e0b" icon="⚠️" text="Bata o ponto de Entrada para liberar a lousa." />
@@ -180,7 +298,7 @@ export default function LousaMobile({ collaboratorId, onBack }) {
       {state.ended_day && (
         <Banner color="#e0e7ff" border="#6366f1" icon="🏁" text="Você já bateu Saída. Boa noite!" />
       )}
-      {lastEvent && state.has_entrada && (
+      {lastEvent && state.has_entrada && !reorderMode && (
         <Banner color="#dcfce7" border="#10b981" icon="✓" text={`Último ponto: ${lastEvent.type} às ${lastEvent.time}`} />
       )}
 
@@ -192,12 +310,31 @@ export default function LousaMobile({ collaboratorId, onBack }) {
             Nenhuma nota atribuída ainda.
           </div>
         )}
-        {data.tickets.map((t, idx) => (
+        {(reorderMode
+          ? orderedIds.map((id) => data.tickets.find((t) => t.id === id)).filter(Boolean)
+          : data.tickets
+        ).map((t, idx, arr) => (
           <React.Fragment key={t.id}>
-            {idx > 0 && lastEvent && idx === Math.floor(data.tickets.length / 2) && (
+            {idx > 0 && lastEvent && idx === Math.floor(arr.length / 2) && !reorderMode && (
               <BetweenBubblesInfo records={records} />
             )}
-            <Bubble ticket={t} onClick={() => handleOpen(t)} disabled={busy} />
+            <Bubble
+              ticket={t}
+              onClick={() => handleOpen(t)}
+              disabled={busy}
+              reorderMode={reorderMode}
+              isFirst={idx === 0}
+              isLast={idx === arr.length - 1}
+              locked={isLockedTicket(t)}
+              onMoveUp={() => moveTicket(t.id, -1)}
+              onMoveDown={() => moveTicket(t.id, 1)}
+              isDragging={dragId === t.id}
+              isDragOver={dragOverId === t.id}
+              onDragStart={() => handleDragStart(t.id)}
+              onDragOver={(e) => handleDragOver(e, t.id)}
+              onDrop={() => handleDrop(t.id)}
+              onDragEnd={() => { setDragId(null); setDragOverId(null); }}
+            />
           </React.Fragment>
         ))}
       </div>
@@ -235,7 +372,9 @@ function BetweenBubblesInfo({ records }) {
   );
 }
 
-function Bubble({ ticket, onClick, disabled }) {
+function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locked,
+                 onMoveUp, onMoveDown, isDragging, isDragOver,
+                 onDragStart, onDragOver, onDrop, onDragEnd }) {
   const isResolved = ticket.admin_resolved || ticket.status === "finalizada";
   const isOpen = ticket.status === "aberta" || ticket.status === "aguardando_atendimento";
   const priorityColors = {
@@ -245,6 +384,65 @@ function Bubble({ ticket, onClick, disabled }) {
   };
   const c = priorityColors[ticket.priority] || priorityColors.normal;
   const opacity = ticket.locked || disabled ? 0.55 : 1;
+
+  // Em modo reorder, a bolha vira um container drag-handle (não clica para abrir)
+  if (reorderMode) {
+    const draggableHere = !locked;
+    return (
+      <div
+        data-testid={`bubble-reorder-${ticket.id}`}
+        draggable={draggableHere}
+        onDragStart={draggableHere ? onDragStart : undefined}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onDragEnd={onDragEnd}
+        style={{
+          width: "100%", padding: 12, borderRadius: 22,
+          background: isDragOver ? "#ede9fe" : (isOpen ? "#dcfce7" : c.bg),
+          border: `2px ${isDragging ? "dashed" : "solid"} ${isDragOver ? "#7c3aed" : (isOpen ? "#10b981" : c.border)}`,
+          marginBottom: 10,
+          cursor: draggableHere ? "grab" : "not-allowed",
+          opacity: isDragging ? 0.55 : opacity,
+          color: c.text, position: "relative",
+          boxShadow: isDragOver ? "0 8px 22px rgba(124,58,237,.25)" : "0 4px 10px rgba(15,23,42,.05)",
+          touchAction: "none",
+          display: "flex", gap: 10, alignItems: "center",
+          transition: "all 0.18s",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+          <button
+            data-testid={`bubble-up-${ticket.id}`}
+            onClick={onMoveUp}
+            disabled={isFirst || locked}
+            title="Mover para cima"
+            style={reorderBtnStyle(isFirst || locked)}
+          >▲</button>
+          <button
+            data-testid={`bubble-down-${ticket.id}`}
+            onClick={onMoveDown}
+            disabled={isLast || locked}
+            title="Mover para baixo"
+            style={reorderBtnStyle(isLast || locked)}
+          >▼</button>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {locked ? (
+            <span style={{ position: "absolute", top: 8, right: 10, fontSize: 16 }} title="Bolha travada — não pode ser movida">🔒</span>
+          ) : (
+            <span style={{ position: "absolute", top: 8, right: 10, fontSize: 14, color: "#94a3b8" }} title="Arraste para reordenar">⋮⋮</span>
+          )}
+          {c.label && (
+            <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 0.5, marginBottom: 4 }}>{c.label}</div>
+          )}
+          <div style={{ fontSize: 14, fontWeight: 800 }}>{ticket.client_snapshot.name}</div>
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+            {ticket.type.toUpperCase()} · {ticket.client_snapshot.neighborhood}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <button
@@ -386,4 +584,16 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
       </Button>
     </div>
   );
+}
+
+function reorderBtnStyle(disabled) {
+  return {
+    width: 32, height: 28, border: "1px solid #c4b5fd",
+    background: disabled ? "#f1f5f9" : "white",
+    color: disabled ? "#cbd5e1" : "#5b21b6",
+    borderRadius: 8, fontSize: 12, fontWeight: 700,
+    cursor: disabled ? "not-allowed" : "pointer",
+    display: "grid", placeItems: "center",
+    boxShadow: "0 1px 2px rgba(15,23,42,.05)",
+  };
 }
