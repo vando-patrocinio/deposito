@@ -107,9 +107,20 @@ export default function LousaAdminPanel() {
             )}
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)} data-testid="lousa-create-btn">
-          <Icon name="plus" /> Nova nota
-        </Button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Button
+            variant="soft"
+            onClick={refresh}
+            disabled={busy}
+            data-testid="lousa-refresh-btn"
+            style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" }}
+          >
+            🔄 Atualizar
+          </Button>
+          <Button onClick={() => setShowCreate(true)} data-testid="lousa-create-btn">
+            <Icon name="plus" /> Nova nota
+          </Button>
+        </div>
       </div>
 
       {/* Grade horizontal — coluna por técnico */}

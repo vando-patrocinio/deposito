@@ -97,7 +97,17 @@ export default function LousaMobile({ collaboratorId, onBack }) {
   if (data.needs_clock_in) {
     return (
       <div data-testid="lousa-mobile-needs-clockin">
-        <Button variant="soft" onClick={onBack} data-testid="lousa-back-btn">← Voltar</Button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <Button variant="soft" onClick={onBack} data-testid="lousa-back-btn">← Voltar</Button>
+          <Button
+            variant="soft"
+            onClick={refresh}
+            data-testid="lousa-refresh-btn"
+            style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" }}
+          >
+            🔄 Atualizar
+          </Button>
+        </div>
         <h2 style={{ marginTop: 14, marginBottom: 4 }}>📋 Lousa de Serviços</h2>
         <div style={{
           marginTop: 24, padding: 30, textAlign: "center",
@@ -119,7 +129,18 @@ export default function LousaMobile({ collaboratorId, onBack }) {
 
   return (
     <div data-testid="lousa-mobile">
-      <Button variant="soft" onClick={onBack} data-testid="lousa-back-btn">← Voltar</Button>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <Button variant="soft" onClick={onBack} data-testid="lousa-back-btn">← Voltar</Button>
+        <Button
+          variant="soft"
+          onClick={refresh}
+          disabled={busy}
+          data-testid="lousa-refresh-btn"
+          style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" }}
+        >
+          🔄 Atualizar
+        </Button>
+      </div>
       <h2 style={{ marginTop: 14, marginBottom: 4 }}>📋 Lousa de Serviços</h2>
       <p style={{ color: "#64748b", fontSize: 12, margin: 0 }}>
         {data.tickets.length} bolhas — {unlocked ? "🔓 lousa liberada" : "🔒 lousa travada"}
