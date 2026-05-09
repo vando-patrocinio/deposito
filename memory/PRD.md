@@ -25,7 +25,8 @@
   - Match `TnPalestrina733_VItoria` (Atlaz) ↔ `TnPalestrina733_Vitoria` (SmartOLT) ✓
   - ONT `ALCLFC090E99` na `RIO_HUAWEI` board 1/port 5/ONU 19 — sinal Rx **-19.91 dBm Online "Very good"** ✓
   - Sync 1750 ONUs em **1.2s** ✓
-- ✅ **Pytest e2e**: 10/10 testes em `/app/backend/tests/test_iteration26_smartolt.py` (settings mask, test-connection, lookup match/no-match/validation, signal endpoint cache+live, lousa ticket signal via PPPoE, refresh, no-match, unauth).
+- ✅ **Pytest e2e**: 11/11 testes em `/app/backend/tests/test_iteration26_smartolt.py` (settings mask, test-connection, lookup match/no-match/validation, signal endpoint cache+live, lousa ticket signal via PPPoE, refresh, no-match, unauth, **grid enriched com live_signal em batch**).
+- ✅ **Pill compacto no BubbleCard** (Lousa Admin + Mobile): `📶 -19.9 dBm 🟢` color-coded (verde/amarelo/vermelho) + emoji status (Online/Offline). `GET /lousa/grid` agora chama `enrich_tickets_with_live_signal` em **1 query batch** no `db.smartolt_onus` (ZERO calls extras à SmartOLT — só o cache local). Testid: `signal-pill-{ticketId}`.
 
 ### Iter 25 — Integração profunda de Estoque (Stok) (2026-05-09) ✅
 - ✅ **Backend `/api/stok/*` (~545 linhas)** em `/app/backend/routes/stok.py`:

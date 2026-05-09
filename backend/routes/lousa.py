@@ -582,6 +582,18 @@ async def lousa_grid(
             "slots": slots_data,
             "unscheduled": unscheduled,
         })
+    # Enriquece TODAS as bolhas com sinal SmartOLT (cache local, 1 query batch)
+    try:
+        from routes.smartolt import enrich_tickets_with_live_signal
+        all_t: list[dict] = []
+        for col in columns:
+            all_t.extend(col.get("unscheduled") or [])
+            for s in col.get("slots") or []:
+                all_t.extend(s.get("tickets") or [])
+        company_id = (user.get("company_id") or DEMO_COMPANY_ID)
+        await enrich_tickets_with_live_signal(all_t, company_id)
+    except Exception as _e:
+        logger.warning("[lousa] enrich live_signal falhou: %s", _e)
     return {
         "columns": columns,
         "historical": is_historical,
@@ -743,6 +755,14 @@ async def _lousa_for_collaborator(cid: str) -> dict:
             pass
 
     active = next((t for t in active_raw if t["status"] in ("aberta", "aguardando_atendimento")), None)
+    # Enriquece com sinal SmartOLT (best-effort — útil pro técnico ver dBm antes de chegar)
+    try:
+        from routes.smartolt import enrich_tickets_with_live_signal
+        coll_doc = await db.collaborators.find_one({"id": cid}, {"_id": 0, "company_id": 1})
+        cid_company = (coll_doc or {}).get("company_id") or DEMO_COMPANY_ID
+        await enrich_tickets_with_live_signal(active_raw + resolved_raw, cid_company)
+    except Exception as _e:
+        logger.warning("[lousa] enrich live_signal (mobile) falhou: %s", _e)
     # MIRROR: Lousa do colaborador = APENAS bolhas ativas (mesmas que aparecem na lousa do gestor)
     # Resolvidos vão como metadata separada para o card "Último serviço encerrado", não na lista de bolhas
     return {

@@ -898,6 +898,33 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
         </div>
       </div>
 
+      {/* SINAL SMARTOLT (pill compacto — todas as bolhas que têm match) */}
+      {ticket.live_signal && (
+        <div
+          data-testid={`signal-pill-${ticket.id}`}
+          title={`SmartOLT · ${ticket.live_signal.name || ""} · ${ticket.live_signal.olt_name || ""} · status ${ticket.live_signal.status || "?"} · ${ticket.live_signal.signal_text || ""}`}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            marginTop: 6, padding: "2px 8px", borderRadius: 999,
+            fontSize: 10, fontWeight: 800, fontFamily: "monospace",
+            border: "1px solid",
+            background: ticket.live_signal.quality === "good" ? "#dcfce7"
+              : ticket.live_signal.quality === "warn" ? "#fef3c7"
+              : ticket.live_signal.quality === "bad" ? "#fee2e2" : "#f1f5f9",
+            color: ticket.live_signal.quality === "good" ? "#15803d"
+              : ticket.live_signal.quality === "warn" ? "#a16207"
+              : ticket.live_signal.quality === "bad" ? "#b91c1c" : "#475569",
+            borderColor: ticket.live_signal.quality === "good" ? "#86efac"
+              : ticket.live_signal.quality === "warn" ? "#fde68a"
+              : ticket.live_signal.quality === "bad" ? "#fca5a5" : "#cbd5e1",
+          }}
+        >
+          📶 {ticket.live_signal.rx_dbm != null ? `${ticket.live_signal.rx_dbm.toFixed(1)} dBm` : "—"}
+          {ticket.live_signal.status === "Online" && <span style={{ fontSize: 8 }}>🟢</span>}
+          {ticket.live_signal.status && ticket.live_signal.status !== "Online" && <span style={{ fontSize: 8 }}>🔴</span>}
+        </div>
+      )}
+
       {/* FOOTER (SLA + IA) */}
       {(ticket.status === "aberta" || ai.score != null) && (
         <div style={{

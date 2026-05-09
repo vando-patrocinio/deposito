@@ -556,6 +556,31 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
         </div>
       </div>
 
+      {/* SINAL SMARTOLT (pill compacto) */}
+      {ticket.live_signal && (
+        <div
+          data-testid={`signal-pill-mobile-${ticket.id}`}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            marginTop: 6, padding: "3px 9px", borderRadius: 999,
+            fontSize: 11, fontWeight: 800, fontFamily: "monospace",
+            border: "1px solid",
+            background: ticket.live_signal.quality === "good" ? "#dcfce7"
+              : ticket.live_signal.quality === "warn" ? "#fef3c7"
+              : ticket.live_signal.quality === "bad" ? "#fee2e2" : "#f1f5f9",
+            color: ticket.live_signal.quality === "good" ? "#15803d"
+              : ticket.live_signal.quality === "warn" ? "#a16207"
+              : ticket.live_signal.quality === "bad" ? "#b91c1c" : "#475569",
+            borderColor: ticket.live_signal.quality === "good" ? "#86efac"
+              : ticket.live_signal.quality === "warn" ? "#fde68a"
+              : ticket.live_signal.quality === "bad" ? "#fca5a5" : "#cbd5e1",
+          }}
+        >
+          📶 {ticket.live_signal.rx_dbm != null ? `${ticket.live_signal.rx_dbm.toFixed(1)} dBm` : "—"}
+          {ticket.live_signal.status === "Online" ? "🟢" : ticket.live_signal.status ? "🔴" : ""}
+        </div>
+      )}
+
       {/* Relato em footer separado */}
       {ticket.client_snapshot.relato && (
         <div style={{

@@ -149,3 +149,33 @@ def test_lousa_ticket_signal_no_match(base_url, api, headers, technician_id):
 def test_settings_unauthorized(base_url, api):
     r = api.get(f"{base_url}/api/smartolt/settings")
     assert r.status_code in (401, 403)
+
+
+def test_grid_enriched_with_live_signal(base_url, api, headers, technician_id):
+    """GET /api/lousa/grid deve enriquecer cada ticket com `live_signal` quando há match."""
+    p = {
+        "client_name": f"GridSig {uuid.uuid4().hex[:5]}",
+        "address": "Rua Grid 1", "neighborhood": "Tt", "phone": "21000",
+        "relato": "grid enrich", "pppoe_user": "TnPalestrina733_Vitoria",
+        "type": "reparo", "priority": "normal",
+        "assigned_collaborator_id": technician_id,
+    }
+    r = api.post(f"{base_url}/api/lousa/tickets", headers=headers, json=p)
+    tid = r.json()["id"]
+    g = api.get(f"{base_url}/api/lousa/grid", headers=headers).json()
+    found = None
+    for col in g["columns"]:
+        for s in col.get("slots", []):
+            for t in s.get("tickets", []):
+                if t["id"] == tid:
+                    found = t
+        for t in col.get("unscheduled", []):
+            if t["id"] == tid:
+                found = t
+    assert found is not None
+    sig = found.get("live_signal")
+    assert sig is not None
+    assert sig["external_id"] == "ALCLFC090E99"
+    assert sig["quality"] in ("good", "warn", "bad")
+    assert isinstance(sig.get("rx_dbm"), float)
+    api.delete(f"{base_url}/api/lousa/tickets/{tid}", headers=headers)

@@ -343,6 +343,71 @@ async def resolve_signal_for_ticket(ticket: dict) -> Optional[dict]:
         return None
 
 
+def _live_signal_summary(onu: dict) -> dict:
+    """Resumo compacto pro pill/UI da Lousa (não expõe campos pesados)."""
+    rx = onu.get("signal_1490") or onu.get("signal_1310")
+    rxf = None
+    try:
+        rxf = float(rx) if rx is not None else None
+    except (TypeError, ValueError):
+        rxf = None
+    quality = "unknown"
+    if rxf is not None:
+        if rxf >= -23:
+            quality = "good"
+        elif rxf >= -27:
+            quality = "warn"
+        else:
+            quality = "bad"
+    return {
+        "external_id": onu.get("unique_external_id"),
+        "name": onu.get("name"),
+        "rx_dbm": rxf,
+        "signal_text": onu.get("signal_text"),
+        "status": onu.get("status"),
+        "quality": quality,
+        "olt_name": onu.get("olt_name"),
+        "synced_at": onu.get("synced_at"),
+    }
+
+
+async def enrich_tickets_with_live_signal(tickets: List[dict], company_id: str) -> None:
+    """Anexa `live_signal` em cada ticket (best-effort, em batch — 1 query)."""
+    if not tickets:
+        return
+    try:
+        # Coleta TODOS os name_norm candidatos (pppoe + name)
+        wanted: set[str] = set()
+        per_ticket: List[tuple] = []  # (idx, norm_pppoe, norm_name)
+        for i, t in enumerate(tickets):
+            snap = t.get("client_snapshot") or {}
+            np_ = _norm(snap.get("pppoe_user") or t.get("atlaz_pppoe_user") or "")
+            nn_ = _norm(snap.get("name") or "")
+            if np_:
+                wanted.add(np_)
+            if nn_:
+                wanted.add(nn_)
+            per_ticket.append((i, np_, nn_))
+        if not wanted:
+            return
+        cur = db.smartolt_onus.find(
+            {"company_id": company_id, "name_norm": {"$in": list(wanted)}},
+            {"_id": 0},
+        )
+        idx: Dict[str, dict] = {}
+        async for doc in cur:
+            # Se houver duplicatas pelo mesmo name_norm, mantém a mais recentemente sincronizada
+            existing = idx.get(doc["name_norm"])
+            if not existing or (doc.get("synced_at") or "") > (existing.get("synced_at") or ""):
+                idx[doc["name_norm"]] = doc
+        for i, np_, nn_ in per_ticket:
+            onu = (idx.get(np_) if np_ else None) or (idx.get(nn_) if nn_ else None)
+            if onu:
+                tickets[i]["live_signal"] = _live_signal_summary(onu)
+    except Exception as e:
+        logger.warning("[smartolt] enrich_tickets_with_live_signal falhou: %s", e)
+
+
 # ---------------------------------------------------------------------------
 # Worker periódico
 # ---------------------------------------------------------------------------
