@@ -491,12 +491,30 @@ def _build_record(*, rid, cid, ev, today, hhmm, geofence, distance, status, note
 
 
 @router.post("/clock-records")
-async def create_clock_record(payload: ClockRecordIn):
+async def create_clock_record(payload: ClockRecordIn, request: __import__('fastapi').Request):
     if payload.type not in EVENT_TYPES:
         raise HTTPException(400, "Tipo de evento inválido.")
     coll = await db.collaborators.find_one({"id": payload.collaborator_id})
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado")
+
+    # ---- ADMIN TEST MODE ----
+    # Se houver token JWT de admin/auditor no header, libera teste em qualquer localização
+    is_admin_test = False
+    admin_actor = None
+    try:
+        from auth import decode_token
+        auth_header = (request.headers.get("Authorization") or "")
+        if auth_header.startswith("Bearer "):
+            payload_jwt = decode_token(auth_header[7:])
+            admin_user = await db.users.find_one(
+                {"id": payload_jwt["sub"]}, {"_id": 0, "role": 1, "email": 1, "name": 1},
+            )
+            if admin_user and admin_user.get("role") in ("administrador", "auditor"):
+                is_admin_test = True
+                admin_actor = admin_user.get("email") or admin_user.get("name") or "admin"
+    except Exception:
+        is_admin_test = False
 
     # ---- LOUSA STATE MACHINE ----
     # Não permite "Início intervalo" se houver bolha aberta
@@ -522,14 +540,22 @@ async def create_clock_record(payload: ClockRecordIn):
     hhmm = now_hhmm()
     rid = f"PTO-{uuid.uuid4().hex[:10].upper()}"
     audit = [{"at": now_iso(), "actor": coll.get("name", "colaborador"), "action": "Tentativa de registro"}]
+    if is_admin_test:
+        audit.append({"at": now_iso(), "actor": admin_actor, "action": "MODO TESTE ADMIN — cerca ignorada"})
 
     face_check = {}
-    try:
-        face_check = await validate_face_visible(payload.selfie_base64)
-    except Exception as e:
-        logger.exception("Erro IA validação facial")
-        face_check = {"face_detected": False, "face_clear": False, "confidence": 0.0, "reason": f"erro IA: {e}"}
-    audit.append({"at": now_iso(), "actor": "IA", "action": f"validate_face: {face_check}"})
+    if is_admin_test:
+        # Modo teste admin: pula validação facial
+        face_check = {"face_detected": True, "face_clear": True, "confidence": 1.0,
+                      "reason": "Bypass admin test mode"}
+        audit.append({"at": now_iso(), "actor": admin_actor, "action": "validate_face: SKIPPED (admin test)"})
+    else:
+        try:
+            face_check = await validate_face_visible(payload.selfie_base64)
+        except Exception as e:
+            logger.exception("Erro IA validação facial")
+            face_check = {"face_detected": False, "face_clear": False, "confidence": 0.0, "reason": f"erro IA: {e}"}
+        audit.append({"at": now_iso(), "actor": "IA", "action": f"validate_face: {face_check}"})
 
     if not face_check.get("face_detected") or not face_check.get("face_clear"):
         rec = _build_record(
@@ -544,7 +570,7 @@ async def create_clock_record(payload: ClockRecordIn):
         return rec
 
     face_match = {}
-    if coll.get("reference_face"):
+    if not is_admin_test and coll.get("reference_face"):
         try:
             face_match = await compare_faces(coll["reference_face"], payload.selfie_base64)
         except Exception as e:
@@ -566,7 +592,8 @@ async def create_clock_record(payload: ClockRecordIn):
 
     fence, distance = await resolve_geofence_for(payload.collaborator_id, payload.lat, payload.lng)
     geofence_required = payload.type in GEOFENCE_REQUIRED
-    if geofence_required and not fence:
+    # ADMIN TEST: ignora exigência de cerca
+    if geofence_required and not fence and not is_admin_test:
         rec = _build_record(
             rid=rid, cid=payload.collaborator_id, ev=payload.type, today=today, hhmm=hhmm,
             geofence=None, distance=distance, status="Bloqueado", note=PUBLIC_FENCE_FAIL,
@@ -586,6 +613,11 @@ async def create_clock_record(payload: ClockRecordIn):
         face_validation={"detect": face_check, "compare": face_match},
         public_ip=payload.public_ip, audit=audit, company_id=coll.get("company_id"),
     )
+    if is_admin_test:
+        rec["admin_test_mode"] = True
+        rec["test_actor"] = admin_actor
+        if not fence:
+            rec["geo_status"] = "🧪 Teste admin — cerca ignorada"
     await db.clock_records.insert_one(rec)
     update: dict[str, Any] = {"updated_at": now_iso()}
     if not coll.get("reference_face"):

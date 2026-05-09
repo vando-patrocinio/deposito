@@ -189,6 +189,15 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
   // Detecta se está em "Modo celular" via session override (botão do header) — permite voltar
   const overrideMode = (typeof sessionStorage !== "undefined") && sessionStorage.getItem("ponto_mode") === "app";
+  const isAdminTest = (() => {
+    if (typeof window === "undefined") return false;
+    const token = window.localStorage.getItem("ponto_token");
+    if (!token) return false;
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      return payload.role === "administrador" || payload.role === "auditor";
+    } catch { return false; }
+  })();
   const exitMobile = () => {
     try {
       sessionStorage.removeItem("ponto_mode");
@@ -224,6 +233,16 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             >
               ← Voltar ao painel
             </button>
+          </div>
+        )}
+        {isAdminTest && (
+          <div data-testid="admin-test-banner" style={{
+            background: "linear-gradient(90deg,#7c3aed,#a855f7)", color: "white",
+            padding: "10px 14px", fontSize: 12, fontWeight: 700,
+            display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <span style={{ fontSize: 18 }}>🧪</span>
+            <span>MODO TESTE ADMIN — cerca virtual ignorada (bater ponto em qualquer localização)</span>
           </div>
         )}
         <div style={{ padding: mobile ? "16px 16px 32px" : 18 }}>
