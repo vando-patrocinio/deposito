@@ -1,8 +1,31 @@
-# PRD — Sistema Mesclado: SmartProv + PontoIA + Estoque (Lousa + Ponto + Stok)
+# PRD — Sistema Mesclado: SmartProv + PontoIA + Estoque + SmartOLT
 
-**Última atualização**: 2026-05-09 (iteração 25)
+**Última atualização**: 2026-05-09 (iteração 26)
 
 ## Histórico de iterações
+
+### Iter 26 — Integração SmartOLT (sinal vivo das ONUs) (2026-05-09) ✅
+- ✅ **Backend `/api/smartolt/*`** em `/app/backend/routes/smartolt.py` (~330 linhas):
+  - `SmartoltConfig` (subdomain + api_key + sync_interval + signal_cache + timeout + ranges Pydantic).
+  - `GET/PUT /settings` (api_key mascarada `aaaa…bbbb`; api_key vazio NÃO sobrescreve).
+  - `POST /test-connection` (chama `/system/get_olts` + retorna lista das OLTs detectadas).
+  - `POST /sync-onus` + worker periódico (default 4h) — baixa `get_all_onus_details` e popula `db.smartolt_onus` com `name_norm` (lower + sem acento + alfanum) para match O(log n).
+  - `GET /onu/lookup?pppoe=...&name=...` (match exato → fallback substring).
+  - `GET /onu/{id}/signal` — cache TTL configurável (default 60s); refresh chama `get_onu_signal` + `get_onu_status` da SmartOLT.
+  - `resolve_signal_for_ticket(ticket)` helper para o lousa.py.
+- ✅ **Hook na Lousa** em `routes/lousa.py`:
+  - Campo novo `client_snapshot.pppoe_user` (Pydantic `ClientSnapshot` + `TicketIn` + `TicketEditIn` aceitam editar).
+  - Atlaz auto-popula via `assinante.login | usuario | usuario_pppoe | chamado.login` (best-effort).
+  - **Novo endpoint `GET /api/lousa/tickets/{id}/signal?refresh=bool`** — retorna `{found, match_strategy, cached, onu}` para a UI.
+- ✅ **Frontend**:
+  - `EditTicketModal` reescrito (~210 linhas): bloco `📶 SINAL SMARTOLT` no header (auto-fetch ao abrir, badge dBm color-coded ≥-23🟢/-23a-27🟡/<-27🔴, status Online/Offline, OLT/Board/Port, SN, último mudança de status, botão `🔄 Live` para refresh forçado). Campo PPPoE editável (`edit-pppoe-user`).
+  - `SmartoltIntegrationCard.js` em Settings — toggle, subdomain, X-Token (mascarado), intervalo sync (15-1440 min), cache sinal (10-3600s), timeout, botões Salvar/Testar/Sincronizar com feedback visual (last_sync_at + ONUs em cache).
+  - `api.js`: 6 helpers `smartolt*` + `lousaTicketSignal`.
+- ✅ **Validado com chave real** Ligo Fibra (`ligofibra.smartolt.com`, 1750 ONUs em 4 OLTs):
+  - Match `TnPalestrina733_VItoria` (Atlaz) ↔ `TnPalestrina733_Vitoria` (SmartOLT) ✓
+  - ONT `ALCLFC090E99` na `RIO_HUAWEI` board 1/port 5/ONU 19 — sinal Rx **-19.91 dBm Online "Very good"** ✓
+  - Sync 1750 ONUs em **1.2s** ✓
+- ✅ **Pytest e2e**: 10/10 testes em `/app/backend/tests/test_iteration26_smartolt.py` (settings mask, test-connection, lookup match/no-match/validation, signal endpoint cache+live, lousa ticket signal via PPPoE, refresh, no-match, unauth).
 
 ### Iter 25 — Integração profunda de Estoque (Stok) (2026-05-09) ✅
 - ✅ **Backend `/api/stok/*` (~545 linhas)** em `/app/backend/routes/stok.py`:

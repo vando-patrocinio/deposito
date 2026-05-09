@@ -461,6 +461,13 @@ async def _import_one(
             "longitude": lng,
             "relato": str(chamado.get("detalhes") or ""),
             "test_history": [],
+            "pppoe_user": str(
+                assinante.get("login")
+                or assinante.get("usuario")
+                or assinante.get("usuario_pppoe")
+                or chamado.get("login")
+                or ""
+            ).strip(),
         },
         "type": ticket_type,
         "priority": sched_priority,

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "@/api";
 import { Button, Card, Field, Icon, inputStyle, StatusBadge } from "@/ui";
 import AtlazIntegrationCard from "@/AtlazIntegrationCard";
+import SmartoltIntegrationCard from "@/SmartoltIntegrationCard";
 
 export default function SettingsPanel() {
   const [s, setS] = useState(null);
@@ -562,6 +563,7 @@ export default function SettingsPanel() {
       </Card>
 
       <AtlazIntegrationCard />
+      <SmartoltIntegrationCard />
     </div>
   );
 }

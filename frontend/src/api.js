@@ -200,4 +200,14 @@ export const api = {
   stokServiceCreate: (data) => client.post(`/stok/services`, data).then((r) => r.data),
   stokServiceClose: (sid, data) => client.post(`/stok/services/${sid}/close`, data).then((r) => r.data),
   stokHistory: (params = {}) => client.get(`/stok/history`, { params }).then((r) => r.data),
+  // SmartOLT
+  smartoltSettings: () => client.get(`/smartolt/settings`).then((r) => r.data),
+  smartoltSettingsUpdate: (data) => client.put(`/smartolt/settings`, data).then((r) => r.data),
+  smartoltTest: () => client.post(`/smartolt/test-connection`).then((r) => r.data),
+  smartoltSync: () => client.post(`/smartolt/sync-onus`).then((r) => r.data),
+  smartoltLookup: (params) => client.get(`/smartolt/onu/lookup`, { params }).then((r) => r.data),
+  smartoltOnuSignal: (extId) => client.get(`/smartolt/onu/${extId}/signal`).then((r) => r.data),
+  // Lousa: sinal por ticket
+  lousaTicketSignal: (tid, refresh = false) =>
+    client.get(`/lousa/tickets/${tid}/signal`, { params: { refresh } }).then((r) => r.data),
 };

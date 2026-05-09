@@ -74,6 +74,7 @@ class ClientSnapshot(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     relato: str
+    pppoe_user: Optional[str] = None
     test_history: List[NetworkTest] = Field(default_factory=list)
 
 
@@ -96,6 +97,7 @@ class TicketIn(BaseModel):
     neighborhood: str = ""
     phone: str = ""
     relato: str = ""
+    pppoe_user: str = ""
     type: TicketType = "reparo"
     priority: Priority = "normal"
     scheduled_time: Optional[str] = None
@@ -819,6 +821,7 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
             "phone": payload.phone,
             "latitude": lat, "longitude": lng,
             "relato": payload.relato,
+            "pppoe_user": payload.pppoe_user,
             "test_history": [t.model_dump() for t in payload.test_history],
         },
         "type": payload.type,
@@ -889,6 +892,53 @@ async def reorder_tickets(payload: ReorderIn, user: dict = Depends(get_current_u
         if t["priority"] == "normal" and item.id not in locked_ids:
             await db.tickets.update_one({"id": item.id}, {"$set": {"position": item.position}})
     return {"ok": True}
+
+
+    for item in payload.items:
+        t = by_id[item.id]
+        if t["priority"] == "normal" and item.id not in locked_ids:
+            await db.tickets.update_one({"id": item.id}, {"$set": {"position": item.position}})
+    return {"ok": True}
+
+
+# -------------------------------------------------------------------------
+# SmartOLT signal lookup por ticket (lazy — só quando user abre o modal)
+# -------------------------------------------------------------------------
+@router.get("/lousa/tickets/{ticket_id}/signal")
+async def get_ticket_signal(ticket_id: str,
+                              refresh: bool = False,
+                              user: dict = Depends(require_role("gestor"))):
+    """Retorna sinal SmartOLT da ONU correspondente ao cliente da bolha.
+
+    - `refresh=true` força chamada live na SmartOLT (respeitando cache TTL).
+    - Resposta sempre tem `match_strategy` (pppoe/name/none) para a UI.
+    """
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    snap = t.get("client_snapshot") or {}
+    pppoe = (snap.get("pppoe_user") or "").strip()
+    name = (snap.get("name") or "").strip()
+    if not pppoe and not name:
+        return {"found": False, "reason": "missing_pppoe_and_name", "snap": snap}
+    try:
+        from routes.smartolt import resolve_signal_for_ticket, get_onu_signal_live
+    except ImportError:
+        return {"found": False, "reason": "smartolt_module_missing"}
+    onu = await resolve_signal_for_ticket(t)
+    if not onu:
+        return {"found": False, "reason": "no_match", "pppoe": pppoe, "name": name}
+    strategy = "pppoe" if pppoe else "name"
+    if refresh:
+        try:
+            live = await get_onu_signal_live(onu["unique_external_id"], user=user)
+            return {"found": True, "match_strategy": strategy, **live}
+        except HTTPException:
+            pass
+        except Exception as e:
+            return {"found": True, "match_strategy": strategy, "cached": True,
+                    "onu": onu, "warning": f"refresh_failed: {e}"}
+    return {"found": True, "match_strategy": strategy, "cached": True, "onu": onu}
 
 
 # -------------------------------------------------------------------------
@@ -1259,6 +1309,7 @@ class TicketEditIn(BaseModel):
     neighborhood: Optional[str] = None
     phone: Optional[str] = None
     relato: Optional[str] = None
+    pppoe_user: Optional[str] = None
     type: Optional[TicketType] = None
     priority: Optional[Priority] = None
     scheduled_time: Optional[str] = None
@@ -1278,7 +1329,8 @@ async def edit_ticket(ticket_id: str, payload: TicketEditIn,
     snap = dict(t.get("client_snapshot") or {})
     snap_changed = False
     snap_fields = {"client_name": "name", "address": "address",
-                   "neighborhood": "neighborhood", "phone": "phone", "relato": "relato"}
+                   "neighborhood": "neighborhood", "phone": "phone", "relato": "relato",
+                   "pppoe_user": "pppoe_user"}
     for f_in, f_snap in snap_fields.items():
         v = getattr(payload, f_in, None)
         if v is not None:

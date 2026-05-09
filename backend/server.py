@@ -50,6 +50,7 @@ from routes import (
     pracas as routes_pracas,
     push as routes_push,
     saas as routes_saas,
+    smartolt as routes_smartolt,
     stok as routes_stok,
     users as routes_users,
 )
@@ -95,6 +96,12 @@ async def ensure_indexes() -> None:
     await db.stok_services.create_index([("company_id", 1), ("status", 1)])
     await db.stok_services.create_index("ticket_id")
     await db.stok_history.create_index([("company_id", 1), ("date", -1)])
+    # SmartOLT — cache de ONUs e config
+    await db.smartolt_config.create_index("company_id", unique=True)
+    await db.smartolt_onus.create_index(
+        [("company_id", 1), ("unique_external_id", 1)], unique=True,
+    )
+    await db.smartolt_onus.create_index([("company_id", 1), ("name_norm", 1)])
 
 
 # -------------------------------------------------------------------------
@@ -249,6 +256,7 @@ async def _startup() -> None:
     asyncio.create_task(holidays_refresh_job())
     asyncio.create_task(location_logs_cleanup_job())
     routes_atlaz.start_worker()
+    await routes_smartolt.start_worker()
     logger.info("Scheduler iniciado.")
 
 
@@ -279,6 +287,7 @@ app.include_router(routes_events.router)
 app.include_router(routes_saas.router)
 app.include_router(routes_saas.webhook_router)
 app.include_router(routes_stok.router)
+app.include_router(routes_smartolt.router)
 
 app.add_middleware(
     CORSMiddleware,
