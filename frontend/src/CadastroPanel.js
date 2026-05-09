@@ -36,6 +36,33 @@ export default function CadastroPanel() {
   const [allFences, setAllFences] = useState([]);     // todas as cercas do sistema (para reaproveitar)
   const [reuseSelected, setReuseSelected] = useState({}); // {fence_id: bool} marcadas para clonar ao salvar
   const [clockHistoryFor, setClockHistoryFor] = useState(null);   // colaborador selecionado para ver batidas
+  const [togglingId, setTogglingId] = useState(null);             // colab cujo toggle CLT está em flight
+
+  async function toggleClockInEnabled(c) {
+    const next = c.clock_in_enabled === false ? true : false;
+    const msg = next
+      ? `Ativar batimento de ponto para ${c.name}?\n\nApós ativar, ele(a) verá a tela de bater ponto no app e a Lousa só vai liberar após bater Entrada.`
+      : `Desativar batimento de ponto para ${c.name}?\n\nApós desativar, ele(a) NÃO vê mais a tela de ponto — o app abre direto na Lousa de Serviços.`;
+    if (!window.confirm(msg)) return;
+    setTogglingId(c.id);
+    try {
+      // PUT exige payload completo do CollaboratorIn — preserva todos os campos atuais
+      await api.updateCollaborator(c.id, {
+        name: c.name, cpf: c.cpf, email: c.email, phone: c.phone,
+        role: c.role, company: c.company,
+        schedule: c.schedule, overtime_policy: c.overtime_policy,
+        city: c.city ?? null, state: c.state ?? null, praca_id: c.praca_id ?? null,
+        is_test_mode: !!c.is_test_mode,
+        clock_in_enabled: next,
+      });
+      setFlash(`✅ ${c.name} agora ${next ? "BATE PONTO" : "NÃO BATE PONTO"}.`);
+      await reload();
+      setTimeout(() => setFlash(""), 4000);
+    } catch (e) {
+      setFlash(`❌ Erro: ${e?.response?.data?.detail || e.message}`);
+    }
+    setTogglingId(null);
+  }
 
   async function reload() {
     try {
@@ -311,6 +338,25 @@ export default function CadastroPanel() {
                       data-testid={`reset-face-${c.id}`}
                     >
                       <Icon name="camera" /> Resetar avatar e dispositivo
+                    </Button>
+                    <Button
+                      variant="soft"
+                      onClick={() => toggleClockInEnabled(c)}
+                      disabled={togglingId === c.id}
+                      data-testid={`toggle-clock-${c.id}`}
+                      title={c.clock_in_enabled !== false
+                        ? "Clique para desativar — colaborador não vai mais bater ponto, app abre direto na Lousa"
+                        : "Clique para ativar — colaborador volta a bater ponto e a tela home padrão"}
+                      style={{
+                        background: c.clock_in_enabled !== false ? "#ecfeff" : "#fff7ed",
+                        color: c.clock_in_enabled !== false ? "#0e7490" : "#9a3412",
+                        border: `1px solid ${c.clock_in_enabled !== false ? "#67e8f9" : "#fdba74"}`,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {togglingId === c.id
+                        ? "..."
+                        : c.clock_in_enabled !== false ? "🕐 Bate ponto: ON" : "🚫 Bate ponto: OFF"}
                     </Button>
                     {c.clock_in_enabled !== false && (
                       <Button
