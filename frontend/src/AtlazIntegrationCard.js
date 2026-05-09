@@ -39,6 +39,7 @@ export default function AtlazIntegrationCard() {
         technician_to_collaborator: { ...(c.technician_to_collaborator || {}) },
         lookback_days: c.lookback_days ?? 30,
         sync_interval_minutes: c.sync_interval_minutes ?? 15,
+        sync_interval_seconds: c.sync_interval_seconds ?? 30,
         auto_create_bubbles: c.auto_create_bubbles ?? true,
         auto_sync_technicians: c.auto_sync_technicians ?? true,
         tech_sync_interval_minutes: c.tech_sync_interval_minutes ?? 60,
@@ -60,6 +61,7 @@ export default function AtlazIntegrationCard() {
       technician_to_collaborator: form.technician_to_collaborator || {},
       lookback_days: Number(form.lookback_days) || 30,
       sync_interval_minutes: Number(form.sync_interval_minutes) || 15,
+      sync_interval_seconds: Number(form.sync_interval_seconds) || 30,
       auto_create_bubbles: form.auto_create_bubbles,
       auto_sync_technicians: !!form.auto_sync_technicians,
       tech_sync_interval_minutes: Number(form.tech_sync_interval_minutes) || 60,
@@ -183,10 +185,11 @@ export default function AtlazIntegrationCard() {
             onChange={(e) => setForm({ ...form, lookback_days: e.target.value })} style={inputStyle} />
           <small style={{ color: "#94a3b8", fontSize: 10 }}>Atlaz exige data inicial obrigatória.</small>
         </Field>
-        <Field label="⏱ Intervalo (min)">
-          <input data-testid="atlaz-interval" type="number" min={1} max={1440}
-            value={form.sync_interval_minutes}
-            onChange={(e) => setForm({ ...form, sync_interval_minutes: e.target.value })} style={inputStyle} />
+        <Field label="⏱ Intervalo bolhas (seg)">
+          <input data-testid="atlaz-interval-seconds" type="number" min={10} max={86400}
+            value={form.sync_interval_seconds}
+            onChange={(e) => setForm({ ...form, sync_interval_seconds: e.target.value })} style={inputStyle} />
+          <small style={{ color: "#94a3b8", fontSize: 10 }}>Default 30s. Mín 10s, máx 24h.</small>
         </Field>
         <Field label="⏰ Timeout (seg)">
           <input data-testid="atlaz-timeout" type="number" min={2} max={120}
@@ -247,7 +250,7 @@ export default function AtlazIntegrationCard() {
               <span>📋 Bolhas (Lousa)</span>
             </label>
             <div style={{ fontSize: 10, color: "#047857", marginTop: 4 }}>
-              A cada <strong>{form.sync_interval_minutes || 15} min</strong>
+              A cada <strong>{form.sync_interval_seconds || 30}s</strong>
             </div>
             <div data-testid="atlaz-last-bubble-sync" style={{ fontSize: 10, color: "#475569", marginTop: 4 }}>
               Último: <strong>{cfg?.last_auto_sync_bubbles_at ? new Date(cfg.last_auto_sync_bubbles_at).toLocaleString("pt-BR") : "—"}</strong>

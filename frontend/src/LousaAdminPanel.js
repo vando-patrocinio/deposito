@@ -153,6 +153,26 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
     },
   });
 
+  // Carrega domínio Atlaz uma vez (para o botão "+ Nova nota" abrir o painel externo)
+  useEffect(() => {
+    let mounted = true;
+    api.atlazGetSettings()
+      .then((cfg) => { if (mounted) setAtlazTenantDomain((cfg?.tenant_domain || "").replace(/\/$/, "")); })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
+  function openCreateTicket() {
+    // Se houver domínio Atlaz configurado, abre o painel externo (criação no Atlaz).
+    // Caso contrário, fallback para o modal local de criação de bolha.
+    if (atlazTenantDomain) {
+      const url = `${atlazTenantDomain}/admin/tickets/list?new=1`;
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      setShowCreate(true);
+    }
+  }
+
   async function handleDrop(targetCollabId) {
     if (!draggingId) return;
     setBusy(true);
@@ -347,8 +367,9 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           >
             {refreshing ? "⏳ Atualizando..." : refreshFlash ? "✓ Atualizado" : "🔄 Atualizar"}
           </Button>
-          <Button onClick={() => setShowCreate(true)} data-testid="lousa-create-btn">
-            <Icon name="plus" /> Nova nota
+          <Button onClick={openCreateTicket} data-testid="lousa-create-btn"
+            title={atlazTenantDomain ? `Abre o painel Atlaz (${atlazTenantDomain}) em nova aba` : "Cria uma nova nota local"}>
+            <Icon name="plus" /> Nova nota{atlazTenantDomain ? " 🔗" : ""}
           </Button>
         </div>
       </div>

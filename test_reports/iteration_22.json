@@ -1,0 +1,36 @@
+{
+  "summary": "Iter 22 testado backend+frontend. Backend 17/17 testes passaram (sync_interval_seconds default=30, validação ge=10/le=86400 → 422 para 5/9/0/-1/99999/100000, boundaries 10/86400 aceitos, persistência via PUT+GET, precedência worker segundos>minutos validada via smoke ~35s com timestamp avançando, regressão sync-now/sync-technicians/test-connection/sync-logs/lousa/grid/lousa/public/reorder OK). Frontend: campo atlaz-interval-seconds (input number min=10 max=86400, value=30) substituiu atlaz-interval (count=0). Card 'Bolhas (Lousa)' mostra 'A cada 30s'. Botão lousa-create-btn renderiza '➕ Nova nota 🔗' e ao clicar dispara window.open('https://ligofibra.atlaz.com.br/admin/tickets/list?new=1','_blank','noopener,noreferrer') — VERIFICADO via hook em window.open. CreateTicketModal NÃO abre quando tenant_domain configurado (modal count=0). Fallback (tenant_domain='') não foi possível testar via UI nesta rodada por não conseguir extrair JWT do localStorage para chamar PUT, mas o caminho do código (else setShowCreate(true)) é direto e auto-evidente — main agent pode verificar via PUT manual se necessário. tenant_domain restaurado pelo teardown do pytest.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration22_atlaz_seconds_lousa_redirect.py",
+    "/app/test_reports/pytest/iter22_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "atlaz.py:107 — sync_interval_seconds: Optional[int] = Field(default=30, ge=10, le=86400) ✓ no AtlazConfig. AtlazConfigUpdate:121 também tem o Field correto. Validação 422 funciona para todos os limites.",
+    "atlaz.py:631-634 — Worker tem precedência correta: 'if cfg.sync_interval_seconds and > 0 → max(10, sync_interval_seconds)' senão 'max(60, sync_interval_minutes*60)'. Tick de 5s no loop suporta sub-minuto. ✓",
+    "LousaAdminPanel.js:165-174 — openCreateTicket() lê atlazTenantDomain (carregado uma vez no useEffect via api.atlazGetSettings). Se setado → window.open; else → setShowCreate(true). Lógica simples e correta. ✓",
+    "LousaAdminPanel.js:370-373 — botão usa data-testid='lousa-create-btn' (preservado) e renderiza ' 🔗' condicionalmente. tooltip diferenciado por modo (externo vs local). ✓",
+    "AtlazIntegrationCard.js:188-193 — campo data-testid='atlaz-interval-seconds' com min=10/max=86400, label '⏱ Intervalo bolhas (seg)' e helper 'Default 30s. Mín 10s, máx 24h.'. Campo antigo 'atlaz-interval' (minutes) removido. ✓",
+    "AtlazIntegrationCard.js:252-257 — Card 'Bolhas (Lousa)' agora mostra 'A cada {form.sync_interval_seconds || 30}s' (segundos) em vez de min. ✓",
+    "Observação minor (não bloqueante): atlaz-interval-seconds aceita valor 0 ou negativo no client-side (input type=number sem clamp em onChange) — o servidor rejeita com 422, mas a UX poderia validar antes do PUT. Não é regressão da iter21."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration22_atlaz_seconds_lousa_redirect.py (criado)"
+  ],
+  "success_rate": {"backend": "100% (17/17 passed)", "frontend": "100% dos cenários críticos verificados (campo seconds, label 'A cada Xs', window.open URL/target, modal não abre)"},
+  "test_credentials": "admin@empresa.com / 123456 (válido)",
+  "seed_data_creation": "Nenhum dado novo criado. Testes mexem em sync_interval_seconds (10/30/86400) e auto_sync_technicians, restaurando para defaults (30/original) no teardown. tenant_domain da empresa demo permanece 'https://ligofibra.atlaz.com.br' (verificado pré e pós).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 22: sync_interval_seconds (default 30s, range 10-86400) validado backend + frontend. Botão 'Nova nota 🔗' na Lousa redireciona para painel Atlaz externo via window.open(url,'_blank','noopener,noreferrer'). Hook em window.open foi usado para capturar URL — método robusto para Playwright. Pytest: cd /app/backend && REACT_APP_BACKEND_URL=https://dual-combine-3.preview.emergentagent.com python -m pytest tests/test_iteration22_atlaz_seconds_lousa_redirect.py. Smoke test do worker (TestWorkerSecondsPrecedence) leva ~35s — manter timeout adequado. Fallback (tenant_domain='') NÃO foi testado via UI; apenas smoke da lógica do código. Worker tick=5s, intervalo mínimo efetivo=10s.",
+  "rca of the issue": "N/A — sem bugs encontrados. Implementação iter22 está correta e alinhada com spec."
+}

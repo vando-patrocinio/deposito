@@ -102,6 +102,9 @@ class AtlazConfig(BaseModel):
     tech_sync_interval_minutes: int = Field(default=60, ge=5, le=1440)
     last_auto_sync_bubbles_at: Optional[str] = None
     last_auto_sync_technicians_at: Optional[str] = None
+    # NOVO (iter 22): intervalo em SEGUNDOS — permite sync rápido (default 30s)
+    # Quando setado, tem precedência sobre sync_interval_minutes.
+    sync_interval_seconds: Optional[int] = Field(default=30, ge=10, le=86400)
     timeout_seconds: int = Field(default=20, ge=2, le=120)
 
 
@@ -115,6 +118,7 @@ class AtlazConfigUpdate(BaseModel):
     type_map: Optional[Dict[str, str]] = None
     lookback_days: Optional[int] = Field(default=None, ge=1, le=365)
     sync_interval_minutes: Optional[int] = Field(default=None, ge=1, le=1440)
+    sync_interval_seconds: Optional[int] = Field(default=None, ge=10, le=86400)
     auto_create_bubbles: Optional[bool] = None
     auto_sync_technicians: Optional[bool] = None
     tech_sync_interval_minutes: Optional[int] = Field(default=None, ge=5, le=1440)
@@ -623,13 +627,15 @@ async def _worker_loop():
                     logger.exception("[atlaz] config inválida para %s: %s", cid, e)
                     continue
 
-                # 1) Bubble pull (intervalo configurável)
-                interval_b = max(1, int(cfg.sync_interval_minutes or 15))
+                # 1) Bubble pull — precedência: sync_interval_seconds > sync_interval_minutes
+                if cfg.sync_interval_seconds and cfg.sync_interval_seconds > 0:
+                    interval_b_sec = max(10, int(cfg.sync_interval_seconds))
+                else:
+                    interval_b_sec = max(60, int(cfg.sync_interval_minutes or 15) * 60)
                 last_b = last_run_bubbles.get(cid)
-                if not last_b or (now - last_b).total_seconds() >= interval_b * 60:
+                if not last_b or (now - last_b).total_seconds() >= interval_b_sec:
                     try:
                         await run_sync(cid, cfg)
-                        # marca timestamp do último pull no doc da empresa
                         await db.atlaz_config.update_one(
                             {"company_id": cid},
                             {"$set": {"last_auto_sync_bubbles_at": now_iso()}},
@@ -638,7 +644,7 @@ async def _worker_loop():
                         logger.exception("[atlaz] bubble sync falhou para %s: %s", cid, e)
                     last_run_bubbles[cid] = now
 
-                # 2) Technician auto-sync (intervalo separado, default 60min)
+                # 2) Technician auto-sync (intervalo em min, default 60min)
                 if cfg.auto_sync_technicians:
                     interval_t = max(5, int(cfg.tech_sync_interval_minutes or 60))
                     last_t = last_run_tech.get(cid)
@@ -655,8 +661,10 @@ async def _worker_loop():
                         last_run_tech[cid] = now
         except Exception as e:
             logger.exception("[atlaz] worker tick falhou: %s", e)
+        # Tick curto (5s) — permite intervalos em segundos. O check >= interval_b_sec por empresa
+        # garante que o pull respeita o intervalo configurado, sem hammering na API Atlaz.
         try:
-            await asyncio.wait_for(_worker_stop.wait(), timeout=60)
+            await asyncio.wait_for(_worker_stop.wait(), timeout=5)
         except asyncio.TimeoutError:
             pass
     logger.info("[atlaz] worker stopped")
