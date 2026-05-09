@@ -75,14 +75,13 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     api.listCollaborators().then((cs) => {
       setCollabs(cs);
       if (forcedCollabId) {
-        // mobile autenticado: usa o forçado
+        // mobile autenticado: usa o forçado pelo link
         setCollabId(forcedCollabId);
         return;
       }
-      // desktop preview / sem auth: usa última escolha ou primeiro
-      const saved = (typeof window !== "undefined") ? window.localStorage.getItem("ponto_collab_id") : null;
-      const valid = cs.find((c) => c.id === saved) ? saved : cs[0]?.id;
-      if (valid) setCollabId(valid);
+      // SEM ?cid= no link → não selecionamos automaticamente. Cada técnico tem
+      // o seu próprio link único compartilhado pelo gestor (rota /?cid=col-xxx).
+      // O componente renderiza tela orientativa quando collabId fica vazio.
     });
     api.listPracas().then(setPracas).catch(() => setPracas([]));
   }, [forcedCollabId]);
@@ -264,6 +263,33 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     );
   }
 
+  // App acessado sem ?cid= no link → orienta o técnico a usar o link próprio
+  if (!collabId) {
+    return (
+      <Wrapper>
+        <div data-testid="screen-no-link" style={{ ...appCard, padding: 24, textAlign: "center" }}>
+          <div style={{ fontSize: 56, marginBottom: 8 }}>🔗</div>
+          <h2 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 900, color: "#0f172a" }}>
+            Acesso pelo link próprio
+          </h2>
+          <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5, margin: "0 0 16px" }}>
+            Cada técnico tem um <strong>link único</strong> enviado pelo gestor (geralmente por
+            WhatsApp). Abra o link que você recebeu para entrar na sua Lousa.
+          </p>
+          <div style={{
+            background: "#fef3c7", border: "1px dashed #f59e0b",
+            borderRadius: 12, padding: 12, fontSize: 12, color: "#78350f", textAlign: "left",
+          }}>
+            <strong>Não tem o link?</strong>
+            <br/>
+            Procure o gestor da sua filial. Ele consegue gerar/copiar/enviar o seu link em segundos
+            pela aba <em>Cadastro</em> do painel.
+          </div>
+        </div>
+      </Wrapper>
+    );
+  }
+
   return (
     <div style={mobile ? {} : { display: "grid", gridTemplateColumns: "430px 1fr", gap: 22, alignItems: "start" }}>
       <Wrapper>
@@ -341,14 +367,8 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             </div>
           </div>
 
-          {/* Seletor de colaborador — escondido quando autenticado via Google (mobile) */}
-          {!forcedCollabId && collabs.length > 1 && (
-            <div style={{ marginBottom: 12 }}>
-              <select data-testid="collab-select" value={collabId || ""} onChange={(e) => setCollabId(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
-                {collabs.map((c) => <option key={c.id} value={c.id}>{c.name} — {c.cpf}</option>)}
-              </select>
-            </div>
-          )}
+          {/* Sem seletor de colaborador — cada técnico acessa pelo SEU link único compartilhado pelo gestor.
+              Se a página for aberta sem ?cid=, mostramos uma tela orientativa em vez de uma lista. */}
 
           {error && screen !== "selfie-error" && <div style={{ background: "#fee2e2", color: "#991b1b", padding: 10, borderRadius: 12, marginBottom: 10 }}>{error}</div>}
 
