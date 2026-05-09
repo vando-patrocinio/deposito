@@ -1159,6 +1159,16 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
             company_id=t.get("company_id") or DEMO_COMPANY_ID,
             severity="info" if payload.action == "reagendar" else "warning",
         )
+    # Push baixa para o Atlaz se a bolha veio de lá
+    if t.get("atlaz_external_id"):
+        try:
+            from routes import atlaz as routes_atlaz
+            await routes_atlaz.push_close(
+                t, payload.action, payload.notes,
+                update.get("scheduled_time") if payload.action == "reagendar" else None,
+            )
+        except Exception as e:
+            logger.warning("[atlaz] push falhou para %s: %s", ticket_id, e)
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 
@@ -1587,6 +1597,16 @@ async def lousa_bulk_action(payload: BulkActionIn,
                 company_id=t.get("company_id") or DEMO_COMPANY_ID,
                 severity="info" if payload.action == "reagendar" else "warning",
             )
+        # Push para Atlaz se aplicável (best-effort, não trava o lote)
+        if t.get("atlaz_external_id"):
+            try:
+                from routes import atlaz as routes_atlaz
+                await routes_atlaz.push_close(
+                    t, payload.action, payload.notes,
+                    sched if payload.action == "reagendar" else None,
+                )
+            except Exception as e:
+                logger.warning("[atlaz] bulk push falhou %s: %s", tid, e)
         success.append(tid)
 
     return {

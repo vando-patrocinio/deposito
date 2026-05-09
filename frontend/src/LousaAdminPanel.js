@@ -733,6 +733,18 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
       {ticket.locked && (
         <span style={{ position: "absolute", top: 6, right: 6, fontSize: 14 }}>🔒</span>
       )}
+      {ticket.atlaz_external_id && (
+        <span data-testid={`atlaz-badge-${ticket.id}`}
+          title={`Sincronizada do Atlaz · ID externo: ${ticket.atlaz_external_id}${ticket.atlaz_filial ? ` · Filial: ${ticket.atlaz_filial}` : ""}`}
+          style={{
+            position: "absolute", bottom: 6, left: 8,
+            fontSize: 9, fontWeight: 800, color: "#1e40af",
+            background: "rgba(219,234,254,.95)", border: "1px solid #93c5fd",
+            padding: "1px 6px", borderRadius: 6,
+          }}>
+          🔗 Atlaz
+        </span>
+      )}
       {!selectMode && showActions && ["pendente", "aberta", "aguardando_atendimento"].includes(ticket.status) && (
         <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
           {ticket.status === "pendente" && onAdminOpen && (

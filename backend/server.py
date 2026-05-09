@@ -39,6 +39,7 @@ from push_service import (
 )
 from routes import (
     admin as routes_admin,
+    atlaz as routes_atlaz,
     clock as routes_clock,
     collab_auth as routes_collab_auth,
     dashboard as routes_dashboard,
@@ -81,6 +82,9 @@ async def ensure_indexes() -> None:
     await db.ticket_logs.create_index("id", unique=True)
     await db.ticket_logs.create_index([("ticket_id", 1), ("at", -1)])
     await db.ticket_logs.create_index([("company_id", 1), ("at", -1)])
+    await db.atlaz_config.create_index("company_id", unique=True)
+    await db.atlaz_sync_logs.create_index([("company_id", 1), ("at", -1)])
+    await db.tickets.create_index([("company_id", 1), ("atlaz_external_id", 1)])
 
 
 # -------------------------------------------------------------------------
@@ -234,12 +238,14 @@ async def _startup() -> None:
                       id="dwell_push", replace_existing=True)
     asyncio.create_task(holidays_refresh_job())
     asyncio.create_task(location_logs_cleanup_job())
+    routes_atlaz.start_worker()
     logger.info("Scheduler iniciado.")
 
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
     scheduler.shutdown(wait=False)
+    routes_atlaz.stop_worker()
     client.close()
 
 
@@ -258,6 +264,7 @@ app.include_router(routes_push.router)
 app.include_router(routes_collab_auth.router)
 app.include_router(routes_logs.router)
 app.include_router(routes_lousa.router)
+app.include_router(routes_atlaz.router)
 app.include_router(routes_saas.router)
 app.include_router(routes_saas.webhook_router)
 

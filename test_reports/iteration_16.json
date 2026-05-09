@@ -1,0 +1,37 @@
+{
+  "summary": "Iter16 Atlaz integration tested end-to-end. Backend 16/16 pytest tests PASS (settings GET/PUT with masking + idempotent api_key, test-connection graceful DNS fail, sync-now ok with errors[], sync-logs ordering, role auth, push_close via admin-close, regression on /api/server-time, /api/lousa/grid). Worker 'atlaz worker started' confirmed in logs. Frontend: 21/21 atlaz-* data-testids present in SettingsPanel; Testar/Sincronizar/Ver logs all functional with graceful DNS error rendering; '🔗 Atlaz' badge renders on Lousa bolha when ticket.atlaz_external_id present.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "SettingsPanel - Atlaz card", "issues": ["Card aparece somente para roles administrador/auditor (definido em App.js linha 77 do nav). Backend aceita gestor, mas gestor não vê o menu Configurações no nav para acessar a UI. Verificar se isso é desejado — review_request menciona role gestor."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration16_atlaz.py",
+    "/app/test_reports/pytest/iter16_atlaz_results.xml"
+  ],
+  "action_items": [
+    "(Opcional) Adicionar 'gestor' ao roles do item de menu 'settings' em App.js linha 77 se quiser que gestor acesse Configurações pela UI (atualmente apenas admin/auditor veem o tab). Backend já permite gestor."
+  ],
+  "critical_code_review_comments": [
+    "routes/atlaz.py:506 — worker reaproveita _worker_stop global; em hot-reload pode haver race entre stop_worker do shutdown e start_worker do startup, mas observado funcionando (logs mostram start/stop limpos).",
+    "routes/atlaz.py:288 run_sync retorna ok=True mesmo com 100% errors. Já está documentado e testes confirmam o comportamento esperado.",
+    "Frontend AtlazIntegrationCard só é renderizado dentro de SettingsPanel (admin/auditor). Gestor é o role no backend mas não vê no menu — pequena inconsistência de UX vs review_request.",
+    "Push de baixa em admin-close usa try/except amplo (lousa.py:1163-1171 e 1601-1609) — ok, não quebra fluxo do gestor mesmo com Atlaz fora."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration16_atlaz.py (novo, 16 testes)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com/123456 (UI Settings + Lousa), gestor@empresa.com/123456 (API Atlaz)",
+  "seed_data_creation": "Injetado atlaz_external_id em 2 tickets existentes via pymongo direto (tkt-d4093e3443 admin-closed durante test push_close; tkt-20c5615f82 usado para validar badge no Lousa). Limpos no teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Testes pytest de Iter16 ficam em /app/backend/tests/test_iteration16_atlaz.py — usar para regressão. cleanup desativa atlaz no fim. DNS api.seuatlaz.com não resolve (esperado). Para testar push: db.tickets.update_one({'id':<x>},{'$set':{'atlaz_external_id':'TEST-X','atlaz_filial':'TEST'}}) e POST /api/lousa/tickets/<x>/admin-close action=encerrar; log push_encerrar status=error fica em atlaz_sync_logs.",
+  "rca of the issue": "N/A — sem bugs encontrados. Apenas observação sobre menu Configurações restrito a admin/auditor enquanto backend Atlaz aceita gestor."
+}

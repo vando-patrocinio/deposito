@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "@/api";
 import { Button, Card, Field, Icon, inputStyle, StatusBadge } from "@/ui";
+import AtlazIntegrationCard from "@/AtlazIntegrationCard";
 
 export default function SettingsPanel() {
   const [s, setS] = useState(null);
@@ -559,6 +560,8 @@ export default function SettingsPanel() {
           {msg && <span style={{ color: msg.startsWith("Erro") ? "#be123c" : "#166534", fontWeight: 700 }}>{msg}</span>}
         </div>
       </Card>
+
+      <AtlazIntegrationCard />
     </div>
   );
 }

@@ -165,6 +165,12 @@ export const api = {
   lousaAiEvaluate: (tid) => client.post(`/lousa/tickets/${tid}/ai-evaluate`).then((r) => r.data),
   lousaBulkAction: (data) => client.post(`/lousa/tickets/bulk-action`, data).then((r) => r.data),
   lousaBulkAiEvaluate: (ticket_ids) => client.post(`/lousa/tickets/bulk-ai-evaluate`, { ticket_ids }).then((r) => r.data),
+  // Atlaz integração
+  atlazGetSettings: () => client.get(`/atlaz/settings`).then((r) => r.data),
+  atlazUpdateSettings: (data) => client.put(`/atlaz/settings`, data).then((r) => r.data),
+  atlazTestConnection: () => client.post(`/atlaz/test-connection`).then((r) => r.data),
+  atlazSyncNow: () => client.post(`/atlaz/sync-now`).then((r) => r.data),
+  atlazSyncLogs: (limit = 30) => client.get(`/atlaz/sync-logs`, { params: { limit } }).then((r) => r.data),
   lousaBriefing: (useAi = true) => client.get(`/lousa/briefing`, { params: { use_ai: useAi } }).then((r) => r.data),
   lousaManagementKpis: (days = 30) => client.get(`/lousa/management-kpis`, { params: { days } }).then((r) => r.data),
   lousaManagementInsights: (days = 30) => client.post(`/lousa/management-insights`, null, { params: { days } }).then((r) => r.data),
