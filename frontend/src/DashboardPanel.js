@@ -92,6 +92,7 @@ export default function DashboardPanel() {
       </div>
 
       <ServiceStatsSection />
+      <ManagementKpisSection />
 
       {/* Seletor de modo */}
       <Card style={{ marginBottom: 14 }}>
@@ -688,6 +689,181 @@ function KpiCard({ label, value, color, testId }) {
     }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 900, color, marginTop: 4 }}>{value}</div>
+    </div>
+  );
+}
+
+
+function ManagementKpisSection() {
+  const [data, setData] = React.useState(null);
+  const [days, setDays] = React.useState(30);
+  const [loading, setLoading] = React.useState(false);
+  const [insights, setInsights] = React.useState(null);
+  const [insightsBusy, setInsightsBusy] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  React.useEffect(() => {
+    let alive = true;
+    setLoading(true); setErr("");
+    api.lousaManagementKpis(days)
+      .then((d) => { if (alive) setData(d); })
+      .catch((e) => { if (alive) setErr(e?.response?.data?.detail || e.message); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [days]);
+
+  async function runInsights() {
+    setInsightsBusy(true);
+    try {
+      const r = await api.lousaManagementInsights(days);
+      setInsights(r);
+    } catch (e) {
+      alert("Erro insights: " + (e?.response?.data?.detail || e.message));
+    }
+    setInsightsBusy(false);
+  }
+
+  if (loading) return <Card style={{ marginBottom: 14 }} data-testid="mgmt-kpis-loading">Carregando KPIs de gestão...</Card>;
+  if (err) return <Card style={{ marginBottom: 14, color: "#dc2626" }}>Erro KPIs gestão: {err}</Card>;
+  if (!data) return null;
+
+  const a = data.by_action || {};
+  return (
+    <Card style={{ marginBottom: 14 }} data-testid="management-kpis-section">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>🧑‍💼 KPIs da Gestão</h3>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <button
+            data-testid="mgmt-insights-btn"
+            onClick={runInsights}
+            disabled={insightsBusy}
+            style={{
+              padding: "6px 14px", borderRadius: 10, fontSize: 12, fontWeight: 700,
+              border: "1px solid #06b6d4", cursor: "pointer",
+              background: insightsBusy ? "#cffafe" : "linear-gradient(135deg,#06b6d4,#0891b2)",
+              color: insightsBusy ? "#0e7490" : "white",
+            }}
+          >🤖 {insightsBusy ? "Analisando..." : "Insights IA"}</button>
+          {[7, 30, 90].map((n) => (
+            <button key={n} data-testid={`mgmt-days-${n}`} onClick={() => setDays(n)} style={{
+              padding: "6px 12px", borderRadius: 10, fontSize: 12, fontWeight: 700,
+              border: "1px solid #e2e8f0", cursor: "pointer",
+              background: days === n ? "#0f172a" : "white",
+              color: days === n ? "white" : "#0f172a",
+            }}>{n}d</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
+        <KpiCard label="Trabalhadas (admin)" value={a.trabalhadas_pela_gestao || 0} color="#10b981" testId="mgmt-kpi-worked" />
+        <KpiCard label="Encerradas" value={a.encerradas || 0} color="#475569" testId="mgmt-kpi-closed" />
+        <KpiCard label="Reagendadas" value={a.reagendadas || 0} color="#3b82f6" testId="mgmt-kpi-rescheduled" />
+        <KpiCard label="Canceladas" value={a.canceladas || 0} color="#dc2626" testId="mgmt-kpi-canceled" />
+        <KpiCard label="Editadas" value={a.editadas || 0} color="#a855f7" testId="mgmt-kpi-edited" />
+        <KpiCard label="Transferidas" value={a.transferidas || 0} color="#f59e0b" testId="mgmt-kpi-transferred" />
+      </div>
+
+      {data.avg_minutes_to_decision != null && (
+        <div style={{ background: "#f0fdfa", padding: 10, borderRadius: 10, fontSize: 13, color: "#134e4a", marginBottom: 12 }}>
+          ⏱ Tempo médio até decisão da gestão: <strong>{Math.round(data.avg_minutes_to_decision)}min</strong>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div>
+          <h4 style={{ fontSize: 12, color: "#64748b", margin: "0 0 6px" }}>Top motivos de cancelamento</h4>
+          {(data.top_cancel_reasons || []).length === 0 && <small style={{ color: "#94a3b8" }}>Sem cancelamentos.</small>}
+          {(data.top_cancel_reasons || []).map((r, i) => (
+            <div key={i} data-testid={`mgmt-cancel-reason-${i}`} style={{ fontSize: 11, padding: "4px 8px", background: "#fef2f2", borderRadius: 6, marginBottom: 3, color: "#7f1d1d" }}>
+              {r.count}× — {r.reason}
+            </div>
+          ))}
+        </div>
+        <div>
+          <h4 style={{ fontSize: 12, color: "#64748b", margin: "0 0 6px" }}>Top motivos de reagendamento</h4>
+          {(data.top_reschedule_reasons || []).length === 0 && <small style={{ color: "#94a3b8" }}>Sem reagendamentos.</small>}
+          {(data.top_reschedule_reasons || []).map((r, i) => (
+            <div key={i} data-testid={`mgmt-resched-reason-${i}`} style={{ fontSize: 11, padding: "4px 8px", background: "#eff6ff", borderRadius: 6, marginBottom: 3, color: "#1e3a8a" }}>
+              {r.count}× — {r.reason}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {(data.by_actor || []).length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <h4 style={{ fontSize: 12, color: "#64748b", margin: "0 0 6px" }}>Ranking — gestores por ações tomadas</h4>
+          {data.by_actor.slice(0, 5).map((a, i) => (
+            <div key={i} data-testid={`mgmt-actor-${i}`} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", borderRadius: 6, marginBottom: 3, background: i === 0 ? "#fef9c3" : "#f8fafc", fontSize: 12 }}>
+              <span><strong>{i + 1}º</strong> {a.name} <span style={{ color: "#94a3b8", fontSize: 10 }}>({a.role})</span></span>
+              <span style={{ fontWeight: 800 }}>{a.total} ação(ões)</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {insights && <ManagementInsightsModal insights={insights} onClose={() => setInsights(null)} />}
+    </Card>
+  );
+}
+
+function ManagementInsightsModal({ insights, onClose }) {
+  const i = insights.insights || {};
+  return (
+    <div onClick={onClose} data-testid="mgmt-insights-modal" style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 110,
+      display: "grid", placeItems: "center", padding: 20,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "white", borderRadius: 18, padding: 24, maxWidth: 640, width: "100%",
+        maxHeight: "90vh", overflowY: "auto",
+      }}>
+        <h2 style={{ margin: "0 0 12px", fontSize: 20 }}>🤖 Insights IA · Gestão</h2>
+
+        {i.priority_action && (
+          <div style={{ background: "linear-gradient(135deg,#ecfeff,#cffafe)", border: "1px solid #67e8f9", borderRadius: 12, padding: 14, marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#0e7490", textTransform: "uppercase", marginBottom: 4 }}>⚡ Ação prioritária</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#155e75" }}>{i.priority_action}</div>
+          </div>
+        )}
+
+        {i.analysis_summary && (
+          <p style={{ background: "#f8fafc", padding: 12, borderRadius: 10, fontSize: 13, color: "#0f172a", margin: "0 0 12px", lineHeight: 1.6 }}>
+            {i.analysis_summary}
+          </p>
+        )}
+
+        {i.red_flags?.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <h4 style={{ margin: "0 0 6px", fontSize: 13 }}>🚩 Pontos de atenção</h4>
+            {i.red_flags.map((f, idx) => (
+              <div key={idx} style={{ background: "#fee2e2", color: "#7f1d1d", padding: 8, borderRadius: 8, fontSize: 12, marginBottom: 4 }}>
+                ⚠ {f}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {i.recommendations?.length > 0 && (
+          <div>
+            <h4 style={{ margin: "0 0 6px", fontSize: 13 }}>💡 Recomendações</h4>
+            <ul style={{ paddingLeft: 18, margin: 0, fontSize: 12 }}>
+              {i.recommendations.map((r, idx) => <li key={idx} style={{ marginBottom: 4 }}>{r}</li>)}
+            </ul>
+          </div>
+        )}
+
+        <div style={{ marginTop: 16, fontSize: 10, color: "#94a3b8" }}>
+          Método: {insights.method} · {new Date(insights.computed_at).toLocaleString("pt-BR")}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} data-testid="mgmt-insights-close" style={{
+            padding: "8px 16px", borderRadius: 10, border: "1px solid #cbd5e1", background: "white", fontWeight: 700, cursor: "pointer",
+          }}>Fechar</button>
+        </div>
+      </div>
     </div>
   );
 }

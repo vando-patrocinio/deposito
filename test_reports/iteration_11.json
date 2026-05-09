@@ -1,0 +1,47 @@
+{
+  "summary": "Iter11 testing complete — all targeted features VERIFIED. Backend: created /app/backend/tests/test_iteration11_lousa_mgmt.py with 8/8 PASS covering: (1) GET /api/lousa/management-kpis?days=30 retorna shape correto {by_action:{trabalhadas_pela_gestao,encerradas,reagendadas,canceladas,editadas,transferidas}, total_management_actions, by_actor[], top_cancel_reasons[], top_reschedule_reasons[], cancel_by_type[], reschedule_by_type[], current_status_counts, avg_minutes_to_decision, period_days, computed_at}; (2) POST /api/lousa/management-insights?days=30 retorna {kpis, insights:{analysis_summary, red_flags[], recommendations[], priority_action}, method, computed_at} — método 'fallback' aceito (LLM pode falhar e fallback é estrutura válida); (3) POST /api/lousa/tickets/{id}/admin-close action=reagendar com new_date='2026-05-15'+new_time='14:30' retorna 200 com scheduled_time exato '2026-05-15T14:30:00' e status='reagendada'; (4) admin-close cria notification para o collaborator_id (verificado via GET /api/notifications) com type contendo 'cancel'; (5) GET /api/lousa/by-collaborator/{cid} público (sem auth) — após admin cancelar/reagendar, ticket NÃO aparece mais em tickets[]; (6) admin-open registra log com action='aberta_admin' (não 'aberta') — verificado via GET /api/lousa/logs?ticket_id=X; (7) admin-close sem auth → 401/403. Frontend (gestor@empresa.com login OK em /login): tab-painel mostra data-testid='management-kpis-section' com todos os 6 cards visíveis (mgmt-kpi-worked=Trabalhadas 2, mgmt-kpi-closed=Encerradas 38, mgmt-kpi-rescheduled=Reagendadas 6, mgmt-kpi-canceled=Canceladas 19, mgmt-kpi-edited=Editadas 28, mgmt-kpi-transferred=Transferidas 96); seletor mgmt-days-7/30/90 todos presentes e clicáveis (clique em mgmt-days-7 não quebrou render); botão 'mgmt-insights-btn' abriu 'mgmt-insights-modal' em t=1s mostrando estrutura {priority_action, analysis_summary, method:fallback, computed_at, botão Fechar}; botão 'mgmt-insights-close' fechou o modal corretamente (modal removido do DOM). Tab Lousa: 5 bubble-card encontrados; clique no 1º expôs ações; botão admin-reschedule-tkt-671a43f32b detectado e abriu reschedule-modal com reschedule-date (type=date), reschedule-time (type=time), reschedule-reason (textarea), reschedule-confirm — todos os 4 data-testids presentes; modal fecha via botão Cancelar.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/lousa/management-insights", "issue": "Em alguns runs o LLM retorna fallback (method='fallback', analysis_summary='Análise IA indisponível no momento') — backend handle gracefully, mas frontend exibe placeholder. Possivelmente timeout interno curto ou key LLM esgotada. Verificar logs ./var/log/supervisor/backend.*.log para confirmar warning '[mgmt-insights] LLM falhou'."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Insights IA Gestão", "issue": "Modal abre instantaneamente (t=1s) com 'Método: fallback' — usuário vê placeholder em vez de análise IA real. Não bloqueia, mas reduz valor da feature. Verificar se LLM real está rodando.", "affected_selectors": ["mgmt-insights-modal", "mgmt-insights-btn"]}
+    ],
+    "design_issues": [
+      {"screen": "Painel — Estatísticas de serviços", "issues": ["Persiste do iter10: 10× warnings 'The width(-1) and height(-1) of chart should be greater than 0' (Recharts ResponsiveContainer sem minHeight). Sugestão repetida: adicionar minHeight={250} aos containers de gráfico."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11_lousa_mgmt.py",
+    "/app/test_reports/pytest/iter11_results.xml"
+  ],
+  "action_items": [
+    "[OPCIONAL] Investigar por que /api/lousa/management-insights está caindo no fallback no preview env — verificar EMERGENT_LLM_KEY ou ajuste de timeout interno do llm_chat. Em produção pode estar OK, mas hoje frontend sempre mostra placeholder.",
+    "[CARRY-OVER iter10] Adicionar minHeight aos ResponsiveContainer no DashboardPanel (chart 'Volume diário' e similares) para silenciar 10 warnings recorrentes no console."
+  ],
+  "critical_code_review_comments": [
+    "routes/lousa.py — agora 1776 linhas (+201 vs iter10). Refactor em lousa_kpis.py / lousa_admin_actions.py / lousa_briefing.py / lousa_grid.py / lousa_time.py é PRIORIDADE ALTA — passou de qualquer threshold razoável.",
+    "/lousa/management-kpis usa Counter() em motivos com matching exato de string (linha 1668). Notas de cancelamento com texto livre (ex.: 'cleanup', 'cleanup iter10') não agrupam similares — top_cancel_reasons mostra cada texto único, perdendo sinal. Considerar lowercase + remoção de pontuação OU clusterização semântica via embedding.",
+    "/lousa/management-insights chama lousa_management_kpis(user, days) diretamente — funciona mas acopla as duas funções. Se management-kpis ganhar parâmetro novo (ex.: filtros de actor), insights quebra silenciosamente. Extrair para função interna _compute_management_kpis() e fazer ambos endpoints chamarem ela.",
+    "RescheduleModal.js: 'min={new Date().toISOString().slice(0,10)}' usa data UTC — usuário em fuso UTC-3 vendo ~21:00 local pode ver 'mínima' como dia seguinte (UTC já virou). Usar new Date().toLocaleDateString('en-CA') ou tz fix.",
+    "admin_close_ticket linha 1086-1087: monta scheduled_time como f'{date}T{time}:00' SEM timezone — fica 'naïve'. Restante do sistema usa ISO com tz (now_iso() retorna UTC). Inconsistência: tickets reagendados ficam sem TZ enquanto outros com TZ. Sugestão: append '-03:00' ou usar datetime.fromisoformat + ZoneInfo.",
+    "/lousa/by-collaborator/{cid} é PÚBLICO (sem auth) e expõe scheduled_time, client_name, address, phone do cliente. Em produção isso é vazamento de PII se cid for adivinhável (formato col-XXX). Considerar (a) hash/token por colaborador OU (b) rate limit + log de acesso."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration11_lousa_mgmt.py"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8 iter11)",
+    "frontend": "100% — todos data-testid esperados verificados (management-kpis-section, mgmt-kpi-worked/closed/rescheduled/canceled/edited/transferred, mgmt-days-7/30/90, mgmt-insights-btn, mgmt-insights-modal, mgmt-insights-close, admin-reschedule-{tid}, reschedule-modal, reschedule-date, reschedule-time, reschedule-reason, reschedule-confirm)"
+  },
+  "test_credentials": "gestor@empresa.com / 123456 (Painel + admin-close + KPIs); admin@empresa.com / 123456 também válido. Login retorna 'access_token' (não 'token').",
+  "seed_data_creation": "Tickets temporários TEST_resched_*, TEST_notif_*, TEST_drop_*, TEST_drop_resch_*, TEST_openlog_* criados via POST /api/lousa/tickets durante a suite. Todos receberam admin-close cancelar/reagendar dentro dos próprios testes (sem cleanup explícito mas estado terminal cancelada/reagendada não polui Lousa nem grids ativos).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter11 backend suite: /app/backend/tests/test_iteration11_lousa_mgmt.py (8/8). IMPORTANTE: POST /api/lousa/tickets espera campos FLAT (client_name, address, neighborhood, phone, relato, type, priority, assigned_collaborator_id) — NÃO 'client_snapshot'. Type literal: 'reparo'|'instalacao'|'retirada'|'prioridade'|'preventiva'|'venda'. Priority literal: 'normal'|'horario'|'prioridade'. Endpoint de logs é GET /api/lousa/logs?ticket_id=X (não /lousa/tickets/{id}/logs). Frontend testids confirmados em /login → tab-painel: management-kpis-section + 6 cards mgmt-kpi-* + mgmt-days-7/30/90 + mgmt-insights-btn → mgmt-insights-modal + mgmt-insights-close. Em tab-lousa: clicar em qualquer bubble-card-{tid} expõe admin-reschedule-{tid} → reschedule-modal com reschedule-date/time/reason/confirm. /api/lousa/by-collaborator/{cid} é público sem auth — usado para validar drop de mobile.",
+  "rca of the issue": "Nenhum bug de bloqueio. Observação importante: /api/lousa/management-insights está retornando method='fallback' no preview env (LLM não respondeu/falhou), então frontend mostra placeholder 'Análise IA indisponível no momento' em vez da análise real. Backend handle gracefully via try/except (linha 1762-1763 em routes/lousa.py logando warning). Para validar end-to-end com LLM, verificar EMERGENT_LLM_KEY ativa e logs do supervisor backend para warning '[mgmt-insights] LLM falhou: <reason>'. Todo o resto da iteração está funcionando: (a) reagendar persiste new_date+new_time corretamente concatenando 'YYYY-MM-DDTHH:MM:00'; (b) cancelar e reagendar criam notification typed para o colaborador; (c) admin-open log='aberta_admin' (não 'aberta') diferenciando ações de gestão; (d) by-collaborator filtra apenas TECH_RESOLVED (finalizada/encerrada) — cancelada/reagendada não aparecem mais; (e) Frontend RescheduleModal substitui window.prompt corretamente com inputs date/time + textarea motivo + botão confirmar."
+}

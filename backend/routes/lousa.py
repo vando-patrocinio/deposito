@@ -123,6 +123,8 @@ class AdminCloseIn(BaseModel):
     action: Literal["encerrar", "reagendar", "cancelar"]
     notes: Optional[str] = None
     new_scheduled_time: Optional[str] = None
+    new_date: Optional[str] = None        # YYYY-MM-DD (alternativa a new_scheduled_time)
+    new_time: Optional[str] = None        # HH:MM (combinada com new_date)
 
 
 # -------------------------------------------------------------------------
@@ -617,10 +619,13 @@ async def _lousa_for_collaborator(cid: str) -> dict:
         t["locked"] = (i in locked_idx) or state["in_intervalo"] or state["ended_day"]
         t["admin_resolved"] = False
 
+    # Tickets resolvidos PELO TÉCNICO ficam visíveis 24h (histórico do dia).
+    # Tickets resolvidos PELA GESTÃO (cancelada/reagendada) saem da Lousa do app —
+    # gestão já cuidou e o técnico não precisa mais agir/ver.
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     resolved_raw = await db.tickets.find(
         {"assigned_collaborator_id": cid,
-         "status": {"$in": list(ADMIN_RESOLVED) + list(TECH_RESOLVED)},
+         "status": {"$in": list(TECH_RESOLVED)},  # apenas finalizada/encerrada pelo técnico
          "closed_at": {"$gte": cutoff}},
         {"_id": 0},
     ).to_list(200)
@@ -1075,8 +1080,14 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
         "admin_action": payload.action,
         "admin_notes": payload.notes,
     }
-    if payload.action == "reagendar" and payload.new_scheduled_time:
-        update["scheduled_time"] = payload.new_scheduled_time
+    if payload.action == "reagendar":
+        # aceita new_scheduled_time OU (new_date + new_time)
+        sched = payload.new_scheduled_time
+        if not sched and payload.new_date and payload.new_time:
+            sched = f"{payload.new_date}T{payload.new_time}:00"
+        if sched:
+            update["scheduled_time"] = sched
+            update["grid_slot"] = None
     await db.tickets.update_one({"id": ticket_id}, {"$set": update})
     await _log_ticket_action(
         ticket_id=ticket_id, action=payload.action,
@@ -1085,6 +1096,19 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
         details=payload.notes or "",
         company_id=t.get("company_id") or DEMO_COMPANY_ID,
     )
+    # Notifica colaborador se ação for cancelar/reagendar — para o app do técnico atualizar
+    if payload.action in ("cancelar", "reagendar"):
+        client_name = (t.get("client_snapshot") or {}).get("name") or "Cliente"
+        verb = "cancelada" if payload.action == "cancelar" else "reagendada"
+        await _create_notification(
+            type_=f"ticket_{payload.action}_by_admin",
+            title=f"Nota {verb} pela gestão",
+            message=f"Nota de {client_name} foi {verb} por {user.get('name', 'gestão')}. " + (payload.notes or ""),
+            collaborator_id=t.get("assigned_collaborator_id"),
+            ticket_id=ticket_id,
+            company_id=t.get("company_id") or DEMO_COMPANY_ID,
+            severity="info" if payload.action == "reagendar" else "warning",
+        )
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 
@@ -1160,7 +1184,7 @@ async def admin_open_ticket(ticket_id: str, user: dict = Depends(require_role("g
         {"$set": {"status": "aberta", "opened_at": now_iso()}},
     )
     await _log_ticket_action(
-        ticket_id=ticket_id, action="aberta",
+        ticket_id=ticket_id, action="aberta_admin",
         actor_id=user["id"], actor_name=user.get("name", "Gestor"),
         actor_role=user.get("role", "gestor"),
         details=f"Aberta pelo gestor (não pelo técnico) — {t['client_snapshot']['name']}",
@@ -1570,5 +1594,182 @@ async def lousa_briefing(user: dict = Depends(require_role("gestor")),
         "summary_data": summary_data,
         "narrative": narrative,
         "method": "llm" if narrative else "data-only",
+        "computed_at": now_iso(),
+    }
+
+
+
+# -------------------------------------------------------------------------
+# MANAGEMENT KPIs — métricas das ações da gestão
+# -------------------------------------------------------------------------
+@router.get("/lousa/management-kpis")
+async def lousa_management_kpis(user: dict = Depends(require_role("gestor")),
+                                days: int = 30):
+    """KPIs específicos das ações da gestão (admin-open, cancel, reschedule, edit, transfer).
+    Lê ticket_logs e tickets para gerar contagens, ranking de motivos e tempo médio até decisão.
+    """
+    q = tenant_filter(user)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max(1, days))).isoformat()
+
+    logs = await db.ticket_logs.find(
+        {**q, "at": {"$gte": cutoff}},
+        {"_id": 0},
+    ).to_list(10000)
+
+    by_action: dict = {}
+    by_actor: dict = {}        # actor_name → counts
+    cancel_reasons: list = []
+    reschedule_reasons: list = []
+    decision_durations: list = []  # min entre criação do ticket e ação da gestão
+
+    # Pré-cache de tickets para olhar created_at
+    tids = list({log["ticket_id"] for log in logs if log.get("ticket_id")})
+    tickets_by_id: dict = {}
+    if tids:
+        for t in await db.tickets.find({"id": {"$in": tids}}, {"_id": 0}).to_list(5000):
+            tickets_by_id[t["id"]] = t
+
+    mgmt_actions = {"cancelar", "reagendar", "encerrar", "aberta_admin", "editada", "transferida"}
+    for log in logs:
+        action = log.get("action", "")
+        if action not in mgmt_actions:
+            continue
+        by_action[action] = by_action.get(action, 0) + 1
+        actor = log.get("actor_name") or log.get("actor_id") or "?"
+        a = by_actor.setdefault(actor, {"role": log.get("actor_role"), "total": 0})
+        a["total"] += 1
+        a[action] = a.get(action, 0) + 1
+
+        if action == "cancelar" and log.get("details"):
+            cancel_reasons.append(log["details"][:120])
+        if action == "reagendar" and log.get("details"):
+            reschedule_reasons.append(log["details"][:120])
+
+        # Tempo entre criação e decisão
+        t = tickets_by_id.get(log.get("ticket_id"))
+        if t and t.get("created_at"):
+            try:
+                ca = datetime.fromisoformat(t["created_at"].replace("Z", "+00:00"))
+                la = datetime.fromisoformat(log["at"].replace("Z", "+00:00"))
+                if ca.tzinfo is None:
+                    ca = ca.replace(tzinfo=timezone.utc)
+                if la.tzinfo is None:
+                    la = la.replace(tzinfo=timezone.utc)
+                delta = (la - ca).total_seconds() / 60.0
+                if delta >= 0:
+                    decision_durations.append(delta)
+            except Exception:
+                pass
+
+    # Top motivos (frequência simples — palavras comuns)
+    def top_reasons(reasons: list, k: int = 5):
+        from collections import Counter
+        clean = [r.strip() for r in reasons if r and len(r.strip()) > 3]
+        ct = Counter(clean).most_common(k)
+        return [{"reason": r, "count": c} for r, c in ct]
+
+    # Notas que estão atualmente reagendadas/canceladas no período
+    period_tickets = await db.tickets.find(
+        {**q, "$or": [
+            {"created_at": {"$gte": cutoff}},
+            {"closed_at": {"$gte": cutoff}},
+        ]},
+        {"_id": 0, "status": 1, "type": 1},
+    ).to_list(5000)
+    by_status: dict = {}
+    cancel_by_type: dict = {}
+    reschedule_by_type: dict = {}
+    for t in period_tickets:
+        s = t.get("status", "")
+        by_status[s] = by_status.get(s, 0) + 1
+        if s == "cancelada":
+            cancel_by_type[t.get("type", "?")] = cancel_by_type.get(t.get("type", "?"), 0) + 1
+        if s == "reagendada":
+            reschedule_by_type[t.get("type", "?")] = reschedule_by_type.get(t.get("type", "?"), 0) + 1
+
+    return {
+        "period_days": days,
+        "by_action": {
+            "trabalhadas_pela_gestao": by_action.get("aberta_admin", 0),  # admin-open
+            "encerradas": by_action.get("encerrar", 0),
+            "canceladas": by_action.get("cancelar", 0),
+            "reagendadas": by_action.get("reagendar", 0),
+            "editadas": by_action.get("editada", 0),
+            "transferidas": by_action.get("transferida", 0),
+        },
+        "total_management_actions": sum(by_action.values()),
+        "by_actor": [
+            {"name": k, **v} for k, v in sorted(by_actor.items(), key=lambda x: -x[1]["total"])[:10]
+        ],
+        "top_cancel_reasons": top_reasons(cancel_reasons, 5),
+        "top_reschedule_reasons": top_reasons(reschedule_reasons, 5),
+        "cancel_by_type": [{"type": k, "count": v} for k, v in sorted(cancel_by_type.items(), key=lambda x: -x[1])],
+        "reschedule_by_type": [{"type": k, "count": v} for k, v in sorted(reschedule_by_type.items(), key=lambda x: -x[1])],
+        "current_status_counts": by_status,
+        "avg_minutes_to_decision": round(sum(decision_durations) / len(decision_durations), 1) if decision_durations else None,
+        "computed_at": now_iso(),
+    }
+
+
+# -------------------------------------------------------------------------
+# MANAGEMENT INSIGHTS — IA analisa decisões da gestão e sugere melhorias
+# -------------------------------------------------------------------------
+@router.post("/lousa/management-insights")
+async def lousa_management_insights(user: dict = Depends(require_role("gestor")),
+                                    days: int = 30):
+    """IA analisa as ações de gestão (cancel, reschedule, transfer) e sugere
+    melhorias de processo. Roda LLM com os dados de management-kpis como contexto.
+    """
+    kpis = await lousa_management_kpis(user, days)
+
+    system_msg = (
+        "Você é um consultor sênior de operações de campo (field service management). "
+        "Analise objetivamente os números das decisões da gestão e produza um JSON com:\n"
+        "- `analysis_summary`: 2-3 frases resumindo o padrão observado (PT-BR).\n"
+        "- `red_flags`: lista de 0-4 alertas (strings PT-BR, max 130 chars) — pontos de atenção.\n"
+        "- `recommendations`: lista de 2-5 recomendações concretas (PT-BR, max 150 chars cada) para melhorar o processo.\n"
+        "- `priority_action`: 1 ação prioritária a tomar essa semana (PT-BR, max 130 chars).\n"
+        "Responda SOMENTE o JSON, sem cercas markdown."
+    )
+
+    prompt = (
+        f"DADOS — últimos {kpis['period_days']} dias:\n"
+        f"- Notas trabalhadas pela gestão (admin-open): {kpis['by_action']['trabalhadas_pela_gestao']}\n"
+        f"- Canceladas pela gestão: {kpis['by_action']['canceladas']}\n"
+        f"- Reagendadas: {kpis['by_action']['reagendadas']}\n"
+        f"- Encerradas pela gestão: {kpis['by_action']['encerradas']}\n"
+        f"- Editadas: {kpis['by_action']['editadas']}\n"
+        f"- Transferidas: {kpis['by_action']['transferidas']}\n"
+        f"- Tempo médio até decisão: {kpis['avg_minutes_to_decision']}min\n"
+        f"- Top motivos de cancelamento: {[r['reason'] for r in kpis['top_cancel_reasons']]}\n"
+        f"- Top motivos de reagendamento: {[r['reason'] for r in kpis['top_reschedule_reasons']]}\n"
+        f"- Cancelamentos por tipo de serviço: {kpis['cancel_by_type']}\n"
+        f"- Reagendamentos por tipo: {kpis['reschedule_by_type']}\n"
+        f"- Status atual no período: {kpis['current_status_counts']}\n"
+        f"- Top atores: {[{'name': a['name'], 'total': a['total']} for a in kpis['by_actor'][:5]]}"
+    )
+
+    insights = None
+    try:
+        from emergentintegrations.llm.chat import UserMessage
+        chat = await llm_chat(session_id=f"mgmt-insights-{user.get('company_id', DEMO_COMPANY_ID)}-{days}", system=system_msg)
+        raw = (await chat.send_message(UserMessage(text=prompt))).strip()
+        import json as _json
+        import re as _re
+        m = _re.search(r"\{.*\}", raw, _re.DOTALL)
+        if m:
+            insights = _json.loads(m.group(0))
+    except Exception as e:
+        logger.warning("[mgmt-insights] LLM falhou: %s", e)
+
+    return {
+        "kpis": kpis,
+        "insights": insights or {
+            "analysis_summary": "Análise IA indisponível no momento — verifique abaixo os números brutos.",
+            "red_flags": [],
+            "recommendations": [],
+            "priority_action": "Revisar manualmente os indicadores e definir um plano de ação.",
+        },
+        "method": "llm" if insights else "fallback",
         "computed_at": now_iso(),
     }

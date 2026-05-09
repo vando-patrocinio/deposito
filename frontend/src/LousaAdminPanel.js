@@ -3,6 +3,7 @@ import { api } from "@/api";
 import { Button, Icon } from "@/ui";
 import EditTicketModal from "./lousa/EditTicketModal";
 import CreateTicketModal from "./lousa/CreateTicketModal";
+import RescheduleModal from "./lousa/RescheduleModal";
 import { isAlertsEnabled, setAlertsEnabled, maybeFireOverdueAlerts } from "./slaAlerts";
 
 const TYPE_LABELS = {
@@ -45,6 +46,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [collabs, setCollabs] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [editingTicket, setEditingTicket] = useState(null);
+  const [reschedTicket, setReschedTicket] = useState(null);
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -155,6 +157,21 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
     setBusy(false);
   }
 
+  async function handleReschedule({ new_date, new_time, notes }) {
+    if (!reschedTicket || isLocked) return;
+    setBusy(true);
+    try {
+      await api.lousaAdminClose(reschedTicket.id, {
+        action: "reagendar", new_date, new_time, notes,
+      });
+      setReschedTicket(null);
+      await refresh();
+    } catch (e) {
+      alert(e?.response?.data?.detail || e.message);
+    }
+    setBusy(false);
+  }
+
   const totalTickets = grid.columns.reduce((sum, c) => sum + (c.tickets?.length || 0), 0);
   const overdueCount = grid.columns.flatMap((c) => c.tickets || []).filter((t) => t.sla?.status === "overdue").length;
 
@@ -257,6 +274,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             onAdminClose={handleAdminClose}
             onAdminOpen={handleAdminOpen}
             onEdit={(t) => setEditingTicket(t)}
+            onReschedule={(t) => setReschedTicket(t)}
             busy={busy}
           />
         ))}
@@ -280,11 +298,19 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           busy={busy}
         />
       )}
+      {reschedTicket && (
+        <RescheduleModal
+          ticket={reschedTicket}
+          onClose={() => setReschedTicket(null)}
+          onConfirm={handleReschedule}
+          busy={busy}
+        />
+      )}
     </div>
   );
 }
 
-function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, busy, maxPerSlot, onSlotDrop }) {
+function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, maxPerSlot, onSlotDrop }) {
   const c = column.collaborator;
   const state = column.clock_state;
   const slots = column.slots || [];
@@ -392,6 +418,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
             onAdminClose={onAdminClose}
             onAdminOpen={onAdminOpen}
             onEdit={onEdit}
+            onReschedule={onReschedule}
             busy={busy}
           />
         ))}
@@ -412,6 +439,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
                 onAdminClose={onAdminClose}
                 onAdminOpen={onAdminOpen}
                 onEdit={onEdit}
+                onReschedule={onReschedule}
                 busy={busy}
               />
             ))}
@@ -422,7 +450,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
   );
 }
 
-function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart, onDragEnd, blinkOverdue, onAdminClose, onAdminOpen, onEdit, busy }) {
+function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart, onDragEnd, blinkOverdue, onAdminClose, onAdminOpen, onEdit, onReschedule, busy }) {
   const [over, setOver] = useState(false);
   const isFull = slot.full;
   const isEmpty = slot.tickets.length === 0;
@@ -478,6 +506,7 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
             onAdminClose={onAdminClose}
             onAdminOpen={onAdminOpen}
             onEdit={onEdit}
+            onReschedule={onReschedule}
             busy={busy}
           />
         </React.Fragment>
@@ -486,7 +515,7 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
   );
 }
 
-function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, busy }) {
+function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, onReschedule, busy }) {
   const c = PRIORITY_COLORS[ticket.priority] || PRIORITY_COLORS.normal;
   const st = STATUS_LABEL[ticket.status] || { label: ticket.status, color: "#64748b" };
   const sla = ticket.sla || {};
@@ -622,8 +651,8 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
             onClick={runAiAnalysis} style={btnSm("#a855f7")}>🤖 IA {aiBusy ? "..." : ""}</button>
           <button data-testid={`admin-close-${ticket.id}`} disabled={busy}
             onClick={() => { const n = window.prompt("Notas:"); if (n !== null) onAdminClose(ticket.id, "encerrar", n); }} style={btnSm("#64748b")}>✓ Encerrar</button>
-          <button disabled={busy}
-            onClick={() => { const n = window.prompt("Motivo do reagendamento:"); if (n) onAdminClose(ticket.id, "reagendar", n); }} style={btnSm("#3b82f6")}>📅 Reagendar</button>
+          <button data-testid={`admin-reschedule-${ticket.id}`} disabled={busy}
+            onClick={(e) => { e.stopPropagation(); if (onReschedule) onReschedule(ticket); }} style={btnSm("#3b82f6")}>📅 Reagendar</button>
           <button disabled={busy}
             onClick={() => { const n = window.prompt("Motivo do cancelamento:"); if (n) onAdminClose(ticket.id, "cancelar", n); }} style={btnSm("#dc2626")}>✗ Cancelar</button>
         </div>
