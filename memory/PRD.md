@@ -1,8 +1,26 @@
-# PRD — Sistema Mesclado: SmartProv + PontoIA + Estoque + SmartOLT
+# PRD — Sistema Mesclado: SmartProv + PontoIA + Estoque + SmartOLT + IA Preventivas
 
-**Última atualização**: 2026-05-09 (iteração 28)
+**Última atualização**: 2026-05-09 (iteração 29)
 
 ## Histórico de iterações
+
+### Iter 29 — IA Preventivas (sugestão automática de notas) (2026-05-09) ✅
+- ✅ **Backend `routes/ai_preventive.py`** (~480 linhas):
+  - **Mensuração de ritmo**: para cada técnico calcula `pace_per_active_day` (notas finalizadas / dias trabalhados nos últimos 30d) e `pace_per_calendar_day`. Heurística: usa active_day se ≥5 dias ativos, senão calendar_day (mínimo 1/dia pra técnicos com pouco histórico).
+  - **Capacidade ociosa hoje**: `capacity = max(0, ritmo - (pendentes + abertas + finalizadas_hoje))`.
+  - **Detecção de críticos** (cache SmartOLT): clientes com `Rx ≤ critical_rx_dbm` (-27 default) ou `signal_text in {"Bad","Warning"}`. Filtra clientes que **já têm bolha aberta** ou **já foram sugeridos hoje** (anti-duplicação).
+  - **Match cliente→técnico** por tokens em `zone_name`/`olt_name` vs `atlaz_filiais` do colaborador. Empate → maior capacidade.
+  - **Limites**: `max_suggestions_per_tech=2`/dia (configurável); `min_capacity_to_suggest=1`. Modo `force=true` ignora capacity (gestor pode escanear emergencial).
+  - Endpoints `GET /settings`, `PUT /settings`, `GET /capacity`, `POST /scan?force=bool`, `GET /suggestions?status=`, `POST /accept/{sid}`, `POST /reject/{sid}`.
+  - **Worker periódico** (default 4h) gera sugestões automaticamente + cria notification consolidada `type="ai_preventive_suggestion"`.
+  - **Aceitar sugestão** → cria bolha `type="preventiva"` com relato auto-gerado, MAC ponto, sinal Rx referência, e marca a sugestão `accepted` com `ticket_id` cruzado.
+- ✅ **Notifications**: schema unificado com `read_by: []` (compat com sino existente). Iter27 (`stok_auto_close_failed`) e iter29 (`ai_preventive_suggestion`) compartilham a mesma collection.
+- ✅ **Frontend**:
+  - `AIPreventivePanel.js` — modal full-screen com 2 abas (Sugestões + Capacidade dos técnicos), botões Escanear / Scan força / Aceitar / Recusar, KPIs no topo.
+  - `NotificationsBell` extendido: notificações `ai_preventive_suggestion` agora abrem o painel ao clicar.
+  - Botão **🤖 Preventivas IA** no header (gradient violeta, visível só pra gestor/admin).
+- ✅ **Validado real Ligo Fibra**: `force scan` em 0.02s → **30 sugestões geradas** dos 869 clientes críticos detectados, distribuídas em **6 técnicos** (2 cada), ordem por urgência (-30 a -31 dBm primeiro). Aceitar cria bolha `preventiva` no painel da Lousa.
+- ✅ **Pytest**: 7/7 em `test_iteration29_ai_preventive.py` (settings, capacity, scan, accept→bolha, double-accept 400, unauth, notifications endpoint). Suite total: **32/32** passed.
 
 ### Iter 28 — Bugfix crítico: PPPoE do Atlaz (2026-05-09) ✅
 - 🐛 **Bug descoberto**: importação Atlaz buscava PPPoE em `assinante.login | usuario | usuario_pppoe` que **NÃO EXISTEM** no payload V2. Resultado: 100% das bolhas Atlaz vinham com `pppoe_user=""` → match SmartOLT só funcionava em bolhas manuais.

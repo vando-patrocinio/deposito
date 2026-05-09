@@ -210,4 +210,20 @@ export const api = {
   // Lousa: sinal por ticket
   lousaTicketSignal: (tid, refresh = false) =>
     client.get(`/lousa/tickets/${tid}/signal`, { params: { refresh } }).then((r) => r.data),
+  // AI Preventiva
+  aiPrevSettings: () => client.get(`/ai/preventive/settings`).then((r) => r.data),
+  aiPrevSettingsUpdate: (d) => client.put(`/ai/preventive/settings`, d).then((r) => r.data),
+  aiPrevCapacity: () => client.get(`/ai/preventive/capacity`).then((r) => r.data),
+  aiPrevScan: (force = false) =>
+    client.post(`/ai/preventive/scan`, null, { params: { force } }).then((r) => r.data),
+  aiPrevSuggestions: (status) =>
+    client.get(`/ai/preventive/suggestions`, { params: status ? { status } : {} }).then((r) => r.data),
+  aiPrevAccept: (sid) => client.post(`/ai/preventive/accept/${sid}`).then((r) => r.data),
+  aiPrevReject: (sid) => client.post(`/ai/preventive/reject/${sid}`).then((r) => r.data),
+  // Notifications
+  notifList: (only_unread = false) =>
+    client.get(`/notifications`, { params: { only_unread } }).then((r) => r.data),
+  notifUnreadCount: () => client.get(`/notifications/unread-count`).then((r) => r.data),
+  notifMarkRead: (id) => client.post(`/notifications/${id}/read`).then((r) => r.data),
+  notifMarkAllRead: () => client.post(`/notifications/read-all`).then((r) => r.data),
 };

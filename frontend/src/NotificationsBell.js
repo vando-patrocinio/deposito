@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
 import useEventStream from "@/useEventStream";
 
-export default function NotificationsBell() {
+export default function NotificationsBell({ onOpenAIPanel } = {}) {
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
@@ -114,7 +114,13 @@ export default function NotificationsBell() {
               return (
                 <div
                   key={n.id}
-                  onClick={() => markRead(n.id)}
+                  onClick={() => {
+                    markRead(n.id);
+                    if (n.type === "ai_preventive_suggestion" && onOpenAIPanel) {
+                      onOpenAIPanel();
+                      setOpen(false);
+                    }
+                  }}
                   data-testid={`notif-${n.id}`}
                   style={{
                     padding: 10, borderRadius: 10,

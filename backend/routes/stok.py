@@ -802,7 +802,7 @@ async def auto_close_service_from_ticket(
                 "message": f"{technician_name} finalizou a bolha mas estoque não foi baixado: {err_reason}. Resolva manualmente em Estoque → Serviços.",
                 "severity": "warning",
                 "created_at": now_iso(),
-                "read": False,
+                "read_by": [],
                 "audience_role": "gestor",
                 "ticket_id": ticket_id,
             })

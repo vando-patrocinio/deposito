@@ -13,6 +13,7 @@ import LogsPanel from "@/LogsPanel";
 import PlatformAdminPanel from "@/PlatformAdminPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
 import EstoquePanel from "@/EstoquePanel";
+import AIPreventivePanel from "@/AIPreventivePanel";
 import AiRankingPanel from "@/AiRankingPanel";
 import NotificationsBell from "@/NotificationsBell";
 import OfflineTimeBanner from "@/OfflineTimeBanner";
@@ -122,6 +123,7 @@ function AppShell({ view, setView, children }) {
   const [companyName, setCompanyName] = useState(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [allCompanies, setAllCompanies] = useState([]);
+  const [showAIPanel, setShowAIPanel] = useState(false);
   const [activeCo, setActiveCo] = useState(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem("ponto_active_company") || "";
@@ -235,8 +237,21 @@ function AppShell({ view, setView, children }) {
                 }}>{isSuperAdmin ? "🛡️ super admin" : user.role}</span>
               </span>
             )}
+            {user && (user.role === "gestor" || user.role === "administrador") && (
+              <button
+                data-testid="ai-preventive-open-btn"
+                onClick={() => setShowAIPanel(true)}
+                title="Abrir painel de Preventivas IA"
+                style={{
+                  background: "linear-gradient(135deg,#a855f7,#7c3aed)", color: "white", border: "none",
+                  padding: "6px 12px", borderRadius: 999, fontWeight: 800, cursor: "pointer", fontSize: 12,
+                }}
+              >
+                🤖 Preventivas IA
+              </button>
+            )}
             {user && (
-              <NotificationsBell />
+              <NotificationsBell onOpenAIPanel={() => setShowAIPanel(true)} />
             )}
             <ServerClock compact />
             {user && (
@@ -245,6 +260,7 @@ function AppShell({ view, setView, children }) {
           </nav>
         </header>
         <ImpersonationBanner />
+        {showAIPanel && <AIPreventivePanel onClose={() => setShowAIPanel(false)} />}
         {children}
       </div>
     </div>

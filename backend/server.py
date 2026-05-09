@@ -51,6 +51,7 @@ from routes import (
     push as routes_push,
     saas as routes_saas,
     smartolt as routes_smartolt,
+    ai_preventive as routes_ai_preventive,
     stok as routes_stok,
     users as routes_users,
 )
@@ -102,6 +103,13 @@ async def ensure_indexes() -> None:
         [("company_id", 1), ("unique_external_id", 1)], unique=True,
     )
     await db.smartolt_onus.create_index([("company_id", 1), ("name_norm", 1)])
+    # AI Preventive
+    await db.ai_preventive_config.create_index("company_id", unique=True)
+    await db.ai_preventive_suggestions.create_index([("company_id", 1), ("created_at", -1)])
+    await db.ai_preventive_suggestions.create_index([("company_id", 1), ("status", 1)])
+    # Notifications
+    await db.notifications.create_index([("company_id", 1), ("audience_role", 1), ("read", 1)])
+    await db.notifications.create_index([("company_id", 1), ("created_at", -1)])
 
 
 # -------------------------------------------------------------------------
@@ -257,6 +265,7 @@ async def _startup() -> None:
     asyncio.create_task(location_logs_cleanup_job())
     routes_atlaz.start_worker()
     await routes_smartolt.start_worker()
+    await routes_ai_preventive.start_worker()
     logger.info("Scheduler iniciado.")
 
 
@@ -288,6 +297,7 @@ app.include_router(routes_saas.router)
 app.include_router(routes_saas.webhook_router)
 app.include_router(routes_stok.router)
 app.include_router(routes_smartolt.router)
+app.include_router(routes_ai_preventive.router)
 
 app.add_middleware(
     CORSMiddleware,
