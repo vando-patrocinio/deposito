@@ -1,8 +1,18 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 10)
+**Última atualização**: 2026-05-09 (iteração 11)
 
 ## Histórico de iterações
+
+### Iter 11 — Cancelamento mobile + Modal Reschedule + KPIs Gestão + Insights IA (2026-05-09)
+- ✅ **Notas canceladas/reagendadas pela gestão SAEM da Lousa do app do colaborador**: `_lousa_for_collaborator` agora filtra apenas `TECH_RESOLVED` (finalizada/encerrada pelo técnico), excluindo `cancelada`/`reagendada` que são ações de gestão
+- ✅ **Modal Reschedule** (`/app/frontend/src/lousa/RescheduleModal.js`): substitui `window.prompt` por popup com data, horário e motivo. Submete via `admin-close action=reagendar` com `new_date`+`new_time`+`notes`
+- ✅ **Notification automática** ao colaborador: ao cancelar/reagendar via gestão, cria entrada em `db.notifications` com `type=ticket_cancelar_by_admin`/`ticket_reagendar_by_admin`
+- ✅ **KPIs da Gestão** (`GET /api/lousa/management-kpis?days=N`): cards Trabalhadas (admin-open) / Encerradas / Reagendadas / Canceladas / Editadas / Transferidas + ranking de gestores + top motivos cancel/reschedule + tempo médio até decisão
+- ✅ **Insights IA Gestão** (`POST /api/lousa/management-insights?days=N`): IA analisa decisões de gestão e retorna `analysis_summary` + `red_flags` + `recommendations` + `priority_action`. Botão "🤖 Insights IA" no Painel
+- ✅ **admin-open agora loga `aberta_admin`** (não mais `aberta`) — diferencia de execução pelo técnico nos relatórios
+- Backend: 8/8 (iter11) + 86/86 regressão = **94/94 verde**
+- Frontend deep test: 100%
 
 ### Iter 10 — Hover/Edit + Online Indicator + Lock Execution + Server Clock + OpenRouter (2026-05-09)
 - ✅ **Hover na bolha**: mouse-over abre ações (não precisa clicar); duplo-clique abre EDIT (antes era admin-open)
