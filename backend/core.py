@@ -94,10 +94,17 @@ class Settings(BaseModel):
     sla_reparo_minutes: int = 60
     sla_instalacao_minutes: int = 120
     sla_retirada_minutes: int = 30
+    sla_prioridade_minutes: int = 45
+    sla_preventiva_minutes: int = 90
+    sla_venda_minutes: int = 60
     sla_warning_pct: int = 80           # % do tempo onde alerta amarelo dispara (legado, mantido p/ compat)
     sla_yellow_minutes: int = 15        # 🟡 Bolha pisca AMARELO quando faltam X min p/ estourar
     sla_red_after_minutes: int = 0      # 🔴 Bolha pisca VERMELHO X min APÓS estourar (0 = imediato)
-    sla_blink_when_overdue: bool = True  # piscar bolha em vermelho quando ultrapassar tempo
+    sla_blink_when_overdue: bool = True
+    # ---- Sincronização de horário (servidor Brasil) ----
+    time_sync_enabled: bool = False             # bloqueia ações se relógio do dispositivo dessincronizado
+    time_sync_max_drift_seconds: int = 60       # diferença máxima permitida em segundos
+    time_sync_timezone: str = "America/Sao_Paulo"  # fuso usado como referência
     # ---- Grade fixa de horários da lousa ----
     lousa_grid_start_hour: int = 8       # hora de início da grade (ex: 8 = 08:00)
     lousa_grid_end_hour: int = 18        # hora de fim da grade (ex: 18 = 18:00, exclusiva)

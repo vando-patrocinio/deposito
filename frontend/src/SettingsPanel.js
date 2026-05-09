@@ -9,10 +9,13 @@ export default function SettingsPanel() {
     openai_api_key: "", monthly_email_enabled: true, location_ping_interval_sec: 15,
     he_monthly_budget_brl: 0, he_alert_threshold_pct: 30,
     sla_reparo_minutes: 60, sla_instalacao_minutes: 120, sla_retirada_minutes: 30,
+    sla_prioridade_minutes: 45, sla_preventiva_minutes: 90, sla_venda_minutes: 60,
     sla_warning_pct: 80, sla_yellow_minutes: 15, sla_red_after_minutes: 0,
     sla_blink_when_overdue: true, nota_fence_radius_m: 80,
     lousa_grid_start_hour: 8, lousa_grid_end_hour: 18,
     lousa_grid_slot_minutes: 60, lousa_grid_max_per_slot: 2,
+    time_sync_enabled: false, time_sync_max_drift_seconds: 60,
+    time_sync_timezone: "America/Sao_Paulo",
   });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -36,6 +39,9 @@ export default function SettingsPanel() {
       sla_reparo_minutes: cur.sla_reparo_minutes ?? 60,
       sla_instalacao_minutes: cur.sla_instalacao_minutes ?? 120,
       sla_retirada_minutes: cur.sla_retirada_minutes ?? 30,
+      sla_prioridade_minutes: cur.sla_prioridade_minutes ?? 45,
+      sla_preventiva_minutes: cur.sla_preventiva_minutes ?? 90,
+      sla_venda_minutes: cur.sla_venda_minutes ?? 60,
       sla_warning_pct: cur.sla_warning_pct ?? 80,
       sla_yellow_minutes: cur.sla_yellow_minutes ?? 15,
       sla_red_after_minutes: cur.sla_red_after_minutes ?? 0,
@@ -45,6 +51,9 @@ export default function SettingsPanel() {
       lousa_grid_end_hour: cur.lousa_grid_end_hour ?? 18,
       lousa_grid_slot_minutes: cur.lousa_grid_slot_minutes ?? 60,
       lousa_grid_max_per_slot: cur.lousa_grid_max_per_slot ?? 2,
+      time_sync_enabled: cur.time_sync_enabled ?? false,
+      time_sync_max_drift_seconds: cur.time_sync_max_drift_seconds ?? 60,
+      time_sync_timezone: cur.time_sync_timezone ?? "America/Sao_Paulo",
     });
   }
   useEffect(() => { reload(); }, []);
@@ -97,20 +106,35 @@ export default function SettingsPanel() {
           esse tempo ficam piscando vermelho na lousa para o gestor.
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          <Field label="Reparo (min)">
+          <Field label="🔧 Reparo (min)">
             <input data-testid="inp-sla-reparo" type="number" min="1" style={inputStyle}
               value={form.sla_reparo_minutes}
               onChange={(e) => setForm({ ...form, sla_reparo_minutes: Number(e.target.value) })} />
           </Field>
-          <Field label="Instalação (min)">
+          <Field label="📡 Instalação (min)">
             <input data-testid="inp-sla-instalacao" type="number" min="1" style={inputStyle}
               value={form.sla_instalacao_minutes}
               onChange={(e) => setForm({ ...form, sla_instalacao_minutes: Number(e.target.value) })} />
           </Field>
-          <Field label="Retirada (min)">
+          <Field label="📦 Retirada (min)">
             <input data-testid="inp-sla-retirada" type="number" min="1" style={inputStyle}
               value={form.sla_retirada_minutes}
               onChange={(e) => setForm({ ...form, sla_retirada_minutes: Number(e.target.value) })} />
+          </Field>
+          <Field label="🚨 Prioridade (min)">
+            <input data-testid="inp-sla-prioridade" type="number" min="1" style={inputStyle}
+              value={form.sla_prioridade_minutes}
+              onChange={(e) => setForm({ ...form, sla_prioridade_minutes: Number(e.target.value) })} />
+          </Field>
+          <Field label="🛡️ Preventiva (min)">
+            <input data-testid="inp-sla-preventiva" type="number" min="1" style={inputStyle}
+              value={form.sla_preventiva_minutes}
+              onChange={(e) => setForm({ ...form, sla_preventiva_minutes: Number(e.target.value) })} />
+          </Field>
+          <Field label="💼 Venda (min)">
+            <input data-testid="inp-sla-venda" type="number" min="1" style={inputStyle}
+              value={form.sla_venda_minutes}
+              onChange={(e) => setForm({ ...form, sla_venda_minutes: Number(e.target.value) })} />
           </Field>
         </div>
         <div style={{
@@ -208,6 +232,66 @@ export default function SettingsPanel() {
           border: "1px solid #86efac", borderRadius: 10, fontSize: 12, color: "#15803d",
         }}>
           📊 <strong>Prévia:</strong> {Math.max(1, ((form.lousa_grid_end_hour - form.lousa_grid_start_hour) * 60) / form.lousa_grid_slot_minutes)} slots de {form.lousa_grid_slot_minutes}min entre {String(form.lousa_grid_start_hour).padStart(2, "0")}:00 e {String(form.lousa_grid_end_hour).padStart(2, "0")}:00 — {form.lousa_grid_max_per_slot} bolha(s)/slot
+        </div>
+      </Card>
+
+      <Card title="🕐 Sincronização de Horário (Servidor Brasil)">
+        <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 12px" }}>
+          Quando ativado, o sistema valida o relógio do dispositivo contra o horário do servidor.
+          Se a diferença for maior que o limite configurado, o dispositivo NÃO consegue
+          registrar ponto nem operar a lousa — garantindo que todos os horários sigam o mesmo padrão.
+        </p>
+        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", padding: 10, background: form.time_sync_enabled ? "#faf5ff" : "#f8fafc", border: `2px solid ${form.time_sync_enabled ? "#a855f7" : "#e2e8f0"}`, borderRadius: 12, marginBottom: 10 }}>
+          <input
+            data-testid="chk-time-sync"
+            type="checkbox"
+            checked={!!form.time_sync_enabled}
+            onChange={(e) => setForm({ ...form, time_sync_enabled: e.target.checked })}
+            style={{ marginTop: 3, transform: "scale(1.3)" }}
+          />
+          <div>
+            <strong style={{ color: form.time_sync_enabled ? "#7c3aed" : "#0f172a" }}>
+              Ativar sincronização obrigatória
+            </strong>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+              Bloqueia ações se o relógio do dispositivo estiver fora do limite.
+            </div>
+          </div>
+        </label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="Diferença máxima (segundos)">
+            <input
+              data-testid="inp-time-drift"
+              type="number" min="5" max="3600" step="5"
+              style={inputStyle}
+              value={form.time_sync_max_drift_seconds}
+              onChange={(e) => setForm({ ...form, time_sync_max_drift_seconds: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Fuso horário do Brasil">
+            <select
+              data-testid="inp-time-tz"
+              style={inputStyle}
+              value={form.time_sync_timezone}
+              onChange={(e) => setForm({ ...form, time_sync_timezone: e.target.value })}
+            >
+              <option value="America/Sao_Paulo">São Paulo (UTC-3) — padrão</option>
+              <option value="America/Manaus">Manaus (UTC-4)</option>
+              <option value="America/Belem">Belém (UTC-3)</option>
+              <option value="America/Rio_Branco">Rio Branco (UTC-5)</option>
+              <option value="America/Fortaleza">Fortaleza (UTC-3)</option>
+              <option value="America/Recife">Recife (UTC-3)</option>
+              <option value="America/Cuiaba">Cuiabá (UTC-4)</option>
+              <option value="America/Noronha">Fernando de Noronha (UTC-2)</option>
+            </select>
+          </Field>
+        </div>
+        <div style={{
+          marginTop: 10, padding: 10, background: "#fef3c7",
+          border: "1px solid #fde68a", borderRadius: 10, fontSize: 12, color: "#92400e",
+        }}>
+          ⚠️ <strong>Atenção:</strong> ao ativar, dispositivos com relógio desajustado serão bloqueados.
+          Recomende aos colaboradores ativarem "Hora automática" no Android/iOS antes.
         </div>
       </Card>
 

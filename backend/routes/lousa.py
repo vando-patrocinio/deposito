@@ -41,14 +41,17 @@ router = APIRouter(prefix="/api", tags=["lousa"])
 # Models
 # -------------------------------------------------------------------------
 Priority = Literal["normal", "horario", "prioridade"]
-TicketType = Literal["reparo", "instalacao", "retirada"]
+TicketType = Literal["reparo", "instalacao", "retirada", "prioridade", "preventiva", "venda"]
 TicketStatus = Literal[
     "pendente", "aberta", "aguardando_atendimento",
     "finalizada", "encerrada", "reagendada", "cancelada"
 ]
 Outcome = Literal["sucesso", "informada"]
 
-POINTS_BY_TYPE: Dict[str, float] = {"instalacao": 3.0, "retirada": 1.5, "reparo": 1.0}
+POINTS_BY_TYPE: Dict[str, float] = {
+    "instalacao": 3.0, "retirada": 1.5, "reparo": 1.0,
+    "prioridade": 2.5, "preventiva": 1.5, "venda": 2.0,
+}
 PRIORITY_RANK = {"prioridade": 0, "horario": 1, "normal": 2}
 ADMIN_RESOLVED = ("encerrada", "reagendada", "cancelada")
 TECH_RESOLVED = ("finalizada",)
@@ -388,6 +391,9 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
         "reparo": int(settings.get("sla_reparo_minutes", 60)),
         "instalacao": int(settings.get("sla_instalacao_minutes", 120)),
         "retirada": int(settings.get("sla_retirada_minutes", 30)),
+        "prioridade": int(settings.get("sla_prioridade_minutes", 45)),
+        "preventiva": int(settings.get("sla_preventiva_minutes", 90)),
+        "venda": int(settings.get("sla_venda_minutes", 60)),
     }
     warning_pct = int(settings.get("sla_warning_pct", 80))
     yellow_min = int(settings.get("sla_yellow_minutes", 15))
@@ -967,6 +973,102 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
         company_id=t.get("company_id") or DEMO_COMPANY_ID,
     )
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+
+
+class TicketEditIn(BaseModel):
+    """Edição de bolha pelo gestor/admin (qualquer campo opcional)."""
+    client_name: Optional[str] = None
+    address: Optional[str] = None
+    neighborhood: Optional[str] = None
+    phone: Optional[str] = None
+    relato: Optional[str] = None
+    type: Optional[TicketType] = None
+    priority: Optional[Priority] = None
+    scheduled_time: Optional[str] = None
+
+
+@router.patch("/lousa/tickets/{ticket_id}")
+async def edit_ticket(ticket_id: str, payload: TicketEditIn,
+                      user: dict = Depends(require_role("gestor"))):
+    """Gestor/admin edita campos da bolha. Não permite editar nota já encerrada."""
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    if t["status"] in ("finalizada", "encerrada", "cancelada"):
+        raise HTTPException(400, "Nota encerrada não pode ser editada")
+
+    update: dict = {}
+    snap = dict(t.get("client_snapshot") or {})
+    snap_changed = False
+    snap_fields = {"client_name": "name", "address": "address",
+                   "neighborhood": "neighborhood", "phone": "phone", "relato": "relato"}
+    for f_in, f_snap in snap_fields.items():
+        v = getattr(payload, f_in, None)
+        if v is not None:
+            snap[f_snap] = v
+            snap_changed = True
+    if snap_changed:
+        update["client_snapshot"] = snap
+
+    for f in ("type", "priority", "scheduled_time"):
+        v = getattr(payload, f, None)
+        if v is not None:
+            update[f] = v
+
+    if not update:
+        return t
+
+    await db.tickets.update_one({"id": ticket_id}, {"$set": update})
+    await _log_ticket_action(
+        ticket_id=ticket_id, action="editada",
+        actor_id=user["id"], actor_name=user.get("name", "Gestor"),
+        actor_role=user.get("role", "gestor"),
+        details=f"Campos: {', '.join(update.keys())}",
+        company_id=t.get("company_id") or DEMO_COMPANY_ID,
+    )
+    return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+
+
+@router.post("/lousa/tickets/{ticket_id}/admin-open")
+async def admin_open_ticket(ticket_id: str, user: dict = Depends(require_role("gestor"))):
+    """Gestor/admin abre uma bolha em nome do colaborador (para casos especiais)."""
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    if t["status"] not in ("pendente",):
+        raise HTTPException(400, f"Nota já está com status '{t['status']}'")
+    await db.tickets.update_one(
+        {"id": ticket_id},
+        {"$set": {"status": "aberta", "opened_at": now_iso()}},
+    )
+    await _log_ticket_action(
+        ticket_id=ticket_id, action="aberta",
+        actor_id=user["id"], actor_name=user.get("name", "Gestor"),
+        actor_role=user.get("role", "gestor"),
+        details=f"Aberta pelo gestor (não pelo técnico) — {t['client_snapshot']['name']}",
+        company_id=t.get("company_id") or DEMO_COMPANY_ID,
+    )
+    return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+
+
+# -------------------------------------------------------------------------
+# SERVER TIME (sincronização)
+# -------------------------------------------------------------------------
+@router.get("/server-time")
+async def get_server_time():
+    """Retorna o horário atual do servidor para sincronização com dispositivos."""
+    from datetime import datetime, timezone
+    import time as _time
+    now = datetime.now(timezone.utc)
+    settings = await db.settings.find_one({"id": DEMO_COMPANY_ID}, {"_id": 0}) or {}
+    return {
+        "iso": now.isoformat(),
+        "epoch_ms": int(now.timestamp() * 1000),
+        "epoch_s": int(now.timestamp()),
+        "tz": settings.get("time_sync_timezone", "America/Sao_Paulo"),
+        "sync_enabled": bool(settings.get("time_sync_enabled", False)),
+        "max_drift_seconds": int(settings.get("time_sync_max_drift_seconds", 60)),
+    }
 
 
 # -------------------------------------------------------------------------

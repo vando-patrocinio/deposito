@@ -13,6 +13,7 @@ import LogsPanel from "@/LogsPanel";
 import PlatformAdminPanel from "@/PlatformAdminPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
 import NotificationsBell from "@/NotificationsBell";
+import OfflineTimeBanner from "@/OfflineTimeBanner";
 import LoginPage from "@/LoginPage";
 import LandingPage from "@/LandingPage";
 import SignupPage from "@/SignupPage";
@@ -244,6 +245,7 @@ function AppShell({ view, setView, children }) {
 function AppContent() {
   const { user, loading, logout } = useAuth();
   const mobile = useMobileMode();
+  const [systemStatus, setSystemStatus] = useState({ offline: false, drift_blocked: false });
   const [view, setViewState] = useState(() => {
     if (typeof window === "undefined") return "dashboard";
     const saved = window.localStorage.getItem("ponto_active_tab");
@@ -365,6 +367,7 @@ function AppContent() {
 
   return (
     <AppShell view={view} setView={setView}>
+      <OfflineTimeBanner onStatusChange={setSystemStatus} />
       <BillingBanner />
       {!allowed ? (
         <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 22, textAlign: "center", color: "#64748b" }}>
@@ -373,7 +376,7 @@ function AppContent() {
       ) : (
         <>
           {view === "dashboard" && <DashboardPanel />}
-          {view === "lousa" && <LousaAdminPanel />}
+          {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} />}
           {view === "cadastro" && <CadastroPanel />}
           {view === "pracas" && <PracasPanel />}
           {view === "users" && <UsersPanel />}

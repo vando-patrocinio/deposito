@@ -165,6 +165,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
         lng: position.lng,
         public_ip: null,
         force_close_open_tickets: forceCloseOpen,
+        client_time_ms: Date.now(),
       });
       setReceipt(rec);
       if (rec.status === "Bloqueado") {

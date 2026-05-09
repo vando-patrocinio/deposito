@@ -62,10 +62,16 @@ class SettingsUpdate(BaseModel):
     sla_reparo_minutes: Optional[int] = None
     sla_instalacao_minutes: Optional[int] = None
     sla_retirada_minutes: Optional[int] = None
+    sla_prioridade_minutes: Optional[int] = None
+    sla_preventiva_minutes: Optional[int] = None
+    sla_venda_minutes: Optional[int] = None
     sla_warning_pct: Optional[int] = None
     sla_yellow_minutes: Optional[int] = None
     sla_red_after_minutes: Optional[int] = None
     sla_blink_when_overdue: Optional[bool] = None
+    time_sync_enabled: Optional[bool] = None
+    time_sync_max_drift_seconds: Optional[int] = None
+    time_sync_timezone: Optional[str] = None
     nota_fence_radius_m: Optional[int] = None
     lousa_grid_start_hour: Optional[int] = None
     lousa_grid_end_hour: Optional[int] = None

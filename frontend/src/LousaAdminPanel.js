@@ -2,6 +2,15 @@ import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
 import { Button, Icon } from "@/ui";
 
+const TYPE_LABELS = {
+  reparo: "🔧 Reparo",
+  instalacao: "📡 Instalação",
+  retirada: "📦 Retirada",
+  prioridade: "🚨 Prioridade",
+  preventiva: "🛡️ Preventiva",
+  venda: "💼 Venda",
+};
+
 const PRIORITY_COLORS = {
   prioridade: { bg: "#fee2e2", border: "#dc2626", text: "#7f1d1d", label: "🚨 PRIORIDADE" },
   horario: { bg: "#fef3c7", border: "#f59e0b", text: "#78350f", label: "⏰ HORÁRIO" },
@@ -28,10 +37,11 @@ const ACTION_LABEL = {
   transferida: { icon: "↔", color: "#a855f7", label: "Transferida" },
 };
 
-export default function LousaAdminPanel() {
+export default function LousaAdminPanel({ systemStatus = { offline: false, drift_blocked: false } }) {
   const [grid, setGrid] = useState({ columns: [], sla_blink_when_overdue: true, sla_warning_pct: 80 });
   const [collabs, setCollabs] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingTicket, setEditingTicket] = useState(null);
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -39,6 +49,7 @@ export default function LousaAdminPanel() {
   const [tick, setTick] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFlash, setRefreshFlash] = useState(false);
+  const isLocked = systemStatus.offline || systemStatus.drift_blocked;
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -96,10 +107,37 @@ export default function LousaAdminPanel() {
   }
 
   async function handleAdminClose(ticketId, action, notes) {
+    if (isLocked) { alert("Sistema bloqueado: dispositivo offline ou horário dessincronizado."); return; }
     setBusy(true);
     try {
       await api.lousaAdminClose(ticketId, { action, notes: notes || "" });
       await refresh();
+    } catch (e) {
+      alert(e?.response?.data?.detail || e.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleAdminOpen(ticketId) {
+    if (isLocked) { alert("Sistema bloqueado: dispositivo offline ou horário dessincronizado."); return; }
+    if (!window.confirm("Abrir esta nota em nome do colaborador?")) return;
+    setBusy(true);
+    try {
+      await api.lousaAdminOpen(ticketId);
+      await refresh();
+    } catch (e) {
+      alert(e?.response?.data?.detail || e.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleEditTicket(ticketId, payload) {
+    if (isLocked) { alert("Sistema bloqueado."); return; }
+    setBusy(true);
+    try {
+      await api.lousaEditTicket(ticketId, payload);
+      await refresh();
+      setEditingTicket(null);
     } catch (e) {
       alert(e?.response?.data?.detail || e.message);
     }
@@ -153,8 +191,21 @@ export default function LousaAdminPanel() {
         </div>
       </div>
 
+      {isLocked && (
+        <div data-testid="lousa-locked-banner" style={{
+          background: "#fee2e2", border: "2px solid #dc2626", borderRadius: 12,
+          padding: 14, marginBottom: 14, textAlign: "center", color: "#7f1d1d", fontWeight: 700,
+        }}>
+          🔒 LOUSA TRANCADA — {systemStatus.offline ? "dispositivo offline" : "horário dessincronizado"}.
+          Todas as ações estão bloqueadas até a normalização.
+        </div>
+      )}
+
       {/* Grade horizontal — coluna por técnico */}
-      <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16, minHeight: 540 }} data-testid="lousa-grid">
+      <div style={{
+        display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16, minHeight: 540,
+        opacity: isLocked ? 0.5 : 1, pointerEvents: isLocked ? "none" : "auto",
+      }} data-testid="lousa-grid">
         {grid.columns.length === 0 && (
           <div style={{ background: "white", padding: 30, borderRadius: 14, color: "#94a3b8", flex: 1, textAlign: "center" }}>
             Nenhum técnico cadastrado.
@@ -175,6 +226,8 @@ export default function LousaAdminPanel() {
             onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
             draggingId={draggingId}
             onAdminClose={handleAdminClose}
+            onAdminOpen={handleAdminOpen}
+            onEdit={(t) => setEditingTicket(t)}
             busy={busy}
           />
         ))}
@@ -190,11 +243,19 @@ export default function LousaAdminPanel() {
           onCreated={() => { setShowCreate(false); refresh(); }}
         />
       )}
+      {editingTicket && (
+        <EditTicketModal
+          ticket={editingTicket}
+          onClose={() => setEditingTicket(null)}
+          onSave={(payload) => handleEditTicket(editingTicket.id, payload)}
+          busy={busy}
+        />
+      )}
     </div>
   );
 }
 
-function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, busy, maxPerSlot, onSlotDrop }) {
+function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, busy, maxPerSlot, onSlotDrop }) {
   const c = column.collaborator;
   const state = column.clock_state;
   const slots = column.slots || [];
@@ -272,6 +333,8 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
             onDragEnd={onDragEnd}
             blinkOverdue={blinkOverdue}
             onAdminClose={onAdminClose}
+            onAdminOpen={onAdminOpen}
+            onEdit={onEdit}
             busy={busy}
           />
         ))}
@@ -290,6 +353,8 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
                 onDragStart={() => onDragStart(t.id)}
                 onDragEnd={onDragEnd}
                 onAdminClose={onAdminClose}
+                onAdminOpen={onAdminOpen}
+                onEdit={onEdit}
                 busy={busy}
               />
             ))}
@@ -300,7 +365,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
   );
 }
 
-function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart, onDragEnd, blinkOverdue, onAdminClose, busy }) {
+function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart, onDragEnd, blinkOverdue, onAdminClose, onAdminOpen, onEdit, busy }) {
   const [over, setOver] = useState(false);
   const isFull = slot.full;
   const isEmpty = slot.tickets.length === 0;
@@ -346,6 +411,8 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
           onDragStart={() => onDragStart(t.id)}
           onDragEnd={onDragEnd}
           onAdminClose={onAdminClose}
+          onAdminOpen={onAdminOpen}
+          onEdit={onEdit}
           busy={busy}
         />
       ))}
@@ -353,7 +420,7 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
   );
 }
 
-function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, busy }) {
+function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, busy }) {
   const c = PRIORITY_COLORS[ticket.priority] || PRIORITY_COLORS.normal;
   const st = STATUS_LABEL[ticket.status] || { label: ticket.status, color: "#64748b" };
   const sla = ticket.sla || {};
@@ -385,7 +452,7 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
         </span>
       </div>
       <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4, color: c.text }}>{ticket.client_snapshot.name}</div>
-      <div style={{ fontSize: 11, color: "#64748b" }}>{ticket.type} · {ticket.client_snapshot.neighborhood}</div>
+      <div style={{ fontSize: 11, color: "#64748b" }}>{TYPE_LABELS[ticket.type] || ticket.type} · {ticket.client_snapshot.neighborhood}</div>
       <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>
         {ticket.client_snapshot.relato?.substring(0, 70)}{ticket.client_snapshot.relato?.length > 70 ? "..." : ""}
       </div>
@@ -408,8 +475,16 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
       )}
       {showActions && ["pendente", "aberta", "aguardando_atendimento"].includes(ticket.status) && (
         <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
+          {ticket.status === "pendente" && onAdminOpen && (
+            <button data-testid={`admin-open-${ticket.id}`} disabled={busy}
+              onClick={() => onAdminOpen(ticket.id)} style={btnSm("#10b981")}>▶ Abrir</button>
+          )}
+          {onEdit && (
+            <button data-testid={`admin-edit-${ticket.id}`} disabled={busy}
+              onClick={() => onEdit(ticket)} style={btnSm("#0ea5e9")}>✎ Editar</button>
+          )}
           <button data-testid={`admin-close-${ticket.id}`} disabled={busy}
-            onClick={() => { const n = window.prompt("Notas:"); if (n !== null) onAdminClose(ticket.id, "encerrar", n); }} style={btnSm("#10b981")}>✓ Encerrar</button>
+            onClick={() => { const n = window.prompt("Notas:"); if (n !== null) onAdminClose(ticket.id, "encerrar", n); }} style={btnSm("#64748b")}>✓ Encerrar</button>
           <button disabled={busy}
             onClick={() => { const n = window.prompt("Motivo do reagendamento:"); if (n) onAdminClose(ticket.id, "reagendar", n); }} style={btnSm("#3b82f6")}>📅 Reagendar</button>
           <button disabled={busy}
@@ -490,6 +565,89 @@ function LogsPanel({ logs, collabs }) {
 function btnSm(color) {
   return { fontSize: 10, padding: "3px 7px", border: 0, borderRadius: 6, background: color, color: "white", fontWeight: 800, cursor: "pointer" };
 }
+function EditTicketModal({ ticket, onClose, onSave, busy }) {
+  const [form, setForm] = useState({
+    client_name: ticket.client_snapshot?.name || "",
+    address: ticket.client_snapshot?.address || "",
+    neighborhood: ticket.client_snapshot?.neighborhood || "",
+    phone: ticket.client_snapshot?.phone || "",
+    relato: ticket.client_snapshot?.relato || "",
+    type: ticket.type || "reparo",
+    priority: ticket.priority || "normal",
+    scheduled_time: ticket.scheduled_time || "",
+  });
+
+  function submit(e) {
+    e?.preventDefault();
+    const payload = { ...form };
+    if (!payload.scheduled_time) delete payload.scheduled_time;
+    onSave(payload);
+  }
+
+  const css = { width: "100%", padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 10, fontSize: 13, marginBottom: 8 };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 100, display: "grid", placeItems: "center", padding: 20 }}>
+      <form onSubmit={submit} onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 18, padding: 22, maxWidth: 480, width: "100%", maxHeight: "92vh", overflowY: "auto" }} data-testid="lousa-edit-modal">
+        <h2 style={{ marginTop: 0 }}>✎ Editar nota</h2>
+        <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 12px" }}>
+          Status: <strong>{ticket.status}</strong> · ID: <code>{ticket.id}</code>
+        </p>
+        <label style={{ fontSize: 12, color: "#64748b" }}>Nome do cliente</label>
+        <input value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} style={css} data-testid="edit-client-name" />
+        <label style={{ fontSize: 12, color: "#64748b" }}>Endereço</label>
+        <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} style={css} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div>
+            <label style={{ fontSize: 12, color: "#64748b" }}>Bairro</label>
+            <input value={form.neighborhood} onChange={(e) => setForm({ ...form, neighborhood: e.target.value })} style={css} />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: "#64748b" }}>Telefone</label>
+            <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} style={css} />
+          </div>
+        </div>
+        <label style={{ fontSize: 12, color: "#64748b" }}>Relato</label>
+        <textarea value={form.relato} onChange={(e) => setForm({ ...form, relato: e.target.value })} rows={3} style={{ ...css, resize: "vertical" }} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div>
+            <label style={{ fontSize: 12, color: "#64748b" }}>Tipo</label>
+            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} style={css} data-testid="edit-type">
+              <option value="reparo">🔧 Reparo</option>
+              <option value="instalacao">📡 Instalação</option>
+              <option value="retirada">📦 Retirada</option>
+              <option value="prioridade">🚨 Prioridade</option>
+              <option value="preventiva">🛡️ Preventiva</option>
+              <option value="venda">💼 Venda</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: "#64748b" }}>Prioridade</label>
+            <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })} style={css}>
+              <option value="normal">Normal</option>
+              <option value="horario">Horário marcado</option>
+              <option value="prioridade">🚨 Prioridade</option>
+            </select>
+          </div>
+        </div>
+        {form.priority === "horario" && (
+          <>
+            <label style={{ fontSize: 12, color: "#64748b" }}>Horário agendado</label>
+            <input type="datetime-local" value={form.scheduled_time?.substring(0, 16) || ""} onChange={(e) => setForm({ ...form, scheduled_time: e.target.value })} style={css} />
+          </>
+        )}
+        <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+          <Button variant="soft" type="button" onClick={onClose} style={{ flex: 1 }}>Cancelar</Button>
+          <Button type="submit" disabled={busy} style={{ flex: 1 }} data-testid="edit-submit">
+            {busy ? "Salvando..." : "Salvar alterações"}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+
 
 function CreateTicketModal({ collabs, onClose, onCreated }) {
   const [form, setForm] = useState({
@@ -539,9 +697,12 @@ function CreateTicketModal({ collabs, onClose, onCreated }) {
           <div>
             <label style={{ fontSize: 12, color: "#64748b" }}>Tipo</label>
             <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} style={css} data-testid="ticket-type">
-              <option value="reparo">Reparo</option>
-              <option value="instalacao">Instalação</option>
-              <option value="retirada">Retirada</option>
+              <option value="reparo">🔧 Reparo</option>
+              <option value="instalacao">📡 Instalação</option>
+              <option value="retirada">📦 Retirada</option>
+              <option value="prioridade">🚨 Prioridade</option>
+              <option value="preventiva">🛡️ Preventiva</option>
+              <option value="venda">💼 Venda</option>
             </select>
           </div>
           <div>

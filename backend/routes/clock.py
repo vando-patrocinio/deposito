@@ -129,7 +129,8 @@ class ClockRecordIn(BaseModel):
     lng: float
     public_ip: Optional[str] = None
     offline_created_at: Optional[str] = None
-    force_close_open_tickets: bool = False  # Saída com bolhas em aberto → técnico confirmou encerrar
+    force_close_open_tickets: bool = False
+    client_time_ms: Optional[int] = None  # epoch ms do dispositivo (para sincronização)
 
 
 async def _has_open_ticket(collaborator_id: str) -> Optional[dict]:
@@ -498,6 +499,21 @@ async def create_clock_record(payload: ClockRecordIn, request: __import__('fasta
     coll = await db.collaborators.find_one({"id": payload.collaborator_id})
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado")
+
+    # ---- TIME SYNC: valida horário do dispositivo vs servidor (se configurado) ----
+    company_id = coll.get("company_id") or "co-demo"
+    settings_doc = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
+    if settings_doc.get("time_sync_enabled") and payload.client_time_ms:
+        from datetime import datetime as _dt, timezone as _tz
+        server_ms = int(_dt.now(_tz.utc).timestamp() * 1000)
+        drift_s = abs(server_ms - payload.client_time_ms) / 1000
+        max_drift = int(settings_doc.get("time_sync_max_drift_seconds", 60))
+        if drift_s > max_drift:
+            raise HTTPException(
+                412,
+                f"Horário do dispositivo dessincronizado ({int(drift_s)}s de diferença, "
+                f"máximo permitido: {max_drift}s). Sincronize o relógio do dispositivo.",
+            )
 
     # ---- TEST MODE (admin OR collaborator marked as test) ----
     is_admin_test = False

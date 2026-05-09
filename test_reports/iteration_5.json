@@ -1,0 +1,37 @@
+{
+  "summary": "Iteração 5 (time-sync server, admin-open/edit bolhas, novos tipos prioridade/preventiva/venda) testada com 22/22 testes pytest passando em test_iteration5_time_sync_admin_open_edit_types.py. Cobertura completa dos 17 fluxos solicitados: GET /api/server-time público com chaves iso/epoch_ms/epoch_s/tz/sync_enabled/max_drift_seconds; PUT /api/settings com time_sync_enabled=true + drift=30s; POST /api/clock-records com client_time_ms 1h atrás → 412 'dessincronizado'; sem client_time_ms → não bloqueia; drift dentro do limite passa; time_sync_enabled=false ignora drift; POST /api/lousa/tickets aceita prioridade/preventiva/venda; type='invalido' → 422; POST /api/lousa/tickets/{id}/admin-open abre pendente (status=aberta, opened_at preenchido), bolha já aberta → 400; PATCH atualiza client_name/address/type/priority/scheduled_time refletindo em client_snapshot; PATCH em encerrada → 400; PATCH cria log 'editada' com details listando campos alterados; GET /api/lousa/grid usa sla_preventiva_minutes(90)/sla_venda_minutes(60)/sla_prioridade_minutes(45) por default e reflete custom 180/45 quando alterado; regressão lousa/all, by-collaborator, transfer com new_grid_slot, admin-close OK. Settings restauradas ao final (time_sync_enabled=false, SLAs default).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration5_time_sync_admin_open_edit_types.py",
+    "/app/test_reports/pytest/iteration5_results.xml"
+  ],
+  "action_items": [
+    "Considerar adicionar Pydantic Field(ge=1, le=86400) em time_sync_max_drift_seconds para evitar valores inválidos (negativo, zero, gigante).",
+    "GET /api/server-time lê settings de DEMO_COMPANY_ID hardcoded (linha 1063 routes/lousa.py). Para multi-tenant verdadeiro, idealmente deveria aceitar header X-Company-Id ou query param ?company_id= (ou um endpoint /api/server-time com auth opcional para personalizar por tenant logado). Hoje todos tenants compartilham o mesmo sync_enabled exposto.",
+    "routes/lousa.py:edit_ticket — log 'details' usa nomes internos do dict ('client_snapshot', 'type', 'priority'). Considere expor nome amigável dos campos snapshot (ex: 'client_name, address') em vez de 'client_snapshot' agregado para melhor auditoria.",
+    "routes/clock.py:create_clock_record — validação drift considera abs(server-client). Se device com clock 5min adiantado, retornará dessync (correto). Mas mensagem só fala 'dispositivo dessincronizado'; poderia indicar adiantado vs atrasado (sinal do delta).",
+    "routes/lousa.py agora ~1140 linhas — reforça sugestão recorrente das iterações anteriores de split em sub-módulos (lousa/grid.py, lousa/transfer.py, lousa/public.py, lousa/admin.py, lousa/server_time.py)."
+  ],
+  "critical_code_review_comments": [
+    "lousa.py:admin_open_ticket aceita apenas status='pendente' (linha 1038). Se bolha estiver em 'aguardando_atendimento' (gestor solicitou ajuda), gestor não consegue reabrir via admin-open — só via outro fluxo. Validar UX se necessário.",
+    "lousa.py:edit_ticket — campo 'scheduled_time' é Optional[str], aceita qualquer string. Considerar Pydantic constraint via regex ISO ou datetime validator.",
+    "lousa.py:edit_ticket NÃO atualiza grid_slot quando scheduled_time muda (grid_slot persistido fica obsoleto). _slot_for_ticket no /api/lousa/grid recalcula só se grid_slot ausente. Considerar limpar grid_slot quando scheduled_time é editado, OU recomputar imediatamente.",
+    "clock.py:create_clock_record — validação drift acontece ANTES da validação test_mode admin (linha 506 vs 519). Admin em test mode com relógio dessincronizado também é bloqueado, o que pode ser indesejado. Recomendação: pular validação drift se is_admin_test=True.",
+    "lousa.py:get_server_time — não usa Depends, é endpoint público sem rate limit. Considerar rate limit para evitar abuso (ex: slowapi).",
+    "core.py:Settings — defaults sla_prioridade=45, sla_preventiva=90, sla_venda=60 hardcoded; também duplicados no _sla_minutes_for_type (defaults={'reparo':60,...} sem prioridade/preventiva/venda — linha 221 routes/lousa.py). _sla_minutes_for_type está obsoleto e pode retornar 60 default para os 3 novos tipos. Por sorte, lousa_grid usa sla_map separado correto. Mas se outro código chamar _sla_minutes_for_type('preventiva') sem settings, retorna 60 em vez de 90."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration5_time_sync_admin_open_edit_types.py (novo, 22 testes em 7 classes)"
+  ],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "n/a (skipped per request)"},
+  "test_credentials": "admin@empresa.com / 123456 (auditor para PUT settings); gestor@empresa.com / 123456 (gestor para tickets/transfer/edit/admin-open/admin-close)",
+  "seed_data_creation": "Cria 1 colaborador TEST_I5_* (is_test_mode=True para bypass cerca/face em clock-records) e múltiplos tickets TEST_I5_CLI_* — todos limpos via DELETE no teardown. Settings restaurada: time_sync_enabled=false, sla_preventiva_minutes=90, sla_venda_minutes=60, sla_prioridade_minutes=45, max_drift=60.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suite iter5 em /app/backend/tests/test_iteration5_time_sync_admin_open_edit_types.py cobre 22 cenários (7 classes). Importante: (1) GET /api/server-time é público sem auth e lê settings do DEMO_COMPANY_ID; (2) drift validation só dispara se time_sync_enabled=true E payload.client_time_ms presente; (3) admin-open só aceita status='pendente'; (4) PATCH não recalcula grid_slot ao mudar scheduled_time; (5) novos tipos aceitos: prioridade/preventiva/venda + reparo/instalacao/retirada (Pydantic Literal); (6) settings restaurada ao default no fixture autouse de módulo; (7) iter1+2+3+4+5 podem rodar juntos exceto teste obsoleto de 'groups' do iter3 (já documentado).",
+  "rca of the issue": "N/A — nenhuma falha encontrada na implementação iter5. Os 22/22 testes passaram em ~30s. Apenas observações de melhoria documentadas em critical_code_review_comments (rate limit em /server-time, recompute grid_slot em PATCH, bypass drift validation para admin test mode, _sla_minutes_for_type com defaults obsoletos para os 3 novos tipos)."
+}
