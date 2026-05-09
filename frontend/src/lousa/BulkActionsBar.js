@@ -174,7 +174,7 @@ function BulkActionModal({ action, ticketIds, onClose, onDone }) {
         </div>
 
         <div style={{ display: "flex", gap: 8 }}>
-          <Button variant="soft" type="button" onClick={onClose} style={{ flex: 1 }}>Voltar</Button>
+          <Button variant="soft" type="button" onClick={onClose} data-testid="bulk-action-cancel" style={{ flex: 1 }}>Voltar</Button>
           <Button type="submit" disabled={busy} data-testid="bulk-action-confirm" style={{ flex: 1, background: cfg.color, borderColor: cfg.color }}>
             {busy ? "Processando..." : cfg.confirmLabel}
           </Button>

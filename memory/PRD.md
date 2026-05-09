@@ -1,8 +1,24 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 14)
+**Última atualização**: 2026-05-09 (iteração 15)
 
 ## Histórico de iterações
+
+### Iter 15 — Seleção múltipla + Ações coletivas (Reagendar / Cancelar / Encerrar / IA) (2026-05-09)
+- ✅ **Modo seleção** na Lousa: novo botão `lousa-select-mode-toggle` no header alterna o modo. Quando ativo, cada bolha selecionável (status `pendente`/`aberta`/`aguardando_atendimento`) ganha um checkbox no canto sup-esquerdo. Bolhas finalizadas/encerradas/canceladas ficam não-selecionáveis (cursor not-allowed, opacity reduzida).
+- ✅ **Barra flutuante inferior** (`bulk-actions-bar`) aparece com a contagem (`bulk-count`) + 4 botões de ação: `bulk-action-reagendar`, `bulk-action-encerrar`, `bulk-action-cancelar`, `bulk-action-ia` + `bulk-clear`.
+- ✅ **Popup unificado por ação** (`bulk-action-modal`):
+  - Reagendar: data/hora/motivo (`bulk-resched-date`, `bulk-resched-time`, `bulk-action-notes` obrigatório)
+  - Cancelar: motivo obrigatório
+  - Encerrar: notas opcionais
+  - Após confirmar: `bulk-result-modal` mostra processed/failed
+- ✅ **Bulk IA** (`bulk-ai-modal`): roda apenas heurística (sem LLM em lote) — score 0-10, verdict, signals visualizados em cards (`bulk-ai-item-{id}`).
+- ✅ **Backend**: 2 novos endpoints em `lousa.py`:
+  - `POST /api/lousa/tickets/bulk-action` — payload `{ticket_ids[], action, notes?, new_date?, new_time?}`. Pydantic min_length=1, max_length=200. Skipa already-closed como `errors[]`. Reusa `_log_ticket_action` (com `[bulk]`) + `_create_notification` para colaboradores. Role gestor.
+  - `POST /api/lousa/tickets/bulk-ai-evaluate` — payload `{ticket_ids[]}` (max 50). Retorna `{count, items[]}` com score heurístico + signals.
+- ✅ Em modo seleção: drag&drop desabilitado, duplo-clique para editar desabilitado, popups inline de ações desabilitados.
+- Backend: 13/13 (iter15) + 34/34 regressão (iter11/12/14) verde.
+- Frontend smoke: 100% — todos os 4 modais abrem com testids corretos, IA renderiza items reais.
 
 ### Iter 14 — Lousa Histórica (Kanban) + Mirror Mobile + serverTime singleton (2026-05-09)
 - ✅ **Histórico vira a Lousa em si**: `GET /api/lousa/grid?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` retorna kanban filtrado por período, default abre no DIA atual. Tickets em modo histórico ficam `locked=true historical=true` (read-only). LousaHistoryModal reescrito para mostrar layout kanban (não mais tabela).
