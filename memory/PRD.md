@@ -1,8 +1,25 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 19)
+**Última atualização**: 2026-05-09 (iteração 21)
 
 ## Histórico de iterações
+
+### Iter 21 — Fix bug HIGH validação Atlaz + auto-cura (2026-05-09) ✅
+- ✅ **Field constraints em AtlazConfigUpdate**: `tech_sync_interval_minutes (ge=5,le=1440)`, `sync_interval_minutes (ge=1,le=1440)`, `lookback_days (ge=1,le=365)`, `timeout_seconds (ge=2,le=120)`. PUT com valores inválidos agora retorna 422 (era 200 + cascata 500).
+- ✅ **Defesa em profundidade** em `put_atlaz_settings`: reconstrói `AtlazConfig(**{**current.dump(), **update})` em vez de `model_copy(update=...)` — força re-validação.
+- ✅ **Auto-cura em `_get_config`**: configs corrompidas legadas no Mongo são sanitizadas (campos fora do range → defaults), persistidas e retornadas. Empresas com docs legados não dão mais 500.
+- Backend: 23/23 testes verde (8 parametrizados rejeição + auto-heal + regressão).
+
+### Iter 20 — Atlaz auto-sync de técnicos + SSE em tempo real (2026-05-09) ✅
+- ✅ **Auto-sync de técnicos** (`_run_tech_sync_internal`): refatorado em função reutilizável; agora roda no worker periódico com intervalo separado (default 60min, configurável `tech_sync_interval_minutes`). Endpoint manual `POST /api/atlaz/sync-technicians` continua disponível.
+- ✅ **4 novos campos em AtlazConfig**: `auto_sync_technicians (bool, default true)`, `tech_sync_interval_minutes (int, 5-1440, default 60)`, `last_auto_sync_bubbles_at (str|null)`, `last_auto_sync_technicians_at (str|null)`. Worker atualiza os timestamps a cada tick bem-sucedido.
+- ✅ **SSE em tempo real**: `run_sync` (bolhas) e `_run_tech_sync_internal` (técnicos) publicam eventos `atlaz_bubbles_synced` / `atlaz_technicians_synced` via `routes.events.publish_event` quando criam itens novos. `_safe_publish` faz best-effort com try/except — falha de SSE não derruba sync.
+- ✅ **Hook `useEventStream` estendido**: novo callback `onEvent(name, data)` para eventos genéricos (não só notifications). Listeners para `atlaz_bubbles_synced` e `atlaz_technicians_synced` registrados.
+- ✅ **`LousaAdminPanel`**: banner verde `lousa-atlaz-flash` aparece quando o worker cria novas bolhas, e dispara `refresh()` automático.
+- ✅ **`CadastroPanel`**: banner verde `atlaz-flash` aparece quando o worker cria novos técnicos, e dispara `reload()` da lista de colaboradores.
+- ✅ **`AtlazIntegrationCard`**: nova seção `atlaz-auto-sync-section` com 2 cards (📋 Bolhas / 👷 Técnicos) mostrando timestamps de último sync automático + toggle e input de intervalo dos técnicos.
+- Worker do backend: agora processa 2 jobs por empresa por tick — bolhas (a cada `sync_interval_minutes`) e técnicos (a cada `tech_sync_interval_minutes` se `auto_sync_technicians=true`).
+- Frontend: 100% verde no smoke. Backend: 23/23 (após fix iter21).
 
 ### Iter 19 — Date Navigator inline + Mobile Reorder (2026-05-09) ✅
 - ✅ **Date Navigator inline na Lousa Admin** (`LousaAdminPanel.js`): controles `◀ [data] ▶` + chip `Hoje` no header (data-testid `lousa-date-navigator`, `lousa-date-prev`, `lousa-date-next`, `lousa-date-input`, `lousa-date-today`). Quando data != hoje, banner amarelo `lousa-date-banner` mostra "🕐 Visualizando dia passado/futuro" + botão `lousa-back-today-btn`. Grid fica com opacity reduzida e drag&drop é desabilitado (read-only).
