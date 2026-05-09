@@ -1,8 +1,23 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 15)
+**Última atualização**: 2026-05-09 (iteração 16)
 
 ## Histórico de iterações
+
+### Iter 16 — Integração Atlaz configurável (pull periódico + push de baixa) (2026-05-09)
+- ✅ **Novo módulo** `/app/backend/routes/atlaz.py` (~430 linhas) com modelo `AtlazConfig` totalmente configurável: base_url, api_key + header customizável, paths de list/close/cancel/reschedule, mapeamento de filiais→colaborador, mapeamento de tipos (REPARO→reparo etc.), mapeamento de campos (cliente_nome→client_name etc.), intervalo de sync, timeouts.
+- ✅ **Endpoints** (todos role gestor):
+  - `GET/PUT /api/atlaz/settings` — config com chave **mascarada** (`aaaa…bbbb`); api_key vazio NÃO sobrescreve.
+  - `POST /api/atlaz/test-connection` — ping HTTP que detecta automaticamente shape do JSON (`items[]` / `data[]` / `results[]` / `ordens[]` / lista pura) e retorna `sample_count` + `sample_keys` para o gestor calibrar o field_map.
+  - `POST /api/atlaz/sync-now` — pull manual; itera filiais; cria bolhas com `atlaz_external_id` (deduplicação).
+  - `GET /api/atlaz/sync-logs` — auditoria de todos os eventos `pull` / `test` / `push_*`.
+- ✅ **Worker periódico** (`_worker_loop`) — scan a cada 60s das empresas com `enabled=true`, respeita `sync_interval_minutes` por empresa, nunca derruba o backend se Atlaz cair.
+- ✅ **Push de baixa**: hook em `admin-close` (single) e `bulk-action` (lote) — quando ticket tem `atlaz_external_id`, dispara `push_close` em `try/except` para o endpoint correspondente (concluir/cancelar/reagendar). Salva `atlaz_pushed` + `atlaz_pushed_at` no ticket.
+- ✅ **Frontend**: `AtlazIntegrationCard.js` em SettingsPanel — toggle ON/OFF, todos os campos editáveis, mapeamentos avançados em JSON (com try/parse), botões Testar/Sincronizar/Ver logs com resultados visuais detalhados (HTTP code, sample_keys, body preview, lista de erros).
+- ✅ **Visual**: bolha vinda do Atlaz ganha badge `🔗 Atlaz` no canto inferior esquerdo do BubbleCard.
+- ✅ **Robustez**: defaults sensatos para o caso de a doc do Atlaz seguir convenção REST típica BR (paths `/v1/ordens-servico/{id}/concluir`, status `aberta`, fields em snake_case PT). User edita pelo card de Settings se a real for diferente.
+- Backend: 16/16 (iter16) + regressão verde.
+- Frontend: 21/21 atlaz-* testids OK; badge `🔗 Atlaz` renderiza.
 
 ### Iter 15 — Seleção múltipla + Ações coletivas (Reagendar / Cancelar / Encerrar / IA) (2026-05-09)
 - ✅ **Modo seleção** na Lousa: novo botão `lousa-select-mode-toggle` no header alterna o modo. Quando ativo, cada bolha selecionável (status `pendente`/`aberta`/`aguardando_atendimento`) ganha um checkbox no canto sup-esquerdo. Bolhas finalizadas/encerradas/canceladas ficam não-selecionáveis (cursor not-allowed, opacity reduzida).
