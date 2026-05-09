@@ -70,6 +70,23 @@ export default function LousaAdminPanel() {
     setDragOverCol(null);
   }
 
+  async function handleSlotDrop(targetCollabId, slotLabel) {
+    if (!draggingId) return;
+    setBusy(true);
+    try {
+      await api.lousaTransferTicket(draggingId, {
+        new_collaborator_id: targetCollabId,
+        new_grid_slot: slotLabel,
+      });
+      await refresh();
+    } catch (e) {
+      alert(e?.response?.data?.detail || e.message);
+    }
+    setBusy(false);
+    setDraggingId(null);
+    setDragOverCol(null);
+  }
+
   async function handleAdminClose(ticketId, action, notes) {
     setBusy(true);
     try {
@@ -136,6 +153,8 @@ export default function LousaAdminPanel() {
             column={col}
             isDropTarget={dragOverCol === col.collaborator.id}
             blinkOverdue={grid.sla_blink_when_overdue}
+            maxPerSlot={grid.grid?.max_per_slot || 2}
+            onSlotDrop={handleSlotDrop}
             onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.collaborator.id); }}
             onDragLeave={() => setDragOverCol((c) => c === col.collaborator.id ? null : c)}
             onDrop={() => handleDrop(col.collaborator.id)}
@@ -162,10 +181,12 @@ export default function LousaAdminPanel() {
   );
 }
 
-function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, busy }) {
+function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, busy, maxPerSlot, onSlotDrop }) {
   const c = column.collaborator;
   const state = column.clock_state;
-  const groups = column.groups || [{ slot: "all", label: "", tickets: column.tickets || [] }];
+  const slots = column.slots || [];
+  const unscheduled = column.unscheduled || [];
+  const totalTickets = column.tickets?.length || 0;
   const isOnline = state.has_entrada && !state.ended_day && !state.in_intervalo;
 
   return (
@@ -181,7 +202,6 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
         borderRadius: 16, padding: 12, transition: "all .15s",
       }}
     >
-      {/* Header do técnico */}
       <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 10, borderBottom: "1px solid #cbd5e1" }}>
         <div style={{
           width: 42, height: 42, borderRadius: "50%",
@@ -204,16 +224,14 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
             {c.praca_id === "NOTA" && <span title="Praça Nota: bate ponto no endereço da bolha aberta" style={{ marginLeft: 4, fontSize: 9, background: "#0ea5e9", color: "white", padding: "1px 5px", borderRadius: 6 }}>📍 NOTA</span>}
           </div>
           <div style={{ fontSize: 11, color: "#64748b" }}>
-            {column.tickets?.length || 0} bolha(s) · {c.praca || "—"}
+            {totalTickets} bolha(s) · {c.praca || "—"}
           </div>
         </div>
       </div>
 
-      {/* Faixa de horários do dia */}
       <div data-testid={`schedule-${c.id}`} style={{
-        marginTop: 10, padding: "6px 8px",
-        background: "white", borderRadius: 10, border: "1px solid #e2e8f0",
-        fontSize: 10, display: "flex", flexWrap: "wrap", gap: 4,
+        marginTop: 10, padding: "6px 8px", background: "white", borderRadius: 10,
+        border: "1px solid #e2e8f0", fontSize: 10, display: "flex", flexWrap: "wrap", gap: 4,
       }}>
         {state.records?.length === 0 && <span style={{ color: "#94a3b8" }}>Sem ponto hoje</span>}
         {state.records?.map((r, i) => (
@@ -227,24 +245,30 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
         ))}
       </div>
 
-      {/* Grupos por horário */}
-      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8, minHeight: 200 }}>
-        {(column.tickets?.length || 0) === 0 && (
-          <div style={{ padding: 16, textAlign: "center", color: "#94a3b8", fontSize: 12, border: "2px dashed #cbd5e1", borderRadius: 10 }}>
-            {isDropTarget ? "↓ Solte aqui ↓" : "Nenhuma bolha"}
-          </div>
-        )}
-        {groups.map((g) => (
-          <div key={g.slot}>
-            {g.label && groups.length > 1 && (
-              <div style={{
-                fontSize: 10, fontWeight: 800, color: "#475569",
-                padding: "4px 8px", marginBottom: 4,
-                background: "linear-gradient(90deg, #e2e8f0, transparent)",
-                borderRadius: 6, letterSpacing: 0.4,
-              }}>{g.label}</div>
-            )}
-            {g.tickets.map((t) => (
+      {/* Grade FIXA de slots */}
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6, minHeight: 200 }}>
+        {slots.map((s) => (
+          <SlotRow
+            key={s.slot}
+            slot={s}
+            techId={c.id}
+            maxPerSlot={maxPerSlot}
+            onSlotDrop={onSlotDrop}
+            draggingId={draggingId}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            blinkOverdue={blinkOverdue}
+            onAdminClose={onAdminClose}
+            busy={busy}
+          />
+        ))}
+        {unscheduled.length > 0 && (
+          <div style={{ marginTop: 6 }}>
+            <div style={{
+              fontSize: 10, fontWeight: 800, color: "#64748b", padding: "3px 8px",
+              background: "#e2e8f0", borderRadius: 6, marginBottom: 4,
+            }}>📋 Sem horário ({unscheduled.length})</div>
+            {unscheduled.map((t) => (
               <BubbleCard
                 key={t.id}
                 ticket={t}
@@ -257,8 +281,61 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
               />
             ))}
           </div>
-        ))}
+        )}
       </div>
+    </div>
+  );
+}
+
+function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart, onDragEnd, blinkOverdue, onAdminClose, busy }) {
+  const [over, setOver] = useState(false);
+  const isFull = slot.full;
+  const isEmpty = slot.tickets.length === 0;
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!isFull) setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setOver(false);
+        if (!isFull) onSlotDrop(techId, slot.slot);
+      }}
+      data-testid={`slot-${techId}-${slot.slot}`}
+      style={{
+        background: over ? "#bfdbfe" : isFull ? "#fef3c7" : isEmpty ? "white" : "#f8fafc",
+        border: `${over ? "2px dashed #3b82f6" : "1px solid #e2e8f0"}`,
+        borderRadius: 8, padding: 6, minHeight: 38,
+        transition: "all .15s",
+      }}
+    >
+      <div style={{
+        fontSize: 10, fontWeight: 800, color: isFull ? "#92400e" : "#475569",
+        marginBottom: isEmpty ? 0 : 4, display: "flex", justifyContent: "space-between",
+      }}>
+        <span>🕐 {slot.slot}</span>
+        <span style={{ fontSize: 9 }}>
+          {slot.tickets.length}/{maxPerSlot}{isFull && " 🔒 cheio"}
+        </span>
+      </div>
+      {isEmpty && (
+        <div style={{ fontSize: 10, color: "#cbd5e1", textAlign: "center", padding: 2, fontStyle: "italic" }}>
+          {over ? "↓ Solte aqui ↓" : "vazio"}
+        </div>
+      )}
+      {slot.tickets.map((t) => (
+        <BubbleCard
+          key={t.id}
+          ticket={t}
+          blinkOverdue={blinkOverdue}
+          isDragging={draggingId === t.id}
+          onDragStart={() => onDragStart(t.id)}
+          onDragEnd={onDragEnd}
+          onAdminClose={onAdminClose}
+          busy={busy}
+        />
+      ))}
     </div>
   );
 }

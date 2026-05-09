@@ -1,0 +1,38 @@
+{
+  "summary": "Iteração 4 (Grade fixa de horários da lousa + configurações por slot) testada com sucesso. 14/14 testes pytest passaram em test_iteration4_lousa_grid_fixed_slots.py cobrindo todos os 12 fluxos solicitados: PUT/GET /api/settings com lousa_grid_start_hour/end_hour/slot_minutes/max_per_slot; GET /api/lousa/grid retorna grid:{start_hour, end_hour, slot_minutes, max_per_slot, slots:['08:00','09:00',...,'17:00']}; cada column tem slots[{slot,tickets,full}] + unscheduled; bolha priority=horario scheduled_time=09:30 cai em slot 09:00; bolha sem scheduled cai em unscheduled; transfer com new_grid_slot mantém colaborador; transfer com collaborator+slot transfere e move; slot cheio (2/2) retorna 409 com mensagem 'Slot X cheio'; sem_horario sem limite; slot_minutes=30 retorna 20 slots de 30min começando em 08:00; regressão lousa/logs, admin-close, lousa/all OK.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/lousa/grid (regression iter3 obsoleto)", "issue": "test_iteration3_sla_logs_nota.py::test_grid_returns_groups_and_sla agora falha porque iter4 trocou contrato 'groups' → 'slots'. Esperado por design (mudança de contrato anunciada). Sugestão: atualizar/marcar @pytest.skip o teste antigo do iter3 que valida 'groups'."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4_lousa_grid_fixed_slots.py",
+    "/app/test_reports/pytest/iteration4_results.xml"
+  ],
+  "action_items": [
+    "Atualizar test_iteration3_sla_logs_nota.py::test_grid_returns_groups_and_sla → migrar para nova chave 'slots' OR remover (substituído por TestGridFormat do iter4).",
+    "Considerar migration: tickets antigos sem grid_slot ainda funcionam via fallback _slot_for_ticket(scheduled_time), OK; mas se admin alterar slot_minutes para valor que não comporta o slot manualmente atribuído (ex: ticket grid_slot='08:30' e slot_minutes vira 60), o ticket fica órfão no display (cai em sem_horario). Considerar revalidar grid_slots na mudança de settings.",
+    "Documentar formato esperado de scheduled_time (ISO 'YYYY-MM-DDTHH:MM:SS') em routes/lousa.py:_slot_for_ticket — parsing por slicing[11:13]/[14:16] quebra silenciosamente se formato divergir (ex: timezone offset embutido sem 'T').",
+    "routes/lousa.py agora ~1038 linhas (antes 955); reforça sugestão do iter3 de split em sub-módulos (lousa/grid.py, lousa/transfer.py, lousa/public.py)."
+  ],
+  "critical_code_review_comments": [
+    "lousa.py:transfer_ticket — comportamento NEW: transfer sem new_collaborator_id é permitido. O log gerado quando só muda slot exibe 'Mesmo técnico · Slot: 10:00'. OK.",
+    "lousa.py:_build_fixed_slots usa total_min // slot_minutes; com end_hour=18, slot_minutes=60 dá 10 slots (08..17). Para slot_minutes que não divide o intervalo (ex: 7*60=420 não múltiplo de 90), gera contagem truncada sem aviso. Validar via Pydantic Field constraint que slot_minutes ∈ {15,20,30,60,120} recomendado.",
+    "lousa.py:transfer — validação de capacidade max_per_slot calcula occupied excluindo o próprio ticket (id $ne ticket_id) → correto, evita auto-bloqueio ao re-transferir.",
+    "admin.py:SettingsUpdate — 4 novos campos sem range constraint. Recomendar Field(ge=0, le=23) para start/end_hour, Field(ge=5, le=240) para slot_minutes, Field(ge=1, le=20) para max_per_slot.",
+    "lousa.py:lousa_grid — slot_minutes lido como int(settings.get(...)) sem validação contra zero (linha 475 protege com max(1, slot_minutes), OK). Mas end_hour <= start_hour gera n=0 → 1 slot fictício, não validado.",
+    "lousa.py: get_settings_endpoint retorna nota_fence_radius_m default 80, mas tests iter3 alteraram para 100. Settings é por-tenant, persistente em mongo db.settings — após iter3, o estado fica 100 até PUT explícito reverter. Não é bug, é comportamento esperado, mas testes não devem depender de defaults após PUT."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4_lousa_grid_fixed_slots.py (novo, 14 testes)"
+  ],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "n/a (skipped per request)"},
+  "test_credentials": "admin@empresa.com / 123456 (administrador, role com privilégio auditor para PUT /settings); gestor@empresa.com / 123456 (apenas leitura/transfer)",
+  "seed_data_creation": "Testes criam 2 colaboradores TEST_I4_* (com cpf/email/phone únicos) e múltiplos tickets TEST_I4_CLI_* — todos limpos via DELETE no teardown. Settings restaurada a 8/18/60/2 no fixture autouse. Não há efeito colateral em col-demo-001.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suite iter4 em /app/backend/tests/test_iteration4_lousa_grid_fixed_slots.py cobre 14 cenários. IMPORTANTE: (1) login response usa 'access_token' (não 'token'); (2) POST /api/collaborators exige cpf+email+phone obrigatórios e o email NÃO pode usar TLD reservado como '.local' — usar @example.com; (3) GET /api/lousa/grid agora retorna 'slots' (lista fixa) — campo 'groups' do iter3 foi removido (test_grid_returns_groups_and_sla fica obsoleto); (4) transfer agora aceita só new_grid_slot sem trocar colaborador (mudança de contrato anunciada); (5) settings é por-tenant em db.settings.id='co-demo'. Iter1+2+3+4 podem rodar juntos exceto o teste obsoleto de 'groups' do iter3.",
+  "rca of the issue": "N/A — nenhuma falha encontrada na implementação iter4. Único ponto de atenção: teste antigo iter3 'test_grid_returns_groups_and_sla' precisa ser atualizado (mudança de contrato 'groups' → 'slots' foi intencional)."
+}

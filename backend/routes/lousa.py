@@ -271,48 +271,79 @@ def _time_slot_for(ticket: dict) -> str:
 # READ - Lousa do colaborador / Lista para gestor
 # -------------------------------------------------------------------------
 class TransferIn(BaseModel):
-    new_collaborator_id: str
+    new_collaborator_id: Optional[str] = None
     new_position: Optional[int] = None
+    new_grid_slot: Optional[str] = None  # "08:00", "09:00" ou "sem_horario"
 
 
 @router.post("/lousa/tickets/{ticket_id}/transfer")
 async def transfer_ticket(ticket_id: str, payload: TransferIn,
                           user: dict = Depends(require_role("gestor"))):
-    """Gestor transfere bolha de um técnico para outro arrastando na grade."""
+    """Gestor transfere bolha de um técnico para outro OU muda slot dentro da mesma coluna."""
     t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
     if not t:
         raise HTTPException(404, "Nota não encontrada")
     if t["status"] in ("finalizada", "encerrada", "cancelada"):
         raise HTTPException(400, "Nota já encerrada — não pode ser transferida")
-    new_coll = await db.collaborators.find_one(
-        {"id": payload.new_collaborator_id}, {"_id": 0, "id": 1, "name": 1},
-    )
-    if not new_coll:
-        raise HTTPException(404, "Técnico destino não encontrado")
-    # Define posição no destino (último da fila se não informado)
-    if payload.new_position is None:
-        last = await db.tickets.find(
-            {"assigned_collaborator_id": payload.new_collaborator_id,
-             "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]}},
-            {"_id": 0, "position": 1},
-        ).sort("position", -1).to_list(1)
-        new_pos = (last[0]["position"] + 1) if last else 0
-    else:
-        new_pos = payload.new_position
-    update = {
-        "assigned_collaborator_id": payload.new_collaborator_id,
-        "position": new_pos,
-    }
-    # Se nota estava aberta, volta para pendente (técnico anterior já não está atendendo)
-    if t["status"] == "aberta":
-        update["status"] = "pendente"
-        update["opened_at"] = None
+
+    update = {}
+    target_cid = payload.new_collaborator_id or t["assigned_collaborator_id"]
+
+    # Mudou de técnico: transfer entre colunas
+    if payload.new_collaborator_id and payload.new_collaborator_id != t["assigned_collaborator_id"]:
+        new_coll = await db.collaborators.find_one(
+            {"id": payload.new_collaborator_id}, {"_id": 0, "id": 1, "name": 1},
+        )
+        if not new_coll:
+            raise HTTPException(404, "Técnico destino não encontrado")
+        if payload.new_position is None:
+            last = await db.tickets.find(
+                {"assigned_collaborator_id": payload.new_collaborator_id,
+                 "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]}},
+                {"_id": 0, "position": 1},
+            ).sort("position", -1).to_list(1)
+            update["position"] = (last[0]["position"] + 1) if last else 0
+        else:
+            update["position"] = payload.new_position
+        update["assigned_collaborator_id"] = payload.new_collaborator_id
+        if t["status"] == "aberta":
+            update["status"] = "pendente"
+            update["opened_at"] = None
+
+    # Mudança de slot (mesmo técnico ou novo)
+    if payload.new_grid_slot is not None:
+        # Valida capacidade (max_per_slot)
+        company_id = user.get("company_id") or DEMO_COMPANY_ID
+        settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
+        max_per_slot = int(settings.get("lousa_grid_max_per_slot", 2))
+        if payload.new_grid_slot != "sem_horario":
+            occupied = await db.tickets.count_documents({
+                "assigned_collaborator_id": target_cid,
+                "grid_slot": payload.new_grid_slot,
+                "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]},
+                "id": {"$ne": ticket_id},
+            })
+            if occupied >= max_per_slot:
+                raise HTTPException(
+                    409,
+                    f"Slot {payload.new_grid_slot} cheio ({occupied}/{max_per_slot}). "
+                    f"Aumente o limite em Configurações ou escolha outro horário.",
+                )
+        update["grid_slot"] = payload.new_grid_slot
+
+    if not update:
+        return t
+
     await db.tickets.update_one({"id": ticket_id}, {"$set": update})
     await _log_ticket_action(
         ticket_id=ticket_id, action="transferida",
         actor_id=user["id"], actor_name=user.get("name", "Gestor"),
         actor_role=user.get("role", "gestor"),
-        details=f"De: {t.get('assigned_collaborator_id')} → Para: {new_coll.get('name', payload.new_collaborator_id)}",
+        details=(
+            (f"De: {t.get('assigned_collaborator_id')} → Para: {update.get('assigned_collaborator_id', target_cid)}"
+             if "assigned_collaborator_id" in update else "Mesmo técnico") +
+            (f" · Slot: {payload.new_grid_slot}" if payload.new_grid_slot else "")
+        ),
         company_id=t.get("company_id") or DEMO_COMPANY_ID,
     )
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
@@ -350,7 +381,7 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
         {"_id": 0},
     ).to_list(2000)
 
-    # Settings da empresa para SLA
+    # Settings da empresa para SLA + grade fixa
     company_id = user.get("company_id") or DEMO_COMPANY_ID
     settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
     sla_map = {
@@ -362,6 +393,11 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
     yellow_min = int(settings.get("sla_yellow_minutes", 15))
     red_after_min = int(settings.get("sla_red_after_minutes", 0))
     blink = bool(settings.get("sla_blink_when_overdue", True))
+    grid_start = int(settings.get("lousa_grid_start_hour", 8))
+    grid_end = int(settings.get("lousa_grid_end_hour", 18))
+    slot_minutes = int(settings.get("lousa_grid_slot_minutes", 60))
+    max_per_slot = int(settings.get("lousa_grid_max_per_slot", 2))
+    fixed_slots = _build_fixed_slots(grid_start, grid_end, slot_minutes)
 
     # Estado do dia de cada colaborador
     today = today_str()
@@ -393,13 +429,13 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
             t["locked"] = (i in locked_idx) or in_intervalo or (not has_entrada) or ended_day
             sla_min = sla_map.get(t.get("type", "reparo"), 60)
             t["sla"] = _compute_sla(t, sla_min, yellow_min, red_after_min)
-            t["time_slot"] = _time_slot_for(t)
-        # Agrupa por slot de horário (preserva ordem dentro de cada slot)
-        groups: dict = {}
-        for t in tickets:
-            groups.setdefault(t["time_slot"], []).append(t)
-        ordered_slots = sorted(groups.keys())
-        grouped = [{"slot": k, "label": _slot_label(k), "tickets": groups[k]} for k in ordered_slots]
+            t["grid_slot"] = _slot_for_ticket(t, fixed_slots, slot_minutes)
+        # Monta slots fixos com bolhas de cada slot (sempre exibe TODOS slots)
+        slots_data = []
+        for slot_label in fixed_slots:
+            in_slot = [t for t in tickets if t["grid_slot"] == slot_label]
+            slots_data.append({"slot": slot_label, "tickets": in_slot, "full": len(in_slot) >= max_per_slot})
+        unscheduled = [t for t in tickets if t["grid_slot"] == "sem_horario"]
         columns.append({
             "collaborator": {
                 "id": cid, "name": c.get("name", ""),
@@ -414,7 +450,8 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
                 "records": sorted(s["records"], key=lambda r: r["time"]),
             },
             "tickets": tickets,
-            "groups": grouped,
+            "slots": slots_data,
+            "unscheduled": unscheduled,
         })
     return {
         "columns": columns,
@@ -423,20 +460,48 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
         "sla_yellow_minutes": yellow_min,
         "sla_red_after_minutes": red_after_min,
         "sla_map": sla_map,
+        "grid": {
+            "start_hour": grid_start, "end_hour": grid_end,
+            "slot_minutes": slot_minutes, "max_per_slot": max_per_slot,
+            "slots": fixed_slots,
+        },
     }
 
 
-def _slot_label(slot: str) -> str:
-    if slot == "sem_horario":
-        return "📋 Sem horário marcado"
-    parts = slot.split("_")
-    period = parts[0]
-    hour = parts[1] if len(parts) > 1 else ""
-    if period == "manha":
-        return f"🌅 Manhã — {hour}h"
-    if period == "tarde":
-        return f"☀️ Tarde — {hour}h"
-    return f"🌙 Noite — {hour}h"
+def _build_fixed_slots(start_hour: int, end_hour: int, slot_minutes: int) -> list[str]:
+    """Retorna lista de labels de slots fixos: ['08:00', '09:00', ...]"""
+    slots = []
+    total_min = (end_hour - start_hour) * 60
+    n = max(1, total_min // max(1, slot_minutes))
+    for i in range(n):
+        m = start_hour * 60 + i * slot_minutes
+        slots.append(f"{m // 60:02d}:{m % 60:02d}")
+    return slots
+
+
+def _slot_for_ticket(t: dict, slots: list[str], slot_minutes: int) -> str:
+    """Determina em qual slot fixo a bolha cai. Prioridade:
+    1. grid_slot já atribuído manualmente
+    2. scheduled_time arredondado p/ baixo no slot mais próximo
+    3. 'sem_horario' (cai num slot virtual)
+    """
+    if t.get("grid_slot") and t["grid_slot"] in slots:
+        return t["grid_slot"]
+    sched = t.get("scheduled_time")
+    if sched:
+        try:
+            hour = int(sched[11:13])
+            minute = int(sched[14:16])
+            total = hour * 60 + minute
+            # Encontra slot que contém esse horário
+            for s in slots:
+                sh, sm = int(s[:2]), int(s[3:5])
+                slot_start = sh * 60 + sm
+                if slot_start <= total < slot_start + slot_minutes:
+                    return s
+        except Exception:
+            pass
+    return "sem_horario"
 
 
 @router.get("/lousa/me")

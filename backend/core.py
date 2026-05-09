@@ -98,6 +98,11 @@ class Settings(BaseModel):
     sla_yellow_minutes: int = 15        # 🟡 Bolha pisca AMARELO quando faltam X min p/ estourar
     sla_red_after_minutes: int = 0      # 🔴 Bolha pisca VERMELHO X min APÓS estourar (0 = imediato)
     sla_blink_when_overdue: bool = True  # piscar bolha em vermelho quando ultrapassar tempo
+    # ---- Grade fixa de horários da lousa ----
+    lousa_grid_start_hour: int = 8       # hora de início da grade (ex: 8 = 08:00)
+    lousa_grid_end_hour: int = 18        # hora de fim da grade (ex: 18 = 18:00, exclusiva)
+    lousa_grid_slot_minutes: int = 60    # duração de cada slot em minutos (60=1h, 30=30min)
+    lousa_grid_max_per_slot: int = 2     # máximo de bolhas por slot/horário
     # ---- Cerca virtual dinâmica (praça=Nota) ----
     nota_fence_radius_m: int = 80        # raio em metros da cerca dinâmica no endereço da bolha
 

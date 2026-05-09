@@ -67,6 +67,10 @@ class SettingsUpdate(BaseModel):
     sla_red_after_minutes: Optional[int] = None
     sla_blink_when_overdue: Optional[bool] = None
     nota_fence_radius_m: Optional[int] = None
+    lousa_grid_start_hour: Optional[int] = None
+    lousa_grid_end_hour: Optional[int] = None
+    lousa_grid_slot_minutes: Optional[int] = None
+    lousa_grid_max_per_slot: Optional[int] = None
 
 
 @router.put("/settings")

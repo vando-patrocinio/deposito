@@ -11,6 +11,8 @@ export default function SettingsPanel() {
     sla_reparo_minutes: 60, sla_instalacao_minutes: 120, sla_retirada_minutes: 30,
     sla_warning_pct: 80, sla_yellow_minutes: 15, sla_red_after_minutes: 0,
     sla_blink_when_overdue: true, nota_fence_radius_m: 80,
+    lousa_grid_start_hour: 8, lousa_grid_end_hour: 18,
+    lousa_grid_slot_minutes: 60, lousa_grid_max_per_slot: 2,
   });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -39,6 +41,10 @@ export default function SettingsPanel() {
       sla_red_after_minutes: cur.sla_red_after_minutes ?? 0,
       sla_blink_when_overdue: cur.sla_blink_when_overdue ?? true,
       nota_fence_radius_m: cur.nota_fence_radius_m ?? 80,
+      lousa_grid_start_hour: cur.lousa_grid_start_hour ?? 8,
+      lousa_grid_end_hour: cur.lousa_grid_end_hour ?? 18,
+      lousa_grid_slot_minutes: cur.lousa_grid_slot_minutes ?? 60,
+      lousa_grid_max_per_slot: cur.lousa_grid_max_per_slot ?? 2,
     });
   }
   useEffect(() => { reload(); }, []);
@@ -158,6 +164,51 @@ export default function SettingsPanel() {
             onChange={(e) => setForm({ ...form, nota_fence_radius_m: Number(e.target.value) })}
             style={{ width: "100%" }} />
         </Field>
+      </Card>
+
+      <Card title="📅 Grade de Horários da Lousa">
+        <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 12px" }}>
+          Defina a faixa de horários e a duração de cada slot. A lousa exibirá esses horários
+          fixos em cada técnico, e bolhas podem ser arrastadas para qualquer slot.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="Hora de início (0-23)">
+            <input data-testid="inp-grid-start" type="number" min="0" max="23"
+              style={inputStyle}
+              value={form.lousa_grid_start_hour}
+              onChange={(e) => setForm({ ...form, lousa_grid_start_hour: Number(e.target.value) })} />
+          </Field>
+          <Field label="Hora de fim (1-24)">
+            <input data-testid="inp-grid-end" type="number" min="1" max="24"
+              style={inputStyle}
+              value={form.lousa_grid_end_hour}
+              onChange={(e) => setForm({ ...form, lousa_grid_end_hour: Number(e.target.value) })} />
+          </Field>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
+          <Field label="Duração do slot (min)">
+            <select data-testid="inp-grid-slot" style={inputStyle}
+              value={form.lousa_grid_slot_minutes}
+              onChange={(e) => setForm({ ...form, lousa_grid_slot_minutes: Number(e.target.value) })}>
+              <option value={15}>15 min</option>
+              <option value={30}>30 min</option>
+              <option value={60}>1 hora</option>
+              <option value={120}>2 horas</option>
+            </select>
+          </Field>
+          <Field label="Máx. bolhas por slot">
+            <input data-testid="inp-grid-max" type="number" min="1" max="10"
+              style={inputStyle}
+              value={form.lousa_grid_max_per_slot}
+              onChange={(e) => setForm({ ...form, lousa_grid_max_per_slot: Number(e.target.value) })} />
+          </Field>
+        </div>
+        <div style={{
+          marginTop: 10, padding: 10, background: "#f0fdf4",
+          border: "1px solid #86efac", borderRadius: 10, fontSize: 12, color: "#15803d",
+        }}>
+          📊 <strong>Prévia:</strong> {Math.max(1, ((form.lousa_grid_end_hour - form.lousa_grid_start_hour) * 60) / form.lousa_grid_slot_minutes)} slots de {form.lousa_grid_slot_minutes}min entre {String(form.lousa_grid_start_hour).padStart(2, "0")}:00 e {String(form.lousa_grid_end_hour).padStart(2, "0")}:00 — {form.lousa_grid_max_per_slot} bolha(s)/slot
+        </div>
       </Card>
 
       <Card title="Integrações de IA">
