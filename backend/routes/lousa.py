@@ -220,21 +220,35 @@ async def _sla_minutes_for_type(ttype: str, company_id: str) -> int:
     return int(s.get(key, defaults.get(ttype, 60)))
 
 
-def _compute_sla(ticket: dict, sla_minutes: int, warning_pct: int = 80) -> dict:
-    """Retorna info SLA: minutos abertos, % consumido, status (ok/warning/overdue)."""
+def _compute_sla(ticket: dict, sla_minutes: int, yellow_minutes: int = 15, red_after_minutes: int = 0) -> dict:
+    """Retorna info SLA usando minutos absolutos:
+    - 🟢 ok: dentro do tempo, sem alerta
+    - 🟡 warning: faltam <= yellow_minutes para estourar
+    - 🔴 overdue: passou (sla_minutes + red_after_minutes)
+    """
     if not ticket.get("opened_at") or ticket.get("status") != "aberta":
-        return {"sla_minutes": sla_minutes, "elapsed_minutes": None, "pct": None, "status": "n/a"}
+        return {"sla_minutes": sla_minutes, "elapsed_minutes": None, "remaining_minutes": None,
+                "pct": None, "status": "n/a"}
     try:
         opened = datetime.fromisoformat(ticket["opened_at"].replace("Z", "+00:00"))
         if opened.tzinfo is None:
             opened = opened.replace(tzinfo=timezone.utc)
         elapsed_sec = (datetime.now(timezone.utc) - opened).total_seconds()
         elapsed_min = round(elapsed_sec / 60, 1)
+        remaining = round(sla_minutes - elapsed_min, 1)
         pct = (elapsed_min / sla_minutes) * 100 if sla_minutes > 0 else 0
-        status = "overdue" if pct >= 100 else ("warning" if pct >= warning_pct else "ok")
-        return {"sla_minutes": sla_minutes, "elapsed_minutes": elapsed_min, "pct": round(pct, 1), "status": status}
+        red_threshold = sla_minutes + red_after_minutes
+        if elapsed_min >= red_threshold:
+            status = "overdue"
+        elif remaining <= yellow_minutes:
+            status = "warning"
+        else:
+            status = "ok"
+        return {"sla_minutes": sla_minutes, "elapsed_minutes": elapsed_min,
+                "remaining_minutes": remaining, "pct": round(pct, 1), "status": status}
     except Exception:
-        return {"sla_minutes": sla_minutes, "elapsed_minutes": None, "pct": None, "status": "n/a"}
+        return {"sla_minutes": sla_minutes, "elapsed_minutes": None, "remaining_minutes": None,
+                "pct": None, "status": "n/a"}
 
 
 def _time_slot_for(ticket: dict) -> str:
@@ -345,6 +359,8 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
         "retirada": int(settings.get("sla_retirada_minutes", 30)),
     }
     warning_pct = int(settings.get("sla_warning_pct", 80))
+    yellow_min = int(settings.get("sla_yellow_minutes", 15))
+    red_after_min = int(settings.get("sla_red_after_minutes", 0))
     blink = bool(settings.get("sla_blink_when_overdue", True))
 
     # Estado do dia de cada colaborador
@@ -376,7 +392,7 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
         for i, t in enumerate(tickets):
             t["locked"] = (i in locked_idx) or in_intervalo or (not has_entrada) or ended_day
             sla_min = sla_map.get(t.get("type", "reparo"), 60)
-            t["sla"] = _compute_sla(t, sla_min, warning_pct)
+            t["sla"] = _compute_sla(t, sla_min, yellow_min, red_after_min)
             t["time_slot"] = _time_slot_for(t)
         # Agrupa por slot de horário (preserva ordem dentro de cada slot)
         groups: dict = {}
@@ -404,6 +420,8 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
         "columns": columns,
         "sla_blink_when_overdue": blink,
         "sla_warning_pct": warning_pct,
+        "sla_yellow_minutes": yellow_min,
+        "sla_red_after_minutes": red_after_min,
         "sla_map": sla_map,
     }
 

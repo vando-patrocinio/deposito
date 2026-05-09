@@ -9,7 +9,8 @@ export default function SettingsPanel() {
     openai_api_key: "", monthly_email_enabled: true, location_ping_interval_sec: 15,
     he_monthly_budget_brl: 0, he_alert_threshold_pct: 30,
     sla_reparo_minutes: 60, sla_instalacao_minutes: 120, sla_retirada_minutes: 30,
-    sla_warning_pct: 80, sla_blink_when_overdue: true, nota_fence_radius_m: 80,
+    sla_warning_pct: 80, sla_yellow_minutes: 15, sla_red_after_minutes: 0,
+    sla_blink_when_overdue: true, nota_fence_radius_m: 80,
   });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -34,6 +35,8 @@ export default function SettingsPanel() {
       sla_instalacao_minutes: cur.sla_instalacao_minutes ?? 120,
       sla_retirada_minutes: cur.sla_retirada_minutes ?? 30,
       sla_warning_pct: cur.sla_warning_pct ?? 80,
+      sla_yellow_minutes: cur.sla_yellow_minutes ?? 15,
+      sla_red_after_minutes: cur.sla_red_after_minutes ?? 0,
       sla_blink_when_overdue: cur.sla_blink_when_overdue ?? true,
       nota_fence_radius_m: cur.nota_fence_radius_m ?? 80,
     });
@@ -104,13 +107,45 @@ export default function SettingsPanel() {
               onChange={(e) => setForm({ ...form, sla_retirada_minutes: Number(e.target.value) })} />
           </Field>
         </div>
-        <Field label={`Limite de aviso amarelo: ${form.sla_warning_pct}% do tempo`}>
-          <input data-testid="inp-sla-warning" type="range" min="50" max="95" step="5"
-            value={form.sla_warning_pct}
-            onChange={(e) => setForm({ ...form, sla_warning_pct: Number(e.target.value) })}
-            style={{ width: "100%" }} />
-        </Field>
-        <label style={{ display: "flex", gap: 8, alignItems: "center", color: "#475569", fontSize: 14, marginTop: 8, cursor: "pointer" }}>
+        <div style={{
+          marginTop: 12, padding: 12, background: "#f8fafc",
+          border: "1px solid #e2e8f0", borderRadius: 12,
+        }}>
+          <strong style={{ fontSize: 13, color: "#0f172a" }}>🚦 Quando alertar</strong>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
+            <div>
+              <label style={{ fontSize: 11, color: "#78350f", fontWeight: 700 }}>
+                🟡 Pisca AMARELO faltando (min)
+              </label>
+              <input
+                data-testid="inp-sla-yellow"
+                type="number" min="0" step="1"
+                style={{ ...inputStyle, borderColor: "#f59e0b" }}
+                value={form.sla_yellow_minutes}
+                onChange={(e) => setForm({ ...form, sla_yellow_minutes: Number(e.target.value) })}
+              />
+              <small style={{ color: "#64748b", fontSize: 10 }}>
+                Bolha pisca amarelo quando faltam até {form.sla_yellow_minutes} min p/ estourar
+              </small>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: "#7f1d1d", fontWeight: 700 }}>
+                🔴 Pisca VERMELHO após (min)
+              </label>
+              <input
+                data-testid="inp-sla-red"
+                type="number" min="0" step="1"
+                style={{ ...inputStyle, borderColor: "#dc2626" }}
+                value={form.sla_red_after_minutes}
+                onChange={(e) => setForm({ ...form, sla_red_after_minutes: Number(e.target.value) })}
+              />
+              <small style={{ color: "#64748b", fontSize: 10 }}>
+                Bolha pisca vermelho {form.sla_red_after_minutes === 0 ? "imediatamente" : `${form.sla_red_after_minutes} min`} após estourar
+              </small>
+            </div>
+          </div>
+        </div>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", color: "#475569", fontSize: 14, marginTop: 10, cursor: "pointer" }}>
           <input data-testid="chk-blink-overdue" type="checkbox"
             checked={!!form.sla_blink_when_overdue}
             onChange={(e) => setForm({ ...form, sla_blink_when_overdue: e.target.checked })}

@@ -94,7 +94,9 @@ class Settings(BaseModel):
     sla_reparo_minutes: int = 60
     sla_instalacao_minutes: int = 120
     sla_retirada_minutes: int = 30
-    sla_warning_pct: int = 80           # % do tempo onde alerta amarelo dispara
+    sla_warning_pct: int = 80           # % do tempo onde alerta amarelo dispara (legado, mantido p/ compat)
+    sla_yellow_minutes: int = 15        # 🟡 Bolha pisca AMARELO quando faltam X min p/ estourar
+    sla_red_after_minutes: int = 0      # 🔴 Bolha pisca VERMELHO X min APÓS estourar (0 = imediato)
     sla_blink_when_overdue: bool = True  # piscar bolha em vermelho quando ultrapassar tempo
     # ---- Cerca virtual dinâmica (praça=Nota) ----
     nota_fence_radius_m: int = 80        # raio em metros da cerca dinâmica no endereço da bolha
