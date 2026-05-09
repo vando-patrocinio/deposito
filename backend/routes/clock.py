@@ -597,6 +597,46 @@ async def create_clock_record(payload: ClockRecordIn, request: __import__('fasta
             return rec
 
     fence, distance = await resolve_geofence_for(payload.collaborator_id, payload.lat, payload.lng)
+    # ---- PRAÇA "NOTA": cerca virtual dinâmica no endereço da bolha ativa ou da próxima ----
+    nota_fence_used = False
+    if not fence and coll.get("praca_id") == "NOTA":
+        # Tenta usar endereço da bolha aberta primeiro, senão a próxima pendente
+        target_ticket = await db.tickets.find_one(
+            {"assigned_collaborator_id": payload.collaborator_id,
+             "status": {"$in": ["aberta", "aguardando_atendimento"]}},
+            {"_id": 0, "client_snapshot": 1, "id": 1, "client_name": 1},
+        )
+        if not target_ticket:
+            target_ticket = await db.tickets.find_one(
+                {"assigned_collaborator_id": payload.collaborator_id, "status": "pendente"},
+                {"_id": 0, "client_snapshot": 1, "id": 1},
+                sort=[("position", 1)],
+            )
+        snap = (target_ticket or {}).get("client_snapshot") or {}
+        if snap.get("latitude") and snap.get("longitude"):
+            settings = await db.settings.find_one({"id": coll.get("company_id") or "co-demo"}, {"_id": 0}) or {}
+            radius = int(settings.get("nota_fence_radius_m", 80))
+            from math import asin, cos, radians, sin, sqrt
+            R = 6371000.0
+            lat1, lon1, lat2, lon2 = map(radians, [payload.lat, payload.lng, snap["latitude"], snap["longitude"]])
+            dlat, dlon = lat2 - lat1, lon2 - lon1
+            a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
+            dist_to_note = round(2 * R * asin(sqrt(a)))
+            if dist_to_note <= radius:
+                fence = {
+                    "id": f"nota-dyn-{target_ticket['id']}",
+                    "name": f"Endereço da nota: {snap.get('name', '')[:30]}",
+                    "lat": snap["latitude"], "lng": snap["longitude"],
+                    "radius_m": radius,
+                    "collaborator_id": payload.collaborator_id,
+                    "active": True,
+                }
+                distance = dist_to_note
+                nota_fence_used = True
+                audit.append({
+                    "at": now_iso(), "actor": "sistema",
+                    "action": f"praca=NOTA → cerca dinâmica em '{snap.get('name','')}': {dist_to_note}m de {radius}m"
+                })
     geofence_required = payload.type in GEOFENCE_REQUIRED
     # ADMIN TEST: ignora exigência de cerca
     if geofence_required and not fence and not is_admin_test:

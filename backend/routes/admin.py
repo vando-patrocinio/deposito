@@ -59,6 +59,12 @@ class SettingsUpdate(BaseModel):
     location_ping_interval_sec: Optional[int] = None
     he_monthly_budget_brl: Optional[float] = None
     he_alert_threshold_pct: Optional[float] = None
+    sla_reparo_minutes: Optional[int] = None
+    sla_instalacao_minutes: Optional[int] = None
+    sla_retirada_minutes: Optional[int] = None
+    sla_warning_pct: Optional[int] = None
+    sla_blink_when_overdue: Optional[bool] = None
+    nota_fence_radius_m: Optional[int] = None
 
 
 @router.put("/settings")

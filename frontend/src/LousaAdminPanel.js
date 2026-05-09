@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
 import { Button, Icon } from "@/ui";
 
@@ -18,25 +18,43 @@ const STATUS_LABEL = {
   cancelada: { label: "Cancelada", color: "#dc2626" },
 };
 
+const ACTION_LABEL = {
+  criada: { icon: "➕", color: "#3b82f6", label: "Criada" },
+  aberta: { icon: "▶", color: "#10b981", label: "Iniciada" },
+  finalizada: { icon: "✓", color: "#10b981", label: "Finalizada" },
+  encerrar: { icon: "✕", color: "#94a3b8", label: "Encerrada (gestor)" },
+  reagendar: { icon: "📅", color: "#3b82f6", label: "Reagendada" },
+  cancelar: { icon: "🚫", color: "#dc2626", label: "Cancelada" },
+  transferida: { icon: "↔", color: "#a855f7", label: "Transferida" },
+};
+
 export default function LousaAdminPanel() {
-  const [grid, setGrid] = useState({ columns: [] });
+  const [grid, setGrid] = useState({ columns: [], sla_blink_when_overdue: true, sla_warning_pct: 80 });
   const [collabs, setCollabs] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [tick, setTick] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
-      const [g, cs] = await Promise.all([api.lousaGrid(), api.listCollaborators()]);
+      const [g, cs, lg] = await Promise.all([api.lousaGrid(), api.listCollaborators(), api.lousaLogs({ limit: 50 })]);
       setGrid(g);
       setCollabs(cs);
+      setLogs(lg.items || []);
     } catch (e) {
-      console.error("Erro ao carregar lousa", e);
+      console.error("Erro lousa", e);
     }
   }, []);
 
-  useEffect(() => { refresh(); const i = setInterval(refresh, 30000); return () => clearInterval(i); }, [refresh]);
+  useEffect(() => {
+    refresh();
+    const t1 = setInterval(refresh, 30000);  // refresh dados
+    const t2 = setInterval(() => setTick((x) => x + 1), 5000);  // re-render p/ animação SLA
+    return () => { clearInterval(t1); clearInterval(t2); };
+  }, [refresh]);
 
   async function handleDrop(targetCollabId) {
     if (!draggingId) return;
@@ -64,14 +82,29 @@ export default function LousaAdminPanel() {
   }
 
   const totalTickets = grid.columns.reduce((sum, c) => sum + (c.tickets?.length || 0), 0);
+  const overdueCount = grid.columns.flatMap((c) => c.tickets || []).filter((t) => t.sla?.status === "overdue").length;
 
   return (
     <div data-testid="lousa-admin-panel">
+      {/* Animação CSS do piscar */}
+      <style>{`
+        @keyframes pulseRed {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); border-color: #dc2626; }
+          50% { box-shadow: 0 0 0 12px rgba(220, 38, 38, 0); border-color: #b91c1c; }
+        }
+        .sla-overdue { animation: pulseRed 1.4s ease-in-out infinite; }
+      `}</style>
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <div>
           <h2 style={{ margin: 0 }}>📋 Lousa de Serviços</h2>
           <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0 0" }}>
             {grid.columns.length} técnico(s) · {totalTickets} bolha(s) ativas — arraste para transferir entre técnicos
+            {overdueCount > 0 && (
+              <span data-testid="overdue-counter" style={{ marginLeft: 10, padding: "2px 10px", background: "#dc2626", color: "white", borderRadius: 999, fontWeight: 800 }}>
+                ⚠ {overdueCount} ATRASADA(S)
+              </span>
+            )}
           </p>
         </div>
         <Button onClick={() => setShowCreate(true)} data-testid="lousa-create-btn">
@@ -80,10 +113,7 @@ export default function LousaAdminPanel() {
       </div>
 
       {/* Grade horizontal — coluna por técnico */}
-      <div style={{
-        display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16,
-        minHeight: 540,
-      }} data-testid="lousa-grid">
+      <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16, minHeight: 540 }} data-testid="lousa-grid">
         {grid.columns.length === 0 && (
           <div style={{ background: "white", padding: 30, borderRadius: 14, color: "#94a3b8", flex: 1, textAlign: "center" }}>
             Nenhum técnico cadastrado.
@@ -91,9 +121,10 @@ export default function LousaAdminPanel() {
         )}
         {grid.columns.map((col) => (
           <TechColumn
-            key={col.collaborator.id}
+            key={col.collaborator.id + tick}
             column={col}
             isDropTarget={dragOverCol === col.collaborator.id}
+            blinkOverdue={grid.sla_blink_when_overdue}
             onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.collaborator.id); }}
             onDragLeave={() => setDragOverCol((c) => c === col.collaborator.id ? null : c)}
             onDrop={() => handleDrop(col.collaborator.id)}
@@ -106,6 +137,9 @@ export default function LousaAdminPanel() {
         ))}
       </div>
 
+      {/* Logs de auditoria */}
+      <LogsPanel logs={logs} collabs={collabs} />
+
       {showCreate && (
         <CreateTicketModal
           collabs={collabs}
@@ -117,10 +151,10 @@ export default function LousaAdminPanel() {
   );
 }
 
-function TechColumn({ column, isDropTarget, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, busy }) {
+function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, busy }) {
   const c = column.collaborator;
   const state = column.clock_state;
-  const tickets = column.tickets || [];
+  const groups = column.groups || [{ slot: "all", label: "", tickets: column.tickets || [] }];
   const isOnline = state.has_entrada && !state.ended_day && !state.in_intervalo;
 
   return (
@@ -142,7 +176,7 @@ function TechColumn({ column, isDropTarget, onDragOver, onDragLeave, onDrop, onD
           width: 42, height: 42, borderRadius: "50%",
           background: c.avatar ? `url(${c.avatar}) center/cover` : "linear-gradient(135deg,#0ea5e9,#0284c7)",
           display: "grid", placeItems: "center", color: "white", fontWeight: 800, fontSize: 16,
-          border: `3px solid ${isOnline ? "#10b981" : "#94a3b8"}`, position: "relative",
+          border: `3px solid ${isOnline ? "#10b981" : "#94a3b8"}`, position: "relative", flexShrink: 0,
         }}>
           {!c.avatar && (c.name?.[0] || "?").toUpperCase()}
           <span style={{
@@ -156,9 +190,10 @@ function TechColumn({ column, isDropTarget, onDragOver, onDragLeave, onDrop, onD
           <div style={{ fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {c.name}
             {c.is_test_mode && <span style={{ marginLeft: 6, fontSize: 9, background: "#a855f7", color: "white", padding: "1px 5px", borderRadius: 6 }}>🧪 TESTE</span>}
+            {c.praca_id === "NOTA" && <span title="Praça Nota: bate ponto no endereço da bolha aberta" style={{ marginLeft: 4, fontSize: 9, background: "#0ea5e9", color: "white", padding: "1px 5px", borderRadius: 6 }}>📍 NOTA</span>}
           </div>
           <div style={{ fontSize: 11, color: "#64748b" }}>
-            {c.praca || "—"} · {tickets.length} bolha(s)
+            {column.tickets?.length || 0} bolha(s) · {c.praca || "—"}
           </div>
         </div>
       </div>
@@ -169,9 +204,7 @@ function TechColumn({ column, isDropTarget, onDragOver, onDragLeave, onDrop, onD
         background: "white", borderRadius: 10, border: "1px solid #e2e8f0",
         fontSize: 10, display: "flex", flexWrap: "wrap", gap: 4,
       }}>
-        {state.records?.length === 0 && (
-          <span style={{ color: "#94a3b8" }}>Sem ponto hoje</span>
-        )}
+        {state.records?.length === 0 && <span style={{ color: "#94a3b8" }}>Sem ponto hoje</span>}
         {state.records?.map((r, i) => (
           <span key={i} style={{
             padding: "1px 6px", borderRadius: 6, fontWeight: 700,
@@ -183,35 +216,48 @@ function TechColumn({ column, isDropTarget, onDragOver, onDragLeave, onDrop, onD
         ))}
       </div>
 
-      {/* Bolhas */}
+      {/* Grupos por horário */}
       <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8, minHeight: 200 }}>
-        {tickets.length === 0 && (
-          <div style={{
-            padding: 16, textAlign: "center", color: "#94a3b8", fontSize: 12,
-            border: "2px dashed #cbd5e1", borderRadius: 10,
-          }}>
+        {(column.tickets?.length || 0) === 0 && (
+          <div style={{ padding: 16, textAlign: "center", color: "#94a3b8", fontSize: 12, border: "2px dashed #cbd5e1", borderRadius: 10 }}>
             {isDropTarget ? "↓ Solte aqui ↓" : "Nenhuma bolha"}
           </div>
         )}
-        {tickets.map((t) => (
-          <BubbleCard
-            key={t.id}
-            ticket={t}
-            isDragging={draggingId === t.id}
-            onDragStart={() => onDragStart(t.id)}
-            onDragEnd={onDragEnd}
-            onAdminClose={onAdminClose}
-            busy={busy}
-          />
+        {groups.map((g) => (
+          <div key={g.slot}>
+            {g.label && groups.length > 1 && (
+              <div style={{
+                fontSize: 10, fontWeight: 800, color: "#475569",
+                padding: "4px 8px", marginBottom: 4,
+                background: "linear-gradient(90deg, #e2e8f0, transparent)",
+                borderRadius: 6, letterSpacing: 0.4,
+              }}>{g.label}</div>
+            )}
+            {g.tickets.map((t) => (
+              <BubbleCard
+                key={t.id}
+                ticket={t}
+                blinkOverdue={blinkOverdue}
+                isDragging={draggingId === t.id}
+                onDragStart={() => onDragStart(t.id)}
+                onDragEnd={onDragEnd}
+                onAdminClose={onAdminClose}
+                busy={busy}
+              />
+            ))}
+          </div>
         ))}
       </div>
     </div>
   );
 }
 
-function BubbleCard({ ticket, isDragging, onDragStart, onDragEnd, onAdminClose, busy }) {
+function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, busy }) {
   const c = PRIORITY_COLORS[ticket.priority] || PRIORITY_COLORS.normal;
   const st = STATUS_LABEL[ticket.status] || { label: ticket.status, color: "#64748b" };
+  const sla = ticket.sla || {};
+  const slaColor = sla.status === "overdue" ? "#dc2626" : sla.status === "warning" ? "#f59e0b" : "#10b981";
+  const isOverdue = sla.status === "overdue";
   const [showActions, setShowActions] = useState(false);
 
   return (
@@ -221,8 +267,10 @@ function BubbleCard({ ticket, isDragging, onDragStart, onDragEnd, onAdminClose, 
       onDragEnd={onDragEnd}
       onClick={() => setShowActions(!showActions)}
       data-testid={`bubble-card-${ticket.id}`}
+      className={isOverdue && blinkOverdue ? "sla-overdue" : ""}
       style={{
-        background: c.bg, border: `2px solid ${c.border}`, borderRadius: 14, padding: 10,
+        background: c.bg, border: `2px solid ${isOverdue ? "#dc2626" : c.border}`,
+        borderRadius: 14, padding: 10, marginBottom: 6,
         cursor: "grab", opacity: isDragging ? 0.4 : 1, position: "relative",
         boxShadow: isDragging ? "none" : "0 2px 6px rgba(15,23,42,.08)",
       }}
@@ -240,38 +288,106 @@ function BubbleCard({ ticket, isDragging, onDragStart, onDragEnd, onAdminClose, 
       <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>
         {ticket.client_snapshot.relato?.substring(0, 70)}{ticket.client_snapshot.relato?.length > 70 ? "..." : ""}
       </div>
+
+      {/* SLA badge */}
+      {ticket.status === "aberta" && sla.elapsed_minutes != null && (
+        <div data-testid={`sla-${ticket.id}`} style={{
+          marginTop: 6, fontSize: 10, fontWeight: 800,
+          color: slaColor,
+          display: "flex", alignItems: "center", gap: 4,
+        }}>
+          ⏱ {Math.floor(sla.elapsed_minutes)}min / {sla.sla_minutes}min ({sla.pct?.toFixed(0)}%)
+          {sla.status === "overdue" && <span style={{ background: "#dc2626", color: "white", padding: "1px 6px", borderRadius: 6 }}>ATRASADA</span>}
+          {sla.status === "warning" && <span style={{ background: "#f59e0b", color: "white", padding: "1px 6px", borderRadius: 6 }}>ATENÇÃO</span>}
+        </div>
+      )}
+
       {ticket.locked && (
         <span style={{ position: "absolute", top: 6, right: 6, fontSize: 14 }}>🔒</span>
       )}
       {showActions && ["pendente", "aberta", "aguardando_atendimento"].includes(ticket.status) && (
         <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
-          <button
-            data-testid={`admin-close-${ticket.id}`}
-            disabled={busy}
-            onClick={() => { const n = window.prompt("Notas:"); if (n !== null) onAdminClose(ticket.id, "encerrar", n); }}
-            style={btnSm("#10b981")}
-          >✓ Encerrar</button>
-          <button
-            disabled={busy}
-            onClick={() => { const n = window.prompt("Motivo do reagendamento:"); if (n) onAdminClose(ticket.id, "reagendar", n); }}
-            style={btnSm("#3b82f6")}
-          >📅 Reagendar</button>
-          <button
-            disabled={busy}
-            onClick={() => { const n = window.prompt("Motivo do cancelamento:"); if (n) onAdminClose(ticket.id, "cancelar", n); }}
-            style={btnSm("#dc2626")}
-          >✗ Cancelar</button>
+          <button data-testid={`admin-close-${ticket.id}`} disabled={busy}
+            onClick={() => { const n = window.prompt("Notas:"); if (n !== null) onAdminClose(ticket.id, "encerrar", n); }} style={btnSm("#10b981")}>✓ Encerrar</button>
+          <button disabled={busy}
+            onClick={() => { const n = window.prompt("Motivo do reagendamento:"); if (n) onAdminClose(ticket.id, "reagendar", n); }} style={btnSm("#3b82f6")}>📅 Reagendar</button>
+          <button disabled={busy}
+            onClick={() => { const n = window.prompt("Motivo do cancelamento:"); if (n) onAdminClose(ticket.id, "cancelar", n); }} style={btnSm("#dc2626")}>✗ Cancelar</button>
         </div>
       )}
     </div>
   );
 }
 
+function LogsPanel({ logs, collabs }) {
+  const [filter, setFilter] = useState("all");
+  const filtered = logs.filter((l) => filter === "all" ? true : l.actor_role === filter);
+
+  return (
+    <div data-testid="lousa-logs-panel" style={{
+      marginTop: 18, background: "white", border: "1px solid #e2e8f0",
+      borderRadius: 14, padding: 14,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>📜 Histórico de Ações ({logs.length})</h3>
+        <div style={{ display: "flex", gap: 6 }}>
+          {[
+            ["all", "Todos"],
+            ["colaborador", "Técnicos"],
+            ["gestor", "Gestor"],
+            ["administrador", "Admin"],
+          ].map(([k, l]) => (
+            <button
+              key={k}
+              data-testid={`logs-filter-${k}`}
+              onClick={() => setFilter(k)}
+              style={{
+                padding: "4px 10px", fontSize: 11, fontWeight: 700,
+                border: filter === k ? "2px solid #3b82f6" : "1px solid #cbd5e1",
+                background: filter === k ? "#dbeafe" : "white", borderRadius: 8,
+                cursor: "pointer", color: filter === k ? "#1e40af" : "#475569",
+              }}
+            >{l}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ maxHeight: 280, overflowY: "auto" }}>
+        {filtered.length === 0 && (
+          <div style={{ color: "#94a3b8", textAlign: "center", padding: 20, fontSize: 13 }}>
+            Sem ações ainda.
+          </div>
+        )}
+        {filtered.map((l) => {
+          const a = ACTION_LABEL[l.action] || { icon: "•", color: "#64748b", label: l.action };
+          return (
+            <div key={l.id} data-testid={`log-${l.id}`} style={{
+              padding: "8px 10px", borderLeft: `3px solid ${a.color}`,
+              background: "#f8fafc", borderRadius: 6, marginBottom: 4,
+              display: "flex", gap: 10, alignItems: "center",
+            }}>
+              <span style={{ fontSize: 16, flexShrink: 0 }}>{a.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: a.color }}>
+                  {a.label}
+                  <span style={{ marginLeft: 8, fontSize: 10, color: "#94a3b8", fontWeight: 500 }}>
+                    {l.actor_role} · {l.actor_name}
+                  </span>
+                </div>
+                {l.details && <div style={{ fontSize: 11, color: "#475569", marginTop: 1 }}>{l.details}</div>}
+              </div>
+              <span style={{ fontSize: 10, color: "#94a3b8", flexShrink: 0 }}>
+                {new Date(l.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function btnSm(color) {
-  return {
-    fontSize: 10, padding: "3px 7px", border: 0, borderRadius: 6,
-    background: color, color: "white", fontWeight: 800, cursor: "pointer",
-  };
+  return { fontSize: 10, padding: "3px 7px", border: 0, borderRadius: 6, background: color, color: "white", fontWeight: 800, cursor: "pointer" };
 }
 
 function CreateTicketModal({ collabs, onClose, onCreated }) {

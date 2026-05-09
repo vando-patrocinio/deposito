@@ -4,7 +4,13 @@ import { Button, Card, Field, Icon, inputStyle, StatusBadge } from "@/ui";
 
 export default function SettingsPanel() {
   const [s, setS] = useState(null);
-  const [form, setForm] = useState({ resend_api_key: "", sender_email: "", sender_name: "Ponto do Colaborador", openai_api_key: "", monthly_email_enabled: true, location_ping_interval_sec: 15, he_monthly_budget_brl: 0, he_alert_threshold_pct: 30 });
+  const [form, setForm] = useState({
+    resend_api_key: "", sender_email: "", sender_name: "Ponto do Colaborador",
+    openai_api_key: "", monthly_email_enabled: true, location_ping_interval_sec: 15,
+    he_monthly_budget_brl: 0, he_alert_threshold_pct: 30,
+    sla_reparo_minutes: 60, sla_instalacao_minutes: 120, sla_retirada_minutes: 30,
+    sla_warning_pct: 80, sla_blink_when_overdue: true, nota_fence_radius_m: 80,
+  });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [testEmailTo, setTestEmailTo] = useState("");
@@ -24,6 +30,12 @@ export default function SettingsPanel() {
       location_ping_interval_sec: cur.location_ping_interval_sec || 15,
       he_monthly_budget_brl: cur.he_monthly_budget_brl ?? 0,
       he_alert_threshold_pct: cur.he_alert_threshold_pct ?? 30,
+      sla_reparo_minutes: cur.sla_reparo_minutes ?? 60,
+      sla_instalacao_minutes: cur.sla_instalacao_minutes ?? 120,
+      sla_retirada_minutes: cur.sla_retirada_minutes ?? 30,
+      sla_warning_pct: cur.sla_warning_pct ?? 80,
+      sla_blink_when_overdue: cur.sla_blink_when_overdue ?? true,
+      nota_fence_radius_m: cur.nota_fence_radius_m ?? 80,
     });
   }
   useEffect(() => { reload(); }, []);
@@ -69,6 +81,50 @@ export default function SettingsPanel() {
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+      {/* Card de SLA / Tempos de Referência */}
+      <Card title="⏱️ Tempos de Referência por Serviço (SLA)">
+        <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 12px" }}>
+          Defina o tempo esperado de execução para cada tipo de serviço. Bolhas que ultrapassarem
+          esse tempo ficam piscando vermelho na lousa para o gestor.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          <Field label="Reparo (min)">
+            <input data-testid="inp-sla-reparo" type="number" min="1" style={inputStyle}
+              value={form.sla_reparo_minutes}
+              onChange={(e) => setForm({ ...form, sla_reparo_minutes: Number(e.target.value) })} />
+          </Field>
+          <Field label="Instalação (min)">
+            <input data-testid="inp-sla-instalacao" type="number" min="1" style={inputStyle}
+              value={form.sla_instalacao_minutes}
+              onChange={(e) => setForm({ ...form, sla_instalacao_minutes: Number(e.target.value) })} />
+          </Field>
+          <Field label="Retirada (min)">
+            <input data-testid="inp-sla-retirada" type="number" min="1" style={inputStyle}
+              value={form.sla_retirada_minutes}
+              onChange={(e) => setForm({ ...form, sla_retirada_minutes: Number(e.target.value) })} />
+          </Field>
+        </div>
+        <Field label={`Limite de aviso amarelo: ${form.sla_warning_pct}% do tempo`}>
+          <input data-testid="inp-sla-warning" type="range" min="50" max="95" step="5"
+            value={form.sla_warning_pct}
+            onChange={(e) => setForm({ ...form, sla_warning_pct: Number(e.target.value) })}
+            style={{ width: "100%" }} />
+        </Field>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", color: "#475569", fontSize: 14, marginTop: 8, cursor: "pointer" }}>
+          <input data-testid="chk-blink-overdue" type="checkbox"
+            checked={!!form.sla_blink_when_overdue}
+            onChange={(e) => setForm({ ...form, sla_blink_when_overdue: e.target.checked })}
+            style={{ transform: "scale(1.3)" }} />
+          <span><strong>Piscar bolhas vermelhas</strong> quando ultrapassarem o tempo</span>
+        </label>
+        <Field label={`Raio da cerca virtual em "Praça=Nota": ${form.nota_fence_radius_m}m`}>
+          <input data-testid="inp-nota-radius" type="range" min="20" max="500" step="10"
+            value={form.nota_fence_radius_m}
+            onChange={(e) => setForm({ ...form, nota_fence_radius_m: Number(e.target.value) })}
+            style={{ width: "100%" }} />
+        </Field>
+      </Card>
+
       <Card title="Integrações de IA">
         <div style={{ marginBottom: 10 }}>
           {s.emergent_key_available

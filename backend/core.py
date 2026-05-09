@@ -90,6 +90,14 @@ class Settings(BaseModel):
     location_ping_interval_sec: int = 15
     he_monthly_budget_brl: float = 0.0
     he_alert_threshold_pct: float = 30.0
+    # ---- Tempos de referência por tipo de serviço (em minutos) ----
+    sla_reparo_minutes: int = 60
+    sla_instalacao_minutes: int = 120
+    sla_retirada_minutes: int = 30
+    sla_warning_pct: int = 80           # % do tempo onde alerta amarelo dispara
+    sla_blink_when_overdue: bool = True  # piscar bolha em vermelho quando ultrapassar tempo
+    # ---- Cerca virtual dinâmica (praça=Nota) ----
+    nota_fence_radius_m: int = 80        # raio em metros da cerca dinâmica no endereço da bolha
 
 
 class Company(BaseModel):

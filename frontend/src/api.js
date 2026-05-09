@@ -150,6 +150,7 @@ export const api = {
   lousaByCollaborator: (cid) => client.get(`/lousa/by-collaborator/${cid}`).then((r) => r.data),
   lousaAll: () => client.get(`/lousa/all`).then((r) => r.data),
   lousaGrid: () => client.get(`/lousa/grid`).then((r) => r.data),
+  lousaLogs: (params = {}) => client.get(`/lousa/logs`, { params }).then((r) => r.data),
   lousaTicket: (tid) => client.get(`/lousa/tickets/${tid}`).then((r) => r.data),
   lousaCreateTicket: (data) => client.post(`/lousa/tickets`, data).then((r) => r.data),
   lousaDeleteTicket: (tid) => client.delete(`/lousa/tickets/${tid}`).then((r) => r.data),

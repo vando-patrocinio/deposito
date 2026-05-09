@@ -331,10 +331,19 @@ export default function CadastroPanel() {
                 onChange={(e) => setForm({ ...form, praca_id: e.target.value })}
               >
                 <option value="">— Selecione a praça —</option>
+                <option value="NOTA">📍 Endereço da Nota (cerca dinâmica)</option>
                 {pracas.map((p) => (
                   <option key={p.id} value={p.id}>{p.city}/{p.state} — {p.name}</option>
                 ))}
               </select>
+            )}
+            {form.praca_id === "NOTA" && (
+              <div style={{ marginTop: 6, padding: 10, background: "#e0f2fe", border: "1px solid #0ea5e9", borderRadius: 10, fontSize: 12, color: "#075985" }}>
+                <strong>📍 Praça Nota:</strong> este colaborador pode bater ponto direto no endereço do cliente
+                (cerca virtual gerada automaticamente no endereço da bolha aberta ou da próxima pendente).
+                Útil para técnicos que vão direto ao cliente sem passar na empresa, economizando tempo.
+                O raio da cerca é configurado em <strong>Configurações → Tempos de Referência</strong>.
+              </div>
             )}
           </Field>
 

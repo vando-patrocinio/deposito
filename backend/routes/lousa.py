@@ -191,6 +191,68 @@ async def _create_notification(
     return n
 
 
+async def _log_ticket_action(
+    *, ticket_id: str, action: str, actor_id: str, actor_name: str,
+    actor_role: str, details: Optional[str] = None, company_id: str,
+) -> None:
+    """Registra ação no log de auditoria da bolha."""
+    log = {
+        "id": f"tlg-{uuid.uuid4().hex[:10]}",
+        "ticket_id": ticket_id,
+        "action": action,           # criada | aberta | finalizada | encerrada | reagendada | cancelada | transferida | aguardando_gestor
+        "actor_id": actor_id,
+        "actor_name": actor_name,
+        "actor_role": actor_role,   # colaborador | gestor | administrador | sistema
+        "details": details,
+        "company_id": company_id,
+        "at": now_iso(),
+    }
+    await db.ticket_logs.insert_one(log)
+
+
+async def _sla_minutes_for_type(ttype: str, company_id: str) -> int:
+    """Pega o tempo de referência (SLA) para um tipo de serviço."""
+    s = await db.settings.find_one({"id": company_id}, {"_id": 0})
+    if not s:
+        s = {}
+    defaults = {"reparo": 60, "instalacao": 120, "retirada": 30}
+    key = f"sla_{ttype}_minutes"
+    return int(s.get(key, defaults.get(ttype, 60)))
+
+
+def _compute_sla(ticket: dict, sla_minutes: int, warning_pct: int = 80) -> dict:
+    """Retorna info SLA: minutos abertos, % consumido, status (ok/warning/overdue)."""
+    if not ticket.get("opened_at") or ticket.get("status") != "aberta":
+        return {"sla_minutes": sla_minutes, "elapsed_minutes": None, "pct": None, "status": "n/a"}
+    try:
+        opened = datetime.fromisoformat(ticket["opened_at"].replace("Z", "+00:00"))
+        if opened.tzinfo is None:
+            opened = opened.replace(tzinfo=timezone.utc)
+        elapsed_sec = (datetime.now(timezone.utc) - opened).total_seconds()
+        elapsed_min = round(elapsed_sec / 60, 1)
+        pct = (elapsed_min / sla_minutes) * 100 if sla_minutes > 0 else 0
+        status = "overdue" if pct >= 100 else ("warning" if pct >= warning_pct else "ok")
+        return {"sla_minutes": sla_minutes, "elapsed_minutes": elapsed_min, "pct": round(pct, 1), "status": status}
+    except Exception:
+        return {"sla_minutes": sla_minutes, "elapsed_minutes": None, "pct": None, "status": "n/a"}
+
+
+def _time_slot_for(ticket: dict) -> str:
+    """Retorna slot de horário da bolha (Manhã/Tarde/Noite/Sem horário)."""
+    sched = ticket.get("scheduled_time")
+    if sched:
+        try:
+            hour = int(sched[11:13])
+            if hour < 12:
+                return f"manha_{hour:02d}"   # ordenável: manha_08, manha_09...
+            if hour < 18:
+                return f"tarde_{hour:02d}"
+            return f"noite_{hour:02d}"
+        except Exception:
+            pass
+    return "sem_horario"
+
+
 # -------------------------------------------------------------------------
 # READ - Lousa do colaborador / Lista para gestor
 # -------------------------------------------------------------------------
@@ -232,12 +294,37 @@ async def transfer_ticket(ticket_id: str, payload: TransferIn,
         update["status"] = "pendente"
         update["opened_at"] = None
     await db.tickets.update_one({"id": ticket_id}, {"$set": update})
+    await _log_ticket_action(
+        ticket_id=ticket_id, action="transferida",
+        actor_id=user["id"], actor_name=user.get("name", "Gestor"),
+        actor_role=user.get("role", "gestor"),
+        details=f"De: {t.get('assigned_collaborator_id')} → Para: {new_coll.get('name', payload.new_collaborator_id)}",
+        company_id=t.get("company_id") or DEMO_COMPANY_ID,
+    )
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+
+
+# -------------------------------------------------------------------------
+# LOGS de auditoria (todas as ações nas bolhas)
+# -------------------------------------------------------------------------
+@router.get("/lousa/logs")
+async def list_ticket_logs(
+    user: dict = Depends(require_role("gestor")),
+    ticket_id: Optional[str] = None,
+    limit: int = 100,
+):
+    """Lista logs de ações nas bolhas (todas ou de uma bolha específica)."""
+    q = tenant_filter(user)
+    if ticket_id:
+        q["ticket_id"] = ticket_id
+    items = await db.ticket_logs.find(q, {"_id": 0}).sort("at", -1).to_list(limit)
+    return {"items": items}
 
 
 @router.get("/lousa/grid")
 async def lousa_grid(user: dict = Depends(require_role("gestor"))):
-    """Retorna lousa em formato GRADE: lista de técnicos + bolhas agrupadas por técnico."""
+    """Retorna lousa em formato GRADE: lista de técnicos + bolhas agrupadas por técnico
+    + SLA por bolha + agrupamento por slot de horário."""
     q = tenant_filter(user)
     collabs = await db.collaborators.find(q, {"_id": 0}).to_list(500)
     collabs.sort(key=lambda c: c.get("name", ""))
@@ -249,7 +336,18 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
         {"_id": 0},
     ).to_list(2000)
 
-    # Estado do dia de cada colaborador (para mostrar se já bateu Entrada)
+    # Settings da empresa para SLA
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
+    sla_map = {
+        "reparo": int(settings.get("sla_reparo_minutes", 60)),
+        "instalacao": int(settings.get("sla_instalacao_minutes", 120)),
+        "retirada": int(settings.get("sla_retirada_minutes", 30)),
+    }
+    warning_pct = int(settings.get("sla_warning_pct", 80))
+    blink = bool(settings.get("sla_blink_when_overdue", True))
+
+    # Estado do dia de cada colaborador
     today = today_str()
     records = await db.clock_records.find(
         {"collaborator_id": {"$in": cids}, "date": today,
@@ -269,19 +367,29 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
             [t for t in all_active if t["assigned_collaborator_id"] == cid],
             key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]),
         )
-        # Aplica trava visual (mesma lógica)
         locked_idx = compute_locked_positions(tickets)
         s = state_by_cid.get(cid, {"types": set(), "records": []})
         in_intervalo = ("Início intervalo" in s["types"]) and ("Fim intervalo" not in s["types"])
         has_entrada = "Entrada" in s["types"]
         ended_day = "Saída" in s["types"]
+        # Adiciona SLA + slot por bolha
         for i, t in enumerate(tickets):
             t["locked"] = (i in locked_idx) or in_intervalo or (not has_entrada) or ended_day
+            sla_min = sla_map.get(t.get("type", "reparo"), 60)
+            t["sla"] = _compute_sla(t, sla_min, warning_pct)
+            t["time_slot"] = _time_slot_for(t)
+        # Agrupa por slot de horário (preserva ordem dentro de cada slot)
+        groups: dict = {}
+        for t in tickets:
+            groups.setdefault(t["time_slot"], []).append(t)
+        ordered_slots = sorted(groups.keys())
+        grouped = [{"slot": k, "label": _slot_label(k), "tickets": groups[k]} for k in ordered_slots]
         columns.append({
             "collaborator": {
                 "id": cid, "name": c.get("name", ""),
                 "avatar": c.get("avatar_data_url"),
                 "is_test_mode": c.get("is_test_mode", False),
+                "praca_id": c.get("praca_id"),
                 "praca": c.get("praca_name") or c.get("city") or "",
             },
             "clock_state": {
@@ -290,8 +398,27 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
                 "records": sorted(s["records"], key=lambda r: r["time"]),
             },
             "tickets": tickets,
+            "groups": grouped,
         })
-    return {"columns": columns}
+    return {
+        "columns": columns,
+        "sla_blink_when_overdue": blink,
+        "sla_warning_pct": warning_pct,
+        "sla_map": sla_map,
+    }
+
+
+def _slot_label(slot: str) -> str:
+    if slot == "sem_horario":
+        return "📋 Sem horário marcado"
+    parts = slot.split("_")
+    period = parts[0]
+    hour = parts[1] if len(parts) > 1 else ""
+    if period == "manha":
+        return f"🌅 Manhã — {hour}h"
+    if period == "tarde":
+        return f"☀️ Tarde — {hour}h"
+    return f"🌙 Noite — {hour}h"
 
 
 @router.get("/lousa/me")
@@ -436,6 +563,13 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
         "created_at": now_iso(),
     }
     await db.tickets.insert_one(doc)
+    await _log_ticket_action(
+        ticket_id=doc["id"], action="criada",
+        actor_id=user["id"], actor_name=user.get("name", "Gestor"),
+        actor_role=user.get("role", "gestor"),
+        details=f"Atribuída a {coll.get('name', 'colaborador')} · {payload.client_name}",
+        company_id=doc["company_id"],
+    )
     doc.pop("_id", None)
     return doc
 
@@ -533,6 +667,14 @@ async def public_open_ticket(ticket_id: str, payload: PublicOpenIn):
             "whatsapp_status": "enviado", "whatsapp_last_message": msg,
         }},
     )
+    coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1, "company_id": 1})
+    await _log_ticket_action(
+        ticket_id=ticket_id, action="aberta",
+        actor_id=cid, actor_name=(coll or {}).get("name", "Técnico"),
+        actor_role="colaborador",
+        details=f"Iniciou atendimento de {t['client_snapshot']['name']}",
+        company_id=t.get("company_id") or DEMO_COMPANY_ID,
+    )
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 
@@ -557,6 +699,14 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
             "close_location": {"latitude": payload.latitude, "longitude": payload.longitude},
             "completion_data": cd.model_dump(),
         }},
+    )
+    coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1})
+    await _log_ticket_action(
+        ticket_id=ticket_id, action="finalizada",
+        actor_id=cid, actor_name=(coll or {}).get("name", "Técnico"),
+        actor_role="colaborador",
+        details=f"ONT={cd.ont or '-'} · sinal={cd.sinal} dBm · fotos={len(cd.fotos)}",
+        company_id=t.get("company_id") or DEMO_COMPANY_ID,
     )
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
@@ -726,6 +876,13 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
     if payload.action == "reagendar" and payload.new_scheduled_time:
         update["scheduled_time"] = payload.new_scheduled_time
     await db.tickets.update_one({"id": ticket_id}, {"$set": update})
+    await _log_ticket_action(
+        ticket_id=ticket_id, action=payload.action,
+        actor_id=user["id"], actor_name=user.get("name", "Gestor"),
+        actor_role=user.get("role", "gestor"),
+        details=payload.notes or "",
+        company_id=t.get("company_id") or DEMO_COMPANY_ID,
+    )
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 

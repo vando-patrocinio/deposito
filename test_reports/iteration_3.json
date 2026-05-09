@@ -1,0 +1,39 @@
+{
+  "summary": "Backend testing iteration 3 (SLA tempos de referência + bolhas agrupadas por horário no grid + logs de auditoria + Praça especial NOTA com cerca dinâmica). 20/20 testes pytest passaram após 1 fix backend (DynFence dict). Cobertos todos os 14 fluxos solicitados: GET/PUT /api/settings com novos campos sla_*/nota_fence_radius_m, /api/lousa/grid retornando groups+sla por bolha, slot manha_09 com label '🌅 Manhã — 09h', slot sem_horario, logs criada/aberta/finalizada/encerrar/transferida (com detalhe origem→destino), GET /api/lousa/logs ordenado desc + filter ticket_id, SLA status overdue (opened_at -200min, pct≥100), warning (50min de 60min, 80%≤pct<100%), n/a (pendente), praca_id='NOTA' aceito em PUT collaborators, cerca dinâmica NOTA usando client_snapshot.lat/lng (audit log 'praca=NOTA → cerca dinâmica'), bloqueio quando colab NOTA sem bolha aberta, regressão login/lousa/all/lousa/me/notifications.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/clock-records (Praça NOTA)", "issue": "BUG ENCONTRADO E CORRIGIDO PELO TESTE: routes/clock.py linha 626 criava fence dinâmica como `type('DynFence', (), {})()` (objeto com atributos), mas _build_record (linha 480) acessa `geofence['id']` (esperando dict) → 500 TypeError 'DynFence' object is not subscriptable. FIX: trocar pelo dict `{id, name, lat, lng, radius_m, collaborator_id, active}`. Aplicado e validado."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3_sla_logs_nota.py",
+    "/app/test_reports/pytest/iteration3_results.xml"
+  ],
+  "action_items": [
+    "Validar visualmente no frontend que (a) campos SLA aparecem em Configurações/Tempos de Referência, (b) bolhas overdue piscam vermelho com badge ATRASADA, (c) bolhas no grid são exibidas agrupadas por slot (manha_*/tarde_*/noite_*/sem_horario) com labels emoji, (d) logs de auditoria têm UI para listar por bolha.",
+    "Considerar split de routes/lousa.py (agora ~955 linhas, passou bem do limite de 700) em sub-módulos: lousa/grid.py, lousa/public.py, lousa/logs.py, lousa/notifications.py.",
+    "Considerar índice em ticket_logs.ticket_id + ticket_logs.at (para acelerar GET /api/lousa/logs?ticket_id=...). Verificar se já criado em server.py."
+  ],
+  "critical_code_review_comments": [
+    "BUG CRÍTICO CORRIGIDO: routes/clock.py linha 626 — fence dinâmica criada como objeto `type('DynFence', (), {})()` é incompatível com _build_record que faz geofence['id']. Isso quebrava 100% dos casos válidos da Praça NOTA (única ocorrência documentada onde uma cerca dinâmica era criada). Fix aplicado: criar fence como dict.",
+    "core.py: Settings tem 7 novos campos (sla_reparo_minutes, sla_instalacao_minutes, sla_retirada_minutes, sla_warning_pct, sla_blink_when_overdue, nota_fence_radius_m). OK. Sugestão: validação de range em sla_warning_pct (0-100) e nota_fence_radius_m (>0) via Pydantic Field constraint.",
+    "routes/lousa.py _compute_sla: status 'overdue' computado SOMENTE se ticket.status == 'aberta'. Bolhas em 'aguardando_atendimento' não disparam alerta SLA. Intencional? Considerar incluir 'aguardando_atendimento' no SLA tracking, já que ela está esperando atendimento de gestor.",
+    "routes/lousa.py _time_slot_for: parse de scheduled_time pega sched[11:13] assumindo formato ISO 'YYYY-MM-DDTHH:MM:SS'. Quebra silenciosamente (return 'sem_horario') se formato divergir. OK por enquanto, mas comentar formato esperado.",
+    "routes/admin.py: PUT /api/settings exige role 'auditor' — gestor padrão não pode atualizar SLA. Confirmar com produto se é desejado (pode ser frustrante: gestor que vê o SLA não consegue ajustar).",
+    "routes/lousa.py: _log_ticket_action é chamado em transfer/criada/aberta/finalizada/admin-close mas NÃO no /lousa/exit-resolve ou /lousa/public/exit-resolve (saída com pendência, encerramento massivo). Considerar logar lá também para rastreabilidade.",
+    "routes/clock.py NOTA fence: cerca dinâmica é computada APENAS para tipos de evento que precisam de cerca (Entrada/Saída via GEOFENCE_REQUIRED). Para Início/Fim intervalo sem cerca normal, NOTA não cria cerca dinâmica — comportamento OK por design, mas vale documentar."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration3_sla_logs_nota.py (novo, 20 testes)",
+    "/app/backend/routes/clock.py (fix DynFence → dict, linha 626-635)"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "n/a (skipped per request)"},
+  "test_credentials": "admin@empresa.com / 123456 ; gestor@empresa.com / 123456 ; colaborador@empresa.com / 123456",
+  "seed_data_creation": "Testes criam colaboradores TEST_I3_*, TEST_NOTA*, tickets TEST_CLI_* / TEST_LOG_* — todos limpos via DELETE no teardown. Nenhum efeito colateral em col-demo-001 (ao contrário da iter2 que marcou is_test_mode=true). NOTA: testes manipulam mongo direto (db.tickets.update_one para forçar opened_at antigo e client_snapshot.lat/lng) — alterações ficam restritas aos próprios tickets criados pelo teste.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suite em /app/backend/tests/test_iteration3_sla_logs_nota.py cobre 20 cenários iter3. IMPORTANTE: PUT /api/settings exige role 'auditor' (admin@empresa.com tem por allowlist), gestor@empresa.com NÃO consegue. Para SLA overdue/warning é necessário forçar opened_at via mongo direto (motor + pymongo); NOTA cerca dinâmica exige client_snapshot.latitude/longitude no ticket (geocode automático no POST /lousa/tickets pode não rodar — testes setam via mongo). Bug DynFence corrigido durante a iteração — antes do fix, qualquer Entrada/Saída de colab NOTA dentro do raio retornaria 500. Iter1 (test_lousa_merge.py 26/27), iter2 (16/16) e iter3 (20/20) podem rodar juntos sem conflito.",
+  "rca of the issue": "DynFence bug em routes/clock.py: o autor criou um objeto com setattr (`type('DynFence',(),{})()` + `.id=`) seguindo padrão de fence salvo no Mongo, mas _build_record consume fence como dict (`geofence['id']`). Reprodução: colab praca_id='NOTA', is_test_mode irrelevante, ticket aberto com client_snapshot.lat/lng, bate Entrada dentro do raio nota_fence_radius_m → 500. Mitigação aplicada: trocar criação para dict com mesmas chaves esperadas (id/name/lat/lng/radius_m/collaborator_id/active). Pós-fix: 200 + status=Válido + audit log com 'praca=NOTA → cerca dinâmica'."
+}

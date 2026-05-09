@@ -78,6 +78,9 @@ async def ensure_indexes() -> None:
     await db.tickets.create_index([("assigned_collaborator_id", 1), ("status", 1)])
     await db.notifications.create_index("id", unique=True)
     await db.notifications.create_index([("company_id", 1), ("created_at", -1)])
+    await db.ticket_logs.create_index("id", unique=True)
+    await db.ticket_logs.create_index([("ticket_id", 1), ("at", -1)])
+    await db.ticket_logs.create_index([("company_id", 1), ("at", -1)])
 
 
 # -------------------------------------------------------------------------
