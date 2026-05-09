@@ -11,10 +11,13 @@ Adaptado do projeto stok-main:
 """
 from __future__ import annotations
 
+import csv
+import io
 import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core import DEMO_COMPANY_ID, now_iso, require_role
@@ -498,6 +501,147 @@ async def list_history(
         query["description"] = {"$regex": q, "$options": "i"}
     docs = await db.stok_history.find(query, {"_id": 0}).sort("date", -1).to_list(limit)
     return docs
+
+
+def _fmt_dt_br(iso: Optional[str]) -> str:
+    if not iso:
+        return "—"
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return iso
+
+
+async def _filter_history(user: dict, tag: Optional[str], type_: Optional[str],
+                           q: Optional[str], limit: int) -> List[dict]:
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    query: Dict[str, Any] = {"company_id": cid}
+    if tag:
+        query["tag"] = tag
+    if type_:
+        query["type"] = type_
+    if q:
+        query["description"] = {"$regex": q, "$options": "i"}
+    return await db.stok_history.find(query, {"_id": 0}).sort("date", -1).to_list(limit)
+
+
+@router.get("/history/export")
+async def export_history(
+    format: str = "csv",
+    tag: Optional[str] = None,
+    type: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 5000,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Exporta histórico em CSV ou PDF respeitando os mesmos filtros do GET /history."""
+    fmt = (format or "csv").lower()
+    if fmt not in {"csv", "pdf"}:
+        raise HTTPException(400, "format deve ser 'csv' ou 'pdf'.")
+    docs = await _filter_history(user, tag, type, q, limit)
+
+    ts = now_iso().replace(":", "-").split(".")[0]
+
+    if fmt == "csv":
+        buf = io.StringIO()
+        # BOM para Excel reconhecer UTF-8 com acentos
+        buf.write("\ufeff")
+        writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(["Data", "Tipo", "Tag", "Usuário", "Descrição"])
+        for h in docs:
+            writer.writerow([
+                _fmt_dt_br(h.get("date")), h.get("type", ""), h.get("tag", ""),
+                h.get("user", ""), (h.get("description") or "").replace("\n", " "),
+            ])
+        data = buf.getvalue().encode("utf-8")
+        return StreamingResponse(
+            iter([data]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="estoque_historico_{ts}.csv"'},
+        )
+
+    # ---------- PDF ----------
+    try:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import (
+            SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+        )
+    except ImportError as e:
+        raise HTTPException(500, f"reportlab indisponível: {e}")
+
+    pdf_buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        pdf_buf, pagesize=landscape(A4),
+        leftMargin=12 * mm, rightMargin=12 * mm,
+        topMargin=12 * mm, bottomMargin=12 * mm,
+        title="Histórico do Estoque",
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "TitleX", parent=styles["Heading1"], fontSize=16, spaceAfter=4,
+    )
+    meta_style = ParagraphStyle(
+        "Meta", parent=styles["Normal"], fontSize=8, textColor=colors.grey,
+    )
+    body_style = ParagraphStyle(
+        "BodyX", parent=styles["Normal"], fontSize=8, leading=10,
+    )
+
+    elements: List[Any] = []
+    elements.append(Paragraph("Histórico do Estoque · Fibra Óptica", title_style))
+    filters_txt = " · ".join(filter(None, [
+        f"tipo: {type}" if type else None,
+        f"tag: {tag}" if tag else None,
+        f"busca: {q}" if q else None,
+        f"registros: {len(docs)}",
+        f"gerado em {_fmt_dt_br(now_iso())}",
+    ]))
+    elements.append(Paragraph(filters_txt, meta_style))
+    elements.append(Spacer(1, 6))
+
+    headers = ["Data", "Tipo", "Tag", "Usuário", "Descrição"]
+    rows: List[List[Any]] = [headers]
+    for h in docs:
+        rows.append([
+            Paragraph(_fmt_dt_br(h.get("date")), body_style),
+            Paragraph(str(h.get("type", "")), body_style),
+            Paragraph(str(h.get("tag", "")), body_style),
+            Paragraph(str(h.get("user", "")), body_style),
+            Paragraph(str(h.get("description", "")), body_style),
+        ])
+    if len(rows) == 1:
+        rows.append([Paragraph("Sem registros para os filtros selecionados.", body_style), "", "", "", ""])
+
+    page_w = landscape(A4)[0] - 24 * mm  # margens
+    col_widths = [page_w * w for w in (0.13, 0.13, 0.13, 0.16, 0.45)]
+    table = Table(rows, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("ALIGN", (0, 0), (-1, 0), "LEFT"),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(table)
+
+    doc.build(elements)
+    pdf_buf.seek(0)
+    return StreamingResponse(
+        iter([pdf_buf.getvalue()]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="estoque_historico_{ts}.pdf"'},
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -600,10 +600,43 @@ function HistoricoSection({ history, reload }) {
   }, [history, q, type]);
   const types = useMemo(() => Array.from(new Set(history.map((h) => h.type))).sort(), [history]);
 
+  const downloadExport = async (format) => {
+    try {
+      const params = new URLSearchParams();
+      params.set("format", format);
+      if (type) params.set("type", type);
+      if (q) params.set("q", q);
+      const token = window.localStorage.getItem("ponto_token") || "";
+      const url = `${process.env.REACT_APP_BACKEND_URL}/api/stok/history/export?${params.toString()}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        const err = await res.text();
+        alert(`Erro ao exportar: ${err}`);
+        return;
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      a.download = `estoque_historico_${ts}.${format}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (e) {
+      alert(`Erro ao exportar: ${e.message}`);
+    }
+  };
+
   return (
     <Card
       title={`📚 Histórico (${filtered.length})`}
-      action={<button style={btnGhost} onClick={reload} data-testid="hist-reload">⟳ Atualizar</button>}
+      action={
+        <div style={{ display: "flex", gap: 6 }}>
+          <button style={btnGhost} onClick={() => downloadExport("csv")} data-testid="hist-export-csv">📥 CSV</button>
+          <button style={btnGhost} onClick={() => downloadExport("pdf")} data-testid="hist-export-pdf">📄 PDF</button>
+          <button style={btnGhost} onClick={reload} data-testid="hist-reload">⟳ Atualizar</button>
+        </div>
+      }
     >
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <input

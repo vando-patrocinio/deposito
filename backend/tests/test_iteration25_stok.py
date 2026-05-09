@@ -137,6 +137,42 @@ def test_unauthorized_without_token(base_url, api):
     assert r.status_code in (401, 403)
 
 
+def test_history_export_csv(base_url, api, headers):
+    r = api.get(f"{base_url}/api/stok/history/export", headers=headers, params={"format": "csv"})
+    assert r.status_code == 200, r.text
+    assert "text/csv" in r.headers.get("content-type", "")
+    assert r.content.startswith(b"\xef\xbb\xbf")  # BOM UTF-8
+    body = r.content.decode("utf-8-sig")
+    first_line = body.splitlines()[0]
+    assert "Data;Tipo;Tag;Usuário;Descrição" == first_line
+    assert "estoque_historico_" in r.headers.get("content-disposition", "")
+
+
+def test_history_export_pdf(base_url, api, headers):
+    r = api.get(f"{base_url}/api/stok/history/export", headers=headers, params={"format": "pdf"})
+    assert r.status_code == 200, r.text
+    assert r.headers.get("content-type") == "application/pdf"
+    assert r.content[:5] == b"%PDF-"
+    assert len(r.content) > 1000
+
+
+def test_history_export_invalid_format(base_url, api, headers):
+    r = api.get(f"{base_url}/api/stok/history/export", headers=headers, params={"format": "xml"})
+    assert r.status_code == 400
+
+
+def test_history_export_with_filters(base_url, api, headers):
+    """Testa que os filtros (type, q) reduzem o resultado do export."""
+    r = api.get(f"{base_url}/api/stok/history/export", headers=headers,
+                params={"format": "csv", "type": "entrada_ont"})
+    assert r.status_code == 200
+    body = r.content.decode("utf-8-sig")
+    lines = body.splitlines()
+    # Cabeçalho + N linhas; todas as linhas (exceto header) devem conter 'entrada_ont'
+    for line in lines[1:]:
+        assert "entrada_ont" in line, f"linha não respeitou filtro: {line}"
+
+
 def test_bridge_lousa_open_creates_service(base_url, api, headers, technician_id):
     """Quando técnico abre uma bolha via /lousa/public/tickets/{id}/open,
     auto_open_service_for_ticket cria OS de estoque automaticamente."""

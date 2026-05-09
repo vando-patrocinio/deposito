@@ -27,7 +27,11 @@
   - Serviços: lista, dialog Create OS, dialog Close OS (MAC + insumos por consumable).
   - Histórico: filtros (texto + tipo), tabela cronológica.
 - ✅ **Helpers de api** em `/app/frontend/src/api.js`: 14 métodos `stok*`.
-- ✅ **Pytest e2e**: 8 testes em `/app/backend/tests/test_iteration25_stok.py` cobrindo CRUD + bridge + role-based auth. **8/8 passed**.
+- ✅ **Pytest e2e**: 12 testes em `/app/backend/tests/test_iteration25_stok.py` cobrindo CRUD + bridge + role-based auth + **export CSV/PDF**. **12/12 passed**.
+- ✅ **Export Histórico (CSV/PDF)** — novo endpoint `GET /api/stok/history/export?format=csv|pdf&type=&tag=&q=&limit=` (role gestor):
+  - **CSV** com BOM UTF-8 + delimitador `;` (Excel-friendly), 5 colunas (Data PT-BR, Tipo, Tag, Usuário, Descrição).
+  - **PDF** A4 landscape via reportlab — header dark slate + zebra rows + filtros aplicados na meta linha + nome de arquivo `estoque_historico_{ts}.{fmt}`.
+  - Frontend: botões `📥 CSV` e `📄 PDF` no header da aba Histórico (`hist-export-csv` / `hist-export-pdf`) — respeitam filtros ativos (type + busca textual), download via fetch+Blob.
 - ✅ **Testing agent**: 12 backend + frontend e2e (Playwright) — 100% verde. Aba escondida para colaborador validada.
 
 ### Iter 24 — Toggle CLT por colaborador + Modal Pontos + Bolhas SaaS (2026-05-09) ✅
