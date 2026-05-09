@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, Button, Metric } from "@/ui";
 import { api } from "@/api";
-import { Circle, MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import { Circle, MapContainer, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import AIPreventivePanel from "@/AIPreventivePanel";
@@ -25,25 +25,44 @@ const SUB_TABS = [
   { id: "insights", label: "💡 Insights LLM" },
 ];
 
+const TYPE_COLORS = {
+  reparo: "#dc2626", instalacao: "#16a34a", retirada: "#a16207",
+  preventiva: "#7c3aed", troca_endereco: "#2563eb",
+};
+
 const css = {
   th: { padding: 10, textAlign: "left", background: "#f8fafc", fontSize: 11, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 },
   td: { padding: 10, fontSize: 13, borderBottom: "1px solid #f1f5f9", verticalAlign: "top" },
   pill: (bg, color) => ({ background: bg, color, padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, display: "inline-block" }),
+  table: { width: "100%", borderCollapse: "collapse" },
+  emptyTd: { padding: 24, color: "#64748b", textAlign: "center" },
+  kpiGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 14 },
 };
 
-function fmtBRL(v) { return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+const fmtBRL = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+// Tiny fetch hook to remove `useEffect` boilerplate from every section
+function useFetch(loader, deps) {
+  const [data, setData] = useState(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let alive = true;
+    loader().then((r) => alive && setData(r)).catch(() => alive && setData(null));
+    return () => { alive = false; };
+  }, deps);
+  return data;
+}
 
 // ============================================================
-// Section: Overview
+// Sections
 // ============================================================
-function OverviewSection({ days, setDays }) {
-  const [d, setD] = useState(null);
-  useEffect(() => { let a = true; api.aiDashOverview(days).then((r) => a && setD(r)); return () => { a = false; }; }, [days]);
+function OverviewSection({ days }) {
+  const d = useFetch(() => api.aiDashOverview(days), [days]);
   if (!d) return <Card>Carregando…</Card>;
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 18 }}>
-        <Metric label="Tickets (período)" value={d.tickets.total} data-testid="kpi-tickets-total" />
+      <div style={{ ...css.kpiGrid, marginBottom: 18 }}>
+        <Metric label="Tickets (período)" value={d.tickets.total} />
         <Metric label="Finalizadas" value={d.tickets.finalizadas} />
         <Metric label="Taxa de fechamento" value={`${d.tickets.fechamento_pct}%`} />
         <Metric label="Bolhas abertas" value={d.tickets.abertas} />
@@ -55,33 +74,29 @@ function OverviewSection({ days, setDays }) {
       <Card title="Resumo do período">
         <div style={{ fontSize: 13, lineHeight: 1.7 }}>
           <strong>{d.tickets.total}</strong> bolhas criadas nos últimos {d.period_days} dias.
-          Taxa de fechamento: <strong>{d.tickets.fechamento_pct}%</strong>.
-          Da base SmartOLT (<strong>{d.smartolt.onus_total} ONUs</strong>),
+          {' '}Taxa de fechamento: <strong>{d.tickets.fechamento_pct}%</strong>.
+          {' '}Da base SmartOLT (<strong>{d.smartolt.onus_total} ONUs</strong>),
           {' '}<strong>{d.smartolt.critical_pct}%</strong> estão em estado crítico.
-          IA Preventiva: <strong>{d.ai_preventive.accepted_period}</strong> aceitas / <strong>{d.ai_preventive.pending}</strong> pendentes.
-          Notificações não lidas: <strong>{d.alerts.notif_unread}</strong>.
+          {' '}IA Preventiva: <strong>{d.ai_preventive.accepted_period}</strong> aceitas / <strong>{d.ai_preventive.pending}</strong> pendentes.
+          {' '}Notificações não lidas: <strong>{d.alerts.notif_unread}</strong>.
         </div>
       </Card>
     </>
   );
 }
 
-// ============================================================
-// Section: Tech Spending
-// ============================================================
 function TechSpendingSection({ days }) {
-  const [d, setD] = useState(null);
-  useEffect(() => { let a = true; api.aiDashTechSpending(days).then((r) => a && setD(r)); return () => { a = false; }; }, [days]);
+  const d = useFetch(() => api.aiDashTechSpending(days), [days]);
   if (!d) return <Card>Carregando…</Card>;
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 14 }}>
-        <Metric label="Custo total (período)" value={fmtBRL(d.totals.custo_brl)} data-testid="kpi-tech-cost" />
+      <div style={css.kpiGrid}>
+        <Metric label="Custo total (período)" value={fmtBRL(d.totals.custo_brl)} />
         <Metric label="Notas com baixa" value={d.totals.notas} />
         <Metric label="Custo médio/nota" value={fmtBRL(d.totals.custo_medio_por_nota)} />
       </div>
       <Card title="💰 Gastos por técnico (insumos baixados)">
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={css.table}>
           <thead><tr>
             <th style={css.th}>Técnico</th>
             <th style={css.th}>Notas</th>
@@ -90,21 +105,21 @@ function TechSpendingSection({ days }) {
             <th style={css.th}>Custo médio/nota</th>
           </tr></thead>
           <tbody>
-            {d.rows.length === 0
-              ? <tr><td colSpan={5} style={{ padding: 24, color: "#64748b", textAlign: "center" }}>Nenhuma baixa de estoque registrada no período.</td></tr>
-              : d.rows.map((r) => (
-                <tr key={r.tech_name}>
-                  <td style={css.td}><strong>{r.tech_name}</strong></td>
-                  <td style={css.td}>{r.notas_baixadas_estoque} (lousa: {r.notas_finalizadas_lousa})</td>
-                  <td style={css.td}>
-                    {Object.entries(r.insumos_totais).map(([k, v]) => (
-                      <span key={k} style={{ marginRight: 6, fontSize: 11, color: "#475569" }}>{k}:<strong>{v}</strong></span>
-                    ))}
-                  </td>
-                  <td style={{ ...css.td, fontWeight: 800, color: "#0f172a" }}>{fmtBRL(r.custo_estimado_brl)}</td>
-                  <td style={css.td}>{fmtBRL(r.custo_medio_por_nota)}</td>
-                </tr>
-              ))}
+            {d.rows.length === 0 ? (
+              <tr><td colSpan={5} style={css.emptyTd}>Nenhuma baixa de estoque registrada no período.</td></tr>
+            ) : d.rows.map((r) => (
+              <tr key={r.tech_name}>
+                <td style={css.td}><strong>{r.tech_name}</strong></td>
+                <td style={css.td}>{r.notas_baixadas_estoque} (lousa: {r.notas_finalizadas_lousa})</td>
+                <td style={css.td}>
+                  {Object.entries(r.insumos_totais).map(([k, v]) => (
+                    <span key={k} style={{ marginRight: 6, fontSize: 11, color: "#475569" }}>{k}:<strong>{v}</strong></span>
+                  ))}
+                </td>
+                <td style={{ ...css.td, fontWeight: 800, color: "#0f172a" }}>{fmtBRL(r.custo_estimado_brl)}</td>
+                <td style={css.td}>{fmtBRL(r.custo_medio_por_nota)}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
         <div style={{ fontSize: 11, color: "#64748b", marginTop: 8 }}>
@@ -115,13 +130,9 @@ function TechSpendingSection({ days }) {
   );
 }
 
-// ============================================================
-// Section: Repair Map
-// ============================================================
 function RepairMapSection({ days }) {
-  const [d, setD] = useState(null);
+  const d = useFetch(() => api.aiDashRepairMap(days), [days]);
   const [filter, setFilter] = useState("all");
-  useEffect(() => { let a = true; api.aiDashRepairMap(days).then((r) => a && setD(r)); return () => { a = false; }; }, [days]);
   const points = useMemo(() => {
     if (!d) return [];
     return filter === "all" ? d.points : d.points.filter((p) => p.type === filter);
@@ -133,13 +144,13 @@ function RepairMapSection({ days }) {
     return [lat, lng];
   }, [points]);
   if (!d) return <Card>Carregando mapa…</Card>;
-  const COLORS = { reparo: "#dc2626", instalacao: "#16a34a", retirada: "#a16207", preventiva: "#7c3aed", troca_endereco: "#2563eb" };
   return (
     <>
       <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
         <strong style={{ fontSize: 13 }}>📍 {points.length} pontos</strong>
         <select value={filter} onChange={(e) => setFilter(e.target.value)}
-          style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12 }} data-testid="map-filter">
+                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12 }}
+                data-testid="map-filter">
           <option value="all">Todos os tipos ({d.count})</option>
           {Object.entries(d.by_type).map(([k, v]) => <option key={k} value={k}>{k} ({v})</option>)}
         </select>
@@ -147,24 +158,25 @@ function RepairMapSection({ days }) {
       <Card data-testid="repair-map-card">
         <div style={{ height: 540, borderRadius: 12, overflow: "hidden" }}>
           <MapContainer center={center} zoom={11} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
-            <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            {points.map((p) => (
-              <Circle key={p.id} center={[p.latitude, p.longitude]} radius={120}
-                pathOptions={{ color: COLORS[p.type] || "#64748b", fillColor: COLORS[p.type] || "#94a3b8", fillOpacity: 0.5, weight: 2 }}>
-                <Popup>
-                  <div style={{ fontSize: 12, minWidth: 200 }}>
-                    <strong>{p.client_name}</strong><br />
-                    <span style={{ color: "#64748b" }}>{p.address}</span><br />
-                    <span style={{ ...css.pill("#f1f5f9", "#475569") }}>{p.type}</span>
-                    {p.priority && <span style={{ ...css.pill("#fef3c7", "#92400e"), marginLeft: 4 }}>{p.priority}</span>}
-                    {p.rx_dbm != null && (
-                      <div style={{ marginTop: 4 }}>📶 {p.rx_dbm.toFixed(1)} dBm</div>
-                    )}
-                    <div style={{ marginTop: 4, fontSize: 11 }}>{p.relato || ""}</div>
-                  </div>
-                </Popup>
-              </Circle>
-            ))}
+            <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            {points.map((p) => {
+              const color = TYPE_COLORS[p.type] || "#64748b";
+              return (
+                <Circle key={p.id} center={[p.latitude, p.longitude]} radius={120}
+                        pathOptions={{ color, fillColor: color, fillOpacity: 0.5, weight: 2 }}>
+                  <Popup>
+                    <div style={{ fontSize: 12, minWidth: 200 }}>
+                      <strong>{p.client_name}</strong><br />
+                      <span style={{ color: "#64748b" }}>{p.address}</span><br />
+                      <span style={css.pill("#f1f5f9", "#475569")}>{p.type}</span>
+                      {p.priority && <span style={{ ...css.pill("#fef3c7", "#92400e"), marginLeft: 4 }}>{p.priority}</span>}
+                      {p.rx_dbm != null && <div style={{ marginTop: 4 }}>📶 {p.rx_dbm.toFixed(1)} dBm</div>}
+                      <div style={{ marginTop: 4, fontSize: 11 }}>{p.relato || ""}</div>
+                    </div>
+                  </Popup>
+                </Circle>
+              );
+            })}
           </MapContainer>
         </div>
       </Card>
@@ -172,17 +184,13 @@ function RepairMapSection({ days }) {
   );
 }
 
-// ============================================================
-// Section: Defective Equipment
-// ============================================================
 function DefectiveSection({ days }) {
-  const [d, setD] = useState(null);
-  useEffect(() => { let a = true; api.aiDashDefective(days).then((r) => a && setD(r)); return () => { a = false; }; }, [days]);
+  const d = useFetch(() => api.aiDashDefective(days), [days]);
   if (!d) return <Card>Carregando…</Card>;
   return (
     <>
       <Card title={`🔧 Modelos com mais ocorrências (últimos ${days}d)`}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={css.table}>
           <thead><tr><th style={css.th}>Modelo</th><th style={css.th}>Ocorrências</th><th style={css.th}>Equipamentos distintos</th></tr></thead>
           <tbody>
             {d.models.map((m) => (
@@ -196,7 +204,7 @@ function DefectiveSection({ days }) {
         </table>
       </Card>
       <Card title="🏆 Top ONTs com mais reclamações">
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={css.table}>
           <thead><tr>
             <th style={css.th}>Cliente · External ID</th>
             <th style={css.th}>Modelo</th>
@@ -229,12 +237,8 @@ function DefectiveSection({ days }) {
   );
 }
 
-// ============================================================
-// Section: Common Issues
-// ============================================================
 function CommonIssuesSection({ days }) {
-  const [d, setD] = useState(null);
-  useEffect(() => { let a = true; api.aiDashCommonIssues(days).then((r) => a && setD(r)); return () => { a = false; }; }, [days]);
+  const d = useFetch(() => api.aiDashCommonIssues(days), [days]);
   if (!d) return <Card>Carregando…</Card>;
   const total = d.by_category.reduce((s, x) => s + x.count, 0);
   return (
@@ -260,7 +264,7 @@ function CommonIssuesSection({ days }) {
           ))}
       </Card>
       <Card title="🔌 Reclamações por porta (Top 20)" style={{ gridColumn: "span 2" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={css.table}>
           <thead><tr><th style={css.th}>OLT · Board / Port</th><th style={css.th}>Reclamações</th></tr></thead>
           <tbody>
             {d.by_port.map((p) => (
@@ -273,37 +277,33 @@ function CommonIssuesSection({ days }) {
   );
 }
 
-// ============================================================
-// Section: Recurring
-// ============================================================
 function RecurringSection({ days }) {
-  const [d, setD] = useState(null);
-  useEffect(() => { let a = true; api.aiDashRecurring(days).then((r) => a && setD(r)); return () => { a = false; }; }, [days]);
+  const d = useFetch(() => api.aiDashRecurring(days), [days]);
   if (!d) return <Card>Carregando…</Card>;
   return (
     <>
       <Card title="🔁 Técnicos que mais retornam ao mesmo cliente">
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={css.table}>
           <thead><tr><th style={css.th}>Técnico</th><th style={css.th}>Revisits</th><th style={css.th}>Top clientes recorrentes</th></tr></thead>
           <tbody>
-            {d.techs_revisits.length === 0
-              ? <tr><td colSpan={3} style={{ padding: 24, color: "#64748b", textAlign: "center" }}>Nenhuma reincidência detectada.</td></tr>
-              : d.techs_revisits.map((t) => (
-                <tr key={t.tech_name}>
-                  <td style={css.td}><strong>{t.tech_name}</strong></td>
-                  <td style={css.td}><span style={css.pill("#fee2e2", "#991b1b")}>{t.revisits_count} revisits</span></td>
-                  <td style={css.td}>
-                    {(t.top_clients || []).map((c, i) => (
-                      <div key={i} style={{ fontSize: 12 }}>{c.client} · <strong>{c.count}x</strong></div>
-                    ))}
-                  </td>
-                </tr>
-              ))}
+            {d.techs_revisits.length === 0 ? (
+              <tr><td colSpan={3} style={css.emptyTd}>Nenhuma reincidência detectada.</td></tr>
+            ) : d.techs_revisits.map((t) => (
+              <tr key={t.tech_name}>
+                <td style={css.td}><strong>{t.tech_name}</strong></td>
+                <td style={css.td}><span style={css.pill("#fee2e2", "#991b1b")}>{t.revisits_count} revisits</span></td>
+                <td style={css.td}>
+                  {(t.top_clients || []).map((c, i) => (
+                    <div key={i} style={{ fontSize: 12 }}>{c.client} · <strong>{c.count}x</strong></div>
+                  ))}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </Card>
       <Card title="🥇 Clientes com mais reclamações">
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={css.table}>
           <thead><tr><th style={css.th}>#</th><th style={css.th}>Cliente</th><th style={css.th}>Endereço</th><th style={css.th}>Tickets</th><th style={css.th}>Tipos</th></tr></thead>
           <tbody>
             {d.top_recurring_clients.map((c, i) => (
@@ -315,9 +315,7 @@ function RecurringSection({ days }) {
                 </td>
                 <td style={css.td}>{c.address}</td>
                 <td style={css.td}><span style={css.pill("#dbeafe", "#1e40af")}>{c.total_tickets}</span></td>
-                <td style={css.td}>
-                  {Object.entries(c.tipos).map(([k, v]) => `${k}:${v}`).join(" · ")}
-                </td>
+                <td style={css.td}>{Object.entries(c.tipos).map(([k, v]) => `${k}:${v}`).join(" · ")}</td>
               </tr>
             ))}
           </tbody>
@@ -327,9 +325,6 @@ function RecurringSection({ days }) {
   );
 }
 
-// ============================================================
-// Section: Insights LLM
-// ============================================================
 function InsightsSection({ days }) {
   const [generating, setGenerating] = useState(false);
   const [history, setHistory] = useState([]);
@@ -350,6 +345,7 @@ function InsightsSection({ days }) {
     } finally { setGenerating(false); }
   };
 
+  const DASHBOARDS = ["overview", "tech_spending", "common_issues", "recurring", "defective"];
   return (
     <>
       <Card title="💡 Gerar insight com IA (Gemini Flash via Universal Key)">
@@ -357,7 +353,7 @@ function InsightsSection({ days }) {
           A IA analisa o dashboard escolhido e devolve insights acionáveis em PT-BR (3-5 bullets + 1 ação prioritária).
         </p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {["overview", "tech_spending", "common_issues", "recurring", "defective"].map((k) => (
+          {DASHBOARDS.map((k) => (
             <Button key={k} variant="soft" disabled={generating} onClick={() => generate(k)} data-testid={`insight-gen-${k}`}>
               {generating ? "🤖 Gerando…" : `Analisar ${k.replace("_", " ")}`}
             </Button>
@@ -388,9 +384,20 @@ function InsightsSection({ days }) {
 // ============================================================
 // Main panel
 // ============================================================
+const TAB_COMPONENTS = {
+  overview: OverviewSection,
+  tech_spending: TechSpendingSection,
+  repair_map: RepairMapSection,
+  defective: DefectiveSection,
+  common_issues: CommonIssuesSection,
+  recurring: RecurringSection,
+  insights: InsightsSection,
+};
+
 export default function AICenterPanel({ onClose }) {
   const [tab, setTab] = useState("overview");
   const [days, setDays] = useState(30);
+  const Section = TAB_COMPONENTS[tab];
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 100, padding: 20, overflowY: "auto" }}>
@@ -399,16 +406,15 @@ export default function AICenterPanel({ onClose }) {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a" }}>
-              🧠 Central de IA
-            </h2>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a" }}>🧠 Central de IA</h2>
             <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
               Dashboards, insights e automações de IA — tudo em um lugar.
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <select value={days} onChange={(e) => setDays(Number(e.target.value))}
-                    style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13 }} data-testid="ai-days-select">
+                    style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13 }}
+                    data-testid="ai-days-select">
               <option value={7}>Últimos 7 dias</option>
               <option value={30}>Últimos 30 dias</option>
               <option value={90}>Últimos 90 dias</option>
@@ -420,8 +426,7 @@ export default function AICenterPanel({ onClose }) {
         {/* Sub-tabs */}
         <div style={{ display: "flex", gap: 4, padding: 4, background: "#e2e8f0", borderRadius: 12, marginBottom: 14, overflowX: "auto", flexWrap: "wrap" }}>
           {SUB_TABS.map((s) => (
-            <button key={s.id} onClick={() => setTab(s.id)}
-                    data-testid={`ai-tab-${s.id}`}
+            <button key={s.id} onClick={() => setTab(s.id)} data-testid={`ai-tab-${s.id}`}
                     style={{
                       padding: "8px 14px", border: "none", borderRadius: 8,
                       background: tab === s.id ? "white" : "transparent",
@@ -434,14 +439,9 @@ export default function AICenterPanel({ onClose }) {
           ))}
         </div>
 
-        {tab === "overview" && <OverviewSection days={days} setDays={setDays} />}
-        {tab === "preventive" && <AIPreventivePanel onClose={() => setTab("overview")} embedded />}
-        {tab === "tech_spending" && <TechSpendingSection days={days} />}
-        {tab === "repair_map" && <RepairMapSection days={days} />}
-        {tab === "defective" && <DefectiveSection days={days} />}
-        {tab === "common_issues" && <CommonIssuesSection days={days} />}
-        {tab === "recurring" && <RecurringSection days={days} />}
-        {tab === "insights" && <InsightsSection days={days} />}
+        {tab === "preventive"
+          ? <AIPreventivePanel onClose={() => setTab("overview")} embedded />
+          : Section && <Section days={days} />}
       </div>
     </div>
   );
