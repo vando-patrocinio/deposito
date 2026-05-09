@@ -1,8 +1,30 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 22)
+**Última atualização**: 2026-05-09 (iteração 23)
 
 ## Histórico de iterações
+
+### Iter 23 — Bug fix CRÍTICO sincronização Atlaz (2026-05-09) ✅
+**Sintoma reportado pelo usuário:** "as bolhas do Atlaz não estão chegando na Lousa para o técnico correspondente".
+
+**Root cause em 3 camadas:**
+1. **Filtro de filial bloqueava 100% dos chamados** — config tinha filiais como `LIGO RIO`, `LIGO MAGÉ` mas o Atlaz retorna cidades como `Rio de Janeiro`, `Magé`. Match exato case/acento-insensitive não batia → `fetched=0` em todos os syncs por dias.
+2. **Fallback `_resolve_collaborator`** caía no "primeiro colaborador ativo" quando técnico Atlaz não estava mapeado → 32 das 60 bolhas indo erradamente para o **DIOGO HENRIQUE** (poluindo a Lousa dele).
+3. **Sem visibility** das bolhas órfãs (sem técnico no Atlaz).
+
+**Fixes:**
+- ✅ `_filial_tokens` + `_filter_by_filial` agora usam **tokenização**: palavras ≥3 chars sem acento, ignora "LIGO" (genérico). `LIGO RIO` ↔ `Rio de Janeiro` ✓.
+- ✅ `_resolve_collaborator` removeu fallback automático. Adicionou **match auto em `db.collaborators` por nome** (case/acento-insensitive). Mapping por filial agora também tokeniza.
+- ✅ **Colaborador placeholder `📥 Sem técnico (Atlaz)`** (`id=col-atlaz-inbox`, `atlaz_inbox=true`) criado on-demand. Bolhas órfãs vão para lá com `atlaz_unassigned=true`. Gestor arrasta para o técnico real via drag&drop existente.
+- ✅ **Novo endpoint `POST /api/atlaz/reassign-existing`** (role gestor) — re-resolve TODAS as bolhas Atlaz pendentes aplicando o mapping atual. Corrigiu **32 bolhas** que estavam erradamente no DIOGO.
+- ✅ **Botão UI `atlaz-reassign-btn`** ("🔁 Reatribuir bolhas existentes") no card de configuração.
+
+**Distribuição da Lousa (antes → depois)**:
+- DIOGO HENRIQUE: 40 → **8** (bate com Atlaz)
+- JEFFERSON: 9, Eddy: 5, EMANUELLE: 2, JUNIOR: 2, Hudson: 2 (todos OK)
+- 📥 Sem técnico (Atlaz): 0 → **32** (visíveis para gestor distribuir)
+
+Backend: 16/16 verde. Frontend: 100%.
 
 ### Iter 22 — Sync Atlaz a cada 30s + Botão "Nova nota" abre painel Atlaz (2026-05-09) ✅
 - ✅ **Sync Atlaz em segundos**: novo campo `sync_interval_seconds: Optional[int] = Field(default=30, ge=10, le=86400)` em `AtlazConfig` e `AtlazConfigUpdate`. Worker usa este valor com **precedência sobre `sync_interval_minutes`**. Tick interno do worker reduzido de 60s para **5s** para suportar intervalos sub-minuto sem hammering (cada empresa só dispara quando o intervalo configurado é alcançado).
