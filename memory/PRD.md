@@ -1,57 +1,61 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Data**: 2026-05-09
-**Resultado**: Mesclagem dos projetos `smart1` (SmartProv — lousa de notas de serviço) e `smart2` (PontoIA — ponto eletrônico com selfie+IA).
+**Última atualização**: 2026-05-09 (iteração 2)
 
-## Problema original
-Usuário tinha 2 projetos separados:
-- **smart1**: Lousa de bolhas com regras de prioridade (técnico abre 1 nota por vez, finaliza com fotos/dados técnicos, gestor encerra administrativamente)
-- **smart2**: Ponto eletrônico SaaS com selfie+IA, cerca virtual, mapa ao vivo, dwell detection 30min, dashboard KPIs
+## Histórico de iterações
 
-Quis unificar com lógica de máquina de estados ligando os dois sistemas:
-- Colaborador só abre bolha após bater **Entrada**
-- Não pode bater **Início intervalo** ou **Saída** com bolha aberta
-- Lousa fica visualmente travada durante intervalo
-- Saída com bolha aberta → confirma → encerra notas → notifica gestor
+### Iter 1 — Mesclagem inicial (Smart1 Lousa + Smart2 Ponto)
+- Smart2 como base estrutural + Smart1 (lousa) plugado em cima
+- 3 perfis: colaborador, gestor, administrador
+- State machine: Entrada → Lousa liberada / Saída com bolha aberta → confirma → notifica gestor
+- Backend: 26/27 pytest
 
-## Arquitetura
-- **Base estrutural**: Smart2 (FastAPI modular: `server.py + routes/`)
-- **Módulo novo**: `routes/lousa.py` (8 endpoints: read, public, gestor, notifications)
-- **Frontend novos**: `LousaMobile.js`, `LousaAdminPanel.js`, `NotificationsBell.js`
-- **3 perfis**: `colaborador`, `gestor`, `administrador` (auditor mantido por compat)
+### Iter 2 — Per-collaborator test mode + Kanban Grid + Transfer (2026-05-09)
+- ✅ **Cadastro com flag `is_test_mode`**: admin marca colab como teste no formulário (checkbox roxo) → bypassa cerca virtual + validação selfie no clock-records (mesmo SEM token)
+- ✅ **Bolhas escondidas até bater Entrada**: API retorna `needs_clock_in:true, tickets:[]` quando colaborador ainda não bateu ponto
+- ✅ **Lousa em Grade Kanban**: nova rota `/api/lousa/grid` retorna columns por técnico — frontend redesenhado com coluna por técnico, avatar+badge online/offline, faixa de horários do dia, bolhas arrastáveis
+- ✅ **Drag & drop entre técnicos**: endpoint `/api/lousa/tickets/{id}/transfer` permite gestor/admin mover bolhas entre colunas
+- Backend: 16/16 pytest (100%)
 
-## Funcionalidades implementadas (2026-05-09)
+## Endpoints novos (Iter 2)
+- `GET /api/lousa/grid` — kanban (gestor/admin)
+- `POST /api/lousa/tickets/{id}/transfer` — transferir nota (gestor/admin)
+- `PUT /api/collaborators/{cid}` aceita `is_test_mode`
 
-### Backend
-- [x] `routes/lousa.py` com 8+ endpoints (read me/by-collab/all, create/delete, public open/finalize/exit-resolve, admin-close, notifications)
-- [x] State machine integrado em `routes/clock.py`: bloqueio de Início intervalo e Saída quando há bolha aberta (412/409)
-- [x] Force-close automático de bolhas ao confirmar Saída (`force_close_open_tickets=true`) + criação de notificação crítica para gestor
-- [x] Auth: roles colaborador/gestor/administrador/auditor; `administrador` é super-role como auditor
-- [x] Seed automático: 5 bolhas + 3 usuários (admin/gestor/colaborador@empresa.com) + colaborador `col-demo-001`
-- [x] Vínculo `user.collaborator_id` (colaborador@empresa.com → col-demo-001)
-- [x] Indexes: tickets, notifications
+## Como usar Modo Teste
+**Opção A — Por colaborador (NOVO)**: 
+1. Login como admin → aba Cadastro → editar colaborador → marcar checkbox roxo "🧪 Modo Teste (Admin)"
+2. Esse colaborador específico pode bater ponto **sem cerca e sem selfie** (qualquer um no celular pode bater por ele para testes)
 
-### Frontend
-- [x] **Mobile do colaborador (PWA)**: botão "Lousa de Serviços" na home + tela completa da lousa com banner de status do ponto + bolhas com cadeado quando travadas
-- [x] **Diálogo de Saída com bolhas em aberto**: modal de confirmação que aciona `force_close_open_tickets`
-- [x] **Painel Lousa do Gestor**: cards das bolhas filtráveis (todas/ativas/em campo/aguarda gestor/resolvidas) + criação de nota + ações encerrar/reagendar/cancelar
-- [x] **Sino de notificações**: dropdown com badge de não lidas + auto-refresh 30s + marcar como lida
-- [x] **Aba "Lousa 📋"** no menu do gestor + roles para administrador
+**Opção B — Por sessão admin** (mantida da iter 1):
+1. Login admin → "Modo celular" → banner roxo aparece
+2. Admin pode bater ponto em qualquer local (token JWT detectado no Authorization header)
 
-### Preservadas do Smart2 (cerca + monitoramento)
-- [x] Cerca virtual obrigatória em Entrada/Saída
-- [x] Validação de selfie via Emergent LLM (gpt-4o vision) — `validate_face_visible` + `compare_faces`
-- [x] Mapa ao vivo (LiveMap.js) e tracking de localização ativa (`/api/locations/live`)
-- [x] Dwell detection ≥30min (`/api/locations/dwell-analysis`) + push automático (job a cada 2min)
-- [x] Dashboard KPIs (HE, custo, tendência, heatmap)
-- [x] Espelho mensal PDF (Resend opcional)
-- [x] Multi-tenant scoping via `company_id` (todas as queries de lousa/notifications respeitam tenant)
+## Como usar Drag & Drop entre técnicos (NOVO)
+1. Login como gestor/admin → aba Lousa
+2. Grid mostra coluna por técnico
+3. Arrastar bolha de uma coluna para outra → bolha transfere automaticamente
+4. Se bolha estava "aberta", volta para "pendente" no destinatário (limpa estado anterior)
 
-## Personas e papéis
-- **Colaborador (técnico)**: PWA mobile (sem login), bate ponto + opera lousa
-- **Gestor**: painel desktop, gerencia bolhas + colaboradores + recebe notificações
-- **Administrador**: super-role com acesso total (cadastro de usuários, configurações, plataforma)
-- **Auditor**: mantido para compat com smart2 (mesmas permissões do admin)
+## Backlog priorizado
+### P0 (próxima iteração)
+- ✅ Drag & drop frontend (FEITO iter 2)
+- ✅ Hide bubbles until clock-in (FEITO iter 2)
+- ✅ Per-collaborator test mode (FEITO iter 2)
+- Cerca virtual dinâmica usando endereço da próxima bolha
+- Refatoração: split routes/lousa.py em sub-módulos (passou 700 linhas)
+
+### P1
+- Reordenação visual dentro da própria coluna (drag vertical)
+- Aba "Auditoria" com mapa ao vivo evidente
+- Push real-time para gestor quando técnico encerra Saída com pendência
+- Drag & drop também no mobile (hoje só desktop)
+
+### P2
+- WhatsApp real (Twilio) — substituir mock
+- Object storage para fotos
+- PWA offline queue ativada
+- Cerca virtual dinâmica auto-criada na bolha aberta
 
 ## Credenciais demo
 | Email | Senha | Perfil |
@@ -60,35 +64,9 @@ Quis unificar com lógica de máquina de estados ligando os dois sistemas:
 | `gestor@empresa.com` | `123456` | Gestor |
 | `colaborador@empresa.com` | `123456` | Colaborador |
 
-## Endpoints novos (Lousa)
-- `GET /api/lousa/by-collaborator/{cid}` — público (PWA)
-- `GET /api/lousa/me` — colaborador autenticado
-- `GET /api/lousa/all` — gestor
-- `GET /api/lousa/tickets/{id}`
-- `POST /api/lousa/tickets` — criar (gestor)
-- `DELETE /api/lousa/tickets/{id}` — gestor
-- `POST /api/lousa/tickets/{id}/admin-close` — gestor (encerrar/reagendar/cancelar)
-- `POST /api/lousa/public/tickets/{id}/open` — público (PWA)
-- `POST /api/lousa/public/tickets/{id}/finalize` — público (PWA)
-- `POST /api/lousa/public/exit-resolve` — público (PWA, ao confirmar Saída)
-- `GET/POST /api/notifications` — gestor
-
-## Backlog priorizado
-### P0
-- Validar fluxo end-to-end com selfie real (mobile real / câmera)
-- Cerca virtual dinâmica usando endereço da bolha aberta (estrutura geocode_address já está em create_ticket — falta criar geofence runtime)
-- Drag & drop de bolhas no frontend mobile (backend já tem `/lousa/reorder`)
-
-### P1
-- Aba "Auditoria/Mapa" rotulada como pediu (atualmente "Auditoria" usa o ManagerPanel)
-- Notificações em tempo real via WebSocket / Web Push (estrutura push_service.py já existe)
-- Vínculo automático: ao bater Entrada, criar geofence dinâmica no endereço da próxima bolha
-
-### P2
-- WhatsApp real (Twilio) — substituir send_whatsapp_mock
-- Object storage para fotos da finalização (hoje base64 inflando documentos)
-- PWA offline queue (já existe service-worker.js do smart2)
-
-## Testes (2026-05-09)
-- Backend: 26/27 pytest passando (96%) — `test_lousa_merge.py`
-- Frontend: validado visualmente (login + lousa admin + lousa mobile + state machine 🔒)
+## Arquivos críticos
+- `/app/backend/routes/lousa.py` — 8 endpoints + grid/transfer (~800 linhas)
+- `/app/backend/routes/clock.py` — clock-records com state machine + dual test mode (collab + admin)
+- `/app/frontend/src/LousaAdminPanel.js` — Kanban grid com drag-drop nativo HTML5
+- `/app/frontend/src/LousaMobile.js` — vista mobile com `needs_clock_in` empty state
+- `/app/frontend/src/CadastroPanel.js` — checkbox is_test_mode no form
