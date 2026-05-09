@@ -1,8 +1,15 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 18)
+**Última atualização**: 2026-05-09 (iteração 19)
 
 ## Histórico de iterações
+
+### Iter 19 — Date Navigator inline + Mobile Reorder (2026-05-09) ✅
+- ✅ **Date Navigator inline na Lousa Admin** (`LousaAdminPanel.js`): controles `◀ [data] ▶` + chip `Hoje` no header (data-testid `lousa-date-navigator`, `lousa-date-prev`, `lousa-date-next`, `lousa-date-input`, `lousa-date-today`). Quando data != hoje, banner amarelo `lousa-date-banner` mostra "🕐 Visualizando dia passado/futuro" + botão `lousa-back-today-btn`. Grid fica com opacity reduzida e drag&drop é desabilitado (read-only).
+- ✅ **Mobile Reorder no app do colaborador** (`LousaMobile.js`): toggle `lousa-reorder-toggle` (visível quando >1 ticket e lousa liberada) ativa modo de reordenação. Cada bolha vira `bubble-reorder-{id}` com botões `bubble-up-{id}` e `bubble-down-{id}` + suporte a HTML5 drag (touchAction:none). Bolhas priority != "normal" mostram 🔒 e botões disabled. Barra `lousa-reorder-bar` com `lousa-reorder-cancel` e `lousa-reorder-save`. Save chama o novo endpoint público.
+- ✅ **Novo endpoint `POST /api/lousa/public/reorder`** (sem JWT, valida ownership via `collaborator_id`): mesma lógica do `/lousa/reorder` autenticado — bolhas priority `horario`/`prioridade` ou em posição travada não podem ser movidas (HTTP 400). 404 se colaborador não existe. Idempotente.
+- Backend: 13/13 (iter19) verde + regressão.
+- Frontend: 100% Playwright (DateNavigator render, banner past/future, mobile reorder toggle/save com 3 tickets seed).
 
 ### Iter 18 — Atlaz V2 API Oficial (2026-05-09) ✅
 - ✅ **Reescrita completa** de `routes/atlaz.py` com base na **doc oficial**: `https://app.atlaz.com.br/docs/api`
