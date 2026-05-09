@@ -316,22 +316,36 @@ export default function CadastroPanel() {
                   </>
                 ) : (
                   <>
-                    <Button variant="soft" onClick={() => setSelectedId(c.id)} data-testid={`fences-${c.id}`}>
-                      <Icon name="map" /> Cercas
-                      {(() => {
-                        const indiv = fenceCounts[c.id] ?? 0;
-                        const hasPraca = c.praca_id && c.praca_id !== "NOTA";
-                        const total = indiv + (hasPraca ? 1 : 0);
-                        const title = hasPraca
-                          ? `${indiv} cerca(s) individual(is) + 1 praça vinculada`
-                          : `${indiv} cerca(s) individual(is)`;
-                        return (
-                          <span title={title} data-testid={`fence-count-${c.id}`} style={{ marginLeft: 6, background: total ? "#0ea5e9" : "#94a3b8", color: "white", borderRadius: 999, padding: "1px 7px", fontSize: 10, fontWeight: 900 }}>
-                            {total}
-                          </span>
-                        );
-                      })()}
-                    </Button>
+                    {c.clock_in_enabled !== false ? (
+                      <Button variant="soft" onClick={() => setSelectedId(c.id)} data-testid={`fences-${c.id}`}>
+                        <Icon name="map" /> Cercas
+                        {(() => {
+                          const indiv = fenceCounts[c.id] ?? 0;
+                          const hasPraca = c.praca_id && c.praca_id !== "NOTA";
+                          const total = indiv + (hasPraca ? 1 : 0);
+                          const title = hasPraca
+                            ? `${indiv} cerca(s) individual(is) + 1 praça vinculada`
+                            : `${indiv} cerca(s) individual(is)`;
+                          return (
+                            <span title={title} data-testid={`fence-count-${c.id}`} style={{ marginLeft: 6, background: total ? "#0ea5e9" : "#94a3b8", color: "white", borderRadius: 999, padding: "1px 7px", fontSize: 10, fontWeight: 900 }}>
+                              {total}
+                            </span>
+                          );
+                        })()}
+                      </Button>
+                    ) : (
+                      <span
+                        data-testid={`fences-disabled-${c.id}`}
+                        title="Colaborador externo (não-CLT) — cercas não se aplicam, validação de localização e selfie estão desativadas"
+                        style={{
+                          fontSize: 11, fontWeight: 700, color: "#9a3412",
+                          background: "#fff7ed", border: "1px dashed #fdba74",
+                          padding: "6px 12px", borderRadius: 999,
+                        }}
+                      >
+                        🚫 Cerca não se aplica
+                      </span>
+                    )}
                     <Button
                       variant="soft"
                       onClick={() => setConfirmReset(c.id)}

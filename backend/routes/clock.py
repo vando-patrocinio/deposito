@@ -536,6 +536,12 @@ async def create_clock_record(payload: ClockRecordIn, request: __import__('fasta
     if coll.get("is_test_mode"):
         is_admin_test = True
         admin_actor = "colaborador_teste"
+    # 1b. Colaborador NÃO-CLT (clock_in_enabled=false) → também bypassa cerca/selfie.
+    # Em teoria ele nem bate ponto (app esconde a tela), mas se chamar via API direta
+    # ou via admin, não devemos exigir cerca/selfie de quem foi cadastrado como externo.
+    if not is_admin_test and coll.get("clock_in_enabled") is False:
+        is_admin_test = True
+        admin_actor = "colaborador_externo"
     # 2. Admin/auditor logado → também bypassa
     if not is_admin_test:
         try:
