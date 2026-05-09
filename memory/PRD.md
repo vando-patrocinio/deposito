@@ -1,8 +1,21 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 23)
+**Última atualização**: 2026-05-09 (iteração 24)
 
 ## Histórico de iterações
+
+### Iter 24 — Toggle CLT por colaborador + Modal Pontos + Bolhas SaaS (2026-05-09) ✅
+- ✅ **Toggle "Bate ponto" por colaborador** (`clock_in_enabled: bool = True` no `CollaboratorIn`). Quando false, o app do colaborador abre direto na Lousa (tela `screen-home-no-clock` com card roxo gradient "COLABORADOR EXTERNO / Você não bate ponto" + botão azul grande "📋 Abrir Lousa de Serviços"). Backend libera `lousa_unlocked=true` + `needs_clock_in=false` independentemente de Entrada. Endpoint `public_open_ticket` pula validação 412 para esse caso.
+- ✅ **Botão "🕐 Pontos"** no card de cada colaborador CLT na aba Cadastro → abre `ClockHistoryModal` com batidas dos últimos 7/30/90 dias agrupadas por data, ícones por tipo (🚪🍽️🔄🏁), pills de período. Não-CLT mostra badge laranja "🚫 NÃO BATE PONTO".
+- ✅ **Bolhas modernas SaaS** em `LousaAdminPanel.BubbleCard` E `LousaMobile.Bubble`:
+  - Faixa lateral colorida (4-5px) por prioridade (rosa/laranja para `prioridade`/`horario`)
+  - Chip de ícone do tipo (36-40px) à esquerda com 11 emojis (🔧📦🛠️🔩⬆️⬇️🏠👤🚫📋💼)
+  - Header com badge prioridade pill colorida + chip horário + status pill
+  - Body com nome do cliente em fonte 13.5-14.5/peso 800/letterSpacing -0.1, tipo em UPPER CASE letterSpacing 0.4
+  - Footer (SLA + IA score) acima de border-top dashed
+  - Sombra dupla suave (1px+2px) em vez de borda 2px chamativa
+  - Tooltip nativo (`title`) multi-linha rico: tipo, cliente, tel, end., bairro, horário, relato, IA score, badge Atlaz, "Duplo-clique para editar"
+- Backend: 6/6 verde. Frontend: validado UI (modal Pontos, 7 botões view-clock-, bubble title 319 chars).
 
 ### Iter 23 — Bug fix CRÍTICO sincronização Atlaz (2026-05-09) ✅
 **Sintoma reportado pelo usuário:** "as bolhas do Atlaz não estão chegando na Lousa para o técnico correspondente".
