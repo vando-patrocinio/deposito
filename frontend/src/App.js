@@ -15,6 +15,7 @@ import LousaAdminPanel from "@/LousaAdminPanel";
 import NotificationsBell from "@/NotificationsBell";
 import OfflineTimeBanner from "@/OfflineTimeBanner";
 import ServerClock from "@/ServerClock";
+import { startServerTime } from "@/serverTime";
 import LoginPage from "@/LoginPage";
 import LandingPage from "@/LandingPage";
 import SignupPage from "@/SignupPage";
@@ -245,6 +246,8 @@ function AppShell({ view, setView, children }) {
 }
 
 function AppContent() {
+  // Inicia sincronização global com horário do servidor (anti-tampering)
+  useEffect(() => { startServerTime(); }, []);
   const { user, loading, logout } = useAuth();
   const mobile = useMobileMode();
   const [systemStatus, setSystemStatus] = useState({ offline: false, drift_blocked: false });

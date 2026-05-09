@@ -1,0 +1,39 @@
+{
+  "summary": "Iter14 — Lousa Histórica como Lousa filtrada (kanban) + Mirror Mobile + serverTime singleton. BACKEND 12/12 PASS (test_iteration14) + 84/84 PASS regressão lousa (iter4/5/8/9_briefing/11_lousa_mgmt/12). FRONTEND 100% — modal abre default em Dia=hoje (2026-05-09) com 51 bolhas em layout kanban, 5 chips de granularidade funcionais, KPIs clicáveis (Cancelada → 26 bolhas client-side), busca 'Centro' → 33 bolhas, search-clear funcional. ServerTime singleton confirmado: /api/server-time chamado 4x na sessão (boot + ServerClock sync). API /lousa/grid sem params retorna historical=false; com date_from/date_to retorna historical=true e tickets locked=true & historical=true. Mirror mobile (/lousa/by-collaborator/{cid} público) retorna apenas ativas em tickets[] e resolvidas em recent_resolved separado.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "DashboardPanel", "issues": ["Recharts ResponsiveContainer width(-1)/height(-1) warnings persistentes (carry-over iter10/11/13, não-bloqueante)"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration14_lousa_grid_historical.py",
+    "/app/test_reports/pytest/iter14_results.xml",
+    "/app/test_reports/pytest/iter14_lousa_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "[INFO regressão] test_iteration2.py, test_iteration9_dashboard_users.py e test_iteration10_he_budget_alerts.py falharam por rate-limit (HTTP 401 'Muitas tentativas falhadas. Aguarde 15 minutos.') em admin@example.com — credencial Smart2 legada com cooldown ativo. NÃO é regressão de iter14: testes de lousa/grid/history/serverTime que estão no escopo iter14 passaram 100%.",
+    "[CARRY-OVER iter12/13] /app/backend/routes/lousa.py >1900 linhas — refactor em módulos pendente.",
+    "[CARRY-OVER iter13] Quando KPI de status filtro está ativo, contagens dos demais cards (que vêm do summary backend) podem confundir UX. Em iter14 a busca client-side coexiste, mas KPIs continuam vindo do servidor.",
+    "[CARRY-OVER iter10/11/13] Recharts ResponsiveContainer warnings no DashboardPanel (cosmético)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration14_lousa_grid_historical.py (novo)"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 iter14 + 84/84 regressão lousa)",
+    "frontend": "100% (todos cenários iter14 OK)"
+  },
+  "test_credentials": "gestor@empresa.com / 123456",
+  "seed_data_creation": "Nenhum — usadas notas pré-existentes (2026-05-09 com 51 notas, mês 2026-05 com 51 notas após cleanup).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter14 fechado VERDE.\n\nValidações concluídas:\n• BACKEND /api/lousa/grid:\n  - sem params → {historical: false, date_from: null, date_to: null, columns: 2 cols, 7 tickets ativos}\n  - ?date_from=2026-05-09&date_to=2026-05-09 → {historical: true, 38 tickets, todos com locked=true E historical=true}\n  - ?date_from=2026-05-04&date_to=2026-05-10 (semana) → historical=true, 38 tickets\n  - ?date_from=2026-05-01&date_to=2026-05-31 (mês) → historical=true\n  - sem auth → 401/403\n• BACKEND /api/lousa/by-collaborator/col-demo-001 (PÚBLICO, sem header Authorization):\n  - 200 OK; shape: tickets[], recent_resolved[], needs_clock_in, last_closed_at, minutes_since_last_close\n  - tickets[] = 3 (somente status 'aberta'); recent_resolved=1; needs_clock_in=False (tech já bateu Entrada via seed); last_closed_at=2026-05-09T05:10, minutes_since_last_close=110\n  - Mirror confirmado: nenhum ticket finalizada/encerrada/cancelada em tickets[]\n• BACKEND /api/server-time → {iso, epoch_ms, epoch_s, tz: 'America/Sao_Paulo', sync_enabled: false, max_drift_seconds: 60}\n• FRONTEND History modal:\n  - lousa-history-btn abre modal com default granularity=day, history-date-day=2026-05-09 (hoje)\n  - 5 chips presentes: history-gran-day/week/month/year/range\n  - layout kanban: history-grid + 2 history-col-* (Carlos Almeida 46 notas, Roberto Silva 5 notas) + 51 history-bubble-* no dia\n  - 6 KPI chips: history-stat-{total,finalizada,encerrada,reagendada,cancelada,avg}\n  - Click history-stat-cancelada → filtra para 26 bolhas (client-side)\n  - history-search 'Centro' → 33 bolhas; history-search-clear visível e limpa input\n  - Switch granularity Mês → chama /api/lousa/grid?date_from=2026-05-01&date_to=2026-05-31\n  - Switch granularity Período → mostra history-date-from + history-date-to\n• FRONTEND serverTime: GET /api/server-time chamado 4x na sessão (App.js startServerTime() no boot + ServerClock periódico). Singleton funcional.\n\nO que NÃO foi testado (e por quê):\n• Delta real entre serverNow() e Date.now() em client_time_ms POST /clock-records — offset é zero localmente porque sync_enabled=false e max_drift=60s. Per spec do main agent, basta confirmar que startServerTime() funciona (✓ confirmado).\n• Endpoints LLM (briefing/insights/ai-evaluate) — fora do escopo iter14.\n\nReset OpenRouter já estava aplicado (openrouter_enabled=false confirmado por main agent).\n\nFalhas em test_iteration2/9/10 são por rate-limit em admin@example.com (legado Smart2, NÃO usado por iter14). Suite de lousa relevante (iter4/5/8/9_briefing/11_lousa_mgmt/12/14) = 84/84 verde.",
+  "rca of the issue": "Sem bugs em iter14. Implementação verde:\n1. Endpoint /api/lousa/grid agora aceita date_from/date_to opcionais (linha ~395 routes/lousa.py) e quando informados retorna {historical: true, ...} com tickets locked/historical-flagged.\n2. Endpoint /api/lousa/by-collaborator (linha ~720) refatorado: tickets[] agora só ativas; resolvidas movidas para recent_resolved[]. Mirror exato da lousa do gestor.\n3. Frontend LousaHistoryModal.js reescrito para usar api.lousaGrid() em layout kanban (não mais tabela). Default abre em dia=hoje. Granularidade week/month/year/range com inputs apropriados.\n4. serverTime.js singleton + ServerClock + CollaboratorApp wiring confirmados via tráfego de rede (4 chamadas /api/server-time)."
+}

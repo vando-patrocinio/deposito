@@ -379,28 +379,59 @@ async def list_ticket_logs(
 
 
 @router.get("/lousa/grid")
-async def lousa_grid(user: dict = Depends(require_role("gestor"))):
-    """Retorna lousa em formato GRADE: lista de técnicos + bolhas agrupadas por técnico
-    + SLA por bolha + agrupamento por slot de horário."""
+async def lousa_grid(
+    user: dict = Depends(require_role("gestor")),
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+):
+    """Retorna lousa em formato GRADE.
+    Sem parâmetros: bolhas ATIVAS agora (default).
+    Com date_from/date_to (YYYY-MM-DD): histórico — bolhas que estavam abertas/criadas/encerradas
+    em qualquer momento dentro do intervalo. View read-only para o frontend.
+    """
     q = tenant_filter(user)
     collabs = await db.collaborators.find(q, {"_id": 0}).to_list(500)
     collabs.sort(key=lambda c: c.get("name", ""))
 
-    active_states = ["pendente", "aberta", "aguardando_atendimento"]
     cids = [c["id"] for c in collabs]
-    all_active = await db.tickets.find(
-        {"assigned_collaborator_id": {"$in": cids}, "status": {"$in": active_states}},
-        {"_id": 0},
-    ).to_list(2000)
+    is_historical = bool(date_from or date_to)
 
-    # Inclui também os últimos 24h finalizados/encerrados — para gap entre serviços e duração
-    cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    all_resolved = await db.tickets.find(
-        {"assigned_collaborator_id": {"$in": cids},
-         "status": {"$in": ["finalizada", "encerrada", "cancelada", "reagendada"]},
-         "closed_at": {"$gte": cutoff_24h}},
-        {"_id": 0},
-    ).to_list(1000)
+    if is_historical:
+        # Período: usa today se não fornecido
+        df = date_from or today_str()
+        dt = date_to or df
+        from_iso = f"{df}T00:00:00"
+        from datetime import timedelta as _td
+        next_d = (datetime.fromisoformat(dt) + _td(days=1)).strftime("%Y-%m-%d")
+        to_iso = f"{next_d}T00:00:00"
+
+        # Tickets que TOCARAM o período: criado dentro OU encerrado dentro OU
+        # aberto antes E (ainda aberto OU encerrado depois)
+        all_active = []
+        all_resolved = await db.tickets.find(
+            {"assigned_collaborator_id": {"$in": cids},
+             "$or": [
+                 {"created_at": {"$gte": from_iso, "$lt": to_iso}},
+                 {"closed_at": {"$gte": from_iso, "$lt": to_iso}},
+                 # ainda aberta E criada antes do fim do período
+                 {"closed_at": None, "created_at": {"$lt": to_iso}},
+             ]},
+            {"_id": 0},
+        ).to_list(5000)
+    else:
+        active_states = ["pendente", "aberta", "aguardando_atendimento"]
+        all_active = await db.tickets.find(
+            {"assigned_collaborator_id": {"$in": cids}, "status": {"$in": active_states}},
+            {"_id": 0},
+        ).to_list(2000)
+        # Inclui também os últimos 24h finalizados/encerrados — para gap entre serviços e duração
+        cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        all_resolved = await db.tickets.find(
+            {"assigned_collaborator_id": {"$in": cids},
+             "status": {"$in": ["finalizada", "encerrada", "cancelada", "reagendada"]},
+             "closed_at": {"$gte": cutoff_24h}},
+            {"_id": 0},
+        ).to_list(1000)
 
     # Settings da empresa para SLA + grade fixa
     company_id = user.get("company_id") or DEMO_COMPANY_ID
@@ -445,14 +476,22 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
     columns = []
     for c in collabs:
         cid = c["id"]
-        tickets = sorted(
-            [t for t in all_active if t["assigned_collaborator_id"] == cid],
-            key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]),
-        )
-        recent_resolved = sorted(
-            [t for t in all_resolved if t["assigned_collaborator_id"] == cid],
-            key=lambda t: t.get("closed_at", ""),
-        )
+        if is_historical:
+            # No modo histórico, todos os tickets do período viram o tickets principal (read-only)
+            tickets = sorted(
+                [t for t in all_resolved if t["assigned_collaborator_id"] == cid],
+                key=lambda t: (PRIORITY_RANK.get(t.get("priority"), 99), t.get("position", 0)),
+            )
+            recent_resolved = []
+        else:
+            tickets = sorted(
+                [t for t in all_active if t["assigned_collaborator_id"] == cid],
+                key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]),
+            )
+            recent_resolved = sorted(
+                [t for t in all_resolved if t["assigned_collaborator_id"] == cid],
+                key=lambda t: t.get("closed_at", ""),
+            )
         locked_idx = compute_locked_positions(tickets)
         s = state_by_cid.get(cid, {"types": set(), "records": [], "last_record_at": None})
         in_intervalo = ("Início intervalo" in s["types"]) and ("Fim intervalo" not in s["types"])
@@ -490,7 +529,11 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
                 prev_close_iso = t["closed_at"]
 
         for i, t in enumerate(tickets):
-            t["locked"] = (i in locked_idx) or in_intervalo or (not has_entrada) or ended_day
+            if is_historical:
+                t["locked"] = True
+                t["historical"] = True
+            else:
+                t["locked"] = (i in locked_idx) or in_intervalo or (not has_entrada) or ended_day
             t["in_execution"] = t.get("status") == "aberta"
             sla_min = sla_map.get(t.get("type", "reparo"), 60)
             t["sla"] = _compute_sla(t, sla_min, yellow_min, red_after_min)
@@ -528,6 +571,9 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
         })
     return {
         "columns": columns,
+        "historical": is_historical,
+        "date_from": date_from if is_historical else None,
+        "date_to": date_to if is_historical else None,
         "sla_blink_when_overdue": blink,
         "sla_warning_pct": warning_pct,
         "sla_yellow_minutes": yellow_min,
@@ -603,6 +649,7 @@ async def _lousa_for_collaborator(cid: str) -> dict:
     if not state["has_entrada"]:
         return {
             "tickets": [],
+            "recent_resolved": [],
             "active_ticket_id": None,
             "clock_state": state,
             "lousa_unlocked": False,
@@ -676,8 +723,11 @@ async def _lousa_for_collaborator(cid: str) -> dict:
             pass
 
     active = next((t for t in active_raw if t["status"] in ("aberta", "aguardando_atendimento")), None)
+    # MIRROR: Lousa do colaborador = APENAS bolhas ativas (mesmas que aparecem na lousa do gestor)
+    # Resolvidos vão como metadata separada para o card "Último serviço encerrado", não na lista de bolhas
     return {
-        "tickets": active_raw + resolved_raw,
+        "tickets": active_raw,  # apenas ativas — espelha exatamente lousa do gestor
+        "recent_resolved": resolved_raw,  # metadata para histórico do dia
         "active_ticket_id": active["id"] if active else None,
         "last_closed_at": last_closed_at,
         "minutes_since_last_close": minutes_since_last_close,

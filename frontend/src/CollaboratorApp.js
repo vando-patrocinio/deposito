@@ -3,6 +3,7 @@ import { api } from "@/api";
 import SelfieCamera from "@/SelfieCamera";
 import LousaMobile from "@/LousaMobile";
 import ServerClock from "@/ServerClock";
+import { serverNow } from "@/serverTime";
 import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Row, softButtonStyle, StatusBadge } from "@/ui";
 
 const EVENT_TYPES = ["Entrada", "Início intervalo", "Fim intervalo", "Saída"];
@@ -198,7 +199,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
         lng: position.lng,
         public_ip: null,
         force_close_open_tickets: forceCloseOpen,
-        client_time_ms: Date.now(),
+        client_time_ms: serverNow(),  // sincronizado com servidor (anti-tampering local)
       });
       setReceipt(rec);
       if (rec.status === "Bloqueado") {
