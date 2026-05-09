@@ -60,8 +60,17 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [alertsOn, setAlertsOnState] = useState(() => isAlertsEnabled());
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(() => todayLocalISO());
   const prevOverdueRef = useRef(0);
   const isLocked = systemStatus.offline || systemStatus.drift_blocked;
+  const isToday = selectedDate === todayLocalISO();
+
+  function shiftDay(delta) {
+    const d = new Date(selectedDate + "T12:00:00");
+    d.setDate(d.getDate() + delta);
+    setSelectedDate(d.toISOString().slice(0, 10));
+  }
+  function goToday() { setSelectedDate(todayLocalISO()); }
 
   function toggleAlerts() {
     const next = !alertsOn;
@@ -100,7 +109,16 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [g, cs, lg] = await Promise.all([api.lousaGrid(), api.listCollaborators(), api.lousaLogs({ limit: 50 })]);
+      const params = {};
+      if (selectedDate !== todayLocalISO()) {
+        params.date_from = selectedDate;
+        params.date_to = selectedDate;
+      }
+      const [g, cs, lg] = await Promise.all([
+        api.lousaGrid(params),
+        api.listCollaborators(),
+        api.lousaLogs({ limit: 50 }),
+      ]);
       setGrid(g);
       setCollabs(cs);
       setLogs(lg.items || []);
@@ -112,7 +130,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => {
     refresh();
@@ -208,6 +226,13 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const totalTickets = grid.columns.reduce((sum, c) => sum + (c.tickets?.length || 0), 0);
   const overdueCount = grid.columns.flatMap((c) => c.tickets || []).filter((t) => t.sla?.status === "overdue").length;
 
+  // Detecta se data selecionada é passada/futura (para mostrar banner)
+  const dateMode = (() => {
+    const today = todayLocalISO();
+    if (selectedDate === today) return "today";
+    return selectedDate < today ? "past" : "future";
+  })();
+
   // Dispara beep + notification se overdueCount aumentou (e usuário ativou)
   useEffect(() => {
     prevOverdueRef.current = maybeFireOverdueAlerts(prevOverdueRef.current, overdueCount);
@@ -236,7 +261,15 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             )}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <DateNavigator
+            selectedDate={selectedDate}
+            isToday={isToday}
+            onPrev={() => shiftDay(-1)}
+            onNext={() => shiftDay(1)}
+            onToday={goToday}
+            onChange={setSelectedDate}
+          />
           <Button
             variant="soft"
             onClick={toggleSelectMode}
@@ -316,10 +349,33 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         </div>
       )}
 
+      {dateMode !== "today" && (
+        <div data-testid="lousa-date-banner" style={{
+          background: dateMode === "past"
+            ? "linear-gradient(90deg,#fef3c7,#fde68a)"
+            : "linear-gradient(90deg,#dbeafe,#bfdbfe)",
+          border: `1px solid ${dateMode === "past" ? "#fcd34d" : "#93c5fd"}`,
+          borderRadius: 12, padding: "10px 16px", marginBottom: 14,
+          display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10,
+        }}>
+          <div style={{ color: dateMode === "past" ? "#78350f" : "#1e40af", fontSize: 13, fontWeight: 600 }}>
+            {dateMode === "past" ? "🕐 Visualizando dia passado" : "📅 Visualizando dia futuro"}
+            {" — "}
+            <strong>{formatBR(selectedDate)}</strong>
+            {" · "}<span style={{ opacity: 0.8 }}>{totalTickets} serviço(s) neste dia</span>
+            {" · "}<em style={{ opacity: 0.7 }}>modo somente leitura</em>
+          </div>
+          <Button variant="soft" onClick={goToday} data-testid="lousa-back-today-btn"
+            style={{ background: "white", border: "1px solid #cbd5e1", fontWeight: 700 }}>
+            ← Voltar para hoje
+          </Button>
+        </div>
+      )}
+
       {/* Grade horizontal — coluna por técnico */}
       <div style={{
         display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16, minHeight: 540,
-        opacity: isLocked ? 0.5 : 1, pointerEvents: isLocked ? "none" : "auto",
+        opacity: isLocked || !isToday ? 0.92 : 1, pointerEvents: isLocked ? "none" : "auto",
       }} data-testid="lousa-grid">
         {grid.columns.length === 0 && (
           <div style={{ background: "white", padding: 30, borderRadius: 14, color: "#94a3b8", flex: 1, textAlign: "center" }}>
@@ -940,3 +996,72 @@ function aiScoreColor(score) {
   if (score >= 5.0) return "#f59e0b";
   return "#dc2626";
 }
+
+function todayLocalISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatBR(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function DateNavigator({ selectedDate, isToday, onPrev, onNext, onToday, onChange }) {
+  const dateObj = new Date(selectedDate + "T12:00:00");
+  const weekday = dateObj.toLocaleDateString("pt-BR", { weekday: "short" });
+  return (
+    <div data-testid="lousa-date-navigator" style={{
+      display: "flex", alignItems: "center", gap: 6,
+      background: isToday ? "#f0f9ff" : "#fef3c7",
+      border: `1px solid ${isToday ? "#bae6fd" : "#fcd34d"}`,
+      borderRadius: 999, padding: "4px 8px",
+    }}>
+      <button
+        data-testid="lousa-date-prev"
+        onClick={onPrev}
+        title="Dia anterior"
+        style={navBtnStyle}
+      >◀</button>
+      <input
+        type="date"
+        data-testid="lousa-date-input"
+        value={selectedDate}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          border: "none", outline: "none", background: "transparent",
+          fontSize: 13, fontWeight: 700, color: "#0f172a",
+          fontFamily: "inherit", cursor: "pointer", padding: "2px 4px",
+        }}
+      />
+      <span style={{ fontSize: 11, color: "#64748b", textTransform: "capitalize", marginRight: 4 }}>
+        {weekday.replace(".", "")}
+      </span>
+      <button
+        data-testid="lousa-date-next"
+        onClick={onNext}
+        title="Próximo dia"
+        style={navBtnStyle}
+      >▶</button>
+      {!isToday && (
+        <button
+          data-testid="lousa-date-today"
+          onClick={onToday}
+          title="Voltar para hoje"
+          style={{
+            ...navBtnStyle, background: "#0ea5e9", color: "white",
+            padding: "3px 10px", fontWeight: 700, fontSize: 11,
+          }}
+        >Hoje</button>
+      )}
+    </div>
+  );
+}
+
+const navBtnStyle = {
+  border: 0, background: "white", borderRadius: 999,
+  width: 26, height: 26, display: "grid", placeItems: "center",
+  cursor: "pointer", fontSize: 12, color: "#475569",
+  boxShadow: "0 1px 2px rgba(15,23,42,.08)",
+};
