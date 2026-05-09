@@ -3,8 +3,12 @@ import { api } from "@/api";
 import { Button, Card, Field, inputStyle } from "@/ui";
 
 /**
- * Card de configuração e operação da integração com Atlaz.
- * Aparece dentro do SettingsPanel.
+ * Card de configuração da integração Atlaz V2 (API oficial).
+ * Doc: https://app.atlaz.com.br/docs/api
+ *
+ * IMPORTANTE: A API V2 do Atlaz NÃO permite fechar/cancelar chamados.
+ * O fluxo é apenas pull (importa OSs como bolhas). Quando você encerrar
+ * a bolha aqui, dá baixa MANUALMENTE no painel web do Atlaz.
  */
 export default function AtlazIntegrationCard() {
   const [cfg, setCfg] = useState(null);
@@ -27,23 +31,14 @@ export default function AtlazIntegrationCard() {
       setCollabs(cs || []);
       setForm({
         enabled: !!c.enabled,
-        base_url: c.base_url || "",
         api_key: "",
-        api_key_header: c.api_key_header || "Authorization",
-        api_key_prefix: c.api_key_prefix ?? "Bearer ",
-        list_path: c.list_path || "/ordens-servico",
-        list_query_status: c.list_query_status || "aberta",
-        close_path: c.close_path || "/ordens-servico/{id}/concluir",
-        cancel_path: c.cancel_path || "/ordens-servico/{id}/cancelar",
-        reschedule_path: c.reschedule_path || "/ordens-servico/{id}/reagendar",
         filiais_text: (c.filiais || []).join(", "),
         filial_to_collaborator: { ...(c.filial_to_collaborator || {}) },
-        type_map_text: JSON.stringify(c.type_map || {}, null, 2),
-        field_map_text: JSON.stringify(c.field_map || {}, null, 2),
-        sync_interval_minutes: c.sync_interval_minutes ?? 10,
+        technician_to_collaborator: { ...(c.technician_to_collaborator || {}) },
+        lookback_days: c.lookback_days ?? 30,
+        sync_interval_minutes: c.sync_interval_minutes ?? 15,
         auto_create_bubbles: c.auto_create_bubbles ?? true,
-        auto_push_on_close: c.auto_push_on_close ?? true,
-        timeout_seconds: c.timeout_seconds ?? 15,
+        timeout_seconds: c.timeout_seconds ?? 20,
       });
     } catch (e) {
       setMsg("Erro carregando config: " + (e?.response?.data?.detail || e.message));
@@ -55,29 +50,15 @@ export default function AtlazIntegrationCard() {
     setBusy(true); setMsg("");
     const payload = {
       enabled: form.enabled,
-      base_url: form.base_url,
-      api_key_header: form.api_key_header,
-      api_key_prefix: form.api_key_prefix,
-      list_path: form.list_path,
-      list_query_status: form.list_query_status,
-      close_path: form.close_path,
-      cancel_path: form.cancel_path,
-      reschedule_path: form.reschedule_path,
       filiais: form.filiais_text.split(",").map((x) => x.trim()).filter(Boolean),
-      sync_interval_minutes: Number(form.sync_interval_minutes) || 10,
+      filial_to_collaborator: form.filial_to_collaborator || {},
+      technician_to_collaborator: form.technician_to_collaborator || {},
+      lookback_days: Number(form.lookback_days) || 30,
+      sync_interval_minutes: Number(form.sync_interval_minutes) || 15,
       auto_create_bubbles: form.auto_create_bubbles,
-      auto_push_on_close: form.auto_push_on_close,
-      timeout_seconds: Number(form.timeout_seconds) || 15,
+      timeout_seconds: Number(form.timeout_seconds) || 20,
     };
     if (form.api_key) payload.api_key = form.api_key;
-    payload.filial_to_collaborator = form.filial_to_collaborator || {};
-    try {
-      payload.type_map = JSON.parse(form.type_map_text || "{}");
-    } catch { setMsg("Mapeamento de tipos inválido (não é JSON)"); setBusy(false); return; }
-    try {
-      payload.field_map = JSON.parse(form.field_map_text || "{}");
-    } catch { setMsg("Mapeamento de campos inválido (não é JSON)"); setBusy(false); return; }
-
     try {
       await api.atlazUpdateSettings(payload);
       setMsg("✓ Configuração salva.");
@@ -90,23 +71,15 @@ export default function AtlazIntegrationCard() {
 
   async function runTest() {
     setBusy(true); setTest(null); setMsg("");
-    try {
-      const r = await api.atlazTestConnection();
-      setTest(r);
-    } catch (e) {
-      setTest({ ok: false, error: e?.response?.data?.detail || e.message });
-    }
+    try { setTest(await api.atlazTestConnection()); }
+    catch (e) { setTest({ ok: false, error: e?.response?.data?.detail || e.message }); }
     setBusy(false);
   }
 
   async function runSync() {
     setBusy(true); setSync(null); setMsg("");
-    try {
-      const r = await api.atlazSyncNow();
-      setSync(r);
-    } catch (e) {
-      setSync({ ok: false, error: e?.response?.data?.detail || e.message });
-    }
+    try { setSync(await api.atlazSyncNow()); }
+    catch (e) { setSync({ ok: false, error: e?.response?.data?.detail || e.message }); }
     setBusy(false);
   }
 
@@ -115,9 +88,7 @@ export default function AtlazIntegrationCard() {
       const r = await api.atlazSyncLogs(30);
       setLogs(r.items || []);
       setShowLogs(true);
-    } catch (e) {
-      setMsg("Erro: " + (e?.response?.data?.detail || e.message));
-    }
+    } catch (e) { setMsg("Erro: " + (e?.response?.data?.detail || e.message)); }
   }
 
   if (!form) {
@@ -139,15 +110,13 @@ export default function AtlazIntegrationCard() {
   );
 
   return (
-    <Card title="🔗 Integração Atlaz" data-testid="card-atlaz" style={{ gridColumn: "1 / -1" }}>
+    <Card title="🔗 Integração Atlaz V2" data-testid="card-atlaz" style={{ gridColumn: "1 / -1" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 10 }}>
         <p style={{ color: "#64748b", fontSize: 13, margin: 0, flex: 1 }}>
-          Importa OSs do Atlaz como bolhas e dá baixa automática quando você encerrar/cancelar/reagendar.
+          Importa chamados abertos do Atlaz (<code>app.atlaz.com.br/api/v2</code>) como bolhas na Lousa.
           <br />
-          <small style={{ color: "#94a3b8" }}>
-            Worker periódico roda a cada {form.sync_interval_minutes}min.
-            Os caminhos dos endpoints e o mapeamento de campos são configuráveis abaixo —
-            ajuste conforme a documentação que você recebeu da equipe Atlaz.
+          <small style={{ color: "#dc2626", fontWeight: 600 }}>
+            ⚠ A API Atlaz V2 só permite LER chamados. Para fechar/cancelar, use o painel web do Atlaz após terminar aqui.
           </small>
         </p>
         {statusBadge}
@@ -155,116 +124,37 @@ export default function AtlazIntegrationCard() {
 
       <Field label="Ativar integração">
         <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-          <input
-            data-testid="atlaz-enabled"
-            type="checkbox"
-            checked={!!form.enabled}
+          <input data-testid="atlaz-enabled" type="checkbox" checked={!!form.enabled}
             onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
-            style={{ width: 18, height: 18 }}
-          />
+            style={{ width: 18, height: 18 }} />
           <span style={{ fontSize: 13, color: "#475569" }}>
-            {form.enabled ? "Integração ativa — pull periódico + push de baixa" : "Integração desligada"}
+            {form.enabled ? "Pull periódico ATIVO" : "Integração desligada"}
           </span>
         </label>
       </Field>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 }}>
-        <Field label="🌐 Base URL da API">
-          <input
-            data-testid="atlaz-base-url"
-            placeholder="https://ligofibra.atlaz.com.br/api/v1"
-            value={form.base_url}
-            onChange={(e) => setForm({ ...form, base_url: e.target.value })}
-            style={inputStyle}
-          />
-          <small style={{ color: "#94a3b8", fontSize: 11 }}>
-            Ex.: <code>https://SEU-PROVEDOR.atlaz.com.br/api/v1</code>
-          </small>
-        </Field>
-        <Field label="Header de auth">
-          <input
-            data-testid="atlaz-api-key-header"
-            placeholder="Authorization"
-            value={form.api_key_header}
-            onChange={(e) => setForm({ ...form, api_key_header: e.target.value })}
-            style={inputStyle}
-          />
-        </Field>
-        <Field label="Prefixo">
-          <input
-            data-testid="atlaz-api-key-prefix"
-            placeholder="Bearer "
-            value={form.api_key_prefix}
-            onChange={(e) => setForm({ ...form, api_key_prefix: e.target.value })}
-            style={inputStyle}
-          />
-          <small style={{ color: "#94a3b8", fontSize: 10 }}>
-            <code>Bearer </code> (com espaço) para JWT/Bearer; vazio para API-Key.
-          </small>
-        </Field>
-      </div>
-
-      <Field label="🔑 API Key">
+      <Field label="🔑 Token da API Atlaz">
         <input
           data-testid="atlaz-api-key"
           type="password"
-          placeholder={cfg?.api_key_set ? `Salva: ${cfg.api_key}` : "Cole a chave do Atlaz aqui"}
+          placeholder={cfg?.api_key_set ? `Salvo: ${cfg.api_key}` : "Cole o token do Atlaz aqui"}
           value={form.api_key}
           onChange={(e) => setForm({ ...form, api_key: e.target.value })}
           style={inputStyle}
         />
         <small style={{ color: "#94a3b8", fontSize: 11 }}>
-          Deixe em branco para manter a chave atual.
+          Obtenha em <code>app.atlaz.com.br</code> → Configurações → Atlaz API.
+          Deixe em branco para manter o atual.
         </small>
       </Field>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
-        <Field label="📥 Path para listar OSs">
-          <input data-testid="atlaz-list-path" value={form.list_path}
-            onChange={(e) => setForm({ ...form, list_path: e.target.value })} style={inputStyle} />
-        </Field>
-        <Field label="?status=">
-          <input data-testid="atlaz-list-status" value={form.list_query_status}
-            onChange={(e) => setForm({ ...form, list_query_status: e.target.value })} style={inputStyle} />
-        </Field>
-      </div>
-
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-        <Field label="✓ Path concluir">
-          <input data-testid="atlaz-close-path" value={form.close_path}
-            onChange={(e) => setForm({ ...form, close_path: e.target.value })} style={inputStyle} />
+        <Field label="📅 Janela retroativa (dias)">
+          <input data-testid="atlaz-lookback" type="number" min={1} max={365}
+            value={form.lookback_days}
+            onChange={(e) => setForm({ ...form, lookback_days: e.target.value })} style={inputStyle} />
+          <small style={{ color: "#94a3b8", fontSize: 10 }}>Atlaz exige data inicial obrigatória.</small>
         </Field>
-        <Field label="✗ Path cancelar">
-          <input data-testid="atlaz-cancel-path" value={form.cancel_path}
-            onChange={(e) => setForm({ ...form, cancel_path: e.target.value })} style={inputStyle} />
-        </Field>
-        <Field label="📅 Path reagendar">
-          <input data-testid="atlaz-reschedule-path" value={form.reschedule_path}
-            onChange={(e) => setForm({ ...form, reschedule_path: e.target.value })} style={inputStyle} />
-        </Field>
-      </div>
-
-      <Field label="🏢 Filiais (separadas por vírgula)">
-        <input
-          data-testid="atlaz-filiais"
-          placeholder="FILIAL_CENTRO, FILIAL_NORTE, FILIAL_SUL"
-          value={form.filiais_text}
-          onChange={(e) => setForm({ ...form, filiais_text: e.target.value })}
-          style={inputStyle}
-        />
-        <small style={{ color: "#94a3b8", fontSize: 11 }}>
-          Vazio = busca todas (sem filtro de filial). Cada filial vira uma chamada separada à API.
-        </small>
-      </Field>
-
-      <FilialCollabMapper
-        filiais={form.filiais_text.split(",").map((x) => x.trim()).filter(Boolean)}
-        mapping={form.filial_to_collaborator || {}}
-        collabs={collabs}
-        onChange={(m) => setForm({ ...form, filial_to_collaborator: m })}
-      />
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
         <Field label="⏱ Intervalo (min)">
           <input data-testid="atlaz-interval" type="number" min={1} max={1440}
             value={form.sync_interval_minutes}
@@ -275,53 +165,50 @@ export default function AtlazIntegrationCard() {
             value={form.timeout_seconds}
             onChange={(e) => setForm({ ...form, timeout_seconds: e.target.value })} style={inputStyle} />
         </Field>
-        <Field label="Comportamento">
-          <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
-            <input data-testid="atlaz-auto-create" type="checkbox" checked={!!form.auto_create_bubbles}
-              onChange={(e) => setForm({ ...form, auto_create_bubbles: e.target.checked })} /> Auto criar bolhas
-          </label>
-          <label style={{ display: "block", fontSize: 12 }}>
-            <input data-testid="atlaz-auto-push" type="checkbox" checked={!!form.auto_push_on_close}
-              onChange={(e) => setForm({ ...form, auto_push_on_close: e.target.checked })} /> Push ao encerrar
-          </label>
-        </Field>
       </div>
 
-      <details style={{ marginTop: 8, background: "#f8fafc", borderRadius: 10, padding: 10, border: "1px solid #e2e8f0" }}>
-        <summary style={{ cursor: "pointer", fontWeight: 700, color: "#475569", fontSize: 13 }}>
-          🛠 Mapeamentos avançados (JSON) — só altere se a doc do Atlaz usar nomes diferentes
-        </summary>
-        <Field label="Mapeamento de tipos (JSON)">
-          <textarea data-testid="atlaz-type-map" rows={4} value={form.type_map_text}
-            onChange={(e) => setForm({ ...form, type_map_text: e.target.value })}
-            style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12 }} />
-          <small style={{ color: "#94a3b8", fontSize: 11 }}>
-            Tipos do Atlaz (UPPERCASE) → tipos internos (reparo|instalacao|retirada|prioridade|preventiva|venda).
-          </small>
-        </Field>
-        <Field label="Mapeamento de campos JSON do Atlaz (JSON)">
-          <textarea data-testid="atlaz-field-map" rows={6} value={form.field_map_text}
-            onChange={(e) => setForm({ ...form, field_map_text: e.target.value })}
-            style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12 }} />
-          <small style={{ color: "#94a3b8", fontSize: 11 }}>
-            Chave = campo interno (id, client_name, address, neighborhood, phone, type, scheduled_time, relato, filial). Valor = nome do campo no JSON da resposta do Atlaz.
-          </small>
-        </Field>
-      </details>
+      <Field label="🏢 Filiais (cidades — separadas por vírgula)">
+        <input
+          data-testid="atlaz-filiais"
+          placeholder="Rio de Janeiro, Guaratinguetá, Osasco, Magé"
+          value={form.filiais_text}
+          onChange={(e) => setForm({ ...form, filiais_text: e.target.value })}
+          style={inputStyle}
+        />
+        <small style={{ color: "#94a3b8", fontSize: 11 }}>
+          Filtra por <code>ponto.cidade</code>. Vazio = traz todas. Use os nomes que aparecem no botão Testar.
+        </small>
+      </Field>
+
+      <FilialMapper
+        filiais={form.filiais_text.split(",").map((x) => x.trim()).filter(Boolean)}
+        mapping={form.filial_to_collaborator || {}}
+        collabs={collabs}
+        onChange={(m) => setForm({ ...form, filial_to_collaborator: m })}
+      />
+
+      <TecnicoMapper
+        technicians={Object.keys(test?.tecnicos_atlaz || {})}
+        mapping={form.technician_to_collaborator || {}}
+        collabs={collabs}
+        onChange={(m) => setForm({ ...form, technician_to_collaborator: m })}
+      />
+
+      <Field label="">
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#475569" }}>
+          <input data-testid="atlaz-auto-create" type="checkbox" checked={!!form.auto_create_bubbles}
+            onChange={(e) => setForm({ ...form, auto_create_bubbles: e.target.checked })} />
+          Criar bolhas automaticamente no pull (recomendado)
+        </label>
+      </Field>
 
       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <Button onClick={save} disabled={busy} data-testid="atlaz-save-btn">
-          {busy ? "Salvando…" : "💾 Salvar config Atlaz"}
+          {busy ? "Salvando…" : "💾 Salvar"}
         </Button>
-        <Button variant="soft" onClick={runTest} disabled={busy} data-testid="atlaz-test-btn">
-          🔌 Testar conexão
-        </Button>
-        <Button variant="soft" onClick={runSync} disabled={busy} data-testid="atlaz-sync-btn">
-          🔄 Sincronizar agora
-        </Button>
-        <Button variant="soft" onClick={loadLogs} data-testid="atlaz-logs-btn">
-          📋 Ver logs
-        </Button>
+        <Button variant="soft" onClick={runTest} disabled={busy} data-testid="atlaz-test-btn">🔌 Testar conexão</Button>
+        <Button variant="soft" onClick={runSync} disabled={busy} data-testid="atlaz-sync-btn">🔄 Sincronizar agora</Button>
+        <Button variant="soft" onClick={loadLogs} data-testid="atlaz-logs-btn">📋 Ver logs</Button>
         {msg && <span style={{ color: msg.startsWith("✓") ? "#166534" : "#be123c", fontWeight: 700, fontSize: 13 }}>{msg}</span>}
       </div>
 
@@ -332,30 +219,17 @@ export default function AtlazIntegrationCard() {
           border: `1px solid ${test.ok ? "#86efac" : "#fecaca"}`,
           color: test.ok ? "#166534" : "#7f1d1d", fontSize: 12,
         }}>
-          <div style={{ fontWeight: 800, marginBottom: 4 }}>
-            {test.ok ? `✅ Conectado (HTTP ${test.status})` : `❌ Falha — ${test.reason || test.error || `HTTP ${test.status}`}`}
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>
+            {test.ok
+              ? `✅ Conectado — ${test.total_chamados} chamados abertos nos últimos ${test.lookback_days} dias`
+              : `❌ Falha: ${test.error || test.reason}`}
           </div>
-          {test.diagnosis && (
-            <div data-testid="atlaz-test-diagnosis" style={{
-              marginTop: 6, padding: 8, background: "rgba(255,255,255,.6)",
-              borderRadius: 8, color: "#1e293b", fontSize: 12, lineHeight: 1.5,
-              borderLeft: "3px solid #f59e0b",
-            }}>
-              💡 <strong>Diagnóstico:</strong> {test.diagnosis}
+          {test.ok && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginTop: 8 }}>
+              <BreakdownBox title="Por cidade" data={test.cidades} />
+              <BreakdownBox title="Por tipo" data={test.tipos} />
+              <BreakdownBox title="Técnicos Atlaz" data={test.tecnicos_atlaz} />
             </div>
-          )}
-          {test.url && <div><strong>URL:</strong> <code>{test.url}</code></div>}
-          {test.sample_count != null && <div><strong>Itens recebidos:</strong> {test.sample_count}</div>}
-          {test.sample_keys?.length > 0 && (
-            <div style={{ marginTop: 4 }}>
-              <strong>Campos detectados no JSON:</strong> <code style={{ fontSize: 11 }}>{test.sample_keys.join(", ")}</code>
-            </div>
-          )}
-          {test.body_preview && (
-            <details style={{ marginTop: 6 }}>
-              <summary style={{ cursor: "pointer" }}>Ver resposta crua</summary>
-              <pre style={{ fontSize: 11, marginTop: 4, whiteSpace: "pre-wrap", maxHeight: 160, overflow: "auto" }}>{test.body_preview}</pre>
-            </details>
           )}
         </div>
       )}
@@ -369,7 +243,8 @@ export default function AtlazIntegrationCard() {
         }}>
           {sync.ok ? (
             <>
-              <strong>✅ Sincronização concluída</strong> — criadas: <strong>{sync.created}</strong>,
+              <strong>✅ Sincronização</strong> — recebidas: <strong>{sync.fetched ?? 0}</strong>,
+              {" "}criadas: <strong>{sync.created}</strong>,
               {" "}já existentes: <strong>{sync.skipped}</strong>,
               {" "}erros: <strong>{sync.errors?.length || 0}</strong>
               {sync.errors?.length > 0 && (
@@ -378,9 +253,7 @@ export default function AtlazIntegrationCard() {
                 </ul>
               )}
             </>
-          ) : (
-            <>❌ {sync.reason || sync.error || "Falha"}</>
-          )}
+          ) : (<>❌ {sync.reason || sync.error}</>)}
         </div>
       )}
 
@@ -402,83 +275,104 @@ export default function AtlazIntegrationCard() {
   );
 }
 
-function FilialCollabMapper({ filiais, mapping, collabs, onChange }) {
-  const list = Array.isArray(filiais) ? filiais : [];
+function BreakdownBox({ title, data }) {
+  const entries = Object.entries(data || {}).slice(0, 8);
+  return (
+    <div style={{ background: "rgba(255,255,255,.5)", borderRadius: 8, padding: 8, fontSize: 11 }}>
+      <div style={{ fontWeight: 800, marginBottom: 4 }}>{title}</div>
+      {entries.length === 0 && <div style={{ color: "#94a3b8" }}>—</div>}
+      {entries.map(([k, v]) => (
+        <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "1px 0" }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{k}</span>
+          <strong>{v}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  function setForFilial(filial, collabId) {
-    const next = { ...(mapping || {}) };
-    if (collabId) next[filial] = collabId;
-    else delete next[filial];
-    onChange(next);
-  }
+function FilialMapper({ filiais, mapping, collabs, onChange }) {
+  if (!filiais.length) return null;
+  return (
+    <div data-testid="atlaz-filial-collab-mapper" style={{
+      marginTop: 10, background: "#f0f9ff", border: "1px solid #bae6fd",
+      borderRadius: 12, padding: 12,
+    }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: "#0c4a6e", marginBottom: 6 }}>
+        🏢 Mapeamento Filial → Técnico padrão
+      </div>
+      <p style={{ color: "#0369a1", fontSize: 11, margin: "0 0 10px" }}>
+        Usado quando o chamado Atlaz não tem técnico atribuído.
+      </p>
+      {filiais.map((f) => (
+        <div key={f} data-testid={`atlaz-fc-row-${f}`} style={{
+          display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 8,
+          padding: 6, marginBottom: 4, background: "white", borderRadius: 6,
+          border: "1px solid #e0f2fe", alignItems: "center",
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 600 }}>{f}</div>
+          <select
+            data-testid={`atlaz-fc-select-${f}`}
+            value={mapping[f] || ""}
+            onChange={(e) => {
+              const m = { ...mapping };
+              if (e.target.value) m[f] = e.target.value; else delete m[f];
+              onChange(m);
+            }}
+            style={{ padding: "4px 8px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 12 }}
+          >
+            <option value="">— fallback —</option>
+            {(collabs || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  // Filiais "órfãs" no mapeamento que não estão mais na lista de filiais
-  const orphaned = Object.keys(mapping || {}).filter((f) => !list.includes(f));
-
-  if (list.length === 0 && orphaned.length === 0) {
+function TecnicoMapper({ technicians, mapping, collabs, onChange }) {
+  if (!technicians?.length) {
     return (
-      <div data-testid="atlaz-filial-collab-empty" style={{
-        background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 10,
-        padding: 14, color: "#94a3b8", fontSize: 13, textAlign: "center", marginTop: 8,
+      <div style={{
+        marginTop: 10, background: "#fef3c7", border: "1px dashed #fde68a",
+        borderRadius: 12, padding: 12, fontSize: 12, color: "#78350f",
       }}>
-        Adicione filiais acima para mapear cada uma a um técnico responsável.
+        💡 Clique em <strong>🔌 Testar conexão</strong> para listar os técnicos do Atlaz e mapeá-los aos colaboradores locais.
       </div>
     );
   }
-
   return (
-    <div data-testid="atlaz-filial-collab-mapper" style={{
-      marginTop: 10, background: "#f8fafc", border: "1px solid #e2e8f0",
+    <div data-testid="atlaz-tec-mapper" style={{
+      marginTop: 10, background: "#fefce8", border: "1px solid #fef08a",
       borderRadius: 12, padding: 12,
     }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a", marginBottom: 8 }}>
-        🔗 Filial → Técnico responsável
+      <div style={{ fontWeight: 700, fontSize: 13, color: "#713f12", marginBottom: 6 }}>
+        👷 Mapeamento Técnico Atlaz → Colaborador local (prioridade máxima)
       </div>
-      <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 10px" }}>
-        Define qual técnico recebe as bolhas importadas de cada filial.
-        Filiais sem mapeamento usam o primeiro técnico ativo da empresa como fallback.
+      <p style={{ color: "#854d0e", fontSize: 11, margin: "0 0 10px" }}>
+        Quando o chamado Atlaz vem com técnico atribuído, esse mapeamento é usado.
       </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {list.map((filial) => (
-          <div key={filial} data-testid={`atlaz-fc-row-${filial}`} style={{
-            display: "grid", gridTemplateColumns: "1fr 1.4fr",
-            gap: 10, alignItems: "center",
-            padding: 8, background: "white", borderRadius: 8, border: "1px solid #e2e8f0",
+      <div style={{ maxHeight: 220, overflowY: "auto" }}>
+        {technicians.map((t) => (
+          <div key={t} data-testid={`atlaz-tec-row-${t}`} style={{
+            display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 8,
+            padding: 6, marginBottom: 4, background: "white", borderRadius: 6,
+            border: "1px solid #fef9c3", alignItems: "center",
           }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{filial}</div>
+            <div style={{ fontSize: 12, fontWeight: 600 }}>{t}</div>
             <select
-              data-testid={`atlaz-fc-select-${filial}`}
-              value={(mapping || {})[filial] || ""}
-              onChange={(e) => setForFilial(filial, e.target.value)}
-              style={{
-                padding: "6px 8px", border: "1px solid #cbd5e1",
-                borderRadius: 8, fontSize: 13, background: "white",
+              data-testid={`atlaz-tec-select-${t}`}
+              value={mapping[t] || ""}
+              onChange={(e) => {
+                const m = { ...mapping };
+                if (e.target.value) m[t] = e.target.value; else delete m[t];
+                onChange(m);
               }}
+              style={{ padding: "4px 8px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 12 }}
             >
-              <option value="">— Sem mapeamento (usa fallback) —</option>
-              {(collabs || []).map((c) => (
-                <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
-              ))}
+              <option value="">— ignorar (usa fallback) —</option>
+              {(collabs || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
-        ))}
-        {orphaned.map((filial) => (
-          <div key={filial} data-testid={`atlaz-fc-orphan-${filial}`} style={{
-            display: "grid", gridTemplateColumns: "1fr auto",
-            gap: 10, alignItems: "center",
-            padding: 8, background: "#fef3c7", borderRadius: 8, border: "1px solid #fde68a",
-          }}>
-            <div style={{ fontSize: 12, color: "#78350f" }}>
-              ⚠ <strong>{filial}</strong> mapeada para <code style={{ background: "white", padding: "1px 4px", borderRadius: 4 }}>{mapping[filial]}</code> mas não está mais na lista de filiais ativas.
-            </div>
-            <button
-              data-testid={`atlaz-fc-remove-${filial}`}
-              type="button"
-              onClick={() => setForFilial(filial, null)}
-              style={{ background: "#dc2626", color: "white", border: 0, borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-            >
-              Remover
-            </button>
           </div>
         ))}
       </div>

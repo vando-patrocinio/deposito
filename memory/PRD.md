@@ -1,8 +1,21 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 17)
+**Última atualização**: 2026-05-09 (iteração 18)
 
 ## Histórico de iterações
+
+### Iter 18 — Atlaz V2 API Oficial (2026-05-09) ✅
+- ✅ **Reescrita completa** de `routes/atlaz.py` com base na **doc oficial**: `https://app.atlaz.com.br/docs/api`
+- ✅ Base URL: `https://app.atlaz.com.br/api/v2` (não é o domínio do tenant!)
+- ✅ Auth: querystring `?token=` (descoberto após muitos testes)
+- ✅ `GET /listachamados` com `data_criacao_inicio` obrigatório, filtro por `status=abertos`
+- ✅ Dedupe via `atlaz_external_id`; mapeamento por **filial(cidade)** OU **técnico Atlaz** (prioridade técnico)
+- ✅ Tipos REAIS detectados: "Retirada de equipamento", "Visita / Vistoria", "Instalação", "Suporte", "Cancelamento", "Outros"
+- ⚠ **API V2 NÃO permite fechar/cancelar/reagendar** chamados — push de baixa removido. Gestor precisa dar baixa manualmente no painel web do Atlaz após terminar na Lousa.
+- ✅ **Frontend reescrito**: card mais simples, com `BreakdownBox` mostrando contagem por cidade/tipo/técnico no test-connection; `TecnicoMapper` (preenche depois do test) e `FilialMapper`.
+- ✅ **TESTADO COM CHAVE REAL DA LIGO FIBRA**: 64 chamados detectados em 5 cidades, 5 técnicos atribuídos, 43 importados como bolhas com sucesso, dedupe verificado (segunda call = 43 skipped).
+- ✅ Sync agendado a cada 15min via worker periódico (já existente).
+- ⚠ Push hook em `admin-close` mantido como **stub no-op** que retorna `{ok: false, reason: "atlaz_api_v2_not_supported"}`.
 
 ### Iter 17 — 4 features P1 do backlog (2026-05-09)
 - ✅ **#1 Mapeamento Filial→Colaborador via UI amigável**: substituído textarea JSON cru por componente `FilialCollabMapper` em `AtlazIntegrationCard.js` — cada filial digitada gera linha com dropdown de colaboradores (carregado de `api.listCollaborators`). Filiais "órfãs" (mapeadas mas sumidas da lista) aparecem destacadas em amarelo com botão remover.
