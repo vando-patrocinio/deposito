@@ -352,7 +352,78 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
           {error && screen !== "selfie-error" && <div style={{ background: "#fee2e2", color: "#991b1b", padding: 10, borderRadius: 12, marginBottom: 10 }}>{error}</div>}
 
-          {screen === "home" && today && (
+          {screen === "home" && today && (() => {
+            const clockEnabled = collab?.clock_in_enabled !== false;
+            // Colaborador externo (clock_in_enabled=false) → tela focada em Lousa
+            if (!clockEnabled) {
+              return (
+                <div data-testid="screen-home-no-clock">
+                  <div style={{ ...appCard, background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "white", border: "none", padding: 20 }}>
+                    <div style={{ color: "#e9d5ff", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>COLABORADOR EXTERNO</div>
+                    <div style={{ fontSize: 22, fontWeight: 950, marginTop: 6 }}>
+                      Você não bate ponto
+                    </div>
+                    <div style={{ marginTop: 6, color: "#e9d5ff", fontSize: 12, lineHeight: 1.5 }}>
+                      Acompanhe e finalize seus serviços diretamente na Lousa.
+                    </div>
+                  </div>
+
+                  <button
+                    data-testid="open-lousa-btn-primary"
+                    onClick={() => setScreen("lousa")}
+                    style={{
+                      width: "100%", height: 72, borderRadius: 36, border: 0,
+                      background: "linear-gradient(135deg,#0ea5e9,#0284c7)",
+                      color: "white", fontWeight: 950, fontSize: 18,
+                      marginTop: 4, marginBottom: 10,
+                      boxShadow: "0 18px 36px rgba(14,165,233,.45)",
+                      cursor: "pointer", letterSpacing: 0.4,
+                    }}
+                  >
+                    📋 Abrir Lousa de Serviços
+                  </button>
+
+                  {/* Resumo do último serviço */}
+                  {lousaSummary?.last_finished_ticket && (
+                    <div data-testid="last-service-summary" style={{
+                      marginTop: 10, padding: 12, borderRadius: 12,
+                      background: "#ecfeff", border: "1px solid #67e8f9",
+                      fontSize: 12, color: "#0e7490",
+                    }}>
+                      <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#155e75" }}>
+                        🧾 Último serviço encerrado
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                        <span>{lousaSummary.last_finished_ticket.client_snapshot?.name}</span>
+                        <strong>
+                          {lousaSummary.last_finished_ticket.duration_minutes != null
+                            ? `🕐 ${formatDur(lousaSummary.last_finished_ticket.duration_minutes)}`
+                            : ""}
+                        </strong>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ ...softCard, marginTop: 14 }}>
+                    {(() => {
+                      const p = pracas.find((x) => x.id === collab?.praca_id);
+                      return <Row label="Praça" value={p ? `${p.city}/${p.state}` : (collab?.company || "—")} />;
+                    })()}
+                    {(() => {
+                      const dev = parseDevice(navigator.userAgent || "");
+                      return (
+                        <>
+                          <Row label="Dispositivo" value={dev.device} />
+                          <Row label="Sistema" value={dev.os} />
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              );
+            }
+            // Layout CLT padrão (com bater ponto)
+            return (
             <div data-testid="screen-home">
               <div style={{ ...appCard, background: "linear-gradient(135deg,#0f172a,#1e293b)", color: "white", border: "none", padding: 18 }}>
                 <div style={{ color: "#cbd5e1", fontSize: 12 }}>Próximo</div>
@@ -444,7 +515,8 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 })()}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {screen === "camera" && (
             <SelfieCamera key={cameraKey} eventType={eventType} onCapture={onSelfieCaptured} onCancel={() => setScreen("home")} />

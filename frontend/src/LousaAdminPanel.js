@@ -18,10 +18,36 @@ const TYPE_LABELS = {
   venda: "💼 Venda",
 };
 
+const TYPE_ICONS = {
+  instalacao: "🔧",
+  retirada: "📦",
+  visita_tecnica: "🛠️",
+  manutencao: "🔩",
+  upgrade: "⬆️",
+  downgrade: "⬇️",
+  troca_endereco: "🏠",
+  troca_titularidade: "👤",
+  cancelamento: "🚫",
+  outros: "📋",
+  venda: "💼",
+};
+
 const PRIORITY_COLORS = {
-  prioridade: { bg: "#fee2e2", border: "#dc2626", text: "#7f1d1d", label: "🚨 PRIORIDADE" },
-  horario: { bg: "#fef3c7", border: "#f59e0b", text: "#78350f", label: "⏰ HORÁRIO" },
-  normal: { bg: "white", border: "#cbd5e1", text: "#0f172a", label: "" },
+  prioridade: {
+    bg: "linear-gradient(135deg,#fff5f5,#ffe4e6)",
+    accent: "#e11d48", border: "#fecdd3", text: "#9f1239",
+    label: "PRIORIDADE", icon: "🚨",
+  },
+  horario: {
+    bg: "linear-gradient(135deg,#fffbeb,#fef3c7)",
+    accent: "#d97706", border: "#fde68a", text: "#78350f",
+    label: "HORÁRIO", icon: "⏰",
+  },
+  normal: {
+    bg: "white",
+    accent: "#0ea5e9", border: "#e2e8f0", text: "#0f172a",
+    label: "", icon: "",
+  },
 };
 
 const STATUS_LABEL = {
@@ -748,6 +774,25 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
     setShowActions(!showActions);
   }
 
+  // Tooltip rico (nativo) — mostra quando passar mouse
+  const tooltipText = selectMode
+    ? (isSelectable ? (isSelected ? "Clique para desmarcar" : "Clique para selecionar") : "Não selecionável neste status")
+    : [
+        `${TYPE_LABELS[ticket.type] || ticket.type}`,
+        `Cliente: ${ticket.client_snapshot.name}`,
+        ticket.client_snapshot.phone ? `Tel: ${ticket.client_snapshot.phone}` : null,
+        ticket.client_snapshot.address ? `End.: ${ticket.client_snapshot.address}` : null,
+        ticket.client_snapshot.neighborhood ? `Bairro: ${ticket.client_snapshot.neighborhood}` : null,
+        ticket.scheduled_time ? `Horário: ${ticket.scheduled_time.substr(11, 5)}` : null,
+        ticket.client_snapshot.relato ? `\nRelato:\n${ticket.client_snapshot.relato}` : null,
+        ai.score != null ? `\nIA: ${ai.score.toFixed(1)}/10 (${ai.label || ""})` : null,
+        ticket.in_execution ? "\n▶ Em execução pelo técnico" : null,
+        ticket.atlaz_external_id ? `\n🔗 Atlaz #${ticket.atlaz_external_id}` : null,
+        "\n— Duplo-clique para editar",
+      ].filter(Boolean).join("\n");
+
+  const typeIcon = TYPE_ICONS[ticket.type] || "📋";
+
   return (
     <div
       draggable={!ticket.in_execution && !selectMode}
@@ -762,30 +807,37 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
       onDoubleClick={handleDoubleClick}
       data-testid={`bubble-card-${ticket.id}`}
       data-selected={isSelected ? "true" : "false"}
-      title={selectMode
-        ? (isSelectable ? (isSelected ? "Clique para desmarcar" : "Clique para selecionar") : "Não selecionável neste status")
-        : ticket.in_execution
-          ? "Em execução pelo técnico — bloqueado para mover/excluir · Duplo-clique para editar"
-          : "Passe o mouse para ver ações · Duplo-clique para editar"}
+      title={tooltipText}
       className={isOverdue && blinkOverdue ? "sla-overdue" : ""}
       style={{
         background: c.bg,
-        border: `2px solid ${isSelected ? "#3b82f6" : isOverdue ? "#dc2626" : c.border}`,
-        borderRadius: 14, padding: 10, marginBottom: 6,
+        border: `1px solid ${isSelected ? "#3b82f6" : isOverdue ? "#dc2626" : c.border}`,
+        borderRadius: 14, padding: "10px 12px 10px 14px",
+        marginBottom: 6, position: "relative",
         cursor: selectMode ? (isSelectable ? "pointer" : "not-allowed") : "grab",
         opacity: isDragging ? 0.4 : (selectMode && !isSelectable ? 0.55 : 1),
-        position: "relative",
         boxShadow: isSelected
           ? "0 0 0 3px rgba(59,130,246,.25), 0 4px 12px rgba(59,130,246,.18)"
-          : isDragging ? "none" : "0 2px 6px rgba(15,23,42,.08)",
-        transition: "box-shadow .15s, border-color .15s",
+          : isDragging ? "none"
+          : isOverdue ? "0 4px 14px rgba(220,38,38,.18)"
+          : "0 1px 3px rgba(15,23,42,.06), 0 2px 6px rgba(15,23,42,.04)",
+        transition: "box-shadow .2s, border-color .2s, transform .15s",
+        overflow: "hidden",
       }}
     >
+      {/* Faixa lateral colorida (priority accent) */}
+      {ticket.priority !== "normal" && (
+        <span aria-hidden style={{
+          position: "absolute", left: 0, top: 0, bottom: 0,
+          width: 4, background: c.accent, borderRadius: "14px 0 0 14px",
+        }} />
+      )}
+
       {selectMode && (
         <div data-testid={`bubble-checkbox-${ticket.id}`} style={{
-          position: "absolute", top: 6, left: 6,
+          position: "absolute", top: 8, left: 8,
           width: 22, height: 22, borderRadius: 6,
-          background: isSelected ? "#3b82f6" : "rgba(255,255,255,.92)",
+          background: isSelected ? "#3b82f6" : "rgba(255,255,255,.95)",
           border: `2px solid ${isSelected ? "#1d4ed8" : "#94a3b8"}`,
           display: "grid", placeItems: "center",
           color: "white", fontWeight: 900, fontSize: 14, zIndex: 2,
@@ -794,46 +846,88 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
           {isSelected ? "✓" : ""}
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 4, alignItems: "start" }}>
-        {c.label && (
-          <span style={{ fontSize: 9, fontWeight: 900, color: c.text }}>{c.label}{ticket.scheduled_time ? ` · ${ticket.scheduled_time.substr(11, 5)}` : ""}</span>
-        )}
-        <span style={{ fontSize: 9, fontWeight: 800, color: st.color, background: "rgba(255,255,255,.7)", padding: "1px 6px", borderRadius: 6 }}>
-          {st.label}
-        </span>
-      </div>
-      <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4, color: c.text }}>{ticket.client_snapshot.name}</div>
-      <div style={{ fontSize: 11, color: "#64748b" }}>{TYPE_LABELS[ticket.type] || ticket.type} · {ticket.client_snapshot.neighborhood}</div>
-      <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>
-        {ticket.client_snapshot.relato?.substring(0, 70)}{ticket.client_snapshot.relato?.length > 70 ? "..." : ""}
+
+      {/* HEADER: badge prioridade · status · horário */}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center", marginBottom: 6 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 0 }}>
+          {c.label && (
+            <span style={{
+              fontSize: 9, fontWeight: 900, letterSpacing: 0.5,
+              padding: "2px 7px", borderRadius: 999,
+              background: c.accent, color: "white",
+            }}>{c.icon} {c.label}</span>
+          )}
+          {ticket.scheduled_time && (
+            <span style={{
+              fontSize: 10, fontWeight: 800, color: "#475569",
+              background: "#f1f5f9", padding: "2px 7px", borderRadius: 999,
+              border: "1px solid #e2e8f0",
+            }}>{ticket.scheduled_time.substr(11, 5)}</span>
+          )}
+        </div>
+        <span style={{
+          fontSize: 9, fontWeight: 800, letterSpacing: 0.3,
+          color: st.color, padding: "2px 7px", borderRadius: 999,
+          background: "rgba(255,255,255,.85)", border: `1px solid ${st.color}33`,
+          flexShrink: 0,
+        }}>{st.label}</span>
       </div>
 
-      {/* SLA badge + AI score badge */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-        {ticket.status === "aberta" && sla.elapsed_minutes != null && (
-          <div data-testid={`sla-${ticket.id}`} style={{
-            fontSize: 10, fontWeight: 800, color: slaColor,
-            display: "flex", alignItems: "center", gap: 4,
+      {/* BODY: ícone do tipo + cliente + tipo */}
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <div aria-hidden style={{
+          width: 36, height: 36, borderRadius: 10,
+          background: ticket.priority === "normal" ? "#f1f5f9" : "rgba(255,255,255,.85)",
+          border: `1px solid ${c.border}`,
+          display: "grid", placeItems: "center",
+          fontSize: 18, flexShrink: 0,
+        }}>{typeIcon}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontSize: 13.5, fontWeight: 800, color: c.text,
+            lineHeight: 1.25, letterSpacing: -0.1,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>{ticket.client_snapshot.name}</div>
+          <div style={{
+            fontSize: 11, color: "#64748b", marginTop: 1,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
-            ⏱ {Math.floor(sla.elapsed_minutes)}min / {sla.sla_minutes}min ({sla.pct?.toFixed(0)}%)
-            {sla.status === "overdue" && <span style={{ background: "#dc2626", color: "white", padding: "1px 6px", borderRadius: 6 }}>ATRASADO</span>}
-            {sla.status === "warning" && <span style={{ background: "#f59e0b", color: "white", padding: "1px 6px", borderRadius: 6 }}>ATENÇÃO</span>}
+            {TYPE_LABELS[ticket.type]?.replace(/^\S+\s/, "") || ticket.type}
+            {ticket.client_snapshot.neighborhood ? ` · ${ticket.client_snapshot.neighborhood}` : ""}
           </div>
-        )}
-        {ai.score != null && (
-          <span
-            data-testid={`ai-score-${ticket.id}`}
-            title={`Score heurístico: ${ai.label}\n` + (ai.signals || []).map((s) => `• ${s.msg}`).join("\n")}
-            style={{
-              fontSize: 10, fontWeight: 900, padding: "2px 8px", borderRadius: 999,
-              background: aiScoreColor(ai.score), color: "white",
-              display: "inline-flex", alignItems: "center", gap: 4,
-            }}
-          >
-            🤖 {ai.score.toFixed(1)}/10
-          </span>
-        )}
+        </div>
       </div>
+
+      {/* FOOTER (SLA + IA) */}
+      {(ticket.status === "aberta" || ai.score != null) && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6, marginTop: 8,
+          flexWrap: "wrap", paddingTop: 6,
+          borderTop: "1px dashed rgba(15,23,42,.08)",
+        }}>
+          {ticket.status === "aberta" && sla.elapsed_minutes != null && (
+            <div data-testid={`sla-${ticket.id}`} style={{
+              fontSize: 10, fontWeight: 800, color: slaColor,
+              display: "flex", alignItems: "center", gap: 4,
+            }}>
+              ⏱ {Math.floor(sla.elapsed_minutes)}/{sla.sla_minutes}min
+              {sla.status === "overdue" && <span style={{ background: "#dc2626", color: "white", padding: "1px 6px", borderRadius: 6, fontSize: 9, letterSpacing: 0.3 }}>ATRASADO</span>}
+              {sla.status === "warning" && <span style={{ background: "#f59e0b", color: "white", padding: "1px 6px", borderRadius: 6, fontSize: 9, letterSpacing: 0.3 }}>ATENÇÃO</span>}
+            </div>
+          )}
+          {ai.score != null && (
+            <span
+              data-testid={`ai-score-${ticket.id}`}
+              style={{
+                fontSize: 10, fontWeight: 900, padding: "2px 8px", borderRadius: 999,
+                background: aiScoreColor(ai.score), color: "white",
+                display: "inline-flex", alignItems: "center", gap: 4,
+                marginLeft: "auto",
+              }}
+            >🤖 {ai.score.toFixed(1)}</span>
+          )}
+        </div>
+      )}
 
       {/* Duração no canto inf-direito */}
       {ticket.duration_minutes != null && (
@@ -849,28 +943,28 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
 
       {ticket.in_execution && (
         <div data-testid={`in-execution-${ticket.id}`} style={{
-          position: "absolute", top: 6, left: selectMode ? 34 : 6,
+          position: "absolute", top: 6, right: selectMode ? 6 : 6,
           fontSize: 9, fontWeight: 900, color: "white",
           background: "linear-gradient(90deg,#10b981,#059669)",
           padding: "2px 7px", borderRadius: 999,
           textTransform: "uppercase", letterSpacing: 0.5,
           boxShadow: "0 0 0 2px rgba(16,185,129,.2)",
           animation: "pulse 1.6s ease-in-out infinite",
+          zIndex: 2,
         }}>
           ▶ Em execução
         </div>
       )}
-      {ticket.locked && (
-        <span style={{ position: "absolute", top: 6, right: 6, fontSize: 14 }}>🔒</span>
+      {ticket.locked && !ticket.in_execution && (
+        <span style={{ position: "absolute", top: 8, right: 8, fontSize: 14, zIndex: 2 }}>🔒</span>
       )}
       {ticket.atlaz_external_id && (
         <span data-testid={`atlaz-badge-${ticket.id}`}
-          title={`Sincronizada do Atlaz · ID externo: ${ticket.atlaz_external_id}${ticket.atlaz_filial ? ` · Filial: ${ticket.atlaz_filial}` : ""}`}
           style={{
-            position: "absolute", bottom: 6, left: 8,
+            position: "absolute", bottom: 6, left: ticket.priority !== "normal" ? 12 : 8,
             fontSize: 9, fontWeight: 800, color: "#1e40af",
             background: "rgba(219,234,254,.95)", border: "1px solid #93c5fd",
-            padding: "1px 6px", borderRadius: 6,
+            padding: "1px 6px", borderRadius: 999,
           }}>
           🔗 Atlaz
         </span>

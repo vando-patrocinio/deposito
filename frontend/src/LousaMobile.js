@@ -372,18 +372,46 @@ function BetweenBubblesInfo({ records }) {
   );
 }
 
+const TYPE_ICONS_M = {
+  instalacao: "🔧", retirada: "📦", visita_tecnica: "🛠️", manutencao: "🔩",
+  upgrade: "⬆️", downgrade: "⬇️", troca_endereco: "🏠",
+  troca_titularidade: "👤", cancelamento: "🚫", outros: "📋", venda: "💼",
+};
+
 function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locked,
                  onMoveUp, onMoveDown, isDragging, isDragOver,
                  onDragStart, onDragOver, onDrop, onDragEnd }) {
   const isResolved = ticket.admin_resolved || ticket.status === "finalizada";
   const isOpen = ticket.status === "aberta" || ticket.status === "aguardando_atendimento";
   const priorityColors = {
-    prioridade: { bg: "#fee2e2", border: "#dc2626", text: "#7f1d1d", label: "🚨 PRIORIDADE" },
-    horario: { bg: "#fef3c7", border: "#f59e0b", text: "#78350f", label: "⏰ HORÁRIO" },
-    normal: { bg: "white", border: "#e2e8f0", text: "#0f172a", label: "" },
+    prioridade: {
+      bg: "linear-gradient(135deg,#fff5f5,#ffe4e6)",
+      accent: "#e11d48", border: "#fecdd3", text: "#9f1239",
+      label: "PRIORIDADE", icon: "🚨",
+    },
+    horario: {
+      bg: "linear-gradient(135deg,#fffbeb,#fef3c7)",
+      accent: "#d97706", border: "#fde68a", text: "#78350f",
+      label: "HORÁRIO", icon: "⏰",
+    },
+    normal: {
+      bg: "white", accent: "#0ea5e9", border: "#e2e8f0",
+      text: "#0f172a", label: "", icon: "",
+    },
   };
   const c = priorityColors[ticket.priority] || priorityColors.normal;
   const opacity = ticket.locked || disabled ? 0.55 : 1;
+  const typeIcon = TYPE_ICONS_M[ticket.type] || "📋";
+  const typeLabel = (ticket.type || "").replace(/_/g, " ");
+  const tooltipText = [
+    `${typeLabel.toUpperCase()}`,
+    `Cliente: ${ticket.client_snapshot.name}`,
+    ticket.client_snapshot.phone ? `Tel: ${ticket.client_snapshot.phone}` : null,
+    ticket.client_snapshot.address ? `End.: ${ticket.client_snapshot.address}` : null,
+    ticket.client_snapshot.neighborhood ? `Bairro: ${ticket.client_snapshot.neighborhood}` : null,
+    ticket.scheduled_time ? `Horário: ${ticket.scheduled_time.substr(11, 5)}` : null,
+    ticket.client_snapshot.relato ? `\nRelato:\n${ticket.client_snapshot.relato}` : null,
+  ].filter(Boolean).join("\n");
 
   // Em modo reorder, a bolha vira um container drag-handle (não clica para abrir)
   if (reorderMode) {
@@ -433,7 +461,11 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
             <span style={{ position: "absolute", top: 8, right: 10, fontSize: 14, color: "#94a3b8" }} title="Arraste para reordenar">⋮⋮</span>
           )}
           {c.label && (
-            <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 0.5, marginBottom: 4 }}>{c.label}</div>
+            <div style={{
+              fontSize: 9, fontWeight: 900, letterSpacing: 0.5, marginBottom: 4,
+              padding: "2px 7px", borderRadius: 999, background: c.accent, color: "white",
+              display: "inline-block",
+            }}>{c.icon} {c.label}</div>
           )}
           <div style={{ fontSize: 14, fontWeight: 800 }}>{ticket.client_snapshot.name}</div>
           <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
@@ -449,39 +481,110 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
       onClick={onClick}
       disabled={ticket.locked || disabled || isResolved}
       data-testid={`bubble-${ticket.id}`}
+      title={tooltipText}
       style={{
-        width: "100%", textAlign: "left", padding: 14, borderRadius: 22,
-        background: isOpen ? "#dcfce7" : c.bg,
-        border: `2px solid ${isOpen ? "#10b981" : c.border}`,
-        marginBottom: 10, cursor: ticket.locked || isResolved ? "not-allowed" : "pointer",
+        width: "100%", textAlign: "left",
+        padding: "12px 14px 12px 16px",
+        borderRadius: 18,
+        background: isOpen ? "linear-gradient(135deg,#ecfdf5,#d1fae5)" : c.bg,
+        border: `1px solid ${isOpen ? "#10b981" : c.border}`,
+        marginBottom: 10,
+        cursor: ticket.locked || isResolved ? "not-allowed" : "pointer",
         opacity, color: c.text, position: "relative",
-        boxShadow: isOpen ? "0 8px 22px rgba(16,185,129,.25)" : "0 4px 10px rgba(15,23,42,.05)",
-        transition: "all 0.2s",
+        boxShadow: isOpen
+          ? "0 6px 18px rgba(16,185,129,.20)"
+          : "0 1px 3px rgba(15,23,42,.06), 0 2px 6px rgba(15,23,42,.04)",
+        transition: "transform .15s, box-shadow .2s",
+        overflow: "hidden",
       }}
     >
-      {ticket.locked && !isOpen && (
-        <span style={{ position: "absolute", top: 8, right: 10, fontSize: 18 }}>🔒</span>
+      {/* Faixa lateral colorida */}
+      {ticket.priority !== "normal" && (
+        <span aria-hidden style={{
+          position: "absolute", left: 0, top: 0, bottom: 0,
+          width: 5, background: c.accent, borderRadius: "18px 0 0 18px",
+        }} />
       )}
-      {c.label && (
-        <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 0.5, marginBottom: 4 }}>
-          {c.label}{ticket.scheduled_time ? ` · ${ticket.scheduled_time.substr(11, 5)}` : ""}
+
+      {ticket.locked && !isOpen && (
+        <span style={{ position: "absolute", top: 10, right: 12, fontSize: 18 }}>🔒</span>
+      )}
+
+      {/* Header: badge + horário */}
+      <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+        {c.label && (
+          <span style={{
+            fontSize: 9, fontWeight: 900, letterSpacing: 0.5,
+            padding: "2px 8px", borderRadius: 999,
+            background: c.accent, color: "white",
+          }}>{c.icon} {c.label}</span>
+        )}
+        {ticket.scheduled_time && (
+          <span style={{
+            fontSize: 10, fontWeight: 800, color: "#475569",
+            background: "#f1f5f9", padding: "2px 7px", borderRadius: 999,
+            border: "1px solid #e2e8f0",
+          }}>{ticket.scheduled_time.substr(11, 5)}</span>
+        )}
+      </div>
+
+      {/* Body: ícone tipo + cliente + meta */}
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <div aria-hidden style={{
+          width: 40, height: 40, borderRadius: 12,
+          background: ticket.priority === "normal" ? "#f1f5f9" : "rgba(255,255,255,.85)",
+          border: `1px solid ${c.border}`,
+          display: "grid", placeItems: "center",
+          fontSize: 20, flexShrink: 0,
+        }}>{typeIcon}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontSize: 14.5, fontWeight: 800, lineHeight: 1.2,
+            color: c.text, letterSpacing: -0.1,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>{ticket.client_snapshot.name}</div>
+          <div style={{
+            fontSize: 11, color: "#64748b", marginTop: 2,
+            textTransform: "uppercase", letterSpacing: 0.4,
+            fontWeight: 700,
+          }}>{typeLabel}</div>
+          {ticket.client_snapshot.neighborhood && (
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
+              📍 {ticket.client_snapshot.neighborhood}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Relato em footer separado */}
+      {ticket.client_snapshot.relato && (
+        <div style={{
+          fontSize: 11.5, color: "#475569", marginTop: 8,
+          paddingTop: 6, borderTop: "1px dashed rgba(15,23,42,.08)",
+          lineHeight: 1.4,
+        }}>
+          {ticket.client_snapshot.relato.substring(0, 90)}
+          {ticket.client_snapshot.relato.length > 90 ? "…" : ""}
         </div>
       )}
-      <div style={{ fontSize: 14, fontWeight: 800 }}>{ticket.client_snapshot.name}</div>
-      <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-        {ticket.type.toUpperCase()} · {ticket.client_snapshot.neighborhood}
-      </div>
-      <div style={{ fontSize: 12, color: "#475569", marginTop: 6 }}>
-        {ticket.client_snapshot.relato?.substring(0, 80)}{ticket.client_snapshot.relato?.length > 80 ? "..." : ""}
-      </div>
+
       {isResolved && (
-        <div style={{ marginTop: 6, fontSize: 11, color: "#16a34a", fontWeight: 700 }}>
+        <div style={{ marginTop: 8, fontSize: 11, color: "#16a34a", fontWeight: 700 }}>
           ✓ {ticket.status === "finalizada" ? "Finalizada" : ticket.admin_action || "Encerrada"}
         </div>
       )}
       {isOpen && (
-        <div style={{ marginTop: 6, fontSize: 11, color: "#16a34a", fontWeight: 800 }}>
-          ▶ EM ANDAMENTO — toque para ver detalhes
+        <div style={{
+          marginTop: 8, fontSize: 11, color: "#065f46", fontWeight: 800,
+          letterSpacing: 0.4, textTransform: "uppercase",
+          display: "flex", alignItems: "center", gap: 6,
+        }}>
+          <span style={{
+            width: 8, height: 8, borderRadius: "50%", background: "#10b981",
+            boxShadow: "0 0 0 3px rgba(16,185,129,.25)",
+            animation: "pulse 1.6s ease-in-out infinite",
+          }} />
+          Em andamento — toque para detalhes
         </div>
       )}
     </button>

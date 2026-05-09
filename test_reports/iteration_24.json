@@ -1,0 +1,32 @@
+{
+  "summary": "Iter 24 testado backend+frontend. Backend: 6/6 pytest passaram — (1) POST /api/collaborators persiste clock_in_enabled=True default; (2) PUT /api/collaborators/{cid} aceita clock_in_enabled=false e GET retorna corretamente; (3) GET /api/lousa/by-collaborator/{cid} com clock_in_enabled=false retorna {lousa_unlocked:true, needs_clock_in:false, clock_in_enabled:false} mesmo SEM Entrada; (4) toggle de volta para true → needs_clock_in:true, lousa_unlocked:false (sem Entrada); (5) POST /api/lousa/public/tickets/{id}/open NÃO retorna 412 quando clock_in_enabled=false e técnico não bateu Entrada — abre status 'aberta' diretamente; (6) GET /api/clock-records?collaborator_id=&date_from=&date_to= regressão OK. Frontend: login admin OK; tab Cadastro renderiza 7 botões 'view-clock-{id}' nos cards CLT (todos colabs default têm clock_in_enabled=true). Click em 'view-clock-*' abre modal 'clock-history-modal' com 3 pills 'clock-history-days-7/30/90' e botão 'close-clock-history' funcionando. Tab Lousa: bolhas 'bubble-card-{id}' têm atributo HTML title nativo rico multi-linha (319 chars) contendo: tipo (🔧 Reparo), Cliente, Tel, End., Bairro, Horário, Relato — confirmando layout SaaS moderno aplicado. Não consegui abrir formulário de criar/editar colaborador via texto de botão (modal de cadastro não abriu com fallbacks tentados), portanto checkbox 'inp-clock-in-enabled' visualmente não validado, MAS feature existe em /app/frontend/src/CadastroPanel.js linhas 410-440 conforme review e backend confirma persistência completa.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration24_clock_in_enabled.py",
+    "/app/test_reports/pytest/iter24_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "clock.py:86 — CollaboratorIn.clock_in_enabled: bool = True default ✓",
+    "clock.py:296-308 — PUT collaborators usa CollaboratorIn (mesmo schema) e propaga clock_in_enabled via model_dump ✓",
+    "lousa.py:651-682 — _lousa_for_collaborator lê coll.clock_in_enabled (default True), short-circuit retorna lousa_unlocked/needs_clock_in conforme spec; t['locked'] também respeita is_blocked_by_clock=clock_in_enabled and (in_intervalo or ended_day) ✓",
+    "lousa.py:909-921 — public_open_ticket envolve TODA validação de clock state em 'if clock_in_enabled' (Entrada/intervalo/saida), pulando completamente para freelancer ✓",
+    "Frontend (visto via UI): bubble-card title attr multi-linha rico funcionando — design SaaS aplicado em LousaAdminPanel BubbleCard. ClockHistoryModal totalmente integrado em Cadastro com 3 períodos.",
+    "Observação minor (não bloqueante): teste UI não conseguiu abrir o form de criar/editar colaborador via texto de botão para validar visualmente a checkbox inp-clock-in-enabled — main agent pode validar com 1 click manual ou pode adicionar data-testid no botão 'Adicionar/Novo colaborador' para facilitar testes futuros."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration24_clock_in_enabled.py (criado)"
+  ],
+  "success_rate": {"backend": "100% (6/6 passed)", "frontend": "~85% — modal Pontos + bubble title + tab Cadastro com 7 view-clock buttons todos validados; checkbox inp-clock-in-enabled não validado por não abrir form, mas presença confirmada via code review"},
+  "test_credentials": "admin@empresa.com / 123456 (válido)",
+  "seed_data_creation": "Colaborador TEST_iter24_* criado e deletado após cada run (fixture com teardown).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 24: clock_in_enabled toggle backend 100% verde + UI bubble redesign (title nativo) + ClockHistoryModal integrados. Pytest: cd /app/backend && python -m pytest tests/test_iteration24_clock_in_enabled.py -v. Para validar form checkbox 'inp-clock-in-enabled' visualmente: login admin → tab Cadastro → click em qualquer card de colaborador para abrir edit (ou botão Adicionar). Bolhas Lousa têm title rico HTML — basta hover em qualquer bubble-card para ver tooltip nativo. Colaborador@empresa.com permanece com clock_in_enabled=true (default), conforme orientação do main agent.",
+  "rca of the issue": "N/A — todos os fluxos backend funcionando conforme spec; UI principais elementos novos (modal Pontos + bubble title) confirmados visualmente."
+}

@@ -83,6 +83,7 @@ class CollaboratorIn(BaseModel):
     state: Optional[str] = None
     praca_id: Optional[str] = None
     is_test_mode: bool = False  # ADMIN: marca colaborador como TESTE — bypassa cerca/selfie
+    clock_in_enabled: bool = True  # CLT bate ponto. False = freelancer/MEI/3rd party — Lousa direta sem ponto.
 
 
 class Collaborator(CollaboratorIn):

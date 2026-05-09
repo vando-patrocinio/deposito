@@ -656,8 +656,12 @@ async def get_lousa_by_collaborator(cid: str):
 
 async def _lousa_for_collaborator(cid: str) -> dict:
     state = await _today_clock_state(cid)
+    # Colaboradores não-CLT (clock_in_enabled=false) não batem ponto — Lousa sempre liberada
+    coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "clock_in_enabled": 1})
+    clock_in_enabled = bool((coll or {}).get("clock_in_enabled", True))
     # Bolhas só aparecem após bater Entrada (identificação do técnico)
-    if not state["has_entrada"]:
+    # Para colaboradores sem ponto (freelancer/MEI/etc) liberamos direto.
+    if clock_in_enabled and not state["has_entrada"]:
         return {
             "tickets": [],
             "recent_resolved": [],
@@ -665,6 +669,7 @@ async def _lousa_for_collaborator(cid: str) -> dict:
             "clock_state": state,
             "lousa_unlocked": False,
             "needs_clock_in": True,
+            "clock_in_enabled": True,
         }
     active_states = ["pendente", "aberta", "aguardando_atendimento"]
     active_raw = await db.tickets.find(
@@ -674,7 +679,9 @@ async def _lousa_for_collaborator(cid: str) -> dict:
     active_raw.sort(key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]))
     locked_idx = compute_locked_positions(active_raw)
     for i, t in enumerate(active_raw):
-        t["locked"] = (i in locked_idx) or state["in_intervalo"] or state["ended_day"]
+        # Para clock_in_enabled=false, in_intervalo e ended_day não aplicam
+        is_blocked_by_clock = clock_in_enabled and (state["in_intervalo"] or state["ended_day"])
+        t["locked"] = (i in locked_idx) or is_blocked_by_clock
         t["admin_resolved"] = False
 
     # Tickets resolvidos PELO TÉCNICO ficam visíveis 24h (histórico do dia).
@@ -743,8 +750,10 @@ async def _lousa_for_collaborator(cid: str) -> dict:
         "last_closed_at": last_closed_at,
         "minutes_since_last_close": minutes_since_last_close,
         "clock_state": state,
-        "lousa_unlocked": not state["in_intervalo"] and not state["ended_day"],
+        # Para colaboradores sem ponto a Lousa nunca tranca por intervalo/saída
+        "lousa_unlocked": (not clock_in_enabled) or (not state["in_intervalo"] and not state["ended_day"]),
         "needs_clock_in": False,
+        "clock_in_enabled": clock_in_enabled,
     }
 
 
@@ -900,13 +909,16 @@ class PublicFinalizeIn(BaseModel):
 @router.post("/lousa/public/tickets/{ticket_id}/open")
 async def public_open_ticket(ticket_id: str, payload: PublicOpenIn):
     cid = payload.collaborator_id
-    state = await _today_clock_state(cid)
-    if not state["has_entrada"]:
-        raise HTTPException(412, "Bata o ponto de Entrada antes de abrir uma nota")
-    if state["in_intervalo"]:
-        raise HTTPException(412, "Você está em intervalo — bata Fim intervalo antes")
-    if state["ended_day"]:
-        raise HTTPException(412, "Você já bateu a Saída do dia")
+    coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "clock_in_enabled": 1})
+    clock_in_enabled = bool((coll or {}).get("clock_in_enabled", True))
+    if clock_in_enabled:
+        state = await _today_clock_state(cid)
+        if not state["has_entrada"]:
+            raise HTTPException(412, "Bata o ponto de Entrada antes de abrir uma nota")
+        if state["in_intervalo"]:
+            raise HTTPException(412, "Você está em intervalo — bata Fim intervalo antes")
+        if state["ended_day"]:
+            raise HTTPException(412, "Você já bateu a Saída do dia")
 
     other = await _has_active_ticket(cid)
     if other and other["id"] != ticket_id:

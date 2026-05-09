@@ -14,6 +14,7 @@ const EMPTY = {
   schedule: { entrada: "08:00", inicio_intervalo: "12:00", fim_intervalo: "13:00", saida: "17:00" },
   overtime_policy: { mode: "banco", hourly_rate_brl: 0, weekday_multiplier: 1.5, sunday_multiplier: 2.0 },
   is_test_mode: false,
+  clock_in_enabled: true,  // CLT bate ponto. False = freelancer/MEI: app vai direto pra Lousa
 };
 
 export default function CadastroPanel() {
@@ -34,6 +35,7 @@ export default function CadastroPanel() {
   const [fenceCounts, setFenceCounts] = useState({}); // {cid: count}
   const [allFences, setAllFences] = useState([]);     // todas as cercas do sistema (para reaproveitar)
   const [reuseSelected, setReuseSelected] = useState({}); // {fence_id: bool} marcadas para clonar ao salvar
+  const [clockHistoryFor, setClockHistoryFor] = useState(null);   // colaborador selecionado para ver batidas
 
   async function reload() {
     try {
@@ -84,6 +86,7 @@ export default function CadastroPanel() {
       schedule: c.schedule || EMPTY.schedule,
       overtime_policy: c.overtime_policy || EMPTY.overtime_policy,
       is_test_mode: !!c.is_test_mode,
+      clock_in_enabled: c.clock_in_enabled !== false,  // default true (legado)
     });
     setEditing(c.id);
     setError("");
@@ -243,6 +246,11 @@ export default function CadastroPanel() {
                         🧪 MODO TESTE
                       </span>
                     )}
+                    {c.clock_in_enabled === false && (
+                      <span title="Colaborador externo — app abre direto na Lousa, sem registro de ponto" style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#fff7ed", color: "#9a3412", border: "1px solid #fdba74" }}>
+                        🚫 NÃO BATE PONTO
+                      </span>
+                    )}
                   </div>
                   <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>
                     {c.role}{(() => {
@@ -304,6 +312,17 @@ export default function CadastroPanel() {
                     >
                       <Icon name="camera" /> Resetar avatar e dispositivo
                     </Button>
+                    {c.clock_in_enabled !== false && (
+                      <Button
+                        variant="soft"
+                        onClick={() => setClockHistoryFor(c)}
+                        data-testid={`view-clock-${c.id}`}
+                        title="Ver batimentos de ponto deste colaborador"
+                        style={{ background: "#ecfdf5", color: "#065f46", border: "1px solid #6ee7b7" }}
+                      >
+                        🕐 Pontos
+                      </Button>
+                    )}
                     <Button variant="secondary" onClick={() => startEdit(c)} data-testid={`edit-${c.id}`}>
                       <Icon name="gear" /> Editar
                     </Button>
@@ -332,6 +351,13 @@ export default function CadastroPanel() {
         caption={zoomCaption}
         onClose={() => { setZoomSrc(null); setZoomCaption(""); }}
       />
+
+      {clockHistoryFor && (
+        <ClockHistoryModal
+          collaborator={clockHistoryFor}
+          onClose={() => setClockHistoryFor(null)}
+        />
+      )}
 
       {editing !== null ? (
         <Card title={editing === "new" ? "Novo colaborador" : "Editar colaborador"}>
@@ -379,6 +405,34 @@ export default function CadastroPanel() {
               </div>
             )}
           </Field>
+
+          {/* Modo de trabalho — controla se o colaborador bate ponto */}
+          <div data-testid="clock-in-mode-block" style={{
+            background: form.clock_in_enabled ? "#f0f9ff" : "#fff7ed",
+            border: `2px solid ${form.clock_in_enabled ? "#0ea5e9" : "#fb923c"}`,
+            borderRadius: 14, padding: 12, marginTop: 12, marginBottom: 6,
+            transition: "all .2s",
+          }}>
+            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+              <input
+                data-testid="inp-clock-in-enabled"
+                type="checkbox"
+                checked={!!form.clock_in_enabled}
+                onChange={(e) => setForm({ ...form, clock_in_enabled: e.target.checked })}
+                style={{ marginTop: 3, transform: "scale(1.4)" }}
+              />
+              <div>
+                <strong style={{ color: form.clock_in_enabled ? "#0369a1" : "#9a3412" }}>
+                  {form.clock_in_enabled ? "🕐 CLT — bate ponto" : "🚫 Não bate ponto (terceirizado/MEI)"}
+                </strong>
+                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                  {form.clock_in_enabled
+                    ? "Colaborador CLT — vê tela de Entrada/Intervalo/Saída no app e a Lousa só libera após bater Entrada."
+                    : "Colaborador externo — o app abre direto na Lousa de Serviços, sem registro de ponto. Ideal para freelancer/MEI/3rd party."}
+                </div>
+              </div>
+            </label>
+          </div>
 
           {/* Modo Teste — admin only */}
           <div data-testid="test-mode-block" style={{
@@ -808,6 +862,117 @@ function GeofencesModal({ collaboratorId, collaborator, allCollaborators = [], o
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+function ClockHistoryModal({ collaborator, onClose }) {
+  const [records, setRecords] = useState(null);
+  const [days, setDays] = useState(7);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    setRecords(null); setErr("");
+    const dt = new Date();
+    const dateTo = dt.toISOString().slice(0, 10);
+    dt.setDate(dt.getDate() - (days - 1));
+    const dateFrom = dt.toISOString().slice(0, 10);
+    api.listClockRecords({ collaborator_id: collaborator.id, date_from: dateFrom, date_to: dateTo })
+      .then((r) => { if (alive) setRecords(r || []); })
+      .catch((e) => { if (alive) setErr(e?.response?.data?.detail || e.message); });
+    return () => { alive = false; };
+  }, [collaborator.id, days]);
+
+  // Agrupa por dia
+  const byDate = {};
+  for (const r of (records || [])) {
+    (byDate[r.date] = byDate[r.date] || []).push(r);
+  }
+  const sortedDates = Object.keys(byDate).sort().reverse();
+
+  const typeIcon = {
+    "Entrada": "🚪",
+    "Início intervalo": "🍽️",
+    "Fim intervalo": "🔄",
+    "Saída": "🏁",
+  };
+
+  return (
+    <div data-testid="clock-history-modal" onClick={onClose} style={{
+      position: "fixed", inset: 0, background: "rgba(15,23,42,.55)",
+      display: "grid", placeItems: "center", zIndex: 1000, padding: 16,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "white", borderRadius: 16, padding: 20, maxWidth: 640, width: "100%",
+        maxHeight: "85vh", overflow: "auto", boxShadow: "0 20px 60px rgba(15,23,42,.3)",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>🕐 Pontos de {collaborator.name}</h3>
+          <button data-testid="close-clock-history" onClick={onClose} style={{
+            border: 0, background: "#f1f5f9", borderRadius: 999, width: 32, height: 32,
+            cursor: "pointer", fontSize: 16,
+          }}>✕</button>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          {[7, 30, 90].map((d) => (
+            <button
+              key={d}
+              data-testid={`clock-history-days-${d}`}
+              onClick={() => setDays(d)}
+              style={{
+                padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700,
+                border: `1px solid ${days === d ? "#0ea5e9" : "#cbd5e1"}`,
+                background: days === d ? "#0ea5e9" : "white",
+                color: days === d ? "white" : "#475569", cursor: "pointer",
+              }}
+            >Últimos {d}d</button>
+          ))}
+        </div>
+
+        {err && <div style={{ background: "#fee2e2", color: "#991b1b", padding: 10, borderRadius: 8 }}>{err}</div>}
+        {records === null && !err && <div style={{ color: "#94a3b8", padding: 16, textAlign: "center" }}>Carregando…</div>}
+        {records !== null && records.length === 0 && (
+          <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 12, padding: 24, textAlign: "center", color: "#94a3b8" }}>
+            Nenhum batimento de ponto nos últimos {days} dia(s).
+          </div>
+        )}
+
+        {sortedDates.map((d) => (
+          <div key={d} data-testid={`clock-day-${d}`} style={{
+            background: "#f8fafc", borderRadius: 12, padding: 12, marginBottom: 8,
+            border: "1px solid #e2e8f0",
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: 8, color: "#0f172a", fontSize: 13 }}>
+              {new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {byDate[d].sort((a, b) => a.time.localeCompare(b.time)).map((r) => (
+                <div key={r.id} data-testid={`clock-rec-${r.id}`} style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  background: "white", padding: "8px 12px", borderRadius: 10,
+                  border: `1px solid ${r.status === "Válido" || r.status === "Offline sincronizado" ? "#bbf7d0" : "#fecaca"}`,
+                }}>
+                  <span style={{ fontSize: 20 }}>{typeIcon[r.type] || "•"}</span>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ fontSize: 13 }}>{r.type}</strong>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>
+                      {r.time}{r.address ? ` · ${r.address}` : ""}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999,
+                    background: r.status === "Válido" || r.status === "Offline sincronizado" ? "#dcfce7" : "#fee2e2",
+                    color: r.status === "Válido" || r.status === "Offline sincronizado" ? "#166534" : "#991b1b",
+                  }}>{r.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
