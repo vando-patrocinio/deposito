@@ -1,8 +1,17 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 13)
+**Última atualização**: 2026-05-09 (iteração 14)
 
 ## Histórico de iterações
+
+### Iter 14 — Lousa Histórica (Kanban) + Mirror Mobile + serverTime singleton (2026-05-09)
+- ✅ **Histórico vira a Lousa em si**: `GET /api/lousa/grid?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` retorna kanban filtrado por período, default abre no DIA atual. Tickets em modo histórico ficam `locked=true historical=true` (read-only). LousaHistoryModal reescrito para mostrar layout kanban (não mais tabela).
+- ✅ **5 chips de granularidade**: Dia / Semana / Mês / Ano / Período + busca textual + KPIs clicáveis
+- ✅ **Mirror Mobile**: `/api/lousa/by-collaborator/{cid}` agora retorna `tickets: [só ativas]` e `recent_resolved: [resolvidas 24h]` separados → app do colaborador espelha exatamente a lousa do gestor (sem bolha no gestor → sem bolha no mobile)
+- ✅ **serverTime.js singleton**: novo módulo com `serverNow()`, `serverDate()`, `useServerNow()` hook. ServerClock refatorado. `client_time_ms` em POST /clock-records agora usa `serverNow()` (anti-tampering — usuário não consegue mais bypassar drift validation alterando relógio do dispositivo)
+- ✅ Boot: `App.js` chama `startServerTime()` uma vez no mount; sync periódico a cada 60s
+- Backend: 12/12 (iter14) + 84/84 regressão = **96/96 verde**
+- Frontend deep test: 100%
 
 ### Iter 13 — Cards Clicáveis + Busca Textual no Histórico (2026-05-09)
 - ✅ **Cards de KPI no Histórico viraram filtros**: clicar em "Encerradas 8" filtra a tabela para só as 8; clicar de novo limpa; clicar em "Total" sempre limpa qualquer filtro de status. Card ativo destacado com gradient escuro + sombra colorida
