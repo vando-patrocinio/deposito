@@ -82,6 +82,7 @@ class CollaboratorIn(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     praca_id: Optional[str] = None
+    is_test_mode: bool = False  # ADMIN: marca colaborador como TESTE — bypassa cerca/selfie
 
 
 class Collaborator(CollaboratorIn):
@@ -498,23 +499,28 @@ async def create_clock_record(payload: ClockRecordIn, request: __import__('fasta
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado")
 
-    # ---- ADMIN TEST MODE ----
-    # Se houver token JWT de admin/auditor no header, libera teste em qualquer localização
+    # ---- TEST MODE (admin OR collaborator marked as test) ----
     is_admin_test = False
     admin_actor = None
-    try:
-        from auth import decode_token
-        auth_header = (request.headers.get("Authorization") or "")
-        if auth_header.startswith("Bearer "):
-            payload_jwt = decode_token(auth_header[7:])
-            admin_user = await db.users.find_one(
-                {"id": payload_jwt["sub"]}, {"_id": 0, "role": 1, "email": 1, "name": 1},
-            )
-            if admin_user and admin_user.get("role") in ("administrador", "auditor"):
-                is_admin_test = True
-                admin_actor = admin_user.get("email") or admin_user.get("name") or "admin"
-    except Exception:
-        is_admin_test = False
+    # 1. Colaborador marcado como teste no cadastro → bypassa cerca/selfie sempre
+    if coll.get("is_test_mode"):
+        is_admin_test = True
+        admin_actor = "colaborador_teste"
+    # 2. Admin/auditor logado → também bypassa
+    if not is_admin_test:
+        try:
+            from auth import decode_token
+            auth_header = (request.headers.get("Authorization") or "")
+            if auth_header.startswith("Bearer "):
+                payload_jwt = decode_token(auth_header[7:])
+                admin_user = await db.users.find_one(
+                    {"id": payload_jwt["sub"]}, {"_id": 0, "role": 1, "email": 1, "name": 1},
+                )
+                if admin_user and admin_user.get("role") in ("administrador", "auditor"):
+                    is_admin_test = True
+                    admin_actor = admin_user.get("email") or admin_user.get("name") or "admin"
+        except Exception:
+            pass
 
     # ---- LOUSA STATE MACHINE ----
     # Não permite "Início intervalo" se houver bolha aberta

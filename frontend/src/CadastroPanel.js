@@ -12,6 +12,7 @@ const EMPTY = {
   praca_id: "",
   schedule: { entrada: "08:00", inicio_intervalo: "12:00", fim_intervalo: "13:00", saida: "17:00" },
   overtime_policy: { mode: "banco", hourly_rate_brl: 0, weekday_multiplier: 1.5, sunday_multiplier: 2.0 },
+  is_test_mode: false,
 };
 
 export default function CadastroPanel() {
@@ -69,6 +70,7 @@ export default function CadastroPanel() {
       praca_id: c.praca_id || "",
       schedule: c.schedule || EMPTY.schedule,
       overtime_policy: c.overtime_policy || EMPTY.overtime_policy,
+      is_test_mode: !!c.is_test_mode,
     });
     setEditing(c.id);
     setError("");
@@ -213,6 +215,11 @@ export default function CadastroPanel() {
                         aguardando 1º login Google
                       </span>
                     )}
+                    {c.is_test_mode && (
+                      <span title="Modo teste — bate ponto em qualquer local com qualquer selfie" style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#faf5ff", color: "#7c3aed", border: "1px solid #d8b4fe" }}>
+                        🧪 MODO TESTE
+                      </span>
+                    )}
                   </div>
                   <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>
                     {c.role}{(() => {
@@ -330,6 +337,34 @@ export default function CadastroPanel() {
               </select>
             )}
           </Field>
+
+          {/* Modo Teste — admin only */}
+          <div data-testid="test-mode-block" style={{
+            background: form.is_test_mode ? "#faf5ff" : "#f8fafc",
+            border: `2px solid ${form.is_test_mode ? "#a855f7" : "#e2e8f0"}`,
+            borderRadius: 14, padding: 12, marginTop: 12, marginBottom: 6,
+            transition: "all .2s",
+          }}>
+            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+              <input
+                data-testid="inp-test-mode"
+                type="checkbox"
+                checked={!!form.is_test_mode}
+                onChange={(e) => setForm({ ...form, is_test_mode: e.target.checked })}
+                style={{ marginTop: 3, transform: "scale(1.4)" }}
+              />
+              <div>
+                <strong style={{ color: form.is_test_mode ? "#7c3aed" : "#0f172a" }}>
+                  🧪 Modo Teste (Admin)
+                </strong>
+                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                  Quando ativado, este colaborador pode bater ponto em <strong>qualquer localização</strong> e
+                  com <strong>qualquer selfie</strong> — útil para demos e validação. Os registros ficam
+                  marcados com 🧪 na auditoria.
+                </div>
+              </div>
+            </label>
+          </div>
 
           <h4 style={{ margin: "16px 0 6px" }}>Horário de trabalho</h4>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>

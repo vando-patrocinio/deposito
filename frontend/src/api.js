@@ -149,9 +149,11 @@ export const api = {
   // ============== LOUSA (notas de serviço) ==============
   lousaByCollaborator: (cid) => client.get(`/lousa/by-collaborator/${cid}`).then((r) => r.data),
   lousaAll: () => client.get(`/lousa/all`).then((r) => r.data),
+  lousaGrid: () => client.get(`/lousa/grid`).then((r) => r.data),
   lousaTicket: (tid) => client.get(`/lousa/tickets/${tid}`).then((r) => r.data),
   lousaCreateTicket: (data) => client.post(`/lousa/tickets`, data).then((r) => r.data),
   lousaDeleteTicket: (tid) => client.delete(`/lousa/tickets/${tid}`).then((r) => r.data),
+  lousaTransferTicket: (tid, data) => client.post(`/lousa/tickets/${tid}/transfer`, data).then((r) => r.data),
   lousaPublicOpen: (tid, cid) => client.post(`/lousa/public/tickets/${tid}/open`, { collaborator_id: cid }).then((r) => r.data),
   lousaPublicFinalize: (tid, data) => client.post(`/lousa/public/tickets/${tid}/finalize`, data).then((r) => r.data),
   lousaPublicExitResolve: (cid) => client.post(`/lousa/public/exit-resolve`, { collaborator_id: cid }).then((r) => r.data),

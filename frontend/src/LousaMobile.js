@@ -93,6 +93,30 @@ export default function LousaMobile({ collaboratorId, onBack }) {
   const records = state.records || [];
   const lastEvent = records.length ? records[records.length - 1] : null;
 
+  // Bolhas só aparecem após bater Entrada (identificação no sistema)
+  if (data.needs_clock_in) {
+    return (
+      <div data-testid="lousa-mobile-needs-clockin">
+        <Button variant="soft" onClick={onBack} data-testid="lousa-back-btn">← Voltar</Button>
+        <h2 style={{ marginTop: 14, marginBottom: 4 }}>📋 Lousa de Serviços</h2>
+        <div style={{
+          marginTop: 24, padding: 30, textAlign: "center",
+          background: "linear-gradient(135deg, #fef3c7, #fde68a)",
+          border: "2px dashed #f59e0b", borderRadius: 22,
+        }}>
+          <div style={{ fontSize: 60 }}>🔒</div>
+          <h3 style={{ margin: "12px 0 4px", color: "#78350f" }}>Bata o ponto de Entrada</h3>
+          <p style={{ color: "#92400e", fontSize: 13, lineHeight: 1.5 }}>
+            Suas notas de serviço só serão liberadas após você se identificar no sistema com o ponto de Entrada.
+          </p>
+          <Button onClick={onBack} style={{ marginTop: 12 }} data-testid="go-clock-btn">
+            Ir para Bater Ponto
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div data-testid="lousa-mobile">
       <Button variant="soft" onClick={onBack} data-testid="lousa-back-btn">← Voltar</Button>

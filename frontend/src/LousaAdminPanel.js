@@ -1,61 +1,61 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "@/api";
-import { Button, Card, Icon } from "@/ui";
+import { Button, Icon } from "@/ui";
 
 const PRIORITY_COLORS = {
   prioridade: { bg: "#fee2e2", border: "#dc2626", text: "#7f1d1d", label: "🚨 PRIORIDADE" },
   horario: { bg: "#fef3c7", border: "#f59e0b", text: "#78350f", label: "⏰ HORÁRIO" },
-  normal: { bg: "white", border: "#cbd5e1", text: "#0f172a", label: "📋 NORMAL" },
+  normal: { bg: "white", border: "#cbd5e1", text: "#0f172a", label: "" },
 };
 
 const STATUS_LABEL = {
   pendente: { label: "Pendente", color: "#64748b" },
-  aberta: { label: "Em campo", color: "#10b981" },
-  aguardando_atendimento: { label: "Aguarda gestor", color: "#f59e0b" },
-  finalizada: { label: "Finalizada ✓", color: "#10b981" },
+  aberta: { label: "▶ Em campo", color: "#10b981" },
+  aguardando_atendimento: { label: "⚠ Aguarda gestor", color: "#f59e0b" },
+  finalizada: { label: "✓ Finalizada", color: "#10b981" },
   encerrada: { label: "Encerrada", color: "#94a3b8" },
   reagendada: { label: "Reagendada", color: "#3b82f6" },
   cancelada: { label: "Cancelada", color: "#dc2626" },
 };
 
 export default function LousaAdminPanel() {
-  const [tickets, setTickets] = useState([]);
+  const [grid, setGrid] = useState({ columns: [] });
   const [collabs, setCollabs] = useState([]);
-  const [filterStatus, setFilterStatus] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
 
   const refresh = useCallback(async () => {
-    const [tk, cs] = await Promise.all([api.lousaAll(), api.listCollaborators()]);
-    setTickets(tk.tickets || []);
-    setCollabs(cs);
+    try {
+      const [g, cs] = await Promise.all([api.lousaGrid(), api.listCollaborators()]);
+      setGrid(g);
+      setCollabs(cs);
+    } catch (e) {
+      console.error("Erro ao carregar lousa", e);
+    }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { refresh(); const i = setInterval(refresh, 30000); return () => clearInterval(i); }, [refresh]);
 
-  const filtered = tickets.filter((t) => {
-    if (filterStatus === "all") return true;
-    if (filterStatus === "active") return ["pendente", "aberta", "aguardando_atendimento"].includes(t.status);
-    if (filterStatus === "resolved") return ["finalizada", "encerrada", "reagendada", "cancelada"].includes(t.status);
-    return t.status === filterStatus;
-  });
-
-  async function handleAdminClose(ticket, action, notes) {
+  async function handleDrop(targetCollabId) {
+    if (!draggingId) return;
     setBusy(true);
     try {
-      await api.lousaAdminClose(ticket.id, { action, notes: notes || "" });
+      await api.lousaTransferTicket(draggingId, { new_collaborator_id: targetCollabId });
       await refresh();
     } catch (e) {
       alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
     setBusy(false);
+    setDraggingId(null);
+    setDragOverCol(null);
   }
 
-  async function handleDelete(ticket) {
-    if (!window.confirm("Excluir esta nota?")) return;
+  async function handleAdminClose(ticketId, action, notes) {
     setBusy(true);
     try {
-      await api.lousaDeleteTicket(ticket.id);
+      await api.lousaAdminClose(ticketId, { action, notes: notes || "" });
       await refresh();
     } catch (e) {
       alert(e?.response?.data?.detail || e.message);
@@ -63,13 +63,15 @@ export default function LousaAdminPanel() {
     setBusy(false);
   }
 
+  const totalTickets = grid.columns.reduce((sum, c) => sum + (c.tickets?.length || 0), 0);
+
   return (
     <div data-testid="lousa-admin-panel">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <div>
           <h2 style={{ margin: 0 }}>📋 Lousa de Serviços</h2>
           <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0 0" }}>
-            {tickets.length} bolhas no total · {filtered.length} exibidas
+            {grid.columns.length} técnico(s) · {totalTickets} bolha(s) ativas — arraste para transferir entre técnicos
           </p>
         </div>
         <Button onClick={() => setShowCreate(true)} data-testid="lousa-create-btn">
@@ -77,105 +79,31 @@ export default function LousaAdminPanel() {
         </Button>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        {[
-          ["all", "Todas"],
-          ["active", "Ativas"],
-          ["aberta", "Em campo"],
-          ["aguardando_atendimento", "Aguarda gestor"],
-          ["resolved", "Resolvidas"],
-        ].map(([k, l]) => (
-          <Button
-            key={k}
-            variant={filterStatus === k ? "primary" : "secondary"}
-            onClick={() => setFilterStatus(k)}
-            data-testid={`lousa-filter-${k}`}
-          >
-            {l}
-          </Button>
-        ))}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
-        {filtered.length === 0 && (
-          <div style={{ background: "white", padding: 20, borderRadius: 16, color: "#94a3b8", textAlign: "center", gridColumn: "1/-1" }}>
-            Nenhuma nota nesse filtro.
+      {/* Grade horizontal — coluna por técnico */}
+      <div style={{
+        display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16,
+        minHeight: 540,
+      }} data-testid="lousa-grid">
+        {grid.columns.length === 0 && (
+          <div style={{ background: "white", padding: 30, borderRadius: 14, color: "#94a3b8", flex: 1, textAlign: "center" }}>
+            Nenhum técnico cadastrado.
           </div>
         )}
-        {filtered.map((t) => {
-          const c = PRIORITY_COLORS[t.priority] || PRIORITY_COLORS.normal;
-          const collab = collabs.find((x) => x.id === t.assigned_collaborator_id);
-          const st = STATUS_LABEL[t.status] || { label: t.status, color: "#64748b" };
-          return (
-            <div key={t.id} data-testid={`lousa-card-${t.id}`} style={{
-              background: c.bg, border: `2px solid ${c.border}`, borderRadius: 18, padding: 14,
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
-                <span style={{ fontSize: 10, fontWeight: 900, color: c.text }}>
-                  {c.label}{t.scheduled_time ? ` · ${t.scheduled_time.substr(11, 5)}` : ""}
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 800, color: st.color, background: "rgba(255,255,255,.7)", padding: "2px 8px", borderRadius: 8 }}>
-                  {st.label}
-                </span>
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 800, marginTop: 6, color: c.text }}>{t.client_snapshot.name}</div>
-              <div style={{ fontSize: 12, color: "#64748b" }}>{t.client_snapshot.address}</div>
-              <div style={{ fontSize: 12, color: "#475569", marginTop: 6 }}>
-                Técnico: <strong>{collab?.name || "—"}</strong>
-              </div>
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4, fontStyle: "italic" }}>
-                "{t.client_snapshot.relato?.substring(0, 100)}{t.client_snapshot.relato?.length > 100 ? "..." : ""}"
-              </div>
-              {t.admin_notes && (
-                <div style={{ marginTop: 8, fontSize: 11, background: "rgba(220, 38, 38, 0.08)", padding: 6, borderRadius: 8, color: "#7f1d1d" }}>
-                  <strong>{t.admin_action}:</strong> {t.admin_notes}
-                </div>
-              )}
-
-              {/* Actions */}
-              {["pendente", "aberta", "aguardando_atendimento"].includes(t.status) && (
-                <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      const notes = window.prompt("Notas (opcional):");
-                      if (notes !== null) handleAdminClose(t, "encerrar", notes);
-                    }}
-                    data-testid={`admin-close-${t.id}`}
-                    style={{ fontSize: 11, padding: "4px 10px" }}
-                  >
-                    ✓ Encerrar
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      const notes = window.prompt("Motivo do reagendamento:");
-                      if (notes) handleAdminClose(t, "reagendar", notes);
-                    }}
-                    style={{ fontSize: 11, padding: "4px 10px" }}
-                  >
-                    📅 Reagendar
-                  </Button>
-                  <Button
-                    variant="danger"
-                    onClick={() => {
-                      const notes = window.prompt("Motivo do cancelamento:");
-                      if (notes) handleAdminClose(t, "cancelar", notes);
-                    }}
-                    style={{ fontSize: 11, padding: "4px 10px" }}
-                  >
-                    ✗ Cancelar
-                  </Button>
-                </div>
-              )}
-              {t.status === "pendente" && (
-                <Button variant="soft" onClick={() => handleDelete(t)} style={{ fontSize: 11, padding: "2px 8px", marginTop: 4 }}>
-                  🗑 Excluir
-                </Button>
-              )}
-            </div>
-          );
-        })}
+        {grid.columns.map((col) => (
+          <TechColumn
+            key={col.collaborator.id}
+            column={col}
+            isDropTarget={dragOverCol === col.collaborator.id}
+            onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.collaborator.id); }}
+            onDragLeave={() => setDragOverCol((c) => c === col.collaborator.id ? null : c)}
+            onDrop={() => handleDrop(col.collaborator.id)}
+            onDragStart={(tid) => setDraggingId(tid)}
+            onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
+            draggingId={draggingId}
+            onAdminClose={handleAdminClose}
+            busy={busy}
+          />
+        ))}
       </div>
 
       {showCreate && (
@@ -187,6 +115,163 @@ export default function LousaAdminPanel() {
       )}
     </div>
   );
+}
+
+function TechColumn({ column, isDropTarget, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, busy }) {
+  const c = column.collaborator;
+  const state = column.clock_state;
+  const tickets = column.tickets || [];
+  const isOnline = state.has_entrada && !state.ended_day && !state.in_intervalo;
+
+  return (
+    <div
+      data-testid={`tech-column-${c.id}`}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      style={{
+        flex: "0 0 320px", maxWidth: 320,
+        background: isDropTarget ? "#dbeafe" : "#f1f5f9",
+        border: `2px ${isDropTarget ? "dashed" : "solid"} ${isDropTarget ? "#3b82f6" : "#e2e8f0"}`,
+        borderRadius: 16, padding: 12, transition: "all .15s",
+      }}
+    >
+      {/* Header do técnico */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 10, borderBottom: "1px solid #cbd5e1" }}>
+        <div style={{
+          width: 42, height: 42, borderRadius: "50%",
+          background: c.avatar ? `url(${c.avatar}) center/cover` : "linear-gradient(135deg,#0ea5e9,#0284c7)",
+          display: "grid", placeItems: "center", color: "white", fontWeight: 800, fontSize: 16,
+          border: `3px solid ${isOnline ? "#10b981" : "#94a3b8"}`, position: "relative",
+        }}>
+          {!c.avatar && (c.name?.[0] || "?").toUpperCase()}
+          <span style={{
+            position: "absolute", bottom: -2, right: -2,
+            width: 14, height: 14, borderRadius: "50%",
+            background: isOnline ? "#10b981" : state.ended_day ? "#94a3b8" : "#f59e0b",
+            border: "2px solid white",
+          }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {c.name}
+            {c.is_test_mode && <span style={{ marginLeft: 6, fontSize: 9, background: "#a855f7", color: "white", padding: "1px 5px", borderRadius: 6 }}>🧪 TESTE</span>}
+          </div>
+          <div style={{ fontSize: 11, color: "#64748b" }}>
+            {c.praca || "—"} · {tickets.length} bolha(s)
+          </div>
+        </div>
+      </div>
+
+      {/* Faixa de horários do dia */}
+      <div data-testid={`schedule-${c.id}`} style={{
+        marginTop: 10, padding: "6px 8px",
+        background: "white", borderRadius: 10, border: "1px solid #e2e8f0",
+        fontSize: 10, display: "flex", flexWrap: "wrap", gap: 4,
+      }}>
+        {state.records?.length === 0 && (
+          <span style={{ color: "#94a3b8" }}>Sem ponto hoje</span>
+        )}
+        {state.records?.map((r, i) => (
+          <span key={i} style={{
+            padding: "1px 6px", borderRadius: 6, fontWeight: 700,
+            background: r.type === "Entrada" ? "#dcfce7" : r.type === "Saída" ? "#fee2e2" : "#fef3c7",
+            color: r.type === "Entrada" ? "#166534" : r.type === "Saída" ? "#7f1d1d" : "#78350f",
+          }}>
+            {r.type === "Entrada" ? "🚪" : r.type === "Início intervalo" ? "🍽️" : r.type === "Fim intervalo" ? "🔄" : "🏁"} {r.time}
+          </span>
+        ))}
+      </div>
+
+      {/* Bolhas */}
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8, minHeight: 200 }}>
+        {tickets.length === 0 && (
+          <div style={{
+            padding: 16, textAlign: "center", color: "#94a3b8", fontSize: 12,
+            border: "2px dashed #cbd5e1", borderRadius: 10,
+          }}>
+            {isDropTarget ? "↓ Solte aqui ↓" : "Nenhuma bolha"}
+          </div>
+        )}
+        {tickets.map((t) => (
+          <BubbleCard
+            key={t.id}
+            ticket={t}
+            isDragging={draggingId === t.id}
+            onDragStart={() => onDragStart(t.id)}
+            onDragEnd={onDragEnd}
+            onAdminClose={onAdminClose}
+            busy={busy}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BubbleCard({ ticket, isDragging, onDragStart, onDragEnd, onAdminClose, busy }) {
+  const c = PRIORITY_COLORS[ticket.priority] || PRIORITY_COLORS.normal;
+  const st = STATUS_LABEL[ticket.status] || { label: ticket.status, color: "#64748b" };
+  const [showActions, setShowActions] = useState(false);
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart(); }}
+      onDragEnd={onDragEnd}
+      onClick={() => setShowActions(!showActions)}
+      data-testid={`bubble-card-${ticket.id}`}
+      style={{
+        background: c.bg, border: `2px solid ${c.border}`, borderRadius: 14, padding: 10,
+        cursor: "grab", opacity: isDragging ? 0.4 : 1, position: "relative",
+        boxShadow: isDragging ? "none" : "0 2px 6px rgba(15,23,42,.08)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 4, alignItems: "start" }}>
+        {c.label && (
+          <span style={{ fontSize: 9, fontWeight: 900, color: c.text }}>{c.label}{ticket.scheduled_time ? ` · ${ticket.scheduled_time.substr(11, 5)}` : ""}</span>
+        )}
+        <span style={{ fontSize: 9, fontWeight: 800, color: st.color, background: "rgba(255,255,255,.7)", padding: "1px 6px", borderRadius: 6 }}>
+          {st.label}
+        </span>
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4, color: c.text }}>{ticket.client_snapshot.name}</div>
+      <div style={{ fontSize: 11, color: "#64748b" }}>{ticket.type} · {ticket.client_snapshot.neighborhood}</div>
+      <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>
+        {ticket.client_snapshot.relato?.substring(0, 70)}{ticket.client_snapshot.relato?.length > 70 ? "..." : ""}
+      </div>
+      {ticket.locked && (
+        <span style={{ position: "absolute", top: 6, right: 6, fontSize: 14 }}>🔒</span>
+      )}
+      {showActions && ["pendente", "aberta", "aguardando_atendimento"].includes(ticket.status) && (
+        <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
+          <button
+            data-testid={`admin-close-${ticket.id}`}
+            disabled={busy}
+            onClick={() => { const n = window.prompt("Notas:"); if (n !== null) onAdminClose(ticket.id, "encerrar", n); }}
+            style={btnSm("#10b981")}
+          >✓ Encerrar</button>
+          <button
+            disabled={busy}
+            onClick={() => { const n = window.prompt("Motivo do reagendamento:"); if (n) onAdminClose(ticket.id, "reagendar", n); }}
+            style={btnSm("#3b82f6")}
+          >📅 Reagendar</button>
+          <button
+            disabled={busy}
+            onClick={() => { const n = window.prompt("Motivo do cancelamento:"); if (n) onAdminClose(ticket.id, "cancelar", n); }}
+            style={btnSm("#dc2626")}
+          >✗ Cancelar</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function btnSm(color) {
+  return {
+    fontSize: 10, padding: "3px 7px", border: 0, borderRadius: 6,
+    background: color, color: "white", fontWeight: 800, cursor: "pointer",
+  };
 }
 
 function CreateTicketModal({ collabs, onClose, onCreated }) {
@@ -211,20 +296,11 @@ function CreateTicketModal({ collabs, onClose, onCreated }) {
     setSaving(false);
   }
 
-  const css = {
-    width: "100%", padding: "8px 10px", border: "1px solid #cbd5e1",
-    borderRadius: 10, fontSize: 13, marginBottom: 8,
-  };
+  const css = { width: "100%", padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 10, fontSize: 13, marginBottom: 8 };
 
   return (
-    <div onClick={onClose} style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 100,
-      display: "grid", placeItems: "center", padding: 20,
-    }}>
-      <form onSubmit={submit} onClick={(e) => e.stopPropagation()} style={{
-        background: "white", borderRadius: 18, padding: 22, maxWidth: 480, width: "100%",
-        maxHeight: "92vh", overflowY: "auto",
-      }} data-testid="lousa-create-modal">
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 100, display: "grid", placeItems: "center", padding: 20 }}>
+      <form onSubmit={submit} onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 18, padding: 22, maxWidth: 480, width: "100%", maxHeight: "92vh", overflowY: "auto" }} data-testid="lousa-create-modal">
         <h2 style={{ marginTop: 0 }}>Nova nota de serviço</h2>
         <label style={{ fontSize: 12, color: "#64748b" }}>Nome do cliente *</label>
         <input required value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} style={css} data-testid="ticket-client-name" />
@@ -270,7 +346,6 @@ function CreateTicketModal({ collabs, onClose, onCreated }) {
         <select required value={form.assigned_collaborator_id} onChange={(e) => setForm({ ...form, assigned_collaborator_id: e.target.value })} style={css} data-testid="ticket-collab">
           {collabs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-
         <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
           <Button variant="soft" type="button" onClick={onClose} style={{ flex: 1 }}>Cancelar</Button>
           <Button type="submit" disabled={saving} style={{ flex: 1 }} data-testid="ticket-submit">

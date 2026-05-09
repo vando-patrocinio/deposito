@@ -194,6 +194,106 @@ async def _create_notification(
 # -------------------------------------------------------------------------
 # READ - Lousa do colaborador / Lista para gestor
 # -------------------------------------------------------------------------
+class TransferIn(BaseModel):
+    new_collaborator_id: str
+    new_position: Optional[int] = None
+
+
+@router.post("/lousa/tickets/{ticket_id}/transfer")
+async def transfer_ticket(ticket_id: str, payload: TransferIn,
+                          user: dict = Depends(require_role("gestor"))):
+    """Gestor transfere bolha de um técnico para outro arrastando na grade."""
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    if t["status"] in ("finalizada", "encerrada", "cancelada"):
+        raise HTTPException(400, "Nota já encerrada — não pode ser transferida")
+    new_coll = await db.collaborators.find_one(
+        {"id": payload.new_collaborator_id}, {"_id": 0, "id": 1, "name": 1},
+    )
+    if not new_coll:
+        raise HTTPException(404, "Técnico destino não encontrado")
+    # Define posição no destino (último da fila se não informado)
+    if payload.new_position is None:
+        last = await db.tickets.find(
+            {"assigned_collaborator_id": payload.new_collaborator_id,
+             "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]}},
+            {"_id": 0, "position": 1},
+        ).sort("position", -1).to_list(1)
+        new_pos = (last[0]["position"] + 1) if last else 0
+    else:
+        new_pos = payload.new_position
+    update = {
+        "assigned_collaborator_id": payload.new_collaborator_id,
+        "position": new_pos,
+    }
+    # Se nota estava aberta, volta para pendente (técnico anterior já não está atendendo)
+    if t["status"] == "aberta":
+        update["status"] = "pendente"
+        update["opened_at"] = None
+    await db.tickets.update_one({"id": ticket_id}, {"$set": update})
+    return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+
+
+@router.get("/lousa/grid")
+async def lousa_grid(user: dict = Depends(require_role("gestor"))):
+    """Retorna lousa em formato GRADE: lista de técnicos + bolhas agrupadas por técnico."""
+    q = tenant_filter(user)
+    collabs = await db.collaborators.find(q, {"_id": 0}).to_list(500)
+    collabs.sort(key=lambda c: c.get("name", ""))
+
+    active_states = ["pendente", "aberta", "aguardando_atendimento"]
+    cids = [c["id"] for c in collabs]
+    all_active = await db.tickets.find(
+        {"assigned_collaborator_id": {"$in": cids}, "status": {"$in": active_states}},
+        {"_id": 0},
+    ).to_list(2000)
+
+    # Estado do dia de cada colaborador (para mostrar se já bateu Entrada)
+    today = today_str()
+    records = await db.clock_records.find(
+        {"collaborator_id": {"$in": cids}, "date": today,
+         "status": {"$in": ["Válido", "Offline sincronizado"]}},
+        {"_id": 0, "collaborator_id": 1, "type": 1, "time": 1},
+    ).to_list(5000)
+    state_by_cid: dict = {}
+    for r in records:
+        s = state_by_cid.setdefault(r["collaborator_id"], {"types": set(), "records": []})
+        s["types"].add(r["type"])
+        s["records"].append({"type": r["type"], "time": r["time"]})
+
+    columns = []
+    for c in collabs:
+        cid = c["id"]
+        tickets = sorted(
+            [t for t in all_active if t["assigned_collaborator_id"] == cid],
+            key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]),
+        )
+        # Aplica trava visual (mesma lógica)
+        locked_idx = compute_locked_positions(tickets)
+        s = state_by_cid.get(cid, {"types": set(), "records": []})
+        in_intervalo = ("Início intervalo" in s["types"]) and ("Fim intervalo" not in s["types"])
+        has_entrada = "Entrada" in s["types"]
+        ended_day = "Saída" in s["types"]
+        for i, t in enumerate(tickets):
+            t["locked"] = (i in locked_idx) or in_intervalo or (not has_entrada) or ended_day
+        columns.append({
+            "collaborator": {
+                "id": cid, "name": c.get("name", ""),
+                "avatar": c.get("avatar_data_url"),
+                "is_test_mode": c.get("is_test_mode", False),
+                "praca": c.get("praca_name") or c.get("city") or "",
+            },
+            "clock_state": {
+                "has_entrada": has_entrada, "in_intervalo": in_intervalo,
+                "ended_day": ended_day,
+                "records": sorted(s["records"], key=lambda r: r["time"]),
+            },
+            "tickets": tickets,
+        })
+    return {"columns": columns}
+
+
 @router.get("/lousa/me")
 async def get_my_lousa(user: dict = Depends(get_current_user)):
     """Lousa do colaborador logado: bolhas ativas + estado do ponto + última info."""
@@ -216,6 +316,15 @@ async def get_lousa_by_collaborator(cid: str):
 
 async def _lousa_for_collaborator(cid: str) -> dict:
     state = await _today_clock_state(cid)
+    # Bolhas só aparecem após bater Entrada (identificação do técnico)
+    if not state["has_entrada"]:
+        return {
+            "tickets": [],
+            "active_ticket_id": None,
+            "clock_state": state,
+            "lousa_unlocked": False,
+            "needs_clock_in": True,
+        }
     active_states = ["pendente", "aberta", "aguardando_atendimento"]
     active_raw = await db.tickets.find(
         {"assigned_collaborator_id": cid, "status": {"$in": active_states}},
@@ -224,7 +333,7 @@ async def _lousa_for_collaborator(cid: str) -> dict:
     active_raw.sort(key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]))
     locked_idx = compute_locked_positions(active_raw)
     for i, t in enumerate(active_raw):
-        t["locked"] = (i in locked_idx) or state["in_intervalo"] or (not state["has_entrada"]) or state["ended_day"]
+        t["locked"] = (i in locked_idx) or state["in_intervalo"] or state["ended_day"]
         t["admin_resolved"] = False
 
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
@@ -244,7 +353,8 @@ async def _lousa_for_collaborator(cid: str) -> dict:
         "tickets": active_raw + resolved_raw,
         "active_ticket_id": active["id"] if active else None,
         "clock_state": state,
-        "lousa_unlocked": state["has_entrada"] and not state["in_intervalo"] and not state["ended_day"],
+        "lousa_unlocked": not state["in_intervalo"] and not state["ended_day"],
+        "needs_clock_in": False,
     }
 
 
