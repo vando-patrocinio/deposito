@@ -21,8 +21,8 @@ function formatGap(min) {
   return formatDur(min);
 }
 
-export default function CollaboratorApp({ mobile = false }) {
-  return <CollaboratorAppInner mobile={mobile} forcedCollabId={null} onLogout={null} />;
+export default function CollaboratorApp({ mobile = false, forcedCollabId = null, onLogout = null }) {
+  return <CollaboratorAppInner mobile={mobile} forcedCollabId={forcedCollabId} onLogout={onLogout} />;
 }
 
 function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout = null }) {

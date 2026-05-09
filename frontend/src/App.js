@@ -29,6 +29,8 @@ function useMobileMode() {
     if (typeof window === "undefined") return false;
     const params = new URLSearchParams(window.location.search);
     if (params.get("mode") === "app" || params.get("mode") === "mobile") return true;
+    // ?cid=... (link direto compartilhado para um técnico específico) força modo app
+    if (params.get("cid")) return true;
     if (params.get("mode") === "desktop") return false;
     // override manual via sessionStorage (botão "Modo celular" no header)
     if (typeof sessionStorage !== "undefined") {
@@ -333,7 +335,12 @@ function AppContent() {
 
   // Mobile = app de ponto. Acesso livre — colaborador é autenticado pela face,
   // não precisa logar no sistema. Login é exclusivo para gestor/auditor (desktop).
-  if (mobile) return <CollaboratorApp mobile />;
+  if (mobile) {
+    // Suporte a ?cid=col-xxx — link direto para um colaborador específico (compartilhado pelo gestor)
+    const params = new URLSearchParams(window.location.search);
+    const forced = params.get("cid") || null;
+    return <CollaboratorApp mobile forcedCollabId={forced} />;
+  }
 
   // Rotas de billing (callback do Stripe) — funcionam autenticado ou não
   if (route.path === "/billing/success") {

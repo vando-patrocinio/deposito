@@ -290,6 +290,8 @@ export default function CadastroPanel() {
                     <span><span style={{ color: "#94a3b8" }}>E-mail</span>&nbsp;{c.email}</span>
                     <span><span style={{ color: "#94a3b8" }}>Tel</span>&nbsp;{c.phone}</span>
                   </div>
+
+                  <CollabShareLink collaborator={c} />
                 </div>
               </div>
 
@@ -1019,6 +1021,95 @@ function ClockHistoryModal({ collaborator, onClose }) {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+
+function CollabShareLink({ collaborator }) {
+  const [copied, setCopied] = useState(false);
+  const url = (() => {
+    if (typeof window === "undefined") return "";
+    return `${window.location.origin}/?cid=${collaborator.id}`;
+  })();
+  const phoneClean = (collaborator.phone || "").replace(/\D/g, "");
+  const waMsg = encodeURIComponent(
+    `Olá, ${collaborator.name?.split(" ")[0] || ""}! Acesse o app de serviço pelo link abaixo:\n${url}`
+  );
+  const waUrl = phoneClean
+    ? `https://wa.me/${phoneClean.length <= 11 ? "55" + phoneClean : phoneClean}?text=${waMsg}`
+    : null;
+
+  async function copy() {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = url; document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    } catch (e) {
+      window.prompt("Copie o link manualmente:", url);
+    }
+  }
+
+  return (
+    <div data-testid={`collab-share-link-${collaborator.id}`} style={{
+      marginTop: 8, padding: 8,
+      background: copied ? "#dcfce7" : "#f1f5f9",
+      borderRadius: 10, border: `1px dashed ${copied ? "#86efac" : "#cbd5e1"}`,
+      transition: "background-color .25s, border-color .25s",
+    }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#475569", flexShrink: 0 }}>🔗 Link</span>
+        <input
+          data-testid={`collab-share-url-${collaborator.id}`}
+          readOnly
+          value={url}
+          onFocus={(e) => e.target.select()}
+          title="Link único deste técnico — abrir no celular dele já entra no app com o usuário certo"
+          style={{
+            flex: 1, minWidth: 0, fontSize: 11, fontFamily: "ui-monospace,SFMono-Regular,monospace",
+            padding: "6px 8px", border: "1px solid #e2e8f0", borderRadius: 8,
+            background: "white", color: "#0f172a",
+          }}
+        />
+        <button
+          data-testid={`collab-share-copy-${collaborator.id}`}
+          onClick={copy}
+          title="Copiar link"
+          style={{
+            border: 0, padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 800,
+            cursor: "pointer", flexShrink: 0,
+            background: copied ? "#10b981" : "#0ea5e9", color: "white",
+            boxShadow: "0 2px 4px rgba(15,23,42,.1)",
+          }}
+        >
+          {copied ? "✓ Copiado!" : "📋 Copiar"}
+        </button>
+        {waUrl && (
+          <a
+            data-testid={`collab-share-whatsapp-${collaborator.id}`}
+            href={waUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Enviar pelo WhatsApp para ${collaborator.phone}`}
+            style={{
+              padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 800,
+              background: "#25D366", color: "white", textDecoration: "none", flexShrink: 0,
+              boxShadow: "0 2px 4px rgba(15,23,42,.1)",
+            }}
+          >
+            💬 WhatsApp
+          </a>
+        )}
+      </div>
+      <div style={{ fontSize: 10, color: "#64748b", marginTop: 4, paddingLeft: 2 }}>
+        Abre o app de serviço já com {collaborator.name?.split(" ")[0] || "o técnico"} selecionado.
       </div>
     </div>
   );
