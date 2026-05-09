@@ -45,6 +45,7 @@ export default function LousaHistoryModal({ onClose }) {
   const [dateTo, setDateTo] = useState(todayStr());
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
@@ -70,11 +71,25 @@ export default function LousaHistoryModal({ onClose }) {
     return () => { alive = false; };
   }, [params]);
 
+  // Filtro client-side por busca textual (cliente, endereço, bairro, notas, técnico)
+  const filteredItems = useMemo(() => {
+    if (!data?.items) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return data.items;
+    return data.items.filter((it) => {
+      const hay = [
+        it.client_name, it.address, it.neighborhood, it.admin_notes,
+        it.collaborator_name, it.type, it.status,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+  }, [data, search]);
+
   function exportCsv() {
-    if (!data?.items?.length) return;
+    if (!filteredItems.length) return;
     const cols = ["created_at", "closed_at", "client_name", "address", "neighborhood", "type", "priority", "status", "duration_minutes", "collaborator_name", "scheduled_time", "admin_action", "admin_notes"];
     const head = cols.join(";");
-    const lines = data.items.map((it) =>
+    const lines = filteredItems.map((it) =>
       cols.map((c) => {
         const raw = (it[c] ?? "").toString().replace(/[\r\n]+/g, " | ").replace(/"/g, '""');
         return `"${raw}"`;
@@ -101,7 +116,7 @@ export default function LousaHistoryModal({ onClose }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 20 }}>📚 Histórico da Lousa</h2>
           <div style={{ display: "flex", gap: 6 }}>
-            <Button variant="soft" onClick={exportCsv} disabled={!data?.items?.length} data-testid="history-export-csv">📥 Exportar CSV</Button>
+            <Button variant="soft" onClick={exportCsv} disabled={!filteredItems.length} data-testid="history-export-csv">📥 Exportar CSV</Button>
             <Button variant="soft" onClick={onClose} data-testid="history-close-btn">Fechar</Button>
           </div>
         </div>
@@ -156,22 +171,42 @@ export default function LousaHistoryModal({ onClose }) {
               <option key={v} value={v}>{l}</option>
             ))}
           </select>
+
+          <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 14, pointerEvents: "none" }}>🔍</span>
+            <input
+              data-testid="history-search"
+              type="text"
+              placeholder="Buscar cliente, endereço, bairro, notas, técnico..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ ...inputCss, width: "100%", paddingLeft: 32 }}
+            />
+            {search && (
+              <button
+                data-testid="history-search-clear"
+                onClick={() => setSearch("")}
+                style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "transparent", border: 0, color: "#94a3b8", cursor: "pointer", fontSize: 16, padding: 4 }}
+                title="Limpar busca"
+              >✕</button>
+            )}
+          </div>
         </div>
 
-        {/* Resumo */}
+        {/* Resumo (cards clicáveis para filtrar por status) */}
         {data && (
           <div data-testid="history-summary" style={{
             background: "linear-gradient(135deg,#f8fafc,#e2e8f0)", borderRadius: 12, padding: 12, marginBottom: 12,
             display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8,
           }}>
-            <Stat label="Total" value={data.summary.total} />
-            <Stat label="Finalizadas" value={data.summary.finalizada} color="#10b981" />
-            <Stat label="Encerradas" value={data.summary.encerrada} color="#475569" />
-            <Stat label="Reagendadas" value={data.summary.reagendada} color="#3b82f6" />
-            <Stat label="Canceladas" value={data.summary.cancelada} color="#dc2626" />
-            <Stat label="Tempo médio" value={data.summary.avg_duration_minutes != null ? fmtDuration(data.summary.avg_duration_minutes) : "—"} color="#a855f7" />
+            <Stat label="Total" value={data.summary.total} statusKey="" active={statusFilter === ""} onClick={() => setStatusFilter("")} testId="history-stat-total" />
+            <Stat label="Finalizadas" value={data.summary.finalizada} color="#10b981" statusKey="finalizada" active={statusFilter === "finalizada"} onClick={() => setStatusFilter(statusFilter === "finalizada" ? "" : "finalizada")} testId="history-stat-finalizada" />
+            <Stat label="Encerradas" value={data.summary.encerrada} color="#475569" statusKey="encerrada" active={statusFilter === "encerrada"} onClick={() => setStatusFilter(statusFilter === "encerrada" ? "" : "encerrada")} testId="history-stat-encerrada" />
+            <Stat label="Reagendadas" value={data.summary.reagendada} color="#3b82f6" statusKey="reagendada" active={statusFilter === "reagendada"} onClick={() => setStatusFilter(statusFilter === "reagendada" ? "" : "reagendada")} testId="history-stat-reagendada" />
+            <Stat label="Canceladas" value={data.summary.cancelada} color="#dc2626" statusKey="cancelada" active={statusFilter === "cancelada"} onClick={() => setStatusFilter(statusFilter === "cancelada" ? "" : "cancelada")} testId="history-stat-cancelada" />
+            <Stat label="Tempo médio" value={data.summary.avg_duration_minutes != null ? fmtDuration(data.summary.avg_duration_minutes) : "—"} color="#a855f7" testId="history-stat-avg" />
             {data.summary.top_collaborator && (
-              <Stat label="Top técnico" value={`${data.summary.top_collaborator.name?.split(" ")[0]} (${data.summary.top_collaborator.count})`} color="#f59e0b" />
+              <Stat label="Top técnico" value={`${data.summary.top_collaborator.name?.split(" ")[0]} (${data.summary.top_collaborator.count})`} color="#f59e0b" testId="history-stat-top" />
             )}
           </div>
         )}
@@ -181,7 +216,12 @@ export default function LousaHistoryModal({ onClose }) {
           {loading && <div style={{ padding: 20, textAlign: "center", color: "#64748b" }}>Carregando histórico...</div>}
           {err && <div style={{ padding: 20, color: "#dc2626" }}>Erro: {err}</div>}
           {!loading && data?.items?.length === 0 && <div style={{ padding: 20, textAlign: "center", color: "#94a3b8" }}>Nenhuma nota neste período.</div>}
-          {!loading && data?.items?.length > 0 && (
+          {!loading && data?.items?.length > 0 && filteredItems.length === 0 && (
+            <div style={{ padding: 20, textAlign: "center", color: "#94a3b8" }}>
+              Nenhuma nota corresponde à busca <strong>"{search}"</strong>.
+            </div>
+          )}
+          {!loading && filteredItems.length > 0 && (
             <table data-testid="history-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead style={{ position: "sticky", top: 0, background: "#0f172a", color: "white", zIndex: 1 }}>
                 <tr>
@@ -190,7 +230,7 @@ export default function LousaHistoryModal({ onClose }) {
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((it) => (
+                {filteredItems.map((it) => (
                   <tr key={it.id} data-testid={`history-row-${it.id}`} style={{ borderBottom: "1px solid #f1f5f9" }}>
                     <Td>{fmtDateBR(it.created_at)}</Td>
                     <Td><strong>{it.client_name}</strong>{it.neighborhood && <div style={{ color: "#94a3b8", fontSize: 10 }}>{it.neighborhood}</div>}</Td>
@@ -217,7 +257,8 @@ export default function LousaHistoryModal({ onClose }) {
 
         {data && (
           <div style={{ marginTop: 8, fontSize: 11, color: "#94a3b8", textAlign: "right" }}>
-            {data.items.length} nota(s) — período: {data.label} ({data.from_iso?.slice(0, 10)} → {data.to_iso?.slice(0, 10)})
+            {filteredItems.length}{search || statusFilter ? ` de ${data.items.length}` : ""} nota(s)
+            {" "}— período: {data.label} ({data.from_iso?.slice(0, 10)} → {data.to_iso?.slice(0, 10)})
           </div>
         )}
       </div>
@@ -225,12 +266,30 @@ export default function LousaHistoryModal({ onClose }) {
   );
 }
 
-function Stat({ label, value, color = "#0f172a" }) {
+function Stat({ label, value, color = "#0f172a", active = false, onClick, testId }) {
+  const clickable = !!onClick;
   return (
-    <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 10, padding: 8, textAlign: "center" }}>
-      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 900, color, marginTop: 2 }}>{value}</div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!clickable}
+      data-testid={testId}
+      data-active={active ? "true" : "false"}
+      style={{
+        background: active ? "linear-gradient(135deg,#0f172a,#1e293b)" : "white",
+        border: active ? `2px solid ${color}` : "1px solid #e2e8f0",
+        borderRadius: 10, padding: 8, textAlign: "center",
+        cursor: clickable ? "pointer" : "default",
+        transition: "transform .12s, box-shadow .12s",
+        boxShadow: active ? `0 4px 14px ${color}33` : "none",
+        outline: 0,
+      }}
+      onMouseEnter={(e) => { if (clickable) e.currentTarget.style.transform = "translateY(-1px)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; }}
+    >
+      <div style={{ fontSize: 10, color: active ? "#cbd5e1" : "#64748b", fontWeight: 700, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 900, color: active ? "white" : color, marginTop: 2 }}>{value}</div>
+    </button>
   );
 }
 function Th({ children }) {

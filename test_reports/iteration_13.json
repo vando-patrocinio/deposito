@@ -1,0 +1,31 @@
+{
+  "summary": "Iter13 — Histórico da Lousa: KPI cards CLICÁVEIS para filtro de status + busca textual client-side. FRONTEND 100% PASS (8/8 cenários) + BACKEND regressão iter12 14/14 PASS. Todos os data-testid esperados confirmados (history-stat-total, -finalizada, -encerrada, -reagendada, -cancelada, -avg, -top, history-search, history-search-clear). Comportamentos validados em http://dual-combine-3.preview.emergentagent.com após login gestor@empresa.com em /login → tab-lousa → lousa-history-btn → mês 2026-05 (125 notas).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration12_lousa_history.py",
+    "/app/test_reports/pytest/iter13_iter12regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "[CARRY-OVER iter12] Quando um KPI de status (ex: Cancelada) está ativo, os outros cards recomputam para 0 porque o backend retorna summary apenas dos rows filtrados. Isso significa que com Cancelada ativo, clicar em 'Finalizadas (0)' faz nada útil. Sugestão UX: ou desabilitar cards com value=0, ou computar summary client-side a partir do dataset não filtrado por status. Não bloqueia o fluxo principal mas pode confundir o usuário.",
+    "[CARRY-OVER iter12] /app/backend/routes/lousa.py >1900 linhas — refactor urgente em módulos.",
+    "[CARRY-OVER iter12] lousa_history sem paginação + hard limit de 5000 sem flag truncated.",
+    "[CARRY-OVER iter10/11] DashboardPanel ResponsiveContainer warnings persistentes (Recharts width(-1)/height(-1))."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (14/14 iter12 regression)",
+    "frontend": "100% (8/8 cenários iter13)"
+  },
+  "test_credentials": "gestor@empresa.com / 123456",
+  "seed_data_creation": "Nenhum — usadas as 125 notas pré-existentes em 2026-05.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter13 fechado verde. Resultados validados:\n• Click history-stat-encerrada → 8 rows, data-active=true, status dropdown='encerrada', footer '8 de 8 nota(s)'\n• Click novamente → toggle off, 125 rows, data-active=false, dropdown=''\n• Click history-stat-cancelada → 14 rows; depois Total → limpa (125 rows, total active=true, cancelada active=false)\n• history-stat-avg/top: disabled=true (não clicáveis, sem onClick)\n• history-search 'Centro' → 109 rows; 'Carlos' → 20 rows; footer mostra 'X de Y' quando há busca/filtro\n• history-search-clear visível só com texto, limpa input + volta para 125 rows\n• Footer sem filtro: '125 nota(s) — período: 2026-05' (sem 'de Y')\n• Export CSV com filtro Cancelada: download de 2904B, 15 linhas (1 header + 14 rows), todas 14 ocorrências de 'cancelada' — confirma que usa filteredItems e não data.items\n• Backend regressão iter12: 14/14 PASS em 2.38s",
+  "rca of the issue": "Sem bugs. Implementação iter13 (cards clicáveis + busca client-side) funcionando 100% conforme spec. Toggle on/off, integração com status dropdown, footer dinâmico, export CSV respeitando filtros, e disabled state nos cards não-clicáveis (avg/top) — tudo verificado."
+}
