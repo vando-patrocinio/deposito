@@ -1,0 +1,36 @@
+{
+  "summary": "Backend testing do merge smart1 + smart2 (lousa de bolhas + ponto eletrônico). Todos os 11 fluxos pedidos foram cobertos via pytest. 26/27 testes passaram (1 skipped por falta de notificação para marcar como lida — endpoint /api/notifications/{nid}/read não foi exercitado, mas /api/notifications/read-all passou e o list passou). Login JWT, lousa pública, vinculação user.collaborator_id, super-role administrador, state machine 412-antes-da-Entrada, CRUD de bolhas, admin-close, notifications e regression smart2 (/api/saas/me, /api/collaborators, /api/auth/me) todos OK.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/notifications/{nid}/read", "issue": "Não foi possível exercitar o endpoint via fluxo natural (não havia notificação no DB). Endpoint não foi quebrado, apenas skipped por ausência de dado. Caminho de criação de notificação (notify-backoffice / exit-resolve) não foi acionado neste run para preservar dados seed (não bater Entrada real). Sugestão: testar manualmente acionando POST /api/notifications/{id}/read após disparar /api/lousa/exit-resolve (requer token de colaborador com bolha aberta)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_lousa_merge.py",
+    "/app/test_reports/pytest/lousa_merge_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/lousa.py (688 linhas): arquivo perto do limite recomendado de 700 linhas. Considerar dividir em sub-módulos (ex.: routes/lousa/read.py, write.py, public.py, notifications.py) à medida que cresce.",
+    "Notificações usam tenant_filter(user) para listar e read-all. Confirmado que admin@empresa.com (administrador) tem acesso (super-role via require_role). OK.",
+    "Endpoints públicos /api/lousa/public/* aceitam collaborator_id no body sem auth — está consistente com o padrão do /api/clock-records do smart2. Validações de existência de colaborador presentes em exit-resolve, mas em public/tickets/{id}/open o ticket é validado apenas após state checks. Atualmente protegido por verificação 'assigned_collaborator_id != cid' antes de mutar — OK.",
+    "create_ticket faz geocode_address best-effort com try/except amplo — bom. Se geocode estiver lento (rede externa), pode adicionar latência ao POST; considerar tornar assíncrono em background no futuro.",
+    "Validações 412 para ponto não-batido são bem mapeadas (has_entrada, in_intervalo, ended_day). Mensagens em PT-BR, claras."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_lousa_merge.py (novo)"
+  ],
+  "success_rate": {"backend": "96% (26/27 — 1 skipped não-blocker)", "frontend": "n/a (não testado por solicitação)"},
+  "test_credentials": "admin@empresa.com / 123456 (administrador), gestor@empresa.com / 123456 (gestor), colaborador@empresa.com / 123456 (colaborador, vinculado a col-demo-001). Compat: admin@example.com/admin123, auditor@example.com/auditor123.",
+  "seed_data_creation": "Nenhuma seed manual necessária — o startup do backend já popula 5 bolhas para col-demo-001 via _seed_demo_tickets. Testes criam tickets com prefix TEST_ e fazem cleanup automático via DELETE.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suite pytest em /app/backend/tests/test_lousa_merge.py cobre 27 cenários do merge. Caso seja necessário cobrir o fluxo completo de notificação read/read-all, é preciso primeiro disparar uma notificação via /api/lousa/exit-resolve (token colaborador) ou /api/lousa/tickets/{id}/notify-backoffice — porém isso exige bater ponto de Entrada real (selfie+GPS+IA), o que ficou fora do escopo conforme instrução. Preservar a empresa demo co-demo e o colaborador col-demo-001 entre rodadas.",
+  "rca of the issue": "N/A — nenhum bug encontrado."
+}
