@@ -1066,12 +1066,19 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
         details=f"ONT={cd.ont or '-'} · sinal={cd.sinal} dBm · fotos={len(cd.fotos)}",
         company_id=t.get("company_id") or DEMO_COMPANY_ID,
     )
-    # Bridge Estoque ↔ Lousa: marca OS associada como pendente_fechamento (gestor encerra com MAC+insumos)
+    # Bridge Estoque ↔ Lousa: AUTO-BAIXA do estoque a partir do completion_data
     try:
-        from routes.stok import mark_service_ticket_finalized
-        await mark_service_ticket_finalized(ticket_id, t.get("company_id") or DEMO_COMPANY_ID)
+        from routes.stok import auto_close_service_from_ticket
+        coll_doc = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1, "company_id": 1})
+        await auto_close_service_from_ticket(
+            ticket_id=ticket_id,
+            company_id=t.get("company_id") or DEMO_COMPANY_ID,
+            completion_data=cd.model_dump(),
+            technician_id=cid,
+            technician_name=(coll_doc or {}).get("name", "Técnico"),
+        )
     except Exception as e:
-        logger.warning("[lousa] mark_service_ticket_finalized falhou: %s", e)
+        logger.warning("[lousa] auto_close_service_from_ticket falhou: %s", e)
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 

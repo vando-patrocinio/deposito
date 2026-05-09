@@ -447,7 +447,8 @@ async def close_service(service_id: str, payload: ServiceCloseIn,
                          user: dict = Depends(require_role("gestor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     service = await db.stok_services.find_one(
-        {"id": service_id, "company_id": cid, "status": "ativo"}, {"_id": 0},
+        {"id": service_id, "company_id": cid,
+         "status": {"$in": ["ativo", "erro_estoque"]}}, {"_id": 0},
     )
     if not service:
         raise HTTPException(404, "Serviço ativo não encontrado. Sem serviço ativo não existe baixa de estoque.")
@@ -705,3 +706,130 @@ async def cancel_service_for_ticket(ticket_id: str, company_id: str, reason: str
         {"$set": {"status": "cancelado", "closed_at": now_iso(),
                   "cancel_reason": reason or "Cancelado via Lousa"}},
     )
+
+
+# Mapping completion_data fields → consumable IDs (Lousa → Estoque)
+_COMPLETION_FIELD_TO_CONSUMABLE = {
+    "qtd_drop": "drop",
+    "esticadores": "esticador",
+    "conectores_fast": "conector_fast",
+    "cabo_rede": "cabo_rede",
+    "conectores_rede": "conector_rede",
+    # `conector_fibra` não tem campo na Lousa hoje; gestor adiciona manualmente se precisar
+}
+
+
+async def auto_close_service_from_ticket(
+    ticket_id: str, company_id: str, completion_data: dict,
+    technician_id: str, technician_name: str,
+) -> dict:
+    """Quando técnico finaliza bolha, auto-fecha a OS associada e baixa estoque.
+
+    Mapeia `completion_data` (Lousa) para `used_items` (Estoque).
+    Tratamento de erro: se saldo insuficiente OU MAC inválido, marca OS como
+    `status="erro_estoque"` com notas pro gestor, mas **não derruba o finalize
+    da Lousa** (best-effort).
+    Retorna `{ok, service_id?, reason?, used_items?}` para logging.
+    """
+    if not ticket_id or not company_id:
+        return {"ok": False, "reason": "missing_ids"}
+    service = await db.stok_services.find_one(
+        {"ticket_id": ticket_id, "company_id": company_id, "status": "ativo"},
+        {"_id": 0},
+    )
+    if not service:
+        return {"ok": False, "reason": "no_active_service_for_ticket"}
+    sid = service["id"]
+
+    # Monta used_items a partir do completion_data
+    used_items: List[UsedItem] = []
+    for field, cons_id in _COMPLETION_FIELD_TO_CONSUMABLE.items():
+        try:
+            qty = int(round(float(completion_data.get(field) or 0)))
+        except (TypeError, ValueError):
+            qty = 0
+        if qty > 0:
+            used_items.append(UsedItem(consumable_id=cons_id, quantity=qty))
+
+    ont_mac = (completion_data.get("ont") or "").strip() or None
+
+    err_reason: Optional[str] = None
+    parts: List[str] = []
+
+    # Validações em try-block: qualquer erro vira "erro_estoque" sem derrubar
+    try:
+        _validate_used_items(used_items)
+        await _check_tech_has_stock(company_id, technician_id, technician_name, used_items)
+        if service["type"] in ("instalacao", "troca"):
+            if not ont_mac:
+                raise HTTPException(400, "MAC da ONT é obrigatório para instalação/troca.")
+            parts.append(await _move_ont_for_install(company_id, service, ont_mac))
+        elif service["type"] == "retirada":
+            if not ont_mac:
+                raise HTTPException(400, "MAC da ONT retirada é obrigatório.")
+            parts.append(await _move_ont_for_withdraw(company_id, service, technician_name, ont_mac))
+        stock_desc = await _decrement_tech_stock(company_id, technician_id, used_items)
+        if stock_desc:
+            parts.append(stock_desc)
+    except HTTPException as e:
+        err_reason = e.detail if isinstance(e.detail, str) else str(e.detail)
+    except Exception as e:
+        err_reason = f"erro inesperado: {e}"
+
+    if err_reason:
+        await db.stok_services.update_one(
+            {"id": sid, "company_id": company_id},
+            {"$set": {
+                "status": "erro_estoque",
+                "ticket_finalized": True,
+                "ticket_finalized_at": now_iso(),
+                "error_reason": err_reason,
+                "auto_close_attempted_at": now_iso(),
+            }},
+        )
+        await _add_history(
+            "erro_baixa",
+            f"{sid} — Auto-baixa FALHOU: {err_reason}. Técnico {technician_name}. Gestor precisa fechar manualmente.",
+            technician_name, "auto_finalize_lousa", company_id,
+        )
+        # Notifica gestores
+        try:
+            await db.notifications.insert_one({
+                "id": f"notif-{uuid.uuid4().hex[:10]}",
+                "company_id": company_id,
+                "type": "stok_auto_close_failed",
+                "title": f"⚠️ OS {sid} sem baixa automática",
+                "message": f"{technician_name} finalizou a bolha mas estoque não foi baixado: {err_reason}. Resolva manualmente em Estoque → Serviços.",
+                "severity": "warning",
+                "created_at": now_iso(),
+                "read": False,
+                "audience_role": "gestor",
+                "ticket_id": ticket_id,
+            })
+        except Exception:
+            pass
+        return {"ok": False, "service_id": sid, "reason": err_reason,
+                "needs_manual_close": True}
+
+    # Sucesso: fecha OS
+    await db.stok_services.update_one(
+        {"id": sid, "company_id": company_id},
+        {"$set": {
+            "status": "fechado",
+            "closed_at": now_iso(),
+            "ticket_finalized": True,
+            "ticket_finalized_at": now_iso(),
+            "auto_closed": True,
+            "auto_closed_used_items": [ui.model_dump() for ui in used_items],
+            "auto_closed_ont_mac": ont_mac,
+        }},
+    )
+    htype = "retirada" if service["type"] == "retirada" else "instalacao"
+    await _add_history(
+        htype,
+        f"{sid} (auto-baixa Lousa) - {' | '.join(parts) if parts else 'Sem materiais'} - Técnico {technician_name}",
+        technician_name, "auto_finalize_lousa", company_id,
+    )
+    return {"ok": True, "service_id": sid,
+            "used_items": [ui.model_dump() for ui in used_items],
+            "ont_mac": ont_mac}

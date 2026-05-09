@@ -1,8 +1,23 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA + Estoque + SmartOLT
 
-**Última atualização**: 2026-05-09 (iteração 26)
+**Última atualização**: 2026-05-09 (iteração 27)
 
 ## Histórico de iterações
+
+### Iter 27 — Auto-baixa do estoque ao finalizar bolha (2026-05-09) ✅
+- ✅ **`auto_close_service_from_ticket(ticket, completion_data, technician)`** em `routes/stok.py`:
+  - Mapeia `completion_data` (Lousa) → `used_items` (Estoque):
+    `qtd_drop`→`drop`, `esticadores`→`esticador`, `conectores_fast`→`conector_fast`, `cabo_rede`→`cabo_rede`, `conectores_rede`→`conector_rede`, `ont`→`ont_mac`.
+  - Sucesso: OS vai pra `status="fechado"` com `auto_closed=true` + `auto_closed_used_items` + `auto_closed_ont_mac` registrados pra auditoria. Histórico marca `tag="auto_finalize_lousa"`.
+  - Erro (saldo insuficiente, MAC inválido, etc.): OS vai pra `status="erro_estoque"` com `error_reason`. Cria notificação `notifications.type="stok_auto_close_failed"` audience=gestor. Lousa **NÃO é derrubada** — finalize sempre 200.
+- ✅ **Hook em `public_finalize_ticket`** chama auto-close passando `completion_data` + `technician_id`/`name`.
+- ✅ **`close_service` permite reabrir OS em `erro_estoque`** (gestor edita MAC/insumos e fecha manualmente).
+- ✅ **Frontend (`EstoquePanel.js`)**:
+  - Pills novos: `cancelado` (vermelho), `erro_estoque` (vermelho com ⚠).
+  - Badge `🤖` em OS auto-aberta + `✓ auto` (verde) em OS auto-fechada.
+  - `error_reason` exibido inline abaixo do status.
+  - Botão **🛠 Resolver** (em vez de ✓ Fechar) para OS em `erro_estoque`.
+- ✅ **Pytest**: 2/2 em `test_iteration27_auto_close.py` (auto-fechamento decrementa estoque + ONT migra pro cliente; erro de saldo marca `erro_estoque` sem derrubar finalize). Suite total: **25/25** passed (iter 25+26+27).
 
 ### Iter 26 — Integração SmartOLT (sinal vivo das ONUs) (2026-05-09) ✅
 - ✅ **Backend `/api/smartolt/*`** em `/app/backend/routes/smartolt.py` (~330 linhas):

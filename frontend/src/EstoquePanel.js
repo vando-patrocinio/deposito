@@ -21,6 +21,8 @@ const STATUS_COLORS = {
   retornada_empresa: { bg: "#e2e8f0", color: "#475569", label: "Retornada empresa" },
   ativo: { bg: "#dcfce7", color: "#166534", label: "Ativo" },
   fechado: { bg: "#e2e8f0", color: "#475569", label: "Fechado" },
+  cancelado: { bg: "#fee2e2", color: "#991b1b", label: "Cancelado" },
+  erro_estoque: { bg: "#fee2e2", color: "#991b1b", label: "⚠ Erro estoque" },
 };
 
 function StatusPill({ status }) {
@@ -462,14 +464,27 @@ function ServicosSection({ services, technicians, consumables, reload }) {
             ) : services.map((s) => (
               <tr key={s.id} style={{ borderTop: "1px solid #e2e8f0" }} data-testid={`svc-row-${s.id}`}>
                 <td style={{ padding: 10, fontFamily: "monospace", fontWeight: 700 }}>{s.id}</td>
-                <td style={{ padding: 10 }}>{s.type}</td>
+                <td style={{ padding: 10 }}>
+                  {s.type}
+                  {s.auto_opened && <span title="Auto-aberta pela Lousa" style={{ marginLeft: 4, fontSize: 10, color: "#64748b" }}>🤖</span>}
+                  {s.auto_closed && <span title="Auto-fechada pela Lousa" style={{ marginLeft: 4, fontSize: 10, color: "#15803d" }}>✓auto</span>}
+                </td>
                 <td style={{ padding: 10 }}>{s.client_name}</td>
                 <td style={{ padding: 10 }}>{techMap[s.technician_id] || s.technician_id}</td>
-                <td style={{ padding: 10 }}><StatusPill status={s.status} /></td>
+                <td style={{ padding: 10 }}>
+                  <StatusPill status={s.status} />
+                  {s.error_reason && (
+                    <div style={{ fontSize: 10, color: "#991b1b", marginTop: 2, maxWidth: 220 }}>
+                      ⚠ {s.error_reason}
+                    </div>
+                  )}
+                </td>
                 <td style={{ padding: 10, fontSize: 12, color: "#64748b" }}>{fmtDate(s.created_at)}</td>
                 <td style={{ padding: 10, textAlign: "right" }}>
-                  {s.status === "ativo" && (
-                    <button style={btnGhost} onClick={() => setClosing(s)} data-testid={`svc-close-${s.id}`}>✓ Fechar</button>
+                  {(s.status === "ativo" || s.status === "erro_estoque") && (
+                    <button style={btnGhost} onClick={() => setClosing(s)} data-testid={`svc-close-${s.id}`}>
+                      {s.status === "erro_estoque" ? "🛠 Resolver" : "✓ Fechar"}
+                    </button>
                   )}
                 </td>
               </tr>
