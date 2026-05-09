@@ -621,11 +621,70 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
     sinal: -25, qtd_drop: 1, esticadores: 1, conectores_fast: 2,
     cabo_rede: 10, conectores_rede: 2, ont: "", observacoes: "",
   });
+  const [stock, setStock] = useState(null);
+  const [macStatus, setMacStatus] = useState(null); // null|loading|ok|warn|error
+  const [macInfo, setMacInfo] = useState(null);
+
+  const cid = ticket.assigned_collaborator_id;
+  const isInstall = ticket.type === "instalacao" || ticket.type === "troca_endereco";
+  const isWithdraw = ticket.type === "retirada";
+  const needsMac = isInstall || isWithdraw;
+
+  // Carrega estoque do técnico
+  useEffect(() => {
+    if (!cid) return;
+    let alive = true;
+    api.publicTechStock(cid).then((s) => { if (alive) setStock(s); }).catch(() => {});
+    return () => { alive = false; };
+  }, [cid]);
+
+  // Validação MAC contra SmartOLT (debounce)
+  useEffect(() => {
+    if (!form.ont || form.ont.length < 6) {
+      setMacStatus(null); setMacInfo(null); return;
+    }
+    setMacStatus("loading");
+    const handle = setTimeout(async () => {
+      try {
+        const r = await api.publicValidateMac(form.ont, cid);
+        setMacInfo(r);
+        if (!r.found_smartolt) {
+          setMacStatus("error"); // não existe na SmartOLT
+        } else if (isInstall && !r.in_tech_stock) {
+          setMacStatus("warn"); // existe mas não está no técnico → bloqueia auto-baixa
+        } else if (isWithdraw && !r.in_client) {
+          setMacStatus("warn"); // retirada precisa estar no cliente
+        } else {
+          setMacStatus("ok");
+        }
+      } catch {
+        setMacStatus("error");
+      }
+    }, 600);
+    return () => clearTimeout(handle);
+  }, [form.ont, cid, isInstall, isWithdraw]);
 
   function submit() {
-    if (ticket.type === "instalacao" && !form.ont) {
-      alert("ONT é obrigatório para instalação");
+    if (needsMac && !form.ont) {
+      alert(isWithdraw ? "MAC da ONT retirada é obrigatório" : "MAC da ONT é obrigatório para instalação/troca");
       return;
+    }
+    if (needsMac && macStatus === "error") {
+      if (!window.confirm("MAC não encontrado no SmartOLT. Continuar mesmo assim? (Será marcado como erro_estoque para o gestor revisar)")) return;
+    }
+    // Saldo
+    const consMap = Object.fromEntries((stock?.consumables || []).map((c) => [c.id, c.qty]));
+    const checks = [
+      ["drop", form.qtd_drop], ["esticador", form.esticadores],
+      ["conector_fast", form.conectores_fast], ["cabo_rede", form.cabo_rede],
+      ["conector_rede", form.conectores_rede],
+    ];
+    for (const [k, v] of checks) {
+      const used = Number(v) || 0;
+      if (used > (consMap[k] ?? Infinity)) {
+        if (!window.confirm(`Saldo insuficiente de ${k} (disponível ${consMap[k]}, gastando ${used}). Continuar? Vai ficar erro_estoque pra revisão.`)) return;
+        break;
+      }
     }
     onFinalize({
       sinal: Number(form.sinal),
@@ -640,74 +699,175 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
     });
   }
 
-  const inputCss = {
-    width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1",
-    borderRadius: 10, fontSize: 14, marginBottom: 10,
+  const consMap = Object.fromEntries((stock?.consumables || []).map((c) => [c.id, c]));
+
+  // Renderiza um campo de insumo com saldo e cálculo "atual → após"
+  function ConsumableField({ label, fieldKey, consumableId, step }) {
+    const cur = consMap[consumableId];
+    const used = Number(form[fieldKey]) || 0;
+    const after = cur ? cur.qty - used : null;
+    const insufficient = cur && used > cur.qty;
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+          <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>{label}</label>
+          {cur && (
+            <span style={{ fontSize: 11, color: insufficient ? "#dc2626" : "#64748b", fontWeight: 600 }} data-testid={`bal-${consumableId}`}>
+              📦 {cur.qty} {cur.unit}
+              {used > 0 && (
+                <span style={{ color: insufficient ? "#dc2626" : "#16a34a", marginLeft: 6 }}>
+                  → <strong>{after} {cur.unit}</strong>
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+        <input
+          data-testid={`finalize-${fieldKey}`}
+          type="number" step={step || "1"} min="0"
+          value={form[fieldKey]} onChange={(e) => setForm({ ...form, [fieldKey]: e.target.value })}
+          style={{
+            width: "100%", padding: "10px 12px",
+            border: `1px solid ${insufficient ? "#fca5a5" : "#cbd5e1"}`,
+            background: insufficient ? "#fef2f2" : "white",
+            borderRadius: 10, fontSize: 14, boxSizing: "border-box",
+          }}
+        />
+      </div>
+    );
+  }
+
+  const macColors = {
+    loading: { bg: "#dbeafe", color: "#1e40af", border: "#93c5fd", icon: "🔍", txt: "Validando…" },
+    ok: { bg: "#dcfce7", color: "#166534", border: "#86efac", icon: "✓", txt: "Equipamento validado" },
+    warn: { bg: "#fef3c7", color: "#92400e", border: "#fde68a", icon: "⚠", txt: "Não está no estoque correto" },
+    error: { bg: "#fee2e2", color: "#991b1b", border: "#fca5a5", icon: "✕", txt: "MAC não encontrado no SmartOLT" },
   };
+  const macStyle = macStatus ? macColors[macStatus] : null;
 
   return (
     <div data-testid="ticket-detail">
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <Button variant="soft" onClick={onClose} data-testid="ticket-close-btn">← Voltar à lousa</Button>
+        <Button variant="soft" onClick={onClose} data-testid="ticket-close-btn">← Voltar</Button>
         {onRefresh && (
-          <Button
-            variant="soft"
-            onClick={onRefresh}
-            data-testid="ticket-refresh-btn"
-            style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" }}
-          >
-            🔄 Atualizar
-          </Button>
+          <Button variant="soft" onClick={onRefresh} data-testid="ticket-refresh-btn"
+            style={{ background: "#dbeafe", color: "#1e40af", border: "1px solid #93c5fd" }}>🔄 Atualizar</Button>
         )}
       </div>
-      <h2 style={{ marginTop: 14, marginBottom: 4 }}>{ticket.client_snapshot.name}</h2>
-      <p style={{ color: "#64748b", fontSize: 12, margin: 0 }}>
-        {ticket.type.toUpperCase()} · {ticket.client_snapshot.address}
-      </p>
-      <div style={{
-        background: "#f1f5f9", padding: 12, borderRadius: 12, marginTop: 12,
-        fontSize: 13, lineHeight: 1.5,
-      }}>
-        <strong>Relato:</strong> {ticket.client_snapshot.relato}
-      </div>
 
-      <h3 style={{ marginTop: 18, marginBottom: 8, fontSize: 15 }}>📋 Finalizar serviço</h3>
-      <label style={{ fontSize: 12, color: "#64748b" }}>Sinal (dBm)</label>
-      <input data-testid="finalize-sinal" type="number" step="0.1" value={form.sinal} onChange={(e) => setForm({ ...form, sinal: e.target.value })} style={inputCss} />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <div>
-          <label style={{ fontSize: 12, color: "#64748b" }}>Qtd. drop</label>
-          <input data-testid="finalize-drop" type="number" value={form.qtd_drop} onChange={(e) => setForm({ ...form, qtd_drop: e.target.value })} style={inputCss} />
+      {/* HEADER da nota */}
+      <div style={{
+        background: "linear-gradient(135deg,#0f172a 0%,#1e293b 100%)", color: "white",
+        padding: 16, borderRadius: 14, marginTop: 14,
+      }}>
+        <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700, marginBottom: 4 }}>
+          {ticket.type.toUpperCase()} · {ticket.priority}
         </div>
-        <div>
-          <label style={{ fontSize: 12, color: "#64748b" }}>Esticadores</label>
-          <input type="number" value={form.esticadores} onChange={(e) => setForm({ ...form, esticadores: e.target.value })} style={inputCss} />
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>{ticket.client_snapshot.name}</div>
+        <div style={{ fontSize: 12, color: "#cbd5e1", marginBottom: 8 }}>
+          📍 {ticket.client_snapshot.address}{ticket.client_snapshot.neighborhood ? ` · ${ticket.client_snapshot.neighborhood}` : ""}
         </div>
-        <div>
-          <label style={{ fontSize: 12, color: "#64748b" }}>Conectores fast</label>
-          <input type="number" value={form.conectores_fast} onChange={(e) => setForm({ ...form, conectores_fast: e.target.value })} style={inputCss} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, color: "#64748b" }}>Cabo rede (m)</label>
-          <input type="number" step="0.1" value={form.cabo_rede} onChange={(e) => setForm({ ...form, cabo_rede: e.target.value })} style={inputCss} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, color: "#64748b" }}>Conectores rede</label>
-          <input type="number" value={form.conectores_rede} onChange={(e) => setForm({ ...form, conectores_rede: e.target.value })} style={inputCss} />
-        </div>
-        {ticket.type === "instalacao" && (
-          <div>
-            <label style={{ fontSize: 12, color: "#64748b" }}>ONT *</label>
-            <input data-testid="finalize-ont" value={form.ont} onChange={(e) => setForm({ ...form, ont: e.target.value })} style={inputCss} />
+        {ticket.client_snapshot.pppoe_user && (
+          <div style={{ fontSize: 11, fontFamily: "monospace", color: "#a5b4fc", marginBottom: 4 }}>
+            🔑 {ticket.client_snapshot.pppoe_user}
+          </div>
+        )}
+        {ticket.live_signal && (
+          <div style={{ marginTop: 8, padding: "6px 10px", background: "rgba(255,255,255,0.06)", borderRadius: 8, fontSize: 12 }}>
+            📶 <strong>{ticket.live_signal.rx_dbm?.toFixed(1)} dBm</strong> · {ticket.live_signal.status} · {ticket.live_signal.olt_name}
           </div>
         )}
       </div>
-      <label style={{ fontSize: 12, color: "#64748b" }}>Observações</label>
-      <textarea data-testid="finalize-obs" value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} rows={3} style={{ ...inputCss, resize: "vertical" }} />
+
+      <div style={{
+        background: "#f1f5f9", padding: 12, borderRadius: 12, marginTop: 12,
+        fontSize: 13, lineHeight: 1.5, borderLeft: "3px solid #6366f1",
+      }}>
+        <strong>📝 Relato:</strong> {ticket.client_snapshot.relato}
+      </div>
+
+      <h3 style={{ marginTop: 18, marginBottom: 10, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>📋 Finalizar serviço</h3>
+
+      {/* SINAL */}
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>📶 Sinal medido (dBm)</label>
+        <input data-testid="finalize-sinal" type="number" step="0.1" value={form.sinal}
+          onChange={(e) => setForm({ ...form, sinal: e.target.value })}
+          style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: 10, fontSize: 14, marginTop: 4, boxSizing: "border-box" }} />
+      </div>
+
+      {/* MAC ONT */}
+      {needsMac && (
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
+            📡 MAC/SN da ONT {isWithdraw ? "(retirada do cliente)" : "(do estoque do técnico)"} *
+          </label>
+          <input
+            data-testid="finalize-ont"
+            value={form.ont} onChange={(e) => setForm({ ...form, ont: e.target.value.trim().toUpperCase() })}
+            placeholder="Ex.: ALCLFC090E99 ou AA:BB:CC:DD:EE:FF"
+            style={{
+              width: "100%", padding: "10px 12px",
+              border: `1px solid ${macStyle?.border || "#cbd5e1"}`,
+              borderRadius: 10, fontSize: 14, marginTop: 4, marginBottom: 6,
+              fontFamily: "monospace", textTransform: "uppercase", boxSizing: "border-box",
+            }}
+          />
+          {macStyle && (
+            <div data-testid="mac-validation" style={{
+              padding: "8px 12px", borderRadius: 10, fontSize: 12,
+              background: macStyle.bg, color: macStyle.color, fontWeight: 600,
+              display: "flex", flexDirection: "column", gap: 4,
+            }}>
+              <div><strong>{macStyle.icon} {macStyle.txt}</strong></div>
+              {macInfo?.smartolt && (
+                <div style={{ fontSize: 11, fontFamily: "monospace" }}>
+                  {macInfo.smartolt.name} · {macInfo.smartolt.olt_name} · sinal {macInfo.smartolt.signal_1490} dBm · {macInfo.smartolt.status}
+                </div>
+              )}
+              {macInfo?.ont_record && (
+                <div style={{ fontSize: 11 }}>
+                  🏷 Estoque: {macInfo.ont_record.location_type === "tecnico" ? "no técnico" : macInfo.ont_record.location_type === "cliente" ? `cliente ${macInfo.ont_record.client_name || ""}` : macInfo.ont_record.location_type}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* INSUMOS */}
+      <div style={{
+        padding: "12px 14px", background: "white", border: "1px solid #e2e8f0",
+        borderRadius: 14, marginBottom: 14,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 10 }}>
+          🧰 Materiais utilizados
+          {stock && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 500, marginLeft: 6 }}>· estoque: {stock.collaborator_name}</span>}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <ConsumableField label="Drop (m)" fieldKey="qtd_drop" consumableId="drop" />
+          <ConsumableField label="Esticador (un)" fieldKey="esticadores" consumableId="esticador" />
+          <ConsumableField label="Conector fast (un)" fieldKey="conectores_fast" consumableId="conector_fast" />
+          <ConsumableField label="Cabo rede (m)" fieldKey="cabo_rede" consumableId="cabo_rede" step="0.5" />
+          <ConsumableField label="Conector rede (un)" fieldKey="conectores_rede" consumableId="conector_rede" />
+        </div>
+      </div>
+
+      <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>📝 Observações</label>
+      <textarea
+        data-testid="finalize-obs" value={form.observacoes}
+        onChange={(e) => setForm({ ...form, observacoes: e.target.value })} rows={3}
+        placeholder="Detalhes do serviço, materiais especiais, etc."
+        style={{
+          width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1",
+          borderRadius: 10, fontSize: 14, marginTop: 4, marginBottom: 12,
+          resize: "vertical", boxSizing: "border-box", fontFamily: "inherit",
+        }}
+      />
 
       {err && <Banner color="#fee2e2" border="#dc2626" icon="!" text={err} />}
 
-      <Button onClick={submit} disabled={busy} style={{ width: "100%", marginTop: 8, height: 50 }} data-testid="finalize-btn">
+      <Button onClick={submit} disabled={busy} style={{ width: "100%", marginTop: 6, height: 52, fontSize: 15 }} data-testid="finalize-btn">
         <Icon name="check" /> {busy ? "Finalizando..." : "Finalizar nota"}
       </Button>
     </div>

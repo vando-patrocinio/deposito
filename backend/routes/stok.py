@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -22,6 +23,8 @@ from pydantic import BaseModel
 
 from core import DEMO_COMPANY_ID, now_iso, require_role
 from database import db
+
+logger = logging.getLogger("ponto.stok")
 
 router = APIRouter(prefix="/api/stok", tags=["stok"])
 
@@ -336,6 +339,44 @@ async def transfer_consumable(payload: ConsumableTransferIn, user: dict = Depend
                        f"{payload.quantity} {item['unit']} de {item['name']} transferidos da empresa para {tech['name']}",
                        user.get("name", "?"), "transferencia", cid)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Endpoint PÚBLICO (mobile) — saldo do técnico
+# ---------------------------------------------------------------------------
+@router.get("/public/collaborator/{collaborator_id}/stock")
+async def public_get_collaborator_stock(collaborator_id: str):
+    """Saldo de insumos + ONTs em poder do técnico, pra exibir na finalização da nota.
+
+    Resposta:
+    {
+      "consumables": [{id, name, unit, qty}],
+      "onts": [{mac, model, status}]
+    }
+    """
+    coll = await db.collaborators.find_one(
+        {"id": collaborator_id}, {"_id": 0, "company_id": 1, "name": 1},
+    )
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado")
+    cid = coll.get("company_id") or DEMO_COMPANY_ID
+    stock_doc = await db.stok_stock.find_one(
+        {"company_id": cid, "location": collaborator_id}, {"_id": 0},
+    ) or {}
+    consumables = [{
+        "id": c["id"], "name": c["name"], "unit": c["unit"],
+        "qty": int(stock_doc.get(c["id"], 0)),
+    } for c in CONSUMABLE_CATALOG]
+    onts = await db.stok_onts.find(
+        {"company_id": cid, "location_type": "tecnico", "location_id": collaborator_id},
+        {"_id": 0, "mac": 1, "model": 1, "status": 1},
+    ).to_list(200)
+    return {
+        "collaborator_id": collaborator_id,
+        "collaborator_name": coll.get("name"),
+        "consumables": consumables, "onts": onts,
+    }
+
 
 
 # ---------------------------------------------------------------------------
@@ -755,6 +796,21 @@ async def auto_close_service_from_ticket(
 
     err_reason: Optional[str] = None
     parts: List[str] = []
+    smartolt_validation: Optional[dict] = None
+
+    # SmartOLT: cross-check do MAC contra cache (rastreabilidade)
+    if ont_mac:
+        try:
+            sm_doc = await db.smartolt_onus.find_one(
+                {"company_id": company_id,
+                 "$or": [{"unique_external_id": ont_mac}, {"sn": ont_mac}]},
+                {"_id": 0, "unique_external_id": 1, "sn": 1, "name": 1,
+                 "olt_name": 1, "status": 1, "signal_1490": 1},
+            )
+            if sm_doc:
+                smartolt_validation = sm_doc
+        except Exception as e:
+            logger.warning("[stok] smartolt cross-check falhou: %s", e)
 
     # Validações em try-block: qualquer erro vira "erro_estoque" sem derrubar
     try:
@@ -822,12 +878,18 @@ async def auto_close_service_from_ticket(
             "auto_closed": True,
             "auto_closed_used_items": [ui.model_dump() for ui in used_items],
             "auto_closed_ont_mac": ont_mac,
+            "smartolt_validation": smartolt_validation,
         }},
     )
     htype = "retirada" if service["type"] == "retirada" else "instalacao"
+    sm_suffix = ""
+    if smartolt_validation:
+        sm_suffix = (f" [SmartOLT: {smartolt_validation.get('name')} · "
+                     f"{smartolt_validation.get('olt_name')} · "
+                     f"{smartolt_validation.get('status')}]")
     await _add_history(
         htype,
-        f"{sid} (auto-baixa Lousa) - {' | '.join(parts) if parts else 'Sem materiais'} - Técnico {technician_name}",
+        f"{sid} (auto-baixa Lousa) - {' | '.join(parts) if parts else 'Sem materiais'} - Técnico {technician_name}{sm_suffix}",
         technician_name, "auto_finalize_lousa", company_id,
     )
     return {"ok": True, "service_id": sid,

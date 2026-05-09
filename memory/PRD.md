@@ -1,8 +1,22 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA + Estoque + SmartOLT + IA Preventivas
 
-**Última atualização**: 2026-05-09 (iteração 29)
+**Última atualização**: 2026-05-09 (iteração 30)
 
 ## Histórico de iterações
+
+### Iter 30 — Modal Finalizar Serviço pro técnico (mobile) com saldo ao vivo (2026-05-09) ✅
+- ✅ **Backend novos endpoints públicos** (mobile, sem auth):
+  - `GET /api/stok/public/collaborator/{cid}/stock` — saldo de insumos + ONTs em poder do técnico para alimentar o modal de finalização.
+  - `GET /api/smartolt/public/validate-mac/{mac}?collaborator_id=` — valida MAC/SN contra cache SmartOLT + cross-check no `stok_onts` (sabe se está no estoque do técnico ou no cliente).
+- ✅ **`auto_close_service_from_ticket`** agora grava `smartolt_validation` na OS (rastreabilidade) e adiciona ao histórico (`[SmartOLT: nome · OLT · status]`).
+- ✅ **Frontend `TicketDetail` (LousaMobile)** completamente reformulado seguindo boas práticas FTTH:
+  - Header dark gradient com tipo, prioridade, cliente, endereço, PPPoE e sinal SmartOLT vivo.
+  - Relato em card próprio com borda lateral colorida.
+  - **Saldo de cada insumo visível** ao lado do campo: `📦 25m → 23m` (atual → após uso). Bordas/fundo vermelhos quando saldo insuficiente.
+  - **Validação MAC em tempo real** (debounce 600ms) com 4 estados: 🔍 Validando · ✓ Equipamento validado · ⚠ Não está no estoque correto · ✕ Não encontrado SmartOLT. Mostra OLT/sinal/status quando casa.
+  - Confirmação se saldo insuficiente ou MAC inválido (não bloqueia, marca `erro_estoque` pra gestor revisar).
+  - Cards organizados (Sinal · MAC · Materiais · Observações) ao invés de grid flat.
+- ✅ **Pytest**: 7/7 em `test_iteration30_public_endpoints.py` (stock público, MAC validation com cliente Ligo real, MAC no estoque técnico, MAC inexistente, smartolt_validation gravado em auto_close).
 
 ### Iter 29 — IA Preventivas (sugestão automática de notas) (2026-05-09) ✅
 - ✅ **Backend `routes/ai_preventive.py`** (~480 linhas):

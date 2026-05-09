@@ -207,6 +207,10 @@ export const api = {
   smartoltSync: () => client.post(`/smartolt/sync-onus`).then((r) => r.data),
   smartoltLookup: (params) => client.get(`/smartolt/onu/lookup`, { params }).then((r) => r.data),
   smartoltOnuSignal: (extId) => client.get(`/smartolt/onu/${extId}/signal`).then((r) => r.data),
+  // Public mobile endpoints
+  publicTechStock: (cid) => client.get(`/stok/public/collaborator/${cid}/stock`).then((r) => r.data),
+  publicValidateMac: (mac, cid) => client.get(`/smartolt/public/validate-mac/${encodeURIComponent(mac)}`,
+    { params: cid ? { collaborator_id: cid } : {} }).then((r) => r.data),
   // Lousa: sinal por ticket
   lousaTicketSignal: (tid, refresh = false) =>
     client.get(`/lousa/tickets/${tid}/signal`, { params: { refresh } }).then((r) => r.data),

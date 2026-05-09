@@ -224,6 +224,77 @@ async def sync_onus(user: dict = Depends(require_role("gestor"))):
 
 
 # ---------------------------------------------------------------------------
+# Endpoint PÚBLICO (mobile) — valida MAC contra cache SmartOLT
+# ---------------------------------------------------------------------------
+@router.get("/public/validate-mac/{mac_or_sn}")
+async def public_validate_mac(mac_or_sn: str, collaborator_id: Optional[str] = None):
+    """Valida MAC/SN no cache SmartOLT.
+
+    Modo "instalação/troca": confere se a ONT está NO ESTOQUE DO TÉCNICO (`stok_onts`).
+    Modo "retirada": confere se a ONT está INSTALADA EM CLIENTE (location=cliente).
+
+    Resposta:
+    {
+      "found_smartolt": true,        # SN/MAC existe no cache SmartOLT
+      "smartolt": { name, olt, board, port, status, signal },
+      "in_tech_stock": true,         # está no estoque do técnico (instalação)
+      "ont_record": { mac, model, location_type, client_name }
+    }
+    """
+    key = mac_or_sn.strip()
+    out: Dict[str, Any] = {
+        "input": key, "found_smartolt": False, "smartolt": None,
+        "in_tech_stock": False, "in_client": False, "ont_record": None,
+    }
+    if not key:
+        raise HTTPException(400, "MAC vazio.")
+    # Lookup SmartOLT
+    company_id = DEMO_COMPANY_ID
+    if collaborator_id:
+        coll = await db.collaborators.find_one(
+            {"id": collaborator_id}, {"_id": 0, "company_id": 1},
+        )
+        if coll:
+            company_id = coll.get("company_id") or DEMO_COMPANY_ID
+    onu = await db.smartolt_onus.find_one(
+        {"company_id": company_id,
+         "$or": [{"unique_external_id": key}, {"sn": key}]},
+        {"_id": 0},
+    )
+    if onu:
+        out["found_smartolt"] = True
+        out["smartolt"] = {
+            "external_id": onu.get("unique_external_id"),
+            "sn": onu.get("sn"),
+            "name": onu.get("name"),
+            "olt_name": onu.get("olt_name"),
+            "board": onu.get("board"),
+            "port": onu.get("port"),
+            "onu": onu.get("onu"),
+            "status": onu.get("status"),
+            "signal_text": onu.get("signal_text"),
+            "signal_1490": onu.get("signal_1490"),
+        }
+    # Lookup estoque local (stok_onts)
+    rec = await db.stok_onts.find_one(
+        {"company_id": company_id, "mac": key}, {"_id": 0},
+    )
+    if rec:
+        out["ont_record"] = {
+            "mac": rec.get("mac"), "model": rec.get("model"),
+            "location_type": rec.get("location_type"),
+            "location_id": rec.get("location_id"),
+            "client_name": rec.get("client_name"),
+            "status": rec.get("status"),
+        }
+        if rec.get("location_type") == "tecnico" and rec.get("location_id") == collaborator_id:
+            out["in_tech_stock"] = True
+        if rec.get("location_type") == "cliente":
+            out["in_client"] = True
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Lookup + signal
 # ---------------------------------------------------------------------------
 @router.get("/onu/lookup")
