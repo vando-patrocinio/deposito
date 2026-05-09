@@ -46,7 +46,7 @@ async def get_settings_endpoint(user: dict = Depends(get_current_user)):
     out["openrouter_api_key_set"] = bool(s.openrouter_api_key)
     out["resend_api_key"] = (s.resend_api_key[:6] + "...") if s.resend_api_key else ""
     out["openai_api_key"] = (s.openai_api_key[:6] + "...") if s.openai_api_key else ""
-    out["openrouter_api_key"] = (s.openrouter_api_key[:8] + "..." + s.openrouter_api_key[-4:]) if s.openrouter_api_key else ""
+    out["openrouter_api_key"] = ("sk-or-v1***" + s.openrouter_api_key[-4:]) if s.openrouter_api_key else ""
     out["emergent_key_available"] = bool(EMERGENT_LLM_KEY)
     return out
 

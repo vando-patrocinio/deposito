@@ -1,10 +1,18 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 9)
+**Última atualização**: 2026-05-09 (iteração 10)
 
 ## Histórico de iterações
 
-### Iter 9 — Briefing IA + Mobile Redesign + Avatar Auto (2026-05-09)
+### Iter 10 — Hover/Edit + Online Indicator + Lock Execution + Server Clock + OpenRouter (2026-05-09)
+- ✅ **Hover na bolha**: mouse-over abre ações (não precisa clicar); duplo-clique abre EDIT (antes era admin-open)
+- ✅ **Avatar com indicador online/offline**: borda verde + bolinha verde se dispositivo bateu ponto nos últimos 5min (configurável `online_threshold_minutes`); borda amarela + bolinha amarela caso contrário
+- ✅ **Bolha em execução**: `in_execution=True` quando `status='aberta'`. Frontend exibe badge "▶ Em execução" pulsante + draggable=false. Backend retorna 409 em `/transfer` e `DELETE /tickets/{id}`
+- ✅ **Relógio do servidor**: novo `ServerClock.js` no canto sup-direito (header App + header Mobile). Sincroniza com `/api/server-time` a cada 60s usando `performance.now()` (monotônico) — imune a alterações no relógio do dispositivo
+- ✅ **OpenRouter integration**: card em Configurações com toggle de ativação, campo API key (mascarada `sk-or-v1***XXXX`), modelo padrão `deepseek/deepseek-v4-flash`. Backend usa `openai` SDK com `base_url=https://openrouter.ai/api/v1` quando ativo+chave; fallback automático para Emergent LLM. Adapter `_OpenRouterChat` em core.py com mesma interface do `LlmChat`.
+- Backend: 9/9 (iter10) + 77/77 regressão = **86/86 verde**
+
+### Iter 9 — Briefing IA + Mobile Redesign + Avatar Auto
 - ✅ **Briefing diário**: `GET /api/lousa/briefing` retorna `summary_data` (data, totais, top técnico, pior score IA, top 3 serviços por duração) + `narrative` LLM opcional. Botão `generate-briefing-btn` no Painel abre `briefing-modal` com texto IA em PT-BR (4 parágrafos profissionais)
 - ✅ **Mobile colaborador redesenhado** (best practices 2026):
   - Avatar 64px com gradient azul à esquerda + nome + cargo

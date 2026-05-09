@@ -90,10 +90,10 @@ class TestSettingsOpenRouterOnlineThreshold:
         r2 = requests.get(f"{API}/settings", headers=auth_headers(tok), timeout=20).json()
         assert r2["openrouter_enabled"] is True
         assert r2["openrouter_api_key_set"] is True
-        # Mascarada: contém "..." e NÃO retorna a chave inteira
-        assert "..." in r2["openrouter_api_key"]
+        # Mascarada: contém "***" e NÃO retorna a chave inteira
+        assert "***" in r2["openrouter_api_key"]
         assert new_key not in r2["openrouter_api_key"]
-        # 'sk-or-v1' (8 primeiros chars) + ... + 4 últimos
+        # 'sk-or-v1' (prefixo fixo) + *** + 4 últimos
         assert r2["openrouter_api_key"].startswith("sk-or-v1")
         assert r2["openrouter_api_key"].endswith(new_key[-4:])
         assert r2["openrouter_model"] == "deepseek/deepseek-v4-flash"
