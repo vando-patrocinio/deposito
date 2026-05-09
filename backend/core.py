@@ -306,7 +306,10 @@ def parse_json_response(raw: str) -> dict:
 # -------------------------------------------------------------------------
 # Geofence resolver
 # -------------------------------------------------------------------------
-async def resolve_geofence_for(cid: str, lat: float, lng: float) -> tuple[Optional[dict], Optional[float]]:
+async def resolve_geofence_for(cid: str, lat: Optional[float], lng: Optional[float]) -> tuple[Optional[dict], Optional[float]]:
+    # Sem coordenadas (ex.: navegador bloqueou geo) → equivalente a "fora da cerca"
+    if lat is None or lng is None:
+        return None, None
     fences = await db.geofences.find({"collaborator_id": cid, "active": True}, {"_id": 0}).to_list(100)
     if not fences:
         return None, None

@@ -126,8 +126,11 @@ class ClockRecordIn(BaseModel):
     collaborator_id: str
     type: str
     selfie_base64: str
-    lat: float
-    lng: float
+    # lat/lng opcionais — se o navegador bloquear geolocalização, o frontend
+    # manda null e o backend trata como "fora da cerca" / "Bloqueado" com
+    # mensagem clara, em vez de 422 Unprocessable Entity (sem feedback ao usuário).
+    lat: Optional[float] = None
+    lng: Optional[float] = None
     public_ip: Optional[str] = None
     offline_created_at: Optional[str] = None
     force_close_open_tickets: bool = False
@@ -636,20 +639,24 @@ async def create_clock_record(payload: ClockRecordIn, request: __import__('fasta
     # ---- PRAÇA "NOTA": cerca virtual dinâmica no endereço da bolha ativa ou da próxima ----
     nota_fence_used = False
     if not fence and coll.get("praca_id") == "NOTA":
-        # Tenta usar endereço da bolha aberta primeiro, senão a próxima pendente
-        target_ticket = await db.tickets.find_one(
-            {"assigned_collaborator_id": payload.collaborator_id,
-             "status": {"$in": ["aberta", "aguardando_atendimento"]}},
-            {"_id": 0, "client_snapshot": 1, "id": 1, "client_name": 1},
-        )
-        if not target_ticket:
+        # Tenta usar endereço da bolha aberta primeiro, senão a próxima pendente.
+        # Sem coordenadas do dispositivo, não dá pra calcular distância à nota.
+        if payload.lat is None or payload.lng is None:
+            target_ticket = None
+        else:
             target_ticket = await db.tickets.find_one(
-                {"assigned_collaborator_id": payload.collaborator_id, "status": "pendente"},
-                {"_id": 0, "client_snapshot": 1, "id": 1},
-                sort=[("position", 1)],
+                {"assigned_collaborator_id": payload.collaborator_id,
+                 "status": {"$in": ["aberta", "aguardando_atendimento"]}},
+                {"_id": 0, "client_snapshot": 1, "id": 1, "client_name": 1},
             )
+            if not target_ticket:
+                target_ticket = await db.tickets.find_one(
+                    {"assigned_collaborator_id": payload.collaborator_id, "status": "pendente"},
+                    {"_id": 0, "client_snapshot": 1, "id": 1},
+                    sort=[("position", 1)],
+                )
         snap = (target_ticket or {}).get("client_snapshot") or {}
-        if snap.get("latitude") and snap.get("longitude"):
+        if snap.get("latitude") and snap.get("longitude") and payload.lat is not None and payload.lng is not None:
             settings = await db.settings.find_one({"id": coll.get("company_id") or "co-demo"}, {"_id": 0}) or {}
             radius = int(settings.get("nota_fence_radius_m", 80))
             from math import asin, cos, radians, sin, sqrt
@@ -676,11 +683,18 @@ async def create_clock_record(payload: ClockRecordIn, request: __import__('fasta
     geofence_required = payload.type in GEOFENCE_REQUIRED
     # ADMIN TEST: ignora exigência de cerca
     if geofence_required and not fence and not is_admin_test:
+        # Mensagem específica quando o navegador bloqueou geolocalização
+        if payload.lat is None or payload.lng is None:
+            internal_reason = "geolocalização indisponível (navegador bloqueou ou sem permissão)"
+            public_block = "Permita a localização do navegador para bater ponto"
+        else:
+            internal_reason = f"fora_da_cerca distância={distance}m"
+            public_block = PUBLIC_FENCE_FAIL
         rec = _build_record(
             rid=rid, cid=payload.collaborator_id, ev=payload.type, today=today, hhmm=hhmm,
-            geofence=None, distance=distance, status="Bloqueado", note=PUBLIC_FENCE_FAIL,
-            internal_reason=f"fora_da_cerca distância={distance}m",
-            public_block=PUBLIC_FENCE_FAIL, selfie_url=payload.selfie_base64,
+            geofence=None, distance=distance, status="Bloqueado", note=public_block,
+            internal_reason=internal_reason,
+            public_block=public_block, selfie_url=payload.selfie_base64,
             face_validation={"detect": face_check, "compare": face_match},
             public_ip=payload.public_ip, audit=audit, company_id=coll.get("company_id"),
         )
