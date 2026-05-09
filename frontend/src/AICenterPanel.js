@@ -44,11 +44,13 @@ const fmtBRL = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currenc
 // Tiny fetch hook to remove `useEffect` boilerplate from every section
 function useFetch(loader, deps) {
   const [data, setData] = useState(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     let alive = true;
     loader().then((r) => alive && setData(r)).catch(() => alive && setData(null));
     return () => { alive = false; };
+    // `deps` is the explicit dep list passed by callers; `loader` is recreated each render
+    // and would defeat the purpose of the cache.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   return data;
 }

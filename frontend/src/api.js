@@ -91,7 +91,6 @@ export const api = {
   deletePraca: (id) => client.delete(`/pracas/${id}`).then((r) => r.data),
   discoverHolidays: (id, year) => client.post(`/pracas/${id}/discover-holidays`, null, { params: { year } }).then((r) => r.data),
   applyHolidays: (id, holidays) => client.post(`/pracas/${id}/apply-holidays`, { holidays }).then((r) => r.data),
-  geocodeSearch: (q, limit = 5) => client.get(`/geocode/search`, { params: { q, limit } }).then((r) => r.data),
 
   // Auth
   adminLogin: (password) => client.post("/auth/admin-login", { password }).then((r) => r.data),
