@@ -168,7 +168,7 @@ export default function LousaMobile({ collaboratorId, onBack }) {
       </div>
       <h2 style={{ marginTop: 14, marginBottom: 4 }}>📋 Lousa de Serviços</h2>
       <p style={{ color: "#64748b", fontSize: 12, margin: 0 }}>
-        {data.tickets.length} bolhas — {unlocked ? "🔓 lousa liberada" : "🔒 lousa travada"}
+        {data.tickets.length} serviço(s) — {unlocked ? "🔓 lousa liberada" : "🔒 lousa travada"}
       </p>
 
       {!state.has_entrada && (

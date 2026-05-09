@@ -7,6 +7,18 @@ import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Ro
 const EVENT_TYPES = ["Entrada", "Início intervalo", "Fim intervalo", "Saída"];
 const GEOFENCE_REQUIRED = new Set(["Entrada", "Saída"]);
 
+function formatDur(min) {
+  if (min == null) return "—";
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m}min`;
+}
+function formatGap(min) {
+  if (min == null) return "—";
+  if (min < 60) return `${Math.round(min)}min`;
+  return formatDur(min);
+}
+
 export default function CollaboratorApp({ mobile = false }) {
   return <CollaboratorAppInner mobile={mobile} forcedCollabId={null} onLogout={null} />;
 }
@@ -30,6 +42,20 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   const [exitConfirm, setExitConfirm] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFlash, setRefreshFlash] = useState(false);
+  const [lousaSummary, setLousaSummary] = useState(null);  // {last_closed_at, minutes_since_last_close, last_finished_ticket}
+
+  async function loadLousaSummary(cid = collabId) {
+    if (!cid) return;
+    try {
+      const r = await api.lousaByCollaborator(cid);
+      const lastFin = (r.tickets || []).find((t) => t.status === "finalizada" || t.status === "encerrada");
+      setLousaSummary({
+        last_closed_at: r.last_closed_at,
+        minutes_since_last_close: r.minutes_since_last_close,
+        last_finished_ticket: lastFin || null,
+      });
+    } catch { /* ignore — pode não ter Entrada ainda */ }
+  }
 
   async function doRefresh() {
     setRefreshing(true);
@@ -65,6 +91,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     const [t, f] = await Promise.all([api.todayStatus(cid), api.listGeofences(cid)]);
     setToday(t);
     setFences(f);
+    loadLousaSummary(cid);
   }
   useEffect(() => {
     if (!collabId) return;
@@ -345,6 +372,32 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
               >
                 <div style={{ fontSize: 18 }}>📋</div><strong>Lousa de Serviços</strong>
               </button>
+
+              {/* Resumo do último serviço — visível antes de bater Saída */}
+              {lousaSummary?.last_finished_ticket && (
+                <div data-testid="last-service-summary" style={{
+                  marginTop: 10, padding: 12, borderRadius: 12,
+                  background: "#ecfeff", border: "1px solid #67e8f9",
+                  fontSize: 12, color: "#0e7490",
+                }}>
+                  <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#155e75" }}>
+                    🧾 Último serviço encerrado
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                    <span>{lousaSummary.last_finished_ticket.client_snapshot?.name}</span>
+                    <strong>
+                      {lousaSummary.last_finished_ticket.duration_minutes != null
+                        ? `🕐 ${formatDur(lousaSummary.last_finished_ticket.duration_minutes)}`
+                        : ""}
+                    </strong>
+                  </div>
+                  {lousaSummary.minutes_since_last_close != null && (
+                    <div style={{ marginTop: 6, fontStyle: "italic", color: "#0891b2" }}>
+                      ⏱ Há {formatGap(lousaSummary.minutes_since_last_close)} desde o encerramento — bata Saída assim que terminar.
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div style={{ ...softCard, marginTop: 14 }}>
                 {(() => {

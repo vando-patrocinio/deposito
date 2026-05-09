@@ -26,12 +26,14 @@ from core import (
     effective_company_id,
     geocode_address,
     get_current_user,
+    llm_chat,
     now_iso,
     require_role,
     tenant_filter,
     today_str,
 )
 from database import db
+from routes.lousa_score import compute_duration_minutes, heuristic_score_for_ticket
 
 logger = logging.getLogger("ponto")
 router = APIRouter(prefix="/api", tags=["lousa"])
@@ -387,6 +389,15 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
         {"_id": 0},
     ).to_list(2000)
 
+    # Inclui também os últimos 24h finalizados/encerrados — para gap entre serviços e duração
+    cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    all_resolved = await db.tickets.find(
+        {"assigned_collaborator_id": {"$in": cids},
+         "status": {"$in": ["finalizada", "encerrada", "cancelada", "reagendada"]},
+         "closed_at": {"$gte": cutoff_24h}},
+        {"_id": 0},
+    ).to_list(1000)
+
     # Settings da empresa para SLA + grade fixa
     company_id = user.get("company_id") or DEMO_COMPANY_ID
     settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
@@ -428,17 +439,49 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
             [t for t in all_active if t["assigned_collaborator_id"] == cid],
             key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]),
         )
+        recent_resolved = sorted(
+            [t for t in all_resolved if t["assigned_collaborator_id"] == cid],
+            key=lambda t: t.get("closed_at", ""),
+        )
         locked_idx = compute_locked_positions(tickets)
         s = state_by_cid.get(cid, {"types": set(), "records": []})
         in_intervalo = ("Início intervalo" in s["types"]) and ("Fim intervalo" not in s["types"])
         has_entrada = "Entrada" in s["types"]
         ended_day = "Saída" in s["types"]
-        # Adiciona SLA + slot por bolha
+        # Adiciona SLA + slot + duração + gap + ai_score por bolha
+        # Gaps: ordem cronológica dos resolvidos depois pelas ativas (por opened_at)
+        chrono_for_gaps = list(recent_resolved) + sorted(
+            [t for t in tickets if t.get("opened_at")],
+            key=lambda t: t.get("opened_at") or "",
+        )
+        prev_close_iso: Optional[str] = None
+        for t in chrono_for_gaps:
+            opened_iso = t.get("opened_at")
+            if prev_close_iso and opened_iso:
+                try:
+                    pc = datetime.fromisoformat(prev_close_iso.replace("Z", "+00:00"))
+                    op = datetime.fromisoformat(opened_iso.replace("Z", "+00:00"))
+                    if pc.tzinfo is None:
+                        pc = pc.replace(tzinfo=timezone.utc)
+                    if op.tzinfo is None:
+                        op = op.replace(tzinfo=timezone.utc)
+                    t["gap_minutes_to_prev"] = max(0, round((op - pc).total_seconds() / 60.0, 1))
+                except Exception:
+                    t["gap_minutes_to_prev"] = None
+            else:
+                t["gap_minutes_to_prev"] = None
+            if t.get("closed_at"):
+                prev_close_iso = t["closed_at"]
+
         for i, t in enumerate(tickets):
             t["locked"] = (i in locked_idx) or in_intervalo or (not has_entrada) or ended_day
             sla_min = sla_map.get(t.get("type", "reparo"), 60)
             t["sla"] = _compute_sla(t, sla_min, yellow_min, red_after_min)
             t["grid_slot"] = _slot_for_ticket(t, fixed_slots, slot_minutes)
+            t["duration_minutes"] = compute_duration_minutes(t)
+            t["ai_score"] = await heuristic_score_for_ticket(t, sla_minutes=sla_min)
+        for t in recent_resolved:
+            t["duration_minutes"] = compute_duration_minutes(t)
         # Monta slots fixos com bolhas de cada slot (sempre exibe TODOS slots)
         slots_data = []
         for slot_label in fixed_slots:
@@ -459,6 +502,7 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
                 "records": sorted(s["records"], key=lambda r: r["time"]),
             },
             "tickets": tickets,
+            "recent_resolved": recent_resolved,
             "slots": slots_data,
             "unscheduled": unscheduled,
         })
@@ -566,11 +610,54 @@ async def _lousa_for_collaborator(cid: str) -> dict:
     for t in resolved_raw:
         t["locked"] = True
         t["admin_resolved"] = t["status"] in ADMIN_RESOLVED
+        t["duration_minutes"] = compute_duration_minutes(t)
+
+    # Calcula gap em ordem cronológica (mais antigo → mais novo) ----
+    chrono = sorted(
+        [t for t in resolved_raw if t.get("opened_at")] +
+        [t for t in active_raw if t.get("opened_at")],
+        key=lambda t: t.get("opened_at") or "",
+    )
+    prev_close_iso: Optional[str] = None
+    for t in chrono:
+        if prev_close_iso and t.get("opened_at"):
+            try:
+                pc = datetime.fromisoformat(prev_close_iso.replace("Z", "+00:00"))
+                op = datetime.fromisoformat(t["opened_at"].replace("Z", "+00:00"))
+                if pc.tzinfo is None:
+                    pc = pc.replace(tzinfo=timezone.utc)
+                if op.tzinfo is None:
+                    op = op.replace(tzinfo=timezone.utc)
+                t["gap_minutes_to_prev"] = max(0, round((op - pc).total_seconds() / 60.0, 1))
+            except Exception:
+                t["gap_minutes_to_prev"] = None
+        else:
+            t["gap_minutes_to_prev"] = None
+        if t.get("closed_at"):
+            prev_close_iso = t["closed_at"]
+    for t in active_raw:
+        t["duration_minutes"] = compute_duration_minutes(t)
+
+    # Tempo entre Saída-do-último-serviço e AGORA — útil pro app mostrar gap até clock-out
+    last_closed_at: Optional[str] = None
+    if resolved_raw:
+        last_closed_at = resolved_raw[0].get("closed_at")  # já ordenado desc
+    minutes_since_last_close: Optional[float] = None
+    if last_closed_at:
+        try:
+            lc = datetime.fromisoformat(last_closed_at.replace("Z", "+00:00"))
+            if lc.tzinfo is None:
+                lc = lc.replace(tzinfo=timezone.utc)
+            minutes_since_last_close = round((datetime.now(timezone.utc) - lc).total_seconds() / 60.0, 1)
+        except Exception:
+            pass
 
     active = next((t for t in active_raw if t["status"] in ("aberta", "aguardando_atendimento")), None)
     return {
         "tickets": active_raw + resolved_raw,
         "active_ticket_id": active["id"] if active else None,
+        "last_closed_at": last_closed_at,
+        "minutes_since_last_close": minutes_since_last_close,
         "clock_state": state,
         "lousa_unlocked": not state["in_intervalo"] and not state["ended_day"],
         "needs_clock_in": False,
@@ -1145,3 +1232,186 @@ async def mark_all_read(user: dict = Depends(require_role("gestor"))):
     q = tenant_filter(user)
     await db.notifications.update_many(q, {"$addToSet": {"read_by": user["id"]}})
     return {"ok": True}
+
+
+
+# -------------------------------------------------------------------------
+# STATS — Painel de estatísticas dos serviços
+# -------------------------------------------------------------------------
+@router.get("/lousa/stats")
+async def lousa_stats(user: dict = Depends(require_role("gestor")),
+                      days: int = 30):
+    """Estatísticas agregadas das bolhas/serviços do tenant nos últimos N dias.
+
+    Retorna: total, by_status (executada/finalizada/encerrada/cancelada/etc),
+    avg_duration_minutes, by_type (ranking) e tendência diária.
+    """
+    q = tenant_filter(user)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max(1, days))).isoformat()
+    q_recent = dict(q)
+    q_recent["$or"] = [
+        {"created_at": {"$gte": cutoff}},
+        {"closed_at": {"$gte": cutoff}},
+    ]
+    docs = await db.tickets.find(q_recent, {"_id": 0}).to_list(5000)
+
+    by_status: dict = {}
+    by_type: dict = {}
+    by_type_durations: dict = {}
+    durations: list[float] = []
+    by_day: dict = {}  # {YYYY-MM-DD: {created, finalized}}
+
+    for t in docs:
+        st = t.get("status", "pendente")
+        by_status[st] = by_status.get(st, 0) + 1
+        ttype = t.get("type", "reparo")
+        by_type[ttype] = by_type.get(ttype, 0) + 1
+
+        dur = compute_duration_minutes(t)
+        if dur is not None and t.get("status") in ("finalizada", "encerrada"):
+            durations.append(dur)
+            by_type_durations.setdefault(ttype, []).append(dur)
+
+        for ts_field, key in (("created_at", "created"), ("closed_at", "finalized")):
+            ts = t.get(ts_field)
+            if not ts:
+                continue
+            day = ts[:10]
+            d = by_day.setdefault(day, {"created": 0, "finalized": 0})
+            if key == "finalized" and t.get("status") not in ("finalizada", "encerrada"):
+                continue
+            d[key] += 1
+
+    # Ranking de tipos com média de duração
+    ranking = []
+    for ttype, count in sorted(by_type.items(), key=lambda x: -x[1]):
+        durs = by_type_durations.get(ttype, [])
+        avg = round(sum(durs) / len(durs), 1) if durs else None
+        ranking.append({
+            "type": ttype,
+            "count": count,
+            "avg_duration_minutes": avg,
+        })
+
+    timeline = [
+        {"day": d, "created": v["created"], "finalized": v["finalized"]}
+        for d, v in sorted(by_day.items())
+    ]
+
+    return {
+        "period_days": days,
+        "total": len(docs),
+        "by_status": {
+            "pendente": by_status.get("pendente", 0),
+            "aberta": by_status.get("aberta", 0),
+            "aguardando_atendimento": by_status.get("aguardando_atendimento", 0),
+            "finalizada": by_status.get("finalizada", 0),
+            "encerrada": by_status.get("encerrada", 0),
+            "reagendada": by_status.get("reagendada", 0),
+            "cancelada": by_status.get("cancelada", 0),
+        },
+        "executed_count": by_status.get("aberta", 0)
+                        + by_status.get("finalizada", 0)
+                        + by_status.get("encerrada", 0),
+        "finalized_count": by_status.get("finalizada", 0),
+        "avg_duration_minutes": round(sum(durations) / len(durations), 1) if durations else None,
+        "ranking_by_type": ranking,
+        "timeline": timeline,
+    }
+
+
+# -------------------------------------------------------------------------
+# AI EVALUATION — Avaliação profunda via LLM (Claude/GPT/Gemini)
+# -------------------------------------------------------------------------
+@router.post("/lousa/tickets/{ticket_id}/ai-evaluate")
+async def ai_evaluate_ticket(ticket_id: str,
+                             user: dict = Depends(require_role("gestor"))):
+    """Roda LLM para gerar análise textual da execução do serviço com sugestões.
+    Usa o score heurístico como contexto e devolve um parecer + nota IA.
+    """
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Serviço não encontrado")
+    cid = t.get("assigned_collaborator_id")
+    coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1, "praca_name": 1})
+    company_id = t.get("company_id") or DEMO_COMPANY_ID
+    settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
+    sla_min = int(settings.get(f"sla_{t.get('type', 'reparo')}_minutes", 60))
+
+    heur = await heuristic_score_for_ticket(t, sla_minutes=sla_min)
+    duration = compute_duration_minutes(t)
+
+    prompt_user = (
+        f"Avalie a execução deste serviço de campo. Devolva um JSON com chaves "
+        f"`ai_score` (0-10, número), `verdict` ('Excelente'|'Bom'|'Atenção'|'Crítico'), "
+        f"`summary` (string curta em PT-BR, max 200 chars) e `recommendations` (lista de strings PT-BR, max 4 itens, max 120 chars cada).\n\n"
+        f"DADOS:\n"
+        f"- Técnico: {coll.get('name') if coll else cid}\n"
+        f"- Tipo de serviço: {t.get('type')}\n"
+        f"- Status: {t.get('status')}\n"
+        f"- SLA configurado: {sla_min} minutos\n"
+        f"- Duração real: {f'{duration:.0f}' if duration is not None else 'em andamento'} minutos\n"
+        f"- Cliente: {(t.get('client_snapshot') or {}).get('name')}\n"
+        f"- Endereço: {(t.get('client_snapshot') or {}).get('address')}\n"
+        f"- Bairro: {(t.get('client_snapshot') or {}).get('neighborhood')}\n"
+        f"- Relato: {(t.get('client_snapshot') or {}).get('relato')[:300]}\n"
+        f"- Score heurístico atual: {heur['score']} ({heur['label']})\n"
+        f"- Sinais detectados:\n"
+        + "\n".join(f"  · [{s.get('level','')}] {s.get('msg','')}" for s in heur.get('signals') or [])
+    )
+
+    system_msg = (
+        "Você é um auditor sênior de operações de campo (field service). "
+        "Avalie tecnicamente a execução do serviço com base nos dados fornecidos. "
+        "Seja imparcial, factual e sucinto. Sempre devolva APENAS o JSON solicitado, sem cercas markdown."
+    )
+
+    try:
+        from emergentintegrations.llm.chat import UserMessage
+        chat = await llm_chat(session_id=f"ai-eval-{ticket_id}", system=system_msg)
+        resp = await chat.send_message(UserMessage(text=prompt_user))
+        text = (resp or "").strip()
+        # Tenta extrair JSON
+        import json as _json
+        import re as _re
+        m = _re.search(r"\{.*\}", text, _re.DOTALL)
+        parsed = _json.loads(m.group(0)) if m else {}
+        ai_score = float(parsed.get("ai_score") or heur["score"])
+        verdict = parsed.get("verdict") or heur["label"]
+        summary = parsed.get("summary") or "Análise indisponível."
+        recs = parsed.get("recommendations") or []
+        if not isinstance(recs, list):
+            recs = [str(recs)]
+        result = {
+            "ticket_id": ticket_id,
+            "ai_score": round(max(0.0, min(10.0, ai_score)), 1),
+            "verdict": verdict,
+            "summary": summary[:240],
+            "recommendations": [str(r)[:160] for r in recs[:4]],
+            "heuristic": heur,
+            "method": "llm",
+            "computed_at": now_iso(),
+        }
+    except Exception as e:
+        logger.warning("[ai-evaluate] LLM falhou, usando heurística: %s", e)
+        result = {
+            "ticket_id": ticket_id,
+            "ai_score": heur["score"],
+            "verdict": heur["label"],
+            "summary": "Avaliação automática (heurística) — IA indisponível no momento.",
+            "recommendations": [s.get("msg", "") for s in heur.get("signals", []) if s.get("level") in ("warning", "critical")][:4],
+            "heuristic": heur,
+            "method": "heuristic_fallback",
+            "computed_at": now_iso(),
+            "error": str(e)[:160],
+        }
+
+    # Persiste em ticket_logs para auditoria
+    await _log_ticket_action(
+        ticket_id=ticket_id, action="avaliacao_ia",
+        actor_id=user["id"], actor_name=user.get("name", "Gestor"),
+        actor_role=user.get("role", "gestor"),
+        details=f"IA: {result['verdict']} ({result['ai_score']}) — {result['summary'][:120]}",
+        company_id=company_id,
+    )
+    return result

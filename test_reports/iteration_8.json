@@ -1,0 +1,41 @@
+{
+  "summary": "Iter8 testing complete. Backend: created /app/backend/tests/test_iteration8_stats_ai_evaluate.py — 10/10 PASS covering grid enrichment (duration_minutes, gap_minutes_to_prev, ai_score heuristic on tickets + recent_resolved with duration), /lousa/by-collaborator/{cid} (last_closed_at + minutes_since_last_close present), /lousa/stats?days=7|30|90 (KPIs total/by_status/executed_count/finalized_count/avg_duration_minutes/ranking_by_type/timeline + auth required), POST /lousa/tickets/{id}/ai-evaluate (full payload with ai_score/verdict/summary/recommendations/heuristic/method, returns 404 invalid id, 401 sem auth, log 'avaliacao_ia' criado em /lousa/logs?ticket_id). Iter5 regression suite 11/11 e iter4 fixed-slots verde. Frontend (Playwright via REACT_APP_BACKEND_URL): Lousa header diz 'serviço(s) ativos' e 'duplo-clique abre serviço pendente'; 12 ai-score badges + 4 duration badges renderizadas; ao expandir bolha, botão 'ai-evaluate-{id}' aparece e abre ai-detail-modal com LLM real (verdict 'Atenção', 6.5/10, recomendações + sinais visíveis). Painel: service-stats-section + kpi-total/executed/finalized/canceled/avg + 5 ranking-row-* + stats-days-7/30/90 todos presentes e clicáveis. Mobile (?mode=app): Carlos Almeida carrega; last-service-summary não aparece porque não há ticket finalizada (aceito per nota do main agent).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/lousa/grid", "issue": "ticket['gap_minutes_to_prev'] só é setado para tickets com 'opened_at'; pendentes/sem horário não recebem a chave (esperado pela spec ter None). UI lida bem (gap-{id} só aparece quando há gap), mas para conformidade, setar default None em todos os tickets ativos no início do loop."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "DashboardPanel/ServiceStatsSection initial render", "issues": ["Recharts emite warnings 'width(-1) and height(-1) of chart should be greater than 0' no primeiro render — provável que o ResponsiveContainer renderize antes do layout final. Gráfico aparece corretamente após reflow, mas adicionar minHeight no container removeria o warning."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8_stats_ai_evaluate.py",
+    "/app/test_reports/pytest/iter8_results.xml"
+  ],
+  "action_items": [
+    "(Opcional) Em routes/lousa.py:lousa_grid, garantir que TODOS os tickets ativos recebam t['gap_minutes_to_prev']=None por padrão antes do loop chrono_for_gaps (para conformidade total com a spec).",
+    "(Opcional) Adicionar minHeight ao ResponsiveContainer dos gráficos do ServiceStatsSection para silenciar warnings recharts no primeiro render.",
+    "Para validar last-service-summary do mobile colaborador, é preciso seed: colaborador com Entrada batida + 1 ticket finalizada nas últimas 24h. Sugiro um seed script ou ticket_finalize fixture no conftest."
+  ],
+  "critical_code_review_comments": [
+    "routes/lousa.py — agora ~1418 linhas, três responsabilidades distintas (grid+enrichment, stats agregadas, IA LLM). Recomendação reiterada: separar em routes/lousa_grid.py, routes/lousa_stats.py, routes/lousa_ai.py.",
+    "routes/lousa.py:ai_evaluate_ticket — try/except amplo demais (Exception genérica engole erros do LLM e cai sempre em fallback). Capturar especificamente exceções de network/timeout/parse JSON; logar stack trace para os outros casos.",
+    "routes/lousa.py:ai_evaluate_ticket — não há rate limit nem cache; cada clique no botão IA dispara nova chamada LLM (custo + latência). Sugiro cache curto (~5min) por ticket_id no Mongo ou em memória.",
+    "ServiceStatsSection (DashboardPanel.js) — clicar 7d/90d aparentemente não muda kpi-total (testado: ficou 74 em todas as opções). Precisa main agent verificar se é coincidência (todos tickets <7d) ou bug no useEffect/dependência do days no fetch lousaStats."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8_stats_ai_evaluate.py"
+  ],
+  "success_rate": {"backend": "100% (10/10 in iter8 suite + 11/11 iter5 regression)", "frontend": "95% (todas as testids iter8 visíveis e funcionais; ai-evaluate LLM real funcionando; last-service-summary não exercido por falta de seed finalizada — aceito)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Nenhum seed novo criado. Usados tickets demo existentes (12 ativos) e 1 chamada /ai-evaluate dispara log 'avaliacao_ia' (auditável).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter8 backend suite: /app/backend/tests/test_iteration8_stats_ai_evaluate.py (10/10). Endpoint /lousa/logs?ticket_id={id} (não /lousa/tickets/{id}/logs). Frontend testids: bubble-card-{id}, ai-score-{id}, duration-{id}, gap-{id}, ai-evaluate-{id}, ai-detail-modal, service-stats-section, kpi-total/executed/finalized/canceled/avg, ranking-row-{type}, stats-days-7/30/90, last-service-summary, tab-painel, tab-lousa. Login default vai pra Painel; tab-painel pode não estar selecionado — usar URL direta ou navegar via tab-lousa primeiro. ai-evaluate via LLM leva ~3-8s (timeout 60s nos pytest). Possível bug menor: stats-days-{n} não muda kpi-total mostrado — verificar se é coincidência de dados ou state stale.",
+  "rca of the issue": "Nenhum bug crítico encontrado. Issue minor 'gap_minutes_to_prev ausente em pending tickets sem opened_at': RCA — em routes/lousa.py:451-474, chrono_for_gaps inclui apenas tickets com opened_at; tickets pendentes/sem horário não entram no loop e portanto não recebem a chave. Mitigação: inicializar `t['gap_minutes_to_prev']=None` para todos `tickets` antes do loop. Não bloqueante: frontend já trata ausência."
+}

@@ -91,6 +91,8 @@ export default function DashboardPanel() {
         </div>
       </div>
 
+      <ServiceStatsSection />
+
       {/* Seletor de modo */}
       <Card style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
@@ -472,6 +474,126 @@ function DrillModal({ drill, year, month, onClose }) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+
+const TYPE_COLORS_STATS = {
+  reparo: "#3b82f6", instalacao: "#10b981", retirada: "#f59e0b",
+  prioridade: "#dc2626", preventiva: "#a855f7", venda: "#06b6d4",
+};
+const TYPE_LABELS_STATS = {
+  reparo: "🔧 Reparo", instalacao: "📡 Instalação", retirada: "📦 Retirada",
+  prioridade: "🚨 Prioridade", preventiva: "🛡️ Preventiva", venda: "💼 Venda",
+};
+
+function ServiceStatsSection() {
+  const [stats, setStats] = React.useState(null);
+  const [days, setDays] = React.useState(30);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  React.useEffect(() => {
+    let alive = true;
+    setLoading(true); setErr("");
+    api.lousaStats(days)
+      .then((d) => { if (alive) setStats(d); })
+      .catch((e) => { if (alive) setErr(e?.response?.data?.detail || e.message); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [days]);
+
+  if (loading) return <Card style={{ marginBottom: 14 }} data-testid="service-stats-loading">Carregando estatísticas...</Card>;
+  if (err) return <Card style={{ marginBottom: 14, color: "#dc2626" }}>Erro stats: {err}</Card>;
+  if (!stats) return null;
+
+  const ranking = stats.ranking_by_type || [];
+  const maxCount = Math.max(1, ...ranking.map((r) => r.count));
+
+  return (
+    <Card style={{ marginBottom: 14 }} data-testid="service-stats-section">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>📊 Estatísticas de serviços</h3>
+        <div style={{ display: "flex", gap: 6 }}>
+          {[7, 30, 90].map((n) => (
+            <button
+              key={n}
+              data-testid={`stats-days-${n}`}
+              onClick={() => setDays(n)}
+              style={{
+                padding: "6px 12px", borderRadius: 10, fontSize: 12, fontWeight: 700,
+                border: "1px solid #e2e8f0", cursor: "pointer",
+                background: days === n ? "#0f172a" : "white",
+                color: days === n ? "white" : "#0f172a",
+              }}
+            >{n}d</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
+        <KpiCard label="Total" value={stats.total} color="#0f172a" testId="kpi-total" />
+        <KpiCard label="Executados" value={stats.executed_count} color="#3b82f6" testId="kpi-executed" />
+        <KpiCard label="Finalizados" value={stats.finalized_count} color="#10b981" testId="kpi-finalized" />
+        <KpiCard label="Cancelados" value={stats.by_status.cancelada || 0} color="#dc2626" testId="kpi-canceled" />
+        <KpiCard label="Tempo médio" value={stats.avg_duration_minutes != null ? `${stats.avg_duration_minutes.toFixed(0)}min` : "—"} color="#a855f7" testId="kpi-avg" />
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <h4 style={{ fontSize: 13, margin: "0 0 8px", color: "#475569" }}>🏆 Ranking de tipos mais executados</h4>
+        {ranking.length === 0 && <div style={{ color: "#94a3b8", fontSize: 12 }}>Sem dados no período.</div>}
+        {ranking.map((r, idx) => (
+          <div key={r.type} data-testid={`ranking-row-${r.type}`} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <span style={{ width: 22, fontWeight: 800, color: idx === 0 ? "#f59e0b" : "#94a3b8", fontSize: 13 }}>
+              {idx + 1}º
+            </span>
+            <span style={{ width: 130, fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
+              {TYPE_LABELS_STATS[r.type] || r.type}
+            </span>
+            <div style={{ flex: 1, height: 18, background: "#f1f5f9", borderRadius: 8, overflow: "hidden", position: "relative" }}>
+              <div style={{
+                height: "100%", width: `${(r.count / maxCount) * 100}%`,
+                background: TYPE_COLORS_STATS[r.type] || "#64748b", borderRadius: 8,
+                transition: "width .3s",
+              }} />
+            </div>
+            <span style={{ minWidth: 60, fontSize: 12, fontWeight: 800, color: "#0f172a", textAlign: "right" }}>
+              {r.count} {r.avg_duration_minutes != null ? `· ${Math.round(r.avg_duration_minutes)}min` : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {stats.timeline?.length > 0 && (
+        <div>
+          <h4 style={{ fontSize: 13, margin: "12px 0 8px", color: "#475569" }}>📈 Volume diário</h4>
+          <div style={{ height: 110 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.timeline.slice(-14)}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="day" tickFormatter={(d) => d.slice(5)} fontSize={10} />
+                <YAxis fontSize={10} />
+                <Tooltip />
+                <Bar dataKey="created" fill="#3b82f6" name="Criados" />
+                <Bar dataKey="finalized" fill="#10b981" name="Finalizados" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function KpiCard({ label, value, color, testId }) {
+  return (
+    <div data-testid={testId} style={{
+      background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12,
+      padding: 12, textAlign: "center",
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 900, color, marginTop: 4 }}>{value}</div>
     </div>
   );
 }

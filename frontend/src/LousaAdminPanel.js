@@ -178,7 +178,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         <div>
           <h2 style={{ margin: 0 }}>📋 Lousa de Serviços</h2>
           <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0 0" }}>
-            {grid.columns.length} técnico(s) · {totalTickets} bolha(s) ativas — arraste para transferir entre técnicos
+            {grid.columns.length} técnico(s) · {totalTickets} serviço(s) ativos — arraste para transferir entre técnicos · <span style={{ color: "#475569" }}>duplo-clique abre serviço pendente</span>
             {overdueCount > 0 && (
               <span data-testid="overdue-counter" style={{ marginLeft: 10, padding: "2px 10px", background: "#dc2626", color: "white", borderRadius: 999, fontWeight: 800 }}>
                 ⚠ {overdueCount} ATRASADA(S)
@@ -191,7 +191,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             variant="soft"
             onClick={toggleAlerts}
             data-testid="lousa-sla-alerts-toggle"
-            title={alertsOn ? "Alertas sonoros ativos — clique para desligar" : "Ativar alertas sonoros para bolhas atrasadas"}
+            title={alertsOn ? "Alertas sonoros ativos — clique para desligar" : "Ativar alertas sonoros para serviços atrasados"}
             style={{
               background: alertsOn ? "#dcfce7" : "#f1f5f9",
               color: alertsOn ? "#166534" : "#475569",
@@ -289,6 +289,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
   const state = column.clock_state;
   const slots = column.slots || [];
   const unscheduled = column.unscheduled || [];
+  const recentResolved = column.recent_resolved || [];
   const totalTickets = column.tickets?.length || 0;
   const isOnline = state.has_entrada && !state.ended_day && !state.in_intervalo;
 
@@ -324,10 +325,10 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
           <div style={{ fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {c.name}
             {c.is_test_mode && <span style={{ marginLeft: 6, fontSize: 9, background: "#a855f7", color: "white", padding: "1px 5px", borderRadius: 6 }}>🧪 TESTE</span>}
-            {c.praca_id === "NOTA" && <span title="Praça Nota: bate ponto no endereço da bolha aberta" style={{ marginLeft: 4, fontSize: 9, background: "#0ea5e9", color: "white", padding: "1px 5px", borderRadius: 6 }}>📍 NOTA</span>}
+            {c.praca_id === "NOTA" && <span title="Praça Nota: bate ponto no endereço do serviço aberto" style={{ marginLeft: 4, fontSize: 9, background: "#0ea5e9", color: "white", padding: "1px 5px", borderRadius: 6 }}>📍 NOTA</span>}
           </div>
           <div style={{ fontSize: 11, color: "#64748b" }}>
-            {totalTickets} bolha(s) · {c.praca || "—"}
+            {totalTickets} serviço(s) · {c.praca || "—"}
           </div>
         </div>
       </div>
@@ -347,6 +348,31 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
           </span>
         ))}
       </div>
+
+      {/* Serviços encerrados nas últimas 24h — texto simples para conferência (gap entre serviços) */}
+      {recentResolved.length > 0 && (
+        <div data-testid={`recent-resolved-${c.id}`} style={{
+          marginTop: 10, padding: "6px 8px", background: "#f8fafc", border: "1px dashed #cbd5e1",
+          borderRadius: 8, fontSize: 10, color: "#475569",
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 4, color: "#0f172a" }}>📒 Encerrados (24h)</div>
+          {recentResolved.map((t) => (
+            <div key={t.id} style={{ marginBottom: 4 }}>
+              {t.gap_minutes_to_prev != null && (
+                <div style={{ fontStyle: "italic", color: "#94a3b8", padding: "2px 0" }}>
+                  ⏱ {fmtGap(t.gap_minutes_to_prev)} entre o serviço anterior e este
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+                <span><strong>{TYPE_LABELS[t.type] || t.type}</strong> · {t.client_snapshot?.name}</span>
+                <span style={{ color: "#0f172a", fontWeight: 700 }}>
+                  {t.duration_minutes != null ? `🕐 ${fmtDuration(t.duration_minutes)}` : ""}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Grade FIXA de slots */}
       <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6, minHeight: 200 }}>
@@ -431,19 +457,28 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
           {over ? "↓ Solte aqui ↓" : "vazio"}
         </div>
       )}
-      {slot.tickets.map((t) => (
-        <BubbleCard
-          key={t.id}
-          ticket={t}
-          blinkOverdue={blinkOverdue}
-          isDragging={draggingId === t.id}
-          onDragStart={() => onDragStart(t.id)}
-          onDragEnd={onDragEnd}
-          onAdminClose={onAdminClose}
-          onAdminOpen={onAdminOpen}
-          onEdit={onEdit}
-          busy={busy}
-        />
+      {slot.tickets.map((t, idx) => (
+        <React.Fragment key={t.id}>
+          {idx > 0 && t.gap_minutes_to_prev != null && (
+            <div data-testid={`gap-${t.id}`} style={{
+              fontSize: 9, fontStyle: "italic", color: "#94a3b8",
+              textAlign: "center", padding: "2px 0",
+            }}>
+              ⏱ {fmtGap(t.gap_minutes_to_prev)} de intervalo
+            </div>
+          )}
+          <BubbleCard
+            ticket={t}
+            blinkOverdue={blinkOverdue}
+            isDragging={draggingId === t.id}
+            onDragStart={() => onDragStart(t.id)}
+            onDragEnd={onDragEnd}
+            onAdminClose={onAdminClose}
+            onAdminOpen={onAdminOpen}
+            onEdit={onEdit}
+            busy={busy}
+          />
+        </React.Fragment>
       ))}
     </div>
   );
@@ -453,9 +488,32 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
   const c = PRIORITY_COLORS[ticket.priority] || PRIORITY_COLORS.normal;
   const st = STATUS_LABEL[ticket.status] || { label: ticket.status, color: "#64748b" };
   const sla = ticket.sla || {};
+  const ai = ticket.ai_score || {};
   const slaColor = sla.status === "overdue" ? "#dc2626" : sla.status === "warning" ? "#f59e0b" : "#10b981";
   const isOverdue = sla.status === "overdue";
   const [showActions, setShowActions] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiDetail, setAiDetail] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+
+  async function runAiAnalysis() {
+    setAiBusy(true);
+    try {
+      const r = await api.lousaAiEvaluate(ticket.id);
+      setAiDetail(r);
+      setAiOpen(true);
+    } catch (e) {
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
+    }
+    setAiBusy(false);
+  }
+
+  function handleDoubleClick(e) {
+    e.stopPropagation();
+    if (ticket.status === "pendente" && onAdminOpen) {
+      onAdminOpen(ticket.id);
+    }
+  }
 
   return (
     <div
@@ -463,7 +521,9 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
       onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart(); }}
       onDragEnd={onDragEnd}
       onClick={() => setShowActions(!showActions)}
+      onDoubleClick={handleDoubleClick}
       data-testid={`bubble-card-${ticket.id}`}
+      title={ticket.status === "pendente" ? "Clique para ações · Duplo-clique para abrir o serviço" : "Clique para ações"}
       className={isOverdue && blinkOverdue ? "sla-overdue" : ""}
       style={{
         background: c.bg, border: `2px solid ${isOverdue ? "#dc2626" : c.border}`,
@@ -486,16 +546,42 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
         {ticket.client_snapshot.relato?.substring(0, 70)}{ticket.client_snapshot.relato?.length > 70 ? "..." : ""}
       </div>
 
-      {/* SLA badge */}
-      {ticket.status === "aberta" && sla.elapsed_minutes != null && (
-        <div data-testid={`sla-${ticket.id}`} style={{
-          marginTop: 6, fontSize: 10, fontWeight: 800,
-          color: slaColor,
-          display: "flex", alignItems: "center", gap: 4,
+      {/* SLA badge + AI score badge */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+        {ticket.status === "aberta" && sla.elapsed_minutes != null && (
+          <div data-testid={`sla-${ticket.id}`} style={{
+            fontSize: 10, fontWeight: 800, color: slaColor,
+            display: "flex", alignItems: "center", gap: 4,
+          }}>
+            ⏱ {Math.floor(sla.elapsed_minutes)}min / {sla.sla_minutes}min ({sla.pct?.toFixed(0)}%)
+            {sla.status === "overdue" && <span style={{ background: "#dc2626", color: "white", padding: "1px 6px", borderRadius: 6 }}>ATRASADO</span>}
+            {sla.status === "warning" && <span style={{ background: "#f59e0b", color: "white", padding: "1px 6px", borderRadius: 6 }}>ATENÇÃO</span>}
+          </div>
+        )}
+        {ai.score != null && (
+          <span
+            data-testid={`ai-score-${ticket.id}`}
+            title={`Score heurístico: ${ai.label}\n` + (ai.signals || []).map((s) => `• ${s.msg}`).join("\n")}
+            style={{
+              fontSize: 10, fontWeight: 900, padding: "2px 8px", borderRadius: 999,
+              background: aiScoreColor(ai.score), color: "white",
+              display: "inline-flex", alignItems: "center", gap: 4,
+            }}
+          >
+            🤖 {ai.score.toFixed(1)}/10
+          </span>
+        )}
+      </div>
+
+      {/* Duração no canto inf-direito */}
+      {ticket.duration_minutes != null && (
+        <div data-testid={`duration-${ticket.id}`} style={{
+          position: "absolute", right: 10, bottom: 6,
+          fontSize: 10, fontWeight: 800, color: "#0f172a",
+          background: "rgba(255,255,255,.85)", padding: "1px 6px",
+          borderRadius: 6, border: "1px solid #e2e8f0",
         }}>
-          ⏱ {Math.floor(sla.elapsed_minutes)}min / {sla.sla_minutes}min ({sla.pct?.toFixed(0)}%)
-          {sla.status === "overdue" && <span style={{ background: "#dc2626", color: "white", padding: "1px 6px", borderRadius: 6 }}>ATRASADA</span>}
-          {sla.status === "warning" && <span style={{ background: "#f59e0b", color: "white", padding: "1px 6px", borderRadius: 6 }}>ATENÇÃO</span>}
+          🕐 {fmtDuration(ticket.duration_minutes)}
         </div>
       )}
 
@@ -512,6 +598,8 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
             <button data-testid={`admin-edit-${ticket.id}`} disabled={busy}
               onClick={() => onEdit(ticket)} style={btnSm("#0ea5e9")}>✎ Editar</button>
           )}
+          <button data-testid={`ai-evaluate-${ticket.id}`} disabled={aiBusy}
+            onClick={runAiAnalysis} style={btnSm("#a855f7")}>🤖 IA {aiBusy ? "..." : ""}</button>
           <button data-testid={`admin-close-${ticket.id}`} disabled={busy}
             onClick={() => { const n = window.prompt("Notas:"); if (n !== null) onAdminClose(ticket.id, "encerrar", n); }} style={btnSm("#64748b")}>✓ Encerrar</button>
           <button disabled={busy}
@@ -520,6 +608,58 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
             onClick={() => { const n = window.prompt("Motivo do cancelamento:"); if (n) onAdminClose(ticket.id, "cancelar", n); }} style={btnSm("#dc2626")}>✗ Cancelar</button>
         </div>
       )}
+      {aiOpen && aiDetail && (
+        <AiDetailModal detail={aiDetail} onClose={() => setAiOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+function AiDetailModal({ detail, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 110, display: "grid", placeItems: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} data-testid="ai-detail-modal"
+           style={{ background: "white", borderRadius: 18, padding: 22, maxWidth: 540, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>🤖 Avaliação IA do Serviço</h2>
+          <span style={{ background: aiScoreColor(detail.ai_score), color: "white", padding: "4px 12px", borderRadius: 999, fontWeight: 900, fontSize: 14 }}>
+            {detail.ai_score?.toFixed(1)}/10
+          </span>
+        </div>
+        <div style={{ fontSize: 13, color: "#475569", marginBottom: 8 }}>
+          <strong>Veredito:</strong> {detail.verdict} · <span style={{ color: "#94a3b8", fontSize: 11 }}>({detail.method})</span>
+        </div>
+        <p style={{ background: "#f8fafc", padding: 10, borderRadius: 8, fontSize: 13, color: "#0f172a", margin: "8px 0" }}>
+          {detail.summary}
+        </p>
+        {detail.recommendations?.length > 0 && (
+          <>
+            <h4 style={{ fontSize: 13, margin: "10px 0 4px" }}>Recomendações</h4>
+            <ul style={{ paddingLeft: 18, margin: 0, fontSize: 12, color: "#334155" }}>
+              {detail.recommendations.map((r, i) => <li key={i} style={{ marginBottom: 4 }}>{r}</li>)}
+            </ul>
+          </>
+        )}
+        {detail.heuristic?.signals?.length > 0 && (
+          <>
+            <h4 style={{ fontSize: 13, margin: "12px 0 4px" }}>Sinais (heurística)</h4>
+            <div style={{ fontSize: 11 }}>
+              {detail.heuristic.signals.map((s, i) => (
+                <div key={i} style={{
+                  padding: "4px 8px", marginBottom: 3, borderRadius: 6,
+                  background: s.level === "critical" ? "#fee2e2" : s.level === "warning" ? "#fef3c7" : "#dcfce7",
+                  color: s.level === "critical" ? "#7f1d1d" : s.level === "warning" ? "#78350f" : "#166534",
+                }}>
+                  {s.level === "critical" ? "🔴" : s.level === "warning" ? "🟡" : "🟢"} {s.msg}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+          <Button variant="soft" onClick={onClose}>Fechar</Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -593,4 +733,27 @@ function LogsPanel({ logs, collabs }) {
 
 function btnSm(color) {
   return { fontSize: 10, padding: "3px 7px", border: 0, borderRadius: 6, background: color, color: "white", fontWeight: 800, cursor: "pointer" };
+}
+
+function fmtDuration(min) {
+  if (min == null) return "—";
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m}min`;
+}
+
+function fmtGap(min) {
+  if (min == null) return "—";
+  if (min < 60) return `${Math.round(min)}min`;
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return `${h}h${String(m).padStart(2, "0")}`;
+}
+
+function aiScoreColor(score) {
+  if (score == null) return "#94a3b8";
+  if (score >= 8.5) return "#10b981";
+  if (score >= 7.0) return "#3b82f6";
+  if (score >= 5.0) return "#f59e0b";
+  return "#dc2626";
 }
