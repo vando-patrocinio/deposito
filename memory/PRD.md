@@ -1,10 +1,23 @@
 # PRD — Sistema Mesclado: SmartProv + PontoIA (Lousa + Ponto)
 
-**Última atualização**: 2026-05-09 (iteração 8)
+**Última atualização**: 2026-05-09 (iteração 9)
 
 ## Histórico de iterações
 
-### Iter 8 — Duração + Gap + Score IA + Stats Painel + Mobile (2026-05-09)
+### Iter 9 — Briefing IA + Mobile Redesign + Avatar Auto (2026-05-09)
+- ✅ **Briefing diário**: `GET /api/lousa/briefing` retorna `summary_data` (data, totais, top técnico, pior score IA, top 3 serviços por duração) + `narrative` LLM opcional. Botão `generate-briefing-btn` no Painel abre `briefing-modal` com texto IA em PT-BR (4 parágrafos profissionais)
+- ✅ **Mobile colaborador redesenhado** (best practices 2026):
+  - Avatar 64px com gradient azul à esquerda + nome + cargo
+  - Kebab menu (⋮) à direita com Histórico + Voltar ao painel + Logout Google (quando aplicável)
+  - Botão **único primário** "Bater [Próximo]" 72px gradient verde
+  - Botão **secundário** Lousa de Serviços
+  - Botão central "Histórico" REMOVIDO (movido para o kebab)
+  - Avatar atualiza automaticamente após primeira selfie válida (refresh de `listCollaborators` no `onSelfieCaptured`)
+- Backend: 4/4 (iter9) + 57/57 regressão = **61/61 verde**
+- Frontend deep test: 100%
+
+### Iter 8 — Duração + Gap + IA + Painel Stats + Mobile (2026-05-09)
+- Rename "bolha"→"serviço", duplo-clique abre, duração no canto inf-direito, gap entre serviços, badge IA score 0-10, modal IA profunda com LLM, ServiceStatsSection no Painel
 - ✅ **Rename** "bolha"→"serviço" em headers, badges, tooltips e alerta
 - ✅ **Duplo-clique** em serviço pendente abre via admin-open
 - ✅ **Duração** (HH:MM) no canto inf-direito do BubbleCard quando ticket aberto/fechado
