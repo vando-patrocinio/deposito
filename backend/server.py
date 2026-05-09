@@ -52,6 +52,7 @@ from routes import (
     saas as routes_saas,
     smartolt as routes_smartolt,
     ai_preventive as routes_ai_preventive,
+    ai_dashboard as routes_ai_dashboard,
     stok as routes_stok,
     users as routes_users,
 )
@@ -298,6 +299,7 @@ app.include_router(routes_saas.webhook_router)
 app.include_router(routes_stok.router)
 app.include_router(routes_smartolt.router)
 app.include_router(routes_ai_preventive.router)
+app.include_router(routes_ai_dashboard.router)
 
 app.add_middleware(
     CORSMiddleware,

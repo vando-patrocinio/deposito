@@ -13,7 +13,7 @@ import LogsPanel from "@/LogsPanel";
 import PlatformAdminPanel from "@/PlatformAdminPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
 import EstoquePanel from "@/EstoquePanel";
-import AIPreventivePanel from "@/AIPreventivePanel";
+import AICenterPanel from "@/AICenterPanel";
 import AiRankingPanel from "@/AiRankingPanel";
 import NotificationsBell from "@/NotificationsBell";
 import OfflineTimeBanner from "@/OfflineTimeBanner";
@@ -247,7 +247,7 @@ function AppShell({ view, setView, children }) {
                   padding: "6px 12px", borderRadius: 999, fontWeight: 800, cursor: "pointer", fontSize: 12,
                 }}
               >
-                🤖 Preventivas IA
+                🧠 Central IA
               </button>
             )}
             {user && (
@@ -260,7 +260,7 @@ function AppShell({ view, setView, children }) {
           </nav>
         </header>
         <ImpersonationBanner />
-        {showAIPanel && <AIPreventivePanel onClose={() => setShowAIPanel(false)} />}
+        {showAIPanel && <AICenterPanel onClose={() => setShowAIPanel(false)} />}
         {children}
       </div>
     </div>

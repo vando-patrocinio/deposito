@@ -230,4 +230,14 @@ export const api = {
   notifUnreadCount: () => client.get(`/notifications/unread-count`).then((r) => r.data),
   notifMarkRead: (id) => client.post(`/notifications/${id}/read`).then((r) => r.data),
   notifMarkAllRead: () => client.post(`/notifications/read-all`).then((r) => r.data),
+  // AI Dashboards
+  aiDashOverview: (days = 30) => client.get(`/ai/dashboard/overview`, { params: { days } }).then((r) => r.data),
+  aiDashTechSpending: (days = 30) => client.get(`/ai/dashboard/tech-spending`, { params: { days } }).then((r) => r.data),
+  aiDashRepairMap: (days = 30) => client.get(`/ai/dashboard/repair-map`, { params: { days } }).then((r) => r.data),
+  aiDashDefective: (days = 90) => client.get(`/ai/dashboard/defective-equipment`, { params: { days } }).then((r) => r.data),
+  aiDashCommonIssues: (days = 30) => client.get(`/ai/dashboard/common-issues`, { params: { days } }).then((r) => r.data),
+  aiDashRecurring: (days = 30) => client.get(`/ai/dashboard/recurring-tickets`, { params: { days } }).then((r) => r.data),
+  aiInsight: (dashboard, context_days = 30) =>
+    client.post(`/ai/dashboard/insight`, { dashboard, context_days }).then((r) => r.data),
+  aiInsightsHistory: () => client.get(`/ai/dashboard/insights/history`).then((r) => r.data),
 };
