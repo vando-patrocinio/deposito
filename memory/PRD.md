@@ -10,6 +10,15 @@
 - State machine: Entrada → Lousa liberada / Saída com bolha aberta → confirma → notifica gestor
 - Backend: 26/27 pytest
 
+### Iter 3 — SLA + Logs + Praça NOTA (2026-05-09)
+- ✅ **Card Tempos de Referência** em Configurações: SLA por tipo (reparo=60min, instalacao=120min, retirada=30min) + slider warning% + checkbox piscar overdue + raio cerca NOTA
+- ✅ **Bolhas agrupadas por horário** no painel admin: 🌅 Manhã / ☀️ Tarde / 🌙 Noite / 📋 Sem horário, com cabeçalhos por slot
+- ✅ **SLA Timer com piscar vermelho**: bolha aberta exibe ⏱ Xmin/Ymin (Z%) com cor verde/amarelo/vermelho; ATRASADA pisca em vermelho via CSS `@keyframes pulseRed`
+- ✅ **Logs de auditoria** completos: nova coleção `ticket_logs` com action+actor_role+actor_name+details+timestamp; painel inferior na lousa lista últimos 50 com filtros (Todos/Técnicos/Gestor/Admin)
+- ✅ **Praça especial "NOTA"**: opção no select do cadastro → técnico bate ponto direto no endereço da bolha aberta/pendente (cerca virtual dinâmica gerada com raio configurável)
+- 🐛 Bug crítico DynFence→dict em routes/clock.py corrigido pelo testing agent
+- Backend: 20/20 pytest (100%)
+
 ### Iter 2 — Per-collaborator test mode + Kanban Grid + Transfer (2026-05-09)
 - ✅ **Cadastro com flag `is_test_mode`**: admin marca colab como teste no formulário (checkbox roxo) → bypassa cerca virtual + validação selfie no clock-records (mesmo SEM token)
 - ✅ **Bolhas escondidas até bater Entrada**: API retorna `needs_clock_in:true, tickets:[]` quando colaborador ainda não bateu ponto
