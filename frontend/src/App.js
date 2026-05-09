@@ -12,6 +12,7 @@ import PracasPanel from "@/PracasPanel";
 import LogsPanel from "@/LogsPanel";
 import PlatformAdminPanel from "@/PlatformAdminPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
+import EstoquePanel from "@/EstoquePanel";
 import AiRankingPanel from "@/AiRankingPanel";
 import NotificationsBell from "@/NotificationsBell";
 import OfflineTimeBanner from "@/OfflineTimeBanner";
@@ -396,6 +397,7 @@ function AppContent() {
         <>
           {view === "dashboard" && <DashboardPanel />}
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} />}
+          {view === "estoque" && <EstoquePanel />}
           {view === "ai-ranking" && <AiRankingPanel />}
           {view === "cadastro" && <CadastroPanel />}
           {view === "pracas" && <PracasPanel />}

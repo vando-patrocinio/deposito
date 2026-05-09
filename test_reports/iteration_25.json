@@ -1,0 +1,40 @@
+{
+  "summary": "Iteração 25 — Integração Estoque (stok-main) ↔ Lousa+Ponto. Backend: 12/13 pytest passaram (1 skipped por requisito de payload completo); todos os endpoints /api/stok/* validados (catalog, dashboard, technicians, onts, onts/bulk, onts/transfer-to-tech, onts/return-to-company, onts/{mac} PATCH, stock, consumables/purchase, consumables/transfer, services, services/{id}/close, history). Bridge Lousa↔Estoque: admin-open dispara auto_open_service_for_ticket (auto_opened=true); admin-close action=cancelar marca OS como cancelado; ambos validados via test_bridge_lousa_open_creates_service. Role-based access confirmado: gestor 200, colaborador 401/403 em /api/stok/dashboard. Exclusão atlaz_inbox em /api/stok/technicians validada. PATCH ONT atualiza modelo e persiste. Frontend e2e (Playwright): admin login → aba '📦 Estoque' visível e clicável; 5 sub-abas (Dashboard, ONTs, Insumos, Serviços, Histórico) renderizam; Dashboard mostra 5 KPIs (ONTs no estoque=6, Total ONTs=10, Técnicos com estoque=6, OS Ativas=2, Eficiência retirada=0%) + card 'Estoque da Empresa' com Drop=7400m + lista 'Estoque por Técnico' com 4+ técnicos (Diogo, Junior, Jefferson, Eddy). Gestor: aba Estoque visível (1 tab). Colaborador (Carlos Almeida): aba Estoque NÃO visível, mostra mensagem 'Sem acesso a esta seção. Procure o gestor.' ✓",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/lousa/public/tickets/{id}/finalize", "issue": "Teste de bridge finalize foi pulado — finalize requer completion_data com >=3 fotos + ONT obrigatória para tipo 'instalacao'; bridge mark_service_ticket_finalized foi validada via code review (lousa.py:999-1004 + stok.py)"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration25_stok.py",
+    "/app/backend/tests/test_iteration25_stok_extra.py",
+    "/app/test_reports/pytest/iter25_results.xml",
+    "/app/test_reports/pytest/iter25_extra_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "stok.py:181-185 — /api/stok/technicians filtra atlaz_inbox via {'atlaz_inbox': {'$ne': True}} ✓",
+    "stok.py:284-288 — /api/stok/stock retorna apenas insumos por location, não inclui ONTs (correto). Para listar ONTs use /api/stok/onts.",
+    "stok.py:225-239 — PATCH /api/stok/onts/{mac} valida location_type='empresa' antes de editar e restringe edição a admin ou criador ✓",
+    "lousa.py:999-1004 — Bridge finalize: mark_service_ticket_finalized chamada com try/except logger warning (não falha o request principal se bridge der erro) ✓ — boa defensiva.",
+    "stok.py:198-222 — Bulk insert de ONTs valida MACs duplicados ANTES de inserir, retornando 400 com MAC específico (boa UX) ✓",
+    "Frontend EstoquePanel.js: 5 sub-abas + KPIs + cards renderizam sem erros de console; tab 'Estoque' aparece para administrador/gestor e é corretamente bloqueada para colaborador (mostra 'Sem acesso a esta seção') ✓",
+    "Sugestão (não bloqueante): Adicionar data-testid em sub-abas (estoque-tab-dashboard, estoque-tab-onts, etc.) e botões de dialog (estoque-add-ont-btn, estoque-transfer-ont-btn) para facilitar testes futuros — atualmente identificáveis apenas por texto."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration25_stok_extra.py (criado)"
+  ],
+  "success_rate": {"backend": "100% (12 passed, 1 skipped non-blocker)", "frontend": "100% — todas as flows e role-restrictions validadas"},
+  "test_credentials": "admin@empresa.com/123456, gestor@empresa.com/123456, colaborador@empresa.com/123456 — todos válidos",
+  "seed_data_creation": "Tests criam ONTs MAC AA/BB/CC/DD/EE-prefixed via bulk + 1000m drop por compra. Não há teardown — dados acumulam (orientação aceita pelo main agent: 'aceitar acumulação, nada destrutivo'). MACs únicos via uuid4 evitam colisão entre runs.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 25 stok integration 100% verde. Para testar bridge finalize completo, será preciso compor payload válido com >=3 fotos base64 + ont MAC + sinal — atualmente skipped. Backend tests: cd /app/backend && REACT_APP_BACKEND_URL=https://dual-combine-3.preview.emergentagent.com python -m pytest tests/test_iteration25_stok.py tests/test_iteration25_stok_extra.py -v. Aba Estoque é visível APENAS para administrador e gestor; colaborador vê mensagem de 'Sem acesso'. Sub-abas no frontend são identificadas por texto (Dashboard/ONTs/Insumos/Serviços/Histórico) — main agent pode adicionar data-testid se quiser facilitar testes UI.",
+  "rca of the issue": "N/A — todos os fluxos funcionando conforme spec; única lacuna é o teste de finalize bridge que foi pulado por exigência de payload de instalação completo (3+ fotos + ONT), mas a função mark_service_ticket_finalized está implementada e referenciada corretamente em lousa.py linha 1001."
+}

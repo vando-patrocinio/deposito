@@ -996,6 +996,12 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
         details=f"ONT={cd.ont or '-'} · sinal={cd.sinal} dBm · fotos={len(cd.fotos)}",
         company_id=t.get("company_id") or DEMO_COMPANY_ID,
     )
+    # Bridge Estoque ↔ Lousa: marca OS associada como pendente_fechamento (gestor encerra com MAC+insumos)
+    try:
+        from routes.stok import mark_service_ticket_finalized
+        await mark_service_ticket_finalized(ticket_id, t.get("company_id") or DEMO_COMPANY_ID)
+    except Exception as e:
+        logger.warning("[lousa] mark_service_ticket_finalized falhou: %s", e)
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 
@@ -1233,6 +1239,16 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
             )
         except Exception as e:
             logger.warning("[atlaz] push falhou para %s: %s", ticket_id, e)
+    # Bridge Estoque ↔ Lousa: cancela OS associada (sem baixa de estoque) em cancel/reagendar
+    if payload.action in ("cancelar", "reagendar"):
+        try:
+            from routes.stok import cancel_service_for_ticket
+            await cancel_service_for_ticket(
+                ticket_id, t.get("company_id") or DEMO_COMPANY_ID,
+                reason=f"Lousa: {payload.action} — {payload.notes or ''}".strip(),
+            )
+        except Exception as e:
+            logger.warning("[lousa] cancel_service_for_ticket falhou: %s", e)
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 
@@ -1314,6 +1330,13 @@ async def admin_open_ticket(ticket_id: str, user: dict = Depends(require_role("g
         details=f"Aberta pelo gestor (não pelo técnico) — {t['client_snapshot']['name']}",
         company_id=t.get("company_id") or DEMO_COMPANY_ID,
     )
+    # Bridge Estoque ↔ Lousa: cria OS de estoque automaticamente
+    try:
+        from routes.stok import auto_open_service_for_ticket
+        full_t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+        await auto_open_service_for_ticket(full_t)
+    except Exception as e:
+        logger.warning("[lousa] auto_open_service_for_ticket (admin) falhou: %s", e)
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 

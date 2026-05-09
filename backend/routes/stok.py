@@ -540,3 +540,24 @@ async def auto_open_service_for_ticket(ticket: dict) -> Optional[str]:
         "auto_opened": True,
     })
     return sid
+
+
+async def mark_service_ticket_finalized(ticket_id: str, company_id: str) -> None:
+    """Lousa avisou que o ticket foi FINALIZADO pelo técnico.
+
+    A OS associada continua `ativo` (gestor precisa informar MAC + insumos
+    via aba Estoque), mas marca `ticket_finalized=true` para destaque na UI.
+    """
+    await db.stok_services.update_one(
+        {"ticket_id": ticket_id, "company_id": company_id, "status": "ativo"},
+        {"$set": {"ticket_finalized": True, "ticket_finalized_at": now_iso()}},
+    )
+
+
+async def cancel_service_for_ticket(ticket_id: str, company_id: str, reason: str = "") -> None:
+    """Lousa cancelou/reagendou o ticket — cancela a OS sem baixa de estoque."""
+    await db.stok_services.update_one(
+        {"ticket_id": ticket_id, "company_id": company_id, "status": "ativo"},
+        {"$set": {"status": "cancelado", "closed_at": now_iso(),
+                  "cancel_reason": reason or "Cancelado via Lousa"}},
+    )
