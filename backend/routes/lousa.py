@@ -293,6 +293,8 @@ async def transfer_ticket(ticket_id: str, payload: TransferIn,
         raise HTTPException(404, "Nota não encontrada")
     if t["status"] in ("finalizada", "encerrada", "cancelada"):
         raise HTTPException(400, "Nota já encerrada — não pode ser transferida")
+    if t["status"] == "aberta":
+        raise HTTPException(409, "Serviço em execução pelo técnico — não pode ser movido. Aguarde a finalização ou encerre antes.")
 
     update = {}
     target_cid = payload.new_collaborator_id or t["assigned_collaborator_id"]
@@ -424,13 +426,19 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
     records = await db.clock_records.find(
         {"collaborator_id": {"$in": cids}, "date": today,
          "status": {"$in": ["Válido", "Offline sincronizado"]}},
-        {"_id": 0, "collaborator_id": 1, "type": 1, "time": 1},
+        {"_id": 0, "collaborator_id": 1, "type": 1, "time": 1, "created_at": 1},
     ).to_list(5000)
     state_by_cid: dict = {}
     for r in records:
-        s = state_by_cid.setdefault(r["collaborator_id"], {"types": set(), "records": []})
+        s = state_by_cid.setdefault(r["collaborator_id"], {"types": set(), "records": [], "last_record_at": None})
         s["types"].add(r["type"])
         s["records"].append({"type": r["type"], "time": r["time"]})
+        ca = r.get("created_at")
+        if ca and (s["last_record_at"] is None or ca > s["last_record_at"]):
+            s["last_record_at"] = ca
+
+    online_threshold_min = int(settings.get("online_threshold_minutes", 5))
+    online_cutoff = (datetime.now(timezone.utc) - timedelta(minutes=online_threshold_min)).isoformat()
 
     columns = []
     for c in collabs:
@@ -444,10 +452,13 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
             key=lambda t: t.get("closed_at", ""),
         )
         locked_idx = compute_locked_positions(tickets)
-        s = state_by_cid.get(cid, {"types": set(), "records": []})
+        s = state_by_cid.get(cid, {"types": set(), "records": [], "last_record_at": None})
         in_intervalo = ("Início intervalo" in s["types"]) and ("Fim intervalo" not in s["types"])
         has_entrada = "Entrada" in s["types"]
         ended_day = "Saída" in s["types"]
+        # Indicador online: técnico bateu Entrada e tem record recente (≤ threshold) e não bateu Saída
+        last_record_at = s.get("last_record_at")
+        is_online = bool(has_entrada and not ended_day and last_record_at and last_record_at >= online_cutoff)
         # Adiciona SLA + slot + duração + gap + ai_score por bolha
         # Inicializa gap_minutes_to_prev=None em todos para conformidade com a spec
         for t in tickets:
@@ -478,6 +489,7 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
 
         for i, t in enumerate(tickets):
             t["locked"] = (i in locked_idx) or in_intervalo or (not has_entrada) or ended_day
+            t["in_execution"] = t.get("status") == "aberta"
             sla_min = sla_map.get(t.get("type", "reparo"), 60)
             t["sla"] = _compute_sla(t, sla_min, yellow_min, red_after_min)
             t["grid_slot"] = _slot_for_ticket(t, fixed_slots, slot_minutes)
@@ -502,6 +514,9 @@ async def lousa_grid(user: dict = Depends(require_role("gestor"))):
             "clock_state": {
                 "has_entrada": has_entrada, "in_intervalo": in_intervalo,
                 "ended_day": ended_day,
+                "is_online": is_online,
+                "last_record_at": last_record_at,
+                "online_threshold_minutes": online_threshold_min,
                 "records": sorted(s["records"], key=lambda r: r["time"]),
             },
             "tickets": tickets,
@@ -758,6 +773,11 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
 
 @router.delete("/lousa/tickets/{ticket_id}")
 async def delete_ticket(ticket_id: str, user: dict = Depends(require_role("gestor"))):
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0, "status": 1})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    if t.get("status") == "aberta":
+        raise HTTPException(409, "Serviço em execução pelo técnico — não pode ser removido. Encerre antes via gestão.")
     res = await db.tickets.delete_one({"id": ticket_id})
     if res.deleted_count == 0:
         raise HTTPException(404, "Nota não encontrada")

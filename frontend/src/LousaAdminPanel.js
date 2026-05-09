@@ -291,7 +291,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
   const unscheduled = column.unscheduled || [];
   const recentResolved = column.recent_resolved || [];
   const totalTickets = column.tickets?.length || 0;
-  const isOnline = state.has_entrada && !state.ended_day && !state.in_intervalo;
+  const isOnline = state.is_online === true || (state.is_online === undefined && state.has_entrada && !state.ended_day && !state.in_intervalo);
 
   return (
     <div
@@ -307,17 +307,19 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
       }}
     >
       <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 10, borderBottom: "1px solid #cbd5e1" }}>
-        <div style={{
+        <div data-testid={`tech-avatar-${c.id}`} title={isOnline ? "Dispositivo online" : "Dispositivo offline"} style={{
           width: 42, height: 42, borderRadius: "50%",
           background: c.avatar ? `url(${c.avatar}) center/cover` : "linear-gradient(135deg,#0ea5e9,#0284c7)",
           display: "grid", placeItems: "center", color: "white", fontWeight: 800, fontSize: 16,
-          border: `3px solid ${isOnline ? "#10b981" : "#94a3b8"}`, position: "relative", flexShrink: 0,
+          border: `3px solid ${isOnline ? "#10b981" : "#f59e0b"}`,
+          boxShadow: `0 0 0 2px ${isOnline ? "rgba(16,185,129,.18)" : "rgba(245,158,11,.18)"}`,
+          position: "relative", flexShrink: 0,
         }}>
           {!c.avatar && (c.name?.[0] || "?").toUpperCase()}
-          <span style={{
+          <span data-testid={`tech-online-dot-${c.id}`} style={{
             position: "absolute", bottom: -2, right: -2,
             width: 14, height: 14, borderRadius: "50%",
-            background: isOnline ? "#10b981" : state.ended_day ? "#94a3b8" : "#f59e0b",
+            background: isOnline ? "#10b981" : "#f59e0b",
             border: "2px solid white",
           }} />
         </div>
@@ -510,20 +512,25 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
 
   function handleDoubleClick(e) {
     e.stopPropagation();
-    if (ticket.status === "pendente" && onAdminOpen) {
-      onAdminOpen(ticket.id);
-    }
+    if (onEdit) onEdit(ticket);
   }
 
   return (
     <div
-      draggable
-      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart(); }}
+      draggable={!ticket.in_execution}
+      onDragStart={(e) => {
+        if (ticket.in_execution) { e.preventDefault(); return; }
+        e.dataTransfer.effectAllowed = "move"; onDragStart();
+      }}
       onDragEnd={onDragEnd}
       onClick={() => setShowActions(!showActions)}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
       onDoubleClick={handleDoubleClick}
       data-testid={`bubble-card-${ticket.id}`}
-      title={ticket.status === "pendente" ? "Clique para ações · Duplo-clique para abrir o serviço" : "Clique para ações"}
+      title={ticket.in_execution
+        ? "Em execução pelo técnico — bloqueado para mover/excluir · Duplo-clique para editar"
+        : "Passe o mouse para ver ações · Duplo-clique para editar"}
       className={isOverdue && blinkOverdue ? "sla-overdue" : ""}
       style={{
         background: c.bg, border: `2px solid ${isOverdue ? "#dc2626" : c.border}`,
@@ -585,6 +592,19 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
         </div>
       )}
 
+      {ticket.in_execution && (
+        <div data-testid={`in-execution-${ticket.id}`} style={{
+          position: "absolute", top: 6, left: 6,
+          fontSize: 9, fontWeight: 900, color: "white",
+          background: "linear-gradient(90deg,#10b981,#059669)",
+          padding: "2px 7px", borderRadius: 999,
+          textTransform: "uppercase", letterSpacing: 0.5,
+          boxShadow: "0 0 0 2px rgba(16,185,129,.2)",
+          animation: "pulse 1.6s ease-in-out infinite",
+        }}>
+          ▶ Em execução
+        </div>
+      )}
       {ticket.locked && (
         <span style={{ position: "absolute", top: 6, right: 6, fontSize: 14 }}>🔒</span>
       )}

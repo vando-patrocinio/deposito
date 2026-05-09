@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "@/api";
 import SelfieCamera from "@/SelfieCamera";
 import LousaMobile from "@/LousaMobile";
+import ServerClock from "@/ServerClock";
 import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Row, softButtonStyle, StatusBadge } from "@/ui";
 
 const EVENT_TYPES = ["Entrada", "Início intervalo", "Fim intervalo", "Saída"];
@@ -326,14 +327,17 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
               </div>
             </div>
 
-            {/* Kebab menu (3 pontinhos) */}
-            <KebabMenu
-              isAdminTest={isAdminTest}
-              forcedCollabId={forcedCollabId}
-              onLogoutGoogle={onLogout}
-              onExitMobile={mobile && !forcedCollabId ? exitMobile : null}
-              onOpenHistory={() => setScreen("history")}
-            />
+            {/* Server clock + Kebab menu */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+              <ServerClock compact />
+              <KebabMenu
+                isAdminTest={isAdminTest}
+                forcedCollabId={forcedCollabId}
+                onLogoutGoogle={onLogout}
+                onExitMobile={mobile && !forcedCollabId ? exitMobile : null}
+                onOpenHistory={() => setScreen("history")}
+              />
+            </div>
           </div>
 
           {/* Seletor de colaborador — escondido quando autenticado via Google (mobile) */}

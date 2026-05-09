@@ -14,6 +14,7 @@ import PlatformAdminPanel from "@/PlatformAdminPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
 import NotificationsBell from "@/NotificationsBell";
 import OfflineTimeBanner from "@/OfflineTimeBanner";
+import ServerClock from "@/ServerClock";
 import LoginPage from "@/LoginPage";
 import LandingPage from "@/LandingPage";
 import SignupPage from "@/SignupPage";
@@ -230,6 +231,7 @@ function AppShell({ view, setView, children }) {
             {user && (
               <NotificationsBell />
             )}
+            <ServerClock compact />
             {user && (
               <Button variant="danger" onClick={logout} data-testid="logout-btn">Sair</Button>
             )}

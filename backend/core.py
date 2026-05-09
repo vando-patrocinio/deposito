@@ -112,6 +112,12 @@ class Settings(BaseModel):
     lousa_grid_max_per_slot: int = 2     # máximo de bolhas por slot/horário
     # ---- Cerca virtual dinâmica (praça=Nota) ----
     nota_fence_radius_m: int = 80        # raio em metros da cerca dinâmica no endereço da bolha
+    # ---- OpenRouter (LLM provider alternativo) ----
+    openrouter_enabled: bool = False
+    openrouter_api_key: Optional[str] = None
+    openrouter_model: str = "deepseek/deepseek-v4-flash"
+    # ---- Online indicator threshold ----
+    online_threshold_minutes: int = 5    # técnico online se houve clock-record ou ping nos últimos N min
 
 
 class Company(BaseModel):
@@ -214,11 +220,58 @@ async def geocode_address(address: str) -> GeocodeResult:
 # -------------------------------------------------------------------------
 async def llm_chat(session_id: str, system: str) -> LlmChat:
     s = await get_settings()
+    # Se OpenRouter está ativo + tem key, usa OpenRouter via openai SDK adapter
+    if s.openrouter_enabled and s.openrouter_api_key:
+        try:
+            return _OpenRouterChat(
+                api_key=s.openrouter_api_key,
+                model=s.openrouter_model or "deepseek/deepseek-v4-flash",
+                system=system,
+                session_id=session_id,
+            )
+        except Exception as e:
+            # Fallback para Emergent se OpenRouter falhar na inicialização
+            import logging
+            logging.getLogger("app").warning("OpenRouter init failed, falling back to Emergent: %s", e)
     key = s.openai_api_key or EMERGENT_LLM_KEY
     if not key:
         raise HTTPException(status_code=500, detail="Nenhuma chave de IA configurada (Emergent ou OpenAI).")
     chat = LlmChat(api_key=key, session_id=session_id, system_message=system).with_model(*DEFAULT_FACE_MODEL)
     return chat
+
+
+class _OpenRouterChat:
+    """Adapter mínimo que imita a interface .send_message(UserMessage) usada no app."""
+    def __init__(self, api_key: str, model: str, system: str, session_id: str):
+        from openai import AsyncOpenAI
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+            default_headers={
+                "HTTP-Referer": os.environ.get("PUBLIC_BASE_URL", "https://app.local"),
+                "X-Title": "PontoIA Lousa",
+            },
+        )
+        self._model = model
+        self._messages = [{"role": "system", "content": system}]
+        self._session_id = session_id
+
+    def with_model(self, *_args, **_kwargs):  # compat: ignora, OpenRouter usa self._model
+        return self
+
+    async def send_message(self, msg) -> str:
+        # msg é UserMessage(text=...) do emergentintegrations
+        text = getattr(msg, "text", str(msg))
+        self._messages.append({"role": "user", "content": text})
+        resp = await self._client.chat.completions.create(
+            model=self._model,
+            messages=self._messages,
+            max_tokens=1500,
+            temperature=0.4,
+        )
+        out = (resp.choices[0].message.content or "").strip()
+        self._messages.append({"role": "assistant", "content": out})
+        return out
 
 
 def parse_json_response(raw: str) -> dict:

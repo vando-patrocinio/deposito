@@ -1,0 +1,36 @@
+{
+  "summary": "Iter10 testing complete. Backend: created /app/backend/tests/test_iteration10_openrouter_online_inexec.py — 9/9 PASS covering (a) GET /api/server-time public (shape iso/epoch_ms/tz/sync_enabled/max_drift_seconds OK); (b) GET /api/settings retorna openrouter_enabled/model/api_key/api_key_set + online_threshold_minutes; (c) PUT /api/settings persiste openrouter_enabled=true + api_key + model='deepseek/deepseek-v4-flash' + threshold=7 — chave mascarada como 'sk-or-v1...XXXX' confirmada (startswith 'sk-or-v1' + endswith últimos 4 chars + '...' no meio + chave inteira NÃO retornada); (d) PUT threshold=0 → 422; threshold=2000 → 422; (e) GET /api/lousa/grid retorna columns[].clock_state com is_online (bool) + last_record_at + online_threshold_minutes; (f) tickets[].in_execution presente em todos os tickets e idêntico a (status=='aberta'); (g) ticket promovido via /admin-open (pendente→aberta) → POST /transfer 409 com mensagem 'em execução'; (h) DELETE 409 com mesma mensagem. Frontend (admin@empresa.com login OK em /login): server-clock no header mostra '02:27' verde (sincronizado); na tela Lousa 4 técnicos com tech-avatar-{cid} (col-demo-001/col-44549d4f/col-ff613522/...) + tech-online-dot-{cid}; 4 badges in-execution-{tid} renderizadas com texto exato '▶ Em execução' (tkt-3018a43b62, tkt-fc56872128, tkt-baabe0cf73, ...); ancestor draggable=false confirmado em todas as 3 bolhas em execução testadas; double-click em bubble-card-tkt-3018a43b62 (status='aberta') ABRIU lousa-edit-modal com 'Editar nota — Status: aberta — ID: tkt-3018a43b62' e todos campos populados (cliente Fernanda Lima, endereço Av. Ibirapuera 2030, tipo Instalação, prioridade Horário marcado, scheduled_time 10:00, botões Cancelar/Salvar alterações). Em /Configurações o card-openrouter renderiza com badge 'PADRÃO' + checkbox openrouter-enabled (Inativo) + inp-openrouter-key (type=password, placeholder mascarado 'Salva: sk-or-v1...f635') + inp-openrouter-model='deepseek/deepseek-v4-flash'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Painel (login redirect)", "issues": ["Múltiplos warnings recurring no console: 'The width(-1) and height(-1) of chart should be greater than 0' (Recharts ResponsiveContainer sem minWidth/minHeight). Não bloqueia, mas polui DevTools — sugiro adicionar minHeight={250} aos containers de gráfico no DashboardPanel."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration10_openrouter_online_inexec.py",
+    "/app/test_reports/pytest/iter10_results.xml"
+  ],
+  "action_items": [
+    "Recharts: adicionar minHeight aos ResponsiveContainer no DashboardPanel para silenciar warnings 'width(-1) height(-1)' no console.",
+    "Considerar adicionar data-testid='ticket-actions-{tid}' ou similar nas ações que aparecem on hover (showActions) para testabilidade explícita; hoje só inferimos via comportamento."
+  ],
+  "critical_code_review_comments": [
+    "routes/lousa.py — agora com 1575 linhas (server-time + admin-open + bloqueios em execução adicionados em iter5/iter10). Splitting urgente em lousa_grid.py / lousa_tickets.py / lousa_ai.py / lousa_briefing.py / lousa_time.py para manter cada arquivo <600 LOC.",
+    "GET /api/settings retorna openrouter_api_key como 'sk-or-v1' + '...' + últimos-4 (8 + ... + 4 = 15 chars visíveis). Embora não revele a chave inteira, expor 12 caracteres concretos (8 de prefixo + 4 de sufixo) é mais do que o padrão da indústria (4+4 ou só fingerprint). Recomendo padronizar para 'sk-or-v1***XXXX' com apenas 4 últimos.",
+    "online_threshold_minutes ge=1 le=1440 ok, mas note que clock_records.created_at é ISO string — comparação 'last_record_at >= online_cutoff' funciona apenas porque ISO 8601 é lex-ordenável quando tem mesmo fuso. Risco se algum legado record for criado sem timezone (naïve) — adicionar guarda explícita.",
+    "Endpoint /api/server-time retorna settings.time_sync_* mas é PÚBLICO (sem auth). Hoje só expõe tz/sync_enabled/max_drift que não são sensíveis, ok. Mas ao adicionar futuros campos, validar se permanecem públicos.",
+    "Card OpenRouter no SettingsPanel usa input type=password, mas placeholder ainda mostra prefixo+sufixo da chave salva ('Salva: sk-or-v1...f635') — alinhar para usar mascaramento idêntico ao GET /settings."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration10_openrouter_online_inexec.py"
+  ],
+  "success_rate": {"backend": "100% (9/9 iter10)", "frontend": "100% — todos data-testid esperados (server-clock, tech-avatar-{cid}, tech-online-dot-{cid}, in-execution-{tid}, lousa-edit-modal via dblclick, card-openrouter, openrouter-enabled, inp-openrouter-key, inp-openrouter-model) verificados visualmente"},
+  "test_credentials": "admin@empresa.com / 123456 (Painel admin); endpoints validados via Bearer token retornado por POST /api/auth/login (campo 'access_token').",
+  "seed_data_creation": "Tickets temporários TEST_iter10_<uuid> criados para teste de transfer/delete 409 e limpos via /admin-close (cancelar) + DELETE no finally — sem poluição residual no DB.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter10 backend suite: /app/backend/tests/test_iteration10_openrouter_online_inexec.py (9/9). IMPORTANTE: o endpoint /api/auth/login retorna 'access_token' (NÃO 'token') — todos os testes anteriores que usam r.json()['token'] vão falhar. conftest.py de /app/backend/tests/ não tem auth helpers — cada test_iterationX cria seu próprio. Para testar bloqueio em execução: criar ticket via POST /api/lousa/tickets (status=pendente), depois POST /api/lousa/tickets/{id}/admin-open (vira aberta), depois transfer/delete devem retornar 409. Frontend testids confirmados: server-clock, tech-avatar-{cid}, tech-online-dot-{cid}, in-execution-{tid}, bubble-card-{tid}, lousa-edit-modal, card-openrouter, openrouter-enabled, inp-openrouter-key, inp-openrouter-model. URL login Painel é /login (raiz é landing). KebabMenu mobile validado em iter9.",
+  "rca of the issue": "Nenhum bug encontrado em iter10. Implementação completa e estável: (1) clock_state.is_online calculado com base em last_record_at >= now-online_threshold_min (default 5min) E has_entrada E NOT ended_day; (2) in_execution = (status=='aberta'); (3) transfer/delete já guardam HTTPException(409) antes de qualquer mutação; (4) /api/server-time é endpoint público sem dependências de auth; (5) settings GET masca corretamente openrouter_api_key e expõe flag _set boolean; (6) Pydantic Field ge=1 le=1440 garante 422 automático para threshold fora do range. Frontend renderiza todos os data-testids esperados e double-click em qualquer ticket (incluindo 'aberta') abre lousa-edit-modal — comportamento correto conforme spec ('em qualquer ticket dispara onEdit')."
+}

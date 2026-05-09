@@ -54,6 +54,10 @@ export default function SettingsPanel() {
       time_sync_enabled: cur.time_sync_enabled ?? false,
       time_sync_max_drift_seconds: cur.time_sync_max_drift_seconds ?? 60,
       time_sync_timezone: cur.time_sync_timezone ?? "America/Sao_Paulo",
+      openrouter_enabled: cur.openrouter_enabled ?? false,
+      openrouter_api_key: "",
+      openrouter_model: cur.openrouter_model ?? "deepseek/deepseek-v4-flash",
+      online_threshold_minutes: cur.online_threshold_minutes ?? 5,
     });
   }
   useEffect(() => { reload(); }, []);
@@ -63,6 +67,7 @@ export default function SettingsPanel() {
     const payload = { ...form };
     if (!payload.resend_api_key) delete payload.resend_api_key;
     if (!payload.openai_api_key) delete payload.openai_api_key;
+    if (!payload.openrouter_api_key) delete payload.openrouter_api_key;
     try {
       await api.updateSettings(payload);
       setMsg("Configurações salvas com sucesso.");
@@ -482,6 +487,69 @@ export default function SettingsPanel() {
           🚨 Banner aparece quando: (a) projeção &gt; orçamento; (b) projeção &ge; 90% do orçamento; ou (c)
           projeção excede o realizado em mais de {form.he_alert_threshold_pct || 30}%.
         </p>
+      </Card>
+
+      <Card title="🤖 OpenRouter (LLM)" data-testid="card-openrouter">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
+          <p style={{ color: "#64748b", fontSize: 13, margin: 0, flex: 1 }}>
+            Pode ser usado como prioridade principal ou fallback. Se estiver sem chave, é ignorado e cai no Emergent LLM.
+          </p>
+          <span style={{
+            background: form.openrouter_enabled ? "linear-gradient(135deg,#10b981,#059669)" : "#94a3b8",
+            color: "white", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 999, letterSpacing: 0.4,
+          }}>
+            {s?.openrouter_api_key_set ? "PADRÃO" : "INATIVO"}
+          </span>
+        </div>
+
+        <Field label="Ativar no roteamento">
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              data-testid="openrouter-enabled"
+              type="checkbox"
+              checked={!!form.openrouter_enabled}
+              onChange={(e) => setForm({ ...form, openrouter_enabled: e.target.checked })}
+              style={{ width: 18, height: 18 }}
+            />
+            <span style={{ fontSize: 13, color: "#475569" }}>
+              {form.openrouter_enabled ? "Ativo — chamadas LLM usam OpenRouter" : "Inativo — chamadas LLM usam Emergent"}
+            </span>
+          </label>
+        </Field>
+
+        <Field label="🔑 OpenRouter API Key">
+          <div style={{ position: "relative" }}>
+            <input
+              data-testid="inp-openrouter-key"
+              type="password"
+              placeholder={s?.openrouter_api_key_set ? `Salva: ${s.openrouter_api_key}` : "sk-or-v1-..."}
+              value={form.openrouter_api_key || ""}
+              onChange={(e) => setForm({ ...form, openrouter_api_key: e.target.value })}
+              style={{ ...inputStyle, paddingRight: 36 }}
+            />
+          </div>
+          <small style={{ color: "#94a3b8", fontSize: 11 }}>
+            Chave de API necessária para acessar os modelos OpenRouter.
+            {" "}
+            <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: "#3b82f6" }}>Obter chave</a>
+          </small>
+        </Field>
+
+        <Field label="🤖 Modelo de IA">
+          <input
+            data-testid="inp-openrouter-model"
+            type="text"
+            placeholder="deepseek/deepseek-v4-flash"
+            value={form.openrouter_model || ""}
+            onChange={(e) => setForm({ ...form, openrouter_model: e.target.value })}
+            style={inputStyle}
+          />
+          <small style={{ color: "#94a3b8", fontSize: 11 }}>
+            Informe sempre o nome exato do modelo da OpenRouter. Não há lista pré-definida.
+            {" "}
+            <a href="https://openrouter.ai/models" target="_blank" rel="noreferrer" style={{ color: "#3b82f6" }}>Ver catálogo</a>
+          </small>
+        </Field>
       </Card>
 
       <Card title="Ações" style={{ gridColumn: "1 / -1" }}>

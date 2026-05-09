@@ -43,8 +43,10 @@ async def get_settings_endpoint(user: dict = Depends(get_current_user)):
     out = s.model_dump()
     out["resend_api_key_set"] = bool(s.resend_api_key)
     out["openai_api_key_set"] = bool(s.openai_api_key)
+    out["openrouter_api_key_set"] = bool(s.openrouter_api_key)
     out["resend_api_key"] = (s.resend_api_key[:6] + "...") if s.resend_api_key else ""
     out["openai_api_key"] = (s.openai_api_key[:6] + "...") if s.openai_api_key else ""
+    out["openrouter_api_key"] = (s.openrouter_api_key[:8] + "..." + s.openrouter_api_key[-4:]) if s.openrouter_api_key else ""
     out["emergent_key_available"] = bool(EMERGENT_LLM_KEY)
     return out
 
@@ -72,6 +74,10 @@ class SettingsUpdate(BaseModel):
     time_sync_enabled: Optional[bool] = None
     time_sync_max_drift_seconds: Optional[int] = Field(default=None, ge=1, le=86400)
     time_sync_timezone: Optional[str] = None
+    openrouter_enabled: Optional[bool] = None
+    openrouter_api_key: Optional[str] = None
+    openrouter_model: Optional[str] = None
+    online_threshold_minutes: Optional[int] = Field(default=None, ge=1, le=1440)
     nota_fence_radius_m: Optional[int] = None
     lousa_grid_start_hour: Optional[int] = None
     lousa_grid_end_hour: Optional[int] = None
