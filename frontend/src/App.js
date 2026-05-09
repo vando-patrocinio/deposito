@@ -244,7 +244,16 @@ function AppShell({ view, setView, children }) {
 function AppContent() {
   const { user, loading, logout } = useAuth();
   const mobile = useMobileMode();
-  const [view, setView] = useState("dashboard");
+  const [view, setViewState] = useState(() => {
+    if (typeof window === "undefined") return "dashboard";
+    const saved = window.localStorage.getItem("ponto_active_tab");
+    return saved || "dashboard";
+  });
+  // Wrapper que persiste a aba ativa no localStorage
+  const setView = (v) => {
+    setViewState(v);
+    if (typeof window !== "undefined") window.localStorage.setItem("ponto_active_tab", v);
+  };
   const [route, setRoute] = useState(() => {
     if (typeof window === "undefined") return { path: "/", params: {} };
     const path = window.location.pathname || "/";
