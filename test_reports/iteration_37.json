@@ -1,0 +1,36 @@
+{
+  "summary": "Iter37 Subscribers (Assinantes ISP) — testing both backend (19 pytest cases) and frontend smoke flow. 19/19 backend tests PASSED. Frontend: login OK, sidebar 'Assinantes' presente no grupo Pessoas, listagem renderiza Vando Patrocinio (ATIVO, Fibra 500 Mega, 21998176526, tags vip/fibra), botão 'Importar CSV' visível.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/aihub/webhooks/call-event", "issue": "Quando há conflito (>1 assinante no mesmo telefone), o webhook NÃO faz auto-link (retorna conflict). Comportamento defensivo correto, mas devolve subscriber_id=null silenciosamente — sem registrar 'subscriber_match_status: conflict' na call para auditoria."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter37_subscribers.py",
+    "/app/test_reports/pytest/iter37_results.xml"
+  ],
+  "action_items": [
+    "Considerar persistir subscriber_match_status='conflict' em aihub_calls quando find_subscriber_by_phone retornar conflict, para que /history mostre o motivo do não-link (atualmente fica subscriber_id=null sem rastro)."
+  ],
+  "critical_code_review_comments": [
+    "routes/subscribers.py linha 304-363: filtro 'district' aplicado in-memory após busca (corre o risco de retornar < limit). Aceitável para 1k subs mas considerar incluir no $match em produção.",
+    "routes/subscribers.py /import linha 555-685: função tem ~130 linhas de lógica linear; em iterações futuras vale extrair _process_csv_row() para legibilidade.",
+    "Em /import, conflito de telefone só é detectado quando criando NOVO sub (linha 656-673). Updates (existing) não checam conflito — pode mascarar dupla atribuição."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter37_subscribers.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456 (gestor)",
+  "seed_data_creation": "Tests cleanup own TEST_ subscribers no setup/teardown; Vando (sub-c1a6d684e0) e agente Jerusa (agent-b3e92894d4) já existiam.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter37 subscribers feature completo. Phone matcher cobre 4 formatos brasileiros (5521..@c.us, +55(21)99..., 021..., 21 99...-...) + not_found. Auto-link funciona em webhook (caller field) e outbound (phone field), ambos antes do raise da chamada falhar. Playground com subscriber_id injeta build_subscriber_context no system_prompt e a IA responde citando o nome. CSV import detecta conflitos por normalized_number. IMPORTANTE: testes precisam limpar TEST_ subs antes/depois para evitar poluir lookup de telefones (já implementado via fixture _cleanup_test_subs). Não testado: ataque XSS em notes, paginação com >200 subs, race condition em upsert simultâneo de webhook.",
+  "rca of the issue": "Bug inicial detectado durante testes: segunda execução do webhook test não fazia auto-link. RCA: testes anteriores deixaram um TEST_Pedro com mesmo telefone do Vando, criando conflito. find_subscriber_by_phone retorna status='conflict' e o webhook (corretamente) não vincula. Mitigação: adicionado fixture _cleanup_test_subs que remove qualquer TEST_ sub antes e depois da run. Não é bug de produto — é bug de teste resolvido."
+}

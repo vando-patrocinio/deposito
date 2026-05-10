@@ -4,10 +4,11 @@ import {
   Smartphone, LogOut, ChevronRight, Brain, BarChart3, Layout,
   Boxes, Sparkles, Users, MapPin, ShieldCheck, ClipboardList,
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
-  Building2, Eye, EyeOff, Sun, Moon, Bot,
+  Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
+import SubscribersPanel from "@/SubscribersPanel";
 import ManagerPanel from "@/ManagerPanel";
 import TimesheetView from "@/TimesheetView";
 import SettingsPanel from "@/SettingsPanel";
@@ -117,6 +118,7 @@ const NAV_GROUPS = [
     label: "Pessoas",
     items: [
       { id: "cadastro", icon: Users, label: "Cadastro", roles: ["gestor", "auditor", "administrador"] },
+      { id: "subscribers", icon: UserCircle, label: "Assinantes", roles: ["gestor", "auditor", "administrador"] },
       { id: "pracas", icon: MapPin, label: "Praças", roles: ["gestor", "auditor", "administrador"] },
       { id: "users", icon: ShieldCheck, label: "Usuários", roles: ["auditor", "administrador"] },
     ],
@@ -602,6 +604,7 @@ function AppContent() {
           {view === "ai-ranking" && <AiRankingPanel />}
           {view === "aihub" && <AIHubPanel />}
           {view === "cadastro" && <CadastroPanel />}
+          {view === "subscribers" && <SubscribersPanel />}
           {view === "pracas" && <PracasPanel />}
           {view === "users" && <UsersPanel />}
           {view === "manager" && <ManagerPanel />}

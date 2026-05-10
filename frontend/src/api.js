@@ -334,4 +334,18 @@ export const api = {
   aihubOutboundCall: (payload) =>
     client.post(`/aihub/calls/outbound`, payload).then((r) => r.data),
   aihubDashboard: () => client.get(`/aihub/dashboard`).then((r) => r.data),
+
+  // ===== Assinantes (Subscribers) =====
+  subscribersList: (params = {}) => client.get(`/subscribers`, { params }).then((r) => r.data),
+  subscribersGet: (id) => client.get(`/subscribers/${id}`).then((r) => r.data),
+  subscribersCreate: (d) => client.post(`/subscribers`, d).then((r) => r.data),
+  subscribersUpdate: (id, d) => client.patch(`/subscribers/${id}`, d).then((r) => r.data),
+  subscribersDelete: (id) => client.delete(`/subscribers/${id}`).then((r) => r.data),
+  subscribersHistory: (id) => client.get(`/subscribers/${id}/history`).then((r) => r.data),
+  subscribersMatchPhone: (phone) =>
+    client.post(`/subscribers/match-phone`, { phone }).then((r) => r.data),
+  subscribersConflicts: () => client.get(`/subscribers/conflicts`).then((r) => r.data),
+  subscribersImport: (formData) =>
+    client.post(`/subscribers/import`, formData,
+      { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data),
 };

@@ -23,6 +23,9 @@ from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, EMERGENT_LLM_KEY, now_iso, require_role
 from database import db
+from routes.subscribers import (
+    find_subscriber_by_phone, build_subscriber_context,
+)
 
 logger = logging.getLogger("ponto.aihub")
 router = APIRouter(prefix="/api/aihub", tags=["aihub"])
@@ -99,6 +102,7 @@ class AgentUpdate(BaseModel):
 class PlaygroundIn(BaseModel):
     session_id: Optional[str] = None  # se vazio, gera novo
     message: str = Field(..., min_length=1, max_length=4000)
+    subscriber_id: Optional[str] = None  # se preenchido, injeta contexto no prompt
 
 
 class OutboundCallIn(BaseModel):
@@ -250,6 +254,7 @@ async def playground(aid: str, payload: PlaygroundIn,
         "company_id": cid,
         "agent_id": aid,
         "session_id": session_id,
+        "subscriber_id": payload.subscriber_id,
         "role": "user",
         "content": payload.message,
         "created_at": now_iso(),
@@ -268,6 +273,14 @@ async def playground(aid: str, payload: PlaygroundIn,
             "Quando precisar usar uma, informe ao usuário em linguagem natural "
             "(ex.: 'vou enviar essa informação por WhatsApp')."
         )
+    # Injeta contexto do assinante quando vinculado
+    if payload.subscriber_id:
+        try:
+            ctx = await build_subscriber_context(cid, payload.subscriber_id)
+            if ctx:
+                sys_prompt += "\n\n" + ctx
+        except Exception as e:
+            logger.warning("[playground] subscriber context falhou: %s", e)
 
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -303,6 +316,7 @@ async def playground(aid: str, payload: PlaygroundIn,
         "company_id": cid,
         "agent_id": aid,
         "session_id": session_id,
+        "subscriber_id": payload.subscriber_id,
         "role": "assistant",
         "content": text,
         "created_at": now_iso(),
@@ -607,6 +621,15 @@ async def outbound_call(payload: OutboundCallIn,
         params[k] = v
 
     call_id = f"call-{uuid.uuid4().hex[:10]}"
+
+    # Auto-link com assinante
+    match = await find_subscriber_by_phone(cid, phone)
+    subscriber_id = None
+    subscriber_name = None
+    if match["status"] == "matched":
+        subscriber_id = match["subscriber"]["id"]
+        subscriber_name = match["subscriber"].get("name")
+
     error_msg: Optional[str] = None
     mb_response: Any = None
     ok = False
@@ -632,8 +655,10 @@ async def outbound_call(payload: OutboundCallIn,
         "agent_name": agent.get("name"),
         "direction": "outbound",
         "callee": phone,
-        "contact_name": payload.contact_name,
+        "contact_name": payload.contact_name or subscriber_name,
         "contact_id": payload.contact_id,
+        "subscriber_id": subscriber_id,
+        "subscriber_match_status": match["status"],
         "status": "originated" if ok else "failed",
         "notes": payload.notes,
         "originated_by": user.get("name") or user.get("email"),
@@ -649,6 +674,9 @@ async def outbound_call(payload: OutboundCallIn,
         "call_id": call_id,
         "phone": phone,
         "agent_name": agent.get("name"),
+        "subscriber_id": subscriber_id,
+        "subscriber_name": subscriber_name,
+        "subscriber_match_status": match["status"],
         "mb_response": mb_response,
     }
 
@@ -673,21 +701,36 @@ async def webhook_call_event(payload: Dict[str, Any]):
     })
     call_id = payload.get("call_id") or payload.get("id")
     if call_id:
+        # Auto-link com assinante via caller (se for inbound) ou callee (outbound)
+        phone_for_lookup = (payload.get("caller") or payload.get("from")
+                            or payload.get("callee") or payload.get("to") or "")
+        subscriber_id = None
+        if phone_for_lookup:
+            try:
+                match = await find_subscriber_by_phone(company_id, phone_for_lookup)
+                if match.get("status") == "matched":
+                    subscriber_id = match["subscriber"]["id"]
+            except Exception as e:
+                logger.warning("[webhook] subscriber lookup falhou: %s", e)
+
+        update_set = {
+            "company_id": company_id,
+            "external_id": str(call_id),
+            "caller": payload.get("caller") or payload.get("from"),
+            "callee": payload.get("callee") or payload.get("to"),
+            "did": payload.get("did"),
+            "status": payload.get("status") or "unknown",
+            "transcript": payload.get("transcript"),
+            "summary": payload.get("summary"),
+            "duration_sec": payload.get("duration"),
+            "raw": payload,
+            "updated_at": now_iso(),
+        }
+        if subscriber_id:
+            update_set["subscriber_id"] = subscriber_id
         await db.aihub_calls.update_one(
             {"company_id": company_id, "external_id": str(call_id)},
-            {"$set": {
-                "company_id": company_id,
-                "external_id": str(call_id),
-                "caller": payload.get("caller") or payload.get("from"),
-                "callee": payload.get("callee") or payload.get("to"),
-                "did": payload.get("did"),
-                "status": payload.get("status") or "unknown",
-                "transcript": payload.get("transcript"),
-                "summary": payload.get("summary"),
-                "duration_sec": payload.get("duration"),
-                "raw": payload,
-                "updated_at": now_iso(),
-            }, "$setOnInsert": {
+            {"$set": update_set, "$setOnInsert": {
                 "id": f"call-{uuid.uuid4().hex[:10]}",
                 "started_at": payload.get("started_at") or now_iso(),
             }},
