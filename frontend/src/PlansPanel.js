@@ -3,7 +3,7 @@ import { api } from "@/api";
 import {
   Plus, Save, X, Edit2, Trash2, Search, Zap, TrendingUp,
   Power, PowerOff, Sparkles, Calculator, AlertTriangle, Check,
-  Users, DollarSign, Calendar, Clock,
+  Users, DollarSign, Calendar, Clock, MessageCircle,
 } from "lucide-react";
 
 /* =============================================================
@@ -823,6 +823,24 @@ function ScheduledAdjustmentsCard({ items, onChange }) {
       alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   };
+  const notify = async (item) => {
+    if (item.notified_at && !window.confirm(
+        `Já foi notificado em ${new Date(item.notified_at).toLocaleString("pt-BR")} ` +
+        `(${item.notified_count || 0} envios). Enviar novamente?`)) return;
+    if (!item.notified_at && !window.confirm(
+        `Enviar aviso prévio via WhatsApp para TODOS os assinantes ativos do plano "${item.plan_name}"?\n\n` +
+        `O sistema vai usar o template padrão (você pode customizar via API) e gravar tudo na Lousa de Chat.`)) return;
+    try {
+      const r = await api.planScheduledNotify(item.id);
+      alert(`✓ Notificação enviada!\n\n` +
+            `${r.sent} mensagens enviadas\n` +
+            `${r.failed} falhas\n` +
+            `${r.skipped_no_phone} sem telefone cadastrado`);
+      onChange();
+    } catch (e) {
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
+    }
+  };
   return (
     <div className="surface" data-testid="scheduled-adjustments-card" style={{
       padding: 16, borderRadius: 12,
@@ -857,7 +875,7 @@ function ScheduledAdjustmentsCard({ items, onChange }) {
                  data-testid={`scheduled-item-${s.id}`}
                  style={{
                    display: "grid",
-                   gridTemplateColumns: "auto 1fr auto auto auto",
+                   gridTemplateColumns: "auto 1fr auto auto auto auto",
                    gap: 12, alignItems: "center",
                    padding: "10px 12px", borderRadius: 8,
                    background: "var(--bg-surface)",
@@ -890,6 +908,20 @@ function ScheduledAdjustmentsCard({ items, onChange }) {
                   : days === 1 ? "AMANHÃ"
                   : `EM ${days} DIAS`}
               </span>
+              <button onClick={() => notify(s)}
+                       className="btn btn-ghost btn-sm"
+                       data-testid={`scheduled-notify-${s.id}`}
+                       title={s.notified_at
+                         ? `Já notificado: ${s.notified_count || 0} envios em ${new Date(s.notified_at).toLocaleDateString("pt-BR")}`
+                         : "Enviar aviso prévio via WhatsApp pra todos os afetados"}
+                       style={{
+                         color: s.notified_at ? "var(--text-muted)" : "#16a34a",
+                       }}>
+                <MessageCircle size={12} />
+                {s.notified_at
+                  ? `✓ ${s.notified_count || 0}`
+                  : "Notificar"}
+              </button>
               <button onClick={() => cancel(s.id)}
                        className="btn btn-ghost btn-sm"
                        data-testid={`scheduled-cancel-${s.id}`}

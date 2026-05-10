@@ -363,6 +363,8 @@ export const api = {
     client.get(`/central-ia/dashboard/kpis`, { params: { days } }).then((r) => r.data),
   centralIaAttendants: (days = 7) =>
     client.get(`/central-ia/dashboard/attendants`, { params: { days } }).then((r) => r.data),
+  centralIaProductivity: (days = 30) =>
+    client.get(`/central-ia/dashboard/productivity`, { params: { days } }).then((r) => r.data),
   centralIaIntents: (days = 7) =>
     client.get(`/central-ia/dashboard/intents`, { params: { days } }).then((r) => r.data),
   centralIaAlerts: () =>
@@ -448,6 +450,8 @@ export const api = {
     client.get(`/plans/scheduled-adjustments`, { params }).then((r) => r.data),
   planScheduledCancel: (sid) =>
     client.delete(`/plans/scheduled-adjustments/${sid}`).then((r) => r.data),
+  planScheduledNotify: (sid, body = {}) =>
+    client.post(`/plans/scheduled-adjustments/${sid}/notify`, body).then((r) => r.data),
   planAdjustmentHistory: (id) =>
     client.get(`/plans/${id}/adjustment/history`).then((r) => r.data),
 };

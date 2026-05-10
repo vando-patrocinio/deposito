@@ -492,6 +492,277 @@ async def attendants_ranking(days: int = Query(7, ge=1, le=90),
     return {"items": items, "days": days}
 
 
+@router.get("/dashboard/productivity")
+async def attendant_productivity(days: int = Query(30, ge=1, le=365),
+                                  user: dict = Depends(require_role("gestor"))):
+    """Dashboard de produtividade dos atendentes humanos.
+
+    Agrega métricas operacionais individuais (boas práticas contact center):
+    - **Volume**: conversas atendidas, mensagens enviadas
+    - **Velocidade**: FRT (first response time), AHT (average handle time)
+    - **Qualidade**: CSAT médio, coachings recebidos (não-lidos)
+    - **Adesão**: tempo logado (proxy via primeira/última atividade do dia),
+      tempo em conversa, **tempo ocioso** (logado − em-conversa)
+    - **Uso da IA**: % conversas devolvidas pra IA / total assumidas
+    - **Score de produtividade** (0-100, ponderado)
+
+    Fonte: `aihub_wa_messages` (cada msg tem sent_by_user_id quando manual),
+    `wa_conversations`, `aihub_evaluations`, `aihub_coaching`, `users`.
+    """
+    cid = _cid(user)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    # 1) Mensagens outbound enviadas por humanos (não auto_reply)
+    msgs_pipeline = [
+        {"$match": {"company_id": cid, "direction": "outbound",
+                     "created_at": {"$gte": cutoff},
+                     "auto_reply": {"$ne": True}}},
+        {"$group": {
+            "_id": "$sent_by_user_id",
+            "msg_count": {"$sum": 1},
+            "first_msg_at": {"$min": "$created_at"},
+            "last_msg_at": {"$max": "$created_at"},
+            "phones_touched": {"$addToSet": "$phone"},
+        }},
+    ]
+    msgs_by_user: Dict[str, Dict[str, Any]] = {}
+    async for r in db.aihub_wa_messages.aggregate(msgs_pipeline):
+        if r["_id"]:
+            msgs_by_user[r["_id"]] = r
+
+    # 2) Atividade por dia → estima tempo logado e tempo em conversa
+    activity_pipeline = [
+        {"$match": {"company_id": cid, "direction": "outbound",
+                     "created_at": {"$gte": cutoff},
+                     "auto_reply": {"$ne": True},
+                     "sent_by_user_id": {"$ne": None}}},
+        {"$group": {
+            "_id": {"user": "$sent_by_user_id",
+                     "day": {"$substr": ["$created_at", 0, 10]}},
+            "first_at": {"$min": "$created_at"},
+            "last_at": {"$max": "$created_at"},
+            "msg_count": {"$sum": 1},
+        }},
+    ]
+    activity_by_user: Dict[str, list] = {}
+    async for r in db.aihub_wa_messages.aggregate(activity_pipeline):
+        uid = r["_id"]["user"]
+        activity_by_user.setdefault(uid, []).append(r)
+
+    # 3) Conversas atribuídas (e devolvidas/finalizadas)
+    convs_assigned: Dict[str, int] = {}
+    convs_returned_to_ai: Dict[str, int] = {}
+    convs_finalized: Dict[str, int] = {}
+    async for c in db.wa_conversations.find(
+            {"company_id": cid, "assignee_user_id": {"$ne": None},
+             "updated_at": {"$gte": cutoff}},
+            {"_id": 0, "assignee_user_id": 1, "status": 1,
+             "previous_role": 1, "assignee_role": 1}):
+        uid = c["assignee_user_id"]
+        convs_assigned[uid] = convs_assigned.get(uid, 0) + 1
+        if c.get("status") == "closed":
+            convs_finalized[uid] = convs_finalized.get(uid, 0) + 1
+    # Conversas que foram devolvidas pra IA (mesmo se ainda assigned a humano,
+    # contamos pelo histórico em assignments_log se existir; fallback: zeros)
+    async for log in db.wa_assignment_log.find(
+            {"company_id": cid, "created_at": {"$gte": cutoff},
+             "to_role": "ai"}, {"_id": 0, "from_user_id": 1}):
+        uid = log.get("from_user_id")
+        if uid:
+            convs_returned_to_ai[uid] = convs_returned_to_ai.get(uid, 0) + 1
+
+    # 4) CSAT/FCR/FRT/AHT por user via aihub_evaluations
+    quality_by_user: Dict[str, Dict[str, Any]] = {}
+    async for e in db.aihub_evaluations.find(
+            {"company_id": cid, "evaluated_at": {"$gte": cutoff},
+             "is_ai_only": {"$ne": True},
+             "assignee_user_id": {"$ne": None}},
+            {"_id": 0}):
+        uid = e["assignee_user_id"]
+        b = quality_by_user.setdefault(uid, {
+            "csat_sum": 0, "csat_n": 0,
+            "fcr": 0, "n": 0,
+            "frt_sum": 0, "frt_n": 0,
+            "aht_sum": 0, "aht_n": 0,
+        })
+        b["n"] += 1
+        if e.get("csat_score") is not None:
+            b["csat_sum"] += e["csat_score"]
+            b["csat_n"] += 1
+        if e.get("fcr"):
+            b["fcr"] += 1
+        if e.get("frt_seconds") is not None:
+            b["frt_sum"] += e["frt_seconds"]
+            b["frt_n"] += 1
+        if e.get("aht_seconds") is not None:
+            b["aht_sum"] += e["aht_seconds"]
+            b["aht_n"] += 1
+
+    # 5) Coaching pendente por user
+    coaching_by_user: Dict[str, Dict[str, int]] = {}
+    async for c in db.aihub_coaching.find(
+            {"company_id": cid, "created_at": {"$gte": cutoff}},
+            {"_id": 0, "user_id": 1, "read": 1, "acknowledged": 1}):
+        uid = c.get("user_id")
+        if not uid:
+            continue
+        b = coaching_by_user.setdefault(uid,
+            {"total": 0, "unread": 0, "acknowledged": 0})
+        b["total"] += 1
+        if not c.get("read"):
+            b["unread"] += 1
+        if c.get("acknowledged"):
+            b["acknowledged"] += 1
+
+    # 6) Resolve nomes dos usuários
+    all_uids = (set(msgs_by_user) | set(convs_assigned)
+                 | set(quality_by_user) | set(coaching_by_user))
+    users_map = {}
+    if all_uids:
+        async for u in db.users.find(
+                {"id": {"$in": list(all_uids)}, "is_ai_agent": {"$ne": True}},
+                {"_id": 0, "id": 1, "name": 1, "email": 1, "role": 1,
+                 "avatar_url": 1, "google_picture": 1}):
+            users_map[u["id"]] = u
+
+    # 7) Monta items + score
+    items = []
+    for uid, u in users_map.items():
+        msgs = msgs_by_user.get(uid, {})
+        q = quality_by_user.get(uid, {})
+        coach = coaching_by_user.get(uid, {})
+        activity_days = activity_by_user.get(uid, [])
+
+        msg_count = msgs.get("msg_count", 0)
+        phones_count = len(msgs.get("phones_touched", []) or [])
+        convs_count = convs_assigned.get(uid, 0)
+
+        # Logged time (proxy): pra cada dia ativo, max(8h) ou (last_at - first_at)
+        # Em conversa (proxy): para cada conversa, pegamos (last_msg − first_msg)
+        # do user; mas mais barato: 5min * msg_count (heurística).
+        # Idle = logged − in_conversation.
+        logged_seconds = 0
+        for day in activity_days:
+            try:
+                t1 = datetime.fromisoformat(day["first_at"].replace("Z", "+00:00"))
+                t2 = datetime.fromisoformat(day["last_at"].replace("Z", "+00:00"))
+                span = (t2 - t1).total_seconds()
+                # Cap em 8h por dia
+                logged_seconds += min(span, 8 * 3600)
+            except (ValueError, KeyError):
+                continue
+        # In-conversation estimate: 5min * msg_count (cada msg ~5min de
+        # contexto). Cap em logged_seconds.
+        in_conv_seconds = min(msg_count * 300, logged_seconds)
+        idle_seconds = max(0, logged_seconds - in_conv_seconds)
+        idle_pct = (idle_seconds / logged_seconds * 100) if logged_seconds else None
+
+        csat_avg = round(q["csat_sum"] / q["csat_n"], 2) if q.get("csat_n") else None
+        fcr_rate = round(q["fcr"] / q["n"] * 100, 1) if q.get("n") else None
+        frt_avg = int(q["frt_sum"] / q["frt_n"]) if q.get("frt_n") else None
+        aht_avg = int(q["aht_sum"] / q["aht_n"]) if q.get("aht_n") else None
+
+        ai_returned = convs_returned_to_ai.get(uid, 0)
+        ai_usage_pct = (round(ai_returned / convs_count * 100, 1)
+                          if convs_count else None)
+
+        # Score de produtividade (composto 0-100):
+        # 40% CSAT (10-pt scale) + 25% volume (relativo) + 20% adesão
+        # (1 - idle_pct) + 15% velocidade (inverso de FRT)
+        score = 0.0
+        weights_used = 0.0
+        if csat_avg is not None:
+            score += (csat_avg / 10) * 40
+            weights_used += 40
+        if logged_seconds > 0:
+            adherence = 1 - (idle_seconds / logged_seconds)
+            score += adherence * 20
+            weights_used += 20
+        if frt_avg is not None:
+            # FRT ideal ≤ 300s (5min) = 100%, ≥ 1800s (30min) = 0%
+            frt_score = max(0, 1 - (max(0, frt_avg - 300) / 1500))
+            score += frt_score * 15
+            weights_used += 15
+        # Volume score relativo será calculado depois (precisa do max)
+        productivity_score_partial = score
+        if weights_used < 100 and weights_used > 0:
+            score = score / weights_used * 100
+
+        items.append({
+            "user_id": uid,
+            "name": u.get("name") or u.get("email") or uid,
+            "email": u.get("email"),
+            "role": u.get("role"),
+            "avatar": u.get("avatar_url") or u.get("google_picture"),
+            # Volume
+            "conversations": convs_count,
+            "conversations_finalized": convs_finalized.get(uid, 0),
+            "phones_unique": phones_count,
+            "messages_sent": msg_count,
+            # Velocidade
+            "frt_avg_seconds": frt_avg,
+            "aht_avg_seconds": aht_avg,
+            # Qualidade
+            "csat_avg": csat_avg,
+            "fcr_rate": fcr_rate,
+            # Tempo / Adesão
+            "active_days": len(activity_days),
+            "logged_seconds": int(logged_seconds),
+            "in_conversation_seconds": int(in_conv_seconds),
+            "idle_seconds": int(idle_seconds),
+            "idle_pct": round(idle_pct, 1) if idle_pct is not None else None,
+            # Throughput
+            "msgs_per_hour": (
+                round(msg_count / (logged_seconds / 3600), 1)
+                if logged_seconds > 0 else None),
+            # IA usage
+            "returned_to_ai": ai_returned,
+            "ai_usage_pct": ai_usage_pct,
+            # Coaching
+            "coachings_total": coach.get("total", 0),
+            "coachings_unread": coach.get("unread", 0),
+            "coachings_acknowledged": coach.get("acknowledged", 0),
+            # Score parcial (sem o volume)
+            "_score_partial": productivity_score_partial,
+            "_score_weights": weights_used,
+        })
+
+    # Calcula score de volume (relativo ao topo)
+    max_msgs = max((it["messages_sent"] for it in items), default=0)
+    for it in items:
+        score = it.pop("_score_partial")
+        weights = it.pop("_score_weights")
+        if max_msgs > 0:
+            vol_score = (it["messages_sent"] / max_msgs) * 25
+            score += vol_score
+            weights += 25
+        it["productivity_score"] = (round(score / weights * 100, 1)
+                                       if weights > 0 else None)
+
+    # Ordena por score desc
+    items.sort(key=lambda x: -(x.get("productivity_score") or 0))
+
+    # KPIs do time
+    valid_csats = [i["csat_avg"] for i in items if i["csat_avg"] is not None]
+    valid_idles = [i["idle_pct"] for i in items if i["idle_pct"] is not None]
+    valid_frts = [i["frt_avg_seconds"] for i in items if i["frt_avg_seconds"]]
+    team = {
+        "attendants_count": len(items),
+        "total_conversations": sum(i["conversations"] for i in items),
+        "total_messages": sum(i["messages_sent"] for i in items),
+        "avg_csat": round(sum(valid_csats) / len(valid_csats), 2) if valid_csats else None,
+        "avg_idle_pct": round(sum(valid_idles) / len(valid_idles), 1) if valid_idles else None,
+        "avg_frt_seconds": int(sum(valid_frts) / len(valid_frts)) if valid_frts else None,
+        "best_performer": items[0]["name"] if items else None,
+        "best_score": items[0].get("productivity_score") if items else None,
+    }
+
+    return {
+        "items": items, "team": team, "days": days,
+        "generated_at": now_iso(),
+    }
+
+
 @router.get("/dashboard/intents")
 async def top_intents(days: int = Query(7, ge=1, le=90),
                        user: dict = Depends(require_role("gestor"))):

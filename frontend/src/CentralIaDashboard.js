@@ -40,20 +40,23 @@ export default function CentralIaDashboard() {
   const [attendants, setAttendants] = useState([]);
   const [intents, setIntents] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [productivity, setProductivity] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const reload = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [k, a, i, al] = await Promise.all([
+      const [k, a, i, al, p] = await Promise.all([
         api.centralIaKpis(days),
         api.centralIaAttendants(days),
         api.centralIaIntents(days),
         api.centralIaAlerts(),
+        api.centralIaProductivity(days).catch(() => null),
       ]);
       setKpis(k); setAttendants(a.items || []); setIntents(i.items || []);
       setAlerts(al.items || []);
+      setProductivity(p);
     } catch (e) {
       console.error(e);
     } finally { setLoading(false); setRefreshing(false); }
@@ -190,6 +193,9 @@ export default function CentralIaDashboard() {
 
           {/* Ranking atendentes */}
           <AttendantsCard items={attendants} />
+
+          {/* Produtividade dos atendentes — tempo logado, ocioso, AHT, score */}
+          {productivity && <ProductivityCard data={productivity} days={days} />}
         </>
       )}
 
@@ -571,3 +577,232 @@ function AlertsCard({ items, onReload }) {
     </div>
   );
 }
+
+/* =============================================================
+   ProductivityCard — KPIs avançados de produtividade por atendente.
+============================================================= */
+function ProductivityCard({ data, days }) {
+  const { items = [], team = {} } = data || {};
+  const fmtDur = (s) => {
+    if (s == null) return "—";
+    if (s < 60) return `${s}s`;
+    const m = Math.round(s / 60);
+    return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${(m % 60).toString().padStart(2,"0")}m`;
+  };
+  const scoreColor = (v) => {
+    if (v == null) return "var(--text-muted)";
+    if (v >= 75) return "#16a34a";
+    if (v >= 50) return "#eab308";
+    return "#dc2626";
+  };
+
+  return (
+    <div className="surface" data-testid="ci-productivity-card" style={{
+      padding: 18, borderRadius: 14,
+      border: "1px solid var(--border-default)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10,
+                     marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 10,
+          background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+          color: "#fff", display: "grid", placeItems: "center",
+          boxShadow: "0 4px 12px rgba(99,102,241,.35)",
+        }}>
+          <Activity size={17} strokeWidth={1.75} />
+        </div>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <strong style={{ fontSize: 14, color: "var(--text-primary)" }}>
+            Produtividade dos atendentes
+          </strong>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+            Tempo logado, ocioso, AHT, throughput e score composto · Últimos {days} dias
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <ProdKpi label="Atendentes" value={team.attendants_count || 0} />
+          <ProdKpi label="Conversas" value={team.total_conversations || 0} />
+          <ProdKpi label="Msgs" value={team.total_messages || 0} />
+          <ProdKpi label="CSAT" value={team.avg_csat != null ? team.avg_csat : "—"}
+                    color={team.avg_csat >= 7 ? "#16a34a" : team.avg_csat >= 5 ? "#eab308" : "#dc2626"} />
+          <ProdKpi label="% ocioso" value={team.avg_idle_pct != null ? `${team.avg_idle_pct}%` : "—"}
+                    color={team.avg_idle_pct <= 30 ? "#16a34a" : team.avg_idle_pct <= 50 ? "#eab308" : "#dc2626"} />
+          <ProdKpi label="FRT médio" value={fmtDur(team.avg_frt_seconds)}
+                    color={team.avg_frt_seconds <= 300 ? "#16a34a" : team.avg_frt_seconds <= 900 ? "#eab308" : "#dc2626"} />
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div style={{
+          padding: 30, textAlign: "center",
+          color: "var(--text-muted)", fontSize: 12,
+          background: "var(--bg-surface-2)", borderRadius: 10,
+        }}>
+          Sem dados de produtividade ainda no período. Atendentes humanos que
+          responderem conversas via WhatsApp aparecem aqui automaticamente.
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{
+                borderBottom: "2px solid var(--border-default)",
+                textAlign: "left", fontSize: 10, fontWeight: 800,
+                color: "var(--text-muted)",
+                textTransform: "uppercase", letterSpacing: 0.4,
+              }}>
+                <th style={{ padding: "8px 6px" }}>Atendente</th>
+                <th style={{ padding: "8px 6px", textAlign: "center" }} title="Score composto: 40% CSAT + 25% volume + 20% adesão + 15% velocidade">Score</th>
+                <th style={{ padding: "8px 6px", textAlign: "right" }}>Conv.</th>
+                <th style={{ padding: "8px 6px", textAlign: "right" }} title="Mensagens enviadas">Msgs</th>
+                <th style={{ padding: "8px 6px", textAlign: "right" }} title="Tempo logado (estimado, cap 8h/dia)">Logado</th>
+                <th style={{ padding: "8px 6px", textAlign: "right" }} title="Tempo ocioso (logado − em conversa)">Ocioso</th>
+                <th style={{ padding: "8px 6px", textAlign: "right" }} title="Mensagens por hora ativa">Thrpt</th>
+                <th style={{ padding: "8px 6px", textAlign: "right" }} title="First Response Time médio">FRT</th>
+                <th style={{ padding: "8px 6px", textAlign: "right" }} title="Average Handle Time">AHT</th>
+                <th style={{ padding: "8px 6px", textAlign: "right" }}>CSAT</th>
+                <th style={{ padding: "8px 6px", textAlign: "right" }} title="% conversas devolvidas pra IA">IA %</th>
+                <th style={{ padding: "8px 6px", textAlign: "right" }} title="Coachings não lidos / total">Coach</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it, idx) => (
+                <tr key={it.user_id}
+                    data-testid={`ci-prod-row-${it.user_id}`}
+                    style={{
+                      borderBottom: "1px solid var(--border-default)",
+                      background: idx === 0 ? "rgba(22,163,74,.04)" : "transparent",
+                    }}>
+                  <td style={{ padding: "9px 6px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{
+                        width: 26, height: 26, borderRadius: "50%",
+                        background: idx === 0
+                          ? "linear-gradient(135deg, #f59e0b, #d97706)"
+                          : "var(--bg-surface-2)",
+                        color: idx === 0 ? "#fff" : "var(--text-primary)",
+                        display: "grid", placeItems: "center",
+                        fontSize: 10, fontWeight: 800,
+                      }}>{idx + 1}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, maxWidth: 180,
+                                       overflow: "hidden", textOverflow: "ellipsis",
+                                       whiteSpace: "nowrap" }}>
+                          {it.name}
+                          {idx === 0 && (
+                            <Award size={11} strokeWidth={2.5}
+                                   style={{ color: "#d97706", marginLeft: 4,
+                                             verticalAlign: "middle" }} />
+                          )}
+                        </div>
+                        <div style={{ fontSize: 9, color: "var(--text-muted)" }}>
+                          {it.role} · {it.active_days} dia(s)
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: "9px 6px", textAlign: "center" }}>
+                    <div style={{
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      width: 36, height: 36, borderRadius: "50%",
+                      background: `${scoreColor(it.productivity_score)}18`,
+                      color: scoreColor(it.productivity_score),
+                      fontSize: 12, fontWeight: 800,
+                      border: `2px solid ${scoreColor(it.productivity_score)}`,
+                    }}>{it.productivity_score != null ? Math.round(it.productivity_score) : "—"}</div>
+                  </td>
+                  <td style={{ padding: "9px 6px", textAlign: "right", fontWeight: 600 }}>
+                    {it.conversations}
+                  </td>
+                  <td style={{ padding: "9px 6px", textAlign: "right" }}>{it.messages_sent}</td>
+                  <td style={{ padding: "9px 6px", textAlign: "right" }}>{fmtDur(it.logged_seconds)}</td>
+                  <td style={{ padding: "9px 6px", textAlign: "right" }}>
+                    <span style={{
+                      padding: "2px 7px", borderRadius: 5,
+                      background: it.idle_pct == null ? "transparent"
+                        : it.idle_pct <= 30 ? "rgba(22,163,74,.12)"
+                        : it.idle_pct <= 50 ? "rgba(234,179,8,.15)"
+                        : "rgba(220,38,38,.12)",
+                      color: it.idle_pct == null ? "var(--text-muted)"
+                        : it.idle_pct <= 30 ? "#15803d"
+                        : it.idle_pct <= 50 ? "#a16207"
+                        : "#b91c1c",
+                      fontWeight: 700, fontSize: 11,
+                    }}>{it.idle_pct != null ? `${it.idle_pct}%` : "—"}</span>
+                  </td>
+                  <td style={{ padding: "9px 6px", textAlign: "right",
+                                fontSize: 11, color: "var(--text-secondary)" }}>
+                    {it.msgs_per_hour != null ? `${it.msgs_per_hour}/h` : "—"}
+                  </td>
+                  <td style={{ padding: "9px 6px", textAlign: "right",
+                                color: it.frt_avg_seconds == null ? "var(--text-muted)"
+                                  : it.frt_avg_seconds <= 300 ? "#15803d"
+                                  : it.frt_avg_seconds <= 900 ? "#a16207" : "#b91c1c",
+                                fontWeight: 600 }}>
+                    {fmtDur(it.frt_avg_seconds)}
+                  </td>
+                  <td style={{ padding: "9px 6px", textAlign: "right" }}>{fmtDur(it.aht_avg_seconds)}</td>
+                  <td style={{ padding: "9px 6px", textAlign: "right" }}>
+                    {it.csat_avg != null
+                      ? <span style={{
+                          fontWeight: 700,
+                          color: it.csat_avg >= 7 ? "#15803d"
+                            : it.csat_avg >= 5 ? "#a16207" : "#b91c1c",
+                        }}>{it.csat_avg.toFixed(1)}</span>
+                      : "—"}
+                  </td>
+                  <td style={{ padding: "9px 6px", textAlign: "right", fontSize: 11 }}>
+                    {it.ai_usage_pct != null ? `${it.ai_usage_pct}%` : "—"}
+                  </td>
+                  <td style={{ padding: "9px 6px", textAlign: "right" }}>
+                    {it.coachings_unread > 0
+                      ? <span style={{
+                          padding: "2px 7px", borderRadius: 999,
+                          background: "#a855f7", color: "#fff",
+                          fontSize: 10, fontWeight: 800,
+                        }}>{it.coachings_unread}</span>
+                      : it.coachings_total > 0
+                        ? <span style={{ color: "var(--text-muted)", fontSize: 10 }}>
+                            {it.coachings_total}
+                          </span>
+                        : <span style={{ color: "var(--text-muted)" }}>—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div style={{
+        marginTop: 12, padding: "8px 12px", borderRadius: 8,
+        background: "var(--bg-surface-2)",
+        fontSize: 10, color: "var(--text-muted)",
+        display: "flex", flexWrap: "wrap", gap: 14,
+      }}>
+        <span><strong>Score</strong> = 40% CSAT + 25% volume + 20% adesão + 15% velocidade</span>
+        <span><strong>FRT ideal</strong>: ≤ 5min</span>
+        <span><strong>Ocioso saudável</strong>: ≤ 30%</span>
+        <span><strong>Tempo logado</strong>: estimado por atividade (cap 8h/dia)</span>
+      </div>
+    </div>
+  );
+}
+
+function ProdKpi({ label, value, color }) {
+  return (
+    <div style={{
+      padding: "5px 10px", borderRadius: 8,
+      background: "var(--bg-surface-2)",
+      textAlign: "center", minWidth: 60,
+    }}>
+      <div style={{ fontSize: 9, color: "var(--text-muted)",
+                     textTransform: "uppercase", fontWeight: 700,
+                     letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 800,
+                     color: color || "var(--text-primary)",
+                     marginTop: 1 }}>{value}</div>
+    </div>
+  );
+}
+

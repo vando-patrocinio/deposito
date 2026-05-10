@@ -488,6 +488,138 @@ async def adjustment_scheduler_worker():
 
 
 # ---------------------------------------------------------------------------
+# Notificação WhatsApp do reajuste agendado (cumpre aviso prévio contratual)
+# ---------------------------------------------------------------------------
+class NotifyAdjustmentIn(BaseModel):
+    template: Optional[str] = Field(default=None, max_length=1200,
+        description="Custom template (usa placeholders {nome}, {plano}, {valor_atual}, {valor_novo}, {pct}, {data})")
+    dry_run: bool = False
+
+
+@router.post("/scheduled-adjustments/{sch_id}/notify")
+async def notify_scheduled_adjustment(sch_id: str,
+                                       payload: NotifyAdjustmentIn = NotifyAdjustmentIn(),
+                                       user: dict = Depends(require_role("administrador"))):
+    """Envia mensagem WhatsApp de aviso prévio a todos os assinantes
+    afetados pelo reajuste agendado. Marca o agendamento com
+    `notified_at` quando envia. Pode ser executado mais de uma vez se
+    quiser reforçar (mas grava no log)."""
+    cid = _cid(user)
+    sched = await db.plan_adjustments_scheduled.find_one(
+        {"company_id": cid, "id": sch_id}, {"_id": 0})
+    if not sched:
+        raise HTTPException(404, "Agendamento não encontrado.")
+    if sched.get("status") != "pending":
+        raise HTTPException(409,
+            f"Só pode notificar agendamentos PENDING. Status atual: {sched.get('status')}.")
+
+    plan = await db.plans.find_one(
+        {"company_id": cid, "id": sched["plan_id"]}, {"_id": 0})
+    if not plan:
+        raise HTTPException(404, "Plano do agendamento foi excluído.")
+
+    pct = float(sched["pct"])
+    current_price = float(plan.get("monthly_price") or 0)
+    new_price = round(current_price * (1 + pct / 100), 2)
+    sch_date = sched["scheduled_for"][:10]
+    only_active = bool(sched.get("only_active_subscribers", True))
+
+    template = payload.template or (
+        "Olá, {nome}! 👋\n\n"
+        "Conforme cláusula contratual de reajuste anual, sua mensalidade do "
+        "plano *{plano}* será ajustada em *{data}*:\n\n"
+        "💰 De *R$ {valor_atual}* para *R$ {valor_novo}* (reajuste de +{pct}%)\n\n"
+        "Este é o aviso prévio (mínimo 30 dias) exigido por contrato. "
+        "Em caso de dúvidas, é só chamar aqui no WhatsApp! 😊"
+    )
+
+    sub_filter = {"company_id": cid, "plan_id": sched["plan_id"],
+                   **_active_status_filter(only_active)}
+    subs = []
+    async for s in db.subscribers.find(sub_filter,
+            {"_id": 0, "id": 1, "name": 1, "nickname": 1, "external_code": 1}):
+        subs.append(s)
+
+    sent = 0
+    failed = 0
+    skipped_no_phone = 0
+    sent_to = []
+
+    # Importa lazy para evitar ciclo
+    from routes.whatsapp_baileys import SIDECAR_BASE
+    import httpx
+
+    for sub in subs:
+        # Pega telefone primário
+        phone_doc = await db.subscriber_phones.find_one(
+            {"company_id": cid, "subscriber_id": sub["id"], "is_primary": True},
+            {"_id": 0, "normalized_number": 1})
+        if not phone_doc:
+            skipped_no_phone += 1
+            continue
+        phone = phone_doc["normalized_number"]
+        nome = sub.get("nickname") or (sub.get("name") or "").split()[0] or "Cliente"
+        body = template.format(
+            nome=nome,
+            plano=plan["name"],
+            valor_atual=f"{current_price:.2f}".replace(".", ","),
+            valor_novo=f"{new_price:.2f}".replace(".", ","),
+            pct=f"{pct:g}",
+            data=datetime.fromisoformat(sch_date).strftime("%d/%m/%Y"),
+        )
+
+        if payload.dry_run:
+            sent_to.append({"phone": phone, "name": sub.get("name"),
+                              "preview": body[:80]})
+            continue
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as cli:
+                r = await cli.post(f"{SIDECAR_BASE}/send",
+                                    json={"phone": phone, "text": body})
+                if r.status_code == 200 and r.json().get("ok"):
+                    sent += 1
+                    sent_to.append({"phone": phone, "name": sub.get("name")})
+                    # Grava no log de mensagens da Lousa
+                    await db.aihub_wa_messages.insert_one({
+                        "company_id": cid, "phone": phone,
+                        "jid": f"{phone}@s.whatsapp.net",
+                        "direction": "outbound",
+                        "text": body,
+                        "created_at": now_iso(),
+                        "auto_reply": False,
+                        "sent_by_user_id": user.get("id"),
+                        "subscriber_id": sub["id"],
+                        "context": "adjustment_notice",
+                        "scheduled_id": sch_id,
+                    })
+                else:
+                    failed += 1
+        except Exception:
+            failed += 1
+            logger.exception("[plans] Falha enviando notice WA pra %s", phone)
+
+    if not payload.dry_run:
+        await db.plan_adjustments_scheduled.update_one(
+            {"id": sch_id, "company_id": cid},
+            {"$set": {
+                "notified_at": now_iso(),
+                "notified_by": user.get("email") or user.get("id"),
+                "notified_count": sent,
+                "notified_failed": failed,
+                "notified_skipped_no_phone": skipped_no_phone,
+            }})
+
+    return {
+        "ok": True, "dry_run": payload.dry_run,
+        "total_subscribers": len(subs),
+        "sent": sent, "failed": failed,
+        "skipped_no_phone": skipped_no_phone,
+        "sent_to": sent_to[:20],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Helper: hidrata plano dentro de subscriber (usado por subscribers.py)
 # ---------------------------------------------------------------------------
 async def get_plan_dict(company_id: str, plan_id: Optional[str]) -> Optional[dict]:
