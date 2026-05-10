@@ -202,6 +202,8 @@ export const api = {
   stokHistory: (params = {}) => client.get(`/stok/history`, { params }).then((r) => r.data),
   stokClientes: (identify_manufacturer_max = 200) =>
     client.get(`/stok/clientes`, { params: { identify_manufacturer_max } }).then((r) => r.data),
+  stokClientesIdentifyAll: (force = false) =>
+    client.post(`/stok/clientes/identify-all`, null, { params: { force } }).then((r) => r.data),
   // SmartOLT
   smartoltSettings: () => client.get(`/smartolt/settings`).then((r) => r.data),
   smartoltSettingsUpdate: (data) => client.put(`/smartolt/settings`, data).then((r) => r.data),

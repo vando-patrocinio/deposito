@@ -710,6 +710,7 @@ function ClientesSection() {
   const [err, setErr] = useState("");
   const [filter, setFilter] = useState("");
   const [manufFilter, setManufFilter] = useState("all");
+  const [identifying, setIdentifying] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true); setErr("");
@@ -719,6 +720,20 @@ function ClientesSection() {
       setErr(e?.response?.data?.detail || e.message);
     } finally { setLoading(false); }
   }, []);
+
+  const identifyAll = async () => {
+    if (!confirm("Forçar descoberta de fabricantes via IA para TODAS as ONUs ainda desconhecidas?\n\nA IA Gemini será chamada para cada prefixo de SN não cacheado. Pode demorar 1-3 minutos dependendo do volume.")) return;
+    setIdentifying(true);
+    try {
+      const r = await api.stokClientesIdentifyAll(false);
+      alert(`Descoberta concluída:\n\n• ${r.new_manufacturers_found} novos fabricantes encontrados\n• ${r.prefixes_tested} prefixos testados via IA\n• ${r.total_prefixes_unknown_before} eram desconhecidos antes`);
+      await reload();
+    } catch (e) {
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setIdentifying(false);
+    }
+  };
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -765,11 +780,19 @@ function ClientesSection() {
             subtitle="ONUs em uso pegas via API do SmartOLT — fabricante identificado por prefixo de SN ou IA (Gemini)."
             data-testid="clientes-card"
             action={
-              <button onClick={reload} disabled={loading}
-                      data-testid="clientes-reload"
-                      className="btn btn-secondary btn-sm">
-                {loading ? "Atualizando…" : "Atualizar"}
-              </button>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={identifyAll} disabled={loading || identifying}
+                        data-testid="clientes-identify-all"
+                        className="btn btn-accent btn-sm"
+                        title="Roda IA Gemini em todos os prefixos de SN ainda desconhecidos">
+                  {identifying ? "Descobrindo via IA…" : "Forçar descoberta IA"}
+                </button>
+                <button onClick={reload} disabled={loading || identifying}
+                        data-testid="clientes-reload"
+                        className="btn btn-secondary btn-sm">
+                  {loading ? "Atualizando…" : "Atualizar"}
+                </button>
+              </div>
             }>
         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
           <input className="input" data-testid="clientes-search" value={filter}
