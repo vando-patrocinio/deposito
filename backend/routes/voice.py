@@ -62,6 +62,9 @@ JERUSA_STT_MODEL = "whisper-1"
 JERUSA_LLM_PROVIDER = "openai"
 JERUSA_LLM_MODEL = "gpt-4o-mini"  # rápido para conversação
 
+# Cache em memória do mp3 da saudação default (evita chamar TTS a cada ligação)
+_GREETING_CACHE: Dict[str, bytes] = {}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -203,8 +206,16 @@ async def start_session(payload: StartSessionIn,
 
     greeting = agent.get("initial_message") or JERUSA_DEFAULT_GREETING
     started_at = time.time()
-    audio = await _tts_speak(greeting)
-    audio_ms = int((time.time() - started_at) * 1000)
+    # Cacheia o mp3 da saudação por agente — saudação é determinística
+    cache_key = f"{agent['id']}::{greeting}"
+    cached = _GREETING_CACHE.get(cache_key)
+    if cached is not None:
+        audio = cached
+        audio_ms = 0  # 0ms = cache hit
+    else:
+        audio = await _tts_speak(greeting)
+        audio_ms = int((time.time() - started_at) * 1000)
+        _GREETING_CACHE[cache_key] = audio
 
     # Persiste mensagem inicial da Jerusa
     await db.aihub_messages.insert_one({
@@ -410,7 +421,10 @@ async def sip_incoming(payload: Dict[str, Any]):
     """Stub para receber chamadas SIP. Em produção, MagnusBilling/Asterisk AGI
     deve postar áudio chunk-a-chunk; aqui só registramos o evento.
 
-    Sem auth — proteja com IP allowlist no nginx em produção.
+    ⚠️ SEGURANÇA: Endpoint SEM AUTH. Antes de habilitar SIP real em produção:
+      - Adicionar IP allowlist no nginx (apenas IPs do servidor MagnusBilling)
+      - OU implementar HMAC: header `X-Signature` = sha256(secret + body)
+      Senão qualquer um pode injetar eventos em aihub_webhook_events.
     """
     company_id = payload.get("company_id") or DEMO_COMPANY_ID
     await db.aihub_webhook_events.insert_one({
