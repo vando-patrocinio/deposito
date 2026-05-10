@@ -45,6 +45,7 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **IA Batch Similarity**: 89% de prefixos identificados via Gemini batch contextual
 ✅ **Ranking de fabricantes**: matching melhorado (45% defects cruzados via _norm + pppoe_user)
 ✅ **Romaneio de Devolução à Empresa** (na desativação): lista pertences + ONTs + insumos com checkboxes, **assinatura digital do recebedor** (canvas), histórico em `db.collab_returns`, pertences viram automaticamente `status=devolvido`
+✅ **Atendimento IA**: nova aba com CRUD de agentes conversacionais, playground multi-turn (Gemini/Claude/GPT via Emergent LLM Key), integrações MagnusBilling (SIP) + WhatsApp Cloud com mascaramento de secrets, webhook receiver de chamadas e histórico
 ✅ Pytest backend + ESLint frontend ativos
 ✅ Roadmap pronto em `/app/memory/ROADMAP.md`
 

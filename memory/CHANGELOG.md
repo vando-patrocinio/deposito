@@ -1,5 +1,26 @@
 # PontoIA — Changelog
 
+## Feb 10, 2026 — Atendimento IA (aba nova: agentes conversacionais + integrações)
+
+### Backend (`/app/backend/routes/aihub.py`)
+- **Agentes IA** CRUD (`/api/aihub/agents`): nome, system_prompt, model_provider, model_name, temperature, max_tokens, **form_fields** (formulário inteligente: chave/descrição/pergunta), **tools_enabled** (send_whatsapp, transfer_to_human, create_lead, schedule_appointment, get_current_date, hangup), webhook_url, active.
+- **Modelos suportados** via Emergent LLM Key: Gemini 2.5 Flash/Pro, Claude Sonnet 4.5, Claude Haiku 4.5, GPT-5, GPT-5 mini.
+- **Playground multi-turn** (`POST /agents/{id}/playground`): usa `LlmChat` com session_id persistente, salva mensagens em `aihub_messages`, devolve {session_id, reply, agent_name, model, turn_count}. Form fields injetadas no system_prompt.
+- **Integrações** (`PUT /integrations/{type}` para `magnusbilling`, `whatsapp_cloud`, `whatsapp_web`): config genérica com **mascaramento de secrets** (•••) na resposta. Merge inteligente preserva valor real ao re-enviar mascarado.
+- **Testes de conexão**: `POST /integrations/magnusbilling/test` (chama `/index.php/api/getInfo` com key+secret) e `POST /integrations/whatsapp_cloud/test` (chama Graph API `/v23.0/{phone_number_id}` com Bearer token). Persiste `last_test_at`/`last_test_error`.
+- **Proxy MagnusBilling**: `GET /magnusbilling/dids`, `GET /magnusbilling/cdr` autenticam via integração salva.
+- **Webhook receiver** (`POST /webhooks/call-event`, sem auth): registra evento e cria/atualiza `aihub_calls`.
+- **Histórico**: `GET /history/calls`, `GET /dashboard` (agregados).
+
+### Frontend (`/app/frontend/src/AIHubPanel.js`)
+- 5 sub-abas: **Agentes** (CRUD com editor completo: prompt textarea, modelo dropdown, slider temperatura, formulário inteligente com adicionar/remover, checklist de tools), **Playground** (chat multi-turn com bolhas teal/branco), **MagnusBilling** (configuração + teste + listar DIDs/CDR), **WhatsApp Cloud** (configuração + teste + URL do webhook pra colar no Meta), **Histórico** (dashboard com stats + lista de chamadas).
+- Sidebar: novo item **"Atendimento IA"** no grupo "Inteligência" com ícone Bot.
+
+### Tests
+- `iteration_36.json`: **18/18 pytest backend OK** + frontend smoke completo (login → sidebar → 5 abas → criar agente → playground com IA real respondendo)
+
+---
+
 ## Feb 10, 2026 — Assinatura digital do recebedor + histórico de devoluções
 
 ### Backend

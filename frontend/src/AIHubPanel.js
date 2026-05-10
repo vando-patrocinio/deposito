@@ -475,10 +475,11 @@ function ChatBubble({ role, content, pending }) {
     }}>
       <div style={{
         maxWidth: "78%", padding: "8px 12px", borderRadius: 12,
-        background: isUser ? "var(--accent)" : isSys ? "var(--danger-soft)" : "var(--bg-surface)",
-        color: isUser ? "white" : isSys ? "var(--danger-soft-fg)" : "var(--text-primary)",
+        background: isUser ? "#0d9488" : isSys ? "var(--danger-soft)" : "var(--bg-surface)",
+        color: isUser ? "#ffffff" : isSys ? "var(--danger-soft-fg)" : "var(--text-primary)",
         fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap",
-        border: !isUser && !isSys ? "1px solid var(--border-default)" : "none",
+        border: isUser ? "1px solid #0d9488" : (!isSys ? "1px solid var(--border-default)" : "none"),
+        boxShadow: isUser ? "0 1px 4px rgba(13,148,136,0.25)" : "none",
         opacity: pending ? 0.7 : 1,
       }}>{content}</div>
     </div>
