@@ -54,6 +54,7 @@ from routes import (
     ai_preventive as routes_ai_preventive,
     ai_dashboard as routes_ai_dashboard,
     aihub as routes_aihub,
+    voice as routes_voice,
     subscribers as routes_subscribers,
     branding as routes_branding,
     collaborator_assets as routes_collab_assets,
@@ -307,6 +308,7 @@ app.include_router(routes_smartolt.router)
 app.include_router(routes_ai_preventive.router)
 app.include_router(routes_ai_dashboard.router)
 app.include_router(routes_aihub.router)
+app.include_router(routes_voice.router)
 app.include_router(routes_subscribers.router)
 app.include_router(routes_branding.router)
 app.include_router(routes_collab_assets.router)

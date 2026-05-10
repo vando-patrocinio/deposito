@@ -337,6 +337,21 @@ export const api = {
   aihubIntegrationsStatus: () =>
     client.get(`/aihub/integrations/status-summary`).then((r) => r.data),
 
+  // ===== Voz da Jerusa (turno-a-turno via Whisper + GPT + TTS) =====
+  voiceStartSession: (channel = "browser") =>
+    client.post(`/voice/sessions/start`, { channel }).then((r) => r.data),
+  voiceTurn: (sid, audioBlob, filename = "turn.webm") => {
+    const fd = new FormData();
+    fd.append("audio", audioBlob, filename);
+    return client.post(`/voice/sessions/${sid}/turn`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+  voiceEndSession: (sid, reason = "user_hangup") =>
+    client.post(`/voice/sessions/${sid}/end`, { reason }).then((r) => r.data),
+  voiceGetSession: (sid) =>
+    client.get(`/voice/sessions/${sid}`).then((r) => r.data),
+
   // ===== Assinantes (Subscribers) =====
   subscribersList: (params = {}) => client.get(`/subscribers`, { params }).then((r) => r.data),
   subscribersGet: (id) => client.get(`/subscribers/${id}`).then((r) => r.data),

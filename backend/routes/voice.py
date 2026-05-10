@@ -1,0 +1,428 @@
+"""Voz da Jerusa — chamadas de voz turno-a-turno.
+
+Pipeline (turno-a-turno, simples e confiável):
+   browser/SIP envia áudio → Whisper STT → LLM (agente Jerusa) → OpenAI TTS → mp3 de volta
+
+Endpoints:
+- POST /api/voice/sessions/start          → cria sessão + saudação em áudio (Jerusa)
+- POST /api/voice/sessions/{sid}/turn     → multipart com audio do cliente; retorna {transcript, reply_text, reply_audio_b64}
+- POST /api/voice/sessions/{sid}/end      → salva a chamada no histórico (aihub_calls)
+- POST /api/voice/sip/incoming            → webhook stub p/ MagnusBilling/AGI plugar depois
+
+Tudo via EMERGENT_LLM_KEY (Whisper + LLM + TTS). Sem chaves extras.
+"""
+from __future__ import annotations
+
+import base64
+import logging
+import time
+import uuid
+from io import BytesIO
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
+
+from core import DEMO_COMPANY_ID, EMERGENT_LLM_KEY, now_iso, require_role
+from database import db
+
+logger = logging.getLogger("ponto.voice")
+router = APIRouter(prefix="/api/voice", tags=["voice"])
+
+
+# ---------------------------------------------------------------------------
+# Configuração da Jerusa (padrão)
+# ---------------------------------------------------------------------------
+JERUSA_DEFAULT_NAME = "Jerusa"
+JERUSA_DEFAULT_GREETING = (
+    "Olá! Aqui é a Jerusa, da Ligo Fibra. Em que posso te ajudar hoje?"
+)
+JERUSA_DEFAULT_PROMPT = """Você é a JERUSA, atendente virtual de uma empresa de internet (provedor ISP).
+
+Estilo:
+- Português brasileiro coloquial, voz feminina, simpática mas objetiva.
+- Frases curtas (1-2 sentenças por vez). Você está ao TELEFONE — não use formatação, listas, emojis ou markdown. Apenas texto natural que será lido em voz alta.
+- Não repita "Olá" toda vez. Cumprimente uma vez no início e siga a conversa.
+
+O que você FAZ:
+1. Identifica o cliente: peça nome completo e CPF se ainda não souber.
+2. Entende o problema: lentidão, sem sinal, dúvida na fatura, mudança de plano, agendamento de visita.
+3. Resolve quando possível ou cria um chamado/agendamento.
+4. Encerra educadamente quando o cliente disser que não precisa de mais nada.
+
+Regras:
+- Se o cliente pedir para falar com humano, diga "Vou te transferir, um momento" e encerre.
+- Se a chamada estiver muda há muito tempo, pergunte "Você ainda está aí?".
+- NUNCA invente dados (CPF, plano, valor) — peça ao cliente ou diga que vai verificar.
+"""
+
+JERUSA_TTS_VOICE = "nova"  # voz feminina energética, boa em pt-BR
+JERUSA_TTS_MODEL = "tts-1"  # rápido, latência baixa
+JERUSA_STT_MODEL = "whisper-1"
+JERUSA_LLM_PROVIDER = "openai"
+JERUSA_LLM_MODEL = "gpt-4o-mini"  # rápido para conversação
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _cid(user: dict) -> str:
+    return user.get("company_id") or DEMO_COMPANY_ID
+
+
+async def _ensure_jerusa_agent(company_id: str) -> dict:
+    """Garante que existe um agente Jerusa configurado. Cria se necessário."""
+    agent = await db.aihub_agents.find_one(
+        {"company_id": company_id, "name": JERUSA_DEFAULT_NAME},
+        {"_id": 0},
+    )
+    if agent:
+        return agent
+    aid = f"agent-{uuid.uuid4().hex[:10]}"
+    doc = {
+        "id": aid,
+        "company_id": company_id,
+        "name": JERUSA_DEFAULT_NAME,
+        "description": "Atendente virtual de voz (telefone/WebRTC).",
+        "initial_message": JERUSA_DEFAULT_GREETING,
+        "system_prompt": JERUSA_DEFAULT_PROMPT,
+        "model_provider": JERUSA_LLM_PROVIDER,
+        "model_name": JERUSA_LLM_MODEL,
+        "temperature": 0.6,
+        "max_tokens": 350,  # respostas curtas para voz
+        "tools_enabled": ["transfer_to_human", "hangup"],
+        "form_fields": [],
+        "active": True,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "created_by": "system:voice",
+    }
+    await db.aihub_agents.insert_one(dict(doc))
+    doc.pop("_id", None)
+    logger.info("[voice] Jerusa agent criado em %s (id=%s)", company_id, aid)
+    return doc
+
+
+async def _stt_transcribe(audio_bytes: bytes, filename: str) -> str:
+    """Transcreve áudio (qualquer formato suportado: webm/mp3/wav/m4a) em pt-BR."""
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(503, "EMERGENT_LLM_KEY não configurada.")
+    try:
+        from emergentintegrations.llm.openai import OpenAISpeechToText
+    except ImportError as e:
+        raise HTTPException(500, f"emergentintegrations indisponível: {e}")
+
+    stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
+    bio = BytesIO(audio_bytes)
+    bio.name = filename or "audio.webm"
+    try:
+        resp = await stt.transcribe(
+            file=bio,
+            model=JERUSA_STT_MODEL,
+            response_format="json",
+            language="pt",
+        )
+        text = getattr(resp, "text", "") or ""
+        return text.strip()
+    except Exception as e:
+        logger.warning("[voice.stt] falhou: %s", e)
+        raise HTTPException(502, f"STT falhou: {e}") from e
+
+
+async def _tts_speak(text: str, voice: str = JERUSA_TTS_VOICE) -> bytes:
+    """Gera mp3 de voz pt-BR. Retorna bytes."""
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(503, "EMERGENT_LLM_KEY não configurada.")
+    if not text or not text.strip():
+        raise HTTPException(400, "Texto vazio para TTS.")
+    try:
+        from emergentintegrations.llm.openai import OpenAITextToSpeech
+    except ImportError as e:
+        raise HTTPException(500, f"emergentintegrations indisponível: {e}")
+    tts = OpenAITextToSpeech(api_key=EMERGENT_LLM_KEY)
+    # Limita a 4096 chars (limite OpenAI)
+    safe_text = text[:4000]
+    try:
+        audio = await tts.generate_speech(
+            text=safe_text,
+            model=JERUSA_TTS_MODEL,
+            voice=voice,
+            response_format="mp3",
+        )
+        return audio
+    except Exception as e:
+        logger.warning("[voice.tts] falhou: %s", e)
+        raise HTTPException(502, f"TTS falhou: {e}") from e
+
+
+async def _llm_reply(agent: dict, session_id: str, user_text: str) -> str:
+    """Chama o LLM da Jerusa (Emergent LLM Key, multi-turn via session_id)."""
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(503, "EMERGENT_LLM_KEY não configurada.")
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+    except ImportError as e:
+        raise HTTPException(500, f"emergentintegrations indisponível: {e}")
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=session_id,
+        system_message=agent["system_prompt"],
+    ).with_model(agent["model_provider"], agent["model_name"])
+    try:
+        chat = chat.with_temperature(agent.get("temperature", 0.6))  # type: ignore
+    except Exception:
+        pass
+    try:
+        chat = chat.with_max_tokens(agent.get("max_tokens", 350))  # type: ignore
+    except Exception:
+        pass
+    try:
+        resp = await chat.send_message(UserMessage(text=user_text))
+        text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
+        return (text or "").strip()
+    except Exception as e:
+        logger.warning("[voice.llm] session=%s falhou: %s", session_id, e)
+        raise HTTPException(502, f"LLM falhou: {e}") from e
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+class StartSessionIn(BaseModel):
+    caller: Optional[str] = None       # telefone do chamador (se for SIP)
+    channel: str = "browser"            # browser | sip
+
+
+@router.post("/sessions/start")
+async def start_session(payload: StartSessionIn,
+                          user: dict = Depends(require_role("gestor"))):
+    """Inicia sessão de voz com a Jerusa. Retorna a saudação inicial em áudio."""
+    cid = _cid(user)
+    agent = await _ensure_jerusa_agent(cid)
+    session_id = f"voice-{uuid.uuid4().hex[:12]}"
+
+    greeting = agent.get("initial_message") or JERUSA_DEFAULT_GREETING
+    started_at = time.time()
+    audio = await _tts_speak(greeting)
+    audio_ms = int((time.time() - started_at) * 1000)
+
+    # Persiste mensagem inicial da Jerusa
+    await db.aihub_messages.insert_one({
+        "id": f"msg-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "agent_id": agent["id"],
+        "session_id": session_id,
+        "role": "assistant",
+        "content": greeting,
+        "created_at": now_iso(),
+        "channel": payload.channel,
+    })
+
+    # Cria registro da chamada
+    await db.aihub_calls.insert_one({
+        "id": f"call-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "session_id": session_id,
+        "agent_id": agent["id"],
+        "agent_name": agent["name"],
+        "caller": payload.caller,
+        "channel": payload.channel,
+        "status": "in_progress",
+        "started_at": now_iso(),
+        "transcript_lines": [{"role": "assistant", "text": greeting}],
+    })
+
+    return {
+        "session_id": session_id,
+        "agent": {"id": agent["id"], "name": agent["name"]},
+        "greeting_text": greeting,
+        "greeting_audio_b64": base64.b64encode(audio).decode("ascii"),
+        "audio_mime": "audio/mpeg",
+        "tts_ms": audio_ms,
+    }
+
+
+@router.post("/sessions/{sid}/turn")
+async def session_turn(sid: str,
+                        audio: UploadFile = File(...),
+                        client_text: str = Form(""),
+                        user: dict = Depends(require_role("gestor"))):
+    """Recebe um turno de voz do usuário e devolve resposta em áudio.
+
+    `audio`: webm/mp3/wav/m4a (qualquer formato Whisper aceita).
+    `client_text` (opcional): se o frontend já tiver transcrito, pula STT.
+    """
+    cid = _cid(user)
+    call = await db.aihub_calls.find_one(
+        {"company_id": cid, "session_id": sid}, {"_id": 0})
+    if not call:
+        raise HTTPException(404, "Sessão de voz não encontrada.")
+    if call.get("status") not in (None, "in_progress"):
+        raise HTTPException(400, f"Sessão já encerrada (status={call.get('status')}).")
+
+    agent = await db.aihub_agents.find_one(
+        {"company_id": cid, "id": call["agent_id"]}, {"_id": 0})
+    if not agent:
+        raise HTTPException(404, "Agente Jerusa não encontrado para esta sessão.")
+
+    # 1. STT (se cliente não enviou texto pronto)
+    t0 = time.time()
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(400, "Áudio vazio.")
+    if len(audio_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(413, "Áudio muito grande (>20MB).")
+
+    if client_text and client_text.strip():
+        transcript = client_text.strip()
+        stt_ms = 0
+    else:
+        transcript = await _stt_transcribe(audio_bytes, audio.filename or "audio.webm")
+        stt_ms = int((time.time() - t0) * 1000)
+
+    if not transcript:
+        # Áudio sem fala detectada — peça gentilmente para repetir
+        repeat_text = "Não consegui ouvir direito, pode repetir por favor?"
+        repeat_audio = await _tts_speak(repeat_text)
+        return {
+            "transcript": "",
+            "reply_text": repeat_text,
+            "reply_audio_b64": base64.b64encode(repeat_audio).decode("ascii"),
+            "audio_mime": "audio/mpeg",
+            "stt_ms": stt_ms,
+            "llm_ms": 0,
+            "tts_ms": 0,
+            "no_speech": True,
+        }
+
+    # Persiste turno do usuário
+    await db.aihub_messages.insert_one({
+        "id": f"msg-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "agent_id": agent["id"],
+        "session_id": sid,
+        "role": "user",
+        "content": transcript,
+        "created_at": now_iso(),
+        "channel": call.get("channel", "browser"),
+    })
+
+    # 2. LLM
+    t1 = time.time()
+    reply_text = await _llm_reply(agent, sid, transcript)
+    llm_ms = int((time.time() - t1) * 1000)
+
+    if not reply_text:
+        reply_text = "Desculpe, não entendi. Pode reformular?"
+
+    # Persiste resposta
+    await db.aihub_messages.insert_one({
+        "id": f"msg-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "agent_id": agent["id"],
+        "session_id": sid,
+        "role": "assistant",
+        "content": reply_text,
+        "created_at": now_iso(),
+        "channel": call.get("channel", "browser"),
+    })
+
+    # 3. TTS
+    t2 = time.time()
+    reply_audio = await _tts_speak(reply_text)
+    tts_ms = int((time.time() - t2) * 1000)
+
+    # Atualiza transcript da chamada
+    await db.aihub_calls.update_one(
+        {"company_id": cid, "session_id": sid},
+        {"$push": {"transcript_lines": {
+            "$each": [
+                {"role": "user", "text": transcript},
+                {"role": "assistant", "text": reply_text},
+            ]
+        }}, "$set": {"updated_at": now_iso()}},
+    )
+
+    return {
+        "transcript": transcript,
+        "reply_text": reply_text,
+        "reply_audio_b64": base64.b64encode(reply_audio).decode("ascii"),
+        "audio_mime": "audio/mpeg",
+        "stt_ms": stt_ms,
+        "llm_ms": llm_ms,
+        "tts_ms": tts_ms,
+    }
+
+
+class EndSessionIn(BaseModel):
+    reason: Optional[str] = "user_hangup"
+
+
+@router.post("/sessions/{sid}/end")
+async def end_session(sid: str, payload: EndSessionIn,
+                        user: dict = Depends(require_role("gestor"))):
+    cid = _cid(user)
+    call = await db.aihub_calls.find_one(
+        {"company_id": cid, "session_id": sid}, {"_id": 0})
+    if not call:
+        raise HTTPException(404, "Sessão não encontrada.")
+
+    started_at_iso = call.get("started_at") or now_iso()
+    # Calcula duração aproximada (o ISO usa o now_iso da app)
+    transcript_lines = call.get("transcript_lines") or []
+    msg_count = await db.aihub_messages.count_documents(
+        {"company_id": cid, "session_id": sid})
+
+    await db.aihub_calls.update_one(
+        {"company_id": cid, "session_id": sid},
+        {"$set": {
+            "status": "ended",
+            "ended_at": now_iso(),
+            "end_reason": payload.reason,
+            "msg_count": msg_count,
+        }},
+    )
+    return {
+        "ok": True,
+        "session_id": sid,
+        "started_at": started_at_iso,
+        "ended_at": now_iso(),
+        "turns": msg_count,
+        "transcript_lines": transcript_lines,
+    }
+
+
+@router.get("/sessions/{sid}")
+async def get_session(sid: str, user: dict = Depends(require_role("gestor"))):
+    cid = _cid(user)
+    call = await db.aihub_calls.find_one(
+        {"company_id": cid, "session_id": sid}, {"_id": 0})
+    if not call:
+        raise HTTPException(404, "Sessão não encontrada.")
+    return call
+
+
+# ---------------------------------------------------------------------------
+# SIP webhook stub (MagnusBilling/Asterisk AGI vai postar aqui)
+# ---------------------------------------------------------------------------
+@router.post("/sip/incoming")
+async def sip_incoming(payload: Dict[str, Any]):
+    """Stub para receber chamadas SIP. Em produção, MagnusBilling/Asterisk AGI
+    deve postar áudio chunk-a-chunk; aqui só registramos o evento.
+
+    Sem auth — proteja com IP allowlist no nginx em produção.
+    """
+    company_id = payload.get("company_id") or DEMO_COMPANY_ID
+    await db.aihub_webhook_events.insert_one({
+        "id": f"wh-{uuid.uuid4().hex[:10]}",
+        "company_id": company_id,
+        "channel": "sip",
+        "received_at": now_iso(),
+        "payload": payload,
+    })
+    return {
+        "ok": True,
+        "note": "Stub. Para SIP real, implemente AGI script no Asterisk que "
+                "chame /api/voice/sessions/start, depois faça streaming "
+                "turno-a-turno via /api/voice/sessions/{sid}/turn.",
+    }

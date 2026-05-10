@@ -1,0 +1,40 @@
+{
+  "summary": "Iter38 — Jerusa voice pipeline (Whisper STT → LLM → TTS via EMERGENT_LLM_KEY) + MagnusBilling/WhatsApp status-summary + monitor worker + Settings card UI. Backend: 8/8 pytest cases PASSED. Frontend: login OK, sidebar 'Atendimento IA' default sub-tab 'Ligar Jerusa' (aihub-tab-jerusa) renders [data-testid=jerusa-call-simulator] with 'Ligar para a Jerusa' button visible. All other AIHub sub-tabs present (agents/playground/magnus/whatsapp/history). Configurações scroll → magnusbilling-settings-card visible with all 3 inputs + save/test buttons + ONLINE status dot (configurada). Regression Clientes → Assinantes OK.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/voice/sessions/{sid}/turn",
+        "issue": "When client uploads audio with no detected speech, response returns no_speech=true but stt_ms is only timed BEFORE the no-speech branch — yet llm_ms and tts_ms are forced to 0 even though the no-speech reply IS TTS'd. Cosmetic — caller still receives correct audio."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter38_voice_and_status.py",
+    "/app/test_reports/pytest/iter38_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/voice.py linha 270-281: audio_bytes lido inteiro em memória (até 20MB). OK por enquanto, mas para chamadas SIP de longa duração considerar streaming chunked (whisper aceita).",
+    "routes/voice.py linha 166-178: LlmChat reinstanciado a cada turno (via session_id para multi-turn). Tudo OK, mas se houver chamadas paralelas no mesmo session_id pode haver race na conversa — improvável em telefone (turno-a-turno serial).",
+    "routes/voice.py /sip/incoming não tem autenticação (intencional, comentário diz proteger via IP allowlist no nginx). Em produção, antes de habilitar SIP real, é OBRIGATÓRIO adicionar HMAC ou allowlist — senão qualquer um pode inserir documentos em aihub_webhook_events.",
+    "routes/aihub.py _monitor_loop (linha ~588+): worker singleton com flag _MONITOR_RUN. Se backend reload, há um pequeno janela em que dois loops podem coexistir até GC. Aceitável.",
+    "routes/voice.py: _ensure_jerusa_agent NÃO atualiza system_prompt nem voice em runs subsequentes. Se o JERUSA_DEFAULT_PROMPT mudar no código, agentes existentes continuam com o prompt antigo. Considerar field 'prompt_version' e auto-migration.",
+    "Saudação inicial reproduzida via TTS a cada start_session (cust = 1 chamada OpenAI ~$0.0006 + ~600ms). Considerar cachear o mp3 da saudação default em disco/Mongo (greeting é deterministic)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter38_voice_and_status.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456 (administrador — super-role passes require_role('gestor'))",
+  "seed_data_creation": "Jerusa agent auto-created on first /api/voice/sessions/start (id reused). Each test run creates 1 aihub_calls doc + 4 aihub_messages docs (greeting + user turn + assistant reply). No cleanup performed — call docs are immutable history records.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Voice pipeline fully validated end-to-end with REAL Whisper + GPT-4o-mini + TTS-1 (~58s per full test run including 80s monitor wait). Jerusa agent persisted in db.aihub_agents (id stable). aihub_calls grows by 1 doc per voice session — table to monitor for retention/cleanup. MagnusBilling monitor worker confirmed running (status=online, auto-refresh every 60s). WhatsApp Cloud not configured in this env, monitor returns not_configured (expected per request). DO NOT click jerusa-call-start-btn in Playwright — requires browser mic permission which is blocked in headless. mp3 sample for /turn was reused from greeting TTS (Whisper transcribed it correctly as Portuguese speech).",
+  "rca of the issue": "No bugs found. All flows green on first pass."
+}

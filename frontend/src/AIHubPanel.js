@@ -5,18 +5,20 @@ import {
   Plus, Trash2, Edit2, Play, Save, X, RefreshCw, CheckCircle2,
   AlertTriangle, Wifi, WifiOff, PhoneCall,
 } from "lucide-react";
+import JerusaCallSimulator from "@/JerusaCallSimulator";
 
 const TABS = [
+  { id: "jerusa", label: "Ligar Jerusa", icon: PhoneCall },
   { id: "agents", label: "Agentes", icon: Bot },
   { id: "playground", label: "Playground", icon: MessageCircle },
-  { id: "dial", label: "Discar", icon: PhoneCall },
+  { id: "dial", label: "Discar (outbound)", icon: Phone },
   { id: "magnus", label: "MagnusBilling", icon: Phone },
   { id: "whatsapp", label: "WhatsApp Cloud", icon: Send },
   { id: "history", label: "Histórico", icon: History },
 ];
 
 export default function AIHubPanel() {
-  const [tab, setTab] = useState("agents");
+  const [tab, setTab] = useState("jerusa");
 
   return (
     <div data-testid="aihub-panel" style={{ padding: "0 4px" }}>
@@ -55,6 +57,7 @@ export default function AIHubPanel() {
         })}
       </div>
 
+      {tab === "jerusa" && <JerusaCallSimulator />}
       {tab === "agents" && <AgentsTab />}
       {tab === "playground" && <PlaygroundTab />}
       {tab === "dial" && <DialTab />}
