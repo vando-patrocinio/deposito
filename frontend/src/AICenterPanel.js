@@ -159,7 +159,8 @@ function FitBoundsOnUpdate({ points, bbox }) {
 }
 
 function RepairMapSection({ days }) {
-  const d = useFetch(() => api.aiDashRepairMap(days), [days]);
+  const [reloadKey, setReloadKey] = useState(0);
+  const d = useFetch(() => api.aiDashRepairMap(days), [days, reloadKey]);
   const [filter, setFilter] = useState("all");
   const points = useMemo(() => {
     if (!d) return [];
@@ -173,22 +174,40 @@ function RepairMapSection({ days }) {
     const lng = points.reduce((s, p) => s + p.longitude, 0) / points.length;
     return [lat, lng];
   }, [d, points]);
+  // Auto-refetch se há pendentes sendo geocodificados em background
+  useEffect(() => {
+    if (d?.pending_geocode > 0) {
+      const t = setTimeout(() => setReloadKey((k) => k + 1), 1500);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [d, reloadKey]);
   if (!d) return <Card>Carregando mapa…</Card>;
   return (
     <>
       <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <strong style={{ fontSize: 13 }}>📍 {points.length} pontos</strong>
+        <strong style={{ fontSize: 13, color: "var(--text-primary)" }}>{points.length} bolhas no mapa</strong>
         <select value={filter} onChange={(e) => setFilter(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12 }}
+                className="input" style={{ width: 220, height: 30, fontSize: 12 }}
                 data-testid="map-filter">
           <option value="all">Todos os tipos ({d.count})</option>
           {Object.entries(d.by_type).map(([k, v]) => <option key={k} value={k}>{k} ({v})</option>)}
         </select>
-        <span style={{ fontSize: 11, color: "#64748b" }}>
-          Cada bolha = 1 chamado · cores por tipo · clique pra detalhes
+        {d.geocoded_now > 0 && (
+          <span className="pill pill--success" data-testid="repair-map-geocoded-now">
+            +{d.geocoded_now} geolocalizadas agora
+          </span>
+        )}
+        {d.pending_geocode > 0 && (
+          <span className="pill pill--warning" data-testid="repair-map-pending">
+            {d.pending_geocode} pendentes — geolocalizando…
+          </span>
+        )}
+        <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>
+          Cada bolha = 1 chamado da Lousa nos últimos {days} dia(s) · clique para detalhes
         </span>
       </div>
-      <Card data-testid="repair-map-card">
+      <Card data-testid="repair-map-card" padding={0}>
         <div style={{ height: 540, borderRadius: 12, overflow: "hidden" }}>
           <MapContainer center={center} zoom={6} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
             <TileLayer
@@ -203,22 +222,24 @@ function RepairMapSection({ days }) {
                         pathOptions={{ color, fillColor: color, fillOpacity: 0.6, weight: 2 }}>
                   <Popup>
                     <div style={{ fontSize: 12, minWidth: 220 }}>
-                      <strong>{p.client_name}</strong><br />
-                      <span style={{ color: "#64748b" }}>{p.address || "—"}</span><br />
-                      {p.neighborhood && <><span style={{ color: "#94a3b8", fontSize: 11 }}>📍 {p.neighborhood}</span><br /></>}
-                      <span style={css.pill("#f1f5f9", "#475569")}>{p.type}</span>
-                      {p.priority && <span style={{ ...css.pill("#fef3c7", "#92400e"), marginLeft: 4 }}>{p.priority}</span>}
-                      {p.status && <span style={{ ...css.pill("#dbeafe", "#1e40af"), marginLeft: 4 }}>{p.status}</span>}
+                      <strong>{p.client_name}</strong>
+                      {p.atlaz_external_id && <span className="pill pill--accent" style={{ marginLeft: 6, fontSize: 10 }}>Atlaz</span>}
+                      <br />
+                      <span style={{ color: "var(--text-secondary)" }}>{p.address || "—"}</span><br />
+                      {p.neighborhood && <><span style={{ color: "var(--text-muted)", fontSize: 11 }}>{p.neighborhood}</span><br /></>}
+                      <span className="pill pill--neutral" style={{ marginRight: 4 }}>{p.type}</span>
+                      {p.priority && p.priority !== "normal" && <span className="pill pill--warning" style={{ marginRight: 4 }}>{p.priority}</span>}
+                      {p.status && <span className="pill pill--info">{p.status}</span>}
                       {p.rx_dbm != null && (
                         <div style={{ marginTop: 4, fontWeight: 700 }}>
-                          📶 {p.rx_dbm.toFixed(1)} dBm
-                          {p.signal_quality && <span style={{ color: "#64748b", marginLeft: 4 }}>({p.signal_quality})</span>}
+                          {p.rx_dbm.toFixed(1)} dBm
+                          {p.signal_quality && <span style={{ color: "var(--text-secondary)", marginLeft: 4 }}>({p.signal_quality})</span>}
                         </div>
                       )}
-                      {p.relato && <div style={{ marginTop: 6, fontSize: 11, color: "#475569" }}>"{p.relato}"</div>}
+                      {p.relato && <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-secondary)" }}>"{p.relato}"</div>}
                       {p.scheduled_time && (
-                        <div style={{ marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
-                          🕐 {new Date(p.scheduled_time).toLocaleString("pt-BR")}
+                        <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
+                          {new Date(p.scheduled_time).toLocaleString("pt-BR")}
                         </div>
                       )}
                     </div>

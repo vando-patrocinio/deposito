@@ -11,6 +11,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -22,7 +23,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from core import DEMO_COMPANY_ID, EMERGENT_LLM_KEY, now_iso, require_role
+from core import DEMO_COMPANY_ID, EMERGENT_LLM_KEY, geocode_address, now_iso, require_role
 from database import db
 from routes.smartolt import _norm
 
@@ -183,38 +184,93 @@ async def tech_spending(days: int = 30, user: dict = Depends(require_role("gesto
 # ---------------------------------------------------------------------------
 # 3) Repair Map
 # ---------------------------------------------------------------------------
+# Concurrency limiter for opportunistic geocoding (Nominatim asks ≤1 rps;
+# we keep parallel=4 with sequential city batches to stay polite).
+_GEOCODE_SEM = asyncio.Semaphore(4)
+
+
+async def _geocode_one(addr: str) -> tuple[Optional[float], Optional[float]]:
+    """Best-effort geocode. Returns (None, None) on any failure."""
+    if not addr or not addr.strip():
+        return None, None
+    try:
+        async with _GEOCODE_SEM:
+            geo = await geocode_address(addr.strip())
+        return geo.lat, geo.lng
+    except Exception as e:
+        logger.debug("[repair-map] geocode falhou para '%s': %s", addr[:60], e)
+        return None, None
+
+
 @router.get("/repair-map")
 async def repair_map(days: int = 30, only_finalized: bool = False,
+                     auto_geocode: bool = True, max_geocode: int = 60,
                      user: dict = Depends(require_role("gestor"))):
+    """Mapa de defeitos. Plotagem todas as bolhas (Lousa) com lat/lng nos últimos N dias.
+
+    Para bolhas com endereço mas SEM lat/lng (caso comum em chamados Atlaz que
+    não vêm com GPS), fazemos geocoding sob-demanda e persistimos de volta no
+    documento — assim na próxima chamada já estão prontos.
+    """
     cid = _cid(user)
     q: Dict[str, Any] = {"company_id": cid, "created_at": {"$gte": _cutoff(days)}}
     if only_finalized:
         q["status"] = "finalizada"
     out: List[dict] = []
     type_counter: Counter = Counter()
+    pending_geocode: List[dict] = []  # [{ticket_id, address, raw_doc}]
+
     cur = db.tickets.find(q, {
         "_id": 0, "id": 1, "type": 1, "status": 1, "priority": 1,
-        "client_snapshot": 1, "scheduled_time": 1, "created_at": 1, "live_signal": 1})
+        "client_snapshot": 1, "scheduled_time": 1, "created_at": 1, "live_signal": 1,
+        "atlaz_external_id": 1})
     async for t in cur:
         snap = t.get("client_snapshot") or {}
         lat, lng = snap.get("latitude"), snap.get("longitude")
+        addr = (snap.get("address") or "").strip()
+
+        # Nenhum lat/lng mas tem endereço → enfileira para geocode
+        if (lat is None or lng is None) and addr:
+            pending_geocode.append({"id": t["id"], "address": addr, "ticket": t})
+            continue
         if lat is None or lng is None:
             continue
-        out.append({
-            "id": t["id"], "type": t.get("type"), "status": t.get("status"),
-            "priority": t.get("priority"),
-            "client_name": snap.get("name"), "address": snap.get("address"),
-            "neighborhood": snap.get("neighborhood"), "phone": snap.get("phone"),
-            "pppoe_user": snap.get("pppoe_user"),
-            "relato": (snap.get("relato") or "")[:160],
-            "category": _classify_complaint(snap.get("relato") or ""),
-            "latitude": lat, "longitude": lng,
-            "rx_dbm": (t.get("live_signal") or {}).get("rx_dbm"),
-            "signal_quality": (t.get("live_signal") or {}).get("quality"),
-            "created_at": t.get("created_at"),
-            "scheduled_time": t.get("scheduled_time"),
-        })
+        out.append(_build_repair_point(t, snap, lat, lng))
         type_counter[t.get("type") or "?"] += 1
+
+    # Geocode opportunistic (limita pra não derrubar o endpoint)
+    geocoded_count = 0
+    if auto_geocode and pending_geocode:
+        batch = pending_geocode[:max(1, int(max_geocode))]
+        results = await asyncio.gather(
+            *(_geocode_one(item["address"]) for item in batch),
+            return_exceptions=False,
+        )
+        # Persist & include
+        write_ops = []
+        for item, (lat2, lng2) in zip(batch, results):
+            if lat2 is None or lng2 is None:
+                continue
+            geocoded_count += 1
+            t = item["ticket"]
+            snap = t.get("client_snapshot") or {}
+            out.append(_build_repair_point(t, snap, lat2, lng2))
+            type_counter[t.get("type") or "?"] += 1
+            write_ops.append((item["id"], lat2, lng2))
+        # Update DB (parallel writes — small cost)
+        if write_ops:
+            await asyncio.gather(*[
+                db.tickets.update_one(
+                    {"id": tid, "company_id": cid},
+                    {"$set": {
+                        "client_snapshot.latitude": la,
+                        "client_snapshot.longitude": ln,
+                        "client_snapshot.geocoded_at": now_iso(),
+                    }},
+                ) for (tid, la, ln) in write_ops
+            ])
+            logger.info("[repair-map] geocoded %d/%d tickets opportunistically (cid=%s)",
+                        geocoded_count, len(batch), cid)
 
     # Bounds + center — usa percentis P15-P85 (cobre 70% denso) pra ignorar
     # outliers extremos (chamados teste fora da operação real).
@@ -229,9 +285,31 @@ async def repair_map(days: int = 30, only_finalized: bool = False,
         center = [sorted_lats[n // 2], sorted_lngs[n // 2]]  # mediana
         bbox = [[sorted_lats[lo], sorted_lngs[lo]],
                 [sorted_lats[min(hi, n - 1)], sorted_lngs[min(hi, n - 1)]]]
+
+    pending_remaining = max(0, len(pending_geocode) - (max_geocode if auto_geocode else 0))
     return {"period_days": days, "count": len(out), "points": out,
             "by_type": dict(type_counter.most_common()),
-            "center": center, "bbox": bbox}
+            "center": center, "bbox": bbox,
+            "geocoded_now": geocoded_count,
+            "pending_geocode": pending_remaining}
+
+
+def _build_repair_point(t: dict, snap: dict, lat: float, lng: float) -> dict:
+    return {
+        "id": t["id"], "type": t.get("type"), "status": t.get("status"),
+        "priority": t.get("priority"),
+        "client_name": snap.get("name"), "address": snap.get("address"),
+        "neighborhood": snap.get("neighborhood"), "phone": snap.get("phone"),
+        "pppoe_user": snap.get("pppoe_user"),
+        "relato": (snap.get("relato") or "")[:160],
+        "category": _classify_complaint(snap.get("relato") or ""),
+        "latitude": lat, "longitude": lng,
+        "rx_dbm": (t.get("live_signal") or {}).get("rx_dbm"),
+        "signal_quality": (t.get("live_signal") or {}).get("quality"),
+        "created_at": t.get("created_at"),
+        "scheduled_time": t.get("scheduled_time"),
+        "atlaz_external_id": t.get("atlaz_external_id"),
+    }
 
 
 # ---------------------------------------------------------------------------
