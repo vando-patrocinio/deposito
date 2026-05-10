@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Card, Button } from "@/ui";
 import { api } from "@/api";
 import TabPermissionsCard from "@/TabPermissionsCard";
+import AIHubIntegrationsCard from "@/AIHubIntegrationsCard";
 
 export default function BrandingCard() {
   const [data, setData] = useState(null);
