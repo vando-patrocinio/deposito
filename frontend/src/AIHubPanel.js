@@ -23,8 +23,9 @@ const TABS = [
   { id: "history", label: "Histórico", icon: History },
 ];
 
-export default function AIHubPanel() {
-  const [tab, setTab] = useState("central_ia");
+export default function AIHubPanel({ initialTab = "central_ia" }) {
+  const [tab, setTab] = useState(initialTab);
+  useEffect(() => { setTab(initialTab); }, [initialTab]);
 
   return (
     <div data-testid="aihub-panel" style={{ padding: "0 4px" }}>

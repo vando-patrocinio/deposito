@@ -4,7 +4,7 @@ import {
   Smartphone, LogOut, ChevronRight, ChevronDown, Brain, BarChart3, Layout,
   Boxes, Sparkles, Users, MapPin, ShieldCheck, ClipboardList,
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
-  Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle,
+  Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
@@ -111,7 +111,8 @@ const NAV_GROUPS = [
     label: "Inteligência",
     items: [
       { id: "ai-ranking", icon: Sparkles, label: "Avaliação IA", roles: ["gestor", "auditor", "administrador"] },
-      { id: "aihub", icon: Brain, label: "Central IA & Atendimento", roles: ["gestor", "auditor", "administrador"] },
+      { id: "central-ia", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"] },
+      { id: "atendimento", icon: MessageCircle, label: "Atendimento", roles: ["gestor", "auditor", "administrador"] },
     ],
   },
   {
@@ -667,7 +668,8 @@ function AppContent() {
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} />}
           {view === "estoque" && <EstoquePanel />}
           {view === "ai-ranking" && <AiRankingPanel />}
-          {view === "aihub" && <AIHubPanel />}
+          {view === "central-ia" && <AIHubPanel initialTab="central_ia" />}
+          {view === "atendimento" && <AIHubPanel initialTab="whatsapp_qr" />}
           {view === "cadastro" && <CadastroPanel />}
           {view === "subscribers" && <SubscribersPanel />}
           {view === "plans" && <PlansPanel />}
