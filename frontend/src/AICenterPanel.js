@@ -15,15 +15,16 @@ L.Icon.Default.mergeOptions({
 });
 
 const SUB_TABS = [
-  { id: "overview", label: "📊 Overview" },
-  { id: "preventive", label: "🤖 Preventivas" },
-  { id: "tech_spending", label: "💰 Gastos/Técnico" },
-  { id: "repair_map", label: "🗺️ Mapa de defeitos" },
-  { id: "defective", label: "🔧 Equipamentos" },
-  { id: "common_issues", label: "📞 Chamados" },
-  { id: "recurring", label: "🔁 Reincidência" },
-  { id: "assets", label: "🎒 Checklist" },
-  { id: "insights", label: "💡 Insights LLM" },
+  { id: "overview", label: "Overview" },
+  { id: "preventive", label: "Preventivas" },
+  { id: "tech_spending", label: "Gastos/Técnico" },
+  { id: "repair_map", label: "Mapa de defeitos" },
+  { id: "defective", label: "Equipamentos" },
+  { id: "common_issues", label: "Chamados" },
+  { id: "recurring", label: "Reincidência" },
+  { id: "fleet", label: "Frota" },
+  { id: "assets", label: "Checklist" },
+  { id: "insights", label: "Insights LLM" },
 ];
 
 const PERIOD_OPTIONS = [
@@ -611,6 +612,60 @@ function InsightsSection({ days }) {
 }
 
 // ============================================================
+// Fleet defects (recurrent defects from vehicle checklists)
+// ============================================================
+function FleetDefectsSection({ days }) {
+  const d = useFetch(() => api.vehicleChecklistRecurrent(days, 2), [days]);
+  if (!d) return <Card>Carregando…</Card>;
+  return (
+    <Card data-testid="fleet-defects-card"
+          title={`Defeitos recorrentes da frota (${d.total})`}
+          subtitle={`Itens reportados como defeito em ${d.min_count}+ inspeções no(s) últimos ${d.period_days} dia(s) — risco operacional.`}>
+      {d.alerts.length === 0 ? (
+        <div style={{ padding: 18, color: "var(--text-secondary)" }}>
+          Nenhum padrão de defeito recorrente detectado neste período.
+        </div>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: "var(--bg-surface-2)" }}>
+              <th style={css.th}>Placa</th>
+              <th style={css.th}>Veículo</th>
+              <th style={css.th}>Item defeituoso</th>
+              <th style={css.th}>Categoria</th>
+              <th style={{ ...css.th, textAlign: "center" }}>Ocorrências</th>
+              <th style={css.th}>Última</th>
+              <th style={css.th}>Último motorista</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.alerts.map((a, i) => (
+              <tr key={`${a.plate}-${i}`} style={{ borderBottom: "1px solid var(--border-default)" }}>
+                <td style={css.td}><span className="mono" style={{ fontWeight: 700 }}>{a.plate}</span></td>
+                <td style={css.td}>{a.vehicle_info?.vehicle || "—"}</td>
+                <td style={css.td}>{a.item}</td>
+                <td style={css.td}>
+                  <span className="pill pill--neutral">{a.category || "—"}</span>
+                </td>
+                <td style={{ ...css.td, textAlign: "center" }}>
+                  <span className="pill pill--danger" style={{ fontWeight: 700 }}>
+                    {a.count}×
+                  </span>
+                </td>
+                <td style={css.td} className="mono" data-mono>
+                  {(a.last_at || "").slice(0, 10)}
+                </td>
+                <td style={css.td}>{a.vehicle_info?.last_driver || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
+  );
+}
+
+// ============================================================
 // Main panel
 // ============================================================
 const TAB_COMPONENTS = {
@@ -620,6 +675,7 @@ const TAB_COMPONENTS = {
   defective: DefectiveSection,
   common_issues: CommonIssuesSection,
   recurring: RecurringSection,
+  fleet: FleetDefectsSection,
   assets: AssetsOverviewSection,
   insights: InsightsSection,
 };

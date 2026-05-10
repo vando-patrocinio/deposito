@@ -271,6 +271,12 @@ export const api = {
   vehicleChecklistCreate: (d) => client.post(`/vehicle-checklist`, d).then((r) => r.data),
   vehicleChecklistUpdate: (id, d) => client.patch(`/vehicle-checklist/${id}`, d).then((r) => r.data),
   vehicleChecklistDelete: (id) => client.delete(`/vehicle-checklist/${id}`).then((r) => r.data),
+  vehicleChecklistRecurrent: (days = 30, min_count = 3) =>
+    client.get(`/vehicle-checklist/insights/recurrent-defects`, { params: { days, min_count } }).then((r) => r.data),
+  vehicleChecklistAttach: (id, payload) =>
+    client.post(`/vehicle-checklist/${id}/attachment`, payload).then((r) => r.data),
+  vehicleChecklistAttachRemove: (id, idx) =>
+    client.delete(`/vehicle-checklist/${id}/attachment/${idx}`).then((r) => r.data),
   vehicleChecklistPdfUrl: (id) => {
     const base = client.defaults.baseURL.replace(/\/$/, "");
     return `${base}/vehicle-checklist/${id}/pdf`;

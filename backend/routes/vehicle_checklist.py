@@ -13,7 +13,7 @@ from __future__ import annotations
 import io
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -82,6 +82,30 @@ class ChecklistItem(BaseModel):
     notes: Optional[str] = None
 
 
+class DamageMark(BaseModel):
+    """Avaria marcada na silhueta do veículo.
+
+    view: front|rear|left|right|top — qual silhueta foi clicada.
+    x, y: coordenadas no viewBox 0..200 × 0..110 (frontend usa o mesmo).
+    code: D=amassado, S=risco, R=oxidação, F=quebrado, V=vidro, P=pintura.
+    ord: número de ordem (visual numbering 1..N) preservado entre frontend/PDF.
+    """
+    view: Literal["front", "rear", "left", "right", "top"]
+    x: float = Field(..., ge=0, le=200)
+    y: float = Field(..., ge=0, le=110)
+    code: Literal["D", "S", "R", "F", "V", "P"] = "D"
+    ord: int = Field(..., ge=1, le=999)
+    notes: Optional[str] = None
+
+
+class Attachment(BaseModel):
+    """Anexo (foto/papel scaneado). Armazena base64 inline (limite ~8MB)."""
+    kind: Literal["photo", "paper_checklist", "doc"] = "photo"
+    label: Optional[str] = None
+    data_url: str  # data:image/...;base64,...
+    uploaded_at: Optional[str] = None
+
+
 class ChecklistIn(BaseModel):
     collaborator_id: str = Field(..., min_length=1)
     plate: str = Field(..., min_length=4, max_length=10)
@@ -92,6 +116,8 @@ class ChecklistIn(BaseModel):
     km_final: Optional[float] = Field(default=None, ge=0)
     route: Optional[str] = None
     items: List[ChecklistItem]
+    damage_marks: List[DamageMark] = Field(default_factory=list)
+    attachments: List[Attachment] = Field(default_factory=list)
     general_notes: Optional[str] = None
     signature_data_url: Optional[str] = None
 
@@ -99,8 +125,17 @@ class ChecklistIn(BaseModel):
 class ChecklistUpdate(BaseModel):
     km_final: Optional[float] = Field(default=None, ge=0)
     items: Optional[List[ChecklistItem]] = None
+    damage_marks: Optional[List[DamageMark]] = None
+    attachments: Optional[List[Attachment]] = None
     general_notes: Optional[str] = None
     signature_data_url: Optional[str] = None
+
+
+class AttachmentIn(BaseModel):
+    """Upload simples de uma única foto/anexo a um checklist existente."""
+    kind: Literal["photo", "paper_checklist", "doc"] = "photo"
+    label: Optional[str] = None
+    data_url: str = Field(..., min_length=20)
 
 
 def _company_for(user: dict) -> str:
@@ -136,6 +171,9 @@ async def create_checklist(payload: ChecklistIn,
 
     items = [it.model_dump() for it in payload.items]
     conf = _conformity(items)
+    now = now_iso()
+    marks = [m.model_dump() for m in payload.damage_marks]
+    atts = [{**a.model_dump(), "uploaded_at": a.uploaded_at or now} for a in payload.attachments]
     doc = {
         "id": f"vchk-{uuid.uuid4().hex[:10]}",
         "company_id": cid,
@@ -149,10 +187,12 @@ async def create_checklist(payload: ChecklistIn,
         "km_final": payload.km_final,
         "route": payload.route,
         "items": items,
+        "damage_marks": marks,
+        "attachments": atts,
         "general_notes": payload.general_notes,
         "signature_data_url": payload.signature_data_url,
         "conformity": conf,
-        "created_at": now_iso(),
+        "created_at": now,
         "created_by": user.get("email"),
     }
     await db.vehicle_checklists.insert_one(doc)
@@ -201,6 +241,10 @@ async def update_checklist(chk_id: str, payload: ChecklistUpdate,
     if payload.items is not None:
         upd["items"] = [it.model_dump() for it in payload.items]
         upd["conformity"] = _conformity(upd["items"])
+    if payload.damage_marks is not None:
+        upd["damage_marks"] = [m.model_dump() for m in payload.damage_marks]
+    if payload.attachments is not None:
+        upd["attachments"] = [a.model_dump() for a in payload.attachments]
     if payload.general_notes is not None:
         upd["general_notes"] = payload.general_notes
     if payload.signature_data_url is not None:
@@ -222,6 +266,98 @@ async def delete_checklist(chk_id: str,
     if res.deleted_count == 0:
         raise HTTPException(404, "Checklist não encontrado.")
     return {"ok": True}
+
+
+@router.post("/{chk_id}/attachment")
+async def add_attachment(chk_id: str, payload: AttachmentIn,
+                         user: dict = Depends(require_role("colaborador"))):
+    """Adiciona um anexo (foto do checklist em papel, foto da avaria, etc)
+    a um checklist existente. Append no array `attachments`."""
+    cid = _company_for(user)
+    doc = await db.vehicle_checklists.find_one(
+        {"id": chk_id, "company_id": cid}, {"_id": 0, "id": 1})
+    if not doc:
+        raise HTTPException(404, "Checklist não encontrado.")
+    # Sanity: tamanho razoável (~10MB base64 ≈ 7.5MB raw)
+    if len(payload.data_url) > 11_000_000:
+        raise HTTPException(413, "Arquivo muito grande (máx ~8MB).")
+    att = payload.model_dump()
+    att["uploaded_at"] = now_iso()
+    att["uploaded_by"] = user.get("email")
+    await db.vehicle_checklists.update_one(
+        {"id": chk_id, "company_id": cid},
+        {"$push": {"attachments": att}})
+    return {"ok": True, "attachment": att}
+
+
+@router.delete("/{chk_id}/attachment/{idx}")
+async def remove_attachment(chk_id: str, idx: int,
+                            user: dict = Depends(require_role("gestor"))):
+    """Remove anexo por índice (ordem do array)."""
+    cid = _company_for(user)
+    doc = await db.vehicle_checklists.find_one(
+        {"id": chk_id, "company_id": cid}, {"_id": 0, "attachments": 1})
+    if not doc:
+        raise HTTPException(404, "Checklist não encontrado.")
+    atts = doc.get("attachments") or []
+    if idx < 0 or idx >= len(atts):
+        raise HTTPException(404, "Anexo não encontrado.")
+    new_atts = [a for i, a in enumerate(atts) if i != idx]
+    await db.vehicle_checklists.update_one(
+        {"id": chk_id, "company_id": cid},
+        {"$set": {"attachments": new_atts}})
+    return {"ok": True, "remaining": len(new_atts)}
+
+
+# ---------------------------------------------------------------------------
+# IA Preventiva — Defeitos recorrentes (frota)
+# ---------------------------------------------------------------------------
+@router.get("/insights/recurrent-defects")
+async def recurrent_defects(days: int = 30, min_count: int = 3,
+                            user: dict = Depends(require_role("gestor"))):
+    """Identifica veículos+itens com defeitos recorrentes nos últimos N dias.
+
+    Aciona o gestor quando um item aparece como `defeito` ≥ `min_count` vezes
+    no mesmo veículo em N dias — sinal forte de manutenção pendente.
+    """
+    cid = _company_for(user)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cur = db.vehicle_checklists.find(
+        {"company_id": cid, "created_at": {"$gte": cutoff}},
+        {"_id": 0, "plate": 1, "items": 1, "created_at": 1, "vehicle_brand": 1,
+         "vehicle_model": 1, "collaborator_name_snapshot": 1, "id": 1})
+    grouped: dict = {}  # (plate, item_name) -> {count, last_at, notes[], chk_ids[]}
+    plates_seen: dict = {}
+    async for d in cur:
+        plate = d.get("plate") or "?"
+        plates_seen[plate] = {
+            "vehicle": " ".join([p for p in [d.get("vehicle_brand"), d.get("vehicle_model")] if p]) or None,
+            "last_driver": d.get("collaborator_name_snapshot"),
+        }
+        for it in d.get("items") or []:
+            if it.get("status") != "defeito":
+                continue
+            key = (plate, it.get("name") or "—")
+            entry = grouped.setdefault(key, {
+                "plate": plate, "item": it.get("name") or "—",
+                "category": it.get("cat"), "count": 0,
+                "last_at": d.get("created_at"), "notes": [],
+                "chk_ids": [],
+            })
+            entry["count"] += 1
+            if d.get("created_at") and (entry["last_at"] is None or d["created_at"] > entry["last_at"]):
+                entry["last_at"] = d["created_at"]
+            if it.get("notes"):
+                entry["notes"].append(it["notes"])
+            entry["chk_ids"].append(d.get("id"))
+    alerts = []
+    for entry in grouped.values():
+        if entry["count"] >= min_count:
+            entry["vehicle_info"] = plates_seen.get(entry["plate"], {})
+            alerts.append(entry)
+    alerts.sort(key=lambda x: (-x["count"], x["plate"]))
+    return {"period_days": days, "min_count": min_count,
+            "alerts": alerts, "total": len(alerts)}
 
 
 # ---------------------------------------------------------------------------
@@ -249,8 +385,9 @@ def _build_vehicle_pdf(branding: dict, collaborator: dict, doc: dict) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
-    from reportlab.platypus import (Image, Paragraph, SimpleDocTemplate, Spacer,
-                                     Table, TableStyle)
+    from reportlab.platypus import (Image, PageBreak, Paragraph,
+                                     SimpleDocTemplate, Spacer, Table,
+                                     TableStyle)
 
     SLATE = colors.HexColor("#0b1220")
     SLATE_SOFT = colors.HexColor("#475569")
@@ -471,9 +608,156 @@ def _build_vehicle_pdf(branding: dict, collaborator: dict, doc: dict) -> bytes:
             f"{collaborator.get('name', '—')} — Motorista (assinatura)",
             ParagraphStyle("s2", parent=styles["Normal"], fontSize=9, alignment=1, spaceBefore=2)))
 
+    # ---- Página de avarias + anexos (se houver)
+    _build_damage_pages(story, doc, cm, styles, ParagraphStyle, Paragraph,
+                         Spacer, Table, TableStyle, PageBreak, Image)
+
     pdf.build(story)
     buf.seek(0)
     return buf.getvalue()
+
+
+def _build_damage_pages(story: list, doc: dict, cm, styles, ParagraphStyle,
+                         Paragraph, Spacer, Table, TableStyle, PageBreak,
+                         Image_cls):
+    """Adiciona página(s) com silhuetas marcadas + anexos."""
+    from reportlab.lib import colors
+    from routes.vehicle_silhouettes import (DAMAGE_COLORS, VIEW_LABELS,
+                                              silhouette_drawing)
+
+    marks = doc.get("damage_marks") or []
+    atts = doc.get("attachments") or []
+    if not marks and not atts:
+        return
+
+    SLATE = colors.HexColor("#0b1220")
+    BORDER = colors.HexColor("#d4d7df")
+
+    story.append(PageBreak())
+    story.append(Paragraph(
+        '<font color="#0b1220" size="13"><b>DIAGRAMA DE AVARIAS</b></font>',
+        ParagraphStyle("dt", parent=styles["Normal"], leading=15, spaceAfter=4)))
+    story.append(Paragraph(
+        '<font color="#0d9488" size="9"><b>Vistas Frente · Traseira · Laterais · Superior</b></font>',
+        ParagraphStyle("dst", parent=styles["Normal"], leading=12, spaceAfter=12)))
+
+    if marks:
+        # Grid 2x3 (5 vistas + legenda) — silhuetas com 7.5cm × 4cm
+        sw, sh = 7.5 * cm, 4.2 * cm
+
+        def cell(view: str):
+            d = silhouette_drawing(view, marks, sw - 0.4 * cm, sh - 0.7 * cm)
+            label = VIEW_LABELS.get(view, view)
+            count = sum(1 for m in marks if m.get("view") == view)
+            badge = f' <font color="#dc2626"><b>· {count} avaria(s)</b></font>' if count else ""
+            cap = Paragraph(
+                f'<font size="9" color="#0b1220"><b>{label}</b></font>{badge}',
+                ParagraphStyle("c", parent=styles["Normal"], leading=11,
+                               alignment=1, spaceAfter=2))
+            inner = Table([[cap], [d]], colWidths=[sw - 0.4 * cm])
+            inner.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ]))
+            return inner
+
+        grid = Table([
+            [cell("front"), cell("rear")],
+            [cell("left"), cell("right")],
+            [cell("top"), ""],
+        ], colWidths=[sw, sw], rowHeights=[sh, sh, sh])
+        grid.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
+            ("INNERGRID", (0, 0), (-1, -1), 0.3, BORDER),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f6f7f9")),
+        ]))
+        story.append(grid)
+        story.append(Spacer(1, 0.4 * cm))
+
+        # Legenda + tabela detalhada
+        legend = (
+            '<b>D</b>=Amassado &nbsp; <b>S</b>=Risco &nbsp; <b>R</b>=Oxidação '
+            '&nbsp; <b>F</b>=Quebrado &nbsp; <b>V</b>=Vidro &nbsp; <b>P</b>=Pintura'
+        )
+        story.append(Paragraph(
+            f'<font size="8.5" color="#475569">{legend}</font>',
+            ParagraphStyle("lg", parent=styles["Normal"], leading=11, spaceAfter=8)))
+
+        # Tabela detalhada numerada
+        tbl = [["#", "Vista", "Tipo", "Descrição"]]
+        for m in sorted(marks, key=lambda x: x.get("ord", 0)):
+            from routes.vehicle_silhouettes import VIEW_LABELS as VL
+            tbl.append([
+                str(m.get("ord", "?")),
+                VL.get(m.get("view"), m.get("view") or "—"),
+                m.get("code") or "D",
+                (m.get("notes") or "—")[:140],
+            ])
+        det = Table(tbl, repeatRows=1,
+                     colWidths=[1 * cm, 4 * cm, 1.6 * cm, 11.4 * cm])
+        det.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), SLATE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ("ALIGN", (0, 0), (2, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.25, BORDER),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(det)
+
+    # ---- Anexos (fotos)
+    if atts:
+        story.append(Spacer(1, 0.6 * cm))
+        story.append(Paragraph(
+            '<font color="#0b1220" size="11"><b>ANEXOS</b></font>',
+            ParagraphStyle("ah", parent=styles["Normal"], leading=14, spaceAfter=4)))
+        story.append(Paragraph(
+            f'<font color="#475569" size="9">{len(atts)} arquivo(s) anexado(s) — '
+            'fotos do checklist preenchido em papel ou registros de avarias.</font>',
+            ParagraphStyle("at", parent=styles["Normal"], leading=12, spaceAfter=8)))
+
+        for i, att in enumerate(atts, 1):
+            data_url = att.get("data_url") or ""
+            if not data_url.startswith("data:image/"):
+                continue
+            try:
+                import base64
+                b64 = data_url.split(",", 1)[1]
+                raw = base64.b64decode(b64)
+                # Validate image actually decodes before passing to ReportLab
+                from PIL import Image as PILImage
+                pil = PILImage.open(io.BytesIO(raw))
+                pil.verify()
+                # Re-open for actual use (verify closes the file)
+                buf2 = io.BytesIO(raw)
+                img = Image_cls(buf2, width=14 * cm, height=10 * cm, kind="proportional")
+                cap = Paragraph(
+                    f'<font size="9" color="#475569">Anexo #{i}'
+                    f'{" — " + att.get("label", "") if att.get("label") else ""}'
+                    f' · {att.get("kind", "photo")}</font>',
+                    ParagraphStyle("ac", parent=styles["Normal"], leading=12,
+                                   alignment=1, spaceAfter=4))
+                story.append(cap)
+                story.append(img)
+                story.append(Spacer(1, 0.4 * cm))
+            except Exception as e:
+                logger.warning("[vchk-pdf] anexo %d falhou (ignorado): %s", i, e)
+                story.append(Paragraph(
+                    f'<font size="9" color="#94a3b8">Anexo #{i}'
+                    f'{" — " + att.get("label", "") if att.get("label") else ""}'
+                    f' (imagem inválida — não pôde ser renderizada)</font>',
+                    ParagraphStyle("ax", parent=styles["Normal"], leading=12,
+                                   alignment=1, spaceAfter=4)))
 
 
 def _br_date(iso: Optional[str]) -> str:

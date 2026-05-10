@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Car, Plus, Printer, Trash2, X, CheckCircle2, AlertTriangle, Minus, FileText } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Car, Plus, Printer, Trash2, X, CheckCircle2, AlertTriangle, Minus, FileText, Image as ImageIcon, Upload } from "lucide-react";
 import { api } from "@/api";
 import { Button } from "@/ui";
+import VehicleSilhouette, { VIEW_KEYS, VIEW_LABELS, DAMAGE_TYPES } from "@/VehicleSilhouettes";
 
 const STATUS_BTN = {
   ok:      { label: "OK",      icon: CheckCircle2, bg: "var(--success-soft)",   fg: "var(--success-soft-fg)", active: "#16a34a" },
@@ -30,6 +31,10 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
   const [route, setRoute] = useState("");
   const [items, setItems] = useState([]);
   const [notes, setNotes] = useState("");
+  const [marks, setMarks] = useState([]);          // damage marks
+  const [pendingMark, setPendingMark] = useState(null); // {x, y, view} sendo definida
+  const [attachments, setAttachments] = useState([]);   // [{kind, label, data_url}]
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -97,6 +102,8 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
         km_initial: kmI ? Number(kmI) : null,
         route: route || null,
         items,
+        damage_marks: marks,
+        attachments,
         general_notes: notes || null,
       });
       // Open PDF in new tab
@@ -106,12 +113,61 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
       // reset form
       setItems((prev) => prev.map((it) => ({ ...it, status: "ok", notes: "" })));
       setPlate(""); setBrand(""); setModel(""); setYear(""); setKmI(""); setRoute(""); setNotes("");
+      setMarks([]); setAttachments([]); setPendingMark(null);
     } catch (e) {
       alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally {
       setBusy(false);
     }
   }
+
+  // ---- Damage marks handlers ----
+  const handleAddMark = (point) => {
+    // Mostra um small popover para escolher o tipo + descrição
+    setPendingMark({ ...point, code: "D", notes: "", ord: marks.length + 1 });
+  };
+
+  const confirmMark = () => {
+    if (!pendingMark) return;
+    setMarks((prev) => [...prev, { ...pendingMark, ord: prev.length + 1 }]);
+    setPendingMark(null);
+  };
+
+  const cancelMark = () => setPendingMark(null);
+
+  const removeMark = (idx) => {
+    setMarks((prev) => prev.filter((_, i) => i !== idx)
+                          .map((m, i) => ({ ...m, ord: i + 1 })));
+  };
+
+  // ---- Attachments handlers ----
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      alert("Apenas imagens são aceitas.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      alert("Arquivo muito grande (máximo 8MB).");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const data_url = ev.target.result;
+      setAttachments((prev) => [...prev, {
+        kind: "paper_checklist",
+        label: file.name,
+        data_url,
+      }]);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const removeAttachment = (idx) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   async function removeChecklist(id) {
     if (!confirm("Remover este checklist permanentemente?")) return;
@@ -299,6 +355,196 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
                   ))}
                 </div>
               ))}
+
+              {/* Diagrama de Avarias */}
+              <div style={{ marginTop: 22, marginBottom: 18 }}>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8, marginBottom: 10,
+                  paddingBottom: 6, borderBottom: "1px solid var(--border-default)",
+                }}>
+                  <span className="pill pill--accent" style={{
+                    fontSize: 10, letterSpacing: "0.06em", fontWeight: 700, textTransform: "uppercase",
+                  }}>Diagrama de avarias</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    Clique nas silhuetas para marcar danos · {marks.length} marca(s)
+                  </span>
+                </div>
+
+                <div style={{
+                  display: "grid", gap: 10,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                }}>
+                  {VIEW_KEYS.map((v) => (
+                    <div key={v} style={{ position: "relative" }}>
+                      <div style={{
+                        fontSize: 11, fontWeight: 700, color: "var(--text-secondary)",
+                        textTransform: "uppercase", letterSpacing: "0.06em",
+                        marginBottom: 4, display: "flex", justifyContent: "space-between",
+                      }}>
+                        <span>{VIEW_LABELS[v]}</span>
+                        {marks.filter((m) => m.view === v).length > 0 && (
+                          <span style={{ color: "var(--danger-soft-fg)" }}>
+                            {marks.filter((m) => m.view === v).length} avaria(s)
+                          </span>
+                        )}
+                      </div>
+                      <VehicleSilhouette
+                        view={v}
+                        marks={marks.map((m, i) => ({ ...m, ord: i + 1 }))}
+                        onAddMark={handleAddMark}
+                        height={140}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Pending mark editor */}
+                {pendingMark && (
+                  <div data-testid="vchk-mark-editor" className="surface" style={{
+                    marginTop: 12, padding: 14, border: "2px solid var(--accent)",
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+                      Nova marca em <span style={{ color: "var(--accent-soft-fg)" }}>{VIEW_LABELS[pendingMark.view]}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                      {Object.entries(DAMAGE_TYPES).map(([code, info]) => {
+                        const sel = pendingMark.code === code;
+                        return (
+                          <button
+                            key={code}
+                            onClick={() => setPendingMark({ ...pendingMark, code })}
+                            data-testid={`vchk-mark-code-${code}`}
+                            className="btn btn-sm"
+                            style={{
+                              background: sel ? info.color : "var(--bg-surface-2)",
+                              color: sel ? "#fff" : info.color,
+                              borderColor: info.color, fontWeight: 700,
+                              minWidth: 80,
+                            }}
+                          >
+                            <span style={{ fontWeight: 800, marginRight: 4 }}>{code}</span> {info.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <input className="input" data-testid="vchk-mark-notes"
+                           value={pendingMark.notes}
+                           onChange={(e) => setPendingMark({ ...pendingMark, notes: e.target.value })}
+                           placeholder="Descreva (opcional)"
+                           style={{ marginBottom: 10 }} />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Button onClick={confirmMark} variant="accent" data-testid="vchk-mark-confirm">
+                        Adicionar marca
+                      </Button>
+                      <Button onClick={cancelMark} variant="ghost" data-testid="vchk-mark-cancel">
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lista de marks */}
+                {marks.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ background: "var(--bg-surface-2)" }}>
+                          <th style={th}>#</th>
+                          <th style={th}>Vista</th>
+                          <th style={th}>Tipo</th>
+                          <th style={th}>Descrição</th>
+                          <th style={th}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {marks.map((m, i) => (
+                          <tr key={i} data-testid={`vchk-mark-row-${i}`} style={{ borderBottom: "1px solid var(--border-default)" }}>
+                            <td style={td}>
+                              <span style={{
+                                display: "inline-grid", placeItems: "center",
+                                width: 22, height: 22, borderRadius: "50%",
+                                background: DAMAGE_TYPES[m.code]?.color || "#dc2626",
+                                color: "#fff", fontWeight: 700, fontSize: 11,
+                              }}>{i + 1}</span>
+                            </td>
+                            <td style={td}>{VIEW_LABELS[m.view]}</td>
+                            <td style={td}>
+                              <span className="pill" style={{
+                                background: (DAMAGE_TYPES[m.code]?.color || "#dc2626") + "22",
+                                color: DAMAGE_TYPES[m.code]?.color, fontWeight: 700,
+                              }}>{m.code} · {DAMAGE_TYPES[m.code]?.label}</span>
+                            </td>
+                            <td style={td}>{m.notes || <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
+                            <td style={td}>
+                              <button onClick={() => removeMark(i)}
+                                      data-testid={`vchk-mark-remove-${i}`}
+                                      className="btn btn-ghost btn-sm btn-icon">
+                                <Trash2 size={12} strokeWidth={1.75} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Anexos / Upload de fotos */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8, marginBottom: 10,
+                  paddingBottom: 6, borderBottom: "1px solid var(--border-default)",
+                }}>
+                  <span className="pill pill--accent" style={{
+                    fontSize: 10, letterSpacing: "0.06em", fontWeight: 700, textTransform: "uppercase",
+                  }}>Anexos</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    Foto do checklist em papel ou registros de avarias · {attachments.length} arquivo(s)
+                  </span>
+                </div>
+
+                <input ref={fileInputRef} type="file" accept="image/*"
+                       onChange={handleFile} style={{ display: "none" }}
+                       data-testid="vchk-file-input" />
+                <Button onClick={() => fileInputRef.current?.click()}
+                        variant="secondary" data-testid="vchk-attach-btn">
+                  <Upload size={14} strokeWidth={1.75} /> Anexar foto / scan
+                </Button>
+
+                {attachments.length > 0 && (
+                  <div style={{
+                    marginTop: 12, display: "grid", gap: 10,
+                    gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                  }}>
+                    {attachments.map((att, i) => (
+                      <div key={i} data-testid={`vchk-att-${i}`} style={{
+                        position: "relative", borderRadius: 8,
+                        border: "1px solid var(--border-default)",
+                        background: "var(--bg-surface)", overflow: "hidden",
+                      }}>
+                        <img src={att.data_url} alt={att.label}
+                             style={{ width: "100%", height: 110, objectFit: "cover" }} />
+                        <div style={{ padding: "6px 8px", fontSize: 10,
+                                       color: "var(--text-secondary)",
+                                       borderTop: "1px solid var(--border-default)",
+                                       display: "flex", justifyContent: "space-between",
+                                       alignItems: "center", gap: 4 }}>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap", flex: 1 }}>
+                            {att.label || "anexo"}
+                          </span>
+                          <button onClick={() => removeAttachment(i)}
+                                  data-testid={`vchk-att-remove-${i}`}
+                                  className="btn btn-ghost btn-icon" style={{ height: 22, width: 22 }}>
+                            <Trash2 size={11} strokeWidth={1.75} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Notes */}
               <Field label="Observações gerais">

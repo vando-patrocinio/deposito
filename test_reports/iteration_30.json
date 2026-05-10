@@ -1,0 +1,28 @@
+{
+  "summary": "Iteration 30 — Validated NEW Vehicle Checklist enhancements: damage marks on 5 SVG silhouettes, photo attachments (POST/DELETE), recurrent-defects AI insight, multi-page PDF with silhouettes + attachments, and the new IA Center 'Frota' sub-tab. Backend: 11/11 pytest cases pass (create with marks+attachments, dedicated /attachment POST + DELETE/{idx}, PDF multi-page validation incl. resilience to corrupted base64 attachment, recurrent-defects with min_count filter and 422 on bad mark view/coords). Frontend (Playwright on prod URL): admin login → Cadastro → Veicular button opens modal → 5 silhouettes render with proper proportions (body / glass / wheels / headlights / taillights — NOT empty boxes), clicking the center of each silhouette opens vchk-mark-editor pop-up, code chips D/S/R/F/V are selectable, Adicionar marca registers numbered colored circles (1-5) on each silhouette and populates the Avarias table (D·Amassado / S·Risco / R·Oxidação / F·Quebrado / V·Vidro), file upload via vchk-file-input renders 2 thumbnails with remove buttons, vchk-submit POSTs payload and opens PDF in new tab at /api/vehicle-checklist/{id}/pdf. AI Center → 'Frota' sub-tab loads 'Defeitos recorrentes da frota (N)' with itens em 2+ inspeções (N) heading and graceful empty-state copy when 0. 0 console errors during the entire flow.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter30_damage_attachments.py",
+    "/app/test_reports/pytest/iter30_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "vehicle_silhouettes.py: clean primitives-based ReportLab Drawing — y-axis flip via _flip_y is consistent and matches the SVG viewBox (0..200 × 0..110) used by the React component, so coordinates are 1:1 between UI clicks and PDF rendering. Excellent single-source-of-truth for proportions.",
+    "_build_damage_pages: PageBreak before silhouette grid keeps the inspection page clean. The 2x3 grid with the 5 views + caption with per-view defect count is well organized; legend D/S/R/F/V/P right after grid prevents the user from having to flip pages.",
+    "PDF resilience: attachments are validated with PIL.Image.verify() before being passed to ReportLab — confirmed via test_pdf_resilient_to_corrupted_attachment that one corrupted PNG does NOT crash the endpoint and is replaced by a placeholder paragraph. Production-grade defensive coding.",
+    "recurrent-defects insight: groups by (plate, item_name), counts only status=='defeito', returns sorted alerts. Filters by min_count and days correctly. Schema includes vehicle_info, last_at, chk_ids — gives the gestor enough context to take action.",
+    "Pydantic DamageMark validates code Literal[D,S,R,F,V,P], view Literal[front,rear,left,right,top], x∈[0,200], y∈[0,110] — robust and confirmed by validation tests (422 on bad view/coords).",
+    "Minor (non-blocking): /attachment POST has size guard (~11MB base64 ≈ 8MB raw) but mime-type is implicitly trusted (data_url string is accepted as long as it starts with data:image/...). Consider adding stricter sniff if untrusted users are allowed to upload.",
+    "Minor (non-blocking): silhouette grid leaves the bottom-right cell empty (`('top', '')`) for visual symmetry — could host a small legend/key card instead of empty whitespace.",
+    "Minor (non-blocking): in VehicleChecklistModal.js, `marks.map((m,i) => ({ ...m, ord: i+1 }))` reassigns ord on every render — fine for display, but the actual stored ord on backend is also recomputed by frontend on submit, so no risk of drift."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter30_damage_attachments.py (new)"],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% (silhouettes rendered, marks created, attachment uploaded, PDF opened)"},
+  "test_credentials": "admin@empresa.com / 123456 (super admin) — from /app/memory/test_credentials.md",
+  "seed_data_creation": "Created and cleaned up via pytest: 1 checklist with 5 marks + 3 attachments (TST-I30A), 1 with corrupted attachment (TST-I30B), 3 with recurring defect (TST-RC01). Frontend test created TST-UI30 with 5 marks + 1 attachment (left in DB for manual inspection — id from URL: vchk-d3fc692c29).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter30 validated full flow: damage marks (5 views × 6 codes), attachments (POST single + DELETE by idx), multi-page PDF (silhouettes grid + legend + table + inline attachment images, resilient to corrupted base64), recurrent-defects AI insight (days/min_count params), and IA Center > Frota sub-tab. Test file: /app/backend/tests/test_iter30_damage_attachments.py runs in <2s. SVG silhouettes use viewBox 0..200 × 0..110 in BOTH frontend (VehicleSilhouettes.js) and backend (vehicle_silhouettes.py) — coordinates are interchangeable. The Frota sub-tab data-testid is `tab-fleet` (also accepts `text=Frota`). For seed data left behind by frontend test, run: DELETE /api/vehicle-checklist/vchk-d3fc692c29.",
+  "rca of the issue": "No bugs found. Implementation is robust: (a) backend validates Pydantic schemas strictly; (b) PDF builder defensively wraps every attachment decode in try/except + PIL.verify, falling back to placeholder paragraph; (c) frontend onAddMark workflow forces user to confirm a code before persisting (no accidental marks); (d) recurrent-defects groups correctly and tolerates missing fields. The only minor cosmetic note is the empty 6th cell in the 2x3 silhouette grid — purely aesthetic."
+}
