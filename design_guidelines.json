@@ -1,88 +1,164 @@
 {
-  "theme": "Light",
-  "archetype": "Archetype 4 (Swiss & High-Contrast) - Modified for Sober/Clean SaaS with Purple Accent",
-  "design_tokens": {
-    "colors": {
-      "primary": "#7c3aed",
-      "primary_hover": "#6d28d9",
-      "primary_tonal": "#f5f3ff",
-      "secondary_red": "#ef4444",
-      "tertiary_yellow": "#eab308",
-      "background_app": "#f8fafc",
-      "background_surface": "#ffffff",
-      "text_main": "#0f172a",
-      "text_muted": "#64748b",
-      "border": "#e2e8f0"
+  "theme_and_archetype": {
+    "theme": "Light",
+    "archetype": "Archetype 4 (Swiss & High-Contrast)",
+    "description": "Enterprise-grade, highly functional, and authoritative. Clean, sober, and minimal aesthetic tailored to telecommunications and field operations."
+  },
+  "typography": {
+    "rules": "No Inter. Use typography scales that prioritize data scannability.",
+    "headings": {
+      "family": "Satoshi, sans-serif",
+      "weights": ["500", "700"],
+      "tracking": "tracking-tight"
     },
-    "typography": {
-      "font_family_heading": "Manrope, sans-serif",
-      "font_family_body": "IBM Plex Sans, sans-serif",
-      "breadcrumb": "text-[10px] uppercase tracking-widest text-slate-500 font-semibold",
-      "page_title": "text-2xl font-bold text-slate-900 tracking-tight",
-      "section_label": "text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-4",
-      "table_header": "text-[10px] uppercase tracking-wider text-slate-500 font-semibold pb-3"
+    "body": {
+      "family": "Manrope, sans-serif",
+      "weights": ["400", "500", "600"],
+      "tracking": "tracking-normal"
     },
-    "spacing_and_radius": {
-      "pill": "rounded-full",
-      "card": "rounded-xl",
-      "table_row": "py-4",
-      "sidebar_width": "w-64",
-      "page_padding": "p-8"
+    "monospace": {
+      "family": "JetBrains Mono, monospace",
+      "usage": "Used for IP addresses, MAC addresses, ticket IDs, and log timestamps."
     },
-    "shadows": {
-      "subtle": "shadow-sm border border-slate-100"
+    "scale": {
+      "h1": "text-2xl sm:text-3xl font-bold",
+      "h2": "text-xl sm:text-2xl font-semibold",
+      "h3": "text-lg font-medium",
+      "body": "text-sm",
+      "caption": "text-xs text-muted-foreground uppercase tracking-[0.05em]"
     }
   },
-  "navigation_structure": [
-    {
-      "category": "NAVEGAÇÃO",
-      "items": [
-        {"label": "Dashboard", "icon": "ChartPie"},
-        {"label": "Lousa", "icon": "Kanban"},
-        {"label": "Estoque", "icon": "Package"},
-        {"label": "IA Center", "icon": "Brain"}
+  "colors": {
+    "background": "#f8fafc",
+    "surface": {
+      "primary": "#ffffff",
+      "secondary": "#f1f5f9",
+      "tertiary": "#e2e8f0"
+    },
+    "border": {
+      "default": "#e2e8f0",
+      "focus": "#cbd5e1"
+    },
+    "text": {
+      "primary": "#0f172a",
+      "secondary": "#475569",
+      "muted": "#94a3b8"
+    },
+    "brand": {
+      "primary": "#0f172a",
+      "accent": "#0d9488"
+    },
+    "status": {
+      "success": { "bg": "#dcfce7", "text": "#15803d" },
+      "warning": { "bg": "#fef3c7", "text": "#b45309" },
+      "danger": { "bg": "#fee2e2", "text": "#b91c1c" },
+      "info": { "bg": "#e0f2fe", "text": "#0369a1" }
+    }
+  },
+  "layout_architecture": {
+    "global": "Left Sidebar App Shell pattern (replaces top-tabs). Fixed sidebar (width: 260px) on desktop, hamburger off-canvas on mobile.",
+    "topbar": "Sticky top bar (h-14) with global search, breadcrumbs, server clock, notifications bell, and user profile.",
+    "page_content": "Max-width wrapper within the remaining viewport. Uses 'F-pattern' layout. Generous padding (p-6 or p-8).",
+    "map_panels": "Split view: 70% width for React-Leaflet map, 30% width for data/filter side panel."
+  },
+  "components_system": {
+    "card": {
+      "style": "bg-white border border-slate-200 rounded-xl shadow-sm",
+      "header": "Border-bottom on header to separate from content. p-5.",
+      "content": "p-5 for text, p-0 for tables to ensure edge-to-edge flush design."
+    },
+    "button": {
+      "primary": "bg-slate-900 text-white hover:bg-slate-800 rounded-md font-medium px-4 py-2 transition-colors",
+      "secondary": "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50",
+      "accent": "bg-teal-600 text-white hover:bg-teal-700"
+    },
+    "kanban_lousa": {
+      "layout": "Horizontal scroll container. Columns represent technicians (or time slots, depending on backend mapping).",
+      "column_header": "Sticky top, shows technician avatar, name, and total tickets.",
+      "ticket_card": "Minimalist bubble card. Left border color indicates priority. Contains: Ticket ID (mono), Customer Name (truncate), Location chip, SLA Timer (red/amber/green pill).",
+      "interactions": "Drag-and-drop affordance visible on hover (grip icon). Quick actions dropdown (\u22EE) on right."
+    },
+    "banners": {
+      "impersonation": "Solid warning surface (bg-amber-100 border-amber-300 text-amber-900) instead of violet gradients. Fixed top, minimal padding.",
+      "super_admin": "Outlined chip (border-slate-800 text-slate-800) instead of gradient fills."
+    }
+  },
+  "icons_and_assets": {
+    "library": "lucide-react",
+    "rules": "No emojis. Replace all current emojis with sleek, uniform 1.5px stroke weight Lucide icons.",
+    "media": {
+      "landing_hero": "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&q=80&w=2000",
+      "login_bg": "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&q=80&w=2000"
+    }
+  },
+  "motion_and_interactions": {
+    "transitions": "Fast, functional animations. 150ms ease-in-out for hovers.",
+    "modals": "Fade-in + subtle slide-up (translate-y-2) using Framer Motion.",
+    "kanban": "Layout animations for drag-and-drop state changes."
+  },
+  "testing": {
+    "requirements": "All interactive elements MUST have role-based data-testid attributes (e.g., data-testid='lousa-ticket-drag-handle', data-testid='sidebar-nav-link-estoque')."
+  },
+  "implementation_plan": {
+    "phase_1": {
+      "name": "Design Tokens & App Shell refactor",
+      "files": [
+        "tailwind.config.js",
+        "index.css",
+        "App.css",
+        "App.js"
+      ],
+      "actions": [
+        "Update tailwind.config.js with new color palette (Slate/Teal), typography (Satoshi/Manrope), and remove any legacy purple/violet gradients.",
+        "Refactor App.js: Remove top tabs and replace with a Left Sidebar navigation.",
+        "Implement persistent Top Bar with breadcrumbs and server clock.",
+        "Remove all inline styles in App.js."
       ]
     },
-    {
-      "category": "GESTÃO",
-      "items": [
-        {"label": "Colaboradores", "icon": "Users"},
-        {"label": "Praças", "icon": "MapPin"},
-        {"label": "Usuários", "icon": "UserCircle"},
-        {"label": "Auditoria", "icon": "ClipboardList"},
-        {"label": "Espelho de Ponto", "icon": "Clock"}
+    "phase_2": {
+      "name": "Lousa (Kanban) Redesign",
+      "files": [
+        "LousaAdminPanel.js",
+        "lousa/CreateTicketModal.js",
+        "lousa/EditTicketModal.js",
+        "lousa/RescheduleModal.js"
+      ],
+      "actions": [
+        "Refactor LousaAdminPanel to use a strict columnar layout (technicians as columns).",
+        "Redesign ticket bubble cards removing gradients, using priority left-borders and SLA status pills.",
+        "Implement Shadcn/UI primitives (Dialog, Select, Input, DropdownMenu) across all Lousa Modals.",
+        "Ensure drag-and-drop logic is preserved and visually clear."
       ]
     },
-    {
-      "category": "CONFIGURAÇÕES",
-      "items": [
-        {"label": "Configurações", "icon": "Settings"},
-        {"label": "Logs", "icon": "Terminal"}
+    "phase_3": {
+      "name": "Core Panels & Map Views",
+      "files": [
+        "AICenterPanel.js",
+        "EstoquePanel.js",
+        "CadastroPanel.js",
+        "PracasPanel.js"
+      ],
+      "actions": [
+        "Refactor AI Center and Pra\u00e7as map panels to a 70/30 split layout (Map/Sidebar).",
+        "Update Estoque and Cadastro to use Shadcn Table with sticky headers and robust filtering.",
+        "Redesign metrics/stat cards using the new Card component standard."
+      ]
+    },
+    "phase_4": {
+      "name": "Settings, Mobile & Landing",
+      "files": [
+        "SettingsPanel.js",
+        "CollaboratorApp.js",
+        "LandingPage.js",
+        "LoginPage.js"
+      ],
+      "actions": [
+        "Refactor Settings to use a left-vertical tab layout (Section-based).",
+        "Redesign CollaboratorApp for mobile: large functional CTAs, high-contrast offline indicators.",
+        "Revamp LandingPage and LoginPage to match the 'Enterprise SaaS 2026' aesthetic using the new typography and color tokens.",
+        "Remove any final lingering emojis and custom UI components from ui.js."
       ]
     }
-  ],
-  "components_blueprint": {
-    "AppShell": "Flex layout with fixed left sidebar (w-64) and flex-1 main content area. Main area contains fixed TopBar and scrollable PageContainer.",
-    "Sidebar": "Fixed left, white bg, right border (border-slate-200). Top: Logo LIGO + 'Pro' badge (rounded-full bg-violet-100 text-violet-700). Tenant Card: Flex row, company logo (avatar) + Name + CNPJ, bg-slate-50 rounded-xl p-3 mx-4. Nav Groups: MT-6, 'NAVEGAÇÃO' label. Nav Items: Flex row, rounded-full pill shape. Default: text-slate-600, hover:bg-slate-50. Active: text-violet-700, bg-violet-50. Icon always violet-600.",
-    "TopBar": "Sticky top, white bg, border-b border-slate-200, px-8 py-4 flex justify-between items-center. Left: Breadcrumb (e.g., DASHBOARD / VISÃO GERAL) + Title (e.g., Visão Geral). Right: Actions toolbar with pill buttons (rounded-full). Primary: bg-violet-600 text-white. Secondary: bg-red-500 text-white. Tertiary: bg-yellow-500 text-white.",
-    "KPIBadge": "Inline flex, items-center, gap-2, bg-white rounded-full px-3 py-1 border border-slate-200. Left: Colored 8px circle (bullet). Middle: Label (text-xs text-slate-500). Right: Value (text-sm font-bold text-slate-900).",
-    "SubTabs": "Pill-style tabs. Container: inline-flex gap-1 bg-slate-100 p-1 rounded-full. Tab item: rounded-full px-4 py-1.5 text-sm font-medium text-slate-600. Active tab: bg-white text-violet-700 shadow-sm.",
-    "DataTable": "Clean HTML table structure or shadcn Table. Thead: uppercase tiny labels, text-left. Tbody: generous py-4 padding. Highlighted client/name: text-violet-700 font-medium. Actions: right-aligned flex gap-2, using icon-only buttons (ghost, text-slate-400 hover:text-violet-600), no solid background.",
-    "StatusPill": "Tiny indicator for status (Ativo, Bloqueado). rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase. Ativo: bg-green-100 text-green-700. Bloqueado: bg-red-100 text-red-700.",
-    "FullScreenModal": "(For IA Center). Fixed inset-0 bg-slate-900/20 backdrop-blur-sm. Content: bg-white m-4 rounded-2xl flex flex-col overflow-hidden shadow-2xl. Internal sidebar or top tabs for 9 sub-sections."
   },
-  "refactoring_strategy": {
-    "step_1": "Implement global layout shell in App.js using the new AppShell structure (Sidebar + flex-1 content + TopBar).",
-    "step_2": "Consolidate UI tokens in src/ui.js. Export pre-styled components (e.g., Card, PillButton, KPIBadge) mapping to the design_tokens.",
-    "step_3": "Override shadcn-ui defaults directly in components/ui to apply the 'pill' aesthetic globally without touching every panel file.",
-    "step_4": "Incrementally convert legacy panels (e.g., LousaAdminPanel.js, CadastroPanel.js). Replace inline styles with the new ui.js components or Tailwind cascade classes.",
-    "step_5": "Enforce data-testid attributes on all interactive elements (buttons, nav items, tabs) for testability."
-  },
-  "shadcn_utilization": {
-    "Button": "Modify default radius: replace 'rounded-md' with 'rounded-full'. Setup color variants (violet, red, yellow).",
-    "Badge": "Use for StatusPill. Set default to rounded-full, text-[10px], uppercase.",
-    "Table": "Utilize for lists. Customize TableHead with the 'table_header' typography token. Remove generic borders, keep rows clean.",
-    "Tabs": "Modify TabsList to use bg-slate-100, rounded-full, p-1. Modify TabsTrigger for rounded-full, active state bg-white, text-violet-700, shadow-sm."
-  },
-  "mockup_ascii": "+----------------------+-----------------------------------------------------+\n| LIGO [Pro]           | DASHBOARD / VISUALIZAÇÃO                            |\n|                      | Dashboard Financeiro    (Action1) (Action2)         |\n| [ Tenant Logo/Name ] +-----------------------------------------------------+\n|                      | [ Total: 15 ] [ Ativos: 10 ] [ Bloqueados: 5 ]      |\n| NAVEGAÇÃO            |                                                     |\n| * Dashboard          | ( Tab 1 ) ( Tab 2 )                                 |\n| * Lousa              |                                                     |\n| * Estoque            | NOME DO CLIENTE     STATUS      PLANO       AÇÕES   |\n| * IA Center          | --------------------------------------------------- |\n|                      | Joao da Silva       [ATIVO]     Fibra 500M  [Edit]  |\n| GESTÃO               |                                                     |\n| * Colaboradores      | Maria Oliveira      [BLOQ]      Fibra 300M  [Edit]  |\n| ...                  +-----------------------------------------------------+"
+  "instructions_to_main_agent": "Implement changes using strictly raw HTML/Tailwind for layouts and customized Shadcn/UI for interactive components. Follow the 4-phase plan meticulously. DO NOT use the .tsx extension for any new or modified files; the project uses .js. ALWAYS preserve data-testid attributes for testing."
 }
