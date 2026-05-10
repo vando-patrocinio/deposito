@@ -1,0 +1,29 @@
+{
+  "summary": "Iter50 — validated sidebar split (Central IA / Atendimento), AiEvaluationsCard render, Lousa date filter (yesterday tickets do NOT appear on today's collaborator board), and all 7 Central IA endpoints incl. new /dashboard/ai-evaluations. 9/9 backend tests passed. Frontend manual flow verified via Playwright.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter50_sidebar_split_ai_evals.py",
+    "/app/test_reports/pytest/iter50_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "lousa.py: dead duplicated code in reorder_tickets at lines 1016-1020 (unreachable after return). Cleanup recommended.",
+    "central_ia.py is 1200+ lines — consider splitting worker, kpis, alerts, coaching into separate modules per <code_review_guidelines> (>700 LOC).",
+    "SLA alert thresholds in spec say Idle>30% / FRT>10m but central_ia.py uses Idle>60% and FRT>1800s (30min). Mismatch with PRD — main agent should align.",
+    "/api/lousa/grid does not yet accept ?date=YYYY-MM-DD param (spec mentioned). Currently only supports date_from/date_to. Verify whether feature is needed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter50_sidebar_split_ai_evals.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Created and cleaned up 2 TEST_ tickets (yesterday + today) to validate Lousa date filter.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Sidebar split + AiEvaluationsCard + Lousa date filter green. SLA threshold mismatch (60% vs 30%, 30m vs 10m) flagged to main agent — not blocking. Sidebar items confirmed: Painel, Lousa, Estoque, Avaliação IA, Central IA, Atendimento, Cadastro... Central IA route shows KPIs + Ranking + 'Avaliações originadas pela IA (Jerusa)' card. Atendimento route opens AIHubPanel with WhatsApp(QR) tab active and Conectado state."
+}
