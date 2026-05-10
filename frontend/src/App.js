@@ -342,11 +342,7 @@ function AppContent() {
   // Garante que a aba inicial corresponde ao papel do usuário (para gestor não cair em aba inexistente)
   useEffect(() => {
     if (!user) return;
-    // Lousa agora é exclusiva de administrador. Gestor/auditor não veem mais essa aba.
     if (user.role === "gestor" && !["dashboard", "ai-ranking", "cadastro", "pracas", "sheet", "logs"].includes(view)) {
-      setView("dashboard");
-    }
-    if (user.role === "auditor" && view === "lousa") {
       setView("dashboard");
     }
   }, [user, view]);
