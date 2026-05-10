@@ -712,10 +712,11 @@ async def manufacturer_quality(days: int = 90,
         if c.get("manufacturer"):
             prefix_map[c["prefix"]] = c["manufacturer"]
 
-    # Build client_name → manufacturer (lowercase normalized)
+    # Build name_norm → manufacturer (uses same _norm() do SmartOLT sync,
+    # casa pppoe_user e name removendo acentos/espaços/underscores/hífen).
     client_to_manuf: dict = {}
     async for o in db.smartolt_onus.find(
-            {"company_id": cid}, {"_id": 0, "name": 1, "sn": 1}):
+            {"company_id": cid}, {"_id": 0, "name": 1, "sn": 1, "name_norm": 1}):
         sn = (o.get("sn") or "").strip().upper()
         if not sn:
             continue
@@ -724,23 +725,27 @@ async def manufacturer_quality(days: int = 90,
             if cand in prefix_map:
                 manuf = prefix_map[cand]
                 break
-        name_key = (o.get("name") or "").strip().lower()
-        if name_key:
-            client_to_manuf[name_key] = manuf or "Desconhecido"
+        # name_norm já está pré-calculado no sync; fallback para _norm(name)
+        key = o.get("name_norm") or _norm(o.get("name") or "")
+        if key:
+            client_to_manuf[key] = manuf or "Desconhecido"
 
     # Count ONUs per manufacturer
     onus_count: Counter = Counter(client_to_manuf.values())
 
-    # Iterate defect tickets and bucket by client name → manufacturer
+    # Iterate defect tickets — tenta casar por pppoe_user OU por nome (ambos normalizados)
     defect_count: Counter = Counter()
     matched_calls = unmatched_calls = 0
     async for t in db.tickets.find(
             {"company_id": cid, "type": "reparo",
              "created_at": {"$gte": cutoff}},
-            {"_id": 0, "client_snapshot": 1}):
+            {"_id": 0, "client_snapshot": 1, "atlaz_pppoe_user": 1}):
         snap = t.get("client_snapshot") or {}
-        name_key = (snap.get("name") or "").strip().lower()
-        m = client_to_manuf.get(name_key)
+        candidates = [
+            _norm(snap.get("pppoe_user") or t.get("atlaz_pppoe_user") or ""),
+            _norm(snap.get("name") or ""),
+        ]
+        m = next((client_to_manuf[k] for k in candidates if k and k in client_to_manuf), None)
         if m:
             defect_count[m] += 1
             matched_calls += 1

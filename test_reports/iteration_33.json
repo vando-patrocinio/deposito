@@ -1,0 +1,38 @@
+{
+  "summary": "Iter33 — testou IA batch fabricantes, manufacturer-quality cruzamento, e Dark Mode toggle. Backend: 5/5 pytest passaram. Frontend: smoke completo OK — tabela Qualidade de fabricantes renderiza 12 linhas com cruzamento correto (9/9 matched_calls), e dark mode toggle aplica .dark no <html> + persiste em localStorage('ponto_theme'). Tudo dentro do escopo solicitado funcional.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter33_ai_manuf_quality_dark.py",
+    "/app/test_reports/pytest/iter33_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ManufacturerQualitySection (AICenterPanel.js ~672) usa Math.max(days, 90) — força mínimo 90 dias mesmo se usuário escolher 7d/30d nos quick-filters. Pode confundir UX (subtitle diz 'últimos 90 dias' fixo). OK como decisão de produto, mas vale considerar respeitar o filtro do usuário OU esconder os botões 7d/30d nesta aba.",
+    "ai_dashboard.py:739 itera todos os tickets de reparo em memória e chama _norm() — para empresas com 10k+ tickets/90d isto pode ficar lento. Considerar índice composto em (company_id, type, created_at) e cap de tickets.",
+    "stok.py /clientes/identify-all não tem timeout/lock contra chamadas concorrentes — 2 cliques rápidos disparam 2 batches Gemini em paralelo. Considerar lock per-company ou debounce.",
+    "App.js useTheme() lê 'ponto_theme' mas o app é rebrandado para PontoIA + ISP — chave OK mas comentário/naming legacy."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter33_ai_manuf_quality_dark.py (novo)"
+  ],
+  "success_rate": {"backend": "100% (5/5 pytest)", "frontend": "100% smoke flow"},
+  "test_credentials": "admin@empresa.com / 123456 (lido de /app/memory/test_credentials.md)",
+  "seed_data_creation": "Nenhum dado criado — usado banco real (1.729 ONUs SmartOLT, 9 chamados reparo nos últimos 90d).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend manufacturer-quality retorna matched_calls=9 (era 0 antes). 12 fabricantes em campo: V-SOL(56), TP-Link(61), Fiberhome(287), Huawei(306), ZTE(315), Nokia/Alcatel-Lucent(289), Dasan(140), MasterCom(95), C-Data(93), Intelbras(52), D-Link(33), Smartec(2). Top defeito: V-SOL 1.79%. Dark mode chave localStorage='ponto_theme' com valores 'dark'|'light'. theme-toggle-btn fica no topbar — quando modal Central IA está aberto, overlay bloqueia clique no topbar (comportamento esperado de modal). identify-all sem prefixos pendentes retornou prefixes_tested=0 (esperado pois cache já populado).",
+  "validation_evidence": {
+    "backend_pytest": "5 passed in 1.03s — TestManufacturerQuality (3) + TestIdentifyAllBatch (2)",
+    "manufacturer_quality_curl": "{period_days:90, total_onus:1729, total_defect_calls:9, matched_calls:9, unmatched_calls:11, rows:12}",
+    "identify_all_curl": "method='similarity-batch', prefixes_tested=0 (todos cached)",
+    "frontend_login": "OK — sidebar 'Painel' visível",
+    "theme_toggle": "Initial class='' ls='light' -> click -> class='dark' ls='dark'. Body bg em dark = rgb(11, 18, 32).",
+    "ai_center_modal": "Abre como modal sobre o dashboard, contém tab 'Qualidade de fabricantes'",
+    "manuf_quality_render": "Card 'Qualidade dos fabricantes (últimos 90 dias)' subtitle='1.729 ONUs em uso · 9 chamados de reparo · 9 cruzados com fabricante'. 12 linhas sortidas por taxa desc: V-SOL 1.79% > TP-Link 1.64% > Fiberhome 0.70% > Huawei 0.65% > ZTE 0.63% > Nokia 0.35% > demais 0.00%."
+  }
+}

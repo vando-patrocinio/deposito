@@ -103,6 +103,24 @@
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
 
+  /* Status — soft backgrounds tuned for dark canvas */
+  --success-soft: rgba(22, 163, 74, 0.18);
+  --success-soft-fg: #4ade80;
+  --warning-soft: rgba(217, 119, 6, 0.20);
+  --warning-soft-fg: #fbbf24;
+  --danger-soft: rgba(220, 38, 38, 0.20);
+  --danger-soft-fg: #f87171;
+  --info-soft: rgba(3, 105, 161, 0.22);
+  --info-soft-fg: #7dd3fc;
+  --accent-soft: rgba(13, 148, 136, 0.22);
+  --accent-soft-fg: #5eead4;
+
+  /* Shadows in dark canvas need more contrast */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.55);
+
   --background: 222 33% 8%;
   --foreground: 210 20% 92%;
   --card: 222 33% 12%;
@@ -123,6 +141,10 @@
   --input: 222 25% 18%;
   --ring: 175 70% 40%;
 }
+
+/* Dark-mode adaptors for surfaces that hardcode #fff/#f8fafc backgrounds */
+.dark body { background: var(--bg-app); color: var(--text-primary); }
+.dark .app-topbar { background: var(--bg-surface); border-color: var(--border-default); }
 
 /* ============================================================ */
 html, body, #root {
