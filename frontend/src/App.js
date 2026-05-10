@@ -124,6 +124,7 @@ function AppShell({ view, setView, children }) {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [allCompanies, setAllCompanies] = useState([]);
   const [showAIPanel, setShowAIPanel] = useState(false);
+  const [tabPerms, setTabPerms] = useState(null);
   const [activeCo, setActiveCo] = useState(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem("ponto_active_company") || "";
@@ -144,6 +145,18 @@ function AppShell({ view, setView, children }) {
     );
     return () => { alive = false; };
   }, [activeCo]);
+
+  // Carrega permissões customizadas de abas (gestor/auditor podem ler — a rota exige só "gestor"+).
+  useEffect(() => {
+    let alive = true;
+    if (!user || user.role === "colaborador") return undefined;
+    import("@/api").then(({ api }) =>
+      api.brandingGet().then((cfg) => {
+        if (alive && cfg?.tab_permissions) setTabPerms(cfg.tab_permissions);
+      }).catch(() => {})
+    );
+    return () => { alive = false; };
+  }, [user]);
   function changeActiveCo(cid) {
     if (typeof window !== "undefined") {
       if (cid) window.localStorage.setItem("ponto_active_company", cid);
@@ -154,8 +167,14 @@ function AppShell({ view, setView, children }) {
     if (typeof window !== "undefined") window.location.reload();
   }
   const tabs = ALL_TABS.filter((t) => {
-    if (!hasRole(user, ...t.roles)) return false;
     if (t.superAdminOnly && !isSuperAdmin) return false;
+    // Override por empresa: se admin configurou tab_permissions, respeita.
+    if (tabPerms && user && tabPerms[user.role]) {
+      // administrador sempre tem acesso a tudo, mesmo se a config dele estiver vazia
+      if (user.role === "administrador") return true;
+      return tabPerms[user.role].includes(t.id);
+    }
+    if (!hasRole(user, ...t.roles)) return false;
     return true;
   });
   return (
@@ -339,13 +358,7 @@ function AppContent() {
     return () => { alive = false; };
   }, [user]);
 
-  // Garante que a aba inicial corresponde ao papel do usuário (para gestor não cair em aba inexistente)
-  useEffect(() => {
-    if (!user) return;
-    if (user.role === "gestor" && !["dashboard", "ai-ranking", "cadastro", "pracas", "sheet", "logs"].includes(view)) {
-      setView("dashboard");
-    }
-  }, [user, view]);
+  // Nada a fazer aqui: filtro de abas é feito dinamicamente em AppShell via tab_permissions.
 
   if (loading) {
     return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "#64748b" }}>Carregando…</div>;

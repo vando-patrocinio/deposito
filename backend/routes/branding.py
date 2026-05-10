@@ -34,6 +34,9 @@ class CompanyBranding(BaseModel):
         "uniforme": 80.0, "epi": 150.0, "ferramenta": 200.0,
         "veiculo": 10000.0, "eletronico": 500.0, "outro": 100.0,
     })
+    # Por-role list of tab IDs visible. None = usa default codificado em App.js.
+    # Roles desktop: gestor, auditor, administrador. Colaborador usa o app mobile.
+    tab_permissions: Optional[dict] = None
     romaneio_footer: Optional[str] = Field(
         default=("Declaro ter recebido os itens listados acima em perfeito estado e me "
                  "responsabilizo por sua guarda, conservação e devolução em caso de "
@@ -54,6 +57,7 @@ class CompanyBrandingUpdate(BaseModel):
     website: Optional[str] = None
     logo_data_url: Optional[str] = None
     default_asset_values_brl: Optional[dict] = None
+    tab_permissions: Optional[dict] = None
     romaneio_footer: Optional[str] = None
 
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Card, Button } from "@/ui";
 import { api } from "@/api";
+import TabPermissionsCard from "@/TabPermissionsCard";
 
 export default function BrandingCard() {
   const [data, setData] = useState(null);
@@ -112,6 +113,7 @@ export default function BrandingCard() {
       </label>
 
       <DefaultAssetValues data={data} setData={setData} />
+      <TabPermissionsCard data={data} setData={setData} />
 
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
         <Button onClick={save} disabled={busy} data-testid="branding-save-btn">
