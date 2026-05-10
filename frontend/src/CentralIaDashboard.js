@@ -77,7 +77,8 @@ export default function CentralIaDashboard() {
 
   return (
     <div data-testid="central-ia-dashboard" style={{ display: "grid", gap: 16 }}>
-      <style>{`@keyframes ci-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes ci-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+                @keyframes ci-pulse { 0%,100% { opacity:1; transform:scale(1);} 50%{opacity:.55;transform:scale(.85);} }`}</style>
 
       {/* Header + period toggle */}
       <div className="surface" style={{
@@ -384,11 +385,11 @@ function AttendantsCard({ items }) {
                 <td style={td("center")}>{a.fcr_rate != null ? `${a.fcr_rate}%` : "—"}</td>
                 <td style={td("center")}>{fmtSecs(a.frt_avg_seconds)}</td>
                 <td style={td("center")}>
-                  {a.negative_count > 0 && (
+                  {a.negative_count > 0 ? (
                     <span style={{ color: "#dc2626", fontWeight: 700 }}>
                       {a.negative_count}
                     </span>
-                  ) || "—"}
+                  ) : "—"}
                 </td>
               </tr>
             ))}
@@ -454,7 +455,7 @@ function AlertsCard({ items, onReload }) {
             <div style={{
               width: 8, height: 8, borderRadius: "50%",
               background: a.severity === "critical" ? "#dc2626" : "#f59e0b",
-              animation: a.severity === "critical" ? "ci-spin 2s ease-in-out infinite" : "none",
+              animation: a.severity === "critical" ? "ci-pulse 1.4s ease-in-out infinite" : "none",
               flexShrink: 0,
             }} />
             <div style={{ flex: 1 }}>

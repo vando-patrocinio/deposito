@@ -508,10 +508,10 @@ async def list_alerts(user: dict = Depends(require_role("gestor"))):
                 "created_at": now_iso(),
             })
 
-    # Ordena por severidade depois por created_at desc
+    # Ordena por severidade primeiro, depois created_at desc (string ISO compara OK)
     sev_order = {"critical": 0, "warning": 1, "info": 2}
-    items.sort(key=lambda x: (sev_order.get(x.get("severity"), 9),
-                                 -(x.get("created_at") or "")[:1].count("9")))
+    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    items.sort(key=lambda x: sev_order.get(x.get("severity"), 9))
     return {"items": items[:50], "count": len(items)}
 
 
