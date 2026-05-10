@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, Button, Metric } from "@/ui";
 import { api } from "@/api";
-import { Circle, MapContainer, Popup, TileLayer } from "react-leaflet";
+import { Circle, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import AIPreventivePanel from "@/AIPreventivePanel";
@@ -20,10 +20,17 @@ const SUB_TABS = [
   { id: "tech_spending", label: "💰 Gastos/Técnico" },
   { id: "repair_map", label: "🗺️ Mapa de defeitos" },
   { id: "defective", label: "🔧 Equipamentos" },
-  { id: "common_issues", label: "📞 Reclamações" },
+  { id: "common_issues", label: "📞 Chamados" },
   { id: "recurring", label: "🔁 Reincidência" },
   { id: "assets", label: "🎒 Pertences" },
   { id: "insights", label: "💡 Insights LLM" },
+];
+
+const PERIOD_OPTIONS = [
+  { value: 1, label: "Último dia" },
+  { value: 15, label: "Últimos 15 dias" },
+  { value: 30, label: "Último mês" },
+  { value: 365, label: "Último ano" },
 ];
 
 const TYPE_COLORS = {
@@ -133,6 +140,24 @@ function TechSpendingSection({ days }) {
   );
 }
 
+function FitBoundsOnUpdate({ points, bbox }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!points || points.length === 0) return;
+    if (bbox && bbox[0] && bbox[1]) {
+      map.fitBounds([bbox[0], bbox[1]], { padding: [40, 40], maxZoom: 14 });
+      return;
+    }
+    const lats = points.map((p) => p.latitude);
+    const lngs = points.map((p) => p.longitude);
+    map.fitBounds(
+      [[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]],
+      { padding: [40, 40], maxZoom: 14 },
+    );
+  }, [points, bbox, map]);
+  return null;
+}
+
 function RepairMapSection({ days }) {
   const d = useFetch(() => api.aiDashRepairMap(days), [days]);
   const [filter, setFilter] = useState("all");
@@ -141,11 +166,13 @@ function RepairMapSection({ days }) {
     return filter === "all" ? d.points : d.points.filter((p) => p.type === filter);
   }, [d, filter]);
   const center = useMemo(() => {
-    if (points.length === 0) return [-22.9, -43.2];
+    if (!d) return [-14.235, -51.925]; // centro do Brasil — fallback
+    if (d.center) return d.center;
+    if (points.length === 0) return [-14.235, -51.925];
     const lat = points.reduce((s, p) => s + p.latitude, 0) / points.length;
     const lng = points.reduce((s, p) => s + p.longitude, 0) / points.length;
     return [lat, lng];
-  }, [points]);
+  }, [d, points]);
   if (!d) return <Card>Carregando mapa…</Card>;
   return (
     <>
@@ -157,24 +184,43 @@ function RepairMapSection({ days }) {
           <option value="all">Todos os tipos ({d.count})</option>
           {Object.entries(d.by_type).map(([k, v]) => <option key={k} value={k}>{k} ({v})</option>)}
         </select>
+        <span style={{ fontSize: 11, color: "#64748b" }}>
+          Cada bolha = 1 chamado · cores por tipo · clique pra detalhes
+        </span>
       </div>
       <Card data-testid="repair-map-card">
         <div style={{ height: 540, borderRadius: 12, overflow: "hidden" }}>
-          <MapContainer center={center} zoom={11} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
-            <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <MapContainer center={center} zoom={6} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
+            <TileLayer
+              attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>"
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              subdomains={["a", "b", "c"]} />
+            <FitBoundsOnUpdate points={points} bbox={d.bbox} />
             {points.map((p) => {
               const color = TYPE_COLORS[p.type] || "#64748b";
               return (
                 <Circle key={p.id} center={[p.latitude, p.longitude]} radius={120}
-                        pathOptions={{ color, fillColor: color, fillOpacity: 0.5, weight: 2 }}>
+                        pathOptions={{ color, fillColor: color, fillOpacity: 0.6, weight: 2 }}>
                   <Popup>
-                    <div style={{ fontSize: 12, minWidth: 200 }}>
+                    <div style={{ fontSize: 12, minWidth: 220 }}>
                       <strong>{p.client_name}</strong><br />
-                      <span style={{ color: "#64748b" }}>{p.address}</span><br />
+                      <span style={{ color: "#64748b" }}>{p.address || "—"}</span><br />
+                      {p.neighborhood && <><span style={{ color: "#94a3b8", fontSize: 11 }}>📍 {p.neighborhood}</span><br /></>}
                       <span style={css.pill("#f1f5f9", "#475569")}>{p.type}</span>
                       {p.priority && <span style={{ ...css.pill("#fef3c7", "#92400e"), marginLeft: 4 }}>{p.priority}</span>}
-                      {p.rx_dbm != null && <div style={{ marginTop: 4 }}>📶 {p.rx_dbm.toFixed(1)} dBm</div>}
-                      <div style={{ marginTop: 4, fontSize: 11 }}>{p.relato || ""}</div>
+                      {p.status && <span style={{ ...css.pill("#dbeafe", "#1e40af"), marginLeft: 4 }}>{p.status}</span>}
+                      {p.rx_dbm != null && (
+                        <div style={{ marginTop: 4, fontWeight: 700 }}>
+                          📶 {p.rx_dbm.toFixed(1)} dBm
+                          {p.signal_quality && <span style={{ color: "#64748b", marginLeft: 4 }}>({p.signal_quality})</span>}
+                        </div>
+                      )}
+                      {p.relato && <div style={{ marginTop: 6, fontSize: 11, color: "#475569" }}>"{p.relato}"</div>}
+                      {p.scheduled_time && (
+                        <div style={{ marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
+                          🕐 {new Date(p.scheduled_time).toLocaleString("pt-BR")}
+                        </div>
+                      )}
                     </div>
                   </Popup>
                 </Circle>
@@ -192,38 +238,50 @@ function DefectiveSection({ days }) {
   if (!d) return <Card>Carregando…</Card>;
   return (
     <>
-      <Card title={`🔧 Modelos com mais ocorrências (últimos ${days}d)`}>
+      <Card title={`🔧 Fabricantes com mais ocorrências (últimos ${days}d)`}>
         <table style={css.table}>
-          <thead><tr><th style={css.th}>Modelo</th><th style={css.th}>Ocorrências</th><th style={css.th}>Equipamentos distintos</th></tr></thead>
+          <thead><tr>
+            <th style={css.th}>Fabricante</th>
+            <th style={css.th}>Ocorrências</th>
+            <th style={css.th}>Equipamentos distintos</th>
+          </tr></thead>
           <tbody>
-            {d.models.map((m) => (
-              <tr key={m.model}>
-                <td style={css.td}><strong>{m.model}</strong></td>
+            {(d.manufacturers || []).length === 0 ? (
+              <tr><td colSpan={3} style={css.emptyTd}>Sem chamados de reparo no período.</td></tr>
+            ) : d.manufacturers.map((m) => (
+              <tr key={m.manufacturer}>
+                <td style={css.td}><strong>{m.manufacturer}</strong></td>
                 <td style={css.td}>{m.ocorrencias}</td>
                 <td style={css.td}>{m.equipamentos_distintos}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        <div style={{ fontSize: 10, color: "#64748b", marginTop: 6 }}>
+          🤖 Fabricante identificado pela IA a partir do prefixo do número de série (padrão IEEE) — não pelo modelo do SmartOLT.
+        </div>
       </Card>
-      <Card title="🏆 Top ONTs com mais reclamações">
+      <Card title="🏆 Top ONTs com mais chamados">
         <table style={css.table}>
           <thead><tr>
-            <th style={css.th}>Cliente · External ID</th>
-            <th style={css.th}>Modelo</th>
+            <th style={css.th}>Cliente</th>
+            <th style={css.th}>SN / External ID</th>
+            <th style={css.th}>Fabricante</th>
             <th style={css.th}>OLT/Board/Port</th>
             <th style={css.th}>Sinal atual</th>
             <th style={css.th}>Ocorrências</th>
             <th style={css.th}>Top categoria</th>
           </tr></thead>
           <tbody>
-            {d.top_onts.map((o) => (
+            {(d.top_onts || []).map((o) => (
               <tr key={o.external_id}>
-                <td style={css.td}>
-                  <strong>{o.name}</strong>
-                  <div style={{ fontSize: 10, color: "#64748b", fontFamily: "monospace" }}>{o.external_id}</div>
+                <td style={css.td}><strong>{o.name}</strong></td>
+                <td style={css.td} title={o.sn}>
+                  <code style={{ fontSize: 10, fontFamily: "monospace" }}>{o.sn || o.external_id}</code>
                 </td>
-                <td style={css.td}>{o.model}</td>
+                <td style={css.td}>
+                  <span style={css.pill("#dbeafe", "#1e40af")}>{o.manufacturer || "?"}</span>
+                </td>
                 <td style={css.td}>{o.olt} · B{o.board} / P{o.port}</td>
                 <td style={css.td}>
                   {o.current_signal != null ? `${o.current_signal} dBm` : "—"}
@@ -246,7 +304,7 @@ function CommonIssuesSection({ days }) {
   const total = d.by_category.reduce((s, x) => s + x.count, 0);
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-      <Card title="📞 Categorias de reclamação">
+      <Card title="📞 Categorias de chamado">
         {d.by_category.map((c) => (
           <div key={c.category} style={{ marginBottom: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 }}>
@@ -258,7 +316,7 @@ function CommonIssuesSection({ days }) {
           </div>
         ))}
       </Card>
-      <Card title="📡 Reclamações por OLT">
+      <Card title="📡 Chamados por OLT">
         {d.by_olt.length === 0 ? <div style={{ color: "#64748b" }}>Sem dados.</div>
           : d.by_olt.map((o) => (
             <div key={o.olt} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f1f5f9" }}>
@@ -266,9 +324,9 @@ function CommonIssuesSection({ days }) {
             </div>
           ))}
       </Card>
-      <Card title="🔌 Reclamações por porta (Top 20)" style={{ gridColumn: "span 2" }}>
+      <Card title="🔌 Chamados por porta (Top 20)" style={{ gridColumn: "span 2" }}>
         <table style={css.table}>
-          <thead><tr><th style={css.th}>OLT · Board / Port</th><th style={css.th}>Reclamações</th></tr></thead>
+          <thead><tr><th style={css.th}>OLT · Board / Port</th><th style={css.th}>Chamados</th></tr></thead>
           <tbody>
             {d.by_port.map((p) => (
               <tr key={p.location}><td style={css.td}>{p.location}</td><td style={css.td}><strong>{p.count}</strong></td></tr>
@@ -566,9 +624,9 @@ export default function AICenterPanel({ onClose }) {
             <select value={days} onChange={(e) => setDays(Number(e.target.value))}
                     style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13 }}
                     data-testid="ai-days-select">
-              <option value={7}>Últimos 7 dias</option>
-              <option value={30}>Últimos 30 dias</option>
-              <option value={90}>Últimos 90 dias</option>
+              {PERIOD_OPTIONS.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
             </select>
             <Button onClick={onClose}>Fechar</Button>
           </div>

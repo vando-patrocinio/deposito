@@ -17,7 +17,7 @@ import re
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable, Dict, List
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -215,14 +215,31 @@ async def repair_map(days: int = 30, only_finalized: bool = False,
             "scheduled_time": t.get("scheduled_time"),
         })
         type_counter[t.get("type") or "?"] += 1
+
+    # Bounds + center — usa percentis P15-P85 (cobre 70% denso) pra ignorar
+    # outliers extremos (chamados teste fora da operação real).
+    center: Optional[List[float]] = None
+    bbox: Optional[List[List[float]]] = None
+    if out:
+        sorted_lats = sorted(p["latitude"] for p in out)
+        sorted_lngs = sorted(p["longitude"] for p in out)
+        n = len(out)
+        lo = int(n * 0.15)
+        hi = max(lo + 1, int(n * 0.85))
+        center = [sorted_lats[n // 2], sorted_lngs[n // 2]]  # mediana
+        bbox = [[sorted_lats[lo], sorted_lngs[lo]],
+                [sorted_lats[min(hi, n - 1)], sorted_lngs[min(hi, n - 1)]]]
     return {"period_days": days, "count": len(out), "points": out,
-            "by_type": dict(type_counter.most_common())}
+            "by_type": dict(type_counter.most_common()),
+            "center": center, "bbox": bbox}
 
 
 # ---------------------------------------------------------------------------
 # 4) Defective Equipment
 # ---------------------------------------------------------------------------
 async def _collect_defective(cid: str, days: int) -> dict:
+    from manufacturers import identify_manufacturer
+
     cutoff = _cutoff(days)
     tickets = await db.tickets.find(
         {"company_id": cid, "created_at": {"$gte": cutoff},
@@ -231,40 +248,51 @@ async def _collect_defective(cid: str, days: int) -> dict:
          "client_snapshot.relato": 1, "type": 1}).to_list(2000)
     proj = {"_id": 0, "unique_external_id": 1, "name": 1, "onu_type_name": 1,
             "olt_name": 1, "board": 1, "port": 1, "signal_1490": 1, "status": 1, "sn": 1}
-    by_model: Dict[str, Dict[str, Any]] = {}
-    by_ont: Dict[str, Dict[str, Any]] = {}
+    by_mfr: dict[str, dict] = {}
+    by_ont: dict[str, dict] = {}
+    mfr_cache: dict[str, str | None] = {}
     for t in tickets:
         snap = t.get("client_snapshot") or {}
         onu = await _onu_for(cid, snap, proj)
         if not onu:
             continue
         ext_id = onu.get("unique_external_id") or onu.get("sn") or "?"
-        model = onu.get("onu_type_name") or "Desconhecido"
-        bm = by_model.setdefault(model, {"count": 0, "macs": set()})
+        sn = onu.get("sn") or ext_id
+        # Detect manufacturer (cached per call)
+        if sn not in mfr_cache:
+            mfr_cache[sn] = await identify_manufacturer(sn)
+        manufacturer = mfr_cache[sn] or "Desconhecido"
+        bm = by_mfr.setdefault(manufacturer, {"count": 0, "macs": set()})
         bm["count"] += 1
         bm["macs"].add(ext_id)
         bo = by_ont.setdefault(ext_id, {
-            "count": 0, "model": model, "name": onu.get("name"),
+            "count": 0,
+            "manufacturer": manufacturer,
+            "model": onu.get("onu_type_name") or "Desconhecido",
+            "name": onu.get("name"), "sn": sn,
             "olt": onu.get("olt_name"), "board": onu.get("board"), "port": onu.get("port"),
             "current_signal": onu.get("signal_1490"), "current_status": onu.get("status"),
             "categorias": Counter()})
         bo["count"] += 1
         bo["categorias"][_classify_complaint(snap.get("relato") or "")] += 1
 
-    models_rows = sorted(
-        [{"model": k, "ocorrencias": v["count"], "equipamentos_distintos": len(v["macs"])}
-         for k, v in by_model.items()],
+    manufacturers_rows = sorted(
+        [{"manufacturer": k, "ocorrencias": v["count"],
+          "equipamentos_distintos": len(v["macs"])}
+         for k, v in by_mfr.items()],
         key=lambda r: r["ocorrencias"], reverse=True)
     onts_rows = sorted([
-        {"external_id": k, "name": v["name"], "model": v["model"],
+        {"external_id": k, "name": v["name"],
+         "manufacturer": v["manufacturer"], "model": v["model"], "sn": v["sn"],
          "olt": v["olt"], "board": v["board"], "port": v["port"],
          "current_signal": v["current_signal"], "current_status": v["current_status"],
          "ocorrencias": v["count"],
          "top_categoria": v["categorias"].most_common(1)[0][0] if v["categorias"] else None}
         for k, v in by_ont.items()
     ], key=lambda r: r["ocorrencias"], reverse=True)[:50]
-    return {"period_days": days, "models": models_rows, "top_onts": onts_rows,
-            "total_matched_tickets": sum(b["count"] for b in by_model.values())}
+    return {"period_days": days, "manufacturers": manufacturers_rows,
+            "top_onts": onts_rows,
+            "total_matched_tickets": sum(b["count"] for b in by_mfr.values())}
 
 
 @router.get("/defective-equipment")
