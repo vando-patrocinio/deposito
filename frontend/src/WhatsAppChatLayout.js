@@ -153,6 +153,15 @@ export default function WhatsAppChatLayout() {
     [conversations, selectedPhone]
   );
 
+  // Métricas globais para o header da lista: aguardando + total não lidas
+  const queueMetrics = useMemo(() => {
+    const waiting = buckets.aguardando || 0;
+    const totalUnread = conversations.reduce(
+      (sum, c) => sum + (c.unread || 0), 0
+    );
+    return { waiting, totalUnread };
+  }, [buckets, conversations]);
+
   return (
     <div data-testid="wa-chat-layout" style={{
       display: "grid",
@@ -170,6 +179,7 @@ export default function WhatsAppChatLayout() {
         setSelectedPhone={setSelectedPhone} search={search} setSearch={setSearch}
         loading={loading} totalInBucket={buckets[bucket] || 0}
         contactProfiles={contactProfiles}
+        queueMetrics={queueMetrics}
       />
 
       {/* COLUNA 3 — Thread aberta */}
@@ -187,13 +197,13 @@ export default function WhatsAppChatLayout() {
 function BucketSidebar({ bucket, setBucket, counts }) {
   return (
     <div data-testid="wa-buckets-sidebar" style={{
-      background: "var(--bg-surface-2)",
+      background: "var(--bg-surface)",
       borderRight: "1px solid var(--border-default)",
-      padding: "14px 8px", display: "flex", flexDirection: "column", gap: 4,
+      padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2,
     }}>
       <div style={{
-        fontSize: 11, fontWeight: 800, color: "var(--text-muted)",
-        textTransform: "uppercase", letterSpacing: 0.6, padding: "6px 10px 10px",
+        fontSize: 10, fontWeight: 700, color: "var(--text-muted)",
+        textTransform: "uppercase", letterSpacing: 0.8, padding: "4px 10px 10px",
       }}>
         Atendimentos
       </div>
@@ -207,22 +217,31 @@ function BucketSidebar({ bucket, setBucket, counts }) {
                   data-testid={`wa-bucket-${b.id}`}
                   style={{
             display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px", borderRadius: 10,
-            background: active ? `${b.color}1F` : "transparent",
-            border: active ? `1px solid ${b.color}55` : "1px solid transparent",
-            color: active ? b.color : "var(--text-primary)",
+            padding: "8px 10px", borderRadius: 6,
+            background: active ? "var(--bg-surface-2)" : "transparent",
+            border: "1px solid transparent",
+            borderLeft: active
+              ? `2px solid ${b.color}`
+              : "2px solid transparent",
+            color: active ? "var(--text-primary)" : "var(--text-secondary)",
             cursor: "pointer", textAlign: "left", fontSize: 13,
-            fontWeight: active ? 700 : 500,
-            transition: "all .15s",
+            fontWeight: active ? 600 : 500,
+            transition: "background .15s",
+          }}
+          onMouseEnter={(e) => {
+            if (!active) e.currentTarget.style.background = "var(--bg-surface-2)";
+          }}
+          onMouseLeave={(e) => {
+            if (!active) e.currentTarget.style.background = "transparent";
           }}>
-            <Ico size={16} strokeWidth={active ? 2.2 : 1.75}
+            <Ico size={15} strokeWidth={1.75}
                   style={{ color: active ? b.color : "var(--text-muted)" }} />
             <span style={{ flex: 1 }}>{b.label}</span>
             <span style={{
-              padding: "2px 9px", borderRadius: 999,
-              background: active ? b.color : "var(--bg-surface)",
-              color: active ? "#fff" : "var(--text-secondary)",
-              fontSize: 11, fontWeight: 800, minWidth: 24, textAlign: "center",
+              padding: "1px 7px", borderRadius: 4,
+              background: "transparent",
+              color: "var(--text-muted)",
+              fontSize: 11, fontWeight: 600, minWidth: 20, textAlign: "right",
             }}>{n}</span>
           </button>
         );
@@ -234,8 +253,10 @@ function BucketSidebar({ bucket, setBucket, counts }) {
 /* ============================================================= */
 function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
                               search, setSearch, loading, totalInBucket,
-                              contactProfiles }) {
+                              contactProfiles, queueMetrics }) {
   const bucketLabel = BUCKETS.find((b) => b.id === bucket)?.label || bucket;
+  const waiting = queueMetrics?.waiting || 0;
+  const totalUnread = queueMetrics?.totalUnread || 0;
   return (
     <div data-testid="wa-conversation-list" style={{
       borderRight: "1px solid var(--border-default)",
@@ -243,20 +264,73 @@ function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
       background: "var(--bg-surface)",
       minHeight: 0,
     }}>
+      {/* Header da lista — métricas de fila + busca */}
       <div style={{
-        padding: "12px 14px", borderBottom: "1px solid var(--border-default)",
-        display: "flex", alignItems: "center", gap: 8,
+        borderBottom: "1px solid var(--border-default)",
       }}>
-        <Search size={14} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
-        <input value={search} onChange={(e) => setSearch(e.target.value)}
-               placeholder={search.trim()
-                 ? "Buscar em todas as conversas..."
-                 : `Buscar em ${bucketLabel.toLowerCase()}...`}
-               data-testid="wa-search-input"
-               style={{
-                 flex: 1, border: "none", outline: "none", background: "transparent",
-                 fontSize: 13, color: "var(--text-primary)",
-               }} />
+        {/* Queue metrics — bola laranja com pessoas aguardando + bola azul com não lidas */}
+        <div data-testid="wa-queue-metrics" style={{
+          padding: "10px 14px 8px",
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <div title={`${waiting} ${waiting === 1 ? "pessoa aguardando" : "pessoas aguardando"} atendimento`}
+                data-testid="wa-queue-waiting"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 7,
+                  fontSize: 11, fontWeight: 500, color: "var(--text-secondary)",
+                }}>
+            <span style={{
+              minWidth: 22, height: 22, padding: "0 6px",
+              borderRadius: 999,
+              background: waiting > 0 ? "#f59e0b" : "var(--bg-surface-2)",
+              color: waiting > 0 ? "#fff" : "var(--text-muted)",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontWeight: 700,
+              boxShadow: waiting > 0
+                ? "0 0 0 3px rgba(245,158,11,.15)"
+                : "none",
+              transition: "all .2s",
+            }}>{waiting}</span>
+            <span>aguardando</span>
+          </div>
+          <span style={{ width: 1, height: 14, background: "var(--border-default)" }} />
+          <div title={`${totalUnread} ${totalUnread === 1 ? "mensagem não lida" : "mensagens não lidas"} no total`}
+                data-testid="wa-queue-unread"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 7,
+                  fontSize: 11, fontWeight: 500, color: "var(--text-secondary)",
+                }}>
+            <span style={{
+              minWidth: 22, height: 22, padding: "0 6px",
+              borderRadius: 999,
+              background: totalUnread > 0 ? "#0ea5e9" : "var(--bg-surface-2)",
+              color: totalUnread > 0 ? "#fff" : "var(--text-muted)",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontWeight: 700,
+              boxShadow: totalUnread > 0
+                ? "0 0 0 3px rgba(14,165,233,.15)"
+                : "none",
+              transition: "all .2s",
+            }}>{totalUnread > 99 ? "99+" : totalUnread}</span>
+            <span>não lidas</span>
+          </div>
+        </div>
+        {/* Busca */}
+        <div style={{
+          padding: "0 14px 10px",
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <Search size={14} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)}
+                 placeholder={search.trim()
+                   ? "Buscar em todas as conversas..."
+                   : `Buscar em ${bucketLabel.toLowerCase()}...`}
+                 data-testid="wa-search-input"
+                 style={{
+                   flex: 1, border: "none", outline: "none", background: "transparent",
+                   fontSize: 13, color: "var(--text-primary)",
+                 }} />
+        </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         {loading ? (
