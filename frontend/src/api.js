@@ -257,10 +257,21 @@ export const api = {
   assetCreate: (d) => client.post(`/collab-assets`, d).then((r) => r.data),
   assetUpdate: (aid, d) => client.patch(`/collab-assets/${aid}`, d).then((r) => r.data),
   assetDelete: (aid) => client.delete(`/collab-assets/${aid}`).then((r) => r.data),
-  assetRomaneioUrl: (cid, only_active = false) => {
+  assetRomaneioUrl: (cid, only_active = false, mode = "delivery") => {
     const base = client.defaults.baseURL.replace(/\/$/, "");
-    return `${base}/collab-assets/romaneio/${cid}${only_active ? "?only_active=true" : ""}`;
+    const params = [];
+    if (only_active) params.push("only_active=true");
+    if (mode && mode !== "delivery") params.push(`mode=${encodeURIComponent(mode)}`);
+    const qs = params.length ? `?${params.join("&")}` : "";
+    return `${base}/collab-assets/romaneio/${cid}${qs}`;
   },
+  // Devolução de itens em posse do colaborador desativado (inclui ONTs + insumos)
+  assetDevolucaoUrl: (cid) => {
+    const base = client.defaults.baseURL.replace(/\/$/, "");
+    return `${base}/collab-assets/romaneio/${cid}?mode=return`;
+  },
+  // Lista TUDO em posse (assets + ONTs + insumos) — usado no modal de devolução
+  assetCustodyFull: (cid) => client.get(`/collab-assets/custody-full/${cid}`).then((r) => r.data),
   // Public mobile (no auth)
   publicAssetsList: (cid) => client.get(`/collab-assets/public/by-collaborator/${cid}`).then((r) => r.data),
   publicAssetSign: (d) => client.post(`/collab-assets/public/sign`, d).then((r) => r.data),

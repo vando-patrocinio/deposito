@@ -101,6 +101,38 @@ async def list_by_collaborator(cid: str,
     return {"items": rows, "summary": summary}
 
 
+@router.get("/custody-full/{cid}")
+async def custody_full(cid: str,
+                       user: dict = Depends(require_role("gestor"))):
+    """Retorna TUDO em posse do colaborador (pertences ATIVOS + ONTs +
+    insumos), normalizado para o modal de desativação. Usado para gerar
+    a lista que vai virar o romaneio de devolução."""
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    coll = await db.collaborators.find_one(
+        {"id": cid}, {"_id": 0, "name": 1, "role": 1})
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado.")
+    assets = await db.collaborator_assets.find(
+        {"company_id": company_id, "collaborator_id": cid, "status": "ativo"},
+        {"_id": 0},
+    ).sort("delivered_at", 1).to_list(500)
+    extras = await _collect_extra_custody(company_id, cid)
+    total_value = sum(
+        (a.get("unit_value_brl") or 0) * (a.get("qty") or 1)
+        for a in assets if a.get("unit_value_brl") is not None
+    )
+    return {
+        "collaborator": coll,
+        "assets": assets,
+        "extras": extras,
+        "totals": {
+            "assets_count": len(assets),
+            "extras_count": len(extras),
+            "value_brl": round(total_value, 2),
+        },
+    }
+
+
 @router.post("")
 async def create_asset(payload: AssetIn,
                        user: dict = Depends(require_role("gestor"))):
@@ -235,8 +267,97 @@ def _pt_br_date(iso: Optional[str]) -> str:
         return iso[:10]
 
 
+async def _collect_extra_custody(company_id: str, collaborator_id: str) -> List[dict]:
+    """Coleta TUDO em posse do técnico além dos collaborator_assets:
+    - ONTs no estoque do técnico (`stok_onts` location_type=tecnico)
+    - Insumos no estoque do técnico (`stok_stock` location=collaborator_id)
+
+    Retorna lista de pseudo-assets normalizados (mesmas chaves que
+    collaborator_assets) para alimentar o PDF de devolução.
+    """
+    items: List[dict] = []
+
+    # ONTs em poder do técnico
+    onts_cur = db.stok_onts.find(
+        {"company_id": company_id,
+         "location_type": "tecnico",
+         "location_id": collaborator_id},
+        {"_id": 0, "mac": 1, "model": 1, "status": 1, "created_at": 1},
+    )
+    async for o in onts_cur:
+        items.append({
+            "category": "ont",
+            "item": f"ONT {o.get('model') or 'GPON'}",
+            "marca": o.get("model"),
+            "modelo": None,
+            "tamanho": None,
+            "qty": 1,
+            "serial": o.get("mac"),  # MAC = identificação única
+            "delivered_at": o.get("created_at"),
+            "status": o.get("status") or "ativo",
+        })
+
+    # Insumos no estoque do técnico
+    stock_doc = await db.stok_stock.find_one(
+        {"company_id": company_id, "location": collaborator_id},
+        {"_id": 0},
+    )
+    if stock_doc:
+        # Catálogo interno (mantido em rota stok); usamos labels resumidos
+        consumable_labels = {
+            "drop": ("Drop (cabo óptico)", "m"),
+            "cabo_rede": ("Cabo de rede", "m"),
+            "conector_fast": ("Conector fast", "un"),
+            "conector_fibra": ("Conector de fibra", "un"),
+            "esticador": ("Esticador", "un"),
+            "conector_rede": ("Conector de rede", "un"),
+        }
+        for cid_key, (label, unit) in consumable_labels.items():
+            qty = int(stock_doc.get(cid_key) or 0)
+            if qty > 0:
+                items.append({
+                    "category": "insumo",
+                    "item": f"{label}",
+                    "marca": None,
+                    "modelo": None,
+                    "tamanho": unit,
+                    "qty": qty,
+                    "serial": None,
+                    "delivered_at": None,
+                    "status": "ativo",
+                })
+
+    return items
+
+
+def _checkbox_drawing():
+    """Retorna um Drawing flowable de checkbox vazio (square 14x14 px)."""
+    from reportlab.graphics.shapes import Drawing, Rect
+    from reportlab.lib import colors as _colors
+    d = Drawing(14, 14)
+    d.add(Rect(1, 1, 12, 12, strokeColor=_colors.HexColor("#0f172a"),
+               fillColor=_colors.white, strokeWidth=1.2))
+    return d
+
+
 def _build_romaneio_pdf(branding: dict, collaborator: dict,
-                         assets: List[dict]) -> bytes:
+                         assets: List[dict],
+                         mode: str = "delivery",
+                         extra_items: Optional[List[dict]] = None) -> bytes:
+    """Gera o PDF do romaneio.
+
+    mode="delivery" (padrão): TERMO DE RESPONSABILIDADE — colaborador recebe
+    itens, assina como entregue.
+
+    mode="return": TERMO DE DEVOLUÇÃO À EMPRESA — usado em desativação. Lista
+    TUDO em posse do colaborador (pertences + ONTs em estoque do técnico +
+    insumos). Cada linha tem checkbox `☐` para o recebedor tique conforme
+    devolução é validada. Linha de assinatura é da empresa (recebedor), não
+    do colaborador.
+
+    `extra_items` — itens adicionais (ONTs/insumos) já normalizados como
+    pseudo-assets para entrar na mesma tabela.
+    """
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -244,11 +365,15 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
     from reportlab.platypus import (Image, Paragraph, SimpleDocTemplate, Spacer,
                                      Table, TableStyle)
 
+    is_return = mode == "return"
+    all_assets = list(assets) + list(extra_items or [])
+
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=1.5 * cm, rightMargin=1.5 * cm,
                             topMargin=1.2 * cm, bottomMargin=1.2 * cm,
-                            title="Romaneio de Entrega")
+                            title=("Romaneio de Devolução" if is_return
+                                   else "Romaneio de Entrega"))
     styles = getSampleStyleSheet()
     story: list = []
 
@@ -296,24 +421,36 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
     story.append(Spacer(1, 0.4 * cm))
 
     # ---- Title ----
+    title_text = ("CHECKLIST DE DEVOLUÇÃO À EMPRESA — TERMO DE RECEBIMENTO"
+                  if is_return
+                  else "CHECKLIST DE CUSTÓDIA — TERMO DE RESPONSABILIDADE")
+    title_color = colors.HexColor("#7f1d1d") if is_return else colors.HexColor("#0b1220")
     story.append(Paragraph(
-        "<b>CHECKLIST DE CUSTÓDIA — TERMO DE RESPONSABILIDADE</b>",
+        f"<b>{title_text}</b>",
         ParagraphStyle("title", parent=styles["Normal"], fontSize=13,
                        alignment=1, leading=16, spaceAfter=4,
-                       textColor=colors.HexColor("#0b1220"))))
+                       textColor=title_color)))
+    subtitle = ("Equipamentos · Uniforme · EPIs · Ferramental · ONTs · Insumos"
+                if is_return
+                else "Equipamentos · Uniforme · EPIs · Ferramental")
     story.append(Paragraph(
-        "<font color='#0d9488'>Equipamentos · Uniforme · EPIs · Ferramental</font>",
+        f"<font color='#0d9488'>{subtitle}</font>",
         ParagraphStyle("subtitle", parent=styles["Normal"], fontSize=9,
                        alignment=1, leading=12, spaceAfter=10)))
     story.append(Spacer(1, 0.2 * cm))
 
     # ---- Collaborator block ----
     issued_at = _pt_br_date(now_iso())
+    label_data = "Data de devolução" if is_return else "Data de emissão"
     coll_html = (
+        f"<b>Colaborador (devolvendo):</b> {collaborator.get('name', '—')}<br/>"
+        if is_return else
         f"<b>Colaborador:</b> {collaborator.get('name', '—')}<br/>"
+    )
+    coll_html += (
         f"<b>Cargo:</b> {collaborator.get('role') or '—'} &nbsp;&nbsp; "
         f"<b>CPF:</b> {collaborator.get('cpf') or '—'}<br/>"
-        f"<b>Data de emissão:</b> {issued_at}"
+        f"<b>{label_data}:</b> {issued_at}"
     )
     story.append(Paragraph(coll_html,
                            ParagraphStyle("c", parent=styles["Normal"],
@@ -321,30 +458,54 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
     story.append(Spacer(1, 0.3 * cm))
 
     # ---- Items table ----
-    head = ["#", "Categoria", "Item", "Marca / Modelo", "Tam.", "Qtd",
-            "Série", "Entrega", "Status"]
+    if is_return:
+        # Adiciona coluna de checkbox no modo devolução
+        head = ["Devolvido", "#", "Categoria", "Item", "Marca / Modelo", "Tam.",
+                "Qtd", "Série", "Entrega"]
+        col_widths = [1.6 * cm, 0.7 * cm, 1.8 * cm, 4.2 * cm, 2.6 * cm,
+                      1.0 * cm, 0.9 * cm, 2.4 * cm, 2.0 * cm]
+    else:
+        head = ["#", "Categoria", "Item", "Marca / Modelo", "Tam.", "Qtd",
+                "Série", "Entrega", "Status"]
+        col_widths = [0.8 * cm, 2 * cm, 4.6 * cm, 3 * cm, 1.2 * cm, 1 * cm,
+                      2 * cm, 2.4 * cm, 1.6 * cm]
     data = [head]
-    if not assets:
-        data.append(["—", "—", "Nenhum item em custódia para este colaborador.",
-                     "—", "—", "—", "—", "—", "—"])
-    for i, a in enumerate(assets, 1):
+    if not all_assets:
+        if is_return:
+            data.append(["—", "—", "—",
+                         "Sem itens em posse — colaborador não tem custódia ativa.",
+                         "—", "—", "—", "—", "—"])
+        else:
+            data.append(["—", "—", "Nenhum item em custódia para este colaborador.",
+                         "—", "—", "—", "—", "—", "—"])
+    for i, a in enumerate(all_assets, 1):
         marca_modelo = " / ".join([p for p in [a.get("marca"), a.get("modelo")] if p]) or "—"
-        data.append([
-            str(i),
-            (a.get("category") or "—").upper(),
-            a.get("item") or "—",
-            marca_modelo,
-            a.get("tamanho") or "—",
-            str(a.get("qty") or 1),
-            a.get("serial") or "—",
-            _pt_br_date(a.get("delivered_at")),
-            (a.get("status") or "ativo").upper(),
-        ])
-    items_t = Table(data, repeatRows=1, colWidths=[
-        0.8 * cm, 2 * cm, 4.6 * cm, 3 * cm, 1.2 * cm, 1 * cm,
-        2 * cm, 2.4 * cm, 1.6 * cm,
-    ])
-    items_t.setStyle(TableStyle([
+        if is_return:
+            data.append([
+                _checkbox_drawing(),
+                str(i),
+                (a.get("category") or "—").upper(),
+                a.get("item") or "—",
+                marca_modelo,
+                a.get("tamanho") or "—",
+                str(a.get("qty") or 1),
+                a.get("serial") or "—",
+                _pt_br_date(a.get("delivered_at")),
+            ])
+        else:
+            data.append([
+                str(i),
+                (a.get("category") or "—").upper(),
+                a.get("item") or "—",
+                marca_modelo,
+                a.get("tamanho") or "—",
+                str(a.get("qty") or 1),
+                a.get("serial") or "—",
+                _pt_br_date(a.get("delivered_at")),
+                (a.get("status") or "ativo").upper(),
+            ])
+    items_t = Table(data, repeatRows=1, colWidths=col_widths)
+    table_style = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTSIZE", (0, 0), (-1, 0), 9),
@@ -358,58 +519,104 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
         ("RIGHTPADDING", (0, 0), (-1, -1), 5),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
+    ]
+    if is_return and all_assets:
+        # Destaca a coluna de checkbox: drawing centralizado, fundo amarelinho
+        table_style += [
+            ("ALIGN", (0, 1), (0, -1), "CENTER"),
+            ("BACKGROUND", (0, 1), (0, -1), colors.HexColor("#fef3c7")),
+        ]
+    items_t.setStyle(TableStyle(table_style))
     story.append(items_t)
     story.append(Spacer(1, 0.5 * cm))
 
-    # ---- Footer / Termo de responsabilidade ----
-    footer_text = branding.get("romaneio_footer") or (
-        "Declaro ter recebido os itens listados acima em perfeito estado e "
-        "me responsabilizo por sua guarda, conservação e devolução em caso "
-        "de desligamento, sob pena das medidas cabíveis.")
-    story.append(Paragraph(
-        f"<b>TERMO DE RESPONSABILIDADE:</b> {footer_text}",
-        ParagraphStyle("foot", parent=styles["Normal"], fontSize=9,
-                       leading=13, alignment=4)))  # 4 = justify
+    # ---- Footer / Termo ----
+    if is_return:
+        footer_text = (branding.get("romaneio_return_footer") or
+                       "Declaro, na qualidade de representante da empresa, ter "
+                       "RECEBIDO do colaborador acima identificado todos os "
+                       "itens listados, devidamente conferidos e marcados como "
+                       "devolvidos. A devolução encerra a responsabilidade do "
+                       "colaborador sobre estes bens.")
+        story.append(Paragraph(
+            f"<b>TERMO DE RECEBIMENTO PELA EMPRESA:</b> {footer_text}",
+            ParagraphStyle("foot", parent=styles["Normal"], fontSize=9,
+                           leading=13, alignment=4)))  # 4 = justify
+    else:
+        footer_text = branding.get("romaneio_footer") or (
+            "Declaro ter recebido os itens listados acima em perfeito estado e "
+            "me responsabilizo por sua guarda, conservação e devolução em caso "
+            "de desligamento, sob pena das medidas cabíveis.")
+        story.append(Paragraph(
+            f"<b>TERMO DE RESPONSABILIDADE:</b> {footer_text}",
+            ParagraphStyle("foot", parent=styles["Normal"], fontSize=9,
+                           leading=13, alignment=4)))
     story.append(Spacer(1, 1.4 * cm))
 
     # ---- Signature line(s) ----
-    # Se algum asset tem assinatura digital, embute. Caso contrário,
-    # imprime linha pra assinatura manual.
-    sig_url = next((a.get("signature_data_url")
-                    for a in assets if a.get("signature_data_url")), None)
-    if sig_url:
-        try:
-            import base64
-            b64 = sig_url.split(",", 1)[1]
-            sig_io = io.BytesIO(base64.b64decode(b64))
-            sig_img = Image(sig_io, width=6 * cm, height=2 * cm,
-                            kind="proportional")
-            sig_table = Table([[sig_img], ["_" * 50],
-                                [f"{collaborator.get('name', '—')} (assinado em "
-                                 f"{_pt_br_date(next((a.get('signed_at') for a in assets if a.get('signed_at')), None))})"]],
-                              colWidths=[10 * cm])
-            sig_table.setStyle(TableStyle([
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ]))
-            story.append(sig_table)
-        except Exception as e:
-            logger.warning("[romaneio] falha ao embutir assinatura: %s", e)
+    if is_return:
+        # Modo devolução: 2 linhas de assinatura — colaborador (entregando)
+        # e empresa (recebendo). Sem usar assinatura digital salva nos assets,
+        # pois o ato de devolução acontece NESTE momento.
+        sig_line = "_" * 50
+        sig_table = Table(
+            [
+                [Paragraph(sig_line, ParagraphStyle("sl", parent=styles["Normal"], alignment=1)),
+                 Paragraph(sig_line, ParagraphStyle("sl", parent=styles["Normal"], alignment=1))],
+                [Paragraph(f"<b>{collaborator.get('name', '—')}</b><br/>"
+                           f"<font size=8>Colaborador (entregando os itens)<br/>"
+                           f"CPF: {collaborator.get('cpf') or '—'}</font>",
+                           ParagraphStyle("sn", parent=styles["Normal"],
+                                          fontSize=9, alignment=1, leading=12)),
+                 Paragraph(f"<b>{branding.get('company_name') or 'Empresa'}</b><br/>"
+                           f"<font size=8>Responsável pela empresa (recebendo)<br/>"
+                           f"Nome / Cargo: ____________________________</font>",
+                           ParagraphStyle("sn", parent=styles["Normal"],
+                                          fontSize=9, alignment=1, leading=12))],
+            ],
+            colWidths=[8.5 * cm, 8.5 * cm])
+        sig_table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("TOPPADDING", (0, 1), (-1, 1), 4),
+        ]))
+        story.append(sig_table)
+    else:
+        # Modo entrega: assinatura digital se houver, senão linha manual
+        sig_url = next((a.get("signature_data_url")
+                        for a in assets if a.get("signature_data_url")), None)
+        if sig_url:
+            try:
+                import base64
+                b64 = sig_url.split(",", 1)[1]
+                sig_io = io.BytesIO(base64.b64decode(b64))
+                sig_img = Image(sig_io, width=6 * cm, height=2 * cm,
+                                kind="proportional")
+                sig_table = Table([[sig_img], ["_" * 50],
+                                    [f"{collaborator.get('name', '—')} (assinado em "
+                                     f"{_pt_br_date(next((a.get('signed_at') for a in assets if a.get('signed_at')), None))})"]],
+                                  colWidths=[10 * cm])
+                sig_table.setStyle(TableStyle([
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ]))
+                story.append(sig_table)
+            except Exception as e:
+                logger.warning("[romaneio] falha ao embutir assinatura: %s", e)
+                story.append(Paragraph("_" * 60,
+                                       ParagraphStyle("s", parent=styles["Normal"],
+                                                      alignment=1)))
+                story.append(Paragraph(f"{collaborator.get('name', '—')} — Assinatura",
+                                       ParagraphStyle("s2", parent=styles["Normal"],
+                                                      fontSize=9, alignment=1)))
+        else:
             story.append(Paragraph("_" * 60,
                                    ParagraphStyle("s", parent=styles["Normal"],
                                                   alignment=1)))
             story.append(Paragraph(f"{collaborator.get('name', '—')} — Assinatura",
                                    ParagraphStyle("s2", parent=styles["Normal"],
-                                                  fontSize=9, alignment=1)))
-    else:
-        story.append(Paragraph("_" * 60,
-                               ParagraphStyle("s", parent=styles["Normal"],
-                                              alignment=1)))
-        story.append(Paragraph(f"{collaborator.get('name', '—')} — Assinatura",
-                               ParagraphStyle("s2", parent=styles["Normal"],
-                                              fontSize=9, alignment=1,
-                                              spaceBefore=2)))
+                                                  fontSize=9, alignment=1,
+                                                  spaceBefore=2)))
 
     doc.build(story)
     buf.seek(0)
@@ -419,37 +626,44 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
 @router.get("/romaneio/{cid}")
 async def romaneio_pdf(cid: str,
                        only_active: bool = Query(default=False),
+                       mode: str = Query(default="delivery", regex="^(delivery|return)$"),
                        user: dict = Depends(require_role("gestor"))):
     company_id = user.get("company_id") or DEMO_COMPANY_ID
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0})
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado.")
     q = {"company_id": company_id, "collaborator_id": cid}
-    if only_active:
+    if only_active or mode == "return":
         q["status"] = "ativo"
     assets = await db.collaborator_assets.find(q, {"_id": 0}).sort(
         "delivered_at", 1).to_list(500)
+    extra = (await _collect_extra_custody(company_id, cid)) if mode == "return" else None
     branding = (await get_branding(company_id)).model_dump()
-    pdf = _build_romaneio_pdf(branding, coll, assets)
-    fname = f"romaneio_{(coll.get('name') or cid).replace(' ', '_').lower()}.pdf"
+    pdf = _build_romaneio_pdf(branding, coll, assets, mode=mode, extra_items=extra)
+    suffix = "devolucao" if mode == "return" else "romaneio"
+    fname = f"{suffix}_{(coll.get('name') or cid).replace(' ', '_').lower()}.pdf"
     return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf",
                              headers={"Content-Disposition": f'inline; filename="{fname}"'})
 
 
 @router.get("/public/romaneio/{cid}")
-async def public_romaneio_pdf(cid: str, only_active: bool = Query(default=False)):
+async def public_romaneio_pdf(cid: str,
+                              only_active: bool = Query(default=False),
+                              mode: str = Query(default="delivery", regex="^(delivery|return)$")):
     """Versão pública (sem auth) pro app do colaborador baixar/imprimir."""
     company_id = await _company_for(cid)
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0})
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado.")
     q = {"company_id": company_id, "collaborator_id": cid}
-    if only_active:
+    if only_active or mode == "return":
         q["status"] = "ativo"
     assets = await db.collaborator_assets.find(q, {"_id": 0}).sort(
         "delivered_at", 1).to_list(500)
+    extra = (await _collect_extra_custody(company_id, cid)) if mode == "return" else None
     branding = (await get_branding(company_id)).model_dump()
-    pdf = _build_romaneio_pdf(branding, coll, assets)
-    fname = f"romaneio_{(coll.get('name') or cid).replace(' ', '_').lower()}.pdf"
+    pdf = _build_romaneio_pdf(branding, coll, assets, mode=mode, extra_items=extra)
+    suffix = "devolucao" if mode == "return" else "romaneio"
+    fname = f"{suffix}_{(coll.get('name') or cid).replace(' ', '_').lower()}.pdf"
     return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf",
                              headers={"Content-Disposition": f'inline; filename="{fname}"'})

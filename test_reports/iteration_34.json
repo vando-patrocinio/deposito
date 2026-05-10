@@ -1,0 +1,29 @@
+{
+  "summary": "Iter34 — Backend testing do romaneio de DEVOLUÇÃO À EMPRESA (mode=return). 8/8 pytest passaram cobrindo /custody-full/{cid}, /romaneio/{cid}?mode=return, regressão delivery, e validação regex mode=invalid. Frontend smoke: lint OK e import/export wiring (DeactivationAssetsModal default export consumido em CadastroPanel.js + api.assetCustodyFull/assetDevolucaoUrl em api.js).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter34_devolucao_romaneio.py",
+    "/app/test_reports/pytest/iter34_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_collect_extra_custody (collaborator_assets.py:281) usa async for em stok_onts.find sem .to_list — funcional mas inconsistente com o resto do arquivo. Pequena melhoria de estilo.",
+    "_build_romaneio_pdf assume que a entrega de pseudo-assets de extras herda mesma chave 'unit_value_brl' — porém ONTs e insumos não recebem esse campo, então o cálculo de totals.value_brl em /custody-full ignora-os (apenas assets). Comportamento parece intencional (insumo/ONT não tem valor unitário catalogado), mas vale validar com produto se ONTs deveriam contabilizar valor (R$ 700/un do branding seed).",
+    "Mode regex em romaneio_pdf retorna 422 (FastAPI valida com pattern) — request_specs pediu '400/422'; o teste aceita ambos. OK."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter34_devolucao_romaneio.py (novo)"],
+  "success_rate": {"backend": "100% (8/8 pytest)", "frontend": "lint OK, wiring verificado"},
+  "test_credentials": "admin@empresa.com / 123456 (lido de /app/memory/test_credentials.md)",
+  "seed_data_creation": "Nenhum — usado col-30aafc3c (DIOGO HENRIQUE) que já tinha 4 assets + 8 ONTs (location_type=tecnico) + 4 insumos (stok_stock).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend romaneio devolução está 100% funcional. PDF de devolução: ~20kB, valid PDF 1.4, contém CHECKLIST DE DEVOLUÇÃO À EMPRESA, TERMO DE RECEBIMENTO, header 'Devolvido' (coluna checkbox), 'Colaborador (devolvendo)' + 'Responsável pela empresa (recebendo)' nas linhas de assinatura, categorias ONT e INSUMO presentes. Modo delivery padrão preserva TERMO DE RESPONSABILIDADE sem coluna Devolvido. mode=invalid retorna 422 (FastAPI Pydantic). Frontend modal DeactivationAssetsModal exporta default function corretamente, CadastroPanel.js:8 importa, api.js expõe assetCustodyFull (linha 274) e assetDevolucaoUrl (linha 269). Não testei UI end-to-end de desativação por escopo da request.",
+  "validation_evidence": {
+    "pytest": "8 passed in 1.26s — TestCustodyFull(2) + TestRomaneioReturn(3) + TestRomaneioDeliveryRegression(2) + TestRomaneioInvalidMode(1)",
+    "custody_full": "assets_count=4, extras_count=12 (8 ONT + 4 INSUMO), shape OK",
+    "return_pdf": "Content-Disposition contém 'devolucao_', PDF >5kB, texto contém todas as keywords esperadas",
+    "delivery_pdf_regression": "Content-Disposition='romaneio_*', texto contém TERMO DE RESPONSABILIDADE, NÃO contém TERMO DE RECEBIMENTO nem CHECKLIST DE DEVOLUÇÃO",
+    "invalid_mode": "Status 422 (FastAPI validation)"
+  }
+}
