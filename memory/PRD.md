@@ -41,5 +41,14 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ## Status atual (Feb 2026)
 ✅ Funcional (Atlaz V2 sync ativo, 68 tickets/dia, sem erros)
 ✅ Redesign completo (sidebar+topbar+login split, paleta slate+teal, sem emojis em desktop)
+✅ **Dark Mode** com toggle no TopBar, persistência localStorage, soft variants para status
+✅ **IA Batch Similarity**: 89% de prefixos identificados via Gemini batch contextual
+✅ **Ranking de fabricantes**: matching melhorado (45% defects cruzados via _norm + pppoe_user)
 ✅ Pytest backend + ESLint frontend ativos
 ✅ Roadmap pronto em `/app/memory/ROADMAP.md`
+
+## Próximas (P2)
+- Refatorar `routes/lousa.py` (>2400 linhas) e `CadastroPanel.js` (>1200 linhas)
+- Melhorar matching Atlaz↔SmartOLT para chegar próximo de 100% (ainda 11/20 unmatched)
+- Tema dark: revisar painéis com backgrounds hardcoded (`#fff`/`#f8fafc` em alguns modais)
+

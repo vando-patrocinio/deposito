@@ -1,5 +1,21 @@
 # PontoIA — Changelog
 
+## Feb 10, 2026 — Dark Mode toggle + Manufacturer-quality matching melhorado
+
+### Frontend (Dark Mode)
+- `App.js`: hook `useTheme()` (persistido em localStorage `ponto_theme`, respeita `prefers-color-scheme`)
+- Botão `data-testid="theme-toggle-btn"` (Sun/Moon do lucide) no TopBar
+- `index.css`: variantes `.dark` para soft backgrounds (success/warning/danger/info/accent), shadows com mais contraste, e adaptadores para `body` e `app-topbar`
+
+### Backend (Manufacturer Quality)
+- `routes/ai_dashboard.py::manufacturer_quality`: substituído lowercase trivial por `_norm()` (sem acento, sem espaços/_/-) e tenta casar via `pppoe_user` OU `name`
+- Resultado: chamados cruzados subiram de 0/20 → 9/20 (45% match) — agora ranking mostra defect_rate real por marca
+
+### Tests
+- `iteration_33.json`: backend 5/5 pytest OK, frontend smoke completo OK
+
+---
+
 ## Feb 10, 2026 — Ranking "Qualidade de fabricantes" no IA Center
 
 ### Backend
