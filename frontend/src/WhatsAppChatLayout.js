@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot, User, Users, Search, Send, X, Loader2, Check, CheckCheck,
-  PhoneCall, Filter, MessageSquare, Clock, MoonStar, Hand, UserCheck,
-  CheckCircle2,
+  Filter, MessageSquare, Clock, MoonStar, Hand, UserCheck,
+  CheckCircle2, GraduationCap, ChevronDown, ChevronUp, Lightbulb,
+  Wifi, WifiOff, Activity, Info, Signal, MapPin, Phone, CreditCard,
+  AlertCircle, Sparkles,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -66,6 +68,9 @@ export default function WhatsAppChatLayout() {
   const [search, setSearch] = useState("");
   const [attendants, setAttendants] = useState([]);
   const [loading, setLoading] = useState(true);
+  /* Avatar + presença do cliente vindo do WhatsApp (cache por phone). */
+  const [contactProfiles, setContactProfiles] = useState({});
+  const warmingRef = useRef(new Set());
 
   const loadConversations = useCallback(async () => {
     try {
@@ -85,12 +90,45 @@ export default function WhatsAppChatLayout() {
     } catch { /* ignore */ }
   }, []);
 
+  /* Warmer: para as conversas mais recentes do bucket atual,
+     busca avatar/presença em background (com cache). */
+  const warmContact = useCallback(async (phone) => {
+    if (!phone || warmingRef.current.has(phone)) return;
+    warmingRef.current.add(phone);
+    try {
+      const r = await api.waCustomerProfile(phone);
+      setContactProfiles((m) => ({ ...m, [phone]: {
+        avatar: r?.whatsapp?.avatar || null,
+        presence: r?.whatsapp?.presence || "unknown",
+        last_seen: r?.whatsapp?.last_seen || null,
+        subscriber: r?.subscriber || null,
+        olt_signal: r?.olt_signal || null,
+        fetched_at: Date.now(),
+      }}));
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     loadConversations();
     loadAttendants();
     const id = setInterval(loadConversations, 6000);
     return () => clearInterval(id);
   }, [loadConversations, loadAttendants]);
+
+  /* Quando as conversas atualizam, aquece avatares dos top 20 do bucket atual. */
+  useEffect(() => {
+    const top = conversations
+      .filter((c) => c.bucket === bucket && !c.is_group)
+      .slice(0, 20);
+    top.forEach((c) => {
+      const cached = contactProfiles[c.phone];
+      // re-aquece se nunca foi buscado ou foi há mais de 2min (para presença)
+      if (!cached || (Date.now() - cached.fetched_at) > 120000) {
+        warmContact(c.phone);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, bucket]);
 
   const filteredConvs = useMemo(() => {
     const inBucket = conversations.filter((c) => c.bucket === bucket);
@@ -125,11 +163,14 @@ export default function WhatsAppChatLayout() {
         bucket={bucket} convs={filteredConvs} selectedPhone={selectedPhone}
         setSelectedPhone={setSelectedPhone} search={search} setSearch={setSearch}
         loading={loading} totalInBucket={buckets[bucket] || 0}
+        contactProfiles={contactProfiles}
       />
 
       {/* COLUNA 3 — Thread aberta */}
       <ChatThread
         conv={selectedConv} attendants={attendants}
+        contactProfile={selectedConv ? contactProfiles[selectedConv.phone] : null}
+        onWarmContact={warmContact}
         onChange={loadConversations}
       />
     </div>
@@ -186,13 +227,15 @@ function BucketSidebar({ bucket, setBucket, counts }) {
 
 /* ============================================================= */
 function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
-                              search, setSearch, loading, totalInBucket }) {
+                              search, setSearch, loading, totalInBucket,
+                              contactProfiles }) {
   const bucketLabel = BUCKETS.find((b) => b.id === bucket)?.label || bucket;
   return (
     <div data-testid="wa-conversation-list" style={{
       borderRight: "1px solid var(--border-default)",
       display: "flex", flexDirection: "column",
       background: "var(--bg-surface)",
+      minHeight: 0,
     }}>
       <div style={{
         padding: "12px 14px", borderBottom: "1px solid var(--border-default)",
@@ -207,7 +250,7 @@ function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
                  fontSize: 13, color: "var(--text-primary)",
                }} />
       </div>
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         {loading ? (
           <div style={{ padding: 30, textAlign: "center", color: "var(--text-muted)" }}>
             <Loader2 size={20} style={{ animation: "wa-spin 1s linear infinite" }} />
@@ -225,6 +268,7 @@ function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
         ) : convs.map((c) => (
           <ConvRow key={c.phone} conv={c}
                     selected={selectedPhone === c.phone}
+                    profile={contactProfiles?.[c.phone]}
                     onClick={() => setSelectedPhone(c.phone)} />
         ))}
       </div>
@@ -232,12 +276,13 @@ function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
   );
 }
 
-function ConvRow({ conv, selected, onClick }) {
+function ConvRow({ conv, selected, onClick, profile }) {
   const name = conv.subscriber_name || conv.push_name || `+${conv.phone}`;
   const time = conv.last_message_at
     ? new Date(conv.last_message_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
     : "";
   const isAi = conv.assignee_role === "ai";
+  const online = profile?.presence === "available" || profile?.presence === "composing";
   return (
     <button onClick={onClick}
             data-testid={`wa-conv-${conv.phone}`}
@@ -249,8 +294,18 @@ function ConvRow({ conv, selected, onClick }) {
               cursor: "pointer", textAlign: "left",
               display: "flex", gap: 11, alignItems: "flex-start",
             }}>
-      <Avatar name={conv.subscriber_name || conv.push_name}
-              src={conv.assignee_avatar} isAi={false} size={42} />
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <Avatar name={conv.subscriber_name || conv.push_name}
+                src={profile?.avatar} isAi={false} size={42} />
+        {online && (
+          <span title="Online no WhatsApp" style={{
+            position: "absolute", bottom: 0, right: 0,
+            width: 11, height: 11, borderRadius: "50%",
+            background: "#22c55e",
+            border: "2px solid var(--bg-surface)",
+          }} />
+        )}
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <strong style={{
@@ -290,12 +345,13 @@ function ConvRow({ conv, selected, onClick }) {
 }
 
 /* ============================================================= */
-function ChatThread({ conv, attendants, onChange }) {
+function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
+  const [showCustomer, setShowCustomer] = useState(false);
   const scrollRef = useRef(null);
 
   const loadMessages = useCallback(async () => {
@@ -312,6 +368,22 @@ function ChatThread({ conv, attendants, onChange }) {
     const id = setInterval(loadMessages, 4500);
     return () => clearInterval(id);
   }, [loadMessages, conv]);
+
+  /* Ao abrir uma conversa: assina presença + força refresh do perfil
+     (avatar/online) a cada 25s para reagir em quase-real-time. */
+  useEffect(() => {
+    if (!conv) return undefined;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        await api.waContactSubscribePresence(conv.phone).catch(() => {});
+        if (!cancelled) await onWarmContact?.(conv.phone);
+      } catch { /* ignore */ }
+    };
+    refresh();
+    const id = setInterval(refresh, 25000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [conv, onWarmContact]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
@@ -383,11 +455,34 @@ function ChatThread({ conv, attendants, onChange }) {
 
   const name = conv.subscriber_name || conv.push_name || `+${conv.phone}`;
   const isAi = conv.assignee_role === "ai";
+  const presence = contactProfile?.presence;
+  const online = presence === "available" || presence === "composing";
+  const typing = presence === "composing";
+  const subscriber = contactProfile?.subscriber;
+  const oltSignal = contactProfile?.olt_signal;
+  const lastSeen = contactProfile?.last_seen;
+
+  let presenceLabel = "—";
+  let presenceColor = "var(--text-muted)";
+  if (typing) { presenceLabel = "digitando…"; presenceColor = "#22c55e"; }
+  else if (online) { presenceLabel = "online"; presenceColor = "#22c55e"; }
+  else if (presence === "unavailable") {
+    if (lastSeen) {
+      try {
+        const d = new Date(Number(lastSeen) * 1000);
+        presenceLabel = "visto por último " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      } catch { presenceLabel = "offline"; }
+    } else { presenceLabel = "offline"; }
+  } else if (presence === "unknown") {
+    presenceLabel = "presença desconhecida";
+  }
 
   return (
     <div data-testid="wa-chat-thread" style={{
       display: "flex", flexDirection: "column",
       background: "var(--bg-surface-2)",
+      minHeight: 0, // <- fix scroll: permite que o child com flex:1 encolha
+      height: "100%",
     }}>
       {/* Header */}
       <div style={{
@@ -395,15 +490,58 @@ function ChatThread({ conv, attendants, onChange }) {
         background: "var(--bg-surface)",
         display: "flex", alignItems: "center", gap: 12,
       }}>
-        <Avatar name={name} size={42} />
-        <div style={{ flex: 1 }}>
-          <strong style={{ fontSize: 14 }}>{name}</strong>
-          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            <span className="mono">+{conv.phone}</span>
-            {conv.subscriber_name && conv.subscriber_id && (
-              <> · <span style={{ color: "var(--accent)" }}>cadastrado</span></>
+        <div style={{ position: "relative" }}>
+          <Avatar name={name} src={contactProfile?.avatar} size={42} />
+          {online && (
+            <span style={{
+              position: "absolute", bottom: 0, right: 0,
+              width: 12, height: 12, borderRadius: "50%",
+              background: "#22c55e", border: "2px solid var(--bg-surface)",
+              animation: typing ? "wa-pulse 1.2s ease-in-out infinite" : "none",
+            }} />
+          )}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <strong style={{ fontSize: 14 }}>{name}</strong>
+            {subscriber && (
+              <button onClick={() => setShowCustomer(true)}
+                      data-testid="wa-customer-badge"
+                      title="Ver informações completas do cliente"
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 4,
+                        padding: "2px 9px", borderRadius: 999,
+                        background: "rgba(13,148,136,.15)",
+                        color: "#0d9488",
+                        border: "1px solid rgba(13,148,136,.35)",
+                        fontSize: 10, fontWeight: 800, letterSpacing: 0.3,
+                        cursor: "pointer",
+                      }}>
+                <UserCheck size={11} strokeWidth={2.5} />
+                {subscriber.plan_name ? `cliente · ${subscriber.plan_name}` : "cliente"}
+              </button>
             )}
           </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)",
+                         display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+            <span className="mono">+{conv.phone}</span>
+            <span>·</span>
+            <span style={{ color: presenceColor, fontWeight: online ? 700 : 400 }}>
+              {presenceLabel}
+            </span>
+          </div>
+        </div>
+        {/* Online status BIG no canto direito (igual focuschat) */}
+        <div data-testid="wa-online-indicator"
+             style={{
+               display: "flex", alignItems: "center", gap: 6,
+               padding: "4px 11px", borderRadius: 999,
+               background: online ? "rgba(34,197,94,.15)" : "rgba(148,163,184,.15)",
+               color: online ? "#15803d" : "#64748b",
+               fontSize: 11, fontWeight: 800, letterSpacing: 0.3,
+             }}>
+          {online ? <Wifi size={11} strokeWidth={2.5} /> : <WifiOff size={11} strokeWidth={2} />}
+          {online ? "ONLINE" : "OFFLINE"}
         </div>
         {/* Atribuição badge + actions */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -441,6 +579,9 @@ function ChatThread({ conv, attendants, onChange }) {
         </div>
       </div>
 
+      {/* Coaching popup (individual do usuário logado, só nesta conversa) */}
+      <ChatCoachingPopup phone={conv.phone} />
+
       {/* Modal de atribuição */}
       {showAssign && (
         <AssignModal attendants={attendants}
@@ -448,13 +589,25 @@ function ChatThread({ conv, attendants, onChange }) {
                       onClose={() => setShowAssign(false)} />
       )}
 
+      {/* Modal informações do cliente */}
+      {showCustomer && (
+        <CustomerProfileModal
+          phone={conv.phone}
+          profile={contactProfile}
+          onClose={() => setShowCustomer(false)}
+        />
+      )}
+
       {/* Mensagens */}
-      <div ref={scrollRef} style={{
-        flex: 1, overflowY: "auto", padding: "16px 18px",
-        background: "var(--bg-surface-2)",
-        backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.025) 1px, transparent 1px)",
-        backgroundSize: "20px 20px",
-      }}>
+      <div ref={scrollRef}
+           data-testid="wa-messages-scroll"
+           style={{
+             flex: 1, minHeight: 0,
+             overflowY: "auto", padding: "16px 18px",
+             background: "var(--bg-surface-2)",
+             backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.025) 1px, transparent 1px)",
+             backgroundSize: "20px 20px",
+           }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {messages.map((m) => <MsgBubble key={m.id} msg={m} />)}
           {messages.length === 0 && (
@@ -486,6 +639,12 @@ function ChatThread({ conv, attendants, onChange }) {
           <Send size={13} /> {sending ? "..." : "Enviar"}
         </button>
       </div>
+
+      <style>{`
+        @keyframes wa-pulse { 0%,100% { transform:scale(1); opacity:1; }
+          50% { transform:scale(1.25); opacity:.7; } }
+        @keyframes wa-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 }
@@ -593,3 +752,450 @@ function AssignModal({ attendants, onPick, onClose }) {
     </div>
   );
 }
+
+/* =============================================================
+   ChatCoachingPopup — Coaching IA INDIVIDUAL do atendente logado
+   (filtrado por user_id no backend), aparece como banner colapsável
+   no topo da Lousa de Chat. Marca como "read" ao expandir.
+============================================================= */
+function ChatCoachingPopup({ phone }) {
+  const [coachings, setCoachings] = useState([]);
+  const [expanded, setExpanded] = useState(null);
+  const [hidden, setHidden] = useState(false);
+  const [busy, setBusy] = useState(null);
+
+  const load = useCallback(async () => {
+    if (!phone) return;
+    try {
+      const r = await api.centralIaCoachingForConversation(phone);
+      setCoachings(r.items || []);
+    } catch { /* sem permissão ou conversa sem coaching */ }
+  }, [phone]);
+
+  useEffect(() => {
+    load();
+    setHidden(false);
+    setExpanded(null);
+  }, [load, phone]);
+
+  const unread = coachings.filter((c) => !c.read).length;
+
+  const onOpen = async (c) => {
+    const willExpand = expanded !== c.id;
+    setExpanded(willExpand ? c.id : null);
+    if (willExpand && !c.read) {
+      try {
+        await api.centralIaCoachingAction(c.id, "read");
+        setCoachings((arr) => arr.map((x) => x.id === c.id ? { ...x, read: true } : x));
+      } catch { /* ignore */ }
+    }
+  };
+
+  const act = async (id, action) => {
+    setBusy(id);
+    try {
+      await api.centralIaCoachingAction(id, action);
+      if (action === "dismiss") {
+        setCoachings((arr) => arr.filter((c) => c.id !== id));
+      } else {
+        setCoachings((arr) => arr.map((c) =>
+          c.id === id ? { ...c, acknowledged: true, read: true } : c));
+      }
+    } catch (e) {
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally { setBusy(null); }
+  };
+
+  if (hidden || coachings.length === 0) return null;
+
+  return (
+    <div data-testid="wa-coaching-popup" style={{
+      borderBottom: "1px solid var(--border-default)",
+      background: unread > 0
+        ? "linear-gradient(90deg, rgba(168,85,247,.10), rgba(168,85,247,.04))"
+        : "var(--bg-surface)",
+    }}>
+      <div style={{
+        padding: "8px 16px",
+        display: "flex", alignItems: "center", gap: 10,
+      }}>
+        <div style={{
+          width: 26, height: 26, borderRadius: 8,
+          background: "linear-gradient(135deg, #a855f7, #7c3aed)",
+          color: "#fff", display: "grid", placeItems: "center",
+          flexShrink: 0,
+        }}>
+          <GraduationCap size={14} strokeWidth={2} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#7c3aed",
+                         letterSpacing: 0.2 }}>
+            Coaching IA pra você nesta conversa
+            {unread > 0 && (
+              <span style={{
+                marginLeft: 8,
+                padding: "1px 7px", borderRadius: 999,
+                background: "#a855f7", color: "#fff",
+                fontSize: 9, fontWeight: 800, letterSpacing: 0.4,
+              }}>{unread} NÃO LIDO{unread > 1 ? "S" : ""}</span>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+            Dicas individuais geradas pela IA — só você está vendo.
+          </div>
+        </div>
+        <button onClick={() => setHidden(true)}
+                data-testid="wa-coaching-close"
+                title="Esconder até abrir esta conversa de novo"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: 4 }}>
+          <X size={14} />
+        </button>
+      </div>
+      <div style={{ display: "grid", gap: 6, padding: "0 12px 10px" }}>
+        {coachings.slice(0, 3).map((c) => {
+          const isOpen = expanded === c.id;
+          const toneColor = c.tone === "urgente" ? "#dc2626"
+            : c.tone === "positivo" ? "#16a34a" : "#a855f7";
+          return (
+            <div key={c.id}
+                 data-testid={`wa-coaching-item-${c.id}`}
+                 style={{
+                   border: c.read ? "1px solid var(--border-default)"
+                                  : `1px solid ${toneColor}66`,
+                   background: c.read ? "var(--bg-surface)"
+                                      : `${toneColor}10`,
+                   borderRadius: 10, overflow: "hidden",
+                 }}>
+              <button onClick={() => onOpen(c)}
+                      style={{
+                        width: "100%", padding: "8px 12px",
+                        background: "transparent", border: "none",
+                        display: "flex", alignItems: "center", gap: 10,
+                        cursor: "pointer", textAlign: "left",
+                      }}>
+                {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                <div style={{
+                  width: 24, height: 24, borderRadius: "50%",
+                  background: toneColor, color: "#fff",
+                  display: "grid", placeItems: "center",
+                  fontSize: 10, fontWeight: 800, flexShrink: 0,
+                }}>{c.score?.toFixed?.(1) ?? c.score}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700,
+                                 color: "var(--text-primary)" }}>
+                    {c.summary_eval || c.next_action || `CSAT ${c.csat_at_time ?? "—"}`}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)",
+                                 marginTop: 1 }}>
+                    {(c.improvements || []).length} ponto{(c.improvements || []).length !== 1 ? "s" : ""} a melhorar
+                  </div>
+                </div>
+                <span style={{
+                  fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 999,
+                  background: `${toneColor}22`, color: toneColor,
+                  textTransform: "uppercase", letterSpacing: 0.4,
+                }}>{c.tone}</span>
+              </button>
+              {isOpen && (
+                <div style={{ padding: "8px 14px 12px",
+                               borderTop: "1px solid var(--border-default)",
+                               background: "var(--bg-surface-2)" }}>
+                  {c.strengths?.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 9, fontWeight: 800,
+                                     color: "#16a34a", textTransform: "uppercase",
+                                     letterSpacing: 0.4, marginBottom: 4 }}>
+                        ✓ Você acertou
+                      </div>
+                      {c.strengths.map((s, i) => (
+                        <div key={i} style={{ fontSize: 12,
+                                                color: "var(--text-primary)",
+                                                paddingLeft: 12, marginBottom: 2 }}>
+                          • {s}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {c.improvements?.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 9, fontWeight: 800,
+                                     color: "#f59e0b", textTransform: "uppercase",
+                                     letterSpacing: 0.4, marginBottom: 4 }}>
+                        → Pra melhorar
+                      </div>
+                      {c.improvements.map((s, i) => (
+                        <div key={i} style={{ fontSize: 12,
+                                                color: "var(--text-primary)",
+                                                paddingLeft: 12, marginBottom: 2 }}>
+                          • {s}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {c.next_action && (
+                    <div style={{
+                      padding: 8, borderRadius: 8,
+                      background: "var(--accent-soft)",
+                      fontSize: 12, display: "flex", gap: 6, alignItems: "flex-start",
+                    }}>
+                      <Lightbulb size={13} strokeWidth={1.75}
+                                  style={{ flexShrink: 0, marginTop: 1 }} />
+                      <div>
+                        <strong>Próxima ação:</strong> {c.next_action}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 6, marginTop: 8,
+                                 justifyContent: "flex-end" }}>
+                    {!c.acknowledged && (
+                      <button onClick={() => act(c.id, "acknowledged")}
+                              disabled={busy === c.id}
+                              data-testid={`wa-coaching-ack-${c.id}`}
+                              className="btn btn-primary btn-sm">
+                        <Check size={11} /> Entendi
+                      </button>
+                    )}
+                    <button onClick={() => act(c.id, "dismiss")}
+                            disabled={busy === c.id}
+                            className="btn btn-ghost btn-sm">
+                      <X size={11} /> Dispensar
+                    </button>
+                    {c.acknowledged && (
+                      <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 700,
+                                      display: "flex", alignItems: "center", gap: 4 }}>
+                        <Check size={12} /> Reconhecido
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* =============================================================
+   CustomerProfileModal — popup com 1-clique no badge "cliente"
+   Mostra: nome, plano, status, débitos, endereço, sinal RX/TX SmartOLT
+============================================================= */
+function CustomerProfileModal({ phone, profile, onClose }) {
+  const sub = profile?.subscriber;
+  const signal = profile?.olt_signal;
+  const wa = profile;
+  const rx = signal?.rx_signal_dbm ?? signal?.rx ?? signal?.rx_power;
+  const tx = signal?.tx_signal_dbm ?? signal?.tx ?? signal?.tx_power;
+  const ontStatus = signal?.status || signal?.ont_status;
+
+  const rxColor = (v) => {
+    if (v == null) return "var(--text-muted)";
+    const n = Number(v);
+    if (Number.isNaN(n)) return "var(--text-muted)";
+    if (n >= -25) return "#16a34a";
+    if (n >= -27) return "#eab308";
+    return "#dc2626";
+  };
+
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,.55)",
+      display: "grid", placeItems: "center", zIndex: 1100,
+    }} data-testid="wa-customer-modal">
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "var(--bg-surface)",
+        padding: 0, borderRadius: 16, width: 540,
+        maxHeight: "85vh", overflow: "auto",
+        boxShadow: "0 20px 50px rgba(0,0,0,.4)",
+      }}>
+        {/* Header com avatar do WhatsApp */}
+        <div style={{
+          padding: "20px 22px",
+          background: "linear-gradient(135deg, rgba(13,148,136,.10), rgba(6,182,212,.06))",
+          borderBottom: "1px solid var(--border-default)",
+          display: "flex", alignItems: "center", gap: 14,
+        }}>
+          <Avatar name={sub?.name || `+${phone}`} src={wa?.avatar} size={56} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 800,
+                           color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
+              {sub?.name || "Cliente não identificado"}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2,
+                           display: "flex", gap: 8, alignItems: "center",
+                           fontFamily: "ui-monospace, monospace" }}>
+              <Phone size={11} /> +{phone}
+            </div>
+            {sub?.external_code && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                Cód.: <span className="mono">{sub.external_code}</span>
+              </div>
+            )}
+          </div>
+          <button onClick={onClose} className="btn btn-ghost btn-sm">
+            <X size={14} />
+          </button>
+        </div>
+
+        <div style={{ padding: 18, display: "grid", gap: 14 }}>
+          {!sub && (
+            <div style={{
+              padding: 14, borderRadius: 10,
+              background: "rgba(245,158,11,.10)",
+              border: "1px solid rgba(245,158,11,.30)",
+              fontSize: 12, color: "var(--text-primary)",
+              display: "flex", gap: 10, alignItems: "flex-start",
+            }}>
+              <AlertCircle size={14} strokeWidth={2} style={{ color: "#f59e0b", marginTop: 1 }} />
+              <div>
+                <strong>Telefone sem cadastro vinculado.</strong>
+                <div style={{ color: "var(--text-muted)", marginTop: 3 }}>
+                  Cadastre este cliente em Assinantes para que a IA puxe
+                  automaticamente as informações nas próximas conversas.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {sub && (
+            <>
+              <Field icon={Info} label="Status">
+                <span style={{
+                  fontSize: 12, fontWeight: 700,
+                  padding: "3px 10px", borderRadius: 999,
+                  background: sub.status === "ativo" ? "rgba(34,197,94,.15)"
+                    : sub.status === "bloqueado" ? "rgba(220,38,38,.15)"
+                    : "rgba(148,163,184,.15)",
+                  color: sub.status === "ativo" ? "#16a34a"
+                    : sub.status === "bloqueado" ? "#dc2626"
+                    : "#64748b",
+                }}>{sub.status || "—"}</span>
+              </Field>
+              {sub.plan_name && (
+                <Field icon={Sparkles} label="Plano">
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>{sub.plan_name}</span>
+                </Field>
+              )}
+              {sub.branch && (
+                <Field icon={Activity} label="Filial">
+                  <span style={{ fontSize: 13 }}>{sub.branch}</span>
+                </Field>
+              )}
+              {sub.address && (
+                <Field icon={MapPin} label="Endereço">
+                  <span style={{ fontSize: 13 }}>{sub.address}</span>
+                </Field>
+              )}
+              {sub.pppoe_user && (
+                <Field icon={User} label="Usuário PPPoE">
+                  <span className="mono" style={{ fontSize: 12 }}>{sub.pppoe_user}</span>
+                </Field>
+              )}
+              {(sub.debit_total != null || sub.debits) && (
+                <Field icon={CreditCard} label="Débitos">
+                  <span style={{
+                    fontSize: 13, fontWeight: 700,
+                    color: (sub.debit_total || 0) > 0 ? "#dc2626" : "#16a34a",
+                  }}>
+                    {sub.debit_total != null
+                      ? new Intl.NumberFormat("pt-BR",
+                            { style: "currency", currency: "BRL" }).format(sub.debit_total)
+                      : (sub.debits || "—")}
+                  </span>
+                </Field>
+              )}
+            </>
+          )}
+
+          {/* SmartOLT — sinal RX/TX */}
+          <div style={{
+            padding: 14, borderRadius: 12,
+            border: signal ? "1px solid rgba(13,148,136,.35)" : "1px solid var(--border-default)",
+            background: signal ? "rgba(13,148,136,.06)" : "var(--bg-surface-2)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <Signal size={14} strokeWidth={2} style={{ color: "#0d9488" }} />
+              <strong style={{ fontSize: 12, color: "#0d9488",
+                                 textTransform: "uppercase", letterSpacing: 0.5 }}>
+                SmartOLT — Sinal Óptico
+              </strong>
+              {ontStatus && (
+                <span style={{
+                  marginLeft: "auto",
+                  padding: "2px 9px", borderRadius: 999,
+                  background: String(ontStatus).toLowerCase().includes("online")
+                    ? "rgba(34,197,94,.15)" : "rgba(220,38,38,.15)",
+                  color: String(ontStatus).toLowerCase().includes("online")
+                    ? "#16a34a" : "#dc2626",
+                  fontSize: 10, fontWeight: 800, letterSpacing: 0.4,
+                }}>{ontStatus}</span>
+              )}
+            </div>
+            {signal ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <SignalCell label="RX (recepção)" value={rx} suffix="dBm" color={rxColor(rx)} />
+                <SignalCell label="TX (envio)" value={tx} suffix="dBm" color="var(--text-primary)" />
+                {signal.olt_name && (
+                  <SignalCell label="OLT" value={signal.olt_name} />
+                )}
+                {signal.pon_port && (
+                  <SignalCell label="Porta PON" value={signal.pon_port} />
+                )}
+                {signal.ont_serial && (
+                  <SignalCell label="Serial ONT" value={signal.ont_serial} mono />
+                )}
+                {signal.uptime && (
+                  <SignalCell label="Uptime" value={signal.uptime} />
+                )}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {sub?.pppoe_user
+                  ? "Buscando sinal na OLT… (configure SmartOLT em Integrações)"
+                  : "Sem usuário PPPoE cadastrado pra buscar sinal."}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ icon: Ico, label, children }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <Ico size={13} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
+      <span style={{ fontSize: 11, color: "var(--text-muted)",
+                       textTransform: "uppercase", letterSpacing: 0.4,
+                       minWidth: 90, fontWeight: 700 }}>{label}</span>
+      <div style={{ flex: 1 }}>{children}</div>
+    </div>
+  );
+}
+
+function SignalCell({ label, value, suffix, color, mono }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: "var(--text-muted)",
+                     textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 700 }}>
+        {label}
+      </div>
+      <div style={{
+        fontSize: 14, fontWeight: 800,
+        color: color || "var(--text-primary)",
+        fontFamily: mono ? "ui-monospace, monospace" : "inherit",
+        marginTop: 2,
+      }}>
+        {value == null || value === "" ? "—" : value}
+        {value != null && suffix && (
+          <span style={{ fontSize: 10, color: "var(--text-muted)",
+                          fontWeight: 600, marginLeft: 3 }}>{suffix}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+

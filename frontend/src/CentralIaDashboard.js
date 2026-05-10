@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Activity, AlertTriangle, Award, BarChart3, Bot, Brain,
+  Activity, AlertTriangle, Award, Bot, Brain,
   Clock, Smile, Frown, Meh, Sparkles, TrendingDown, TrendingUp,
-  User, Users, Zap, RefreshCw, GraduationCap, Check, X, ChevronDown,
-  ChevronRight, Lightbulb, ArrowRight,
+  Users, Zap, RefreshCw, GraduationCap,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -41,22 +40,20 @@ export default function CentralIaDashboard() {
   const [attendants, setAttendants] = useState([]);
   const [intents, setIntents] = useState([]);
   const [alerts, setAlerts] = useState([]);
-  const [coachings, setCoachings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const reload = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [k, a, i, al, co] = await Promise.all([
+      const [k, a, i, al] = await Promise.all([
         api.centralIaKpis(days),
         api.centralIaAttendants(days),
         api.centralIaIntents(days),
         api.centralIaAlerts(),
-        api.centralIaCoachingList({ limit: 30 }),
       ]);
       setKpis(k); setAttendants(a.items || []); setIntents(i.items || []);
-      setAlerts(al.items || []); setCoachings(co.items || []);
+      setAlerts(al.items || []);
     } catch (e) {
       console.error(e);
     } finally { setLoading(false); setRefreshing(false); }
@@ -498,185 +495,6 @@ function CoachingStatsCard() {
             ))}
           </tbody>
         </table>
-      )}
-    </div>
-  );
-}
-
-/* ============================================================= */
-function AlertsCard({ items, onReload }) {
-  const [expanded, setExpanded] = useState(null);
-  const [busy, setBusy] = useState(null);
-
-  const unread = items.filter((c) => !c.read).length;
-
-  const act = async (id, action) => {
-    setBusy(id);
-    try {
-      await api.centralIaCoachingAction(id, action);
-      onReload();
-    } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
-    } finally { setBusy(null); }
-  };
-
-  return (
-    <div className="surface" style={{
-      padding: 16, borderRadius: 12,
-      border: unread > 0 ? "1px solid #a855f755" : "1px solid var(--border-default)",
-    }} data-testid="ci-coaching-card">
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-        <GraduationCap size={14} style={{ color: "#a855f7" }} />
-        <span style={{ fontSize: 11, fontWeight: 800, color: "#a855f7",
-                       textTransform: "uppercase", letterSpacing: 0.5 }}>
-          Coaching IA para atendentes
-        </span>
-        {unread > 0 && (
-          <span style={{
-            padding: "2px 8px", borderRadius: 999,
-            background: "#a855f7", color: "#fff",
-            fontSize: 10, fontWeight: 800,
-          }}>{unread} novo{unread > 1 ? "s" : ""}</span>
-        )}
-        <span style={{ marginLeft: "auto", fontSize: 11,
-                        color: "var(--text-muted)" }}>
-          {items.length} no total
-        </span>
-      </div>
-
-      {items.length === 0 ? (
-        <div style={{ padding: 16, fontSize: 12, color: "var(--text-muted)",
-                       background: "var(--bg-surface-2)", borderRadius: 8,
-                       textAlign: "center" }}>
-          Nenhum coaching gerado ainda. Quando um atendente humano fechar uma
-          conversa com CSAT &lt; 7, a IA gera dicas personalizadas
-          automaticamente.
-        </div>
-      ) : (
-        <div style={{ display: "grid", gap: 8 }}>
-          {items.slice(0, 8).map((c) => {
-            const isOpen = expanded === c.id;
-            const toneColor = c.tone === "urgente" ? "#dc2626"
-              : c.tone === "positivo" ? "#16a34a" : "#a855f7";
-            return (
-              <div key={c.id}
-                   data-testid={`ci-coaching-item-${c.id}`}
-                   style={{
-                     border: c.read ? "1px solid var(--border-default)"
-                                    : `1px solid ${toneColor}55`,
-                     background: c.read ? "var(--bg-surface)"
-                                        : `${toneColor}0F`,
-                     borderRadius: 10, overflow: "hidden",
-                   }}>
-                <button onClick={() => setExpanded(isOpen ? null : c.id)}
-                        style={{
-                          width: "100%", padding: "10px 14px",
-                          background: "transparent", border: "none",
-                          display: "flex", alignItems: "center", gap: 10,
-                          cursor: "pointer", textAlign: "left",
-                        }}>
-                  {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  <div style={{
-                    width: 28, height: 28, borderRadius: "50%",
-                    background: toneColor, color: "#fff",
-                    display: "grid", placeItems: "center",
-                    fontSize: 11, fontWeight: 700,
-                  }}>{c.score?.toFixed?.(1) ?? c.score}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700,
-                                   color: "var(--text-primary)" }}>
-                      {c.user_name || "Atendente"} ·
-                      <span style={{ fontSize: 11, color: "var(--text-muted)",
-                                      fontWeight: 500, marginLeft: 6 }}>
-                        CSAT {c.csat_at_time ?? "—"}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)",
-                                   marginTop: 2 }}>
-                      {c.summary_eval || c.next_action || ""}
-                    </div>
-                  </div>
-                  <span style={{
-                    fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 999,
-                    background: `${toneColor}22`, color: toneColor,
-                    textTransform: "uppercase", letterSpacing: 0.4,
-                  }}>{c.tone}</span>
-                </button>
-
-                {isOpen && (
-                  <div style={{ padding: "10px 16px 14px", borderTop: "1px solid var(--border-default)",
-                                 background: "var(--bg-surface-2)" }}>
-                    {c.strengths?.length > 0 && (
-                      <div style={{ marginBottom: 10 }}>
-                        <div style={{ fontSize: 10, fontWeight: 800,
-                                       color: "#16a34a", textTransform: "uppercase",
-                                       letterSpacing: 0.4, marginBottom: 6 }}>
-                          ✓ Pontos fortes
-                        </div>
-                        {c.strengths.map((s, i) => (
-                          <div key={i} style={{ fontSize: 12, color: "var(--text-primary)",
-                                                  paddingLeft: 14, marginBottom: 3 }}>
-                            • {s}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {c.improvements?.length > 0 && (
-                      <div style={{ marginBottom: 10 }}>
-                        <div style={{ fontSize: 10, fontWeight: 800,
-                                       color: "#f59e0b", textTransform: "uppercase",
-                                       letterSpacing: 0.4, marginBottom: 6 }}>
-                          → A melhorar
-                        </div>
-                        {c.improvements.map((s, i) => (
-                          <div key={i} style={{ fontSize: 12, color: "var(--text-primary)",
-                                                  paddingLeft: 14, marginBottom: 3 }}>
-                            • {s}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {c.next_action && (
-                      <div style={{
-                        padding: 10, borderRadius: 8,
-                        background: "var(--accent-soft)", color: "var(--accent-soft-fg, var(--text-primary))",
-                        fontSize: 12, display: "flex", gap: 8, alignItems: "flex-start",
-                      }}>
-                        <Lightbulb size={14} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: 1 }} />
-                        <div>
-                          <strong>Próxima ação:</strong> {c.next_action}
-                        </div>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", gap: 6, marginTop: 10,
-                                   justifyContent: "flex-end" }}>
-                      {!c.acknowledged && (
-                        <button onClick={() => act(c.id, "acknowledged")}
-                                disabled={busy === c.id}
-                                data-testid={`ci-coaching-ack-${c.id}`}
-                                className="btn btn-primary btn-sm">
-                          <Check size={12} /> Entendi, vou aplicar
-                        </button>
-                      )}
-                      {!c.read && (
-                        <button onClick={() => act(c.id, "dismiss")}
-                                disabled={busy === c.id}
-                                className="btn btn-ghost btn-sm">
-                          <X size={12} /> Dispensar
-                        </button>
-                      )}
-                      {c.acknowledged && (
-                        <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 700 }}>
-                          ✓ Reconhecido
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
       )}
     </div>
   );
