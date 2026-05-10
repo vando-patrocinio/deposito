@@ -599,7 +599,7 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
             <option value="">— Sem plano —</option>
             {plansList.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} · {p.speed_label || ""} · {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(p.monthly_price || 0)}/mês
+                {`${p.name} · ${p.speed_label || ""} · ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(p.monthly_price || 0)}/mês`}
               </option>
             ))}
           </select>
