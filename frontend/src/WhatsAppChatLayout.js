@@ -249,7 +249,9 @@ function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
       }}>
         <Search size={14} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
         <input value={search} onChange={(e) => setSearch(e.target.value)}
-               placeholder={`Buscar em ${bucketLabel.toLowerCase()}...`}
+               placeholder={search.trim()
+                 ? "Buscar em todas as conversas..."
+                 : `Buscar em ${bucketLabel.toLowerCase()}...`}
                data-testid="wa-search-input"
                style={{
                  flex: 1, border: "none", outline: "none", background: "transparent",
