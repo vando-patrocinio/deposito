@@ -504,23 +504,29 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <strong style={{ fontSize: 14 }}>{name}</strong>
-            {subscriber && (
-              <button onClick={() => setShowCustomer(true)}
-                      data-testid="wa-customer-badge"
-                      title="Ver informações completas do cliente"
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 4,
-                        padding: "2px 9px", borderRadius: 999,
-                        background: "rgba(13,148,136,.15)",
-                        color: "#0d9488",
-                        border: "1px solid rgba(13,148,136,.35)",
-                        fontSize: 10, fontWeight: 800, letterSpacing: 0.3,
-                        cursor: "pointer",
-                      }}>
-                <UserCheck size={11} strokeWidth={2.5} />
-                {subscriber.plan_name ? `cliente · ${subscriber.plan_name}` : "cliente"}
-              </button>
-            )}
+            <button onClick={() => setShowCustomer(true)}
+                    data-testid="wa-customer-badge"
+                    title={subscriber
+                      ? "Ver informações completas do cliente (sinal, plano, débitos)"
+                      : "Telefone não vinculado a nenhum cadastro — clique para verificar"}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      padding: "2px 9px", borderRadius: 999,
+                      background: subscriber
+                        ? "rgba(13,148,136,.15)"
+                        : "rgba(148,163,184,.15)",
+                      color: subscriber ? "#0d9488" : "#64748b",
+                      border: subscriber
+                        ? "1px solid rgba(13,148,136,.35)"
+                        : "1px dashed rgba(100,116,139,.5)",
+                      fontSize: 10, fontWeight: 800, letterSpacing: 0.3,
+                      cursor: "pointer",
+                    }}>
+              {subscriber
+                ? <><UserCheck size={11} strokeWidth={2.5} />
+                    {subscriber.plan_name ? `cliente · ${subscriber.plan_name}` : "cliente"}</>
+                : <><AlertCircle size={11} strokeWidth={2.5} />não vinculado</>}
+            </button>
           </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)",
                          display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
@@ -536,12 +542,31 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
              style={{
                display: "flex", alignItems: "center", gap: 6,
                padding: "4px 11px", borderRadius: 999,
-               background: online ? "rgba(34,197,94,.15)" : "rgba(148,163,184,.15)",
-               color: online ? "#15803d" : "#64748b",
+               background: online
+                 ? "rgba(34,197,94,.15)"
+                 : presence === "unavailable"
+                   ? "rgba(148,163,184,.15)"
+                   : "rgba(203,213,225,.20)",
+               color: online
+                 ? "#15803d"
+                 : presence === "unavailable"
+                   ? "#64748b"
+                   : "#94a3b8",
                fontSize: 11, fontWeight: 800, letterSpacing: 0.3,
              }}>
-          {online ? <Wifi size={11} strokeWidth={2.5} /> : <WifiOff size={11} strokeWidth={2} />}
-          {online ? "ONLINE" : "OFFLINE"}
+          {online
+            ? <Wifi size={11} strokeWidth={2.5} />
+            : presence === "unavailable"
+              ? <WifiOff size={11} strokeWidth={2} />
+              : <span style={{
+                  width: 8, height: 8, borderRadius: "50%",
+                  background: "#cbd5e1", display: "inline-block",
+                }} />}
+          {online
+            ? "ONLINE"
+            : presence === "unavailable"
+              ? "OFFLINE"
+              : "DESCONHECIDO"}
         </div>
         {/* Atribuição badge + actions */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
