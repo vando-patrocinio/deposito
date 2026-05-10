@@ -139,7 +139,8 @@ async def _build_transcript_from_phone(cid: str, phone: str) -> Optional[str]:
     return "\n".join(lines)
 
 
-async def _evaluate_conversation(cid: str, phone: str) -> Optional[Dict[str, Any]]:
+async def _evaluate_conversation(cid: str, phone: str,
+                                    skip_auto_coach: bool = False) -> Optional[Dict[str, Any]]:
     """Avalia uma conversa específica e persiste em `aihub_evaluations`."""
     # Pega assignee atual
     conv = await db.wa_conversations.find_one(
@@ -200,7 +201,8 @@ async def _evaluate_conversation(cid: str, phone: str) -> Optional[Dict[str, Any
     )
 
     # Auto-coaching: se atendente HUMANO + CSAT < 7, gera coaching
-    if (eval_doc.get("assignee_user_id") and not eval_doc["is_ai_only"]
+    if (not skip_auto_coach
+            and eval_doc.get("assignee_user_id") and not eval_doc["is_ai_only"]
             and eval_doc["csat_score"] < 7):
         try:
             await _generate_coaching(cid, phone, transcript, eval_doc)
@@ -648,15 +650,18 @@ async def dashboard_summary(user: dict = Depends(require_role("gestor"))):
 # ---------------------------------------------------------------------------
 @router.get("/coaching")
 async def list_coaching(user_id: Optional[str] = None,
-                          unread_only: bool = False, limit: int = 50,
+                          unread_only: bool = False,
+                          include_dismissed: bool = False, limit: int = 50,
                           user: dict = Depends(require_role("gestor"))):
-    """Lista coachings — opcionalmente filtra por user_id ou só não-lidos."""
+    """Lista coachings — exclui dismissed por padrão."""
     cid = _cid(user)
     q: Dict[str, Any] = {"company_id": cid}
     if user_id:
         q["user_id"] = user_id
     if unread_only:
         q["read"] = {"$ne": True}
+    if not include_dismissed:
+        q["dismissed"] = {"$ne": True}
     docs = await db.aihub_coaching.find(q, {"_id": 0}) \
         .sort("created_at", -1).limit(min(limit, 200)).to_list(200)
     return {"items": docs, "count": len(docs)}
@@ -741,7 +746,7 @@ async def generate_coaching_now(payload: GenerateCoachingIn,
                                   user: dict = Depends(require_role("gestor"))):
     """Força geração de coaching para uma conversa específica."""
     cid = _cid(user)
-    ev = await _evaluate_conversation(cid, payload.phone)
+    ev = await _evaluate_conversation(cid, payload.phone, skip_auto_coach=True)
     if not ev:
         raise HTTPException(400, "Conversa muito curta ou avaliação falhou.")
     if ev.get("is_ai_only"):
