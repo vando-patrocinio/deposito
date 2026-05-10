@@ -1,67 +1,89 @@
 import React from "react";
+import {
+  Smartphone, Users, BarChart3, Plug, CheckCircle2, Bell,
+  MapPin, Camera, Clock, History, Shield, RefreshCcw,
+  User, Download, AlertTriangle, Globe, Ban, Network,
+  Settings, Plus, Trash2, Mail, Map, FileText, Activity,
+  Boxes, Bot, ClipboardList, ScanFace, Building2, Cog, LogOut,
+  Search, ChevronRight,
+} from "lucide-react";
 
-export function Icon({ name }) {
-  const icons = {
-    phone: "📱", users: "👥", sheet: "📊", api: "🔌", tests: "✅", bell: "🔔",
-    map: "📍", camera: "🤳", clock: "🕒", history: "📋", shield: "🛡️", sync: "🔄",
-    user: "👤", export: "⬇️", alert: "⚠️", check: "✅", ip: "🌐", block: "🚫",
-    network: "📡", gear: "⚙️", plus: "➕", trash: "🗑️", mail: "✉️",
-  };
-  return <span aria-hidden="true">{icons[name] || "•"}</span>;
+/* ------------------------------------------------------------
+   Lucide-based Icon kit (replaces all emoji icons)
+------------------------------------------------------------ */
+const ICON_MAP = {
+  phone: Smartphone, users: Users, sheet: BarChart3, api: Plug, tests: CheckCircle2,
+  bell: Bell, map: MapPin, camera: Camera, clock: Clock, history: History,
+  shield: Shield, sync: RefreshCcw, user: User, export: Download, alert: AlertTriangle,
+  check: CheckCircle2, ip: Globe, block: Ban, network: Network, gear: Settings,
+  plus: Plus, trash: Trash2, mail: Mail, leaflet: Map, file: FileText, activity: Activity,
+  boxes: Boxes, bot: Bot, clipboard: ClipboardList, face: ScanFace, building: Building2,
+  cog: Cog, logout: LogOut, search: Search, chevron: ChevronRight,
+};
+
+export function Icon({ name, size = 16, className = "", style = {} }) {
+  const C = ICON_MAP[name];
+  if (!C) return <span aria-hidden="true" style={{ width: size, height: size, display: "inline-block" }} />;
+  return <C size={size} strokeWidth={1.75} className={className} style={style} aria-hidden="true" />;
 }
+
+/* ------------------------------------------------------------
+   StatusBadge — pill style mapped to status semantics
+------------------------------------------------------------ */
+const STATUS_MAP = {
+  "Válido": "success", "Aprovado": "success", "Extra": "success",
+  "Dentro da cerca": "success",
+  "Offline sincronizado": "info", "Regular": "info",
+  "Offline": "neutral", "Cerca não exigida": "neutral",
+  "Pendente": "warning", "Incompleto": "warning", "Fora da cerca": "warning",
+  "Recusado": "danger", "Bloqueado": "danger", "Débito": "danger",
+};
 
 export function StatusBadge({ children, status }) {
   const key = status || children;
-  const map = {
-    "Válido": "#dcfce7|#166534|#bbf7d0",
-    "Offline sincronizado": "#e0f2fe|#075985|#bae6fd",
-    "Offline": "#f1f5f9|#334155|#cbd5e1",
-    "Pendente": "#fef3c7|#92400e|#fde68a",
-    "Recusado": "#ffe4e6|#9f1239|#fecdd3",
-    "Bloqueado": "#fee2e2|#991b1b|#fecaca",
-    "Aprovado": "#dcfce7|#166534|#bbf7d0",
-    "Extra": "#dcfce7|#166534|#bbf7d0",
-    "Débito": "#ffe4e6|#9f1239|#fecdd3",
-    "Regular": "#e0f2fe|#075985|#bae6fd",
-    "Incompleto": "#fef3c7|#92400e|#fde68a",
-    "Dentro da cerca": "#dcfce7|#166534|#bbf7d0",
-    "Fora da cerca": "#fef3c7|#92400e|#fde68a",
-    "Cerca não exigida": "#f8fafc|#334155|#e2e8f0",
-  };
-  const [bg, color, border] = (map[key] || "#f8fafc|#334155|#e2e8f0").split("|");
-  return (
-    <span style={{ background: bg, color, border: `1px solid ${border}`, borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }}>
-      {children || status}
-    </span>
-  );
+  const variant = STATUS_MAP[key] || "neutral";
+  return <span className={`pill pill--${variant}`}>{children || status}</span>;
 }
 
-// Design tokens compartilhados — uso interno (consistência de espaçamento/tipografia)
+/* ------------------------------------------------------------
+   Design tokens (kept for backwards compat; use CSS vars when possible)
+------------------------------------------------------------ */
 export const TOKENS = {
-  radius: { sm: 10, md: 12, lg: 16, xl: 20, "2xl": 24 },
+  radius: { sm: 6, md: 8, lg: 12, xl: 16, "2xl": 20 },
   space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, "2xl": 32 },
   font: { xs: 11, sm: 12, base: 13, md: 14, lg: 16, xl: 18, "2xl": 22, "3xl": 28 },
   shadow: {
-    sm: "0 1px 2px rgba(15,23,42,.04)",
-    md: "0 4px 12px rgba(15,23,42,.06)",
-    lg: "0 12px 28px rgba(15,23,42,.08)",
-    xl: "0 24px 60px rgba(15,23,42,.12)",
+    xs: "0 1px 2px rgba(11,18,32,.04)",
+    sm: "0 1px 3px rgba(11,18,32,.06), 0 1px 2px rgba(11,18,32,.04)",
+    md: "0 4px 12px rgba(11,18,32,.06)",
+    lg: "0 12px 28px rgba(11,18,32,.08)",
   },
   color: {
-    text: "#0f172a", muted: "#64748b", subtle: "#94a3b8",
-    border: "#e2e8f0", borderStrong: "#cbd5e1", surface: "#ffffff", surfaceAlt: "#f8fafc",
-    primary: "#0f172a", accent: "#0ea5e9", success: "#16a34a", warn: "#f59e0b", danger: "#e11d48",
+    text: "#0b1220", muted: "#475569", subtle: "#94a3b8",
+    border: "#e6e8ee", borderStrong: "#d4d7df",
+    surface: "#ffffff", surfaceAlt: "#f6f7f9", surfaceMuted: "#f1f5f9",
+    primary: "#0b1220", accent: "#0d9488", accentHover: "#0f766e",
+    success: "#16a34a", warn: "#d97706", danger: "#dc2626", info: "#0369a1",
   },
 };
 
-export function Button({ children, onClick, disabled, variant = "primary", style = {}, type = "button", "data-testid": testId, title }) {
-  const styles = {
-    primary: { background: "#0f172a", color: "white", border: "1px solid #0f172a" },
-    secondary: { background: "white", color: "#0f172a", border: "1px solid #cbd5e1" },
-    soft: { background: "#f1f5f9", color: "#0f172a", border: "1px solid #e2e8f0" },
-    danger: { background: "#e11d48", color: "white", border: "1px solid #e11d48" },
-    success: { background: "#16a34a", color: "white", border: "1px solid #16a34a" },
-  };
+/* ------------------------------------------------------------
+   Button — uses .btn classes from index.css
+------------------------------------------------------------ */
+export function Button({
+  children, onClick, disabled, variant = "primary", size = "md",
+  style = {}, type = "button", "data-testid": testId, title, className = "",
+}) {
+  const variantClass = {
+    primary: "btn-primary",
+    accent: "btn-accent",
+    secondary: "btn-secondary",
+    soft: "btn-secondary",
+    ghost: "btn-ghost",
+    danger: "btn-danger",
+    success: "btn-accent",
+  }[variant] || "btn-secondary";
+  const sizeClass = size === "sm" ? "btn-sm" : size === "lg" ? "btn-lg" : "";
   return (
     <button
       type={type}
@@ -69,37 +91,41 @@ export function Button({ children, onClick, disabled, variant = "primary", style
       disabled={disabled}
       data-testid={testId}
       title={title}
-      style={{
-        ...styles[variant],
-        padding: "9px 14px",
-        borderRadius: 12,
-        opacity: disabled ? 0.45 : 1,
-        cursor: disabled ? "not-allowed" : "pointer",
-        fontWeight: 700,
-        fontSize: 13,
-        letterSpacing: "0.01em",
-        transition: "transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease",
-        display: "inline-flex", alignItems: "center", gap: 6,
-        ...style,
-      }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.transform = "translateY(-1px)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; }}
+      className={`btn ${variantClass} ${sizeClass} ${className}`.trim()}
+      style={style}
     >
       {children}
     </button>
   );
 }
 
-export function Card({ title, children, style = {}, action, "data-testid": testId }) {
+/* ------------------------------------------------------------
+   Card — content surface
+------------------------------------------------------------ */
+export function Card({ title, subtitle, children, style = {}, action, "data-testid": testId, padding = 18, className = "" }) {
   return (
-    <section data-testid={testId} style={{
-      background: "white", border: "1px solid #e2e8f0", borderRadius: 16,
-      padding: 18, boxShadow: "0 4px 12px rgba(15,23,42,.04)",
-      marginBottom: 14, ...style,
-    }}>
-      {(title || action) && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
-          {title && <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", color: "#0f172a" }}>{title}</h3>}
+    <section
+      data-testid={testId}
+      className={`surface ${className}`.trim()}
+      style={{ padding, marginBottom: 14, ...style }}
+    >
+      {(title || action || subtitle) && (
+        <div style={{
+          display: "flex", justifyContent: "space-between",
+          alignItems: subtitle ? "flex-start" : "center",
+          gap: 12, flexWrap: "wrap",
+          marginBottom: children ? 14 : 0,
+        }}>
+          <div>
+            {title && (
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.012em", color: "var(--text-primary)" }}>
+                {title}
+              </h3>
+            )}
+            {subtitle && (
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--text-secondary)" }}>{subtitle}</p>
+            )}
+          </div>
           {action}
         </div>
       )}
@@ -110,48 +136,64 @@ export function Card({ title, children, style = {}, action, "data-testid": testI
 
 export function Row({ label, value }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, borderBottom: "1px solid #f1f5f9", padding: "9px 0", alignItems: "center" }}>
-      <span style={{ color: "#64748b" }}>{label}</span>
-      <strong style={{ textAlign: "right" }}>{value}</strong>
+    <div style={{
+      display: "flex", justifyContent: "space-between", gap: 12,
+      borderBottom: "1px solid var(--border-default)", padding: "10px 0",
+      alignItems: "center",
+    }}>
+      <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>{label}</span>
+      <strong style={{ textAlign: "right", fontSize: 13, color: "var(--text-primary)" }}>{value}</strong>
     </div>
   );
 }
 
-export function Metric({ label, value }) {
+/* ------------------------------------------------------------
+   Metric — KPI / stat card
+------------------------------------------------------------ */
+export function Metric({ label, value, hint, mono = false }) {
   return (
-    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, padding: 14 }}>
-      <div style={{ color: "#64748b", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6, color: "#0f172a", letterSpacing: "-0.01em" }}>{value}</div>
+    <div className="stat-card">
+      <div className="stat-card__label">{label}</div>
+      <div className="stat-card__value" style={{ fontFamily: mono ? "JetBrains Mono, monospace" : undefined }}>{value}</div>
+      {hint && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{hint}</div>}
     </div>
   );
 }
 
-export function Field({ label, children }) {
+export function Field({ label, children, hint }) {
   return (
     <label style={{ display: "block", marginBottom: 14 }}>
-      <span style={{ display: "block", color: "#475569", fontSize: 12, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</span>
+      <span className="field-label">{label}</span>
       {children}
+      {hint && <span style={{ display: "block", marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>{hint}</span>}
     </label>
   );
 }
 
 export const inputStyle = {
   width: "100%",
-  padding: "9px 12px",
-  borderRadius: 10,
-  border: "1px solid #cbd5e1",
-  fontSize: 14,
+  padding: "0 12px",
+  height: 36,
+  borderRadius: 8,
+  border: "1px solid var(--border-strong)",
+  background: "var(--bg-surface)",
+  color: "var(--text-primary)",
+  fontSize: 13,
   fontFamily: "inherit",
   boxSizing: "border-box",
-  transition: "border-color 120ms ease, box-shadow 120ms ease",
   outline: "none",
+  transition: "border-color 140ms ease, box-shadow 140ms ease",
 };
 
 export function PhoneFrame({ children }) {
   return (
-    <div style={{ width: "100%", maxWidth: 410, margin: "0 auto", background: "#020617", borderRadius: 38, padding: 12, boxShadow: "0 28px 60px rgba(15,23,42,.28)" }}>
-      <div style={{ background: "#f8fafc", minHeight: 760, borderRadius: 30, overflow: "hidden" }}>
-        <div style={{ height: 26, background: "#020617", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{
+      width: "100%", maxWidth: 410, margin: "0 auto",
+      background: "#0b1220", borderRadius: 38, padding: 12,
+      boxShadow: "0 28px 60px rgba(11,18,32,.28)",
+    }}>
+      <div style={{ background: "var(--bg-app)", minHeight: 760, borderRadius: 30, overflow: "hidden" }}>
+        <div style={{ height: 26, background: "#0b1220", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ width: 92, height: 5, background: "#334155", borderRadius: 99 }} />
         </div>
         {children}
@@ -161,7 +203,11 @@ export function PhoneFrame({ children }) {
 }
 
 export function softButtonStyle() {
-  return { background: "white", color: "#0f172a", border: "1px solid #e2e8f0", borderRadius: 22, boxShadow: "0 10px 22px rgba(15,23,42,.06)", cursor: "pointer", fontWeight: 900 };
+  return {
+    background: "var(--bg-surface)", color: "var(--text-primary)",
+    border: "1px solid var(--border-default)", borderRadius: 22,
+    boxShadow: "var(--shadow-sm)", cursor: "pointer", fontWeight: 700,
+  };
 }
 
 export function fmtMin(min) {
@@ -195,7 +241,7 @@ export function AvatarZoomModal({ src, alt = "Foto do colaborador", onClose, cap
             boxShadow: "0 30px 80px rgba(0,0,0,.55)",
           }}
         />
-        {caption && <div style={{ color: "white", fontWeight: 700, fontSize: 14 }}>{caption}</div>}
+        {caption && <div style={{ color: "white", fontWeight: 600, fontSize: 13 }}>{caption}</div>}
         <button
           onClick={onClose}
           data-testid="avatar-zoom-close"
@@ -203,8 +249,8 @@ export function AvatarZoomModal({ src, alt = "Foto do colaborador", onClose, cap
           style={{
             position: "absolute", top: -10, right: -10,
             width: 40, height: 40, borderRadius: "50%",
-            background: "white", color: "#0f172a", border: "none",
-            fontSize: 22, fontWeight: 900, cursor: "pointer",
+            background: "white", color: "#0b1220", border: "none",
+            fontSize: 22, fontWeight: 800, cursor: "pointer",
             boxShadow: "0 8px 18px rgba(0,0,0,.4)",
           }}
         >×</button>

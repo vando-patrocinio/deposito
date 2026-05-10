@@ -1,6 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "@/App.css";
-import { Button, Icon } from "@/ui";
+import {
+  Smartphone, LogOut, ChevronRight, Brain, BarChart3, Layout,
+  Boxes, Sparkles, Users, MapPin, ShieldCheck, ClipboardList,
+  FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
+  Building2, Eye, EyeOff,
+} from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
 import ManagerPanel from "@/ManagerPanel";
@@ -31,10 +36,8 @@ function useMobileMode() {
     if (typeof window === "undefined") return false;
     const params = new URLSearchParams(window.location.search);
     if (params.get("mode") === "app" || params.get("mode") === "mobile") return true;
-    // ?cid=... (link direto compartilhado para um técnico específico) força modo app
     if (params.get("cid")) return true;
     if (params.get("mode") === "desktop") return false;
-    // override manual via sessionStorage (botão "Modo celular" no header)
     if (typeof sessionStorage !== "undefined") {
       const ov = sessionStorage.getItem("ponto_mode");
       if (ov === "app") return true;
@@ -67,54 +70,254 @@ function setSessionMode(mode) {
     if (mode) sessionStorage.setItem("ponto_mode", mode);
     else sessionStorage.removeItem("ponto_mode");
     window.dispatchEvent(new Event("ponto-mode-changed"));
-  } catch {}
+  } catch { /* ignore */ }
 }
 
-const ALL_TABS = [
-  { id: "dashboard", icon: "sheet", label: "Painel", roles: ["gestor", "auditor", "administrador"] },
-  { id: "lousa", icon: "users", label: "Lousa 📋", roles: ["administrador"] },
-  { id: "estoque", icon: "sheet", label: "Estoque 📦", roles: ["gestor", "administrador"] },
-  { id: "ai-ranking", icon: "shield", label: "Avaliação IA 🤖", roles: ["gestor", "auditor", "administrador"] },
-  { id: "cadastro", icon: "users", label: "Cadastro", roles: ["gestor", "auditor", "administrador"] },
-  { id: "pracas", icon: "map", label: "Praças", roles: ["gestor", "auditor", "administrador"] },
-  { id: "users", icon: "shield", label: "Usuários", roles: ["auditor", "administrador"] },
-  { id: "manager", icon: "shield", label: "Auditoria", roles: ["auditor", "administrador"] },
-  { id: "sheet", icon: "sheet", label: "Espelho", roles: ["gestor", "auditor", "administrador"] },
-  { id: "logs", icon: "history", label: "Logs", roles: ["gestor", "auditor", "administrador"] },
-  { id: "settings", icon: "gear", label: "Configurações", roles: ["auditor", "administrador"] },
-  // Aba exclusiva super admin (filtrada via flag isSuperAdmin no AppShell)
-  { id: "platform", icon: "shield", label: "Plataforma", roles: ["auditor", "administrador"], superAdminOnly: true },
+/* ------------------------------------------------------------
+   Sidebar navigation — categorized, sober
+------------------------------------------------------------ */
+const NAV_GROUPS = [
+  {
+    label: "Operação",
+    items: [
+      { id: "dashboard", icon: BarChart3, label: "Painel", roles: ["gestor", "auditor", "administrador"] },
+      { id: "lousa", icon: Layout, label: "Lousa", roles: ["administrador"] },
+      { id: "estoque", icon: Boxes, label: "Estoque", roles: ["gestor", "administrador"] },
+    ],
+  },
+  {
+    label: "Inteligência",
+    items: [
+      { id: "ai-ranking", icon: Sparkles, label: "Avaliação IA", roles: ["gestor", "auditor", "administrador"] },
+    ],
+  },
+  {
+    label: "Pessoas",
+    items: [
+      { id: "cadastro", icon: Users, label: "Cadastro", roles: ["gestor", "auditor", "administrador"] },
+      { id: "pracas", icon: MapPin, label: "Praças", roles: ["gestor", "auditor", "administrador"] },
+      { id: "users", icon: ShieldCheck, label: "Usuários", roles: ["auditor", "administrador"] },
+    ],
+  },
+  {
+    label: "Compliance",
+    items: [
+      { id: "manager", icon: ClipboardList, label: "Auditoria", roles: ["auditor", "administrador"] },
+      { id: "sheet", icon: FileSpreadsheet, label: "Espelho", roles: ["gestor", "auditor", "administrador"] },
+      { id: "logs", icon: HistoryIcon, label: "Logs", roles: ["gestor", "auditor", "administrador"] },
+    ],
+  },
+  {
+    label: "Sistema",
+    items: [
+      { id: "settings", icon: SettingsIcon, label: "Configurações", roles: ["auditor", "administrador"] },
+      { id: "platform", icon: Building2, label: "Plataforma", roles: ["auditor", "administrador"], superAdminOnly: true },
+    ],
+  },
 ];
+
+const ALL_TABS = NAV_GROUPS.flatMap((g) => g.items);
 
 function ImpersonationBanner() {
   const { user, isImpersonating, endImpersonation } = useAuth();
   if (!isImpersonating || !user) return null;
   const imp = user.impersonator;
   return (
-    <div data-testid="impersonation-banner" style={{
-      background: "linear-gradient(90deg,#7c3aed,#5b21b6)", color: "white",
-      padding: "10px 18px", display: "flex", alignItems: "center", gap: 12,
-      flexWrap: "wrap", borderRadius: 14, marginBottom: 14,
-      boxShadow: "0 8px 18px rgba(124,58,237,.32)",
-    }}>
-      <span style={{ fontSize: 22 }}>🎭</span>
+    <div
+      data-testid="impersonation-banner"
+      style={{
+        background: "var(--warning-soft)",
+        color: "var(--warning-soft-fg)",
+        border: "1px solid #fcd34d",
+        padding: "10px 14px",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        flexWrap: "wrap",
+        borderRadius: 10,
+        marginBottom: 14,
+        fontSize: 13,
+      }}
+    >
+      <Eye size={16} strokeWidth={1.75} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <strong style={{ fontSize: 14 }}>Você está agindo como {user.name} ({user.role})</strong>
-        <div style={{ fontSize: 12, opacity: 0.9 }}>
-          Sessão original: {imp?.email} (auditor) — todas as ações são registradas.
+        <strong style={{ fontWeight: 700 }}>Modo drill-down — agindo como {user.name} ({user.role})</strong>
+        <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>
+          Sessão original: <span className="mono">{imp?.email}</span> · ações registradas
         </div>
       </div>
       <button
         data-testid="end-impersonation-btn"
-        onClick={async () => { try { await endImpersonation(); } catch (e) { alert("Erro: " + (e?.response?.data?.detail || e.message)); } }}
-        style={{
-          background: "white", color: "#5b21b6", border: "none", padding: "8px 14px",
-          borderRadius: 12, fontWeight: 800, cursor: "pointer",
+        onClick={async () => {
+          try { await endImpersonation(); }
+          catch (e) { alert("Erro: " + (e?.response?.data?.detail || e.message)); }
         }}
+        className="btn btn-secondary btn-sm"
       >
-        Voltar ao auditor
+        <EyeOff size={14} strokeWidth={1.75} /> Sair do modo
       </button>
     </div>
+  );
+}
+
+function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin }) {
+  const [collabsOpen, setCollabsOpen] = useState(false);
+  // Collapse useless on desktop, only used to close mobile drawer
+  return (
+    <aside className={`app-sidebar ${collabsOpen ? "is-open" : ""}`} aria-label="Navegação principal">
+      <div className="app-sidebar__brand">
+        <div className="app-sidebar__brand-logo" aria-hidden="true">P</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="app-sidebar__brand-name">PontoIA</div>
+          <div className="app-sidebar__brand-tag">{brand || "Operações ISP"}</div>
+        </div>
+      </div>
+      <nav className="app-sidebar__nav">
+        {NAV_GROUPS.map((group) => {
+          const visible = group.items.filter((it) => activeTabs.some((t) => t.id === it.id));
+          if (visible.length === 0) return null;
+          return (
+            <div className="app-sidebar__group" key={group.label}>
+              <div className="app-sidebar__group-title">{group.label}</div>
+              {visible.map((it) => {
+                const Ico = it.icon;
+                const active = view === it.id;
+                return (
+                  <button
+                    key={it.id}
+                    className={`app-sidebar__link ${active ? "is-active" : ""}`}
+                    onClick={() => { setView(it.id); setCollabsOpen(false); }}
+                    data-testid={`tab-${it.id}`}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <Ico size={16} strokeWidth={1.75} />
+                    <span style={{ flex: 1, textAlign: "left" }}>{it.label}</span>
+                    {active && <ChevronRight size={14} strokeWidth={1.75} style={{ opacity: 0.6 }} />}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+      </nav>
+      <div className="app-sidebar__footer">
+        {isSuperAdmin && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
+            color: "#5eead4", textTransform: "uppercase",
+            border: "1px solid rgba(94,234,212,.35)", padding: "2px 8px",
+            borderRadius: 999,
+          }}>
+            Super admin
+          </span>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function TopBar({ user, companyName, isSuperAdmin, allCompanies, activeCo, onChangeCompany, onLogout, onOpenAIPanel, view }) {
+  const tab = ALL_TABS.find((t) => t.id === view);
+  const groupName = NAV_GROUPS.find((g) => g.items.some((i) => i.id === view))?.label || "Operação";
+  return (
+    <header className="app-topbar">
+      <div className="app-topbar__crumb" style={{ flex: 1, minWidth: 0 }}>
+        <span>{groupName}</span>
+        <ChevronRight size={12} strokeWidth={1.75} style={{ opacity: 0.5 }} />
+        <span className="app-topbar__title">{tab?.label || "Painel"}</span>
+        {companyName && (
+          <>
+            <span style={{ width: 1, height: 14, background: "var(--border-default)", margin: "0 6px" }} />
+            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{companyName}</span>
+          </>
+        )}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {isSuperAdmin && (
+          <select
+            data-testid="super-admin-company-selector"
+            value={activeCo}
+            onChange={(e) => onChangeCompany(e.target.value)}
+            title="Drill-down: visualizar como uma empresa específica"
+            className="input"
+            style={{
+              width: 200, height: 32, fontSize: 12,
+              borderColor: activeCo ? "var(--accent)" : undefined,
+              color: activeCo ? "var(--accent-soft-fg)" : undefined,
+              background: activeCo ? "var(--accent-soft)" : undefined,
+              fontWeight: 600,
+            }}
+          >
+            <option value="">Todas as empresas</option>
+            {allCompanies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.plan === "enterprise" ? " · enterprise" : c.plan === "free" ? " · free" : ""}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => setSessionMode("app")}
+          data-testid="open-mobile-btn"
+          title="Visualizar como o colaborador no celular"
+        >
+          <Smartphone size={14} strokeWidth={1.75} />
+          <span style={{ display: "none" }}>Modo celular</span>
+        </button>
+
+        {user && (user.role === "gestor" || user.role === "auditor" || user.role === "administrador") && (
+          <button
+            data-testid="ai-preventive-open-btn"
+            onClick={onOpenAIPanel}
+            className="btn btn-ghost btn-sm"
+            title="Abrir Central IA"
+          >
+            <Brain size={14} strokeWidth={1.75} /> IA
+          </button>
+        )}
+
+        {user && <NotificationsBell onOpenAIPanel={onOpenAIPanel} />}
+        <ServerClock compact />
+
+        {user && (
+          <div className="user-chip" data-testid="user-chip" style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "4px 10px 4px 4px", borderRadius: 999,
+            border: "1px solid var(--border-default)",
+            background: "var(--bg-surface)",
+          }}>
+            <div style={{
+              width: 26, height: 26, borderRadius: "50%",
+              background: "linear-gradient(135deg, #0d9488, #0f766e)",
+              color: "#fff", display: "grid", placeItems: "center",
+              fontSize: 11, fontWeight: 700, letterSpacing: "-0.02em",
+            }}>
+              {(user.name || "U").substring(0, 2).toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0, lineHeight: 1.1 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>{user.name}</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
+                {isSuperAdmin ? "super admin" : user.role}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {user && (
+          <button
+            onClick={onLogout}
+            data-testid="logout-btn"
+            className="btn btn-ghost btn-sm btn-icon"
+            title="Sair"
+          >
+            <LogOut size={14} strokeWidth={1.75} />
+          </button>
+        )}
+      </div>
+    </header>
   );
 }
 
@@ -129,6 +332,7 @@ function AppShell({ view, setView, children }) {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem("ponto_active_company") || "";
   });
+
   useEffect(() => {
     let alive = true;
     import("@/api").then(({ api }) =>
@@ -139,155 +343,75 @@ function AppShell({ view, setView, children }) {
         if (c?.is_super_admin) {
           api.saasListCompanies().then((list) => {
             if (alive) setAllCompanies(list);
-          }).catch(() => {});
+          }).catch(() => { /* ignore */ });
         }
-      }).catch(() => {})
+      }).catch(() => { /* ignore */ })
     );
     return () => { alive = false; };
   }, [activeCo]);
 
-  // Carrega permissões customizadas de abas (gestor/auditor podem ler — a rota exige só "gestor"+).
   useEffect(() => {
     let alive = true;
     if (!user || user.role === "colaborador") return undefined;
     import("@/api").then(({ api }) =>
       api.brandingGet().then((cfg) => {
         if (alive && cfg?.tab_permissions) setTabPerms(cfg.tab_permissions);
-      }).catch(() => {})
+      }).catch(() => { /* ignore */ })
     );
     return () => { alive = false; };
   }, [user]);
+
   function changeActiveCo(cid) {
     if (typeof window !== "undefined") {
       if (cid) window.localStorage.setItem("ponto_active_company", cid);
       else window.localStorage.removeItem("ponto_active_company");
     }
     setActiveCo(cid);
-    // Reload simples — força todos os componentes a recarregar dados com novo escopo
     if (typeof window !== "undefined") window.location.reload();
   }
-  const tabs = ALL_TABS.filter((t) => {
+
+  const tabs = useMemo(() => ALL_TABS.filter((t) => {
     if (t.superAdminOnly && !isSuperAdmin) return false;
-    // Override por empresa: se admin configurou tab_permissions, respeita.
     if (tabPerms && user && tabPerms[user.role]) {
-      // administrador sempre tem acesso a tudo, mesmo se a config dele estiver vazia
       if (user.role === "administrador") return true;
       return tabPerms[user.role].includes(t.id);
     }
     if (!hasRole(user, ...t.roles)) return false;
     return true;
-  });
+  }), [user, tabPerms, isSuperAdmin]);
+
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: "linear-gradient(180deg,#f8fafc 0%,#eef2ff 100%)",
-      color: "#0f172a",
-      fontFamily: "Inter, system-ui, -apple-system, Arial",
-      padding: "24px 22px 40px",
-    }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        <header style={{
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-          gap: 16, flexWrap: "wrap", marginBottom: 22,
-          paddingBottom: 18, borderBottom: "1px solid rgba(15,23,42,0.06)",
-        }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>
-              <span style={{ color: "#10b981" }}>📍</span> PontoIA{companyName ? <span style={{ color: "#64748b", fontWeight: 500, fontSize: 18 }}> · {companyName}</span> : null}
-              {isSuperAdmin && activeCo && <span style={{ background: "linear-gradient(135deg,#7c3aed,#5b21b6)", color: "white", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 999, marginLeft: 10, letterSpacing: "0.04em" }}>👁️ DRILL-DOWN</span>}
-            </h1>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-              Gestão de pontos · cercas · espelho · auditoria
-            </div>
-          </div>
-          <nav style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            {tabs.map((t) => (
-              <Button
-                key={t.id}
-                variant={view === t.id ? "primary" : "secondary"}
-                onClick={() => setView(t.id)}
-                data-testid={`tab-${t.id}`}
-              >
-                <Icon name={t.icon} /> {t.label}
-              </Button>
-            ))}
-            <Button variant="soft" onClick={() => setSessionMode("app")} data-testid="open-mobile-btn" title="Visualizar como o colaborador no celular">
-              <Icon name="phone" /> Modo celular
-            </Button>
-            {isSuperAdmin && (
-              <select
-                data-testid="super-admin-company-selector"
-                value={activeCo}
-                onChange={(e) => changeActiveCo(e.target.value)}
-                title="Drill-down: visualizar como uma empresa específica"
-                style={{
-                  background: activeCo ? "linear-gradient(135deg,#7c3aed,#5b21b6)" : "white",
-                  color: activeCo ? "white" : "#0f172a",
-                  border: activeCo ? "1px solid rgba(124,58,237,.3)" : "1px solid #e2e8f0",
-                  borderRadius: 999, padding: "7px 14px", fontSize: 12,
-                  fontWeight: 700, cursor: "pointer", maxWidth: 220,
-                  boxShadow: activeCo ? "0 4px 10px rgba(124,58,237,.3)" : "none",
-                  outline: "none",
-                }}
-              >
-                <option value="">🌐 Todas as empresas</option>
-                {allCompanies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.is_demo ? "📍 " : ""}{c.name}{c.plan === "enterprise" ? " ⭐" : c.plan === "free" ? " (Free)" : ""}
-                  </option>
-                ))}
-              </select>
-            )}
-            {user && (
-              <span style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "6px 12px", background: "white", borderRadius: 999,
-                border: "1px solid #e2e8f0", fontSize: 12,
-              }} data-testid="user-chip">
-                <strong style={{ fontWeight: 700 }}>{user.name}</strong>
-                <span style={{
-                  fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999,
-                  background: isSuperAdmin
-                    ? "linear-gradient(135deg,#7c3aed,#5b21b6)"
-                    : user.role === "auditor" ? "#fde68a" : user.role === "gestor" ? "#bbf7d0" : "#e0f2fe",
-                  color: isSuperAdmin ? "white" : user.role === "auditor" ? "#92400e" : user.role === "gestor" ? "#166534" : "#075985",
-                  textTransform: "uppercase", letterSpacing: "0.04em",
-                  boxShadow: isSuperAdmin ? "0 4px 10px rgba(124,58,237,.3)" : "none",
-                }}>{isSuperAdmin ? "🛡️ super admin" : user.role}</span>
-              </span>
-            )}
-            {user && (user.role === "gestor" || user.role === "auditor" || user.role === "administrador") && (
-              <button
-                data-testid="ai-preventive-open-btn"
-                onClick={() => setShowAIPanel(true)}
-                title="Abrir painel de Preventivas IA"
-                style={{
-                  background: "linear-gradient(135deg,#a855f7,#7c3aed)", color: "white", border: "none",
-                  padding: "6px 12px", borderRadius: 999, fontWeight: 800, cursor: "pointer", fontSize: 12,
-                }}
-              >
-                🧠 Central IA
-              </button>
-            )}
-            {user && (
-              <NotificationsBell onOpenAIPanel={() => setShowAIPanel(true)} />
-            )}
-            <ServerClock compact />
-            {user && (
-              <Button variant="danger" onClick={logout} data-testid="logout-btn">Sair</Button>
-            )}
-          </nav>
-        </header>
-        <ImpersonationBanner />
-        {showAIPanel && <AICenterPanel onClose={() => setShowAIPanel(false)} />}
-        {children}
-      </div>
+    <div className="app-shell">
+      <SidebarNav
+        activeTabs={tabs}
+        view={view}
+        setView={setView}
+        brand={companyName}
+        isSuperAdmin={isSuperAdmin}
+      />
+      <main className="app-main">
+        <TopBar
+          user={user}
+          companyName={companyName}
+          isSuperAdmin={isSuperAdmin}
+          allCompanies={allCompanies}
+          activeCo={activeCo}
+          onChangeCompany={changeActiveCo}
+          onLogout={logout}
+          onOpenAIPanel={() => setShowAIPanel(true)}
+          view={view}
+        />
+        <div className="app-content">
+          <ImpersonationBanner />
+          {showAIPanel && <AICenterPanel onClose={() => setShowAIPanel(false)} />}
+          {children}
+        </div>
+      </main>
     </div>
   );
 }
 
 function AppContent() {
-  // Inicia sincronização global com horário do servidor (anti-tampering)
   useEffect(() => { startServerTime(); }, []);
   const { user, loading, logout } = useAuth();
   const mobile = useMobileMode();
@@ -297,7 +421,6 @@ function AppContent() {
     const saved = window.localStorage.getItem("ponto_active_tab");
     return saved || "dashboard";
   });
-  // Wrapper que persiste a aba ativa no localStorage
   const setView = (v) => {
     setViewState(v);
     if (typeof window !== "undefined") window.localStorage.setItem("ponto_active_tab", v);
@@ -308,7 +431,6 @@ function AppContent() {
     const search = new URLSearchParams(window.location.search);
     return { path, params: Object.fromEntries(search) };
   });
-  // Tela inicial pública: 'landing' | 'signup' | 'login'
   const [publicView, setPublicView] = useState(() => {
     if (typeof window === "undefined") return "landing";
     const path = window.location.pathname || "/";
@@ -317,7 +439,6 @@ function AppContent() {
     return "landing";
   });
 
-  // Listener para popstate
   useEffect(() => {
     const onPop = () => {
       const path = window.location.pathname || "/";
@@ -339,7 +460,6 @@ function AppContent() {
     else if (bare === "/") setPublicView("landing");
   };
 
-  // Onboarding wizard state — hooks DEVEM ficar antes de qualquer early return
   const [needsOnboarding, setNeedsOnboarding] = useState(null);
   useEffect(() => {
     if (!user) { setNeedsOnboarding(false); return; }
@@ -358,22 +478,20 @@ function AppContent() {
     return () => { alive = false; };
   }, [user]);
 
-  // Nada a fazer aqui: filtro de abas é feito dinamicamente em AppShell via tab_permissions.
-
   if (loading) {
-    return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "#64748b" }}>Carregando…</div>;
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--text-secondary)" }}>
+        Carregando…
+      </div>
+    );
   }
 
-  // Mobile = app de ponto. Acesso livre — colaborador é autenticado pela face,
-  // não precisa logar no sistema. Login é exclusivo para gestor/auditor (desktop).
   if (mobile) {
-    // Suporte a ?cid=col-xxx — link direto para um colaborador específico (compartilhado pelo gestor)
     const params = new URLSearchParams(window.location.search);
     const forced = params.get("cid") || null;
     return <CollaboratorApp mobile forcedCollabId={forced} />;
   }
 
-  // Rotas de billing (callback do Stripe) — funcionam autenticado ou não
   if (route.path === "/billing/success") {
     return <BillingSuccessPage sessionId={route.params.session_id} onDone={() => navigate(user ? "/app" : "/")} />;
   }
@@ -381,7 +499,6 @@ function AppContent() {
     return <BillingCancelPage onDone={() => navigate(user ? "/app" : "/")} />;
   }
 
-  // Não autenticado → landing/signup/login
   if (!user) {
     if (publicView === "signup") {
       return <SignupPage
@@ -399,12 +516,11 @@ function AppContent() {
     />;
   }
 
-  // Autenticado → AppShell + paineis
   const activeTab = ALL_TABS.find((t) => t.id === view);
   const allowed = activeTab && hasRole(user, ...activeTab.roles);
 
   if (needsOnboarding === null) {
-    return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "#64748b" }}>Carregando…</div>;
+    return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--text-secondary)" }}>Carregando…</div>;
   }
   if (needsOnboarding) {
     return <OnboardingWizard user={user} onDone={() => setNeedsOnboarding(false)} />;
@@ -415,7 +531,7 @@ function AppContent() {
       <OfflineTimeBanner onStatusChange={setSystemStatus} />
       <BillingBanner />
       {!allowed ? (
-        <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 22, textAlign: "center", color: "#64748b" }}>
+        <div className="surface" style={{ padding: 28, textAlign: "center", color: "var(--text-secondary)" }}>
           Sem acesso a esta seção. Procure o gestor.
         </div>
       ) : (

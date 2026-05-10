@@ -35,18 +35,18 @@ const TYPE_ICONS = {
 
 const PRIORITY_COLORS = {
   prioridade: {
-    bg: "linear-gradient(135deg,#fff5f5,#ffe4e6)",
-    accent: "#e11d48", border: "#fecdd3", text: "#9f1239",
-    label: "PRIORIDADE", icon: "🚨",
+    bg: "#fff7f7",
+    accent: "#dc2626", border: "#fecaca", text: "#991b1b",
+    label: "PRIORIDADE", icon: "",
   },
   horario: {
-    bg: "linear-gradient(135deg,#fffbeb,#fef3c7)",
+    bg: "#fffbeb",
     accent: "#d97706", border: "#fde68a", text: "#78350f",
-    label: "HORÁRIO", icon: "⏰",
+    label: "HORÁRIO", icon: "",
   },
   normal: {
-    bg: "white",
-    accent: "#0ea5e9", border: "#e2e8f0", text: "#0f172a",
+    bg: "#ffffff",
+    accent: "#0d9488", border: "#e6e8ee", text: "#0b1220",
     label: "", icon: "",
   },
 };
@@ -311,14 +311,14 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         .sla-overdue { animation: pulseRed 1.4s ease-in-out infinite; }
       `}</style>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+      <div className="page-header" style={{ marginTop: 0, paddingTop: 0 }}>
         <div>
-          <h2 style={{ margin: 0 }}>📋 Lousa de Serviços</h2>
-          <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0 0" }}>
-            {grid.columns.length} técnico(s) · {totalTickets} serviço(s) ativos — arraste para transferir entre técnicos · <span style={{ color: "#475569" }}>duplo-clique abre serviço pendente</span>
+          <h1 className="page-title" style={{ fontSize: 22 }}>Lousa de Serviços</h1>
+          <p className="page-subtitle">
+            {grid.columns.length} técnico(s) · {totalTickets} serviço(s) ativos — arraste para transferir entre técnicos · duplo-clique abre serviço pendente
             {overdueCount > 0 && (
-              <span data-testid="overdue-counter" style={{ marginLeft: 10, padding: "2px 10px", background: "#dc2626", color: "white", borderRadius: 999, fontWeight: 800 }}>
-                ⚠ {overdueCount} ATRASADA(S)
+              <span data-testid="overdue-counter" className="pill pill--danger" style={{ marginLeft: 10, fontWeight: 700 }}>
+                {overdueCount} atrasada(s)
               </span>
             )}
           </p>
@@ -441,10 +441,10 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
 
       {atlazFlash && (
         <div data-testid="lousa-atlaz-flash" style={{
-          background: "linear-gradient(135deg,#ecfdf5,#d1fae5)",
-          border: "1px solid #6ee7b7", borderRadius: 12,
+          background: "var(--accent-soft)",
+          border: "1px solid #99f6e4", borderRadius: 8,
           padding: "10px 14px", marginBottom: 14,
-          color: "#064e3b", fontWeight: 700, fontSize: 13,
+          color: "var(--accent-soft-fg)", fontWeight: 600, fontSize: 13,
           display: "flex", justifyContent: "space-between", alignItems: "center",
         }}>
           <span>{atlazFlash}</span>
@@ -454,11 +454,9 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
 
       {dateMode !== "today" && (
         <div data-testid="lousa-date-banner" style={{
-          background: dateMode === "past"
-            ? "linear-gradient(90deg,#fef3c7,#fde68a)"
-            : "linear-gradient(90deg,#dbeafe,#bfdbfe)",
+          background: dateMode === "past" ? "var(--warning-soft)" : "var(--info-soft)",
           border: `1px solid ${dateMode === "past" ? "#fcd34d" : "#93c5fd"}`,
-          borderRadius: 12, padding: "10px 16px", marginBottom: 14,
+          borderRadius: 8, padding: "10px 16px", marginBottom: 14,
           display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10,
         }}>
           <div style={{ color: dateMode === "past" ? "#78350f" : "#1e40af", fontSize: 13, fontWeight: 600 }}>
@@ -566,18 +564,18 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
       onDrop={onDrop}
       style={{
         flex: "0 0 320px", maxWidth: 320,
-        background: isDropTarget ? "#dbeafe" : "#f1f5f9",
-        border: `2px ${isDropTarget ? "dashed" : "solid"} ${isDropTarget ? "#3b82f6" : "#e2e8f0"}`,
-        borderRadius: 16, padding: 12, transition: "all .15s",
+        background: isDropTarget ? "var(--accent-soft)" : "var(--bg-surface)",
+        border: `1px ${isDropTarget ? "dashed" : "solid"} ${isDropTarget ? "var(--accent)" : "var(--border-default)"}`,
+        borderRadius: 12, padding: 12, transition: "all .15s",
+        boxShadow: "var(--shadow-xs)",
       }}
     >
-      <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 10, borderBottom: "1px solid #cbd5e1" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 10, borderBottom: "1px solid var(--border-default)" }}>
         <div data-testid={`tech-avatar-${c.id}`} title={isOnline ? "Dispositivo online" : "Dispositivo offline"} style={{
-          width: 42, height: 42, borderRadius: "50%",
-          background: c.avatar ? `url(${c.avatar}) center/cover` : "linear-gradient(135deg,#0ea5e9,#0284c7)",
-          display: "grid", placeItems: "center", color: "white", fontWeight: 800, fontSize: 16,
-          border: `3px solid ${isOnline ? "#10b981" : "#f59e0b"}`,
-          boxShadow: `0 0 0 2px ${isOnline ? "rgba(16,185,129,.18)" : "rgba(245,158,11,.18)"}`,
+          width: 38, height: 38, borderRadius: "50%",
+          background: c.avatar ? `url(${c.avatar}) center/cover` : "linear-gradient(135deg,#0d9488,#0f766e)",
+          display: "grid", placeItems: "center", color: "white", fontWeight: 700, fontSize: 14,
+          border: `2px solid ${isOnline ? "#16a34a" : "#d97706"}`,
           position: "relative", flexShrink: 0,
         }}>
           {!c.avatar && (c.name?.[0] || "?").toUpperCase()}
@@ -591,8 +589,8 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {c.name}
-            {c.is_test_mode && <span style={{ marginLeft: 6, fontSize: 9, background: "#a855f7", color: "white", padding: "1px 5px", borderRadius: 6 }}>🧪 TESTE</span>}
-            {c.praca_id === "NOTA" && <span title="Praça Nota: bate ponto no endereço do serviço aberto" style={{ marginLeft: 4, fontSize: 9, background: "#0ea5e9", color: "white", padding: "1px 5px", borderRadius: 6 }}>📍 NOTA</span>}
+            {c.is_test_mode && <span style={{ marginLeft: 6, fontSize: 9, background: "var(--bg-surface-3)", color: "var(--text-secondary)", padding: "1px 6px", borderRadius: 6, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>teste</span>}
+            {c.praca_id === "NOTA" && <span title="Praça Nota: bate ponto no endereço do serviço aberto" style={{ marginLeft: 4, fontSize: 9, background: "var(--accent-soft)", color: "var(--accent-soft-fg)", padding: "1px 6px", borderRadius: 6, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>nota</span>}
           </div>
           <div style={{ fontSize: 11, color: "#64748b" }}>
             {totalTickets} serviço(s) · {c.praca || "—"}
@@ -1059,7 +1057,7 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
               onClick={() => onEdit(ticket)} style={btnSm("#0ea5e9")}>✎ Editar</button>
           )}
           <button data-testid={`ai-evaluate-${ticket.id}`} disabled={aiBusy}
-            onClick={runAiAnalysis} style={btnSm("#a855f7")}>🤖 IA {aiBusy ? "..." : ""}</button>
+            onClick={runAiAnalysis} style={btnSm("#0d9488")}>IA {aiBusy ? "..." : ""}</button>
           <button data-testid={`admin-close-${ticket.id}`} disabled={busy}
             onClick={() => { const n = window.prompt("Notas:"); if (n !== null) onAdminClose(ticket.id, "encerrar", n); }} style={btnSm("#64748b")}>✓ Encerrar</button>
           <button data-testid={`admin-reschedule-${ticket.id}`} disabled={busy}
@@ -1081,7 +1079,7 @@ function AiDetailModal({ detail, onClose }) {
       <div onClick={(e) => e.stopPropagation()} data-testid="ai-detail-modal"
            style={{ background: "white", borderRadius: 18, padding: 22, maxWidth: 540, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>🤖 Avaliação IA do Serviço</h2>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Avaliação IA do Serviço</h2>
           <span style={{ background: aiScoreColor(detail.ai_score), color: "white", padding: "4px 12px", borderRadius: 999, fontWeight: 900, fontSize: 14 }}>
             {detail.ai_score?.toFixed(1)}/10
           </span>

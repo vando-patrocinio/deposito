@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 27 — Frontend-only validation of the major UI/UX redesign (sidebar+topbar shell, split-layout login, sober slate+teal palette). All 11 navigation tabs render and are clickable, sidebar groups (Operação/Inteligência/Pessoas/Compliance/Sistema) categorized correctly, no emojis in sidebar labels, no purple in app shell, active state works with teal indicator. Login split layout, Lousa, Painel, Settings and AI Center modal all render without runtime errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Painel/Settings/Lousa headers and cards", "issues": ["Apesar da sidebar estar limpa (sem emojis), os TÍTULOS de cards internos ainda usam emojis: '⏱ Tempos de Referência', '📅 Grade de Horários', '🔋 Quando alertar', '📊 Estatísticas de serviços', '🏆 Ranking de tipos', '🧠 Central de IA', '🤖 Briefing IA', etc. Se o redesign sóbrio é objetivo, considerar substituir por ícones Lucide nesses títulos também (consistência com sidebar)."]},
+      {"screen": "Painel/Recharts", "issues": ["Persistem warnings 'width(-1) and height(-1) of chart should be greater than 0' nos gráficos do Painel — já notado em iter26. ResponsiveContainer sem minWidth/minHeight."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(opcional, polish) Remover emojis dos títulos de cards (Settings, Painel, Lousa, AI Center) para consistência com a sidebar limpa — usar ícones Lucide.",
+    "(opcional, herdado iter26) Adicionar minWidth/minHeight aos ResponsiveContainer do Recharts pra silenciar warnings."
+  ],
+  "critical_code_review_comments": [
+    "App.js (564 linhas) — perto do limite de 700; SidebarNav/TopBar/AppShell/AppContent são coesos mas considerar extrair AppContent para um arquivo separado se crescer mais.",
+    "LoginPage.js usa estilos inline pesados (grid, gradientes, masks) — funcional mas dificulta tema-dark futuro; eventualmente migrar para .login-grid / .login-pillar classes em index.css.",
+    "Sidebar não tem botão de colapsar em mobile (state collabsOpen existe mas sem trigger visível) — desktop only é OK, mas em viewport <820px o sidebar pode ocupar muito espaço."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100% (11/11 tabs renderizam, login split + sidebar + topbar OK)"},
+  "test_credentials": "admin@empresa.com / 123456 — login funcionando. Usuário tem flag is_super_admin=true (chip mostra 'SUPER ADMIN').",
+  "seed_data_creation": "nenhum",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Redesign UI aplicado: SidebarNav (slate #0b0f17 com teal accent), TopBar (white 0.85 com breadcrumb 'Grupo › Aba › Empresa'), LoginPage split em 2 colunas (form esquerda, brand pillar dark direita). Todas as 11 tabs (dashboard/lousa/estoque/ai-ranking/cadastro/pracas/users/manager/sheet/logs/settings) clicáveis com active state via aria-current + ChevronRight. NAV_GROUPS = 5 categorias. Lousa renderiza com data 05/10/2026 (domingo, sem tickets — por isso 0 botões ai-evaluate; testar em data com tickets para ver cor teal do botão IA). Recharts warnings persistem (herdado).",
+  "rca_of_the_issue": "n/a — sem bugs, validação visual de redesign concluída. Único 'gap' do escopo é que emojis ainda aparecem em títulos de cards internos (não na sidebar). Spec do request menciona apenas 'sidebar' — então não é regressão, mas é polish recomendado para coerência."
+}
