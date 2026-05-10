@@ -278,6 +278,7 @@ async def _startup() -> None:
     await routes_ai_preventive.start_worker()
     await routes_aihub.start_worker()
     await routes_central_ia.start_worker()
+    asyncio.create_task(routes_plans.adjustment_scheduler_worker())
     logger.info("Scheduler iniciado.")
 
 

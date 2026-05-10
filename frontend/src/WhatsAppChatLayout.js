@@ -4,7 +4,7 @@ import {
   Filter, MessageSquare, Clock, MoonStar, Hand, UserCheck,
   CheckCircle2, GraduationCap, ChevronDown, ChevronUp, Lightbulb,
   Wifi, WifiOff, Activity, Info, Signal, MapPin, Phone, CreditCard,
-  AlertCircle, Sparkles,
+  AlertCircle, Sparkles, Lock,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -480,6 +480,10 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
   const [busy, setBusy] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const [showCustomer, setShowCustomer] = useState(false);
+  /* Coaching IA inline — buscado por (user, phone), aparece como bolhas
+     internas no chat (somente o atendente logado vê). */
+  const [coachings, setCoachings] = useState([]);
+  const [coachingHidden, setCoachingHidden] = useState(false);
   const scrollRef = useRef(null);
 
   const loadMessages = useCallback(async () => {
@@ -490,12 +494,22 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
     } catch { /* ignore */ }
   }, [conv]);
 
+  const loadCoachings = useCallback(async () => {
+    if (!conv) return;
+    try {
+      const r = await api.centralIaCoachingForConversation(conv.phone);
+      setCoachings(r.items || []);
+    } catch { /* ignore */ }
+  }, [conv]);
+
   useEffect(() => {
     loadMessages();
+    loadCoachings();
+    setCoachingHidden(false);
     if (!conv) return undefined;
-    const id = setInterval(loadMessages, 4500);
+    const id = setInterval(() => { loadMessages(); loadCoachings(); }, 4500);
     return () => clearInterval(id);
-  }, [loadMessages, conv]);
+  }, [loadMessages, loadCoachings, conv]);
 
   /* Ao abrir uma conversa: assina presença + força refresh do perfil
      (avatar/online) a cada 25s + marca como visualizada (zera unread). */
@@ -567,6 +581,23 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
     } finally { setBusy(false); }
   };
 
+  /* Timeline mesclada: mensagens reais (WhatsApp) + coaching INTERNO (só você vê),
+     ordenado por created_at. Mantém este hook ANTES de qualquer early return
+     pra atender a regra dos React Hooks. */
+  const timeline = useMemo(() => {
+    const items = [
+      ...messages.map((m) => ({ _kind: "msg", _ts: m.created_at, ...m })),
+      ...coachings.map((c) => ({
+        _kind: "coaching", _ts: c.created_at || c.applied_at, ...c })),
+    ];
+    items.sort((a, b) => {
+      const ta = a._ts || "";
+      const tb = b._ts || "";
+      return ta < tb ? -1 : ta > tb ? 1 : 0;
+    });
+    return items;
+  }, [messages, coachings]);
+
   if (!conv) {
     return (
       <div style={{
@@ -605,6 +636,9 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
   /* Avatar: lista bulk-enrich vem em conv.contact_avatar; aqui pegamos da
      fresh-fetched customerProfile (que substitui a do bulk se mais novo). */
   const avatarSrc = contactProfile?.avatar || conv.contact_avatar;
+
+  const unreadCoachings = coachings.filter((c) => !c.read).length;
+  const totalCoachings = coachings.length;
 
   let presenceLabel = "—";
   let presenceColor = "var(--text-muted)";
@@ -748,9 +782,6 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
         </div>
       </div>
 
-      {/* Coaching popup (individual do usuário logado, só nesta conversa) */}
-      <ChatCoachingPopup phone={conv.phone} />
-
       {/* Modal de atribuição */}
       {showAssign && (
         <AssignModal attendants={attendants}
@@ -778,8 +809,32 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
              backgroundSize: "20px 20px",
            }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {messages.map((m) => <MsgBubble key={m.id} msg={m} />)}
-          {messages.length === 0 && (
+          {timeline.map((it) => (
+            it._kind === "coaching"
+              ? <InternalCoachingBubble key={`c-${it.id}`} coach={it}
+                  onAcknowledge={async () => {
+                    try {
+                      await api.centralIaCoachingAction(it.id, "acknowledged");
+                      await loadCoachings();
+                    } catch { /* ignore */ }
+                  }}
+                  onDismiss={async () => {
+                    try {
+                      await api.centralIaCoachingAction(it.id, "dismiss");
+                      setCoachings((arr) => arr.filter((c) => c.id !== it.id));
+                    } catch { /* ignore */ }
+                  }}
+                  onRead={async () => {
+                    if (it.read) return;
+                    try {
+                      await api.centralIaCoachingAction(it.id, "read");
+                      setCoachings((arr) => arr.map((c) =>
+                        c.id === it.id ? { ...c, read: true } : c));
+                    } catch { /* ignore */ }
+                  }} />
+              : <MsgBubble key={`m-${it.id}`} msg={it} />
+          ))}
+          {timeline.length === 0 && (
             <div style={{ textAlign: "center", color: "var(--text-muted)",
                            fontSize: 12, padding: 30 }}>
               Sem mensagens nesta conversa ainda.
@@ -792,11 +847,59 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
       <div style={{
         padding: 12, borderTop: "1px solid var(--border-default)",
         background: "var(--bg-surface)",
-        display: "flex", gap: 8,
+        display: "flex", gap: 8, alignItems: "center",
       }}>
+        {/* Ícone Coaching IA à esquerda — só pra usuário humano (não-IA).
+            Mostra contador de coachings pra essa conversa.
+            Ao clicar: rola até o coaching não lido mais próximo OU mostra
+            tooltip explicando que coaching é interno e nunca vai pro cliente. */}
+        <button
+          data-testid="wa-coaching-icon-btn"
+          onClick={() => {
+            const unread = coachings.find((c) => !c.read);
+            const target = unread || coachings[coachings.length - 1];
+            if (!target) {
+              alert("Sem coaching ativo. Conversas com CSAT baixo geram dicas privadas automaticamente.");
+              return;
+            }
+            const el = document.querySelector(`[data-coaching-id="${target.id}"]`);
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+              el.style.outline = "2px solid #a855f7";
+              setTimeout(() => { el.style.outline = ""; }, 1800);
+            }
+          }}
+          title={totalCoachings === 0
+            ? "Sem coaching para esta conversa"
+            : `Coaching IA — ${totalCoachings} dica(s) interna(s) só pra você.\nNunca vai para o cliente.`}
+          style={{
+            position: "relative", flexShrink: 0,
+            width: 38, height: 38, borderRadius: 10,
+            border: "none", cursor: "pointer",
+            display: "grid", placeItems: "center",
+            background: totalCoachings > 0
+              ? "linear-gradient(135deg, #a855f7, #7c3aed)"
+              : "var(--bg-surface-2)",
+            color: totalCoachings > 0 ? "#fff" : "var(--text-muted)",
+            boxShadow: unreadCoachings > 0
+              ? "0 0 0 3px rgba(168,85,247,.25)" : "none",
+            transition: "all .2s",
+          }}>
+          <GraduationCap size={17} strokeWidth={2} />
+          {unreadCoachings > 0 && (
+            <span style={{
+              position: "absolute", top: -4, right: -4,
+              minWidth: 17, height: 17, padding: "0 4px",
+              borderRadius: 999, background: "#dc2626", color: "#fff",
+              fontSize: 9, fontWeight: 800,
+              display: "grid", placeItems: "center",
+              border: "2px solid var(--bg-surface)",
+            }}>{unreadCoachings}</span>
+          )}
+        </button>
         <input className="input" placeholder={isAi
           ? "Assuma a conversa para responder manualmente..."
-          : "Digite sua mensagem..."}
+          : "Digite sua mensagem (vai pro cliente via WhatsApp)..."}
           value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !sending && send()}
           disabled={isAi}
@@ -814,6 +917,195 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
           50% { transform:scale(1.25); opacity:.7; } }
         @keyframes wa-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
       `}</style>
+    </div>
+  );
+}
+
+/* =============================================================
+   InternalCoachingBubble — bolha INTERNA de coaching IA inline.
+   • Aparece no meio do chat, com fundo roxo distintivo
+   • Visível APENAS para o atendente logado (filtrado no backend por user_id)
+   • Nunca vai pelo WhatsApp pro cliente
+   • Label "🔒 SOMENTE VOCÊ VÊ" pra reforçar
+============================================================= */
+function InternalCoachingBubble({ coach, onRead, onAcknowledge, onDismiss }) {
+  const [expanded, setExpanded] = useState(!coach.read);
+  const [acting, setActing] = useState(false);
+  const toneColor = coach.tone === "urgente" ? "#dc2626"
+    : coach.tone === "positivo" ? "#16a34a" : "#a855f7";
+  const time = coach.created_at
+    ? new Date(coach.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : "";
+
+  const handleExpand = () => {
+    const willExpand = !expanded;
+    setExpanded(willExpand);
+    if (willExpand && !coach.read) onRead?.();
+  };
+
+  const wrap = async (fn) => {
+    setActing(true);
+    try { await fn(); } finally { setActing(false); }
+  };
+
+  return (
+    <div data-testid={`wa-coaching-bubble-${coach.id}`}
+         data-coaching-id={coach.id}
+         style={{
+           display: "flex", justifyContent: "center",
+           padding: "4px 0",
+         }}>
+      <div style={{
+        width: "85%", maxWidth: 560,
+        borderRadius: 14,
+        border: `1.5px dashed ${toneColor}`,
+        background: `linear-gradient(135deg, ${toneColor}10, ${toneColor}05)`,
+        overflow: "hidden",
+        boxShadow: `0 1px 3px ${toneColor}20`,
+        transition: "all .2s",
+      }}>
+        {/* Header — sempre visível */}
+        <button onClick={handleExpand} style={{
+          width: "100%", padding: "9px 13px", border: "none",
+          background: "transparent", cursor: "pointer", textAlign: "left",
+          display: "flex", alignItems: "center", gap: 9,
+        }}>
+          <div style={{
+            width: 30, height: 30, borderRadius: 9,
+            background: `linear-gradient(135deg, ${toneColor}, ${toneColor}cc)`,
+            color: "#fff", display: "grid", placeItems: "center",
+            flexShrink: 0,
+            boxShadow: `0 2px 6px ${toneColor}40`,
+          }}>
+            <GraduationCap size={15} strokeWidth={2} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+            }}>
+              <span style={{
+                fontSize: 11, fontWeight: 800, color: toneColor,
+                letterSpacing: 0.3, textTransform: "uppercase",
+              }}>
+                Coaching IA · {coach.tone || "construtivo"}
+              </span>
+              <span style={{
+                padding: "1px 7px", borderRadius: 999,
+                background: "rgba(0,0,0,.06)", color: "var(--text-muted)",
+                fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
+                display: "inline-flex", alignItems: "center", gap: 3,
+              }}>
+                <Lock size={8} strokeWidth={2.5} /> SOMENTE VOCÊ VÊ · INTERNO
+              </span>
+              {!coach.read && (
+                <span style={{
+                  padding: "1px 7px", borderRadius: 999,
+                  background: toneColor, color: "#fff",
+                  fontSize: 9, fontWeight: 800, letterSpacing: 0.4,
+                }}>NOVO</span>
+              )}
+            </div>
+            <div style={{
+              fontSize: 12.5, color: "var(--text-primary)", marginTop: 3,
+              fontWeight: expanded ? 600 : 500,
+            }}>
+              {coach.summary_eval || coach.next_action
+                || `CSAT ${coach.csat_at_time ?? "—"}/10 — clique para ver dicas`}
+            </div>
+          </div>
+          <div style={{
+            width: 24, height: 24, borderRadius: 999,
+            background: toneColor, color: "#fff",
+            display: "grid", placeItems: "center",
+            fontSize: 10, fontWeight: 800, flexShrink: 0,
+          }}>{coach.score?.toFixed?.(1) ?? coach.score}</div>
+          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </button>
+
+        {/* Corpo expandido */}
+        {expanded && (
+          <div style={{
+            padding: "10px 14px 12px",
+            borderTop: `1px solid ${toneColor}30`,
+            background: "rgba(255,255,255,.6)",
+          }}>
+            {coach.strengths?.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{
+                  fontSize: 9, fontWeight: 800, color: "#16a34a",
+                  textTransform: "uppercase", letterSpacing: 0.4,
+                  marginBottom: 4,
+                }}>✓ Você acertou em</div>
+                {coach.strengths.map((s, i) => (
+                  <div key={i} style={{
+                    fontSize: 12, color: "var(--text-primary)",
+                    paddingLeft: 12, marginBottom: 2,
+                  }}>• {s}</div>
+                ))}
+              </div>
+            )}
+            {coach.improvements?.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{
+                  fontSize: 9, fontWeight: 800, color: "#f59e0b",
+                  textTransform: "uppercase", letterSpacing: 0.4,
+                  marginBottom: 4,
+                }}>→ Próxima vez, melhore em</div>
+                {coach.improvements.map((s, i) => (
+                  <div key={i} style={{
+                    fontSize: 12, color: "var(--text-primary)",
+                    paddingLeft: 12, marginBottom: 2,
+                  }}>• {s}</div>
+                ))}
+              </div>
+            )}
+            {coach.next_action && (
+              <div style={{
+                padding: 9, borderRadius: 8,
+                background: `${toneColor}15`,
+                fontSize: 12, display: "flex", gap: 7,
+                alignItems: "flex-start", marginBottom: 8,
+              }}>
+                <Lightbulb size={13} strokeWidth={1.75}
+                            style={{ flexShrink: 0, marginTop: 1, color: toneColor }} />
+                <div><strong>Próxima ação:</strong> {coach.next_action}</div>
+              </div>
+            )}
+            <div style={{
+              display: "flex", gap: 6, justifyContent: "flex-end",
+              alignItems: "center",
+              borderTop: "1px solid rgba(0,0,0,.05)",
+              paddingTop: 8,
+            }}>
+              <span style={{ fontSize: 10, color: "var(--text-muted)",
+                              marginRight: "auto" }}>
+                {time && `${time} · `}Esta mensagem é privada, jamais vai pro cliente.
+              </span>
+              {!coach.acknowledged && (
+                <button onClick={() => wrap(onAcknowledge)}
+                        disabled={acting}
+                        data-testid={`wa-coaching-ack-inline-${coach.id}`}
+                        className="btn btn-primary btn-sm">
+                  <Check size={11} /> Entendi
+                </button>
+              )}
+              <button onClick={() => wrap(onDismiss)}
+                      disabled={acting}
+                      className="btn btn-ghost btn-sm">
+                <X size={11} /> Dispensar
+              </button>
+              {coach.acknowledged && (
+                <span style={{
+                  fontSize: 10, color: "#16a34a", fontWeight: 700,
+                  display: "flex", alignItems: "center", gap: 3,
+                }}>
+                  <Check size={11} /> Reconhecido
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -917,231 +1209,6 @@ function AssignModal({ attendants, onPick, onClose }) {
             </div>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-/* =============================================================
-   ChatCoachingPopup — Coaching IA INDIVIDUAL do atendente logado
-   (filtrado por user_id no backend), aparece como banner colapsável
-   no topo da Lousa de Chat. Marca como "read" ao expandir.
-============================================================= */
-function ChatCoachingPopup({ phone }) {
-  const [coachings, setCoachings] = useState([]);
-  const [expanded, setExpanded] = useState(null);
-  const [hidden, setHidden] = useState(false);
-  const [busy, setBusy] = useState(null);
-
-  const load = useCallback(async () => {
-    if (!phone) return;
-    try {
-      const r = await api.centralIaCoachingForConversation(phone);
-      setCoachings(r.items || []);
-    } catch { /* sem permissão ou conversa sem coaching */ }
-  }, [phone]);
-
-  useEffect(() => {
-    load();
-    setHidden(false);
-    setExpanded(null);
-  }, [load, phone]);
-
-  const unread = coachings.filter((c) => !c.read).length;
-
-  const onOpen = async (c) => {
-    const willExpand = expanded !== c.id;
-    setExpanded(willExpand ? c.id : null);
-    if (willExpand && !c.read) {
-      try {
-        await api.centralIaCoachingAction(c.id, "read");
-        setCoachings((arr) => arr.map((x) => x.id === c.id ? { ...x, read: true } : x));
-      } catch { /* ignore */ }
-    }
-  };
-
-  const act = async (id, action) => {
-    setBusy(id);
-    try {
-      await api.centralIaCoachingAction(id, action);
-      if (action === "dismiss") {
-        setCoachings((arr) => arr.filter((c) => c.id !== id));
-      } else {
-        setCoachings((arr) => arr.map((c) =>
-          c.id === id ? { ...c, acknowledged: true, read: true } : c));
-      }
-    } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
-    } finally { setBusy(null); }
-  };
-
-  if (hidden || coachings.length === 0) return null;
-
-  return (
-    <div data-testid="wa-coaching-popup" style={{
-      borderBottom: "1px solid var(--border-default)",
-      background: unread > 0
-        ? "linear-gradient(90deg, rgba(168,85,247,.10), rgba(168,85,247,.04))"
-        : "var(--bg-surface)",
-    }}>
-      <div style={{
-        padding: "8px 16px",
-        display: "flex", alignItems: "center", gap: 10,
-      }}>
-        <div style={{
-          width: 26, height: 26, borderRadius: 8,
-          background: "linear-gradient(135deg, #a855f7, #7c3aed)",
-          color: "#fff", display: "grid", placeItems: "center",
-          flexShrink: 0,
-        }}>
-          <GraduationCap size={14} strokeWidth={2} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "#7c3aed",
-                         letterSpacing: 0.2 }}>
-            Coaching IA pra você nesta conversa
-            {unread > 0 && (
-              <span style={{
-                marginLeft: 8,
-                padding: "1px 7px", borderRadius: 999,
-                background: "#a855f7", color: "#fff",
-                fontSize: 9, fontWeight: 800, letterSpacing: 0.4,
-              }}>{unread} NÃO LIDO{unread > 1 ? "S" : ""}</span>
-            )}
-          </div>
-          <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-            Dicas individuais geradas pela IA — só você está vendo.
-          </div>
-        </div>
-        <button onClick={() => setHidden(true)}
-                data-testid="wa-coaching-close"
-                title="Esconder até abrir esta conversa de novo"
-                className="btn btn-ghost btn-sm"
-                style={{ padding: 4 }}>
-          <X size={14} />
-        </button>
-      </div>
-      <div style={{ display: "grid", gap: 6, padding: "0 12px 10px" }}>
-        {coachings.slice(0, 3).map((c) => {
-          const isOpen = expanded === c.id;
-          const toneColor = c.tone === "urgente" ? "#dc2626"
-            : c.tone === "positivo" ? "#16a34a" : "#a855f7";
-          return (
-            <div key={c.id}
-                 data-testid={`wa-coaching-item-${c.id}`}
-                 style={{
-                   border: c.read ? "1px solid var(--border-default)"
-                                  : `1px solid ${toneColor}66`,
-                   background: c.read ? "var(--bg-surface)"
-                                      : `${toneColor}10`,
-                   borderRadius: 10, overflow: "hidden",
-                 }}>
-              <button onClick={() => onOpen(c)}
-                      style={{
-                        width: "100%", padding: "8px 12px",
-                        background: "transparent", border: "none",
-                        display: "flex", alignItems: "center", gap: 10,
-                        cursor: "pointer", textAlign: "left",
-                      }}>
-                {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                <div style={{
-                  width: 24, height: 24, borderRadius: "50%",
-                  background: toneColor, color: "#fff",
-                  display: "grid", placeItems: "center",
-                  fontSize: 10, fontWeight: 800, flexShrink: 0,
-                }}>{c.score?.toFixed?.(1) ?? c.score}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700,
-                                 color: "var(--text-primary)" }}>
-                    {c.summary_eval || c.next_action || `CSAT ${c.csat_at_time ?? "—"}`}
-                  </div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)",
-                                 marginTop: 1 }}>
-                    {(c.improvements || []).length} ponto{(c.improvements || []).length !== 1 ? "s" : ""} a melhorar
-                  </div>
-                </div>
-                <span style={{
-                  fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 999,
-                  background: `${toneColor}22`, color: toneColor,
-                  textTransform: "uppercase", letterSpacing: 0.4,
-                }}>{c.tone}</span>
-              </button>
-              {isOpen && (
-                <div style={{ padding: "8px 14px 12px",
-                               borderTop: "1px solid var(--border-default)",
-                               background: "var(--bg-surface-2)" }}>
-                  {c.strengths?.length > 0 && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ fontSize: 9, fontWeight: 800,
-                                     color: "#16a34a", textTransform: "uppercase",
-                                     letterSpacing: 0.4, marginBottom: 4 }}>
-                        ✓ Você acertou
-                      </div>
-                      {c.strengths.map((s, i) => (
-                        <div key={i} style={{ fontSize: 12,
-                                                color: "var(--text-primary)",
-                                                paddingLeft: 12, marginBottom: 2 }}>
-                          • {s}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {c.improvements?.length > 0 && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ fontSize: 9, fontWeight: 800,
-                                     color: "#f59e0b", textTransform: "uppercase",
-                                     letterSpacing: 0.4, marginBottom: 4 }}>
-                        → Pra melhorar
-                      </div>
-                      {c.improvements.map((s, i) => (
-                        <div key={i} style={{ fontSize: 12,
-                                                color: "var(--text-primary)",
-                                                paddingLeft: 12, marginBottom: 2 }}>
-                          • {s}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {c.next_action && (
-                    <div style={{
-                      padding: 8, borderRadius: 8,
-                      background: "var(--accent-soft)",
-                      fontSize: 12, display: "flex", gap: 6, alignItems: "flex-start",
-                    }}>
-                      <Lightbulb size={13} strokeWidth={1.75}
-                                  style={{ flexShrink: 0, marginTop: 1 }} />
-                      <div>
-                        <strong>Próxima ação:</strong> {c.next_action}
-                      </div>
-                    </div>
-                  )}
-                  <div style={{ display: "flex", gap: 6, marginTop: 8,
-                                 justifyContent: "flex-end" }}>
-                    {!c.acknowledged && (
-                      <button onClick={() => act(c.id, "acknowledged")}
-                              disabled={busy === c.id}
-                              data-testid={`wa-coaching-ack-${c.id}`}
-                              className="btn btn-primary btn-sm">
-                        <Check size={11} /> Entendi
-                      </button>
-                    )}
-                    <button onClick={() => act(c.id, "dismiss")}
-                            disabled={busy === c.id}
-                            className="btn btn-ghost btn-sm">
-                      <X size={11} /> Dispensar
-                    </button>
-                    {c.acknowledged && (
-                      <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 700,
-                                      display: "flex", alignItems: "center", gap: 4 }}>
-                        <Check size={12} /> Reconhecido
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
       </div>
     </div>
   );

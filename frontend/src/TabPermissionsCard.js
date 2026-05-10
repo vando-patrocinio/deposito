@@ -11,6 +11,7 @@ export const TAB_DEFINITIONS = [
   { id: "aihub", label: "Atendimento IA" },
   { id: "cadastro", label: "Cadastro" },
   { id: "subscribers", label: "Assinantes" },
+  { id: "plans", label: "Planos" },
   { id: "pracas", label: "Praças" },
   { id: "users", label: "Usuários" },
   { id: "manager", label: "Auditoria" },
@@ -24,9 +25,9 @@ export const TAB_DEFINITIONS = [
 // Reflete a regra original do App.js antes da customização.
 export const DEFAULT_TAB_PERMISSIONS = {
   administrador: TAB_DEFINITIONS.map((t) => t.id),
-  auditor: ["dashboard", "ai-center", "ai-ranking", "aihub", "cadastro", "subscribers", "pracas", "users",
+  auditor: ["dashboard", "ai-center", "ai-ranking", "aihub", "cadastro", "subscribers", "plans", "pracas", "users",
             "manager", "sheet", "logs", "settings"],
-  gestor: ["dashboard", "estoque", "ai-center", "ai-ranking", "aihub", "cadastro", "subscribers", "pracas",
+  gestor: ["dashboard", "estoque", "ai-center", "ai-ranking", "aihub", "cadastro", "subscribers", "plans", "pracas",
            "sheet", "logs"],
 };
 

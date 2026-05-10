@@ -3,7 +3,7 @@ import { api } from "@/api";
 import {
   Plus, Save, X, Edit2, Trash2, Search, Zap, TrendingUp,
   Power, PowerOff, Sparkles, Calculator, AlertTriangle, Check,
-  Users, DollarSign,
+  Users, DollarSign, Calendar, Clock,
 } from "lucide-react";
 
 /* =============================================================
@@ -20,6 +20,7 @@ const EMPTY_PLAN = {
 
 export default function PlansPanel() {
   const [items, setItems] = useState([]);
+  const [scheduled, setScheduled] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [adjusting, setAdjusting] = useState(null);
@@ -28,8 +29,12 @@ export default function PlansPanel() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await api.plansList();
+      const [r, sch] = await Promise.all([
+        api.plansList(),
+        api.planScheduledList({ status: "pending" }).catch(() => ({ items: [] })),
+      ]);
       setItems(r.items || []);
+      setScheduled(sch.items || []);
     } catch (e) {
       console.error(e);
     } finally { setLoading(false); }
@@ -135,6 +140,11 @@ export default function PlansPanel() {
         <PlanEditor plan={editing} onChange={setEditing}
                      onSave={() => onSave(editing)}
                      onCancel={() => setEditing(null)} />
+      )}
+
+      {/* Reajustes agendados (pendentes) */}
+      {scheduled.length > 0 && (
+        <ScheduledAdjustmentsCard items={scheduled} onChange={load} />
       )}
 
       {/* Lista */}
@@ -384,6 +394,15 @@ function AdjustmentModal({ plan, onClose, onApplied }) {
   const [applying, setApplying] = useState(false);
   const [confirmStep, setConfirmStep] = useState(false);
   const [history, setHistory] = useState([]);
+  /* Modos: "now" aplica imediatamente; "schedule" agenda pra data futura
+     (default sugerido = 30 dias à frente — exigência Marco Civil). */
+  const [mode, setMode] = useState("now");
+  const [scheduleDate, setScheduleDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 31);  // 31 dias à frente — passa em min_days=30
+    return d.toISOString().split("T")[0];
+  });
+  const [scheduleNote, setScheduleNote] = useState("");
 
   const fmt = (v) => new Intl.NumberFormat("pt-BR",
         { style: "currency", currency: "BRL" }).format(v || 0);
@@ -417,7 +436,14 @@ function AdjustmentModal({ plan, onClose, onApplied }) {
       if (pctOverride !== "" && Number(pctOverride) > 0) {
         body.pct_override = Number(pctOverride);
       }
-      await api.planAdjustmentApply(plan.id, body);
+      if (mode === "schedule") {
+        body.scheduled_for = scheduleDate;
+        body.min_days = 30;
+        if (scheduleNote.trim()) body.note = scheduleNote.trim();
+        await api.planAdjustmentSchedule(plan.id, body);
+      } else {
+        await api.planAdjustmentApply(plan.id, body);
+      }
       onApplied();
     } catch (e) {
       alert("Erro: " + (e?.response?.data?.detail || e.message));
@@ -488,6 +514,76 @@ function AdjustmentModal({ plan, onClose, onApplied }) {
               </label>
             </div>
           </div>
+
+          {/* Modo: Aplicar agora OU agendar */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8,
+          }}>
+            <button onClick={() => setMode("now")}
+                    data-testid="adj-mode-now"
+                    style={{
+                      padding: 12, borderRadius: 10, cursor: "pointer",
+                      border: mode === "now"
+                        ? "2px solid #f59e0b"
+                        : "1px solid var(--border-default)",
+                      background: mode === "now"
+                        ? "rgba(245,158,11,.08)" : "var(--bg-surface)",
+                      textAlign: "left",
+                    }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6,
+                             marginBottom: 4 }}>
+                <Calculator size={13} style={{ color: "#f59e0b" }} />
+                <strong style={{ fontSize: 13 }}>Aplicar agora</strong>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                Reajuste imediato. Use quando já houve aviso prévio.
+              </div>
+            </button>
+            <button onClick={() => setMode("schedule")}
+                    data-testid="adj-mode-schedule"
+                    style={{
+                      padding: 12, borderRadius: 10, cursor: "pointer",
+                      border: mode === "schedule"
+                        ? "2px solid #0284c7"
+                        : "1px solid var(--border-default)",
+                      background: mode === "schedule"
+                        ? "rgba(2,132,199,.08)" : "var(--bg-surface)",
+                      textAlign: "left",
+                    }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6,
+                             marginBottom: 4 }}>
+                <Calendar size={13} style={{ color: "#0284c7" }} />
+                <strong style={{ fontSize: 13 }}>Agendar (Marco Civil 30d)</strong>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                Aplicação automática na data marcada. Mínimo 30 dias.
+              </div>
+            </button>
+          </div>
+
+          {mode === "schedule" && (
+            <div style={{
+              padding: 14, borderRadius: 10,
+              border: "1px solid rgba(2,132,199,.35)",
+              background: "rgba(2,132,199,.05)",
+              display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12,
+            }}>
+              <Field label="Aplicar em (data)">
+                <input className="input" type="date"
+                        data-testid="adj-schedule-date"
+                        value={scheduleDate}
+                        min={new Date(Date.now() + 31 * 86400000)
+                          .toISOString().split("T")[0]}
+                        onChange={(e) => setScheduleDate(e.target.value)} />
+              </Field>
+              <Field label="Nota (opcional — aparece no histórico)">
+                <input className="input"
+                        value={scheduleNote}
+                        onChange={(e) => setScheduleNote(e.target.value)}
+                        placeholder="Ex.: Reajuste IPCA anual conforme contrato" />
+              </Field>
+            </div>
+          )}
 
           {loading ? (
             <div style={{ textAlign: "center", padding: 30,
@@ -641,10 +737,16 @@ function AdjustmentModal({ plan, onClose, onApplied }) {
                       disabled={applying}
                       className="btn btn-primary btn-sm"
                       style={{
-                        background: "linear-gradient(135deg, #f59e0b, #d97706)",
-                        boxShadow: "0 4px 12px rgba(245,158,11,.35)",
+                        background: mode === "schedule"
+                          ? "linear-gradient(135deg, #0284c7, #0369a1)"
+                          : "linear-gradient(135deg, #f59e0b, #d97706)",
+                        boxShadow: mode === "schedule"
+                          ? "0 4px 12px rgba(2,132,199,.35)"
+                          : "0 4px 12px rgba(245,158,11,.35)",
                       }}>
-                <Calculator size={12} /> Revisar e aplicar
+                {mode === "schedule"
+                  ? <><Calendar size={12} /> Revisar e agendar</>
+                  : <><Calculator size={12} /> Revisar e aplicar</>}
               </button>
             )}
             {preview && confirmStep && (
@@ -662,8 +764,10 @@ function AdjustmentModal({ plan, onClose, onApplied }) {
                         }}>
                   <Check size={12} />
                   {applying
-                    ? "Aplicando..."
-                    : `Confirmar reajuste de +${preview.pct_applied}%`}
+                    ? (mode === "schedule" ? "Agendando..." : "Aplicando...")
+                    : mode === "schedule"
+                      ? `Confirmar agendamento (+${preview.pct_applied}% em ${new Date(scheduleDate).toLocaleDateString("pt-BR")})`
+                      : `Confirmar reajuste de +${preview.pct_applied}%`}
                 </button>
               </>
             )}
@@ -699,6 +803,112 @@ function KpiCard({ icon: Ico, color, label, value, sub }) {
           {sub}
         </div>
       )}
+    </div>
+  );
+}
+
+/* =============================================================
+   ScheduledAdjustmentsCard — lista de reajustes agendados (pending).
+   Mostra: plano, data, %, autor, contagem de dias restantes, botão cancelar.
+============================================================= */
+function ScheduledAdjustmentsCard({ items, onChange }) {
+  const fmt = (v) => new Intl.NumberFormat("pt-BR",
+        { style: "currency", currency: "BRL" }).format(v || 0);
+  const cancel = async (id) => {
+    if (!window.confirm("Cancelar este reajuste agendado?")) return;
+    try {
+      await api.planScheduledCancel(id);
+      onChange();
+    } catch (e) {
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
+    }
+  };
+  return (
+    <div className="surface" data-testid="scheduled-adjustments-card" style={{
+      padding: 16, borderRadius: 12,
+      border: "1px solid rgba(2,132,199,.3)",
+      background: "linear-gradient(135deg, rgba(2,132,199,.06), var(--bg-surface))",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10,
+                     marginBottom: 12 }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: 9,
+          background: "linear-gradient(135deg, #0284c7, #0369a1)",
+          color: "#fff", display: "grid", placeItems: "center",
+        }}>
+          <Calendar size={16} strokeWidth={1.75} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <strong style={{ fontSize: 13, color: "#0369a1",
+                            letterSpacing: 0.2 }}>
+            Reajustes agendados
+          </strong>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+            Aplicação automática na data marcada · {items.length} pendente(s)
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {items.map((s) => {
+          const days = Math.ceil(
+            (new Date(s.scheduled_for) - new Date()) / 86400000);
+          return (
+            <div key={s.id}
+                 data-testid={`scheduled-item-${s.id}`}
+                 style={{
+                   display: "grid",
+                   gridTemplateColumns: "auto 1fr auto auto auto",
+                   gap: 12, alignItems: "center",
+                   padding: "10px 12px", borderRadius: 8,
+                   background: "var(--bg-surface)",
+                   border: "1px solid var(--border-default)",
+                 }}>
+              <div style={{ fontFamily: "ui-monospace, monospace",
+                             fontSize: 12, color: "var(--text-primary)",
+                             fontWeight: 700, minWidth: 86 }}>
+                {new Date(s.scheduled_for).toLocaleDateString("pt-BR")}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <strong style={{ fontSize: 13 }}>{s.plan_name}</strong>
+                <div style={{ fontSize: 11, color: "var(--text-muted)",
+                               marginTop: 1 }}>
+                  +{s.pct}% · por {s.created_by_name || s.created_by}
+                  {s.note && <> · "{s.note}"</>}
+                </div>
+              </div>
+              <span style={{
+                padding: "3px 9px", borderRadius: 999,
+                background: days <= 7
+                  ? "rgba(245,158,11,.15)" : "rgba(2,132,199,.12)",
+                color: days <= 7 ? "#b45309" : "#0369a1",
+                fontSize: 10, fontWeight: 800, letterSpacing: 0.3,
+                display: "inline-flex", alignItems: "center", gap: 4,
+                whiteSpace: "nowrap",
+              }}>
+                <Clock size={10} />
+                {days <= 0 ? "HOJE"
+                  : days === 1 ? "AMANHÃ"
+                  : `EM ${days} DIAS`}
+              </span>
+              <button onClick={() => cancel(s.id)}
+                       className="btn btn-ghost btn-sm"
+                       data-testid={`scheduled-cancel-${s.id}`}
+                       style={{ color: "var(--danger)" }}
+                       title="Cancelar agendamento">
+                <X size={12} /> Cancelar
+              </button>
+              <span style={{
+                fontSize: 9, color: "var(--text-muted)",
+                fontFamily: "ui-monospace, monospace",
+              }}>
+                {fmt(0).replace("R$", "")
+                  // placeholder pra alinhar visualmente
+                  ? "" : ""}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

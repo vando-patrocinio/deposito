@@ -442,6 +442,12 @@ export const api = {
     client.post(`/plans/${id}/adjustment/preview`, body).then((r) => r.data),
   planAdjustmentApply: (id, body = {}) =>
     client.post(`/plans/${id}/adjustment/apply`, body).then((r) => r.data),
+  planAdjustmentSchedule: (id, body = {}) =>
+    client.post(`/plans/${id}/adjustment/schedule`, body).then((r) => r.data),
+  planScheduledList: (params = {}) =>
+    client.get(`/plans/scheduled-adjustments`, { params }).then((r) => r.data),
+  planScheduledCancel: (sid) =>
+    client.delete(`/plans/scheduled-adjustments/${sid}`).then((r) => r.data),
   planAdjustmentHistory: (id) =>
     client.get(`/plans/${id}/adjustment/history`).then((r) => r.data),
 };
