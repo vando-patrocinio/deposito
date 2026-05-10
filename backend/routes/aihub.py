@@ -478,7 +478,14 @@ async def test_magnusbilling(user: dict = Depends(require_role("gestor"))):
 
 async def _probe_magnusbilling(url: str, key: str, secret: str
                                 ) -> Tuple[bool, Optional[str], Any, str]:
-    """Probe MagnusBilling — usado tanto pelo botão Testar quanto pelo monitor."""
+    """Probe MagnusBilling — usado tanto pelo botão Testar quanto pelo monitor.
+
+    Detecta erros comuns e devolve mensagem amigável em português:
+    - "Access denied to All action in All modules" → instrui o usuário a
+      adicionar permissões na API key.
+    - HTTP 401/403 → credenciais inválidas.
+    - HTTPS errors → URL/SSL.
+    """
     test_endpoint = f"{url}/index.php/api/getInfo"
     error_msg: Optional[str] = None
     ok = False
@@ -487,15 +494,32 @@ async def _probe_magnusbilling(url: str, key: str, secret: str
         async with httpx.AsyncClient(timeout=10.0, verify=True) as cli:
             r = await cli.get(test_endpoint, params={"key": key, "secret": secret})
             if r.status_code == 200:
-                ok = True
+                # MB devolve 200 mesmo quando a Key não tem permissões — vem como JSON
+                # com {"raw": "Access denied..."} ou {"error": "..."}.
                 try:
-                    sample = r.json()
+                    body = r.json()
                 except Exception:
-                    sample = (r.text or "")[:200]
+                    body = {"raw": (r.text or "")[:200]}
+                raw_text = (body.get("raw") if isinstance(body, dict) else "") or ""
+                err_text = (body.get("error") if isinstance(body, dict) else "") or ""
+                if "access denied" in str(raw_text).lower() or "access denied" in str(err_text).lower():
+                    error_msg = (
+                        "Permissões insuficientes na API Key. "
+                        "No painel MagnusBilling → Configurações → API → edite a Key → "
+                        "marque as Permissões necessárias (mínimo: getInfo, getDid, getCdr, originate)."
+                    )
+                else:
+                    ok = True
+                    sample = body
+            elif r.status_code in (401, 403):
+                error_msg = (
+                    f"HTTP {r.status_code} — Key/Secret incorretos. "
+                    "Verifique em Configurações → API no MagnusBilling."
+                )
             else:
                 error_msg = f"HTTP {r.status_code}: {(r.text or '')[:200]}"
     except httpx.HTTPError as e:
-        error_msg = f"erro de rede: {e}"
+        error_msg = f"erro de rede ({type(e).__name__}): {e}"
     except Exception as e:  # pragma: no cover — defensivo
         error_msg = f"erro: {e}"
     return ok, error_msg, sample, test_endpoint

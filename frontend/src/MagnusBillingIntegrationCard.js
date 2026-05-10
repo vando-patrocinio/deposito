@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Phone, Wifi, WifiOff, CheckCircle2, AlertTriangle, Save, Play } from "lucide-react";
+import { Phone, Wifi, WifiOff, CheckCircle2, AlertTriangle, Save, Play, Copy, ExternalLink, BookOpen } from "lucide-react";
 import { api } from "@/api";
 import { Card } from "@/ui";
 
@@ -259,6 +259,113 @@ export default function MagnusBillingIntegrationCard() {
           começar. O monitor automático começa a rodar assim que a integração for salva.
         </div>
       )}
+
+      <SetupWizard didNumber={config.sip_did} sipUsername={config.sip_username} />
     </Card>
   );
 }
+
+/* =============================================================
+   Setup Wizard — passo-a-passo no MagnusBilling para a Jerusa
+   atender o DID. Mostra webhook URL pronto pra copiar.
+============================================================= */
+function SetupWizard({ didNumber, sipUsername }) {
+  const base = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
+  const webhookUrl = `${base}/api/voice/sip/incoming`;
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(webhookUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch { /* ignore */ }
+  };
+
+  return (
+    <div data-testid="mb-setup-wizard" style={{
+      marginTop: 18, paddingTop: 14,
+      borderTop: "1px dashed var(--border-default)",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6, marginBottom: 8,
+        fontSize: 11, fontWeight: 800, color: "var(--text-secondary)",
+        textTransform: "uppercase", letterSpacing: 0.6,
+      }}>
+        <BookOpen size={12} strokeWidth={2} /> Setup no MagnusBilling — passo-a-passo
+        <a href="https://wiki.magnusbilling.org/pt-br/source/modules/index.html#api"
+           target="_blank" rel="noopener noreferrer"
+           style={{ marginLeft: "auto", fontSize: 10, color: "var(--accent)",
+                     display: "inline-flex", alignItems: "center", gap: 3 }}>
+          Ver na wiki <ExternalLink size={10} />
+        </a>
+      </div>
+
+      <ol style={{
+        margin: 0, paddingLeft: 18, fontSize: 12, lineHeight: 1.65,
+        color: "var(--text-primary)",
+      }}>
+        <li>
+          <strong>Liberar permissões da API Key</strong>: no painel MagnusBilling,
+          vá em <span className="mono" style={pillTagStyle}>Configurações → API</span>,
+          edite a Key existente, e em <strong>Permissões</strong> marque pelo menos:{" "}
+          <span className="mono" style={pillTagStyle}>getInfo</span>{" "}
+          <span className="mono" style={pillTagStyle}>getDid</span>{" "}
+          <span className="mono" style={pillTagStyle}>getCdr</span>{" "}
+          <span className="mono" style={pillTagStyle}>originate</span>.
+          {" "}Em <strong>IPs restritos</strong> deixe vazio (ou cole o IP do nosso servidor).
+        </li>
+        <li>
+          <strong>Roteamento do DID {didNumber || "(seu DID)"}</strong>: vá em{" "}
+          <span className="mono" style={pillTagStyle}>DIDs → Destino de DIDs</span>,
+          adicione um destino apontando o DID para a Conta SIP{" "}
+          <span className="mono" style={pillTagStyle}>{sipUsername || "(seu usuário SIP)"}</span>.
+        </li>
+        <li>
+          <strong>Webhook de eventos</strong> (importante!): em{" "}
+          <span className="mono" style={pillTagStyle}>Clientes → Contas SIP</span>,
+          edite a conta da Jerusa e cole no campo{" "}
+          <em>"URL notificações de eventos"</em> a URL abaixo:
+          <div style={{
+            marginTop: 6, display: "flex", alignItems: "center", gap: 6,
+            padding: "8px 10px", border: "1px solid var(--border-default)",
+            borderRadius: 8, background: "var(--bg-surface-2)",
+          }}>
+            <code className="mono" style={{ flex: 1, fontSize: 11, wordBreak: "break-all" }}>
+              {webhookUrl}
+            </code>
+            <button onClick={copy} className="btn btn-ghost btn-sm"
+                    data-testid="mb-copy-webhook-btn"
+                    style={{ padding: "4px 8px" }}>
+              <Copy size={12} /> {copied ? "Copiado!" : "Copiar"}
+            </button>
+          </div>
+        </li>
+        <li>
+          <strong>SIP Register no nosso servidor</strong>: a Jerusa precisa estar
+          registrada como ramal pra <em>receber</em> chamadas. Salve as credenciais
+          SIP acima — em breve o backend roda o REGISTER automaticamente
+          (próximo deploy).
+        </li>
+      </ol>
+
+      <div style={{
+        marginTop: 12, padding: 10, borderRadius: 8,
+        background: "var(--warning-soft)", color: "var(--warning-soft-fg)",
+        fontSize: 11, display: "flex", alignItems: "flex-start", gap: 8,
+      }}>
+        <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+        <span>
+          <strong>Sem o passo 4 (SIP Register):</strong> mesmo configurando 1, 2 e 3,
+          a Jerusa não recebe áudio das chamadas — só os eventos via webhook.
+          Para áudio bidirecional real, o SIP client backend é necessário.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const pillTagStyle = {
+  display: "inline-block", padding: "1px 6px", borderRadius: 4,
+  background: "var(--bg-surface-2)", border: "1px solid var(--border-default)",
+  fontSize: 10.5, fontWeight: 600,
+};
