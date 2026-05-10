@@ -3,17 +3,18 @@ import React from "react";
 // IMPORTANT: Os IDs e labels devem refletir ALL_TABS em App.js.
 // Quando uma aba nova é adicionada lá, adicionar aqui também.
 export const TAB_DEFINITIONS = [
-  { id: "dashboard", label: "📊 Painel" },
-  { id: "lousa", label: "📋 Lousa" },
-  { id: "estoque", label: "📦 Estoque" },
-  { id: "ai-ranking", label: "🤖 Avaliação IA" },
-  { id: "cadastro", label: "👥 Cadastro" },
-  { id: "pracas", label: "📍 Praças" },
-  { id: "users", label: "🛡️ Usuários" },
-  { id: "manager", label: "🛡️ Auditoria" },
-  { id: "sheet", label: "📊 Espelho" },
-  { id: "logs", label: "📋 Logs" },
-  { id: "settings", label: "⚙️ Configurações" },
+  { id: "dashboard", label: "Painel" },
+  { id: "lousa", label: "Lousa" },
+  { id: "estoque", label: "Estoque" },
+  { id: "ai-center", label: "Central IA" },
+  { id: "ai-ranking", label: "Avaliação IA" },
+  { id: "cadastro", label: "Cadastro" },
+  { id: "pracas", label: "Praças" },
+  { id: "users", label: "Usuários" },
+  { id: "manager", label: "Auditoria" },
+  { id: "sheet", label: "Espelho" },
+  { id: "logs", label: "Logs" },
+  { id: "settings", label: "Configurações" },
   // platform é controlada por superAdminOnly, fora deste card
 ];
 
@@ -21,18 +22,18 @@ export const TAB_DEFINITIONS = [
 // Reflete a regra original do App.js antes da customização.
 export const DEFAULT_TAB_PERMISSIONS = {
   administrador: TAB_DEFINITIONS.map((t) => t.id),
-  auditor: ["dashboard", "ai-ranking", "cadastro", "pracas", "users",
+  auditor: ["dashboard", "ai-center", "ai-ranking", "cadastro", "pracas", "users",
             "manager", "sheet", "logs", "settings"],
-  gestor: ["dashboard", "estoque", "ai-ranking", "cadastro", "pracas",
+  gestor: ["dashboard", "estoque", "ai-center", "ai-ranking", "cadastro", "pracas",
            "sheet", "logs"],
 };
 
 const ROLES = [
-  { id: "administrador", label: "🛡️ Administrador",
+  { id: "administrador", label: "Administrador",
     note: "Acesso total — recomendado manter tudo selecionado." },
-  { id: "auditor", label: "🔍 Auditor",
+  { id: "auditor", label: "Auditor",
     note: "Perfil de fiscalização/observação." },
-  { id: "gestor", label: "👔 Gestor",
+  { id: "gestor", label: "Gestor",
     note: "Perfil operacional do dia-a-dia." },
 ];
 
@@ -63,23 +64,20 @@ export default function TabPermissionsCard({ data, setData }) {
   };
 
   return (
-    <div data-testid="tab-permissions-card" style={{
-      marginTop: 16, padding: 14, background: "#eff6ff",
-      borderRadius: 12, border: "1px solid #93c5fd",
+    <div data-testid="tab-permissions-card" className="surface" style={{
+      marginTop: 16, padding: 16,
     }}>
       <div style={{ display: "flex", justifyContent: "space-between",
                     alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: "#1e3a8a" }}>
-          🔐 Permissões de abas por perfil
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.012em" }}>
+          Permissões de abas por perfil
         </div>
         <button onClick={reset} data-testid="perm-reset-btn"
-                style={{ fontSize: 11, padding: "3px 9px", border: "1px solid #93c5fd",
-                         background: "white", borderRadius: 6, cursor: "pointer",
-                         color: "#1e3a8a", fontWeight: 600 }}>
-          ↺ Restaurar padrão
+                className="btn btn-secondary btn-sm">
+          Restaurar padrão
         </button>
       </div>
-      <p style={{ fontSize: 11, color: "#1e3a8a", margin: "0 0 10px", opacity: 0.85 }}>
+      <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "0 0 14px" }}>
         Marque quais abas cada perfil pode ver no menu. Mudanças aparecem após o usuário
         fazer logout/login. <em>Colaborador usa o app mobile e não tem abas de desktop.</em>
       </p>
@@ -92,15 +90,15 @@ export default function TabPermissionsCard({ data, setData }) {
               {ROLES.map((r) => (
                 <th key={r.id} style={thStyle}>
                   <div>{r.label}</div>
-                  <div style={{ fontWeight: 400, fontSize: 9, color: "#475569",
+                  <div style={{ fontWeight: 400, fontSize: 10, color: "var(--text-muted)",
                                  marginTop: 2 }}>{r.note}</div>
-                  <div style={{ marginTop: 4, display: "flex", gap: 4, justifyContent: "center" }}>
+                  <div style={{ marginTop: 6, display: "flex", gap: 4, justifyContent: "center" }}>
                     <button onClick={() => setAll(r.id, true)}
                             data-testid={`perm-all-${r.id}`}
-                            style={miniBtn}>Tudo</button>
+                            className="btn btn-ghost btn-sm" style={{ height: 24, padding: "0 8px", fontSize: 10 }}>Tudo</button>
                     <button onClick={() => setAll(r.id, false)}
                             data-testid={`perm-none-${r.id}`}
-                            style={miniBtn}>Nada</button>
+                            className="btn btn-ghost btn-sm" style={{ height: 24, padding: "0 8px", fontSize: 10 }}>Nada</button>
                   </div>
                 </th>
               ))}
@@ -108,16 +106,16 @@ export default function TabPermissionsCard({ data, setData }) {
           </thead>
           <tbody>
             {TAB_DEFINITIONS.map((t) => (
-              <tr key={t.id} style={{ borderTop: "1px solid #dbeafe" }}>
-                <td style={{ padding: "6px 10px", fontWeight: 600 }}>{t.label}</td>
+              <tr key={t.id} style={{ borderTop: "1px solid var(--border-default)" }}>
+                <td style={{ padding: "8px 10px", fontWeight: 600, color: "var(--text-primary)" }}>{t.label}</td>
                 {ROLES.map((r) => {
                   const checked = (perms[r.id] || []).includes(t.id);
                   return (
-                    <td key={r.id} style={{ padding: "6px 10px", textAlign: "center" }}>
+                    <td key={r.id} style={{ padding: "8px 10px", textAlign: "center" }}>
                       <input type="checkbox" checked={checked}
                              onChange={() => toggle(r.id, t.id)}
                              data-testid={`perm-${r.id}-${t.id}`}
-                             style={{ cursor: "pointer", width: 18, height: 18 }} />
+                             style={{ cursor: "pointer", width: 16, height: 16, accentColor: "var(--accent)" }} />
                     </td>
                   );
                 })}
@@ -131,12 +129,8 @@ export default function TabPermissionsCard({ data, setData }) {
 }
 
 const thStyle = {
-  padding: "6px 10px", fontSize: 11, textAlign: "center",
-  background: "#dbeafe", color: "#1e3a8a", fontWeight: 800,
-  borderBottom: "1px solid #93c5fd",
-};
-const miniBtn = {
-  fontSize: 10, padding: "2px 6px", border: "1px solid #93c5fd",
-  background: "white", borderRadius: 4, cursor: "pointer",
-  color: "#1e3a8a", fontWeight: 600,
+  padding: "8px 10px", fontSize: 11, textAlign: "center",
+  background: "var(--bg-surface-2)", color: "var(--text-primary)", fontWeight: 700,
+  borderBottom: "1px solid var(--border-default)",
+  letterSpacing: "-0.005em",
 };
