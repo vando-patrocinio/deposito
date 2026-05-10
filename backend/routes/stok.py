@@ -1056,74 +1056,79 @@ async def _detect_by_prefix(sns: list[str], identify_fn,
 # ---------------------------------------------------------------------------
 @router.post("/clientes/identify-all")
 async def clientes_identify_all(force: bool = False,
+                                use_similarity: bool = True,
                                 user: dict = Depends(require_role("gestor"))):
     """Roda a IA em TODOS os prefixos de SN ainda sem fabricante identificado.
 
-    Estratégia: agrupa por prefixo (4 chars), pula os já no `KNOWN_PREFIXES` e
-    já cacheados (a menos que `force=true`), depois dispara Gemini em paralelo
-    com semáforo de 4 (Nominatim-like polidez). Cache permanente cobre próximas
-    chamadas.
+    Modo padrão (`use_similarity=True`): chama Gemini em batch de 30 prefixos com
+    contexto rico (catálogo de prefixos já conhecidos como exemplos) — muito
+    mais eficiente que 1 chamada por prefixo.
+
+    Modo legacy (`use_similarity=False`): 1 chamada LLM por prefixo, sem
+    contexto adicional.
     """
     from manufacturers import (KNOWN_PREFIXES, _ascii_prefix, _hex_prefix,
+                                  identify_by_similarity_batch,
                                   identify_manufacturer)
     cid = user.get("company_id") or DEMO_COMPANY_ID
 
     cur = db.smartolt_onus.find({"company_id": cid}, {"_id": 0, "sn": 1})
-    prefixes_to_resolve: set[str] = set()
+    prefixes_to_resolve: dict = {}  # prefix -> sample SN
     async for o in cur:
         sn = (o.get("sn") or "").strip().upper()
         if not sn or len(sn) < 4:
             continue
         # Conta como já resolvido se hardcoded
+        is_known = False
         for cand in (_ascii_prefix(sn), _hex_prefix(sn)):
             if cand in KNOWN_PREFIXES:
+                is_known = True
                 break
-        else:
-            p = _ascii_prefix(sn) or _hex_prefix(sn)
-            if p:
-                prefixes_to_resolve.add(p)
+        if is_known:
+            continue
+        p = _ascii_prefix(sn) or _hex_prefix(sn)
+        if p and p not in prefixes_to_resolve:
+            prefixes_to_resolve[p] = sn
 
     # Filtra os que já estão no cache (a menos que force=true)
     if not force and prefixes_to_resolve:
         cached_cur = db.manufacturer_cache.find(
-            {"prefix": {"$in": list(prefixes_to_resolve)}}, {"_id": 0, "prefix": 1})
+            {"prefix": {"$in": list(prefixes_to_resolve.keys())}},
+            {"_id": 0, "prefix": 1})
         cached = {c["prefix"] async for c in cached_cur}
-        prefixes_to_resolve -= cached
+        for p in cached:
+            prefixes_to_resolve.pop(p, None)
 
-    # Para cada prefixo desconhecido, pega 1 SN representativo e roda LLM
-    # (a função identify_manufacturer já popula cache automaticamente)
-    sample_sns: list[str] = []
-    for p in prefixes_to_resolve:
-        # Pega primeira ONT que tenha esse prefixo
-        sample = await db.smartolt_onus.find_one(
-            {"company_id": cid, "sn": {"$regex": f"^{p}", "$options": "i"}},
-            {"_id": 0, "sn": 1})
-        if sample and sample.get("sn"):
-            sample_sns.append(sample["sn"])
-
-    import asyncio
-    sem = asyncio.Semaphore(4)
+    sample_sns = list(prefixes_to_resolve.values())
     new_found = 0
 
-    async def _resolve(sn: str):
-        nonlocal new_found
-        async with sem:
-            try:
-                m = await identify_manufacturer(sn)
-                if m:
-                    new_found += 1
-                return m
-            except Exception as e:
-                logger.warning("[identify-all] %s falhou: %s", sn[:8], e)
-                return None
+    if use_similarity:
+        # Batch LLM com contexto — recomendado
+        result = await identify_by_similarity_batch(sample_sns, max_per_batch=30)
+        new_found = sum(1 for v in result.values() if v)
+        method = "similarity-batch"
+    else:
+        # Legacy: 1 chamada LLM por prefixo
+        import asyncio
+        sem = asyncio.Semaphore(4)
 
-    if sample_sns:
-        await asyncio.gather(*[_resolve(s) for s in sample_sns])
+        async def _resolve(sn: str):
+            async with sem:
+                try:
+                    return await identify_manufacturer(sn)
+                except Exception as e:
+                    logger.warning("[identify-all] %s falhou: %s", sn[:8], e)
+                    return None
+
+        results = await asyncio.gather(*[_resolve(s) for s in sample_sns])
+        new_found = sum(1 for r in results if r)
+        method = "one-by-one"
 
     await _add_history(
         "identify_all",
-        f"Descoberta forçada de fabricantes: {new_found} novos prefixos identificados de {len(sample_sns)} testados",
+        f"Descoberta forçada de fabricantes ({method}): {new_found} novos prefixos identificados de {len(sample_sns)} testados",
         user.get("name", "?"), "identify_all", cid)
     return {"prefixes_tested": len(sample_sns),
             "new_manufacturers_found": new_found,
-            "total_prefixes_unknown_before": len(prefixes_to_resolve)}
+            "total_prefixes_unknown_before": len(sample_sns),
+            "method": method}
