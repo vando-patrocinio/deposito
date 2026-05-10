@@ -11,11 +11,12 @@ Tudo usa o EMERGENT_LLM_KEY já configurado no app (sem chaves externas).
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import re
 import uuid
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -449,6 +450,23 @@ async def test_magnusbilling(user: dict = Depends(require_role("gestor"))):
     if not url or not key or not secret:
         raise HTTPException(400, "URL, Key e Secret são obrigatórios.")
 
+    ok, error_msg, sample, endpoint = await _probe_magnusbilling(url, key, secret)
+
+    await db.aihub_integrations.update_one(
+        {"company_id": cid, "type": "magnusbilling"},
+        {"$set": {
+            "status": "online" if ok else "error",
+            "last_test_at": now_iso(),
+            "last_test_error": error_msg,
+        }},
+    )
+    return {"ok": ok, "endpoint": endpoint, "error": error_msg,
+            "sample": sample if ok else None}
+
+
+async def _probe_magnusbilling(url: str, key: str, secret: str
+                                ) -> Tuple[bool, Optional[str], Any, str]:
+    """Probe MagnusBilling — usado tanto pelo botão Testar quanto pelo monitor."""
     test_endpoint = f"{url}/index.php/api/getInfo"
     error_msg: Optional[str] = None
     ok = False
@@ -466,19 +484,9 @@ async def test_magnusbilling(user: dict = Depends(require_role("gestor"))):
                 error_msg = f"HTTP {r.status_code}: {(r.text or '')[:200]}"
     except httpx.HTTPError as e:
         error_msg = f"erro de rede: {e}"
-    except Exception as e:
+    except Exception as e:  # pragma: no cover — defensivo
         error_msg = f"erro: {e}"
-
-    await db.aihub_integrations.update_one(
-        {"company_id": cid, "type": "magnusbilling"},
-        {"$set": {
-            "status": "online" if ok else "error",
-            "last_test_at": now_iso(),
-            "last_test_error": error_msg,
-        }},
-    )
-    return {"ok": ok, "endpoint": test_endpoint, "error": error_msg,
-            "sample": sample if ok else None}
+    return ok, error_msg, sample, test_endpoint
 
 
 @router.post("/integrations/whatsapp_cloud/test")
@@ -499,6 +507,21 @@ async def test_whatsapp_cloud(user: dict = Depends(require_role("gestor"))):
     if not pnid or not token:
         raise HTTPException(400,
                             "phone_number_id e access_token são obrigatórios.")
+    ok, error_msg, sample, endpoint = await _probe_whatsapp_cloud(pnid, token, graph_ver)
+
+    await db.aihub_integrations.update_one(
+        {"company_id": cid, "type": "whatsapp_cloud"},
+        {"$set": {
+            "status": "online" if ok else "error",
+            "last_test_at": now_iso(),
+            "last_test_error": error_msg,
+        }},
+    )
+    return {"ok": ok, "endpoint": endpoint, "error": error_msg, "sample": sample}
+
+
+async def _probe_whatsapp_cloud(pnid: str, token: str, graph_ver: str
+                                 ) -> Tuple[bool, Optional[str], Any, str]:
     endpoint = f"https://graph.facebook.com/{graph_ver}/{pnid}"
     ok = False
     error_msg: Optional[str] = None
@@ -514,16 +537,137 @@ async def test_whatsapp_cloud(user: dict = Depends(require_role("gestor"))):
                 error_msg = f"HTTP {r.status_code}: {(r.text or '')[:200]}"
     except Exception as e:
         error_msg = f"erro: {e}"
+    return ok, error_msg, sample, endpoint
 
+
+# ---------------------------------------------------------------------------
+# Status summary — usado pelos cards em Configurações com auto-refresh
+# ---------------------------------------------------------------------------
+@router.get("/integrations/status-summary")
+async def integrations_status_summary(user: dict = Depends(require_role("gestor"))):
+    """Resumo leve de todas as integrações (MagnusBilling, WhatsApp Cloud).
+
+    Retorna `configured`, `status` (online/error/never_tested), `last_test_at`,
+    `last_test_error`, `monitor_enabled`. Não retorna config/secrets — pode
+    ser chamado em loop pelo frontend (ex.: a cada 30s).
+    """
+    cid = _cid(user)
+    rows = await db.aihub_integrations.find(
+        {"company_id": cid},
+        {"_id": 0, "type": 1, "status": 1, "config": 1,
+         "last_test_at": 1, "last_test_error": 1, "monitor_enabled": 1},
+    ).to_list(20)
+    out: Dict[str, Any] = {}
+    for r in rows:
+        cfg = r.get("config") or {}
+        configured = False
+        if r.get("type") == "magnusbilling":
+            configured = bool(cfg.get("url") and cfg.get("key") and cfg.get("secret"))
+        elif r.get("type") == "whatsapp_cloud":
+            configured = bool(cfg.get("phone_number_id") and cfg.get("access_token"))
+        out[r["type"]] = {
+            "configured": configured,
+            "status": r.get("status") or ("never_tested" if configured else "not_configured"),
+            "last_test_at": r.get("last_test_at"),
+            "last_test_error": r.get("last_test_error"),
+            "monitor_enabled": r.get("monitor_enabled", True),
+        }
+    # Garantir chaves presentes mesmo sem config
+    for t in ("magnusbilling", "whatsapp_cloud"):
+        out.setdefault(t, {
+            "configured": False, "status": "not_configured",
+            "last_test_at": None, "last_test_error": None,
+            "monitor_enabled": False,
+        })
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Monitor worker — re-testa integrações periodicamente
+# ---------------------------------------------------------------------------
+_MONITOR_TASK: Optional[asyncio.Task] = None
+_MONITOR_RUN = True
+_MONITOR_INTERVAL_SEC = 60  # tick a cada 60s
+
+
+async def _monitor_one(intg: dict) -> None:
+    cid = intg.get("company_id") or DEMO_COMPANY_ID
+    itype = intg.get("type")
+    cfg = intg.get("config") or {}
+    if not cfg:
+        return
+    prev_status = intg.get("status")
+    ok = False
+    error_msg: Optional[str] = None
+    if itype == "magnusbilling":
+        url = (cfg.get("url") or "").rstrip("/")
+        key = cfg.get("key") or ""
+        secret = cfg.get("secret") or ""
+        if not (url and key and secret):
+            return  # não configurada por completo — não monitora
+        ok, error_msg, _, _ = await _probe_magnusbilling(url, key, secret)
+    elif itype == "whatsapp_cloud":
+        pnid = cfg.get("phone_number_id") or ""
+        token = cfg.get("access_token") or ""
+        graph_ver = cfg.get("graph_version") or "v23.0"
+        if not (pnid and token):
+            return
+        ok, error_msg, _, _ = await _probe_whatsapp_cloud(pnid, token, graph_ver)
+    else:
+        return
+
+    new_status = "online" if ok else "error"
     await db.aihub_integrations.update_one(
-        {"company_id": cid, "type": "whatsapp_cloud"},
+        {"company_id": cid, "type": itype},
         {"$set": {
-            "status": "online" if ok else "error",
+            "status": new_status,
+            "last_monitor_at": now_iso(),
             "last_test_at": now_iso(),
             "last_test_error": error_msg,
         }},
     )
-    return {"ok": ok, "endpoint": endpoint, "error": error_msg, "sample": sample}
+    # Loga transições de estado (online → error ou vice-versa)
+    if prev_status and prev_status != new_status:
+        logger.warning(
+            "[aihub.monitor] %s/%s: %s → %s (%s)",
+            cid, itype, prev_status, new_status, error_msg or "ok",
+        )
+
+
+async def _monitor_loop() -> None:
+    """Loop infinito que re-testa cada integração configurada."""
+    while _MONITOR_RUN:
+        try:
+            cursor = db.aihub_integrations.find(
+                {"monitor_enabled": {"$ne": False}},
+                {"_id": 0},
+            )
+            intgs = await cursor.to_list(200)
+            # Roda em paralelo para reduzir tempo total
+            if intgs:
+                await asyncio.gather(
+                    *[_monitor_one(i) for i in intgs],
+                    return_exceptions=True,
+                )
+        except Exception as e:
+            logger.warning("[aihub.monitor] tick falhou: %s", e)
+        await asyncio.sleep(_MONITOR_INTERVAL_SEC)
+
+
+async def start_worker() -> None:
+    global _MONITOR_TASK
+    if _MONITOR_TASK and not _MONITOR_TASK.done():
+        return
+    _MONITOR_TASK = asyncio.create_task(_monitor_loop())
+    logger.info("[aihub.monitor] worker started (every %ss)", _MONITOR_INTERVAL_SEC)
+
+
+def stop_worker() -> None:
+    global _MONITOR_RUN
+    _MONITOR_RUN = False
+    if _MONITOR_TASK:
+        _MONITOR_TASK.cancel()
+    logger.info("[aihub.monitor] worker stopped")
 
 
 # ---------------------------------------------------------------------------

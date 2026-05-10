@@ -47,6 +47,7 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **Romaneio de Devolução à Empresa** (na desativação): lista pertences + ONTs + insumos com checkboxes, **assinatura digital do recebedor** (canvas), histórico em `db.collab_returns`, pertences viram automaticamente `status=devolvido`
 ✅ **Atendimento IA**: nova aba com CRUD de agentes conversacionais, playground multi-turn (Gemini/Claude/GPT via Emergent LLM Key), integrações MagnusBilling (SIP) + WhatsApp Cloud com mascaramento de secrets, webhook receiver de chamadas e histórico
 ✅ **Assinantes**: cadastro de clientes ISP com normalização de telefone BR e auto-link em chamadas/webhook/playground (4 formatos diferentes matcham mesmo subscriber); IA recebe contexto do cliente no prompt e personaliza atendimento
+✅ **MagnusBilling em Configurações** (10/05/2026): card dedicado em Configurações com URL/Key/Secret em branco para preenchimento manual, botão Testar conexão e ponto verde/vermelho com pulse. **Monitor automático em background** (a cada 60s) re-testa MagnusBilling + WhatsApp Cloud e atualiza status — gestor vê quando o serviço cai. Endpoint `GET /api/aihub/integrations/status-summary` consumido com auto-refresh de 30s no frontend.
 ✅ Pytest backend + ESLint frontend ativos
 ✅ Roadmap pronto em `/app/memory/ROADMAP.md`
 

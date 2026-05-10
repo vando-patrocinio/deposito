@@ -334,6 +334,8 @@ export const api = {
   aihubOutboundCall: (payload) =>
     client.post(`/aihub/calls/outbound`, payload).then((r) => r.data),
   aihubDashboard: () => client.get(`/aihub/dashboard`).then((r) => r.data),
+  aihubIntegrationsStatus: () =>
+    client.get(`/aihub/integrations/status-summary`).then((r) => r.data),
 
   // ===== Assinantes (Subscribers) =====
   subscribersList: (params = {}) => client.get(`/subscribers`, { params }).then((r) => r.data),

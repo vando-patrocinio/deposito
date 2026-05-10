@@ -3,6 +3,7 @@ import { api } from "@/api";
 import { Button, Card, Field, Icon, inputStyle, StatusBadge } from "@/ui";
 import AtlazIntegrationCard from "@/AtlazIntegrationCard";
 import SmartoltIntegrationCard from "@/SmartoltIntegrationCard";
+import MagnusBillingIntegrationCard from "@/MagnusBillingIntegrationCard";
 import BrandingCard from "@/BrandingCard";
 
 export default function SettingsPanel() {
@@ -566,6 +567,7 @@ export default function SettingsPanel() {
       <BrandingCard />
       <AtlazIntegrationCard />
       <SmartoltIntegrationCard />
+      <MagnusBillingIntegrationCard />
     </div>
   );
 }
