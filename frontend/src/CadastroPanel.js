@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
+import { Car } from "lucide-react";
 import { api } from "@/api";
 import { AvatarZoomModal, Button, Card, Field, Icon, inputStyle, Row, StatusBadge } from "@/ui";
 import GeofenceMap from "@/GeofenceMap";
 import useEventStream from "@/useEventStream";
 import AssetsSection from "@/AssetsSection";
 import DeactivationAssetsModal from "@/DeactivationAssetsModal";
+import VehicleChecklistModal from "@/VehicleChecklistModal";
 
 const EMPTY = {
   name: "",
@@ -39,7 +41,8 @@ export default function CadastroPanel() {
   const [allFences, setAllFences] = useState([]);     // todas as cercas do sistema (para reaproveitar)
   const [reuseSelected, setReuseSelected] = useState({}); // {fence_id: bool} marcadas para clonar ao salvar
   const [clockHistoryFor, setClockHistoryFor] = useState(null);   // colaborador selecionado para ver batidas
-  const [assetsFor, setAssetsFor] = useState(null);   // colaborador selecionado para gerenciar pertences
+  const [assetsFor, setAssetsFor] = useState(null);   // colaborador selecionado para gerenciar itens em custódia
+  const [vehicleChecklistFor, setVehicleChecklistFor] = useState(null); // checklist veicular
   const [deactivatedFor, setDeactivatedFor] = useState(null);   // popup automático ao desativar
   const [togglingId, setTogglingId] = useState(null);             // colab cujo toggle CLT está em flight
 
@@ -166,7 +169,7 @@ export default function CadastroPanel() {
         setFlash("✅ Colaborador salvo.");
       }
       setTimeout(() => setFlash(""), 3500);
-      // Pop-up automático com pertences quando colaborador foi desativado
+      // Pop-up automático com itens em custódia quando colaborador foi desativado
       if (justDeactivated) {
         const colObj = list.find((x) => x.id === editing);
         if (colObj) setDeactivatedFor({ ...colObj, active: false });
@@ -407,10 +410,19 @@ export default function CadastroPanel() {
                       variant="soft"
                       onClick={() => setAssetsFor(c)}
                       data-testid={`view-assets-${c.id}`}
-                      title="Pertences/EPIs entregues a este colaborador"
-                      style={{ background: "#fdf4ff", color: "#86198f", border: "1px solid #f0abfc" }}
+                      title="Itens em custódia (Checklist EPIs)"
+                      style={{ background: "var(--accent-soft)", color: "var(--accent-soft-fg)", border: "1px solid #99f6e4" }}
                     >
-                      🎒 Pertences
+                      <Icon name="clipboard" /> Checklist
+                    </Button>
+                    <Button
+                      variant="soft"
+                      onClick={() => setVehicleChecklistFor(c)}
+                      data-testid={`view-vehicle-${c.id}`}
+                      title="Checklist veicular pré-jornada (CONTRAN)"
+                      style={{ background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe" }}
+                    >
+                      <Car size={14} strokeWidth={1.75} /> Veicular
                     </Button>
                     <Button variant="secondary" onClick={() => startEdit(c)} data-testid={`edit-${c.id}`}>
                       <Icon name="gear" /> Editar
@@ -459,6 +471,13 @@ export default function CadastroPanel() {
         <DeactivationAssetsModal
           collaborator={deactivatedFor}
           onClose={() => setDeactivatedFor(null)}
+        />
+      )}
+
+      {vehicleChecklistFor && (
+        <VehicleChecklistModal
+          collaborator={vehicleChecklistFor}
+          onClose={() => setVehicleChecklistFor(null)}
         />
       )}
 
@@ -586,7 +605,7 @@ export default function CadastroPanel() {
                 </strong>
                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
                   Ao desativar, o colaborador <strong>não bate mais ponto</strong> e some das listas operacionais.
-                  {' '}Se ele tiver pertences ativos, ao salvar você verá a lista pra cobrar/devolver e
+                  {' '}Se ele tiver itens em custódia ativos, ao salvar você verá a lista pra cobrar/devolver e
                   poderá imprimir o romaneio.
                 </div>
               </div>

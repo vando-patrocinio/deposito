@@ -43,7 +43,7 @@ export default function MyAssetsModal({ collaboratorId, onClose }) {
       }}>
         <div style={{ display: "flex", justifyContent: "space-between",
                        alignItems: "center", marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a" }}>Meus pertences </h2>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a" }}>Meus itens em custódia </h2>
           <button onClick={onClose} data-testid="assets-close-btn"
                   style={{ background: "transparent", border: 0, fontSize: 22,
                            cursor: "pointer", color: "#64748b" }}>✕</button>

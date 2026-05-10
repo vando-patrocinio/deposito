@@ -9,7 +9,7 @@ const CATEGORY_ICON = {
 
 /**
  * Modal automático que aparece logo após desativar um colaborador.
- * Lista os pertences ativos e oferece o botão para imprimir o romaneio
+ * Lista os itens em custódia ativos e oferece o botão para imprimir o romaneio
  * de devolução (PDF).
  */
 export default function DeactivationAssetsModal({ collaborator, onClose }) {
@@ -47,7 +47,7 @@ export default function DeactivationAssetsModal({ collaborator, onClose }) {
   if (!data) {
     return (
       <Backdrop onClose={onClose}>
-        <div data-testid="deact-loading" style={modalStyle}>Carregando pertences…</div>
+        <div data-testid="deact-loading" style={modalStyle}>Carregando itens em custódia…</div>
       </Backdrop>
     );
   }
@@ -71,12 +71,12 @@ export default function DeactivationAssetsModal({ collaborator, onClose }) {
             padding: 20, textAlign: "center", color: "#16a34a",
             background: "#dcfce7", borderRadius: 12, fontWeight: 600,
           }}>
-            ✓ Sem pertences ativos pendentes de devolução.
+            ✓ Sem itens em custódia ativos pendentes de devolução.
           </div>
         ) : (
           <>
             <div style={{ fontSize: 13, color: "#475569", marginBottom: 10, fontWeight: 600 }}>
-              📋 Pertences a serem cobrados / devolvidos ({ativos.length} item{ativos.length > 1 ? "ns" : ""}):
+              📋 Checklist a serem cobrados / devolvidos ({ativos.length} item{ativos.length > 1 ? "ns" : ""}):
             </div>
             <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid #e2e8f0",
                            borderRadius: 12, marginBottom: 12 }}>

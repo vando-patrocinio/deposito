@@ -130,7 +130,7 @@ export default function AssetsSection({ collaborator, onClose }) {
                        alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a" }}>
-              🎒 Pertences de {collaborator.name}
+              🎒 Checklist de {collaborator.name}
             </h2>
             <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
               {data.summary.total || 0} item(ns) ·
@@ -223,7 +223,7 @@ export default function AssetsSection({ collaborator, onClose }) {
             <tbody>
               {data.items.length === 0 ? (
                 <tr><td colSpan={11} style={{ padding: 28, textAlign: "center", color: "#64748b" }}>
-                  Sem pertences cadastrados ainda.
+                  Sem itens em custódia cadastrados ainda.
                 </td></tr>
               ) : data.items.map((a) => {
                 const cat = CATEGORIES.find((c) => c.id === a.category) || CATEGORIES[5];

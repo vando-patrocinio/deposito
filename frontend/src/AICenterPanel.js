@@ -22,7 +22,7 @@ const SUB_TABS = [
   { id: "defective", label: "🔧 Equipamentos" },
   { id: "common_issues", label: "📞 Chamados" },
   { id: "recurring", label: "🔁 Reincidência" },
-  { id: "assets", label: "🎒 Pertences" },
+  { id: "assets", label: "🎒 Checklist" },
   { id: "insights", label: "💡 Insights LLM" },
 ];
 
@@ -443,7 +443,7 @@ function AssetsOverviewSection() {
           ))}
         </Card>
       </div>
-      <Card title="Pertences por colaborador">
+      <Card title="Checklist por colaborador">
         <table style={css.table}>
           <thead><tr>
             <th style={css.th}>Colaborador</th>
@@ -455,7 +455,7 @@ function AssetsOverviewSection() {
           </tr></thead>
           <tbody>
             {(d.rows || []).length === 0
-              ? <tr><td colSpan={6} style={css.emptyTd}>Nenhum colaborador com pertences.</td></tr>
+              ? <tr><td colSpan={6} style={css.emptyTd}>Nenhum colaborador com itens em custódia.</td></tr>
               : d.rows.map((r) => (
                 <tr key={r.collaborator_id}>
                   <td style={css.td}>
@@ -491,11 +491,11 @@ function PendingLossesCard({ pl }) {
   if (!pl) return null;
   const empty = !pl.rows || pl.rows.length === 0;
   return (
-    <Card title="Perdas pendentes — colaboradores desativados com pertences ativos"
+    <Card title="Perdas pendentes — colaboradores desativados com itens em custódia ativos"
           data-testid="pending-losses-card">
       {empty ? (
         <div style={{ padding: 16, textAlign: "center", color: "#16a34a", fontWeight: 600 }}>
-          ✓ Nenhuma perda pendente. Todos os colaboradores desativados devolveram seus pertences.
+          ✓ Nenhuma perda pendente. Todos os colaboradores desativados devolveram seus itens em custódia.
         </div>
       ) : (
         <>

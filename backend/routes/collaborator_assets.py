@@ -297,9 +297,14 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
 
     # ---- Title ----
     story.append(Paragraph(
-        "<b>ROMANEIO DE ENTREGA DE EQUIPAMENTOS / UNIFORME / EPI</b>",
+        "<b>CHECKLIST DE CUSTÓDIA — TERMO DE RESPONSABILIDADE</b>",
         ParagraphStyle("title", parent=styles["Normal"], fontSize=13,
-                       alignment=1, leading=16, spaceAfter=10)))
+                       alignment=1, leading=16, spaceAfter=4,
+                       textColor=colors.HexColor("#0b1220"))))
+    story.append(Paragraph(
+        "<font color='#0d9488'>Equipamentos · Uniforme · EPIs · Ferramental</font>",
+        ParagraphStyle("subtitle", parent=styles["Normal"], fontSize=9,
+                       alignment=1, leading=12, spaceAfter=10)))
     story.append(Spacer(1, 0.2 * cm))
 
     # ---- Collaborator block ----
@@ -320,7 +325,7 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
             "Série", "Entrega", "Status"]
     data = [head]
     if not assets:
-        data.append(["—", "—", "Nenhum pertence cadastrado para este colaborador.",
+        data.append(["—", "—", "Nenhum item em custódia para este colaborador.",
                      "—", "—", "—", "—", "—", "—"])
     for i, a in enumerate(assets, 1):
         marca_modelo = " / ".join([p for p in [a.get("marca"), a.get("modelo")] if p]) or "—"

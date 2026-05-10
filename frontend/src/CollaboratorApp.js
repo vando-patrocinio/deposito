@@ -885,7 +885,7 @@ function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, 
   const items = [];
   items.push({ key: "history", label: "Histórico", icon: "📋", onClick: () => { onOpenHistory && onOpenHistory(); setOpen(false); } });
   if (onOpenAssets) {
-    items.push({ key: "assets", label: "Meus pertences", icon: "🎒", onClick: () => { onOpenAssets(); setOpen(false); } });
+    items.push({ key: "assets", label: "Meus itens em custódia", icon: "🎒", onClick: () => { onOpenAssets(); setOpen(false); } });
   }
   if (forcedCollabId && onLogoutGoogle) {
     items.push({ key: "logout", label: "Sair da conta Google", icon: "🚪", onClick: () => { onLogoutGoogle(); setOpen(false); } });

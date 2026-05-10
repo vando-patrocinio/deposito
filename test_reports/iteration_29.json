@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 29 — Validated the new Checklist Veicular (CONTRAN inspection) feature + 'Pertences' → 'Checklist' rename across the system. Backend: 9/9 pytest cases passed (template returns 30 items in 8 categories, POST creates with auto-conformity calc 28OK/2def → 93.3%, GET/list/PDF/DELETE work, MongoDB _id excluded, validation rejects bad plate/unknown collaborator, romaneio endpoint still functional). Frontend (Playwright on prod URL): admin login OK, Cadastro lists 18 collaborators each showing two new side-by-side buttons (data-testid=view-assets-{id} 'Checklist' teal + data-testid=view-vehicle-{id} 'Veicular' blue). VehicleChecklistModal opens with 30 items grouped under 8 category pills, conformity bar updates dynamically (100% → 93.3% with 2 defeitos → 96.6% with 1 def + 1 N/A), 'Defeito' reveals required notes input, submit creates checklist via POST /api/vehicle-checklist and opens PDF in new tab (URL ends /api/vehicle-checklist/vchk-XXXXXXXXXX/pdf), Histórico tab lists the created row with PDF + delete buttons. AssetsSection modal (Checklist button) shows 0 occurrences of 'Pertences' word and presence of 'Checklist'. 0 console errors during the entire flow.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration29_vehicle_checklist.py",
+    "/app/test_reports/pytest/iter29_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "vehicle_checklist.py: clean separation of concerns — DEFAULT_TEMPLATE constant, Pydantic models with Literal status enum + min_length validation on plate, _conformity helper excluding NA from denominator (correct industry behavior).",
+    "PDF builder uses ReportLab Platypus with grouped category headers, color-coded status cells (OK green / DEF red / NA gray), and percentage threshold colors (≥95 green / ≥80 amber / <80 red) matching the UI bar. Excellent visual consistency.",
+    "Role hierarchy correct: create=colaborador+, list/get/update/pdf=gestor+, delete=auditor+ — proper escalation for destructive operations.",
+    "Frontend VehicleChecklistModal grouping logic (useMemo on `items`) is efficient; pctColor maps CSS vars matching backend palette — single source of truth for status thresholds.",
+    "Minor (non-blocking): when user changes a row from 'defeito' back to 'ok', the previously typed defect note remains in state but is hidden from UI. If user toggles again, the old note reappears. Acceptable behavior but consider clearing notes when status leaves 'defeito'.",
+    "Minor (non-blocking): /api/vehicle-checklist POST always recomputes conformity from items list — consistent and trustworthy."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration29_vehicle_checklist.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (all asserted flows pass, 0 console errors)"},
+  "test_credentials": "admin@empresa.com / 123456 (super admin) — from /app/memory/test_credentials.md",
+  "seed_data_creation": "Created and immediately cleaned up: 1 vehicle checklist with plate TST-PLAY (28 OK / 1 defect / 1 NA → 96.6%) for first listed collaborator. Backend pytest also created+deleted 1 with plate TST-9X88 (93.3%).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter29 fully validated the new Checklist Veicular feature end-to-end. Backend route at /api/vehicle-checklist (template/CRUD/PDF). Frontend modal in /app/frontend/src/VehicleChecklistModal.js opened from CadastroPanel button data-testid=view-vehicle-{id}. 'Pertences' word fully replaced by 'Checklist' across visible Cadastro page and AssetsSection modal. PDF opens in new tab via api.vehicleChecklistPdfUrl(id). Use the same admin credentials for any retest. Test file: /app/backend/tests/test_iteration29_vehicle_checklist.py (run with REACT_APP_BACKEND_URL exported from /app/frontend/.env).",
+  "rca of the issue": "No bugs found. Iter29 is a feature-add and rename pass (Pertences→Checklist + new Checklist Veicular CONTRAN). Implementation is solid: template covers all 8 CONTRAN categories with 30 items; backend computes conformity correctly excluding NA; PDF renders ~21KB with header, identification block, conformity %, color-coded item table, termo de responsabilidade, signature area; frontend modal mirrors the backend palette and has proper data-testids on every interactive element; history tab + delete + PDF download all working; rename is complete (0 'Pertences' on Cadastro page or AssetsSection modal)."
+}

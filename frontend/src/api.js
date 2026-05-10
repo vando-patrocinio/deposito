@@ -263,4 +263,16 @@ export const api = {
     const base = client.defaults.baseURL.replace(/\/$/, "");
     return `${base}/collab-assets/public/romaneio/${cid}${only_active ? "?only_active=true" : ""}`;
   },
+
+  // Vehicle Checklist (Inspeção pré-jornada CONTRAN)
+  vehicleChecklistTemplate: () => client.get(`/vehicle-checklist/template`).then((r) => r.data),
+  vehicleChecklistList: (params = {}) => client.get(`/vehicle-checklist`, { params }).then((r) => r.data),
+  vehicleChecklistGet: (id) => client.get(`/vehicle-checklist/${id}`).then((r) => r.data),
+  vehicleChecklistCreate: (d) => client.post(`/vehicle-checklist`, d).then((r) => r.data),
+  vehicleChecklistUpdate: (id, d) => client.patch(`/vehicle-checklist/${id}`, d).then((r) => r.data),
+  vehicleChecklistDelete: (id) => client.delete(`/vehicle-checklist/${id}`).then((r) => r.data),
+  vehicleChecklistPdfUrl: (id) => {
+    const base = client.defaults.baseURL.replace(/\/$/, "");
+    return `${base}/vehicle-checklist/${id}/pdf`;
+  },
 };
