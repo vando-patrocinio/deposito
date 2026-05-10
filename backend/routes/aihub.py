@@ -140,11 +140,23 @@ SECRET_KEYS = {"key", "secret", "access_token", "verify_token", "api_secret",
                 "magnus_key", "magnus_secret", "password"}
 
 
+def _is_secret_field(name: str) -> bool:
+    """True se o nome do campo representa um valor sensível.
+
+    Cobre tanto match exato (`secret`, `password`) quanto sufixos comuns
+    (`sip_password`, `api_secret`, `verify_token`).
+    """
+    n = (name or "").lower()
+    if n in SECRET_KEYS:
+        return True
+    return any(n.endswith("_" + k) or n.endswith(k) for k in SECRET_KEYS)
+
+
 def _mask_config(config: dict) -> dict:
     """Mascara campos sensíveis para resposta de leitura."""
     out: Dict[str, Any] = {}
     for k, v in (config or {}).items():
-        if k.lower() in SECRET_KEYS and isinstance(v, str):
+        if _is_secret_field(k) and isinstance(v, str):
             out[k] = _mask_secret(v)
         else:
             out[k] = v
@@ -396,7 +408,7 @@ async def upsert_integration(itype: str, payload: IntegrationConfigIn,
     new_config = dict(payload.config or {})
     if current and current.get("config"):
         for k, v in new_config.items():
-            if k.lower() in SECRET_KEYS and isinstance(v, str) and "•" in v:
+            if _is_secret_field(k) and isinstance(v, str) and "•" in v:
                 new_config[k] = current["config"].get(k, v)
 
     await db.aihub_integrations.update_one(

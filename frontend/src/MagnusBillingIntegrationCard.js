@@ -43,7 +43,10 @@ function StatusDot({ status }) {
 }
 
 export default function MagnusBillingIntegrationCard() {
-  const [config, setConfig] = useState({ url: "", key: "", secret: "" });
+  const [config, setConfig] = useState({
+    url: "", key: "", secret: "",
+    sip_did: "", sip_username: "", sip_password: "", sip_server: "",
+  });
   const [statusInfo, setStatusInfo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -60,6 +63,10 @@ export default function MagnusBillingIntegrationCard() {
           url: it.config.url || "",
           key: it.config.key || "",
           secret: it.config.secret || "",
+          sip_did: it.config.sip_did || "",
+          sip_username: it.config.sip_username || "",
+          sip_password: it.config.sip_password || "",
+          sip_server: it.config.sip_server || "",
         });
       }
     } catch { /* ignore */ }
@@ -130,7 +137,7 @@ export default function MagnusBillingIntegrationCard() {
         <StatusDot status={status} />
       </div>
 
-      <label style={lbl}>URL da instância</label>
+      <label style={lbl}>URL da instância (REST API)</label>
       <input style={inp} type="text"
              value={config.url}
              onChange={(e) => setConfig({ ...config, url: e.target.value })}
@@ -150,6 +157,53 @@ export default function MagnusBillingIntegrationCard() {
              onChange={(e) => setConfig({ ...config, secret: e.target.value })}
              placeholder="cole aqui o Secret gerado no MagnusBilling"
              data-testid="mb-input-secret" />
+
+      {/* ----- Conta SIP (registro como ramal para receber/originar ligações) ----- */}
+      <div style={{
+        marginTop: 18, marginBottom: 8,
+        paddingTop: 12,
+        borderTop: "1px dashed var(--border-default)",
+      }}>
+        <div style={{
+          fontSize: 11, fontWeight: 800, color: "var(--text-secondary)",
+          textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4,
+          display: "flex", alignItems: "center", gap: 6,
+        }}>
+          <Phone size={12} strokeWidth={2} /> Conta SIP (chamadas)
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10 }}>
+          Credenciais que a Jerusa usa para se registrar como ramal e atender no
+          número (DID). Configure essa conta no MagnusBilling primeiro.
+        </div>
+      </div>
+
+      <label style={lbl}>Número (DID) que a IA atende</label>
+      <input style={inp} type="text"
+             value={config.sip_did}
+             onChange={(e) => setConfig({ ...config, sip_did: e.target.value })}
+             placeholder="+552126301933"
+             data-testid="mb-input-sip-did" />
+
+      <label style={lbl}>Usuário SIP (ramal)</label>
+      <input style={inp} type="text"
+             value={config.sip_username}
+             onChange={(e) => setConfig({ ...config, sip_username: e.target.value })}
+             placeholder="ex.: 1147099675"
+             data-testid="mb-input-sip-username" />
+
+      <label style={lbl}>Senha SIP</label>
+      <input style={inp} type="password"
+             value={config.sip_password}
+             onChange={(e) => setConfig({ ...config, sip_password: e.target.value })}
+             placeholder="senha do ramal SIP"
+             data-testid="mb-input-sip-password" />
+
+      <label style={lbl}>Servidor SIP (host)</label>
+      <input style={inp} type="text"
+             value={config.sip_server}
+             onChange={(e) => setConfig({ ...config, sip_server: e.target.value })}
+             placeholder="sip.tudovoip.com.br"
+             data-testid="mb-input-sip-server" />
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
         <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}
