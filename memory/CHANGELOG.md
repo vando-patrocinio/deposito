@@ -1,5 +1,19 @@
 # PontoIA — Changelog
 
+## Feb 10, 2026 — Sidebar com sub-itens expansíveis (Clientes → Assinantes)
+
+### Frontend
+- `App.js`: NAV_GROUPS suporta `children[]`. Item pai com children renderiza chevron e expande/colapsa ao clicar (estado em `expandedParents` Set). Auto-expand quando view atual pertence a um filho. Filhos identados (`paddingLeft: 32, fontSize: 12.5`).
+- `ALL_TABS` agora inclui flat dos filhos com `roles` herdados do pai (necessário para o filtro de permissões).
+- Item "Assinantes" virou filho de "Clientes" no grupo Pessoas. Para acessar Assinantes: clicar em **Clientes** (expande) → clicar em **Assinantes**.
+
+### Validação
+- Antes do clique em "Clientes": filho "Assinantes" oculto ✓
+- Após clique: chevron muda de `>` para `v` e Assinantes aparece identado ✓
+- Clique em Assinantes abre o painel correto ✓
+
+---
+
 ## Feb 10, 2026 — Aba Assinantes redesenhada estilo Atlaz
 
 ### Backend

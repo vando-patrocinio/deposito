@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "@/App.css";
 import {
-  Smartphone, LogOut, ChevronRight, Brain, BarChart3, Layout,
+  Smartphone, LogOut, ChevronRight, ChevronDown, Brain, BarChart3, Layout,
   Boxes, Sparkles, Users, MapPin, ShieldCheck, ClipboardList,
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
   Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle,
@@ -118,7 +118,15 @@ const NAV_GROUPS = [
     label: "Pessoas",
     items: [
       { id: "cadastro", icon: Users, label: "Cadastro", roles: ["gestor", "auditor", "administrador"] },
-      { id: "subscribers", icon: UserCircle, label: "Assinantes", roles: ["gestor", "auditor", "administrador"] },
+      {
+        id: "clientes",
+        icon: UserCircle,
+        label: "Clientes",
+        roles: ["gestor", "auditor", "administrador"],
+        children: [
+          { id: "subscribers", label: "Assinantes" },
+        ],
+      },
       { id: "pracas", icon: MapPin, label: "Praças", roles: ["gestor", "auditor", "administrador"] },
       { id: "users", icon: ShieldCheck, label: "Usuários", roles: ["auditor", "administrador"] },
     ],
@@ -140,7 +148,11 @@ const NAV_GROUPS = [
   },
 ];
 
-const ALL_TABS = NAV_GROUPS.flatMap((g) => g.items);
+const ALL_TABS = NAV_GROUPS.flatMap((g) => g.items.flatMap((it) => (
+  it.children?.length
+    ? [it, ...it.children.map((c) => ({ ...c, roles: c.roles || it.roles }))]
+    : [it]
+)));
 
 function ImpersonationBanner() {
   const { user, isImpersonating, endImpersonation } = useAuth();
@@ -186,7 +198,26 @@ function ImpersonationBanner() {
 
 function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModal }) {
   const [collabsOpen, setCollabsOpen] = useState(false);
-  // Collapse useless on desktop, only used to close mobile drawer
+  // Items pais expansíveis: começam fechados; abrem quando clicados ou
+  // quando o view atual pertence a um filho.
+  const [expandedParents, setExpandedParents] = useState(() => new Set());
+  useEffect(() => {
+    // auto-expand do pai quando view atual é filho
+    NAV_GROUPS.forEach((g) => {
+      g.items.forEach((it) => {
+        if (it.children?.some((c) => c.id === view)) {
+          setExpandedParents((prev) => new Set(prev).add(it.id));
+        }
+      });
+    });
+  }, [view]);
+  const toggleParent = (id) => {
+    setExpandedParents((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
   return (
     <aside className={`app-sidebar ${collabsOpen ? "is-open" : ""}`} aria-label="Navegação principal">
       <div className="app-sidebar__brand">
@@ -198,34 +229,67 @@ function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModa
       </div>
       <nav className="app-sidebar__nav">
         {NAV_GROUPS.map((group) => {
-          const visible = group.items.filter((it) => activeTabs.some((t) => t.id === it.id));
+          // Item pai com children é visível se ele OU algum filho está em activeTabs.
+          const visible = group.items.filter((it) => {
+            if (it.children?.length) {
+              return it.children.some((c) => activeTabs.some((t) => t.id === c.id));
+            }
+            return activeTabs.some((t) => t.id === it.id);
+          });
           if (visible.length === 0) return null;
           return (
             <div className="app-sidebar__group" key={group.label}>
               <div className="app-sidebar__group-title">{group.label}</div>
               {visible.map((it) => {
                 const Ico = it.icon;
-                const active = !it.asModal && view === it.id;
+                const hasChildren = it.children?.length > 0;
+                const isExpanded = expandedParents.has(it.id);
+                const childActive = hasChildren && it.children.some((c) => c.id === view);
+                const active = !it.asModal && !hasChildren && view === it.id;
                 const handleClick = () => {
-                  if (it.asModal) {
-                    onOpenModal?.(it.id);
-                  } else {
-                    setView(it.id);
-                  }
-                  setCollabsOpen(false);
+                  if (it.asModal) onOpenModal?.(it.id);
+                  else if (hasChildren) toggleParent(it.id);
+                  else setView(it.id);
+                  if (!hasChildren) setCollabsOpen(false);
                 };
                 return (
-                  <button
-                    key={it.id}
-                    className={`app-sidebar__link ${active ? "is-active" : ""}`}
-                    onClick={handleClick}
-                    data-testid={`tab-${it.id}`}
-                    aria-current={active ? "page" : undefined}
-                  >
-                    <Ico size={16} strokeWidth={1.75} />
-                    <span style={{ flex: 1, textAlign: "left" }}>{it.label}</span>
-                    {active && <ChevronRight size={14} strokeWidth={1.75} style={{ opacity: 0.6 }} />}
-                  </button>
+                  <React.Fragment key={it.id}>
+                    <button
+                      className={`app-sidebar__link ${active || childActive ? "is-active" : ""}`}
+                      onClick={handleClick}
+                      data-testid={`tab-${it.id}`}
+                      aria-current={active ? "page" : undefined}
+                      aria-expanded={hasChildren ? isExpanded : undefined}
+                    >
+                      <Ico size={16} strokeWidth={1.75} />
+                      <span style={{ flex: 1, textAlign: "left" }}>{it.label}</span>
+                      {hasChildren ? (
+                        isExpanded
+                          ? <ChevronDown size={14} strokeWidth={1.75} style={{ opacity: 0.6 }} />
+                          : <ChevronRight size={14} strokeWidth={1.75} style={{ opacity: 0.6 }} />
+                      ) : active && (
+                        <ChevronRight size={14} strokeWidth={1.75} style={{ opacity: 0.6 }} />
+                      )}
+                    </button>
+                    {hasChildren && isExpanded && it.children.map((c) => {
+                      const childAvail = activeTabs.some((t) => t.id === c.id);
+                      if (!childAvail) return null;
+                      const cActive = view === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          className={`app-sidebar__link ${cActive ? "is-active" : ""}`}
+                          onClick={() => { setView(c.id); setCollabsOpen(false); }}
+                          data-testid={`tab-${c.id}`}
+                          style={{ paddingLeft: 32, fontSize: 12.5 }}
+                        >
+                          <span style={{ width: 16, display: "inline-block" }} />
+                          <span style={{ flex: 1, textAlign: "left" }}>{c.label}</span>
+                          {cActive && <ChevronRight size={12} strokeWidth={1.75} style={{ opacity: 0.6 }} />}
+                        </button>
+                      );
+                    })}
+                  </React.Fragment>
                 );
               })}
             </div>
