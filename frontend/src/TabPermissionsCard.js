@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 
 // IMPORTANT: Os IDs e labels devem refletir ALL_TABS em App.js.
 // Quando uma aba nova é adicionada lá, adicionar aqui também.
@@ -8,6 +8,7 @@ export const TAB_DEFINITIONS = [
   { id: "estoque", label: "Estoque" },
   { id: "ai-center", label: "Central IA" },
   { id: "ai-ranking", label: "Avaliação IA" },
+  { id: "aihub", label: "Atendimento IA" },
   { id: "cadastro", label: "Cadastro" },
   { id: "pracas", label: "Praças" },
   { id: "users", label: "Usuários" },
@@ -22,9 +23,9 @@ export const TAB_DEFINITIONS = [
 // Reflete a regra original do App.js antes da customização.
 export const DEFAULT_TAB_PERMISSIONS = {
   administrador: TAB_DEFINITIONS.map((t) => t.id),
-  auditor: ["dashboard", "ai-center", "ai-ranking", "cadastro", "pracas", "users",
+  auditor: ["dashboard", "ai-center", "ai-ranking", "aihub", "cadastro", "pracas", "users",
             "manager", "sheet", "logs", "settings"],
-  gestor: ["dashboard", "estoque", "ai-center", "ai-ranking", "cadastro", "pracas",
+  gestor: ["dashboard", "estoque", "ai-center", "ai-ranking", "aihub", "cadastro", "pracas",
            "sheet", "logs"],
 };
 
@@ -38,7 +39,22 @@ const ROLES = [
 ];
 
 export default function TabPermissionsCard({ data, setData }) {
-  const perms = data.tab_permissions || DEFAULT_TAB_PERMISSIONS;
+  // Migration soft: quando há config salva no banco mas faltam abas criadas
+  // DEPOIS (ex.: aihub adicionada após o primeiro save), mergeia com
+  // DEFAULT_TAB_PERMISSIONS — abas novas que estão liberadas no default
+  // aparecem JÁ TICADAS aqui. Quando o gestor faz qualquer toggle, o estado
+  // mergeado é consolidado no banco.
+  const perms = useMemo(() => {
+    if (!data.tab_permissions) return DEFAULT_TAB_PERMISSIONS;
+    const merged = { ...data.tab_permissions };
+    for (const role of Object.keys(DEFAULT_TAB_PERMISSIONS)) {
+      const defaults = DEFAULT_TAB_PERMISSIONS[role] || [];
+      const saved = merged[role] || [];
+      const missing = defaults.filter((id) => !saved.includes(id));
+      if (missing.length) merged[role] = [...saved, ...missing];
+    }
+    return merged;
+  }, [data.tab_permissions]);
 
   const toggle = (role, tabId) => {
     const current = perms[role] || [];

@@ -1,5 +1,18 @@
 # PontoIA — Changelog
 
+## Feb 10, 2026 — Auto-merge de permissões para abas novas
+
+### Frontend
+- `TabPermissionsCard.js`: registrada `{ id: "aihub", label: "Atendimento IA" }` em `TAB_DEFINITIONS` + adicionada nas listas default de **administrador**, **auditor** e **gestor** em `DEFAULT_TAB_PERMISSIONS`.
+- **Migration soft (useMemo)**: quando há `tab_permissions` salvo no banco mas faltam abas criadas DEPOIS, mergeia com o default — abas novas aparecem **JÁ TICADAS** para todos os perfis liberados. Ao primeiro toggle do gestor, o estado mergeado é consolidado na próxima gravação.
+- `App.js`: mesma lógica de merge ao carregar `tab_permissions` para o sidebar — abas novas aparecem visíveis no menu lateral imediatamente.
+- **Padrão para futuras abas**: sempre adicionar o ID em `TAB_DEFINITIONS` + `DEFAULT_TAB_PERMISSIONS` (todos os 3 perfis quando a aba é universal). Migration soft cuida do resto.
+
+### Validação
+- Curl: branding tinha `tab_permissions` salvo SEM `aihub`. Após merge, UI mostra **Atendimento IA marcada (3/3 perfis)** e sidebar exibe a aba para todos.
+
+---
+
 ## Feb 10, 2026 — Discar com IA + Componente OutboundCallButton reutilizável
 
 ### Backend (`/app/backend/routes/aihub.py`)

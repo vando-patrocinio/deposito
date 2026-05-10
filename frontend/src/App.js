@@ -394,11 +394,29 @@ function AppShell({ view, setView, children }) {
   useEffect(() => {
     let alive = true;
     if (!user || user.role === "colaborador") return undefined;
-    import("@/api").then(({ api }) =>
+    Promise.all([
+      import("@/api").then((m) => m.api),
+      import("@/TabPermissionsCard").then((m) => ({
+        TAB_DEFINITIONS: m.TAB_DEFINITIONS,
+        DEFAULT_TAB_PERMISSIONS: m.DEFAULT_TAB_PERMISSIONS,
+      })),
+    ]).then(([api, perms]) => {
       api.brandingGet().then((cfg) => {
-        if (alive && cfg?.tab_permissions) setTabPerms(cfg.tab_permissions);
-      }).catch(() => { /* ignore */ })
-    );
+        if (!alive) return;
+        if (!cfg?.tab_permissions) return;
+        // Migration soft: para cada role, se uma aba do default está liberada
+        // mas ainda não consta na config salva (porque a config foi gravada
+        // ANTES da aba ser criada), adiciona automaticamente.
+        const merged = { ...cfg.tab_permissions };
+        for (const role of Object.keys(perms.DEFAULT_TAB_PERMISSIONS)) {
+          const saved = merged[role] || [];
+          const defaults = perms.DEFAULT_TAB_PERMISSIONS[role] || [];
+          const missing = defaults.filter((id) => !saved.includes(id));
+          if (missing.length) merged[role] = [...saved, ...missing];
+        }
+        setTabPerms(merged);
+      }).catch(() => { /* ignore */ });
+    });
     return () => { alive = false; };
   }, [user]);
 
