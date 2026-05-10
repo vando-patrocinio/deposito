@@ -237,7 +237,7 @@ function AppShell({ view, setView, children }) {
                 }}>{isSuperAdmin ? "🛡️ super admin" : user.role}</span>
               </span>
             )}
-            {user && (user.role === "gestor" || user.role === "administrador") && (
+            {user && (user.role === "gestor" || user.role === "auditor" || user.role === "administrador") && (
               <button
                 data-testid="ai-preventive-open-btn"
                 onClick={() => setShowAIPanel(true)}
