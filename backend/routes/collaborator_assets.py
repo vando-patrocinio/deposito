@@ -197,14 +197,18 @@ async def public_sign(payload: SignIn):
     """Colaborador assina o romaneio (digital — base64 PNG do canvas).
     Marca todos os assets indicados como assinados.
     """
-    company_id = await _company_for(payload.collaborator_id)
+    coll = await db.collaborators.find_one(
+        {"id": payload.collaborator_id}, {"_id": 0, "company_id": 1})
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado.")
+    company_id = coll.get("company_id") or DEMO_COMPANY_ID
     sig = payload.signature_data_url
     if sig and not sig.startswith("data:image/"):
         raise HTTPException(400, "signature_data_url inválida.")
     if sig and len(sig) > 800_000:
         raise HTTPException(400, "Assinatura muito grande (max ~600 KB).")
     now = now_iso()
-    await db.collaborator_assets.update_many(
+    res = await db.collaborator_assets.update_many(
         {"company_id": company_id, "collaborator_id": payload.collaborator_id,
          "id": {"$in": payload.asset_ids}},
         {"$set": {"signed_at": now,
@@ -212,7 +216,10 @@ async def public_sign(payload: SignIn):
                   "updated_at": now},
          "$push": {"events": {"at": now, "type": "assinado",
                               "by": "colaborador (mobile)"}}})
-    return {"ok": True, "signed_count": len(payload.asset_ids), "signed_at": now}
+    if res.modified_count == 0:
+        raise HTTPException(404,
+            "Nenhum dos asset_ids enviados pertence a este colaborador.")
+    return {"ok": True, "signed_count": res.modified_count, "signed_at": now}
 
 
 # ---------------------------------------------------------------------------
