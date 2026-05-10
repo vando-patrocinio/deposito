@@ -44,9 +44,19 @@ export default function WhatsAppQRPanel() {
 
   useEffect(() => {
     fetchState();
-    pollRef.current = setInterval(fetchState, 3000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [fetchState]);
+    // Polling adaptativo: 3s quando precisa QR, 8s quando já conectado
+    let currentInterval = null;
+    const setupPoll = () => {
+      if (currentInterval) clearInterval(currentInterval);
+      const ms = status === "connected" ? 8000 : 3000;
+      currentInterval = setInterval(fetchState, ms);
+      pollRef.current = currentInterval;
+    };
+    setupPoll();
+    return () => { if (currentInterval) clearInterval(currentInterval); };
+    // Reage a mudanças de status pra trocar de cadência
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, fetchState]);
 
   const logout = async () => {
     if (!window.confirm("Tem certeza? Vai desconectar e exigir novo QR.")) return;
