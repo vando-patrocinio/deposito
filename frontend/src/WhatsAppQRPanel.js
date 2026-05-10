@@ -4,6 +4,7 @@ import {
   MessageSquare, Send, Smartphone, Bot, Zap,
 } from "lucide-react";
 import { api } from "@/api";
+import WhatsAppChatLayout from "@/WhatsAppChatLayout";
 
 /* =============================================================
    Conexão WhatsApp por QR Code (Baileys sidecar)
@@ -214,20 +215,8 @@ function QrView({ qr, lastQrAt, status, onRefresh, busy }) {
 
 /* ----- View conectado: mostra dados + permite enviar mensagem teste ----- */
 function ConnectedView({ phoneNumber, me, onLogout, busy }) {
-  const [destPhone, setDestPhone] = useState("");
-  const [msgText, setMsgText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sendResult, setSendResult] = useState(null);
-  const [messages, setMessages] = useState([]);
   const [autoReply, setAutoReply] = useState({ enabled: false, agent_name: "Jerusa" });
   const [autoReplyBusy, setAutoReplyBusy] = useState(false);
-
-  const loadMessages = useCallback(async () => {
-    try {
-      const r = await api.waBaileysMessages(30);
-      setMessages(r.items || []);
-    } catch { /* ignore */ }
-  }, []);
 
   const loadAutoReply = useCallback(async () => {
     try {
@@ -237,11 +226,8 @@ function ConnectedView({ phoneNumber, me, onLogout, busy }) {
   }, []);
 
   useEffect(() => {
-    loadMessages();
     loadAutoReply();
-    const id = setInterval(loadMessages, 6000);
-    return () => clearInterval(id);
-  }, [loadMessages, loadAutoReply]);
+  }, [loadAutoReply]);
 
   const toggleAutoReply = async () => {
     setAutoReplyBusy(true);
@@ -251,21 +237,6 @@ function ConnectedView({ phoneNumber, me, onLogout, busy }) {
     } catch (e) {
       alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setAutoReplyBusy(false); }
-  };
-
-  const send = async () => {
-    if (!destPhone.trim() || !msgText.trim()) {
-      alert("Informe número e mensagem."); return;
-    }
-    setSending(true); setSendResult(null);
-    try {
-      const r = await api.waBaileysSend(destPhone.trim(), msgText.trim());
-      setSendResult({ ok: true, msg: "Mensagem enviada!" });
-      setMsgText("");
-      loadMessages();
-    } catch (e) {
-      setSendResult({ ok: false, msg: e?.response?.data?.detail || e.message });
-    } finally { setSending(false); }
   };
 
   return (
@@ -377,77 +348,8 @@ function ConnectedView({ phoneNumber, me, onLogout, busy }) {
         )}
       </div>
 
-      {/* Envio rápido */}
-      <div className="surface" style={{ padding: 16, borderRadius: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <Send size={14} strokeWidth={1.75} style={{ color: "var(--accent)" }} />
-          <strong style={{ fontSize: 13 }}>Enviar mensagem (teste)</strong>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "200px 1fr auto",
-                       gap: 8, alignItems: "stretch" }}>
-          <input className="input" placeholder="55219..."
-                 value={destPhone} onChange={(e) => setDestPhone(e.target.value)}
-                 data-testid="wa-dest-phone" />
-          <input className="input" placeholder="Olá! Teste de envio"
-                 value={msgText} onChange={(e) => setMsgText(e.target.value)}
-                 onKeyDown={(e) => e.key === "Enter" && send()}
-                 data-testid="wa-msg-text" />
-          <button className="btn btn-primary btn-sm" onClick={send} disabled={sending}
-                  data-testid="wa-send-btn">
-            <Send size={13} /> {sending ? "Enviando..." : "Enviar"}
-          </button>
-        </div>
-        {sendResult && (
-          <div data-testid="wa-send-result" style={{
-            marginTop: 10, padding: 8, borderRadius: 8,
-            background: sendResult.ok ? "var(--success-soft)" : "var(--danger-soft)",
-            color: sendResult.ok ? "var(--success-soft-fg)" : "var(--danger-soft-fg)",
-            fontSize: 11, display: "flex", alignItems: "center", gap: 6,
-          }}>
-            {sendResult.ok ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
-            {sendResult.msg}
-          </div>
-        )}
-      </div>
-
-      {/* Histórico recente */}
-      {messages.length > 0 && (
-        <div className="surface" style={{ padding: 14, borderRadius: 12 }}
-             data-testid="wa-history">
-          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)",
-                         textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>
-            Histórico recente ({messages.length})
-          </div>
-          <div style={{ display: "grid", gap: 6, maxHeight: 320, overflowY: "auto" }}>
-            {messages.map((m) => (
-              <div key={m.id} style={{
-                padding: "6px 10px", borderRadius: 8, fontSize: 12,
-                border: "1px solid var(--border-default)",
-                background: m.direction === "outbound"
-                  ? (m.auto_reply ? "rgba(22,163,74,.1)" : "rgba(37,211,102,.07)")
-                  : "var(--bg-surface-2)",
-                display: "flex", gap: 8, alignItems: "center",
-              }}>
-                <span style={{ fontSize: 10, fontWeight: 700,
-                                color: m.direction === "outbound" ? "#15803d" : "var(--text-muted)",
-                                textTransform: "uppercase", letterSpacing: 0.4,
-                                minWidth: 70 }}>
-                  {m.direction === "outbound" ? (m.auto_reply ? "→ IA" : "→ Enviada") : "← Recebida"}
-                </span>
-                <span className="mono" style={{ fontSize: 11, minWidth: 110 }}>
-                  +{m.phone}
-                </span>
-                <span style={{ flex: 1, color: "var(--text-primary)" }}>
-                  {(m.text || "").slice(0, 140)}
-                </span>
-                <span style={{ fontSize: 10, color: "var(--text-muted)" }} className="mono">
-                  {new Date(m.created_at).toLocaleTimeString("pt-BR")}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Layout FocusChat 3-colunas — buckets + lista + thread */}
+      <WhatsAppChatLayout />
     </div>
   );
 }

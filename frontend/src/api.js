@@ -345,6 +345,16 @@ export const api = {
     client.post(`/whatsapp-baileys/logout`).then((r) => r.data),
   waBaileysMessages: (limit = 50) =>
     client.get(`/whatsapp-baileys/messages`, { params: { limit } }).then((r) => r.data),
+  waBaileysConversations: () =>
+    client.get(`/whatsapp-baileys/conversations`).then((r) => r.data),
+  waBaileysConversationMessages: (phone, limit = 200) =>
+    client.get(`/whatsapp-baileys/conversations/${encodeURIComponent(phone)}/messages`, { params: { limit } }).then((r) => r.data),
+  waBaileysAssignConversation: (phone, payload) =>
+    client.put(`/whatsapp-baileys/conversations/${encodeURIComponent(phone)}/assign`, payload).then((r) => r.data),
+  waBaileysFinalizeConversation: (phone, outcome = "resolved") =>
+    client.put(`/whatsapp-baileys/conversations/${encodeURIComponent(phone)}/finalize`, { outcome }).then((r) => r.data),
+  waBaileysAttendants: () =>
+    client.get(`/whatsapp-baileys/attendants`).then((r) => r.data),
   waBaileysGetAutoReply: () =>
     client.get(`/whatsapp-baileys/auto-reply`).then((r) => r.data),
   waBaileysSetAutoReply: (enabled, agentName = "Jerusa") =>

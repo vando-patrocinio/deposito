@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 42: WhatsApp FocusChat-style chat layout (Phase 1) tested end-to-end. Backend: 15/15 pytest tests pass — /attendants auto-creates Isabella (idempotent), /conversations returns {buckets:{automatico,aguardando,fora_de_hora,manual,grupo}, items[]} with counts matching items length, @g.us → bucket='grupo', PUT /assign with human → bucket='manual' (also returns assignee_user_id/role), PUT /assign with ai → bucket='automatico', /finalize sets status='closed', /conversations/{phone}/messages returns ascending order, _maybe_auto_reply skips when assignee_role='human' (no auto_reply key in response, no outbound row created — verified via /conversations/{phone}/messages), 404 on assign to unknown user. Regressions pass: /qr, /status, /messages, /auto-reply GET, /voice/sessions/start, /aihub/agents/text-gen. Auto-reply left DISABLED at end of run. Frontend: WhatsApp REAL-connected (+5521965680949 'Patrocínio'). [data-testid=wa-chat-layout] + [data-testid=wa-buckets-sidebar] render. All 5 buckets present with counts {Automatico:10, Aguardando:0, Fora_de_hora:0, Manual:2, Grupo:2}. Clicking bucket → 10 conv items shown, clicking conv opens wa-chat-thread, wa-take-over-btn present and opens wa-assign-modal with 7 attendant pick buttons. ONE BUG FOUND: Isabella (IA) appears in the assignment modal — spec says she must be filtered out so an operator never accidentally assigns the bot to itself.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "WhatsAppChatLayout / AssignModal", "issue": "Isabella (IA) is listed as a pick option (wa-assign-pick-{isabella_id}). Per spec she must be filtered out — only human attendants should be assignable. The 'Devolver para IA' is supposed to be a separate action.", "selector": "[data-testid=wa-assign-modal] [data-testid^=wa-assign-pick-]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter42_whatsapp_chat.py",
+    "/app/test_reports/pytest/iter42_results.xml"
+  ],
+  "action_items": [
+    "Frontend: Filter Isabella (IA) out of the AssignModal attendants list — either skip items where email==='isabella@ia.local' or where is_ai_agent===true. Add a separate 'Devolver para IA' button in the modal/thread that calls PUT /assign with {assignee_user_id:null, assignee_role:'ai'}."
+  ],
+  "critical_code_review_comments": [
+    "[CARRY-OVER iter40/41] /api/whatsapp-baileys/inbound is now properly token-protected (verified — calls without X-WA-Token return 401). Good.",
+    "/conversations endpoint hardcodes DEMO_COMPANY_ID via user.company_id but other endpoints (e.g., inbound_webhook) still use DEMO_COMPANY_ID directly — same multi-tenancy gap noted in iter40/41.",
+    "_bucket_for_conversation uses 'fora_de_hora' calc with hour_brt — datetime.now(timezone.utc) - timedelta(hours=3) is hacky (assumes BRT=UTC-3 always, ignores DST. Brazil is currently UTC-3 year-round but worth a constant or pytz/zoneinfo).",
+    "GET /conversations does aggregate over aihub_wa_messages with $limit 200 BEFORE grouping by phone — if there are >200 message docs but they're concentrated on few phones, some convs may be missed. The $sort+$group+$limit order is good for performance but $limit should ideally be applied AFTER $group (move it after the $group stage). Minor edge case.",
+    "Frontend AssignModal bug (see frontend_issues): Isabella should be filtered out of the pick list."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter42_whatsapp_chat.py (new)"],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "90% (1 UI filter bug)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Inserted ~4 unique-phone inbound messages per run via /inbound (TEST_iter42_* message_ids, phones 5521991[1-4]{xxxx}). Phones are randomized per run via uuid suffix so no cross-test pollution. wa_conversations docs created via /assign. Isabella user 'usr-isabella-co-demo' left in db as system fixture per request.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_iter42_whatsapp_chat.py -v. Tests are idempotent (uuid-suffixed phones). WhatsApp is REAL-paired (+5521965680949) — do not call /logout in tests. Auto-reply MUST be left DISABLED after test runs (autouse fixture handles this). Frontend has the Isabella-in-assign-modal bug — main agent should filter it out in WhatsAppChatLayout.js AssignModal (likely just adding a .filter(u => u.email !== 'isabella@ia.local') on attendants list before rendering picks).",
+  "rca of the issue": "Isabella filter missing in frontend AssignModal: api.waBaileysAttendants() returns ALL users including Isabella (by design — backend includes her so the conv list can show 'Isabella (IA)' as the current assignee). The frontend modal should filter her out client-side because she's the AI placeholder, not a human attendant. Spec: 'list of attendants (Isabella IA filtered out)'. Fix: in WhatsAppChatLayout.js render of pick list: items.filter(u => u.email !== 'isabella@ia.local' && !u.is_ai_agent)."
+}

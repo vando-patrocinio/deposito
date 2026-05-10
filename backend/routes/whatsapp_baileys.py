@@ -213,6 +213,14 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                               subscriber_ctx: Optional[str]) -> Optional[str]:
     """Se auto-reply estiver habilitado, gera resposta com a Jerusa
     e envia via sidecar. Retorna o texto enviado (ou None se desligado)."""
+    # 0. Se humano assumiu essa conversa, NÃO responde com IA
+    conv = await db.wa_conversations.find_one(
+        {"company_id": cid, "phone": phone}, {"_id": 0}
+    )
+    if conv and conv.get("assignee_role") == "human" and conv.get("status") != "closed":
+        logger.info("[wa-baileys] auto-reply pulado — humano atendendo (%s)", phone)
+        return None
+
     # 1. Lê config de auto-reply
     cfg = await db.aihub_settings.find_one(
         {"company_id": cid, "key": "whatsapp_auto_reply"}, {"_id": 0}
@@ -398,3 +406,254 @@ async def list_messages(limit: int = 50,
         {"_id": 0},
     ).sort("created_at", -1).limit(min(limit, 500)).to_list(500)
     return {"items": docs, "count": len(docs)}
+
+
+# ---------------------------------------------------------------------------
+# Conversações (estilo FocusChat) — agrupa mensagens por telefone + buckets
+# ---------------------------------------------------------------------------
+from datetime import datetime, timezone, timedelta
+
+
+def _bucket_for_conversation(conv: dict) -> str:
+    """Decide o bucket FocusChat baseado nos atributos da conversa.
+
+    Buckets:
+    - "grupo": JID termina em @g.us
+    - "automatico": atualmente sendo respondida pela IA (assigned_user_id == ISABELLA ou auto_reply ativo)
+    - "manual": atribuída a um humano
+    - "aguardando": sem resposta humana há mais de 5min (e sem auto-reply)
+    - "fora_de_hora": chegou fora do horário comercial (8h-22h BRT)
+    """
+    if conv.get("is_group"):
+        return "grupo"
+    assignee_role = conv.get("assignee_role")
+    if assignee_role == "ai":
+        return "automatico"
+    last_inbound = conv.get("last_inbound_at")
+    if assignee_role == "human" and conv.get("assignee_user_id"):
+        return "manual"
+    # Sem atribuição — checa se está esperando
+    if last_inbound:
+        try:
+            t = datetime.fromisoformat(last_inbound.replace("Z", "+00:00"))
+            age = (datetime.now(timezone.utc) - t).total_seconds()
+            hour_brt = (datetime.now(timezone.utc) - timedelta(hours=3)).hour
+            if hour_brt < 8 or hour_brt >= 22:
+                return "fora_de_hora"
+            if age > 300:  # 5min
+                return "aguardando"
+        except Exception:
+            pass
+    return "aguardando"
+
+
+@router.get("/conversations")
+async def list_conversations(user: dict = Depends(require_role("gestor"))):
+    """Agrega mensagens por telefone retornando conversas + buckets.
+
+    Usa aggregation MongoDB para performance. Retorna no formato:
+    {
+      buckets: {automatico:N, aguardando:N, fora_de_hora:N, manual:N, grupo:N},
+      items: [{phone, jid, subscriber_id, subscriber_name, assignee_user_id,
+                assignee_name, assignee_role, last_text, last_at, unread, bucket}],
+    }
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    pipeline = [
+        {"$match": {"company_id": cid}},
+        {"$sort": {"created_at": -1}},
+        {"$group": {
+            "_id": "$phone",
+            "jid": {"$first": "$jid"},
+            "last_text": {"$first": "$text"},
+            "last_direction": {"$first": "$direction"},
+            "last_message_at": {"$first": "$created_at"},
+            "last_inbound_at": {"$first": {"$cond": [
+                {"$eq": ["$direction", "inbound"]}, "$created_at", None
+            ]}},
+            "push_name": {"$first": "$push_name"},
+            "subscriber_id": {"$first": "$subscriber_id"},
+            "msg_count": {"$sum": 1},
+        }},
+        {"$limit": 200},
+    ]
+    rows = await db.aihub_wa_messages.aggregate(pipeline).to_list(200)
+    # Lê assignments persistidos
+    convs_map = {}
+    async for c in db.wa_conversations.find({"company_id": cid}, {"_id": 0}):
+        convs_map[c["phone"]] = c
+
+    # Resolve nomes de subscriber/usuário em batch
+    subscriber_ids = {r.get("subscriber_id") for r in rows if r.get("subscriber_id")}
+    subscribers = {}
+    if subscriber_ids:
+        async for s in db.subscribers.find(
+            {"id": {"$in": list(subscriber_ids)}, "company_id": cid},
+            {"_id": 0, "id": 1, "name": 1},
+        ):
+            subscribers[s["id"]] = s.get("name")
+
+    user_ids = {convs_map[k].get("assignee_user_id")
+                 for k in convs_map if convs_map[k].get("assignee_user_id")}
+    users_map = {}
+    if user_ids:
+        async for u in db.users.find(
+            {"id": {"$in": list(user_ids)}},
+            {"_id": 0, "id": 1, "name": 1, "avatar_url": 1, "google_picture": 1, "role": 1},
+        ):
+            users_map[u["id"]] = u
+
+    items = []
+    counts = {"automatico": 0, "aguardando": 0, "fora_de_hora": 0,
+              "manual": 0, "grupo": 0}
+    for r in rows:
+        phone = r["_id"]
+        jid = r.get("jid") or ""
+        conv = convs_map.get(phone, {})
+        is_group = jid.endswith("@g.us")
+        assignee_user_id = conv.get("assignee_user_id")
+        assignee_role = conv.get("assignee_role")
+        # Default: se há auto-reply ativo e nenhum humano atribuiu, é IA
+        if not assignee_role:
+            assignee_role = "ai" if not is_group else None
+        u = users_map.get(assignee_user_id or "")
+        assignee_name = (u.get("name") if u else None) \
+            or ("Isabella (IA)" if assignee_role == "ai" else None)
+        assignee_avatar = (u.get("avatar_url") or u.get("google_picture")) if u else None
+
+        conv_view = {
+            "phone": phone, "jid": jid, "is_group": is_group,
+            "last_text": (r.get("last_text") or "")[:200],
+            "last_direction": r.get("last_direction"),
+            "last_message_at": r.get("last_message_at"),
+            "last_inbound_at": r.get("last_inbound_at"),
+            "push_name": r.get("push_name"),
+            "subscriber_id": r.get("subscriber_id"),
+            "subscriber_name": subscribers.get(r.get("subscriber_id")),
+            "assignee_user_id": assignee_user_id,
+            "assignee_name": assignee_name,
+            "assignee_role": assignee_role,
+            "assignee_avatar": assignee_avatar,
+            "msg_count": r.get("msg_count", 0),
+            "status": conv.get("status", "open"),
+        }
+        bucket = _bucket_for_conversation(conv_view)
+        conv_view["bucket"] = bucket
+        counts[bucket] = counts.get(bucket, 0) + 1
+        items.append(conv_view)
+
+    return {"buckets": counts, "items": items, "count": len(items)}
+
+
+@router.get("/conversations/{phone}/messages")
+async def get_conversation_messages(phone: str, limit: int = 100,
+                                       user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    docs = await db.aihub_wa_messages.find(
+        {"company_id": cid, "phone": phone},
+        {"_id": 0},
+    ).sort("created_at", 1).limit(min(limit, 500)).to_list(500)
+    return {"items": docs, "phone": phone, "count": len(docs)}
+
+
+class AssignIn(BaseModel):
+    assignee_user_id: Optional[str] = None    # None = remove atribuição (volta IA)
+    assignee_role: Optional[str] = "human"     # "human" | "ai" | None
+
+
+@router.put("/conversations/{phone}/assign")
+async def assign_conversation(phone: str, payload: AssignIn,
+                                user: dict = Depends(require_role("gestor"))):
+    """Atribui ou desatribui uma conversa a um usuário.
+
+    Casos:
+    - assignee_user_id=<usr-id>, role=human → "Assumir" pelo operador
+    - assignee_user_id=None, role=ai → "Devolver para IA"
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    role = payload.assignee_role or ("human" if payload.assignee_user_id else "ai")
+    if payload.assignee_user_id:
+        u = await db.users.find_one(
+            {"id": payload.assignee_user_id, "company_id": cid},
+            {"_id": 0, "id": 1, "name": 1, "role": 1},
+        )
+        if not u:
+            raise HTTPException(404, "Usuário não encontrado nesta empresa.")
+    await db.wa_conversations.update_one(
+        {"company_id": cid, "phone": phone},
+        {"$set": {
+            "company_id": cid, "phone": phone,
+            "assignee_user_id": payload.assignee_user_id,
+            "assignee_role": role,
+            "updated_at": now_iso(),
+            "updated_by": user.get("email") or user.get("id"),
+        }},
+        upsert=True,
+    )
+    return {"ok": True, "phone": phone, "assignee_role": role,
+            "assignee_user_id": payload.assignee_user_id}
+
+
+class FinalizeIn(BaseModel):
+    outcome: Optional[str] = "resolved"   # resolved | escalated | abandoned
+
+
+@router.put("/conversations/{phone}/finalize")
+async def finalize_conversation(phone: str, payload: FinalizeIn,
+                                  user: dict = Depends(require_role("gestor"))):
+    """Marca conversa como finalizada (para limpar a fila Em Andamento)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    await db.wa_conversations.update_one(
+        {"company_id": cid, "phone": phone},
+        {"$set": {
+            "company_id": cid, "phone": phone,
+            "status": "closed",
+            "outcome": payload.outcome,
+            "closed_at": now_iso(),
+            "closed_by": user.get("email") or user.get("id"),
+        }},
+        upsert=True,
+    )
+    return {"ok": True, "phone": phone, "status": "closed"}
+
+
+@router.get("/attendants")
+async def list_attendants(user: dict = Depends(require_role("gestor"))):
+    """Lista usuários que podem ser atendentes (todos da empresa) + Isabella IA."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    docs = await db.users.find(
+        {"company_id": cid, "active": {"$ne": False}},
+        {"_id": 0, "id": 1, "name": 1, "role": 1, "email": 1,
+         "avatar_url": 1, "google_picture": 1},
+    ).sort("name", 1).to_list(200)
+    # Garante Isabella sempre presente
+    iso = next((d for d in docs if d.get("email") == "isabella@ia.local"), None)
+    if not iso:
+        # Cria sob demanda
+        from passlib.context import CryptContext
+        try:
+            pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+            iso_pw = pwd_ctx.hash("isabella-ia-readonly")
+        except Exception:
+            iso_pw = "isabella-ia-readonly"
+        iso_doc = {
+            "id": f"usr-isabella-{cid}",
+            "email": "isabella@ia.local",
+            "name": "Isabella (IA)",
+            "role": "gestor",
+            "password_hash": iso_pw,
+            "company_id": cid,
+            "active": True,
+            "is_ai_agent": True,
+            "avatar_url": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        }
+        try:
+            await db.users.insert_one(iso_doc)
+        except Exception:
+            pass
+        iso_doc.pop("_id", None)
+        iso_doc.pop("password_hash", None)
+        docs.append(iso_doc)
+    return {"items": docs}
