@@ -536,7 +536,7 @@ function MsgBubble({ msg }) {
 function AssignModal({ attendants, onPick, onClose }) {
   const [search, setSearch] = useState("");
   const filtered = attendants.filter((a) =>
-    !a.is_ai_agent &&
+    !a.is_ai_agent && a.email !== "isabella@ia.local" &&
     ((a.name || "").toLowerCase().includes(search.toLowerCase()) ||
      (a.email || "").toLowerCase().includes(search.toLowerCase()))
   );

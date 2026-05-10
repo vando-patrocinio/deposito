@@ -475,6 +475,7 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
             "subscriber_id": {"$first": "$subscriber_id"},
             "msg_count": {"$sum": 1},
         }},
+        {"$sort": {"last_message_at": -1}},
         {"$limit": 200},
     ]
     rows = await db.aihub_wa_messages.aggregate(pipeline).to_list(200)
@@ -624,11 +625,19 @@ async def list_attendants(user: dict = Depends(require_role("gestor"))):
     docs = await db.users.find(
         {"company_id": cid, "active": {"$ne": False}},
         {"_id": 0, "id": 1, "name": 1, "role": 1, "email": 1,
-         "avatar_url": 1, "google_picture": 1},
+         "avatar_url": 1, "google_picture": 1, "is_ai_agent": 1},
     ).sort("name", 1).to_list(200)
-    # Garante Isabella sempre presente
+    # Garante Isabella sempre presente (e com flag is_ai_agent=True)
     iso = next((d for d in docs if d.get("email") == "isabella@ia.local"), None)
-    if not iso:
+    if iso:
+        # Backfill flag para registros antigos
+        if not iso.get("is_ai_agent"):
+            await db.users.update_one(
+                {"id": iso["id"]},
+                {"$set": {"is_ai_agent": True, "updated_at": now_iso()}},
+            )
+            iso["is_ai_agent"] = True
+    else:
         # Cria sob demanda
         from passlib.context import CryptContext
         try:
