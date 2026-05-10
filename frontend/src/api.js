@@ -369,6 +369,17 @@ export const api = {
     client.get(`/central-ia/evaluations`, { params: { limit } }).then((r) => r.data),
   centralIaEvaluateNow: (phone) =>
     client.post(`/central-ia/evaluations/${encodeURIComponent(phone)}`).then((r) => r.data),
+
+  // Coaching
+  centralIaCoachingList: (params = {}) =>
+    client.get(`/central-ia/coaching`, { params }).then((r) => r.data),
+  centralIaCoachingByUser: (days = 7) =>
+    client.get(`/central-ia/coaching/by-user`, { params: { days } }).then((r) => r.data),
+  centralIaCoachingAction: (coachingId, action) =>
+    client.post(`/central-ia/coaching/action`,
+      { coaching_id: coachingId, action }).then((r) => r.data),
+  centralIaCoachingGenerate: (phone) =>
+    client.post(`/central-ia/coaching/generate`, { phone }).then((r) => r.data),
   waBaileysGetAutoReply: () =>
     client.get(`/whatsapp-baileys/auto-reply`).then((r) => r.data),
   waBaileysSetAutoReply: (enabled, agentName = "Jerusa") =>

@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 44 — Central IA Coaching (Phase 3) backend tested end-to-end with 20/20 pytest passing. All endpoints work as spec: GET /coaching returns items[] with full shape (id, score, tone∈{positivo,construtivo,urgente}, strengths[1-3], improvements[2-5], next_action, csat_at_time, user_id, user_name, read=false, acknowledged=false). GET /coaching?unread_only=true returns only items where read!=true. GET /coaching?user_id=<x> filters correctly. GET /coaching/by-user returns aggregated items with {user_id, user_name, count, avg_score, tones{positivo,construtivo,urgente}, unread, ack}. POST /coaching/action with action='acknowledged' sets read=true + acknowledged=true + acknowledged_at; action='read' sets only read=true (acknowledged remains false/missing); action='dismiss' sets read=true + dismissed=true. Invalid action -> 400, unknown coaching_id -> 404. POST /coaching/generate {phone:<human-handled>} returns full coaching doc via real LLM (Emergent key, openai/gpt-4o-mini). POST /coaching/generate {phone:<ai-only>} -> 400 with detail mentioning 'IA'. Auto-trigger inside _evaluate_conversation confirmed: POST /api/central-ia/evaluations/{phone} where assignee is human + CSAT<7 caused aihub_coaching count for that phone to increase. Regression OK on /kpis, /attendants, /intents, /alerts, /evaluations, /whatsapp-baileys/qr, /whatsapp-baileys/conversations. FRONTEND: Could NOT verify CoachingCard interactively via Playwright — the public preview URL https://selfie-attendance-7.preview.emergentagent.com/ now serves a marketing landing page (PontoIA branding) with no email/password form at '/' or '/login'. Direct nav to /app/aihub did not mount the SPA (no [data-testid=central-ia-dashboard] present). Code review of /app/frontend/src/CentralIaDashboard.js confirms data-testid attributes are present (ci-coaching-card, ci-coaching-item-{id}, ci-coaching-ack-{id}) so once the SPA route is reachable the elements should render. Iteration 43 successfully exercised the same dashboard route, so this is a routing/landing-page regression to investigate.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Login from preview URL",
+        "issue": "Public preview URL root '/' renders a marketing landing page (PontoIA hero) instead of an app. No 'input[type=email]' / 'input[type=password]' on '/', '/login', or '/app/aihub'. Could be a recent change adding a public landing site that now blocks Playwright auto-login. The 'Entrar' link in the top-right header was not detected as text=Entrar nor as role=button — likely a styled <a> with surrounding spans. This blocks ALL frontend end-to-end tests using the preview URL.",
+        "affected_selectors": ["input[type=email]", "text=Entrar", "[data-testid=aihub-tab-central_ia]", "[data-testid=ci-coaching-card]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter44_coaching.py",
+    "/app/test_reports/pytest/iter44_results.xml"
+  ],
+  "action_items": [
+    "Investigate why the public preview URL now serves a marketing landing on '/' — previous testing agent (iter43) reached the SPA from the same URL. Either the landing page now sits in front of the React app, OR the 'Entrar' header link needs a stable data-testid (e.g., data-testid='nav-entrar') so Playwright can navigate to login.",
+    "(carry-over from iter43) AssignModal still includes 'Isabella (IA)' in attendant pick list — should filter out the AI bot.",
+    "(minor cosmetic, from iter43) AlertsCard 'pulsing dot' uses ci-spin keyframe which is rotate, not pulse.",
+    "(minor) GenerateCoachingIn payload uses 'phone' as raw string. Consider adding a regex validator (E.164 / digits-only) to prevent malformed phone numbers reaching the LLM transcript builder."
+  ],
+  "critical_code_review_comments": [
+    "central_ia.py:_generate_coaching — duplicates user-resolution code that's already in attendants_ranking; consider helper _resolve_user_name(uid). Minor DRY.",
+    "central_ia.py:_evaluate_conversation lines 165-167 — multi-line statement that ends with a stray inline comment '# ARR — conversa resolvida só com IA?' on same line as 'frt_seconds = max(...)' assignment. Cosmetic but confusing. Move comment above next block.",
+    "central_ia.py:coaching_action — when action='read', if doc was already acknowledged then this endpoint will NOT un-acknowledge (good), but the response is just {ok:true} with no echo of new state; UI has to re-fetch list. Acceptable but minor: return the updated doc.",
+    "central_ia.py:list_coaching — does NOT filter out 'dismissed' items by default. Once a coaching is dismissed it still appears in /coaching unless front-end filters client-side. Suggest: skip dismissed in default query (or add a 'include_dismissed=true' opt-in). Important for UX so a dismissed item doesn't keep coming back.",
+    "central_ia.py:generate_coaching_now — calls _evaluate_conversation (which itself may trigger _generate_coaching when csat<7+human via auto-trigger), then calls _generate_coaching again. This can create DUPLICATE coachings for the same phone on a single /coaching/generate call. Suggest: pass a flag to _evaluate_conversation to skip its auto-trigger, OR have _generate_coaching dedupe by (phone, evaluated_at) within last X minutes.",
+    "central_ia.py:_llm_coach — drops to None on any JSON parse failure with no retry. Consider a single re-prompt with 'devolva JSON válido' fallback (similar to other LLM endpoints in repo)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter44_coaching.py (new)"],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "NOT TESTED — landing-page interception blocks auto-login"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Several real coachings created via /coaching/generate calls during the test run (one per generate test — ~4 new docs in db.aihub_coaching). All have user_id matching the assignee of the original conversation. Some have been mutated to acknowledged=true, read=true, or dismissed=true as part of TestCoachingAction. These are real coaching docs and persist; cleaning is optional.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend coaching is rock solid (test_iter44_coaching.py — 20 tests, all green). Run with: pytest /app/backend/tests/test_iter44_coaching.py -v. The DUPLICATE coaching risk in /coaching/generate (see code review comment) is the most actionable backend finding — it does not break tests but creates noisy data. Frontend: before re-running playwright, the main agent should either (a) restore a quick-login path on the preview URL, (b) add data-testid='nav-entrar' on the 'Entrar' link, or (c) point the testing agent to a working route. Iteration 43 used the same URL and the SPA mounted, so something changed between iter43 and now in the front-end entry path."
+}

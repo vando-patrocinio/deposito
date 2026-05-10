@@ -73,6 +73,24 @@ EVAL_SYSTEM = (
 )
 
 
+COACHING_SYSTEM = (
+    "Você é um coach de atendimento sênior de provedores de internet "
+    "brasileiros. Analise a conversa e gere coaching DIRETO e ACIONÁVEL "
+    "para o atendente humano. Devolva EXCLUSIVAMENTE JSON com:\n"
+    "- score (0-10): nota geral do atendimento.\n"
+    "- strengths (array de 1-3 strings): o que o atendente fez bem (português).\n"
+    "- improvements (array de 2-4 strings): pontos específicos a melhorar. "
+    "  Cada item DEVE citar comportamento concreto observado (não genéricos). "
+    "  Ex.: 'Você levou 18 min para a primeira resposta — meta é 5 min', "
+    "       'Não cumprimentou pelo nome do cliente (Carlos), apesar de "
+    "        ele ter mencionado 3x na conversa'.\n"
+    "- next_action (string): 1 frase com a ação concreta para o próximo "
+    "  atendimento similar. Max 140 chars.\n"
+    "- tone (string): 'positivo' | 'construtivo' | 'urgente' — conforme a gravidade."
+)
+
+
+
 async def _llm_evaluate(transcript: str) -> Optional[Dict[str, Any]]:
     if not EMERGENT_LLM_KEY:
         return None
@@ -180,7 +198,88 @@ async def _evaluate_conversation(cid: str, phone: str) -> Optional[Dict[str, Any
         {"$set": {**eval_doc, "conversation_status": "current"}},
         upsert=True,
     )
+
+    # Auto-coaching: se atendente HUMANO + CSAT < 7, gera coaching
+    if (eval_doc.get("assignee_user_id") and not eval_doc["is_ai_only"]
+            and eval_doc["csat_score"] < 7):
+        try:
+            await _generate_coaching(cid, phone, transcript, eval_doc)
+        except Exception as e:
+            logger.warning("[central-ia.coach] falhou: %s", e)
     return eval_doc
+
+
+async def _llm_coach(transcript: str, eval_doc: dict) -> Optional[Dict[str, Any]]:
+    if not EMERGENT_LLM_KEY:
+        return None
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+    except ImportError:
+        return None
+    user_text = (
+        f"Conversa avaliada com CSAT={eval_doc.get('csat_score')}, "
+        f"sentimento={eval_doc.get('sentiment')}, "
+        f"FRT={eval_doc.get('frt_seconds')}s, "
+        f"FCR={'sim' if eval_doc.get('fcr') else 'não'}.\n\n"
+        f"Transcript:\n---\n{transcript[:4500]}\n---\n\n"
+        "Gere o coaching JSON conforme instruído."
+    )
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"coach-{uuid.uuid4().hex[:8]}",
+            system_message=COACHING_SYSTEM,
+        ).with_model("openai", "gpt-4o-mini")
+        try:
+            chat = chat.with_temperature(0.3)  # type: ignore
+        except Exception:
+            pass
+        try:
+            chat = chat.with_max_tokens(450)  # type: ignore
+        except Exception:
+            pass
+        resp = await chat.send_message(UserMessage(text=user_text))
+        text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
+        text = (text or "").strip()
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
+        return json.loads(text)
+    except Exception as e:
+        logger.warning("[central-ia.coach] LLM falhou: %s", e)
+        return None
+
+
+async def _generate_coaching(cid: str, phone: str, transcript: str,
+                                eval_doc: dict) -> Optional[Dict[str, Any]]:
+    """Gera 1 doc de coaching via LLM e persiste em aihub_coaching."""
+    coach = await _llm_coach(transcript, eval_doc)
+    if not coach:
+        return None
+    uid = eval_doc.get("assignee_user_id")
+    u = await db.users.find_one({"id": uid}, {"_id": 0, "name": 1, "email": 1})
+    coach_doc = {
+        "id": f"coach-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "phone": phone,
+        "user_id": uid,
+        "user_name": (u or {}).get("name"),
+        "user_email": (u or {}).get("email"),
+        "score": float(coach.get("score") or 0),
+        "tone": str(coach.get("tone") or "construtivo"),
+        "strengths": list(coach.get("strengths") or [])[:3],
+        "improvements": list(coach.get("improvements") or [])[:5],
+        "next_action": str(coach.get("next_action") or "")[:200],
+        "csat_at_time": eval_doc.get("csat_score"),
+        "intent": eval_doc.get("intent_category"),
+        "summary_eval": eval_doc.get("summary"),
+        "read": False,
+        "acknowledged": False,
+        "created_at": now_iso(),
+    }
+    await db.aihub_coaching.insert_one(dict(coach_doc))
+    coach_doc.pop("_id", None)
+    logger.info("[central-ia.coach] gerado para %s (user=%s, csat=%s)",
+                phone, (u or {}).get("name"), eval_doc.get("csat_score"))
+    return coach_doc
 
 
 # ---------------------------------------------------------------------------
@@ -542,3 +641,118 @@ async def dashboard_summary(user: dict = Depends(require_role("gestor"))):
         "alerts_24h": alerts,
         "csat_avg_24h": csat_avg,
     }
+
+
+# ---------------------------------------------------------------------------
+# Coaching endpoints
+# ---------------------------------------------------------------------------
+@router.get("/coaching")
+async def list_coaching(user_id: Optional[str] = None,
+                          unread_only: bool = False, limit: int = 50,
+                          user: dict = Depends(require_role("gestor"))):
+    """Lista coachings — opcionalmente filtra por user_id ou só não-lidos."""
+    cid = _cid(user)
+    q: Dict[str, Any] = {"company_id": cid}
+    if user_id:
+        q["user_id"] = user_id
+    if unread_only:
+        q["read"] = {"$ne": True}
+    docs = await db.aihub_coaching.find(q, {"_id": 0}) \
+        .sort("created_at", -1).limit(min(limit, 200)).to_list(200)
+    return {"items": docs, "count": len(docs)}
+
+
+@router.get("/coaching/by-user")
+async def coaching_by_user(days: int = Query(7, ge=1, le=90),
+                              user: dict = Depends(require_role("gestor"))):
+    """Agrupa coachings por atendente — útil pra ranking de aprendizado."""
+    cid = _cid(user)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    docs = await db.aihub_coaching.find(
+        {"company_id": cid, "created_at": {"$gte": cutoff}},
+        {"_id": 0},
+    ).to_list(500)
+    by_user: Dict[str, Dict[str, Any]] = {}
+    for d in docs:
+        uid = d.get("user_id") or "unknown"
+        b = by_user.setdefault(uid, {
+            "user_id": uid, "user_name": d.get("user_name"),
+            "count": 0, "score_sum": 0,
+            "tones": {"positivo": 0, "construtivo": 0, "urgente": 0},
+            "unread": 0, "ack": 0,
+        })
+        b["count"] += 1
+        b["score_sum"] += d.get("score") or 0
+        tone = d.get("tone", "construtivo")
+        b["tones"][tone] = b["tones"].get(tone, 0) + 1
+        if not d.get("read"):
+            b["unread"] += 1
+        if d.get("acknowledged"):
+            b["ack"] += 1
+    items = []
+    for v in by_user.values():
+        items.append({
+            "user_id": v["user_id"],
+            "user_name": v["user_name"],
+            "count": v["count"],
+            "avg_score": round(v["score_sum"] / v["count"], 2) if v["count"] else 0,
+            "tones": v["tones"], "unread": v["unread"], "ack": v["ack"],
+        })
+    items.sort(key=lambda x: -x["count"])
+    return {"items": items, "days": days}
+
+
+class CoachingActionIn(BaseModel):
+    coaching_id: str
+    action: str  # "read" | "acknowledged" | "dismiss"
+
+
+@router.post("/coaching/action")
+async def coaching_action(payload: CoachingActionIn,
+                            user: dict = Depends(require_role("gestor"))):
+    cid = _cid(user)
+    if payload.action not in ("read", "acknowledged", "dismiss"):
+        raise HTTPException(400, "action inválida.")
+    update: Dict[str, Any] = {"updated_at": now_iso()}
+    if payload.action == "read":
+        update["read"] = True
+    elif payload.action == "acknowledged":
+        update["read"] = True
+        update["acknowledged"] = True
+        update["acknowledged_at"] = now_iso()
+    elif payload.action == "dismiss":
+        update["read"] = True
+        update["dismissed"] = True
+    r = await db.aihub_coaching.update_one(
+        {"id": payload.coaching_id, "company_id": cid},
+        {"$set": update},
+    )
+    if r.matched_count == 0:
+        raise HTTPException(404, "Coaching não encontrado.")
+    return {"ok": True}
+
+
+class GenerateCoachingIn(BaseModel):
+    phone: str
+
+
+@router.post("/coaching/generate")
+async def generate_coaching_now(payload: GenerateCoachingIn,
+                                  user: dict = Depends(require_role("gestor"))):
+    """Força geração de coaching para uma conversa específica."""
+    cid = _cid(user)
+    ev = await _evaluate_conversation(cid, payload.phone)
+    if not ev:
+        raise HTTPException(400, "Conversa muito curta ou avaliação falhou.")
+    if ev.get("is_ai_only"):
+        raise HTTPException(400,
+                            "Conversa atendida só pela IA — coaching é para humanos.")
+    if not ev.get("assignee_user_id"):
+        raise HTTPException(400, "Conversa sem atendente atribuído.")
+    transcript = await _build_transcript_from_phone(cid, payload.phone)
+    if not transcript:
+        raise HTTPException(400, "Sem transcript suficiente.")
+    coach = await _generate_coaching(cid, payload.phone, transcript, ev)
+    if not coach:
+        raise HTTPException(502, "LLM coach falhou.")
+    return coach
