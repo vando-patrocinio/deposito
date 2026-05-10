@@ -697,8 +697,14 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
 
 function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart, onDragEnd, blinkOverdue, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, selectedIds, onToggleSelect }) {
   const [over, setOver] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const isFull = slot.full;
-  const isEmpty = slot.tickets.length === 0;
+  const tickets = slot.tickets || [];
+  const isEmpty = tickets.length === 0;
+  // Altura fixa do slot (regra do horário): independente da quantidade de bolhas.
+  // Bolhas extras ficam interpostas (offset vertical de 6px). Hover/click "expande" pra ver todas.
+  const SLOT_BASE_HEIGHT = 64;          // altura fixa = 1 bolha
+  const STACK_OFFSET = 6;               // deslocamento vertical entre bolhas empilhadas
 
   return (
     <div
@@ -714,7 +720,9 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
       style={{
         background: over ? "#bfdbfe" : isFull ? "#fef3c7" : isEmpty ? "white" : "#f8fafc",
         border: `${over ? "2px dashed #3b82f6" : "1px solid #e2e8f0"}`,
-        borderRadius: 8, padding: 6, minHeight: 38,
+        borderRadius: 8, padding: 6,
+        height: SLOT_BASE_HEIGHT,         // ALTURA FIXA — não cresce com mais bolhas
+        position: "relative",
         transition: "all .15s",
       }}
     >
@@ -724,7 +732,15 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
       }}>
         <span>🕐 {slot.slot}</span>
         <span style={{ fontSize: 9 }}>
-          {slot.tickets.length}/{maxPerSlot}{isFull && " 🔒 cheio"}
+          {tickets.length}/{maxPerSlot}{isFull && " 🔒 cheio"}
+          {tickets.length > 1 && (
+            <button onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+                    data-testid={`slot-expand-${techId}-${slot.slot}`}
+                    style={{ marginLeft: 4, padding: "0 4px", fontSize: 9, border: "1px solid #cbd5e1",
+                             background: "white", borderRadius: 4, cursor: "pointer" }}>
+              {expanded ? "↑ recolher" : `+${tickets.length - 1} 👁`}
+            </button>
+          )}
         </span>
       </div>
       {isEmpty && (
@@ -732,33 +748,40 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
           {over ? "↓ Solte aqui ↓" : "vazio"}
         </div>
       )}
-      {slot.tickets.map((t, idx) => (
-        <React.Fragment key={t.id}>
-          {idx > 0 && t.gap_minutes_to_prev != null && (
-            <div data-testid={`gap-${t.id}`} style={{
-              fontSize: 9, fontStyle: "italic", color: "#94a3b8",
-              textAlign: "center", padding: "2px 0",
-            }}>
-              ⏱ {fmtGap(t.gap_minutes_to_prev)} de intervalo
+      {/* Tickets — em stack absoluto quando há mais de 1, pra preservar altura fixa */}
+      {tickets.length > 0 && (
+        <div style={{ position: "relative", height: SLOT_BASE_HEIGHT - 22 }}>
+          {tickets.map((t, idx) => (
+            <div key={t.id} data-testid={`stacked-${idx}-${t.id}`}
+                 style={{
+                   position: "absolute",
+                   top: expanded ? `${idx * (SLOT_BASE_HEIGHT - 8)}px` : `${idx * STACK_OFFSET}px`,
+                   left: 0, right: 0,
+                   zIndex: 100 - idx,    // primeira bolha por cima
+                   transition: "top .25s ease",
+                   cursor: tickets.length > 1 ? "pointer" : "default",
+                 }}
+                 onClick={() => tickets.length > 1 && setExpanded((v) => !v)}
+                 title={tickets.length > 1 ? `Slot com ${tickets.length} bolhas — clique pra expandir/recolher` : undefined}>
+              <BubbleCard
+                ticket={t}
+                blinkOverdue={blinkOverdue}
+                isDragging={draggingId === t.id}
+                onDragStart={() => onDragStart(t.id)}
+                onDragEnd={onDragEnd}
+                onAdminClose={onAdminClose}
+                onAdminOpen={onAdminOpen}
+                onEdit={onEdit}
+                onReschedule={onReschedule}
+                busy={busy}
+                selectMode={selectMode}
+                isSelected={selectedIds?.includes(t.id)}
+                onToggleSelect={onToggleSelect}
+              />
             </div>
-          )}
-          <BubbleCard
-            ticket={t}
-            blinkOverdue={blinkOverdue}
-            isDragging={draggingId === t.id}
-            onDragStart={() => onDragStart(t.id)}
-            onDragEnd={onDragEnd}
-            onAdminClose={onAdminClose}
-            onAdminOpen={onAdminOpen}
-            onEdit={onEdit}
-            onReschedule={onReschedule}
-            busy={busy}
-            selectMode={selectMode}
-            isSelected={selectedIds?.includes(t.id)}
-            onToggleSelect={onToggleSelect}
-          />
-        </React.Fragment>
-      ))}
+          ))}
+        </div>
+      )}
     </div>
   );
 }
