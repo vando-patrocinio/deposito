@@ -438,4 +438,10 @@ export const api = {
   planGet: (id) => client.get(`/plans/${id}`).then((r) => r.data),
   planUpdate: (id, data) => client.put(`/plans/${id}`, data).then((r) => r.data),
   planDelete: (id) => client.delete(`/plans/${id}`).then((r) => r.data),
+  planAdjustmentPreview: (id, body = {}) =>
+    client.post(`/plans/${id}/adjustment/preview`, body).then((r) => r.data),
+  planAdjustmentApply: (id, body = {}) =>
+    client.post(`/plans/${id}/adjustment/apply`, body).then((r) => r.data),
+  planAdjustmentHistory: (id) =>
+    client.get(`/plans/${id}/adjustment/history`).then((r) => r.data),
 };

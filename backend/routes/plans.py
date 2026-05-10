@@ -160,6 +160,147 @@ async def delete_plan(plan_id: str,
 
 
 # ---------------------------------------------------------------------------
+# Simulador de reajuste anual
+# ---------------------------------------------------------------------------
+class AdjustmentIn(BaseModel):
+    """Override opcional do percentual. Default usa o plan.annual_adjustment_pct."""
+    pct_override: Optional[float] = Field(default=None, ge=0, le=100)
+    only_active_subscribers: bool = True
+
+
+def _active_status_filter(only_active: bool) -> dict:
+    """Subscribers em status comerciais (que pagam mensalidade) quando filtrado."""
+    if not only_active:
+        return {}
+    return {"status": {"$in": ["ATIVO", "INADIMPLENTE", "EM_INSTALACAO"]}}
+
+
+@router.post("/{plan_id}/adjustment/preview")
+async def preview_adjustment(plan_id: str, payload: AdjustmentIn = AdjustmentIn(),
+                              user: dict = Depends(require_role("gestor"))):
+    """Calcula impacto do reajuste SEM aplicar. Retorna assinantes afetados,
+    receita atual, nova receita e delta mensal/anual."""
+    cid = _cid(user)
+    plan = await db.plans.find_one(
+        {"company_id": cid, "id": plan_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(404, "Plano não encontrado.")
+
+    pct = payload.pct_override if payload.pct_override is not None \
+        else float(plan.get("annual_adjustment_pct") or 0)
+    if pct <= 0:
+        raise HTTPException(400, "Percentual de reajuste deve ser maior que zero. "
+                                 "Configure o reajuste anual no plano ou passe pct_override.")
+
+    current_price = float(plan.get("monthly_price") or 0)
+    new_price = round(current_price * (1 + pct / 100), 2)
+    delta_per_subscriber = round(new_price - current_price, 2)
+
+    sub_filter = {"company_id": cid, "plan_id": plan_id,
+                   **_active_status_filter(payload.only_active_subscribers)}
+    affected = await db.subscribers.count_documents(sub_filter)
+
+    # Amostra de até 8 assinantes para exibir no modal
+    sample = []
+    async for s in db.subscribers.find(
+            sub_filter,
+            {"_id": 0, "id": 1, "name": 1, "external_code": 1,
+             "nickname": 1, "branch": 1, "status": 1}).limit(8):
+        sample.append(s)
+
+    current_monthly = round(current_price * affected, 2)
+    new_monthly = round(new_price * affected, 2)
+    delta_monthly = round(new_monthly - current_monthly, 2)
+
+    return {
+        "plan": {"id": plan["id"], "name": plan["name"],
+                  "speed_label": plan.get("speed_label"),
+                  "current_price": current_price,
+                  "configured_pct": plan.get("annual_adjustment_pct") or 0},
+        "pct_applied": pct,
+        "new_price": new_price,
+        "delta_per_subscriber": delta_per_subscriber,
+        "affected_subscribers": affected,
+        "only_active_subscribers": payload.only_active_subscribers,
+        "current_monthly_revenue": current_monthly,
+        "new_monthly_revenue": new_monthly,
+        "delta_monthly_revenue": delta_monthly,
+        "delta_annual_revenue": round(delta_monthly * 12, 2),
+        "sample_subscribers": sample,
+    }
+
+
+@router.post("/{plan_id}/adjustment/apply")
+async def apply_adjustment(plan_id: str, payload: AdjustmentIn = AdjustmentIn(),
+                            user: dict = Depends(require_role("administrador"))):
+    """Aplica o reajuste: atualiza `monthly_price` no plano e o snapshot
+    `plan_price` em todos os assinantes daquele plano. Registra a operação
+    em `plan_adjustments_log` para auditoria."""
+    cid = _cid(user)
+    plan = await db.plans.find_one(
+        {"company_id": cid, "id": plan_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(404, "Plano não encontrado.")
+
+    pct = payload.pct_override if payload.pct_override is not None \
+        else float(plan.get("annual_adjustment_pct") or 0)
+    if pct <= 0:
+        raise HTTPException(400, "Percentual de reajuste deve ser maior que zero.")
+
+    current_price = float(plan.get("monthly_price") or 0)
+    new_price = round(current_price * (1 + pct / 100), 2)
+
+    sub_filter = {"company_id": cid, "plan_id": plan_id,
+                   **_active_status_filter(payload.only_active_subscribers)}
+    affected = await db.subscribers.count_documents(sub_filter)
+
+    # 1) Atualiza preço do plano
+    await db.plans.update_one(
+        {"company_id": cid, "id": plan_id},
+        {"$set": {"monthly_price": new_price,
+                   "last_adjustment_at": now_iso(),
+                   "last_adjustment_pct": pct,
+                   "updated_at": now_iso(),
+                   "updated_by": user.get("email") or user.get("id")}})
+
+    # 2) Atualiza snapshot nos assinantes
+    if affected > 0:
+        await db.subscribers.update_many(
+            sub_filter,
+            {"$set": {"plan_price": new_price, "updated_at": now_iso()}})
+
+    # 3) Registra operação no log
+    log_doc = {
+        "id": f"padj-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "plan_id": plan_id,
+        "plan_name": plan.get("name"),
+        "previous_price": current_price,
+        "new_price": new_price,
+        "pct_applied": pct,
+        "affected_subscribers": affected,
+        "only_active": payload.only_active_subscribers,
+        "applied_at": now_iso(),
+        "applied_by": user.get("email") or user.get("id"),
+        "applied_by_name": user.get("name"),
+    }
+    await db.plan_adjustments_log.insert_one(dict(log_doc))
+    log_doc.pop("_id", None)
+
+    return {"ok": True, **log_doc}
+
+
+@router.get("/{plan_id}/adjustment/history")
+async def adjustment_history(plan_id: str,
+                              user: dict = Depends(require_role("gestor"))):
+    cid = _cid(user)
+    rows = await db.plan_adjustments_log.find(
+        {"company_id": cid, "plan_id": plan_id}, {"_id": 0}
+    ).sort("applied_at", -1).limit(20).to_list(20)
+    return {"items": rows, "count": len(rows)}
+
+
+# ---------------------------------------------------------------------------
 # Helper: hidrata plano dentro de subscriber (usado por subscribers.py)
 # ---------------------------------------------------------------------------
 async def get_plan_dict(company_id: str, plan_id: Optional[str]) -> Optional[dict]:
