@@ -99,7 +99,7 @@ function DashboardSection({ dashboard, consumables }) {
         <Metric label="Eficiência retirada" value={`${dashboard.withdrawal_rate}%`} />
       </div>
 
-      <Card title="🏢 Estoque da Empresa" data-testid="empresa-stock-card">
+      <Card title="Estoque da Empresa" data-testid="empresa-stock-card">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
           {consumables.map((c) => (
             <div key={c.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12 }}>
@@ -113,7 +113,7 @@ function DashboardSection({ dashboard, consumables }) {
         </div>
       </Card>
 
-      <Card title="👷 Estoque por Técnico" data-testid="tech-rows-card">
+      <Card title="Estoque por Técnico" data-testid="tech-rows-card">
         {dashboard.tech_rows.length === 0 ? (
           <div style={{ color: "#64748b" }}>Nenhum técnico ativo.</div>
         ) : (
@@ -258,7 +258,7 @@ function AddOntsDialog({ open, onClose, onDone }) {
     setModel(""); setMacs(""); onClose();
   }, onDone, "Erro ao cadastrar ONTs");
   return (
-    <Modal open={open} onClose={onClose} title="📡 Adicionar ONTs" data-testid="ont-add-dialog"
+    <Modal open={open} onClose={onClose} title="Adicionar ONTs" data-testid="ont-add-dialog"
       footer={<>
         <button style={btnSec} onClick={onClose}>Cancelar</button>
         <button style={btnPrimary} onClick={submit} data-testid="ont-add-submit">Cadastrar</button>
@@ -315,7 +315,7 @@ function InsumosSection({ consumables, technicians, stock, reload }) {
 
   return (
     <Card
-      title="🧰 Insumos (consumíveis)"
+      title="Insumos (consumíveis)"
       action={
         <div style={{ display: "flex", gap: 8 }}>
           <button data-testid="cons-purchase-btn" style={btnPrimary} onClick={() => setShowPurchase(true)}>+ Compra</button>
@@ -371,7 +371,7 @@ function ConsumablePurchaseDialog({ open, onClose, onDone, consumables }) {
     setCid(""); setQty(1); onClose();
   }, onDone, "Erro na compra");
   return (
-    <Modal open={open} onClose={onClose} title="🛒 Registrar compra" data-testid="cons-purchase-dialog"
+    <Modal open={open} onClose={onClose} title="Registrar compra" data-testid="cons-purchase-dialog"
       footer={<><button style={btnSec} onClick={onClose}>Cancelar</button>
         <button style={btnPrimary} onClick={submit} data-testid="cons-purchase-submit">Registrar</button></>}
     >
@@ -508,7 +508,7 @@ function CreateServiceDialog({ open, onClose, onDone, technicians }) {
     onClose();
   }, onDone, "Erro ao criar OS");
   return (
-    <Modal open={open} onClose={onClose} title="🛠 Nova ordem de serviço" data-testid="svc-create-dialog"
+    <Modal open={open} onClose={onClose} title="Nova ordem de serviço" data-testid="svc-create-dialog"
       footer={<><button style={btnSec} onClick={onClose}>Cancelar</button>
         <button style={btnPrimary} onClick={submit} data-testid="svc-create-submit">Abrir OS</button></>}
     >
@@ -722,7 +722,7 @@ export default function EstoquePanel() {
     <div data-testid="estoque-panel">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", color: "#0f172a" }}>📦 Estoque · Fibra Óptica</h2>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", color: "#0f172a" }}>Estoque · Fibra Óptica</h2>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>ONTs, insumos e ordens de serviço integrados aos técnicos da Lousa.</p>
         </div>
         <button data-testid="estoque-reload" style={btnSec} onClick={reload} disabled={loading}>{loading ? "Carregando…" : "⟳ Recarregar"}</button>

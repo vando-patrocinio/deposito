@@ -29,7 +29,7 @@ export default function AiRankingPanel() {
     <div data-testid="ai-ranking-panel">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h2 style={{ margin: 0 }}>🤖 Avaliação IA por Técnico</h2>
+          <h2 style={{ margin: 0 }}>Avaliação IA por Técnico</h2>
           <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0 0" }}>
             Ranking de score heurístico (sinais cumulativos: SLA, distância, gap, geofence, histórico).
           </p>
@@ -71,7 +71,7 @@ export default function AiRankingPanel() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 16 }}>
             <KpiCard testid="ai-rank-kpi-total" label="Tickets avaliados" value={data.total_evaluated} color="#3b82f6" />
             <KpiCard testid="ai-rank-kpi-avg" label="Score médio geral" value={data.overall_avg.toFixed(2)} color={scoreColor(data.overall_avg)} />
-            <KpiCard testid="ai-rank-kpi-techs" label="Técnicos no ranking" value={data.items.length} color="#a855f7" />
+            <KpiCard testid="ai-rank-kpi-techs" label="Técnicos no ranking" value={data.items.length} color="#0d9488" />
             <KpiCard testid="ai-rank-kpi-period" label="Período" value={`${days}d`} color="#64748b" />
           </div>
 

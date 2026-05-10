@@ -58,7 +58,7 @@ export default function AIPreventivePanel({ onClose, embedded = false }) {
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: embedded ? 16 : 22, fontWeight: 800, color: "#0f172a" }}>🤖 IA Preventivas</h2>
+          <h2 style={{ margin: 0, fontSize: embedded ? 16 : 22, fontWeight: 800, color: "#0f172a" }}>IA Preventivas</h2>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
             Sugere notas preventivas para clientes com sinal crítico, respeitando o ritmo dos técnicos.
           </p>

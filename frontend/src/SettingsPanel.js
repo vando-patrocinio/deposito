@@ -108,7 +108,7 @@ export default function SettingsPanel() {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
       {/* Card de SLA / Tempos de Referência */}
-      <Card title="⏱️ Tempos de Referência por Serviço (SLA)">
+      <Card title="Tempos de Referência por Serviço (SLA)">
         <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 12px" }}>
           Defina o tempo esperado de execução para cada tipo de serviço. Bolhas que ultrapassarem
           esse tempo ficam piscando vermelho na lousa para o gestor.
@@ -198,7 +198,7 @@ export default function SettingsPanel() {
         </Field>
       </Card>
 
-      <Card title="📅 Grade de Horários da Lousa">
+      <Card title="Grade de Horários da Lousa">
         <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 12px" }}>
           Defina a faixa de horários e a duração de cada slot. A lousa exibirá esses horários
           fixos em cada técnico, e bolhas podem ser arrastadas para qualquer slot.
@@ -243,13 +243,13 @@ export default function SettingsPanel() {
         </div>
       </Card>
 
-      <Card title="🕐 Sincronização de Horário (Servidor Brasil)">
+      <Card title="Sincronização de Horário (Servidor Brasil)">
         <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 12px" }}>
           Quando ativado, o sistema valida o relógio do dispositivo contra o horário do servidor.
           Se a diferença for maior que o limite configurado, o dispositivo NÃO consegue
           registrar ponto nem operar a lousa — garantindo que todos os horários sigam o mesmo padrão.
         </p>
-        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", padding: 10, background: form.time_sync_enabled ? "#faf5ff" : "#f8fafc", border: `2px solid ${form.time_sync_enabled ? "#a855f7" : "#e2e8f0"}`, borderRadius: 12, marginBottom: 10 }}>
+        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", padding: 10, background: form.time_sync_enabled ? "#f0fdfa" : "#f8fafc", border: `2px solid ${form.time_sync_enabled ? "#0d9488" : "#e2e8f0"}`, borderRadius: 12, marginBottom: 10 }}>
           <input
             data-testid="chk-time-sync"
             type="checkbox"
@@ -258,7 +258,7 @@ export default function SettingsPanel() {
             style={{ marginTop: 3, transform: "scale(1.3)" }}
           />
           <div>
-            <strong style={{ color: form.time_sync_enabled ? "#7c3aed" : "#0f172a" }}>
+            <strong style={{ color: form.time_sync_enabled ? "#0d9488" : "#0f172a" }}>
               Ativar sincronização obrigatória
             </strong>
             <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
@@ -492,7 +492,7 @@ export default function SettingsPanel() {
         </p>
       </Card>
 
-      <Card title="🤖 OpenRouter (LLM)" data-testid="card-openrouter">
+      <Card title="OpenRouter (LLM)" data-testid="card-openrouter">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
           <p style={{ color: "#64748b", fontSize: 13, margin: 0, flex: 1 }}>
             Pode ser usado como prioridade principal ou fallback. Se estiver sem chave, é ignorado e cai no Emergent LLM.

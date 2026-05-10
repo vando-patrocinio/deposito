@@ -118,7 +118,7 @@ function AiHolidaysModal({ open, praca, onClose, onApplied }) {
     <div role="dialog" data-testid="ai-holidays-modal" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 22, width: "100%", maxWidth: 600, maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 60px rgba(15,23,42,.32)" }}>
         <div style={{ padding: "18px 22px 8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ margin: 0 }}>🤖 Buscar feriados com IA</h3>
+          <h3 style={{ margin: 0 }}>Buscar feriados com IA</h3>
           <button onClick={onClose} data-testid="ai-close" style={{ background: "transparent", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b" }}>×</button>
         </div>
         <div style={{ overflowY: "auto", padding: "0 22px 22px" }}>
@@ -382,7 +382,7 @@ export default function PracasPanel() {
                   <strong style={{ minWidth: 96 }}>{h.date}</strong>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     {h.name}
-                    {h.source === "ai" && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 999, background: "#ddd6fe", color: "#5b21b6" }}>IA</span>}
+                    {h.source === "ai" && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 999, background: "#ccfbf1", color: "#0f766e" }}>IA</span>}
                   </span>
                   <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: h.scope === "estadual" ? "#dbeafe" : h.scope === "facultativo" ? "#e2e8f0" : "#fde68a", color: h.scope === "estadual" ? "#1e3a8a" : h.scope === "facultativo" ? "#475569" : "#92400e" }}>
                     {h.scope}

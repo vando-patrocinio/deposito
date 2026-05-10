@@ -287,7 +287,7 @@ export default function CadastroPanel() {
                       </span>
                     )}
                     {c.is_test_mode && (
-                      <span title="Modo teste — bate ponto em qualquer local com qualquer selfie" style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#faf5ff", color: "#7c3aed", border: "1px solid #d8b4fe" }}>
+                      <span title="Modo teste — bate ponto em qualquer local com qualquer selfie" style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#f0fdfa", color: "#0d9488", border: "1px solid #5eead4" }}>
                         🧪 MODO TESTE
                       </span>
                     )}
@@ -539,8 +539,8 @@ export default function CadastroPanel() {
 
           {/* Modo Teste — admin only */}
           <div data-testid="test-mode-block" style={{
-            background: form.is_test_mode ? "#faf5ff" : "#f8fafc",
-            border: `2px solid ${form.is_test_mode ? "#a855f7" : "#e2e8f0"}`,
+            background: form.is_test_mode ? "#f0fdfa" : "#f8fafc",
+            border: `2px solid ${form.is_test_mode ? "#0d9488" : "#e2e8f0"}`,
             borderRadius: 14, padding: 12, marginTop: 12, marginBottom: 6,
             transition: "all .2s",
           }}>
@@ -553,7 +553,7 @@ export default function CadastroPanel() {
                 style={{ marginTop: 3, transform: "scale(1.4)" }}
               />
               <div>
-                <strong style={{ color: form.is_test_mode ? "#7c3aed" : "#0f172a" }}>
+                <strong style={{ color: form.is_test_mode ? "#0d9488" : "#0f172a" }}>
                   🧪 Modo Teste (Admin)
                 </strong>
                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>

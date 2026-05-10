@@ -246,7 +246,7 @@ export default function UsersPanel() {
                   </div>
                   <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>{u.email}</div>
                   {linked && (
-                    <div style={{ color: "#7c3aed", fontSize: 11, marginTop: 4 }}>
+                    <div style={{ color: "#0d9488", fontSize: 11, marginTop: 4 }}>
                       🔗 vinculado a {linked.name} ({linked.cpf})
                     </div>
                   )}
@@ -346,7 +346,7 @@ export default function UsersPanel() {
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                       <strong style={{ fontSize: 13 }}>
                         {l.action === "start" ? "Início → " : "Fim ← "}
-                        <span style={{ color: "#7c3aed" }}>{l.target_email}</span> ({l.target_role})
+                        <span style={{ color: "#0d9488" }}>{l.target_email}</span> ({l.target_role})
                       </strong>
                       <span style={{ fontSize: 11, color: "#94a3b8" }}>{new Date(l.at).toLocaleString("pt-BR")}</span>
                     </div>

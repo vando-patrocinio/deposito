@@ -53,7 +53,7 @@ function DashTab() {
         <Stat label="Técnicos" value={data.technicians_count} testid="stat-techs" />
       </div>
 
-      <Card title="📊 Estoque por técnico" style={{ marginTop: 14 }}>
+      <Card title="Estoque por técnico" style={{ marginTop: 14 }}>
         <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
@@ -82,7 +82,7 @@ function DashTab() {
         </table>
       </Card>
 
-      <Card title="📦 Estoque da empresa" style={{ marginTop: 14 }}>
+      <Card title="Estoque da empresa" style={{ marginTop: 14 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
           {Object.entries(data.empresa_stock).map(([k, v]) => (
             <div key={k} style={{ background: "#f8fafc", padding: 10, borderRadius: 10 }}>
@@ -93,7 +93,7 @@ function DashTab() {
         </div>
       </Card>
 
-      <Card title="🎯 Taxa de retiradas" style={{ marginTop: 14 }}>
+      <Card title="Taxa de retiradas" style={{ marginTop: 14 }}>
         <div style={{ fontSize: 14 }}>
           {data.effective_withdrawals} efetivas de {data.expected_withdrawals} esperadas <strong style={{ color: data.withdrawal_rate >= 70 ? "#16a34a" : "#dc2626" }}>({data.withdrawal_rate}%)</strong>
         </div>
@@ -147,7 +147,7 @@ function OntsTab() {
 
   return (
     <div>
-      <Card title="➕ Entrada em massa">
+      <Card title="Entrada em massa">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: 8 }}>
           <Field label="Modelo">
             <input data-testid="ont-model" value={model} onChange={(e) => setModel(e.target.value)} style={inputStyle} placeholder="Ex.: ZTE F660" />
@@ -214,7 +214,7 @@ function InsumosTab() {
 
   return (
     <div>
-      <Card title="🛒 Compra (entrada na empresa)">
+      <Card title="Compra (entrada na empresa)">
         <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
           <Field label="Insumo" style={{ minWidth: 200 }}>
             <select data-testid="purchase-id" value={purchase.id} onChange={(e) => setPurchase({ ...purchase, id: e.target.value })} style={inputStyle}>
@@ -235,7 +235,7 @@ function InsumosTab() {
 
       {err && <ErrBanner err={err} />}
 
-      <Card title="🚚 Transferir empresa → técnico" style={{ marginTop: 14 }}>
+      <Card title="Transferir empresa → técnico" style={{ marginTop: 14 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
           <Field label="Insumo" style={{ minWidth: 180 }}>
             <select data-testid="tx-id" value={tx.id} onChange={(e) => setTx({ ...tx, id: e.target.value })} style={inputStyle}>
@@ -260,7 +260,7 @@ function InsumosTab() {
         </div>
       </Card>
 
-      <Card title="📦 Estoques atuais" style={{ marginTop: 14 }}>
+      <Card title="Estoques atuais" style={{ marginTop: 14 }}>
         <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f1f5f9" }}>
@@ -312,7 +312,7 @@ function ServicosTab() {
 
   return (
     <div>
-      <Card title="➕ Nova ordem de serviço">
+      <Card title="Nova ordem de serviço">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr 1fr 1fr auto", gap: 8 }}>
           <Field label="Tipo">
             <select data-testid="svc-type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} style={inputStyle}>
@@ -378,7 +378,7 @@ function HistTab() {
   if (err) return <ErrBanner err={err} />;
 
   return (
-    <Card title="📜 Histórico">
+    <Card title="Histórico">
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <input data-testid="hist-q" placeholder="Buscar..." value={filter.q} onChange={(e) => setFilter({ ...filter, q: e.target.value })} style={{ ...inputStyle, maxWidth: 240 }} />
         <select data-testid="hist-tag" value={filter.tag} onChange={(e) => setFilter({ ...filter, tag: e.target.value })} style={{ ...inputStyle, maxWidth: 200 }}>

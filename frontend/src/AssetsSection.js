@@ -5,7 +5,7 @@ import { api } from "@/api";
 const CATEGORIES = [
   { id: "uniforme", label: "👕 Uniforme", color: "#0ea5e9" },
   { id: "epi", label: "🦺 EPI", color: "#f59e0b" },
-  { id: "ferramenta", label: "🔧 Ferramenta", color: "#7c3aed" },
+  { id: "ferramenta", label: "🔧 Ferramenta", color: "#0d9488" },
   { id: "veiculo", label: "🚗 Veículo", color: "#dc2626" },
   { id: "eletronico", label: "📱 Eletrônico", color: "#16a34a" },
   { id: "outro", label: "📦 Outro", color: "#64748b" },

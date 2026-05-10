@@ -424,9 +424,7 @@ function DrillModal({ drill, year, month, onClose }) {
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h3 style={{ margin: 0 }}>
-            Permanências do dia {String(drill.day).padStart(2, "0")}/{String(month).padStart(2, "0")}/{year}
-          </h3>
+          <h3 style={{ margin: 0 }}>Permanências do dia {String(drill.day).padStart(2, "0")}/{String(month).padStart(2, "0")}/{year} </h3>
           <button onClick={onClose} data-testid="drill-close"
                   style={{ border: 0, background: "#f1f5f9", padding: "6px 12px", borderRadius: 10, cursor: "pointer", fontWeight: 700 }}>
             Fechar
@@ -482,7 +480,7 @@ function DrillModal({ drill, year, month, onClose }) {
 
 const TYPE_COLORS_STATS = {
   reparo: "#3b82f6", instalacao: "#10b981", retirada: "#f59e0b",
-  prioridade: "#dc2626", preventiva: "#a855f7", venda: "#06b6d4",
+  prioridade: "#dc2626", preventiva: "#0d9488", venda: "#06b6d4",
 };
 const TYPE_LABELS_STATS = {
   reparo: "🔧 Reparo", instalacao: "📡 Instalação", retirada: "📦 Retirada",
@@ -528,7 +526,7 @@ function ServiceStatsSection() {
   return (
     <Card style={{ marginBottom: 14 }} data-testid="service-stats-section">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>📊 Estatísticas de serviços</h3>
+        <h3 style={{ margin: 0, fontSize: 16 }}>Estatísticas de serviços</h3>
         <div style={{ display: "flex", gap: 6 }}>
           <button
             data-testid="generate-briefing-btn"
@@ -536,9 +534,9 @@ function ServiceStatsSection() {
             disabled={briefingBusy}
             style={{
               padding: "6px 14px", borderRadius: 10, fontSize: 12, fontWeight: 700,
-              border: "1px solid #a855f7", cursor: "pointer",
-              background: briefingBusy ? "#f3e8ff" : "linear-gradient(135deg,#a855f7,#7c3aed)",
-              color: briefingBusy ? "#7c3aed" : "white",
+              border: "1px solid #0d9488", cursor: "pointer",
+              background: briefingBusy ? "#ecfeff" : "linear-gradient(135deg,#0d9488,#0d9488)",
+              color: briefingBusy ? "#0d9488" : "white",
             }}
           >
             🤖 {briefingBusy ? "Gerando..." : "Briefing IA"}
@@ -564,11 +562,11 @@ function ServiceStatsSection() {
         <KpiCard label="Executados" value={stats.executed_count} color="#3b82f6" testId="kpi-executed" />
         <KpiCard label="Finalizados" value={stats.finalized_count} color="#10b981" testId="kpi-finalized" />
         <KpiCard label="Cancelados" value={stats.by_status.cancelada || 0} color="#dc2626" testId="kpi-canceled" />
-        <KpiCard label="Tempo médio" value={stats.avg_duration_minutes != null ? `${stats.avg_duration_minutes.toFixed(0)}min` : "—"} color="#a855f7" testId="kpi-avg" />
+        <KpiCard label="Tempo médio" value={stats.avg_duration_minutes != null ? `${stats.avg_duration_minutes.toFixed(0)}min` : "—"} color="#0d9488" testId="kpi-avg" />
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <h4 style={{ fontSize: 13, margin: "0 0 8px", color: "#475569" }}>🏆 Ranking de tipos mais executados</h4>
+        <h4 style={{ fontSize: 13, margin: "0 0 8px", color: "#475569" }}>Ranking de tipos mais executados</h4>
         {ranking.length === 0 && <div style={{ color: "#94a3b8", fontSize: 12 }}>Sem dados no período.</div>}
         {ranking.map((r, idx) => (
           <div key={r.type} data-testid={`ranking-row-${r.type}`} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
@@ -594,7 +592,7 @@ function ServiceStatsSection() {
 
       {stats.timeline?.length > 0 && (
         <div>
-          <h4 style={{ fontSize: 13, margin: "12px 0 8px", color: "#475569" }}>📈 Volume diário</h4>
+          <h4 style={{ fontSize: 13, margin: "12px 0 8px", color: "#475569" }}>Volume diário</h4>
           <div style={{ height: 110, minHeight: 110 }}>
             <ResponsiveContainer width="100%" height="100%" minHeight={110}>
               <BarChart data={stats.timeline.slice(-14)}>
@@ -627,14 +625,14 @@ function BriefingModal({ briefing, onClose }) {
         maxHeight: "90vh", overflowY: "auto",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 20 }}>🤖 Briefing diário · {sd.date}</h2>
+          <h2 style={{ margin: 0, fontSize: 20 }}>Briefing diário · {sd.date}</h2>
           <span style={{ fontSize: 11, color: "#64748b" }}>{briefing.method}</span>
         </div>
 
         {briefing.narrative && (
           <div data-testid="briefing-narrative" style={{
-            background: "linear-gradient(135deg,#faf5ff,#f3e8ff)",
-            border: "1px solid #d8b4fe", borderRadius: 12, padding: 14,
+            background: "linear-gradient(135deg,#f0fdfa,#ecfeff)",
+            border: "1px solid #5eead4", borderRadius: 12, padding: 14,
             fontSize: 13, color: "#3b0764", whiteSpace: "pre-wrap",
             marginBottom: 14, lineHeight: 1.6,
           }}>{briefing.narrative}</div>
@@ -731,7 +729,7 @@ function ManagementKpisSection() {
   return (
     <Card style={{ marginBottom: 14 }} data-testid="management-kpis-section">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>🧑‍💼 KPIs da Gestão</h3>
+        <h3 style={{ margin: 0, fontSize: 16 }}>KPIs da Gestão</h3>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <button
             data-testid="mgmt-insights-btn"
@@ -760,7 +758,7 @@ function ManagementKpisSection() {
         <KpiCard label="Encerradas" value={a.encerradas || 0} color="#475569" testId="mgmt-kpi-closed" />
         <KpiCard label="Reagendadas" value={a.reagendadas || 0} color="#3b82f6" testId="mgmt-kpi-rescheduled" />
         <KpiCard label="Canceladas" value={a.canceladas || 0} color="#dc2626" testId="mgmt-kpi-canceled" />
-        <KpiCard label="Editadas" value={a.editadas || 0} color="#a855f7" testId="mgmt-kpi-edited" />
+        <KpiCard label="Editadas" value={a.editadas || 0} color="#0d9488" testId="mgmt-kpi-edited" />
         <KpiCard label="Transferidas" value={a.transferidas || 0} color="#f59e0b" testId="mgmt-kpi-transferred" />
       </div>
 
@@ -819,7 +817,7 @@ function ManagementInsightsModal({ insights, onClose }) {
         background: "white", borderRadius: 18, padding: 24, maxWidth: 640, width: "100%",
         maxHeight: "90vh", overflowY: "auto",
       }}>
-        <h2 style={{ margin: "0 0 12px", fontSize: 20 }}>🤖 Insights IA · Gestão</h2>
+        <h2 style={{ margin: "0 0 12px", fontSize: 20 }}>Insights IA · Gestão</h2>
 
         {i.priority_action && (
           <div style={{ background: "linear-gradient(135deg,#ecfeff,#cffafe)", border: "1px solid #67e8f9", borderRadius: 12, padding: 14, marginBottom: 12 }}>
@@ -836,7 +834,7 @@ function ManagementInsightsModal({ insights, onClose }) {
 
         {i.red_flags?.length > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <h4 style={{ margin: "0 0 6px", fontSize: 13 }}>🚩 Pontos de atenção</h4>
+            <h4 style={{ margin: "0 0 6px", fontSize: 13 }}>Pontos de atenção</h4>
             {i.red_flags.map((f, idx) => (
               <div key={idx} style={{ background: "#fee2e2", color: "#7f1d1d", padding: 8, borderRadius: 8, fontSize: 12, marginBottom: 4 }}>
                 ⚠ {f}
@@ -847,7 +845,7 @@ function ManagementInsightsModal({ insights, onClose }) {
 
         {i.recommendations?.length > 0 && (
           <div>
-            <h4 style={{ margin: "0 0 6px", fontSize: 13 }}>💡 Recomendações</h4>
+            <h4 style={{ margin: "0 0 6px", fontSize: 13 }}>Recomendações</h4>
             <ul style={{ paddingLeft: 18, margin: 0, fontSize: 12 }}>
               {i.recommendations.map((r, idx) => <li key={idx} style={{ marginBottom: 4 }}>{r}</li>)}
             </ul>

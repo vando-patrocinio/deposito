@@ -154,7 +154,7 @@ export default function PlatformAdminPanel() {
                 <td style={{ padding: "11px 14px", fontWeight: 600, color: "#0f172a" }}>{c.name}{c.is_demo && <span style={{ marginLeft: 6, fontSize: 10, background: "#fef3c7", color: "#92400e", padding: "1px 6px", borderRadius: 4 }}>DEMO</span>}</td>
                 <td style={{ padding: "11px 14px", color: "#475569" }}>
                   {c.plan === "free" ? "Free"
-                    : c.plan === "enterprise" ? <span style={{ background: "#ddd6fe", color: "#5b21b6", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 800 }}>⭐ Enterprise</span>
+                    : c.plan === "enterprise" ? <span style={{ background: "#ccfbf1", color: "#0f766e", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 800 }}>⭐ Enterprise</span>
                     : "Pro · R$ " + (c.plan_price_brl || 99)}
                 </td>
                 <td style={{ padding: "11px 14px" }}>

@@ -68,7 +68,7 @@ const ACTION_LABEL = {
   encerrar: { icon: "✕", color: "#94a3b8", label: "Encerrada (gestor)" },
   reagendar: { icon: "📅", color: "#3b82f6", label: "Reagendada" },
   cancelar: { icon: "🚫", color: "#dc2626", label: "Cancelada" },
-  transferida: { icon: "↔", color: "#a855f7", label: "Transferida" },
+  transferida: { icon: "↔", color: "#0d9488", label: "Transferida" },
 };
 
 export default function LousaAdminPanel({ systemStatus = { offline: false, drift_blocked: false } }) {
@@ -1132,7 +1132,7 @@ function LogsPanel({ logs, collabs }) {
       borderRadius: 14, padding: 14,
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>📜 Histórico de Ações ({logs.length})</h3>
+        <h3 style={{ margin: 0, fontSize: 16 }}>Histórico de Ações ({logs.length})</h3>
         <div style={{ display: "flex", gap: 6 }}>
           {[
             ["all", "Todos"],

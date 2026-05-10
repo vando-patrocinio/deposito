@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 28 — Frontend-only validation of the FINAL polish pass after iter27. Confirmed: Manrope font loaded on body, login split layout (form left + brand pillar right, teal accent #0d9488) renders cleanly, all 12 sidebar tabs grouped under OPERAÇÃO/INTELIGÊNCIA/PESSOAS/COMPLIANCE/SISTEMA navigate without runtime errors, TopBar breadcrumb updates correctly per tab (e.g., 'Operação › Lousa', 'Pessoas › Cadastro', 'Sistema › Configurações'), Lousa renders 19 técnico columns with 68 ticket cards (drag handles present), AI Center modal ('Central de IA') opens via topbar 'IA' button with 9 sub-tabs, Settings shows Atlaz V2 + SmartOLT cards, Cadastro lists 17 colaboradores. Auditor 'wipe-all' button is correctly HIDDEN for admin role. NO purple/violet rgb values found anywhere across 12 screens (purple_count=0 on every screen). Backend Atlaz V2 sync confirmed working — Lousa Kanban received 19 columns + 68 cards from /api/lousa/grid via the running app. Polish goal LARGELY achieved, with 5 residual emojis still in h2/h3 headings of 3 panels (see issues).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AiRankingPanel h2/h3", "issue": "Emoji still in heading: '📊 Ranking (7 técnico(s))' — should be replaced with Lucide icon for consistency with the sober slate+teal redesign.", "selector": "main h2, main h3 inside [data-testid=tab-ai-ranking] view", "priority": "LOW"},
+      {"component": "SettingsPanel headings", "issue": "Emojis still in 3 card headings: '🏢 Empresa & Branding (Romaneio)', '🔗 Integração Atlaz V2', '📶 SmartOLT — Sinal das ONUs (live)' — iter27 explicitly asked to remove these for consistency. Atlaz/SmartOLT cards render correctly otherwise.", "selector": "main h2, main h3 inside [data-testid=tab-settings] view", "priority": "LOW"},
+      {"component": "Platform panel heading", "issue": "Emoji still in heading: '🛡️ Painel da Plataforma · super admin'", "selector": "main h2 inside [data-testid=tab-platform] view", "priority": "LOW"},
+      {"component": "AICenterPanel modal tabs", "issue": "Modal sub-tabs still use emoji prefixes ('📊 Overview', '🤖 Preventivas', '💰 Gastos/Técnico', '🗺️ Mapa de defeitos', '🔧 Equipamentos', '📞 Chamados', '🔁 Reincidência', '🎒 Pertences', '💡 Insights LLM'). Sober look would benefit from Lucide icons here too, but acceptable since these are inline button labels (not headings) — may be intentional.", "selector": "[role=dialog] button, .modal button (Central de IA tabs)", "priority": "INFO"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Painel — Ranking de tipos mais executados", "issues": ["Card body still shows emoji service-type labels '📦 Retirada', '🔧 Reparo', '🔌 Instalação' — these are data labels not headings, so technically pass the spec, but visual consistency could be improved by relying on color-coded bars only."]},
+      {"screen": "Topbar", "issues": ["Notification bell still uses emoji '🔔' (testid=notifications-bell-btn) — could be a Lucide Bell icon for full visual consistency with sidebar/login icons."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_28.json"],
+  "action_items": [
+    "Strip emoji prefixes from 5 residual h2/h3 headings: AiRankingPanel '📊 Ranking', SettingsPanel '🏢 Empresa & Branding', '🔗 Integração Atlaz V2', '📶 SmartOLT — Sinal das ONUs (live)', PlataformaPanel '🛡️ Painel da Plataforma'. Replace with <Icon name='...' /> from Lucide for sober consistency.",
+    "(optional) Replace emoji prefixes on AICenterPanel modal sub-tabs with Lucide icons (BarChart3, Bot, DollarSign, Map, Wrench, Phone, Repeat, Backpack, Lightbulb).",
+    "(optional) Replace topbar notification bell '🔔' emoji with Lucide Bell icon."
+  ],
+  "critical_code_review_comments": [
+    "App shell, login redesign and sidebar grouping look professionally done — slate-200 borders on white surfaces with teal #0d9488 accent reads as modern B2B SaaS.",
+    "Sidebar groups and labels are now emoji-free (verified by JS scan). Manrope is loaded as primary font on body — visibly different from system default.",
+    "Polish iteration is ~95% complete; only 5 h2/h3 headings still leak emojis into the otherwise clean look. Easy to finish in a final pass."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (no backend tests this iteration; Lousa data flow confirmed via UI)", "frontend": "95% (all flows pass, 5 residual emojis in headings)"},
+  "test_credentials": "admin@empresa.com / 123456 (super admin) — used as documented in /app/memory/test_credentials.md",
+  "seed_data_creation": "None — used existing seeded data (17 Atlaz colaboradores, 68 lousa tickets, branding pre-saved).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter28 verified: NO purple anywhere, NO runtime errors, all 12 tabs navigable, Lousa drag-ready (19 cols × 68 cards), AI modal opens, Atlaz V2 + SmartOLT cards render, wipe-all hidden for admin, breadcrumb updates correctly. Remaining work is purely cosmetic emoji removal on 5 headings + optional modal/bell icon swap. Login: admin@empresa.com / 123456 → /login uses data-testid=login-email/login-password/login-submit.",
+  "rca of the issue": "Iter27→iter28 polish pass cleaned emoji headings across DashboardPanel, EstoquePanel, CadastroPanel, PracasPanel, LousaAdminPanel and replaced purple hex codes globally — but missed AiRankingPanel.js, SettingsPanel.js (3 sections), and the platform admin panel. Likely those h2/h3 string literals were not in the agent's grep replacement list. Fix: search frontend/src for /h[1-4][^>]*>\\s*[\\u{1F300}-\\u{1FAFF}\\u{2600}-\\u{27BF}]/u and replace each occurrence with <Icon name='...'/> + clean text."
+}

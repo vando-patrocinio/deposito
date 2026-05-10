@@ -35,7 +35,7 @@ const PERIOD_OPTIONS = [
 
 const TYPE_COLORS = {
   reparo: "#dc2626", instalacao: "#16a34a", retirada: "#a16207",
-  preventiva: "#7c3aed", troca_endereco: "#2563eb",
+  preventiva: "#0d9488", troca_endereco: "#2563eb",
 };
 
 const css = {
@@ -105,7 +105,7 @@ function TechSpendingSection({ days }) {
         <Metric label="Notas com baixa" value={d.totals.notas} />
         <Metric label="Custo médio/nota" value={fmtBRL(d.totals.custo_medio_por_nota)} />
       </div>
-      <Card title="💰 Gastos por técnico (insumos baixados)">
+      <Card title="Gastos por técnico (insumos baixados)">
         <table style={css.table}>
           <thead><tr>
             <th style={css.th}>Técnico</th>
@@ -261,7 +261,7 @@ function DefectiveSection({ days }) {
           🤖 Fabricante identificado pela IA a partir do prefixo do número de série (padrão IEEE) — não pelo modelo do SmartOLT.
         </div>
       </Card>
-      <Card title="🏆 Top ONTs com mais chamados">
+      <Card title="Top ONTs com mais chamados">
         <table style={css.table}>
           <thead><tr>
             <th style={css.th}>Cliente</th>
@@ -304,7 +304,7 @@ function CommonIssuesSection({ days }) {
   const total = d.by_category.reduce((s, x) => s + x.count, 0);
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-      <Card title="📞 Categorias de chamado">
+      <Card title="Categorias de chamado">
         {d.by_category.map((c) => (
           <div key={c.category} style={{ marginBottom: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 }}>
@@ -316,7 +316,7 @@ function CommonIssuesSection({ days }) {
           </div>
         ))}
       </Card>
-      <Card title="📡 Chamados por OLT">
+      <Card title="Chamados por OLT">
         {d.by_olt.length === 0 ? <div style={{ color: "#64748b" }}>Sem dados.</div>
           : d.by_olt.map((o) => (
             <div key={o.olt} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f1f5f9" }}>
@@ -324,7 +324,7 @@ function CommonIssuesSection({ days }) {
             </div>
           ))}
       </Card>
-      <Card title="🔌 Chamados por porta (Top 20)" style={{ gridColumn: "span 2" }}>
+      <Card title="Chamados por porta (Top 20)" style={{ gridColumn: "span 2" }}>
         <table style={css.table}>
           <thead><tr><th style={css.th}>OLT · Board / Port</th><th style={css.th}>Chamados</th></tr></thead>
           <tbody>
@@ -343,7 +343,7 @@ function RecurringSection({ days }) {
   if (!d) return <Card>Carregando…</Card>;
   return (
     <>
-      <Card title="🔁 Técnicos que mais retornam ao mesmo cliente">
+      <Card title="Técnicos que mais retornam ao mesmo cliente">
         <table style={css.table}>
           <thead><tr><th style={css.th}>Técnico</th><th style={css.th}>Revisits</th><th style={css.th}>Top clientes recorrentes</th></tr></thead>
           <tbody>
@@ -363,7 +363,7 @@ function RecurringSection({ days }) {
           </tbody>
         </table>
       </Card>
-      <Card title="🥇 Clientes com mais reclamações">
+      <Card title="Clientes com mais reclamações">
         <table style={css.table}>
           <thead><tr><th style={css.th}>#</th><th style={css.th}>Cliente</th><th style={css.th}>Endereço</th><th style={css.th}>Tickets</th><th style={css.th}>Tipos</th></tr></thead>
           <tbody>
@@ -401,7 +401,7 @@ function AssetsOverviewSection() {
         <Metric label="Danificados/Perdidos" value={(k.damaged || 0) + (k.lost || 0)} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Card title="📦 Distribuição por categoria">
+        <Card title="Distribuição por categoria">
           {(d.by_category || []).length === 0
             ? <div style={{ color: "#64748b" }}>Sem itens cadastrados ainda.</div>
             : d.by_category.map((c) => (
@@ -412,7 +412,7 @@ function AssetsOverviewSection() {
               </div>
             ))}
         </Card>
-        <Card title="📊 Status">
+        <Card title="Status">
           {(d.by_status || []).map((c) => (
             <div key={c.status} style={{ display: "flex", justifyContent: "space-between",
                                           padding: "6px 0", borderBottom: "1px solid #f1f5f9" }}>
@@ -422,7 +422,7 @@ function AssetsOverviewSection() {
           ))}
         </Card>
       </div>
-      <Card title="👷 Pertences por colaborador">
+      <Card title="Pertences por colaborador">
         <table style={css.table}>
           <thead><tr>
             <th style={css.th}>Colaborador</th>
@@ -470,7 +470,7 @@ function PendingLossesCard({ pl }) {
   if (!pl) return null;
   const empty = !pl.rows || pl.rows.length === 0;
   return (
-    <Card title="🚨 Perdas pendentes — colaboradores desativados com pertences ativos"
+    <Card title="Perdas pendentes — colaboradores desativados com pertences ativos"
           data-testid="pending-losses-card">
       {empty ? (
         <div style={{ padding: 16, textAlign: "center", color: "#16a34a", fontWeight: 600 }}>
@@ -556,7 +556,7 @@ function InsightsSection({ days }) {
   const DASHBOARDS = ["overview", "tech_spending", "common_issues", "recurring", "defective"];
   return (
     <>
-      <Card title="💡 Gerar insight com IA (Gemini Flash via Universal Key)">
+      <Card title="Gerar insight com IA (Gemini Flash via Universal Key)">
         <p style={{ fontSize: 13, color: "#475569", marginTop: 0 }}>
           A IA analisa o dashboard escolhido e devolve insights acionáveis em PT-BR (3-5 bullets + 1 ação prioritária).
         </p>
@@ -574,9 +574,9 @@ function InsightsSection({ days }) {
         {history.length === 0 ? (
           <div style={{ color: "#64748b", padding: 12 }}>Sem insights ainda. Clique acima pra gerar.</div>
         ) : history.map((h) => (
-          <div key={h.id} style={{ marginBottom: 14, padding: 12, background: "#f8fafc", borderRadius: 10, borderLeft: "3px solid #7c3aed" }}>
+          <div key={h.id} style={{ marginBottom: 14, padding: 12, background: "#f8fafc", borderRadius: 10, borderLeft: "3px solid #0d9488" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={css.pill("#ede9fe", "#5b21b6")}>{h.dashboard}</span>
+              <span style={css.pill("#ccfbf1", "#0f766e")}>{h.dashboard}</span>
               <span style={{ fontSize: 11, color: "#64748b" }}>
                 {new Date(h.generated_at).toLocaleString("pt-BR")} · {h.generated_by}
               </span>
@@ -615,7 +615,7 @@ export default function AICenterPanel({ onClose }) {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a" }}>🧠 Central de IA</h2>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a" }}>Central de IA</h2>
             <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
               Dashboards, insights e automações de IA — tudo em um lugar.
             </p>
