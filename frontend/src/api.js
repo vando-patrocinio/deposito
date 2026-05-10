@@ -336,6 +336,16 @@ export const api = {
   aihubDashboard: () => client.get(`/aihub/dashboard`).then((r) => r.data),
   aihubAgentTextGen: (payload) =>
     client.post(`/aihub/agents/text-gen`, payload).then((r) => r.data),
+  // ===== WhatsApp Baileys (QR) =====
+  waBaileysQR: () => client.get(`/whatsapp-baileys/qr`).then((r) => r.data),
+  waBaileysStatus: () => client.get(`/whatsapp-baileys/status`).then((r) => r.data),
+  waBaileysSend: (phone, text) =>
+    client.post(`/whatsapp-baileys/send`, { phone, text }).then((r) => r.data),
+  waBaileysLogout: () =>
+    client.post(`/whatsapp-baileys/logout`).then((r) => r.data),
+  waBaileysMessages: (limit = 50) =>
+    client.get(`/whatsapp-baileys/messages`, { params: { limit } }).then((r) => r.data),
+
   aihubScheduleLousaTicket: (payload) =>
     client.post(`/aihub/tools/schedule-lousa-ticket`, payload).then((r) => r.data),
   aihubIntegrationsStatus: () =>

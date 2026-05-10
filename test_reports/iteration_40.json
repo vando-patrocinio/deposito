@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 40: WhatsApp Baileys QR integration validated end-to-end. Node sidecar (port 3002, supervised) generates QR; FastAPI proxy /api/whatsapp-baileys/* serves it; React WhatsAppQRPanel renders QR + state badge 'Conectando...'. All 7 backend tests pass (4 baileys + 3 regressions). UI flow verified: login admin -> Atendimento IA -> WhatsApp (QR) tab -> QR image (7518 chars data:image/png;base64) displayed, badge 'Conectando...', refresh works, no crash. Sidebar Clientes->Assinantes and other AIHub tabs (jerusa, agents) regressions pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter40_whatsapp_baileys.py",
+    "/app/test_reports/pytest/iter40_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "phone_normalizer.link_phone_to_subscriber is imported lazily inside the inbound handler each call — fine for clarity, but consider top-level import or LRU cache to avoid repeated module lookups under high-volume inbound.",
+    "inbound_webhook is mounted with NO auth on /api prefix — production safety relies entirely on supervisor binding to 127.0.0.1; if k8s ingress ever exposes /api/whatsapp-baileys/inbound publicly, anyone can inject messages. Recommend adding a shared-secret header (env WA_INBOUND_TOKEN) and have sidecar pass it.",
+    "Hardcoded DEMO_COMPANY_ID in inbound handler with TODO note — multi-tenant routing is unresolved. Will need a phone-to-tenant lookup or a webhook URL per tenant.",
+    "send_message logs outbound to aihub_wa_messages, but on sidecar 5xx the exception bubbles before logging — acceptable, but consider logging failed attempts with status='error'.",
+    "WhatsAppQRPanel polls QR every 3s — keep an eye on bandwidth; QR ~7.5KB * 1 panel open = ~150KB/min per session. Consider stopping the QR poll once status='open'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter40_whatsapp_baileys.py (new)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (all checks pass)"},
+  "test_credentials": "admin@empresa.com / 123456 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Inserted one inbound test message (message_id=TEST1, phone=5521999990001) into aihub_wa_messages for assertion. Not cleaned up; harmless.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Node sidecar 'whatsapp-service' runs at 127.0.0.1:3002 (supervisor managed). Health: curl http://127.0.0.1:3002/health. Auth dir at /app/whatsapp-service/auth_info/ — do NOT delete or call /logout in tests. To verify QR live: curl with admin Bearer token to /api/whatsapp-baileys/qr — expect data:image/png;base64,... > 4000 chars. Sidecar logs at /var/log/supervisor/whatsapp-service.out.log.",
+  "rca of the issue": "N/A — no issues found. Sidecar+proxy+UI integration working as designed."
+}

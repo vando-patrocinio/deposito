@@ -4,12 +4,14 @@ import {
   Bot, MessageCircle, Phone, Send, Settings, History,
   Plus, Trash2, Edit2, Play, Save, X, RefreshCw, CheckCircle2,
   AlertTriangle, Wifi, WifiOff, PhoneCall,
-  Sparkles, Building2, DollarSign, Star, Wand2, ArrowUp,
+  Sparkles, Building2, DollarSign, Star, Wand2, ArrowUp, QrCode,
 } from "lucide-react";
 import JerusaCallSimulator from "@/JerusaCallSimulator";
+import WhatsAppQRPanel from "@/WhatsAppQRPanel";
 
 const TABS = [
   { id: "jerusa", label: "Ligar Jerusa", icon: PhoneCall },
+  { id: "whatsapp_qr", label: "WhatsApp (QR)", icon: QrCode },
   { id: "agents", label: "Agentes", icon: Bot },
   { id: "playground", label: "Playground", icon: MessageCircle },
   { id: "dial", label: "Discar (outbound)", icon: Phone },
@@ -59,6 +61,7 @@ export default function AIHubPanel() {
       </div>
 
       {tab === "jerusa" && <JerusaCallSimulator />}
+      {tab === "whatsapp_qr" && <WhatsAppQRPanel />}
       {tab === "agents" && <AgentsTab />}
       {tab === "playground" && <PlaygroundTab />}
       {tab === "dial" && <DialTab />}
