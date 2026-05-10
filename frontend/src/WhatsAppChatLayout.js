@@ -662,26 +662,35 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
       minHeight: 0, // <- fix scroll: permite que o child com flex:1 encolha
       height: "100%",
     }}>
-      {/* Header */}
+      {/* Header — clean, sóbrio, hierarquia clara */}
       <div style={{
-        padding: "12px 16px", borderBottom: "1px solid var(--border-default)",
+        padding: "10px 18px",
+        borderBottom: "1px solid var(--border-default)",
         background: "var(--bg-surface)",
         display: "flex", alignItems: "center", gap: 12,
+        minHeight: 60,
       }}>
-        <div style={{ position: "relative" }}>
-          <Avatar name={name} src={avatarSrc} size={42} />
+        {/* Avatar + status dot */}
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <Avatar name={name} src={avatarSrc} size={38} />
           {online && (
             <span style={{
               position: "absolute", bottom: 0, right: 0,
-              width: 12, height: 12, borderRadius: "50%",
+              width: 10, height: 10, borderRadius: "50%",
               background: "#22c55e", border: "2px solid var(--bg-surface)",
-              animation: typing ? "wa-pulse 1.2s ease-in-out infinite" : "none",
             }} />
           )}
         </div>
+
+        {/* Identity block */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <strong style={{ fontSize: 14 }}>{name}</strong>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
+            <strong style={{
+              fontSize: 14, fontWeight: 600, color: "var(--text-primary)",
+              letterSpacing: "-0.01em",
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              maxWidth: 220,
+            }}>{name}</strong>
             <button onClick={() => setShowCustomer(true)}
                     data-testid="wa-customer-badge"
                     title={subscriber
@@ -689,95 +698,104 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
                       : "Telefone não vinculado a nenhum cadastro — clique para verificar"}
                     style={{
                       display: "inline-flex", alignItems: "center", gap: 4,
-                      padding: "2px 9px", borderRadius: 999,
-                      background: subscriber
-                        ? "rgba(13,148,136,.15)"
-                        : "rgba(148,163,184,.15)",
-                      color: subscriber ? "#0d9488" : "#64748b",
-                      border: subscriber
-                        ? "1px solid rgba(13,148,136,.35)"
-                        : "1px dashed rgba(100,116,139,.5)",
-                      fontSize: 10, fontWeight: 800, letterSpacing: 0.3,
+                      padding: "1px 8px", borderRadius: 4,
+                      background: "transparent",
+                      color: subscriber ? "var(--accent)" : "var(--text-muted)",
+                      border: `1px solid ${subscriber ? "var(--accent)" : "var(--border-default)"}`,
+                      fontSize: 10, fontWeight: 600, letterSpacing: 0.2,
                       cursor: "pointer",
+                      lineHeight: 1.4,
+                      whiteSpace: "nowrap",
                     }}>
               {subscriber
-                ? <><UserCheck size={11} strokeWidth={2.5} />
-                    {subscriber.plan_name ? `cliente · ${subscriber.plan_name}` : "cliente"}</>
-                : <><AlertCircle size={11} strokeWidth={2.5} />não vinculado</>}
+                ? (subscriber.plan_name ? `Cliente · ${subscriber.plan_name}` : "Cliente")
+                : "Não vinculado"}
             </button>
           </div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)",
-                         display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+          <div style={{
+            fontSize: 11, color: "var(--text-muted)",
+            display: "flex", alignItems: "center", gap: 6, marginTop: 3,
+          }}>
             <span className="mono">+{conv.phone}</span>
-            <span>·</span>
-            <span style={{ color: presenceColor, fontWeight: online ? 700 : 400 }}>
-              {presenceLabel}
-            </span>
+            <span style={{ opacity: 0.4 }}>·</span>
+            <span style={{
+              color: online ? "#16a34a" : "var(--text-muted)",
+              fontWeight: online ? 600 : 400,
+            }}>{presenceLabel}</span>
           </div>
         </div>
-        {/* Online status BIG no canto direito (igual focuschat) */}
-        <div data-testid="wa-online-indicator"
-             style={{
-               display: "flex", alignItems: "center", gap: 6,
-               padding: "4px 11px", borderRadius: 999,
-               background: online
-                 ? "rgba(34,197,94,.15)"
-                 : presence === "unavailable"
-                   ? "rgba(148,163,184,.15)"
-                   : "rgba(203,213,225,.20)",
-               color: online
-                 ? "#15803d"
-                 : presence === "unavailable"
-                   ? "#64748b"
-                   : "#94a3b8",
-               fontSize: 11, fontWeight: 800, letterSpacing: 0.3,
-             }}>
-          {online
-            ? <Wifi size={11} strokeWidth={2.5} />
-            : presence === "unavailable"
-              ? <WifiOff size={11} strokeWidth={2} />
-              : <span style={{
-                  width: 8, height: 8, borderRadius: "50%",
-                  background: "#cbd5e1", display: "inline-block",
-                }} />}
-          {online
-            ? "ONLINE"
-            : presence === "unavailable"
-              ? "OFFLINE"
-              : "DESCONHECIDO"}
-        </div>
-        {/* Atribuição badge + actions */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+
+        {/* Assignee + actions — todos com a mesma altura e estilo sóbrio */}
+        <div data-testid="wa-online-indicator" style={{ display: "none" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           {conv.assignee_name && (
             <span data-testid="wa-thread-assignee-badge" style={{
               display: "inline-flex", alignItems: "center", gap: 5,
-              padding: "5px 11px", borderRadius: 999,
-              background: isAi ? "rgba(13,148,136,.15)" : "rgba(14,165,233,.15)",
-              color: isAi ? "#0d9488" : "#0284c7",
-              fontSize: 11, fontWeight: 800,
+              padding: "6px 10px", height: 30, borderRadius: 6,
+              background: "var(--bg-surface-2)",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border-default)",
+              fontSize: 11, fontWeight: 500,
+              whiteSpace: "nowrap",
             }}>
-              {isAi ? <Bot size={11} strokeWidth={2.5} /> : <User size={11} strokeWidth={2.5} />}
+              {isAi
+                ? <Bot size={12} strokeWidth={2} style={{ color: "var(--accent)" }} />
+                : <User size={12} strokeWidth={2} />}
               {conv.assignee_name}
             </span>
           )}
           {isAi ? (
             <button onClick={() => setShowAssign(true)} disabled={busy}
-                    className="btn btn-primary btn-sm"
-                    data-testid="wa-take-over-btn">
-              <Hand size={12} /> Assumir
+                    data-testid="wa-take-over-btn"
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      padding: "6px 12px", height: 30, borderRadius: 6,
+                      background: "var(--text-primary)",
+                      color: "var(--bg-surface)",
+                      border: "1px solid var(--text-primary)",
+                      fontSize: 11, fontWeight: 600, cursor: busy ? "not-allowed" : "pointer",
+                      opacity: busy ? 0.6 : 1,
+                      whiteSpace: "nowrap",
+                    }}>
+              <Hand size={12} strokeWidth={2} /> Assumir
             </button>
           ) : (
             <button onClick={giveBackToAi} disabled={busy}
-                    className="btn btn-ghost btn-sm"
-                    data-testid="wa-give-back-ai-btn">
-              <Bot size={12} /> Devolver IA
+                    data-testid="wa-give-back-ai-btn"
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      padding: "6px 12px", height: 30, borderRadius: 6,
+                      background: "transparent",
+                      color: "var(--text-secondary)",
+                      border: "1px solid var(--border-default)",
+                      fontSize: 11, fontWeight: 600, cursor: busy ? "not-allowed" : "pointer",
+                      opacity: busy ? 0.6 : 1,
+                      whiteSpace: "nowrap",
+                    }}>
+              <Bot size={12} strokeWidth={2} /> Devolver IA
             </button>
           )}
           <button onClick={finalize} disabled={busy}
-                  className="btn btn-ghost btn-sm"
                   data-testid="wa-finalize-btn"
-                  style={{ color: "var(--danger)" }}>
-            <CheckCircle2 size={12} /> Finalizar
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                    padding: "6px 12px", height: 30, borderRadius: 6,
+                    background: "transparent",
+                    color: "var(--text-secondary)",
+                    border: "1px solid var(--border-default)",
+                    fontSize: 11, fontWeight: 600, cursor: busy ? "not-allowed" : "pointer",
+                    opacity: busy ? 0.6 : 1,
+                    whiteSpace: "nowrap",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "var(--danger)";
+                    e.currentTarget.style.borderColor = "var(--danger)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "var(--text-secondary)";
+                    e.currentTarget.style.borderColor = "var(--border-default)";
+                  }}>
+            <CheckCircle2 size={12} strokeWidth={2} /> Finalizar
           </button>
         </div>
       </div>
