@@ -345,6 +345,11 @@ export const api = {
     client.post(`/whatsapp-baileys/logout`).then((r) => r.data),
   waBaileysMessages: (limit = 50) =>
     client.get(`/whatsapp-baileys/messages`, { params: { limit } }).then((r) => r.data),
+  waBaileysGetAutoReply: () =>
+    client.get(`/whatsapp-baileys/auto-reply`).then((r) => r.data),
+  waBaileysSetAutoReply: (enabled, agentName = "Jerusa") =>
+    client.put(`/whatsapp-baileys/auto-reply`,
+      { enabled, agent_name: agentName }).then((r) => r.data),
 
   aihubScheduleLousaTicket: (payload) =>
     client.post(`/aihub/tools/schedule-lousa-ticket`, payload).then((r) => r.data),

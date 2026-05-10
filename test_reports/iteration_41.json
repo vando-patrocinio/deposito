@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 41: WhatsApp Auto-Reply (Jerusa) backend validated end-to-end. 12/12 pytest tests pass: GET/PUT /api/whatsapp-baileys/auto-reply (default disabled, toggle persistence with updated_at/updated_by), inbound webhook behavior with auto-reply OFF (no auto_reply field, only inbound row), with auto-reply ON (auto_reply text returned + outbound row persisted with session_id=wa-{phone}, auto_reply=true, agent_name=Jerusa), group skip (@g.us → no auto_reply), from_me ignored ({ok,ignored:'from_me'}), multi-turn session (2 inbounds same phone → 2 outbounds both with session_id=wa-{phone}). Regressions pass: /qr, /voice/sessions/start, /aihub/agents/text-gen, /aihub/tools/schedule-lousa-ticket. Auto-reply LEFT DISABLED via module-scoped autouse cleanup fixture (verified via GET after run). Frontend testing skipped per request (backend-only).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter41_whatsapp_autoreply.py",
+    "/app/test_reports/pytest/iter41_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "[CARRY-OVER from iter40] inbound_webhook is still mounted with NO auth on /api prefix — production safety relies on supervisor binding to 127.0.0.1. If k8s ingress ever exposes /api/whatsapp-baileys/inbound publicly, anyone can inject messages AND trigger LLM calls (consuming Emergent LLM budget) by toggling auto-reply on. Strongly recommend a shared-secret header (env WA_INBOUND_TOKEN) and have sidecar pass it. Risk just got worse with auto-reply: an attacker can spam inbound to burn LLM quota or forge replies.",
+    "[CARRY-OVER from iter40] Hardcoded DEMO_COMPANY_ID in inbound_webhook with TODO comment — multi-tenant routing still unresolved. Auto-reply config lookup also uses DEMO_COMPANY_ID, so multi-tenancy is consistent (broken everywhere). Needs phone-to-tenant lookup before going prod.",
+    "_maybe_auto_reply sends to sidecar but ignores HTTP status — if sidecar returns 4xx/5xx (e.g., 503 'WhatsApp não conectado'), it still persists the outbound row with message_id=null. That's by design per request but worth flagging: the outbound row exists in history with no real delivery. Consider adding a 'delivery_status' field (sent/failed) instead of relying on message_id=null.",
+    "LlmChat session memory: session_id is stable per phone forever (wa-{phone}). There's no TTL or clear-on-disable — if a customer asks something today and then again 6 months later, the LLM may still have context. For a customer-service bot that's probably fine, but consider an admin endpoint to reset a session.",
+    "If LLM call fails OR sidecar /send raises, _maybe_auto_reply still persists the outbound row (after the send attempt), but if LlmChat itself raises before send the row is NOT persisted — asymmetric behavior. Worth a comment in code.",
+    "Group detection only matches '@g.us' substring in jid. Safe in practice (WhatsApp guarantees the suffix), but jid.endswith('@g.us') would be more precise."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter41_whatsapp_autoreply.py (new)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "N/A (skipped per request)"},
+  "test_credentials": "admin@empresa.com / 123456 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Inserted aihub_settings row {key:whatsapp_auto_reply, company_id:DEMO} via PUT endpoint, plus inbound/outbound rows in aihub_wa_messages with TEST_AR_* message_id prefixes (phones 5521900001111/2222/3333/4444/5555). Auto-reply left DISABLED at end (verified via curl).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run regression: pytest /app/backend/tests/test_iter41_whatsapp_autoreply.py. With auto-reply ON each inbound call takes ~3-8s due to LLM latency (Emergent key, gpt-4o-mini probably) — the 60s timeout in tests is generous. Sidecar /send fails with 503 'WhatsApp não conectado' since no real phone is paired in CI, but the outbound row still gets persisted with message_id=null (by design — confirmed by request brief). Test data uses unique phones per test (5521900001111-5555) to avoid cross-test contamination. multi_turn test relies on LlmChat persistence — if Emergent LLM service is flaky, this test could fail.",
+  "rca of the issue": "N/A — no issues found. Auto-reply backend works as specified."
+}

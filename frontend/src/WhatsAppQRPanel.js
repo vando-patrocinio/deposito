@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   QrCode, Loader2, CheckCircle2, AlertTriangle, RefreshCw, LogOut,
-  MessageSquare, Send, Smartphone,
+  MessageSquare, Send, Smartphone, Bot, Zap,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -219,6 +219,8 @@ function ConnectedView({ phoneNumber, me, onLogout, busy }) {
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [autoReply, setAutoReply] = useState({ enabled: false, agent_name: "Jerusa" });
+  const [autoReplyBusy, setAutoReplyBusy] = useState(false);
 
   const loadMessages = useCallback(async () => {
     try {
@@ -227,11 +229,29 @@ function ConnectedView({ phoneNumber, me, onLogout, busy }) {
     } catch { /* ignore */ }
   }, []);
 
+  const loadAutoReply = useCallback(async () => {
+    try {
+      const r = await api.waBaileysGetAutoReply();
+      setAutoReply({ enabled: !!r.enabled, agent_name: r.agent_name || "Jerusa" });
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     loadMessages();
+    loadAutoReply();
     const id = setInterval(loadMessages, 6000);
     return () => clearInterval(id);
-  }, [loadMessages]);
+  }, [loadMessages, loadAutoReply]);
+
+  const toggleAutoReply = async () => {
+    setAutoReplyBusy(true);
+    try {
+      const r = await api.waBaileysSetAutoReply(!autoReply.enabled, autoReply.agent_name);
+      setAutoReply({ enabled: !!r.enabled, agent_name: r.agent_name });
+    } catch (e) {
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally { setAutoReplyBusy(false); }
+  };
 
   const send = async () => {
     if (!destPhone.trim() || !msgText.trim()) {
@@ -281,6 +301,82 @@ function ConnectedView({ phoneNumber, me, onLogout, busy }) {
         </div>
       </div>
 
+      {/* Auto-Reply Toggle — Jerusa responde sozinha */}
+      <div className="surface" style={{
+        padding: 16, borderRadius: 12,
+        border: autoReply.enabled ? "1px solid #16a34a" : "1px solid var(--border-default)",
+        background: autoReply.enabled
+          ? "linear-gradient(135deg, rgba(22,163,74,.08) 0%, var(--bg-surface) 60%)"
+          : "var(--bg-surface)",
+      }} data-testid="wa-autoreply-card">
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{
+            width: 42, height: 42, borderRadius: 10,
+            background: autoReply.enabled ? "#16a34a" : "var(--bg-surface-2)",
+            color: autoReply.enabled ? "#fff" : "var(--text-muted)",
+            display: "grid", placeItems: "center",
+            transition: "all .25s",
+          }}>
+            <Bot size={22} strokeWidth={1.75} />
+          </div>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <strong style={{ fontSize: 14 }}>Auto-Resposta com IA Jerusa</strong>
+              {autoReply.enabled && (
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 3,
+                  padding: "2px 8px", borderRadius: 999,
+                  background: "rgba(22,163,74,.15)", color: "#15803d",
+                  fontSize: 10, fontWeight: 800, textTransform: "uppercase",
+                  letterSpacing: 0.6,
+                }}>
+                  <Zap size={9} /> Ativo 24/7
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 3 }}>
+              Quando uma mensagem chega, a <strong>{autoReply.agent_name}</strong> identifica
+              o cliente automaticamente, busca contexto (plano, status, débitos) e responde
+              sozinha. Conversação multi-turno persistente por contato.
+            </div>
+          </div>
+          <button
+            onClick={toggleAutoReply}
+            disabled={autoReplyBusy}
+            data-testid="wa-autoreply-toggle"
+            style={{
+              position: "relative", width: 58, height: 32, borderRadius: 999,
+              border: "none", cursor: autoReplyBusy ? "wait" : "pointer",
+              background: autoReply.enabled ? "#16a34a" : "var(--border-default)",
+              transition: "background .25s",
+              outline: "none",
+            }}>
+            <span style={{
+              position: "absolute",
+              top: 3, left: autoReply.enabled ? 29 : 3,
+              width: 26, height: 26, borderRadius: "50%",
+              background: "#fff",
+              transition: "left .25s",
+              boxShadow: "0 2px 6px rgba(0,0,0,.2)",
+            }} />
+          </button>
+        </div>
+        {autoReply.enabled && (
+          <div style={{
+            marginTop: 10, padding: 10, borderRadius: 8,
+            background: "var(--info-soft)", color: "var(--info-soft-fg)",
+            fontSize: 11, display: "flex", alignItems: "flex-start", gap: 8,
+          }}>
+            <AlertTriangle size={12} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              A Jerusa está respondendo automaticamente todas as conversas (exceto grupos).
+              Para retomar manualmente uma conversa específica, desligue este toggle.
+              <strong> Mensagens com contexto de cliente identificado</strong> são personalizadas.
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Envio rápido */}
       <div className="surface" style={{ padding: 16, borderRadius: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -327,14 +423,16 @@ function ConnectedView({ phoneNumber, me, onLogout, busy }) {
               <div key={m.id} style={{
                 padding: "6px 10px", borderRadius: 8, fontSize: 12,
                 border: "1px solid var(--border-default)",
-                background: m.direction === "outbound" ? "rgba(37,211,102,.07)" : "var(--bg-surface-2)",
+                background: m.direction === "outbound"
+                  ? (m.auto_reply ? "rgba(22,163,74,.1)" : "rgba(37,211,102,.07)")
+                  : "var(--bg-surface-2)",
                 display: "flex", gap: 8, alignItems: "center",
               }}>
                 <span style={{ fontSize: 10, fontWeight: 700,
                                 color: m.direction === "outbound" ? "#15803d" : "var(--text-muted)",
                                 textTransform: "uppercase", letterSpacing: 0.4,
-                                minWidth: 60 }}>
-                  {m.direction === "outbound" ? "→ Enviada" : "← Recebida"}
+                                minWidth: 70 }}>
+                  {m.direction === "outbound" ? (m.auto_reply ? "→ IA" : "→ Enviada") : "← Recebida"}
                 </span>
                 <span className="mono" style={{ fontSize: 11, minWidth: 110 }}>
                   +{m.phone}
