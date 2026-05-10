@@ -41,22 +41,25 @@ export default function CentralIaDashboard() {
   const [intents, setIntents] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [productivity, setProductivity] = useState(null);
+  const [aiEval, setAiEval] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const reload = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [k, a, i, al, p] = await Promise.all([
+      const [k, a, i, al, p, ae] = await Promise.all([
         api.centralIaKpis(days),
         api.centralIaAttendants(days),
         api.centralIaIntents(days),
         api.centralIaAlerts(),
         api.centralIaProductivity(days).catch(() => null),
+        api.centralIaAiEvaluations(days).catch(() => null),
       ]);
       setKpis(k); setAttendants(a.items || []); setIntents(i.items || []);
       setAlerts(al.items || []);
       setProductivity(p);
+      setAiEval(ae);
     } catch (e) {
       console.error(e);
     } finally { setLoading(false); setRefreshing(false); }
@@ -193,6 +196,9 @@ export default function CentralIaDashboard() {
 
           {/* Ranking atendentes */}
           <AttendantsCard items={attendants} />
+
+          {/* Avaliações originadas da IA — CSAT, NPS-like, FCR, comparação humano */}
+          {aiEval && <AiEvaluationsCard data={aiEval} days={days} />}
 
           {/* Produtividade dos atendentes — tempo logado, ocioso, AHT, score */}
           {productivity && <ProductivityCard data={productivity} days={days} />}
@@ -804,6 +810,237 @@ function ProdKpi({ label, value, color }) {
       <div style={{ fontSize: 14, fontWeight: 800,
                      color: color || "var(--text-primary)",
                      marginTop: 1 }}>{value}</div>
+    </div>
+  );
+}
+
+
+/* =============================================================
+   AiEvaluationsCard — KPIs de avaliações originadas da IA (Jerusa).
+   Boas práticas (Forrester, Zendesk, Salesforce):
+   - CSAT médio (0-10)
+   - NPS-like score (% promotores 9-10 − % detratores ≤6)
+   - Distribuição visual em barras
+   - FCR (First Contact Resolution) %
+   - Comparação direta com atendimentos humanos
+   - Trend de volume e CSAT (últimos 14 dias)
+============================================================= */
+function AiEvaluationsCard({ data, days }) {
+  const ai = data?.ai_only || {};
+  const human = data?.human || {};
+  const trend = data?.trend_14d || [];
+  const fmtDur = (s) => {
+    if (s == null) return "—";
+    if (s < 60) return `${s}s`;
+    const m = Math.round(s / 60);
+    return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${(m % 60).toString().padStart(2,"0")}m`;
+  };
+
+  const csatColor = (v) => {
+    if (v == null) return "var(--text-muted)";
+    if (v >= 8) return "#16a34a";
+    if (v >= 6) return "#eab308";
+    return "#dc2626";
+  };
+
+  return (
+    <div className="surface" data-testid="ci-ai-evals-card" style={{
+      padding: 18, borderRadius: 14,
+      border: "1px solid rgba(13,148,136,.3)",
+      background: "linear-gradient(135deg, rgba(13,148,136,.05), var(--bg-surface))",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10,
+                     marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 10,
+          background: "linear-gradient(135deg, #0d9488, #06b6d4)",
+          color: "#fff", display: "grid", placeItems: "center",
+          boxShadow: "0 4px 12px rgba(13,148,136,.4)",
+        }}>
+          <Bot size={17} strokeWidth={1.75} />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <strong style={{ fontSize: 14, color: "#0d9488" }}>
+            Avaliações originadas pela IA (Jerusa)
+          </strong>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+            CSAT, NPS-like, FCR e comparação com atendimentos humanos · Últimos {days} dias
+          </div>
+        </div>
+      </div>
+
+      {/* Linha de cards principais */}
+      <div style={{ display: "grid",
+                     gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                     gap: 10, marginBottom: 14 }}>
+        <BigKpi label="Total avaliadas"
+                value={ai.total}
+                sub={`${human.total || 0} humanas`} />
+        <BigKpi label="CSAT médio"
+                value={ai.avg_csat != null ? ai.avg_csat.toFixed(1) : "—"}
+                color={csatColor(ai.avg_csat)}
+                sub={human.avg_csat != null
+                  ? `Humanos: ${human.avg_csat.toFixed(1)}` : null} />
+        <BigKpi label="NPS-like"
+                value={ai.nps != null ? (ai.nps > 0 ? `+${ai.nps}` : ai.nps) : "—"}
+                color={ai.nps >= 50 ? "#16a34a"
+                  : ai.nps >= 0 ? "#eab308" : "#dc2626"}
+                sub="promotores − detratores (%)" />
+        <BigKpi label="FCR"
+                value={ai.fcr_rate != null ? `${ai.fcr_rate}%` : "—"}
+                color={ai.fcr_rate >= 70 ? "#16a34a"
+                  : ai.fcr_rate >= 40 ? "#eab308" : "#dc2626"}
+                sub="resolvidas no 1º contato" />
+        <BigKpi label="FRT médio"
+                value={fmtDur(ai.avg_frt_seconds)}
+                color={ai.avg_frt_seconds <= 60 ? "#16a34a"
+                  : ai.avg_frt_seconds <= 300 ? "#eab308" : "#dc2626"} />
+        <BigKpi label="AHT médio"
+                value={fmtDur(ai.avg_aht_seconds)} />
+      </div>
+
+      {/* Distribuição NPS-like em barras */}
+      {ai.total > 0 && (
+        <div style={{
+          padding: 14, borderRadius: 10,
+          background: "var(--bg-surface-2)",
+          marginBottom: 14,
+        }}>
+          <div style={{
+            fontSize: 10, fontWeight: 800,
+            color: "var(--text-muted)",
+            textTransform: "uppercase", letterSpacing: 0.4,
+            marginBottom: 8,
+          }}>
+            Distribuição das notas — modelo NPS
+          </div>
+          <div style={{ display: "flex", height: 24, borderRadius: 6,
+                         overflow: "hidden", border: "1px solid var(--border-default)" }}>
+            <div title={`Promotores (9-10): ${ai.promoters} (${ai.promoters_pct}%)`}
+                  style={{
+                    flex: ai.promoters,
+                    background: "linear-gradient(180deg, #22c55e, #16a34a)",
+                    display: "grid", placeItems: "center",
+                    color: "#fff", fontSize: 11, fontWeight: 800,
+                  }}>
+              {ai.promoters_pct >= 8 ? `${ai.promoters_pct}%` : ""}
+            </div>
+            <div title={`Neutros (7-8): ${ai.neutrals} (${(100 - ai.promoters_pct - ai.detractors_pct).toFixed(1)}%)`}
+                  style={{
+                    flex: ai.neutrals,
+                    background: "linear-gradient(180deg, #fbbf24, #d97706)",
+                    display: "grid", placeItems: "center",
+                    color: "#fff", fontSize: 11, fontWeight: 800,
+                  }}>
+              {(100 - ai.promoters_pct - ai.detractors_pct) >= 8
+                ? `${(100 - ai.promoters_pct - ai.detractors_pct).toFixed(0)}%` : ""}
+            </div>
+            <div title={`Detratores (≤6): ${ai.detractors} (${ai.detractors_pct}%)`}
+                  style={{
+                    flex: ai.detractors,
+                    background: "linear-gradient(180deg, #f87171, #dc2626)",
+                    display: "grid", placeItems: "center",
+                    color: "#fff", fontSize: 11, fontWeight: 800,
+                  }}>
+              {ai.detractors_pct >= 8 ? `${ai.detractors_pct}%` : ""}
+            </div>
+          </div>
+          <div style={{
+            display: "flex", justifyContent: "space-between",
+            marginTop: 6, fontSize: 10, color: "var(--text-muted)",
+          }}>
+            <span><span style={{ color: "#16a34a", fontWeight: 700 }}>
+              ●</span> Promotores (9-10): {ai.promoters}</span>
+            <span><span style={{ color: "#d97706", fontWeight: 700 }}>
+              ●</span> Neutros (7-8): {ai.neutrals}</span>
+            <span><span style={{ color: "#dc2626", fontWeight: 700 }}>
+              ●</span> Detratores (≤6): {ai.detractors}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Trend dos últimos 14 dias */}
+      {trend.length > 0 && (
+        <div style={{
+          padding: 14, borderRadius: 10,
+          background: "var(--bg-surface-2)",
+        }}>
+          <div style={{
+            fontSize: 10, fontWeight: 800,
+            color: "var(--text-muted)",
+            textTransform: "uppercase", letterSpacing: 0.4,
+            marginBottom: 8,
+          }}>
+            Tendência — últimos 14 dias (volume IA + CSAT)
+          </div>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${trend.length}, 1fr)`,
+            gap: 4, alignItems: "end", height: 70,
+          }}>
+            {trend.map((t) => {
+              const maxCount = Math.max(...trend.map((x) => x.count), 1);
+              const h = (t.count / maxCount) * 60;
+              return (
+                <div key={t.date} title={`${t.date}: ${t.count} avals · CSAT ${t.avg_csat ?? "—"}`}
+                      style={{
+                        display: "flex", flexDirection: "column",
+                        alignItems: "center", gap: 3,
+                      }}>
+                  <div style={{
+                    width: "100%", maxWidth: 24,
+                    height: `${h}px`, minHeight: 2,
+                    background: csatColor(t.avg_csat),
+                    borderRadius: 3,
+                    transition: "all .3s",
+                  }} />
+                  <div style={{ fontSize: 8, color: "var(--text-muted)" }}>
+                    {t.date.slice(5)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {ai.total === 0 && (
+        <div style={{
+          padding: 30, textAlign: "center",
+          color: "var(--text-muted)", fontSize: 12,
+          background: "var(--bg-surface-2)", borderRadius: 10,
+        }}>
+          Sem avaliações de conversas atendidas pela IA ainda no período.
+          Conversas atendidas apenas pela Jerusa (sem intervenção humana)
+          aparecem aqui automaticamente quando avaliadas pelo worker.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BigKpi({ label, value, color, sub }) {
+  return (
+    <div style={{
+      padding: 12, borderRadius: 10,
+      background: "var(--bg-surface)",
+      border: "1px solid var(--border-default)",
+    }}>
+      <div style={{
+        fontSize: 9, fontWeight: 800,
+        color: "var(--text-muted)",
+        textTransform: "uppercase", letterSpacing: 0.4,
+      }}>{label}</div>
+      <div style={{
+        fontSize: 22, fontWeight: 800,
+        color: color || "var(--text-primary)",
+        letterSpacing: "-0.03em", marginTop: 2,
+      }}>{value ?? "—"}</div>
+      {sub && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+          {sub}
+        </div>
+      )}
     </div>
   );
 }

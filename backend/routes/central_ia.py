@@ -492,6 +492,119 @@ async def attendants_ranking(days: int = Query(7, ge=1, le=90),
     return {"items": items, "days": days}
 
 
+@router.get("/dashboard/ai-evaluations")
+async def ai_evaluations_summary(days: int = Query(30, ge=1, le=365),
+                                   user: dict = Depends(require_role("gestor"))):
+    """KPIs de avaliações originadas de conversas atendidas pela IA.
+
+    Boas práticas (Salesforce, Zendesk, Forrester): além de CSAT médio,
+    medimos volume, distribuição (% promotores/neutros/detratores), tempo
+    pra primeira resposta, taxa de FCR e comparação humano vs IA.
+
+    Retorna:
+      - **total**: quantidade de conversas avaliadas (com is_ai_only=true)
+      - **avg_csat**: média 0-10 dessas conversas
+      - **distribution**: contagem por faixa (promotores 9-10, neutros 7-8,
+        detratores ≤6) — análogo a NPS
+      - **fcr_rate**: % First Contact Resolution
+      - **avg_frt_seconds**: tempo médio até primeira resposta
+      - **avg_aht_seconds**: tempo médio total de atendimento
+      - **comparison_with_human**: mesmos números mas só de conversas humanas
+      - **trend**: contagem por dia (últimos 14 dias)
+    """
+    cid = _cid(user)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    def empty_block():
+        return {
+            "total": 0, "avg_csat": None,
+            "promoters": 0, "neutrals": 0, "detractors": 0,
+            "fcr_rate": None,
+            "avg_frt_seconds": None, "avg_aht_seconds": None,
+        }
+
+    async def aggregate(only_ai: bool) -> dict:
+        flt = {"company_id": cid, "evaluated_at": {"$gte": cutoff}}
+        if only_ai:
+            flt["is_ai_only"] = True
+        else:
+            flt["is_ai_only"] = {"$ne": True}
+        block = empty_block()
+        csat_sum, csat_n, fcr_yes, frt_sum, frt_n, aht_sum, aht_n = (
+            0, 0, 0, 0, 0, 0, 0)
+        async for e in db.aihub_evaluations.find(flt, {"_id": 0}):
+            block["total"] += 1
+            csat = e.get("csat_score")
+            if csat is not None:
+                csat_sum += csat
+                csat_n += 1
+                if csat >= 9:
+                    block["promoters"] += 1
+                elif csat >= 7:
+                    block["neutrals"] += 1
+                else:
+                    block["detractors"] += 1
+            if e.get("fcr"):
+                fcr_yes += 1
+            if e.get("frt_seconds") is not None:
+                frt_sum += e["frt_seconds"]
+                frt_n += 1
+            if e.get("aht_seconds") is not None:
+                aht_sum += e["aht_seconds"]
+                aht_n += 1
+        if csat_n:
+            block["avg_csat"] = round(csat_sum / csat_n, 2)
+        if block["total"]:
+            block["fcr_rate"] = round(fcr_yes / block["total"] * 100, 1)
+        if frt_n:
+            block["avg_frt_seconds"] = int(frt_sum / frt_n)
+        if aht_n:
+            block["avg_aht_seconds"] = int(aht_sum / aht_n)
+        # NPS-like score: promotores% - detratores%
+        if block["total"]:
+            promoters_pct = block["promoters"] / block["total"] * 100
+            detractors_pct = block["detractors"] / block["total"] * 100
+            block["nps"] = round(promoters_pct - detractors_pct, 1)
+            block["promoters_pct"] = round(promoters_pct, 1)
+            block["detractors_pct"] = round(detractors_pct, 1)
+        else:
+            block["nps"] = None
+            block["promoters_pct"] = None
+            block["detractors_pct"] = None
+        return block
+
+    ai_block = await aggregate(only_ai=True)
+    human_block = await aggregate(only_ai=False)
+
+    # Trend de avaliações IA por dia (últimos 14 dias)
+    trend_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    trend_pipeline = [
+        {"$match": {"company_id": cid, "is_ai_only": True,
+                     "evaluated_at": {"$gte": trend_cutoff}}},
+        {"$group": {
+            "_id": {"$substr": ["$evaluated_at", 0, 10]},
+            "count": {"$sum": 1},
+            "avg_csat": {"$avg": "$csat_score"},
+        }},
+        {"$sort": {"_id": 1}},
+    ]
+    trend = []
+    async for r in db.aihub_evaluations.aggregate(trend_pipeline):
+        trend.append({
+            "date": r["_id"],
+            "count": r["count"],
+            "avg_csat": round(r["avg_csat"], 2) if r["avg_csat"] is not None else None,
+        })
+
+    return {
+        "ai_only": ai_block,
+        "human": human_block,
+        "trend_14d": trend,
+        "days": days,
+        "generated_at": now_iso(),
+    }
+
+
 @router.get("/dashboard/productivity")
 async def attendant_productivity(days: int = Query(30, ge=1, le=365),
                                   user: dict = Depends(require_role("gestor"))):
@@ -879,6 +992,38 @@ async def list_alerts(user: dict = Depends(require_role("gestor"))):
                 "subtitle": f"{len(scores)} avaliações abaixo da média",
                 "created_at": now_iso(),
             })
+
+    # 4) SLA alerts via Productivity (boas práticas contact center)
+    # Dispara quando atendente atual: %ocioso > 60% OU FRT > 30min
+    try:
+        prod = await attendant_productivity(days=7, user=user)  # type: ignore[arg-type]
+        for it in prod.get("items", []):
+            # Idle alto
+            if it.get("idle_pct") is not None and it["idle_pct"] > 60 \
+                    and it.get("logged_seconds", 0) > 3600:  # ao menos 1h logada
+                items.append({
+                    "id": f"a-idle-{it['user_id']}",
+                    "kind": "high_idle_attendant",
+                    "severity": "warning",
+                    "user_id": it["user_id"],
+                    "title": f"{it['name']} com {it['idle_pct']}% de tempo ocioso",
+                    "subtitle": "Acima do threshold saudável (30%)",
+                    "created_at": now_iso(),
+                })
+            # FRT alto
+            if it.get("frt_avg_seconds") and it["frt_avg_seconds"] > 1800:
+                mins = round(it["frt_avg_seconds"] / 60)
+                items.append({
+                    "id": f"a-frt-{it['user_id']}",
+                    "kind": "slow_frt_attendant",
+                    "severity": "warning",
+                    "user_id": it["user_id"],
+                    "title": f"{it['name']} demorando {mins}min pra primeira resposta",
+                    "subtitle": "Acima do SLA (5min ideal, 30min crítico)",
+                    "created_at": now_iso(),
+                })
+    except Exception:
+        logger.exception("[central-ia] erro gerando SLA alerts")
 
     # Ordena por severidade primeiro, depois created_at desc (string ISO compara OK)
     sev_order = {"critical": 0, "warning": 1, "info": 2}

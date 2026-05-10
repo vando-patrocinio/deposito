@@ -110,9 +110,8 @@ const NAV_GROUPS = [
   {
     label: "Inteligência",
     items: [
-      { id: "ai-center", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"], asModal: true },
       { id: "ai-ranking", icon: Sparkles, label: "Avaliação IA", roles: ["gestor", "auditor", "administrador"] },
-      { id: "aihub", icon: Bot, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador"] },
+      { id: "aihub", icon: Brain, label: "Central IA & Atendimento", roles: ["gestor", "auditor", "administrador"] },
     ],
   },
   {

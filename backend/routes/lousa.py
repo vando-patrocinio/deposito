@@ -58,6 +58,39 @@ PRIORITY_RANK = {"prioridade": 0, "horario": 1, "normal": 2}
 ADMIN_RESOLVED = ("encerrada", "reagendada", "cancelada")
 TECH_RESOLVED = ("finalizada",)
 
+# -------------------------------------------------------------------------
+# REGRA: Bolha da Lousa só aparece no dia que corresponde à sua data.
+# Cada ticket tem um "dia do calendário" (BR, UTC-3) calculado a partir de
+# `scheduled_time` (prioridade), `opened_at` ou `created_at`. Quando o
+# técnico reagenda, atualizamos `scheduled_time` para o novo dia — assim
+# o ticket some da Lousa de hoje e aparece na Lousa do novo dia.
+# -------------------------------------------------------------------------
+def _today_br_iso() -> str:
+    """Hoje em UTC-3 (horário de Brasília), formato YYYY-MM-DD."""
+    return (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%d")
+
+
+def _ticket_day_iso(ticket: dict) -> str:
+    """Dia do calendário (BR) do ticket, no formato YYYY-MM-DD.
+
+    Prioridade dos campos:
+      1. scheduled_time (data de serviço efetiva — usada no reagendamento)
+      2. opened_at (quando começou)
+      3. created_at (quando foi criada)
+    Retorna string vazia se nenhum disponível ou inválido.
+    """
+    raw = (ticket.get("scheduled_time") or ticket.get("opened_at")
+           or ticket.get("created_at"))
+    if not raw:
+        return ""
+    try:
+        d = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return (d - timedelta(hours=3)).strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return ""
+
 
 class NetworkTest(BaseModel):
     date: str
@@ -723,6 +756,11 @@ async def _lousa_for_collaborator(cid: str) -> dict:
         {"assigned_collaborator_id": cid, "status": {"$in": active_states}},
         {"_id": 0},
     ).to_list(500)
+    # REGRA DE DATA: filtra apenas bolhas cuja data de serviço/abertura
+    # corresponde a HOJE (BR). Bolhas reagendadas pra outros dias somem
+    # da Lousa de hoje (e aparecem na Lousa do dia agendado).
+    today = _today_br_iso()
+    active_raw = [t for t in active_raw if _ticket_day_iso(t) == today]
     active_raw.sort(key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]))
     locked_idx = compute_locked_positions(active_raw)
     for i, t in enumerate(active_raw):
@@ -1346,6 +1384,15 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
         if sched:
             update["scheduled_time"] = sched
             update["grid_slot"] = None
+            # REGRA DE DATA: ao reagendar, a bolha PERMANECE viva (não marca
+            # como resolvida). Ela some da Lousa de HOJE (filtro por dia) e
+            # aparece na Lousa do dia agendado automaticamente.
+            update["status"] = "pendente"
+            update["closed_at"] = None  # mantém aberta no novo dia
+            update["rescheduled_at"] = now_iso()
+            update["rescheduled_by"] = user["id"]
+            # Histórico: quantas vezes foi reagendada
+            update["reschedule_count"] = int(t.get("reschedule_count") or 0) + 1
     await db.tickets.update_one({"id": ticket_id}, {"$set": update})
     await _log_ticket_action(
         ticket_id=ticket_id, action=payload.action,

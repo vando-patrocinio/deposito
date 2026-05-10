@@ -1,0 +1,40 @@
+{
+  "summary": "Iter 49 — Validated 4 features: (1) SLA alerts in /api/central-ia/alerts (kinds high_idle_attendant, slow_frt_attendant, severity warning, thresholds idle>60% AND logged>1h, frt>30min); (2) Lousa date-based filter — collaborator's lousa only shows tickets whose _ticket_day_iso(ticket) == today (BR UTC-3); reagendar action with new_date+new_time updates scheduled_time and ticket disappears from today's lousa; (3) Central IA AI evaluations summary (GET /api/central-ia/dashboard/ai-evaluations?days=30) with ai_only/human/trend_14d, NPS formula = promoters_pct − detractors_pct; (4) BUG #4 fix — sidebar 'Atendimento IA' renamed to 'Central IA & Atendimento' (Brain icon), navigates directly to aihub view (no legacy modal). BACKEND: 14/14 pytest pass (test_iter49_sla_lousa_aievals.py — TestAIEvaluationsSummary 6/6, TestSLAAlerts 3/3, TestLousaDateFilterAndReschedule 5/5 including ticket-create + verify today appears + verify tomorrow filtered out + reagendar keeps status='pendente' + scheduled_time moved to new day + rescheduled_at + reschedule_count++ + cancelar still→'cancelada' + encerrar still→'encerrada'). Endpoint ai-evaluations returns total=9, avg_csat≈4.67 (drifts ±0.1 as IA preventive worker re-scores older convs), nps=-88.9 exact, promoters=0, neutrals=1, detractors=8, fcr_rate=11.1%, frt=223s; human block has same shape (total=1). NPS formula consistency verified for both blocks. SLA alerts code path validated — no SLA alerts currently fire because admin has logged_seconds=0 and frt=1560<1800 (below threshold) and only 1 human eval (low_csat requires ≥3 scores) — implementation correct, just no breaching data in seed. FRONTEND: login ok; sidebar shows ONLY 'Central IA & Atendimento' (no legacy 'Atendimento IA'); click navigates to aihub view with ZERO modal dialogs/backdrops (BUG #4 fixed); [data-testid=ci-kpi-cards] renders 5 KPI cards (CSAT 4.4/10, FRT MÉDIO 6m 54s, FCR 10%, ARR 90%, VOLUME 10) — confirms KPIs bug fix; [data-testid=ci-ai-evals-card] renders with header 'Avaliações originadas pela IA (Jerusa)', 6 BigKpi cards (TOTAL AVALIADAS 9, CSAT MÉDIO 4.7, NPS-LIKE -88.9, FCR 11.1%, FRT MÉDIO 4m, AHT MÉDIO —), distribution bar (11% yellow neutrals + 88.9% red detractors), 14-day trend bar chart with 2026-05-10 column, and ProductivityCard rendering below it as designed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Central IA → AI Evaluations card", "issues": ["AHT MÉDIO shows '—' because seed data has no aht_seconds populated on AI evaluations (eval docs don't carry duration of full conversation). Cosmetic only — backend correctly returns null."]},
+      {"screen": "Central IA → SLA Alerts", "issues": ["Currently no SLA breaches in seed data (admin logged_seconds=0, frt=1560s below 1800 threshold, only 1 human CSAT eval — low_csat requires ≥3). Implementation is correct; just no demo data triggers warnings. For richer demo, seed an attendant with frt_avg>1800 OR idle_pct>60% with logged>3600s."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter49_sla_lousa_aievals.py",
+    "/app/test_reports/pytest/iter49_results.xml"
+  ],
+  "action_items": [
+    "(OPTIONAL) Seed an attendant with FRT > 30min or idle_pct > 60% (logged > 1h) to visually demonstrate SLA alerts in Central IA → Alertas panel.",
+    "(OPTIONAL) Compute aht_seconds on AI evaluations (use first->last message timestamp delta) so AHT MÉDIO is not always '—'."
+  ],
+  "critical_code_review_comments": [
+    "central_ia.py:998 — attendant_productivity() is called inside alerts() with days=7; this re-iterates the productivity computation per alerts request. Acceptable for now (alerts UI polls infrequently), but if alerts become real-time consider caching the productivity output for 60s.",
+    "central_ia.py:1002 — threshold idle_pct > 60 AND logged_seconds > 3600 prevents false positives for new/low-activity attendants. Good guard.",
+    "central_ia.py:982 — low_csat_attendant requires len(scores) >= 3 in last 24h; sane minimum sample size.",
+    "lousa.py:73 _ticket_day_iso falls back scheduled_time > opened_at > created_at — correct priority: rescheduled tickets always reflect new day because reagendar overwrites scheduled_time.",
+    "lousa.py:1390 — reagendar branch overwrites update['status']='pendente' AFTER status_map sets it to 'reagendada'. Works, but it would be cleaner to set status only once based on whether new_date is provided. Cosmetic.",
+    "lousa.py:763 — filter happens AFTER querying Mongo with $in active states. For tenants with thousands of active tickets per collaborator, this is fine; for very large datasets consider pushing the date filter into the query.",
+    "central_ia.py:509 ai_evaluations_summary correctly excludes mongo _id (uses {'_id':0} projection). No leak.",
+    "App.js:114 — legacy 'ai-center' modal entry removed from sidebar; line 517 still keeps onOpenModal handler but no sidebar item triggers it anymore. Safe to leave for backwards compat but could be removed in future cleanup."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter49_sla_lousa_aievals.py (new — 14 pytest passed)"
+  ],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "100% — sidebar rename, modal-free navigation, KPI cards, AI Evaluations card with all 6 BigKpis + distribution + trend all verified visually"},
+  "test_credentials": "admin@empresa.com / 123456 (administrador, role inherits gestor)",
+  "seed_data_creation": "Test fixtures created+deleted ephemeral tickets via /api/lousa/tickets (TEST_LOUSA prefix) and used /api/lousa/tickets/{id}/admin-close. All cleanup via DELETE in fixture teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 49 confirmed all 4 deliverables. Backend test file: /app/backend/tests/test_iter49_sla_lousa_aievals.py (14 tests, ~5s). Endpoints: GET /api/central-ia/dashboard/ai-evaluations?days=N (admin), GET /api/central-ia/alerts (admin) — now includes SLA kinds high_idle_attendant/slow_frt_attendant when productivity breaches; admin-close ticket endpoint is /api/lousa/tickets/{id}/admin-close (NOT /api/tickets/{id}/admin-action as review_request stated — review wording was imprecise but the actual implementation is at the correct route and works). Lousa filter uses _today_br_iso (UTC-3) and _ticket_day_iso priority scheduled_time>opened_at>created_at. Reagendar branch (lousa.py:1379) overrides status back to 'pendente' when new date provided. Frontend AiEvaluationsCard at CentralIaDashboard.js:828 (data-testid=ci-ai-evals-card) renders 6 BigKpis with CSS uppercase labels — when scripting selectors, compare innerText to UPPERCASE.",
+  "rca of the issue": "N/A — no bugs. All 4 features behave as specified."
+}

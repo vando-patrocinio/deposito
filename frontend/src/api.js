@@ -365,6 +365,8 @@ export const api = {
     client.get(`/central-ia/dashboard/attendants`, { params: { days } }).then((r) => r.data),
   centralIaProductivity: (days = 30) =>
     client.get(`/central-ia/dashboard/productivity`, { params: { days } }).then((r) => r.data),
+  centralIaAiEvaluations: (days = 30) =>
+    client.get(`/central-ia/dashboard/ai-evaluations`, { params: { days } }).then((r) => r.data),
   centralIaIntents: (days = 7) =>
     client.get(`/central-ia/dashboard/intents`, { params: { days } }).then((r) => r.data),
   centralIaAlerts: () =>
