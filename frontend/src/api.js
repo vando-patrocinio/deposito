@@ -331,5 +331,7 @@ export const api = {
     client.get(`/aihub/magnusbilling/cdr`, { params: { limit } }).then((r) => r.data),
   aihubCalls: (limit = 100) =>
     client.get(`/aihub/history/calls`, { params: { limit } }).then((r) => r.data),
+  aihubOutboundCall: (payload) =>
+    client.post(`/aihub/calls/outbound`, payload).then((r) => r.data),
   aihubDashboard: () => client.get(`/aihub/dashboard`).then((r) => r.data),
 };

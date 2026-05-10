@@ -101,6 +101,15 @@ class PlaygroundIn(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
 
 
+class OutboundCallIn(BaseModel):
+    """Originar chamada outbound via MagnusBilling, vinculada a um agente IA."""
+    agent_id: str = Field(..., min_length=4)
+    phone: str = Field(..., min_length=8, max_length=20)
+    contact_name: Optional[str] = Field(default=None, max_length=120)
+    contact_id: Optional[str] = Field(default=None, max_length=80)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
 class IntegrationConfigIn(BaseModel):
     """Config genérica — campos variam por tipo (magnusbilling / whatsapp_cloud)."""
     config: Dict[str, Any] = Field(default_factory=dict)
@@ -549,6 +558,99 @@ async def mb_list_cdr(limit: int = 100,
     data = await _mb_request(cid, "getCallReport",
                              params={"limit": min(max(limit, 1), 1000)})
     return data
+
+
+@router.post("/calls/outbound")
+async def outbound_call(payload: OutboundCallIn,
+                         user: dict = Depends(require_role("gestor"))):
+    """Origina chamada outbound via MagnusBilling, vinculada a um agente IA.
+
+    O endpoint exato do MagnusBilling pode variar por versão — usa o path
+    configurado em `magnusbilling.config.originate_path` (default: `originate`).
+    Parâmetros adicionais (trunk_id, caller_id, etc) são lidos da config.
+
+    Salva registro em `aihub_calls` com status="originated" + `agent_id`,
+    pra correlacionar quando o webhook de evento da chamada chegar.
+    """
+    cid = _cid(user)
+    agent = await db.aihub_agents.find_one(
+        {"id": payload.agent_id, "company_id": cid, "active": True},
+        {"_id": 0})
+    if not agent:
+        raise HTTPException(404, "Agente não encontrado ou inativo.")
+
+    intg = await db.aihub_integrations.find_one(
+        {"company_id": cid, "type": "magnusbilling"}, {"_id": 0})
+    if not intg or not intg.get("config"):
+        raise HTTPException(400, "Configure MagnusBilling antes de originar chamadas.")
+    cfg = intg["config"]
+    url = (cfg.get("url") or "").rstrip("/")
+    key = cfg.get("key") or ""
+    secret = cfg.get("secret") or ""
+    if not url or not key or not secret:
+        raise HTTPException(400, "MagnusBilling: URL/Key/Secret incompletos.")
+
+    # Path do MB pode variar — default é "originate". User pode customizar.
+    originate_path = cfg.get("originate_path") or "originate"
+    full_url = f"{url}/index.php/api/{originate_path.lstrip('/')}"
+    # Sanitizar telefone
+    phone = re.sub(r"[^0-9+]", "", payload.phone)
+    params: Dict[str, Any] = {
+        "key": key,
+        "secret": secret,
+        "calledid": phone,
+        "callerid": cfg.get("caller_id") or "",
+        "trunk": cfg.get("trunk_id") or "",
+    }
+    # Permite extra fixed params via config (ex.: context, exten, etc)
+    for k, v in (cfg.get("originate_extra") or {}).items():
+        params[k] = v
+
+    call_id = f"call-{uuid.uuid4().hex[:10]}"
+    error_msg: Optional[str] = None
+    mb_response: Any = None
+    ok = False
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as cli:
+            r = await cli.post(full_url, params=params)
+            if r.status_code == 200:
+                ok = True
+                try:
+                    mb_response = r.json()
+                except Exception:
+                    mb_response = (r.text or "")[:200]
+            else:
+                error_msg = f"HTTP {r.status_code}: {(r.text or '')[:200]}"
+    except httpx.HTTPError as e:
+        error_msg = f"erro de rede: {e}"
+
+    # Persiste registro pra correlacionar com webhook futuro
+    await db.aihub_calls.insert_one({
+        "id": call_id,
+        "company_id": cid,
+        "agent_id": payload.agent_id,
+        "agent_name": agent.get("name"),
+        "direction": "outbound",
+        "callee": phone,
+        "contact_name": payload.contact_name,
+        "contact_id": payload.contact_id,
+        "status": "originated" if ok else "failed",
+        "notes": payload.notes,
+        "originated_by": user.get("name") or user.get("email"),
+        "started_at": now_iso(),
+        "mb_response": mb_response if ok else None,
+        "error": error_msg,
+    })
+
+    if not ok:
+        raise HTTPException(502, f"Falha ao originar via MagnusBilling: {error_msg}")
+    return {
+        "ok": True,
+        "call_id": call_id,
+        "phone": phone,
+        "agent_name": agent.get("name"),
+        "mb_response": mb_response,
+    }
 
 
 # ---------------------------------------------------------------------------

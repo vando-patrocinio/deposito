@@ -3,12 +3,13 @@ import { api } from "@/api";
 import {
   Bot, MessageCircle, Phone, Send, Settings, History,
   Plus, Trash2, Edit2, Play, Save, X, RefreshCw, CheckCircle2,
-  AlertTriangle, Wifi, WifiOff,
+  AlertTriangle, Wifi, WifiOff, PhoneCall,
 } from "lucide-react";
 
 const TABS = [
   { id: "agents", label: "Agentes", icon: Bot },
   { id: "playground", label: "Playground", icon: MessageCircle },
+  { id: "dial", label: "Discar", icon: PhoneCall },
   { id: "magnus", label: "MagnusBilling", icon: Phone },
   { id: "whatsapp", label: "WhatsApp Cloud", icon: Send },
   { id: "history", label: "Histórico", icon: History },
@@ -56,6 +57,7 @@ export default function AIHubPanel() {
 
       {tab === "agents" && <AgentsTab />}
       {tab === "playground" && <PlaygroundTab />}
+      {tab === "dial" && <DialTab />}
       {tab === "magnus" && <MagnusBillingTab />}
       {tab === "whatsapp" && <WhatsappCloudTab />}
       {tab === "history" && <HistoryTab />}
@@ -482,6 +484,175 @@ function ChatBubble({ role, content, pending }) {
         boxShadow: isUser ? "0 1px 4px rgba(13,148,136,0.25)" : "none",
         opacity: pending ? 0.7 : 1,
       }}>{content}</div>
+    </div>
+  );
+}
+
+/* =============================================================
+   Discar (outbound call)
+============================================================= */
+function DialTab() {
+  const [phone, setPhone] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [agents, setAgents] = useState([]);
+  const [agentId, setAgentId] = useState("");
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [recent, setRecent] = useState([]);
+
+  const loadAgents = () => {
+    api.aihubAgentsList().then((r) => {
+      const active = (r.items || []).filter((a) => a.active);
+      setAgents(active);
+      if (active.length && !agentId) setAgentId(active[0].id);
+    });
+  };
+  const loadRecent = () => {
+    api.aihubCalls(20).then((r) => {
+      const out = (r.items || []).filter((c) => c.direction === "outbound");
+      setRecent(out);
+    });
+  };
+  useEffect(() => { loadAgents(); loadRecent(); /* eslint-disable-next-line */ }, []);
+
+  const fire = async () => {
+    if (!phone || phone.length < 8) {
+      setResult({ ok: false, msg: "Telefone inválido (mínimo 8 dígitos)." });
+      return;
+    }
+    if (!agentId) {
+      setResult({ ok: false, msg: "Selecione um agente IA." });
+      return;
+    }
+    setBusy(true); setResult(null);
+    try {
+      const r = await api.aihubOutboundCall({
+        agent_id: agentId,
+        phone,
+        contact_name: contactName || undefined,
+        notes: notes || undefined,
+      });
+      setResult({ ok: true, msg: `Chamada iniciada — call_id ${r.call_id}` });
+      setPhone(""); setContactName(""); setNotes("");
+      loadRecent();
+    } catch (e) {
+      setResult({
+        ok: false,
+        msg: e?.response?.data?.detail || e.message || "Falha ao iniciar chamada",
+      });
+    } finally { setBusy(false); }
+  };
+
+  if (!agents.length) {
+    return (
+      <div className="surface" style={{ padding: 30, borderRadius: 14 }}>
+        <EmptyState icon={PhoneCall} title="Nenhum agente IA ativo"
+          description="Crie e ative um agente IA na aba 'Agentes' para discar." />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div className="surface" style={{ padding: 22, borderRadius: 14 }}>
+        <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700 }}>
+          Discar com IA
+        </h3>
+        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 14 }}>
+          Origina chamada via MagnusBilling vinculada a um agente IA. A IA
+          inicia a conversa quando o cliente atender.
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="Telefone do destinatário">
+            <input className="input" value={phone}
+                   onChange={(e) => setPhone(e.target.value)}
+                   placeholder="Ex.: 11999998888 ou 5511999998888"
+                   data-testid="aihub-dial-phone" />
+          </Field>
+          <Field label="Nome (opcional)">
+            <input className="input" value={contactName}
+                   onChange={(e) => setContactName(e.target.value)}
+                   placeholder="Ex.: João Silva"
+                   data-testid="aihub-dial-name" />
+          </Field>
+        </div>
+
+        <Field label="Agente IA">
+          <select className="input" value={agentId}
+                  onChange={(e) => setAgentId(e.target.value)}
+                  data-testid="aihub-dial-agent">
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} · {a.model_provider}/{a.model_name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Observações da chamada (opcional)">
+          <input className="input" value={notes}
+                 onChange={(e) => setNotes(e.target.value)}
+                 placeholder="Ex.: cobrança fatura 03/2026 / lembrete agendamento"
+                 data-testid="aihub-dial-notes" />
+        </Field>
+
+        {result && (
+          <div style={{
+            marginTop: 12, padding: 10,
+            background: result.ok ? "var(--success-soft)" : "var(--danger-soft)",
+            color: result.ok ? "var(--success-soft-fg)" : "var(--danger-soft-fg)",
+            borderRadius: 8, fontSize: 12, display: "flex", alignItems: "center", gap: 8,
+          }}>
+            {result.ok ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+            {result.msg}
+          </div>
+        )}
+
+        <button onClick={fire} disabled={busy}
+                data-testid="aihub-dial-fire"
+                className="btn btn-primary"
+                style={{ marginTop: 14, gap: 8 }}>
+          <PhoneCall size={14} />
+          {busy ? "Iniciando…" : "Iniciar chamada"}
+        </button>
+      </div>
+
+      <div className="surface" style={{ padding: 18, borderRadius: 12 }}>
+        <h4 style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 700 }}>
+          Chamadas recentes (outbound)
+        </h4>
+        {recent.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--text-muted)", padding: 10 }}>
+            Nenhuma chamada outbound ainda.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {recent.map((c) => (
+              <div key={c.id} data-testid={`aihub-dial-recent-${c.id}`}
+                   style={{
+                     padding: 10, border: "1px solid var(--border-default)",
+                     borderRadius: 8, display: "flex", justifyContent: "space-between",
+                     alignItems: "center", gap: 10,
+                   }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }} className="mono">
+                    {c.callee} {c.contact_name && `· ${c.contact_name}`}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {c.started_at} · agente: {c.agent_name || "—"}
+                    {c.notes && ` · ${c.notes}`}
+                  </div>
+                </div>
+                <span className={`pill pill--${c.status === "originated" ? "success" : c.status === "failed" ? "danger" : "neutral"}`}>
+                  {c.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

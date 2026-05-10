@@ -1,5 +1,20 @@
 # PontoIA — Changelog
 
+## Feb 10, 2026 — Discar com IA + Componente OutboundCallButton reutilizável
+
+### Backend (`/app/backend/routes/aihub.py`)
+- `POST /api/aihub/calls/outbound` (gestor): recebe `{agent_id, phone, contact_name?, contact_id?, notes?}`. Valida agente ativo + MagnusBilling configurado. Origina via `POST {url}/index.php/api/{originate_path}` (default `originate`) com params `key/secret/calledid/callerid/trunk + originate_extra`. Sanitiza phone (regex). Persiste `aihub_calls` com `direction=outbound`, `status=originated|failed`, `agent_id`, `agent_name` para correlação posterior com webhook de evento.
+- Validações: 400 sem MagnusBilling configurado, 404 agente inexistente/inativo, 422 phone < 8 chars, 502 falha real do MB com erro detalhado.
+
+### Frontend
+- Nova sub-aba **"Discar"** em `AIHubPanel.js`: telefone + nome + agente IA (dropdown só ativos) + observações + botão "Iniciar chamada". Mostra resultado inline + lista de chamadas outbound recentes com status pill.
+- Componente reutilizável **`OutboundCallButton`** (`/app/frontend/src/OutboundCallButton.js`): popover com dropdown de agentes ativos, props `phone`, `contactName`, `contactId`. Pode ser plugado em qualquer tela (CRM da Lousa, Estoque > Clientes, ficha de cliente, etc).
+
+### Tests
+- Manual curl: 400/404/422/502 todos validados, registro persistido em `aihub_calls` com status correto.
+
+---
+
 ## Feb 10, 2026 — Atendimento IA (aba nova: agentes conversacionais + integrações)
 
 ### Backend (`/app/backend/routes/aihub.py`)
