@@ -1122,14 +1122,26 @@ async def schedule_lousa_ticket(payload: ScheduleLousaIn,
     criadas pelos gestores. Retorna o ticket criado.
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    # Próximo colaborador disponível (técnico ativo da empresa)
-    coll = await db.collaborators.find_one(
+    # Round-robin: técnico com MENOR carga de bolhas pendentes (justiça +
+    # distribuição). Em empate, o de nome alfabético menor (determinístico).
+    techs = await db.collaborators.find(
         {"company_id": cid, "active": {"$ne": False}},
-        sort=[("name", 1)],
-        projection={"_id": 0, "id": 1, "name": 1, "company_id": 1},
-    )
-    if not coll:
+        projection={"_id": 0, "id": 1, "name": 1},
+    ).to_list(500)
+    if not techs:
         raise HTTPException(409, "Nenhum colaborador disponível para atribuir a bolha.")
+    # Conta tickets pendentes/abertos por colaborador
+    pending_by_tech: Dict[str, int] = {}
+    for t in techs:
+        n = await db.tickets.count_documents({
+            "company_id": cid,
+            "assigned_collaborator_id": t["id"],
+            "status": {"$in": ["pendente", "aberta", "aguardando_atendimento", "em_andamento"]},
+        })
+        pending_by_tech[t["id"]] = n
+    # ordena por (count, name) ascendente
+    techs.sort(key=lambda t: (pending_by_tech.get(t["id"], 0), t.get("name") or ""))
+    coll = techs[0]
 
     # Geocode best-effort
     lat, lng = None, None

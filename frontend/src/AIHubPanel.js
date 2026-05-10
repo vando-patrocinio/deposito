@@ -394,16 +394,26 @@ function PersonalityExpertiseSection({ agent, setAgent, set }) {
     }
     setGenAllBusy(true);
     try {
-      // Gera 4 campos em paralelo
+      // Gera 4 campos em paralelo — usa allSettled p/ não perder tudo se 1 falhar
       const fields = ["company_info", "pricing_info", "system_prompt", "priority_situations"];
-      const results = await Promise.all(fields.map((f) =>
+      const results = await Promise.allSettled(fields.map((f) =>
         api.aihubAgentTextGen({ field: f, mode: "gerar", current_text: "", context: genAllContext })
       ));
       const next = { ...agent };
-      fields.forEach((f, i) => { next[f] = results[i].text; });
+      const failed = [];
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") next[fields[i]] = r.value.text;
+        else failed.push(fields[i]);
+      });
       setAgent(next);
-      setShowGenAll(false);
-      setGenAllContext("");
+      if (failed.length === 4) {
+        alert("Nenhum campo foi gerado — todos falharam. Tente novamente.");
+      } else if (failed.length > 0) {
+        alert(`${4 - failed.length} de 4 campos gerados. Falharam: ${failed.join(", ")}. Use "Gerar Novo" individual para tentar de novo.`);
+        setShowGenAll(false); setGenAllContext("");
+      } else {
+        setShowGenAll(false); setGenAllContext("");
+      }
     } catch (e) {
       alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setGenAllBusy(false); }
