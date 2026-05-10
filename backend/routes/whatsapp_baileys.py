@@ -16,11 +16,12 @@ Webhook interno (chamado pelo sidecar):
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from typing import Any, Dict, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, EMERGENT_LLM_KEY, now_iso, require_role
@@ -30,6 +31,7 @@ logger = logging.getLogger("ponto.wa_baileys")
 router = APIRouter(prefix="/api/whatsapp-baileys", tags=["whatsapp-baileys"])
 
 SIDECAR_BASE = "http://127.0.0.1:3002"
+WA_INBOUND_TOKEN = os.environ.get("WA_INBOUND_TOKEN", "")
 
 
 async def _sidecar_get(path: str) -> Dict[str, Any]:
@@ -120,26 +122,28 @@ class InboundIn(BaseModel):
 
 
 @router.post("/inbound")
-async def inbound_webhook(payload: InboundIn):
+async def inbound_webhook(payload: InboundIn,
+                           x_wa_token: Optional[str] = Header(default=None)):
     """Processa mensagem recebida do WhatsApp.
 
-    - Salva em `aihub_wa_messages` para histórico
-    - Auto-link com Subscriber via `link_phone_to_subscriber`
-    - **Se auto-reply estiver habilitado**: chama a Jerusa pra responder e
-      envia de volta via sidecar `/send`. Session ID por número de telefone
-      (memória multi-turno persistente por contato).
-
-    Endpoint SEM auth — sidecar Node fala via localhost, então é safe.
+    Segurança: validamos o header `X-WA-Token` contra `WA_INBOUND_TOKEN`
+    do .env. O sidecar Node passa esse token. Se a env não estiver setada
+    (dev), aceita sem validar (compat — log warning).
     """
+    if WA_INBOUND_TOKEN:
+        if not x_wa_token or x_wa_token != WA_INBOUND_TOKEN:
+            logger.warning("[wa-baileys] inbound rejeitado: token inválido")
+            raise HTTPException(401, "X-WA-Token inválido")
+    else:
+        logger.warning(
+            "[wa-baileys] WA_INBOUND_TOKEN não configurado — endpoint aberto!"
+        )
     if payload.from_me:
         return {"ok": True, "ignored": "from_me"}
     if not payload.text.strip():
         return {"ok": True, "ignored": "empty"}
-    # Não responde em grupos (jid termina @g.us)
-    if "@g.us" in (payload.jid or ""):
-        is_group = True
-    else:
-        is_group = False
+    # Não responde em grupos (jid termina exatamente em @g.us)
+    is_group = (payload.jid or "").endswith("@g.us")
 
     cid = DEMO_COMPANY_ID  # multi-tenant TODO
     subscriber_id = None
@@ -292,16 +296,27 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         return None
 
     # 5. Envia via sidecar
+    send_ok = False
+    send_error: Optional[str] = None
+    send_body: Dict[str, Any] = {}
     try:
         async with httpx.AsyncClient(timeout=15.0) as cli:
             send_r = await cli.post(f"{SIDECAR_BASE}/send",
                                      json={"phone": phone, "text": reply_text})
-            send_body = send_r.json() if send_r.headers.get("content-type", "").startswith("application/json") else {}
+            try:
+                send_body = send_r.json()
+            except Exception:
+                send_body = {"raw": send_r.text}
+            if send_r.status_code < 400 and send_body.get("ok"):
+                send_ok = True
+            else:
+                send_error = (send_body.get("error")
+                              or f"HTTP {send_r.status_code}")
     except Exception as e:
         logger.warning("[wa-baileys] sidecar /send falhou: %s", e)
-        send_body = {"ok": False, "error": str(e)}
+        send_error = str(e)
 
-    # 6. Persiste resposta no histórico
+    # 6. Persiste resposta no histórico (com delivery_status)
     await db.aihub_wa_messages.insert_one({
         "id": f"wam-{uuid.uuid4().hex[:10]}",
         "company_id": cid,
@@ -314,9 +329,15 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         "agent_name": agent["name"],
         "session_id": session_id,
         "auto_reply": True,
+        "delivery_status": "sent" if send_ok else "failed",
+        "delivery_error": send_error,
         "created_at": now_iso(),
     })
-    logger.info("[wa-baileys] auto-reply enviado para %s: %s", phone, reply_text[:80])
+    if send_ok:
+        logger.info("[wa-baileys] auto-reply enviado para %s: %s", phone, reply_text[:80])
+    else:
+        logger.warning("[wa-baileys] auto-reply gerado mas envio falhou (%s): %s",
+                        send_error, reply_text[:80])
     return reply_text
 
 

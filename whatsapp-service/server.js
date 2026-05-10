@@ -32,6 +32,7 @@ const path = require("path");
 
 const PORT = parseInt(process.env.WA_PORT || "3002", 10);
 const WEBHOOK_BASE = process.env.WA_WEBHOOK_BASE || "http://localhost:8001/api";
+const INBOUND_TOKEN = process.env.WA_INBOUND_TOKEN || "";
 const AUTH_DIR = path.join(__dirname, "auth_info");
 const logger = pino({ level: "warn" });
 
@@ -122,7 +123,10 @@ async function startSock() {
               message_id: m.key.id,
               timestamp: m.messageTimestamp,
               push_name: m.pushName || null,
-            }, { timeout: 5000 });
+            }, {
+              timeout: 15000,
+              headers: INBOUND_TOKEN ? { "X-WA-Token": INBOUND_TOKEN } : {},
+            });
           } catch (err) {
             console.warn("[wa] webhook FastAPI falhou:", err.message);
           }
