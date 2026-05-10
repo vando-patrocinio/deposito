@@ -56,6 +56,7 @@ from routes import (
     aihub as routes_aihub,
     voice as routes_voice,
     whatsapp_baileys as routes_wa_baileys,
+    central_ia as routes_central_ia,
     subscribers as routes_subscribers,
     branding as routes_branding,
     collaborator_assets as routes_collab_assets,
@@ -275,6 +276,7 @@ async def _startup() -> None:
     await routes_smartolt.start_worker()
     await routes_ai_preventive.start_worker()
     await routes_aihub.start_worker()
+    await routes_central_ia.start_worker()
     logger.info("Scheduler iniciado.")
 
 
@@ -311,6 +313,7 @@ app.include_router(routes_ai_dashboard.router)
 app.include_router(routes_aihub.router)
 app.include_router(routes_voice.router)
 app.include_router(routes_wa_baileys.router)
+app.include_router(routes_central_ia.router)
 app.include_router(routes_subscribers.router)
 app.include_router(routes_branding.router)
 app.include_router(routes_collab_assets.router)

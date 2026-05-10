@@ -355,6 +355,20 @@ export const api = {
     client.put(`/whatsapp-baileys/conversations/${encodeURIComponent(phone)}/finalize`, { outcome }).then((r) => r.data),
   waBaileysAttendants: () =>
     client.get(`/whatsapp-baileys/attendants`).then((r) => r.data),
+
+  // ===== Central IA Dashboard =====
+  centralIaKpis: (days = 7) =>
+    client.get(`/central-ia/dashboard/kpis`, { params: { days } }).then((r) => r.data),
+  centralIaAttendants: (days = 7) =>
+    client.get(`/central-ia/dashboard/attendants`, { params: { days } }).then((r) => r.data),
+  centralIaIntents: (days = 7) =>
+    client.get(`/central-ia/dashboard/intents`, { params: { days } }).then((r) => r.data),
+  centralIaAlerts: () =>
+    client.get(`/central-ia/alerts`).then((r) => r.data),
+  centralIaEvaluations: (limit = 100) =>
+    client.get(`/central-ia/evaluations`, { params: { limit } }).then((r) => r.data),
+  centralIaEvaluateNow: (phone) =>
+    client.post(`/central-ia/evaluations/${encodeURIComponent(phone)}`).then((r) => r.data),
   waBaileysGetAutoReply: () =>
     client.get(`/whatsapp-baileys/auto-reply`).then((r) => r.data),
   waBaileysSetAutoReply: (enabled, agentName = "Jerusa") =>

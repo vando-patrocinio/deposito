@@ -5,11 +5,14 @@ import {
   Plus, Trash2, Edit2, Play, Save, X, RefreshCw, CheckCircle2,
   AlertTriangle, Wifi, WifiOff, PhoneCall,
   Sparkles, Building2, DollarSign, Star, Wand2, ArrowUp, QrCode,
+  Brain,
 } from "lucide-react";
 import JerusaCallSimulator from "@/JerusaCallSimulator";
 import WhatsAppQRPanel from "@/WhatsAppQRPanel";
+import CentralIaDashboard from "@/CentralIaDashboard";
 
 const TABS = [
+  { id: "central_ia", label: "Central IA", icon: Brain },
   { id: "jerusa", label: "Ligar Jerusa", icon: PhoneCall },
   { id: "whatsapp_qr", label: "WhatsApp (QR)", icon: QrCode },
   { id: "agents", label: "Agentes", icon: Bot },
@@ -21,7 +24,7 @@ const TABS = [
 ];
 
 export default function AIHubPanel() {
-  const [tab, setTab] = useState("jerusa");
+  const [tab, setTab] = useState("central_ia");
 
   return (
     <div data-testid="aihub-panel" style={{ padding: "0 4px" }}>
@@ -60,6 +63,7 @@ export default function AIHubPanel() {
         })}
       </div>
 
+      {tab === "central_ia" && <CentralIaDashboard />}
       {tab === "jerusa" && <JerusaCallSimulator />}
       {tab === "whatsapp_qr" && <WhatsAppQRPanel />}
       {tab === "agents" && <AgentsTab />}

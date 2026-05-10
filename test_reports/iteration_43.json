@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 43: Central IA Dashboard (Phase 2) tested end-to-end. BACKEND 15/15 pytest pass: GET /api/central-ia/dashboard/kpis returns full shape (csat_avg=4.67, fcr_rate=11.1, arr_rate=100, sentiment={positivo,neutro,negativo}, no_data=false), days param works (7/30), days=999 → 422, unauth → 401. /dashboard/attendants returns items[] with Isabella (IA) aggregated (is_ai=true). /dashboard/intents returns items sorted by count desc with valid pct. /alerts returns items with severity∈{critical,warning,info}. /evaluations lists 9 evaluations with all required fields. POST /evaluations/<unknown_phone> → 400, POST /evaluations/<real_phone> → 200 with full eval doc. /dashboard/summary returns {evaluated_24h, alerts_24h, csat_avg_24h}. Worker confirmed running via logs: '[central-ia.worker] started (every 300s)' + '[central-ia.worker] avaliou 9 conversas'. Regressions OK (qr/conversations/voice-start/aihub text-gen). FRONTEND PASS: Login admin → Atendimento IA → Central IA is first tab and selected by default. [data-testid=central-ia-dashboard] renders with all 5 KPI cards (ci-kpi-csat/frt/fcr/arr/volume), ci-sentiment-card, ci-intents-card, ci-attendants-card (with 'Isabella (IA)' row + IA badge, volume=9, CSAT=4.67), ci-alerts-card showing 3 LLM-flagged alerts (cliente desinteressado, conversa sem relevância, cliente irritado). Period toggle works (ci-period-30 click fires reload). Tab switching works (jerusa/whatsapp_qr/agents/central_ia).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "WhatsApp (QR) tab regression", "issue": "After clicking aihub-tab-whatsapp_qr, [data-testid=wa-chat-layout] was not found in the initial query. May be a lazy-mount or requires the WA to be already connected. Tab itself renders (no JS crash). Worth a closer look in next iteration — review request expected wa-chat-layout to be present.", "affected_selectors": ["[data-testid=wa-chat-layout]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter43_central_ia.py",
+    "/app/test_reports/pytest/iter43_results.xml"
+  ],
+  "action_items": [
+    "Investigate why wa-chat-layout did not render immediately on whatsapp_qr tab in this test (could be data-testid moved into WhatsAppQRPanel's inner state). If WhatsAppQRPanel now wraps QR + chat-layout, ensure data-testid=wa-chat-layout is still emitted when WA is connected.",
+    "[CARRY-OVER iter42] AssignModal still includes Isabella (IA) as a pick — filter her out (this was not in scope for iter43 testing but remains open)."
+  ],
+  "critical_code_review_comments": [
+    "central_ia.py:_evaluate_conversation — FRT computation has confusing chained next() with .get(..., '') fallback for date comparison; works but fragile. Also has a minor code-smell: comment '# ARR — conversa resolvida só com IA?' is on same line as the FRT assignment (line 148) — purely cosmetic but worth a line break.",
+    "central_ia.py:list_alerts — final sort uses '-(x.get(\"created_at\") or \"\")[:1].count(\"9\")' which is nonsense (always 0 or 1). Should sort by created_at desc properly (e.g., reverse=True over the string). Items still come back in roughly the right order because severity dominates, but the second sort key is effectively dead code.",
+    "central_ia.py:_worker_tick — pipeline $match by 'created_at' >= cutoff iso-string compares strings, which works for ISO-8601 but is timezone-fragile if some docs are stored without 'Z' or with mixed offsets. Consider canonicalizing.",
+    "central_ia.py — exception handling in _llm_evaluate swallows ALL exceptions and returns None; that's fine for resilience but might mask key errors. Consider logging at warning level (already does — OK).",
+    "CentralIaDashboard.js — AlertsCard renders a pulsing dot using `animation: 'ci-spin 2s ease-in-out infinite'` which is the rotate keyframe — looks like a spin animation, not a pulse. Cosmetic bug.",
+    "CentralIaDashboard.js line 391 — `<td>{a.negative_count > 0 && (<span...>{...}</span>) || '—'}</td>` mixes JSX && with || — works but it's unusual. Prefer ternary.",
+    "AttendantsCard — sort orders by (-volume, -csat). Good. But ties on volume=0 fall through to a None csat → sort key None breaks Python's sorted in some edge cases; defensive `x.get('csat_avg') or 0` is already used → OK."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter43_central_ia.py (new)"],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "~95% (1 lazy-mount question on wa-chat-layout)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "None — 9 evaluations already existed in db.aihub_evaluations from worker auto-run. The test test_evaluate_now_real_phone re-evaluates one existing phone (idempotent upsert) so no new data leaked.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 2 (Central IA) is fully functional end-to-end. Run: pytest /app/backend/tests/test_iter43_central_ia.py -v. Worker logs are at /var/log/supervisor/backend.err.log — grep 'central-ia.worker'. Evaluations live in db.aihub_evaluations. Test data is real (9 conversations, 1 LLM-flagged critical alert 'cliente irritado'). One observation: the AttendantsCard groups ALL is_ai_only conversations under a synthetic 'Isabella (IA)' bucket regardless of who is assigned — this is by design per server code line 341-342 (`if e.get('is_ai_only'): key = 'AI'`). Don't be surprised if multiple humans don't appear (they will only show up once they take over a conversation and respond)."
+}
