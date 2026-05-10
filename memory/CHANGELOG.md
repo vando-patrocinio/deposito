@@ -1,5 +1,29 @@
 # PontoIA — Changelog
 
+## Feb 10, 2026 — Assinatura digital do recebedor + histórico de devoluções
+
+### Backend
+- `POST /api/collab-assets/return-confirm/{cid}` (gestor): recebe `{receiver_name, receiver_role, signature_data_url, notes, confirmed_item_keys}`:
+  - Persiste auditoria em `db.collab_returns` (snapshot de assets + extras + chaves conferidas)
+  - Marca `collaborator_assets` ativos como `status="devolvido"` com `returned_at`, `returned_to`, `return_id` + event log
+  - Gera PDF com **assinatura embutida** (Image flowable do ReportLab a partir do base64 PNG)
+  - Retorna stream com header `X-Return-Id`
+- `GET /api/collab-assets/returns/{cid}`: histórico de devoluções (signature_data_url EXCLUÍDO da resposta para privacidade)
+- `_build_romaneio_pdf(receiver={...})` embute assinatura na coluna direita + label "assinado em <data>"
+- ONTs e insumos NÃO são auto-devolvidos — gestor decide manualmente em Estoque (revalidação física)
+
+### Frontend
+- `DeactivationAssetsModal.js` fluxo em 2 passos com stepper visual:
+  - **Passo 1**: Checklist (precisa marcar TODOS os itens para avançar)
+  - **Passo 2**: Canvas de assinatura (mouse + touch) + input nome do recebedor + cargo + observações
+- Botão final faz POST → recebe blob PDF → abre em nova aba
+- `api.js`: `assetReturnConfirm(cid, payload)` (responseType: "blob"), `assetReturnsHistory(cid)`
+
+### Tests
+- `iteration_35.json`: **9/9 pytest** — return-confirm, side-effects, persistência, privacidade signature, validação 422, regressão mode=return base, lint frontend OK
+
+---
+
 ## Feb 10, 2026 — Romaneio de DEVOLUÇÃO À EMPRESA (desativação de colaborador)
 
 ### Backend

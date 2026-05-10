@@ -44,7 +44,7 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **Dark Mode** com toggle no TopBar, persistência localStorage, soft variants para status
 ✅ **IA Batch Similarity**: 89% de prefixos identificados via Gemini batch contextual
 ✅ **Ranking de fabricantes**: matching melhorado (45% defects cruzados via _norm + pppoe_user)
-✅ **Romaneio de Devolução à Empresa** (na desativação): lista pertences + ONTs + insumos com checkboxes e assinatura do recebedor
+✅ **Romaneio de Devolução à Empresa** (na desativação): lista pertences + ONTs + insumos com checkboxes, **assinatura digital do recebedor** (canvas), histórico em `db.collab_returns`, pertences viram automaticamente `status=devolvido`
 ✅ Pytest backend + ESLint frontend ativos
 ✅ Roadmap pronto em `/app/memory/ROADMAP.md`
 
