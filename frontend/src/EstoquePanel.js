@@ -696,6 +696,157 @@ function HistoricoSection({ history, reload }) {
 }
 
 // ============================================================
+// Clientes — ONUs em uso (SmartOLT) com fabricante via IA
+// ============================================================
+const _th = { padding: "8px 10px", fontSize: 11, fontWeight: 700,
+              color: "var(--text-secondary)", textTransform: "uppercase",
+              letterSpacing: "0.06em", textAlign: "left",
+              borderBottom: "1px solid var(--border-default)" };
+const _td = { padding: "10px", fontSize: 12, verticalAlign: "middle" };
+
+function ClientesSection() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [filter, setFilter] = useState("");
+  const [manufFilter, setManufFilter] = useState("all");
+
+  const reload = useCallback(async () => {
+    setLoading(true); setErr("");
+    try {
+      setData(await api.stokClientes(200));
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const items = useMemo(() => {
+    if (!data) return [];
+    const q = filter.trim().toLowerCase();
+    return data.items.filter((it) => {
+      if (manufFilter !== "all" && (it.manufacturer || "Desconhecido") !== manufFilter) return false;
+      if (!q) return true;
+      return [it.client_name, it.sn, it.mac, it.olt_name].filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q));
+    });
+  }, [data, filter, manufFilter]);
+
+  const signalColor = (txt) => {
+    if (!txt) return { bg: "var(--bg-surface-2)", color: "var(--text-muted)" };
+    const s = String(txt).toLowerCase();
+    if (s.includes("very good") || s.includes("excelente")) return { bg: "var(--success-soft)", color: "var(--success-soft-fg)" };
+    if (s.includes("good") || s.includes("bom")) return { bg: "var(--info-soft)", color: "var(--info-soft-fg)" };
+    if (s.includes("acceptable") || s.includes("regular")) return { bg: "var(--warning-soft)", color: "var(--warning-soft-fg)" };
+    return { bg: "var(--danger-soft)", color: "var(--danger-soft-fg)" };
+  };
+
+  if (loading && !data) return <Card>Carregando clientes do SmartOLT… (até 30s na primeira chamada)</Card>;
+  if (err) return <Card><div style={{ color: "#dc2626" }}>Erro: {err}</div></Card>;
+  if (!data) return null;
+
+  return (
+    <>
+      <div style={{
+        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+        gap: 10, marginBottom: 14,
+      }}>
+        <Metric label="Clientes" value={data.total.toLocaleString("pt-BR")} />
+        <Metric label="Identificados (IA)" value={`${data.identified}/${data.total}`}
+                hint={`${Math.round(100 * data.identified / Math.max(1, data.total))}% reconhecidos`} />
+        {Object.entries(data.by_manufacturer).slice(0, 3).map(([k, v]) => (
+          <Metric key={k} label={k} value={v.toLocaleString("pt-BR")}
+                  hint={`${Math.round(100 * v / Math.max(1, data.total))}%`} />
+        ))}
+      </div>
+
+      <Card title={`Clientes ativos (${items.length} de ${data.total})`}
+            subtitle="ONUs em uso pegas via API do SmartOLT — fabricante identificado por prefixo de SN ou IA (Gemini)."
+            data-testid="clientes-card"
+            action={
+              <button onClick={reload} disabled={loading}
+                      data-testid="clientes-reload"
+                      className="btn btn-secondary btn-sm">
+                {loading ? "Atualizando…" : "Atualizar"}
+              </button>
+            }>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <input className="input" data-testid="clientes-search" value={filter}
+                 onChange={(e) => setFilter(e.target.value)}
+                 placeholder="Buscar por cliente, SN, MAC, OLT…"
+                 style={{ flex: 1, minWidth: 220 }} />
+          <select className="input" data-testid="clientes-manuf-filter"
+                  value={manufFilter} onChange={(e) => setManufFilter(e.target.value)}
+                  style={{ width: 230 }}>
+            <option value="all">Todos os fabricantes</option>
+            {Object.keys(data.by_manufacturer).map((k) => (
+              <option key={k} value={k}>{k} ({data.by_manufacturer[k]})</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "var(--bg-surface-2)" }}>
+                <th style={_th}>Cliente</th>
+                <th style={_th}>Número de série</th>
+                <th style={_th}>MAC</th>
+                <th style={_th}>Marca / Fabricante</th>
+                <th style={_th}>OLT / Slot / PON</th>
+                <th style={_th}>Sinal</th>
+                <th style={_th}>Autorização</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.slice(0, 500).map((it) => {
+                const sig = signalColor(it.signal_text);
+                const ident = !!it.manufacturer;
+                return (
+                  <tr key={it.smartolt_external_id || `${it.sn || ""}-${it.mac || ""}`}
+                      style={{ borderBottom: "1px solid var(--border-default)" }}
+                      data-testid={`cliente-row-${it.sn || it.mac}`}>
+                    <td style={_td}>
+                      <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>{it.client_name}</div>
+                    </td>
+                    <td style={_td} className="mono" data-mono>{it.sn || "—"}</td>
+                    <td style={_td} className="mono" data-mono>{it.mac || "—"}</td>
+                    <td style={_td}>
+                      <span className={`pill pill--${ident ? "accent" : "neutral"}`}
+                            style={{ fontWeight: 600 }}>
+                        {it.manufacturer || "Desconhecido"}
+                      </span>
+                      {it.model && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{it.model}</div>}
+                    </td>
+                    <td style={_td} className="mono" data-mono>
+                      {it.olt_name || "—"}
+                      {it.board && <span style={{ color: "var(--text-muted)" }}> · slot {it.board}/pon {it.port}</span>}
+                    </td>
+                    <td style={_td}>
+                      <span className="pill" style={{ background: sig.bg, color: sig.color, fontWeight: 600 }}>
+                        {it.signal_text || "—"}
+                      </span>
+                    </td>
+                    <td style={_td} className="mono" data-mono>{it.authorization_date || "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {items.length > 500 && (
+            <div style={{ padding: 8, fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
+              Mostrando 500 de {items.length} resultados — use o filtro para refinar.
+            </div>
+          )}
+        </div>
+      </Card>
+    </>
+  );
+}
+
+
+// ============================================================
 // Painel principal
 // ============================================================
 export default function EstoquePanel() {

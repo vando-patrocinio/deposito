@@ -1,0 +1,37 @@
+{
+  "summary": "RETEST após adição do ClientesSection. Frontend agora 100% funcional: login admin -> Estoque -> sub-tab 'Clientes (SmartOLT)' carrega corretamente em ~3s, sem runtime error. Todos os 13 itens da checklist de testes passaram. Backend não foi retestado (já 100% na iter31).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Estoque > Clientes (SmartOLT)", "issues": ["Console hydration warning: <span> não pode ser filho de <option>. Causado por instrumentação interna do Emergent injetando <span data-ve-dynamic> dentro das <option> do select clientes-manuf-filter. NÃO é bug do app real — apenas warning de dev/preview. Sem impacto funcional."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_32.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "EstoquePanel.js cresceu para 913 linhas — recomenda-se splitar ClientesSection em arquivo próprio /app/frontend/src/sections/Clientes.jsx. Não é bloqueante mas melhora manutenibilidade.",
+    "Constantes _th e _td são usadas apenas em ClientesSection — podem ser locais ao componente em vez de globais no arquivo.",
+    "data-testid do tab é 'estoque-tab-servicos' mas o request mencionava 'estoque-tab-os' — só inconsistência de nomenclatura no request, código está consistente."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not retested (100% na iter31)", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456 (lido de /app/memory/test_credentials.md)",
+  "seed_data_creation": "Nenhum dado de teste criado. Banco real com 1749 ONUs reais do SmartOLT.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "ClientesSection 100% funcional. Distribuição atual de fabricantes (rodada): Desconhecido 1555, Nokia/Alcatel-Lucent 189, Intelbras 5, identificados pela IA 194/1749 (11%). Os números mudam a cada rodada porque a IA Gemini continua identificando mais ONUs. Os tabs do estoque são: estoque-tab-{dashboard,onts,insumos,clientes,servicos,historico} (note 'servicos' não 'os').",
+  "validation_evidence": {
+    "stat_cards_5_visible": "Clientes 1.749, Identificados 194/1749 (11%), Desconhecido 1.555 (89%), Nokia/Alcatel-Lucent 189 (11%), Intelbras 5 (0%)",
+    "table_7_columns": "CLIENTE | NÚMERO DE SÉRIE | MAC | MARCA / FABRICANTE | OLT / SLOT / PON | SINAL | AUTORIZAÇÃO",
+    "manuf_filter_options": ["Todos os fabricantes", "Desconhecido (1555)", "Nokia/Alcatel-Lucent (189)", "Intelbras (5)"],
+    "intelbras_filter_works": "Filtrando Intelbras -> 5 linhas, todas com pill 'Intelbras'",
+    "search_works": "Filtrando 'test' -> 2 linhas",
+    "pills_correct": ".pill--accent=194 (identificados), .pill--neutral=306 (Desconhecidos visíveis nas primeiras 500)",
+    "mostrando_500_msg": "Visível: 'Mostrando 500 de 1749 resultados — use o filtro para refinar.'",
+    "reload_button": "data-testid=clientes-reload presente, clique recarrega 500 linhas",
+    "other_subtabs_no_regression": "Dashboard, ONTs, Insumos, Servicos (Ordens de serviço), Histórico clicáveis sem erro",
+    "console_errors": "Apenas 1 warning de hidratação (instrumentação Emergent), 0 erros de aplicação"
+  }
+}
