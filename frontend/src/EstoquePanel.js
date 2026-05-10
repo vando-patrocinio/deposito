@@ -6,11 +6,12 @@ import { Card, Metric } from "@/ui";
 // Helpers visuais
 // ============================================================
 const SUB_TABS = [
-  { id: "dashboard", label: "📊 Dashboard" },
-  { id: "onts", label: "📡 ONTs" },
-  { id: "insumos", label: "🧰 Insumos" },
-  { id: "servicos", label: "🛠 Serviços" },
-  { id: "historico", label: "📚 Histórico" },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "onts", label: "ONTs" },
+  { id: "insumos", label: "Insumos" },
+  { id: "clientes", label: "Clientes (SmartOLT)" },
+  { id: "servicos", label: "Ordens de serviço" },
+  { id: "historico", label: "Histórico" },
 ];
 
 const STATUS_COLORS = {
@@ -752,6 +753,7 @@ export default function EstoquePanel() {
       {tab === "dashboard" && <DashboardSection dashboard={data.dashboard} consumables={data.consumables} />}
       {tab === "onts" && <OntsSection onts={data.onts} technicians={data.technicians} reload={reload} />}
       {tab === "insumos" && <InsumosSection consumables={data.consumables} technicians={data.technicians} stock={data.stock} reload={reload} />}
+      {tab === "clientes" && <ClientesSection />}
       {tab === "servicos" && <ServicosSection services={data.services} technicians={data.technicians} consumables={data.consumables} reload={reload} />}
       {tab === "historico" && <HistoricoSection history={data.history} reload={reload} />}
     </div>

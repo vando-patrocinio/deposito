@@ -896,3 +896,90 @@ async def auto_close_service_from_ticket(
             "used_items": [ui.model_dump() for ui in used_items],
             "ont_mac": ont_mac}
 
+
+
+# ---------------------------------------------------------------------------
+# Aba "Clientes" — pega ONUs ativas do SmartOLT com cliente + SN + fabricante (IA)
+# ---------------------------------------------------------------------------
+@router.get("/clientes")
+async def stok_clientes(only_authorized: bool = True, limit: int = 5000,
+                        identify_manufacturer_max: int = 100,
+                        user: dict = Depends(require_role("gestor"))):
+    """Lista todas as ONUs em uso pelos clientes (cache do SmartOLT).
+
+    Para cada ONU retorna: cliente, número de série, MAC, fabricante (detectado
+    via prefixo IEEE/CCM, com fallback Gemini Flash). O `identify_manufacturer_max`
+    limita quantas detecções por LLM são feitas por chamada (cache permanente
+    em `manufacturer_cache` cobre repetições).
+    """
+    from manufacturers import identify_manufacturer
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    q = {"company_id": cid}
+    if only_authorized:
+        q["authorization_date"] = {"$nin": [None, "", "0000-00-00"]}
+    cur = db.smartolt_onus.find(q, {"_id": 0}).limit(min(max(limit, 1), 10000))
+
+    items: list[dict] = []
+    sn_to_resolve: list[str] = []
+    async for o in cur:
+        sn = (o.get("sn") or "").strip().upper()
+        mac = (o.get("mac") or o.get("ont_mac") or "").strip()
+        items.append({
+            "client_name": o.get("name") or "(cliente sem nome)",
+            "sn": sn or None,
+            "mac": mac or None,
+            "model": o.get("onu_type_name") or None,
+            "manufacturer": None,
+            "olt_name": o.get("olt_name"),
+            "board": o.get("board"),
+            "port": o.get("port"),
+            "signal_text": o.get("signal_text") or o.get("signal_1490"),
+            "authorization_date": o.get("authorization_date"),
+            "smartolt_external_id": o.get("unique_external_id"),
+            "status": o.get("status") or "online",
+        })
+        if sn:
+            sn_to_resolve.append(sn)
+
+    # Detect manufacturers — cache primeiro (rápido), LLM fallback limitado
+    detected = await _detect_many_manufacturers(
+        sn_to_resolve[:identify_manufacturer_max], identify_manufacturer)
+
+    # Aplica nos itens
+    for it in items:
+        if it.get("sn") and it["sn"] in detected:
+            it["manufacturer"] = detected[it["sn"]]
+
+    # Estatísticas
+    by_manufacturer: dict = {}
+    for it in items:
+        m = it.get("manufacturer") or "Desconhecido"
+        by_manufacturer[m] = by_manufacturer.get(m, 0) + 1
+
+    return {
+        "total": len(items),
+        "items": items,
+        "by_manufacturer": dict(sorted(by_manufacturer.items(),
+                                       key=lambda x: -x[1])),
+        "identified": sum(1 for i in items if i.get("manufacturer")),
+    }
+
+
+async def _detect_many_manufacturers(sns: list[str], identify_fn) -> dict:
+    """Detecta fabricantes em paralelo, cache-friendly. Limita concorrência
+    para não sobrecarregar Gemini."""
+    import asyncio
+    sem = asyncio.Semaphore(6)
+
+    async def one(sn: str):
+        async with sem:
+            try:
+                return sn, await identify_fn(sn)
+            except Exception as e:
+                logger.warning("[clientes] detect %s falhou: %s", sn[:8], e)
+                return sn, None
+
+    results = await asyncio.gather(*[one(s) for s in sns], return_exceptions=False)
+    return {s: m for s, m in results if m}
+

@@ -1,0 +1,34 @@
+{
+  "summary": "Tested the new 'Clientes (SmartOLT)' sub-tab in Estoque (renomear Servico->Cliente + nova aba). Backend GET /api/stok/clientes works perfectly (total=1749, identified=14, by_manufacturer={Desconhecido:1735, Nokia/Alcatel-Lucent:9, Intelbras:5}, all 12 expected keys per item incl. manufacturer/sn/mac/olt_name/board/port/signal_text/authorization_date). HOWEVER, the frontend ClientesSection component is COMPLETELY MISSING from /app/frontend/src/EstoquePanel.js — clicking the 'Clientes (SmartOLT)' sub-tab produces an Uncaught runtime error 'ReferenceError: ClientesSection is not defined' (caught at EstoquePanel render). The other sub-tabs (Dashboard, ONTs, Insumos, Ordens de servico, Historico) and the rename of Servicos->Ordens de servico are working correctly. data-testid=estoque-tab-clientes EXISTS and is clickable, but rendering crashes the whole EstoquePanel.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "EstoquePanel.js / ClientesSection", "issue": "ReferenceError: ClientesSection is not defined. Line 756 references <ClientesSection /> but the component is never declared/imported anywhere in the codebase (grep across /app/frontend/src/ confirms only the JSX usage exists). Tab dashboard/onts/insumos/servicos/historico work, but clicking 'Clientes (SmartOLT)' breaks the entire Estoque panel with an uncaught runtime error overlay.", "selector": "[data-testid=estoque-tab-clientes]", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [
+      {"flow": "Estoque > Clientes (SmartOLT) sub-tab", "issue": "Tab cannot render at all — runtime crash. None of the required UI elements exist: stat cards, table with 7 columns, clientes-search, clientes-manuf-filter, clientes-reload, .pill--accent, '500 de N' warning. api.stokClientes() is correctly defined in api.js but is never called because component is missing.", "affected_selectors": ["[data-testid=clientes-search]", "[data-testid=clientes-manuf-filter]", "[data-testid=clientes-reload]", ".pill--accent"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "URGENT: Implement the missing ClientesSection React component inside /app/frontend/src/EstoquePanel.js (or import it). Component must: (1) call api.stokClientes(200) on mount; (2) render 5 stat cards (Clientes total, Identificados+%, top-3 fabricantes); (3) render a table with 7 columns Cliente | Numero de serie | MAC | Marca/Fabricante | OLT/Slot/PON | Sinal | Autorizacao; (4) provide data-testid=clientes-search (filter por cliente/SN/MAC/OLT em tempo real), data-testid=clientes-manuf-filter (select com opcoes derivadas de by_manufacturer), data-testid=clientes-reload (botao Atualizar); (5) usar classe pill--accent (teal) quando manufacturer truthy, classe pill neutra quando ausente/'Desconhecido'; (6) limitar exibicao a 500 linhas com aviso 'Mostrando 500 de N resultados — use o filtro para refinar' quando length>500. Hint: a tela esta dentro de um ErrorBoundary, mas o erro ainda derruba o painel inteiro do Estoque para o usuario.",
+    "Considerar adicionar um ErrorBoundary local em EstoquePanel para que falhas em uma subaba nao quebrem todo o painel (sugestao defensiva)."
+  ],
+  "critical_code_review_comments": [
+    "EstoquePanel.js:756 referencia <ClientesSection /> que nao existe — provavelmente o componente foi esquecido durante o split entre frontend/api e o painel. ESLint react/no-undef nao foi acionado pois o build pulou check (apenas 24 warnings, no error).",
+    "EstoquePanel.js esta com 762 linhas — proximo ao limite de 700; ao adicionar ClientesSection considerar extrair cada *Section em arquivos separados (DashboardSection.js, OntsSection.js, ClientesSection.js, etc.) para manter manutenibilidade.",
+    "Backend /api/stok/clientes esta bem implementado (semaforo de 6 paralelos, cache por prefix em manufacturer_cache, fallback Gemini). Apenas confirmar que limit hardcoded de 10000 e identify_manufacturer_max default=100 atendem o caso real (1749 ONUs)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "0% (Clientes sub-tab nao renderiza)"},
+  "test_credentials": "admin@empresa.com / 123456 (em /app/memory/test_credentials.md)",
+  "seed_data_creation": "Nenhum seed criado. Banco ja contem 1749 ONUs em smartolt_onus.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Apos main agent implementar ClientesSection, retestar: (1) clicar [data-testid=estoque-tab-clientes] e verificar que NAO ha runtime error; (2) confirmar 5 stat cards visiveis; (3) confirmar tabela com 7 cabecalhos; (4) digitar 'intelbras' em [data-testid=clientes-manuf-filter] e confirmar filtragem; (5) verificar .pill--accent presente para itens com manufacturer e neutro para Desconhecido; (6) validar mensagem 'Mostrando 500 de 1749' (com identify_manufacturer_max=200 e total=1749, algumas linhas terao manufacturer Nokia/Intelbras e a maioria 'Desconhecido'). A primeira chamada pode demorar ~10-30s; usar timeout de no minimo 35s no playwright.",
+  "rca of the issue": "Causa raiz: o componente React 'ClientesSection' nao foi declarado em /app/frontend/src/EstoquePanel.js, embora seja referenciado na linha 756 ({tab === 'clientes' && <ClientesSection />}). grep -rn 'ClientesSection' /app/frontend/src/ retorna apenas 1 match (a propria utilizacao JSX). A SUB_TABS list inclui 'clientes' e a api.stokClientes esta definida em api.js, mas o componente foi omitido. Reproducao: login admin > Estoque > clicar 'Clientes (SmartOLT)' -> overlay de Uncaught runtime error 'ReferenceError: ClientesSection is not defined at EstoquePanel'. Mitigacao: implementar o componente conforme features_or_bugs_to_test no review_request, consumindo api.stokClientes e renderizando stat cards + tabela com os data-testids especificados."
+}
