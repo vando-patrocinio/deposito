@@ -1,0 +1,88 @@
+{
+  "theme": "Light",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) - Modified for Sober/Clean SaaS with Purple Accent",
+  "design_tokens": {
+    "colors": {
+      "primary": "#7c3aed",
+      "primary_hover": "#6d28d9",
+      "primary_tonal": "#f5f3ff",
+      "secondary_red": "#ef4444",
+      "tertiary_yellow": "#eab308",
+      "background_app": "#f8fafc",
+      "background_surface": "#ffffff",
+      "text_main": "#0f172a",
+      "text_muted": "#64748b",
+      "border": "#e2e8f0"
+    },
+    "typography": {
+      "font_family_heading": "Manrope, sans-serif",
+      "font_family_body": "IBM Plex Sans, sans-serif",
+      "breadcrumb": "text-[10px] uppercase tracking-widest text-slate-500 font-semibold",
+      "page_title": "text-2xl font-bold text-slate-900 tracking-tight",
+      "section_label": "text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-4",
+      "table_header": "text-[10px] uppercase tracking-wider text-slate-500 font-semibold pb-3"
+    },
+    "spacing_and_radius": {
+      "pill": "rounded-full",
+      "card": "rounded-xl",
+      "table_row": "py-4",
+      "sidebar_width": "w-64",
+      "page_padding": "p-8"
+    },
+    "shadows": {
+      "subtle": "shadow-sm border border-slate-100"
+    }
+  },
+  "navigation_structure": [
+    {
+      "category": "NAVEGAÇÃO",
+      "items": [
+        {"label": "Dashboard", "icon": "ChartPie"},
+        {"label": "Lousa", "icon": "Kanban"},
+        {"label": "Estoque", "icon": "Package"},
+        {"label": "IA Center", "icon": "Brain"}
+      ]
+    },
+    {
+      "category": "GESTÃO",
+      "items": [
+        {"label": "Colaboradores", "icon": "Users"},
+        {"label": "Praças", "icon": "MapPin"},
+        {"label": "Usuários", "icon": "UserCircle"},
+        {"label": "Auditoria", "icon": "ClipboardList"},
+        {"label": "Espelho de Ponto", "icon": "Clock"}
+      ]
+    },
+    {
+      "category": "CONFIGURAÇÕES",
+      "items": [
+        {"label": "Configurações", "icon": "Settings"},
+        {"label": "Logs", "icon": "Terminal"}
+      ]
+    }
+  ],
+  "components_blueprint": {
+    "AppShell": "Flex layout with fixed left sidebar (w-64) and flex-1 main content area. Main area contains fixed TopBar and scrollable PageContainer.",
+    "Sidebar": "Fixed left, white bg, right border (border-slate-200). Top: Logo LIGO + 'Pro' badge (rounded-full bg-violet-100 text-violet-700). Tenant Card: Flex row, company logo (avatar) + Name + CNPJ, bg-slate-50 rounded-xl p-3 mx-4. Nav Groups: MT-6, 'NAVEGAÇÃO' label. Nav Items: Flex row, rounded-full pill shape. Default: text-slate-600, hover:bg-slate-50. Active: text-violet-700, bg-violet-50. Icon always violet-600.",
+    "TopBar": "Sticky top, white bg, border-b border-slate-200, px-8 py-4 flex justify-between items-center. Left: Breadcrumb (e.g., DASHBOARD / VISÃO GERAL) + Title (e.g., Visão Geral). Right: Actions toolbar with pill buttons (rounded-full). Primary: bg-violet-600 text-white. Secondary: bg-red-500 text-white. Tertiary: bg-yellow-500 text-white.",
+    "KPIBadge": "Inline flex, items-center, gap-2, bg-white rounded-full px-3 py-1 border border-slate-200. Left: Colored 8px circle (bullet). Middle: Label (text-xs text-slate-500). Right: Value (text-sm font-bold text-slate-900).",
+    "SubTabs": "Pill-style tabs. Container: inline-flex gap-1 bg-slate-100 p-1 rounded-full. Tab item: rounded-full px-4 py-1.5 text-sm font-medium text-slate-600. Active tab: bg-white text-violet-700 shadow-sm.",
+    "DataTable": "Clean HTML table structure or shadcn Table. Thead: uppercase tiny labels, text-left. Tbody: generous py-4 padding. Highlighted client/name: text-violet-700 font-medium. Actions: right-aligned flex gap-2, using icon-only buttons (ghost, text-slate-400 hover:text-violet-600), no solid background.",
+    "StatusPill": "Tiny indicator for status (Ativo, Bloqueado). rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase. Ativo: bg-green-100 text-green-700. Bloqueado: bg-red-100 text-red-700.",
+    "FullScreenModal": "(For IA Center). Fixed inset-0 bg-slate-900/20 backdrop-blur-sm. Content: bg-white m-4 rounded-2xl flex flex-col overflow-hidden shadow-2xl. Internal sidebar or top tabs for 9 sub-sections."
+  },
+  "refactoring_strategy": {
+    "step_1": "Implement global layout shell in App.js using the new AppShell structure (Sidebar + flex-1 content + TopBar).",
+    "step_2": "Consolidate UI tokens in src/ui.js. Export pre-styled components (e.g., Card, PillButton, KPIBadge) mapping to the design_tokens.",
+    "step_3": "Override shadcn-ui defaults directly in components/ui to apply the 'pill' aesthetic globally without touching every panel file.",
+    "step_4": "Incrementally convert legacy panels (e.g., LousaAdminPanel.js, CadastroPanel.js). Replace inline styles with the new ui.js components or Tailwind cascade classes.",
+    "step_5": "Enforce data-testid attributes on all interactive elements (buttons, nav items, tabs) for testability."
+  },
+  "shadcn_utilization": {
+    "Button": "Modify default radius: replace 'rounded-md' with 'rounded-full'. Setup color variants (violet, red, yellow).",
+    "Badge": "Use for StatusPill. Set default to rounded-full, text-[10px], uppercase.",
+    "Table": "Utilize for lists. Customize TableHead with the 'table_header' typography token. Remove generic borders, keep rows clean.",
+    "Tabs": "Modify TabsList to use bg-slate-100, rounded-full, p-1. Modify TabsTrigger for rounded-full, active state bg-white, text-violet-700, shadow-sm."
+  },
+  "mockup_ascii": "+----------------------+-----------------------------------------------------+\n| LIGO [Pro]           | DASHBOARD / VISUALIZAÇÃO                            |\n|                      | Dashboard Financeiro    (Action1) (Action2)         |\n| [ Tenant Logo/Name ] +-----------------------------------------------------+\n|                      | [ Total: 15 ] [ Ativos: 10 ] [ Bloqueados: 5 ]      |\n| NAVEGAÇÃO            |                                                     |\n| * Dashboard          | ( Tab 1 ) ( Tab 2 )                                 |\n| * Lousa              |                                                     |\n| * Estoque            | NOME DO CLIENTE     STATUS      PLANO       AÇÕES   |\n| * IA Center          | --------------------------------------------------- |\n|                      | Joao da Silva       [ATIVO]     Fibra 500M  [Edit]  |\n| GESTÃO               |                                                     |\n| * Colaboradores      | Maria Oliveira      [BLOQ]      Fibra 300M  [Edit]  |\n| ...                  +-----------------------------------------------------+"
+}
