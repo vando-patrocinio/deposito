@@ -1,5 +1,31 @@
 # PontoIA — Changelog
 
+## Feb 10, 2026 — Aba Assinantes (Subscribers) com auto-link por telefone
+
+### Backend
+- **Phone normalizer** (`/app/backend/phone_normalizer.py`): converte qualquer formato BR (`5521998176526@c.us`, `+55 (21) 99817-6526`, `021998176526`, `21 99817-6526`) para canônico `5521998176526`. Função `get_phone_lookup_variants()` retorna variantes para casar com cadastros antigos.
+- **Subscribers CRUD** (`routes/subscribers.py`): assinante com phones[] + addresses[] + tags + plan + status (ATIVO/BLOQUEADO/SUSPENSO/CANCELADO/EM_INSTALACAO/AGUARDANDO_VIABILIDADE/SEM_VIABILIDADE/PROSPECT/INADIMPLENTE). Document mascarado na listagem (`***-XX`), full apenas no detalhe.
+- **Match service**: `find_subscriber_by_phone()` retorna `matched | conflict | not_found` + auditoria em `subscriber_match_log`.
+- **Subscriber context**: `build_subscriber_context()` monta bloco de texto para injetar no system_prompt do agente IA — nome, status, plano, localização (bairro/cidade), tags, notas, últimas 5 chamadas resumidas + regras de privacidade.
+- **CSV import** (`POST /import`): aceita colunas PT-BR (`nome, telefone_principal, plano, status, ...`), normaliza phones, detecta conflitos, retorna `{created, updated, errors, conflicts}`.
+- **Conflitos**: `GET /subscribers/conflicts` lista phones com >1 vínculo (aggregation).
+- **Auto-link integrado em 3 pontos do aihub**:
+  - `POST /api/aihub/calls/outbound` → vincula `subscriber_id` ao iniciar chamada
+  - `POST /api/aihub/webhooks/call-event` → vincula `subscriber_id` + `subscriber_match_status` ao receber evento
+  - `POST /api/aihub/agents/{id}/playground` → aceita `subscriber_id` opcional, injeta `build_subscriber_context()` no prompt
+- Mensagens do playground persistem `subscriber_id` para `/subscribers/{id}/history` agregar conversas IA.
+
+### Frontend
+- `SubscribersPanel.js`: lista com filtros (busca, status, plano), formulário completo (telefones múltiplos com checkbox principal/WhatsApp, endereço primário, tags), histórico com calls + sessões IA, importador CSV com instruções e relatório.
+- Sidebar: novo item **"Assinantes"** no grupo Pessoas (entre Cadastro e Praças) com ícone UserCircle.
+- `TabPermissionsCard.js`: aba registrada em `TAB_DEFINITIONS` + ticada por default para administrador/auditor/gestor (regra do user). Merge automático aplica para configs antigas.
+
+### Tests
+- `iteration_37.json`: **19/19 pytest backend OK** + frontend smoke completo. Vando Patrocinio (`sub-c1a6d684e0`, telefone `5521998176526`) renderiza com pill ATIVO, plano, tags, e formulário de edição abre populado.
+- Validado: 4 formatos de phone diferentes matcham o mesmo subscriber, webhook auto-vincula, outbound persiste mesmo com falha de MB, playground com `subscriber_id` faz a IA chamar o cliente pelo nome.
+
+---
+
 ## Feb 10, 2026 — Auto-merge de permissões para abas novas
 
 ### Frontend

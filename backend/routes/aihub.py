@@ -705,10 +705,12 @@ async def webhook_call_event(payload: Dict[str, Any]):
         phone_for_lookup = (payload.get("caller") or payload.get("from")
                             or payload.get("callee") or payload.get("to") or "")
         subscriber_id = None
+        match_status = None
         if phone_for_lookup:
             try:
                 match = await find_subscriber_by_phone(company_id, phone_for_lookup)
-                if match.get("status") == "matched":
+                match_status = match.get("status")
+                if match_status == "matched":
                     subscriber_id = match["subscriber"]["id"]
             except Exception as e:
                 logger.warning("[webhook] subscriber lookup falhou: %s", e)
@@ -728,6 +730,8 @@ async def webhook_call_event(payload: Dict[str, Any]):
         }
         if subscriber_id:
             update_set["subscriber_id"] = subscriber_id
+        if match_status:
+            update_set["subscriber_match_status"] = match_status
         await db.aihub_calls.update_one(
             {"company_id": company_id, "external_id": str(call_id)},
             {"$set": update_set, "$setOnInsert": {
