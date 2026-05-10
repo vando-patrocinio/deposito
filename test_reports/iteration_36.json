@@ -1,0 +1,37 @@
+{
+  "summary": "Iter36 — Backend + Frontend testing do novo módulo Atendimento IA (aihub). 18/18 pytest passaram cobrindo catálogos, CRUD agentes, playground multi-turn (Gemini 2.5 Flash via Emergent LLM Key), sessions/messages, integrações (MagnusBilling + WhatsApp Cloud) com mascaramento de secrets e merge inteligente, endpoints de teste de credenciais retornando 400 sem config / ok=false com config bogus, webhook receiver público, dashboard e cleanup pós-DELETE. Frontend smoke: login → sidebar 'Atendimento IA' → 5 abas renderizam → criar agente via formulário → playground envia mensagem e recebe resposta da IA (bolha visível).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Atendimento IA → Playground", "issues": ["A bolha da mensagem do USUÁRIO no playground aparece com cor/contraste baixo: no DOM o texto 'oi' está presente (turn_count=3 confirmado), mas visualmente fica invisível/quase branco no fundo claro do chat. Verificar estilo da bolha role='user' em AIHubPanel.js (provavelmente background-color identical to container). Bolha do assistant aparece corretamente. Issue cosmético, não bloqueia funcionalidade."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter36_aihub.py",
+    "/app/test_reports/pytest/iter36_results.xml"
+  ],
+  "action_items": [
+    "(Cosmético) Ajustar contraste da bolha de mensagem do usuário no playground em AIHubPanel.js (~linha 441 messages container): garantir background diferenciado (ex.: bg azul/verde claro) para role='user' vs assistant, e garantir text color visível em ambos os temas (light/dark)."
+  ],
+  "critical_code_review_comments": [
+    "aihub.py:165–180 create_agent retorna doc com possíveis chaves duplicadas após `**payload.model_dump()` + insert_one mutando dict — usa-se `dict(doc)` no insert, então o `_id` é setado no original. Depois `doc.pop('_id', None)` limpa. OK, mas seria mais limpo passar `dict(doc)` e retornar o original sem precisar do pop.",
+    "aihub.py:236 session_id default uses agent id only — se duas requests simultâneas iniciarem playground sem session_id ao mesmo tempo, geram session_ids únicos via uuid hex[:8]. OK.",
+    "aihub.py:303 turn_count = count_documents do session_id inteiro (sem filtro por company_id). Como session_id é único por agent + uuid, colisão cross-tenant é improvável, mas adicionar `company_id` ao count seria mais defensivo.",
+    "aihub.py:373–377 merge inteligente de secrets — só checa se valor contém '•'. Se usuário colocar '•' literal numa key real (raríssimo), perderia o valor. Aceitável; documentar.",
+    "aihub.py:557–594 webhook receiver é público (sem auth) por design — comentário no código já alerta para IP allowlist via nginx. OK para MVP.",
+    "aihub.py:566–571 webhook salva payload bruto em aihub_webhook_events sem limit de tamanho — payload muito grande pode crescer collection. Considerar truncar se > N kB.",
+    "AIHubPanel.js:441 — bolha de mensagem do usuário aparentemente sem background contrastante (vide design_issues acima).",
+    "Catálogo SUPPORTED_MODELS hardcoded em python — ok para MVP. Se mudar com frequência, mover para config/env.",
+    "delete_agent (aihub.py:210) limpa aihub_conversations e aihub_messages, mas NÃO limpa aihub_calls vinculadas (se houver). Nesta iteração calls não estão vinculadas a agent_id, então OK."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter36_aihub.py (novo, 18 tests)"],
+  "success_rate": {"backend": "100% (18/18 pytest)", "frontend": "smoke 100% (5/5 abas, criação+playground+cleanup OK)"},
+  "test_credentials": "admin@empresa.com / 123456 (role=administrador, herda permissão de gestor — funciona corretamente em require_role('gestor'))",
+  "seed_data_creation": "Criados durante o teste e LIMPOS via fixtures: 2 agentes TEST_*, 1 sessão de playground com mensagens, 1 chamada via webhook (external_id='call-test-XXXX' permanece em aihub_calls — acumula a cada run, mas não interfere). Integrações magnusbilling/whatsapp_cloud foram setadas com configs bogus para teste e magnusbilling foi DELETADA no fim do test_test_without_config_returns_400. whatsapp_cloud permanece com config bogus (ok ser sobrescrito pelo usuário real depois).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend aihub está sólido — 18 testes verdes. Endpoints validados: /api/aihub/{catalog/models, catalog/tools, agents (GET/POST/GET-id/PATCH/DELETE), agents/{id}/playground, agents/{id}/sessions, sessions/{sid}/messages, integrations (GET/PUT/DELETE), integrations/{magnusbilling,whatsapp_cloud}/test, webhooks/call-event, history/calls, dashboard}. EMERGENT_LLM_KEY funcional com gemini-2.5-flash (resposta 'Olá.' confirmada em playground). Mascaramento de secrets confirmado: '•' aparece no GET /integrations e merge inteligente preserva valor real ao re-PUT com secret mascarado. Webhook é público sem auth. Single design issue: bolha de mensagem user no playground UI tem contraste baixo (issue visual não bloqueante).",
+  "rca of the issue": "N/A — sem bugs encontrados. Único item: bolha 'user' no chat playground aparece pouco visível no screenshot (texto presente no DOM via inner_text, mas background indistinguível do container). Provável CSS class missing/igual ao parent; trivial de corrigir aplicando uma cor distinta para .msg-user vs .msg-assistant em AIHubPanel.js."
+}

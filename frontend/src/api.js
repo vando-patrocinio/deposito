@@ -304,4 +304,32 @@ export const api = {
     const base = client.defaults.baseURL.replace(/\/$/, "");
     return `${base}/vehicle-checklist/${id}/pdf`;
   },
+
+  // ===== Atendimento IA Hub =====
+  aihubModels: () => client.get(`/aihub/catalog/models`).then((r) => r.data),
+  aihubTools: () => client.get(`/aihub/catalog/tools`).then((r) => r.data),
+  aihubAgentsList: () => client.get(`/aihub/agents`).then((r) => r.data),
+  aihubAgentCreate: (d) => client.post(`/aihub/agents`, d).then((r) => r.data),
+  aihubAgentGet: (id) => client.get(`/aihub/agents/${id}`).then((r) => r.data),
+  aihubAgentUpdate: (id, d) => client.patch(`/aihub/agents/${id}`, d).then((r) => r.data),
+  aihubAgentDelete: (id) => client.delete(`/aihub/agents/${id}`).then((r) => r.data),
+  aihubPlayground: (id, payload) =>
+    client.post(`/aihub/agents/${id}/playground`, payload).then((r) => r.data),
+  aihubSessions: (id) => client.get(`/aihub/agents/${id}/sessions`).then((r) => r.data),
+  aihubSessionMessages: (sid) => client.get(`/aihub/sessions/${sid}/messages`).then((r) => r.data),
+  aihubIntegrations: () => client.get(`/aihub/integrations`).then((r) => r.data),
+  aihubIntegrationSave: (type, config) =>
+    client.put(`/aihub/integrations/${type}`, { config }).then((r) => r.data),
+  aihubIntegrationDelete: (type) =>
+    client.delete(`/aihub/integrations/${type}`).then((r) => r.data),
+  aihubMagnusTest: () =>
+    client.post(`/aihub/integrations/magnusbilling/test`).then((r) => r.data),
+  aihubWhatsappTest: () =>
+    client.post(`/aihub/integrations/whatsapp_cloud/test`).then((r) => r.data),
+  aihubMagnusDids: () => client.get(`/aihub/magnusbilling/dids`).then((r) => r.data),
+  aihubMagnusCdr: (limit = 100) =>
+    client.get(`/aihub/magnusbilling/cdr`, { params: { limit } }).then((r) => r.data),
+  aihubCalls: (limit = 100) =>
+    client.get(`/aihub/history/calls`, { params: { limit } }).then((r) => r.data),
+  aihubDashboard: () => client.get(`/aihub/dashboard`).then((r) => r.data),
 };

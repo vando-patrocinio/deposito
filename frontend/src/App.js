@@ -4,7 +4,7 @@ import {
   Smartphone, LogOut, ChevronRight, Brain, BarChart3, Layout,
   Boxes, Sparkles, Users, MapPin, ShieldCheck, ClipboardList,
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
-  Building2, Eye, EyeOff, Sun, Moon,
+  Building2, Eye, EyeOff, Sun, Moon, Bot,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
@@ -20,6 +20,7 @@ import LousaAdminPanel from "@/LousaAdminPanel";
 import EstoquePanel from "@/EstoquePanel";
 import AICenterPanel from "@/AICenterPanel";
 import AiRankingPanel from "@/AiRankingPanel";
+import AIHubPanel from "@/AIHubPanel";
 import NotificationsBell from "@/NotificationsBell";
 import OfflineTimeBanner from "@/OfflineTimeBanner";
 import ServerClock from "@/ServerClock";
@@ -109,6 +110,7 @@ const NAV_GROUPS = [
     items: [
       { id: "ai-center", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"], asModal: true },
       { id: "ai-ranking", icon: Sparkles, label: "Avaliação IA", roles: ["gestor", "auditor", "administrador"] },
+      { id: "aihub", icon: Bot, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador"] },
     ],
   },
   {
@@ -580,6 +582,7 @@ function AppContent() {
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} />}
           {view === "estoque" && <EstoquePanel />}
           {view === "ai-ranking" && <AiRankingPanel />}
+          {view === "aihub" && <AIHubPanel />}
           {view === "cadastro" && <CadastroPanel />}
           {view === "pracas" && <PracasPanel />}
           {view === "users" && <UsersPanel />}
