@@ -994,12 +994,12 @@ async def list_alerts(user: dict = Depends(require_role("gestor"))):
             })
 
     # 4) SLA alerts via Productivity (boas práticas contact center)
-    # Dispara quando atendente atual: %ocioso > 60% OU FRT > 30min
+    # Dispara quando atendente atual: %ocioso > 30% OU FRT > 10min
     try:
         prod = await attendant_productivity(days=7, user=user)  # type: ignore[arg-type]
         for it in prod.get("items", []):
             # Idle alto
-            if it.get("idle_pct") is not None and it["idle_pct"] > 60 \
+            if it.get("idle_pct") is not None and it["idle_pct"] > 30 \
                     and it.get("logged_seconds", 0) > 3600:  # ao menos 1h logada
                 items.append({
                     "id": f"a-idle-{it['user_id']}",
@@ -1011,7 +1011,7 @@ async def list_alerts(user: dict = Depends(require_role("gestor"))):
                     "created_at": now_iso(),
                 })
             # FRT alto
-            if it.get("frt_avg_seconds") and it["frt_avg_seconds"] > 1800:
+            if it.get("frt_avg_seconds") and it["frt_avg_seconds"] > 600:
                 mins = round(it["frt_avg_seconds"] / 60)
                 items.append({
                     "id": f"a-frt-{it['user_id']}",
@@ -1019,7 +1019,7 @@ async def list_alerts(user: dict = Depends(require_role("gestor"))):
                     "severity": "warning",
                     "user_id": it["user_id"],
                     "title": f"{it['name']} demorando {mins}min pra primeira resposta",
-                    "subtitle": "Acima do SLA (5min ideal, 30min crítico)",
+                    "subtitle": "Acima do SLA (10min limite)",
                     "created_at": now_iso(),
                 })
     except Exception:
