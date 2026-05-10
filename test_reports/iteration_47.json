@@ -1,0 +1,33 @@
+{
+  "summary": "Iter 47 — Validated Planos CRUD + 4 subscriber business rules end-to-end. BACKEND 17/17 pytest pass (test_iter47_plans_and_subscriber_rules.py): Plans list sorted by price asc; POST derives speed_label (500→'500 Mega', 1000→'1 Giga'); duplicate name returns 409; PUT rename to existing returns 409; PUT changes monthly_price and persists; DELETE of in-use plan returns 409 (Fibra 500 still has subscriber). Subscriber REGRA 1: POST with external_code='HACK-9999' is ignored — system returns ASS-XXXXX (5-digit zero-padded sequential, e.g. ASS-00007); PATCH with external_code='HACK-9999' silently strips and keeps original ASS-XXXXX. REGRA 2: POST with name='TEST_Maria José Silva' and no nickname → nickname auto-derived to 'Test_Maria' (first word, title-cased); POST with nickname='Beto' keeps 'Beto'; PATCH changing name when nickname matched old first-word DOES auto-update (Test_Maria → Test_João); PATCH changing name when nickname was custom ('Beto') preserves it across rename. REGRA 3: POST with 2 phones (both is_primary=false in payload) returns both with is_primary=true; POST /{sid}/phones with is_primary=false also forces is_primary=true. REGRA 4: POST with plan_id hydrates plan_name/plan_speed/plan_price from snapshot; PATCH plan_id re-hydrates to new plan ('1 Giga'). FRONTEND validated via Playwright at https://dual-combine-3.preview.emergentagent.com — login admin@empresa.com/123456 works; Clientes nav group expands and shows children 'Assinantes' + 'Planos'; Planos page renders header 'Planos Comerciais' + 'Novo plano' button + 5 plan cards (Fibra 300/500/1Giga + 2 TEST_Dup leftover) with name, speed_label, R$ price, '+X% ao ano (reajuste)' badge, Editar/Toggle/Delete buttons; clicking Novo plano opens PlanEditor inline with all 4 fields (name, speed_down, price, adjustment) and Save/Cancel; Assinantes → Novo opens SubscriberEditor with: (a) 'ID DO ASSINANTE (GERADO PELO SISTEMA)' field disabled with value 'ASS- (gerado ao salvar)' — readonly enforced; (b) 'APELIDO (DÊ DOIS CLIQUES PARA EDITAR)' field readonly by default (grey bg); (c) 'PLANO (ESCOLHA DA ABA PLANOS)' is a <select> with '— Sem plano —' default and lists all plans formatted 'Fibra 500 Mega · 500 Mega · R$ 99,90/mês'; (d) telefones section has green banner 'Regra: cada telefone cadastrado vincula automaticamente este assinante a quem entrar em contato (WhatsApp ou ligação) por aquele número.' and each phone row shows green 'PRINCIPAL · VINCULA' pill (no checkbox).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Plan dropdown inside SubscriberEditor", "issues": ["Console hydration warning: '<span> cannot be a child of <option>' — comes from Emergent dev-tool instrumentation (x-source-var spans) inside <option> elements in PlansPanel/SubscribersPanel. Dev-only noise, not visible to users, but may need attribute filtering for option children."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter47_plans_and_subscriber_rules.py",
+    "/app/test_reports/pytest/iter47_results.xml"
+  ],
+  "action_items": [
+    "(OPTIONAL CLEANUP) 2 stray TEST_Dup_* plans linger in DB from intentional duplicate-name test cases — admin can delete them via UI Planos tab. Not blocking.",
+    "(MINOR) Hydration warning '<span> in <option>' from dev instrumentation — harmless but pollutes the console."
+  ],
+  "critical_code_review_comments": [
+    "_replace_addresses still uses primary_set logic for addresses while phones forces all primary — intentional asymmetry but worth a comment to avoid future confusion.",
+    "Plans DELETE requires role 'administrador' while all other Plans endpoints require 'gestor' — could surprise gestor users who can create/edit but not delete. Either align both to gestor or document the difference in UI (disable Delete button for gestor).",
+    "_derive_nickname uses .split()[0].title() — for names like 'TEST_Maria José' it returns 'Test_Maria' (title-cases underscore). Acceptable for prod names, but worth noting for tests that use TEST_ prefix."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter47_plans_and_subscriber_rules.py (new — 17 pytest covering Plans CRUD + 4 subscriber rules)"
+  ],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100% on all visual + interactive spec items (plans grid, plan editor, subscriber ID readonly, apelido double-click label, plan dropdown, phones banner + PRINCIPAL·VINCULA pill)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Test run creates and deletes TEST_Plan_*, TEST_Dup_* plans and TEST_* subscribers. Cleanup mostly works but the second duplicate-name plan in test_duplicate_name_409 is intentionally not deleted (since the duplicate was rejected with 409). 2 TEST_Dup_* plans remain in Empresa Demo — purely cosmetic.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 4 business rules (auto external_code, auto-nickname + customization preservation, all phones primary, plan snapshot hydration) plus complete Plans CRUD are working end-to-end and frontend renders the new UI correctly. Backend test file: /app/backend/tests/test_iter47_plans_and_subscriber_rules.py — 17 pytest, runs in ~3.5s, no network mocks. The only follow-ups are cosmetic (clean 2 leftover TEST_Dup_* plans, hydration warning from dev instrumentation, gestor vs administrador role mismatch for DELETE /api/plans)."
+}

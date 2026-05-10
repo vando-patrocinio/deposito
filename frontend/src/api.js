@@ -431,4 +431,11 @@ export const api = {
   subscribersImport: (formData) =>
     client.post(`/subscribers/import`, formData,
       { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data),
+
+  // ----- Plans CRUD -----
+  plansList: (params = {}) => client.get(`/plans`, { params }).then((r) => r.data),
+  planCreate: (data) => client.post(`/plans`, data).then((r) => r.data),
+  planGet: (id) => client.get(`/plans/${id}`).then((r) => r.data),
+  planUpdate: (id, data) => client.put(`/plans/${id}`, data).then((r) => r.data),
+  planDelete: (id) => client.delete(`/plans/${id}`).then((r) => r.data),
 };

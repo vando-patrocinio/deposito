@@ -65,9 +65,15 @@ class SubscriberIn(BaseModel):
     nickname: Optional[str] = Field(default=None, max_length=120)
     document: Optional[str] = Field(default=None, max_length=30)  # CPF/CNPJ
     rg_ie: Optional[str] = Field(default=None, max_length=30)
+    # external_code é AUTO-GERADO pelo sistema (sequencial ASS-XXXXX).
+    # Ignoramos qualquer valor enviado pelo cliente. Mantemos no model só
+    # para retro-compat de testes/payloads antigos.
     external_code: Optional[str] = Field(default=None, max_length=80)
     email: Optional[str] = Field(default=None, max_length=200)
     status: SUBSCRIBER_STATUS = "ATIVO"
+    # Plano referenciado por id. Os campos antigos (plan_name/speed/price)
+    # ficam como snapshot read-only no documento (hidratados a partir do plano).
+    plan_id: Optional[str] = Field(default=None, max_length=40)
     plan_name: Optional[str] = Field(default=None, max_length=120)
     plan_speed: Optional[str] = Field(default=None, max_length=40)
     plan_price: Optional[float] = Field(default=None, ge=0)
@@ -96,9 +102,12 @@ class SubscriberUpdate(BaseModel):
     nickname: Optional[str] = None
     document: Optional[str] = None
     rg_ie: Optional[str] = None
+    # external_code é IMUTÁVEL após criação (gerado pelo sistema).
+    # Mantido na model só pra não quebrar payloads antigos — ignorado no update.
     external_code: Optional[str] = None
     email: Optional[str] = None
     status: Optional[SUBSCRIBER_STATUS] = None
+    plan_id: Optional[str] = None
     plan_name: Optional[str] = None
     plan_speed: Optional[str] = None
     plan_price: Optional[float] = None
@@ -130,20 +139,58 @@ def _cid(user: dict) -> str:
     return user.get("company_id") or DEMO_COMPANY_ID
 
 
+async def _next_subscriber_seq(company_id: str) -> int:
+    """Counter atômico pra gerar external_code sequencial (ASS-XXXXX)."""
+    res = await db.counters.find_one_and_update(
+        {"_id": f"subscribers-{company_id}"},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=True,
+    )
+    return int(res.get("seq", 1))
+
+
+def _derive_nickname(name: str) -> str:
+    """REGRA: apelido default = primeiro nome (capitalizado).
+    Ex.: 'João Silva da Costa' → 'João'."""
+    if not name:
+        return ""
+    first = name.strip().split()[0]
+    return first.title() if first else ""
+
+
+async def _hydrate_plan(company_id: str, plan_id: Optional[str]) -> dict:
+    """Carrega snapshot do plano (name/speed/price) a partir do plan_id."""
+    if not plan_id:
+        return {}
+    p = await db.plans.find_one(
+        {"company_id": company_id, "id": plan_id}, {"_id": 0})
+    if not p:
+        return {}
+    return {
+        "plan_name": p.get("name"),
+        "plan_speed": p.get("speed_label"),
+        "plan_price": p.get("monthly_price"),
+        "plan_annual_adjustment_pct": p.get("annual_adjustment_pct"),
+    }
+
+
 async def _replace_phones(company_id: str, subscriber_id: str,
                            phones: List[PhoneIn]) -> List[dict]:
-    """Substitui telefones do subscriber. Retorna docs criados."""
+    """Substitui telefones do subscriber.
+
+    REGRA: TODO telefone cadastrado é PRINCIPAL e VINCULANTE — ou seja, será
+    usado pra match com qualquer chamada/WhatsApp inbound. Não existe mais
+    a noção de "1 principal, N secundários": todos vinculam. O frontend não
+    pergunta mais isso ao usuário.
+    """
     await db.subscriber_phones.delete_many(
         {"company_id": company_id, "subscriber_id": subscriber_id})
     docs = []
-    primary_set = False
     for p in phones:
         normalized = normalize_brazilian_phone(p.raw_number)
         if not normalized:
             continue  # pula telefones inválidos
-        is_primary = p.is_primary and not primary_set
-        if is_primary:
-            primary_set = True
         docs.append({
             "id": f"sphone-{uuid.uuid4().hex[:10]}",
             "company_id": company_id,
@@ -151,13 +198,10 @@ async def _replace_phones(company_id: str, subscriber_id: str,
             "label": p.label,
             "raw_number": p.raw_number,
             "normalized_number": normalized,
-            "is_whatsapp": p.is_whatsapp,
-            "is_primary": is_primary,
+            "is_whatsapp": True,  # todos viáveis pra WA por padrão
+            "is_primary": True,    # REGRA: todos vinculam
             "created_at": now_iso(),
         })
-    # Se nenhum foi marcado como primary, o primeiro vira primary
-    if docs and not primary_set:
-        docs[0]["is_primary"] = True
     if docs:
         await db.subscriber_phones.insert_many([dict(d) for d in docs])
     return docs
@@ -478,17 +522,23 @@ async def create_subscriber(payload: SubscriberIn,
     cid = _cid(user)
     sid = f"sub-{uuid.uuid4().hex[:10]}"
 
-    # Verifica conflito de external_code
-    if payload.external_code:
-        existing = await db.subscribers.find_one(
-            {"company_id": cid, "external_code": payload.external_code})
-        if existing:
-            raise HTTPException(409,
-                                f"Já existe assinante com código externo {payload.external_code}.")
+    # REGRA: external_code é AUTO-GERADO. Qualquer valor enviado pelo
+    # cliente é ignorado. Formato: ASS-00001 (5 dígitos).
+    seq = await _next_subscriber_seq(cid)
+    external_code = f"ASS-{seq:05d}"
 
-    doc = payload.model_dump(exclude={"phones", "addresses"})
+    doc = payload.model_dump(exclude={"phones", "addresses",
+                                        "external_code"})
+    # REGRA: nickname default = primeiro nome se vazio
+    if not doc.get("nickname"):
+        doc["nickname"] = _derive_nickname(payload.name)
+    # Snapshot do plano (se plan_id foi enviado)
+    plan_snap = await _hydrate_plan(cid, payload.plan_id)
+    if plan_snap:
+        doc.update(plan_snap)
     doc.update({
         "id": sid,
+        "external_code": external_code,
         "company_id": cid,
         "created_at": now_iso(),
         "updated_at": now_iso(),
@@ -549,8 +599,25 @@ async def update_subscriber(sid: str, payload: SubscriberUpdate,
     cid = _cid(user)
     upd = {k: v for k, v in payload.model_dump(exclude_unset=True).items()
            if v is not None}
+    # REGRA: external_code é imutável — bloqueia tentativa de update silenciosamente
+    upd.pop("external_code", None)
     if not upd:
         raise HTTPException(400, "Nada para atualizar.")
+    # REGRA: se nome mudou e usuário NÃO setou apelido custom, mantém o atual.
+    # Se mudou nome E o nickname atual é o primeiro nome antigo, atualiza.
+    if "name" in upd and "nickname" not in upd:
+        current = await db.subscribers.find_one(
+            {"company_id": cid, "id": sid},
+            {"_id": 0, "name": 1, "nickname": 1})
+        if current:
+            old_default = _derive_nickname(current.get("name") or "")
+            if (current.get("nickname") or "") == old_default:
+                upd["nickname"] = _derive_nickname(upd["name"])
+    # Se plan_id mudou, atualiza snapshot
+    if "plan_id" in upd:
+        plan_snap = await _hydrate_plan(cid, upd["plan_id"])
+        if plan_snap:
+            upd.update(plan_snap)
     upd["updated_at"] = now_iso()
     res = await db.subscribers.update_one(
         {"company_id": cid, "id": sid}, {"$set": upd})
@@ -578,6 +645,7 @@ async def delete_subscriber(sid: str,
 @router.post("/{sid}/phones")
 async def add_phone(sid: str, payload: PhoneIn,
                      user: dict = Depends(require_role("gestor"))):
+    """REGRA: todo telefone adicionado é PRINCIPAL e VINCULANTE."""
     cid = _cid(user)
     if not await db.subscribers.find_one({"company_id": cid, "id": sid}, {"_id": 1}):
         raise HTTPException(404, "Assinante não encontrado.")
@@ -591,8 +659,8 @@ async def add_phone(sid: str, payload: PhoneIn,
         "label": payload.label,
         "raw_number": payload.raw_number,
         "normalized_number": normalized,
-        "is_whatsapp": payload.is_whatsapp,
-        "is_primary": payload.is_primary,
+        "is_whatsapp": True,
+        "is_primary": True,
         "created_at": now_iso(),
     }
     await db.subscriber_phones.insert_one(dict(doc))

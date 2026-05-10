@@ -9,6 +9,7 @@ import {
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
 import SubscribersPanel from "@/SubscribersPanel";
+import PlansPanel from "@/PlansPanel";
 import ManagerPanel from "@/ManagerPanel";
 import TimesheetView from "@/TimesheetView";
 import SettingsPanel from "@/SettingsPanel";
@@ -125,6 +126,7 @@ const NAV_GROUPS = [
         roles: ["gestor", "auditor", "administrador"],
         children: [
           { id: "subscribers", label: "Assinantes" },
+          { id: "plans", label: "Planos" },
         ],
       },
       { id: "pracas", icon: MapPin, label: "Praças", roles: ["gestor", "auditor", "administrador"] },
@@ -669,6 +671,7 @@ function AppContent() {
           {view === "aihub" && <AIHubPanel />}
           {view === "cadastro" && <CadastroPanel />}
           {view === "subscribers" && <SubscribersPanel />}
+          {view === "plans" && <PlansPanel />}
           {view === "pracas" && <PracasPanel />}
           {view === "users" && <UsersPanel />}
           {view === "manager" && <ManagerPanel />}

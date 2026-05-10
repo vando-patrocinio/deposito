@@ -3,7 +3,7 @@ import { api } from "@/api";
 import {
   UserCircle, Search, Plus, Save, X, Trash2, Edit2, Upload,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, History,
-  Filter, Download, Printer, Mail, MessageCircle, RefreshCw,
+  Filter, Download, Printer, Mail, MessageCircle, RefreshCw, Phone,
 } from "lucide-react";
 
 const STATUS_OPTIONS = [
@@ -438,7 +438,32 @@ const tdStyle = {
 ============================================================ */
 function SubscriberEditor({ data, setData, onSaved, onCancel }) {
   const [busy, setBusy] = useState(false);
+  const [nicknameEditable, setNicknameEditable] = useState(false);
+  const [plansList, setPlansList] = useState([]);
   const set = (k, v) => setData((p) => ({ ...p, [k]: v }));
+
+  /* REGRA: apelido auto-preenche com primeiro nome.
+     Só fica editável depois de DUPLO-CLIQUE no campo. */
+  const autoNickname = ((data.name || "").trim().split(/\s+/)[0] || "");
+  const nicknameDisplay = data.nickname || autoNickname;
+
+  /* Carrega planos da aba Planos para o dropdown */
+  useEffect(() => {
+    api.plansList({ active: true })
+      .then((r) => setPlansList(r.items || []))
+      .catch(() => setPlansList([]));
+  }, []);
+
+  const onPickPlan = (planId) => {
+    const p = plansList.find((x) => x.id === planId);
+    setData((d) => ({
+      ...d,
+      plan_id: planId || null,
+      plan_name: p?.name || null,
+      plan_speed: p?.speed_label || null,
+      plan_price: p?.monthly_price ?? null,
+    }));
+  };
 
   const save = async () => {
     if (!data.name || data.name.length < 2) {
@@ -469,12 +494,15 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
 
   const addPhone = () => set("phones", [
     ...(data.phones || []),
-    { raw_number: "", is_whatsapp: true, is_primary: !data.phones?.length },
+    /* REGRA: todo telefone é PRINCIPAL e VINCULANTE — usado pra match
+       em chamadas e WhatsApp inbound. Sem checkbox, sem escolha. */
+    { raw_number: "", is_whatsapp: true, is_primary: true },
   ]);
   const updPhone = (i, k, v) => {
     const next = [...(data.phones || [])];
     next[i] = { ...next[i], [k]: v };
-    if (k === "is_primary" && v) next.forEach((p, idx) => { if (idx !== i) p.is_primary = false; });
+    // Garante invariante: is_primary sempre true (mesmo se algo seto false)
+    next.forEach((p) => { p.is_primary = true; });
     set("phones", next);
   };
   const delPhone = (i) => set("phones", (data.phones || []).filter((_, idx) => idx !== i));
@@ -492,13 +520,44 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
           <input className="input" value={data.name || ""} onChange={(e) => set("name", e.target.value)}
             data-testid="sub-name" />
         </Field>
-        <Field label="Apelido">
-          <input className="input" value={data.nickname || ""}
-            onChange={(e) => set("nickname", e.target.value)} />
+        <Field label="Apelido (dê dois cliques para editar)">
+          {/* REGRA: auto-preenche com primeiro nome. Só editável após
+              double-click. Visual: read-only = fundo cinza claro. */}
+          <input className="input"
+            data-testid="sub-nickname"
+            readOnly={!nicknameEditable}
+            onDoubleClick={() => setNicknameEditable(true)}
+            onBlur={() => {
+              setNicknameEditable(false);
+              // Se ficou vazio, volta pro auto-derivado
+              if (!data.nickname?.trim()) set("nickname", "");
+            }}
+            value={nicknameEditable ? (data.nickname || "") : nicknameDisplay}
+            onChange={(e) => set("nickname", e.target.value)}
+            title={nicknameEditable
+              ? "Editando apelido — clique fora para salvar"
+              : "Dê dois cliques para editar o apelido"}
+            style={{
+              background: nicknameEditable ? undefined : "var(--bg-surface-2)",
+              cursor: nicknameEditable ? "text" : "pointer",
+              fontWeight: nicknameEditable ? 400 : 600,
+            }} />
         </Field>
-        <Field label="ID do Assinante">
-          <input className="input" value={data.external_code || ""}
-            onChange={(e) => set("external_code", e.target.value)} />
+        <Field label="ID do Assinante (gerado pelo sistema)">
+          {/* REGRA: external_code é gerado pelo backend. Aqui é apenas
+              read-only. Em criação, mostra "ASS-(novo)". */}
+          <input className="input"
+            data-testid="sub-external-code"
+            readOnly disabled
+            value={data.external_code || "ASS- (gerado ao salvar)"}
+            title="Código do assinante gerado automaticamente pelo sistema"
+            style={{
+              background: "var(--bg-surface-2)",
+              color: "var(--text-muted)",
+              cursor: "not-allowed",
+              fontFamily: "ui-monospace, monospace",
+              fontWeight: 700,
+            }} />
         </Field>
         <Field label="Filial">
           <input className="input" value={data.branch || ""}
@@ -529,18 +588,42 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 12 }}>
-        <Field label="Plano">
-          <input className="input" value={data.plan_name || ""}
-            onChange={(e) => set("plan_name", e.target.value)}
-            placeholder="Fibra 500 Mega" />
+        <Field label="Plano (escolha da aba Planos)">
+          {/* REGRA: o plano vem da aba Planos. Não é digitado.
+              Ao escolher, o backend salva snapshot de name/speed/price.
+              Reajuste anual de inflação fica no plano (não duplicado aqui). */}
+          <select className="input"
+            data-testid="sub-plan-select"
+            value={data.plan_id || ""}
+            onChange={(e) => onPickPlan(e.target.value)}>
+            <option value="">— Sem plano —</option>
+            {plansList.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} · {p.speed_label || ""} · {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(p.monthly_price || 0)}/mês
+              </option>
+            ))}
+          </select>
+          {plansList.length === 0 && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+              Nenhum plano cadastrado. Vá em <strong>Clientes → Planos</strong> para criar.
+            </div>
+          )}
         </Field>
-        <Field label="Velocidade">
-          <input className="input" value={data.plan_speed || ""}
-            onChange={(e) => set("plan_speed", e.target.value)} />
+        <Field label="Velocidade (do plano)">
+          <input className="input" readOnly disabled
+            value={data.plan_speed || "—"}
+            style={{ background: "var(--bg-surface-2)",
+                      color: "var(--text-muted)",
+                      cursor: "not-allowed" }} />
         </Field>
-        <Field label="Valor (R$)">
-          <input className="input" type="number" step="0.01" value={data.plan_price || ""}
-            onChange={(e) => set("plan_price", parseFloat(e.target.value) || null)} />
+        <Field label="Valor mensal (R$)">
+          <input className="input" readOnly disabled
+            value={data.plan_price != null
+              ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(data.plan_price)
+              : "—"}
+            style={{ background: "var(--bg-surface-2)",
+                      color: "var(--text-muted)",
+                      cursor: "not-allowed" }} />
         </Field>
         <Field label="Contratos">
           <input className="input" type="number" min="0" value={data.contracts_count || 0}
@@ -579,11 +662,22 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
         </Field>
       </div>
 
-      <Field label="Telefones (vinculam o assinante a conversas/chamadas)">
+      <Field label="Telefones — TODOS são principais e vinculam o assinante a chamadas/WhatsApp">
+        <div style={{
+          padding: "8px 12px", borderRadius: 8, marginBottom: 8,
+          background: "rgba(13,148,136,.08)",
+          border: "1px dashed rgba(13,148,136,.35)",
+          fontSize: 11, color: "#0d9488", fontWeight: 600,
+          display: "flex", alignItems: "center", gap: 6,
+        }}>
+          <Phone size={12} strokeWidth={2} />
+          Regra: cada telefone cadastrado vincula automaticamente este
+          assinante a quem entrar em contato (WhatsApp ou ligação) por aquele número.
+        </div>
         <div style={{ display: "grid", gap: 8 }}>
           {(data.phones || []).map((p, i) => (
             <div key={i} style={{
-              display: "grid", gridTemplateColumns: "2fr 1fr auto auto auto",
+              display: "grid", gridTemplateColumns: "2fr 1fr auto auto",
               gap: 8, alignItems: "center", padding: 8,
               border: "1px solid var(--border-default)", borderRadius: 8,
             }}>
@@ -591,18 +685,14 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
                 value={p.raw_number || ""}
                 onChange={(e) => updPhone(i, "raw_number", e.target.value)}
                 data-testid={`sub-phone-${i}`} />
-              <input className="input" placeholder="Rótulo"
+              <input className="input" placeholder="Rótulo (ex.: Pessoal, Esposa)"
                 value={p.label || ""} onChange={(e) => updPhone(i, "label", e.target.value)} />
-              <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
-                <input type="checkbox" checked={!!p.is_whatsapp}
-                  onChange={(e) => updPhone(i, "is_whatsapp", e.target.checked)} />
-                WhatsApp
-              </label>
-              <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
-                <input type="checkbox" checked={!!p.is_primary}
-                  onChange={(e) => updPhone(i, "is_primary", e.target.checked)} />
-                Principal
-              </label>
+              <span style={{
+                padding: "3px 9px", borderRadius: 999,
+                background: "rgba(34,197,94,.15)", color: "#15803d",
+                fontSize: 9, fontWeight: 800, letterSpacing: 0.4,
+                whiteSpace: "nowrap",
+              }}>PRINCIPAL · VINCULA</span>
               <button onClick={() => delPhone(i)} className="btn btn-ghost btn-sm"
                 style={{ color: "var(--danger)" }}>
                 <Trash2 size={12} />
