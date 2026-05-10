@@ -66,6 +66,17 @@ class SignIn(BaseModel):
     signature_data_url: Optional[str] = None  # data:image/png;base64,... (canvas)
 
 
+class ReturnConfirmIn(BaseModel):
+    """Pacote de devolução de itens — assinado pelo recebedor da empresa."""
+    receiver_name: str = Field(..., min_length=2, max_length=120)
+    receiver_role: Optional[str] = Field(default=None, max_length=80)
+    signature_data_url: str = Field(..., min_length=30)  # data:image/png;base64,...
+    notes: Optional[str] = Field(default=None, max_length=500)
+    # Lista das chaves dos itens conferidos (origem `asset|ont|insumo` + id/serial).
+    # Persistida no histórico para auditoria — não obrigatória para gerar PDF.
+    confirmed_item_keys: Optional[List[str]] = None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -343,7 +354,8 @@ def _checkbox_drawing():
 def _build_romaneio_pdf(branding: dict, collaborator: dict,
                          assets: List[dict],
                          mode: str = "delivery",
-                         extra_items: Optional[List[dict]] = None) -> bytes:
+                         extra_items: Optional[List[dict]] = None,
+                         receiver: Optional[dict] = None) -> bytes:
     """Gera o PDF do romaneio.
 
     mode="delivery" (padrão): TERMO DE RESPONSABILIDADE — colaborador recebe
@@ -357,6 +369,8 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
 
     `extra_items` — itens adicionais (ONTs/insumos) já normalizados como
     pseudo-assets para entrar na mesma tabela.
+    `receiver` — quando preenchido (modo `return`), embute a assinatura
+    digital do recebedor: `{name, role, signature_data_url, signed_at}`.
     """
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -556,24 +570,56 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
     # ---- Signature line(s) ----
     if is_return:
         # Modo devolução: 2 linhas de assinatura — colaborador (entregando)
-        # e empresa (recebendo). Sem usar assinatura digital salva nos assets,
-        # pois o ato de devolução acontece NESTE momento.
+        # e empresa (recebendo, embutida quando assinada digitalmente).
+        from reportlab.platypus import Image as RLImage
+
+        receiver_sig_flow = None
+        receiver_name_label = (
+            (receiver or {}).get("name") or branding.get("company_name") or "Empresa"
+        )
+        receiver_role_label = (
+            (receiver or {}).get("role") or "Responsável pela empresa (recebendo)"
+        )
+        receiver_signed_at = _pt_br_date((receiver or {}).get("signed_at")) if receiver else None
+        sig_url = (receiver or {}).get("signature_data_url") if receiver else None
+        if sig_url and isinstance(sig_url, str) and sig_url.startswith("data:image/"):
+            try:
+                import base64
+                b64 = sig_url.split(",", 1)[1]
+                sig_io = io.BytesIO(base64.b64decode(b64))
+                receiver_sig_flow = RLImage(sig_io, width=6 * cm, height=2 * cm,
+                                            kind="proportional")
+            except Exception as e:
+                logger.warning("[romaneio] falha embutindo assinatura recebedor: %s", e)
+                receiver_sig_flow = None
+
         sig_line = "_" * 50
+        # Lado esquerdo: colaborador (linha em branco — assinatura física no momento da devolução)
+        left_top = Paragraph(sig_line,
+                             ParagraphStyle("sl", parent=styles["Normal"], alignment=1))
+        left_bottom = Paragraph(
+            f"<b>{collaborator.get('name', '—')}</b><br/>"
+            f"<font size=8>Colaborador (entregando os itens)<br/>"
+            f"CPF: {collaborator.get('cpf') or '—'}</font>",
+            ParagraphStyle("sn", parent=styles["Normal"], fontSize=9,
+                           alignment=1, leading=12))
+
+        # Lado direito: empresa — embute imagem se houver, senão linha em branco
+        right_top = receiver_sig_flow if receiver_sig_flow else Paragraph(
+            sig_line, ParagraphStyle("sl", parent=styles["Normal"], alignment=1))
+        signed_suffix = (
+            f" · assinado em {receiver_signed_at}" if receiver_signed_at else ""
+        )
+        right_bottom = Paragraph(
+            f"<b>{receiver_name_label}</b><br/>"
+            f"<font size=8>{receiver_role_label}{signed_suffix}<br/>"
+            f"{branding.get('company_name') or 'Empresa'}"
+            f"{' · CNPJ ' + branding['cnpj'] if branding.get('cnpj') else ''}</font>",
+            ParagraphStyle("sn", parent=styles["Normal"], fontSize=9,
+                           alignment=1, leading=12))
+
         sig_table = Table(
-            [
-                [Paragraph(sig_line, ParagraphStyle("sl", parent=styles["Normal"], alignment=1)),
-                 Paragraph(sig_line, ParagraphStyle("sl", parent=styles["Normal"], alignment=1))],
-                [Paragraph(f"<b>{collaborator.get('name', '—')}</b><br/>"
-                           f"<font size=8>Colaborador (entregando os itens)<br/>"
-                           f"CPF: {collaborator.get('cpf') or '—'}</font>",
-                           ParagraphStyle("sn", parent=styles["Normal"],
-                                          fontSize=9, alignment=1, leading=12)),
-                 Paragraph(f"<b>{branding.get('company_name') or 'Empresa'}</b><br/>"
-                           f"<font size=8>Responsável pela empresa (recebendo)<br/>"
-                           f"Nome / Cargo: ____________________________</font>",
-                           ParagraphStyle("sn", parent=styles["Normal"],
-                                          fontSize=9, alignment=1, leading=12))],
-            ],
+            [[left_top, right_top], [left_bottom, right_bottom]],
             colWidths=[8.5 * cm, 8.5 * cm])
         sig_table.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -621,6 +667,103 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
     doc.build(story)
     buf.seek(0)
     return buf.getvalue()
+
+
+@router.post("/return-confirm/{cid}")
+async def return_confirm(cid: str, payload: ReturnConfirmIn,
+                          user: dict = Depends(require_role("gestor"))):
+    """Confirma a DEVOLUÇÃO do colaborador desativado:
+    - Persiste histórico em `db.collab_returns` (auditoria)
+    - Marca pertences (collaborator_assets) como `devolvido` com event log
+    - Retorna o PDF do romaneio com a assinatura do recebedor embutida
+
+    Não altera ONTs/insumos automaticamente — gestor decide na aba Estoque
+    (return-to-company / consumable-transfer) pois envolve revalidação física.
+    """
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    coll = await db.collaborators.find_one({"id": cid}, {"_id": 0})
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado.")
+
+    # Carrega snapshot de itens em posse no momento da devolução
+    assets = await db.collaborator_assets.find(
+        {"company_id": company_id, "collaborator_id": cid, "status": "ativo"},
+        {"_id": 0},
+    ).sort("delivered_at", 1).to_list(500)
+    extras = await _collect_extra_custody(company_id, cid)
+
+    receiver = {
+        "name": payload.receiver_name.strip(),
+        "role": (payload.receiver_role or "").strip() or "Responsável pela empresa",
+        "signature_data_url": payload.signature_data_url,
+        "signed_at": now_iso(),
+    }
+
+    # Persiste histórico (auditoria)
+    return_id = f"return-{uuid.uuid4().hex[:10]}"
+    await db.collab_returns.insert_one({
+        "id": return_id,
+        "company_id": company_id,
+        "collaborator_id": cid,
+        "collaborator_name": coll.get("name"),
+        "receiver_name": receiver["name"],
+        "receiver_role": receiver["role"],
+        "receiver_signed_at": receiver["signed_at"],
+        "signature_data_url": receiver["signature_data_url"],
+        "confirmed_item_keys": payload.confirmed_item_keys or [],
+        "asset_ids_snapshot": [a.get("id") for a in assets if a.get("id")],
+        "extras_snapshot": [
+            {"category": e.get("category"), "item": e.get("item"),
+             "serial": e.get("serial"), "qty": e.get("qty")}
+            for e in extras
+        ],
+        "notes": payload.notes,
+        "issued_by": user.get("name") or user.get("email"),
+        "issued_at": now_iso(),
+    })
+
+    # Marca pertences como devolvidos (apenas collaborator_assets, não ONTs/insumos)
+    if assets:
+        asset_ids = [a["id"] for a in assets if a.get("id")]
+        if asset_ids:
+            await db.collaborator_assets.update_many(
+                {"company_id": company_id, "id": {"$in": asset_ids}},
+                {"$set": {
+                    "status": "devolvido",
+                    "returned_at": now_iso(),
+                    "returned_to": receiver["name"],
+                    "return_id": return_id,
+                }, "$push": {"events": {
+                    "type": "devolucao",
+                    "at": now_iso(),
+                    "by": user.get("name") or user.get("email"),
+                    "receiver": receiver["name"],
+                    "return_id": return_id,
+                }}},
+            )
+
+    # Gera PDF com assinatura embutida
+    branding = (await get_branding(company_id)).model_dump()
+    pdf = _build_romaneio_pdf(branding, coll, assets, mode="return",
+                              extra_items=extras, receiver=receiver)
+    fname = f"devolucao_{(coll.get('name') or cid).replace(' ', '_').lower()}_{return_id[-6:]}.pdf"
+    return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf",
+                             headers={
+                                 "Content-Disposition": f'inline; filename="{fname}"',
+                                 "X-Return-Id": return_id,
+                             })
+
+
+@router.get("/returns/{cid}")
+async def list_returns(cid: str,
+                        user: dict = Depends(require_role("gestor"))):
+    """Lista histórico de devoluções de um colaborador (auditoria)."""
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    rows = await db.collab_returns.find(
+        {"company_id": company_id, "collaborator_id": cid},
+        {"_id": 0, "signature_data_url": 0},  # exclui blob da assinatura
+    ).sort("issued_at", -1).to_list(100)
+    return {"items": rows, "count": len(rows)}
 
 
 @router.get("/romaneio/{cid}")

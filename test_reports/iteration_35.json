@@ -1,0 +1,33 @@
+{
+  "summary": "Iter35 — Backend testing do POST /api/collab-assets/return-confirm/{cid} (assinatura digital embutida + side-effects + persistência + privacidade + validação) + GET /returns/{cid} + regressão GET /romaneio?mode=return. 9/9 pytest passaram. Frontend lint OK no DeactivationAssetsModal.js.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter35_return_signature.py",
+    "/app/test_reports/pytest/iter35_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ReturnConfirmIn.signature_data_url usa min_length=30 — passa um base64 PNG vazio? a string 'data:image/png;base64,' tem 22 chars, mas qualquer PNG real >=30, então 422 funciona corretamente. Aceitável como guard.",
+    "_build_romaneio_pdf modo return aceita receiver dict mas a string 'assinado em <data>' só aparece quando receiver.signed_at está presente — atualmente sempre é setado em return_confirm (now_iso()), está OK.",
+    "list_returns exclui signature_data_url via projection {_id:0, signature_data_url:0} — bom para privacidade; demais campos do snapshot são retornados. asset_ids_snapshot e extras_snapshot estão presentes, atende auditoria.",
+    "return_confirm não checa se collaborator pertence à mesma company_id do gestor (usa user.company_id como filtro, mas se user é super-admin sem company_id, cai no DEMO_COMPANY_ID — vide _company_for não é chamado aqui). Pode permitir cross-tenant em super-admin sem company. Não bloqueante para o seed, mas vale revisitar para multi-tenant strict mode.",
+    "Padrão de status code 422 da validação Pydantic está consistente com FastAPI default — OK."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter35_return_signature.py (novo)"],
+  "success_rate": {"backend": "100% (9/9 pytest)", "frontend": "lint OK"},
+  "test_credentials": "admin@empresa.com / 123456 (lido de /app/memory/test_credentials.md)",
+  "seed_data_creation": "Nenhum criado; teste reseta via PATCH os collaborator_assets do col-30aafc3c para status='ativo' antes do POST return-confirm. Após o POST, todos os assets ficam 'devolvido' com return_id/returned_at/returned_to populados; ONTs e insumos preservados.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Side-effect funcional: collaborator_assets ativos -> devolvido com {return_id, returned_at, returned_to}. ONTs (stok_onts location_type=tecnico) e insumos (stok_stock) NÃO são tocados pelo endpoint — gestor decide separadamente em /api/stok. PDF gerado pelo return-confirm: ~21kB, magic %PDF, header X-Return-Id='return-XXXX', Content-Type=application/pdf, texto extraído via pypdf contém 'Carla Souza', 'Coordenadora de Operações' e 'assinado em DD/MM/YYYY HH:MM'. /returns/{cid} retorna count>=1 com items contendo {id, receiver_name, receiver_role, issued_at, asset_ids_snapshot, extras_snapshot} e signature_data_url está EXCLUÍDA. Validações 422: receiver_name vazio, receiver_name 1 char, signature_data_url vazia ou ausente. Regressão /romaneio?mode=return continua sem assinatura embutida (sem 'Carla Souza' nem 'assinado em' no texto). Frontend DeactivationAssetsModal.js: lint OK (default export + 2 passos checklist/signature já validado em iter34).",
+  "validation_evidence": {
+    "pytest": "9 passed in 2.18s — TestReturnConfirmPDF(1) + TestReturnsHistory(1) + TestSideEffectAssetsReturned(2) + TestValidation(4 parametrized) + TestRomaneioReturnRegression(1)",
+    "pdf_signature": "Texto extraído via pypdf contém receiver_name + receiver_role + 'assinado em'",
+    "pdf_size": ">5kB com magic %PDF, X-Return-Id presente",
+    "history": "count>=1, signature_data_url ausente da resposta, shape completo",
+    "side_effect": "totals.assets_count=0 após confirm; pelo menos 1 asset 'devolvido' com return_id setado",
+    "validations": "4 cenários de input inválido retornam 422",
+    "regression": "GET /romaneio?mode=return SEM signature_data_url — texto não contém 'carla souza' nem 'assinado em'"
+  }
+}

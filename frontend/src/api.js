@@ -272,6 +272,12 @@ export const api = {
   },
   // Lista TUDO em posse (assets + ONTs + insumos) — usado no modal de devolução
   assetCustodyFull: (cid) => client.get(`/collab-assets/custody-full/${cid}`).then((r) => r.data),
+  // Confirma devolução com assinatura digital do recebedor → retorna PDF blob
+  assetReturnConfirm: (cid, payload) =>
+    client.post(`/collab-assets/return-confirm/${cid}`, payload, { responseType: "blob" })
+      .then((r) => ({ blob: r.data, returnId: r.headers["x-return-id"] || null })),
+  // Histórico de devoluções de um colaborador (auditoria)
+  assetReturnsHistory: (cid) => client.get(`/collab-assets/returns/${cid}`).then((r) => r.data),
   // Public mobile (no auth)
   publicAssetsList: (cid) => client.get(`/collab-assets/public/by-collaborator/${cid}`).then((r) => r.data),
   publicAssetSign: (d) => client.post(`/collab-assets/public/sign`, d).then((r) => r.data),
