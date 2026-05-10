@@ -113,6 +113,8 @@ export function useAuth() {
 
 export function hasRole(user, ...roles) {
   if (!user) return false;
-  if (user.role === "auditor" || user.role === "administrador") return true; // super-roles
+  // administrador é super-role e tem acesso a TUDO no app desktop.
+  // auditor segue a lista explícita de cada aba (não é wildcard).
+  if (user.role === "administrador") return true;
   return roles.includes(user.role);
 }

@@ -72,7 +72,7 @@ function setSessionMode(mode) {
 
 const ALL_TABS = [
   { id: "dashboard", icon: "sheet", label: "Painel", roles: ["gestor", "auditor", "administrador"] },
-  { id: "lousa", icon: "users", label: "Lousa 📋", roles: ["administrador"], strictRoles: true },
+  { id: "lousa", icon: "users", label: "Lousa 📋", roles: ["administrador"] },
   { id: "estoque", icon: "sheet", label: "Estoque 📦", roles: ["gestor", "administrador"] },
   { id: "ai-ranking", icon: "shield", label: "Avaliação IA 🤖", roles: ["gestor", "auditor", "administrador"] },
   { id: "cadastro", icon: "users", label: "Cadastro", roles: ["gestor", "auditor", "administrador"] },
@@ -154,12 +154,7 @@ function AppShell({ view, setView, children }) {
     if (typeof window !== "undefined") window.location.reload();
   }
   const tabs = ALL_TABS.filter((t) => {
-    // strictRoles: ignora super-role auditor — só matches exatos
-    if (t.strictRoles) {
-      if (!user || !t.roles.includes(user.role)) return false;
-    } else if (!hasRole(user, ...t.roles)) {
-      return false;
-    }
+    if (!hasRole(user, ...t.roles)) return false;
     if (t.superAdminOnly && !isSuperAdmin) return false;
     return true;
   });
