@@ -98,6 +98,10 @@ async def send_message(payload: SendIn,
         "message_id": out.get("message_id"),
         "created_at": now_iso(),
         "actor_user": user.get("email") or user.get("id"),
+        # Auditoria: quem mandou (usado pela Central IA pra calcular
+        # produtividade individual). Mensagens via auto-reply NÃO setam isso.
+        "sent_by_user_id": user.get("id"),
+        "auto_reply": False,
     })
     return out
 

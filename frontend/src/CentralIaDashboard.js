@@ -756,13 +756,15 @@ function ProductivityCard({ data, days }) {
                   </td>
                   <td style={{ padding: "9px 6px", textAlign: "right" }}>
                     {it.coachings_unread > 0
-                      ? <span style={{
+                      ? <span title={`${it.coachings_unread} coaching(s) não lido(s)`}
+                              style={{
                           padding: "2px 7px", borderRadius: 999,
                           background: "#a855f7", color: "#fff",
                           fontSize: 10, fontWeight: 800,
                         }}>{it.coachings_unread}</span>
                       : it.coachings_total > 0
-                        ? <span style={{ color: "var(--text-muted)", fontSize: 10 }}>
+                        ? <span title={`${it.coachings_total} coaching(s) já lido(s)`}
+                                style={{ color: "var(--text-muted)", fontSize: 10 }}>
                             {it.coachings_total}
                           </span>
                         : <span style={{ color: "var(--text-muted)" }}>—</span>}
