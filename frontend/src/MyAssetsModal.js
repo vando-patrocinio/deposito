@@ -114,6 +114,11 @@ export default function MyAssetsModal({ collaboratorId, onClose }) {
                     : null}
                   {a.tamanho && <>Tamanho: <strong>{a.tamanho}</strong>  ·  </>}
                   Qtd: <strong>{a.qty}</strong>
+                  {a.unit_value_brl != null && (
+                    <>  ·  Valor: <strong style={{ color: "#86198f" }}>
+                      R$ {(a.unit_value_brl * (a.qty || 1)).toFixed(2).replace('.', ',')}
+                    </strong></>
+                  )}
                   {a.serial && <><br />Nº série: <code style={{ fontSize: 11 }}>{a.serial}</code></>}
                   <br />Entregue em <strong>{(a.delivered_at || "").slice(0, 10)}</strong>
                   {a.delivered_by && ` por ${a.delivered_by}`}

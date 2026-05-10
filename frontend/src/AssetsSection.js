@@ -212,7 +212,7 @@ export default function AssetsSection({ collaborator, onClose }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {["Categoria", "Item", "Marca/Modelo", "Tam.", "Qtd", "Série",
+                {["Categoria", "Item", "Marca/Modelo", "Tam.", "Qtd", "Valor", "Série",
                   "Entrega", "Status", "Assinatura", "Ações"].map((h) => (
                   <th key={h} style={{ padding: "8px 10px", textAlign: "left",
                                         fontSize: 10, fontWeight: 800, color: "#475569",
@@ -222,7 +222,7 @@ export default function AssetsSection({ collaborator, onClose }) {
             </thead>
             <tbody>
               {data.items.length === 0 ? (
-                <tr><td colSpan={10} style={{ padding: 28, textAlign: "center", color: "#64748b" }}>
+                <tr><td colSpan={11} style={{ padding: 28, textAlign: "center", color: "#64748b" }}>
                   Sem pertences cadastrados ainda.
                 </td></tr>
               ) : data.items.map((a) => {
@@ -243,6 +243,11 @@ export default function AssetsSection({ collaborator, onClose }) {
                     </td>
                     <td style={{ padding: "8px 10px" }}>{a.tamanho || "—"}</td>
                     <td style={{ padding: "8px 10px" }}>{a.qty}</td>
+                    <td style={{ padding: "8px 10px", fontWeight: 700, color: a.unit_value_brl ? "#0f172a" : "#94a3b8" }}>
+                      {a.unit_value_brl != null
+                        ? `R$ ${(a.unit_value_brl * (a.qty || 1)).toFixed(2).replace('.', ',')}`
+                        : "—"}
+                    </td>
                     <td style={{ padding: "8px 10px", fontFamily: "monospace", fontSize: 10 }}>
                       {a.serial || "—"}
                     </td>

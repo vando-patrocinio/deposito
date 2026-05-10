@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 31 testing — validated NEW features (Branding, Collaborator Assets, Pertences PDF Romaneio, AI assets-overview, pending-losses hook, Lousa SLA modes) on backend + UI flows for Settings/Cadastro/IACenter/Mobile. Backend: 24 passed, 1 informational skip. Frontend: all 4 flows functional. No critical bugs found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/collab-assets/public/sign", "issue": "Aceita asset_ids inexistentes silenciosamente (update_many com 0 matches retorna 200). Sugiro retornar 0 em signed_count em vez de len(asset_ids) ou validar existência. Hoje retorna signed_count=N mesmo quando nenhum asset foi atualizado de fato."},
+      {"endpoint": "PUT /api/collaborators/{cid}", "issue": "Não aceita partial update (PATCH semantics). PUT exige body completo (name/cpf/email/phone obrigatórios). Considere endpoint PATCH para flag active=false isolado, evita reescrever todo o cadastro só pra desativar."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Settings", "issues": ["BrandingCard renderiza abaixo do fold; usuário precisa rolar bastante. Considere mover BrandingCard pro topo (antes do SLA) já que é configuração de identidade da empresa."]},
+      {"screen": "Painel/Recharts", "issues": ["Múltiplos warnings: 'The width(-1) and height(-1) of chart should be greater than 0' — containers de gráficos sem minWidth/minHeight; visualmente os gráficos renderizam ok mas spam no console."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration31_assets_branding.py",
+    "/app/test_reports/pytest/iteration31.xml"
+  ],
+  "action_items": [
+    "(opcional) Consider PATCH /api/collaborators/{cid} para deactivation parcial",
+    "(opcional) /sign retornar contagem real de matched (matched_count via update_many.modified_count)",
+    "(opcional) Mover BrandingCard pro topo da página Settings",
+    "(opcional) Adicionar minWidth/minHeight aos ResponsiveContainer do Recharts pra silenciar warnings"
+  ],
+  "critical_code_review_comments": [
+    "_build_romaneio_pdf (collaborator_assets.py:231) tem ~170 linhas — função grande mas coesa; ok manter.",
+    "collaborator_assets.py: _company_for retorna DEMO_COMPANY_ID quando colaborador não existe — silencia bugs de cross-tenant. Em rotas públicas (sign), validar se collaborator_id existe antes de aceitar.",
+    "Sign endpoint não valida que o collaborator_id realmente é dono dos asset_ids enviados (a query AND'ja, mas sem 404 quando 0 matches — UX confusa)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration31_assets_branding.py (novo)"
+  ],
+  "success_rate": {"backend": "96% (24/25 passed, 1 skip por dado de teste)", "frontend": "100% (4/4 flows OK)"},
+  "test_credentials": "admin@empresa.com / 123456 — funcionando. col-30aafc3c usado para testes públicos.",
+  "seed_data_creation": "Tests criam/deletam assets temporários TEST_* no fluxo. Branding restaurado após mutação. Collaborator deactivation revertido após teste.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test suite em /app/backend/tests/test_iteration31_assets_branding.py cobre Branding/Assets CRUD/Public sign/PDF Romaneio (incl. 404 edge case)/AI assets-overview/AI dashboard endpoints/Pending losses hook (deactivate→reactivate)/Lousa SLA modes (execution/schedule/queue). Lousa SLA: backend retorna 33 schedule + 15 execution + 33 queue = todas válidas, 0 overdue no momento do teste. Mobile flow: canvas de assinatura só renderiza quando há itens pendentes; col-30aafc3c estava com 0 itens — para testar canvas, criar asset via Cadastro primeiro. IACenter Pertences card 'Perdas pendentes' mostra estado verde quando vazio. ⚠️ PUT /api/collaborators exige body completo, não aceita partial.",
+  "rca_of_the_issue": "Não há bug crítico aberto. Pequeno gap UX: /collab-assets/public/sign aceita asset_ids inválidos (update_many sem match → ainda retorna 200/signed_count=N). Mitigation sugerida: contar modified_count antes de retornar."
+}
