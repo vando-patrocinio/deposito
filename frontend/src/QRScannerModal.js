@@ -95,7 +95,7 @@ export default function QRScannerModal({ onClose, onScan }) {
       <div onClick={(e) => e.stopPropagation()}
            style={{ background: "#0f172a", color: "white", borderRadius: 18, padding: 18, maxWidth: 520, width: "100%" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h3 style={{ margin: 0, fontSize: 17 }}>📷 Escanear MAC/SN da ONT</h3>
+          <h3 style={{ margin: 0, fontSize: 17 }}>Escanear MAC/SN da ONT</h3>
           <button onClick={onClose} data-testid="qr-close-btn"
                   style={{ background: "transparent", border: "none", color: "white", fontSize: 22, cursor: "pointer" }}>×</button>
         </div>

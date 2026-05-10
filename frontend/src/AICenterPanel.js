@@ -238,7 +238,7 @@ function DefectiveSection({ days }) {
   if (!d) return <Card>Carregando…</Card>;
   return (
     <>
-      <Card title={`🔧 Fabricantes com mais ocorrências (últimos ${days}d)`}>
+      <Card title={`Fabricantes com mais ocorrências (últimos ${days}d)`}>
         <table style={css.table}>
           <thead><tr>
             <th style={css.th}>Fabricante</th>
@@ -570,7 +570,7 @@ function InsightsSection({ days }) {
         {err && <div style={{ marginTop: 10, padding: 10, background: "#fee2e2", color: "#7f1d1d", borderRadius: 8 }}>⚠ {err}</div>}
       </Card>
 
-      <Card title={`🗒 Histórico de insights (${history.length})`}>
+      <Card title={`Histórico de insights (${history.length})`}>
         {history.length === 0 ? (
           <div style={{ color: "#64748b", padding: 12 }}>Sem insights ainda. Clique acima pra gerar.</div>
         ) : history.map((h) => (

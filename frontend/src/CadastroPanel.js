@@ -1041,7 +1041,7 @@ function ClockHistoryModal({ collaborator, onClose }) {
         maxHeight: "85vh", overflow: "auto", boxShadow: "0 20px 60px rgba(15,23,42,.3)",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h3 style={{ margin: 0 }}>🕐 Pontos de {collaborator.name}</h3>
+          <h3 style={{ margin: 0 }}>Pontos de {collaborator.name}</h3>
           <button data-testid="close-clock-history" onClick={onClose} style={{
             border: 0, background: "#f1f5f9", borderRadius: 999, width: 32, height: 32,
             cursor: "pointer", fontSize: 16,

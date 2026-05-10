@@ -75,7 +75,7 @@ export default function AiRankingPanel() {
             <KpiCard testid="ai-rank-kpi-period" label="Período" value={`${days}d`} color="#64748b" />
           </div>
 
-          <Card title={`📊 Ranking (${data.items.length} técnico(s))`}>
+          <Card title={`Ranking (${data.items.length} técnico(s))`}>
             {data.items.length === 0 ? (
               <p data-testid="ai-rank-empty" style={{ color: "#94a3b8", textAlign: "center", padding: 20 }}>
                 Sem tickets avaliados no período selecionado.

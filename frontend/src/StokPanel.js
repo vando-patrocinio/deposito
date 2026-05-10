@@ -163,7 +163,7 @@ function OntsTab() {
 
       {err && <ErrBanner err={err} />}
 
-      <Card title={`📋 ONTs (${filtered.length})`} style={{ marginTop: 14 }}>
+      <Card title={`ONTs (${filtered.length})`} style={{ marginTop: 14 }}>
         <input data-testid="ont-filter" placeholder="Filtrar MAC ou modelo..." value={filter} onChange={(e) => setFilter(e.target.value)} style={{ ...inputStyle, marginBottom: 10, maxWidth: 320 }} />
         <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
           <thead>
@@ -336,7 +336,7 @@ function ServicosTab() {
 
       {err && <ErrBanner err={err} />}
 
-      <Card title={`📋 Ordens de Serviço (${services.length})`} style={{ marginTop: 14 }}>
+      <Card title={`Ordens de Serviço (${services.length})`} style={{ marginTop: 14 }}>
         <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f1f5f9" }}>

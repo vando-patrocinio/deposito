@@ -114,32 +114,32 @@ export default function SettingsPanel() {
           esse tempo ficam piscando vermelho na lousa para o gestor.
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          <Field label="🔧 Reparo (min)">
+          <Field label="Reparo (min)">
             <input data-testid="inp-sla-reparo" type="number" min="1" style={inputStyle}
               value={form.sla_reparo_minutes}
               onChange={(e) => setForm({ ...form, sla_reparo_minutes: Number(e.target.value) })} />
           </Field>
-          <Field label="📡 Instalação (min)">
+          <Field label="Instalação (min)">
             <input data-testid="inp-sla-instalacao" type="number" min="1" style={inputStyle}
               value={form.sla_instalacao_minutes}
               onChange={(e) => setForm({ ...form, sla_instalacao_minutes: Number(e.target.value) })} />
           </Field>
-          <Field label="📦 Retirada (min)">
+          <Field label="Retirada (min)">
             <input data-testid="inp-sla-retirada" type="number" min="1" style={inputStyle}
               value={form.sla_retirada_minutes}
               onChange={(e) => setForm({ ...form, sla_retirada_minutes: Number(e.target.value) })} />
           </Field>
-          <Field label="🚨 Prioridade (min)">
+          <Field label="Prioridade (min)">
             <input data-testid="inp-sla-prioridade" type="number" min="1" style={inputStyle}
               value={form.sla_prioridade_minutes}
               onChange={(e) => setForm({ ...form, sla_prioridade_minutes: Number(e.target.value) })} />
           </Field>
-          <Field label="🛡️ Preventiva (min)">
+          <Field label="Preventiva (min)">
             <input data-testid="inp-sla-preventiva" type="number" min="1" style={inputStyle}
               value={form.sla_preventiva_minutes}
               onChange={(e) => setForm({ ...form, sla_preventiva_minutes: Number(e.target.value) })} />
           </Field>
-          <Field label="💼 Venda (min)">
+          <Field label="Venda (min)">
             <input data-testid="inp-sla-venda" type="number" min="1" style={inputStyle}
               value={form.sla_venda_minutes}
               onChange={(e) => setForm({ ...form, sla_venda_minutes: Number(e.target.value) })} />
@@ -520,7 +520,7 @@ export default function SettingsPanel() {
           </label>
         </Field>
 
-        <Field label="🔑 OpenRouter API Key">
+        <Field label="OpenRouter API Key">
           <div style={{ position: "relative" }}>
             <input
               data-testid="inp-openrouter-key"
@@ -538,7 +538,7 @@ export default function SettingsPanel() {
           </small>
         </Field>
 
-        <Field label="🤖 Modelo de IA">
+        <Field label="Modelo de IA">
           <input
             data-testid="inp-openrouter-model"
             type="text"

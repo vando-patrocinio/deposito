@@ -118,9 +118,7 @@ export function Card({ title, subtitle, children, style = {}, action, "data-test
         }}>
           <div>
             {title && (
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.012em", color: "var(--text-primary)" }}>
-                {title}
-              </h3>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.012em", color: "var(--text-primary)" }}>{title} </h3>
             )}
             {subtitle && (
               <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--text-secondary)" }}>{subtitle}</p>

@@ -1,96 +1,45 @@
-# PRD — Sistema Mesclado SmartProv + Selfie Attendance + Stok + Atlaz V2 + SmartOLT + IA Center + Pertences/Romaneio
+# PontoIA — PRD (Product Requirements)
 
-## Visão Geral
-Plataforma operacional completa para provedor FTTH (foco: Ligo Fibra). Reúne:
-- **Ponto facial** offline-first (selfie + cerca virtual + sync)
-- **Lousa Kanban** (drag-and-drop) com sync Atlaz V2 em tempo real
-- **Estoque** (Stok) por colaborador com baixa automática ao finalizar bolha
-- **SmartOLT** integrado (sinal vivo nas bolhas + validação MAC)
-- **IA Preventiva** (sugere bolhas para sinais ruins, técnico ocioso)
-- **IA Center** (8 sub-abas: KPIs, gastos por técnico, mapa de defeitos Leaflet, equipamentos defeituosos, reclamações, reincidência, **pertences/perdas**, insights LLM Gemini)
-- **Pertences/EPIs** com Romaneio PDF assinado digitalmente, branding personalizado, dashboard de perdas pendentes
+## Visão
+Plataforma SaaS de operações para provedores de internet (ISP). Une três bases originais — `smartprov-tech` (Lousa de serviços), `selfie-attendance-7` (ponto facial) e `stok-main` (estoque de fibra) — em um único produto.
 
-## Stack
-- Backend: FastAPI + Motor (MongoDB) + reportlab (PDFs) + emergentintegrations (Gemini Flash)
-- Frontend: React (CRA + craco) + react-leaflet + html5-qrcode + axios
-- Auth: JWT com bcrypt
-- ESLint 9 flat config + ruff
+## Personas
+- **Administrador** — acesso total. Gerencia configurações da empresa.
+- **Gestor** — operação diária: lousa, despacho, conferência de ponto, estoque.
+- **Auditor** — compliance e auditoria (incluindo ação destrutiva `wipe-all` de bolhas).
+- **Colaborador (Técnico)** — fluxo mobile: bate ponto facial, atende serviços, scaneia QR.
+- **Super Admin (Plataforma)** — multi-tenant: drill-down em empresas e gestão da plataforma.
 
-## Histórico Recente (esta sessão)
-1. ✅ **IA Center backend + frontend**: 8 sub-abas com KPIs, mapa heatmap, insights LLM
-2. ✅ **Code Quality fixes**: removido syntax error AIPreventivePanel, eliminado componente em render (LousaMobile.ConsumableField), substituído `__import__('fastapi')` por imports estáticos, removida variável morta
-3. ✅ **ESLint guardrails**: eslint.config.js flat com `react-hooks/exhaustive-deps: error` strict pra arquivos novos + LEGACY_FILES whitelist pra não bloquear CI nos 108 violations existentes. Scripts `yarn lint` / `yarn lint:strict`
-4. ✅ **Bug fix SLA**: bolhas em `pendente`/`aguardando` com `scheduled_time` agora computam SLA via modo `schedule` (deadline = agendado + sla_min). Bolhas sem horário usam modo `queue` (created_at + grace 60min). Pisca uniforme em todas as bolhas atrasadas
-5. ✅ **Sistema Pertences/EPIs completo**:
-   - Backend: `routes/branding.py` (logo + dados empresa) + `routes/collaborator_assets.py` (CRUD + assinatura digital + PDF reportlab)
-   - Frontend: `BrandingCard.js`, `AssetsSection.js`, `MyAssetsModal.js`, aba 🎒 Pertences no IA Center
-   - Romaneio PDF (~3KB) com logo, dados empresa, tabela itens, linha assinatura
-6. ✅ **Perdas Pendentes**: hook em `update_collaborator` quando active=true→false → cria notification + grava deactivated_at. Dashboard mostra prejuízo estimado em BRL
-7. ✅ **Valores customizáveis por categoria**: BrandingCard com 6 inputs (uniforme/epi/ferramenta/veículo/eletrônico/outro) — persistido em `default_asset_values_brl` no branding
-8. ✅ **Valor unitário visível**: tabela AssetsSection (gestor) e cards MyAssetsModal (mobile) mostram R$ por item × qty
-9. ✅ **Hardening do /public/sign**: valida colaborador existe (404) e retorna 404 quando asset_ids não pertencem ao colaborador. Usa `modified_count` real
+## Pilares funcionais
+1. **Lousa Kanban** — coluna por técnico, slot por hora; SLA por bolha; drag-and-drop entre técnicos; integração Atlaz V2 em tempo real (poll a cada 30s); ação `wipe-all` exclusiva do auditor.
+2. **Ponto facial offline** — selfie + cerca virtual (geofence GPS); fila offline persistida; espelho mensal pronto para RH.
+3. **Estoque (Fibra/Equipamentos)** — entrada em massa, dedução automática por chamado, ordens de serviço.
+4. **Coletivo (EPIs / Pertences)** — CRUD de pertences por colaborador, valores padrão por categoria, romaneio PDF (mesmo vazio), modal de desativação com lista de pendências e impressão.
+5. **IA Center / IA Preventiva / IA Ranking** — heatmaps OSM com bounds via IQR P15-P85, briefing diário, ranking por técnico, avaliação por chamado, fallback de fabricante de OLT (Huawei/ZTE/Nokia/etc).
+6. **SmartOLT** — pills de sinal das ONUs, detecção de fabricante por SN, sincronização periódica.
+7. **Atlaz V2** — sincronização de chamados; mapeamento técnico→colaborador; reassign-existing; logs auditados.
+8. **Permissões dinâmicas** — admin configura quais abas cada role vê (`tab_permissions` em branding).
+9. **Auditoria & Logs** — todas as ações destrutivas/sensíveis são logadas (lousa_logs, sync_logs).
+10. **Plataforma multi-tenant** — super admin lista empresas, faz impersonation com banner de aviso.
 
-## Validação E2E desta sessão
-- Iteration 26: backend 24/25 (96%), frontend 4/4 (100%). retest_needed=False
-- Curl tests confirmam: PDF magic %PDF, branding persistido, pending_losses calculado corretamente (R$ 1.160,00 testado), notification automática criada
+## Arquitetura técnica
+- **Backend**: FastAPI · MongoDB (Motor async) · APScheduler · workers async (atlaz, smartolt, ai_preventive, holidays).
+- **Frontend**: React 19 · Tailwind · shadcn/ui · Lucide-react · Manrope/JetBrains Mono · React-Leaflet (OSM tiles).
+- **LLM**: Emergent Universal Key via `emergentintegrations` (Gemini, Claude, OpenAI text + Nano Banana imagem).
+- **PDF**: ReportLab (romaneio).
+- **Eventos em tempo real**: SSE via `/api/events`.
 
-## Próximas tasks (P1/P2)
-- 🟡 Botão "Marcar todos como devolvidos" para resolver perdas pendentes em lote
-- 🟡 Refactor `routes/lousa.py` (>2300 linhas) em sub-módulos
-- 🟡 Migrar tokens localStorage → httpOnly cookies + CSRF (security item do code review)
-- 🟡 Object storage para logos/avatares (substitui base64 do Mongo)
-- 🟡 WhatsApp Business API (precisa Meta access token do usuário)
-- 🟢 Limpar gradualmente os 34 ESLint warnings dos arquivos legacy
-- 🟢 Cache curto (5min) por dashboard pra reduzir custo LLM em insights repetidos
-- 🟢 Hook husky pre-commit pra bloquear push com `yarn lint:strict` falhando
+## Design System (introduzido em fev/2026)
+- **Estética**: Swiss & High-Contrast — clean, sóbrio, profissional B2B.
+- **Cores**: Slate (`#0b1220`/`#475569`/`#94a3b8`) + acento Teal (`#0d9488`/`#0f766e`). NO purple/violet.
+- **Tipografia**: Manrope (UI), JetBrains Mono (IDs/IPs/MACs/timestamps). NO Inter.
+- **Layout**: Sidebar lateral fixa 248px (slate `#0b0f17`) · TopBar branca translúcida 56px com breadcrumb · main content max 1440px.
+- **Navegação**: 5 grupos (Operação, Inteligência, Pessoas, Compliance, Sistema) + 12 abas categorizadas.
+- **Ícones**: Lucide-react (sem emojis em labels/títulos/headings de painéis desktop).
+- **Componentes**: classes utilitárias `.btn`, `.surface`, `.stat-card`, `.pill`, `.input`, `.app-sidebar`, `.app-topbar` em `index.css`.
 
-## Arquitetura
-```
-/app/
-├── backend/
-│   ├── routes/
-│   │   ├── clock.py (gerenciamento colaboradores + ponto)
-│   │   ├── lousa.py (Kanban + SLA + Atlaz sync) — [P2 refactor]
-│   │   ├── stok.py + smartolt.py + atlaz.py
-│   │   ├── ai_preventive.py (worker)
-│   │   ├── ai_dashboard.py (8 endpoints + assets-overview + pending_losses)
-│   │   ├── branding.py (NEW — logo + default_asset_values_brl)
-│   │   ├── collaborator_assets.py (NEW — CRUD + PDF reportlab + sign)
-│   │   └── notifications.py
-│   └── tests/test_iteration*.py (extensa cobertura pytest)
-├── frontend/
-│   ├── eslint.config.js (NEW — flat config strict)
-│   └── src/
-│       ├── App.js (rotas)
-│       ├── AICenterPanel.js (8 sub-abas)
-│       ├── BrandingCard.js (NEW)
-│       ├── AssetsSection.js (NEW — gestor)
-│       ├── MyAssetsModal.js (NEW — mobile + canvas signature pad)
-│       ├── CollaboratorApp.js (kebab com Meus pertences)
-│       └── CadastroPanel.js (botão 🎒 Pertences por colaborador)
-└── memory/
-    ├── PRD.md (este)
-    └── test_credentials.md
-```
-
-## Endpoints novos desta sessão
-```
-GET/PUT /api/branding/settings
-GET     /api/branding/public
-
-GET     /api/collab-assets/by-collaborator/{cid}
-POST    /api/collab-assets
-PATCH   /api/collab-assets/{aid}
-DELETE  /api/collab-assets/{aid}
-GET     /api/collab-assets/romaneio/{cid}            (PDF)
-GET     /api/collab-assets/public/by-collaborator/{cid}
-POST    /api/collab-assets/public/sign
-GET     /api/collab-assets/public/romaneio/{cid}     (PDF público)
-
-GET     /api/ai/dashboard/assets-overview            (KPIs + pending_losses)
-```
-
-## Coleções MongoDB novas
-- `company_branding` (1 doc por company_id)
-- `collaborator_assets` (assets com events[])
-- `notifications` (já existia, novo type: `assets_pending_return`)
+## Status atual (Feb 2026)
+✅ Funcional (Atlaz V2 sync ativo, 68 tickets/dia, sem erros)
+✅ Redesign completo (sidebar+topbar+login split, paleta slate+teal, sem emojis em desktop)
+✅ Pytest backend + ESLint frontend ativos
+✅ Roadmap pronto em `/app/memory/ROADMAP.md`

@@ -178,7 +178,7 @@ function OntsSection({ onts, technicians, reload }) {
 
   return (
     <Card
-      title={`📡 ONTs (${onts.length})`}
+      title={`ONTs (${onts.length})`}
       action={
         <div style={{ display: "flex", gap: 8 }}>
           <button data-testid="ont-add-btn" style={btnPrimary} onClick={() => setShowAdd(true)}>+ Adicionar ONTs</button>
@@ -442,7 +442,7 @@ function ServicosSection({ services, technicians, consumables, reload }) {
   const techMap = useMemo(() => Object.fromEntries(technicians.map((t) => [t.id, t.name])), [technicians]);
   return (
     <Card
-      title={`🛠 Serviços (${services.length})`}
+      title={`Serviços (${services.length})`}
       action={<button data-testid="svc-create-btn" style={btnPrimary} onClick={() => setShowCreate(true)}>+ Nova OS</button>}
     >
       <div style={{ overflowX: "auto" }}>
@@ -561,7 +561,7 @@ function CloseServiceDialog({ service, onClose, onDone, consumables }) {
   }, onDone, "Erro ao fechar OS");
 
   return (
-    <Modal open={!!service} onClose={onClose} title={`✓ Fechar ${service.id} — ${service.client_name}`} data-testid="svc-close-dialog"
+    <Modal open={!!service} onClose={onClose} title={`Fechar ${service.id} — ${service.client_name}`} data-testid="svc-close-dialog"
       footer={<><button style={btnSec} onClick={onClose}>Cancelar</button>
         <button style={btnPrimary} onClick={submit} data-testid="svc-close-submit">Confirmar fechamento</button></>}
     >
@@ -644,7 +644,7 @@ function HistoricoSection({ history, reload }) {
 
   return (
     <Card
-      title={`📚 Histórico (${filtered.length})`}
+      title={`Histórico (${filtered.length})`}
       action={
         <div style={{ display: "flex", gap: 6 }}>
           <button style={btnGhost} onClick={() => downloadExport("csv")} data-testid="hist-export-csv">📥 CSV</button>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { Bell } from "lucide-react";
 import { api } from "@/api";
 import useEventStream from "@/useEventStream";
 
@@ -62,14 +63,11 @@ export default function NotificationsBell({ onOpenAIPanel } = {}) {
       <button
         data-testid="notifications-bell-btn"
         onClick={() => setOpen(!open)}
-        className={pulse ? "notif-pulse" : ""}
-        style={{
-          position: "relative", background: "white", border: "1px solid #e2e8f0",
-          borderRadius: 999, padding: "6px 10px", cursor: "pointer", fontSize: 16,
-        }}
+        className={`btn btn-ghost btn-sm btn-icon ${pulse ? "notif-pulse" : ""}`.trim()}
+        style={{ position: "relative", width: 32, height: 32 }}
         title={connected ? "Notificações · ao vivo" : "Notificações · offline"}
       >
-        🔔
+        <Bell size={15} strokeWidth={1.75} />
         <span data-testid="notifications-live-dot" style={{
           position: "absolute", bottom: -1, left: -1,
           width: 10, height: 10, borderRadius: "50%",

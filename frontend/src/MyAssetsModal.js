@@ -43,9 +43,7 @@ export default function MyAssetsModal({ collaboratorId, onClose }) {
       }}>
         <div style={{ display: "flex", justifyContent: "space-between",
                        alignItems: "center", marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a" }}>
-            🎒 Meus pertences
-          </h2>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a" }}>Meus pertences </h2>
           <button onClick={onClose} data-testid="assets-close-btn"
                   style={{ background: "transparent", border: 0, fontSize: 22,
                            cursor: "pointer", color: "#64748b" }}>✕</button>
@@ -231,9 +229,7 @@ function SignaturePad({ collaboratorId, assetIds, onClose, onSigned }) {
       <div onClick={(e) => e.stopPropagation()} data-testid="signature-pad" style={{
         background: "white", borderRadius: 16, padding: 16, maxWidth: 460, width: "100%",
       }}>
-        <h3 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 800 }}>
-          ✍ Assine no quadro abaixo
-        </h3>
+        <h3 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 800 }}>Assine no quadro abaixo </h3>
         <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px" }}>
           Ao assinar, você declara ter recebido os {assetIds.length} item(ns) e
           aceita a responsabilidade pela sua guarda e devolução.

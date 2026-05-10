@@ -334,7 +334,7 @@ export default function UsersPanel() {
         <div role="dialog" data-testid="imp-log-modal" onClick={(e) => { if (e.target === e.currentTarget) setShowLog(false); }} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, gridColumn: "1 / -1" }}>
           <div style={{ background: "white", borderRadius: 22, width: "100%", maxWidth: 720, maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 60px rgba(15,23,42,.32)" }}>
             <div style={{ padding: "18px 22px 8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0 }}>🎭 Auditoria de impersonation</h3>
+              <h3 style={{ margin: 0 }}>Auditoria de impersonation</h3>
               <button onClick={() => setShowLog(false)} style={{ background: "transparent", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b" }}>×</button>
             </div>
             <div style={{ overflowY: "auto", padding: "0 22px 22px" }}>

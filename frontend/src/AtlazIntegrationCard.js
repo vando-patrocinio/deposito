@@ -120,7 +120,7 @@ export default function AtlazIntegrationCard() {
 
   if (!form) {
     return (
-      <Card title="🔗 Integração Atlaz" data-testid="card-atlaz">
+      <Card title="Integração Atlaz" data-testid="card-atlaz">
         <p style={{ color: "#94a3b8" }}>Carregando…</p>
       </Card>
     );
@@ -137,7 +137,7 @@ export default function AtlazIntegrationCard() {
   );
 
   return (
-    <Card title="🔗 Integração Atlaz V2" data-testid="card-atlaz" style={{ gridColumn: "1 / -1" }}>
+    <Card title="Integração Atlaz V2" data-testid="card-atlaz" style={{ gridColumn: "1 / -1" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 10 }}>
         <p style={{ color: "#64748b", fontSize: 13, margin: 0, flex: 1 }}>
           Importa chamados abertos do Atlaz (<code>app.atlaz.com.br/api/v2</code>) como bolhas na Lousa.
@@ -160,7 +160,7 @@ export default function AtlazIntegrationCard() {
         </label>
       </Field>
 
-      <Field label="🔑 Token da API Atlaz">
+      <Field label="Token da API Atlaz">
         <input
           data-testid="atlaz-api-key"
           type="password"
@@ -175,7 +175,7 @@ export default function AtlazIntegrationCard() {
         </small>
       </Field>
 
-      <Field label="🌐 Domínio do seu painel Atlaz">
+      <Field label="Domínio do seu painel Atlaz">
         <input
           data-testid="atlaz-tenant-domain"
           placeholder="https://ligofibra.atlaz.com.br"
@@ -189,26 +189,26 @@ export default function AtlazIntegrationCard() {
       </Field>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-        <Field label="📅 Janela retroativa (dias)">
+        <Field label="Janela retroativa (dias)">
           <input data-testid="atlaz-lookback" type="number" min={1} max={365}
             value={form.lookback_days}
             onChange={(e) => setForm({ ...form, lookback_days: e.target.value })} style={inputStyle} />
           <small style={{ color: "#94a3b8", fontSize: 10 }}>Atlaz exige data inicial obrigatória.</small>
         </Field>
-        <Field label="⏱ Intervalo bolhas (seg)">
+        <Field label="Intervalo bolhas (seg)">
           <input data-testid="atlaz-interval-seconds" type="number" min={10} max={86400}
             value={form.sync_interval_seconds}
             onChange={(e) => setForm({ ...form, sync_interval_seconds: e.target.value })} style={inputStyle} />
           <small style={{ color: "#94a3b8", fontSize: 10 }}>Default 30s. Mín 10s, máx 24h.</small>
         </Field>
-        <Field label="⏰ Timeout (seg)">
+        <Field label="Timeout (seg)">
           <input data-testid="atlaz-timeout" type="number" min={2} max={120}
             value={form.timeout_seconds}
             onChange={(e) => setForm({ ...form, timeout_seconds: e.target.value })} style={inputStyle} />
         </Field>
       </div>
 
-      <Field label="🏢 Filiais (cidades — separadas por vírgula)">
+      <Field label="Filiais (cidades — separadas por vírgula)">
         <input
           data-testid="atlaz-filiais"
           placeholder="Rio de Janeiro, Guaratinguetá, Osasco, Magé"

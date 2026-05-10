@@ -103,7 +103,7 @@ export default function AIPreventivePanel({ onClose, embedded = false }) {
             <Metric label="Técnicos ativos" value={capacity.techs.length} />
             <Metric label="Limiar crítico" value={`${capacity.config.critical_rx_dbm} dBm`} />
           </div>
-          <Card title="👷 Capacidade por técnico (ritmo histórico × carga atual)">
+          <Card title="Capacidade por técnico (ritmo histórico × carga atual)">
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
                 <th style={css.th}>Técnico</th><th style={css.th}>30d</th><th style={css.th}>Dias ativos</th>
@@ -128,7 +128,7 @@ export default function AIPreventivePanel({ onClose, embedded = false }) {
         </>
       )}
       {tab === "suggestions" && (
-        <Card title={`📋 ${suggestions.length} sugestão(ões) pendente(s)`} data-testid="ai-suggestions-card">
+        <Card title={`${suggestions.length} sugestão(ões) pendente(s)`} data-testid="ai-suggestions-card">
           {suggestions.length === 0 ? (
             <div style={{ padding: 30, textAlign: "center", color: "#64748b" }}>
               Sem sugestões pendentes. Clique em <strong>🔍 Escanear agora</strong> para gerar novas.

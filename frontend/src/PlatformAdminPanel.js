@@ -73,7 +73,7 @@ export default function PlatformAdminPanel() {
     <div data-testid="platform-admin-panel" style={{ background: "white", borderRadius: 16, border: "1px solid #e2e8f0", padding: 24 }}>
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", color: "#0f172a" }}>
-          🛡️ Painel da Plataforma <span style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>· super admin</span>
+          Painel da Plataforma <span style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>· super admin</span>
         </h2>
         <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>Visão consolidada de todas as empresas, MRR, churn e crescimento.</p>
       </div>

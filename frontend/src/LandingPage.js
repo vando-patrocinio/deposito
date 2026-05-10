@@ -454,9 +454,7 @@ export default function LandingPage({ onSignup, onLogin }) {
         borderTop: "1px solid rgba(255,255,255,.05)",
       }}>
         <div style={{ maxWidth: 720, margin: "0 auto", textAlign: "center" }}>
-          <h2 style={{ margin: 0, color: "white", fontSize: 36, fontWeight: 800, letterSpacing: "-0.02em" }}>
-            Pronto pra parar de perseguir comprovantes de WhatsApp?
-          </h2>
+          <h2 style={{ margin: 0, color: "white", fontSize: 36, fontWeight: 800, letterSpacing: "-0.02em" }}>Pronto pra parar de perseguir comprovantes de WhatsApp? </h2>
           <p style={{ marginTop: 16, color: "#94a3b8", fontSize: 16 }}>
             Crie sua conta agora. Em 5 minutos sua equipe pode bater o primeiro ponto.
           </p>

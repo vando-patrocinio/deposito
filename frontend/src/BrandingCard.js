@@ -35,7 +35,7 @@ export default function BrandingCard() {
     } finally { setBusy(false); }
   };
 
-  if (!data) return <Card title="🏢 Empresa & Branding">Carregando…</Card>;
+  if (!data) return <Card title="Empresa & Branding">Carregando…</Card>;
 
   const fld = (label, key, hint, opts = {}) => (
     <label style={{ display: "block", marginBottom: 10 }}>
@@ -49,7 +49,7 @@ export default function BrandingCard() {
   );
 
   return (
-    <Card title="🏢 Empresa & Branding (Romaneio)" data-testid="branding-card">
+    <Card title="Empresa & Branding (Romaneio)" data-testid="branding-card">
       <p style={{ fontSize: 12, color: "#64748b", marginTop: 0 }}>
         Esses dados aparecem no <strong>cabeçalho do romaneio</strong> assinado pelos colaboradores.
       </p>

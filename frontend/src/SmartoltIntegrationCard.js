@@ -69,10 +69,10 @@ export default function SmartoltIntegrationCard() {
     } finally { setSyncing(false); }
   };
 
-  if (!cfg) return <Card title="📶 SmartOLT (Sinal das ONUs)">Carregando…</Card>;
+  if (!cfg) return <Card title="SmartOLT (Sinal das ONUs)">Carregando…</Card>;
 
   return (
-    <Card title="📶 SmartOLT — Sinal das ONUs (live)" data-testid="smartolt-card">
+    <Card title="SmartOLT — Sinal das ONUs (live)" data-testid="smartolt-card">
       <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 12px" }}>
         Integra com SmartOLT API para mostrar o sinal Rx (dBm) e status (Online/Offline/LOS) de cada cliente direto na bolha da Lousa. Match feito pelo PPPoE do Atlaz ↔ nome da ONU no SmartOLT.
       </p>
