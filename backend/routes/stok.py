@@ -895,3 +895,4 @@ async def auto_close_service_from_ticket(
     return {"ok": True, "service_id": sid,
             "used_items": [ui.model_dump() for ui in used_items],
             "ont_mac": ont_mac}
+
