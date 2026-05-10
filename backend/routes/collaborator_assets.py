@@ -319,6 +319,9 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
     head = ["#", "Categoria", "Item", "Marca / Modelo", "Tam.", "Qtd",
             "Série", "Entrega", "Status"]
     data = [head]
+    if not assets:
+        data.append(["—", "—", "Nenhum pertence cadastrado para este colaborador.",
+                     "—", "—", "—", "—", "—", "—"])
     for i, a in enumerate(assets, 1):
         marca_modelo = " / ".join([p for p in [a.get("marca"), a.get("modelo")] if p]) or "—"
         data.append([
@@ -421,8 +424,6 @@ async def romaneio_pdf(cid: str,
         q["status"] = "ativo"
     assets = await db.collaborator_assets.find(q, {"_id": 0}).sort(
         "delivered_at", 1).to_list(500)
-    if not assets:
-        raise HTTPException(400, "Nenhum pertence cadastrado pra esse colaborador.")
     branding = (await get_branding(company_id)).model_dump()
     pdf = _build_romaneio_pdf(branding, coll, assets)
     fname = f"romaneio_{(coll.get('name') or cid).replace(' ', '_').lower()}.pdf"
@@ -442,8 +443,6 @@ async def public_romaneio_pdf(cid: str, only_active: bool = Query(default=False)
         q["status"] = "ativo"
     assets = await db.collaborator_assets.find(q, {"_id": 0}).sort(
         "delivered_at", 1).to_list(500)
-    if not assets:
-        raise HTTPException(400, "Nenhum pertence cadastrado.")
     branding = (await get_branding(company_id)).model_dump()
     pdf = _build_romaneio_pdf(branding, coll, assets)
     fname = f"romaneio_{(coll.get('name') or cid).replace(' ', '_').lower()}.pdf"
