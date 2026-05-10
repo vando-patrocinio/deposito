@@ -179,6 +179,7 @@ export const api = {
   lousaManagementInsights: (days = 30) => client.post(`/lousa/management-insights`, null, { params: { days } }).then((r) => r.data),
   lousaHistory: (params) => client.get(`/lousa/history`, { params }).then((r) => r.data),
   lousaGrid: (params = {}) => client.get(`/lousa/grid`, { params }).then((r) => r.data),
+  lousaWipeAll: () => client.post(`/lousa/tickets/wipe-all`, { confirm: "APAGAR TUDO" }).then((r) => r.data),
   // Notificações
   notificationsList: (unreadOnly = false) => client.get(`/notifications`, { params: { unread_only: unreadOnly } }).then((r) => r.data),
   notificationRead: (nid) => client.post(`/notifications/${nid}/read`).then((r) => r.data),

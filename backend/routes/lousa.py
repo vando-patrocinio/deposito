@@ -916,6 +916,34 @@ async def delete_ticket(ticket_id: str, user: dict = Depends(require_role("gesto
 
 
 # -------------------------------------------------------------------------
+# DESTRUTIVO — apaga TODAS as bolhas da empresa.
+# Restrito a auditor (papel responsável por compliance/limpeza geral).
+# Apaga inclusive notas em execução — é lei.
+# -------------------------------------------------------------------------
+@router.post("/lousa/tickets/wipe-all")
+async def wipe_all_tickets(payload: dict = None,
+                           user: dict = Depends(get_current_user)):
+    if user.get("role") != "auditor":
+        raise HTTPException(403, "Apenas auditor pode apagar todas as bolhas.")
+    confirm = (payload or {}).get("confirm")
+    if confirm != "APAGAR TUDO":
+        raise HTTPException(400, "Para confirmar, envie {confirm: 'APAGAR TUDO'}.")
+    cid = user.get("company_id") or "co-demo"
+    res = await db.tickets.delete_many({"company_id": cid})
+    await db.lousa_logs.insert_one({
+        "id": f"wipe-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "action": "wipe_all_tickets",
+        "user_email": user.get("email"),
+        "user_name": user.get("name"),
+        "deleted_count": res.deleted_count,
+        "created_at": now_iso(),
+    })
+    logger.warning("[lousa] WIPE-ALL by auditor=%s deleted=%d", user.get("email"), res.deleted_count)
+    return {"ok": True, "deleted_count": res.deleted_count}
+
+
+# -------------------------------------------------------------------------
 # Reorder (técnico)
 # -------------------------------------------------------------------------
 @router.post("/lousa/reorder")

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "@/api";
 import { Button, Icon } from "@/ui";
+import { useAuth } from "@/AuthContext";
 import EditTicketModal from "./lousa/EditTicketModal";
 import CreateTicketModal from "./lousa/CreateTicketModal";
 import RescheduleModal from "./lousa/RescheduleModal";
@@ -71,6 +72,7 @@ const ACTION_LABEL = {
 };
 
 export default function LousaAdminPanel({ systemStatus = { offline: false, drift_blocked: false } }) {
+  const { user } = useAuth();
   const [grid, setGrid] = useState({ columns: [], sla_blink_when_overdue: true, sla_warning_pct: 80 });
   const [collabs, setCollabs] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -330,6 +332,33 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             onToday={goToday}
             onChange={setSelectedDate}
           />
+          {user?.role === "auditor" && (
+            <Button
+              variant="soft"
+              onClick={async () => {
+                const phrase = window.prompt(
+                  "⚠ ATENÇÃO: isto APAGA TODAS as bolhas da empresa, incluindo as em execução.\n" +
+                  "Ação irreversível e auditada (logs).\n\n" +
+                  "Digite APAGAR TUDO para confirmar:");
+                if (phrase !== "APAGAR TUDO") return;
+                try {
+                  const res = await api.lousaWipeAll();
+                  alert(`✓ ${res.deleted_count} bolha(s) apagadas.`);
+                  refresh();
+                } catch (e) {
+                  alert("Falha: " + (e?.response?.data?.detail || e.message));
+                }
+              }}
+              data-testid="lousa-wipe-all-btn"
+              title="AUDITOR — Apaga todas as bolhas. Ação irreversível e logada."
+              style={{
+                background: "#fee2e2", color: "#7f1d1d",
+                border: "1px solid #f87171", fontWeight: 700,
+              }}
+            >
+              🗑 Apagar todas
+            </Button>
+          )}
           <Button
             variant="soft"
             onClick={toggleSelectMode}
