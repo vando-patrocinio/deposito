@@ -334,6 +334,10 @@ export const api = {
   aihubOutboundCall: (payload) =>
     client.post(`/aihub/calls/outbound`, payload).then((r) => r.data),
   aihubDashboard: () => client.get(`/aihub/dashboard`).then((r) => r.data),
+  aihubAgentTextGen: (payload) =>
+    client.post(`/aihub/agents/text-gen`, payload).then((r) => r.data),
+  aihubScheduleLousaTicket: (payload) =>
+    client.post(`/aihub/tools/schedule-lousa-ticket`, payload).then((r) => r.data),
   aihubIntegrationsStatus: () =>
     client.get(`/aihub/integrations/status-summary`).then((r) => r.data),
 

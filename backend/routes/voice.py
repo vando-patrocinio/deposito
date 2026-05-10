@@ -166,10 +166,32 @@ async def _llm_reply(agent: dict, session_id: str, user_text: str) -> str:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
     except ImportError as e:
         raise HTTPException(500, f"emergentintegrations indisponível: {e}")
+    # Personalidade & Expertise — injeta blocos de info da empresa
+    sys_prompt = agent["system_prompt"]
+    extra = []
+    if agent.get("company_info"):
+        extra.append(f"=== INFORMAÇÕES DA EMPRESA ===\n{agent['company_info']}")
+    if agent.get("pricing_info"):
+        extra.append(f"=== PREÇOS E VALORES ===\n{agent['pricing_info']}")
+    if agent.get("priority_situations"):
+        extra.append(f"=== SITUAÇÕES PRIORITÁRIAS ===\n{agent['priority_situations']}")
+    if "schedule_lousa_ticket" in (agent.get("tools_enabled") or []):
+        extra.append(
+            "=== AGENDAMENTO DE VISITA TÉCNICA ===\n"
+            "Quando o cliente pedir agendamento (instalação/reparo/visita), "
+            "colete: nome completo, endereço com número, bairro, telefone, "
+            "tipo (instalação/reparo/retirada) e descrição do problema. "
+            "Confirme em voz alta e diga \"vou agendar agora\" — o sistema "
+            "criará automaticamente uma bolha na Lousa para o próximo técnico "
+            "disponível atender. NUNCA prometa horário específico — apenas "
+            "diga \"o técnico entrará em contato\"."
+        )
+    if extra:
+        sys_prompt += "\n\n" + "\n\n".join(extra)
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
         session_id=session_id,
-        system_message=agent["system_prompt"],
+        system_message=sys_prompt,
     ).with_model(agent["model_provider"], agent["model_name"])
     try:
         chat = chat.with_temperature(agent.get("temperature", 0.6))  # type: ignore

@@ -51,8 +51,8 @@ DEFAULT_TOOLS = [
      "description": "Encerra IA e cria notificação para um gestor assumir."},
     {"id": "create_lead", "label": "Criar lead",
      "description": "Salva contato qualificado no CRM."},
-    {"id": "schedule_appointment", "label": "Agendar (Google Calendar)",
-     "description": "Cria evento no Google Calendar (placeholder)."},
+    {"id": "schedule_lousa_ticket", "label": "Agendar visita técnica (Lousa)",
+     "description": "Cria uma bolha na Lousa de serviços com tipo/endereço/cliente — exatamente como o gestor faria manualmente."},
     {"id": "get_current_date", "label": "Data/hora atual",
      "description": "Retorna a data e hora atual do servidor."},
     {"id": "hangup", "label": "Encerrar chamada",
@@ -83,6 +83,10 @@ class AgentIn(BaseModel):
     tools_enabled: List[str] = Field(default_factory=list)
     webhook_url: Optional[str] = Field(default=None, max_length=400)
     active: bool = True
+    # Personalidade & Expertise (estilo PDF Ligo Fibra)
+    company_info: str = Field(default="", max_length=4000)
+    pricing_info: str = Field(default="", max_length=4000)
+    priority_situations: str = Field(default="", max_length=4000)
 
 
 class AgentUpdate(BaseModel):
@@ -98,6 +102,9 @@ class AgentUpdate(BaseModel):
     tools_enabled: Optional[List[str]] = None
     webhook_url: Optional[str] = Field(default=None, max_length=400)
     active: Optional[bool] = None
+    company_info: Optional[str] = Field(default=None, max_length=4000)
+    pricing_info: Optional[str] = Field(default=None, max_length=4000)
+    priority_situations: Optional[str] = Field(default=None, max_length=4000)
 
 
 class PlaygroundIn(BaseModel):
@@ -275,6 +282,16 @@ async def playground(aid: str, payload: PlaygroundIn,
 
     # Constrói prompt com contexto de formulário inteligente, se houver
     sys_prompt = agent["system_prompt"]
+    # Personalidade & Expertise — anexa info da empresa, preços e situações prioritárias
+    extra_blocks = []
+    if agent.get("company_info"):
+        extra_blocks.append(f"=== INFORMAÇÕES DA EMPRESA ===\n{agent['company_info']}")
+    if agent.get("pricing_info"):
+        extra_blocks.append(f"=== PREÇOS E VALORES ===\n{agent['pricing_info']}")
+    if agent.get("priority_situations"):
+        extra_blocks.append(f"=== SITUAÇÕES PRIORITÁRIAS ===\n{agent['priority_situations']}")
+    if extra_blocks:
+        sys_prompt += "\n\n" + "\n\n".join(extra_blocks)
     if agent.get("form_fields"):
         sys_prompt += "\n\nCampos a CAPTURAR durante a conversa (faça perguntas naturais quando apropriado):\n"
         for f in agent["form_fields"]:
@@ -957,4 +974,236 @@ async def dashboard(user: dict = Depends(require_role("gestor"))):
         "calls": {"total": calls_total},
         "sessions": {"total": sessions_total},
         "integrations": {i["type"]: i.get("status", "unknown") for i in intgs},
+    }
+
+
+# ---------------------------------------------------------------------------
+# Configurar Robô (estilo PDF Ligo Fibra) — helpers de geração com IA
+# ---------------------------------------------------------------------------
+class TextGenIn(BaseModel):
+    field: Literal[
+        "company_info", "pricing_info", "system_prompt",
+        "priority_situations", "name", "initial_message",
+    ]
+    mode: Literal["aprimorar", "gerar"]
+    current_text: str = Field(default="", max_length=4000)
+    context: Optional[str] = Field(default=None, max_length=2000)
+
+
+_FIELD_GUIDES = {
+    "company_info": (
+        "Informações da empresa que a IA deve conhecer. Inclua: nome fantasia, "
+        "razão social, CNPJ, endereço, número Anatel/Fistel, áreas de cobertura. "
+        "Texto direto e objetivo, em até 8 linhas."
+    ),
+    "pricing_info": (
+        "Tabela de preços e planos. Liste cada plano em uma linha com nome, "
+        "velocidade, valor mensal e condição (fidelidade/sem fidelidade). "
+        "Formato curto, fácil para a IA ler ao telefone."
+    ),
+    "system_prompt": (
+        "Diretriz de comportamento (system prompt) da atendente IA. "
+        "Defina persona, escopo (vendas, manutenção, financeiro, desbloqueio), "
+        "tom, regras de transferência para humano e nunca inventar dados."
+    ),
+    "priority_situations": (
+        "Cenários de negócio que merecem atenção especial — não emergências, mas "
+        "oportunidades de receita/retenção. Ex.: ex-cliente querendo voltar, "
+        "cliente querendo aumentar plano, reclamação repetida em <24h."
+    ),
+    "name": "Nome próprio feminino brasileiro, simpático, de 1 palavra.",
+    "initial_message": (
+        "Saudação curta (até 2 frases) que a atendente fala ao atender. "
+        "Identifica empresa e oferece ajuda."
+    ),
+}
+
+
+@router.post("/agents/text-gen")
+async def agent_text_gen(payload: TextGenIn,
+                          user: dict = Depends(require_role("gestor"))):
+    """Gera ou aprimora um campo de configuração da IA usando LLM.
+
+    `mode=gerar`: cria do zero (descarta `current_text`).
+    `mode=aprimorar`: melhora o `current_text` existente preservando intenção.
+    """
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(503, "EMERGENT_LLM_KEY não configurada.")
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+    except ImportError as e:
+        raise HTTPException(500, f"emergentintegrations indisponível: {e}")
+
+    guide = _FIELD_GUIDES.get(payload.field, "")
+    if payload.mode == "aprimorar" and not payload.current_text.strip():
+        raise HTTPException(400, "Texto atual vazio — use mode=gerar para criar do zero.")
+
+    system_msg = (
+        "Você é um assistente especializado em configurar atendentes virtuais "
+        "para ISPs (provedores de internet) brasileiros. Você escreve em "
+        "português brasileiro, claro, direto e profissional. Nunca usa "
+        "markdown, listas com bullets ou emojis no resultado final — apenas "
+        "texto natural pronto para ser lido por uma IA. Não adicione "
+        "explicações, comentários ou frases introdutórias na resposta."
+    )
+
+    if payload.mode == "gerar":
+        user_msg = (
+            f"Gere o conteúdo do campo \"{payload.field}\".\n\n"
+            f"Diretriz: {guide}\n\n"
+        )
+        if payload.context:
+            user_msg += f"Contexto adicional do negócio: {payload.context}\n\n"
+        user_msg += "Devolva apenas o texto final do campo."
+    else:  # aprimorar
+        user_msg = (
+            f"Aprimore o conteúdo abaixo do campo \"{payload.field}\".\n\n"
+            f"Diretriz: {guide}\n\n"
+            f"Texto atual:\n---\n{payload.current_text}\n---\n\n"
+            "Reescreva mantendo a mesma intenção, mas com escrita mais clara, "
+            "natural e sem redundâncias. Devolva apenas o texto final."
+        )
+
+    session_id = f"textgen-{uuid.uuid4().hex[:8]}"
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=session_id,
+            system_message=system_msg,
+        ).with_model("openai", "gpt-4o-mini")
+        try:
+            chat = chat.with_max_tokens(900)  # type: ignore
+        except Exception:
+            pass
+        try:
+            chat = chat.with_temperature(0.5)  # type: ignore
+        except Exception:
+            pass
+        resp = await chat.send_message(UserMessage(text=user_msg))
+        text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
+        text = (text or "").strip().strip('"\'')
+    except Exception as e:
+        logger.warning("[aihub.textgen] falhou: %s", e)
+        raise HTTPException(502, f"LLM falhou: {e}") from e
+
+    return {"text": text, "field": payload.field, "mode": payload.mode}
+
+
+# ---------------------------------------------------------------------------
+# Tool: schedule_lousa_ticket — IA cria bolha na Lousa (substitui Google Calendar)
+# ---------------------------------------------------------------------------
+class ScheduleLousaIn(BaseModel):
+    """Payload que a IA produz para agendar visita técnica na Lousa.
+
+    Espelha exatamente os campos que o gestor preenche manualmente em
+    POST /api/lousa/tickets, exceto `assigned_collaborator_id` que é
+    decidido pelo backend (próximo técnico disponível por ordem alfabética).
+    """
+    client_name: str = Field(..., min_length=2, max_length=120)
+    address: str = Field(..., min_length=5, max_length=300)
+    neighborhood: str = Field(default="", max_length=120)
+    phone: str = Field(default="", max_length=20)
+    relato: str = Field(..., min_length=5, max_length=2000)
+    pppoe_user: str = Field(default="", max_length=120)
+    type: Literal["reparo", "instalacao", "retirada", "preventiva", "venda", "prioridade"] = "reparo"
+    priority: Literal["normal", "alta", "urgente"] = "normal"
+    scheduled_time: Optional[str] = Field(default=None, max_length=40)
+    subscriber_id: Optional[str] = None
+    session_id: Optional[str] = None  # vincula ao histórico da chamada IA
+
+
+@router.post("/tools/schedule-lousa-ticket")
+async def schedule_lousa_ticket(payload: ScheduleLousaIn,
+                                 user: dict = Depends(require_role("gestor"))):
+    """Tool que a IA Jerusa chama para criar uma bolha na Lousa.
+
+    Decide automaticamente o colaborador atribuído (próximo da fila por
+    nome alfabético) e escreve o `relato` no mesmo formato das bolhas
+    criadas pelos gestores. Retorna o ticket criado.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    # Próximo colaborador disponível (técnico ativo da empresa)
+    coll = await db.collaborators.find_one(
+        {"company_id": cid, "active": {"$ne": False}},
+        sort=[("name", 1)],
+        projection={"_id": 0, "id": 1, "name": 1, "company_id": 1},
+    )
+    if not coll:
+        raise HTTPException(409, "Nenhum colaborador disponível para atribuir a bolha.")
+
+    # Geocode best-effort
+    lat, lng = None, None
+    try:
+        from routes.lousa import geocode_address  # reuse
+        geo = await geocode_address(payload.address)
+        lat, lng = geo.lat, geo.lng
+    except Exception as e:
+        logger.warning("[aihub.schedule] geocode falhou: %s", e)
+
+    # Próxima posição
+    last = await db.tickets.find(
+        {"assigned_collaborator_id": coll["id"],
+         "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]}},
+        {"_id": 0, "position": 1},
+    ).sort("position", -1).to_list(1)
+    next_pos = (last[0]["position"] + 1) if last else 0
+
+    relato_final = payload.relato.strip()
+    # Marca origem na própria nota (transparência pro técnico)
+    if "[IA]" not in relato_final:
+        relato_final = f"[IA] {relato_final}"
+
+    ticket_id = f"tkt-{uuid.uuid4().hex[:10]}"
+    doc = {
+        "id": ticket_id,
+        "client_id": str(uuid.uuid4()),
+        "client_snapshot": {
+            "name": payload.client_name,
+            "address": payload.address,
+            "neighborhood": payload.neighborhood,
+            "phone": payload.phone,
+            "latitude": lat, "longitude": lng,
+            "relato": relato_final,
+            "pppoe_user": payload.pppoe_user,
+            "test_history": [],
+        },
+        "type": payload.type,
+        "priority": payload.priority,
+        "scheduled_time": payload.scheduled_time,
+        "position": next_pos,
+        "status": "pendente",
+        "assigned_collaborator_id": coll["id"],
+        "company_id": cid,
+        "opened_at": None, "closed_at": None, "closed_by": None,
+        "close_location": None, "outcome": None,
+        "whatsapp_status": "nao_enviado", "whatsapp_last_message": None,
+        "completion_data": None, "admin_action": None, "admin_notes": None,
+        "created_at": now_iso(),
+        # Metadados IA — quem agendou e em qual sessão
+        "created_by_source": "aihub",
+        "aihub_session_id": payload.session_id,
+        "aihub_subscriber_id": payload.subscriber_id,
+    }
+    await db.tickets.insert_one(doc)
+
+    # Log auditoria (mesmo padrão das bolhas criadas pelo gestor)
+    try:
+        from routes.lousa import _log_ticket_action
+        await _log_ticket_action(
+            ticket_id=ticket_id, action="criada",
+            actor_id="aihub:agent", actor_name="IA Jerusa",
+            actor_role="aihub",
+            details=(f"[IA] Atribuída a {coll.get('name', 'colaborador')} · "
+                     f"{payload.client_name} · {payload.type}/{payload.priority}"),
+            company_id=cid,
+        )
+    except Exception as e:
+        logger.warning("[aihub.schedule] log falhou: %s", e)
+
+    doc.pop("_id", None)
+    return {
+        "ok": True,
+        "ticket_id": ticket_id,
+        "assigned_to": coll.get("name"),
+        "ticket": doc,
     }

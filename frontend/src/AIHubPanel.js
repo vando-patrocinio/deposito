@@ -4,6 +4,7 @@ import {
   Bot, MessageCircle, Phone, Send, Settings, History,
   Plus, Trash2, Edit2, Play, Save, X, RefreshCw, CheckCircle2,
   AlertTriangle, Wifi, WifiOff, PhoneCall,
+  Sparkles, Building2, DollarSign, Star, Wand2, ArrowUp,
 } from "lucide-react";
 import JerusaCallSimulator from "@/JerusaCallSimulator";
 
@@ -88,6 +89,7 @@ function AgentsTab() {
     model_provider: "gemini", model_name: "gemini-2.5-flash",
     temperature: 0.6, max_tokens: 700,
     form_fields: [], tools_enabled: [], webhook_url: "", active: true,
+    company_info: "", pricing_info: "", priority_situations: "",
   });
 
   const save = async () => {
@@ -308,6 +310,9 @@ function AgentEditor({ agent, setAgent, busy, onSave, onCancel }) {
         </div>
       </Field>
 
+      {/* Personalidade & Expertise — estilo Configurar Robô (PDF Ligo Fibra) */}
+      <PersonalityExpertiseSection agent={agent} setAgent={setAgent} set={set} />
+
       {/* Tools */}
       <Field label="Ferramentas disponíveis ao agente">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
@@ -356,6 +361,169 @@ function AgentEditor({ agent, setAgent, busy, onSave, onCancel }) {
                 data-testid="aihub-save-btn">
           <Save size={14} /> {busy ? "Salvando…" : "Salvar agente"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* =============================================================
+   Personalidade & Expertise (estilo PDF Ligo Fibra)
+============================================================= */
+function PersonalityExpertiseSection({ agent, setAgent, set }) {
+  const [busyField, setBusyField] = useState(null);    // "company_info" | "pricing_info" | ...
+  const [busyMode, setBusyMode] = useState(null);       // "aprimorar" | "gerar"
+  const [genAllBusy, setGenAllBusy] = useState(false);
+  const [genAllContext, setGenAllContext] = useState("");
+  const [showGenAll, setShowGenAll] = useState(false);
+
+  const callTextGen = async (field, mode, currentText, context) => {
+    setBusyField(field); setBusyMode(mode);
+    try {
+      const r = await api.aihubAgentTextGen({
+        field, mode, current_text: currentText || "", context: context || null,
+      });
+      set(field, r.text);
+    } catch (e) {
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally { setBusyField(null); setBusyMode(null); }
+  };
+
+  const generateAll = async () => {
+    if (!genAllContext.trim() || genAllContext.length < 20) {
+      alert("Descreva o negócio com pelo menos 20 caracteres."); return;
+    }
+    setGenAllBusy(true);
+    try {
+      // Gera 4 campos em paralelo
+      const fields = ["company_info", "pricing_info", "system_prompt", "priority_situations"];
+      const results = await Promise.all(fields.map((f) =>
+        api.aihubAgentTextGen({ field: f, mode: "gerar", current_text: "", context: genAllContext })
+      ));
+      const next = { ...agent };
+      fields.forEach((f, i) => { next[f] = results[i].text; });
+      setAgent(next);
+      setShowGenAll(false);
+      setGenAllContext("");
+    } catch (e) {
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally { setGenAllBusy(false); }
+  };
+
+  const ActionBtn = ({ field, mode, label, Icon }) => {
+    const active = busyField === field && busyMode === mode;
+    const disabled = busyField !== null;
+    return (
+      <button onClick={() => callTextGen(field, mode, agent[field] || "")}
+              disabled={disabled}
+              data-testid={`aihub-${mode}-${field}`}
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 11, padding: "4px 9px", gap: 4 }}>
+        <Icon size={11} strokeWidth={2} />
+        {active ? "..." : label}
+      </button>
+    );
+  };
+
+  const SectionHeader = ({ Icon, title, field }) => (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8,
+      marginBottom: 6, marginTop: 14,
+    }}>
+      <Icon size={14} strokeWidth={1.75} style={{ color: "var(--accent)" }} />
+      <span style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>{title}</span>
+      <ActionBtn field={field} mode="aprimorar" label="Aprimorar" Icon={ArrowUp} />
+      <ActionBtn field={field} mode="gerar" label="Gerar Novo" Icon={Plus} />
+    </div>
+  );
+
+  return (
+    <div data-testid="aihub-personality-section" style={{
+      marginTop: 18, padding: 18, borderRadius: 14,
+      border: "1px solid var(--border-default)",
+      background: "var(--bg-surface-2)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <Sparkles size={18} strokeWidth={1.75} style={{ color: "var(--accent)" }} />
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>
+          Personalidade & Expertise
+        </h3>
+      </div>
+      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 14 }}>
+        Configure a identidade, especialização e conhecimento específico do seu
+        assistente inteligente.
+      </div>
+
+      {/* Gerador Inteligente de Prompts */}
+      <div style={{
+        padding: 12, borderRadius: 10,
+        background: "linear-gradient(135deg, var(--accent-soft) 0%, var(--bg-surface) 100%)",
+        border: "1px dashed var(--accent)",
+        marginBottom: 14,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <Wand2 size={14} strokeWidth={1.75} style={{ color: "var(--accent)" }} />
+          <strong style={{ fontSize: 13 }}>Gerador Inteligente de Prompts</strong>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 10 }}>
+          Descreva seu negócio em uma frase e a IA gera os 4 campos abaixo
+          (empresa, preços, prompt, situações).
+        </div>
+        {!showGenAll ? (
+          <button onClick={() => setShowGenAll(true)}
+                  className="btn btn-primary btn-sm"
+                  data-testid="aihub-gen-all-btn">
+            <Sparkles size={13} /> Gerar Prompt Completo
+          </button>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            <textarea className="input" rows={3}
+                      value={genAllContext}
+                      onChange={(e) => setGenAllContext(e.target.value)}
+                      data-testid="aihub-gen-all-context"
+                      placeholder="Ex.: Provedor de internet Ligo Fibra no RJ, planos de 400MB a 1GB, atende residencial e comercial, foco em vendas e suporte técnico." />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={generateAll} disabled={genAllBusy}
+                      className="btn btn-primary btn-sm"
+                      data-testid="aihub-gen-all-confirm">
+                <Sparkles size={13} /> {genAllBusy ? "Gerando 4 campos..." : "Gerar"}
+              </button>
+              <button onClick={() => { setShowGenAll(false); setGenAllContext(""); }}
+                      className="btn btn-ghost btn-sm" disabled={genAllBusy}>
+                <X size={13} /> Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <SectionHeader Icon={Building2} title="Informações da Empresa" field="company_info" />
+      <textarea className="input" rows={5}
+                value={agent.company_info || ""}
+                onChange={(e) => set("company_info", e.target.value)}
+                data-testid="aihub-input-company-info"
+                placeholder="Nome fantasia, CNPJ, endereço, número Anatel/Fistel, áreas de cobertura..." />
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+        Informações básicas sobre sua empresa que a IA deve conhecer.
+      </div>
+
+      <SectionHeader Icon={DollarSign} title="Preços e Valores" field="pricing_info" />
+      <textarea className="input" rows={5}
+                value={agent.pricing_info || ""}
+                onChange={(e) => set("pricing_info", e.target.value)}
+                data-testid="aihub-input-pricing-info"
+                placeholder="Lista dos planos disponíveis, valores mensais, condições..." />
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+        Tabela de preços e informações sobre produtos/serviços.
+      </div>
+
+      <SectionHeader Icon={Star} title="Situações Prioritárias" field="priority_situations" />
+      <textarea className="input" rows={4}
+                value={agent.priority_situations || ""}
+                onChange={(e) => set("priority_situations", e.target.value)}
+                data-testid="aihub-input-priority-situations"
+                placeholder="Cenários de negócio que merecem atenção (ex.: ex-cliente querendo voltar)..." />
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+        Configure situações que merecem atenção prioritária da IA (não emergências, mas prioridades de negócio).
       </div>
     </div>
   );

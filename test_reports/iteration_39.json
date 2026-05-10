@@ -1,0 +1,24 @@
+{
+  "summary": "Iter39 — text-gen endpoint + schedule_lousa_ticket tool + Personality & Expertise UI. Backend: 9/9 pytest passed (text-gen gerar/aprimorar/400-empty, schedule_lousa_ticket creates ticket with [IA] prefix and created_by_source=aihub, ticket appears in /api/lousa/all, agent CRUD persists company_info/pricing_info/priority_situations, catalog has schedule_lousa_ticket, voice + status-summary regression OK). Frontend: login OK → Atendimento IA → Agentes → Editar Jerusa renders aihub-personality-section with all 10 expected testids (3 textareas + gen-all-btn + 6 aprimorar/gerar buttons). 'Gerar Prompt Completo' flow: context input → confirm → all 3 textareas populated in ~6s (308/116/487 chars). MagnusBilling card + mb-copy-webhook-btn + Clientes/Assinantes regression PASSED. 0 console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter39_textgen_lousa.py",
+    "/app/test_reports/pytest/iter39_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/aihub.py text-gen: usa gpt-4o-mini hardcoded — quando o usuário trocar o modelo do agente para Gemini/Claude, os helpers Aprimorar/Gerar continuam em OpenAI. Considerar honrar o model_provider/model_name do agente em edição (atualmente o componente PersonalityExpertiseSection NÃO recebe o modelo do agente). Cosmético — funciona, só não respeita a escolha.",
+    "routes/aihub.py schedule_lousa_ticket: client_id é uuid novo a cada chamada (não vincula a um subscriber existente mesmo quando aihub_subscriber_id é passado). Para a IA reagendar/atualizar bolha do mesmo cliente, seria melhor reaproveitar subscriber.id como client_id.",
+    "routes/aihub.py schedule_lousa_ticket: assigned_collaborator é decidido por nome alfabético (sempre o primeiro técnico ativo). Em produção isso vai sobrecarregar 1 colaborador. Sugerir round-robin com base em count de tickets pendentes ou em workload do dia.",
+    "AIHubPanel.js PersonalityExpertiseSection (l.412): ActionBtn disable global (disabled = busyField !== null) — bom UX, mas se 1 chamada travar (LLM timeout), todos os 6 botões ficam disabled sem feedback. Adicionar timeout client-side + reset.",
+    "AIHubPanel.js generateAll (l.395-410): Promise.all — se 1 dos 4 LLM calls falhar, tudo é descartado. Considerar Promise.allSettled e preencher só os que retornaram."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter39_textgen_lousa.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "1 TEST_ ticket created via schedule_lousa_ticket (assigned to first alphabetical collaborator, persists in db.tickets). 1 TEST_Agent39 created+deleted via CRUD test. Some real LLM-generated text in Jerusa company/pricing/priority fields after frontend gen-all test — not cleaned up (acceptable, Jerusa is a fixture agent).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter39 fully green. text-gen uses real Emergent LLM Key (gpt-4o-mini, ~2-6s per call). schedule_lousa_ticket creates real bolhas in db.tickets that show up alongside manual ones in /api/lousa/all. /api/lousa/tickets (plural list endpoint) does NOT exist as GET — use /api/lousa/all. Jerusa agent now has company_info/pricing_info/priority_situations populated from the gen-all test — main agent may want to clear these or treat as expected fixture state."
+}
