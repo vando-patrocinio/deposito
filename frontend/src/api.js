@@ -353,6 +353,8 @@ export const api = {
     client.put(`/whatsapp-baileys/conversations/${encodeURIComponent(phone)}/assign`, payload).then((r) => r.data),
   waBaileysFinalizeConversation: (phone, outcome = "resolved") =>
     client.put(`/whatsapp-baileys/conversations/${encodeURIComponent(phone)}/finalize`, { outcome }).then((r) => r.data),
+  waBaileysMarkSeen: (phone) =>
+    client.post(`/whatsapp-baileys/conversations/${encodeURIComponent(phone)}/mark-seen`).then((r) => r.data),
   waBaileysAttendants: () =>
     client.get(`/whatsapp-baileys/attendants`).then((r) => r.data),
 

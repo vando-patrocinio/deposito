@@ -451,14 +451,16 @@ def _bucket_for_conversation(conv: dict) -> str:
 async def list_conversations(user: dict = Depends(require_role("gestor"))):
     """Agrega mensagens por telefone retornando conversas + buckets.
 
-    Usa aggregation MongoDB para performance. Retorna no formato:
-    {
-      buckets: {automatico:N, aguardando:N, fora_de_hora:N, manual:N, grupo:N},
-      items: [{phone, jid, subscriber_id, subscriber_name, assignee_user_id,
-                assignee_name, assignee_role, last_text, last_at, unread, bucket}],
-    }
+    REGRA MÁXIMA APLICADA AQUI:
+    - Para CADA telefone retornado, se ainda não houver `subscriber_id`
+      vinculado, tentamos `link_phone_to_subscriber` novamente (caso o
+      cliente tenha sido cadastrado depois). Quando vinculamos, fazemos
+      um `update_many` em `aihub_wa_messages` para gravar o vínculo
+      retroativamente — assim toda mensagem antiga passa a estar linkada.
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    # 1) Agrega últimas msgs por telefone
     pipeline = [
         {"$match": {"company_id": cid}},
         {"$sort": {"created_at": -1}},
@@ -479,21 +481,68 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
         {"$limit": 200},
     ]
     rows = await db.aihub_wa_messages.aggregate(pipeline).to_list(200)
-    # Lê assignments persistidos
+
+    # 2) Unread count por telefone — conta inbound após o último outbound
+    unread_pipeline = [
+        {"$match": {"company_id": cid, "direction": "inbound"}},
+        {"$group": {"_id": "$phone", "inbound_ts": {"$push": "$created_at"}}},
+    ]
+    inbound_map = {r["_id"]: r["inbound_ts"]
+                    async for r in db.aihub_wa_messages.aggregate(unread_pipeline)}
+    last_out_pipeline = [
+        {"$match": {"company_id": cid, "direction": "outbound"}},
+        {"$group": {"_id": "$phone", "last_out_at": {"$max": "$created_at"}}},
+    ]
+    last_out_map = {r["_id"]: r["last_out_at"]
+                     async for r in db.aihub_wa_messages.aggregate(last_out_pipeline)}
+
+    # 3) Lê assignments persistidos (+ last_seen_at p/ unread mais preciso)
     convs_map = {}
     async for c in db.wa_conversations.find({"company_id": cid}, {"_id": 0}):
         convs_map[c["phone"]] = c
 
-    # Resolve nomes de subscriber/usuário em batch
+    # 4) REGRA MÁXIMA: re-tenta link nos telefones sem subscriber_id
+    from phone_normalizer import link_phone_to_subscriber
+    relinked = 0
+    for r in rows:
+        phone = r["_id"]
+        jid = r.get("jid") or ""
+        if jid.endswith("@g.us"):
+            continue
+        if r.get("subscriber_id"):
+            continue
+        try:
+            link = await link_phone_to_subscriber(phone, cid)
+        except Exception:
+            link = None
+        if link and link.get("subscriber_id"):
+            r["subscriber_id"] = link["subscriber_id"]
+            r["_link"] = link  # carrega branch/plan/status pra resposta
+            # Retroativo: marca todas mensagens antigas com subscriber_id
+            try:
+                await db.aihub_wa_messages.update_many(
+                    {"company_id": cid, "phone": phone,
+                     "subscriber_id": {"$in": [None, ""]}},
+                    {"$set": {"subscriber_id": link["subscriber_id"]}},
+                )
+                relinked += 1
+            except Exception:
+                pass
+    if relinked:
+        logger.info("[wa-baileys] auto-link retroativo: %d telefones vinculados", relinked)
+
+    # 5) Resolve subscribers em batch (com branch/plan/status/external_code)
     subscriber_ids = {r.get("subscriber_id") for r in rows if r.get("subscriber_id")}
     subscribers = {}
     if subscriber_ids:
         async for s in db.subscribers.find(
             {"id": {"$in": list(subscriber_ids)}, "company_id": cid},
-            {"_id": 0, "id": 1, "name": 1},
+            {"_id": 0, "id": 1, "name": 1, "branch": 1, "plan_name": 1,
+             "status": 1, "external_code": 1, "pppoe_user": 1},
         ):
-            subscribers[s["id"]] = s.get("name")
+            subscribers[s["id"]] = s
 
+    # 6) Atendentes
     user_ids = {convs_map[k].get("assignee_user_id")
                  for k in convs_map if convs_map[k].get("assignee_user_id")}
     users_map = {}
@@ -503,6 +552,20 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
             {"_id": 0, "id": 1, "name": 1, "avatar_url": 1, "google_picture": 1, "role": 1},
         ):
             users_map[u["id"]] = u
+
+    # 7) Avatares WhatsApp em batch (do cache do sidecar — não-bloqueante)
+    contact_avatars = {}
+    try:
+        non_group_phones = [r["_id"] for r in rows if not (r.get("jid") or "").endswith("@g.us")]
+        if non_group_phones:
+            async with httpx.AsyncClient(timeout=5.0) as cli:
+                br = await cli.post(f"{SIDECAR_BASE}/contacts-bulk",
+                                     json={"phones": non_group_phones})
+                if br.status_code == 200:
+                    body = br.json() or {}
+                    contact_avatars = body.get("avatars") or {}
+    except Exception:
+        pass  # sidecar offline → sem avatares (frontend usa iniciais)
 
     items = []
     counts = {"automatico": 0, "aguardando": 0, "fora_de_hora": 0,
@@ -514,13 +577,25 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
         is_group = jid.endswith("@g.us")
         assignee_user_id = conv.get("assignee_user_id")
         assignee_role = conv.get("assignee_role")
-        # Default: se há auto-reply ativo e nenhum humano atribuiu, é IA
         if not assignee_role:
             assignee_role = "ai" if not is_group else None
         u = users_map.get(assignee_user_id or "")
         assignee_name = (u.get("name") if u else None) \
             or ("Isabella (IA)" if assignee_role == "ai" else None)
         assignee_avatar = (u.get("avatar_url") or u.get("google_picture")) if u else None
+
+        # Unread: inbound após last outbound (ou todas se nunca houve outbound).
+        # Refina com last_seen_at do operador (quando ele abriu a conversa).
+        last_seen_at = conv.get("last_seen_at")
+        last_out_at = last_out_map.get(phone)
+        threshold = max(filter(None, [last_seen_at, last_out_at]), default=None)
+        inbound_ts = inbound_map.get(phone, [])
+        if threshold:
+            unread = sum(1 for t in inbound_ts if t and t > threshold)
+        else:
+            unread = len(inbound_ts)
+
+        sub = subscribers.get(r.get("subscriber_id") or "") or {}
 
         conv_view = {
             "phone": phone, "jid": jid, "is_group": is_group,
@@ -529,12 +604,23 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
             "last_message_at": r.get("last_message_at"),
             "last_inbound_at": r.get("last_inbound_at"),
             "push_name": r.get("push_name"),
+            # Cliente identificado (REGRA MÁXIMA)
             "subscriber_id": r.get("subscriber_id"),
-            "subscriber_name": subscribers.get(r.get("subscriber_id")),
+            "subscriber_name": sub.get("name"),
+            "subscriber_branch": sub.get("branch"),
+            "subscriber_plan": sub.get("plan_name"),
+            "subscriber_status": sub.get("status"),
+            "subscriber_external_code": sub.get("external_code"),
+            "subscriber_pppoe": sub.get("pppoe_user"),
+            # Avatar do WhatsApp do contato (do dispositivo)
+            "contact_avatar": contact_avatars.get(phone),
+            # Atendente atribuído
             "assignee_user_id": assignee_user_id,
             "assignee_name": assignee_name,
             "assignee_role": assignee_role,
             "assignee_avatar": assignee_avatar,
+            # Status
+            "unread": unread,
             "msg_count": r.get("msg_count", 0),
             "status": conv.get("status", "open"),
         }
@@ -544,6 +630,28 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
         items.append(conv_view)
 
     return {"buckets": counts, "items": items, "count": len(items)}
+
+
+class MarkSeenIn(BaseModel):
+    last_seen_at: Optional[str] = None  # opcional, default = agora
+
+
+@router.post("/conversations/{phone}/mark-seen")
+async def mark_conversation_seen(phone: str, payload: MarkSeenIn = MarkSeenIn(),
+                                    user: dict = Depends(require_role("gestor"))):
+    """Marca conversa como visualizada pelo operador (zera badge unread)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    seen_at = payload.last_seen_at or now_iso()
+    await db.wa_conversations.update_one(
+        {"company_id": cid, "phone": phone},
+        {"$set": {
+            "company_id": cid, "phone": phone,
+            "last_seen_at": seen_at,
+            "last_seen_by": user.get("email") or user.get("id"),
+        }},
+        upsert=True,
+    )
+    return {"ok": True, "phone": phone, "last_seen_at": seen_at}
 
 
 @router.get("/conversations/{phone}/messages")

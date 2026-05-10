@@ -131,14 +131,20 @@ export default function WhatsAppChatLayout() {
   }, [conversations, bucket]);
 
   const filteredConvs = useMemo(() => {
-    const inBucket = conversations.filter((c) => c.bucket === bucket);
+    /* Se há busca, vasculha TODOS os buckets (não só o ativo). */
+    const inBucket = search.trim()
+      ? conversations
+      : conversations.filter((c) => c.bucket === bucket);
     if (!search.trim()) return inBucket;
     const q = search.toLowerCase();
     return inBucket.filter((c) =>
       (c.phone || "").includes(q) ||
       (c.subscriber_name || "").toLowerCase().includes(q) ||
+      (c.subscriber_external_code || "").toLowerCase().includes(q) ||
+      (c.subscriber_branch || "").toLowerCase().includes(q) ||
       (c.push_name || "").toLowerCase().includes(q) ||
-      (c.last_text || "").toLowerCase().includes(q)
+      (c.last_text || "").toLowerCase().includes(q) ||
+      (c.assignee_name || "").toLowerCase().includes(q)
     );
   }, [conversations, bucket, search]);
 
@@ -277,12 +283,31 @@ function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
 }
 
 function ConvRow({ conv, selected, onClick, profile }) {
-  const name = conv.subscriber_name || conv.push_name || `+${conv.phone}`;
+  /* Card profissional inspirado no FocusChat: avatar grande + WA badge +
+     status dot, nome do cliente em destaque, telefone abaixo, tag de filial,
+     pílula do atendente e última msg com indicador de direção + unread. */
+  // Prioriza: subscriber_name > push_name > phone
+  const displayName = conv.subscriber_name || conv.push_name || `+${conv.phone}`;
+  const isIdentified = !!conv.subscriber_name;
   const time = conv.last_message_at
     ? new Date(conv.last_message_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
     : "";
   const isAi = conv.assignee_role === "ai";
-  const online = profile?.presence === "available" || profile?.presence === "composing";
+  // Avatar pode vir do backend (contact_avatar do bulk) OU do profile fetch (warming)
+  const avatarSrc = conv.contact_avatar || profile?.avatar;
+  const presence = profile?.presence;
+  const online = presence === "available" || presence === "composing";
+  const unread = conv.unread || 0;
+  // Status do contato (dot bottom-right do avatar):
+  // verde se online · laranja se aguardando atendente · azul se há unread · cinza default
+  let statusColor = null;
+  if (online) statusColor = "#22c55e";
+  else if (conv.bucket === "aguardando") statusColor = "#f59e0b";
+  else if (unread > 0) statusColor = "#0ea5e9";
+  // Última msg: direção indica quem falou por último
+  const dirIcon = conv.last_direction === "outbound" ? "▲" : "▼";
+  const dirColor = conv.last_direction === "outbound" ? "#64748b" : "#0ea5e9";
+
   return (
     <button onClick={onClick}
             data-testid={`wa-conv-${conv.phone}`}
@@ -292,52 +317,153 @@ function ConvRow({ conv, selected, onClick, profile }) {
               background: selected ? "var(--accent-soft)" : "transparent",
               borderLeft: selected ? "3px solid var(--accent)" : "3px solid transparent",
               cursor: "pointer", textAlign: "left",
-              display: "flex", gap: 11, alignItems: "flex-start",
+              display: "flex", gap: 12, alignItems: "flex-start",
+              transition: "background .15s",
             }}>
-      <div style={{ position: "relative", flexShrink: 0 }}>
-        <Avatar name={conv.subscriber_name || conv.push_name}
-                src={profile?.avatar} isAi={false} size={42} />
-        {online && (
-          <span title="Online no WhatsApp" style={{
-            position: "absolute", bottom: 0, right: 0,
-            width: 11, height: 11, borderRadius: "50%",
-            background: "#22c55e",
-            border: "2px solid var(--bg-surface)",
-          }} />
+      {/* Avatar com WA badge bottom-left + status dot bottom-right */}
+      <div style={{ position: "relative", flexShrink: 0, width: 46, height: 46 }}>
+        <Avatar name={displayName} src={avatarSrc} isAi={false} size={46} />
+        {/* WhatsApp badge */}
+        <span title="WhatsApp" style={{
+          position: "absolute", bottom: -1, left: -2,
+          width: 16, height: 16, borderRadius: "50%",
+          background: "#22c55e", color: "#fff",
+          display: "grid", placeItems: "center",
+          border: "2px solid var(--bg-surface)",
+          boxShadow: "0 1px 2px rgba(0,0,0,.2)",
+        }}>
+          <svg width="9" height="9" viewBox="0 0 32 32" fill="currentColor">
+            <path d="M16.001 0C7.165 0 .001 7.164.001 16c0 2.823.737 5.587 2.137 8.018L0 32l8.182-2.146A15.92 15.92 0 0 0 16 32c8.836 0 16-7.164 16-16S24.837 0 16.001 0Zm0 29.333c-2.45 0-4.84-.654-6.937-1.892l-.498-.295-5.151 1.35 1.376-5.016-.323-.515A13.282 13.282 0 0 1 2.668 16c0-7.353 5.98-13.333 13.333-13.333S29.334 8.647 29.334 16 23.354 29.333 16.001 29.333Zm7.292-9.984c-.4-.2-2.366-1.166-2.733-1.3-.367-.133-.633-.2-.9.2s-1.033 1.3-1.267 1.567c-.233.266-.466.3-.866.1-.4-.2-1.689-.622-3.217-1.984-1.189-1.06-1.992-2.368-2.225-2.768-.233-.4-.024-.617.176-.816.18-.18.4-.467.6-.7.2-.234.267-.4.4-.667.133-.266.067-.5-.033-.7-.1-.2-.9-2.167-1.233-2.967-.325-.778-.655-.672-.9-.685-.233-.011-.5-.013-.766-.013-.267 0-.7.1-1.067.5s-1.4 1.367-1.4 3.334 1.434 3.866 1.633 4.134c.2.267 2.817 4.3 6.834 6.034.955.412 1.7.659 2.281.844.958.305 1.83.262 2.52.158.769-.114 2.367-.967 2.7-1.9.333-.934.333-1.734.233-1.9-.1-.167-.367-.267-.767-.467Z"/>
+          </svg>
+        </span>
+        {/* Status dot (online/aguardando/unread) */}
+        {statusColor && (
+          <span title={online ? "Online" : conv.bucket === "aguardando" ? "Aguardando" : "Não lidas"}
+                style={{
+                  position: "absolute", bottom: -1, right: -1,
+                  width: 13, height: 13, borderRadius: "50%",
+                  background: statusColor,
+                  border: "2px solid var(--bg-surface)",
+                }} />
         )}
       </div>
+
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {/* Linha 1: nome + timestamp */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
           <strong style={{
-            fontSize: 13, color: "var(--text-primary)",
+            fontSize: 13.5, color: "var(--text-primary)",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             flex: 1, minWidth: 0,
-          }}>{name}</strong>
-          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{time}</span>
+            fontWeight: unread > 0 ? 800 : 700,
+          }}>{displayName}</strong>
+          <span style={{ fontSize: 10, color: "var(--text-muted)",
+                          flexShrink: 0, fontWeight: unread > 0 ? 700 : 400 }}>
+            {time}
+          </span>
         </div>
+
+        {/* Linha 2: telefone (sempre) */}
         <div style={{ fontSize: 11, color: "var(--text-muted)",
                        marginTop: 1, fontFamily: "ui-monospace, monospace" }}>
           +{conv.phone}
+          {conv.subscriber_external_code && (
+            <span style={{ marginLeft: 6, color: "var(--text-muted)" }}>
+              · cód <strong style={{ color: "var(--text-secondary)" }}>
+                {conv.subscriber_external_code}
+              </strong>
+            </span>
+          )}
         </div>
+
+        {/* Linha 3: tag filial + assignee */}
         <div style={{
-          fontSize: 12, color: "var(--text-secondary)",
-          marginTop: 5,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          maxWidth: 250,
+          display: "flex", alignItems: "center", gap: 6,
+          marginTop: 6, flexWrap: "wrap",
         }}>
-          {conv.last_direction === "outbound" ? "→ " : ""}{conv.last_text}
+          {conv.subscriber_branch && (
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 3,
+              padding: "2px 7px", borderRadius: 5,
+              background: "rgba(100,116,139,.15)",
+              color: "var(--text-secondary)",
+              fontSize: 10, fontWeight: 700, letterSpacing: 0.3,
+              textTransform: "uppercase",
+            }}>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 22V8l9-6 9 6v14h-6v-7h-6v7H3Z"/>
+              </svg>
+              {conv.subscriber_branch}
+            </span>
+          )}
+          {isIdentified && conv.subscriber_plan && (
+            <span style={{
+              padding: "2px 7px", borderRadius: 5,
+              background: "rgba(13,148,136,.15)",
+              color: "#0d9488",
+              fontSize: 10, fontWeight: 700,
+            }}>
+              {conv.subscriber_plan}
+            </span>
+          )}
+          {conv.assignee_name && (
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 3,
+              marginLeft: "auto",
+              padding: "3px 10px", borderRadius: 999,
+              background: isAi
+                ? "linear-gradient(135deg, #0d9488, #06b6d4)"
+                : "linear-gradient(135deg, #0ea5e9, #0284c7)",
+              color: "#fff",
+              fontSize: 10, fontWeight: 800, letterSpacing: 0.3,
+              maxWidth: 130,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {isAi ? <Bot size={9} strokeWidth={2.8} /> : <User size={9} strokeWidth={2.8} />}
+              {conv.assignee_name}
+            </span>
+          )}
         </div>
-        {conv.assignee_name && (
-          <span style={{
-            display: "inline-flex", alignItems: "center", gap: 3,
-            marginTop: 6, padding: "2px 8px", borderRadius: 999,
-            background: isAi ? "rgba(13,148,136,.15)" : "rgba(14,165,233,.15)",
-            color: isAi ? "#0d9488" : "#0284c7",
-            fontSize: 10, fontWeight: 800, letterSpacing: 0.3,
-          }}>
-            {isAi ? <Bot size={9} strokeWidth={2.5} /> : <User size={9} strokeWidth={2.5} />}
-            {conv.assignee_name}
+
+        {/* Linha 4: última msg + direção + unread badge */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6, marginTop: 5,
+        }}>
+          <span style={{ color: dirColor, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+            {dirIcon}
           </span>
+          <span style={{
+            fontSize: 12,
+            color: unread > 0 ? "var(--text-primary)" : "var(--text-secondary)",
+            fontWeight: unread > 0 ? 600 : 400,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            flex: 1, minWidth: 0,
+          }}>
+            {conv.last_text}
+          </span>
+          {unread > 0 && (
+            <span data-testid={`wa-unread-${conv.phone}`} style={{
+              minWidth: 20, height: 20, padding: "0 6px",
+              borderRadius: 999, background: "#22c55e",
+              color: "#fff", fontSize: 10, fontWeight: 800,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+              boxShadow: "0 1px 3px rgba(34,197,94,.5)",
+            }}>{unread > 99 ? "99+" : unread}</span>
+          )}
+        </div>
+
+        {/* Indicador "Chat assumido por" — quando humano pegou */}
+        {!isAi && conv.assignee_role === "human" && conv.last_direction === "outbound" && (
+          <div style={{
+            marginTop: 6, fontSize: 10,
+            color: "var(--text-muted)",
+            display: "flex", alignItems: "center", gap: 4,
+            fontStyle: "italic",
+          }}>
+            <span style={{ color: "#f59e0b" }}>🔔</span>
+            Chat assumido por: <strong>{conv.assignee_name}</strong>
+          </div>
         )}
       </div>
     </button>
@@ -370,7 +496,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
   }, [loadMessages, conv]);
 
   /* Ao abrir uma conversa: assina presença + força refresh do perfil
-     (avatar/online) a cada 25s para reagir em quase-real-time. */
+     (avatar/online) a cada 25s + marca como visualizada (zera unread). */
   useEffect(() => {
     if (!conv) return undefined;
     let cancelled = false;
@@ -381,6 +507,8 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
       } catch { /* ignore */ }
     };
     refresh();
+    // Marca como visto imediatamente ao abrir
+    api.waBaileysMarkSeen(conv.phone).catch(() => {});
     const id = setInterval(refresh, 25000);
     return () => { cancelled = true; clearInterval(id); };
   }, [conv, onWarmContact]);
@@ -458,9 +586,23 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
   const presence = contactProfile?.presence;
   const online = presence === "available" || presence === "composing";
   const typing = presence === "composing";
-  const subscriber = contactProfile?.subscriber;
+  /* O subscriber vem do contactProfile (customer-profile endpoint) OU
+     direto da conversa (lista bulk-enriched). Prefere o customer-profile
+     porque ele tem o objeto completo (com pppoe_user, address). */
+  const subscriber = contactProfile?.subscriber || (conv.subscriber_id ? {
+    id: conv.subscriber_id,
+    name: conv.subscriber_name,
+    branch: conv.subscriber_branch,
+    plan_name: conv.subscriber_plan,
+    status: conv.subscriber_status,
+    external_code: conv.subscriber_external_code,
+    pppoe_user: conv.subscriber_pppoe,
+  } : null);
   const oltSignal = contactProfile?.olt_signal;
   const lastSeen = contactProfile?.last_seen;
+  /* Avatar: lista bulk-enrich vem em conv.contact_avatar; aqui pegamos da
+     fresh-fetched customerProfile (que substitui a do bulk se mais novo). */
+  const avatarSrc = contactProfile?.avatar || conv.contact_avatar;
 
   let presenceLabel = "—";
   let presenceColor = "var(--text-muted)";
@@ -491,7 +633,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
         display: "flex", alignItems: "center", gap: 12,
       }}>
         <div style={{ position: "relative" }}>
-          <Avatar name={name} src={contactProfile?.avatar} size={42} />
+          <Avatar name={name} src={avatarSrc} size={42} />
           {online && (
             <span style={{
               position: "absolute", bottom: 0, right: 0,
@@ -1011,6 +1153,7 @@ function CustomerProfileModal({ phone, profile, onClose }) {
   const sub = profile?.subscriber;
   const signal = profile?.olt_signal;
   const wa = profile;
+  const avatarSrc = profile?.avatar;
   const rx = signal?.rx_signal_dbm ?? signal?.rx ?? signal?.rx_power;
   const tx = signal?.tx_signal_dbm ?? signal?.tx ?? signal?.tx_power;
   const ontStatus = signal?.status || signal?.ont_status;
@@ -1042,7 +1185,7 @@ function CustomerProfileModal({ phone, profile, onClose }) {
           borderBottom: "1px solid var(--border-default)",
           display: "flex", alignItems: "center", gap: 14,
         }}>
-          <Avatar name={sub?.name || `+${phone}`} src={wa?.avatar} size={56} />
+          <Avatar name={sub?.name || `+${phone}`} src={avatarSrc} size={56} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 800,
                            color: "var(--text-primary)", letterSpacing: "-0.02em" }}>

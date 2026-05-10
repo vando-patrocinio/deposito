@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 46 — Validated the FocusChat-style WhatsApp chat refactor + REGRA MÁXIMA subscriber auto-link. BACKEND 7/7 pytest pass (test_iter46_wa_subscriber_link.py): (1) POST /api/auth/login admin token; (2) NO new 'cannot import link_phone_to_subscriber' log entries after fresh /conversations triggers — last bad lines are stale from before fix (21:33-21:38), latest backend log shows the function working: 'auto-link retroativo: 1 telefones vinculados'; (3) GET /api/whatsapp-baileys/conversations returns enriched fields per item (subscriber_branch/plan/status/external_code/pppoe + contact_avatar + integer unread); (4) Phone 5521987654321 conv is enriched as Vando Patrocinio · LIGO RIO · Fibra 500 Mega; (5) POST /conversations/{phone}/mark-seen zeroes unread (verified before>0 → after=0 round-trip); (6) Sidecar POST 127.0.0.1:3002/contacts-bulk responds with {ok,avatars,count} and connected number 5521965680949 returns a non-null avatar URL; (7) Retroactive link verified end-to-end — added a previously-unlinked phone to Vando subscriber, refetched /conversations, the matching conv was auto-enriched with subscriber_id/name/branch/plan. FRONTEND verified via Playwright: (a) Manual bucket shows the Vando 5521987654321 row with bold name, +5521987654321 phone, LIGO RIO branch tag (with building SVG), Fibra 500 Mega teal plan tag, blue 'Administrador' assignee pill, ▲ outbound direction arrow, last msg preview, WhatsApp green SVG badge bottom-left on avatar, 'Chat assumido por: Administrador' italic notice (visible in screenshot); (b) Global search across buckets works — typing 'vando' in the Automático bucket search box surfaces the Manual-bucket Vando 5521987654321 row immediately; (c) Clicking 'cliente · Fibra 500 Mega' badge opens wa-customer-modal showing Vando Patrocinio · +5521987654321 · Status ATIVO · Plano Fibra 500 Mega · Filial LIGO RIO · SmartOLT section with 'Sem usuário PPPoE cadastrado pra buscar sinal.' (per-spec because no PPPoE on this subscriber); (d) After opening the Vando conv the unread badge is gone (mark-seen ran on open).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/whatsapp-baileys/conversations", "issue": "list_conversations now runs 4 aggregations + N subscriber-lookups + 1 sidecar /contacts-bulk + 1 update_many per relink on every list. With ~200 phones this is fine, but at scale (>1k) the N+1 link calls inside the for loop will be slow. Consider batching the link lookup via a single subscriber_phones $in query."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ConvRow (wa-conversation-list)", "issues": ["Visual is polished and matches FocusChat reference: 46px avatar with WA badge + status dot, bold name, monospaced phone, branch tag with building icon, teal plan tag, gradient assignee pill, direction arrow, green unread badge — all rendering correctly. Only minor nit: search placeholder still reads 'Buscar em automático...' (bucket-scoped) even though the search is GLOBAL when text is entered — could mislead the user. Suggest: 'Buscar em todas as conversas...' or dynamic placeholder."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter46_wa_subscriber_link.py",
+    "/app/test_reports/pytest/iter46_results.xml"
+  ],
+  "action_items": [
+    "(MINOR / OPTIONAL) Update search input placeholder text — currently says 'Buscar em automático...' which conflicts with the new GLOBAL search behavior when text is typed.",
+    "(PERF / SCALE) Replace the per-phone link_phone_to_subscriber loop in list_conversations with a single batch query against subscriber_phones to avoid N+1 lookups for tenants with hundreds of conversations."
+  ],
+  "critical_code_review_comments": [
+    "WhatsAppChatLayout.js is now ~1370 lines (ChatThread + ChatCoachingPopup + CustomerProfileModal + ConvRow + helpers all in one file). >700-line rule should trigger a split — recommend /components/whatsapp/ConvRow.js, ChatThread.js, CustomerModal.js, CoachingPopup.js.",
+    "list_conversations in whatsapp_baileys.py uses an in-loop dynamic import of link_phone_to_subscriber on every request. Hoist the import to module top now that the function exists permanently — saves one Python import lookup per request.",
+    "Retroactive update_many on aihub_wa_messages is fired inside the GET handler. This means every conversations list refresh can write to messages collection. Consider gating with a 5-minute throttle per phone (e.g., store last_relink_attempt in wa_conversations) to avoid hammering the DB.",
+    "/contacts-bulk is called inline with timeout=5s on every /conversations request. If sidecar is slow this adds latency to every chat refresh. The try/except swallows errors but the 5s wait still blocks. Consider firing this in background and caching avatars in mongo with TTL."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter46_wa_subscriber_link.py (new — 7 pytest)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% on all 4 testable spec items (row visual, global search, customer modal, mark-seen on open)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "test_retroactive_link_when_phone_added_to_subscriber added 1 BR phone to the Vando subscriber, then attempted DELETE cleanup. If a stray phone remains attached to Vando, it can be removed via the Assinantes UI. No other mutations.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "P0 fix verified: phone_normalizer.link_phone_to_subscriber now exists and works end-to-end (backend logs show 'auto-link retroativo: N telefones vinculados' instead of 'cannot import name'). All 7 backend specs and all 4 frontend visual specs validated. Backend test file: /app/backend/tests/test_iter46_wa_subscriber_link.py. The FocusChat visual refactor is complete and the modal flow works (Vando Patrocinio @5521987654321 fixture is in Manual bucket, fully enriched). Minor polish items remain (search placeholder, file split, N+1 link loop) — none blocking."
+}

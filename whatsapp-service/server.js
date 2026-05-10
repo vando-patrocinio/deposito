@@ -269,6 +269,38 @@ app.post("/presence-subscribe", async (req, res) => {
   }
 });
 
+/* Batch: avatares de vários telefones de uma vez (usado pela lista do chat). */
+app.post("/contacts-bulk", async (req, res) => {
+  if (!sock || connState !== "connected") {
+    return res.json({ ok: false, avatars: {}, error: "WhatsApp não conectado." });
+  }
+  const phones = Array.isArray(req.body?.phones) ? req.body.phones : [];
+  const avatars = {};
+  // Limite e dedupe pra não sobrecarregar Baileys
+  const unique = Array.from(new Set(phones.map((p) => String(p).replace(/\D/g, ""))))
+    .filter(Boolean)
+    .slice(0, 100);
+  await Promise.all(unique.map(async (phone) => {
+    const jid = `${phone}@s.whatsapp.net`;
+    const cached = profileCache.get(jid);
+    if (cached && (Date.now() - cached.cached_at) < 1800000) {
+      avatars[phone] = cached.avatar || null;
+      return;
+    }
+    try {
+      const url = await sock.profilePictureUrl(jid, "image").catch(() => null);
+      profileCache.set(jid, {
+        ok: true, jid, phone, avatar: url, business: null,
+        presence: "unknown", last_seen: null, cached_at: Date.now(),
+      });
+      avatars[phone] = url || null;
+    } catch (e) {
+      avatars[phone] = null;
+    }
+  }));
+  return res.json({ ok: true, avatars, count: unique.length });
+});
+
 app.listen(PORT, "127.0.0.1", () => {
   console.log(`[wa] sidecar ouvindo em 127.0.0.1:${PORT}`);
   startSock();

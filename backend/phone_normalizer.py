@@ -5,11 +5,16 @@ WhatsApp `@c.us`/`@s.whatsapp.net`) e retorna a forma canônica `5521998176526`.
 
 Também produz variantes de busca para casar com cadastros antigos que
 porventura tenham sido salvos sem DDI.
+
+REGRA MÁXIMA: `link_phone_to_subscriber` é chamado a cada inbound + a cada
+listagem de conversas — sempre que um telefone aparece sem `subscriber_id`,
+o sistema tenta vincular novamente (caso o cliente tenha sido cadastrado
+posteriormente, ele passa a ser identificado retroativamente).
 """
 from __future__ import annotations
 
 import re
-from typing import List
+from typing import List, Optional, Dict, Any
 
 
 _WHATSAPP_SUFFIXES = ("@c.us", "@s.whatsapp.net", "@g.us", "@lid")
@@ -76,3 +81,36 @@ def get_phone_lookup_variants(input_value: str) -> List[str]:
     if raw_digits:
         variants.add(raw_digits)
     return [v for v in variants if v]
+
+
+async def link_phone_to_subscriber(
+        phone: str, company_id: str) -> Optional[Dict[str, Any]]:
+    """REGRA MÁXIMA: tenta vincular um telefone a um assinante cadastrado.
+
+    Chamada por TODO inbound do WhatsApp (e por toda listagem de conversas
+    para enriquecer registros antigos). Retorna `{subscriber_id, subscriber_name}`
+    quando há match único, ou `None` quando não há match ou há conflito (que
+    devem ser resolvidos manualmente na UI de Assinantes).
+
+    Implementação delega para `find_subscriber_by_phone` em routes.subscribers
+    (única fonte de verdade pra match).
+    """
+    # Import dentro da função para evitar ciclo (routes.subscribers importa daqui)
+    from routes.subscribers import find_subscriber_by_phone
+    try:
+        result = await find_subscriber_by_phone(company_id, phone)
+    except Exception:
+        return None
+    if not result or result.get("status") != "matched":
+        return None
+    sub = result.get("subscriber") or {}
+    if not sub.get("id"):
+        return None
+    return {
+        "subscriber_id": sub["id"],
+        "subscriber_name": sub.get("name"),
+        "branch": sub.get("branch"),
+        "plan_name": sub.get("plan_name"),
+        "status": sub.get("status"),
+        "external_code": sub.get("external_code"),
+    }
