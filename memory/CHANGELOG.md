@@ -1,52 +1,53 @@
 # PontoIA — Changelog
 
-## Feb 10, 2026 — Major UI/UX Redesign (clean, sober, professional B2B)
-**Trigger**: User pediu pesquisa das melhores práticas de sistemas de provedor de internet e redesign profissional, clean, sóbrio, limpo.
+## Feb 10, 2026 — Checklist Veicular CONTRAN + Rename "Pertences" → "Checklist"
+**Trigger**: User pediu para 1) trocar "Pertences" por "Checklist", 2) criar romaneio dos itens em custódia (já existia, só renomeado), 3) criar Checklist Veicular novo (pesquisado online), 4) tudo dentro do Cadastro do Colaborador, 5) layout profissional.
 
-### Foundation
-- `index.css` reescrito: design tokens Slate+Teal, Manrope (Google Fonts), JetBrains Mono, classes utilitárias `.btn`, `.surface`, `.stat-card`, `.pill`, `.input`, `.app-sidebar`, `.app-topbar`, `.page-header`.
-- `tailwind.config.js`: fontFamily Manrope/JetBrains Mono.
-- `ui.js` reescrito: `Icon` agora usa Lucide-react (eliminou emojis), `Button` usa classes `.btn-*`, `Card` ganhou subtitle, `Metric` usa `.stat-card`, `StatusBadge` usa `.pill--variant`.
+### Backend novo
+- `/app/backend/routes/vehicle_checklist.py` — módulo completo:
+  - Template padrão com **30 itens em 8 categorias** (Documentação, Pneus, Iluminação, Freios, Fluidos, Segurança, Externo/Interno, Motorista) seguindo Resolução CONTRAN 14/98 + ALISAT/Cobli/TOTVS 2026
+  - Status por item: `ok | defeito | na`
+  - Cálculo automático de **% conformidade** (NA excluído do denominador)
+  - CRUD completo: POST/GET/list/PATCH/DELETE
+  - **PDF profissional** via ReportLab: cabeçalho da empresa, bloco de identificação (motorista, placa, KM, rota), conformidade em destaque com cor por threshold (verde/âmbar/vermelho), tabela de itens agrupados por categoria com células coloridas por status, termo de responsabilidade CONTRAN, área de assinatura digital ou manual
+  - Hierarquia de roles: create=colaborador+, list/PDF=gestor+, delete=auditor+
+  - Endpoint registrado em `server.py`
 
-### App Shell
-- `App.js` reescrito (~564 linhas): tab navigation top → **Sidebar lateral fixa 248px** (slate dark), categorizada em 5 grupos (Operação · Inteligência · Pessoas · Compliance · Sistema).
-- Novo `TopBar` com breadcrumb dinâmico (Grupo › Aba › Empresa), select de drill-down (super admin), modo celular, IA, notificações, relógio, user chip, logout.
-- `ImpersonationBanner` agora é amber sóbrio (não roxo gradiente).
+### Backend modificado
+- `collaborator_assets.py`: título do PDF mudou para **"CHECKLIST DE CUSTÓDIA — TERMO DE RESPONSABILIDADE"** (era "ROMANEIO DE ENTREGA…"). Subtítulo teal "Equipamentos · Uniforme · EPIs · Ferramental"
 
-### Login
-- `LoginPage.js` redesign split: form light esquerda + brand pillar dark right com 3 pillars (Lousa Kanban / Estoque / IA com geofence) e textura grid teal sutil.
+### Frontend novo
+- `/app/frontend/src/VehicleChecklistModal.js` — modal full com 2 abas:
+  - **Novo checklist**: form de identificação (placa obrigatória, marca, modelo, ano, km, rota), conformidade prevista com cor dinâmica, 30 itens agrupados em pills de categoria (teal), 3 botões selecionáveis por item (OK/Defeito/N/A), input de notas obrigatório se defeito, observações gerais, botão "Salvar e gerar PDF" abre o PDF em nova aba
+  - **Histórico**: tabela com data, placa, veículo, KM, conformidade colorida, botões PDF + remover
 
-### Lousa
-- Header usa `.page-header`; emojis removidos.
-- `PRIORITY_COLORS` sem gradientes (cores planas + borda lateral).
-- Avatar técnico em teal (`#0d9488 → #0f766e`); pills de teste/nota em slate/teal sóbrias.
-- Botão de Avaliação IA mudou de roxo (`#a855f7`) para teal (`#0d9488`).
-
-### Polish global
-- Emojis removidos de h1/h2/h3/h4 e atributos `title=`/`label=` em 15 painéis (Dashboard, AICenter, Estoque, Settings, Cadastro, Praças, AI Ranking, AI Preventiva, Branding, Atlaz, SmartOLT, Users, Platform, etc.).
-- Substituição global de hex purple/violet (#7c3aed, #a855f7, #5b21b6, #8b5cf6, #6d28d9, #ede9fe, #ddd6fe, #d8b4fe, #f3e8ff, #faf5ff) por equivalentes teal/slate em 11 arquivos.
-- `NotificationsBell.js`: emoji `🔔` → Lucide `Bell` icon, integrado ao botão `.btn-ghost`.
-
-### Mobile (preservado)
-- `LousaMobile.js`, `CollaboratorApp.js`, `AssetsSection.js` mantidos com emojis intencionais (UX mobile).
+### Frontend modificado
+- `CadastroPanel.js`: import VehicleChecklistModal, state `vehicleChecklistFor`, novo botão **"Veicular"** (azul claro, ícone Car) ao lado do botão **"Checklist"** (teal, ícone Clipboard) — ambos por colaborador
+- `api.js`: novas funções `vehicleChecklistTemplate/List/Get/Create/Update/Delete/PdfUrl`
+- Rename global "Pertences" → "Checklist" em: AICenterPanel.js, AssetsSection.js, CadastroPanel.js, CollaboratorApp.js, DeactivationAssetsModal.js, MyAssetsModal.js
+- Variável "pertences" (substantivo) → "itens em custódia" para clareza
 
 ### Validação
-- ESLint: 0 errors, 34 warnings (todas pré-existentes, não-bloqueantes).
-- testing_agent_v3_fork iter27: 100% (11/11 tabs funcionam, login OK, sidebar OK).
-- testing_agent_v3_fork iter28: 95% → 5 emojis residuais limpos no follow-up; sem regressões; Atlaz V2 sync confirmado funcionando (19 cols × 68 tickets na Lousa).
-
-### Files modificados
-Frontend (24): App.js, ui.js, index.css, tailwind.config.js, LoginPage.js, LousaAdminPanel.js, AICenterPanel.js, AIPreventivePanel.js, AiRankingPanel.js, DashboardPanel.js, EstoquePanel.js, StokPanel.js, SettingsPanel.js, BrandingCard.js, AtlazIntegrationCard.js, SmartoltIntegrationCard.js, CadastroPanel.js, PracasPanel.js, UsersPanel.js, PlatformAdminPanel.js, LogsPanel.js, MyAssetsModal.js, QRScannerModal.js, NotificationsBell.js, LandingPage.js, AssetsSection.js.
+- ESLint: 0 errors
+- testing_agent_v3_fork iter29: **100% pass** (backend 9/9 pytest, frontend Playwright 0 console errors)
+- Manual smoke test: PDF veicular = 21KB, conformidade 93.3%, 2 defeitos detectados, romaneio EPI = 18KB
 
 ---
 
-## (anterior) Feb 9, 2026 — Lousa fixed slot heights + Wipe-all + Asset deactivation auto-popup
-- SlotRow refatorado com altura fixa 64px por hora; bolhas empilham/sobrepõem visualmente.
-- Endpoint `POST /api/lousa/tickets/wipe-all` exclusivo de auditor.
-- Modal popup de pendências ao desativar colaborador, com PDF.
+## Feb 10, 2026 — Mapa de Defeitos sincronizado com Lousa + UI redesign
+- Endpoint `/api/ai/dashboard/repair-map` agora geocodifica endereços de tickets sem lat/lng on-demand (até 60 por chamada, semáforo concorrência 4)
+- Cache persistente: lat/lng salvos de volta no documento Mongo
+- Frontend mostra pills "+N geolocalizadas" e "N pendentes — geolocalizando…", auto-refetch a cada 1.5s
+- Resultado: 10 → 31 pontos no mapa após 2 chamadas
 
-## (anterior) Feb 8, 2026 — IA Center, EPIs, Tab Permissions, Hardware Detection
-- IA Center heatmap OSM PT-BR com bounds IQR P15-P85.
-- CRUD `collaborator_assets` + valores padrão + romaneio PDF (mesmo vazio).
-- `TabPermissionsCard` para configurar visibilidade de abas por role.
-- `manufacturers.py` detecta fabricante OLT via SN prefixes (Huawei/ZTE/Nokia + Gemini fallback).
+## Feb 10, 2026 — Major UI/UX Redesign (clean, sober, professional B2B)
+- Design system Slate+Teal · Manrope/JetBrains Mono · Sidebar lateral fixa categorizada (5 grupos)
+- LoginPage split layout (form light + brand pillar dark teal)
+- Lousa Kanban polida (sem gradientes, AI button teal)
+- Emojis removidos de h1/h2/h3/h4 e atributos title/label em 15 painéis desktop
+- Mobile preservado (LousaMobile, CollaboratorApp, AssetsSection)
+- testing_agent_v3_fork iter27 + iter28: 100% pass
+
+## Feb 9, 2026 — Lousa fixed slot heights + Wipe-all + Asset deactivation auto-popup
+
+## Feb 8, 2026 — IA Center, EPIs, Tab Permissions, Hardware Detection

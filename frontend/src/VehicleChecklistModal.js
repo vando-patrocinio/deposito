@@ -56,7 +56,12 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
   }, [tab]);
 
   const setItemStatus = (idx, status) => {
-    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, status } : it)));
+    setItems((prev) => prev.map((it, i) => {
+      if (i !== idx) return it;
+      // Limpa notas ao sair de "defeito" para evitar dados invisíveis no payload
+      const notes = status === "defeito" ? it.notes : "";
+      return { ...it, status, notes };
+    }));
   };
   const setItemNotes = (idx, val) => {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, notes: val } : it)));
