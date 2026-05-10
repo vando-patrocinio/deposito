@@ -4,6 +4,7 @@ import { AvatarZoomModal, Button, Card, Field, Icon, inputStyle, Row, StatusBadg
 import GeofenceMap from "@/GeofenceMap";
 import useEventStream from "@/useEventStream";
 import AssetsSection from "@/AssetsSection";
+import DeactivationAssetsModal from "@/DeactivationAssetsModal";
 
 const EMPTY = {
   name: "",
@@ -16,6 +17,7 @@ const EMPTY = {
   overtime_policy: { mode: "banco", hourly_rate_brl: 0, weekday_multiplier: 1.5, sunday_multiplier: 2.0 },
   is_test_mode: false,
   clock_in_enabled: true,  // CLT bate ponto. False = freelancer/MEI: app vai direto pra Lousa
+  active: true,  // false = colaborador desligado/inativo
 };
 
 export default function CadastroPanel() {
@@ -38,6 +40,7 @@ export default function CadastroPanel() {
   const [reuseSelected, setReuseSelected] = useState({}); // {fence_id: bool} marcadas para clonar ao salvar
   const [clockHistoryFor, setClockHistoryFor] = useState(null);   // colaborador selecionado para ver batidas
   const [assetsFor, setAssetsFor] = useState(null);   // colaborador selecionado para gerenciar pertences
+  const [deactivatedFor, setDeactivatedFor] = useState(null);   // popup automático ao desativar
   const [togglingId, setTogglingId] = useState(null);             // colab cujo toggle CLT está em flight
 
   async function toggleClockInEnabled(c) {
@@ -116,6 +119,7 @@ export default function CadastroPanel() {
       overtime_policy: c.overtime_policy || EMPTY.overtime_policy,
       is_test_mode: !!c.is_test_mode,
       clock_in_enabled: c.clock_in_enabled !== false,  // default true (legado)
+      active: c.active !== false,  // default true
     });
     setEditing(c.id);
     setError("");
@@ -126,6 +130,13 @@ export default function CadastroPanel() {
     setBusy(true); setError("");
     try {
       let targetId = editing;
+      // Detecta transição active=true→false ANTES de salvar (UI precisa do colab pré-update)
+      const wasActive = editing && editing !== "new"
+        ? (list.find((x) => x.id === editing)?.active !== false)
+        : true;
+      const willBeInactive = form.active === false;
+      const justDeactivated = editing && editing !== "new" && wasActive && willBeInactive;
+
       if (editing === "new") {
         const created = await api.createCollaborator(form);
         targetId = created.id;
@@ -155,6 +166,11 @@ export default function CadastroPanel() {
         setFlash("✅ Colaborador salvo.");
       }
       setTimeout(() => setFlash(""), 3500);
+      // Pop-up automático com pertences quando colaborador foi desativado
+      if (justDeactivated) {
+        const colObj = list.find((x) => x.id === editing);
+        if (colObj) setDeactivatedFor({ ...colObj, active: false });
+      }
     } catch (e) {
       setError(e?.response?.data?.detail || e.message);
     }
@@ -439,6 +455,13 @@ export default function CadastroPanel() {
         />
       )}
 
+      {deactivatedFor && (
+        <DeactivationAssetsModal
+          collaborator={deactivatedFor}
+          onClose={() => setDeactivatedFor(null)}
+        />
+      )}
+
       {editing !== null ? (
         <Card title={editing === "new" ? "Novo colaborador" : "Editar colaborador"}>
           {error && <div data-testid="form-error" style={{ background: "#fee2e2", color: "#991b1b", padding: 10, borderRadius: 12, marginBottom: 10 }}>{error}</div>}
@@ -537,6 +560,34 @@ export default function CadastroPanel() {
                   Quando ativado, este colaborador pode bater ponto em <strong>qualquer localização</strong> e
                   com <strong>qualquer selfie</strong> — útil para demos e validação. Os registros ficam
                   marcados com 🧪 na auditoria.
+                </div>
+              </div>
+            </label>
+          </div>
+
+          {/* Status do colaborador — ativo / inativo */}
+          <div data-testid="active-block" style={{
+            background: form.active === false ? "#fef2f2" : "#f0fdf4",
+            border: `2px solid ${form.active === false ? "#fca5a5" : "#86efac"}`,
+            borderRadius: 14, padding: 12, marginTop: 12, marginBottom: 6,
+            transition: "all .2s",
+          }}>
+            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+              <input
+                data-testid="inp-active"
+                type="checkbox"
+                checked={form.active !== false}
+                onChange={(e) => setForm({ ...form, active: e.target.checked })}
+                style={{ marginTop: 3, transform: "scale(1.4)" }}
+              />
+              <div>
+                <strong style={{ color: form.active === false ? "#991b1b" : "#166534" }}>
+                  {form.active === false ? "🚫 Inativo (desligado/desativado)" : "✅ Ativo"}
+                </strong>
+                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                  Ao desativar, o colaborador <strong>não bate mais ponto</strong> e some das listas operacionais.
+                  {' '}Se ele tiver pertences ativos, ao salvar você verá a lista pra cobrar/devolver e
+                  poderá imprimir o romaneio.
                 </div>
               </div>
             </label>
