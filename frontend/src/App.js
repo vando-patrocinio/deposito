@@ -88,6 +88,7 @@ const NAV_GROUPS = [
   {
     label: "Inteligência",
     items: [
+      { id: "ai-center", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"], asModal: true },
       { id: "ai-ranking", icon: Sparkles, label: "Avaliação IA", roles: ["gestor", "auditor", "administrador"] },
     ],
   },
@@ -160,7 +161,7 @@ function ImpersonationBanner() {
   );
 }
 
-function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin }) {
+function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModal }) {
   const [collabsOpen, setCollabsOpen] = useState(false);
   // Collapse useless on desktop, only used to close mobile drawer
   return (
@@ -181,12 +182,20 @@ function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin }) {
               <div className="app-sidebar__group-title">{group.label}</div>
               {visible.map((it) => {
                 const Ico = it.icon;
-                const active = view === it.id;
+                const active = !it.asModal && view === it.id;
+                const handleClick = () => {
+                  if (it.asModal) {
+                    onOpenModal?.(it.id);
+                  } else {
+                    setView(it.id);
+                  }
+                  setCollabsOpen(false);
+                };
                 return (
                   <button
                     key={it.id}
                     className={`app-sidebar__link ${active ? "is-active" : ""}`}
-                    onClick={() => { setView(it.id); setCollabsOpen(false); }}
+                    onClick={handleClick}
                     data-testid={`tab-${it.id}`}
                     aria-current={active ? "page" : undefined}
                   >
@@ -388,6 +397,7 @@ function AppShell({ view, setView, children }) {
         setView={setView}
         brand={companyName}
         isSuperAdmin={isSuperAdmin}
+        onOpenModal={(id) => { if (id === "ai-center") setShowAIPanel(true); }}
       />
       <main className="app-main">
         <TopBar
