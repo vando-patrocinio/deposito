@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import re
 import uuid
 from typing import Any, Dict, List, Literal, Optional
 
@@ -61,7 +62,9 @@ class AddressIn(BaseModel):
 
 class SubscriberIn(BaseModel):
     name: str = Field(..., min_length=2, max_length=160)
+    nickname: Optional[str] = Field(default=None, max_length=120)
     document: Optional[str] = Field(default=None, max_length=30)  # CPF/CNPJ
+    rg_ie: Optional[str] = Field(default=None, max_length=30)
     external_code: Optional[str] = Field(default=None, max_length=80)
     email: Optional[str] = Field(default=None, max_length=200)
     status: SUBSCRIBER_STATUS = "ATIVO"
@@ -80,11 +83,19 @@ class SubscriberIn(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     phones: List[PhoneIn] = Field(default_factory=list)
     addresses: List[AddressIn] = Field(default_factory=list)
+    # Campos estilo Atlaz
+    branch: Optional[str] = Field(default=None, max_length=80)  # Filial
+    billing_method: Optional[str] = Field(default=None, max_length=40)
+    contract_status: Optional[str] = Field(default=None, max_length=40)
+    contracts_count: int = Field(default=0, ge=0)
+    due_day: Optional[int] = Field(default=None, ge=1, le=31)  # Dia do vencimento
 
 
 class SubscriberUpdate(BaseModel):
     name: Optional[str] = None
+    nickname: Optional[str] = None
     document: Optional[str] = None
+    rg_ie: Optional[str] = None
     external_code: Optional[str] = None
     email: Optional[str] = None
     status: Optional[SUBSCRIBER_STATUS] = None
@@ -101,6 +112,11 @@ class SubscriberUpdate(BaseModel):
     cto_port: Optional[str] = None
     equipment: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+    branch: Optional[str] = None
+    billing_method: Optional[str] = None
+    contract_status: Optional[str] = None
+    contracts_count: Optional[int] = None
+    due_day: Optional[int] = None
 
 
 class MatchPhoneIn(BaseModel):
@@ -304,11 +320,26 @@ async def build_subscriber_context(company_id: str, subscriber_id: str) -> str:
 @router.get("")
 async def list_subscribers(
     q: Optional[str] = None,
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    document: Optional[str] = None,
+    street: Optional[str] = None,
+    number: Optional[str] = None,
+    district: Optional[str] = None,
+    city: Optional[str] = None,
+    state: Optional[str] = None,
+    zip_code: Optional[str] = None,
+    complement: Optional[str] = None,
+    branch: Optional[str] = None,
+    billing_method: Optional[str] = None,
+    contract_status: Optional[str] = None,
     status: Optional[str] = None,
     plan: Optional[str] = None,
-    district: Optional[str] = None,
     tag: Optional[str] = None,
-    limit: int = 200,
+    external_code: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
     user: dict = Depends(require_role("gestor")),
 ):
     cid = _cid(user)
@@ -316,51 +347,129 @@ async def list_subscribers(
     if status:
         flt["status"] = status
     if plan:
-        flt["plan_name"] = plan
+        flt["plan_name"] = {"$regex": plan, "$options": "i"}
     if tag:
         flt["tags"] = tag
-    if q:
-        # busca em nome/documento/codigo/email
+    if branch:
+        flt["branch"] = branch
+    if billing_method:
+        flt["billing_method"] = billing_method
+    if contract_status:
+        flt["contract_status"] = contract_status
+    if external_code:
+        flt["external_code"] = external_code
+    if name:
         flt["$or"] = [
+            {"name": {"$regex": name, "$options": "i"}},
+            {"nickname": {"$regex": name, "$options": "i"}},
+        ]
+    if email:
+        flt["email"] = {"$regex": email, "$options": "i"}
+    if document:
+        flt["$or"] = (flt.get("$or") or []) + [
+            {"document": {"$regex": document, "$options": "i"}},
+            {"rg_ie": {"$regex": document, "$options": "i"}},
+        ]
+    if q:
+        flt["$or"] = (flt.get("$or") or []) + [
             {"name": {"$regex": q, "$options": "i"}},
+            {"nickname": {"$regex": q, "$options": "i"}},
             {"document": {"$regex": q, "$options": "i"}},
             {"external_code": {"$regex": q, "$options": "i"}},
             {"email": {"$regex": q, "$options": "i"}},
         ]
-    rows = await db.subscribers.find(flt, {"_id": 0}).sort(
-        "updated_at", -1).to_list(min(max(limit, 1), 1000))
 
-    # Para listagem, anexa só o telefone primary (sem todos)
+    # Filtros que precisam join via subscriber_phones / addresses
+    sids_phone: Optional[set] = None
+    sids_address: Optional[set] = None
+    if phone:
+        # Busca por sufixo dos últimos 8 dígitos (suficiente para casar
+        # com qualquer formato — independente de DDI/zero/máscara).
+        digits = re.sub(r"\D", "", phone)
+        suffix = digits[-8:] if len(digits) >= 8 else digits
+        if suffix:
+            sids_phone = {p["subscriber_id"] async for p in db.subscriber_phones.find(
+                {"company_id": cid,
+                 "normalized_number": {"$regex": f"{suffix}$"}},
+                {"_id": 0, "subscriber_id": 1})}
+        else:
+            sids_phone = set()
+    if any([street, number, district, city, state, zip_code, complement]):
+        addr_flt: Dict[str, Any] = {"company_id": cid}
+        if street:
+            addr_flt["street"] = {"$regex": street, "$options": "i"}
+        if number:
+            addr_flt["number"] = number
+        if district:
+            addr_flt["district"] = {"$regex": district, "$options": "i"}
+        if city:
+            addr_flt["city"] = {"$regex": city, "$options": "i"}
+        if state:
+            addr_flt["state"] = state.upper()
+        if zip_code:
+            addr_flt["zip_code"] = {"$regex": zip_code}
+        if complement:
+            addr_flt["complement"] = {"$regex": complement, "$options": "i"}
+        sids_address = {a["subscriber_id"] async for a in db.subscriber_addresses.find(
+            addr_flt, {"_id": 0, "subscriber_id": 1})}
+    sids_filter: Optional[List[str]] = None
+    if sids_phone is not None and sids_address is not None:
+        sids_filter = list(sids_phone & sids_address)
+    elif sids_phone is not None:
+        sids_filter = list(sids_phone)
+    elif sids_address is not None:
+        sids_filter = list(sids_address)
+    if sids_filter is not None:
+        if not sids_filter:
+            return {"items": [], "total": 0, "page": page, "page_size": page_size}
+        flt["id"] = {"$in": sids_filter}
+
+    total = await db.subscribers.count_documents(flt)
+    skip = max((page - 1) * page_size, 0)
+    rows = await db.subscribers.find(flt, {"_id": 0}).sort(
+        "name", 1).skip(skip).limit(min(max(page_size, 1), 500)).to_list(500)
+
     sids = [r["id"] for r in rows]
-    primaries = {}
+    primaries: Dict[str, dict] = {}
+    addresses_primary: Dict[str, dict] = {}
     if sids:
         async for p in db.subscriber_phones.find(
             {"company_id": cid, "subscriber_id": {"$in": sids}, "is_primary": True},
             {"_id": 0, "subscriber_id": 1, "normalized_number": 1, "raw_number": 1},
         ):
             primaries[p["subscriber_id"]] = p
+        async for a in db.subscriber_addresses.find(
+            {"company_id": cid, "subscriber_id": {"$in": sids}, "is_primary": True},
+            {"_id": 0, "subscriber_id": 1, "street": 1, "number": 1,
+             "district": 1, "city": 1, "state": 1},
+        ):
+            addresses_primary[a["subscriber_id"]] = a
 
     items = []
     for r in rows:
         prim = primaries.get(r["id"])
+        addr = addresses_primary.get(r["id"]) or {}
+        addr_str = ""
+        if addr:
+            addr_str = ", ".join([p for p in [
+                f"{addr.get('street', '')} {addr.get('number', '') or ''}".strip(),
+                addr.get("district"), addr.get("city"),
+            ] if p])
         items.append({
             **r,
             "primary_phone": prim.get("raw_number") if prim else None,
             "primary_phone_normalized": prim.get("normalized_number") if prim else None,
+            "primary_address_summary": addr_str,
             "document_masked": _mask_doc(r.get("document")),
+            "document": None,  # Não retorna document raw na listagem (privacidade)
         })
-        # Não retorna document raw na listagem (privacidade)
-        items[-1]["document"] = None
-    if district:
-        # filtra in-memory pelo bairro do address primary
-        addrs = {}
-        async for a in db.subscriber_addresses.find(
-                {"company_id": cid, "subscriber_id": {"$in": sids},
-                 "is_primary": True, "district": {"$regex": district, "$options": "i"}},
-                {"_id": 0, "subscriber_id": 1}):
-            addrs[a["subscriber_id"]] = True
-        items = [it for it in items if it["id"] in addrs]
-    return {"items": items, "count": len(items)}
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size if page_size else 1,
+    }
 
 
 @router.post("")

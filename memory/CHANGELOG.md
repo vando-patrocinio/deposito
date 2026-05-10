@@ -1,5 +1,30 @@
 # PontoIA — Changelog
 
+## Feb 10, 2026 — Aba Assinantes redesenhada estilo Atlaz
+
+### Backend
+- Novos campos opcionais em `SubscriberIn`/`SubscriberUpdate`: `nickname`, `rg_ie`, `branch` (filial), `billing_method`, `contract_status`, `contracts_count`, `due_day` (dia do vencimento)
+- `GET /api/subscribers` repaginado com filtros granulares estilo Atlaz: `name, email, phone, document, street, number, district, city, state, zip_code, complement, branch, billing_method, contract_status, status, external_code` + paginação real (`page`, `page_size`, retorna `total`/`pages`)
+- Filtro `phone` agora casa pelos últimos 8 dígitos via regex sufixo (funciona com qualquer formato/máscara)
+- Listagem inclui `primary_address_summary` (rua, número, bairro, cidade) para exibir direto na tabela
+
+### Frontend (`SubscribersPanel.js` reescrito)
+- **Painel de filtros expansível** no topo com 14 campos (Nome/Apelido, E-mails, Telefones, CPF/CNPJ/RG/IE, Rua, Número, Bairro, Cidade, Estado, CEP, Complemento, ID Assinante) + 3 dropdowns (Filial, Método de cobrança, Status do contrato) + Status do assinante
+- Botão **"Mostrar filtros avançados"** + Limpar + **Aplicar filtro**
+- **Contador**: "Assinantes encontrados: X" com número em destaque
+- **Barra de ações**: ícones (Exportar CSV, Imprimir, E-mail, WhatsApp, Atualizar) + dropdown "Selecione uma ação" + Executar + Importar CSV + Novo assinante
+- **Tabela densa** com 9 colunas: checkbox bulk, Nome (clicável), Filial, Contratos, Venc. (dia), Endereço, Telefone, Status (pill), Ações (editar/histórico)
+- **Paginação real** com seletor de tamanho (25/50/100/200) e botões prev/next
+- **Bulk export CSV** para selecionados; bulk print para a página atual
+
+### Tests
+- Manual curl: PATCH com novos campos OK (branch, due_day, billing_method etc), filtro phone parcial (`998176526`) casa o Vando, filtro branch funciona
+
+### Validação visual
+- Screenshot confirma identidade com o Atlaz: contador, barra de ações com ícones, tabela com colunas idênticas
+
+---
+
 ## Feb 10, 2026 — Aba Assinantes (Subscribers) com auto-link por telefone
 
 ### Backend
