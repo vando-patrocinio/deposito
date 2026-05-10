@@ -23,6 +23,7 @@ const SUB_TABS = [
   { id: "common_issues", label: "Chamados" },
   { id: "recurring", label: "Reincidência" },
   { id: "fleet", label: "Frota" },
+  { id: "manuf_quality", label: "Qualidade de fabricantes" },
   { id: "assets", label: "Checklist" },
   { id: "insights", label: "Insights LLM" },
 ];
@@ -666,6 +667,82 @@ function FleetDefectsSection({ days }) {
 }
 
 // ============================================================
+// Manufacturer quality ranking (defects per brand)
+// ============================================================
+function ManufacturerQualitySection({ days }) {
+  const d = useFetch(() => api.aiDashManufacturerQuality(Math.max(days, 90)), [days]);
+  if (!d) return <Card>Carregando…</Card>;
+  const max = Math.max(0.1, ...d.rows.map((r) => r.defect_rate_pct));
+  return (
+    <Card data-testid="manuf-quality-card"
+          title="Qualidade dos fabricantes (últimos 90 dias)"
+          subtitle={`${d.total_onus.toLocaleString("pt-BR")} ONUs em uso · ${d.total_defect_calls} chamados de reparo · ${d.matched_calls} cruzados com fabricante`}>
+      {d.unmatched_calls > 0 && d.matched_calls === 0 && (
+        <div className="surface-soft" style={{
+          padding: "10px 14px", marginBottom: 14, fontSize: 12,
+          background: "var(--warning-soft)", color: "var(--warning-soft-fg)",
+        }}>
+          ⚠ <strong>{d.unmatched_calls}</strong> chamado(s) de reparo não foram cruzados — o nome do cliente no Atlaz não bate com o nome no SmartOLT. Verifique a sincronização ou ajuste a normalização de nomes para começar a ver a taxa de defeito por marca.
+        </div>
+      )}
+      {d.rows.length === 0 ? (
+        <div style={{ padding: 18, color: "var(--text-secondary)" }}>
+          Sem dados suficientes — sincronize o SmartOLT para popular fabricantes.
+        </div>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: "var(--bg-surface-2)" }}>
+              <th style={css.th}>#</th>
+              <th style={css.th}>Fabricante</th>
+              <th style={{ ...css.th, textAlign: "right" }}>ONUs em uso</th>
+              <th style={{ ...css.th, textAlign: "right" }}>Reparos no período</th>
+              <th style={css.th}>Taxa de defeito</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.rows.map((r, i) => (
+              <tr key={r.manufacturer} data-testid={`manuf-row-${r.manufacturer}`}
+                  style={{ borderBottom: "1px solid var(--border-default)" }}>
+                <td style={css.td} className="mono" data-mono>{i + 1}</td>
+                <td style={css.td}>
+                  <span className={`pill pill--${r.manufacturer === "Desconhecido" ? "neutral" : "accent"}`}
+                        style={{ fontWeight: 700 }}>{r.manufacturer}</span>
+                </td>
+                <td style={{ ...css.td, textAlign: "right" }} className="mono" data-mono>
+                  {r.onus_in_field.toLocaleString("pt-BR")}
+                </td>
+                <td style={{ ...css.td, textAlign: "right" }} className="mono" data-mono>
+                  <span className={r.defect_calls > 0 ? "pill pill--danger" : "pill pill--neutral"}
+                        style={{ fontWeight: 700 }}>{r.defect_calls}</span>
+                </td>
+                <td style={css.td}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ flex: 1, height: 6, background: "var(--bg-surface-3)", borderRadius: 99, overflow: "hidden" }}>
+                      <div style={{
+                        width: `${Math.min(100, (r.defect_rate_pct / max) * 100)}%`,
+                        height: "100%",
+                        background: r.defect_rate_pct >= 5 ? "var(--danger)" :
+                                    (r.defect_rate_pct >= 2 ? "var(--warning)" : "var(--accent)"),
+                        transition: "width 200ms ease",
+                      }} />
+                    </div>
+                    <span className="mono" data-mono style={{
+                      minWidth: 50, textAlign: "right", fontWeight: 700,
+                      color: r.defect_rate_pct >= 5 ? "var(--danger)" : "var(--text-primary)",
+                    }}>{r.defect_rate_pct.toFixed(2)}%</span>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
+  );
+}
+
+// ============================================================
 // Main panel
 // ============================================================
 const TAB_COMPONENTS = {
@@ -676,6 +753,7 @@ const TAB_COMPONENTS = {
   common_issues: CommonIssuesSection,
   recurring: RecurringSection,
   fleet: FleetDefectsSection,
+  manuf_quality: ManufacturerQualitySection,
   assets: AssetsOverviewSection,
   insights: InsightsSection,
 };

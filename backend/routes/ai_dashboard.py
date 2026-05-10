@@ -678,3 +678,94 @@ async def _pending_losses(cid: str, tid_to: Dict[str, dict]) -> dict:
         "inactive_collaborators": len(rows),
         "default_values_brl": values,
     }
+
+
+
+# ---------------------------------------------------------------------------
+# 9) Manufacturer quality ranking — defects per brand
+# ---------------------------------------------------------------------------
+@router.get("/manufacturer-quality")
+async def manufacturer_quality(days: int = 90,
+                                user: dict = Depends(require_role("gestor"))):
+    """Ranking 'Marcas com mais defeitos no campo'.
+
+    Cruza fabricante de cada ONU em uso (`smartolt_onus` + `manufacturer_cache`)
+    com chamados Atlaz tipo 'reparo' nos últimos N dias, agregando por marca.
+
+    Cada linha:
+      - manufacturer
+      - onus_in_field: total de ONUs daquela marca em uso (clientes)
+      - defect_calls: chamados de reparo nos últimos N dias para clientes com
+        ONU daquela marca (match por nome do cliente — o SmartOLT salva o nome
+        igual ao Atlaz)
+      - defect_rate: defect_calls / onus_in_field × 100 (%)
+    """
+    cid = _cid(user)
+    cutoff = _cutoff(days)
+
+    # Build prefix→manufacturer (KNOWN + cache)
+    from manufacturers import KNOWN_PREFIXES, _ascii_prefix, _hex_prefix
+    prefix_map = dict(KNOWN_PREFIXES)
+    async for c in db.manufacturer_cache.find(
+            {"manufacturer": {"$ne": None}},
+            {"_id": 0, "prefix": 1, "manufacturer": 1}):
+        if c.get("manufacturer"):
+            prefix_map[c["prefix"]] = c["manufacturer"]
+
+    # Build client_name → manufacturer (lowercase normalized)
+    client_to_manuf: dict = {}
+    async for o in db.smartolt_onus.find(
+            {"company_id": cid}, {"_id": 0, "name": 1, "sn": 1}):
+        sn = (o.get("sn") or "").strip().upper()
+        if not sn:
+            continue
+        manuf = None
+        for cand in (_ascii_prefix(sn), _hex_prefix(sn)):
+            if cand in prefix_map:
+                manuf = prefix_map[cand]
+                break
+        name_key = (o.get("name") or "").strip().lower()
+        if name_key:
+            client_to_manuf[name_key] = manuf or "Desconhecido"
+
+    # Count ONUs per manufacturer
+    onus_count: Counter = Counter(client_to_manuf.values())
+
+    # Iterate defect tickets and bucket by client name → manufacturer
+    defect_count: Counter = Counter()
+    matched_calls = unmatched_calls = 0
+    async for t in db.tickets.find(
+            {"company_id": cid, "type": "reparo",
+             "created_at": {"$gte": cutoff}},
+            {"_id": 0, "client_snapshot": 1}):
+        snap = t.get("client_snapshot") or {}
+        name_key = (snap.get("name") or "").strip().lower()
+        m = client_to_manuf.get(name_key)
+        if m:
+            defect_count[m] += 1
+            matched_calls += 1
+        else:
+            unmatched_calls += 1
+
+    # Build ranking rows
+    rows: List[dict] = []
+    for manuf, n_onus in onus_count.most_common():
+        defects = defect_count.get(manuf, 0)
+        rate = (100.0 * defects / n_onus) if n_onus > 0 else 0
+        rows.append({
+            "manufacturer": manuf,
+            "onus_in_field": n_onus,
+            "defect_calls": defects,
+            "defect_rate_pct": round(rate, 2),
+        })
+    # Order by rate (desc), tiebreaker by defects (desc)
+    rows.sort(key=lambda r: (-r["defect_rate_pct"], -r["defect_calls"]))
+
+    return {
+        "period_days": days,
+        "total_onus": sum(onus_count.values()),
+        "total_defect_calls": sum(defect_count.values()),
+        "matched_calls": matched_calls,
+        "unmatched_calls": unmatched_calls,
+        "rows": rows,
+    }

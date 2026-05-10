@@ -245,6 +245,8 @@ export const api = {
     client.post(`/ai/dashboard/insight`, { dashboard, context_days }).then((r) => r.data),
   aiInsightsHistory: () => client.get(`/ai/dashboard/insights/history`).then((r) => r.data),
   aiDashAssetsOverview: () => client.get(`/ai/dashboard/assets-overview`).then((r) => r.data),
+  aiDashManufacturerQuality: (days = 90) =>
+    client.get(`/ai/dashboard/manufacturer-quality`, { params: { days } }).then((r) => r.data),
 
   // Branding (empresa + logo)
   brandingGet: () => client.get(`/branding/settings`).then((r) => r.data),
