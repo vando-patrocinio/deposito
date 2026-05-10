@@ -1,5 +1,35 @@
 # PontoIA — Changelog
 
+## Feb 10, 2026 — Romaneio de DEVOLUÇÃO À EMPRESA (desativação de colaborador)
+
+### Backend
+- `routes/collaborator_assets.py::_build_romaneio_pdf`: aceita `mode="delivery"|"return"`. No modo `return`:
+  - Título: "CHECKLIST DE DEVOLUÇÃO À EMPRESA — TERMO DE RECEBIMENTO"
+  - Coluna **Devolvido** com checkbox real desenhado (`Drawing+Rect` em ReportLab — caixa vazia 14x14)
+  - Termo de recebimento PELA EMPRESA (substitui o "Termo de Responsabilidade")
+  - 2 linhas de assinatura: colaborador (entregando) + responsável da empresa (recebendo)
+- `_collect_extra_custody(company_id, cid)`: coleta TUDO em posse do técnico além dos pertences:
+  - ONTs no estoque (`stok_onts` location_type=tecnico)
+  - Insumos no estoque (`stok_stock` location=collaborator_id)
+- Endpoints atualizados com query `?mode=return`:
+  - `GET /api/collab-assets/romaneio/{cid}?mode=return`
+  - `GET /api/collab-assets/public/romaneio/{cid}?mode=return`
+- Novo endpoint `GET /api/collab-assets/custody-full/{cid}` retorna assets+extras normalizados
+
+### Frontend
+- `DeactivationAssetsModal.js` reescrito (sem emojis, com `lucide-react`):
+  - Lista TUDO em posse (assets + ONTs + insumos) com badges coloridos por origem
+  - Checkbox por item para conferência presencial
+  - Botão "Marcar todos / Desmarcar todos"
+  - Status visual de conferência (X de N itens conferidos)
+  - Botão final gera o PDF "Romaneio de Devolução à Empresa"
+- `api.js`: `assetCustodyFull(cid)`, `assetDevolucaoUrl(cid)`, `assetRomaneioUrl(cid, only_active, mode)`
+
+### Tests
+- `iteration_34.json`: 8/8 pytest backend OK — `/custody-full`, `/romaneio?mode=return`, regressão delivery, regex inválido
+
+---
+
 ## Feb 10, 2026 — Dark Mode toggle + Manufacturer-quality matching melhorado
 
 ### Frontend (Dark Mode)
