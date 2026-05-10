@@ -661,10 +661,44 @@ def _build_damage_pages(story: list, doc: dict, cm, styles, ParagraphStyle,
             ]))
             return inner
 
+        # Build legend cell (6º slot da grade)
+        from reportlab.lib import colors as _c
+        legend_data = [
+            ["Cód.", "Tipo de avaria"],
+            ["D", "Amassado"],
+            ["S", "Risco"],
+            ["R", "Oxidação"],
+            ["F", "Quebrado"],
+            ["V", "Vidro"],
+            ["P", "Pintura"],
+        ]
+        legend_t = Table(legend_data, colWidths=[1.5 * cm, 4.5 * cm])
+        legend_t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), SLATE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), _c.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
+            ("ALIGN", (0, 0), (0, -1), "CENTER"),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.25, BORDER),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        legend_wrap = Table([["Legenda"], [legend_t]],
+                            colWidths=[sw - 0.4 * cm])
+        legend_wrap.setStyle(TableStyle([
+            ("FONTSIZE", (0, 0), (-1, 0), 9),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+        ]))
+
         grid = Table([
             [cell("front"), cell("rear")],
             [cell("left"), cell("right")],
-            [cell("top"), ""],
+            [cell("top"), legend_wrap],
         ], colWidths=[sw, sw], rowHeights=[sh, sh, sh])
         grid.setStyle(TableStyle([
             ("BOX", (0, 0), (-1, -1), 0.5, BORDER),

@@ -1,51 +1,52 @@
 # PontoIA — Changelog
 
-## Feb 10, 2026 — Checklist Veicular CONTRAN + Rename "Pertences" → "Checklist"
-**Trigger**: User pediu para 1) trocar "Pertences" por "Checklist", 2) criar romaneio dos itens em custódia (já existia, só renomeado), 3) criar Checklist Veicular novo (pesquisado online), 4) tudo dentro do Cadastro do Colaborador, 5) layout profissional.
+## Feb 10, 2026 — Vehicle Checklist FULL: Damage marks (5 silhouettes) + Photo upload + Recurrent defects insight
 
 ### Backend novo
-- `/app/backend/routes/vehicle_checklist.py` — módulo completo:
-  - Template padrão com **30 itens em 8 categorias** (Documentação, Pneus, Iluminação, Freios, Fluidos, Segurança, Externo/Interno, Motorista) seguindo Resolução CONTRAN 14/98 + ALISAT/Cobli/TOTVS 2026
-  - Status por item: `ok | defeito | na`
-  - Cálculo automático de **% conformidade** (NA excluído do denominador)
-  - CRUD completo: POST/GET/list/PATCH/DELETE
-  - **PDF profissional** via ReportLab: cabeçalho da empresa, bloco de identificação (motorista, placa, KM, rota), conformidade em destaque com cor por threshold (verde/âmbar/vermelho), tabela de itens agrupados por categoria com células coloridas por status, termo de responsabilidade CONTRAN, área de assinatura digital ou manual
-  - Hierarquia de roles: create=colaborador+, list/PDF=gestor+, delete=auditor+
-  - Endpoint registrado em `server.py`
-
-### Backend modificado
-- `collaborator_assets.py`: título do PDF mudou para **"CHECKLIST DE CUSTÓDIA — TERMO DE RESPONSABILIDADE"** (era "ROMANEIO DE ENTREGA…"). Subtítulo teal "Equipamentos · Uniforme · EPIs · Ferramental"
+- `/app/backend/routes/vehicle_silhouettes.py` — 5 silhuetas via ReportLab primitives (Frente, Traseira, Lateral esq/dir, Vista superior). ViewBox 200×110 com flip-Y para alinhar com SVG do frontend (coordenadas 1:1 entre clique do usuário e PDF)
+- `vehicle_checklist.py` ganhou:
+  - Modelos `DamageMark` (view, x∈[0,200], y∈[0,110], code D|S|R|F|V|P, ord, notes) e `Attachment` (kind, label, data_url)
+  - POST `/api/vehicle-checklist/{id}/attachment` — adiciona anexo individual (≤8MB)
+  - DELETE `/api/vehicle-checklist/{id}/attachment/{idx}` — remove anexo por índice
+  - GET `/api/vehicle-checklist/insights/recurrent-defects?days=30&min_count=3` — agrega defeitos por (placa, item) e retorna alertas para o gestor
+  - `_build_damage_pages()` — adiciona página extra ao PDF com:
+    - Grade 2×3 com as 5 silhuetas + marcas numeradas/coloridas (D=vermelho amassado, S=âmbar risco, R=marrom oxidação, F=vermelho-escuro quebrado, V=azul vidro, P=cinza pintura)
+    - Legenda no 6º slot (cód. + tipo)
+    - Tabela detalhada das avarias
+    - Anexos renderizados inline (validados via `PIL.Image.verify()` — PDF resilient a bytes corrompidos)
 
 ### Frontend novo
-- `/app/frontend/src/VehicleChecklistModal.js` — modal full com 2 abas:
-  - **Novo checklist**: form de identificação (placa obrigatória, marca, modelo, ano, km, rota), conformidade prevista com cor dinâmica, 30 itens agrupados em pills de categoria (teal), 3 botões selecionáveis por item (OK/Defeito/N/A), input de notas obrigatório se defeito, observações gerais, botão "Salvar e gerar PDF" abre o PDF em nova aba
-  - **Histórico**: tabela com data, placa, veículo, KM, conformidade colorida, botões PDF + remover
+- `/app/frontend/src/VehicleSilhouettes.js` — componente `VehicleSilhouette` + 5 sub-SVGs (corpo, janelas tintadas, rodas, faróis amarelos, lanternas vermelhas, grade preta, retrovisores). `viewBox` 200×110 sincronizado com backend
+- `VehicleChecklistModal.js` ganhou:
+  - Seção "Diagrama de avarias" — 5 silhuetas clicáveis (cursor crosshair); clique abre `vchk-mark-editor` para escolher código + descrição; marcas exibidas como círculos coloridos numerados; tabela editável com remover por linha
+  - Seção "Anexos" — botão `vchk-attach-btn` abre file picker (image/* até 8MB, lê como base64 via FileReader); grid de miniaturas 110px com botão remover por anexo
+  - Submit envia `damage_marks` e `attachments` ao backend
 
-### Frontend modificado
-- `CadastroPanel.js`: import VehicleChecklistModal, state `vehicleChecklistFor`, novo botão **"Veicular"** (azul claro, ícone Car) ao lado do botão **"Checklist"** (teal, ícone Clipboard) — ambos por colaborador
-- `api.js`: novas funções `vehicleChecklistTemplate/List/Get/Create/Update/Delete/PdfUrl`
-- Rename global "Pertences" → "Checklist" em: AICenterPanel.js, AssetsSection.js, CadastroPanel.js, CollaboratorApp.js, DeactivationAssetsModal.js, MyAssetsModal.js
-- Variável "pertences" (substantivo) → "itens em custódia" para clareza
+### IA Center
+- Nova sub-aba **"Frota"** (`tab-fleet`) com `FleetDefectsSection`: tabela de placas+itens com defeito ≥2× nos últimos 30 dias, mostrando ocorrências, última data e último motorista. Empty state quando 0
+
+### api.js
+- `vehicleChecklistAttach`, `vehicleChecklistAttachRemove`, `vehicleChecklistRecurrent`
 
 ### Validação
 - ESLint: 0 errors
-- testing_agent_v3_fork iter29: **100% pass** (backend 9/9 pytest, frontend Playwright 0 console errors)
-- Manual smoke test: PDF veicular = 21KB, conformidade 93.3%, 2 defeitos detectados, romaneio EPI = 18KB
+- Pytest: 11/11 (iter30) — incluindo teste de PDF resilient a anexo corrompido
+- Playwright iter30: 100% (silhuetas renderizadas com todas as proporções, marcas criáveis em todas as 5 vistas, upload + miniatura, PDF multi-página gerando)
+- Smoke: PDF do TST-MK99 = 30KB com 5 marcas + 1 anexo JPEG válido + legenda
 
 ---
 
-## Feb 10, 2026 — Mapa de Defeitos sincronizado com Lousa + UI redesign
-- Endpoint `/api/ai/dashboard/repair-map` agora geocodifica endereços de tickets sem lat/lng on-demand (até 60 por chamada, semáforo concorrência 4)
-- Cache persistente: lat/lng salvos de volta no documento Mongo
-- Frontend mostra pills "+N geolocalizadas" e "N pendentes — geolocalizando…", auto-refetch a cada 1.5s
-- Resultado: 10 → 31 pontos no mapa após 2 chamadas
+## Feb 10, 2026 — Checklist Veicular CONTRAN + Rename "Pertences" → "Checklist"
+- 30 itens em 8 categorias (Documentação, Pneus, Iluminação, Freios, Fluidos, Segurança, Externo/Interno, Motorista)
+- PDF profissional com cabeçalho da empresa, tabela colorida por status, termo CONTRAN, área de assinatura
+- Rename Pertences → Checklist em 6 arquivos do frontend
+- testing_agent_v3_fork iter29: 100% (9/9 backend + Playwright 0 console errors)
 
-## Feb 10, 2026 — Major UI/UX Redesign (clean, sober, professional B2B)
-- Design system Slate+Teal · Manrope/JetBrains Mono · Sidebar lateral fixa categorizada (5 grupos)
-- LoginPage split layout (form light + brand pillar dark teal)
-- Lousa Kanban polida (sem gradientes, AI button teal)
-- Emojis removidos de h1/h2/h3/h4 e atributos title/label em 15 painéis desktop
-- Mobile preservado (LousaMobile, CollaboratorApp, AssetsSection)
+## Feb 10, 2026 — Mapa de Defeitos sincronizado com Lousa + UI Redesign Major
+- Geocoding sob-demanda para tickets sem lat/lng (Nominatim/OSM, ≤4 paralelos)
+- Cache persistente: lat/lng salvos em Mongo; 10 → 31 pontos no mapa após 2 chamadas
+- Design system Slate+Teal · Manrope/JetBrains Mono · Sidebar lateral fixa categorizada
+- Login split layout · Lousa polida · Emojis removidos do desktop
 - testing_agent_v3_fork iter27 + iter28: 100% pass
 
 ## Feb 9, 2026 — Lousa fixed slot heights + Wipe-all + Asset deactivation auto-popup
