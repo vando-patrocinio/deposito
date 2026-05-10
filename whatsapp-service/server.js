@@ -97,6 +97,24 @@ async function startSock() {
       }
     });
 
+    sock.ev.on("presence.update", (update) => {
+      try {
+        const { id, presences } = update;
+        if (!presences) return;
+        for (const [jid, p] of Object.entries(presences)) {
+          presenceCache.set(jid, {
+            status: p.lastKnownPresence || "unknown",
+            last_seen: p.lastSeen || null,
+            cached_at: Date.now(),
+          });
+          // Também atualiza o JID pai (id) se diferente
+          if (id && id !== jid) {
+            presenceCache.set(id, presenceCache.get(jid));
+          }
+        }
+      } catch (e) { /* ignore */ }
+    });
+
     sock.ev.on("messages.upsert", async (ev) => {
       try {
         if (ev.type !== "notify") return;
@@ -195,6 +213,59 @@ app.post("/logout", async (_req, res) => {
     return res.json({ ok: true });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/* ---------- Contact profile & presence ---------- */
+/** Cache simples de avatares e presença pra não esmagar Baileys */
+const profileCache = new Map();   // jid -> { avatar, name, cached_at }
+const presenceCache = new Map();  // jid -> { status, last_seen, cached_at }
+
+app.get("/contact-profile", async (req, res) => {
+  if (!sock || connState !== "connected") {
+    return res.status(503).json({ ok: false, error: "WhatsApp não conectado." });
+  }
+  let phone = String(req.query.phone || "").replace(/\D/g, "");
+  if (!phone) return res.status(400).json({ ok: false, error: "phone obrigatório" });
+  const jid = phone.includes("@") ? phone : `${phone}@s.whatsapp.net`;
+  const cached = profileCache.get(jid);
+  if (cached && (Date.now() - cached.cached_at) < 600000) {
+    return res.json({ ok: true, ...cached, cached: true });
+  }
+  let avatar = null;
+  let businessProfile = null;
+  try {
+    avatar = await sock.profilePictureUrl(jid, "image").catch(() => null);
+  } catch (e) { /* ignore */ }
+  try {
+    businessProfile = await sock.getBusinessProfile(jid).catch(() => null);
+  } catch (e) { /* ignore */ }
+  const presence = presenceCache.get(jid);
+  const payload = {
+    ok: true,
+    jid, phone,
+    avatar,
+    business: businessProfile,
+    presence: presence ? presence.status : "unknown",
+    last_seen: presence?.last_seen || null,
+    cached_at: Date.now(),
+  };
+  profileCache.set(jid, payload);
+  return res.json(payload);
+});
+
+app.post("/presence-subscribe", async (req, res) => {
+  if (!sock || connState !== "connected") {
+    return res.status(503).json({ ok: false, error: "WhatsApp não conectado." });
+  }
+  let phone = String(req.body?.phone || "").replace(/\D/g, "");
+  if (!phone) return res.status(400).json({ ok: false, error: "phone obrigatório" });
+  const jid = phone.includes("@") ? phone : `${phone}@s.whatsapp.net`;
+  try {
+    await sock.presenceSubscribe(jid);
+    return res.json({ ok: true, jid });
+  } catch (e) {
+    return res.status(502).json({ ok: false, error: e.message });
   }
 });
 

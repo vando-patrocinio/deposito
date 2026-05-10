@@ -652,19 +652,26 @@ async def dashboard_summary(user: dict = Depends(require_role("gestor"))):
 async def list_coaching(user_id: Optional[str] = None,
                           unread_only: bool = False,
                           include_dismissed: bool = False, limit: int = 50,
-                          user: dict = Depends(require_role("gestor"))):
-    """Lista coachings — exclui dismissed por padrão."""
-    cid = _cid(user)
-    q: Dict[str, Any] = {"company_id": cid}
-    if user_id:
-        q["user_id"] = user_id
+                          user: dict = Depends(require_role("auditor"))):
+    """Lista coachings — INDIVIDUAL por usuário logado.
+
+    - Auditor/colaborador comum: vê só os PRÓPRIOS coachings (filtrados por user["id"]).
+    - Administrador/gestor: pode passar `user_id` no query string para ver
+      coaching de qualquer atendente, ou omitir para ver os próprios.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    is_admin = user.get("role") in ("gestor", "administrador")
+    target_user_id = user_id if (is_admin and user_id) else user["id"]
+    q: Dict[str, Any] = {"company_id": cid, "user_id": target_user_id}
     if unread_only:
         q["read"] = {"$ne": True}
     if not include_dismissed:
         q["dismissed"] = {"$ne": True}
     docs = await db.aihub_coaching.find(q, {"_id": 0}) \
         .sort("created_at", -1).limit(min(limit, 200)).to_list(200)
-    return {"items": docs, "count": len(docs)}
+    return {"items": docs, "count": len(docs),
+            "viewing_user_id": target_user_id,
+            "is_own": target_user_id == user["id"]}
 
 
 @router.get("/coaching/by-user")
@@ -707,6 +714,20 @@ async def coaching_by_user(days: int = Query(7, ge=1, le=90),
     return {"items": items, "days": days}
 
 
+@router.get("/coaching/for-conversation/{phone}")
+async def coaching_for_conversation(phone: str,
+                                       user: dict = Depends(require_role("auditor"))):
+    """Coachings desta conversa específica para o usuário logado (popup do chat)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    docs = await db.aihub_coaching.find(
+        {"company_id": cid, "phone": phone, "user_id": user["id"],
+         "dismissed": {"$ne": True}},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(5).to_list(5)
+    return {"items": docs, "count": len(docs),
+             "unread": sum(1 for d in docs if not d.get("read"))}
+
+
 class CoachingActionIn(BaseModel):
     coaching_id: str
     action: str  # "read" | "acknowledged" | "dismiss"
@@ -714,10 +735,19 @@ class CoachingActionIn(BaseModel):
 
 @router.post("/coaching/action")
 async def coaching_action(payload: CoachingActionIn,
-                            user: dict = Depends(require_role("gestor"))):
+                            user: dict = Depends(require_role("auditor"))):
     cid = _cid(user)
     if payload.action not in ("read", "acknowledged", "dismiss"):
         raise HTTPException(400, "action inválida.")
+    # Restrição: usuários comuns só atualizam seus próprios coachings
+    is_admin = user.get("role") in ("gestor", "administrador")
+    coach_doc = await db.aihub_coaching.find_one(
+        {"id": payload.coaching_id, "company_id": cid}, {"_id": 0}
+    )
+    if not coach_doc:
+        raise HTTPException(404, "Coaching não encontrado.")
+    if not is_admin and coach_doc.get("user_id") != user.get("id"):
+        raise HTTPException(403, "Sem permissão para alterar coaching de outro usuário.")
     update: Dict[str, Any] = {"updated_at": now_iso()}
     if payload.action == "read":
         update["read"] = True
@@ -728,12 +758,10 @@ async def coaching_action(payload: CoachingActionIn,
     elif payload.action == "dismiss":
         update["read"] = True
         update["dismissed"] = True
-    r = await db.aihub_coaching.update_one(
+    await db.aihub_coaching.update_one(
         {"id": payload.coaching_id, "company_id": cid},
         {"$set": update},
     )
-    if r.matched_count == 0:
-        raise HTTPException(404, "Coaching não encontrado.")
     return {"ok": True}
 
 

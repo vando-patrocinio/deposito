@@ -196,8 +196,8 @@ export default function CentralIaDashboard() {
         </>
       )}
 
-      {/* Coaching IA — dicas personalizadas para atendentes humanos */}
-      <CoachingCard items={coachings} onReload={reload} />
+      {/* Coaching IA — só contadores (detalhe é individual no chat) */}
+      <CoachingStatsCard />
 
       {/* Alertas proativos */}
       <AlertsCard items={alerts} onReload={reload} />
@@ -420,7 +420,91 @@ function td(align = "left") {
 }
 
 /* ============================================================= */
-function CoachingCard({ items, onReload }) {
+function CoachingStatsCard() {
+  const [byUser, setByUser] = useState([]);
+  const [total, setTotal] = useState({ count: 0, unread: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api.centralIaCoachingByUser(7);
+        if (cancelled) return;
+        setByUser(r.items || []);
+        const tot = (r.items || []).reduce((acc, u) => ({
+          count: acc.count + u.count, unread: acc.unread + (u.unread || 0),
+        }), { count: 0, unread: 0 });
+        setTotal(tot);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <div className="surface" style={{ padding: 16, borderRadius: 12 }}
+         data-testid="ci-coaching-stats-card">
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <GraduationCap size={14} style={{ color: "#a855f7" }} />
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#a855f7",
+                       textTransform: "uppercase", letterSpacing: 0.5 }}>
+          Coaching por Atendente
+        </span>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>
+          {total.count} total · <strong style={{ color: total.unread > 0 ? "#dc2626" : "var(--text-muted)" }}>
+            {total.unread} não lidos
+          </strong>
+        </span>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10 }}>
+        Detalhes de cada coaching aparecem como popup para o próprio atendente
+        durante a conversa. Aqui você vê só os contadores.
+      </div>
+      {byUser.length === 0 ? (
+        <div style={{ padding: 14, fontSize: 12, color: "var(--text-muted)",
+                       background: "var(--bg-surface-2)", borderRadius: 8,
+                       textAlign: "center" }}>
+          Nenhum coaching nos últimos 7 dias.
+        </div>
+      ) : (
+        <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ color: "var(--text-muted)", fontSize: 10,
+                          textTransform: "uppercase", letterSpacing: 0.4 }}>
+              <th style={{ textAlign: "left", padding: "6px 4px" }}>Atendente</th>
+              <th style={{ textAlign: "center", padding: "6px 4px" }}>Total</th>
+              <th style={{ textAlign: "center", padding: "6px 4px" }}>Não lidos</th>
+              <th style={{ textAlign: "center", padding: "6px 4px" }}>Reconhecidos</th>
+              <th style={{ textAlign: "center", padding: "6px 4px" }}>Score médio</th>
+            </tr>
+          </thead>
+          <tbody>
+            {byUser.map((u) => (
+              <tr key={u.user_id} style={{ borderTop: "1px solid var(--border-default)" }}>
+                <td style={{ padding: "8px 4px", fontWeight: 600 }}>{u.user_name || u.user_id}</td>
+                <td style={{ textAlign: "center", padding: "8px 4px" }}>{u.count}</td>
+                <td style={{ textAlign: "center", padding: "8px 4px",
+                              color: u.unread > 0 ? "#dc2626" : "var(--text-muted)",
+                              fontWeight: u.unread > 0 ? 700 : 400 }}>
+                  {u.unread}
+                </td>
+                <td style={{ textAlign: "center", padding: "8px 4px", color: "#16a34a", fontWeight: 600 }}>
+                  {u.ack}
+                </td>
+                <td style={{ textAlign: "center", padding: "8px 4px",
+                              fontWeight: 700, color: csatColor(u.avg_score) }}>
+                  {u.avg_score}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================= */
+function AlertsCard({ items, onReload }) {
   const [expanded, setExpanded] = useState(null);
   const [busy, setBusy] = useState(null);
 

@@ -380,6 +380,16 @@ export const api = {
       { coaching_id: coachingId, action }).then((r) => r.data),
   centralIaCoachingGenerate: (phone) =>
     client.post(`/central-ia/coaching/generate`, { phone }).then((r) => r.data),
+  centralIaCoachingForConversation: (phone) =>
+    client.get(`/central-ia/coaching/for-conversation/${encodeURIComponent(phone)}`).then((r) => r.data),
+
+  // Contact profile (avatar WhatsApp + presença)
+  waContact: (phone) =>
+    client.get(`/whatsapp-baileys/contact/${encodeURIComponent(phone)}`).then((r) => r.data),
+  waContactSubscribePresence: (phone) =>
+    client.post(`/whatsapp-baileys/contact/${encodeURIComponent(phone)}/subscribe-presence`).then((r) => r.data),
+  waCustomerProfile: (phone) =>
+    client.get(`/whatsapp-baileys/customer-profile/${encodeURIComponent(phone)}`).then((r) => r.data),
   waBaileysGetAutoReply: () =>
     client.get(`/whatsapp-baileys/auto-reply`).then((r) => r.data),
   waBaileysSetAutoReply: (enabled, agentName = "Jerusa") =>

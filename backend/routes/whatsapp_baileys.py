@@ -666,3 +666,95 @@ async def list_attendants(user: dict = Depends(require_role("gestor"))):
         iso_doc.pop("password_hash", None)
         docs.append(iso_doc)
     return {"items": docs}
+
+
+# ---------------------------------------------------------------------------
+# Contact profile (avatar + presença) — proxy do sidecar
+# ---------------------------------------------------------------------------
+@router.get("/contact/{phone}")
+async def get_contact(phone: str,
+                        user: dict = Depends(require_role("gestor"))):
+    """Avatar WhatsApp + presença online/offline do contato."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as cli:
+            r = await cli.get(f"{SIDECAR_BASE}/contact-profile",
+                              params={"phone": phone})
+            return r.json()
+    except Exception as e:
+        return {"ok": False, "error": str(e), "avatar": None, "presence": "unknown"}
+
+
+@router.post("/contact/{phone}/subscribe-presence")
+async def subscribe_presence(phone: str,
+                              user: dict = Depends(require_role("gestor"))):
+    """Pede ao Baileys pra começar a receber updates de presença desse contato."""
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as cli:
+            r = await cli.post(f"{SIDECAR_BASE}/presence-subscribe",
+                                json={"phone": phone})
+            return r.json()
+    except Exception as e:
+        raise HTTPException(503, f"Sidecar indisponível: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Customer profile completo — agrega Subscriber + sinal SmartOLT (se houver)
+# ---------------------------------------------------------------------------
+@router.get("/customer-profile/{phone}")
+async def customer_profile(phone: str,
+                              user: dict = Depends(require_role("gestor"))):
+    """Retorna perfil completo do cliente para popup do chat:
+    - WhatsApp: avatar, presença
+    - Subscriber: nome, plano, status, débitos, endereço
+    - SmartOLT: sinal RX/TX, status ONT (se vinculado)
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    # 1. WhatsApp profile
+    wa = {"avatar": None, "presence": "unknown"}
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as cli:
+            r = await cli.get(f"{SIDECAR_BASE}/contact-profile",
+                              params={"phone": phone})
+            if r.status_code == 200:
+                wa_data = r.json()
+                wa["avatar"] = wa_data.get("avatar")
+                wa["presence"] = wa_data.get("presence") or "unknown"
+                wa["last_seen"] = wa_data.get("last_seen")
+    except Exception:
+        pass
+
+    # 2. Subscriber via phone normalization
+    subscriber = None
+    try:
+        from phone_normalizer import link_phone_to_subscriber
+        link = await link_phone_to_subscriber(phone, cid)
+        if link and link.get("subscriber_id"):
+            s = await db.subscribers.find_one(
+                {"id": link["subscriber_id"], "company_id": cid},
+                {"_id": 0},
+            )
+            if s:
+                subscriber = s
+    except Exception as e:
+        logger.warning("[wa-baileys.profile] subscriber lookup falhou: %s", e)
+
+    # 3. SmartOLT (sinal RX/TX) — se subscriber tem pppoe_user
+    olt_signal = None
+    if subscriber and subscriber.get("pppoe_user"):
+        try:
+            from routes.smartolt import resolve_signal_for_ticket
+            fake_ticket = {
+                "company_id": cid,
+                "client_snapshot": {"pppoe_user": subscriber.get("pppoe_user")},
+            }
+            olt_signal = await resolve_signal_for_ticket(fake_ticket)
+        except Exception as e:
+            logger.info("[wa-baileys.profile] olt lookup skip: %s", e)
+
+    return {
+        "phone": phone,
+        "whatsapp": wa,
+        "subscriber": subscriber,
+        "olt_signal": olt_signal,
+    }
