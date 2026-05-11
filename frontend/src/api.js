@@ -213,6 +213,8 @@ export const api = {
   smartoltOnuSignal: (extId) => client.get(`/smartolt/onu/${extId}/signal`).then((r) => r.data),
   centralIaAiLearning: (days = 30) =>
     client.get(`/central-ia/dashboard/ai-learning`, { params: { days } }).then((r) => r.data),
+  centralIaAiLearningExamples: () =>
+    client.get(`/central-ia/dashboard/ai-learning/examples`).then((r) => r.data),
   smartoltOnuReboot: (extId) => client.post(`/smartolt/onu/${extId}/reboot`).then((r) => r.data),
   // Public mobile endpoints
   publicTechStock: (cid) => client.get(`/stok/public/collaborator/${cid}/stock`).then((r) => r.data),

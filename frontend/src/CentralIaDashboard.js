@@ -1063,6 +1063,21 @@ function AiLearningCard({ data }) {
   const delta = (last != null && prev != null) ? (last - prev) : null;
   const deltaPositive = delta != null && delta > 0;
   const max = Math.max(1, ...trend.map((t) => t.similarity_pct || 0));
+  const [showExamples, setShowExamples] = useState(false);
+  const [examples, setExamples] = useState(null);
+  const [loadingEx, setLoadingEx] = useState(false);
+
+  const openExamples = async () => {
+    setShowExamples(true);
+    if (examples) return;
+    setLoadingEx(true);
+    try {
+      const r = await api.centralIaAiLearningExamples();
+      setExamples(r.examples || []);
+    } catch (e) {
+      setExamples([]);
+    } finally { setLoadingEx(false); }
+  };
 
   return (
     <div data-testid="ai-learning-card" style={{
@@ -1070,22 +1085,40 @@ function AiLearningCard({ data }) {
       border: "1px solid var(--border-default)",
       background: "var(--bg-surface)",
     }}>
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)",
-                        textTransform: "uppercase", letterSpacing: 0.6 }}>
-          Aprendizado da IA
+      <div style={{
+        marginBottom: 16, display: "flex",
+        justifyContent: "space-between", alignItems: "flex-start", gap: 12,
+        flexWrap: "wrap",
+      }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)",
+                          textTransform: "uppercase", letterSpacing: 0.6 }}>
+            Aprendizado da IA
+          </div>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: "4px 0 0",
+                          color: "var(--text-primary)",
+                          letterSpacing: "-0.012em" }}>
+            Evolução da IA monitorando atendentes
+          </h3>
+          <p style={{ fontSize: 12, color: "var(--text-secondary)",
+                        margin: "4px 0 0", maxWidth: 560, lineHeight: 1.5 }}>
+            A IA observa as mensagens enviadas pelos atendentes humanos e aprende
+            o vocabulário, tom e estruturas que funcionam — sem replicar erros.
+            Atendimentos com CSAT ≥ 8 viram exemplos no prompt da IA.
+          </p>
         </div>
-        <h3 style={{ fontSize: 16, fontWeight: 700, margin: "4px 0 0",
-                        color: "var(--text-primary)",
-                        letterSpacing: "-0.012em" }}>
-          Evolução da IA monitorando atendentes
-        </h3>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)",
-                      margin: "4px 0 0", maxWidth: 560, lineHeight: 1.5 }}>
-          A IA observa as mensagens enviadas pelos atendentes humanos e aprende
-          o vocabulário, tom e estruturas que funcionam — sem replicar erros.
-          Quanto maior a similaridade, mais a IA se aproxima do atendimento humano ideal.
-        </p>
+        <button onClick={openExamples}
+                data-testid="ai-learning-examples-btn"
+                style={{
+                  padding: "6px 12px", borderRadius: 6,
+                  border: "1px solid var(--border-default)",
+                  background: "transparent",
+                  color: "var(--text-primary)",
+                  fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}>
+          Ver exemplos atuais
+        </button>
       </div>
 
       <div style={{
@@ -1226,6 +1259,102 @@ function AiLearningCard({ data }) {
                   { day: "2-digit", month: "2-digit" })}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {showExamples && (
+        <div onClick={() => setShowExamples(false)} style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,.6)",
+          display: "grid", placeItems: "center", zIndex: 1100, padding: 16,
+        }} data-testid="ai-learning-examples-modal">
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: "var(--bg-surface)", borderRadius: 12,
+            width: "min(640px, 100%)", maxHeight: "85vh", overflow: "auto",
+            border: "1px solid var(--border-default)",
+            boxShadow: "0 20px 50px rgba(0,0,0,.4)",
+          }}>
+            <div style={{
+              padding: "16px 20px",
+              borderBottom: "1px solid var(--border-default)",
+              display: "flex", justifyContent: "space-between",
+              alignItems: "center",
+            }}>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700,
+                                color: "var(--text-muted)",
+                                textTransform: "uppercase",
+                                letterSpacing: 0.5 }}>
+                  Few-shot examples ativos
+                </div>
+                <h3 style={{ fontSize: 14, fontWeight: 700,
+                                color: "var(--text-primary)", margin: "3px 0 0",
+                                letterSpacing: "-0.01em" }}>
+                  Exemplos que a IA está aprendendo agora
+                </h3>
+              </div>
+              <button onClick={() => setShowExamples(false)}
+                      style={{
+                        width: 28, height: 28, borderRadius: 6,
+                        border: "1px solid var(--border-default)",
+                        background: "transparent", cursor: "pointer",
+                        color: "var(--text-muted)",
+                      }}>×</button>
+            </div>
+            <div style={{ padding: 20 }}>
+              {loadingEx ? (
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  Carregando…
+                </div>
+              ) : !examples || examples.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--text-muted)",
+                                lineHeight: 1.6 }}>
+                  Ainda não há conversas com CSAT ≥ 8 nos últimos 30 dias.
+                  À medida que atendentes humanos resolverem bem chamados,
+                  os exemplos aparecerão aqui automaticamente.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {examples.map((ex, i) => (
+                    <div key={i} style={{
+                      padding: 12, borderRadius: 8,
+                      background: "var(--bg-surface-2)",
+                      border: "1px solid var(--border-default)",
+                    }}>
+                      <div style={{
+                        fontSize: 9, fontWeight: 700,
+                        color: "#16a34a",
+                        textTransform: "uppercase", letterSpacing: 0.5,
+                        marginBottom: 6,
+                      }}>
+                        Exemplo {i + 1} · CSAT {ex.csat}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)",
+                                       marginBottom: 4 }}>
+                        Cliente:
+                      </div>
+                      <div style={{ fontSize: 13, color: "var(--text-primary)",
+                                       marginBottom: 10,
+                                       padding: "8px 10px", borderRadius: 6,
+                                       background: "var(--bg-surface)",
+                                       border: "1px solid var(--border-default)" }}>
+                        {ex.q}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)",
+                                       marginBottom: 4 }}>
+                        Atendente:
+                      </div>
+                      <div style={{ fontSize: 13, color: "var(--text-primary)",
+                                       padding: "8px 10px", borderRadius: 6,
+                                       background: "rgba(34,197,94,.06)",
+                                       border: "1px solid rgba(34,197,94,.20)" }}>
+                        {ex.a}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

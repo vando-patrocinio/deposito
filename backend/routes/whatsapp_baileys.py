@@ -18,7 +18,8 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone, timedelta
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -243,6 +244,48 @@ async def inbound_webhook(payload: InboundIn,
     return {"ok": True, "subscriber_id": subscriber_id}
 
 
+async def _fetch_human_few_shots(cid: str, limit: int = 3) -> List[Dict[str, Any]]:
+    """Busca pares (cliente perguntou → atendente humano respondeu) das conversas
+    avaliadas com CSAT alto (>=8). Usado como few-shot examples no system_prompt
+    da IA pra ela aprender padrões que conquistaram clientes.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    top_evals = await db.aihub_evaluations.find(
+        {"company_id": cid, "csat_score": {"$gte": 8},
+         "evaluated_at": {"$gte": cutoff}},
+        {"_id": 0, "phone": 1, "csat_score": 1, "evaluated_at": 1},
+    ).sort("evaluated_at", -1).limit(20).to_list(20)
+    examples: List[Dict[str, Any]] = []
+    seen_phones = set()
+    for ev in top_evals:
+        ph = ev.get("phone")
+        if not ph or ph in seen_phones:
+            continue
+        msgs = await db.aihub_wa_messages.find(
+            {"company_id": cid, "phone": ph,
+             "$or": [{"direction": "inbound"},
+                       {"direction": "outbound", "auto_reply": {"$ne": True},
+                        "sent_by_user_id": {"$nin": [None, ""]}}]},
+            {"_id": 0, "direction": 1, "text": 1, "created_at": 1,
+             "auto_reply": 1},
+        ).sort("created_at", 1).to_list(60)
+        # Pega o primeiro par inbound→outbound(human) coerente
+        for i, m in enumerate(msgs[:-1]):
+            if m.get("direction") == "inbound":
+                nxt = msgs[i + 1]
+                if nxt.get("direction") == "outbound" and not nxt.get("auto_reply"):
+                    q = (m.get("text") or "").strip()
+                    a = (nxt.get("text") or "").strip()
+                    if 5 <= len(q) <= 280 and 5 <= len(a) <= 600:
+                        examples.append({"q": q, "a": a,
+                                            "csat": ev.get("csat_score")})
+                        seen_phones.add(ph)
+                        break
+        if len(examples) >= limit:
+            break
+    return examples
+
+
 async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                               subscriber_id: Optional[str],
                               subscriber_ctx: Optional[str]) -> Optional[str]:
@@ -303,6 +346,23 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         "fizer sentido (✅, 📅, 📞). Quebra de linha entre frases para fácil "
         "leitura no celular. Nunca use formatação markdown (sem **, sem listas)."
     )
+
+    # 3b. Few-shot — exemplos de atendentes humanos com CSAT alto (>=8) dos
+    # últimos 30 dias. Ensina padrão de tom e estrutura sem replicar erros.
+    try:
+        shots = await _fetch_human_few_shots(cid, limit=3)
+        if shots:
+            lines = ["=== EXEMPLOS DE ATENDIMENTOS BEM AVALIADOS (CSAT ≥ 8) ==="]
+            lines.append("Estes são exemplos REAIS de atendentes humanos da nossa equipe "
+                          "que conquistaram nota alta. Aprenda o tom, mas NÃO copie "
+                          "literalmente — adapte ao contexto da conversa atual.")
+            for i, s in enumerate(shots, 1):
+                lines.append(f"\n— Exemplo {i} (CSAT {s['csat']}):")
+                lines.append(f"Cliente: {s['q']}")
+                lines.append(f"Atendente: {s['a']}")
+            extra.append("\n".join(lines))
+    except Exception as e:
+        logger.info("[wa-baileys] few-shot skip: %s", e)
     sys_prompt += "\n\n" + "\n\n".join(extra)
 
     # 4. Chama LLM — session_id estável por telefone p/ continuar conversa
@@ -446,7 +506,6 @@ async def list_messages(limit: int = 50,
 # ---------------------------------------------------------------------------
 # Conversações (estilo FocusChat) — agrupa mensagens por telefone + buckets
 # ---------------------------------------------------------------------------
-from datetime import datetime, timezone, timedelta
 
 
 def _bucket_for_conversation(conv: dict) -> str:

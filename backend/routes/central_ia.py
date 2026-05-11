@@ -718,6 +718,22 @@ async def ai_learning_progress(days: int = Query(30, ge=7, le=180),
     }
 
 
+@router.get("/dashboard/ai-learning/examples")
+async def ai_learning_examples(user: dict = Depends(require_role("gestor"))):
+    """Retorna os few-shot examples que a IA está usando AGORA no prompt.
+
+    Útil pro gestor auditar o que a Isabella IA está aprendendo dos atendentes
+    humanos. Replica a mesma lógica usada em `_fetch_human_few_shots`.
+    """
+    cid = _cid(user)
+    try:
+        from routes.whatsapp_baileys import _fetch_human_few_shots
+        examples = await _fetch_human_few_shots(cid, limit=5)
+    except Exception as e:
+        return {"examples": [], "error": str(e)}
+    return {"examples": examples, "count": len(examples)}
+
+
 @router.get("/dashboard/productivity")
 async def attendant_productivity(days: int = Query(30, ge=1, le=365),
                                   user: dict = Depends(require_role("gestor"))):
