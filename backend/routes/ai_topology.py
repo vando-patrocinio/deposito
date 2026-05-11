@@ -156,10 +156,10 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
     # ── NÓS DE IA ──────────────────────────────────────────────────────
     nodes: List[Dict[str, Any]] = [
         {"id": "smartolt", "label": "SmartOLT AI",
-         "subtitle": "Monitoramento", "icon": "Radio", "color": "#0d9488",
+         "subtitle": "Detecção + análise Claude", "icon": "Radio", "color": "#0d9488",
          "kind": "ai",
-         "model": "Pattern matching",
-         "model_kind": "rule",
+         "model": DEFAULT_M,
+         "model_kind": "llm",
          "metric": f"{outages_active} ativos",
          "metric_sub": f"{outages_detected} novos/24h"},
         {"id": "atendimento", "label": "Isabella IA",

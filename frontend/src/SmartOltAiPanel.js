@@ -85,10 +85,10 @@ export default function SmartOltAiPanel() {
                 Varredura a cada{" "}
                 <strong>{cfg.interval_seconds ?? 30}s</strong> · gatilho
                 <strong> ≥{cfg.min_los ?? 10} ONUs em LOS</strong> ou
-                <strong> ≥{cfg.min_pct ?? 50}% do PON</strong>. Quando uma pane é
-                detectada, a IA prepara rascunhos de aviso ao cliente para o
-                atendente aprovar com 1 clique, e injeta notas internas no chat
-                (cliente nunca vê).
+                <strong> ≥{cfg.min_pct ?? 50}% do PON</strong>. Cada pane nova
+                é analisada por <strong>Claude</strong> (priorização +
+                recomendação técnica). Atendente humano aprova rascunhos com 1 clique
+                e cliente nunca vê notas internas.
               </p>
             </div>
           </div>
@@ -601,52 +601,93 @@ function OutageRow({ outage, active }) {
   })();
   const severityColor = outage.severity_pct >= 50 ? "#dc2626"
                           : outage.severity_pct >= 20 ? "#d97706" : "#0ea5e9";
+  const ai = outage.ai_insight;
+  const aiPriColor = ai?.priority === "critica" ? "#dc2626"
+                      : ai?.priority === "alta" ? "#d97706"
+                      : ai?.priority === "media" ? "#0ea5e9" : "#64748b";
   return (
     <div data-testid={`outage-${outage.id}`} style={{
       padding: 12, borderRadius: 8,
       background: "var(--bg-surface)",
       border: "1px solid var(--border-default)",
       borderLeft: `3px solid ${active ? "#dc2626" : "#16a34a"}`,
-      display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 12,
-      alignItems: "center",
+      display: "grid", gap: 8,
     }}>
-      <span style={{
-        width: 8, height: 8, borderRadius: "50%",
-        background: active ? "#dc2626" : "#16a34a",
-        boxShadow: active ? "0 0 0 3px rgba(220,38,38,.20)" : "none",
-        animation: active ? "wa-pulse 1.6s ease-in-out infinite" : "none",
-      }} />
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 13,
-                         fontWeight: 700, color: "var(--text-primary)" }}>
-          {outage.olt_name} · Placa {outage.board} · Porta {outage.port}
-          {outage.vlan ? ` · VLAN ${outage.vlan}` : ""}
+      <div style={{
+        display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 12,
+        alignItems: "center",
+      }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: "50%",
+          background: active ? "#dc2626" : "#16a34a",
+          boxShadow: active ? "0 0 0 3px rgba(220,38,38,.20)" : "none",
+          animation: active ? "wa-pulse 1.6s ease-in-out infinite" : "none",
+        }} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 13,
+                          fontWeight: 700, color: "var(--text-primary)" }}>
+            {outage.olt_name} · Placa {outage.board} · Porta {outage.port}
+            {outage.vlan ? ` · VLAN ${outage.vlan}` : ""}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
+            {outage.los_count}/{outage.total_count} ONTs em LOS ·{" "}
+            {(outage.affected_phones?.length || 0)} clientes c/ telefone cadastrado
+            {outage.trigger_rule && (
+              <span style={{ marginLeft: 6, padding: "1px 6px",
+                                background: "var(--bg-surface-2)",
+                                borderRadius: 4, fontSize: 10,
+                                fontFamily: "ui-monospace, monospace" }}>
+                regra: {outage.trigger_rule}
+              </span>
+            )}
+          </div>
         </div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
-          {outage.los_count}/{outage.total_count} ONTs em LOS ·{" "}
-          {(outage.affected_phones?.length || 0)} clientes c/ telefone cadastrado
-          {outage.trigger_rule && (
-            <span style={{ marginLeft: 6, padding: "1px 6px",
-                              background: "var(--bg-surface-2)",
-                              borderRadius: 4, fontSize: 10,
-                              fontFamily: "ui-monospace, monospace" }}>
-              regra: {outage.trigger_rule}
+        <div style={{
+          padding: "3px 9px", borderRadius: 999,
+          background: `${severityColor}15`, color: severityColor,
+          fontSize: 11, fontWeight: 700,
+        }}>
+          {outage.severity_pct}%
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4,
+                         fontSize: 11, color: "var(--text-muted)",
+                         fontFamily: "ui-monospace, monospace" }}>
+          <Clock size={11} /> {duration}
+        </div>
+      </div>
+      {ai && (
+        <div data-testid={`outage-ai-insight-${outage.id}`}
+              style={{
+                padding: "8px 10px", borderRadius: 6,
+                background: `${aiPriColor}08`,
+                border: `1px solid ${aiPriColor}30`,
+                display: "grid", gap: 4,
+              }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6,
+                            flexWrap: "wrap" }}>
+            <span style={{
+              padding: "1px 7px", borderRadius: 999,
+              background: aiPriColor, color: "#fff",
+              fontSize: 9, fontWeight: 800,
+              textTransform: "uppercase", letterSpacing: 0.4,
+            }}>IA · {ai.priority}</span>
+            <span style={{ fontSize: 12, fontWeight: 700,
+                              color: "var(--text-primary)" }}>
+              {ai.headline}
             </span>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-secondary)",
+                            lineHeight: 1.5 }}>
+            {ai.recommendation}
+          </div>
+          {ai.model && (
+            <div style={{ fontSize: 9, color: "var(--text-muted)",
+                              fontFamily: "ui-monospace, monospace" }}>
+              {ai.model}
+            </div>
           )}
         </div>
-      </div>
-      <div style={{
-        padding: "3px 9px", borderRadius: 999,
-        background: `${severityColor}15`, color: severityColor,
-        fontSize: 11, fontWeight: 700,
-      }}>
-        {outage.severity_pct}%
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4,
-                       fontSize: 11, color: "var(--text-muted)",
-                       fontFamily: "ui-monospace, monospace" }}>
-        <Clock size={11} /> {duration}
-      </div>
+      )}
     </div>
   );
 }

@@ -238,6 +238,97 @@ async def _insert_internal_notes(company_id: str, outage: Dict[str, Any],
     return inserted
 
 
+async def _generate_ai_insight(company_id: str, outage_doc: Dict[str, Any],
+                                  recent_history: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Chama Claude (via Motor IA) pra analisar a pane e gerar insight.
+
+    Retorna {priority, headline, recommendation, model} ou None se falhar.
+    Falha silenciosa — detecção segue funcionando sem o insight.
+    """
+    try:
+        from services.motor_ia import chat_completion
+    except ImportError:
+        return None
+
+    # Constroi resumo factual da pane
+    hr_brt = (datetime.now(timezone.utc) - timedelta(hours=3)).hour
+    period = ("madrugada" if hr_brt < 6 else "manhã" if hr_brt < 12
+              else "tarde" if hr_brt < 18 else "noite")
+    hist_lines = []
+    for h in recent_history[:5]:
+        dur = h.get("duration_minutes") or "?"
+        hist_lines.append(
+            f"- {h.get('olt_name')} placa {h.get('board')} porta {h.get('port')} "
+            f"· {h.get('los_count')}/{h.get('total_count')} LOS "
+            f"({h.get('severity_pct')}%) · durou {dur}min"
+        )
+    history_str = ("\n".join(hist_lines)
+                    if hist_lines else "Nenhuma pane recente nesta OLT.")
+
+    user_msg = (
+        f"PANE DETECTADA AGORA:\n"
+        f"- OLT: {outage_doc.get('olt_name')}\n"
+        f"- Placa {outage_doc.get('board')} · Porta {outage_doc.get('port')}"
+        f"{' · VLAN ' + outage_doc.get('vlan') if outage_doc.get('vlan') else ''}\n"
+        f"- {outage_doc.get('los_count')} de {outage_doc.get('total_count')} "
+        f"ONUs em LOS ({outage_doc.get('severity_pct')}%)\n"
+        f"- {len(outage_doc.get('affected_phones') or [])} clientes com telefone cadastrado\n"
+        f"- Regra disparada: {outage_doc.get('trigger_rule')}\n"
+        f"- Horário: {period} (hora local BRT ~{hr_brt}h)\n\n"
+        f"HISTÓRICO DE PANES RECENTES (últimos 7 dias):\n{history_str}\n\n"
+        "Gere análise no formato JSON exato:\n"
+        "{\n"
+        '  "priority": "critica" | "alta" | "media" | "baixa",\n'
+        '  "headline": "1 frase, máx 90 chars",\n'
+        '  "recommendation": "1 parágrafo, máx 280 chars, com ação concreta"\n'
+        "}"
+    )
+
+    sys_msg = (
+        "Você é um analista de operações de rede para provedor de internet (ISP). "
+        "Analise panes detectadas pelo monitor automático e gere insight acionável "
+        "em PT-BR. Considere: severidade, horário (impacto em residencial × comercial), "
+        "recorrência na mesma OLT/porta (problema crônico vs pontual), e número de "
+        "clientes afetados. Resposta APENAS o JSON pedido, sem markdown, sem texto extra."
+    )
+
+    try:
+        result = await chat_completion(
+            company_id,
+            messages=[
+                {"role": "system", "content": sys_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            model="anthropic/claude-sonnet-4.5",   # força Claude pra esta análise
+            temperature=0.3,
+            max_tokens=300,
+            json_mode=False,
+            purpose="smartolt_insight",
+        )
+        import json as _json
+        raw = (result.get("content") or "").strip()
+        # Remove markdown fences se LLM ignorar instrução
+        if raw.startswith("```"):
+            raw = raw.strip("`").lstrip("json").strip()
+        # Garante que pega só o objeto JSON (alguns modelos prefixam texto)
+        if "{" in raw and "}" in raw:
+            raw = raw[raw.index("{"):raw.rindex("}") + 1]
+        parsed = _json.loads(raw)
+        priority = str(parsed.get("priority") or "media").lower()
+        if priority not in ("critica", "alta", "media", "baixa"):
+            priority = "media"
+        return {
+            "priority": priority,
+            "headline": (parsed.get("headline") or "")[:120],
+            "recommendation": (parsed.get("recommendation") or "")[:400],
+            "model": result.get("model"),
+            "generated_at": now_iso(),
+        }
+    except Exception as e:
+        logger.info("[smartolt-ai] LLM insight falhou (silencioso): %s", e)
+        return None
+
+
 async def detect_outages(company_id: str = DEMO_COMPANY_ID) -> Dict[str, Any]:
     """Varre `smartolt_onus` agrupando por OLT+placa+porta+vlan e detecta
     grupos com ≥OUTAGE_MIN_LOS ONUs LOS **OU** ≥OUTAGE_MIN_PCT%.
@@ -362,11 +453,25 @@ async def detect_outages(company_id: str = DEMO_COMPANY_ID) -> Dict[str, Any]:
                         else f"pct>={OUTAGE_MIN_PCT}"
                     ),
                 }
+                # Análise IA (Claude) — histórico recente da mesma OLT
+                cutoff_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+                history = await db.network_outages.find(
+                    {"company_id": company_id, "olt_name": g["olt_name"],
+                     "first_detected_at": {"$gte": cutoff_7d},
+                     "key": {"$ne": key}},
+                    {"_id": 0, "olt_name": 1, "board": 1, "port": 1,
+                     "los_count": 1, "total_count": 1, "severity_pct": 1,
+                     "duration_minutes": 1, "first_detected_at": 1},
+                ).sort("first_detected_at", -1).limit(5).to_list(5)
+                insight = await _generate_ai_insight(company_id, outage_doc, history)
+                if insight:
+                    outage_doc["ai_insight"] = insight
                 await db.network_outages.insert_one(outage_doc)
                 logger.warning(
-                    "[smartolt-ai] OUTAGE detectado: %s — %d/%d LOS (%.1f%%) — %d clientes afetados — regra=%s",
+                    "[smartolt-ai] OUTAGE detectado: %s — %d/%d LOS (%.1f%%) — %d clientes afetados — regra=%s%s",
                     key, g["los_count"], g["total_count"], severity_pct,
                     len(affected_phones), outage_doc["trigger_rule"],
+                    f" · IA={insight['priority']}" if insight else "",
                 )
                 # ATIVO: rascunhos prontos pra aprovação
                 drafts_created += await _create_outage_drafts(
