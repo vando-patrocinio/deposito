@@ -85,7 +85,7 @@ async def suggested_models(user: dict = Depends(require_role("gestor"))):
                           "meta-llama/llama-3.3-70b-instruct"]},
             {"id": "premium", "label": "Qualidade máxima",
              "models": ["anthropic/claude-3.5-sonnet", "openai/gpt-4o",
-                          "google/gemini-2.0-pro-exp"]},
+                          "google/gemini-2.0-flash-thinking-exp"]},
             {"id": "free", "label": "Apenas grátis (limite por dia)",
              "models": ["google/gemini-2.0-flash-exp:free",
                           "meta-llama/llama-3.3-70b-instruct:free"]},

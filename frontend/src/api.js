@@ -222,6 +222,15 @@ export const api = {
   motorIaTest: () => client.post(`/motor-ia/test`).then((r) => r.data),
   motorIaSuggestedModels: () => client.get(`/motor-ia/models/suggested`).then((r) => r.data),
   smartoltOnuReboot: (extId) => client.post(`/smartolt/onu/${extId}/reboot`).then((r) => r.data),
+
+  // ========= SmartOLT AI — monitoramento autônomo =========
+  smartoltAiSummary: () => client.get(`/smartolt-ai/summary`).then((r) => r.data),
+  smartoltAiActiveOutages: () =>
+    client.get(`/smartolt-ai/outages/active`).then((r) => r.data),
+  smartoltAiRecentOutages: (hours = 24) =>
+    client.get(`/smartolt-ai/outages/recent`, { params: { hours } }).then((r) => r.data),
+  smartoltAiForceDetect: () =>
+    client.post(`/smartolt-ai/outages/detect`).then((r) => r.data),
   // Public mobile endpoints
   publicTechStock: (cid) => client.get(`/stok/public/collaborator/${cid}/stock`).then((r) => r.data),
   publicValidateMac: (mac, cid) => client.get(`/smartolt/public/validate-mac/${encodeURIComponent(mac)}`,

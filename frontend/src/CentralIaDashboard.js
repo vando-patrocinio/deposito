@@ -2,9 +2,10 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   Activity, AlertTriangle, Award, Bot, Brain,
   Clock, Smile, Frown, Meh, Sparkles, TrendingDown, TrendingUp,
-  Users, Zap, RefreshCw, GraduationCap,
+  Users, Zap, RefreshCw, GraduationCap, Radio,
 } from "lucide-react";
 import { api } from "@/api";
+import SmartOltAiPanel from "@/SmartOltAiPanel";
 
 /* =============================================================
    Central IA Dashboard — KPIs + ranking + intents + alertas proativos
@@ -35,6 +36,7 @@ function fmtSecs(s) {
 }
 
 export default function CentralIaDashboard() {
+  const [section, setSection] = useState("kpis");
   const [days, setDays] = useState(7);
   const [kpis, setKpis] = useState(null);
   const [attendants, setAttendants] = useState([]);
@@ -88,6 +90,21 @@ export default function CentralIaDashboard() {
     <div data-testid="central-ia-dashboard" style={{ display: "grid", gap: 16 }}>
       <style>{`@keyframes ci-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
                 @keyframes ci-pulse { 0%,100% { opacity:1; transform:scale(1);} 50%{opacity:.55;transform:scale(.85);} }`}</style>
+
+      {/* Sub-tabs interno: KPIs / SmartOLT AI */}
+      <div data-testid="central-ia-subtabs" style={{
+        display: "flex", gap: 4, padding: 4,
+        background: "var(--bg-surface-2)", borderRadius: 8,
+        border: "1px solid var(--border-default)", width: "fit-content",
+      }}>
+        <SubTabBtn active={section === "kpis"} onClick={() => setSection("kpis")}
+                    icon={Brain} label="Dashboard IA" testId="subtab-kpis" />
+        <SubTabBtn active={section === "smartolt"} onClick={() => setSection("smartolt")}
+                    icon={Radio} label="SmartOLT AI" testId="subtab-smartolt" />
+      </div>
+
+      {section === "smartolt" ? <SmartOltAiPanel /> : (
+      <>
 
       {/* Header + period toggle */}
       <div className="surface" style={{
@@ -214,7 +231,27 @@ export default function CentralIaDashboard() {
 
       {/* Alertas proativos */}
       <AlertsCard items={alerts} onReload={reload} />
+      </>
+      )}
     </div>
+  );
+}
+
+function SubTabBtn({ active, onClick, icon: Ico, label, testId }) {
+  return (
+    <button onClick={onClick} data-testid={testId} style={{
+      padding: "7px 14px", borderRadius: 6,
+      border: "none",
+      background: active ? "var(--bg-surface)" : "transparent",
+      color: active ? "var(--text-primary)" : "var(--text-muted)",
+      fontSize: 12, fontWeight: 600, cursor: "pointer",
+      display: "inline-flex", alignItems: "center", gap: 6,
+      boxShadow: active ? "0 1px 3px rgba(0,0,0,.06)" : "none",
+      transition: "all .15s",
+    }}>
+      <Ico size={13} strokeWidth={2} />
+      {label}
+    </button>
   );
 }
 

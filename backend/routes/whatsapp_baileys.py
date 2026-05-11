@@ -347,6 +347,37 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         "leitura no celular. Nunca use formatação markdown (sem **, sem listas)."
     )
 
+    # 3a. CONTEXTO DE OUTAGE (Agent-to-Agent) — SmartOLT AI detecta panes
+    # de rede e marca clientes afetados. Se este telefone está em outage
+    # ativo, IA de atendimento informa proativamente em vez de fazer o
+    # cliente passar pelos checklists óbvios.
+    try:
+        from services.smartolt_ai import get_outage_for_phone
+        outage = await get_outage_for_phone(cid, phone)
+        if outage:
+            from datetime import datetime as _dt, timezone as _tz
+            duration_min = 0
+            try:
+                fdt = _dt.fromisoformat(outage["first_detected_at"])
+                duration_min = int((_dt.now(_tz.utc) - fdt).total_seconds() / 60)
+            except Exception:
+                pass
+            extra.append(
+                "=== ALERTA DE PANE DE REDE (CONFIRMADO) ===\n"
+                f"O cliente está em REGIÃO COM PANE ATIVA:\n"
+                f"- OLT: {outage.get('olt_name')} · Placa {outage.get('board')} · Porta {outage.get('port')}\n"
+                f"- {outage.get('los_count')} de {outage.get('total_count')} clientes off-line ({outage.get('severity_pct')}%)\n"
+                f"- Detectado há ~{duration_min} min\n\n"
+                "AÇÃO OBRIGATÓRIA: avise o cliente PROATIVAMENTE que existe uma "
+                "pane confirmada na região dele, que a equipe técnica já foi "
+                "notificada e que o serviço deve voltar em breve. NÃO peça pra "
+                "ele reiniciar o equipamento — não vai resolver. NÃO mande criar "
+                "chamado individual. Em vez disso, ofereça avisar por WhatsApp "
+                "quando a rede normalizar."
+            )
+    except Exception as e:
+        logger.info("[wa-baileys] outage check skip: %s", e)
+
     # 3b. Few-shot — exemplos de atendentes humanos com CSAT alto (>=8) dos
     # últimos 30 dias. Ensina padrão de tom e estrutura sem replicar erros.
     try:
