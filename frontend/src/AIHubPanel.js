@@ -28,21 +28,37 @@ export default function AIHubPanel({ initialTab = "central_ia" }) {
   const [tab, setTab] = useState(initialTab);
   useEffect(() => { setTab(initialTab); }, [initialTab]);
 
+  // Modo full-screen para a aba WhatsApp (chat ocupa toda a tela)
+  const isWaFull = tab === "whatsapp_qr";
+  useEffect(() => {
+    if (isWaFull) {
+      document.body.classList.add("aihub-wa-fullscreen");
+    } else {
+      document.body.classList.remove("aihub-wa-fullscreen");
+    }
+    return () => document.body.classList.remove("aihub-wa-fullscreen");
+  }, [isWaFull]);
+
   return (
-    <div data-testid="aihub-panel" style={{ padding: "0 4px" }}>
-      <div style={{ marginBottom: 14 }}>
-        <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Bot size={24} strokeWidth={1.75} /> Atendimento IA
-        </h1>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-          Agentes conversacionais usando IA local. Integre com MagnusBilling (SIP)
-          e WhatsApp Cloud API para atendimento automatizado por voz e texto.
-        </p>
-      </div>
+    <div data-testid="aihub-panel"
+          data-fullscreen={isWaFull ? "1" : "0"}
+          style={{ padding: "0 4px" }}>
+      {!isWaFull && (
+        <div style={{ marginBottom: 14 }}>
+          <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Bot size={24} strokeWidth={1.75} /> Atendimento IA
+          </h1>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
+            Agentes conversacionais usando IA local. Integre com MagnusBilling (SIP)
+            e WhatsApp Cloud API para atendimento automatizado por voz e texto.
+          </p>
+        </div>
+      )}
 
       <div style={{
         display: "flex", gap: 4, padding: 4, background: "var(--bg-surface-2)",
-        borderRadius: 12, marginBottom: 16, overflowX: "auto", flexWrap: "wrap",
+        borderRadius: 12, marginBottom: isWaFull ? 8 : 16,
+        overflowX: "auto", flexWrap: "wrap",
       }}>
         {TABS.map((t) => {
           const Icon = t.icon;

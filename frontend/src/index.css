@@ -399,6 +399,16 @@ textarea.input { height: auto; min-height: 80px; padding: 10px 12px; resize: ver
 
 .app-content { padding: 22px 28px 60px; max-width: 1440px; width: 100%; margin: 0 auto; }
 
+/* WhatsApp em modo full-screen — escapa do limite de 1440px e do padding */
+body.aihub-wa-fullscreen .app-content {
+  max-width: none;
+  padding: 10px 14px 0;
+}
+body.aihub-wa-fullscreen [data-testid="wa-chat-layout"] {
+  height: calc(100vh - 160px) !important;
+  min-height: 0 !important;
+}
+
 @media (max-width: 900px) {
   .app-sidebar { position: fixed; transform: translateX(-100%); transition: transform 200ms ease; z-index: 50; }
   .app-sidebar.is-open { transform: translateX(0); }
