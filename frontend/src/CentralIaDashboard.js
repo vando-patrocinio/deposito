@@ -1173,8 +1173,16 @@ function AiLearningCard({ data }) {
         <div>
           <div style={{ fontSize: 11, color: "var(--text-muted)",
                           fontWeight: 700, textTransform: "uppercase",
-                          letterSpacing: 0.5, marginBottom: 8 }}>
-            Evolução (4 semanas)
+                          letterSpacing: 0.5, marginBottom: 8,
+                          display: "flex", justifyContent: "space-between" }}>
+            <span>Evolução (4 semanas)</span>
+            {!trend.some((t) => t.similarity_pct != null) && (
+              <span style={{ fontSize: 9, color: "var(--text-muted)",
+                                fontWeight: 500, textTransform: "none",
+                                letterSpacing: 0 }}>
+                Aguardando histórico
+              </span>
+            )}
           </div>
           <div style={{
             display: "grid", gridTemplateColumns: `repeat(${trend.length}, 1fr)`,
