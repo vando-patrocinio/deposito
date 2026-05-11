@@ -402,6 +402,29 @@ async def handle_manager_message(company_id: str, phone: str,
     if not text:
         return None
 
+    # 0) Verifica se há AÇÃO PENDENTE pra esse telefone (do sistema proativo)
+    try:
+        from services.proactive_alerts import get_active_pending, execute_pending
+        pending = await get_active_pending(company_id, re.sub(r"\D", "", phone))
+        if pending:
+            reply = await execute_pending(company_id, pending, text)
+            # audit log
+            try:
+                await db.manager_assistant_log.insert_one({
+                    "id": f"mal-{uuid.uuid4().hex[:10]}",
+                    "company_id": company_id, "phone": phone,
+                    "input_text": text[:500],
+                    "intent": f"pending:{pending.get('kind')}",
+                    "params": {"pending_id": pending.get("id")},
+                    "reply_text": reply[:600],
+                    "created_at": now_iso(),
+                })
+            except Exception:
+                pass
+            return reply
+    except Exception as e:
+        logger.warning("[manager-assistant] pending check fail: %s", e)
+
     # 1) Heurística rápida
     intent, params = _quick_intent(text)
     # 2) Se não bateu, pergunta pro Claude

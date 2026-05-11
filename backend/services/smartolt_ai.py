@@ -474,6 +474,12 @@ async def detect_outages(company_id: str = DEMO_COMPANY_ID) -> Dict[str, Any]:
                     len(affected_phones), outage_doc["trigger_rule"],
                     f" · IA={insight['priority']}" if insight else "",
                 )
+                # PROATIVO: avisa gestor por WhatsApp e aguarda decisão
+                try:
+                    from services.proactive_alerts import notify_outage
+                    await notify_outage(company_id, outage_doc)
+                except Exception as e:
+                    logger.warning("[smartolt-ai] proactive notify falhou: %s", e)
                 # ATIVO: rascunhos prontos pra aprovação
                 drafts_created += await _create_outage_drafts(
                     company_id, outage_doc, templates, "outage_proactive")

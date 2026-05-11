@@ -1,5 +1,36 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Alertas Proativos via WhatsApp (sistema pergunta, gestor decide)
+
+### Backend
+- Novo `services/proactive_alerts.py`:
+  - `notify_outage(cid, outage)`: detecta pane SmartOLT → envia pergunta ao gestor por WhatsApp + persiste estado em `manager_assistant_pending` (TTL 30min) + flag `proactive_notified_at` no outage (anti-flood 30min)
+  - `get_active_pending(cid, phone)`: recupera ação aguardando confirmação
+  - `execute_pending(cid, pending, decision_text)`: interpreta sim/não/ambíguo:
+    - **Sim** → `_execute_outage_broadcast`: envia aviso padrão para todos os `affected_phones` via sidecar (com rate limit interno)
+    - **Não** → marca como `rejected`
+    - **Ambíguo** → mantém pending, pede clarificação
+- `services/smartolt_ai.py`: após detectar nova pane, chama `notify_outage` automaticamente
+- `services/manager_assistant.py`: hook **antes** da classificação de intenção — se há pending ativo, processa ele primeiro
+
+### Validação end-to-end ✓
+- Simulou outage TEST-FAKE-OLT (5/5 LOS, 2 clientes afetados) → mensagem entregue ao gestor + pending persistido
+- "sim" → broadcast executado para 2/2 clientes + pending resolvido
+- "não, deixa pra lá" → marcado como rejected, sem broadcast
+- "depois eu vejo" → mantém pending, pede confirmação clara
+- Anti-flood funcional (mesmo outage não dispara 2x em 30min)
+- Lint backend limpo
+
+### Como funciona na prática
+1. SmartOLT detecta pane crítica
+2. Sistema dispara: "🚨 PENHA_HUAWEI — 47 ONUs LOS. Quer avisar os clientes? sim/não"
+3. Gestor responde **sim** → todos os 47 clientes recebem aviso padrão automaticamente
+4. Gestor responde **não** → nada acontece, alerta marcado como visualizado
+5. Auditoria completa em `manager_assistant_pending` e `manager_assistant_log`
+
+---
+
+
 ## Feb 11, 2026 — Manager Assistant: catálogo expandido (5 novos comandos)
 
 Expandido de 4 para 9 comandos. Adicionados controle de agentes IA, monitoramento de rede e visão geral do sistema, tudo via WhatsApp.
