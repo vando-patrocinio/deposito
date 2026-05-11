@@ -120,9 +120,8 @@ async def resolve_pending(pending_id: str, decision: str,
 # Public API — disparado pelos workers
 # ---------------------------------------------------------------------------
 async def notify_outage(company_id: str, outage: Dict[str, Any]) -> Optional[str]:
-    """Avisa o gestor sobre nova pane SmartOLT e pergunta se quer abrir
-    aviso em massa. Idempotente: usa `outage_proactive_notified` no doc."""
-    # Anti-flood: se já avisamos sobre esse outage em janela COOLDOWN, ignora
+    """Avisa o gestor sobre nova pane SmartOLT com lista numerada de ações.
+    Idempotente: usa `proactive_notified_at` no doc (anti-flood 30min)."""
     cooldown_cut = (datetime.now(timezone.utc)
                       - timedelta(minutes=COOLDOWN_OUTAGE_MINUTES)).isoformat()
     already = await db.network_outages.find_one(
@@ -144,14 +143,30 @@ async def notify_outage(company_id: str, outage: Dict[str, Any]) -> Optional[str
     total = outage.get("total_count") or 0
     insight = (outage.get("ai_insight") or {}).get("summary") or ""
 
+    # Lista numerada de ações disponíveis
+    options = [
+        {"n": 1, "action": "broadcast",     "label": f"Avisar os {affected} clientes por WhatsApp"},
+        {"n": 2, "action": "lousa_alert",   "label": "Abrir alerta na Lousa (equipe técnica)"},
+        {"n": 3, "action": "broadcast_and_lousa", "label": "Fazer ambos (avisar + alerta)"},
+        {"n": 4, "action": "ignore",        "label": "Ignorar / já está sendo tratado"},
+    ]
+    if affected == 0:
+        # remove opção que precisa de telefones
+        options = [o for o in options if o["action"] not in
+                     ("broadcast", "broadcast_and_lousa")]
+        for i, o in enumerate(options, 1):
+            o["n"] = i
+
+    opts_text = "\n".join(f"*{o['n']}* — {o['label']}" for o in options)
     text = (
         f"🚨 *Pane detectada — {olt}*\n"
         f"_(SmartOLT AI · {sev}% das ONUs offline)_\n\n"
         f"• {los}/{total} ONUs em LOS\n"
-        f"• {affected} cliente(s) afetado(s) com telefone cadastrado\n"
+        f"• {affected} cliente(s) com telefone cadastrado\n"
         + (f"• Análise IA: {insight}\n" if insight else "")
-        + "\n*Quer que eu avise os clientes afetados por WhatsApp?*\n"
-        "Responda *sim* para enviar aviso em massa, ou *não* para ignorar."
+        + "\n*O que devo fazer?*\n"
+        + opts_text + "\n\n"
+        + "Responda com o *número* da opção (ou _sim_ para a 1, _não_ para a última)."
     )
 
     delivered = []
@@ -162,12 +177,13 @@ async def notify_outage(company_id: str, outage: Dict[str, Any]) -> Optional[str
             continue
         pid = await _save_pending(
             company_id, ph,
-            kind="outage_broadcast",
+            kind="outage_multi",
             payload={
                 "outage_id": outage.get("id"),
                 "outage_key": outage.get("key"),
                 "olt_name": olt,
                 "affected_phones": list(outage.get("affected_phones") or [])[:200],
+                "options": options,
             },
         )
         pending_ids.append(pid)
@@ -192,38 +208,116 @@ async def notify_outage(company_id: str, outage: Dict[str, Any]) -> Optional[str
 # ---------------------------------------------------------------------------
 async def execute_pending(company_id: str, pending: Dict[str, Any],
                             decision_text: str) -> str:
-    """Executa a ação pendente baseada na decisão do gestor.
-
-    `decision_text` é a mensagem original (sim/não/etc).
-    Retorna texto de confirmação a ser enviado ao gestor."""
+    """Executa a ação pendente. Aceita formatos:
+      - Número da opção (1, 2, 3...)
+      - "sim" → primeira opção (broadcast)
+      - "não/cancela/ignora" → última opção (ignore)
+      - Texto livre ambíguo → mantém pending, pede clarificação"""
     s = (decision_text or "").strip().lower()
-    yes = re.search(r"\b(sim|yes|ok|confirma|envia|manda|aprovo|pode|vai)\b", s)
-    no = re.search(r"\b(n[ãa]o|nao|nope|cancela|ignora|deixa|abort)", s)
-
-    if no and not yes:
-        await resolve_pending(pending["id"], decision="rejected")
-        return "👍 Ok, ignorando esse alerta."
-
-    if not yes:
-        # Mensagem ambígua — não consumimos o pending
-        return ("Para confirmar essa ação, responda exatamente *sim* ou *não*. "
-                  "Ela expira em 30 min.")
-
-    # SIM — executa
-    kind = pending.get("kind")
     payload = pending.get("payload") or {}
-    if kind == "outage_broadcast":
-        sent_count = await _execute_outage_broadcast(company_id, payload)
-        summary = f"Aviso enviado para {sent_count} cliente(s)"
-        await resolve_pending(pending["id"], decision="approved",
-                                executed_summary=summary)
-        return f"✅ {summary}. Detalhes em Central IA → SmartOLT."
-    if kind == "outage_ignore":
-        await resolve_pending(pending["id"], decision="approved")
-        return "✅ Marcado como visualizado."
+    kind = pending.get("kind") or ""
+    options = payload.get("options") or []
 
+    # 1) Match por número explícito
+    chosen = None
+    m = re.match(r"^\s*([0-9]+)\b", s)
+    if m and options:
+        try:
+            n = int(m.group(1))
+            chosen = next((o for o in options if o.get("n") == n), None)
+        except Exception:
+            chosen = None
+
+    # 2) Atalhos sim/não
+    if not chosen and options:
+        if re.search(r"\b(sim|yes|ok|confirma|envia|manda|aprovo|pode|vai)\b", s):
+            chosen = options[0]
+        elif re.search(r"\b(n[ãa]o|nao|cancela|ignora|deixa|abort|nada)", s):
+            chosen = options[-1]
+
+    if not chosen:
+        # backward-compat: pending antigo sem `options`
+        if not options:
+            yes = re.search(r"\b(sim|yes|ok|confirma|aprovo)\b", s)
+            no = re.search(r"\b(n[ãa]o|nao|cancela|ignora)", s)
+            if no and not yes:
+                await resolve_pending(pending["id"], decision="rejected")
+                return "👍 Ok, ignorando esse alerta."
+            if yes and kind == "outage_broadcast":
+                sent = await _execute_outage_broadcast(company_id, payload)
+                await resolve_pending(pending["id"], decision="approved",
+                                          executed_summary=f"broadcast={sent}")
+                return f"✅ Aviso enviado para {sent} cliente(s)."
+        # Ambíguo
+        if options:
+            opts_text = " · ".join(f"{o['n']}={o['label'][:20]}" for o in options)
+            return (f"Não entendi. Responda com o número da opção: {opts_text}. "
+                      "Expira em 30 min.")
+        return ("Para confirmar, responda *sim* ou *não*. Expira em 30 min.")
+
+    # 3) Execute action
+    action = chosen.get("action")
+    if action == "ignore":
+        await resolve_pending(pending["id"], decision="rejected",
+                                executed_summary="ignored")
+        return "👍 Ok, marcado como visualizado."
+    if action == "broadcast":
+        sent = await _execute_outage_broadcast(company_id, payload)
+        await resolve_pending(pending["id"], decision="approved",
+                                executed_summary=f"broadcast={sent}")
+        return f"✅ Aviso enviado para {sent} cliente(s)."
+    if action == "lousa_alert":
+        n = await _execute_outage_lousa_alert(company_id, payload)
+        await resolve_pending(pending["id"], decision="approved",
+                                executed_summary=f"lousa_alerts={n}")
+        return (f"✅ Alerta aberto na Lousa AI ({n} ticket(s) afetado(s)). "
+                  "A equipe técnica já pode atuar.")
+    if action == "broadcast_and_lousa":
+        sent = await _execute_outage_broadcast(company_id, payload)
+        n = await _execute_outage_lousa_alert(company_id, payload)
+        await resolve_pending(pending["id"], decision="approved",
+                                executed_summary=f"broadcast={sent}, lousa={n}")
+        return (f"✅ {sent} cliente(s) avisado(s) + alerta na Lousa "
+                  f"({n} ticket(s)). Tudo encaminhado.")
     await resolve_pending(pending["id"], decision="approved")
     return "✅ Confirmado."
+
+
+async def _execute_outage_lousa_alert(company_id: str,
+                                          payload: Dict[str, Any]) -> int:
+    """Cria 1 alerta tipo `outage_team` na Lousa AI pra cada cliente afetado.
+    Idempotente: usa upsert por (outage_id, phone)."""
+    phones = payload.get("affected_phones") or []
+    olt = payload.get("olt_name") or "—"
+    outage_id = payload.get("outage_id")
+    created = 0
+    for ph in phones[:100]:
+        res = await db.lousa_alerts.update_one(
+            {"company_id": company_id, "kind": "outage_team",
+             "outage_id": outage_id, "phone": ph},
+            {"$set": {
+                "headline": f"Pane {olt} — verificar cliente {ph}",
+                "severity": "alta",
+                "status": "active",
+                "last_seen_at": now_iso(),
+            },
+             "$setOnInsert": {
+                "id": f"alr-{uuid.uuid4().hex[:10]}",
+                "company_id": company_id,
+                "kind": "outage_team",
+                "outage_id": outage_id,
+                "phone": ph,
+                "first_detected_at": now_iso(),
+                "created_by": "proactive_alerts",
+             }},
+            upsert=True,
+        )
+        if res.upserted_id:
+            created += 1
+    logger.warning(
+        "[proactive] lousa alerts criados: %d (OLT %s, %d phones)",
+        created, olt, len(phones))
+    return created
 
 
 async def _execute_outage_broadcast(company_id: str,

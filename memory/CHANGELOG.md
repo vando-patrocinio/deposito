@@ -1,5 +1,33 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Lista numerada de ações no WhatsApp do gestor
+
+Substituí "sim/não" por menu numerado de até 4 opções. Mais expressivo, mantém simplicidade.
+
+### Backend (`services/proactive_alerts.py`)
+- `notify_outage` agora envia menu numerado:
+  - **1** — Avisar os N clientes por WhatsApp
+  - **2** — Abrir alerta na Lousa (equipe técnica)
+  - **3** — Fazer ambos
+  - **4** — Ignorar / já está sendo tratado
+  - Auto-ajusta quando não há clientes com telefone (remove opções 1 e 3)
+- `execute_pending` reescrito:
+  - Match por número (`1`, `2`, `3`...) → opção específica
+  - Atalho `sim` → primeira opção · `não` → última opção
+  - Texto ambíguo → mantém pending e envia "Responda com o número da opção: 1=Avisar... · 2=..."
+  - Backward-compat com pendings antigos sem `options`
+- Nova ação `lousa_alert`: cria 1 ticket na Lousa AI por cliente afetado (upsert por outage_id+phone, `kind=outage_team`)
+
+### Validação ✓
+- `"2"` → criou 3 alertas Lousa (`created_by=proactive_alerts`)
+- `"3"` → broadcast 3/3 clientes + 3 alertas Lousa
+- `"4"` → marcado como visualizado, sem ação
+- `"depois eu vejo"` → resposta clara com lista numerada de opções
+- Lint backend limpo
+
+---
+
+
 ## Feb 11, 2026 — Alertas Proativos via WhatsApp (sistema pergunta, gestor decide)
 
 ### Backend
