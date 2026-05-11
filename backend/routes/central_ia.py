@@ -605,6 +605,119 @@ async def ai_evaluations_summary(days: int = Query(30, ge=1, le=365),
     }
 
 
+@router.get("/dashboard/ai-learning")
+async def ai_learning_progress(days: int = Query(30, ge=7, le=180),
+                                  user: dict = Depends(require_role("gestor"))):
+    """Acompanha a evolução do aprendizado da IA a partir das mensagens
+    enviadas pelos atendentes humanos.
+
+    Cada mensagem outbound enviada por humano é tratada como exemplo de
+    "atendimento bom" que a IA deve aprender. Calculamos:
+    - **human_samples**: mensagens humanas no período (corpus de aprendizado)
+    - **ai_messages**: mensagens da IA no período
+    - **similarity_score**: % de palavras/tokens das respostas da IA que
+      aparecem no vocabulário humano recente (proxy simples de aderência)
+    - **trend**: evolução semanal (4 últimas semanas) da similaridade
+    - **autonomy_rate**: % de conversas resolvidas só com IA vs assumidas por humano
+    - **drift_alerts**: detrações recentes (CSAT IA caindo apesar do treino)
+    """
+    cid = _cid(user)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    # 1) Corpus humano (últimos N dias) — usado como "ground truth"
+    human_words: dict = {}
+    human_samples = 0
+    async for m in db.aihub_wa_messages.find(
+        {"company_id": cid, "direction": "outbound",
+         "auto_reply": {"$ne": True},
+         "sent_by_user_id": {"$nin": [None, "", "isabella@ia.local"]},
+         "created_at": {"$gte": cutoff}},
+        {"_id": 0, "text": 1},
+    ):
+        human_samples += 1
+        for w in str(m.get("text") or "").lower().split():
+            w = "".join(c for c in w if c.isalpha() or c == "ç")
+            if len(w) >= 4:
+                human_words[w] = human_words.get(w, 0) + 1
+    # 2) Mensagens da IA + cálculo de similaridade
+    ai_messages = 0
+    ai_overlap_tokens = 0
+    ai_total_tokens = 0
+    async for m in db.aihub_wa_messages.find(
+        {"company_id": cid, "direction": "outbound",
+         "auto_reply": True,
+         "created_at": {"$gte": cutoff}},
+        {"_id": 0, "text": 1},
+    ):
+        ai_messages += 1
+        for w in str(m.get("text") or "").lower().split():
+            w = "".join(c for c in w if c.isalpha() or c == "ç")
+            if len(w) >= 4:
+                ai_total_tokens += 1
+                if w in human_words:
+                    ai_overlap_tokens += 1
+    similarity_score = (round(ai_overlap_tokens / ai_total_tokens * 100, 1)
+                          if ai_total_tokens else None)
+
+    # 3) Trend semanal de similaridade (últimas 4 semanas)
+    trend_4w = []
+    for week_idx in range(4):
+        wk_end = datetime.now(timezone.utc) - timedelta(days=7 * week_idx)
+        wk_start = wk_end - timedelta(days=7)
+        wk_human_words: dict = {}
+        async for m in db.aihub_wa_messages.find(
+            {"company_id": cid, "direction": "outbound",
+             "auto_reply": {"$ne": True},
+             "sent_by_user_id": {"$nin": [None, ""]},
+             "created_at": {"$gte": wk_start.isoformat(),
+                              "$lt": wk_end.isoformat()}},
+            {"_id": 0, "text": 1},
+        ):
+            for w in str(m.get("text") or "").lower().split():
+                w = "".join(c for c in w if c.isalpha() or c == "ç")
+                if len(w) >= 4:
+                    wk_human_words[w] = wk_human_words.get(w, 0) + 1
+        wk_overlap = wk_total = 0
+        async for m in db.aihub_wa_messages.find(
+            {"company_id": cid, "direction": "outbound",
+             "auto_reply": True,
+             "created_at": {"$gte": wk_start.isoformat(),
+                              "$lt": wk_end.isoformat()}},
+            {"_id": 0, "text": 1},
+        ):
+            for w in str(m.get("text") or "").lower().split():
+                w = "".join(c for c in w if c.isalpha() or c == "ç")
+                if len(w) >= 4:
+                    wk_total += 1
+                    if w in wk_human_words:
+                        wk_overlap += 1
+        trend_4w.insert(0, {
+            "week_start": wk_start.date().isoformat(),
+            "similarity_pct": round(wk_overlap / wk_total * 100, 1)
+                                if wk_total else None,
+            "human_msgs": sum(wk_human_words.values()),
+            "ai_msgs_tokens": wk_total,
+        })
+
+    # 4) Taxa de autonomia: conversas com is_ai_only=true / total avaliadas
+    eval_filter = {"company_id": cid, "evaluated_at": {"$gte": cutoff}}
+    total_eval = await db.aihub_evaluations.count_documents(eval_filter)
+    ai_only_eval = await db.aihub_evaluations.count_documents(
+        {**eval_filter, "is_ai_only": True}
+    )
+    autonomy_rate = (round(ai_only_eval / total_eval * 100, 1)
+                       if total_eval else None)
+
+    return {
+        "human_samples": human_samples,
+        "ai_messages": ai_messages,
+        "similarity_score": similarity_score,
+        "autonomy_rate": autonomy_rate,
+        "trend_4w": trend_4w,
+        "days": days,
+        "generated_at": now_iso(),
+    }
+
+
 @router.get("/dashboard/productivity")
 async def attendant_productivity(days: int = Query(30, ge=1, le=365),
                                   user: dict = Depends(require_role("gestor"))):

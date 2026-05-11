@@ -1,0 +1,32 @@
+{
+  "summary": "Iter52 — Validated 5 changes: BUG #1 finalize conv, BUG #1b auto-reopen (code review), FEATURE #5 ai→human handover, FEATURE #4 ai-learning endpoint + frontend cards. 7/7 backend tests passed. Frontend: Atendimento → Mensagem sub-tab renders mensagem-tab + mensagem-google-card + mensagem-google-card-configure (texto 'Mensagem Google' + 'Configurar' OK). Central IA → ai-learning-card renders com Similaridade (3.3%), Taxa de autonomia (75%), Corpus (5), Mensagens IA (31) e gráfico de tendência 4 semanas (3 barras vazias + 04/05=3.3%). Nenhum bug crítico.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Central IA → AI Learning card", "issues": ["Gráfico de tendência 4-semanas mostra apenas a barra mais recente preenchida (3 semanas com '—'). Comportamento correto (sem dados históricos), porém UX poderia indicar 'Sem dados' explicitamente ao invés de barras 0px com label '—'."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter52_whatsapp_conv_lifecycle_ai_learning.py",
+    "/app/test_reports/pytest/iter52_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "whatsapp_baileys.py linhas 615-625: comparação string ISO `last_inbound <= closed_at` funciona porque ambos são UTC ISO8601 normalizados pelo `now_iso()`, mas dependente de formato — se algum dia algum subsistema gravar com TZ diferente (ex.: '+00:00' vs 'Z'), a ordenação lexicográfica quebra. Sugiro converter para datetime antes de comparar.",
+    "whatsapp_baileys.py assign endpoint linha 754-756: `is_human_takeover` exige `payload.assignee_user_id` ser truthy. Se um operador reatribuir a si mesmo (mesmo usuário) propositalmente após estado=ai (ex. retomar conv), handover dispara — comportamento correto. Porém se mesmo user reatribuir consecutivamente (ai→human→ai→human), cada transição vai disparar uma nova msg de handover (spam potencial). Considerar rate-limit por phone (ex. não enviar handover se último handover foi < 5min atrás).",
+    "central_ia.py ai-learning linhas 661-699: faz 4 loops com queries separadas em aihub_wa_messages (8 queries total no trend). Para corpus grande pode ficar lento — sugiro um único $facet com $bucket por semana.",
+    "central_ia.py linha 632: filtro `sent_by_user_id: {$nin: [None, '', 'isabella@ia.local']}` impede contar msgs IA — bom — mas msgs humanas legacy sem sent_by_user_id ficam fora do corpus. Aceitável se padronizado daqui pra frente."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter52_whatsapp_conv_lifecycle_ai_learning.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Created handover doc for 5599999999999 (is_handover_message=True, delivery_status=sent). Phone TEST_iter52 + sliding suffix used for finalize test (no real msg sent — webhook reached but no inbound saved without auth). Nenhuma cleanup explícita (dados de teste com prefixo TEST_iter52 / phone fake 5599999999999).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter52 verified: (a) PUT /finalize esconde conv da lista (status=closed persistido). (b) Reopen automático via código (lines 615-625) ok — comparação string ISO ok pois `now_iso()` é padronizado. (c) PUT /assign ai→human dispara msg de handover (texto 'atendente especializado'), grava is_handover_message=True, handover_msg_status, e segunda chamada NÃO retriggera. ATENÇÃO: ao testar com phone='5599999999999', sidecar aceitou a msg como sent (não falhou como esperado pelo main agent) — sidecar não valida formato BR; entrega real ao WhatsApp pode falhar mas o backend marca delivery_status=sent baseado no retorno do sidecar. (d) GET /api/central-ia/dashboard/ai-learning?days=N retorna 200 com todas as keys (human_samples, ai_messages, similarity_score, autonomy_rate, trend_4w[4], days, generated_at). (e) Frontend Mensagem sub-tab + AI Learning card renderizam corretamente com todos os data-testid esperados.",
+  "rca of the issue": "N/A — no bug fix iteration. All 5 changes from session validated working."
+}

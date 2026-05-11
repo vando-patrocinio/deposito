@@ -15,6 +15,7 @@ const TABS = [
   { id: "central_ia", label: "Central IA", icon: Brain },
   { id: "jerusa", label: "Ligar Jerusa", icon: PhoneCall },
   { id: "whatsapp_qr", label: "WhatsApp (QR)", icon: QrCode },
+  { id: "mensagem", label: "Mensagem", icon: MessageCircle },
   { id: "agents", label: "Agentes", icon: Bot },
   { id: "playground", label: "Playground", icon: MessageCircle },
   { id: "dial", label: "Discar (outbound)", icon: Phone },
@@ -67,6 +68,7 @@ export default function AIHubPanel({ initialTab = "central_ia" }) {
       {tab === "central_ia" && <CentralIaDashboard />}
       {tab === "jerusa" && <JerusaCallSimulator />}
       {tab === "whatsapp_qr" && <WhatsAppQRPanel />}
+      {tab === "mensagem" && <MensagemTab />}
       {tab === "agents" && <AgentsTab />}
       {tab === "playground" && <PlaygroundTab />}
       {tab === "dial" && <DialTab />}
@@ -76,6 +78,105 @@ export default function AIHubPanel({ initialTab = "central_ia" }) {
     </div>
   );
 }
+
+/* =============================================================
+   Mensagem — sub-aba com canais de mensageria (Google, etc)
+============================================================= */
+function MensagemTab() {
+  return (
+    <div data-testid="mensagem-tab" style={{ display: "grid", gap: 14 }}>
+      <div>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)",
+                       letterSpacing: "-0.012em", margin: 0 }}>
+          Canais de mensagem
+        </h2>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
+          Configure os canais de mensageria que sua operação utiliza para
+          atendimento ao cliente.
+        </p>
+      </div>
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+        gap: 12,
+      }}>
+        <MessageChannelCard
+          name="Mensagem Google"
+          subtitle="Google Business Messages"
+          description="Receba mensagens via Google Search e Google Maps. Integração oficial Google Business Messages para empresas verificadas."
+          status="not_configured"
+          testId="mensagem-google-card"
+        />
+      </div>
+    </div>
+  );
+}
+
+function MessageChannelCard({ name, subtitle, description, status, testId }) {
+  const statusInfo = {
+    not_configured: { label: "Não configurado", color: "var(--text-muted)",
+                        bg: "var(--bg-surface-2)" },
+    active: { label: "Ativo", color: "#16a34a",
+                bg: "rgba(34,197,94,.10)" },
+    error: { label: "Com erro", color: "#dc2626",
+               bg: "rgba(220,38,38,.10)" },
+  }[status] || { label: status, color: "var(--text-muted)",
+                  bg: "var(--bg-surface-2)" };
+
+  return (
+    <div data-testid={testId} style={{
+      padding: 16, borderRadius: 10,
+      border: "1px solid var(--border-default)",
+      background: "var(--bg-surface)",
+      display: "flex", flexDirection: "column", gap: 10,
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start",
+                     justifyContent: "space-between", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 8,
+            background: "var(--bg-surface-2)",
+            border: "1px solid var(--border-default)",
+            display: "grid", placeItems: "center",
+            color: "var(--text-primary)",
+          }}>
+            <MessageCircle size={18} strokeWidth={1.75} />
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600,
+                             color: "var(--text-primary)" }}>{name}</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)",
+                             marginTop: 2 }}>{subtitle}</div>
+          </div>
+        </div>
+        <span style={{
+          fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4,
+          color: statusInfo.color, background: statusInfo.bg,
+          textTransform: "uppercase", letterSpacing: 0.4,
+          whiteSpace: "nowrap",
+        }}>{statusInfo.label}</span>
+      </div>
+      <p style={{ fontSize: 12, color: "var(--text-secondary)",
+                    margin: 0, lineHeight: 1.5 }}>{description}</p>
+      <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+        <button data-testid={`${testId}-configure`}
+                onClick={() => alert("Integração Google Business Messages — em breve.\n\nPara habilitar, sua empresa precisa estar verificada no Google Business Profile e ter um agente aprovado pelo Google.")}
+                style={{
+                  padding: "6px 12px", borderRadius: 6,
+                  border: "1px solid var(--border-default)",
+                  background: "transparent",
+                  color: "var(--text-primary)",
+                  fontSize: 11, fontWeight: 600, cursor: "pointer",
+                }}>
+          Configurar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 
 /* =============================================================
    Agents

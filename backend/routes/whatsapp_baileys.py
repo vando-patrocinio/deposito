@@ -609,6 +609,20 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
         phone = r["_id"]
         jid = r.get("jid") or ""
         conv = convs_map.get(phone, {})
+        # REGRA: conversas finalizadas não aparecem na lista até receber nova
+        # mensagem inbound. Comparamos created_at da última inbound com
+        # closed_at — se inbound mais nova, reabriu sozinha; senão, oculta.
+        if conv.get("status") == "closed":
+            closed_at = conv.get("closed_at") or ""
+            last_inbound = r.get("last_inbound_at") or ""
+            if last_inbound <= closed_at:
+                continue
+            # Nova inbound → reabre automaticamente
+            await db.wa_conversations.update_one(
+                {"company_id": cid, "phone": phone},
+                {"$set": {"status": "open", "reopened_at": now_iso()}},
+            )
+            conv["status"] = "open"
         is_group = jid.endswith("@g.us")
         assignee_user_id = conv.get("assignee_user_id")
         assignee_role = conv.get("assignee_role")
@@ -713,9 +727,15 @@ async def assign_conversation(phone: str, payload: AssignIn,
     Casos:
     - assignee_user_id=<usr-id>, role=human → "Assumir" pelo operador
     - assignee_user_id=None, role=ai → "Devolver para IA"
+
+    REGRA MÁXIMA: quando role transita ai → human (atendente está assumindo),
+    enviamos AUTOMATICAMENTE uma mensagem ao cliente avisando que o atendimento
+    especializado tomou a conversa. Best-effort: falha na entrega não bloqueia
+    a atribuição (apenas registra `handover_msg_status=failed`).
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
     role = payload.assignee_role or ("human" if payload.assignee_user_id else "ai")
+    assignee_name = None
     if payload.assignee_user_id:
         u = await db.users.find_one(
             {"id": payload.assignee_user_id, "company_id": cid},
@@ -723,19 +743,76 @@ async def assign_conversation(phone: str, payload: AssignIn,
         )
         if not u:
             raise HTTPException(404, "Usuário não encontrado nesta empresa.")
+        assignee_name = u.get("name")
+
+    # Detecta transição IA → humano para disparar mensagem de handover
+    prev = await db.wa_conversations.find_one(
+        {"company_id": cid, "phone": phone},
+        {"_id": 0, "assignee_role": 1},
+    )
+    prev_role = (prev or {}).get("assignee_role") or "ai"
+    is_human_takeover = (role == "human"
+                          and prev_role != "human"
+                          and payload.assignee_user_id)
+
+    handover_status: Optional[str] = None
+    if is_human_takeover:
+        first_name = (assignee_name or "").split()[0] if assignee_name else "um atendente"
+        handover_text = (
+            f"Olá! 👋 Aqui é o {first_name}, atendente especializado. "
+            f"Vou continuar seu atendimento a partir de agora. "
+            f"Pode me contar o que está acontecendo?"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as cli:
+                send_r = await cli.post(f"{SIDECAR_BASE}/send",
+                                          json={"phone": phone, "text": handover_text})
+                send_body: Dict[str, Any] = {}
+                try:
+                    send_body = send_r.json()
+                except Exception:
+                    send_body = {"raw": send_r.text}
+                ok = send_r.status_code < 400 and send_body.get("ok")
+                handover_status = "sent" if ok else "failed"
+                # Loga mensagem no histórico do chat (igual /send manual)
+                await db.aihub_wa_messages.insert_one({
+                    "id": f"wam-{uuid.uuid4().hex[:10]}",
+                    "company_id": cid,
+                    "direction": "outbound",
+                    "phone": phone,
+                    "text": handover_text,
+                    "message_id": send_body.get("message_id"),
+                    "created_at": now_iso(),
+                    "actor_user": user.get("email") or user.get("id"),
+                    "sent_by_user_id": payload.assignee_user_id,
+                    "auto_reply": False,
+                    "is_handover_message": True,
+                    "delivery_status": "sent" if ok else "failed",
+                    "delivery_error": (send_body.get("error") if not ok else None),
+                })
+        except Exception as e:
+            logger.warning("[wa-baileys] handover msg falhou para %s: %s", phone, e)
+            handover_status = "failed"
+
     await db.wa_conversations.update_one(
         {"company_id": cid, "phone": phone},
         {"$set": {
             "company_id": cid, "phone": phone,
             "assignee_user_id": payload.assignee_user_id,
             "assignee_role": role,
+            "status": "open",   # garante reabertura ao assumir
             "updated_at": now_iso(),
             "updated_by": user.get("email") or user.get("id"),
+            **({"handover_msg_at": now_iso(),
+                "handover_msg_status": handover_status}
+                if handover_status else {}),
         }},
         upsert=True,
     )
     return {"ok": True, "phone": phone, "assignee_role": role,
-            "assignee_user_id": payload.assignee_user_id}
+            "assignee_user_id": payload.assignee_user_id,
+            "handover_message_sent": handover_status == "sent",
+            "handover_status": handover_status}
 
 
 class FinalizeIn(BaseModel):
@@ -745,20 +822,31 @@ class FinalizeIn(BaseModel):
 @router.put("/conversations/{phone}/finalize")
 async def finalize_conversation(phone: str, payload: FinalizeIn,
                                   user: dict = Depends(require_role("gestor"))):
-    """Marca conversa como finalizada (para limpar a fila Em Andamento)."""
+    """Marca conversa como finalizada (sai da fila Em Andamento).
+
+    Também limpa atribuição (volta a IA como dono padrão) e registra fechamento.
+    Conversa só reaparece na lista quando o cliente mandar nova mensagem.
+    """
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    now = now_iso()
     await db.wa_conversations.update_one(
         {"company_id": cid, "phone": phone},
         {"$set": {
             "company_id": cid, "phone": phone,
             "status": "closed",
             "outcome": payload.outcome,
-            "closed_at": now_iso(),
+            "closed_at": now,
             "closed_by": user.get("email") or user.get("id"),
+            "closed_by_user_id": user.get("id"),
+            # Reset atribuição: ao receber nova msg, IA volta a responder
+            "assignee_user_id": None,
+            "assignee_role": "ai",
+            "last_seen_at": now,
         }},
         upsert=True,
     )
-    return {"ok": True, "phone": phone, "status": "closed"}
+    return {"ok": True, "phone": phone, "status": "closed",
+            "closed_at": now}
 
 
 @router.get("/attendants")

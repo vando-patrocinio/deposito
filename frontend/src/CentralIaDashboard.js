@@ -42,24 +42,27 @@ export default function CentralIaDashboard() {
   const [alerts, setAlerts] = useState([]);
   const [productivity, setProductivity] = useState(null);
   const [aiEval, setAiEval] = useState(null);
+  const [aiLearning, setAiLearning] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const reload = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [k, a, i, al, p, ae] = await Promise.all([
+      const [k, a, i, al, p, ae, al2] = await Promise.all([
         api.centralIaKpis(days),
         api.centralIaAttendants(days),
         api.centralIaIntents(days),
         api.centralIaAlerts(),
         api.centralIaProductivity(days).catch(() => null),
         api.centralIaAiEvaluations(days).catch(() => null),
+        api.centralIaAiLearning(Math.max(days, 7)).catch(() => null),
       ]);
       setKpis(k); setAttendants(a.items || []); setIntents(i.items || []);
       setAlerts(al.items || []);
       setProductivity(p);
       setAiEval(ae);
+      setAiLearning(al2);
     } catch (e) {
       console.error(e);
     } finally { setLoading(false); setRefreshing(false); }
@@ -199,6 +202,7 @@ export default function CentralIaDashboard() {
 
           {/* Avaliações originadas da IA — CSAT, NPS-like, FCR, comparação humano */}
           {aiEval && <AiEvaluationsCard data={aiEval} days={days} />}
+          {aiLearning && <AiLearningCard data={aiLearning} />}
 
           {/* Produtividade dos atendentes — tempo logado, ocioso, AHT, score */}
           {productivity && <ProductivityCard data={productivity} days={days} />}
@@ -1039,6 +1043,182 @@ function BigKpi({ label, value, color, sub }) {
       {sub && (
         <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
           {sub}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* =============================================================
+   AiLearningCard — evolução do aprendizado da IA monitorando
+   mensagens dos atendentes humanos.
+============================================================= */
+function AiLearningCard({ data }) {
+  const sim = data?.similarity_score;
+  const autonomy = data?.autonomy_rate;
+  const trend = data?.trend_4w || [];
+  const last = trend[trend.length - 1]?.similarity_pct;
+  const prev = trend[trend.length - 2]?.similarity_pct;
+  const delta = (last != null && prev != null) ? (last - prev) : null;
+  const deltaPositive = delta != null && delta > 0;
+  const max = Math.max(1, ...trend.map((t) => t.similarity_pct || 0));
+
+  return (
+    <div data-testid="ai-learning-card" style={{
+      padding: 18, borderRadius: 12,
+      border: "1px solid var(--border-default)",
+      background: "var(--bg-surface)",
+    }}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)",
+                        textTransform: "uppercase", letterSpacing: 0.6 }}>
+          Aprendizado da IA
+        </div>
+        <h3 style={{ fontSize: 16, fontWeight: 700, margin: "4px 0 0",
+                        color: "var(--text-primary)",
+                        letterSpacing: "-0.012em" }}>
+          Evolução da IA monitorando atendentes
+        </h3>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)",
+                      margin: "4px 0 0", maxWidth: 560, lineHeight: 1.5 }}>
+          A IA observa as mensagens enviadas pelos atendentes humanos e aprende
+          o vocabulário, tom e estruturas que funcionam — sem replicar erros.
+          Quanto maior a similaridade, mais a IA se aproxima do atendimento humano ideal.
+        </p>
+      </div>
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+        gap: 10, marginBottom: 18,
+      }}>
+        <div style={{
+          padding: 14, borderRadius: 8,
+          border: "1px solid var(--border-default)",
+          background: "var(--bg-surface-2)",
+        }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)",
+                          textTransform: "uppercase", fontWeight: 700,
+                          letterSpacing: 0.5 }}>Similaridade humano · IA</div>
+          <div style={{ fontSize: 28, fontWeight: 800,
+                          color: sim == null ? "var(--text-muted)"
+                                 : sim >= 60 ? "#16a34a"
+                                 : sim >= 40 ? "#d97706" : "#dc2626",
+                          letterSpacing: "-0.02em", marginTop: 4 }}>
+            {sim == null ? "—" : `${sim}%`}
+          </div>
+          {delta != null && (
+            <div style={{ fontSize: 11, marginTop: 4,
+                            color: deltaPositive ? "#16a34a" : "#dc2626",
+                            fontWeight: 600 }}>
+              {deltaPositive ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}pp vs semana anterior
+            </div>
+          )}
+        </div>
+        <div style={{
+          padding: 14, borderRadius: 8,
+          border: "1px solid var(--border-default)",
+          background: "var(--bg-surface-2)",
+        }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)",
+                          textTransform: "uppercase", fontWeight: 700,
+                          letterSpacing: 0.5 }}>Taxa de autonomia</div>
+          <div style={{ fontSize: 28, fontWeight: 800,
+                          color: "var(--text-primary)",
+                          letterSpacing: "-0.02em", marginTop: 4 }}>
+            {autonomy == null ? "—" : `${autonomy}%`}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+            Conversas resolvidas só pela IA
+          </div>
+        </div>
+        <div style={{
+          padding: 14, borderRadius: 8,
+          border: "1px solid var(--border-default)",
+          background: "var(--bg-surface-2)",
+        }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)",
+                          textTransform: "uppercase", fontWeight: 700,
+                          letterSpacing: 0.5 }}>Corpus de aprendizado</div>
+          <div style={{ fontSize: 28, fontWeight: 800,
+                          color: "var(--text-primary)",
+                          letterSpacing: "-0.02em", marginTop: 4 }}>
+            {data?.human_samples ?? "—"}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+            Mensagens humanas analisadas
+          </div>
+        </div>
+        <div style={{
+          padding: 14, borderRadius: 8,
+          border: "1px solid var(--border-default)",
+          background: "var(--bg-surface-2)",
+        }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)",
+                          textTransform: "uppercase", fontWeight: 700,
+                          letterSpacing: 0.5 }}>Mensagens IA</div>
+          <div style={{ fontSize: 28, fontWeight: 800,
+                          color: "var(--text-primary)",
+                          letterSpacing: "-0.02em", marginTop: 4 }}>
+            {data?.ai_messages ?? "—"}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+            Enviadas pela IA no período
+          </div>
+        </div>
+      </div>
+
+      {trend.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)",
+                          fontWeight: 700, textTransform: "uppercase",
+                          letterSpacing: 0.5, marginBottom: 8 }}>
+            Evolução (4 semanas)
+          </div>
+          <div style={{
+            display: "grid", gridTemplateColumns: `repeat(${trend.length}, 1fr)`,
+            gap: 8, alignItems: "end", height: 100, padding: "0 6px",
+          }}>
+            {trend.map((w, idx) => {
+              const v = w.similarity_pct;
+              const h = v != null ? Math.max(6, (v / max) * 100) : 6;
+              return (
+                <div key={idx} style={{
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", gap: 4, height: "100%",
+                  justifyContent: "flex-end",
+                }} title={`${w.week_start}: ${v ?? "—"}%`}>
+                  <div style={{ fontSize: 10, fontWeight: 700,
+                                  color: "var(--text-primary)" }}>
+                    {v != null ? `${v}%` : "—"}
+                  </div>
+                  <div style={{
+                    width: "100%", height: `${h}%`, minHeight: 6,
+                    background: v == null ? "var(--bg-surface-2)"
+                                : v >= 60 ? "#16a34a"
+                                : v >= 40 ? "#d97706" : "#dc2626",
+                    borderRadius: "4px 4px 0 0",
+                    opacity: idx === trend.length - 1 ? 1 : 0.55,
+                  }} />
+                </div>
+              );
+            })}
+          </div>
+          <div style={{
+            display: "grid", gridTemplateColumns: `repeat(${trend.length}, 1fr)`,
+            gap: 8, marginTop: 4, padding: "0 6px",
+          }}>
+            {trend.map((w, idx) => (
+              <div key={idx} style={{
+                fontSize: 9, color: "var(--text-muted)",
+                textAlign: "center", fontFamily: "ui-monospace, monospace",
+              }}>
+                {new Date(w.week_start).toLocaleDateString("pt-BR",
+                  { day: "2-digit", month: "2-digit" })}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
