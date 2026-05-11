@@ -3,7 +3,7 @@ import { api } from "@/api";
 import {
   Bot, MessageCircle, Phone, Send, Settings, History,
   Plus, Trash2, Edit2, Play, Save, X, RefreshCw, CheckCircle2,
-  AlertTriangle, Wifi, WifiOff,
+  AlertTriangle, Wifi, WifiOff, Plug,
   Sparkles, Building2, DollarSign, Star, Wand2, ArrowUp, QrCode,
   Brain, Smartphone,
 } from "lucide-react";
@@ -12,8 +12,8 @@ import WhatsAppInstancePanel from "@/WhatsAppInstancePanel";
 import SmartOltAiPanel from "@/SmartOltAiPanel";
 import CentralIaDashboard from "@/CentralIaDashboard";
 
-const TABS = [
-  { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode },
+const BASE_TABS = [
+  { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode, dynamic: true },
   { id: "instancia", label: "Instância", icon: Smartphone },
   { id: "central_ia", label: "Central IA", icon: Brain },
   { id: "mensagem", label: "Mensagem", icon: MessageCircle },
@@ -26,7 +26,40 @@ const TABS = [
 
 export default function AIHubPanel({ initialTab = "central_ia" }) {
   const [tab, setTab] = useState(initialTab);
+  const [instanceName, setInstanceName] = useState("Ligo");
+  const [waConnected, setWaConnected] = useState(false);
   useEffect(() => { setTab(initialTab); }, [initialTab]);
+
+  // Carrega nome customizado da instância + status de conexão
+  useEffect(() => {
+    let alive = true;
+    const fetchInfo = async () => {
+      try {
+        const [inst, qr] = await Promise.all([
+          api.waBaileysGetInstance().catch(() => ({})),
+          api.waBaileysQR().catch(() => ({})),
+        ]);
+        if (!alive) return;
+        if (inst?.display_name) setInstanceName(inst.display_name);
+        setWaConnected((qr?.status || "") === "connected");
+      } catch { /* ignore */ }
+    };
+    fetchInfo();
+    const t = setInterval(fetchInfo, 15000);
+    const onRenamed = (e) => {
+      if (e?.detail?.name) setInstanceName(e.detail.name);
+    };
+    window.addEventListener("wa-instance-renamed", onRenamed);
+    return () => {
+      alive = false;
+      clearInterval(t);
+      window.removeEventListener("wa-instance-renamed", onRenamed);
+    };
+  }, []);
+
+  const TABS = useMemo(() => BASE_TABS.map((t) => (
+    t.dynamic ? { ...t, label: instanceName } : t
+  )), [instanceName]);
 
   // Modo full-screen para a aba WhatsApp (chat ocupa toda a tela)
   const isWaFull = tab === "whatsapp_qr";
@@ -63,10 +96,12 @@ export default function AIHubPanel({ initialTab = "central_ia" }) {
         {TABS.map((t) => {
           const Icon = t.icon;
           const active = tab === t.id;
+          const isLigo = t.dynamic;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
                     data-testid={`aihub-tab-${t.id}`}
                     style={{
+                      position: "relative",
                       padding: "8px 14px", border: "none", borderRadius: 8,
                       background: active ? "var(--bg-surface)" : "transparent",
                       color: active ? "var(--text-primary)" : "var(--text-secondary)",
@@ -75,7 +110,34 @@ export default function AIHubPanel({ initialTab = "central_ia" }) {
                       whiteSpace: "nowrap",
                       boxShadow: active ? "var(--shadow-sm)" : "none",
                     }}>
-              <Icon size={14} /> {t.label}
+              {isLigo ? (
+                <span data-testid="ligo-status-indicator"
+                      title={waConnected ? "WhatsApp conectado" : "WhatsApp desconectado"}
+                      style={{
+                        position: "relative", display: "inline-flex",
+                        alignItems: "center", justifyContent: "center",
+                      }}>
+                  <Plug size={14}
+                         strokeWidth={2}
+                         style={{
+                           color: waConnected ? "#16a34a" : "var(--text-muted)",
+                           transition: "color .25s",
+                         }} />
+                  <span style={{
+                    position: "absolute",
+                    top: -2, right: -3,
+                    width: 7, height: 7, borderRadius: "50%",
+                    background: waConnected ? "#16a34a" : "#94a3b8",
+                    boxShadow: waConnected
+                      ? "0 0 0 2px var(--bg-surface-2), 0 0 6px rgba(22,163,74,.7)"
+                      : "0 0 0 2px var(--bg-surface-2)",
+                    animation: waConnected ? "ligo-pulse 2s ease-in-out infinite" : "none",
+                  }} />
+                </span>
+              ) : (
+                <Icon size={14} />
+              )}
+              {t.label}
             </button>
           );
         })}

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Loader2, CheckCircle2, AlertTriangle, RefreshCw, LogOut,
-  MessageSquare, Smartphone, Bot, Zap,
+  MessageSquare, Smartphone, Bot, Zap, Edit2, Save, X, Plug,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -81,6 +81,9 @@ export default function WhatsAppInstancePanel() {
         @keyframes wa-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
         @keyframes wa-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
       `}</style>
+
+      {/* Card de Renomear instância (sempre visível) */}
+      <InstanceNameCard status={status} />
 
       <div className="surface" style={{
         padding: 18, borderRadius: 14,
@@ -345,3 +348,151 @@ function ConnectedView({ phoneNumber, me, onLogout, busy }) {
     </div>
   );
 }
+
+function InstanceNameCard({ status }) {
+  const [name, setName] = useState("Ligo");
+  const [loaded, setLoaded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.waBaileysGetInstance()
+      .then((r) => { if (alive) { setName(r.display_name || "Ligo"); setLoaded(true); } })
+      .catch(() => { if (alive) setLoaded(true); });
+    return () => { alive = false; };
+  }, []);
+
+  const startEdit = () => { setDraft(name); setEditing(true); setErr(null); };
+  const cancelEdit = () => { setEditing(false); setDraft(""); setErr(null); };
+  const saveEdit = async () => {
+    const v = draft.trim();
+    if (!v || v.length > 40) {
+      setErr("Use entre 1 e 40 caracteres.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.waBaileysSetInstance(v);
+      setName(v);
+      setEditing(false);
+      // dispatch event para AIHubPanel atualizar imediatamente sem esperar polling
+      window.dispatchEvent(new CustomEvent("wa-instance-renamed", { detail: { name: v } }));
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    } finally { setBusy(false); }
+  };
+
+  const isConnected = status === "connected";
+  return (
+    <div data-testid="wa-instance-name-card" style={{
+      padding: 14, borderRadius: 12,
+      border: "1px solid var(--border-default)",
+      background: "var(--bg-surface)",
+      display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+    }}>
+      <div style={{
+        position: "relative",
+        width: 44, height: 44, borderRadius: 10,
+        background: isConnected ? "rgba(22,163,74,.12)" : "var(--bg-surface-2)",
+        border: `1px solid ${isConnected ? "#16a34a" : "var(--border-default)"}`,
+        display: "grid", placeItems: "center",
+        transition: "all .25s",
+      }}>
+        <Plug size={20} strokeWidth={2}
+                style={{ color: isConnected ? "#16a34a" : "var(--text-muted)" }} />
+        <span style={{
+          position: "absolute", top: -3, right: -3,
+          width: 11, height: 11, borderRadius: "50%",
+          background: isConnected ? "#16a34a" : "#94a3b8",
+          border: "2px solid var(--bg-surface)",
+          boxShadow: isConnected ? "0 0 8px rgba(22,163,74,.7)" : "none",
+        }} />
+      </div>
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ fontSize: 10, fontWeight: 800,
+                          color: "var(--text-muted)",
+                          textTransform: "uppercase", letterSpacing: 0.6 }}>
+          Nome da instância WhatsApp
+        </div>
+        {editing ? (
+          <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center" }}>
+            <input value={draft} onChange={(e) => setDraft(e.target.value)}
+                     autoFocus maxLength={40}
+                     onKeyDown={(e) => {
+                       if (e.key === "Enter") saveEdit();
+                       if (e.key === "Escape") cancelEdit();
+                     }}
+                     data-testid="instance-name-input"
+                     style={{
+                       padding: "6px 10px", fontSize: 15, fontWeight: 700,
+                       border: "1px solid var(--border-default)", borderRadius: 6,
+                       background: "var(--bg-surface)", color: "var(--text-primary)",
+                       width: 240, fontFamily: "inherit",
+                     }} />
+            <button onClick={saveEdit} disabled={busy}
+                     data-testid="instance-name-save"
+                     style={{
+                       padding: "6px 10px", fontSize: 12, fontWeight: 700,
+                       background: "#16a34a", color: "#fff",
+                       border: "none", borderRadius: 6,
+                       cursor: busy ? "wait" : "pointer",
+                       display: "inline-flex", alignItems: "center", gap: 4,
+                     }}>
+              {busy
+                ? <Loader2 size={12} style={{ animation: "wa-spin 1s linear infinite" }} />
+                : <Save size={12} />}
+              Salvar
+            </button>
+            <button onClick={cancelEdit}
+                     data-testid="instance-name-cancel"
+                     style={{
+                       padding: "6px 10px", fontSize: 12, fontWeight: 600,
+                       background: "var(--bg-surface-2)",
+                       color: "var(--text-secondary)",
+                       border: "1px solid var(--border-default)", borderRadius: 6,
+                       cursor: "pointer",
+                       display: "inline-flex", alignItems: "center", gap: 4,
+                     }}>
+              <X size={12} /> Cancelar
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+            <strong data-testid="instance-name-display"
+                       style={{ fontSize: 18, color: "var(--text-primary)",
+                                  letterSpacing: "-0.012em" }}>
+              {loaded ? name : "..."}
+            </strong>
+            <button onClick={startEdit}
+                     data-testid="instance-name-edit-btn"
+                     style={{
+                       padding: "4px 9px", fontSize: 11, fontWeight: 600,
+                       background: "var(--bg-surface-2)",
+                       color: "var(--text-secondary)",
+                       border: "1px solid var(--border-default)", borderRadius: 5,
+                       cursor: "pointer",
+                       display: "inline-flex", alignItems: "center", gap: 4,
+                     }}>
+              <Edit2 size={10} /> Renomear
+            </button>
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+          Este nome aparece na aba principal de atendimento.
+          {isConnected
+            ? <span style={{ color: "#16a34a", fontWeight: 700 }}> Instância ativa e funcional.</span>
+            : <span style={{ color: "#94a3b8", fontWeight: 600 }}> Conecte um número via QR Code para ativar.</span>}
+        </div>
+        {err && (
+          <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>
+            {err}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+

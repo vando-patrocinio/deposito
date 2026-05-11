@@ -399,6 +399,11 @@ export const api = {
     client.post(`/whatsapp-baileys/conversations/${encodeURIComponent(phone)}/mark-seen`).then((r) => r.data),
   waBaileysAttendants: () =>
     client.get(`/whatsapp-baileys/attendants`).then((r) => r.data),
+  // Configurações da instância (nome de exibição)
+  waBaileysGetInstance: () =>
+    client.get(`/whatsapp-baileys/instance`).then((r) => r.data),
+  waBaileysSetInstance: (display_name) =>
+    client.put(`/whatsapp-baileys/instance`, { display_name }).then((r) => r.data),
 
   // ===== Central IA Dashboard =====
   centralIaKpis: (days = 7) =>

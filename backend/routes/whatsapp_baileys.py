@@ -535,6 +535,45 @@ async def set_auto_reply(payload: AutoReplySettingsIn,
 # ---------------------------------------------------------------------------
 # Histórico de mensagens (UI)
 # ---------------------------------------------------------------------------
+class InstanceSettingsIn(BaseModel):
+    display_name: str = Field(..., min_length=1, max_length=40)
+
+
+@router.get("/instance")
+async def get_instance_settings(user: dict = Depends(require_role("gestor"))):
+    """Retorna nome customizado da instância WhatsApp (default: 'Ligo')."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await db.aihub_settings.find_one(
+        {"company_id": cid, "key": "whatsapp_instance"}, {"_id": 0}
+    ) or {}
+    return {
+        "display_name": cfg.get("display_name") or "Ligo",
+        "updated_at": cfg.get("updated_at"),
+        "updated_by": cfg.get("updated_by"),
+    }
+
+
+@router.put("/instance")
+async def set_instance_settings(payload: InstanceSettingsIn,
+                                  user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    name = payload.display_name.strip()
+    await db.aihub_settings.update_one(
+        {"company_id": cid, "key": "whatsapp_instance"},
+        {"$set": {
+            "company_id": cid,
+            "key": "whatsapp_instance",
+            "display_name": name,
+            "updated_at": now_iso(),
+            "updated_by": user.get("email") or user.get("id"),
+        }},
+        upsert=True,
+    )
+    logger.info("[wa-baileys] instância renomeada para '%s' por %s",
+                 name, user.get("email"))
+    return {"ok": True, "display_name": name}
+
+
 @router.get("/messages")
 async def list_messages(limit: int = 50,
                           user: dict = Depends(require_role("gestor"))):
