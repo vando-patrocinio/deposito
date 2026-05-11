@@ -11,7 +11,7 @@ from core import DEMO_COMPANY_ID, require_role
 from database import db
 from services.motor_ia import (
     get_motor_config, get_safe_config, save_motor_config, test_motor,
-    DEFAULT_FALLBACKS,
+    DEFAULT_FALLBACKS, AGENT_CATALOG, get_agents_state, set_agent_state,
 )
 
 router = APIRouter(prefix="/api/motor-ia", tags=["motor-ia"])
@@ -338,5 +338,41 @@ async def budget_status(user: dict = Depends(require_role("gestor"))):
         "projected_month_usd": projected,
         "status": status,
     }
+
+
+
+# ---------------------------------------------------------------------------
+# Kill-switch por agente
+# ---------------------------------------------------------------------------
+
+class AgentSwitchIn(BaseModel):
+    enabled: bool
+
+
+@router.get("/agents")
+async def list_agents(user: dict = Depends(require_role("gestor"))):
+    """Lista todos os agentes do catálogo com estado atual (ligado/desligado).
+    Default: ativo (sem registro)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    agents = await get_agents_state(cid)
+    return {"agents": agents, "total": len(agents),
+            "enabled_count": sum(1 for a in agents if a["enabled"])}
+
+
+@router.put("/agents/{agent_id}")
+async def toggle_agent(agent_id: str, payload: AgentSwitchIn,
+                          user: dict = Depends(require_role("administrador"))):
+    """Liga/desliga um agente específico. Quando desligado, todas as
+    chamadas LLM daquele agente são rejeitadas com AgentDisabledError."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    try:
+        result = await set_agent_state(
+            cid, agent_id, payload.enabled,
+            user_label=user.get("name") or user.get("email") or user.get("id"),
+        )
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+    return {"ok": True, **result}
+
 
 

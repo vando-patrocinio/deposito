@@ -32,6 +32,43 @@ logger = logging.getLogger(__name__)
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 
+
+class AgentDisabledError(RuntimeError):
+    """Lançado quando o agente foi desligado pelo admin (kill-switch)."""
+    def __init__(self, agent_id: str):
+        super().__init__(f"Agente '{agent_id}' está desativado pelo administrador.")
+        self.agent_id = agent_id
+
+
+# Catálogo de agentes que podem ser ligados/desligados via painel.
+# Mantido em sync com os `agent=` usados em chat_completion(). Ordem é a
+# ordem de exibição no modal de controle.
+AGENT_CATALOG: List[Dict[str, str]] = [
+    {"id": "smartolt_ai",         "label": "SmartOLT AI",
+     "description": "Detecção e análise de panes na rede óptica (PON/ONU)."},
+    {"id": "sentinela_lousa",     "label": "Sentinela Lousa",
+     "description": "Monitora SLA, inatividade e sobrecarga de técnicos."},
+    {"id": "lousa_triagem",       "label": "Lousa AI · Triagem",
+     "description": "Classifica novos tickets (tipo, prioridade, técnico, SLA)."},
+    {"id": "copilot_ai",          "label": "Co-Pilot IA",
+     "description": "Dicas internas (não visíveis ao cliente) durante atendimentos."},
+    {"id": "isabella_whatsapp",   "label": "Isabella (WhatsApp)",
+     "description": "Atendimento automático via WhatsApp (Baileys)."},
+    {"id": "voice_ai",            "label": "Voice AI",
+     "description": "Atendimento por voz / SIP."},
+    {"id": "central_ia_eval",     "label": "Central IA · Avaliação",
+     "description": "Avalia CSAT/sentimento/FCR de conversas finalizadas."},
+    {"id": "central_ia_coach",    "label": "Central IA · Coaching",
+     "description": "Gera coaching para atendentes pós-conversa."},
+    {"id": "aihub_chat",          "label": "AI Hub · Chat",
+     "description": "Chat com agentes customizados criados no AI Hub."},
+    {"id": "aihub_textgen",       "label": "AI Hub · TextGen",
+     "description": "Geração/aprimoramento de texto em formulários."},
+    {"id": "ai_dashboard_insight","label": "Dashboard Insights",
+     "description": "Insights automáticos sobre dashboards operacionais."},
+]
+AGENT_IDS = {a["id"] for a in AGENT_CATALOG}
+
 DEFAULT_TEXT_MODEL = "anthropic/claude-sonnet-4.5"
 DEFAULT_FALLBACKS = [
     "anthropic/claude-sonnet-4.5",
@@ -150,6 +187,14 @@ async def chat_completion(company_id: str,
     cid = company_id or DEMO_COMPANY_ID
     cfg = await get_motor_config(cid)
     api_key = cfg.get("openrouter_api_key") or ""
+
+    # Kill-switch por agente (configurado em Motor IA → Painel de Agentes).
+    # Se o agente foi desligado pelo admin, aborta antes de gastar tokens.
+    agent_id = agent or purpose
+    if agent_id and agent_id not in ("general",):
+        if not await is_agent_enabled(cid, agent_id):
+            raise AgentDisabledError(agent_id)
+
     if not cfg.get("enabled") or not api_key:
         # Fallback de segurança: se admin não configurou ainda, cai pra
         # EMERGENT_LLM_KEY (compat com setup antigo). Loga warning.
@@ -382,3 +427,63 @@ async def test_motor(company_id: str) -> Dict[str, Any]:
                 "sample": r["content"][:100]}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+
+# ---------------------------------------------------------------------------
+# Kill-switch por agente
+# ---------------------------------------------------------------------------
+
+async def is_agent_enabled(company_id: str, agent_id: str) -> bool:
+    """Retorna False se o agente foi desligado pelo admin. Default True
+    (sem registro = ativo). Agentes desconhecidos passam (default True)."""
+    if not agent_id or agent_id not in AGENT_IDS:
+        return True
+    doc = await db.ai_agent_switches.find_one(
+        {"company_id": company_id, "agent_id": agent_id},
+        {"_id": 0, "enabled": 1},
+    )
+    if not doc:
+        return True
+    return bool(doc.get("enabled", True))
+
+
+async def get_agents_state(company_id: str) -> List[Dict[str, Any]]:
+    """Retorna catálogo de agentes com estado atual (enabled + metadata)."""
+    cur = db.ai_agent_switches.find(
+        {"company_id": company_id},
+        {"_id": 0, "agent_id": 1, "enabled": 1, "updated_at": 1, "updated_by": 1},
+    )
+    state: Dict[str, Dict[str, Any]] = {}
+    async for d in cur:
+        state[d["agent_id"]] = d
+    out = []
+    for a in AGENT_CATALOG:
+        s = state.get(a["id"], {})
+        out.append({
+            "id": a["id"],
+            "label": a["label"],
+            "description": a["description"],
+            "enabled": bool(s.get("enabled", True)),
+            "updated_at": s.get("updated_at"),
+            "updated_by": s.get("updated_by"),
+        })
+    return out
+
+
+async def set_agent_state(company_id: str, agent_id: str,
+                            enabled: bool, user_label: Optional[str] = None) -> Dict[str, Any]:
+    """Persiste estado do kill-switch. Lança ValueError se agent_id inválido."""
+    if agent_id not in AGENT_IDS:
+        raise ValueError(f"Agente desconhecido: {agent_id}")
+    await db.ai_agent_switches.update_one(
+        {"company_id": company_id, "agent_id": agent_id},
+        {"$set": {
+            "enabled": bool(enabled),
+            "updated_at": now_iso(),
+            "updated_by": user_label or "system",
+        },
+         "$setOnInsert": {"company_id": company_id, "agent_id": agent_id}},
+        upsert=True,
+    )
+    return {"agent_id": agent_id, "enabled": bool(enabled)}

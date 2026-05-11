@@ -1,5 +1,31 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Painel de Agentes IA (kill-switch global)
+
+### Backend
+- `services/motor_ia.py`:
+  - Nova exceção `AgentDisabledError` lançada por `chat_completion` quando o agente foi pausado pelo admin.
+  - Catálogo `AGENT_CATALOG` com 11 agentes (SmartOLT, Sentinela, Triagem, Co-Pilot, Isabella, Voice, Central IA Avaliação/Coaching, AI Hub Chat/TextGen, Dashboard Insights).
+  - Helpers `is_agent_enabled()`, `get_agents_state()`, `set_agent_state()`.
+  - Verificação de kill-switch ocorre ANTES de qualquer custo (rejeita gastar tokens).
+- `routes/motor_ia.py`: endpoints `GET /api/motor-ia/agents` (lista com estado e metadados de quem alterou) e `PUT /api/motor-ia/agents/{agent_id}` (admin-only).
+- Coleção `ai_agent_switches` ({company_id, agent_id, enabled, updated_at, updated_by}). Default ativo (sem registro = enabled).
+
+### Frontend
+- Novo `MotorIaAgentsModal.js`: modal full com lista de agentes, toggles animados, indicador de pausados, footer explicativo, último alterador.
+- `AiTopologyCard.js`: nó **Motor IA** (centro do hub) agora é clicável (`cursor:pointer`). Hint visual "Clique para gerenciar agentes" com bullet pulsante (amarelo). Click abre o `MotorIaAgentsModal`.
+- `api.js`: `motorIaAgentsList()` e `motorIaAgentToggle(id, enabled)`.
+
+### Validação
+- `GET /api/motor-ia/agents` → 11 agentes, todos ativos por default ✓
+- `PUT /api/motor-ia/agents/copilot_ai {enabled:false}` → state persistido com `updated_by: "Administrador"` ✓
+- Teste end-to-end: `set_agent_state('smartolt_ai', false)` → `chat_completion` lança `AgentDisabledError` sem chamar OpenRouter ✓
+- Re-enable funcional ✓
+- Lint frontend + backend limpos ✓
+
+---
+
+
 ## Feb 11, 2026 — Badge persistente de alerta de orçamento no header
 
 ### Frontend

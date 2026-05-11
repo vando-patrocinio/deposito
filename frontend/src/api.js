@@ -225,6 +225,9 @@ export const api = {
   motorIaBudgetGet: () => client.get(`/motor-ia/budget`).then((r) => r.data),
   motorIaBudgetSave: (payload) => client.put(`/motor-ia/budget`, payload).then((r) => r.data),
   motorIaBudgetStatus: () => client.get(`/motor-ia/budget/status`).then((r) => r.data),
+  motorIaAgentsList: () => client.get(`/motor-ia/agents`).then((r) => r.data),
+  motorIaAgentToggle: (agentId, enabled) =>
+    client.put(`/motor-ia/agents/${agentId}`, { enabled }).then((r) => r.data),
   smartoltOnuReboot: (extId) => client.post(`/smartolt/onu/${extId}/reboot`).then((r) => r.data),
 
   // ========= SmartOLT AI — monitoramento autônomo =========

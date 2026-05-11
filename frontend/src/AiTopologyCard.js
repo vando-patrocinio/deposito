@@ -4,6 +4,7 @@ import {
   Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
   Loader2, Activity, Shield, ClipboardList, Wand2, Cpu,
 } from "lucide-react";
+import MotorIaAgentsModal from "@/MotorIaAgentsModal";
 
 const ICONS = { Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
   Shield, ClipboardList, Wand: Wand2, Cpu };
@@ -64,6 +65,7 @@ export default function AiTopologyCard() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
 
   const reload = useCallback(async () => {
     setRefreshing(true);
@@ -107,6 +109,10 @@ export default function AiTopologyCard() {
           to { offset-distance: 100%; opacity: 0; }
         }
         .flow-dot { animation: flow-dot var(--dur, 4s) linear infinite; }
+        @keyframes core-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.4); }
+        }
       `}</style>
 
       <div style={{
@@ -268,7 +274,9 @@ export default function AiTopologyCard() {
             return (
               <g key={n.id}
                   transform={`translate(${pos.x - nodeW / 2} ${pos.y - nodeH / 2})`}
-                  data-testid={`flow-node-${n.id}`}>
+                  data-testid={`flow-node-${n.id}`}
+                  onClick={isCore ? () => setAgentsOpen(true) : undefined}
+                  style={isCore ? { cursor: "pointer" } : undefined}>
                 {isCore && (
                   <>
                     <circle cx={nodeW/2} cy={nodeH/2} r={nodeW * 0.85}
@@ -347,6 +355,21 @@ export default function AiTopologyCard() {
                         {n.metric_sub}
                       </div>
                     )}
+                    {isCore && (
+                      <div style={{
+                        fontSize: 9, marginTop: 2,
+                        color: "#fbbf24", fontWeight: 700,
+                        textTransform: "uppercase", letterSpacing: 0.5,
+                        display: "flex", alignItems: "center", gap: 4,
+                      }}>
+                        <span style={{
+                          width: 6, height: 6, borderRadius: "50%",
+                          background: "#fbbf24",
+                          animation: "core-pulse 1.8s ease-in-out infinite",
+                        }} />
+                        Clique para gerenciar agentes
+                      </div>
+                    )}
                     {isHuman && n.hints_received > 0 && (
                       <div style={{ fontSize: 9, color: "#d97706",
                                        fontWeight: 700,
@@ -391,6 +414,7 @@ export default function AiTopologyCard() {
             ))}
         </div>
       )}
+      {agentsOpen && <MotorIaAgentsModal onClose={() => setAgentsOpen(false)} />}
     </div>
   );
 }
