@@ -280,6 +280,38 @@ async def inbound_webhook(payload: InboundIn,
     logger.info("[wa-baileys] inbound %s (%s): %s", payload.phone,
                 payload.push_name, payload.text[:80])
 
+    # --- Manager Assistant — gestor manda comando, IA executa ---
+    # Intercepta ANTES do auto-reply para que mensagens do gestor não passem
+    # pela IA de atendimento ao cliente.
+    if not is_group:
+        try:
+            from services.manager_assistant import handle_manager_message
+            mgr_reply = await handle_manager_message(
+                cid, payload.phone, payload.text)
+            if mgr_reply:
+                # Envia resposta de volta via sidecar
+                try:
+                    async with httpx.AsyncClient(timeout=12.0) as cli:
+                        await cli.post(
+                            f"{SIDECAR_BASE}/send",
+                            json={"phone": payload.phone, "text": mgr_reply},
+                        )
+                except Exception as e:
+                    logger.warning("[wa-baileys] manager reply send fail: %s", e)
+                # Persistimos como outbound também
+                await db.aihub_wa_messages.insert_one({
+                    "id": f"wam-{uuid.uuid4().hex[:10]}",
+                    "company_id": cid,
+                    "direction": "outbound",
+                    "phone": payload.phone,
+                    "text": mgr_reply,
+                    "created_at": now_iso(),
+                    "metadata": {"manager_assistant": True},
+                })
+                return {"ok": True, "manager_assistant": True}
+        except Exception as e:
+            logger.warning("[wa-baileys] manager assistant falhou: %s", e)
+
     # --- Auto-reply (se habilitado) ---
     if not is_group:
         try:

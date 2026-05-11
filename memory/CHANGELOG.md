@@ -1,5 +1,38 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Manager Assistant via WhatsApp (gestor envia comando, IA executa)
+
+### Backend
+- Novo `services/manager_assistant.py`:
+  - Catálogo de 4 comandos: `help`, `briefing`, `list_churn`, `create_retention_alert`
+  - **Heurística rápida** com regex pra comandos óbvios (sem custo de LLM)
+  - Fallback: Claude classifica intenção em JSON estruturado (`temperature=0.0, json_mode=true`)
+  - **Whitelist dupla**: telefone do gestor já cadastrado em `churn_briefing_schedule.notify_phone` + lista manual em `manager_assistant_phones`
+  - **Audit log** em `manager_assistant_log` (cada comando: input, intent detectada, params, reply)
+- `routes/whatsapp_baileys.py`: hook em `inbound_webhook` ANTES do auto-reply ao cliente. Se for gestor → executa comando, envia resposta via sidecar, persiste como outbound e retorna 200.
+- `routes/churn.py`: REST CRUD da whitelist + log
+  - `GET /manager-assistant/phones` (lista — inclui o do schedule)
+  - `POST /manager-assistant/phones` (admin only — adiciona)
+  - `DELETE /manager-assistant/phones/{phone}` (admin only)
+  - `GET /manager-assistant/log?limit=N`
+
+### Validação ✓
+- `_is_manager_phone` rejeita corretamente telefone fora da whitelist (`None`)
+- Comando "ajuda" retorna menu formatado pra WhatsApp
+- "lista de churn" retorna estado correto (nenhum finalizado no momento)
+- "abre alerta retenção" **criou 39 alertas reais** na coleção `lousa_alerts` com `kind=retention, severity=alta, created_by=manager_assistant` ✓
+- Comando não reconhecido cai em fallback elegante
+- Lint backend limpo
+
+### Como usar
+1. Em **Central IA → Churn**, configure o WhatsApp do gestor no card de agendamento.
+2. Esse mesmo número é automaticamente incluído na whitelist do assistente.
+3. Envie "ajuda" pelo WhatsApp → recebe o menu.
+4. Envie qualquer comando ou texto livre → IA classifica e executa.
+
+---
+
+
 ## Feb 11, 2026 — Briefing automático diário + entrega via WhatsApp
 
 ### Backend

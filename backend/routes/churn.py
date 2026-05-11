@@ -505,3 +505,81 @@ async def run_briefing_now(
     return {"ok": True, "id": doc.get("id"), "date": doc.get("date"),
             "based_on": doc.get("based_on")}
 
+
+
+
+# ---------------------------------------------------------------------------
+# Manager Assistant — comando via WhatsApp
+# ---------------------------------------------------------------------------
+
+class ManagerPhoneIn(BaseModel):
+    phone: str
+    enabled: bool = True
+    label: str | None = None
+
+
+@router.get("/manager-assistant/phones")
+async def list_manager_phones(
+    user: dict = Depends(require_role("gestor")),
+) -> Dict[str, Any]:
+    """Lista telefones autorizados a usar o assistente via WhatsApp."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    rows = await db.manager_assistant_phones.find(
+        {"company_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    sched = await db.churn_briefing_schedule.find_one(
+        {"company_id": cid}, {"_id": 0, "notify_phone": 1})
+    return {
+        "items": rows,
+        "auto_included_from_schedule": (sched or {}).get("notify_phone") or "",
+    }
+
+
+@router.post("/manager-assistant/phones")
+async def add_manager_phone(
+    payload: ManagerPhoneIn,
+    user: dict = Depends(require_role("administrador")),
+) -> Dict[str, Any]:
+    """Adiciona um telefone à whitelist do assistente (admin only)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    phone_norm = re.sub(r"\D", "", payload.phone)
+    if not phone_norm:
+        from fastapi import HTTPException
+        raise HTTPException(400, "phone inválido")
+    await db.manager_assistant_phones.update_one(
+        {"company_id": cid, "phone": phone_norm},
+        {"$set": {
+            "enabled": payload.enabled,
+            "label": payload.label or "",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": user.get("name") or user.get("email") or "admin",
+        },
+         "$setOnInsert": {
+             "company_id": cid, "phone": phone_norm,
+             "created_at": datetime.now(timezone.utc).isoformat(),
+         }},
+        upsert=True,
+    )
+    return {"ok": True, "phone": phone_norm}
+
+
+@router.delete("/manager-assistant/phones/{phone}")
+async def remove_manager_phone(
+    phone: str,
+    user: dict = Depends(require_role("administrador")),
+) -> Dict[str, Any]:
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    phone_norm = re.sub(r"\D", "", phone)
+    await db.manager_assistant_phones.delete_one(
+        {"company_id": cid, "phone": phone_norm})
+    return {"ok": True}
+
+
+@router.get("/manager-assistant/log")
+async def list_manager_log(
+    limit: int = Query(30, ge=1, le=100),
+    user: dict = Depends(require_role("gestor")),
+) -> Dict[str, Any]:
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    rows = await db.manager_assistant_log.find(
+        {"company_id": cid}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"items": rows, "count": len(rows)}
