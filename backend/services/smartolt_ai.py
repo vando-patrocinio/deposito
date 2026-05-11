@@ -304,6 +304,7 @@ async def _generate_ai_insight(company_id: str, outage_doc: Dict[str, Any],
             max_tokens=300,
             json_mode=False,
             purpose="smartolt_insight",
+            agent="smartolt_ai",
         )
         import json as _json
         raw = (result.get("content") or "").strip()

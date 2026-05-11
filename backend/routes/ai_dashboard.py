@@ -518,6 +518,7 @@ async def generate_insight(payload: InsightRequest,
                 {"role": "user", "content": prompt},
             ],
             temperature=0.4, max_tokens=900,
+            agent="ai_dashboard_insight",
         )
         text = result.get("content") or ""
     except Exception as e:

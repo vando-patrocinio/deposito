@@ -181,6 +181,7 @@ async def _llm_reply(agent: dict, session_id: str, user_text: str,
             temperature=agent.get("temperature", 0.6),
             max_tokens=agent.get("max_tokens", 350),
             purpose="atendimento",
+            agent="voice_ai",
         )
         return (result.get("content") or "").strip()
     except Exception as e:

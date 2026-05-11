@@ -221,6 +221,7 @@ export const api = {
   motorIaSaveConfig: (payload) => client.put(`/motor-ia/config`, payload).then((r) => r.data),
   motorIaTest: () => client.post(`/motor-ia/test`).then((r) => r.data),
   motorIaSuggestedModels: () => client.get(`/motor-ia/models/suggested`).then((r) => r.data),
+  motorIaUsage: (days = 30) => client.get(`/motor-ia/usage`, { params: { days } }).then((r) => r.data),
   smartoltOnuReboot: (extId) => client.post(`/smartolt/onu/${extId}/reboot`).then((r) => r.data),
 
   // ========= SmartOLT AI — monitoramento autônomo =========

@@ -146,6 +146,7 @@ async def maybe_insert_copilot_hint(*, company_id: str, phone: str,
             temperature=0.4,
             max_tokens=180,
             purpose="copilot",
+            agent="copilot_ai",
         )
         hint = (result.get("content") or "").strip()
     except Exception as e:

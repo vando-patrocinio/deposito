@@ -208,6 +208,7 @@ async def triage_ticket(company_id: str, ticket_id: str,
             max_tokens=420,
             json_mode=False,
             purpose="lousa_triagem",
+            agent="lousa_triagem",
         )
         parsed = _strip_json(result.get("content") or "")
         if not parsed:

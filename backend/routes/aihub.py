@@ -331,6 +331,7 @@ async def playground(aid: str, payload: PlaygroundIn,
             temperature=agent.get("temperature", 0.6),
             max_tokens=agent.get("max_tokens", 700),
             purpose="atendimento",
+            agent="aihub_chat",
         )
         text = (result.get("content") or "").strip()
     except Exception as e:
@@ -1067,6 +1068,7 @@ async def agent_text_gen(payload: TextGenIn,
                 {"role": "user", "content": user_msg},
             ],
             temperature=0.5, max_tokens=900,
+            agent="aihub_textgen",
         )
         text = (result.get("content") or "").strip().strip('"\'')
     except Exception as e:

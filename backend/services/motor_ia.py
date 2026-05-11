@@ -131,7 +131,8 @@ async def chat_completion(company_id: str,
                             temperature: float = 0.7,
                             max_tokens: int = 500,
                             json_mode: bool = False,
-                            purpose: str = "general") -> Dict[str, Any]:
+                            purpose: str = "general",
+                            agent: Optional[str] = None) -> Dict[str, Any]:
     """Gera resposta de chat via OpenRouter. Caller passa lista de messages
     (formato OpenAI: [{role, content}, ...]).
 
@@ -139,11 +140,15 @@ async def chat_completion(company_id: str,
         purpose: "atendimento" força DeepSeek (motor dedicado para agentes
                  de atendimento WhatsApp/Jerusa). "general" usa o modelo
                  configurado em motor_ia_config (default OpenAI/GPT-4o-mini).
+        agent: identificador do agente chamador (ex.: "smartolt_ai",
+               "sentinela_lousa", "lousa_triagem"). Usado para o dashboard
+               de custos. Se None, usa `purpose`.
 
     Returns: {"content": str, "model": str, "provider": str}.
     Raises RuntimeError se motor não configurado.
     """
-    cfg = await get_motor_config(company_id or DEMO_COMPANY_ID)
+    cid = company_id or DEMO_COMPANY_ID
+    cfg = await get_motor_config(cid)
     api_key = cfg.get("openrouter_api_key") or ""
     if not cfg.get("enabled") or not api_key:
         # Fallback de segurança: se admin não configurou ainda, cai pra
@@ -181,11 +186,91 @@ async def chat_completion(company_id: str,
         kwargs["response_format"] = {"type": "json_object"}
     resp = await client.chat.completions.create(**kwargs)
     content = (resp.choices[0].message.content or "").strip()
+    used_model = getattr(resp, "model", primary)
+    provider = getattr(resp, "provider", None) or "openrouter"
+
+    # Registra uso (best-effort, não bloqueia resposta)
+    try:
+        usage = getattr(resp, "usage", None)
+        pt = int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0
+        ct = int(getattr(usage, "completion_tokens", 0) or 0) if usage else 0
+        await _log_usage(cid, agent or purpose, used_model, provider, pt, ct)
+    except Exception as e:
+        logger.warning(f"[motor-ia] usage log falhou: {e}")
+
     return {
         "content": content,
-        "model": getattr(resp, "model", primary),
-        "provider": getattr(resp, "provider", None) or "openrouter",
+        "model": used_model,
+        "provider": provider,
     }
+
+
+# ---------------------------------------------------------------------------
+# Tabela de preços (USD por 1M tokens) — best-effort, mantida manualmente.
+# Fonte: openrouter.ai/models. Atualizar conforme novos modelos forem usados.
+# ---------------------------------------------------------------------------
+MODEL_PRICING: Dict[str, Dict[str, float]] = {
+    # Anthropic
+    "anthropic/claude-sonnet-4.5":      {"in": 3.0,  "out": 15.0},
+    "anthropic/claude-4.5-sonnet":      {"in": 3.0,  "out": 15.0},
+    "anthropic/claude-opus-4.5":        {"in": 15.0, "out": 75.0},
+    "anthropic/claude-haiku-4.5":       {"in": 0.8,  "out": 4.0},
+    "anthropic/claude-3.5-sonnet":      {"in": 3.0,  "out": 15.0},
+    "anthropic/claude-3-haiku":         {"in": 0.25, "out": 1.25},
+    # OpenAI
+    "openai/gpt-4o":                    {"in": 2.5,  "out": 10.0},
+    "openai/gpt-4o-mini":               {"in": 0.15, "out": 0.6},
+    # DeepSeek
+    "deepseek/deepseek-chat":           {"in": 0.27, "out": 1.10},
+    "deepseek/deepseek-r1":             {"in": 0.55, "out": 2.19},
+    "deepseek/deepseek-chat-v3.1":      {"in": 0.27, "out": 1.10},
+    "deepseek/deepseek-v4-flash":       {"in": 0.27, "out": 1.10},
+    # Google / Meta (free/cheap)
+    "google/gemini-2.0-flash-exp:free": {"in": 0.0,  "out": 0.0},
+    "meta-llama/llama-3.3-70b-instruct":{"in": 0.59, "out": 0.79},
+}
+
+
+def _estimate_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """Estima custo em USD baseado na tabela acima. Faz match case-insensitive
+    e tenta também por prefixo (ex.: 'anthropic/claude-4.5-sonnet-20250929'
+    casa com 'anthropic/claude-4.5-sonnet')."""
+    if not model:
+        return 0.0
+    m = model.lower()
+    price = MODEL_PRICING.get(m)
+    if not price:
+        # tenta por prefixo
+        for k, v in MODEL_PRICING.items():
+            if m.startswith(k):
+                price = v
+                break
+    if not price:
+        return 0.0
+    return round(
+        (prompt_tokens / 1_000_000) * price["in"]
+        + (completion_tokens / 1_000_000) * price["out"],
+        6,
+    )
+
+
+async def _log_usage(company_id: str, agent: str, model: str,
+                       provider: str, prompt_tokens: int, completion_tokens: int):
+    """Persiste uma linha em `motor_ia_usage` (best-effort)."""
+    if prompt_tokens == 0 and completion_tokens == 0:
+        return
+    cost = _estimate_cost_usd(model, prompt_tokens, completion_tokens)
+    await db.motor_ia_usage.insert_one({
+        "company_id": company_id,
+        "agent": agent or "general",
+        "model": model,
+        "provider": provider,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+        "estimated_cost_usd": cost,
+        "created_at": now_iso(),
+    })
 
 
 async def _emergent_chat_fallback(messages, model, temperature, max_tokens):

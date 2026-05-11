@@ -1,5 +1,27 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Dashboard "Custo do Motor IA"
+
+### Backend
+- `services/motor_ia.py`: instrumentado `chat_completion` para capturar `usage` (prompt/completion tokens) e persistir em coleção `motor_ia_usage`. Best-effort (não bloqueia resposta).
+- Tabela `MODEL_PRICING` (USD por 1M tokens) com Claude 4.5 (Sonnet/Opus/Haiku), GPT-4o, DeepSeek, Gemini, Llama. Match por modelo exato + por prefixo (ex.: versionados `-20250929`).
+- Nova param `agent: str` em `chat_completion` para identificar o chamador.
+- Atualizado callers principais com `agent=`: `smartolt_ai`, `sentinela_lousa`, `lousa_triagem`, `copilot_ai`, `isabella_whatsapp` (WhatsApp Baileys), `aihub_chat`, `aihub_textgen`, `central_ia_eval`, `central_ia_coach`, `voice_ai`, `ai_dashboard_insight`.
+- `routes/motor_ia.py`: novo endpoint `GET /api/motor-ia/usage?days=N` (1-90 dias). Retorna `totals`, `by_agent` (com labels amigáveis), `by_model`, série diária `daily`.
+
+### Frontend
+- Novo `MotorIaUsageCard.js`: seletor de período (7/30/90d), 4 métricas (custo USD, tokens entrada/saída/totais), barras horizontais por agente, lista por modelo, sparkline diária.
+- `api.js`: adicionado `motorIaUsage(days)`.
+- `App.js`: card integrado à aba Motor IA acima do `MotorIaCard`.
+
+### Validação
+- `POST /api/motor-ia/test` registra uso ✓
+- `GET /api/motor-ia/usage?days=30` retorna agregação correta (calls, USD, by_agent, by_model, daily) ✓
+- Frontend lint limpo ✓
+
+---
+
+
 ## Feb 11, 2026 — Motor IA migrado para Claude Sonnet 4.5
 
 ### Backend

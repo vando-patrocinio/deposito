@@ -106,6 +106,7 @@ async def _llm_evaluate(transcript: str, company_id: str = "") -> Optional[Dict[
             temperature=0.2,
             max_tokens=400,
             json_mode=True,
+            agent="central_ia_eval",
         )
         text = (result.get("content") or "").strip()
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
@@ -225,6 +226,7 @@ async def _llm_coach(transcript: str, eval_doc: dict,
                 {"role": "user", "content": user_text},
             ],
             temperature=0.3, max_tokens=450, json_mode=True,
+            agent="central_ia_coach",
         )
         text = (result.get("content") or "").strip()
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()

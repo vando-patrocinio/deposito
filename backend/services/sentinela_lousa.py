@@ -141,6 +141,7 @@ async def _generate_ai_insight(company_id: str, alert_doc: Dict[str, Any]) -> Op
             max_tokens=300,
             json_mode=False,
             purpose="sentinela_insight",
+            agent="sentinela_lousa",
         )
         import json as _json
         raw = (result.get("content") or "").strip()
