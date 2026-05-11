@@ -257,29 +257,54 @@ export default function MotorIaCard() {
       </div>
 
       {/* Audio */}
-      <Section title="Chave OpenAI (áudio: Whisper + TTS)">
+      <Section title="Chave OpenAI (áudio: Whisper + TTS) — opcional">
+        <div style={{
+          padding: 10, borderRadius: 6, fontSize: 11,
+          background: "rgba(245,158,11,.08)",
+          border: "1px solid rgba(245,158,11,.25)",
+          color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 10,
+        }}>
+          <strong style={{ color: "var(--text-primary)" }}>Só preencha isso se você
+          usa o recurso de voz (Jerusa).</strong> Para WhatsApp / Lousa / Central
+          IA, deixe vazio. OpenRouter não suporta áudio — por isso aqui é a chave
+          da OpenAI direta.
+        </div>
         <div style={{ fontSize: 11, color: "var(--text-muted)",
-                        marginBottom: 8, lineHeight: 1.4 }}>
-          OpenRouter não suporta endpoints de áudio. Para usar transcrição
-          (Whisper) e síntese de voz (TTS) em ligações Jerusa, é preciso uma
-          chave OpenAI direta. Opcional — sem ela, as chamadas de voz ficam
-          desabilitadas.
+                        marginBottom: 8, lineHeight: 1.5 }}>
+          <strong>Onde pegar:</strong>{" "}
+          <a href="https://platform.openai.com/api-keys" target="_blank"
+              rel="noreferrer" style={{ color: "var(--accent)",
+              textDecoration: "underline" }}>
+            platform.openai.com/api-keys
+          </a>
+          {" "}→ <em>"+ Create new secret key"</em> → cola aqui.
+          <br />
+          <strong>Custo aproximado:</strong> ~$0.05 por chamada de 3 minutos
+          (Whisper $0.006/min + TTS $15/M chars). Adicione crédito em{" "}
+          <a href="https://platform.openai.com/settings/billing" target="_blank"
+              rel="noreferrer" style={{ color: "var(--accent)",
+              textDecoration: "underline" }}>
+            platform.openai.com/billing
+          </a>.
         </div>
         <Row label="API Key (sk-...)">
           <input value={audioKey} onChange={(e) => setAudioKey(e.target.value)}
                   type="password"
                   placeholder={cfg?.has_audio_key
                     ? `Atual: ${cfg.openai_audio_key} — deixe em branco para manter`
-                    : "sk-..."}
+                    : "sk-proj-... (deixe vazio se não usa voz)"}
                   data-testid="motor-ia-audio-key"
                   style={inputStyle} />
         </Row>
         <Row label="Voz TTS">
           <select value={tts} onChange={(e) => setTts(e.target.value)}
                     data-testid="motor-ia-tts-voice" style={inputStyle}>
-            {["alloy", "echo", "fable", "onyx", "nova", "shimmer"].map((v) => (
-              <option key={v} value={v}>{v}</option>
-            ))}
+            <option value="nova">nova (feminina, jovem, recomendada)</option>
+            <option value="shimmer">shimmer (feminina, calma)</option>
+            <option value="alloy">alloy (neutra)</option>
+            <option value="echo">echo (masculina, séria)</option>
+            <option value="fable">fable (masculina, narrativa)</option>
+            <option value="onyx">onyx (masculina, grave)</option>
           </select>
         </Row>
       </Section>
