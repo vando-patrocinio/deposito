@@ -1,5 +1,29 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Manager Assistant: catálogo expandido (5 novos comandos)
+
+Expandido de 4 para 9 comandos. Adicionados controle de agentes IA, monitoramento de rede e visão geral do sistema, tudo via WhatsApp.
+
+### Backend (`services/manager_assistant.py`)
+- Catálogo `COMMANDS` ampliado:
+  - **`pause_agent`** / **`resume_agent`**: liga/desliga agente IA pelo nome livre. Match aproximado contra `AGENT_CATALOG` (substring + tokens). Reusa `set_agent_state` (audita em `ai_agent_switch_history`). Ex: "pausa o copilot", "religa isabella".
+  - **`smartolt_report`**: conta panes ativas + top 3 OLTs com mais ONUs em LOS via aggregation.
+  - **`system_status`**: agentes ativos/pausados, status do WhatsApp (consulta sidecar :3002/status), total de alertas Lousa e panes de rede.
+  - **`tickets_today`**: agregação de tickets por `type` criados desde 00:00 UTC do dia.
+- `_quick_intent` agora retorna `(intent, params)` para capturar parâmetros direto na regex (ex.: nome do agente).
+- `_resolve_agent_id` faz fuzzy match: nome exato → substring → tokens.
+
+### Validação end-to-end ✓
+- "pausa o copilot" → `Co-Pilot IA` pausado (estado persistido + auditoria automática)
+- "religa isabella" → `Isabella (WhatsApp)` reativado
+- "relatório SmartOLT" → "🟠 1 pane ativa. PENHA_HUAWEI: 1 ONU LOS de 1 (100%)"
+- "status do sistema" → "12/12 ativos · WhatsApp 🟢 · 148 alertas · 1 pane"
+- "tickets do dia" → "9 no total · reparo:6 · instalacao:2 · retirada:1"
+- Lint backend limpo
+
+---
+
+
 ## Feb 11, 2026 — Manager Assistant via WhatsApp (gestor envia comando, IA executa)
 
 ### Backend

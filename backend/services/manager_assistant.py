@@ -47,6 +47,23 @@ COMMANDS: List[Dict[str, str]] = [
      "desc": "Cria alertas de retenção na Lousa para o pipeline pendente.",
      "examples": ["abre alerta retenção", "alerta para equipe",
                     "cria retenção para os pendentes"]},
+    {"id": "pause_agent",
+     "desc": "Pausa um agente IA (params.agent_label). Ex: 'pausa o copilot'.",
+     "examples": ["pausa o copilot", "desliga isabella", "para o sentinela"]},
+    {"id": "resume_agent",
+     "desc": "Reativa um agente IA. Ex: 'ativa o copilot'.",
+     "examples": ["ativa o copilot", "religa isabella", "volta o sentinela"]},
+    {"id": "smartolt_report",
+     "desc": "Status atual da rede óptica (panes, ONUs LOS, OLTs).",
+     "examples": ["relatório SmartOLT", "status da rede", "como está a rede óptica"]},
+    {"id": "system_status",
+     "desc": "Status geral: agentes ativos, WhatsApp conectado, alertas abertos.",
+     "examples": ["status do sistema", "como está o sistema",
+                    "tudo funcionando?"]},
+    {"id": "tickets_today",
+     "desc": "Quantos tickets foram abertos hoje.",
+     "examples": ["quantos tickets hoje", "tickets do dia",
+                    "abriram tickets hoje?"]},
 ]
 
 
@@ -79,22 +96,37 @@ async def _is_manager_phone(company_id: str, phone: str) -> bool:
 # ---------------------------------------------------------------------------
 # Intent recognition
 # ---------------------------------------------------------------------------
-def _quick_intent(text: str) -> Optional[str]:
-    """Heurística rápida (sem chamar LLM) para comandos óbvios."""
+def _quick_intent(text: str) -> tuple[Optional[str], Dict[str, Any]]:
+    """Heurística rápida (sem chamar LLM) para comandos óbvios.
+    Retorna (intent, params)."""
     s = (text or "").strip().lower()
     if not s:
-        return None
+        return None, {}
     if re.search(r"\b(ajuda|menu|comandos?|help)\b", s):
-        return "help"
+        return "help", {}
     if re.search(r"\b(briefing|relat[óo]rio).*\b(churn|cancelament)", s) \
             or s.startswith("briefing"):
-        return "briefing"
+        return "briefing", {}
     if re.search(r"\b(lista|últimos?|quem).*\b(churn|cancelament)", s) \
             or "lista de churn" in s:
-        return "list_churn"
+        return "list_churn", {}
     if re.search(r"\b(alerta|reten[çc][ãa]o)\b", s):
-        return "create_retention_alert"
-    return None
+        return "create_retention_alert", {}
+    # pausa / desliga / para AGENTE
+    m = re.search(r"\b(pausa|desliga|para|parar)\s+(?:o |a |as |os )?([\w\s]+)$", s)
+    if m:
+        return "pause_agent", {"agent_label": m.group(2).strip()}
+    # ativa / religa / volta AGENTE
+    m = re.search(r"\b(ativa|liga|religa|volta|reativa)\s+(?:o |a |as |os )?([\w\s]+)$", s)
+    if m:
+        return "resume_agent", {"agent_label": m.group(2).strip()}
+    if re.search(r"\b(smartolt|rede [óo]ptica|status.*rede|panes?)\b", s):
+        return "smartolt_report", {}
+    if re.search(r"\b(status.*sistema|sistema.*ok|tudo bem|tudo funcion)", s):
+        return "system_status", {}
+    if re.search(r"\b(tickets?).*\b(hoje|dia)\b", s) or "tickets do dia" in s:
+        return "tickets_today", {}
+    return None, {}
 
 
 async def _claude_intent(text: str, company_id: str) -> Dict[str, Any]:
@@ -217,6 +249,143 @@ async def _cmd_create_retention_alert(cid: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Comandos avançados (agentes, SmartOLT, sistema, tickets)
+# ---------------------------------------------------------------------------
+
+async def _resolve_agent_id(label: str) -> Optional[Dict[str, str]]:
+    """Faz match aproximado de um nome livre contra o catálogo de agentes."""
+    from services.motor_ia import AGENT_CATALOG
+    if not label:
+        return None
+    s = re.sub(r"\s+", " ", label.strip().lower())
+    # match por ID exato
+    for a in AGENT_CATALOG:
+        if a["id"].lower() == s:
+            return a
+    # match por substring no label (ex.: "copilot" → "Co-Pilot IA")
+    for a in AGENT_CATALOG:
+        if s in a["label"].lower() or s in a["id"].lower():
+            return a
+    # match invertido: cada palavra do label no nome do agente
+    tokens = [t for t in re.split(r"\W+", s) if len(t) >= 3]
+    if tokens:
+        for a in AGENT_CATALOG:
+            if any(t in a["label"].lower() or t in a["id"].lower() for t in tokens):
+                return a
+    return None
+
+
+async def _cmd_toggle_agent(cid: str, agent_label: str, enable: bool) -> str:
+    """Liga ou desliga agente pelo nome livre."""
+    from services.motor_ia import set_agent_state
+    agent = await _resolve_agent_id(agent_label)
+    if not agent:
+        return (f"❓ Não encontrei um agente com nome \"{agent_label}\". "
+                  "Use *ajuda* ou tente: copilot, isabella, sentinela, triagem.")
+    try:
+        result = await set_agent_state(
+            cid, agent["id"], enable, user_label="manager_assistant")
+    except Exception as e:
+        return f"⚠️ Falha ao alterar agente: {e}"
+    state = "ativado" if enable else "pausado"
+    emoji = "✅" if enable else "⏸️"
+    changed_note = "" if result.get("changed") else " (já estava nesse estado)"
+    return f"{emoji} *{agent['label']}* foi {state}{changed_note}."
+
+
+async def _cmd_smartolt_report(cid: str) -> str:
+    """Resumo da rede óptica: panes ativas + LOS atuais."""
+    active_outages = await db.network_outages.count_documents(
+        {"company_id": cid, "status": "active"})
+    # Top 3 OLTs com mais ONUs LOS (last_snapshot)
+    pipe = [
+        {"$match": {"company_id": cid, "status": "active"}},
+        {"$group": {"_id": "$olt_name",
+                      "los": {"$sum": "$los_count"},
+                      "total": {"$max": "$total_count"},
+                      "sev": {"$max": "$severity_pct"}}},
+        {"$sort": {"los": -1}},
+        {"$limit": 3},
+    ]
+    top_olts: List[Dict[str, Any]] = []
+    async for r in db.network_outages.aggregate(pipe):
+        top_olts.append(r)
+    if active_outages == 0:
+        return "🟢 *Rede óptica:* sem panes ativas. Tudo verde."
+    lines = [f"🟠 *Rede óptica:* {active_outages} pane(s) ativa(s)."]
+    if top_olts:
+        lines.append("")
+        lines.append("*Top OLTs afetadas:*")
+        for o in top_olts:
+            lines.append(
+                f"• {o['_id']}: {o.get('los')} ONUs LOS de {o.get('total')} "
+                f"({o.get('sev')}%)")
+    lines.append("\nDetalhes: Central IA → SmartOLT AI")
+    return "\n".join(lines)
+
+
+async def _cmd_system_status(cid: str) -> str:
+    """Resumo geral: agentes, WhatsApp, alertas."""
+    from services.motor_ia import AGENT_CATALOG
+    # Agentes pausados
+    paused = await db.ai_agent_switches.find(
+        {"company_id": cid, "enabled": False},
+        {"_id": 0, "agent_id": 1},
+    ).to_list(50)
+    paused_ids = {p["agent_id"] for p in paused}
+    paused_names = [a["label"] for a in AGENT_CATALOG if a["id"] in paused_ids]
+    total = len(AGENT_CATALOG)
+    active = total - len(paused_ids)
+    # Alertas ativos
+    alerts_active = await db.lousa_alerts.count_documents(
+        {"company_id": cid, "status": "active"})
+    outages_active = await db.network_outages.count_documents(
+        {"company_id": cid, "status": "active"})
+    # WhatsApp status (best-effort via httpx)
+    wa_status = "?"
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=3.0) as cli:
+            r = await cli.get("http://127.0.0.1:3002/status")
+            d = r.json()
+            wa_status = "🟢 conectado" if d.get("connected") else "🔴 desconectado"
+    except Exception:
+        wa_status = "❓ indisponível"
+
+    lines = ["🩺 *Status do sistema*", ""]
+    lines.append(f"• Agentes IA: *{active}/{total}* ativos")
+    if paused_names:
+        lines.append("  ⏸️ Pausados: " + ", ".join(paused_names[:4]))
+    lines.append(f"• WhatsApp: {wa_status}")
+    lines.append(f"• Alertas Lousa: *{alerts_active}* ativos")
+    lines.append(f"• Panes de rede: *{outages_active}*")
+    return "\n".join(lines)
+
+
+async def _cmd_tickets_today(cid: str) -> str:
+    """Total e split por tipo de tickets abertos hoje."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    cutoff = today + "T00:00:00+00:00"
+    pipe = [
+        {"$match": {"company_id": cid, "created_at": {"$gte": cutoff}}},
+        {"$group": {"_id": "$type", "n": {"$sum": 1}}},
+        {"$sort": {"n": -1}},
+    ]
+    by_type: Dict[str, int] = {}
+    async for r in db.tickets.aggregate(pipe):
+        by_type[r["_id"] or "outros"] = r["n"]
+    total = sum(by_type.values())
+    if total == 0:
+        return f"📋 Nenhum ticket aberto hoje ({today})."
+    lines = [f"📋 *Tickets de hoje ({today}):* {total} no total", ""]
+    for t, n in by_type.items():
+        lines.append(f"• {t}: {n}")
+    return "\n".join(lines)
+
+
+
+
+# ---------------------------------------------------------------------------
 # Pipeline principal
 # ---------------------------------------------------------------------------
 async def handle_manager_message(company_id: str, phone: str,
@@ -234,8 +403,7 @@ async def handle_manager_message(company_id: str, phone: str,
         return None
 
     # 1) Heurística rápida
-    intent = _quick_intent(text)
-    params: Dict[str, Any] = {}
+    intent, params = _quick_intent(text)
     # 2) Se não bateu, pergunta pro Claude
     if not intent:
         cls = await _claude_intent(text, company_id)
@@ -252,6 +420,16 @@ async def handle_manager_message(company_id: str, phone: str,
         reply = await _cmd_list_churn(company_id)
     elif intent == "create_retention_alert":
         reply = await _cmd_create_retention_alert(company_id)
+    elif intent == "pause_agent":
+        reply = await _cmd_toggle_agent(company_id, params.get("agent_label", ""), enable=False)
+    elif intent == "resume_agent":
+        reply = await _cmd_toggle_agent(company_id, params.get("agent_label", ""), enable=True)
+    elif intent == "smartolt_report":
+        reply = await _cmd_smartolt_report(company_id)
+    elif intent == "system_status":
+        reply = await _cmd_system_status(company_id)
+    elif intent == "tickets_today":
+        reply = await _cmd_tickets_today(company_id)
     else:
         reply = (
             "Não reconheci esse comando. Envie *ajuda* para ver as opções "
