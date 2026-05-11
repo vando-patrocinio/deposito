@@ -330,6 +330,7 @@ async def playground(aid: str, payload: PlaygroundIn,
             cid, messages=messages,
             temperature=agent.get("temperature", 0.6),
             max_tokens=agent.get("max_tokens", 700),
+            purpose="atendimento",
         )
         text = (result.get("content") or "").strip()
     except Exception as e:

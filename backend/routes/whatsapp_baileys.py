@@ -379,6 +379,7 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             ],
             temperature=agent.get("temperature", 0.6),
             max_tokens=agent.get("max_tokens", 350),
+            purpose="atendimento",
         )
         reply_text = (result.get("content") or "").strip()
     except Exception as e:

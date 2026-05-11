@@ -41,6 +41,12 @@ DEFAULT_FALLBACKS = [
 ]
 DEFAULT_TTS_VOICE = "nova"
 
+# Motor DEDICADO para Agentes de Atendimento (WhatsApp/Jerusa).
+# DeepSeek é forte em pt-BR e tem custo ~10x menor que GPT-4o.
+# Atendimento NÃO pode usar outros modelos — política do negócio.
+ATENDIMENTO_MODEL = "deepseek/deepseek-chat"
+ATENDIMENTO_FALLBACKS = ["deepseek/deepseek-r1", "deepseek/deepseek-chat-v3.1"]
+
 
 async def get_motor_config(company_id: str) -> Dict[str, Any]:
     """Lê config do motor para a empresa. Cria default se não existir."""
@@ -53,6 +59,8 @@ async def get_motor_config(company_id: str) -> Dict[str, Any]:
             "openrouter_api_key": "",
             "default_text_model": DEFAULT_TEXT_MODEL,
             "fallback_models": DEFAULT_FALLBACKS,
+            "atendimento_model": ATENDIMENTO_MODEL,
+            "atendimento_fallbacks": ATENDIMENTO_FALLBACKS,
             "openai_audio_key": "",
             "tts_voice": DEFAULT_TTS_VOICE,
             "enabled": False,
@@ -60,6 +68,11 @@ async def get_motor_config(company_id: str) -> Dict[str, Any]:
         }
         await db.motor_ia_config.insert_one(dict(doc))
         doc.pop("_id", None)
+    # Backfill atendimento fields para docs antigos
+    if "atendimento_model" not in doc:
+        doc["atendimento_model"] = ATENDIMENTO_MODEL
+    if "atendimento_fallbacks" not in doc:
+        doc["atendimento_fallbacks"] = ATENDIMENTO_FALLBACKS
     return doc
 
 
@@ -67,6 +80,7 @@ async def save_motor_config(company_id: str, payload: Dict[str, Any]) -> Dict[st
     """Persiste config (upsert). Permite atualização parcial."""
     update: Dict[str, Any] = {"updated_at": now_iso()}
     for k in ("openrouter_api_key", "default_text_model", "fallback_models",
+                "atendimento_model", "atendimento_fallbacks",
                 "openai_audio_key", "tts_voice", "enabled"):
         if k in payload:
             update[k] = payload[k]
@@ -115,9 +129,15 @@ async def chat_completion(company_id: str,
                             model: Optional[str] = None,
                             temperature: float = 0.7,
                             max_tokens: int = 500,
-                            json_mode: bool = False) -> Dict[str, Any]:
+                            json_mode: bool = False,
+                            purpose: str = "general") -> Dict[str, Any]:
     """Gera resposta de chat via OpenRouter. Caller passa lista de messages
     (formato OpenAI: [{role, content}, ...]).
+
+    Args:
+        purpose: "atendimento" força DeepSeek (motor dedicado para agentes
+                 de atendimento WhatsApp/Jerusa). "general" usa o modelo
+                 configurado em motor_ia_config (default OpenAI/GPT-4o-mini).
 
     Returns: {"content": str, "model": str, "provider": str}.
     Raises RuntimeError se motor não configurado.
@@ -132,8 +152,16 @@ async def chat_completion(company_id: str,
             return await _emergent_chat_fallback(messages, model, temperature, max_tokens)
         raise RuntimeError("Motor IA não configurado. Configure em Sistemas → Motor IA.")
 
-    primary = model or cfg.get("default_text_model") or DEFAULT_TEXT_MODEL
-    fallbacks = [m for m in (cfg.get("fallback_models") or []) if m != primary]
+    # REGRA DE NEGÓCIO: agentes de atendimento usam APENAS DeepSeek.
+    # Ignora `model` recebido do caller e força configuração de atendimento.
+    if purpose == "atendimento":
+        primary = cfg.get("atendimento_model") or ATENDIMENTO_MODEL
+        fallbacks = [m for m in (cfg.get("atendimento_fallbacks") or ATENDIMENTO_FALLBACKS)
+                       if m != primary]
+    else:
+        primary = model or cfg.get("default_text_model") or DEFAULT_TEXT_MODEL
+        fallbacks = [m for m in (cfg.get("fallback_models") or []) if m != primary]
+
     extra_body: Dict[str, Any] = {}
     if fallbacks:
         extra_body["models"] = [primary] + fallbacks

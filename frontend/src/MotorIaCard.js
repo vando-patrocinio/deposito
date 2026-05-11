@@ -15,6 +15,8 @@ export default function MotorIaCard() {
   const [audioKey, setAudioKey] = useState("");
   const [model, setModel] = useState("");
   const [fallbacks, setFallbacks] = useState("");
+  const [atendModel, setAtendModel] = useState("");
+  const [atendFallbacks, setAtendFallbacks] = useState("");
   const [tts, setTts] = useState("nova");
   const [enabled, setEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -27,6 +29,8 @@ export default function MotorIaCard() {
       setCfg(c);
       setModel(c.default_text_model || "openai/gpt-4o-mini");
       setFallbacks((c.fallback_models || []).join("\n"));
+      setAtendModel(c.atendimento_model || "deepseek/deepseek-chat");
+      setAtendFallbacks((c.atendimento_fallbacks || []).join("\n"));
       setTts(c.tts_voice || "nova");
       setEnabled(!!c.enabled);
       setOrKey(""); setAudioKey("");
@@ -47,6 +51,8 @@ export default function MotorIaCard() {
       const payload = {
         default_text_model: model,
         fallback_models: fallbacks.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
+        atendimento_model: atendModel,
+        atendimento_fallbacks: atendFallbacks.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
         tts_voice: tts,
         enabled,
       };
@@ -182,6 +188,58 @@ export default function MotorIaCard() {
           </div>
         )}
       </Section>
+
+      {/* Motor de Atendimento — DeepSeek dedicado, regra de negócio fixa */}
+      <div data-testid="motor-ia-atendimento-section" style={{
+        padding: 14, borderRadius: 8,
+        background: "rgba(13,148,136,.06)",
+        border: "1px solid rgba(13,148,136,.30)",
+        marginBottom: 16,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8,
+                         marginBottom: 6 }}>
+          <Cpu size={14} strokeWidth={2} style={{ color: "#0d9488" }} />
+          <strong style={{ fontSize: 12, color: "#0d9488",
+                              textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Motor para Agentes de Atendimento
+          </strong>
+          <span style={{
+            marginLeft: "auto", fontSize: 9, fontWeight: 700,
+            padding: "2px 8px", borderRadius: 4,
+            background: "rgba(13,148,136,.18)", color: "#0d9488",
+            textTransform: "uppercase", letterSpacing: 0.5,
+          }}>Política fixa</span>
+        </div>
+        <p style={{ fontSize: 11, color: "var(--text-secondary)",
+                      margin: "0 0 12px", lineHeight: 1.5 }}>
+          Todos os Agentes de Atendimento (Isabella WhatsApp, Jerusa Voz, Playground)
+          usam <strong>DeepSeek</strong> como motor. Custo ~10× menor que GPT-4o e
+          excelente em PT-BR. Não é permitido trocar por outro provedor — apenas o
+          modelo específico DeepSeek pode ser ajustado.
+        </p>
+        <Row label="Modelo DeepSeek">
+          <select value={atendModel} onChange={(e) => setAtendModel(e.target.value)}
+                    data-testid="motor-ia-atend-model"
+                    style={{ ...inputStyle, fontFamily: "ui-monospace, monospace" }}>
+            <option value="deepseek/deepseek-chat">deepseek/deepseek-chat (rápido, custo baixo)</option>
+            <option value="deepseek/deepseek-r1">deepseek/deepseek-r1 (raciocínio profundo)</option>
+            <option value="deepseek/deepseek-chat-v3.1">deepseek/deepseek-chat-v3.1 (mais novo)</option>
+          </select>
+        </Row>
+        <Row label="Fallbacks DeepSeek">
+          <textarea value={atendFallbacks}
+                      onChange={(e) => setAtendFallbacks(e.target.value)}
+                      rows={2}
+                      data-testid="motor-ia-atend-fallbacks"
+                      placeholder={"deepseek/deepseek-r1\ndeepseek/deepseek-chat-v3.1"}
+                      style={{ ...inputStyle, fontFamily: "ui-monospace, monospace",
+                                resize: "vertical" }} />
+        </Row>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+          ⓘ Os fallbacks só aceitam modelos do prefixo <code>deepseek/</code> — qualquer
+          outro valor é ignorado pelo backend.
+        </div>
+      </div>
 
       {/* Audio */}
       <Section title="Chave OpenAI (áudio: Whisper + TTS)">

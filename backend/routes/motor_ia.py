@@ -19,6 +19,8 @@ class MotorConfigIn(BaseModel):
     openrouter_api_key: Optional[str] = Field(None, max_length=200)
     default_text_model: Optional[str] = Field(None, max_length=120)
     fallback_models: Optional[List[str]] = None
+    atendimento_model: Optional[str] = Field(None, max_length=120)
+    atendimento_fallbacks: Optional[List[str]] = None
     openai_audio_key: Optional[str] = Field(None, max_length=200)
     tts_voice: Optional[str] = Field(None, max_length=20)
     enabled: Optional[bool] = None
@@ -38,6 +40,20 @@ async def update_config(payload: MotorConfigIn,
     para limpar uma key, mandar string com 'CLEAR'."""
     cid = user.get("company_id") or DEMO_COMPANY_ID
     data = payload.model_dump(exclude_none=True)
+    # REGRA DE NEGÓCIO: motor de atendimento deve ser DeepSeek.
+    # Rejeita modelos que não tenham prefixo "deepseek/".
+    if "atendimento_model" in data and data["atendimento_model"]:
+        if not str(data["atendimento_model"]).lower().startswith("deepseek/"):
+            raise HTTPException(
+                400,
+                "O motor de atendimento deve ser DeepSeek "
+                "(modelo precisa começar com 'deepseek/').",
+            )
+    if "atendimento_fallbacks" in data and data["atendimento_fallbacks"]:
+        data["atendimento_fallbacks"] = [
+            m for m in data["atendimento_fallbacks"]
+            if str(m).lower().startswith("deepseek/")
+        ]
     # Permite "CLEAR" para apagar uma key
     for k in ("openrouter_api_key", "openai_audio_key"):
         if data.get(k) == "CLEAR":
