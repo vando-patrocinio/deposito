@@ -106,66 +106,43 @@ async def _ensure_jerusa_agent(company_id: str) -> dict:
     return doc
 
 
-async def _stt_transcribe(audio_bytes: bytes, filename: str) -> str:
-    """Transcreve áudio (qualquer formato suportado: webm/mp3/wav/m4a) em pt-BR."""
-    if not EMERGENT_LLM_KEY:
-        raise HTTPException(503, "EMERGENT_LLM_KEY não configurada.")
+async def _stt_transcribe(audio_bytes: bytes, filename: str,
+                            company_id: str = "") -> str:
+    """Transcreve áudio (webm/mp3/wav/m4a) em pt-BR via Motor IA (OpenAI direto)."""
     try:
-        from emergentintegrations.llm.openai import OpenAISpeechToText
-    except ImportError as e:
-        raise HTTPException(500, f"emergentintegrations indisponível: {e}")
-
-    stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
-    bio = BytesIO(audio_bytes)
-    bio.name = filename or "audio.webm"
-    try:
-        resp = await stt.transcribe(
-            file=bio,
-            model=JERUSA_STT_MODEL,
-            response_format="json",
-            language="pt",
-        )
-        text = getattr(resp, "text", "") or ""
-        return text.strip()
+        from services.motor_ia import transcribe_audio
+        return (await transcribe_audio(company_id or DEMO_COMPANY_ID,
+                                          audio_bytes, filename) or "").strip()
+    except RuntimeError as e:
+        raise HTTPException(503, str(e)) from e
     except Exception as e:
         logger.warning("[voice.stt] falhou: %s", e)
         raise HTTPException(502, f"STT falhou: {e}") from e
 
 
-async def _tts_speak(text: str, voice: str = JERUSA_TTS_VOICE) -> bytes:
-    """Gera mp3 de voz pt-BR. Retorna bytes."""
-    if not EMERGENT_LLM_KEY:
-        raise HTTPException(503, "EMERGENT_LLM_KEY não configurada.")
+async def _tts_speak(text: str, voice: Optional[str] = None,
+                       company_id: str = "") -> bytes:
+    """Gera mp3 de voz pt-BR via Motor IA (OpenAI direto)."""
     if not text or not text.strip():
         raise HTTPException(400, "Texto vazio para TTS.")
     try:
-        from emergentintegrations.llm.openai import OpenAITextToSpeech
-    except ImportError as e:
-        raise HTTPException(500, f"emergentintegrations indisponível: {e}")
-    tts = OpenAITextToSpeech(api_key=EMERGENT_LLM_KEY)
-    # Limita a 4096 chars (limite OpenAI)
-    safe_text = text[:4000]
-    try:
-        audio = await tts.generate_speech(
-            text=safe_text,
-            model=JERUSA_TTS_MODEL,
-            voice=voice,
-            response_format="mp3",
-        )
-        return audio
+        from services.motor_ia import text_to_speech
+        return await text_to_speech(company_id or DEMO_COMPANY_ID,
+                                       text[:4000], voice=voice)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e)) from e
     except Exception as e:
         logger.warning("[voice.tts] falhou: %s", e)
         raise HTTPException(502, f"TTS falhou: {e}") from e
 
 
-async def _llm_reply(agent: dict, session_id: str, user_text: str) -> str:
-    """Chama o LLM da Jerusa (Emergent LLM Key, multi-turn via session_id)."""
-    if not EMERGENT_LLM_KEY:
-        raise HTTPException(503, "EMERGENT_LLM_KEY não configurada.")
+async def _llm_reply(agent: dict, session_id: str, user_text: str,
+                       company_id: str = "") -> str:
+    """Chama o LLM da Jerusa via Motor IA (OpenRouter)."""
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from services.motor_ia import chat_completion
     except ImportError as e:
-        raise HTTPException(500, f"emergentintegrations indisponível: {e}")
+        raise HTTPException(500, f"motor_ia indisponível: {e}") from e
     # Personalidade & Expertise — injeta blocos de info da empresa
     sys_prompt = agent["system_prompt"]
     extra = []
@@ -188,23 +165,23 @@ async def _llm_reply(agent: dict, session_id: str, user_text: str) -> str:
         )
     if extra:
         sys_prompt += "\n\n" + "\n\n".join(extra)
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=session_id,
-        system_message=sys_prompt,
-    ).with_model(agent["model_provider"], agent["model_name"])
+    # Histórico curto (voz tem latência, manter compacto)
+    history = await db.aihub_messages.find(
+        {"session_id": session_id},
+        {"_id": 0, "role": 1, "content": 1},
+    ).sort("created_at", 1).to_list(12)
+    messages = [{"role": "system", "content": sys_prompt}]
+    for h in history[-7:]:
+        messages.append({"role": h["role"], "content": h["content"]})
+    messages.append({"role": "user", "content": user_text})
     try:
-        chat = chat.with_temperature(agent.get("temperature", 0.6))  # type: ignore
-    except Exception:
-        pass
-    try:
-        chat = chat.with_max_tokens(agent.get("max_tokens", 350))  # type: ignore
-    except Exception:
-        pass
-    try:
-        resp = await chat.send_message(UserMessage(text=user_text))
-        text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
-        return (text or "").strip()
+        result = await chat_completion(
+            company_id or DEMO_COMPANY_ID,
+            messages=messages,
+            temperature=agent.get("temperature", 0.6),
+            max_tokens=agent.get("max_tokens", 350),
+        )
+        return (result.get("content") or "").strip()
     except Exception as e:
         logger.warning("[voice.llm] session=%s falhou: %s", session_id, e)
         raise HTTPException(502, f"LLM falhou: {e}") from e
@@ -235,7 +212,7 @@ async def start_session(payload: StartSessionIn,
         audio = cached
         audio_ms = 0  # 0ms = cache hit
     else:
-        audio = await _tts_speak(greeting)
+        audio = await _tts_speak(greeting, company_id=cid)
         audio_ms = int((time.time() - started_at) * 1000)
         _GREETING_CACHE[cache_key] = audio
 
@@ -310,13 +287,14 @@ async def session_turn(sid: str,
         transcript = client_text.strip()
         stt_ms = 0
     else:
-        transcript = await _stt_transcribe(audio_bytes, audio.filename or "audio.webm")
+        transcript = await _stt_transcribe(audio_bytes, audio.filename or "audio.webm",
+                                              company_id=cid)
         stt_ms = int((time.time() - t0) * 1000)
 
     if not transcript:
         # Áudio sem fala detectada — peça gentilmente para repetir
         repeat_text = "Não consegui ouvir direito, pode repetir por favor?"
-        repeat_audio = await _tts_speak(repeat_text)
+        repeat_audio = await _tts_speak(repeat_text, company_id=cid)
         return {
             "transcript": "",
             "reply_text": repeat_text,
@@ -342,7 +320,7 @@ async def session_turn(sid: str,
 
     # 2. LLM
     t1 = time.time()
-    reply_text = await _llm_reply(agent, sid, transcript)
+    reply_text = await _llm_reply(agent, sid, transcript, company_id=cid)
     llm_ms = int((time.time() - t1) * 1000)
 
     if not reply_text:
@@ -362,7 +340,7 @@ async def session_turn(sid: str,
 
     # 3. TTS
     t2 = time.time()
-    reply_audio = await _tts_speak(reply_text)
+    reply_audio = await _tts_speak(reply_text, company_id=cid)
     tts_ms = int((time.time() - t2) * 1000)
 
     # Atualiza transcript da chamada

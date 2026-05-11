@@ -491,8 +491,6 @@ _COLLECTORS: Dict[str, Callable[[str, int], Awaitable[dict]]] = {
 @router.post("/insight")
 async def generate_insight(payload: InsightRequest,
                            user: dict = Depends(require_role("gestor"))):
-    if not EMERGENT_LLM_KEY:
-        raise HTTPException(500, "EMERGENT_LLM_KEY não configurada.")
     collector = _COLLECTORS.get(payload.dashboard)
     if not collector:
         raise HTTPException(400, "dashboard inválido")
@@ -500,26 +498,30 @@ async def generate_insight(payload: InsightRequest,
     try:
         data = await collector(cid, payload.context_days)
     except Exception as e:
-        raise HTTPException(500, f"Falha ao coletar dados: {e}")
+        raise HTTPException(500, f"Falha ao coletar dados: {e}") from e
 
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=f"insight-{cid}-{uuid.uuid4().hex[:8]}",
-        system_message=(
-            "Você é um analista sênior de operações de provedores de internet (FTTH). "
-            "Recebe um JSON com KPIs do último período e gera 3-5 insights ACIONÁVEIS, "
-            "no formato bullet em PORTUGUÊS, focados em redução de custo, qualidade de "
-            "serviço e produtividade dos técnicos. Cada insight deve citar números do JSON. "
-            "Não invente dados. Termine com 1 ação RECOMENDADA prioritária."),
-    ).with_model("gemini", "gemini-2.5-flash")
+    from services.motor_ia import chat_completion
+    system_msg = (
+        "Você é um analista sênior de operações de provedores de internet (FTTH). "
+        "Recebe um JSON com KPIs do último período e gera 3-5 insights ACIONÁVEIS, "
+        "no formato bullet em PORTUGUÊS, focados em redução de custo, qualidade de "
+        "serviço e produtividade dos técnicos. Cada insight deve citar números do JSON. "
+        "Não invente dados. Termine com 1 ação RECOMENDADA prioritária."
+    )
     prompt = (f"Dashboard: {payload.dashboard}\nPeríodo: {payload.context_days} dias\n"
               f"Dados:\n```json\n{json.dumps(data, ensure_ascii=False, default=str)[:8000]}\n```")
     try:
-        resp = await chat.send_message(UserMessage(text=prompt))
-        text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
+        result = await chat_completion(
+            cid,
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.4, max_tokens=900,
+        )
+        text = result.get("content") or ""
     except Exception as e:
-        raise HTTPException(502, f"LLM falhou: {e}")
+        raise HTTPException(502, f"LLM falhou: {e}") from e
 
     rec = {
         "id": f"insight-{uuid.uuid4().hex[:10]}",

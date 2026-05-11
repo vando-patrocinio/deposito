@@ -238,8 +238,26 @@ async def geocode_address(address: str) -> GeocodeResult:
 # IA Vision
 # -------------------------------------------------------------------------
 async def llm_chat(session_id: str, system: str) -> LlmChat:
+    # 1. NOVO Motor IA centralizado (tab Sistemas → Motor IA, multi-tenant via motor_ia_config)
+    try:
+        from database import db as _db
+        mcfg = await _db.motor_ia_config.find_one(
+            {"company_id": DEMO_COMPANY_ID}, {"_id": 0},
+        )
+        if mcfg and mcfg.get("enabled") and mcfg.get("openrouter_api_key"):
+            return _OpenRouterChat(
+                api_key=mcfg["openrouter_api_key"],
+                model=mcfg.get("default_text_model") or "openai/gpt-4o-mini",
+                system=system,
+                session_id=session_id,
+                fallbacks=mcfg.get("fallback_models") or [],
+            )
+    except Exception as e:
+        import logging
+        logging.getLogger("app").warning("motor_ia_config check failed: %s", e)
+
+    # 2. Settings legado (ainda suportado para compat)
     s = await get_settings()
-    # Se OpenRouter está ativo + tem key, usa OpenRouter via openai SDK adapter
     if s.openrouter_enabled and s.openrouter_api_key:
         try:
             return _OpenRouterChat(
@@ -261,7 +279,8 @@ async def llm_chat(session_id: str, system: str) -> LlmChat:
 
 class _OpenRouterChat:
     """Adapter mínimo que imita a interface .send_message(UserMessage) usada no app."""
-    def __init__(self, api_key: str, model: str, system: str, session_id: str):
+    def __init__(self, api_key: str, model: str, system: str, session_id: str,
+                  fallbacks: Optional[list] = None):
         from openai import AsyncOpenAI
         self._client = AsyncOpenAI(
             api_key=api_key,
@@ -272,6 +291,7 @@ class _OpenRouterChat:
             },
         )
         self._model = model
+        self._fallbacks = [m for m in (fallbacks or []) if m and m != model]
         self._messages = [{"role": "system", "content": system}]
         self._session_id = session_id
 
@@ -282,12 +302,15 @@ class _OpenRouterChat:
         # msg é UserMessage(text=...) do emergentintegrations
         text = getattr(msg, "text", str(msg))
         self._messages.append({"role": "user", "content": text})
-        resp = await self._client.chat.completions.create(
-            model=self._model,
-            messages=self._messages,
-            max_tokens=1500,
-            temperature=0.4,
-        )
+        kwargs: dict = {
+            "model": self._model,
+            "messages": self._messages,
+            "max_tokens": 1500,
+            "temperature": 0.4,
+        }
+        if self._fallbacks:
+            kwargs["extra_body"] = {"models": [self._model, *self._fallbacks]}
+        resp = await self._client.chat.completions.create(**kwargs)
         out = (resp.choices[0].message.content or "").strip()
         self._messages.append({"role": "assistant", "content": out})
         return out

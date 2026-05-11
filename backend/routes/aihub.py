@@ -1023,12 +1023,10 @@ async def agent_text_gen(payload: TextGenIn,
     `mode=gerar`: cria do zero (descarta `current_text`).
     `mode=aprimorar`: melhora o `current_text` existente preservando intenção.
     """
-    if not EMERGENT_LLM_KEY:
-        raise HTTPException(503, "EMERGENT_LLM_KEY não configurada.")
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from services.motor_ia import chat_completion
     except ImportError as e:
-        raise HTTPException(500, f"emergentintegrations indisponível: {e}")
+        raise HTTPException(500, f"motor_ia indisponível: {e}") from e
 
     guide = _FIELD_GUIDES.get(payload.field, "")
     if payload.mode == "aprimorar" and not payload.current_text.strip():
@@ -1060,24 +1058,16 @@ async def agent_text_gen(payload: TextGenIn,
             "natural e sem redundâncias. Devolva apenas o texto final."
         )
 
-    session_id = f"textgen-{uuid.uuid4().hex[:8]}"
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=session_id,
-            system_message=system_msg,
-        ).with_model("openai", "gpt-4o-mini")
-        try:
-            chat = chat.with_max_tokens(900)  # type: ignore
-        except Exception:
-            pass
-        try:
-            chat = chat.with_temperature(0.5)  # type: ignore
-        except Exception:
-            pass
-        resp = await chat.send_message(UserMessage(text=user_msg))
-        text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
-        text = (text or "").strip().strip('"\'')
+        result = await chat_completion(
+            _cid(user),
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.5, max_tokens=900,
+        )
+        text = (result.get("content") or "").strip().strip('"\'')
     except Exception as e:
         logger.warning("[aihub.textgen] falhou: %s", e)
         raise HTTPException(502, f"LLM falhou: {e}") from e
