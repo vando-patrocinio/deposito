@@ -78,14 +78,14 @@ async def suggested_models(user: dict = Depends(require_role("gestor"))):
     return {
         "tiers": [
             {"id": "fast", "label": "Rápido & barato",
-             "models": ["openai/gpt-4o-mini", "anthropic/claude-3-haiku",
+             "models": ["anthropic/claude-haiku-4.5", "openai/gpt-4o-mini",
                           "google/gemini-2.0-flash-exp:free"]},
             {"id": "balanced", "label": "Equilíbrio (recomendado)",
-             "models": ["openai/gpt-4o", "anthropic/claude-3.5-sonnet",
+             "models": ["anthropic/claude-sonnet-4.5", "openai/gpt-4o",
                           "meta-llama/llama-3.3-70b-instruct"]},
             {"id": "premium", "label": "Qualidade máxima",
-             "models": ["anthropic/claude-3.5-sonnet", "openai/gpt-4o",
-                          "google/gemini-2.0-flash-thinking-exp"]},
+             "models": ["anthropic/claude-opus-4.5", "anthropic/claude-sonnet-4.5",
+                          "openai/gpt-4o"]},
             {"id": "free", "label": "Apenas grátis (limite por dia)",
              "models": ["google/gemini-2.0-flash-exp:free",
                           "meta-llama/llama-3.3-70b-instruct:free"]},

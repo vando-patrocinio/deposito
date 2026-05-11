@@ -1,5 +1,20 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Motor IA migrado para Claude Sonnet 4.5
+
+### Backend
+- `services/motor_ia.py`: `DEFAULT_TEXT_MODEL` agora é `anthropic/claude-sonnet-4.5` (antes `openai/gpt-4o-mini`). Fallback chain reordenada com Claude primeiro.
+- Adicionado safeguard: array `models` enviado ao OpenRouter é truncado para no máximo 3 itens (limite da plataforma).
+- `routes/motor_ia.py`: tiers de modelos sugeridos atualizados — `fast` usa Claude Haiku 4.5, `balanced` usa Claude Sonnet 4.5, `premium` usa Claude Opus 4.5.
+- Migração no Mongo aplicada em `motor_ia_config` (`co-demo`): default + fallback_models alinhados com Claude.
+
+### Validação
+- `POST /api/motor-ia/test` → `{"ok": true, "model": "anthropic/claude-4.5-sonnet-20250929", "provider": "Amazon Bedrock"}` ✓
+- Agentes de atendimento (Jerusa/WhatsApp) continuam em DeepSeek (regra de negócio mantida) ✓
+
+---
+
+
 ## Feb 10, 2026 — Sidebar com sub-itens expansíveis (Clientes → Assinantes)
 
 ### Frontend

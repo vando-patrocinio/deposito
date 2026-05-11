@@ -13,7 +13,7 @@ Por que um único motor?
 
 Config persistida em `motor_ia_config` (Mongo), por company_id:
   - openrouter_api_key (string, plaintext — pode ser cifrado em release futuro)
-  - default_text_model        (str, ex.: "openai/gpt-4o-mini")
+  - default_text_model        (str, ex.: "anthropic/claude-sonnet-4.5")
   - fallback_models           (list[str], chain de fallback)
   - openai_audio_key          (str, opcional, somente Whisper/TTS)
   - tts_voice                 (str, voz padrão TTS, ex.: "nova")
@@ -32,10 +32,11 @@ logger = logging.getLogger(__name__)
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 
-DEFAULT_TEXT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_TEXT_MODEL = "anthropic/claude-sonnet-4.5"
 DEFAULT_FALLBACKS = [
-    "openai/gpt-4o-mini",
+    "anthropic/claude-sonnet-4.5",
     "anthropic/claude-3.5-sonnet",
+    "openai/gpt-4o-mini",
     "google/gemini-2.0-flash-exp:free",
     "meta-llama/llama-3.3-70b-instruct",
 ]
@@ -164,7 +165,9 @@ async def chat_completion(company_id: str,
 
     extra_body: Dict[str, Any] = {}
     if fallbacks:
-        extra_body["models"] = [primary] + fallbacks
+        # OpenRouter limita o array `models` a no máximo 3 itens.
+        chain = ([primary] + fallbacks)[:3]
+        extra_body["models"] = chain
 
     client = _build_text_client(api_key)
     kwargs: Dict[str, Any] = {
