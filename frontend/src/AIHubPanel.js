@@ -3,18 +3,16 @@ import { api } from "@/api";
 import {
   Bot, MessageCircle, Phone, Send, Settings, History,
   Plus, Trash2, Edit2, Play, Save, X, RefreshCw, CheckCircle2,
-  AlertTriangle, Wifi, WifiOff, PhoneCall,
+  AlertTriangle, Wifi, WifiOff,
   Sparkles, Building2, DollarSign, Star, Wand2, ArrowUp, QrCode,
   Brain,
 } from "lucide-react";
-import JerusaCallSimulator from "@/JerusaCallSimulator";
 import WhatsAppQRPanel from "@/WhatsAppQRPanel";
 import CentralIaDashboard from "@/CentralIaDashboard";
 
 const TABS = [
   { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode },
   { id: "central_ia", label: "Central IA", icon: Brain },
-  { id: "jerusa", label: "Ligar Jerusa", icon: PhoneCall },
   { id: "mensagem", label: "Mensagem", icon: MessageCircle },
   { id: "agents", label: "Agentes", icon: Bot },
   { id: "playground", label: "Playground", icon: MessageCircle },
@@ -66,7 +64,6 @@ export default function AIHubPanel({ initialTab = "central_ia" }) {
       </div>
 
       {tab === "central_ia" && <CentralIaDashboard />}
-      {tab === "jerusa" && <JerusaCallSimulator />}
       {tab === "whatsapp_qr" && <WhatsAppQRPanel />}
       {tab === "mensagem" && <MensagemTab />}
       {tab === "agents" && <AgentsTab />}
@@ -837,7 +834,7 @@ function DialTab() {
   if (!agents.length) {
     return (
       <div className="surface" style={{ padding: 30, borderRadius: 14 }}>
-        <EmptyState icon={PhoneCall} title="Nenhum agente IA ativo"
+        <EmptyState icon={Bot} title="Nenhum agente IA ativo"
           description="Crie e ative um agente IA na aba 'Agentes' para discar." />
       </div>
     );
@@ -904,7 +901,7 @@ function DialTab() {
                 data-testid="aihub-dial-fire"
                 className="btn btn-primary"
                 style={{ marginTop: 14, gap: 8 }}>
-          <PhoneCall size={14} />
+          <Phone size={14} />
           {busy ? "Iniciando…" : "Iniciar chamada"}
         </button>
       </div>
