@@ -57,6 +57,114 @@ def _sev_for_kind(kind: str) -> str:
     }.get(kind, "low")
 
 
+async def _generate_ai_insight(company_id: str, alert_doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Claude analisa um alerta novo e gera priorização + recomendação acionável.
+
+    Falha silenciosa — alerta funciona sem o insight. Retorna
+    {priority, headline, recommendation, root_cause, model} ou None.
+    """
+    try:
+        from services.motor_ia import chat_completion
+    except ImportError:
+        return None
+
+    kind = alert_doc.get("kind", "")
+    d = alert_doc.get("details") or {}
+    # Coleta contexto extra do ticket se houver
+    ticket_ctx = ""
+    if alert_doc.get("ticket_id"):
+        t = await db.tickets.find_one(
+            {"id": alert_doc["ticket_id"]},
+            {"_id": 0, "type": 1, "priority": 1, "neighborhood": 1, "address": 1,
+             "description": 1, "client_name": 1, "scheduled_time": 1,
+             "created_at": 1, "status": 1, "history": 1},
+        )
+        if t:
+            hist = (t.get("history") or [])[-3:]
+            hist_str = "; ".join(f"{h.get('event', '')}={h.get('to', '')}" for h in hist)
+            ticket_ctx = (
+                f"TICKET: tipo={t.get('type')} prio={t.get('priority')} "
+                f"bairro={t.get('neighborhood')} status={t.get('status')}\n"
+                f"DESC: {(t.get('description') or '')[:200]}\n"
+                f"HISTÓRICO recente: {hist_str}"
+            )
+    # Histórico do mesmo cliente (últimos 30 dias)
+    customer_ctx = ""
+    if d.get("phone"):
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        prev_count = await db.tickets.count_documents({
+            "company_id": company_id,
+            "phone": d["phone"],
+            "created_at": {"$gte": cutoff},
+        })
+        if prev_count > 1:
+            customer_ctx = f"\nCLIENTE tem {prev_count} tickets nos últimos 30 dias."
+
+    hr_brt = (datetime.now(timezone.utc) - timedelta(hours=3)).hour
+    period = ("madrugada" if hr_brt < 6 else "manhã" if hr_brt < 12
+              else "tarde" if hr_brt < 18 else "noite")
+
+    sys_msg = (
+        "Você é um analista de operações de campo para provedor de internet (ISP) "
+        "atuando sobre uma Lousa de tickets (Kanban). Analise alertas detectados "
+        "pelo monitor automático e gere recomendação acionável em PT-BR. Considere: "
+        "severidade do alerta, horário (madrugada × comercial), recorrência do cliente, "
+        "carga do técnico, tipo de serviço (instalação × reparo × cancelamento). "
+        "Resposta APENAS em JSON, sem markdown:\n"
+        "{\n"
+        '  "priority": "critica" | "alta" | "media" | "baixa",\n'
+        '  "headline": "1 frase, máx 80 chars",\n'
+        '  "recommendation": "1 parágrafo curto, máx 240 chars, ação concreta",\n'
+        '  "root_cause": "hipótese de causa raiz, máx 120 chars, opcional"\n'
+        "}"
+    )
+    user_msg = (
+        f"ALERTA: {kind}\n"
+        f"HEADLINE ORIGINAL: {alert_doc.get('headline')}\n"
+        f"SEVERIDADE (regra): {alert_doc.get('severity')}\n"
+        f"DETALHES: {d}\n"
+        f"{ticket_ctx}"
+        f"{customer_ctx}\n"
+        f"HORÁRIO: {period} (BRT ~{hr_brt}h)\n\n"
+        "Gere análise no JSON pedido."
+    )
+
+    try:
+        result = await chat_completion(
+            company_id,
+            messages=[
+                {"role": "system", "content": sys_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            model="anthropic/claude-sonnet-4.5",
+            temperature=0.3,
+            max_tokens=300,
+            json_mode=False,
+            purpose="sentinela_insight",
+        )
+        import json as _json
+        raw = (result.get("content") or "").strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`").lstrip("json").strip()
+        if "{" in raw and "}" in raw:
+            raw = raw[raw.index("{"):raw.rindex("}") + 1]
+        parsed = _json.loads(raw)
+        priority = str(parsed.get("priority") or "media").lower()
+        if priority not in ("critica", "alta", "media", "baixa"):
+            priority = "media"
+        return {
+            "priority": priority,
+            "headline": (parsed.get("headline") or "")[:120],
+            "recommendation": (parsed.get("recommendation") or "")[:400],
+            "root_cause": (parsed.get("root_cause") or "")[:200],
+            "model": result.get("model"),
+            "generated_at": now_iso(),
+        }
+    except Exception as e:
+        logger.info("[sentinela-lousa] LLM insight falhou (silencioso): %s", e)
+        return None
+
+
 async def _upsert_alert(company_id: str, kind: str,
                           ticket_id: Optional[str],
                           headline: str,
@@ -84,7 +192,7 @@ async def _upsert_alert(company_id: str, kind: str,
         )
         return existing["id"]
     alert_id = f"sla-{uuid.uuid4().hex[:10]}"
-    await db.lousa_alerts.insert_one({
+    alert_doc = {
         "id": alert_id,
         "company_id": company_id,
         "kind": kind,
@@ -97,8 +205,18 @@ async def _upsert_alert(company_id: str, kind: str,
         "first_detected_at": now,
         "last_seen_at": now,
         "occurrences": 1,
-    })
-    logger.info("[sentinela-lousa] novo alerta %s: %s", kind, headline)
+    }
+    # Claude analisa antes de salvar (priorização inteligente)
+    try:
+        insight = await _generate_ai_insight(company_id, alert_doc)
+        if insight:
+            alert_doc["ai_insight"] = insight
+    except Exception:
+        pass
+    await db.lousa_alerts.insert_one(alert_doc)
+    logger.info("[sentinela-lousa] novo alerta %s: %s%s", kind, headline,
+                  f" · IA={alert_doc.get('ai_insight', {}).get('priority')}"
+                  if alert_doc.get("ai_insight") else "")
     return alert_id
 
 

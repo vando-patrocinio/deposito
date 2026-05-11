@@ -103,7 +103,9 @@ export default function SentinelaLousaCard() {
                 Detecta SLA estourado, tickets parados há ≥{cfg.stuck_hours ?? 6}h,
                 técnicos com ≥{cfg.overload_tickets ?? 8} tickets,
                 visitas travadas há ≥{cfg.field_stuck_hours ?? 4}h e clientes
-                recorrentes em {cfg.recurring_hours ?? 24}h.
+                recorrentes em {cfg.recurring_hours ?? 24}h. Cada alerta novo é
+                analisado por <strong>Claude</strong> (priorização contextual,
+                recomendação e hipótese de causa raiz).
               </p>
             </div>
           </div>
@@ -230,77 +232,119 @@ function AlertRow({ alert, onAck, onDismiss }) {
   const Ico = m.icon || AlertTriangle;
   const sevColor = SEVERITY_COLOR[alert.severity] || "#94a3b8";
   const d = alert.details || {};
+  const ai = alert.ai_insight;
+  const aiPriColor = ai?.priority === "critica" ? "#dc2626"
+                      : ai?.priority === "alta" ? "#d97706"
+                      : ai?.priority === "media" ? "#0ea5e9"
+                      : "#64748b";
   return (
     <div data-testid={`sentinela-alert-${alert.id}`}
           style={{
             padding: 12, borderRadius: 8,
             background: "var(--bg-surface)",
             border: "1px solid var(--border-default)",
-            borderLeft: `3px solid ${sevColor}`,
-            display: "grid",
-            gridTemplateColumns: "auto 1fr auto", gap: 12,
-            alignItems: "center",
+            borderLeft: `3px solid ${ai ? aiPriColor : sevColor}`,
+            display: "grid", gap: 8,
           }}>
       <div style={{
-        width: 36, height: 36, borderRadius: 8,
-        background: `${m.color || "#64748b"}15`,
-        color: m.color || "#64748b",
-        display: "grid", placeItems: "center",
+        display: "grid",
+        gridTemplateColumns: "auto 1fr auto", gap: 12,
+        alignItems: "center",
       }}>
-        <Ico size={16} strokeWidth={2} />
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8,
-                         flexWrap: "wrap", marginBottom: 3 }}>
-          <span style={{
-            padding: "1px 7px", borderRadius: 999,
-            background: sevColor, color: "#fff",
-            fontSize: 9, fontWeight: 800,
-            textTransform: "uppercase", letterSpacing: 0.4,
-          }}>{alert.severity}</span>
-          <strong style={{ fontSize: 13, color: "var(--text-primary)",
-                              letterSpacing: "-0.012em" }}>
-            {alert.headline}
-          </strong>
+        <div style={{
+          width: 36, height: 36, borderRadius: 8,
+          background: `${m.color || "#64748b"}15`,
+          color: m.color || "#64748b",
+          display: "grid", placeItems: "center",
+        }}>
+          <Ico size={16} strokeWidth={2} />
         </div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)",
-                         display: "flex", alignItems: "center", gap: 8,
-                         flexWrap: "wrap" }}>
-          {d.client_name && <span>👤 {d.client_name}</span>}
-          {d.phone && <span style={{ fontFamily: "ui-monospace, monospace" }}>📞 {d.phone}</span>}
-          {d.type && <span>⚙️ {d.type}</span>}
-          {d.status && <span>📍 {d.status}</span>}
-          {d.hours_idle != null && <span>⏱️ {d.hours_idle}h parado</span>}
-          {d.hours_in_field != null && <span>🚐 {d.hours_in_field}h em campo</span>}
-          {d.minutes_overdue != null && <span>🔥 {d.minutes_overdue}min atrasado</span>}
-          {d.remaining_minutes != null && <span>⏰ {d.remaining_minutes}min restantes</span>}
-          {d.active_tickets != null && <span>📊 {d.active_tickets} tickets ativos</span>}
-          {d.count != null && d.related_tickets && <span>🔁 {d.count} tickets em 24h</span>}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8,
+                            flexWrap: "wrap", marginBottom: 3 }}>
+            <span style={{
+              padding: "1px 7px", borderRadius: 999,
+              background: sevColor, color: "#fff",
+              fontSize: 9, fontWeight: 800,
+              textTransform: "uppercase", letterSpacing: 0.4,
+            }}>{alert.severity}</span>
+            <strong style={{ fontSize: 13, color: "var(--text-primary)",
+                                letterSpacing: "-0.012em" }}>
+              {alert.headline}
+            </strong>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)",
+                            display: "flex", alignItems: "center", gap: 8,
+                            flexWrap: "wrap" }}>
+            {d.client_name && <span>👤 {d.client_name}</span>}
+            {d.phone && <span style={{ fontFamily: "ui-monospace, monospace" }}>📞 {d.phone}</span>}
+            {d.type && <span>⚙️ {d.type}</span>}
+            {d.status && <span>📍 {d.status}</span>}
+            {d.hours_idle != null && <span>⏱️ {d.hours_idle}h parado</span>}
+            {d.hours_in_field != null && <span>🚐 {d.hours_in_field}h em campo</span>}
+            {d.minutes_overdue != null && <span>🔥 {d.minutes_overdue}min atrasado</span>}
+            {d.remaining_minutes != null && <span>⏰ {d.remaining_minutes}min restantes</span>}
+            {d.active_tickets != null && <span>📊 {d.active_tickets} tickets ativos</span>}
+            {d.count != null && d.related_tickets && <span>🔁 {d.count} tickets em 24h</span>}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <button onClick={onAck} data-testid={`sentinela-ack-${alert.id}`}
+                  style={{
+                    padding: "4px 10px", fontSize: 10, fontWeight: 700,
+                    border: "1px solid #16a34a40", borderRadius: 5,
+                    background: "#16a34a12", color: "#16a34a",
+                    cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 3,
+                  }}>
+            <Eye size={10} /> Vi
+          </button>
+          <button onClick={onDismiss} data-testid={`sentinela-dismiss-${alert.id}`}
+                  style={{
+                    padding: "4px 10px", fontSize: 10, fontWeight: 700,
+                    border: "1px solid var(--border-default)", borderRadius: 5,
+                    background: "var(--bg-surface-2)",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 3,
+                  }}>
+            <X size={10} /> Descartar
+          </button>
         </div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <button onClick={onAck} data-testid={`sentinela-ack-${alert.id}`}
-                style={{
-                  padding: "4px 10px", fontSize: 10, fontWeight: 700,
-                  border: "1px solid #16a34a40", borderRadius: 5,
-                  background: "#16a34a12", color: "#16a34a",
-                  cursor: "pointer",
-                  display: "inline-flex", alignItems: "center", gap: 3,
-                }}>
-          <Eye size={10} /> Vi
-        </button>
-        <button onClick={onDismiss} data-testid={`sentinela-dismiss-${alert.id}`}
-                style={{
-                  padding: "4px 10px", fontSize: 10, fontWeight: 700,
-                  border: "1px solid var(--border-default)", borderRadius: 5,
-                  background: "var(--bg-surface-2)",
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                  display: "inline-flex", alignItems: "center", gap: 3,
-                }}>
-          <X size={10} /> Descartar
-        </button>
-      </div>
+      {ai && (
+        <div data-testid={`sentinela-ai-insight-${alert.id}`}
+              style={{
+                padding: "8px 10px", borderRadius: 6,
+                background: `${aiPriColor}08`,
+                border: `1px solid ${aiPriColor}30`,
+                display: "grid", gap: 3,
+              }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6,
+                            flexWrap: "wrap" }}>
+            <span style={{
+              padding: "1px 7px", borderRadius: 999,
+              background: aiPriColor, color: "#fff",
+              fontSize: 9, fontWeight: 800,
+              textTransform: "uppercase", letterSpacing: 0.4,
+            }}>IA · {ai.priority}</span>
+            <span style={{ fontSize: 12, fontWeight: 700,
+                              color: "var(--text-primary)" }}>
+              {ai.headline}
+            </span>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-secondary)",
+                            lineHeight: 1.5 }}>
+            {ai.recommendation}
+          </div>
+          {ai.root_cause && (
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)",
+                              fontStyle: "italic" }}>
+              Hipótese: {ai.root_cause}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
