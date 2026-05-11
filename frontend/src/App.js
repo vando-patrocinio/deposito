@@ -4,7 +4,7 @@ import {
   Smartphone, LogOut, ChevronRight, ChevronDown, Brain, BarChart3, Layout,
   Boxes, Sparkles, Users, MapPin, ShieldCheck, ClipboardList,
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
-  Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle,
+  Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle, Cpu,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
@@ -13,6 +13,7 @@ import PlansPanel from "@/PlansPanel";
 import ManagerPanel from "@/ManagerPanel";
 import TimesheetView from "@/TimesheetView";
 import SettingsPanel from "@/SettingsPanel";
+import MotorIaCard from "@/MotorIaCard";
 import UsersPanel from "@/UsersPanel";
 import DashboardPanel from "@/DashboardPanel";
 import PracasPanel from "@/PracasPanel";
@@ -144,6 +145,7 @@ const NAV_GROUPS = [
   {
     label: "Sistema",
     items: [
+      { id: "motor-ia", icon: Cpu, label: "Motor IA", roles: ["administrador"] },
       { id: "settings", icon: SettingsIcon, label: "Configurações", roles: ["auditor", "administrador"] },
       { id: "platform", icon: Building2, label: "Plataforma", roles: ["auditor", "administrador"], superAdminOnly: true },
     ],
@@ -679,6 +681,16 @@ function AppContent() {
           {view === "sheet" && <TimesheetView />}
           {view === "logs" && <LogsPanel />}
           {view === "settings" && <SettingsPanel />}
+          {view === "motor-ia" && (
+            <div style={{ padding: "0 4px" }}>
+              <h1 style={{ fontSize: 24, fontWeight: 700,
+                              color: "var(--text-primary)",
+                              letterSpacing: "-0.02em", marginBottom: 16 }}>
+                Motor IA
+              </h1>
+              <MotorIaCard />
+            </div>
+          )}
           {view === "platform" && <PlatformAdminPanel />}
         </>
       )}
