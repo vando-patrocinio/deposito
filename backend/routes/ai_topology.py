@@ -77,7 +77,14 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
         sentinela = await count_alerts_24h(cid)
     except Exception:
         sentinela = {"active": 0, "new_24h": 0, "resolved_24h": 0, "by_kind": {}}
-    # Lousa AI Triagem — tickets triados nas últimas 24h
+    # Motor IA — total de chamadas LLM nas últimas 24h (somatório dos purposes)
+    try:
+        total_motor_calls = await db.motor_ia_calls.count_documents({
+            "company_id": cid,
+            "created_at": {"$gte": cutoff},
+        })
+    except Exception:
+        total_motor_calls = 0
     try:
         from services.lousa_ai_triagem import stats as lousa_ai_stats
         lousa_ai = await lousa_ai_stats(cid)
@@ -175,6 +182,14 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
 
     # ── NÓS DE IA ──────────────────────────────────────────────────────
     nodes: List[Dict[str, Any]] = [
+        # MOTOR IA — núcleo orquestrador. Todas IAs passam por ele.
+        {"id": "motor", "label": "Motor IA",
+         "subtitle": "Orquestrador central",
+         "icon": "Cpu", "color": "#0f172a", "kind": "core",
+         "model": DEFAULT_M.split("/")[-1] + " · default",
+         "model_kind": "llm",
+         "metric": f"{total_motor_calls} chamadas/24h",
+         "metric_sub": f"Atend: {ATENDIMENTO_M.split('/')[-1]}"},
         {"id": "smartolt", "label": "SmartOLT AI",
          "subtitle": "Detecção + análise Claude", "icon": "Radio", "color": "#0d9488",
          "kind": "ai",
@@ -245,6 +260,22 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
 
     # ── ARESTAS ────────────────────────────────────────────────────────
     edges: List[Dict[str, Any]] = [
+        # MOTOR IA distribui chamadas para todos os agentes LLM (linhas finas)
+        {"from": "motor", "to": "smartolt",    "value": outages_detected,
+         "label": "Claude p/ análise pane", "kind": "motor"},
+        {"from": "motor", "to": "atendimento", "value": wa_ai_replies,
+         "label": "DeepSeek p/ atendimento", "kind": "motor"},
+        {"from": "motor", "to": "copilot",     "value": copilot_hints,
+         "label": "Claude p/ co-pilot", "kind": "motor"},
+        {"from": "motor", "to": "evaluator",   "value": evaluations,
+         "label": "Claude p/ avaliação", "kind": "motor"},
+        {"from": "motor", "to": "coach",       "value": coachings,
+         "label": "Claude p/ coaching", "kind": "motor"},
+        {"from": "motor", "to": "sentinela",   "value": sentinela["new_24h"],
+         "label": "Claude p/ alertas", "kind": "motor"},
+        {"from": "motor", "to": "lousa_ai",    "value": lousa_ai.get("triaged_24h", 0),
+         "label": "Claude p/ triagem", "kind": "motor"},
+        # Fluxos funcionais entre as IAs
         {"from": "smartolt", "to": "atendimento", "value": outage_aware,
          "label": "Contexto de pane",
          "desc": "Clientes em outage avisados proativamente"},

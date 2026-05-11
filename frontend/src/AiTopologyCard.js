@@ -2,37 +2,56 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
 import {
   Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
-  Loader2, Activity, Shield, ClipboardList, Wand2,
+  Loader2, Activity, Shield, ClipboardList, Wand2, Cpu,
 } from "lucide-react";
 
 const ICONS = { Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
-  Shield, ClipboardList, Wand: Wand2 };
+  Shield, ClipboardList, Wand: Wand2, Cpu };
 
-/* Layout dinâmico:
-   - IAs ficam no topo/centro do canvas em posições fixas
-   - Atendentes humanos (N variável) ficam dispostos na faixa inferior,
-     distribuídos uniformemente da esquerda pra direita.
+/* Layout 2026 — Hub-and-spoke:
+   - Motor IA no CENTRO (núcleo orquestrador)
+   - 6 IAs orbitam em círculo ao redor
+   - Sentinela + Lousa AI + Lousa Kanban formam camada operacional
+   - Atendentes humanos na faixa inferior
 */
-const W = 1100, H = 760;
+const W = 1200, H = 820;
+const CX = W / 2;          // 600
+const CY = 340;            // centro do hub
+
+// Distância do raio (orbita)
+const R1 = 220;            // IAs internas (Isabella, Co-Pilot, etc)
+const R2 = 360;            // IAs externas (Sentinela, Lousa AI, Lousa)
+
+// Posições calculadas em ângulo (em graus)
+function polar(cx, cy, r, deg) {
+  const rad = (deg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
 const AI_LAYOUT = {
-  smartolt:    { x: 120, y: 90 },
-  atendimento: { x: 380, y: 250 },
-  copilot:     { x: 720, y: 250 },
-  evaluator:   { x: 960, y: 90 },
-  coach:       { x: 960, y: 410 },
-  learning:    { x: 120, y: 250 },
-  sentinela:   { x: 270, y: 470 },
-  lousa_ai:    { x: 560, y: 470 },
-  lousa:       { x: 850, y: 470 },
+  // núcleo
+  motor:       { x: CX, y: CY },
+
+  // anel 1 — agentes de conversa (em volta do motor)
+  atendimento: polar(CX, CY, R1, 270),   // esquerda do motor
+  copilot:     polar(CX, CY, R1, 90),    // direita do motor
+  smartolt:    polar(CX, CY, R1, 330),   // alto-esquerda
+  evaluator:   polar(CX, CY, R1, 30),    // alto-direita
+  learning:    polar(CX, CY, R1, 210),   // baixo-esquerda
+  coach:       polar(CX, CY, R1, 150),   // baixo-direita
+
+  // anel 2 — agentes da Lousa (camada operacional inferior)
+  sentinela:   { x: 220, y: 600 },
+  lousa_ai:    { x: 600, y: 600 },
+  lousa:       { x: 980, y: 600 },
 };
 
 function humanLayout(humanNodes) {
-  // Linha inferior — distribuída uniformemente
   const n = humanNodes.length;
-  const yLine = 690;
+  const yLine = 760;
   if (n === 0) return {};
   const positions = {};
-  const margin = 110;
+  const margin = 120;
   const span = W - margin * 2;
   humanNodes.forEach((node, i) => {
     const x = n === 1 ? W / 2 : margin + (span * i) / (n - 1);
@@ -176,6 +195,13 @@ export default function AiTopologyCard() {
         <svg viewBox={`0 0 ${W} ${H}`}
               style={{ width: "100%", height: "auto", display: "block" }}
               data-testid="ai-topology-svg">
+          <defs>
+            <radialGradient id="motor-glow">
+              <stop offset="0%" stopColor="#fbbf24" stopOpacity="1" />
+              <stop offset="60%" stopColor="#fbbf24" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#fbbf24" stopOpacity="0" />
+            </radialGradient>
+          </defs>
           {/* Faixa de fundo separando IAs e Humanos */}
           <rect x="0" y={H - 130} width={W} height="130"
                 fill="rgba(71,85,105,.04)" />
@@ -190,17 +216,26 @@ export default function AiTopologyCard() {
             if (!a || !b) return null;
             const v = e.value || 0;
             const ratio = v / maxEdgeValue;
-            const stroke = Math.max(1.3, 1.3 + ratio * 4.5);
-            const opacity = v === 0 ? 0.12 : 0.40 + ratio * 0.5;
-            // Cor especial pro Co-Pilot
-            const isCopilot = e.from === "copilot" || e.to === "copilot";
-            const strokeColor = isCopilot ? "#d97706" : "var(--text-muted)";
-            const dotColor = isCopilot ? "#d97706" : "#16a34a";
+            const isMotor = e.kind === "motor" || e.from === "motor";
+            const isCopilot = !isMotor && (e.from === "copilot" || e.to === "copilot");
+            const stroke = isMotor
+              ? Math.max(0.8, 0.8 + ratio * 2.0)
+              : Math.max(1.3, 1.3 + ratio * 4.5);
+            const opacity = v === 0
+              ? (isMotor ? 0.18 : 0.12)
+              : (isMotor ? 0.45 + ratio * 0.35 : 0.40 + ratio * 0.5);
+            const strokeColor = isMotor
+              ? "#0f172a"
+              : (isCopilot ? "#d97706" : "var(--text-muted)");
+            const dotColor = isMotor ? "#0f172a"
+              : (isCopilot ? "#d97706" : "#16a34a");
+            const dash = isMotor ? "4 4" : undefined;
             const mx = (a.x + b.x) / 2;
             const my = (a.y + b.y) / 2;
-            const offsetY = ((i % 2) === 0 ? -1 : 1) * 32;
+            const offsetY = ((i % 2) === 0 ? -1 : 1) * (isMotor ? 8 : 32);
             const pathD = `M ${a.x},${a.y} Q ${mx},${my + offsetY} ${b.x},${b.y}`;
-            const dotCount = v === 0 ? 0 : Math.min(5, Math.ceil(ratio * 5));
+            const dotCount = v === 0 ? 0 : Math.min(isMotor ? 2 : 5,
+                                                       Math.ceil(ratio * (isMotor ? 2 : 5)));
             const dur = Math.max(2.2, 6 - ratio * 4);
             return (
               <g key={i} data-testid={`flow-edge-${e.from}-${e.to}`}>
@@ -208,9 +243,10 @@ export default function AiTopologyCard() {
                       stroke={strokeColor}
                       strokeWidth={stroke}
                       strokeLinecap="round"
+                      strokeDasharray={dash}
                       opacity={opacity} />
                 {Array.from({ length: dotCount }).map((_, di) => (
-                  <circle key={di} r="3.5" fill={dotColor}
+                  <circle key={di} r={isMotor ? 2.5 : 3.5} fill={dotColor}
                           className="flow-dot"
                           style={{
                             offsetPath: `path('${pathD}')`,
@@ -226,62 +262,91 @@ export default function AiTopologyCard() {
             if (!pos) return null;
             const Ico = ICONS[n.icon] || Bot;
             const isHuman = n.kind === "human";
-            const nodeW = isHuman ? 130 : 180;
-            const nodeH = isHuman ? 62 : 92;
+            const isCore = n.kind === "core";   // Motor IA
+            const nodeW = isCore ? 200 : (isHuman ? 130 : 180);
+            const nodeH = isCore ? 110 : (isHuman ? 62 : 92);
             return (
               <g key={n.id}
                   transform={`translate(${pos.x - nodeW / 2} ${pos.y - nodeH / 2})`}
                   data-testid={`flow-node-${n.id}`}>
-                <rect width={nodeW} height={nodeH} rx="10"
-                      fill="var(--bg-surface)"
-                      stroke={n.color}
-                      strokeWidth={isHuman ? "1.2" : "1.5"}
-                      strokeDasharray={isHuman ? "0" : "0"} />
+                {isCore && (
+                  <>
+                    <circle cx={nodeW/2} cy={nodeH/2} r={nodeW * 0.85}
+                            fill="url(#motor-glow)" opacity="0.18" />
+                    <rect x="-3" y="-3" width={nodeW + 6} height={nodeH + 6}
+                          rx="14" fill="none" stroke={n.color} strokeWidth="1.2"
+                          strokeDasharray="3 3" opacity="0.45" />
+                  </>
+                )}
+                <rect width={nodeW} height={nodeH} rx={isCore ? 12 : 10}
+                      fill={isCore ? "#0f172a" : "var(--bg-surface)"}
+                      stroke={isCore ? "#fbbf24" : n.color}
+                      strokeWidth={isCore ? "2" : (isHuman ? "1.2" : "1.5")} />
                 <foreignObject x="0" y="0" width={nodeW} height={nodeH}>
                   <div xmlns="http://www.w3.org/1999/xhtml"
                         style={{
-                          padding: isHuman ? "6px 8px" : "8px 10px",
+                          padding: isCore ? "12px 14px" :
+                                   (isHuman ? "6px 8px" : "8px 10px"),
                           fontFamily: "inherit",
                           height: "100%",
                           display: "flex", flexDirection: "column",
                           justifyContent: "center",
-                          gap: 2,
+                          gap: isCore ? 4 : 2,
+                          color: isCore ? "#fff" : undefined,
                         }}>
-                    <div style={{ display: "flex", alignItems: "center",
-                                     gap: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{
-                        width: isHuman ? 18 : 22,
-                        height: isHuman ? 18 : 22, borderRadius: 5,
-                        background: n.color, color: "#fff",
+                        width: isCore ? 32 : (isHuman ? 18 : 22),
+                        height: isCore ? 32 : (isHuman ? 18 : 22),
+                        borderRadius: isCore ? 8 : 5,
+                        background: isCore ? "#fbbf24" : n.color,
+                        color: isCore ? "#0f172a" : "#fff",
                         display: "grid", placeItems: "center", flexShrink: 0,
                       }}>
-                        <Ico size={isHuman ? 11 : 13} strokeWidth={1.8} />
+                        <Ico size={isCore ? 18 : (isHuman ? 11 : 13)} strokeWidth={1.9} />
                       </div>
-                      <div style={{ fontSize: isHuman ? 11 : 12, fontWeight: 700,
-                                       color: "var(--text-primary)",
-                                       lineHeight: 1.1, letterSpacing: "-0.01em",
-                                       overflow: "hidden",
-                                       textOverflow: "ellipsis",
-                                       whiteSpace: "nowrap" }}>
+                      <div style={{
+                        fontSize: isCore ? 15 : (isHuman ? 11 : 12),
+                        fontWeight: 800,
+                        color: isCore ? "#fff" : "var(--text-primary)",
+                        lineHeight: 1.1, letterSpacing: "-0.012em",
+                        overflow: "hidden", textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}>
                         {n.label}
                       </div>
                     </div>
-                    <div style={{ fontSize: 9, color: "var(--text-muted)",
-                                     textTransform: "uppercase",
-                                     letterSpacing: 0.4, fontWeight: 600,
-                                     overflow: "hidden",
-                                     textOverflow: "ellipsis",
-                                     whiteSpace: "nowrap" }}>
+                    <div style={{
+                      fontSize: isCore ? 10 : 9,
+                      color: isCore ? "#cbd5e1" : "var(--text-muted)",
+                      textTransform: "uppercase", letterSpacing: 0.4,
+                      fontWeight: 600,
+                      overflow: "hidden", textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}>
                       {n.subtitle}
                     </div>
-                    {!isHuman && n.model && (
+                    {!isHuman && n.model && !isCore && (
                       <ModelChip model={n.model} kind={n.model_kind} />
                     )}
-                    <div style={{ fontSize: 10.5, fontWeight: 700,
-                                     color: n.color,
-                                     fontFamily: "ui-monospace, monospace" }}>
+                    <div style={{
+                      fontSize: isCore ? 12 : 10.5,
+                      fontWeight: 800,
+                      color: isCore ? "#fbbf24" : n.color,
+                      fontFamily: "ui-monospace, monospace",
+                    }}>
                       {n.metric}
                     </div>
+                    {isCore && (
+                      <div style={{
+                        fontSize: 9.5, color: "#cbd5e1",
+                        fontFamily: "ui-monospace, monospace",
+                        overflow: "hidden", textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}>
+                        {n.metric_sub}
+                      </div>
+                    )}
                     {isHuman && n.hints_received > 0 && (
                       <div style={{ fontSize: 9, color: "#d97706",
                                        fontWeight: 700,
