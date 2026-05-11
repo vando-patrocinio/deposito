@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import WhatsAppQRPanel from "@/WhatsAppQRPanel";
 import WhatsAppInstancePanel from "@/WhatsAppInstancePanel";
+import SmartOltAiPanel from "@/SmartOltAiPanel";
 import CentralIaDashboard from "@/CentralIaDashboard";
 
 const TABS = [
