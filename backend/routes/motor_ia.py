@@ -12,6 +12,7 @@ from database import db
 from services.motor_ia import (
     get_motor_config, get_safe_config, save_motor_config, test_motor,
     DEFAULT_FALLBACKS, AGENT_CATALOG, get_agents_state, set_agent_state,
+    get_agent_history,
 )
 
 router = APIRouter(prefix="/api/motor-ia", tags=["motor-ia"])
@@ -373,6 +374,89 @@ async def toggle_agent(agent_id: str, payload: AgentSwitchIn,
     except ValueError as e:
         raise HTTPException(404, str(e)) from e
     return {"ok": True, **result}
+
+
+@router.get("/agents/history")
+async def agents_history(
+    days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(require_role("gestor")),
+):
+    """Retorna histórico de mudanças + intervalos OFF/ON por agente
+    (formato pronto pra timeline)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=days)
+    start_iso = start.isoformat()
+    end_iso = now.isoformat()
+
+    events = await get_agent_history(cid, days=days)
+
+    # Pega último evento ANTERIOR ao período pra cada agente (estado inicial)
+    initial_state: Dict[str, bool] = {}
+    cur = db.ai_agent_switch_history.find(
+        {"company_id": cid, "changed_at": {"$lt": start_iso}},
+        {"_id": 0, "agent_id": 1, "enabled": 1, "changed_at": 1},
+    ).sort([("agent_id", 1), ("changed_at", -1)])
+    seen = set()
+    async for d in cur:
+        aid = d["agent_id"]
+        if aid in seen:
+            continue
+        seen.add(aid)
+        initial_state[aid] = bool(d.get("enabled", True))
+
+    by_agent: Dict[str, List[Dict[str, Any]]] = {}
+    for ev in events:
+        by_agent.setdefault(ev["agent_id"], []).append(ev)
+    for aid in by_agent:
+        by_agent[aid].sort(key=lambda x: x["changed_at"])
+
+    intervals_by_agent: Dict[str, List[Dict[str, Any]]] = {}
+    for cat in AGENT_CATALOG:
+        aid = cat["id"]
+        evs = by_agent.get(aid, [])
+        current_state = initial_state.get(aid, True)
+        intervals: List[Dict[str, Any]] = []
+        cursor_ts = start_iso
+        for ev in evs:
+            ts = ev["changed_at"]
+            if ts <= cursor_ts:
+                continue
+            intervals.append({"start": cursor_ts, "end": ts,
+                                "enabled": current_state})
+            current_state = bool(ev["enabled"])
+            cursor_ts = ts
+        if cursor_ts < end_iso:
+            intervals.append({"start": cursor_ts, "end": end_iso,
+                                "enabled": current_state})
+        intervals_by_agent[aid] = intervals
+
+    def _parse(ts: str) -> float:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+
+    downtime_by_agent: Dict[str, Dict[str, Any]] = {}
+    total_secs = (now - start).total_seconds()
+    for aid, intervals in intervals_by_agent.items():
+        off_secs = 0.0
+        for it in intervals:
+            if not it["enabled"]:
+                off_secs += _parse(it["end"]) - _parse(it["start"])
+        downtime_by_agent[aid] = {
+            "off_seconds": int(off_secs),
+            "off_pct": round((off_secs / total_secs) * 100, 1) if total_secs else 0,
+        }
+
+    return {
+        "window_days": days,
+        "window_start": start_iso,
+        "window_end": end_iso,
+        "events": events,
+        "intervals_by_agent": intervals_by_agent,
+        "downtime_by_agent": downtime_by_agent,
+        "agents_catalog": [{"id": a["id"], "label": a["label"]} for a in AGENT_CATALOG],
+    }
+
 
 
 

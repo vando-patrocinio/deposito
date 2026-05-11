@@ -473,17 +473,51 @@ async def get_agents_state(company_id: str) -> List[Dict[str, Any]]:
 
 async def set_agent_state(company_id: str, agent_id: str,
                             enabled: bool, user_label: Optional[str] = None) -> Dict[str, Any]:
-    """Persiste estado do kill-switch. Lança ValueError se agent_id inválido."""
+    """Persiste estado do kill-switch e registra histórico (auditoria).
+    Lança ValueError se agent_id inválido."""
     if agent_id not in AGENT_IDS:
         raise ValueError(f"Agente desconhecido: {agent_id}")
+
+    # Lê estado atual pra detectar transição (e gravar histórico só se mudou)
+    prev = await db.ai_agent_switches.find_one(
+        {"company_id": company_id, "agent_id": agent_id},
+        {"_id": 0, "enabled": 1},
+    )
+    prev_enabled = bool(prev.get("enabled", True)) if prev else True
+    changed = prev_enabled != bool(enabled)
+
+    ts = now_iso()
     await db.ai_agent_switches.update_one(
         {"company_id": company_id, "agent_id": agent_id},
         {"$set": {
             "enabled": bool(enabled),
-            "updated_at": now_iso(),
+            "updated_at": ts,
             "updated_by": user_label or "system",
         },
          "$setOnInsert": {"company_id": company_id, "agent_id": agent_id}},
         upsert=True,
     )
-    return {"agent_id": agent_id, "enabled": bool(enabled)}
+
+    if changed:
+        # Grava histórico apenas em transições reais
+        await db.ai_agent_switch_history.insert_one({
+            "company_id": company_id,
+            "agent_id": agent_id,
+            "previous_enabled": prev_enabled,
+            "enabled": bool(enabled),
+            "changed_by": user_label or "system",
+            "changed_at": ts,
+        })
+
+    return {"agent_id": agent_id, "enabled": bool(enabled), "changed": changed}
+
+
+async def get_agent_history(company_id: str, days: int = 30) -> List[Dict[str, Any]]:
+    """Retorna eventos de mudança ordenados (mais recente primeiro)."""
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cur = db.ai_agent_switch_history.find(
+        {"company_id": company_id, "changed_at": {"$gte": cutoff}},
+        {"_id": 0},
+    ).sort("changed_at", -1).limit(500)
+    return [d async for d in cur]

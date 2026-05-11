@@ -1,5 +1,30 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Auditoria de Mudanças de Agentes (timeline ON/OFF)
+
+### Backend
+- `services/motor_ia.py`: `set_agent_state` agora detecta transições reais (estado anterior ≠ novo) e grava em `ai_agent_switch_history` (`{company_id, agent_id, previous_enabled, enabled, changed_by, changed_at}`).
+- Novo `get_agent_history()` retorna eventos no período.
+- `routes/motor_ia.py`: novo endpoint `GET /api/motor-ia/agents/history?days=N` (1-90). Retorna:
+  - `events` — lista de transições
+  - `intervals_by_agent` — segmentos (start/end/enabled) cobrindo todo o período, pronto pra timeline
+  - `downtime_by_agent` — segundos OFF e % do período pausado
+  - Considera estado anterior ao início do período como ponto de partida
+
+### Frontend
+- Novo `MotorIaAgentsHistoryView.js`: timeline horizontal com seletor 24h/7d/30d/90d. Cada agente renderizado em linha com segmentos verde (ATIVO) / vermelho (PAUSADO). Hover mostra agente, estado, intervalo, duração. Lista textual dos últimos 50 eventos com timestamp, ON→OFF e quem alterou.
+- `MotorIaAgentsModal.js`: adicionada navegação em abas (**Agentes** | **Histórico**). Footer contextual por aba.
+- `api.js`: `motorIaAgentsHistory(days)`.
+
+### Validação
+- 4 transições simuladas em `copilot_ai` (off/on/off/on) registradas corretamente ✓
+- `GET /agents/history?days=7` retorna 4 eventos, 5 intervalos calculados, downtime correto ✓
+- Estado anterior ao período é considerado (não falha quando não há eventos no janela) ✓
+- Lint frontend + backend limpos ✓
+
+---
+
+
 ## Feb 11, 2026 — Painel de Agentes IA (kill-switch global)
 
 ### Backend

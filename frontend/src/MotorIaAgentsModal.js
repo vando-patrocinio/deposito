@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
-import { X, Power, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { X, Power, Loader2, AlertTriangle, CheckCircle2, History } from "lucide-react";
+import MotorIaAgentsHistoryView from "@/MotorIaAgentsHistoryView";
 
 /**
  * MotorIaAgentsModal — Painel de Kill-Switch por agente.
@@ -12,6 +13,7 @@ import { X, Power, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
  *  - onClose(): fecha modal
  */
 export default function MotorIaAgentsModal({ onClose }) {
+  const [tab, setTab] = useState("agents"); // "agents" | "history"
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState(null);
@@ -105,6 +107,41 @@ export default function MotorIaAgentsModal({ onClose }) {
           </button>
         </div>
 
+        {/* Tabs */}
+        <div style={{
+          display: "flex", padding: "0 22px",
+          borderBottom: "1px solid var(--border-default, #e2e8f0)",
+          background: "var(--bg-surface, #fff)",
+        }}>
+          {[
+            { id: "agents",  label: "Agentes",   icon: Power },
+            { id: "history", label: "Histórico", icon: History },
+          ].map((t) => {
+            const Ico = t.icon;
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                data-testid={`modal-tab-${t.id}`}
+                style={{
+                  padding: "10px 14px", border: 0,
+                  borderBottom: active ? "2px solid var(--text-primary, #0f172a)" : "2px solid transparent",
+                  background: "transparent", cursor: "pointer",
+                  fontSize: 12, fontWeight: 700,
+                  color: active ? "var(--text-primary, #0f172a)" : "var(--text-muted, #64748b)",
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  marginBottom: -1,
+                }}
+              >
+                <Ico size={13} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {tab === "agents" && (
+        <>
         {/* Resumo */}
         <div style={{
           padding: "10px 22px",
@@ -209,6 +246,14 @@ export default function MotorIaAgentsModal({ onClose }) {
             ))
           )}
         </div>
+        </>
+        )}
+
+        {tab === "history" && (
+          <div style={{ overflow: "auto", flex: 1 }}>
+            <MotorIaAgentsHistoryView />
+          </div>
+        )}
 
         {/* Footer */}
         <div style={{
@@ -218,9 +263,15 @@ export default function MotorIaAgentsModal({ onClose }) {
           fontSize: 11, color: "var(--text-muted, #64748b)",
           lineHeight: 1.5,
         }}>
-          <strong>Importante:</strong> ao pausar um agente, todas as chamadas LLM dele
-          serão bloqueadas até reativação. Workers em background continuam rodando, mas
-          sem analisar (silent skip). Reativar aplica imediatamente.
+          {tab === "agents" ? (
+            <><strong>Importante:</strong> ao pausar um agente, todas as chamadas LLM dele
+              serão bloqueadas até reativação. Workers em background continuam rodando, mas
+              sem analisar (silent skip). Reativar aplica imediatamente.</>
+          ) : (
+            <><strong>Auditoria:</strong> apenas mudanças reais (transições ON↔OFF) são
+              registradas. Use a timeline para correlacionar pausas com quedas de KPI ou
+              incidentes operacionais.</>
+          )}
         </div>
       </div>
     </div>
