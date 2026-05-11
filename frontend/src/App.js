@@ -16,6 +16,7 @@ import SettingsPanel from "@/SettingsPanel";
 import MotorIaCard from "@/MotorIaCard";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
 import MotorIaBudgetCard from "@/MotorIaBudgetCard";
+import BudgetAlertBadge from "@/BudgetAlertBadge";
 import AiTopologyCard from "@/AiTopologyCard";
 import UsersPanel from "@/UsersPanel";
 import DashboardPanel from "@/DashboardPanel";
@@ -319,7 +320,7 @@ function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModa
   );
 }
 
-function TopBar({ user, companyName, isSuperAdmin, allCompanies, activeCo, onChangeCompany, onLogout, onOpenAIPanel, view }) {
+function TopBar({ user, companyName, isSuperAdmin, allCompanies, activeCo, onChangeCompany, onLogout, onOpenAIPanel, view, setView }) {
   const tab = ALL_TABS.find((t) => t.id === view);
   const groupName = NAV_GROUPS.find((g) => g.items.some((i) => i.id === view))?.label || "Operação";
   const { theme, toggle: toggleTheme } = useTheme();
@@ -394,6 +395,7 @@ function TopBar({ user, companyName, isSuperAdmin, allCompanies, activeCo, onCha
         )}
 
         {user && <NotificationsBell onOpenAIPanel={onOpenAIPanel} />}
+        {user && <BudgetAlertBadge role={user.role} onClick={() => setView && setView("motor-ia")} />}
         <ServerClock compact />
 
         {user && (
@@ -533,6 +535,7 @@ function AppShell({ view, setView, children }) {
           onLogout={logout}
           onOpenAIPanel={() => setShowAIPanel(true)}
           view={view}
+          setView={setView}
         />
         <div className="app-content">
           <ImpersonationBanner />

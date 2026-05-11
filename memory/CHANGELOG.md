@@ -1,5 +1,21 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Badge persistente de alerta de orçamento no header
+
+### Frontend
+- Novo `BudgetAlertBadge.js`: componente que faz polling em `/api/motor-ia/budget/status` a cada 60s e renderiza um badge clicável no header SOMENTE quando o status é `warn` (amarelo) ou `exceeded` (vermelho). Click navega direto para a aba Motor IA.
+- Animação CSS `pulse` contínua (sutil) + `pulse-strong` (forte, 3x) ao detectar transição de estado.
+- Tooltip exibe gasto / limite / %. Oculto para roles sem acesso ao Motor IA.
+- `App.js`: badge integrado entre `NotificationsBell` e `ServerClock` no `TopBar`; `setView` propagado.
+
+### Validação
+- API confirmou status `exceeded` (limite 0.03 USD, gasto 0.051 = 170%) ✓
+- Limite restaurado para 50 USD / 80% threshold ✓
+- Lint frontend limpo ✓
+
+---
+
+
 ## Feb 11, 2026 — Alertas de Orçamento Motor IA
 
 ### Backend
