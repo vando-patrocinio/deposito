@@ -157,6 +157,60 @@ class InboundIn(BaseModel):
     push_name: Optional[str] = None
 
 
+class SystemEventIn(BaseModel):
+    event: str
+    code: Optional[int] = None
+    name: Optional[str] = None
+    retryCount: Optional[int] = None
+    reason: Optional[str] = None
+    ts: Optional[str] = None
+
+
+@router.post("/system-event")
+async def system_event(payload: SystemEventIn,
+                         x_wa_token: Optional[str] = Header(default=None)):
+    """Webhook interno chamado pelo sidecar em eventos críticos:
+      - logged_out (sessão revogada)
+      - connection_replaced (outra instância conectou)
+      - possibly_banned (401/forbidden)
+      - max_retries_exceeded (esgotou backoff)
+
+    Persiste em `whatsapp_system_events` para a aba de Status mostrar,
+    e gera notificação interna pra admin.
+    """
+    if WA_INBOUND_TOKEN and x_wa_token != WA_INBOUND_TOKEN:
+        raise HTTPException(401, "X-WA-Token inválido")
+    doc = {
+        "id": f"wae-{uuid.uuid4().hex[:10]}",
+        "company_id": DEMO_COMPANY_ID,
+        "event": payload.event,
+        "code": payload.code,
+        "name": payload.name,
+        "retry_count": payload.retryCount,
+        "reason": payload.reason,
+        "created_at": payload.ts or now_iso(),
+        "acknowledged": False,
+    }
+    await db.whatsapp_system_events.insert_one(dict(doc))
+    doc.pop("_id", None)
+    logger.warning(
+        "[wa-baileys][SYSTEM-EVENT] %s code=%s reason=%s",
+        payload.event, payload.code, payload.reason,
+    )
+    return {"ok": True, "id": doc["id"]}
+
+
+@router.get("/system-events")
+async def list_system_events(user: dict = Depends(require_role("gestor"))):
+    """Lista os últimos 50 eventos de sistema do WhatsApp."""
+    docs = await db.whatsapp_system_events.find(
+        {"company_id": DEMO_COMPANY_ID},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(50).to_list(50)
+    return {"events": docs}
+
+
+
 @router.post("/inbound")
 async def inbound_webhook(payload: InboundIn,
                            x_wa_token: Optional[str] = Header(default=None)):

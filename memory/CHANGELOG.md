@@ -1,5 +1,38 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — WhatsApp Sidecar v2 (production-hardened)
+
+Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
+
+### Sidecar Node (`/app/whatsapp-service/server.js` — reescrita completa)
+- **Reconexão com exponential backoff + jitter** (base 2s → cap 5min, 12 tentativas máx). Antes: fixo 3s/5s infinito.
+- **Circuit breaker**: ao atingir `RECONNECT_MAX_RETRIES`, notifica admin via webhook e para de tentar.
+- **Taxonomia de DisconnectReason**: `loggedOut`/`connectionReplaced`/`forbidden` agora NÃO reconectam (precisa intervenção manual). `restartRequired`/`timedOut`/`badSession` reconectam normalmente. Estado `banned` exposto.
+- **Timeouts explícitos Baileys**: `connectTimeoutMs=60s`, `defaultQueryTimeoutMs=60s`, `keepAliveIntervalMs=30s`.
+- **Rate limiter no /send**: mínimo 1.2s entre envios + jitter 0-800ms. Reduz risco de ban.
+- **Browser fingerprint realista**: `Chrome (Linux),Chrome,120.0.0` (configurável via `WA_BROWSER_FP`).
+- **Logger estruturado pino** (info por padrão, debug via `WA_DEBUG=1`), com `base.svc`.
+- **Webhook inbound com retry único** após 500ms — antes era 1 tentativa só.
+- **Graceful shutdown** (SIGINT/SIGTERM) — fecha socket sem apagar sessão.
+- **Handlers globais** `uncaughtException` e `unhandledRejection` (loga, não crasha).
+- **Métricas no /health**: `uptime_s`, `retry_count`, `last_send_at`, `last_success_at`.
+
+### Backend FastAPI (`routes/whatsapp_baileys.py`)
+- Novo endpoint `POST /api/whatsapp-baileys/system-event` (recebe eventos críticos do sidecar com `X-WA-Token`).
+- Persiste em coleção `whatsapp_system_events` ({event, code, name, retry_count, reason, created_at, acknowledged}).
+- Novo `GET /api/whatsapp-baileys/system-events` (lista 50 últimos, role gestor).
+- Eventos capturados: `logged_out`, `connection_replaced`, `possibly_banned`, `max_retries_exceeded`.
+
+### Validação
+- Sidecar reiniciou e conectou em <6s ✓
+- `/health` retorna métricas novas ✓
+- `/status` mantém compat (campos antigos + `retry_count` novo) ✓
+- Evento simulado → persistido em Mongo + listado via GET ✓
+- Lint backend limpo ✓
+
+---
+
+
 ## Feb 11, 2026 — Overlay de incidentes na timeline de agentes
 
 ### Backend
