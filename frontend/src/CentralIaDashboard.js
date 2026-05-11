@@ -7,6 +7,7 @@ import {
 import { api } from "@/api";
 import SmartOltAiPanel from "@/SmartOltAiPanel";
 import CopilotRankingCard from "@/CopilotRankingCard";
+import ChurnDashboardPanel from "@/ChurnDashboardPanel";
 
 /* =============================================================
    Central IA Dashboard — KPIs + ranking + intents + alertas proativos
@@ -102,9 +103,12 @@ export default function CentralIaDashboard() {
                     icon={Brain} label="Dashboard IA" testId="subtab-kpis" />
         <SubTabBtn active={section === "smartolt"} onClick={() => setSection("smartolt")}
                     icon={Radio} label="SmartOLT AI" testId="subtab-smartolt" />
+        <SubTabBtn active={section === "churn"} onClick={() => setSection("churn")}
+                    icon={TrendingDown} label="Churn" testId="subtab-churn" />
       </div>
 
-      {section === "smartolt" ? <SmartOltAiPanel /> : (
+      {section === "smartolt" ? <SmartOltAiPanel /> :
+       section === "churn" ? <ChurnDashboardPanel /> : (
       <>
 
       {/* Header + period toggle */}

@@ -230,6 +230,8 @@ export const api = {
     client.put(`/motor-ia/agents/${agentId}`, { enabled }).then((r) => r.data),
   motorIaAgentsHistory: (days = 7) =>
     client.get(`/motor-ia/agents/history`, { params: { days } }).then((r) => r.data),
+  churnDashboard: (days = 180) =>
+    client.get(`/churn/dashboard`, { params: { days } }).then((r) => r.data),
   smartoltOnuReboot: (extId) => client.post(`/smartolt/onu/${extId}/reboot`).then((r) => r.data),
 
   // ========= SmartOLT AI — monitoramento autônomo =========

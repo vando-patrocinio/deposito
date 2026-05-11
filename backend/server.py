@@ -64,6 +64,7 @@ from routes import (
     voice as routes_voice,
     whatsapp_baileys as routes_wa_baileys,
     central_ia as routes_central_ia,
+    churn as routes_churn,
     subscribers as routes_subscribers,
     branding as routes_branding,
     collaborator_assets as routes_collab_assets,
@@ -335,6 +336,7 @@ app.include_router(routes_lousa_ai.router)
 app.include_router(routes_voice.router)
 app.include_router(routes_wa_baileys.router)
 app.include_router(routes_central_ia.router)
+app.include_router(routes_churn.router)
 app.include_router(routes_subscribers.router)
 app.include_router(routes_plans.router)
 app.include_router(routes_branding.router)

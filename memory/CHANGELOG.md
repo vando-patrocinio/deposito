@@ -1,5 +1,31 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Dashboard de Churn (Central IA → sub-aba "Churn")
+
+Aplicadas best practices ISP/Telecom 2026 (pesquisa Feb/2026): múltiplas dimensões (tempo, geografia, motivo), distinção entre pedido vs operação, tempo médio de vida, pipeline de churn iminente.
+
+### Backend
+- Novo `routes/churn.py` registrado em `server.py` (`/api/churn/dashboard`).
+- Fonte: coleção local `tickets` (já sincronizada do Atlaz periodicamente) filtrando `type='retirada'` (mapeia CANCELAMENTO + RETIRADA DE EQUIPAMENTO).
+- Inferência de motivo por regex em assunto/relato: Preço/Concorrência, Mudança, Problema técnico, Atendimento ruim, Financeiro, Falecimento, Retirada, Outros.
+- Tempo de vida calculado quando há ticket de `type=instalacao` do mesmo `atlaz_id_assinante`/`client_id` (média + mediana + amostragem).
+- Série temporal: 12 meses fixos com zero-fill.
+- Retorna: KPIs, by_month, by_reason, by_neighborhood, by_kind, recent (últimos 20).
+
+### Frontend
+- Novo `ChurnDashboardPanel.js`: header com gradiente vermelho, seletor 30/90/180/365 dias, 4 KPI cards, barras mensais animadas, top motivos colorido, top bairros, split pedido×operação, lista de últimos 20 cancelamentos.
+- `CentralIaDashboard.js`: adicionada sub-aba "Churn" ao lado de Dashboard IA e SmartOLT AI (ícone `TrendingDown`).
+- `api.js`: `churnDashboard(days)`.
+
+### Validação ✓
+- Endpoint retorna 38 chamados de churn no período (37 retiradas + 1 outros)
+- Top bairros: Cordovil (14), Ramos (3), Irajá (2)
+- Frontend renderiza com sucesso (screenshot validado)
+- Lint frontend + backend limpos
+
+---
+
+
 ## Feb 11, 2026 — WhatsApp Sidecar v2 (production-hardened)
 
 Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
