@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { api } from "@/api";
 import SmartOltAiPanel from "@/SmartOltAiPanel";
+import CopilotRankingCard from "@/CopilotRankingCard";
 
 /* =============================================================
    Central IA Dashboard — KPIs + ranking + intents + alertas proativos
@@ -223,6 +224,9 @@ export default function CentralIaDashboard() {
 
           {/* Produtividade dos atendentes — tempo logado, ocioso, AHT, score */}
           {productivity && <ProductivityCard data={productivity} days={days} />}
+
+          {/* Ranking Co-Pilot IA — quem aplica dicas e ganha CSAT */}
+          <CopilotRankingCard />
         </>
       )}
 

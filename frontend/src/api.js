@@ -250,6 +250,9 @@ export const api = {
 
   // ========= AI Topology (Motor IA card) =========
   aiTopologyFlow: () => client.get(`/ai-topology/flow`).then((r) => r.data),
+  // Co-Pilot ranking — quem aplica as dicas e quem ganha CSAT
+  copilotRankingWeekly: (days = 7) =>
+    client.get(`/copilot-ranking/weekly`, { params: { days } }).then((r) => r.data),
   // Public mobile endpoints
   publicTechStock: (cid) => client.get(`/stok/public/collaborator/${cid}/stock`).then((r) => r.data),
   publicValidateMac: (mac, cid) => client.get(`/smartolt/public/validate-mac/${encodeURIComponent(mac)}`,

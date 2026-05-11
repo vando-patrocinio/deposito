@@ -57,6 +57,7 @@ from routes import (
     motor_ia as routes_motor_ia,
     smartolt_ai as routes_smartolt_ai,
     ai_topology as routes_ai_topology,
+    copilot_ranking as routes_copilot_ranking,
     plans as routes_plans,
     voice as routes_voice,
     whatsapp_baileys as routes_wa_baileys,
@@ -322,6 +323,7 @@ app.include_router(routes_aihub.router)
 app.include_router(routes_motor_ia.router)
 app.include_router(routes_smartolt_ai.router)
 app.include_router(routes_ai_topology.router)
+app.include_router(routes_copilot_ranking.router)
 app.include_router(routes_voice.router)
 app.include_router(routes_wa_baileys.router)
 app.include_router(routes_central_ia.router)
