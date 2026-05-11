@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
 import {
   TrendingDown, Users, Calendar, MapPin, AlertCircle,
-  Clock, Loader2, RefreshCw, ArrowDownRight,
+  Clock, Loader2, RefreshCw, ArrowDownRight, Sparkles, ChevronDown, ChevronUp,
 } from "lucide-react";
 
 const PERIODS = [
@@ -44,6 +44,10 @@ export default function ChurnDashboardPanel() {
   const [days, setDays] = useState(180);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [insight, setInsight] = useState(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightErr, setInsightErr] = useState("");
+  const [insightOpen, setInsightOpen] = useState(true);
 
   const load = useCallback(async (d) => {
     setLoading(true); setErr("");
@@ -57,7 +61,20 @@ export default function ChurnDashboardPanel() {
     }
   }, []);
 
-  useEffect(() => { load(days); }, [load, days]);
+  useEffect(() => { load(days); setInsight(null); }, [load, days]);
+
+  const generateInsight = useCallback(async () => {
+    setInsightLoading(true); setInsightErr(""); setInsight(null);
+    setInsightOpen(true);
+    try {
+      const r = await api.churnAiInsight(days);
+      setInsight(r);
+    } catch (e) {
+      setInsightErr(e?.response?.data?.detail || e.message);
+    } finally {
+      setInsightLoading(false);
+    }
+  }, [days]);
 
   const maxMonth = useMemo(() => {
     if (!data?.by_month) return 1;
@@ -141,7 +158,77 @@ export default function ChurnDashboardPanel() {
                               cursor: "pointer", color: "var(--text-muted)" }}>
           {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
         </button>
+        <button onClick={generateInsight} disabled={insightLoading}
+                  data-testid="churn-ai-insight-btn"
+                  style={{
+                    padding: "8px 14px", border: 0, borderRadius: 8,
+                    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                    color: "#fff", cursor: insightLoading ? "wait" : "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    fontSize: 12, fontWeight: 700,
+                    boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
+                  }}>
+          {insightLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+          Analisar com IA
+        </button>
       </div>
+
+      {/* AI Insight */}
+      {(insight || insightErr || insightLoading) && (
+        <div data-testid="churn-ai-insight-card" style={{
+          padding: 16, borderRadius: 12,
+          background: "linear-gradient(135deg, rgba(99,102,241,0.05), var(--bg-surface) 70%)",
+          border: "1px solid rgba(99,102,241,0.25)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <Sparkles size={14} color="#6366f1" />
+            <span style={{ fontSize: 13, fontWeight: 800,
+                              letterSpacing: "-0.012em" }}>
+              Briefing executivo — Claude Sonnet 4.5
+            </span>
+            {insight && (
+              <button onClick={() => setInsightOpen(!insightOpen)}
+                        style={{ marginLeft: "auto", padding: 4, border: 0,
+                                    background: "transparent", cursor: "pointer",
+                                    color: "var(--text-muted)" }}>
+                {insightOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            )}
+          </div>
+          {insightLoading && (
+            <div style={{ color: "var(--text-muted)", fontSize: 12,
+                            display: "flex", alignItems: "center", gap: 8 }}>
+              <Loader2 size={13} className="animate-spin" />
+              Claude está analisando seus dados de churn...
+            </div>
+          )}
+          {insightErr && (
+            <div style={{ padding: 10, background: "#fef2f2",
+                            color: "#be123c", borderRadius: 8, fontSize: 12 }}>
+              {insightErr}
+            </div>
+          )}
+          {insight && insightOpen && (
+            <>
+              <div style={{
+                fontSize: 13, lineHeight: 1.65,
+                color: "var(--text-primary)",
+                whiteSpace: "pre-wrap",
+              }} dangerouslySetInnerHTML={{
+                __html: (insight.insight || "")
+                  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                  .replace(/\*\*(.+?)\*\*/g, '<strong style="color: var(--text-primary)">$1</strong>')
+                  .replace(/^- (.+)$/gm, '<div style="margin: 4px 0 4px 16px; position: relative"><span style="position:absolute;left:-12px;color:#6366f1">•</span>$1</div>'),
+              }} />
+              <div style={{ marginTop: 12, paddingTop: 10,
+                              borderTop: "1px dashed var(--border-default)",
+                              fontSize: 10, color: "var(--text-muted)" }}>
+                Gerado por {insight.model} · {insight.provider} · janela {insight.window_days}d
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* KPIs */}
       <div style={{ display: "grid",

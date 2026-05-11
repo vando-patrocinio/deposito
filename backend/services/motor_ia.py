@@ -66,6 +66,8 @@ AGENT_CATALOG: List[Dict[str, str]] = [
      "description": "Geração/aprimoramento de texto em formulários."},
     {"id": "ai_dashboard_insight","label": "Dashboard Insights",
      "description": "Insights automáticos sobre dashboards operacionais."},
+    {"id": "churn_insight",       "label": "Churn Insight",
+     "description": "Briefing executivo do dashboard de churn (Claude Sonnet 4.5)."},
 ]
 AGENT_IDS = {a["id"] for a in AGENT_CATALOG}
 

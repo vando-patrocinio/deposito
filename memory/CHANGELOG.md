@@ -1,5 +1,26 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Briefing executivo de Churn por IA (Claude Sonnet 4.5)
+
+### Backend
+- `routes/churn.py`: novo endpoint `POST /api/churn/ai-insight?days=N`. Reusa dados do dashboard, monta prompt estruturado (Diagnóstico / Padrões / Riscos / Recomendações), chama Motor IA via `chat_completion(agent="churn_insight", max_tokens=900, temperature=0.35)`.
+- Catálogo de agentes: novo `churn_insight` (`AGENT_CATALOG` em `services/motor_ia.py` + `AGENT_LABELS` em `routes/motor_ia.py`).
+- Respeita kill-switch: se `churn_insight` desligado → 503 com mensagem clara.
+
+### Frontend
+- `ChurnDashboardPanel.js`: novo botão **"Analisar com IA"** (gradiente roxo/indigo) no header.
+- Card de briefing com gradiente sutil, ícone Sparkles, parser leve de markdown (negrito + bullets) usando `dangerouslySetInnerHTML` com escape prévio para evitar XSS.
+- Estados: loading ("Claude está analisando…"), erro, colapsável (chevron up/down).
+- Footer com modelo/provider/janela.
+
+### Validação
+- `POST /api/churn/ai-insight?days=180` retornou briefing completo de Claude Sonnet 4.5 (Amazon Bedrock) com 4 seções perfeitas: Diagnóstico apontou inconsistência (0% rate com 38 movimentações), Padrões identificou Cordovil (37%), Riscos apontou pipeline matematicamente impossível, 4 recomendações acionáveis ✓
+- Frontend renderiza loading e card corretamente (screenshot) ✓
+- Lint frontend + backend limpos ✓
+
+---
+
+
 ## Feb 11, 2026 — Dashboard de Churn (Central IA → sub-aba "Churn")
 
 Aplicadas best practices ISP/Telecom 2026 (pesquisa Feb/2026): múltiplas dimensões (tempo, geografia, motivo), distinção entre pedido vs operação, tempo médio de vida, pipeline de churn iminente.

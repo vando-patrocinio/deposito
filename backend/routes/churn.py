@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, Query
 
 from core import DEMO_COMPANY_ID, require_role
 from database import db
+from services.motor_ia import chat_completion, AgentDisabledError
 
 logger = logging.getLogger("ponto.churn")
 router = APIRouter(prefix="/api/churn", tags=["churn"])
@@ -258,4 +259,78 @@ async def churn_dashboard(
         "by_kind": by_kind,
         "recent": recent,
         "generated_at": now.isoformat(),
+    }
+
+
+
+@router.post("/ai-insight")
+async def churn_ai_insight(
+    days: int = Query(180, ge=30, le=730),
+    user: dict = Depends(require_role("gestor")),
+) -> Dict[str, Any]:
+    """Gera briefing executivo do dashboard usando Motor IA (Claude Sonnet 4.5).
+
+    Reusa o `churn_dashboard()` pra coletar os dados, monta prompt enxuto
+    e devolve análise em markdown pt-BR (3 seções: diagnóstico, padrões,
+    recomendações). Caso o agente esteja desligado retorna 503.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    payload = await churn_dashboard(days=days, user=user)
+    k = payload["kpis"]
+
+    # Resumo compacto para o prompt (top 5 reasons/neighborhoods)
+    top_reasons = ", ".join(
+        f"{r['label']} ({r['count']})" for r in payload["by_reason"][:5])
+    top_neigh = ", ".join(
+        f"{n['label']} ({n['count']})" for n in payload["by_neighborhood"][:5])
+    months_str = ", ".join(
+        f"{m['month'][-2:]}={m['count']}" for m in payload["by_month"])
+
+    prompt = f"""Você é um analista sênior de retenção de clientes para um provedor de internet (ISP).
+Abaixo está um snapshot do dashboard de churn dos últimos {days} dias. Gere um briefing executivo objetivo em pt-BR, com no MÁXIMO 4 parágrafos curtos, usando markdown leve (negrito quando relevante).
+
+## Dados
+- Churn total: {k['total_churn']} (finalizados {k['finalized']}, pendentes {k['pending']})
+- Taxa de churn estimada: {k['churn_rate_pct']}% sobre {k['total_subscribers']} assinantes ativos
+- Tempo médio de vida do cliente: {k['avg_lifetime_days']} dias (mediana {k['median_lifetime_days']} d, {k['lifetime_samples']} amostras)
+- Pedidos vs Operação: cancelamento={payload['by_kind'].get('cancelamento')} / retirada={payload['by_kind'].get('retirada')}
+- Top motivos: {top_reasons or '—'}
+- Top bairros: {top_neigh or '—'}
+- Cancelamentos por mês (últimos 12): {months_str}
+
+## Estrutura da resposta (use os títulos exatos)
+**Diagnóstico**: 1 parágrafo sobre o quadro atual.
+**Padrões**: 1 parágrafo identificando concentrações (motivo dominante, bairros, tendência mensal).
+**Riscos**: 1 parágrafo sobre pipeline pendente e perda esperada nos próximos 30 dias.
+**Recomendações**: 3-4 ações priorizadas em bullet points, específicas e acionáveis.
+
+NÃO invente dados que não estão no snapshot. Se algum dado for zero, sinalize. Use linguagem direta, sem clichês corporativos."""
+
+    try:
+        result = await chat_completion(
+            cid,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=900,
+            temperature=0.35,
+            agent="churn_insight",
+        )
+    except AgentDisabledError as e:
+        from fastapi import HTTPException
+        raise HTTPException(503, str(e)) from e
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(502, f"Motor IA falhou: {e}") from e
+
+    return {
+        "ok": True,
+        "insight": result.get("content"),
+        "model": result.get("model"),
+        "provider": result.get("provider"),
+        "window_days": days,
+        "based_on": {
+            "total_churn": k["total_churn"],
+            "churn_rate_pct": k["churn_rate_pct"],
+            "top_reason": payload["by_reason"][0]["label"] if payload["by_reason"] else None,
+            "top_neighborhood": payload["by_neighborhood"][0]["label"] if payload["by_neighborhood"] else None,
+        },
     }

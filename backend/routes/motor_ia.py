@@ -114,6 +114,7 @@ AGENT_LABELS: Dict[str, str] = {
     "central_ia_coach":   "Central IA · Coaching",
     "voice_ai":           "Voice AI",
     "ai_dashboard_insight": "Dashboard Insights",
+    "churn_insight":      "Churn Insight",
     "general":            "Outros (geral)",
     "atendimento":        "Atendimento (legado)",
 }
