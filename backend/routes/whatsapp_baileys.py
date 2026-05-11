@@ -355,12 +355,32 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                      "Use essas informações para personalizar — mas não recite "
                      "tudo, use só o que for relevante para a dúvida atual.")
     else:
-        extra.append(
-            "=== CLIENTE NÃO IDENTIFICADO ===\nVocê não conseguiu vincular este "
-            "telefone a nenhum assinante cadastrado. Peça nome completo + CPF "
-            "antes de prosseguir, sem ser invasivo. Se for venda nova, "
-            "pergunte primeiro o endereço para confirmar cobertura."
-        )
+        # CLIENTE NÃO IDENTIFICADO POR TELEFONE — aciona fluxo CPF
+        try:
+            from services.cpf_identifier import handle_unidentified_inbound
+            ident_sub, instruction = await handle_unidentified_inbound(
+                cid, phone, user_text)
+            if ident_sub:
+                # Acabou de identificar! Monta contexto inline pra esta resposta
+                parts = [f"Nome: {ident_sub.get('name')}"]
+                if ident_sub.get("plan_name"):
+                    parts.append(f"Plano: {ident_sub['plan_name']}")
+                if ident_sub.get("status"):
+                    parts.append(f"Status: {ident_sub['status']}")
+                if ident_sub.get("external_code"):
+                    parts.append(f"Cód: {ident_sub['external_code']}")
+                if ident_sub.get("branch"):
+                    parts.append(f"Filial: {ident_sub['branch']}")
+                extra.append("=== CLIENTE RECÉM-IDENTIFICADO POR CPF ===\n"
+                              + " · ".join(parts))
+            extra.append(instruction["directive"])
+        except Exception as e:
+            logger.info("[wa-baileys] cpf identifier skip: %s", e)
+            extra.append(
+                "=== CLIENTE NÃO IDENTIFICADO ===\nVocê não conseguiu vincular este "
+                "telefone a nenhum assinante cadastrado. Peça o CPF do titular "
+                "antes de prosseguir, sem ser invasivo."
+            )
     extra.append(
         "=== CANAL: WHATSAPP TEXTO ===\nVocê está respondendo via WhatsApp "
         "(não voz). Use no máximo 4 frases curtas, com emojis sutis quando "
