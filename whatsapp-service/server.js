@@ -70,6 +70,23 @@ async function startSock() {
 
     sock.ev.on("creds.update", saveCreds);
 
+    // Quando Baileys emite erro fatal de init/stream, normalmente já vai
+    // emitir connection:close, mas em algumas builds ele atrasa minutos.
+    // Capturamos via `pino` redirecionado pelo logger acima — mas como esse
+    // logger filtra warn, escutamos aqui também o stream:error direto.
+    try {
+      sock.ws?.on?.("error", (e) => {
+        console.warn("[wa] ws error:", e?.message || e);
+        forceReconnect("ws-error");
+      });
+      sock.ws?.on?.("close", () => {
+        if (connState === "connected") {
+          console.warn("[wa] ws closed inesperadamente — forçando reconnect");
+          forceReconnect("ws-close");
+        }
+      });
+    } catch (e) { /* ignore */ }
+
     sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect: ld, qr } = update;
       if (qr) {
@@ -181,6 +198,33 @@ app.get("/status", (_req, res) => {
   });
 });
 
+/** Marca o socket como morto e força reconexão. Usado quando sendMessage
+ *  trava ou query retorna timeout — Baileys às vezes não emite o evento
+ *  `connection:close` imediatamente nesses casos, e o socket fica zumbi
+ *  aceitando sendMessage sem entregar nada. */
+function forceReconnect(reason) {
+  console.warn("[wa] forçando reconexão:", reason);
+  connState = "disconnected";
+  lastDisconnect = { code: 0, reason: `forced:${reason}` };
+  try { if (sock?.end) sock.end(new Error(reason)); } catch (e) { /* ignore */ }
+  try { if (sock?.ws?.close) sock.ws.close(); } catch (e) { /* ignore */ }
+  sock = null;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); }
+  reconnectTimer = setTimeout(startSock, 1500);
+}
+
+function withTimeout(promise, ms, label) {
+  let to;
+  const timeout = new Promise((_resolve, reject) => {
+    to = setTimeout(() => reject(new Error(`${label} timeout ${ms}ms`)), ms);
+  });
+  return Promise.race([
+    promise.then((v) => { clearTimeout(to); return v; },
+                  (e) => { clearTimeout(to); throw e; }),
+    timeout,
+  ]);
+}
+
 app.post("/send", async (req, res) => {
   if (connState !== "connected" || !sock) {
     return res.status(503).json({ ok: false, error: "WhatsApp não conectado." });
@@ -189,13 +233,34 @@ app.post("/send", async (req, res) => {
   if (!phone || !text) return res.status(400).json({ ok: false, error: "phone e text obrigatórios" });
   phone = String(phone).replace(/\D/g, "");
   if (!phone) return res.status(400).json({ ok: false, error: "phone inválido" });
+  // Proteção: WhatsApp aceita silenciosamente sendMessage para o próprio número
+  //   mas a mensagem nunca chega. Detectamos e retornamos erro claro.
+  try {
+    const mePhone = String(me?.id || "").split(":")[0].split("@")[0].replace(/\D/g, "");
+    if (mePhone && mePhone === phone) {
+      return res.status(400).json({
+        ok: false,
+        error: "Não é possível enviar mensagem para o próprio número conectado.",
+      });
+    }
+  } catch (e) { /* ignore */ }
   const jid = phone.includes("@") ? phone : `${phone}@s.whatsapp.net`;
   try {
-    const r = await sock.sendMessage(jid, { text: String(text) });
+    // Timeout duro: se Baileys ficar zumbi, evita pendurar HTTP por minutos.
+    const r = await withTimeout(
+      sock.sendMessage(jid, { text: String(text) }),
+      12000,
+      "sendMessage",
+    );
     return res.json({ ok: true, message_id: r.key?.id, jid });
   } catch (e) {
-    console.error("[wa] send err", e);
-    return res.status(502).json({ ok: false, error: e.message });
+    console.error("[wa] send err", e?.message || e);
+    // Erros típicos: "Timed Out", "Connection Closed", "send timeout"
+    // → socket está morto/zumbi. Força reconexão.
+    const msg = String(e?.message || "");
+    const fatal = /timeout|closed|terminat|connection|stale/i.test(msg);
+    if (fatal) forceReconnect(`send:${msg}`);
+    return res.status(502).json({ ok: false, error: msg || "erro desconhecido" });
   }
 });
 

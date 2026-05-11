@@ -86,9 +86,34 @@ class SendIn(BaseModel):
 @router.post("/send")
 async def send_message(payload: SendIn,
                         user: dict = Depends(require_role("gestor"))):
-    out = await _sidecar_post("/send", {"phone": payload.phone, "text": payload.text})
-    # Loga envio no histórico
+    """Envio manual de mensagem. Persistimos no histórico SEMPRE, mas o
+    `delivery_status` reflete o que o sidecar Baileys realmente confirmou.
+
+    Se o sidecar falhar (socket zumbi, timeout, desconectado), retornamos
+    HTTP 502 com `delivery_status=failed` no doc — para o frontend mostrar
+    erro pro usuário em vez de assumir entrega.
+    """
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    send_ok = False
+    send_error: Optional[str] = None
+    out: Dict[str, Any] = {}
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as cli:
+            r = await cli.post(f"{SIDECAR_BASE}/send",
+                                json={"phone": payload.phone, "text": payload.text})
+            try:
+                out = r.json()
+            except Exception:
+                out = {"raw": r.text}
+            if r.status_code < 400 and out.get("ok"):
+                send_ok = True
+            else:
+                send_error = (out.get("error")
+                              or f"HTTP {r.status_code}")
+    except httpx.HTTPError as e:
+        logger.warning("[wa-baileys] sidecar /send falhou: %s", e)
+        send_error = str(e)
+
     await db.aihub_wa_messages.insert_one({
         "id": f"wam-{uuid.uuid4().hex[:10]}",
         "company_id": cid,
@@ -98,11 +123,17 @@ async def send_message(payload: SendIn,
         "message_id": out.get("message_id"),
         "created_at": now_iso(),
         "actor_user": user.get("email") or user.get("id"),
-        # Auditoria: quem mandou (usado pela Central IA pra calcular
-        # produtividade individual). Mensagens via auto-reply NÃO setam isso.
         "sent_by_user_id": user.get("id"),
         "auto_reply": False,
+        "delivery_status": "sent" if send_ok else "failed",
+        "delivery_error": send_error,
     })
+    if not send_ok:
+        # Não engole: deixa o frontend mostrar toast vermelho.
+        raise HTTPException(
+            status_code=502,
+            detail=f"WhatsApp não confirmou entrega: {send_error or 'erro desconhecido'}",
+        )
     return out
 
 
