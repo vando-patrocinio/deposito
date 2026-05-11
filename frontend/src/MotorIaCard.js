@@ -218,13 +218,28 @@ export default function MotorIaCard() {
           modelo específico DeepSeek pode ser ajustado.
         </p>
         <Row label="Modelo DeepSeek">
-          <select value={atendModel} onChange={(e) => setAtendModel(e.target.value)}
-                    data-testid="motor-ia-atend-model"
-                    style={{ ...inputStyle, fontFamily: "ui-monospace, monospace" }}>
-            <option value="deepseek/deepseek-chat">deepseek/deepseek-chat (rápido, custo baixo)</option>
-            <option value="deepseek/deepseek-r1">deepseek/deepseek-r1 (raciocínio profundo)</option>
-            <option value="deepseek/deepseek-chat-v3.1">deepseek/deepseek-chat-v3.1 (mais novo)</option>
-          </select>
+          <input list="deepseek-models"
+                  value={atendModel}
+                  onChange={(e) => setAtendModel(e.target.value)}
+                  data-testid="motor-ia-atend-model"
+                  placeholder="deepseek/deepseek-v4-flash"
+                  style={{ ...inputStyle, fontFamily: "ui-monospace, monospace" }} />
+          <datalist id="deepseek-models">
+            <option value="deepseek/deepseek-chat">DeepSeek Chat (rápido, custo baixo)</option>
+            <option value="deepseek/deepseek-v4-flash">DeepSeek V4 Flash (recomendado)</option>
+            <option value="deepseek/deepseek-r1">DeepSeek R1 (raciocínio profundo)</option>
+            <option value="deepseek/deepseek-chat-v3.1">DeepSeek Chat v3.1</option>
+            <option value="deepseek/deepseek-r1-distill-llama-70b">R1 Distill Llama 70B</option>
+            <option value="deepseek/deepseek-r1:free">DeepSeek R1 (Free tier)</option>
+          </datalist>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+            Digite ou escolha qualquer modelo com prefixo <code>deepseek/</code>.
+            Veja a lista completa em{" "}
+            <a href="https://openrouter.ai/deepseek" target="_blank" rel="noreferrer"
+                style={{ color: "var(--accent)", textDecoration: "underline" }}>
+              openrouter.ai/deepseek
+            </a>
+          </div>
         </Row>
         <Row label="Fallbacks DeepSeek">
           <textarea value={atendFallbacks}
