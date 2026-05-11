@@ -121,6 +121,44 @@ export default function MotorIaCard() {
       </div>
 
       <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+        gap: 10, marginBottom: 18,
+      }} data-testid="motor-ia-status-panel">
+        <StatusBox
+          label="Texto geral"
+          active={!!(cfg?.enabled && cfg?.has_openrouter_key)}
+          detail={cfg?.default_text_model || "—"}
+          subtitle="Avaliações, coaching, insights"
+          testId="status-text-general"
+        />
+        <StatusBox
+          label="Agentes de atendimento"
+          active={!!(cfg?.enabled && cfg?.has_openrouter_key)}
+          detail={cfg?.atendimento_model || "—"}
+          subtitle="WhatsApp · Jerusa · Playground"
+          accent="#0d9488"
+          testId="status-atendimento"
+        />
+        <StatusBox
+          label="Voz — Transcrição (STT)"
+          active={!!cfg?.has_audio_key}
+          detail={cfg?.has_audio_key ? "Whisper-1 (OpenAI)" : "Não configurado"}
+          subtitle="Cliente fala → texto"
+          testId="status-stt"
+        />
+        <StatusBox
+          label="Voz — Síntese (TTS)"
+          active={!!cfg?.has_audio_key}
+          detail={cfg?.has_audio_key
+            ? `tts-1 · voz "${cfg?.tts_voice || "nova"}"`
+            : "Não configurado"}
+          subtitle="IA responde falando"
+          testId="status-tts"
+        />
+      </div>
+
+      <div style={{
         padding: 12, borderRadius: 8, fontSize: 12,
         background: "rgba(59,130,246,.06)",
         border: "1px solid rgba(59,130,246,.20)",
@@ -390,6 +428,54 @@ const inputStyle = {
   fontSize: 13, color: "var(--text-primary)",
   outline: "none",
 };
+
+function StatusBox({ label, active, detail, subtitle, accent, testId }) {
+  const color = active ? (accent || "#16a34a") : "#dc2626";
+  return (
+    <div data-testid={testId} style={{
+      padding: "10px 12px", borderRadius: 8,
+      border: "1px solid var(--border-default)",
+      background: "var(--bg-surface-2)",
+      borderLeft: `3px solid ${color}`,
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6,
+        fontSize: 10, color: "var(--text-muted)",
+        textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700,
+      }}>
+        <span style={{
+          width: 7, height: 7, borderRadius: "50%",
+          background: color,
+          boxShadow: active ? `0 0 0 2px ${color}33` : "none",
+        }} />
+        <span>{label}</span>
+      </div>
+      <div style={{
+        fontSize: 12, fontWeight: 600, color: "var(--text-primary)",
+        marginTop: 5, fontFamily: "ui-monospace, monospace",
+        wordBreak: "break-all", lineHeight: 1.3,
+      }}>
+        {detail}
+      </div>
+      {subtitle && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+          {subtitle}
+        </div>
+      )}
+      <div style={{
+        marginTop: 6,
+        fontSize: 10, fontWeight: 700, color: color,
+        display: "inline-flex", alignItems: "center", gap: 4,
+      }}>
+        {active ? (
+          <><CheckCircle2 size={11} /> Ativo</>
+        ) : (
+          <><AlertCircle size={11} /> Inativo</>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function Section({ title, children }) {
   return (
