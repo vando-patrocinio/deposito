@@ -5,13 +5,15 @@ import {
   Plus, Trash2, Edit2, Play, Save, X, RefreshCw, CheckCircle2,
   AlertTriangle, Wifi, WifiOff,
   Sparkles, Building2, DollarSign, Star, Wand2, ArrowUp, QrCode,
-  Brain,
+  Brain, Smartphone,
 } from "lucide-react";
 import WhatsAppQRPanel from "@/WhatsAppQRPanel";
+import WhatsAppInstancePanel from "@/WhatsAppInstancePanel";
 import CentralIaDashboard from "@/CentralIaDashboard";
 
 const TABS = [
   { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode },
+  { id: "instancia", label: "Instância", icon: Smartphone },
   { id: "central_ia", label: "Central IA", icon: Brain },
   { id: "mensagem", label: "Mensagem", icon: MessageCircle },
   { id: "agents", label: "Agentes", icon: Bot },
@@ -65,6 +67,7 @@ export default function AIHubPanel({ initialTab = "central_ia" }) {
 
       {tab === "central_ia" && <CentralIaDashboard />}
       {tab === "whatsapp_qr" && <WhatsAppQRPanel />}
+      {tab === "instancia" && <WhatsAppInstancePanel />}
       {tab === "mensagem" && <MensagemTab />}
       {tab === "agents" && <AgentsTab />}
       {tab === "playground" && <PlaygroundTab />}
