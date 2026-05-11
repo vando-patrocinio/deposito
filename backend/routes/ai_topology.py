@@ -71,6 +71,20 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
     except Exception:
         copilot_hints = 0
         hints_per_user = {}
+    # Sentinela Lousa — alertas ativos + novos 24h
+    try:
+        from services.sentinela_lousa import count_alerts_24h
+        sentinela = await count_alerts_24h(cid)
+    except Exception:
+        sentinela = {"active": 0, "new_24h": 0, "resolved_24h": 0, "by_kind": {}}
+    # Tickets ativos na Lousa (para a aresta Sentinela → Lousa)
+    try:
+        active_tickets = await db.tickets.count_documents({
+            "company_id": cid,
+            "status": {"$nin": ["finalizada", "cancelada", "encerrada", "reagendada"]},
+        })
+    except Exception:
+        active_tickets = 0
     outage_aware = 0
     async for o in db.network_outages.find(
         {"company_id": cid, "status": "active"},
@@ -197,6 +211,20 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
          "model_kind": "retrieval",
          "metric": f"{high_csat} exemplos",
          "metric_sub": "CSAT≥8 nos últimos 30d"},
+        {"id": "sentinela", "label": "Sentinela Lousa",
+         "subtitle": "Monitor de tickets", "icon": "Shield", "color": "#ef4444",
+         "kind": "ai",
+         "model": "Rule engine + heurísticas",
+         "model_kind": "rule",
+         "metric": f"{sentinela['active']} alertas",
+         "metric_sub": f"{sentinela['new_24h']} novos/24h"},
+        {"id": "lousa", "label": "Lousa (Kanban)",
+         "subtitle": "Tickets em curso", "icon": "ClipboardList",
+         "color": "#64748b", "kind": "system",
+         "model": "Backend (DB)",
+         "model_kind": "rule",
+         "metric": f"{active_tickets} ativos",
+         "metric_sub": "Bolhas em aberto"},
     ]
     nodes.extend(human_nodes)
 
@@ -219,6 +247,13 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
          "label": "CSAT alto → exemplos"},
         {"from": "learning", "to": "atendimento", "value": high_csat,
          "label": "Few-shots no prompt"},
+        # Sentinela Lousa: monitora tickets e gera alertas
+        {"from": "lousa", "to": "sentinela", "value": active_tickets,
+         "label": "Tickets monitorados",
+         "desc": "Sentinela varre todos os tickets ativos a cada 2min"},
+        {"from": "sentinela", "to": "lousa", "value": sentinela["active"],
+         "label": "Alertas ativos",
+         "desc": "Alertas inseridos como notas internas nos tickets"},
     ]
     # Co-Pilot → cada humano + cada humano → atendimento
     edges.extend(human_edges_in)
@@ -243,6 +278,9 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
             "copilot_hints_24h": copilot_hints,
             "outages_active": outages_active,
             "human_attendants": len([n for n in human_nodes if n.get("user_id")]),
+            "sentinela_active_alerts": sentinela["active"],
+            "sentinela_new_24h": sentinela["new_24h"],
+            "active_tickets": active_tickets,
         },
         "motor": {
             "enabled": motor_enabled,

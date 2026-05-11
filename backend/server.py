@@ -58,6 +58,7 @@ from routes import (
     smartolt_ai as routes_smartolt_ai,
     ai_topology as routes_ai_topology,
     copilot_ranking as routes_copilot_ranking,
+    sentinela_lousa as routes_sentinela_lousa,
     plans as routes_plans,
     voice as routes_voice,
     whatsapp_baileys as routes_wa_baileys,
@@ -285,6 +286,8 @@ async def _startup() -> None:
     # SmartOLT AI worker — detecta outages a cada 90s
     from services.smartolt_ai import start_worker as start_smartolt_ai
     start_smartolt_ai()
+    from services.sentinela_lousa import start_worker as start_sentinela_lousa
+    start_sentinela_lousa()
     asyncio.create_task(routes_plans.adjustment_scheduler_worker())
     logger.info("Scheduler iniciado.")
 
@@ -324,6 +327,7 @@ app.include_router(routes_motor_ia.router)
 app.include_router(routes_smartolt_ai.router)
 app.include_router(routes_ai_topology.router)
 app.include_router(routes_copilot_ranking.router)
+app.include_router(routes_sentinela_lousa.router)
 app.include_router(routes_voice.router)
 app.include_router(routes_wa_baileys.router)
 app.include_router(routes_central_ia.router)

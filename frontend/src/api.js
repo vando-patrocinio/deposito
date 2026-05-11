@@ -250,6 +250,17 @@ export const api = {
 
   // ========= AI Topology (Motor IA card) =========
   aiTopologyFlow: () => client.get(`/ai-topology/flow`).then((r) => r.data),
+  // ===== Sentinela Lousa AI — alertas autônomos de tickets =====
+  sentinelaSummary: () =>
+    client.get(`/sentinela-lousa/summary`).then((r) => r.data),
+  sentinelaAlerts: (params = {}) =>
+    client.get(`/sentinela-lousa/alerts`, { params }).then((r) => r.data),
+  sentinelaScan: () =>
+    client.post(`/sentinela-lousa/scan`).then((r) => r.data),
+  sentinelaAcknowledge: (id) =>
+    client.post(`/sentinela-lousa/alerts/${id}/acknowledge`).then((r) => r.data),
+  sentinelaDismiss: (id) =>
+    client.post(`/sentinela-lousa/alerts/${id}/dismiss`).then((r) => r.data),
   // Co-Pilot ranking — quem aplica as dicas e quem ganha CSAT
   copilotRankingWeekly: (days = 7) =>
     client.get(`/copilot-ranking/weekly`, { params: { days } }).then((r) => r.data),

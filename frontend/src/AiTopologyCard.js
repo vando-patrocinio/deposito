@@ -2,30 +2,33 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
 import {
   Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
-  Loader2, Activity,
+  Loader2, Activity, Shield, ClipboardList,
 } from "lucide-react";
 
-const ICONS = { Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb };
+const ICONS = { Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
+  Shield, ClipboardList };
 
 /* Layout dinâmico:
    - IAs ficam no topo/centro do canvas em posições fixas
    - Atendentes humanos (N variável) ficam dispostos na faixa inferior,
      distribuídos uniformemente da esquerda pra direita.
 */
-const W = 1100, H = 580;
+const W = 1100, H = 700;
 const AI_LAYOUT = {
   smartolt:    { x: 120, y: 90 },
   atendimento: { x: 380, y: 250 },
-  copilot:     { x: 720, y: 250 },   // Co-Pilot bem visível ao lado de Atendimento
+  copilot:     { x: 720, y: 250 },
   evaluator:   { x: 960, y: 90 },
   coach:       { x: 960, y: 410 },
   learning:    { x: 120, y: 250 },
+  sentinela:   { x: 380, y: 410 },   // Sentinela — abaixo de Isabella
+  lousa:       { x: 720, y: 410 },   // Lousa — ao lado da Sentinela
 };
 
 function humanLayout(humanNodes) {
   // Linha inferior — distribuída uniformemente
   const n = humanNodes.length;
-  const yLine = 510;
+  const yLine = 630;
   if (n === 0) return {};
   const positions = {};
   const margin = 110;
@@ -150,6 +153,7 @@ export default function AiTopologyCard() {
         <KpiPill label="Humano respondeu"  value={totals.wa_human_24h ?? 0}  color="#475569" />
         <KpiPill label="Dicas Co-Pilot"    value={totals.copilot_hints_24h ?? 0} color="#d97706" />
         <KpiPill label="Avaliações IA"     value={totals.evaluations_24h ?? 0}   color="#0ea5e9" />
+        <KpiPill label="Alertas Sentinela" value={totals.sentinela_active_alerts ?? 0} color="#ef4444" />
         <KpiPill label="Atendentes ativos" value={totals.human_attendants ?? 0}  color="#475569" />
       </div>
 

@@ -9,6 +9,7 @@ import LousaHistoryModal from "./lousa/LousaHistoryModal";
 import BulkActionsBar from "./lousa/BulkActionsBar";
 import useEventStream from "@/useEventStream";
 import { isAlertsEnabled, setAlertsEnabled, maybeFireOverdueAlerts } from "./slaAlerts";
+import SentinelaLousaCard from "./SentinelaLousaCard";
 
 const TYPE_LABELS = {
   reparo: "🔧 Reparo",
@@ -79,6 +80,8 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [editingTicket, setEditingTicket] = useState(null);
   const [reschedTicket, setReschedTicket] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showSentinela, setShowSentinela] = useState(false);
+  const [sentinelaCount, setSentinelaCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -188,6 +191,19 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       .then((cfg) => { if (mounted) setAtlazTenantDomain((cfg?.tenant_domain || "").replace(/\/$/, "")); })
       .catch(() => {});
     return () => { mounted = false; };
+  }, []);
+
+  // Polling do contador da Sentinela Lousa AI
+  useEffect(() => {
+    let alive = true;
+    const fetchCount = () => {
+      api.sentinelaSummary()
+        .then((s) => { if (alive) setSentinelaCount(s?.active || 0); })
+        .catch(() => {});
+    };
+    fetchCount();
+    const t = setInterval(fetchCount, 30000);
+    return () => { alive = false; clearInterval(t); };
   }, []);
 
   function openCreateTicket() {
@@ -324,6 +340,29 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Button
+            variant="soft"
+            onClick={() => setShowSentinela(true)}
+            data-testid="open-sentinela-btn"
+            title="Alertas da Sentinela Lousa AI"
+            style={{
+              position: "relative",
+              background: sentinelaCount > 0 ? "#fef2f2" : "#f0fdf4",
+              color: sentinelaCount > 0 ? "#991b1b" : "#15803d",
+              border: `1px solid ${sentinelaCount > 0 ? "#fecaca" : "#bbf7d0"}`,
+              fontWeight: 700,
+            }}
+          >
+            🛡 Sentinela
+            {sentinelaCount > 0 && (
+              <span data-testid="sentinela-badge" style={{
+                marginLeft: 6, padding: "1px 7px", borderRadius: 999,
+                background: "#dc2626", color: "#fff",
+                fontSize: 11, fontWeight: 800,
+                fontFamily: "ui-monospace, monospace",
+              }}>{sentinelaCount}</span>
+            )}
+          </Button>
           <DateNavigator
             selectedDate={selectedDate}
             isToday={isToday}
@@ -536,6 +575,43 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         />
       )}
       {showHistory && <LousaHistoryModal onClose={() => setShowHistory(false)} />}
+      {showSentinela && (
+        <div data-testid="sentinela-drawer"
+              onClick={() => setShowSentinela(false)}
+              style={{
+                position: "fixed", inset: 0, zIndex: 1000,
+                background: "rgba(0,0,0,.5)",
+                display: "flex", justifyContent: "flex-end",
+              }}>
+          <div onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: "min(720px, 95vw)", height: "100%",
+                  background: "var(--bg-canvas)",
+                  overflowY: "auto",
+                  padding: 22,
+                  boxShadow: "-12px 0 30px rgba(0,0,0,.2)",
+                }}>
+            <div style={{ display: "flex", justifyContent: "space-between",
+                              alignItems: "center", marginBottom: 14 }}>
+              <strong style={{ fontSize: 13, color: "var(--text-muted)",
+                                  textTransform: "uppercase",
+                                  letterSpacing: 0.6 }}>
+                Sentinela Lousa AI
+              </strong>
+              <button onClick={() => setShowSentinela(false)}
+                        data-testid="close-sentinela-btn"
+                        style={{
+                          padding: "5px 10px", fontSize: 11, fontWeight: 700,
+                          border: "1px solid var(--border-default)",
+                          background: "var(--bg-surface)",
+                          color: "var(--text-secondary)",
+                          borderRadius: 5, cursor: "pointer",
+                        }}>Fechar ✕</button>
+            </div>
+            <SentinelaLousaCard />
+          </div>
+        </div>
+      )}
       {selectMode && (
         <BulkActionsBar
           selectedIds={selectedIds}
