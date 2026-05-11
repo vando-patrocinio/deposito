@@ -4,7 +4,7 @@ import {
   Filter, MessageSquare, Clock, MoonStar, Hand, UserCheck,
   CheckCircle2, GraduationCap, ChevronDown, ChevronUp, Lightbulb,
   Wifi, WifiOff, Activity, Info, Signal, MapPin, Phone, CreditCard,
-  AlertCircle, Sparkles, Lock, AlertTriangle, ClipboardList,
+  AlertCircle, Sparkles, Lock, AlertTriangle, ClipboardList, RefreshCw,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -1317,6 +1317,8 @@ function CustomerProfileModal({ phone, profile, onClose }) {
   const ontStatus = signal?.status || signal?.ont_status;
   const isOntOnline = String(ontStatus || "").toLowerCase().includes("online");
   const [creatingTicket, setCreatingTicket] = useState(false);
+  const [rebootingOnt, setRebootingOnt] = useState(false);
+  const ontExtId = signal?.unique_external_id;
 
   const rxColor = (v) => {
     if (v == null) return "var(--text-muted)";
@@ -1334,6 +1336,22 @@ function CustomerProfileModal({ phone, profile, onClose }) {
     [addr.city, addr.state].filter(Boolean).join(" / "),
     addr.zip_code ? `CEP ${addr.zip_code}` : null,
   ].filter(Boolean).join(" · ") : (sub?.address || null);
+
+  const onRebootOnt = async () => {
+    if (!ontExtId) return;
+    if (!window.confirm(
+      "Reiniciar a ONT do cliente?\n\nA conexão vai cair por ~30s e voltar automaticamente.",
+    )) return;
+    setRebootingOnt(true);
+    try {
+      await api.smartoltOnuReboot(ontExtId);
+      alert("ONT reiniciada. A conexão volta em ~30 segundos.");
+    } catch (e) {
+      alert("Falha ao reiniciar: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setRebootingOnt(false);
+    }
+  };
 
   const onCreateTicket = async () => {
     if (!sub) {
@@ -1551,10 +1569,10 @@ function CustomerProfileModal({ phone, profile, onClose }) {
             )}
           </Section>
 
-          {/* Action: criar chamado */}
+          {/* Action: reiniciar ONT + criar chamado */}
           <div style={{
             display: "flex", gap: 8, justifyContent: "flex-end",
-            paddingTop: 4,
+            paddingTop: 4, flexWrap: "wrap",
           }}>
             <button onClick={onClose}
                     data-testid="wa-customer-cancel"
@@ -1565,6 +1583,26 @@ function CustomerProfileModal({ phone, profile, onClose }) {
                       fontSize: 12, fontWeight: 600, cursor: "pointer",
                     }}>
               Fechar
+            </button>
+            <button onClick={onRebootOnt}
+                    disabled={rebootingOnt || !ontExtId}
+                    data-testid="wa-customer-reboot-ont"
+                    title={!ontExtId
+                      ? "ONT não localizada na SmartOLT"
+                      : "Reinicia a ONT do cliente via SmartOLT (~30s)"}
+                    style={{
+                      padding: "8px 14px", borderRadius: 6,
+                      border: "1px solid #d97706",
+                      background: "transparent",
+                      color: "#d97706",
+                      fontSize: 12, fontWeight: 600,
+                      cursor: (rebootingOnt || !ontExtId) ? "not-allowed" : "pointer",
+                      opacity: (rebootingOnt || !ontExtId) ? 0.5 : 1,
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                    }}>
+              <RefreshCw size={13} strokeWidth={2}
+                          style={{ animation: rebootingOnt ? "wa-spin 1s linear infinite" : "none" }} />
+              {rebootingOnt ? "Reiniciando..." : "Reiniciar ONT"}
             </button>
             <button onClick={onCreateTicket}
                     disabled={creatingTicket || !sub}

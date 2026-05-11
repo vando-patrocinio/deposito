@@ -13,6 +13,7 @@ import asyncio
 import logging
 import time
 import unicodedata
+import uuid
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -109,6 +110,16 @@ async def _http_get(cfg: SmartoltConfig, path: str) -> Dict[str, Any]:
     url = f"{_base_url(cfg)}{path}"
     async with httpx.AsyncClient(timeout=cfg.timeout_seconds) as client:
         r = await client.get(url, headers={"X-Token": cfg.api_key})
+        r.raise_for_status()
+        return r.json()
+
+
+async def _http_post(cfg: SmartoltConfig, path: str,
+                      payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    url = f"{_base_url(cfg)}{path}"
+    async with httpx.AsyncClient(timeout=cfg.timeout_seconds) as client:
+        r = await client.post(url, headers={"X-Token": cfg.api_key},
+                                json=payload or {})
         r.raise_for_status()
         return r.json()
 
@@ -385,9 +396,54 @@ async def get_onu_signal_live(external_id: str,
     return {"cached": False, "onu": onu}
 
 
-# ---------------------------------------------------------------------------
-# Resolver para Lousa (chamado pelo lousa.py)
-# ---------------------------------------------------------------------------
+@router.post("/onu/{external_id}/reboot")
+async def reboot_onu(external_id: str,
+                       user: dict = Depends(require_role("gestor"))):
+    """Reinicia a ONT/ONU via SmartOLT API.
+
+    Usa POST /onu/reboot/{external_id} no SmartOLT (equivalente ao endpoint
+    público `reboot-onu-by-onu-unique-external-id`). Best-effort: registra
+    a ação na coleção `smartolt_actions` para auditoria.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(cid)
+    if not cfg.enabled or not cfg.subdomain or not cfg.api_key:
+        raise HTTPException(400, "SmartOLT desabilitado ou não configurado.")
+    onu = await db.smartolt_onus.find_one(
+        {"company_id": cid, "unique_external_id": external_id},
+        {"_id": 0, "name": 1, "olt_name": 1, "sn": 1},
+    )
+    if not onu:
+        raise HTTPException(404, "ONU não encontrada no cache.")
+    try:
+        resp = await _http_post(cfg, f"/onu/reboot/{external_id}")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            502,
+            f"SmartOLT HTTP {e.response.status_code}: {e.response.text[:200]}",
+        ) from e
+    except Exception as e:
+        raise HTTPException(502, f"SmartOLT erro: {e}") from e
+    ok = bool(resp.get("status"))
+    await db.smartolt_actions.insert_one({
+        "id": f"sma-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "action": "reboot",
+        "external_id": external_id,
+        "onu_name": onu.get("name"),
+        "olt_name": onu.get("olt_name"),
+        "actor_user": user.get("email") or user.get("id"),
+        "actor_user_id": user.get("id"),
+        "result_ok": ok,
+        "result_raw": resp,
+        "created_at": now_iso(),
+    })
+    if not ok:
+        raise HTTPException(502, f"SmartOLT recusou reboot: {resp.get('error') or resp}")
+    return {"ok": True, "external_id": external_id, "smartolt": resp}
+
+
+
 async def resolve_signal_for_ticket(ticket: dict) -> Optional[dict]:
     """Resolve sinal SmartOLT para uma bolha. Best-effort, nunca lança."""
     try:
