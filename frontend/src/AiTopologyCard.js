@@ -88,7 +88,7 @@ export default function AiTopologyCard() {
 
       <div style={{
         display: "flex", alignItems: "flex-start",
-        justifyContent: "space-between", gap: 12, marginBottom: 16, flexWrap: "wrap",
+        justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap",
       }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)",
@@ -114,6 +114,30 @@ export default function AiTopologyCard() {
           <span>auto-refresh 30s</span>
         </div>
       </div>
+
+      {/* Banner Motor IA — modelos em uso */}
+      {data?.motor && (
+        <div data-testid="motor-banner" style={{
+          marginBottom: 14, padding: "8px 12px", borderRadius: 8,
+          border: "1px solid var(--border-default)",
+          background: "linear-gradient(90deg, rgba(13,148,136,.06), transparent)",
+          display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+          fontSize: 11,
+        }}>
+          <span style={{ fontWeight: 800, color: "var(--text-secondary)",
+                            textTransform: "uppercase", letterSpacing: 0.4,
+                            display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span style={{
+              width: 7, height: 7, borderRadius: "50%",
+              background: data.motor.enabled ? "#16a34a" : "#dc2626",
+            }} />
+            Motor IA
+          </span>
+          <ModelTag label="Atendimento" model={data.motor.atendimento_model} />
+          <ModelTag label="Geral" model={data.motor.default_text_model} />
+          <ModelTag label="Voz (TTS)" model={data.motor.tts_voice} kind="audio" />
+        </div>
+      )}
 
       {/* KPI strip */}
       <div style={{
@@ -196,8 +220,8 @@ export default function AiTopologyCard() {
             if (!pos) return null;
             const Ico = ICONS[n.icon] || Bot;
             const isHuman = n.kind === "human";
-            const nodeW = isHuman ? 130 : 170;
-            const nodeH = isHuman ? 62 : 76;
+            const nodeW = isHuman ? 130 : 180;
+            const nodeH = isHuman ? 62 : 92;
             return (
               <g key={n.id}
                   transform={`translate(${pos.x - nodeW / 2} ${pos.y - nodeH / 2})`}
@@ -215,9 +239,10 @@ export default function AiTopologyCard() {
                           height: "100%",
                           display: "flex", flexDirection: "column",
                           justifyContent: "center",
+                          gap: 2,
                         }}>
                     <div style={{ display: "flex", alignItems: "center",
-                                     gap: 6, marginBottom: 3 }}>
+                                     gap: 6 }}>
                       <div style={{
                         width: isHuman ? 18 : 22,
                         height: isHuman ? 18 : 22, borderRadius: 5,
@@ -243,14 +268,17 @@ export default function AiTopologyCard() {
                                      whiteSpace: "nowrap" }}>
                       {n.subtitle}
                     </div>
+                    {!isHuman && n.model && (
+                      <ModelChip model={n.model} kind={n.model_kind} />
+                    )}
                     <div style={{ fontSize: 10.5, fontWeight: 700,
-                                     color: n.color, marginTop: 2,
+                                     color: n.color,
                                      fontFamily: "ui-monospace, monospace" }}>
                       {n.metric}
                     </div>
                     {isHuman && n.hints_received > 0 && (
                       <div style={{ fontSize: 9, color: "#d97706",
-                                       fontWeight: 700, marginTop: 1,
+                                       fontWeight: 700,
                                        display: "flex", alignItems: "center", gap: 3 }}>
                         <Lightbulb size={9} strokeWidth={2.2} />
                         {n.hints_received} dica{n.hints_received === 1 ? "" : "s"}
@@ -294,6 +322,75 @@ export default function AiTopologyCard() {
       )}
     </div>
   );
+}
+
+function ModelTag({ label, model, kind }) {
+  if (!model) return null;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <span style={{ color: "var(--text-muted)", fontSize: 10,
+                        textTransform: "uppercase", letterSpacing: 0.4,
+                        fontWeight: 700 }}>
+        {label}
+      </span>
+      <span title={model} style={{
+        padding: "2px 8px", borderRadius: 4,
+        background: kind === "audio" ? "#fce7f3" : "var(--bg-surface)",
+        color: kind === "audio" ? "#9d174d" : "var(--text-primary)",
+        fontFamily: "ui-monospace, monospace", fontSize: 10.5, fontWeight: 700,
+        border: "1px solid var(--border-default)",
+      }}>
+        {simplify(model)}
+      </span>
+    </span>
+  );
+}
+
+function ModelChip({ model, kind }) {
+  // Cores por tipo de modelo
+  let bg, color, label;
+  const m = (model || "").toLowerCase();
+  if (kind === "rule") {
+    bg = "#e2e8f0"; color = "#475569"; label = model;
+  } else if (kind === "retrieval") {
+    bg = "#fef3c7"; color = "#92400e"; label = model;
+  } else if (m.includes("deepseek")) {
+    bg = "#e0f2fe"; color = "#075985"; label = simplify(model);
+  } else if (m.includes("claude") || m.includes("anthropic")) {
+    bg = "#fae8ff"; color = "#86198f"; label = simplify(model);
+  } else if (m.includes("gpt") || m.includes("openai")) {
+    bg = "#dcfce7"; color = "#166534"; label = simplify(model);
+  } else if (m.includes("gemini") || m.includes("google")) {
+    bg = "#dbeafe"; color = "#1e40af"; label = simplify(model);
+  } else {
+    bg = "#f1f5f9"; color = "#334155"; label = simplify(model);
+  }
+  return (
+    <div title={model} style={{
+      display: "inline-flex", alignItems: "center", gap: 3,
+      padding: "1px 6px", borderRadius: 4,
+      background: bg, color,
+      fontSize: 9, fontWeight: 700,
+      fontFamily: "ui-monospace, monospace",
+      letterSpacing: 0,
+      maxWidth: "100%",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      alignSelf: "flex-start",
+    }}>
+      {kind === "llm" && <span style={{ fontSize: 7 }}>●</span>}
+      {label}
+    </div>
+  );
+}
+
+function simplify(modelId) {
+  // "anthropic/claude-3.5-sonnet" → "claude-3.5-sonnet"
+  // "deepseek/deepseek-v4-flash" → "deepseek-v4-flash"
+  if (!modelId) return "—";
+  const parts = String(modelId).split("/");
+  return parts[parts.length - 1];
 }
 
 function KpiPill({ label, value, color }) {

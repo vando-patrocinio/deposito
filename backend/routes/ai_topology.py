@@ -17,6 +17,9 @@ from fastapi import APIRouter, Depends
 
 from core import DEMO_COMPANY_ID, require_role
 from database import db
+from services.motor_ia import (
+    DEFAULT_TEXT_MODEL, ATENDIMENTO_MODEL, get_motor_config,
+)
 
 router = APIRouter(prefix="/api/ai-topology", tags=["ai-topology"])
 
@@ -28,6 +31,19 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
     """Retorna nós (IAs + cada atendente humano) + arestas (volume real 24h)."""
     cid = user.get("company_id") or DEMO_COMPANY_ID
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+
+    # Carrega configuração do Motor IA pra mostrar qual modelo cada IA usa
+    try:
+        motor_cfg = await get_motor_config(cid)
+        ATENDIMENTO_M = motor_cfg.get("atendimento_model") or ATENDIMENTO_MODEL
+        DEFAULT_M = motor_cfg.get("default_text_model") or DEFAULT_TEXT_MODEL
+        TTS_VOICE = motor_cfg.get("tts_voice") or "nova"
+        motor_enabled = bool(motor_cfg.get("enabled"))
+    except Exception:
+        ATENDIMENTO_M = ATENDIMENTO_MODEL
+        DEFAULT_M = DEFAULT_TEXT_MODEL
+        TTS_VOICE = "nova"
+        motor_enabled = False
 
     # Contadores das IAs
     wa_inbound = await db.aihub_wa_messages.count_documents(
@@ -142,31 +158,43 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
         {"id": "smartolt", "label": "SmartOLT AI",
          "subtitle": "Monitoramento", "icon": "Radio", "color": "#0d9488",
          "kind": "ai",
+         "model": "Pattern matching",
+         "model_kind": "rule",
          "metric": f"{outages_active} ativos",
          "metric_sub": f"{outages_detected} novos/24h"},
         {"id": "atendimento", "label": "Isabella IA",
          "subtitle": "Atendimento WhatsApp", "icon": "Bot", "color": "#16a34a",
          "kind": "ai",
+         "model": ATENDIMENTO_M,
+         "model_kind": "llm",
          "metric": f"{wa_ai_replies} respostas/24h",
          "metric_sub": f"{wa_inbound} recebidas"},
         {"id": "copilot", "label": "Co-Pilot IA",
          "subtitle": "Dicas internas (humanos)", "icon": "Lightbulb",
          "color": "#d97706", "kind": "ai",
+         "model": DEFAULT_M,
+         "model_kind": "llm",
          "metric": f"{copilot_hints} dicas/24h",
          "metric_sub": "Cliente NÃO vê"},
         {"id": "evaluator", "label": "Avaliador IA",
          "subtitle": "Central IA", "icon": "Award", "color": "#0ea5e9",
          "kind": "ai",
+         "model": DEFAULT_M,
+         "model_kind": "llm",
          "metric": f"{evaluations} avaliações/24h",
          "metric_sub": "CSAT/Sentimento/FCR"},
         {"id": "coach", "label": "Coach IA",
          "subtitle": "Recomendações pós-chat", "icon": "GraduationCap",
          "color": "#a855f7", "kind": "ai",
+         "model": DEFAULT_M,
+         "model_kind": "llm",
          "metric": f"{coachings} coachings/24h",
          "metric_sub": "Inline no chat"},
         {"id": "learning", "label": "Aprendizado",
          "subtitle": "Few-shot loop", "icon": "Sparkles", "color": "#eab308",
          "kind": "ai",
+         "model": "Few-shot (CSAT≥8)",
+         "model_kind": "retrieval",
          "metric": f"{high_csat} exemplos",
          "metric_sub": "CSAT≥8 nos últimos 30d"},
     ]
@@ -215,6 +243,12 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
             "copilot_hints_24h": copilot_hints,
             "outages_active": outages_active,
             "human_attendants": len([n for n in human_nodes if n.get("user_id")]),
+        },
+        "motor": {
+            "enabled": motor_enabled,
+            "atendimento_model": ATENDIMENTO_M,
+            "default_text_model": DEFAULT_M,
+            "tts_voice": TTS_VOICE,
         },
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
