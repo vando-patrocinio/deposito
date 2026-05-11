@@ -272,6 +272,44 @@ async def _log_usage(company_id: str, agent: str, model: str,
         "created_at": now_iso(),
     })
 
+    # Check de orçamento (best-effort, não bloqueia). Loga warn quando
+    # gasto do mês ultrapassa o threshold ou o limite. Só executa se
+    # orçamento estiver habilitado para a company.
+    try:
+        await _check_budget_alert(company_id)
+    except Exception as e:
+        logger.debug(f"[motor-ia] budget check falhou: {e}")
+
+
+async def _check_budget_alert(company_id: str):
+    """Compara gasto do mês com o limite configurado e loga alerta."""
+    from datetime import datetime, timezone
+    budget = await db.motor_ia_budget.find_one(
+        {"company_id": company_id, "enabled": True}, {"_id": 0})
+    if not budget:
+        return
+    limit = float(budget.get("monthly_limit_usd") or 0)
+    if limit <= 0:
+        return
+    threshold_pct = int(budget.get("warn_threshold_pct") or 80)
+    now = datetime.now(timezone.utc)
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    pipe = [
+        {"$match": {"company_id": company_id, "created_at": {"$gte": start}}},
+        {"$group": {"_id": None, "spent": {"$sum": "$estimated_cost_usd"}}},
+    ]
+    agg = await db.motor_ia_usage.aggregate(pipe).to_list(1)
+    spent = float(agg[0]["spent"]) if agg else 0.0
+    used_pct = (spent / limit) * 100
+    if used_pct >= 100:
+        logger.warning(
+            f"[motor-ia][BUDGET] Limite mensal EXCEDIDO para {company_id}: "
+            f"${spent:.4f} / ${limit:.2f} ({used_pct:.1f}%)")
+    elif used_pct >= threshold_pct:
+        logger.warning(
+            f"[motor-ia][BUDGET] Aviso de orçamento {company_id}: "
+            f"${spent:.4f} / ${limit:.2f} ({used_pct:.1f}%) — threshold {threshold_pct}%")
+
 
 async def _emergent_chat_fallback(messages, model, temperature, max_tokens):
     """Fallback temporário usando emergentintegrations (sai depois)."""

@@ -227,3 +227,116 @@ async def usage_dashboard(
         "daily": daily,
     }
 
+
+# ---------------------------------------------------------------------------
+# Orçamento mensal — alertas de gasto
+# ---------------------------------------------------------------------------
+
+class BudgetIn(BaseModel):
+    monthly_limit_usd: Optional[float] = Field(None, ge=0, le=10000)
+    warn_threshold_pct: Optional[int] = Field(None, ge=1, le=100)
+    enabled: Optional[bool] = None
+
+
+async def _get_budget(cid: str) -> Dict[str, Any]:
+    doc = await db.motor_ia_budget.find_one({"company_id": cid}, {"_id": 0})
+    if not doc:
+        doc = {
+            "company_id": cid,
+            "monthly_limit_usd": 50.0,
+            "warn_threshold_pct": 80,
+            "enabled": False,
+        }
+    return doc
+
+
+@router.get("/budget")
+async def read_budget(user: dict = Depends(require_role("gestor"))):
+    """Retorna config de orçamento mensal (default 50 USD / 80% threshold)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    return await _get_budget(cid)
+
+
+@router.put("/budget")
+async def update_budget(payload: BudgetIn,
+                          user: dict = Depends(require_role("administrador"))):
+    """Atualiza orçamento. Apenas administrador."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    data = payload.model_dump(exclude_none=True)
+    if not data:
+        raise HTTPException(400, "Nada para atualizar.")
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.motor_ia_budget.update_one(
+        {"company_id": cid},
+        {"$set": data,
+         "$setOnInsert": {"company_id": cid,
+                           "created_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return await _get_budget(cid)
+
+
+@router.get("/budget/status")
+async def budget_status(user: dict = Depends(require_role("gestor"))):
+    """Compara gasto do mês corrente com o limite configurado.
+
+    Status:
+      - "ok"        → gasto < threshold de aviso
+      - "warn"      → gasto entre threshold e 100%
+      - "exceeded"  → gasto >= 100% do limite
+      - "disabled"  → orçamento desativado
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    budget = await _get_budget(cid)
+
+    # Início do mês corrente em UTC
+    now = datetime.now(timezone.utc)
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    pipe = [
+        {"$match": {"company_id": cid, "created_at": {"$gte": start}}},
+        {"$group": {"_id": None,
+                      "cost_usd": {"$sum": "$estimated_cost_usd"},
+                      "calls": {"$sum": 1}}},
+    ]
+    agg = await db.motor_ia_usage.aggregate(pipe).to_list(1)
+    spent = float(agg[0]["cost_usd"]) if agg else 0.0
+    calls = int(agg[0]["calls"]) if agg else 0
+
+    limit = float(budget.get("monthly_limit_usd") or 0)
+    threshold_pct = int(budget.get("warn_threshold_pct") or 80)
+    enabled = bool(budget.get("enabled"))
+
+    used_pct = round((spent / limit) * 100, 2) if limit > 0 else 0
+    status = "disabled"
+    if enabled and limit > 0:
+        if used_pct >= 100:
+            status = "exceeded"
+        elif used_pct >= threshold_pct:
+            status = "warn"
+        else:
+            status = "ok"
+
+    # Projeção linear: gasto atual × (dias_no_mês / dia_atual)
+    day = now.day
+    # último dia do mês: avança 1 mês e volta 1 dia
+    if now.month == 12:
+        next_month = now.replace(year=now.year + 1, month=1, day=1)
+    else:
+        next_month = now.replace(month=now.month + 1, day=1)
+    days_in_month = (next_month - timedelta(days=1)).day
+    projected = round((spent / day) * days_in_month, 4) if day > 0 else 0
+
+    return {
+        "enabled": enabled,
+        "monthly_limit_usd": limit,
+        "warn_threshold_pct": threshold_pct,
+        "month_start": start,
+        "spent_usd": round(spent, 4),
+        "calls": calls,
+        "used_pct": used_pct,
+        "projected_month_usd": projected,
+        "status": status,
+    }
+
+

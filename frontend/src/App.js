@@ -15,6 +15,7 @@ import TimesheetView from "@/TimesheetView";
 import SettingsPanel from "@/SettingsPanel";
 import MotorIaCard from "@/MotorIaCard";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
+import MotorIaBudgetCard from "@/MotorIaBudgetCard";
 import AiTopologyCard from "@/AiTopologyCard";
 import UsersPanel from "@/UsersPanel";
 import DashboardPanel from "@/DashboardPanel";
@@ -691,6 +692,7 @@ function AppContent() {
                 Motor IA
               </h1>
               <AiTopologyCard />
+              <MotorIaBudgetCard />
               <MotorIaUsageCard />
               <MotorIaCard />
             </div>

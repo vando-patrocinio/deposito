@@ -1,5 +1,27 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Alertas de Orçamento Motor IA
+
+### Backend
+- `routes/motor_ia.py`: novos endpoints `GET /api/motor-ia/budget`, `PUT /api/motor-ia/budget` (admin), `GET /api/motor-ia/budget/status` (mês corrente vs limite + projeção linear).
+- Coleção `motor_ia_budget` ({company_id, monthly_limit_usd, warn_threshold_pct, enabled}).
+- `services/motor_ia.py`: `_check_budget_alert()` chamado após cada `_log_usage` — loga `WARNING` quando gasto do mês ultrapassa threshold (default 80%) ou 100% do limite. Best-effort, não bloqueia chamadas.
+- Status: `ok` | `warn` | `exceeded` | `disabled`.
+
+### Frontend
+- Novo `MotorIaBudgetCard.js`: barra de progresso com marca do threshold, painel de status colorido (verde/amarelo/vermelho), card de projeção mensal, e form inline (limite USD + threshold % + toggle "ativar alertas").
+- `api.js`: `motorIaBudgetGet/Save/Status`.
+- `App.js`: card inserido na aba Motor IA acima do dashboard de uso.
+
+### Validação
+- `PUT /api/motor-ia/budget` com limite 0.01 USD → status `exceeded` ✓
+- Backend log `[motor-ia][BUDGET] Limite mensal EXCEDIDO para co-demo: $0.0242 / $0.01 (242.0%)` ✓
+- Projeção linear funcional (`projected_month_usd`) ✓
+- Lint backend + frontend limpos ✓
+
+---
+
+
 ## Feb 11, 2026 — Dashboard "Custo do Motor IA"
 
 ### Backend
