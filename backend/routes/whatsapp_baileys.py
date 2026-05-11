@@ -576,9 +576,11 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
 
-    # 1) Agrega últimas msgs por telefone
+    # 1) Agrega últimas msgs por telefone — EXCLUI notas internas (co-piloto)
+    # da última mensagem visível, mas elas continuam contando em msg_count.
     pipeline = [
-        {"$match": {"company_id": cid}},
+        {"$match": {"company_id": cid,
+                      "direction": {"$ne": "internal"}}},
         {"$sort": {"created_at": -1}},
         {"$group": {
             "_id": "$phone",

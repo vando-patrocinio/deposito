@@ -231,6 +231,22 @@ export const api = {
     client.get(`/smartolt-ai/outages/recent`, { params: { hours } }).then((r) => r.data),
   smartoltAiForceDetect: () =>
     client.post(`/smartolt-ai/outages/detect`).then((r) => r.data),
+  // Drafts (modo ATIVO — aprovação humana antes do envio)
+  smartoltAiDrafts: (params = {}) =>
+    client.get(`/smartolt-ai/drafts`, { params }).then((r) => r.data),
+  smartoltAiDraftEdit: (id, text) =>
+    client.put(`/smartolt-ai/drafts/${id}`, { text }).then((r) => r.data),
+  smartoltAiDraftSend: (id) =>
+    client.post(`/smartolt-ai/drafts/${id}/send`).then((r) => r.data),
+  smartoltAiDraftDiscard: (id) =>
+    client.post(`/smartolt-ai/drafts/${id}/discard`).then((r) => r.data),
+  smartoltAiDraftsSendBulk: (payload) =>
+    client.post(`/smartolt-ai/drafts/send-bulk`, payload).then((r) => r.data),
+  // Templates (mensagens proativa / resolvida / interna)
+  smartoltAiTemplates: () =>
+    client.get(`/smartolt-ai/templates`).then((r) => r.data),
+  smartoltAiSaveTemplates: (payload) =>
+    client.put(`/smartolt-ai/templates`, payload).then((r) => r.data),
 
   // ========= AI Topology (Motor IA card) =========
   aiTopologyFlow: () => client.get(`/ai-topology/flow`).then((r) => r.data),

@@ -5,47 +5,255 @@ detecta "outage events" agrupando ONUs offline pelo eixo OLT+PON usando
 clustering temporal simples — quando ≥N ONUs no mesmo PON ficam LOS dentro
 de uma janela de tempo, dispara um evento de outage.
 
+Threshold dinâmico (regra do gestor):
+- ≥10 ONUs em LOS no mesmo PON  **OU**
+- ≥50% da porta em LOS
+o que vier primeiro.
+
 Comunicação Agent-to-Agent (A2A pattern):
 - SmartOLT AI grava outages em `network_outages` collection
 - WhatsApp IA (atendimento) consulta antes de responder: se o phone do cliente
-  pertence a um outage ativo, injeta contexto no system_prompt
-- Atendimento IA pode optar por escalar ao humano (handover) automaticamente
+  pertence a um outage ativo, injeta contexto no system_prompt (RECEPTIVO)
+- Para o modo ATIVO: cria *rascunhos* em `outage_drafts` que o atendente
+  humano confirma com 1 clique antes de enviar (anti-spam).
+- Para o CO-PILOTO INTERNO: insere mensagem `direction="internal"` em
+  `aihub_wa_messages`, visível apenas para o atendente no chat (nunca
+  enviada via Baileys).
 
-Como o atendimento humano fica sabendo: ao assumir uma conversa marcada
-com `outage_active=true`, a IA de atendimento já avisou no system_prompt
-("este cliente está em região com pane confirmada — ETA estimado X min").
+Como o atendimento humano fica sabendo: ao abrir uma conversa marcada
+com `outage_active=true`, o chat exibe nota amarela "IA — só você vê"
+explicando a pane, e a aba SmartOLT AI lista os rascunhos prontos pra
+aprovação em massa.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from core import DEMO_COMPANY_ID, now_iso
 from database import db
 
 logger = logging.getLogger("smartolt_ai")
 
-# Threshold mínimo de ONUs LOS no mesmo PON para considerar outage
-OUTAGE_MIN_LOS = 3
-# Janela temporal: se ONUs ficaram LOS dentro desta janela, é o mesmo evento
-OUTAGE_WINDOW_MIN = 15
-# Tempo de "cooldown" após auto-recuperação antes de marcar evento como resolvido
-OUTAGE_RESOLVE_MIN = 5
+# Threshold dinâmico (regra do gestor — confirmada na sessão atual)
+OUTAGE_MIN_LOS = 10        # mínimo absoluto de ONUs LOS
+OUTAGE_MIN_PCT = 50.0      # OU 50% da porta — o que vier primeiro
+OUTAGE_WINDOW_MIN = 15     # janela temporal (mesmo evento)
+OUTAGE_RESOLVE_MIN = 5     # cooldown antes de marcar como resolvido
+INTERVAL_SECONDS = 30      # worker roda a cada 30s
+
+# Templates default (sobrescritos por aihub_settings.key=smartolt_outage_templates)
+DEFAULT_TEMPLATES = {
+    "proactive": (
+        "Olá! Identificamos uma instabilidade na rede que está afetando "
+        "sua região (OLT {olt} · porta {port}). Nossa equipe técnica já "
+        "foi acionada e está trabalhando na normalização. Assim que voltar, "
+        "te aviso por aqui. Sem necessidade de reiniciar o equipamento."
+    ),
+    "resolved": (
+        "Boa notícia! ✅ A pane na sua região foi resolvida. Sua conexão "
+        "deve estar normalizada agora. Qualquer dúvida é só chamar."
+    ),
+    "internal_assist": (
+        "PANE ATIVA · OLT {olt} · Placa {board} · Porta {port}\n"
+        "{los_count} de {total_count} ONUs em LOS ({severity_pct}%) — detectado há ~{duration_min}min.\n"
+        "NÃO peça reset de modem. Equipe técnica já foi notificada."
+    ),
+    "internal_resolved": (
+        "PANE RESOLVIDA · OLT {olt} · Placa {board} · Porta {port}\n"
+        "Conexão normalizada há ~{since_resolved_min}min. Pode atender padrão."
+    ),
+}
+
+
+async def _load_templates(company_id: str) -> Dict[str, str]:
+    cfg = await db.aihub_settings.find_one(
+        {"company_id": company_id, "key": "smartolt_outage_templates"},
+        {"_id": 0, "templates": 1},
+    )
+    saved = (cfg or {}).get("templates") or {}
+    return {**DEFAULT_TEMPLATES, **{k: v for k, v in saved.items() if v}}
+
+
+def _fmt(tpl: str, outage: Dict[str, Any], extra: Optional[Dict[str, Any]] = None) -> str:
+    ctx = {
+        "olt": outage.get("olt_name", ""),
+        "board": outage.get("board", ""),
+        "port": outage.get("port", ""),
+        "vlan": outage.get("vlan", ""),
+        "los_count": outage.get("los_count", 0),
+        "total_count": outage.get("total_count", 0),
+        "severity_pct": outage.get("severity_pct", 0),
+        "duration_min": 0,
+        "since_resolved_min": 0,
+    }
+    if outage.get("first_detected_at"):
+        try:
+            fdt = datetime.fromisoformat(outage["first_detected_at"])
+            ctx["duration_min"] = int((datetime.now(timezone.utc) - fdt).total_seconds() / 60)
+        except Exception:
+            pass
+    if outage.get("resolved_at"):
+        try:
+            rdt = datetime.fromisoformat(outage["resolved_at"])
+            ctx["since_resolved_min"] = int((datetime.now(timezone.utc) - rdt).total_seconds() / 60)
+        except Exception:
+            pass
+    if extra:
+        ctx.update(extra)
+    try:
+        return tpl.format(**ctx)
+    except Exception:
+        return tpl
+
+
+async def _phones_with_existing_chat(company_id: str, phones: List[str]) -> Set[str]:
+    """Retorna o subset de phones que já têm pelo menos 1 msg em aihub_wa_messages.
+    Usado para decidir onde inserir notas internas (co-piloto)."""
+    if not phones:
+        return set()
+    found: Set[str] = set()
+    async for m in db.aihub_wa_messages.find(
+        {"company_id": company_id, "phone": {"$in": phones}},
+        {"_id": 0, "phone": 1},
+    ):
+        if m.get("phone"):
+            found.add(m["phone"])
+    return found
+
+
+async def _create_outage_drafts(company_id: str, outage: Dict[str, Any],
+                                  templates: Dict[str, str],
+                                  kind: str = "outage_proactive") -> int:
+    """Cria 1 rascunho por affected_phone. Anti-duplicado: se já existe
+    rascunho do mesmo kind pro mesmo outage+phone, pula.
+    """
+    phones = outage.get("affected_phones") or []
+    if not phones:
+        return 0
+    tpl_key = "proactive" if kind == "outage_proactive" else "resolved"
+    text = _fmt(templates[tpl_key], outage)
+    # Resolve subscriber names em batch (UX)
+    subs_by_phone: Dict[str, Dict[str, Any]] = {}
+    try:
+        async for sub in db.subscribers.find(
+            {"company_id": company_id,
+             "phones.number": {"$in": phones}},
+            {"_id": 0, "id": 1, "name": 1, "phones": 1, "external_code": 1},
+        ):
+            for p in (sub.get("phones") or []):
+                ph = p.get("number") if isinstance(p, dict) else str(p)
+                if ph:
+                    digits = "".join(c for c in ph if c.isdigit())
+                    subs_by_phone[digits] = {
+                        "id": sub.get("id"),
+                        "name": sub.get("name"),
+                        "external_code": sub.get("external_code"),
+                    }
+    except Exception:
+        pass
+    created = 0
+    for ph in phones:
+        existing = await db.outage_drafts.find_one(
+            {"company_id": company_id, "outage_id": outage["id"],
+             "phone": ph, "kind": kind},
+            {"_id": 0, "id": 1},
+        )
+        if existing:
+            continue
+        sub = subs_by_phone.get(ph) or {}
+        await db.outage_drafts.insert_one({
+            "id": f"draft-{uuid.uuid4().hex[:10]}",
+            "company_id": company_id,
+            "outage_id": outage["id"],
+            "outage_key": outage.get("key"),
+            "olt_name": outage.get("olt_name"),
+            "board": outage.get("board"),
+            "port": outage.get("port"),
+            "kind": kind,
+            "phone": ph,
+            "subscriber_id": sub.get("id"),
+            "subscriber_name": sub.get("name"),
+            "subscriber_external_code": sub.get("external_code"),
+            "text": text,
+            "status": "pending",
+            "created_at": now_iso(),
+        })
+        created += 1
+    if created:
+        logger.info("[smartolt-ai] %d rascunhos %s criados para outage %s",
+                     created, kind, outage.get("key"))
+    return created
+
+
+async def _insert_internal_notes(company_id: str, outage: Dict[str, Any],
+                                   templates: Dict[str, str],
+                                   kind: str = "outage_active") -> int:
+    """Insere mensagem direction='internal' (NUNCA enviada) em todos os chats
+    dos affected_phones que JÁ TÊM histórico. Visível só para o atendente.
+    Anti-duplicado: 1 nota por (outage_id, phone, kind).
+    """
+    phones = outage.get("affected_phones") or []
+    if not phones:
+        return 0
+    chats = await _phones_with_existing_chat(company_id, phones)
+    if not chats:
+        return 0
+    tpl_key = "internal_assist" if kind == "outage_active" else "internal_resolved"
+    text = _fmt(templates[tpl_key], outage)
+    inserted = 0
+    for ph in chats:
+        # Dedup: já tem nota interna desse outage+kind pra esse phone?
+        existing = await db.aihub_wa_messages.find_one(
+            {"company_id": company_id, "phone": ph,
+             "direction": "internal",
+             "outage_id": outage["id"],
+             "internal_kind": kind},
+            {"_id": 0, "id": 1},
+        )
+        if existing:
+            continue
+        await db.aihub_wa_messages.insert_one({
+            "id": f"wam-{uuid.uuid4().hex[:10]}",
+            "company_id": company_id,
+            "direction": "internal",            # NUNCA enviado via Baileys
+            "internal_kind": kind,               # "outage_active" | "outage_resolved"
+            "phone": ph,
+            "text": text,
+            "outage_id": outage["id"],
+            "outage_key": outage.get("key"),
+            "auto_reply": True,
+            "created_at": now_iso(),
+            # marcadores explícitos pro frontend não confundir
+            "is_internal_note": True,
+            "visible_to_client": False,
+        })
+        inserted += 1
+    if inserted:
+        logger.info("[smartolt-ai] %d notas internas (%s) inseridas para outage %s",
+                     inserted, kind, outage.get("key"))
+    return inserted
 
 
 async def detect_outages(company_id: str = DEMO_COMPANY_ID) -> Dict[str, Any]:
     """Varre `smartolt_onus` agrupando por OLT+placa+porta+vlan e detecta
-    grupos com ≥OUTAGE_MIN_LOS ONUs LOS.
+    grupos com ≥OUTAGE_MIN_LOS ONUs LOS **OU** ≥OUTAGE_MIN_PCT%.
 
-    Cada outage detectado é upserted em `network_outages` com:
-        - key: hash determinístico (olt+board+port+vlan)
-        - status: active | resolved
-        - los_count, total_count, severity_pct
-        - first_detected_at, last_seen_at
-        - affected_phones: list[str] (puxados de subscribers vinculados)
+    Para cada outage novo:
+    - Insere doc em network_outages
+    - Cria rascunhos em outage_drafts (modo ATIVO)
+    - Insere notas internas em chats existentes (CO-PILOTO)
+
+    Para cada outage resolvido:
+    - Marca como resolved
+    - Cria rascunhos de "voltou ao normal"
+    - Insere notas internas de "pane resolvida"
     """
+    templates = await _load_templates(company_id)
+
     cursor = db.smartolt_onus.find(
         {"company_id": company_id},
         {"_id": 0, "unique_external_id": 1, "olt_name": 1, "board": 1,
@@ -79,10 +287,16 @@ async def detect_outages(company_id: str = DEMO_COMPANY_ID) -> Dict[str, Any]:
 
     detected = 0
     resolved = 0
+    drafts_created = 0
+    notes_inserted = 0
     now = now_iso()
     for key, g in groups.items():
-        if g["los_count"] >= OUTAGE_MIN_LOS:
-            # Outage ativo. Pega telefones afetados via PPPoE → subscriber.
+        severity_pct = round(g["los_count"] / g["total_count"] * 100, 1) \
+            if g["total_count"] else 0
+        # ── REGRA DINÂMICA: 10 ONUs OU 50% da porta ─────────────────────────
+        is_outage = (g["los_count"] >= OUTAGE_MIN_LOS) or (severity_pct >= OUTAGE_MIN_PCT)
+
+        if is_outage:
             pppoes = [x["pppoe_user"] for x in g["los_onts"] if x.get("pppoe_user")]
             affected_phones: List[str] = []
             if pppoes:
@@ -93,12 +307,9 @@ async def detect_outages(company_id: str = DEMO_COMPANY_ID) -> Dict[str, Any]:
                     for p in (sub.get("phones") or []):
                         ph = p.get("number") if isinstance(p, dict) else str(p)
                         if ph:
-                            # Normaliza só dígitos
                             ph = "".join(c for c in ph if c.isdigit())
                             if ph and ph not in affected_phones:
                                 affected_phones.append(ph)
-            severity_pct = round(g["los_count"] / g["total_count"] * 100, 1) \
-                if g["total_count"] else 0
             existing = await db.network_outages.find_one(
                 {"company_id": company_id, "key": key, "status": "active"},
                 {"_id": 0, "id": 1, "first_detected_at": 1},
@@ -116,11 +327,21 @@ async def detect_outages(company_id: str = DEMO_COMPANY_ID) -> Dict[str, Any]:
                         "last_seen_at": now,
                     }},
                 )
+                # Re-emite drafts/notes para novos phones que apareceram tarde
+                full = await db.network_outages.find_one(
+                    {"company_id": company_id, "key": key, "status": "active"},
+                    {"_id": 0},
+                )
+                if full:
+                    drafts_created += await _create_outage_drafts(
+                        company_id, full, templates, "outage_proactive")
+                    notes_inserted += await _insert_internal_notes(
+                        company_id, full, templates, "outage_active")
             else:
-                import uuid
                 detected += 1
-                await db.network_outages.insert_one({
-                    "id": f"out-{uuid.uuid4().hex[:10]}",
+                outage_id = f"out-{uuid.uuid4().hex[:10]}"
+                outage_doc = {
+                    "id": outage_id,
                     "company_id": company_id,
                     "key": key,
                     "status": "active",
@@ -136,17 +357,27 @@ async def detect_outages(company_id: str = DEMO_COMPANY_ID) -> Dict[str, Any]:
                     "affected_phones": affected_phones,
                     "first_detected_at": now,
                     "last_seen_at": now,
-                })
+                    "trigger_rule": (
+                        f"los>={OUTAGE_MIN_LOS}" if g["los_count"] >= OUTAGE_MIN_LOS
+                        else f"pct>={OUTAGE_MIN_PCT}"
+                    ),
+                }
+                await db.network_outages.insert_one(outage_doc)
                 logger.warning(
-                    "[smartolt-ai] OUTAGE detectado: %s — %d/%d LOS (%.1f%%) — %d clientes afetados",
+                    "[smartolt-ai] OUTAGE detectado: %s — %d/%d LOS (%.1f%%) — %d clientes afetados — regra=%s",
                     key, g["los_count"], g["total_count"], severity_pct,
-                    len(affected_phones),
+                    len(affected_phones), outage_doc["trigger_rule"],
                 )
+                # ATIVO: rascunhos prontos pra aprovação
+                drafts_created += await _create_outage_drafts(
+                    company_id, outage_doc, templates, "outage_proactive")
+                # CO-PILOTO: nota interna nos chats existentes
+                notes_inserted += await _insert_internal_notes(
+                    company_id, outage_doc, templates, "outage_active")
         else:
-            # Sem outage — se havia ativo, resolve
             existing = await db.network_outages.find_one(
                 {"company_id": company_id, "key": key, "status": "active"},
-                {"_id": 0, "id": 1, "first_detected_at": 1},
+                {"_id": 0},
             )
             if existing:
                 resolved += 1
@@ -164,21 +395,32 @@ async def detect_outages(company_id: str = DEMO_COMPANY_ID) -> Dict[str, Any]:
                         "duration_minutes": duration_min,
                     }},
                 )
+                full_resolved = {**existing, "status": "resolved",
+                                  "resolved_at": now, "duration_minutes": duration_min}
                 logger.info("[smartolt-ai] OUTAGE resolvido: %s (durou %s min)",
                               key, duration_min)
+                # Rascunhos de normalização
+                drafts_created += await _create_outage_drafts(
+                    company_id, full_resolved, templates, "outage_resolved")
+                # Nota interna de pane resolvida
+                notes_inserted += await _insert_internal_notes(
+                    company_id, full_resolved, templates, "outage_resolved")
     return {"detected": detected, "resolved": resolved,
-            "groups_evaluated": len(groups)}
+            "groups_evaluated": len(groups),
+            "drafts_created": drafts_created,
+            "internal_notes_inserted": notes_inserted,
+            "thresholds": {"min_los": OUTAGE_MIN_LOS, "min_pct": OUTAGE_MIN_PCT},
+            "interval_seconds": INTERVAL_SECONDS}
 
 
 async def get_outage_for_phone(company_id: str, phone: str) -> Optional[Dict[str, Any]]:
     """Verifica se um telefone pertence a um outage ativo.
 
     Usado pela IA de atendimento (whatsapp_baileys) para injetar contexto:
-    se cliente está em região com pane, IA já avisa proativamente.
+    se cliente está em região com pane, IA já avisa proativamente (RECEPTIVO).
     """
     if not phone:
         return None
-    # Normaliza pra dígitos
     ph = "".join(c for c in phone if c.isdigit())
     if not ph:
         return None
@@ -213,7 +455,6 @@ async def list_recent_resolved(company_id: str = DEMO_COMPANY_ID,
 # Worker periódico
 # ---------------------------------------------------------------------------
 _worker_task: Optional[asyncio.Task] = None
-INTERVAL_SECONDS = 90
 
 
 async def _worker_loop():

@@ -1174,7 +1174,51 @@ function InternalCoachingBubble({ coach, onRead, onAcknowledge, onDismiss }) {
   );
 }
 
+function InternalNoteBubble({ msg }) {
+  const time = msg.created_at
+    ? new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : "";
+  const isResolved = msg.internal_kind === "outage_resolved";
+  const accent = isResolved ? "#16a34a" : "#d97706";
+  const bg = isResolved ? "#f0fdf4" : "#fffbeb";
+  const border = isResolved ? "#bbf7d0" : "#fde68a";
+  return (
+    <div style={{ display: "flex", justifyContent: "center", padding: "2px 0" }}>
+      <div data-testid={`wa-internal-note-${msg.id || ""}`}
+            data-internal-kind={msg.internal_kind || ""}
+            style={{
+        maxWidth: "85%", width: "100%",
+        padding: "9px 12px", borderRadius: 8,
+        background: bg,
+        border: `1px dashed ${border}`,
+        borderLeft: `3px solid ${accent}`,
+        fontSize: 12, lineHeight: 1.5,
+        color: "#0f172a",
+        position: "relative",
+      }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 5,
+          fontSize: 9.5, fontWeight: 800, color: accent,
+          textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4,
+        }}>
+          <Lock size={10} strokeWidth={2.5} />
+          IA · Apenas você vê (não enviado ao cliente)
+        </div>
+        <div style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{msg.text}</div>
+        <div style={{
+          fontSize: 9, color: "#94a3b8", marginTop: 4,
+          textAlign: "right",
+        }}>{time}</div>
+      </div>
+    </div>
+  );
+}
+
 function MsgBubble({ msg }) {
+  // Nota interna (co-piloto IA — NUNCA enviada ao cliente)
+  if (msg.direction === "internal" || msg.is_internal_note) {
+    return <InternalNoteBubble msg={msg} />;
+  }
   const out = msg.direction === "outbound";
   const isAi = !!msg.auto_reply;
   const failed = out && msg.delivery_status === "failed";
