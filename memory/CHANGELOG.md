@@ -1,5 +1,38 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Briefing automático diário + entrega via WhatsApp
+
+### Backend
+- Novo `services/churn_scheduler.py`: worker que checa a cada 60s se está na hora-alvo, gera briefing via Motor IA (Claude Sonnet 4.5) e envia resumo curto pelo sidecar Baileys.
+  - Idempotente: `last_run_date` evita 2 disparos/dia
+  - Mensagem WhatsApp formatada com markdown (negrito) + bullets das top 3 recomendações
+  - Best-effort no envio (não bloqueia se WhatsApp falhar)
+  - Lê config por empresa em `churn_briefing_schedule` (default: 12:00 UTC ≈ 09:00 BRT)
+- `routes/churn.py`: novos endpoints
+  - `GET /api/churn/briefing-schedule` (lê config)
+  - `PUT /api/churn/briefing-schedule` (admin only — ativa/desativa, hora, minuto, telefone, janela)
+  - `POST /api/churn/briefing-schedule/run-now?days=N` (admin only — dispara agora sem afetar `last_run_date`)
+- `server.py`: worker `start_churn_scheduler()` startado no startup.
+
+### Frontend
+- Novo `ChurnBriefingScheduleCard.js`: card compacto ao final da sub-aba Churn com:
+  - Toggle Ativar
+  - Hora/Minuto UTC (com preview BRT)
+  - Telefone WhatsApp do gestor
+  - Janela (7/30/90/180d)
+  - Botão **Testar agora** (não envia WhatsApp)
+  - Status do último disparo + se WhatsApp foi entregue
+
+### Validação ✓
+- Worker iniciado no startup
+- `PUT /briefing-schedule` salva config com `updated_by`
+- `POST /run-now` retornou briefing real (`ci-co-demo-2026-05-11-30`, 39 churns)
+- Log: `[churn-scheduler] briefing gerado ci-co-demo-2026-05-11-30 (churn=39)`
+- Lint frontend + backend limpos
+
+---
+
+
 ## Feb 11, 2026 — Histórico de Briefings + Comparação IA
 
 ### Backend (`routes/churn.py`)

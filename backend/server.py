@@ -292,6 +292,8 @@ async def _startup() -> None:
     start_sentinela_lousa()
     from services.lousa_ai_triagem import start_worker as start_lousa_ai
     start_lousa_ai()
+    from services.churn_scheduler import start_worker as start_churn_scheduler
+    start_churn_scheduler()
     asyncio.create_task(routes_plans.adjustment_scheduler_worker())
     logger.info("Scheduler iniciado.")
 

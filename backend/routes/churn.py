@@ -21,10 +21,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, require_role
 from database import db
 from services.motor_ia import chat_completion, AgentDisabledError
+from services import churn_scheduler
 
 logger = logging.getLogger("ponto.churn")
 router = APIRouter(prefix="/api/churn", tags=["churn"])
@@ -453,3 +455,53 @@ async def churn_ai_insight_compare(
         "base_id": base_id,
         "against_id": against_id,
     }
+
+
+# ---------------------------------------------------------------------------
+# Schedule (geração automática diária + entrega WhatsApp)
+# ---------------------------------------------------------------------------
+
+class BriefingScheduleIn(BaseModel):
+    enabled: bool | None = None
+    hour_utc: int | None = Field(None, ge=0, le=23)
+    minute: int | None = Field(None, ge=0, le=59)
+    notify_phone: str | None = None
+    window_days: int | None = Field(None, ge=7, le=180)
+
+
+@router.get("/briefing-schedule")
+async def get_briefing_schedule(
+    user: dict = Depends(require_role("gestor")),
+) -> Dict[str, Any]:
+    """Retorna config do agendamento automático de briefing."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    return await churn_scheduler.get_schedule(cid)
+
+
+@router.put("/briefing-schedule")
+async def save_briefing_schedule(
+    payload: BriefingScheduleIn,
+    user: dict = Depends(require_role("administrador")),
+) -> Dict[str, Any]:
+    """Atualiza config do agendamento (admin only)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    data = payload.model_dump(exclude_none=True)
+    user_label = user.get("name") or user.get("email") or "admin"
+    return await churn_scheduler.save_schedule(cid, data, user_label)
+
+
+@router.post("/briefing-schedule/run-now")
+async def run_briefing_now(
+    days: int = Query(30, ge=7, le=180),
+    user: dict = Depends(require_role("administrador")),
+) -> Dict[str, Any]:
+    """Dispara geração imediata pra teste (não envia WhatsApp).
+    Retorna o doc do briefing salvo."""
+    from fastapi import HTTPException
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await churn_scheduler.run_now(cid, days)
+    if not doc:
+        raise HTTPException(502, "Falha ao gerar briefing (ver logs).")
+    return {"ok": True, "id": doc.get("id"), "date": doc.get("date"),
+            "based_on": doc.get("based_on")}
+

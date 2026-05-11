@@ -5,6 +5,7 @@ import {
   Clock, Loader2, RefreshCw, ArrowDownRight, Sparkles, ChevronDown, ChevronUp,
   History, GitCompare,
 } from "lucide-react";
+import ChurnBriefingScheduleCard from "@/ChurnBriefingScheduleCard";
 
 const PERIODS = [
   { days: 30,  label: "30 dias" },
@@ -393,6 +394,9 @@ export default function ChurnDashboardPanel() {
           )}
         </div>
       )}
+
+      {/* Agendamento automático */}
+      <ChurnBriefingScheduleCard />
 
       {/* KPIs */}
       <div style={{ display: "grid",
