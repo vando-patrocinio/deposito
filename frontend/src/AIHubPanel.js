@@ -19,7 +19,6 @@ const TABS = [
   { id: "agents", label: "Agentes", icon: Bot },
   { id: "playground", label: "Playground", icon: MessageCircle },
   { id: "dial", label: "Discar (outbound)", icon: Phone },
-  { id: "magnus", label: "MagnusBilling", icon: Phone },
   { id: "whatsapp", label: "WhatsApp Cloud", icon: Send },
   { id: "history", label: "Histórico", icon: History },
 ];
@@ -72,7 +71,6 @@ export default function AIHubPanel({ initialTab = "central_ia" }) {
       {tab === "agents" && <AgentsTab />}
       {tab === "playground" && <PlaygroundTab />}
       {tab === "dial" && <DialTab />}
-      {tab === "magnus" && <MagnusBillingTab />}
       {tab === "whatsapp" && <WhatsappCloudTab />}
       {tab === "history" && <HistoryTab />}
     </div>
@@ -943,68 +941,6 @@ function DialTab() {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-/* =============================================================
-   MagnusBilling
-============================================================= */
-function MagnusBillingTab() {
-  return <IntegrationCard
-    type="magnusbilling"
-    title="MagnusBilling (SIP/Asterisk)"
-    description="Conecte sua instância MagnusBilling para listar DIDs, CDRs e originar chamadas a partir do PontoIA."
-    fields={[
-      { key: "url", label: "URL da instância", placeholder: "https://sip.tudovoip.com.br/mbilling", type: "text" },
-      { key: "key", label: "Key", placeholder: "API Key do MagnusBilling", type: "password" },
-      { key: "secret", label: "Secret", placeholder: "API Secret", type: "password" },
-    ]}
-    testApi={api.aihubMagnusTest}
-    extraSection={<MagnusExtras />}
-  />;
-}
-
-function MagnusExtras() {
-  const [dids, setDids] = useState(null);
-  const [cdr, setCdr] = useState(null);
-  const [busy, setBusy] = useState(null);
-
-  const loadDids = async () => {
-    setBusy("dids");
-    try { setDids(await api.aihubMagnusDids()); }
-    catch (e) { setDids({ error: e?.response?.data?.detail || e.message }); }
-    finally { setBusy(null); }
-  };
-  const loadCdr = async () => {
-    setBusy("cdr");
-    try { setCdr(await api.aihubMagnusCdr(50)); }
-    catch (e) { setCdr({ error: e?.response?.data?.detail || e.message }); }
-    finally { setBusy(null); }
-  };
-
-  return (
-    <div style={{ marginTop: 18, display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", gap: 8 }}>
-        <button className="btn btn-secondary btn-sm" onClick={loadDids} disabled={busy === "dids"}
-                data-testid="aihub-mb-load-dids">
-          <Phone size={13} /> {busy === "dids" ? "Carregando…" : "Listar DIDs"}
-        </button>
-        <button className="btn btn-secondary btn-sm" onClick={loadCdr} disabled={busy === "cdr"}
-                data-testid="aihub-mb-load-cdr">
-          <History size={13} /> {busy === "cdr" ? "Carregando…" : "Últimas chamadas (CDR)"}
-        </button>
-      </div>
-      {dids && (
-        <pre style={preStyle} data-testid="aihub-mb-dids-output">
-          {JSON.stringify(dids, null, 2).slice(0, 3000)}
-        </pre>
-      )}
-      {cdr && (
-        <pre style={preStyle} data-testid="aihub-mb-cdr-output">
-          {JSON.stringify(cdr, null, 2).slice(0, 3000)}
-        </pre>
-      )}
     </div>
   );
 }
