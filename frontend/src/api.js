@@ -215,6 +215,12 @@ export const api = {
     client.get(`/central-ia/dashboard/ai-learning`, { params: { days } }).then((r) => r.data),
   centralIaAiLearningExamples: () =>
     client.get(`/central-ia/dashboard/ai-learning/examples`).then((r) => r.data),
+
+  // ========= Motor IA (OpenRouter) =========
+  motorIaGetConfig: () => client.get(`/motor-ia/config`).then((r) => r.data),
+  motorIaSaveConfig: (payload) => client.put(`/motor-ia/config`, payload).then((r) => r.data),
+  motorIaTest: () => client.post(`/motor-ia/test`).then((r) => r.data),
+  motorIaSuggestedModels: () => client.get(`/motor-ia/models/suggested`).then((r) => r.data),
   smartoltOnuReboot: (extId) => client.post(`/smartolt/onu/${extId}/reboot`).then((r) => r.data),
   // Public mobile endpoints
   publicTechStock: (cid) => client.get(`/stok/public/collaborator/${cid}/stock`).then((r) => r.data),

@@ -365,32 +365,22 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         logger.info("[wa-baileys] few-shot skip: %s", e)
     sys_prompt += "\n\n" + "\n\n".join(extra)
 
-    # 4. Chama LLM — session_id estável por telefone p/ continuar conversa
+    # 4. Chama LLM via Motor IA (OpenRouter)
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from services.motor_ia import chat_completion
     except ImportError:
         return None
-    if not EMERGENT_LLM_KEY:
-        return None
-
-    session_id = f"wa-{phone}"
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=session_id,
-        system_message=sys_prompt,
-    ).with_model(agent["model_provider"], agent["model_name"])
     try:
-        chat = chat.with_temperature(agent.get("temperature", 0.6))  # type: ignore
-    except Exception:
-        pass
-    try:
-        chat = chat.with_max_tokens(agent.get("max_tokens", 350))  # type: ignore
-    except Exception:
-        pass
-    try:
-        resp = await chat.send_message(UserMessage(text=user_text))
-        reply_text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
-        reply_text = (reply_text or "").strip()
+        result = await chat_completion(
+            cid,
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_text},
+            ],
+            temperature=agent.get("temperature", 0.6),
+            max_tokens=agent.get("max_tokens", 350),
+        )
+        reply_text = (result.get("content") or "").strip()
     except Exception as e:
         logger.warning("[wa-baileys] LLM falhou: %s", e)
         return None
@@ -430,7 +420,7 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         "subscriber_id": subscriber_id,
         "agent_id": agent["id"],
         "agent_name": agent["name"],
-        "session_id": session_id,
+        "session_id": f"wa-{phone}",
         "auto_reply": True,
         "delivery_status": "sent" if send_ok else "failed",
         "delivery_error": send_error,

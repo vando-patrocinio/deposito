@@ -263,8 +263,6 @@ async def playground(aid: str, payload: PlaygroundIn,
         {"id": aid, "company_id": cid}, {"_id": 0})
     if not agent:
         raise HTTPException(404, "Agente não encontrado.")
-    if not EMERGENT_LLM_KEY:
-        raise HTTPException(503, "EMERGENT_LLM_KEY não configurada no servidor.")
 
     session_id = payload.session_id or f"playground-{aid}-{uuid.uuid4().hex[:8]}"
 
@@ -313,32 +311,30 @@ async def playground(aid: str, payload: PlaygroundIn,
             logger.warning("[playground] subscriber context falhou: %s", e)
 
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from services.motor_ia import chat_completion
     except ImportError as e:
-        raise HTTPException(500, f"emergentintegrations indisponível: {e}")
+        raise HTTPException(500, f"motor_ia indisponível: {e}")
+
+    # Histórico curto da sessão (últimas 10 mensagens) para manter contexto
+    history = await db.aihub_messages.find(
+        {"company_id": cid, "agent_id": aid, "session_id": session_id},
+        {"_id": 0, "role": 1, "content": 1},
+    ).sort("created_at", 1).to_list(20)
+    messages = [{"role": "system", "content": sys_prompt}]
+    for h in history[-9:]:
+        messages.append({"role": h["role"], "content": h["content"]})
+    messages.append({"role": "user", "content": payload.message})
 
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=session_id,
-            system_message=sys_prompt,
-        ).with_model(agent["model_provider"], agent["model_name"])
-        # Aplicar temperatura se SDK suportar (graceful)
-        try:
-            chat = chat.with_temperature(agent.get("temperature", 0.6))  # type: ignore
-        except Exception:
-            pass
-        try:
-            chat = chat.with_max_tokens(agent.get("max_tokens", 700))  # type: ignore
-        except Exception:
-            pass
-
-        resp = await chat.send_message(UserMessage(text=payload.message))
-        text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
-        text = (text or "").strip()
+        result = await chat_completion(
+            cid, messages=messages,
+            temperature=agent.get("temperature", 0.6),
+            max_tokens=agent.get("max_tokens", 700),
+        )
+        text = (result.get("content") or "").strip()
     except Exception as e:
         logger.warning("[aihub] LLM error session=%s: %s", session_id, e)
-        raise HTTPException(502, f"Falha ao chamar LLM: {e}")
+        raise HTTPException(502, f"Falha ao chamar LLM: {e}") from e
 
     # Persiste resposta
     await db.aihub_messages.insert_one({

@@ -91,31 +91,23 @@ COACHING_SYSTEM = (
 
 
 
-async def _llm_evaluate(transcript: str) -> Optional[Dict[str, Any]]:
-    if not EMERGENT_LLM_KEY:
-        return None
+async def _llm_evaluate(transcript: str, company_id: str = "") -> Optional[Dict[str, Any]]:
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from services.motor_ia import chat_completion
     except ImportError:
         return None
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"eval-{uuid.uuid4().hex[:8]}",
-            system_message=EVAL_SYSTEM,
-        ).with_model("openai", "gpt-4o-mini")
-        try:
-            chat = chat.with_temperature(0.2)  # type: ignore
-        except Exception:
-            pass
-        try:
-            chat = chat.with_max_tokens(400)  # type: ignore
-        except Exception:
-            pass
-        resp = await chat.send_message(UserMessage(text=transcript[:6000]))
-        text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
-        text = (text or "").strip()
-        # Remove possíveis cercas markdown
+        result = await chat_completion(
+            company_id or DEMO_COMPANY_ID,
+            messages=[
+                {"role": "system", "content": EVAL_SYSTEM},
+                {"role": "user", "content": transcript[:6000]},
+            ],
+            temperature=0.2,
+            max_tokens=400,
+            json_mode=True,
+        )
+        text = (result.get("content") or "").strip()
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
         return json.loads(text)
     except Exception as e:
@@ -169,7 +161,7 @@ async def _evaluate_conversation(cid: str, phone: str,
         m["direction"] == "outbound" and not m.get("auto_reply") for m in docs
     )
 
-    ai_result = await _llm_evaluate(transcript)
+    ai_result = await _llm_evaluate(transcript, cid)
     if not ai_result:
         return None
 
@@ -211,11 +203,10 @@ async def _evaluate_conversation(cid: str, phone: str,
     return eval_doc
 
 
-async def _llm_coach(transcript: str, eval_doc: dict) -> Optional[Dict[str, Any]]:
-    if not EMERGENT_LLM_KEY:
-        return None
+async def _llm_coach(transcript: str, eval_doc: dict,
+                       company_id: str = "") -> Optional[Dict[str, Any]]:
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from services.motor_ia import chat_completion
     except ImportError:
         return None
     user_text = (
@@ -227,22 +218,15 @@ async def _llm_coach(transcript: str, eval_doc: dict) -> Optional[Dict[str, Any]
         "Gere o coaching JSON conforme instruído."
     )
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"coach-{uuid.uuid4().hex[:8]}",
-            system_message=COACHING_SYSTEM,
-        ).with_model("openai", "gpt-4o-mini")
-        try:
-            chat = chat.with_temperature(0.3)  # type: ignore
-        except Exception:
-            pass
-        try:
-            chat = chat.with_max_tokens(450)  # type: ignore
-        except Exception:
-            pass
-        resp = await chat.send_message(UserMessage(text=user_text))
-        text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
-        text = (text or "").strip()
+        result = await chat_completion(
+            company_id or DEMO_COMPANY_ID,
+            messages=[
+                {"role": "system", "content": COACHING_SYSTEM},
+                {"role": "user", "content": user_text},
+            ],
+            temperature=0.3, max_tokens=450, json_mode=True,
+        )
+        text = (result.get("content") or "").strip()
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
         return json.loads(text)
     except Exception as e:
@@ -253,7 +237,7 @@ async def _llm_coach(transcript: str, eval_doc: dict) -> Optional[Dict[str, Any]
 async def _generate_coaching(cid: str, phone: str, transcript: str,
                                 eval_doc: dict) -> Optional[Dict[str, Any]]:
     """Gera 1 doc de coaching via LLM e persiste em aihub_coaching."""
-    coach = await _llm_coach(transcript, eval_doc)
+    coach = await _llm_coach(transcript, eval_doc, cid)
     if not coach:
         return None
     uid = eval_doc.get("assignee_user_id")

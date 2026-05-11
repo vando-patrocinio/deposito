@@ -1,0 +1,230 @@
+"""Motor IA — unifica TODAS as chamadas de IA (texto, áudio) em um único
+ponto, usando OpenRouter como gateway primário multi-provedor.
+
+Por que um único motor?
+  OpenRouter já é um gateway que roteia para 400+ modelos (OpenAI, Anthropic,
+  Google, Meta, Mistral, etc) e tem **fallback nativo via parâmetro `models`**.
+  Ter um segundo motor seria redundante — o fallback já está dentro do OpenRouter.
+
+Áudio (Whisper STT / TTS):
+  OpenRouter NÃO suporta endpoints de áudio. Para STT/TTS usamos uma chave
+  OpenAI direta opcional (campo `openai_audio_key`). Se não configurada,
+  retornamos erro 503 instando o admin a configurar na aba Motor IA.
+
+Config persistida em `motor_ia_config` (Mongo), por company_id:
+  - openrouter_api_key (string, plaintext — pode ser cifrado em release futuro)
+  - default_text_model        (str, ex.: "openai/gpt-4o-mini")
+  - fallback_models           (list[str], chain de fallback)
+  - openai_audio_key          (str, opcional, somente Whisper/TTS)
+  - tts_voice                 (str, voz padrão TTS, ex.: "nova")
+  - enabled                   (bool)
+"""
+from __future__ import annotations
+
+import logging
+import os
+from typing import Any, Dict, List, Optional
+
+from core import DEMO_COMPANY_ID, EMERGENT_LLM_KEY, now_iso
+from database import db
+
+logger = logging.getLogger(__name__)
+
+OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+
+DEFAULT_TEXT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_FALLBACKS = [
+    "openai/gpt-4o-mini",
+    "anthropic/claude-3.5-sonnet",
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.3-70b-instruct",
+]
+DEFAULT_TTS_VOICE = "nova"
+
+
+async def get_motor_config(company_id: str) -> Dict[str, Any]:
+    """Lê config do motor para a empresa. Cria default se não existir."""
+    doc = await db.motor_ia_config.find_one(
+        {"company_id": company_id}, {"_id": 0}
+    )
+    if not doc:
+        doc = {
+            "company_id": company_id,
+            "openrouter_api_key": "",
+            "default_text_model": DEFAULT_TEXT_MODEL,
+            "fallback_models": DEFAULT_FALLBACKS,
+            "openai_audio_key": "",
+            "tts_voice": DEFAULT_TTS_VOICE,
+            "enabled": False,
+            "created_at": now_iso(),
+        }
+        await db.motor_ia_config.insert_one(dict(doc))
+        doc.pop("_id", None)
+    return doc
+
+
+async def save_motor_config(company_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Persiste config (upsert). Permite atualização parcial."""
+    update: Dict[str, Any] = {"updated_at": now_iso()}
+    for k in ("openrouter_api_key", "default_text_model", "fallback_models",
+                "openai_audio_key", "tts_voice", "enabled"):
+        if k in payload:
+            update[k] = payload[k]
+    await db.motor_ia_config.update_one(
+        {"company_id": company_id},
+        {"$set": update,
+         "$setOnInsert": {"company_id": company_id, "created_at": now_iso()}},
+        upsert=True,
+    )
+    return await get_motor_config(company_id)
+
+
+def _mask_key(k: Optional[str]) -> str:
+    if not k:
+        return ""
+    s = str(k)
+    if len(s) <= 8:
+        return "***"
+    return f"{s[:6]}...{s[-4:]}"
+
+
+async def get_safe_config(company_id: str) -> Dict[str, Any]:
+    """Versão da config para o frontend — mascara API keys."""
+    cfg = await get_motor_config(company_id)
+    return {
+        **cfg,
+        "openrouter_api_key": _mask_key(cfg.get("openrouter_api_key")),
+        "openai_audio_key": _mask_key(cfg.get("openai_audio_key")),
+        "has_openrouter_key": bool(cfg.get("openrouter_api_key")),
+        "has_audio_key": bool(cfg.get("openai_audio_key")),
+    }
+
+
+def _build_text_client(api_key: str):
+    """Instancia cliente OpenAI apontando para OpenRouter."""
+    from openai import AsyncOpenAI
+    return AsyncOpenAI(base_url=OPENROUTER_BASE, api_key=api_key,
+                        default_headers={
+                            "HTTP-Referer": "https://emergentagent.com",
+                            "X-Title": "PontolA Atendimento IA",
+                        })
+
+
+async def chat_completion(company_id: str,
+                            messages: List[Dict[str, str]],
+                            model: Optional[str] = None,
+                            temperature: float = 0.7,
+                            max_tokens: int = 500,
+                            json_mode: bool = False) -> Dict[str, Any]:
+    """Gera resposta de chat via OpenRouter. Caller passa lista de messages
+    (formato OpenAI: [{role, content}, ...]).
+
+    Returns: {"content": str, "model": str, "provider": str}.
+    Raises RuntimeError se motor não configurado.
+    """
+    cfg = await get_motor_config(company_id or DEMO_COMPANY_ID)
+    api_key = cfg.get("openrouter_api_key") or ""
+    if not cfg.get("enabled") or not api_key:
+        # Fallback de segurança: se admin não configurou ainda, cai pra
+        # EMERGENT_LLM_KEY (compat com setup antigo). Loga warning.
+        if EMERGENT_LLM_KEY:
+            logger.warning("[motor-ia] cfg ausente — usando EMERGENT_LLM_KEY fallback")
+            return await _emergent_chat_fallback(messages, model, temperature, max_tokens)
+        raise RuntimeError("Motor IA não configurado. Configure em Sistemas → Motor IA.")
+
+    primary = model or cfg.get("default_text_model") or DEFAULT_TEXT_MODEL
+    fallbacks = [m for m in (cfg.get("fallback_models") or []) if m != primary]
+    extra_body: Dict[str, Any] = {}
+    if fallbacks:
+        extra_body["models"] = [primary] + fallbacks
+
+    client = _build_text_client(api_key)
+    kwargs: Dict[str, Any] = {
+        "model": primary,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "extra_body": extra_body,
+    }
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+    resp = await client.chat.completions.create(**kwargs)
+    content = (resp.choices[0].message.content or "").strip()
+    return {
+        "content": content,
+        "model": getattr(resp, "model", primary),
+        "provider": getattr(resp, "provider", None) or "openrouter",
+    }
+
+
+async def _emergent_chat_fallback(messages, model, temperature, max_tokens):
+    """Fallback temporário usando emergentintegrations (sai depois)."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    import uuid
+    session_id = f"motoria-{uuid.uuid4().hex[:8]}"
+    sys_prompt = next((m["content"] for m in messages if m["role"] == "system"), "")
+    user_msg = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=session_id,
+        system_message=sys_prompt,
+    ).with_model("openai", "gpt-5-mini").with_max_tokens(max_tokens)
+    out = await chat.send_message(UserMessage(text=user_msg))
+    return {"content": str(out).strip(), "model": "gpt-5-mini (emergent)", "provider": "emergent"}
+
+
+# ---------------------------------------------------------------------------
+# Áudio — OpenAI direto (OpenRouter não suporta)
+# ---------------------------------------------------------------------------
+async def transcribe_audio(company_id: str, audio_bytes: bytes,
+                              filename: str = "audio.webm") -> str:
+    """Transcreve áudio usando Whisper. Requer openai_audio_key configurada."""
+    cfg = await get_motor_config(company_id or DEMO_COMPANY_ID)
+    key = cfg.get("openai_audio_key") or ""
+    if not key:
+        # Compat: usa EMERGENT_LLM_KEY como fallback se admin não configurou ainda
+        if EMERGENT_LLM_KEY:
+            from emergentintegrations.llm.openai import OpenAISpeechToText
+            stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
+            return await stt.transcribe(audio_bytes, filename=filename)
+        raise RuntimeError("OpenAI audio key não configurada. Configure em Sistemas → Motor IA.")
+    # OpenAI direto via SDK
+    from openai import AsyncOpenAI
+    import io
+    client = AsyncOpenAI(api_key=key)
+    f = io.BytesIO(audio_bytes)
+    f.name = filename
+    resp = await client.audio.transcriptions.create(model="whisper-1", file=f)
+    return resp.text
+
+
+async def text_to_speech(company_id: str, text: str,
+                            voice: Optional[str] = None) -> bytes:
+    """Gera áudio MP3 a partir de texto via OpenAI TTS."""
+    cfg = await get_motor_config(company_id or DEMO_COMPANY_ID)
+    key = cfg.get("openai_audio_key") or ""
+    v = voice or cfg.get("tts_voice") or DEFAULT_TTS_VOICE
+    if not key:
+        if EMERGENT_LLM_KEY:
+            from emergentintegrations.llm.openai import OpenAITextToSpeech
+            tts = OpenAITextToSpeech(api_key=EMERGENT_LLM_KEY)
+            return await tts.synthesize(text, voice=v)
+        raise RuntimeError("OpenAI audio key não configurada. Configure em Sistemas → Motor IA.")
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=key)
+    resp = await client.audio.speech.create(model="tts-1", voice=v, input=text)
+    return resp.content
+
+
+async def test_motor(company_id: str) -> Dict[str, Any]:
+    """Smoke test rápido — chama OpenRouter com 'ping' pra validar credenciais."""
+    try:
+        r = await chat_completion(
+            company_id,
+            [{"role": "user", "content": "Responda apenas: ok"}],
+            max_tokens=10, temperature=0,
+        )
+        return {"ok": True, "model": r["model"], "provider": r["provider"],
+                "sample": r["content"][:100]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

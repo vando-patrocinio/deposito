@@ -54,6 +54,7 @@ from routes import (
     ai_preventive as routes_ai_preventive,
     ai_dashboard as routes_ai_dashboard,
     aihub as routes_aihub,
+    motor_ia as routes_motor_ia,
     plans as routes_plans,
     voice as routes_voice,
     whatsapp_baileys as routes_wa_baileys,
@@ -313,6 +314,7 @@ app.include_router(routes_smartolt.router)
 app.include_router(routes_ai_preventive.router)
 app.include_router(routes_ai_dashboard.router)
 app.include_router(routes_aihub.router)
+app.include_router(routes_motor_ia.router)
 app.include_router(routes_voice.router)
 app.include_router(routes_wa_baileys.router)
 app.include_router(routes_central_ia.router)
