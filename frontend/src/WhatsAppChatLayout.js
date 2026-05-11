@@ -4,7 +4,7 @@ import {
   Filter, MessageSquare, Clock, MoonStar, Hand, UserCheck,
   CheckCircle2, GraduationCap, ChevronDown, ChevronUp, Lightbulb,
   Wifi, WifiOff, Activity, Info, Signal, MapPin, Phone, CreditCard,
-  AlertCircle, Sparkles, Lock,
+  AlertCircle, Sparkles, Lock, AlertTriangle,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -1177,6 +1177,8 @@ function InternalCoachingBubble({ coach, onRead, onAcknowledge, onDismiss }) {
 function MsgBubble({ msg }) {
   const out = msg.direction === "outbound";
   const isAi = !!msg.auto_reply;
+  const failed = out && msg.delivery_status === "failed";
+  const sent = out && msg.delivery_status === "sent";
   const time = msg.created_at
     ? new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
     : "";
@@ -1184,14 +1186,21 @@ function MsgBubble({ msg }) {
     <div style={{
       display: "flex", justifyContent: out ? "flex-end" : "flex-start",
     }}>
-      <div style={{
+      <div data-testid={`wa-msg-${msg.id || msg.message_id || ""}`}
+            data-delivery={out ? (msg.delivery_status || "unknown") : ""}
+            style={{
         maxWidth: "70%",
         padding: "8px 12px", borderRadius: out ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
-        background: out ? (isAi ? "#bae6fd" : "#dcfce7") : "#fff",
+        background: failed
+          ? "#fef2f2"
+          : out ? (isAi ? "#bae6fd" : "#dcfce7") : "#fff",
         color: "#0f172a",
-        border: "1px solid rgba(0,0,0,.05)",
+        border: failed
+          ? "1px solid #fecaca"
+          : "1px solid rgba(0,0,0,.05)",
         fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap",
         boxShadow: "0 1px 2px rgba(0,0,0,.05)",
+        opacity: failed ? 0.95 : 1,
       }}>
         {out && isAi && (
           <div style={{ fontSize: 9, fontWeight: 800, color: "#0369a1",
@@ -1202,15 +1211,27 @@ function MsgBubble({ msg }) {
         )}
         <div>{msg.text}</div>
         <div style={{
-          fontSize: 9, color: "#64748b", marginTop: 3,
-          display: "flex", alignItems: "center", gap: 3, justifyContent: "flex-end",
+          fontSize: 9, color: failed ? "#dc2626" : "#64748b", marginTop: 3,
+          display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end",
+          fontWeight: failed ? 700 : 400,
         }}>
           <span>{time}</span>
-          {out && (msg.delivery_status === "sent"
-            ? <CheckCheck size={11} style={{ color: "#0ea5e9" }} />
-            : msg.delivery_status === "failed"
-              ? <span style={{ color: "#dc2626", fontSize: 9 }}>!</span>
-              : <Check size={11} />)}
+          {out && (failed ? (
+            <span title={msg.delivery_error
+                          ? `Falha na entrega: ${msg.delivery_error}`
+                          : "Não entregue ao WhatsApp"}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 3,
+                    color: "#dc2626",
+                  }}>
+              <AlertTriangle size={11} strokeWidth={2.5} />
+              <span>não entregue</span>
+            </span>
+          ) : sent ? (
+            <CheckCheck size={11} style={{ color: "#0ea5e9" }} />
+          ) : (
+            <Check size={11} style={{ color: "#94a3b8" }} />
+          ))}
         </div>
       </div>
     </div>
