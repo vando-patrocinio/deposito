@@ -3,6 +3,7 @@ import { api } from "@/api";
 import {
   TrendingDown, Users, Calendar, MapPin, AlertCircle,
   Clock, Loader2, RefreshCw, ArrowDownRight, Sparkles, ChevronDown, ChevronUp,
+  History, GitCompare,
 } from "lucide-react";
 
 const PERIODS = [
@@ -48,6 +49,11 @@ export default function ChurnDashboardPanel() {
   const [insightLoading, setInsightLoading] = useState(false);
   const [insightErr, setInsightErr] = useState("");
   const [insightOpen, setInsightOpen] = useState(true);
+  // Histórico + comparação
+  const [history, setHistory] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [comparison, setComparison] = useState(null);
+  const [comparing, setComparing] = useState(false);
 
   const load = useCallback(async (d) => {
     setLoading(true); setErr("");
@@ -65,16 +71,59 @@ export default function ChurnDashboardPanel() {
 
   const generateInsight = useCallback(async () => {
     setInsightLoading(true); setInsightErr(""); setInsight(null);
+    setComparison(null);
     setInsightOpen(true);
     try {
       const r = await api.churnAiInsight(days);
       setInsight(r);
+      // Refresh history após gerar novo
+      try {
+        const h = await api.churnAiInsightHistory(20);
+        setHistory(h.items || []);
+      } catch (e) { /* ignore */ }
     } catch (e) {
       setInsightErr(e?.response?.data?.detail || e.message);
     } finally {
       setInsightLoading(false);
     }
   }, [days]);
+
+  // Carrega histórico ao montar
+  useEffect(() => {
+    api.churnAiInsightHistory(20).then((r) => setHistory(r.items || []))
+      .catch(() => { /* ignore */ });
+  }, []);
+
+  const loadHistoricInsight = useCallback(async (id) => {
+    setInsightLoading(true); setInsightErr(""); setComparison(null);
+    setInsightOpen(true);
+    try {
+      const r = await api.churnAiInsightGet(id);
+      setInsight(r);
+    } catch (e) {
+      setInsightErr(e?.response?.data?.detail || e.message);
+    } finally {
+      setInsightLoading(false);
+      setHistoryOpen(false);
+    }
+  }, []);
+
+  const compareWithPrevious = useCallback(async () => {
+    if (!insight?.id || history.length < 2) return;
+    const baseIdx = history.findIndex((h) => h.id === insight.id);
+    // O próximo na lista (mais antigo) é o "anterior"
+    const prev = history[baseIdx >= 0 ? baseIdx + 1 : 1];
+    if (!prev) return;
+    setComparing(true); setComparison(null);
+    try {
+      const r = await api.churnAiInsightCompare(insight.id, prev.id);
+      setComparison({ ...r, prev_label: `${prev.date} · ${prev.window_days}d` });
+    } catch (e) {
+      setComparison({ error: e?.response?.data?.detail || e.message });
+    } finally {
+      setComparing(false);
+    }
+  }, [insight, history]);
 
   const maxMonth = useMemo(() => {
     if (!data?.by_month) return 1;
@@ -171,6 +220,71 @@ export default function ChurnDashboardPanel() {
           {insightLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
           Analisar com IA
         </button>
+        {history.length > 0 && (
+          <div style={{ position: "relative" }}>
+            <button onClick={() => setHistoryOpen(!historyOpen)}
+                      data-testid="churn-history-btn"
+                      style={{
+                        padding: 8, border: "1px solid var(--border-default)",
+                        background: "var(--bg-surface)", borderRadius: 8,
+                        cursor: "pointer", color: "var(--text-muted)",
+                        display: "inline-flex", alignItems: "center", gap: 4,
+                        fontSize: 11,
+                      }}
+                      title={`${history.length} briefing(s) no histórico`}>
+              <History size={14} />
+              <span style={{ fontWeight: 700 }}>{history.length}</span>
+            </button>
+            {historyOpen && (
+              <div data-testid="churn-history-dropdown" style={{
+                position: "absolute", top: "calc(100% + 6px)", right: 0,
+                width: 320, maxHeight: 360, overflow: "auto",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-default)",
+                borderRadius: 10, zIndex: 50,
+                boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
+                padding: 8,
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 700,
+                                color: "var(--text-muted)",
+                                textTransform: "uppercase", letterSpacing: 0.4,
+                                padding: "4px 8px 6px" }}>
+                  Briefings salvos
+                </div>
+                {history.map((h) => (
+                  <button key={h.id}
+                            onClick={() => loadHistoricInsight(h.id)}
+                            data-testid={`churn-history-item-${h.id}`}
+                            style={{
+                              display: "block", width: "100%", textAlign: "left",
+                              padding: "8px 10px", border: 0, borderRadius: 6,
+                              background: insight?.id === h.id ? "var(--bg-surface-2)" : "transparent",
+                              cursor: "pointer", fontSize: 12,
+                              borderLeft: insight?.id === h.id ? "3px solid #6366f1" : "3px solid transparent",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (insight?.id !== h.id)
+                                e.currentTarget.style.background = "var(--bg-surface-2)";
+                            }}
+                            onMouseLeave={(e) => {
+                              if (insight?.id !== h.id)
+                                e.currentTarget.style.background = "transparent";
+                            }}>
+                    <div style={{ fontWeight: 600,
+                                    color: "var(--text-primary)" }}>
+                      {h.date} · {h.window_days}d
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)",
+                                    marginTop: 2 }}>
+                      {h.based_on?.total_churn ?? 0} churn(s)
+                      {h.based_on?.top_reason ? ` · ${h.based_on.top_reason}` : ""}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* AI Insight */}
@@ -222,10 +336,60 @@ export default function ChurnDashboardPanel() {
               }} />
               <div style={{ marginTop: 12, paddingTop: 10,
                               borderTop: "1px dashed var(--border-default)",
+                              display: "flex", alignItems: "center", gap: 10,
                               fontSize: 10, color: "var(--text-muted)" }}>
-                Gerado por {insight.model} · {insight.provider} · janela {insight.window_days}d
+                <span>Gerado por {insight.model} · {insight.provider} · janela {insight.window_days}d</span>
+                {history.length >= 2 && (
+                  <button onClick={compareWithPrevious} disabled={comparing}
+                            data-testid="churn-compare-btn"
+                            style={{
+                              marginLeft: "auto",
+                              padding: "5px 10px", border: "1px solid #6366f1",
+                              background: "transparent", color: "#6366f1",
+                              borderRadius: 6, cursor: comparing ? "wait" : "pointer",
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              fontSize: 11, fontWeight: 700,
+                            }}>
+                    {comparing ? <Loader2 size={11} className="animate-spin" /> : <GitCompare size={11} />}
+                    Comparar com anterior
+                  </button>
+                )}
               </div>
             </>
+          )}
+          {comparison && !comparison.error && (
+            <div data-testid="churn-comparison-card" style={{
+              marginTop: 12, padding: 12,
+              background: "var(--bg-surface-2)",
+              border: "1px dashed #6366f1",
+              borderRadius: 10,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6,
+                              fontSize: 11, fontWeight: 700,
+                              color: "#6366f1", marginBottom: 8,
+                              textTransform: "uppercase", letterSpacing: 0.4 }}>
+                <GitCompare size={12} />
+                Comparação com {comparison.prev_label}
+              </div>
+              <div style={{
+                fontSize: 12.5, lineHeight: 1.6,
+                color: "var(--text-primary)",
+              }} dangerouslySetInnerHTML={{
+                __html: (comparison.comparison || "")
+                  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                  .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                  .replace(/^- (.+)$/gm, '<div style="margin: 4px 0 4px 16px; position: relative"><span style="position:absolute;left:-12px;color:#6366f1">•</span>$1</div>')
+                  .replace(/↑/g, '<span style="color:#dc2626">↑</span>')
+                  .replace(/↓/g, '<span style="color:#10b981">↓</span>')
+                  .replace(/→/g, '<span style="color:#64748b">→</span>'),
+              }} />
+            </div>
+          )}
+          {comparison?.error && (
+            <div style={{ marginTop: 10, padding: 8, background: "#fef2f2",
+                            color: "#be123c", borderRadius: 6, fontSize: 12 }}>
+              Erro ao comparar: {comparison.error}
+            </div>
           )}
         </div>
       )}

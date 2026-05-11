@@ -1,5 +1,29 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Histórico de Briefings + Comparação IA
+
+### Backend (`routes/churn.py`)
+- `POST /api/churn/ai-insight`: agora persiste o briefing em coleção `churn_insights` (upsert por chave `ci-{cid}-{date}-{days}` — máx 1 por dia por janela).
+- `based_on` enriquecido com `by_reason`, `by_neighborhood`, `by_kind`, `avg_lifetime_days` para suportar comparação.
+- Novo `GET /api/churn/ai-insight/history?limit=N`: lista briefings (mais recentes primeiro, sem o texto completo, só metadados).
+- Novo `GET /api/churn/ai-insight/{id}`: retorna 1 briefing histórico completo.
+- Novo `POST /api/churn/ai-insight/compare?base_id=&against_id=`: gera comparação narrativa via Claude (3 seções: Evolução / Mudança de padrões / O que fazer diferente). Usa setas ↑↓→.
+
+### Frontend (`ChurnDashboardPanel.js`)
+- Novo botão dropdown **História** (ícone `History` + contador) ao lado de "Analisar com IA": lista briefings salvos com data, janela e churn total. Click carrega o briefing antigo.
+- Novo botão **"Comparar com anterior"** dentro do card de insight (aparece quando há ≥2 no histórico). Click chama o endpoint compare e renderiza card pontilhado roxo abaixo do briefing.
+- Comparação destaca ↑ (vermelho), ↓ (verde), → (cinza) automaticamente via regex no HTML render.
+
+### Validação ✓
+- Geramos 2 briefings (180d + 90d) e ambos salvos no Mongo
+- `GET /history` retornou 2 itens com metadados
+- `POST /compare` retornou comparação narrativa estruturada do Claude (Evolução dos números, Mudança de padrões, 3 recomendações)
+- Frontend: dropdown abre, click carrega briefing histórico, botão Comparar renderiza card roxo de comparação ✓
+- Lint frontend + backend limpos
+
+---
+
+
 ## Feb 11, 2026 — Briefing executivo de Churn por IA (Claude Sonnet 4.5)
 
 ### Backend

@@ -321,16 +321,135 @@ NÃO invente dados que não estão no snapshot. Se algum dado for zero, sinalize
         from fastapi import HTTPException
         raise HTTPException(502, f"Motor IA falhou: {e}") from e
 
+    based_on = {
+        "total_churn": k["total_churn"],
+        "churn_rate_pct": k["churn_rate_pct"],
+        "top_reason": payload["by_reason"][0]["label"] if payload["by_reason"] else None,
+        "top_neighborhood": payload["by_neighborhood"][0]["label"] if payload["by_neighborhood"] else None,
+        "by_reason": payload["by_reason"][:5],
+        "by_neighborhood": payload["by_neighborhood"][:5],
+        "by_kind": payload["by_kind"],
+        "avg_lifetime_days": k["avg_lifetime_days"],
+    }
+    today = datetime.now(timezone.utc).date().isoformat()
+    record_id = f"ci-{cid}-{today}-{days}"
+    doc = {
+        "id": record_id,
+        "company_id": cid,
+        "date": today,
+        "window_days": days,
+        "insight": result.get("content"),
+        "model": result.get("model"),
+        "provider": result.get("provider"),
+        "based_on": based_on,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_by": user.get("name") or user.get("email") or "system",
+    }
+    # Upsert: 1 registro por dia x janela
+    await db.churn_insights.update_one(
+        {"id": record_id}, {"$set": doc}, upsert=True,
+    )
+
     return {
         "ok": True,
+        "id": record_id,
         "insight": result.get("content"),
         "model": result.get("model"),
         "provider": result.get("provider"),
         "window_days": days,
-        "based_on": {
-            "total_churn": k["total_churn"],
-            "churn_rate_pct": k["churn_rate_pct"],
-            "top_reason": payload["by_reason"][0]["label"] if payload["by_reason"] else None,
-            "top_neighborhood": payload["by_neighborhood"][0]["label"] if payload["by_neighborhood"] else None,
-        },
+        "based_on": based_on,
+    }
+
+
+@router.get("/ai-insight/history")
+async def churn_ai_insight_history(
+    limit: int = Query(30, ge=1, le=100),
+    user: dict = Depends(require_role("gestor")),
+) -> Dict[str, Any]:
+    """Lista briefings históricos salvos (mais recentes primeiro)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cur = db.churn_insights.find(
+        {"company_id": cid},
+        {"_id": 0, "id": 1, "date": 1, "window_days": 1,
+         "model": 1, "based_on": 1, "generated_at": 1, "generated_by": 1},
+    ).sort("generated_at", -1).limit(limit)
+    items = await cur.to_list(limit)
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/ai-insight/{insight_id}")
+async def churn_ai_insight_get(
+    insight_id: str,
+    user: dict = Depends(require_role("gestor")),
+) -> Dict[str, Any]:
+    """Retorna um briefing histórico específico."""
+    from fastapi import HTTPException
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.churn_insights.find_one(
+        {"id": insight_id, "company_id": cid}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Briefing não encontrado.")
+    return doc
+
+
+@router.post("/ai-insight/compare")
+async def churn_ai_insight_compare(
+    base_id: str = Query(..., description="ID do briefing mais recente"),
+    against_id: str = Query(..., description="ID do briefing anterior"),
+    user: dict = Depends(require_role("gestor")),
+) -> Dict[str, Any]:
+    """Gera comparação narrativa entre dois briefings via Claude."""
+    from fastapi import HTTPException
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    base = await db.churn_insights.find_one(
+        {"id": base_id, "company_id": cid}, {"_id": 0})
+    prev = await db.churn_insights.find_one(
+        {"id": against_id, "company_id": cid}, {"_id": 0})
+    if not base or not prev:
+        raise HTTPException(404, "Briefing(s) não encontrado(s).")
+
+    def _kpi_line(d: Dict[str, Any]) -> str:
+        bo = d.get("based_on") or {}
+        reasons = ", ".join(
+            f"{r['label']} ({r['count']})" for r in (bo.get("by_reason") or [])[:5])
+        neighs = ", ".join(
+            f"{n['label']} ({n['count']})" for n in (bo.get("by_neighborhood") or [])[:5])
+        return (f"data={d.get('date')}, janela={d.get('window_days')}d, "
+                  f"churn_total={bo.get('total_churn')}, "
+                  f"taxa={bo.get('churn_rate_pct')}%, "
+                  f"vida_média={bo.get('avg_lifetime_days')}d, "
+                  f"top_motivos=[{reasons}], top_bairros=[{neighs}], "
+                  f"split={bo.get('by_kind')}")
+
+    prompt = (
+        "Você é um analista de retenção. Compare dois snapshots do dashboard "
+        "de churn e responda em pt-BR com no MÁXIMO 3 parágrafos curtos.\n\n"
+        f"**Atual** — {_kpi_line(base)}\n\n"
+        f"**Anterior** — {_kpi_line(prev)}\n\n"
+        "Estruture a resposta com os títulos:\n"
+        "**Evolução dos números**: variação de churn total, taxa e tempo de vida.\n"
+        "**Mudança de padrões**: motivos/bairros que entraram ou saíram do top, sinais novos.\n"
+        "**O que fazer diferente agora**: 2-3 recomendações baseadas APENAS na mudança observada.\n\n"
+        "Use setas ↑/↓ para indicar variações numéricas. Se algum dado é nulo, sinalize."
+    )
+
+    try:
+        result = await chat_completion(
+            cid,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=700, temperature=0.35,
+            agent="churn_insight",
+        )
+    except AgentDisabledError as e:
+        raise HTTPException(503, str(e)) from e
+    except Exception as e:
+        raise HTTPException(502, f"Motor IA falhou: {e}") from e
+
+    return {
+        "ok": True,
+        "comparison": result.get("content"),
+        "model": result.get("model"),
+        "provider": result.get("provider"),
+        "base_id": base_id,
+        "against_id": against_id,
     }

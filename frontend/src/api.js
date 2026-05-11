@@ -234,6 +234,13 @@ export const api = {
     client.get(`/churn/dashboard`, { params: { days } }).then((r) => r.data),
   churnAiInsight: (days = 180) =>
     client.post(`/churn/ai-insight`, null, { params: { days } }).then((r) => r.data),
+  churnAiInsightHistory: (limit = 30) =>
+    client.get(`/churn/ai-insight/history`, { params: { limit } }).then((r) => r.data),
+  churnAiInsightGet: (id) =>
+    client.get(`/churn/ai-insight/${id}`).then((r) => r.data),
+  churnAiInsightCompare: (baseId, againstId) =>
+    client.post(`/churn/ai-insight/compare`, null,
+                  { params: { base_id: baseId, against_id: againstId } }).then((r) => r.data),
   smartoltOnuReboot: (extId) => client.post(`/smartolt/onu/${extId}/reboot`).then((r) => r.data),
 
   // ========= SmartOLT AI — monitoramento autônomo =========
