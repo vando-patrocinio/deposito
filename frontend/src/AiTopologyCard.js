@@ -2,18 +2,18 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
 import {
   Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
-  Loader2, Activity, Shield, ClipboardList,
+  Loader2, Activity, Shield, ClipboardList, Wand2,
 } from "lucide-react";
 
 const ICONS = { Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
-  Shield, ClipboardList };
+  Shield, ClipboardList, Wand: Wand2 };
 
 /* Layout dinâmico:
    - IAs ficam no topo/centro do canvas em posições fixas
    - Atendentes humanos (N variável) ficam dispostos na faixa inferior,
      distribuídos uniformemente da esquerda pra direita.
 */
-const W = 1100, H = 700;
+const W = 1100, H = 760;
 const AI_LAYOUT = {
   smartolt:    { x: 120, y: 90 },
   atendimento: { x: 380, y: 250 },
@@ -21,14 +21,15 @@ const AI_LAYOUT = {
   evaluator:   { x: 960, y: 90 },
   coach:       { x: 960, y: 410 },
   learning:    { x: 120, y: 250 },
-  sentinela:   { x: 380, y: 410 },   // Sentinela — abaixo de Isabella
-  lousa:       { x: 720, y: 410 },   // Lousa — ao lado da Sentinela
+  sentinela:   { x: 270, y: 470 },
+  lousa_ai:    { x: 560, y: 470 },
+  lousa:       { x: 850, y: 470 },
 };
 
 function humanLayout(humanNodes) {
   // Linha inferior — distribuída uniformemente
   const n = humanNodes.length;
-  const yLine = 630;
+  const yLine = 690;
   if (n === 0) return {};
   const positions = {};
   const margin = 110;
@@ -154,6 +155,7 @@ export default function AiTopologyCard() {
         <KpiPill label="Dicas Co-Pilot"    value={totals.copilot_hints_24h ?? 0} color="#d97706" />
         <KpiPill label="Avaliações IA"     value={totals.evaluations_24h ?? 0}   color="#0ea5e9" />
         <KpiPill label="Alertas Sentinela" value={totals.sentinela_active_alerts ?? 0} color="#ef4444" />
+        <KpiPill label="Triados Lousa AI"  value={totals.lousa_ai_triaged_24h ?? 0}  color="#2563eb" />
         <KpiPill label="Atendentes ativos" value={totals.human_attendants ?? 0}  color="#475569" />
       </div>
 

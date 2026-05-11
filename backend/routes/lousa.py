@@ -926,6 +926,7 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
         "close_location": None, "outcome": None,
         "whatsapp_status": "nao_enviado", "whatsapp_last_message": None,
         "completion_data": None, "admin_action": None, "admin_notes": None,
+        "ai_triage_pending": True,
         "created_at": now_iso(),
     }
     await db.tickets.insert_one(doc)

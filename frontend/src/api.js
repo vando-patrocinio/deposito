@@ -250,6 +250,13 @@ export const api = {
 
   // ========= AI Topology (Motor IA card) =========
   aiTopologyFlow: () => client.get(`/ai-topology/flow`).then((r) => r.data),
+  // ===== Lousa AI · Triagem =====
+  lousaAiSummary: () =>
+    client.get(`/lousa-ai/summary`).then((r) => r.data),
+  lousaAiTriage: (ticketId, force = false) =>
+    client.post(`/lousa-ai/triage/${ticketId}`, null, { params: { force } }).then((r) => r.data),
+  lousaAiRevert: (ticketId) =>
+    client.post(`/lousa-ai/triage/${ticketId}/revert`).then((r) => r.data),
   // ===== Sentinela Lousa AI — alertas autônomos de tickets =====
   sentinelaSummary: () =>
     client.get(`/sentinela-lousa/summary`).then((r) => r.data),

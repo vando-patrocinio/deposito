@@ -77,6 +77,12 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
         sentinela = await count_alerts_24h(cid)
     except Exception:
         sentinela = {"active": 0, "new_24h": 0, "resolved_24h": 0, "by_kind": {}}
+    # Lousa AI Triagem — tickets triados nas últimas 24h
+    try:
+        from services.lousa_ai_triagem import stats as lousa_ai_stats
+        lousa_ai = await lousa_ai_stats(cid)
+    except Exception:
+        lousa_ai = {"triaged_24h": 0, "pending": 0, "avg_risk_score": 0, "accuracy_pct": None}
     # Tickets ativos na Lousa (para a aresta Sentinela → Lousa)
     try:
         active_tickets = await db.tickets.count_documents({
@@ -218,6 +224,15 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
          "model_kind": "llm",
          "metric": f"{sentinela['active']} alertas",
          "metric_sub": f"{sentinela['new_24h']} novos/24h"},
+        {"id": "lousa_ai", "label": "Lousa AI · Triagem",
+         "subtitle": "Classifica novos tickets", "icon": "Wand",
+         "color": "#2563eb", "kind": "ai",
+         "model": DEFAULT_M,
+         "model_kind": "llm",
+         "metric": f"{lousa_ai.get('triaged_24h', 0)} triados/24h",
+         "metric_sub": (f"acurácia {lousa_ai['accuracy_pct']}%"
+                          if lousa_ai.get('accuracy_pct') is not None
+                          else f"{lousa_ai.get('pending', 0)} pendentes")},
         {"id": "lousa", "label": "Lousa (Kanban)",
          "subtitle": "Tickets em curso", "icon": "ClipboardList",
          "color": "#64748b", "kind": "system",
@@ -254,6 +269,12 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
         {"from": "sentinela", "to": "lousa", "value": sentinela["active"],
          "label": "Alertas ativos",
          "desc": "Alertas inseridos como notas internas nos tickets"},
+        # Lousa AI Triagem: classifica tickets novos antes do humano abrir
+        {"from": "lousa", "to": "lousa_ai", "value": lousa_ai.get("pending", 0),
+         "label": "Tickets aguardando triagem"},
+        {"from": "lousa_ai", "to": "lousa", "value": lousa_ai.get("triaged_24h", 0),
+         "label": "Triados/24h",
+         "desc": "Tipo · Prioridade · Técnico · SLA · Tags · Risk Score"},
     ]
     # Co-Pilot → cada humano + cada humano → atendimento
     edges.extend(human_edges_in)
@@ -281,6 +302,9 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
             "sentinela_active_alerts": sentinela["active"],
             "sentinela_new_24h": sentinela["new_24h"],
             "active_tickets": active_tickets,
+            "lousa_ai_triaged_24h": lousa_ai.get("triaged_24h", 0),
+            "lousa_ai_pending": lousa_ai.get("pending", 0),
+            "lousa_ai_accuracy_pct": lousa_ai.get("accuracy_pct"),
         },
         "motor": {
             "enabled": motor_enabled,
