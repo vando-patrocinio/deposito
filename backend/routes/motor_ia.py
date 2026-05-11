@@ -455,7 +455,53 @@ async def agents_history(
         "intervals_by_agent": intervals_by_agent,
         "downtime_by_agent": downtime_by_agent,
         "agents_catalog": [{"id": a["id"], "label": a["label"]} for a in AGENT_CATALOG],
+        "incidents": await _gather_incidents(cid, start_iso, end_iso),
     }
+
+
+async def _gather_incidents(cid: str, start_iso: str, end_iso: str) -> List[Dict[str, Any]]:
+    """Coleta incidentes operacionais relevantes pra correlação:
+
+      - network_outages → kind="outage", relevante a smartolt_ai / isabella_whatsapp
+      - lousa_alerts    → kind="sentinela", relevante a sentinela_lousa
+    """
+    incidents: List[Dict[str, Any]] = []
+    # Outages
+    async for o in db.network_outages.find(
+        {"company_id": cid,
+         "first_detected_at": {"$gte": start_iso, "$lt": end_iso}},
+        {"_id": 0, "id": 1, "first_detected_at": 1, "resolved_at": 1,
+         "olt_name": 1, "severity_pct": 1, "los_count": 1, "total_count": 1,
+         "status": 1},
+    ).sort("first_detected_at", -1).limit(100):
+        incidents.append({
+            "id": o.get("id"),
+            "kind": "outage",
+            "start": o.get("first_detected_at"),
+            "end": o.get("resolved_at") or end_iso,
+            "active": o.get("status") == "active",
+            "title": f"Pane {o.get('olt_name')}",
+            "detail": f"{o.get('los_count', 0)}/{o.get('total_count', 0)} ONUs · {o.get('severity_pct', 0)}%",
+            "affects": ["smartolt_ai", "isabella_whatsapp"],
+        })
+    # Sentinela alerts (kanban SLA, sobrecarga etc)
+    async for a in db.lousa_alerts.find(
+        {"company_id": cid,
+         "first_detected_at": {"$gte": start_iso, "$lt": end_iso}},
+        {"_id": 0, "id": 1, "kind": 1, "headline": 1, "severity": 1,
+         "first_detected_at": 1, "last_seen_at": 1, "status": 1},
+    ).sort("first_detected_at", -1).limit(100):
+        incidents.append({
+            "id": a.get("id"),
+            "kind": "sentinela",
+            "start": a.get("first_detected_at"),
+            "end": a.get("last_seen_at") or end_iso,
+            "active": a.get("status") == "active",
+            "title": a.get("headline") or a.get("kind"),
+            "detail": f"severidade: {a.get('severity', 'media')}",
+            "affects": ["sentinela_lousa", "lousa_triagem"],
+        })
+    return incidents
 
 
 

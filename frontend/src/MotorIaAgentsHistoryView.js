@@ -115,7 +115,7 @@ export default function MotorIaAgentsHistoryView() {
               </div>
               <div style={{ position: "relative", height: 18,
                               background: "var(--surface-2, #f1f5f9)",
-                              borderRadius: 4, overflow: "hidden" }}>
+                              borderRadius: 4 }}>
                 {intervals.map((it, idx) => {
                   const s = new Date(it.start).getTime();
                   const e = new Date(it.end).getTime();
@@ -138,6 +138,40 @@ export default function MotorIaAgentsHistoryView() {
                          }} />
                   );
                 })}
+                {/* Sobreposição de incidentes que afetam este agente */}
+                {(data.incidents || [])
+                  .filter((inc) => (inc.affects || []).includes(cat.id))
+                  .map((inc, idx) => {
+                    const s = new Date(inc.start).getTime();
+                    const e = new Date(inc.end).getTime();
+                    const leftPct = Math.max(0, ((s - range.start) / range.span) * 100);
+                    const widthPct = Math.min(100 - leftPct,
+                                                  ((e - s) / range.span) * 100);
+                    if (widthPct < 0.1) return null;
+                    return (
+                      <div key={`inc-${idx}`}
+                           onMouseEnter={() => setHover({
+                             agent: cat.label,
+                             isIncident: true,
+                             ...inc,
+                             durSec: Math.round((e - s) / 1000),
+                           })}
+                           onMouseLeave={() => setHover(null)}
+                           title={inc.title}
+                           style={{
+                             position: "absolute",
+                             top: -3, height: 24,
+                             left: `${leftPct}%`, width: `${widthPct}%`,
+                             borderTop: `2px solid ${inc.kind === "outage" ? "#f59e0b" : "#8b5cf6"}`,
+                             borderBottom: `2px solid ${inc.kind === "outage" ? "#f59e0b" : "#8b5cf6"}`,
+                             background: inc.kind === "outage"
+                               ? "repeating-linear-gradient(135deg, transparent 0 4px, rgba(245,158,11,0.45) 4px 5px)"
+                               : "repeating-linear-gradient(135deg, transparent 0 4px, rgba(139,92,246,0.5) 4px 5px)",
+                             cursor: "pointer",
+                             pointerEvents: "auto",
+                           }} />
+                    );
+                  })}
               </div>
               <div style={{ textAlign: "right", fontSize: 11,
                               color: downtime.off_pct > 0 ? "#dc2626" : "var(--text-muted, #94a3b8)",
@@ -152,14 +186,14 @@ export default function MotorIaAgentsHistoryView() {
       </div>
 
       {/* Tooltip flutuante */}
-      {hover && (
+      {hover && !hover.isIncident && (
         <div style={{
           marginTop: 12, padding: 10,
           background: hover.enabled ? "#ecfdf5" : "#fef2f2",
           border: `1px solid ${hover.enabled ? "#a7f3d0" : "#fecaca"}`,
           borderRadius: 8, fontSize: 12,
           color: hover.enabled ? "#047857" : "#be123c",
-          display: "flex", alignItems: "center", gap: 8,
+          display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
         }} data-testid="history-tooltip">
           {hover.enabled ? <Power size={14} /> : <PowerOff size={14} />}
           <strong>{hover.agent}</strong>
@@ -171,10 +205,28 @@ export default function MotorIaAgentsHistoryView() {
           <span>{fmtDuration(hover.durSec)}</span>
         </div>
       )}
+      {hover && hover.isIncident && (
+        <div style={{
+          marginTop: 12, padding: 10,
+          background: hover.kind === "outage" ? "#fffbeb" : "#f5f3ff",
+          border: `1px solid ${hover.kind === "outage" ? "#fde68a" : "#ddd6fe"}`,
+          borderRadius: 8, fontSize: 12,
+          color: hover.kind === "outage" ? "#b45309" : "#6d28d9",
+          display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+        }} data-testid="history-tooltip-incident">
+          <strong>{hover.kind === "outage" ? "🟡 PANE" : "🟣 ALERTA"}</strong>
+          <strong>{hover.title}</strong>
+          <span style={{ opacity: 0.8 }}>· {hover.detail}</span>
+          <span style={{ opacity: 0.7 }}>·</span>
+          <span>{fmtDate(hover.start)} → {fmtDate(hover.end)}</span>
+          <span style={{ opacity: 0.7 }}>·</span>
+          <span>{fmtDuration(hover.durSec)}</span>
+        </div>
+      )}
 
       {/* Legenda */}
       <div style={{ marginTop: 14, display: "flex", gap: 16, fontSize: 11,
-                      color: "var(--text-muted, #64748b)" }}>
+                      color: "var(--text-muted, #64748b)", flexWrap: "wrap" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ width: 12, height: 12, background: "#10b981",
                             opacity: 0.7, borderRadius: 2 }} /> Ativo
@@ -183,8 +235,20 @@ export default function MotorIaAgentsHistoryView() {
           <span style={{ width: 12, height: 12, background: "#dc2626",
                             opacity: 0.85, borderRadius: 2 }} /> Pausado
         </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 14, height: 10, borderRadius: 2,
+                            background: "repeating-linear-gradient(135deg, transparent 0 3px, rgba(245,158,11,0.6) 3px 4px)",
+                            border: "1px solid #f59e0b" }} />
+          Pane de rede
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 14, height: 10, borderRadius: 2,
+                            background: "repeating-linear-gradient(135deg, transparent 0 3px, rgba(139,92,246,0.6) 3px 4px)",
+                            border: "1px solid #8b5cf6" }} />
+          Alerta Sentinela
+        </span>
         <span style={{ opacity: 0.7 }}>
-          Passe o mouse sobre uma barra para ver detalhes.
+          Passe o mouse para detalhes.
         </span>
       </div>
 

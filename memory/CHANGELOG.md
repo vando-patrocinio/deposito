@@ -1,5 +1,29 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Overlay de incidentes na timeline de agentes
+
+### Backend
+- `routes/motor_ia.py`: endpoint `GET /api/motor-ia/agents/history` agora retorna `incidents[]` adicional:
+  - `network_outages` no período → `kind:"outage"`, afetam `smartolt_ai` e `isabella_whatsapp`.
+  - `lousa_alerts` no período → `kind:"sentinela"`, afetam `sentinela_lousa` e `lousa_triagem`.
+  - Cada incidente trás `{id, kind, start, end, active, title, detail, affects:[agent_id...]}`.
+- Helper interno `_gather_incidents(cid, start, end)`.
+
+### Frontend
+- `MotorIaAgentsHistoryView.js`: sobrepõe incidentes às barras de timeline dos agentes afetados (filtro por `inc.affects`).
+  - Padrão hachurado em diagonal (laranja para panes, roxo para Sentinela).
+  - Tooltip dedicado mostra tipo/título/detalhe/duração/intervalo.
+  - Legenda atualizada com 4 itens (Ativo, Pausado, Pane, Alerta Sentinela).
+  - Contêiner da barra perdeu `overflow:hidden` para a sobreposição ficar visível.
+
+### Validação
+- Endpoint retorna 114 incidentes nas últimas 168h (panes RIO_HUAWEI, PENHA_HUAWEI etc) ✓
+- Cada incidente expõe `affects` correto ✓
+- Lint frontend + backend limpos ✓
+
+---
+
+
 ## Feb 11, 2026 — Auditoria de Mudanças de Agentes (timeline ON/OFF)
 
 ### Backend
