@@ -231,6 +231,9 @@ export const api = {
     client.get(`/smartolt-ai/outages/recent`, { params: { hours } }).then((r) => r.data),
   smartoltAiForceDetect: () =>
     client.post(`/smartolt-ai/outages/detect`).then((r) => r.data),
+
+  // ========= AI Topology (Motor IA card) =========
+  aiTopologyFlow: () => client.get(`/ai-topology/flow`).then((r) => r.data),
   // Public mobile endpoints
   publicTechStock: (cid) => client.get(`/stok/public/collaborator/${cid}/stock`).then((r) => r.data),
   publicValidateMac: (mac, cid) => client.get(`/smartolt/public/validate-mac/${encodeURIComponent(mac)}`,

@@ -14,6 +14,7 @@ import ManagerPanel from "@/ManagerPanel";
 import TimesheetView from "@/TimesheetView";
 import SettingsPanel from "@/SettingsPanel";
 import MotorIaCard from "@/MotorIaCard";
+import AiTopologyCard from "@/AiTopologyCard";
 import UsersPanel from "@/UsersPanel";
 import DashboardPanel from "@/DashboardPanel";
 import PracasPanel from "@/PracasPanel";
@@ -682,12 +683,13 @@ function AppContent() {
           {view === "logs" && <LogsPanel />}
           {view === "settings" && <SettingsPanel />}
           {view === "motor-ia" && (
-            <div style={{ padding: "0 4px" }}>
+            <div style={{ padding: "0 4px", display: "grid", gap: 16 }}>
               <h1 style={{ fontSize: 24, fontWeight: 700,
                               color: "var(--text-primary)",
-                              letterSpacing: "-0.02em", marginBottom: 16 }}>
+                              letterSpacing: "-0.02em", margin: 0 }}>
                 Motor IA
               </h1>
+              <AiTopologyCard />
               <MotorIaCard />
             </div>
           )}
