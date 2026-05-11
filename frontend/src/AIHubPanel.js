@@ -12,9 +12,9 @@ import WhatsAppQRPanel from "@/WhatsAppQRPanel";
 import CentralIaDashboard from "@/CentralIaDashboard";
 
 const TABS = [
+  { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode },
   { id: "central_ia", label: "Central IA", icon: Brain },
   { id: "jerusa", label: "Ligar Jerusa", icon: PhoneCall },
-  { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode },
   { id: "mensagem", label: "Mensagem", icon: MessageCircle },
   { id: "agents", label: "Agentes", icon: Bot },
   { id: "playground", label: "Playground", icon: MessageCircle },
