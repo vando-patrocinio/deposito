@@ -70,7 +70,7 @@ export default function MotorIaCard() {
     } finally { setBusy(false); }
   };
 
-  const useSuggested = (modelsArr) => {
+  const applySuggested = (modelsArr) => {
     if (!modelsArr || !modelsArr.length) return;
     setModel(modelsArr[0]);
     setFallbacks(modelsArr.slice(1).join("\n"));
@@ -166,7 +166,7 @@ export default function MotorIaCard() {
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {suggested.tiers.map((t) => (
-                <button key={t.id} onClick={() => useSuggested(t.models)}
+                <button key={t.id} onClick={() => applySuggested(t.models)}
                         data-testid={`motor-ia-tier-${t.id}`}
                         style={{
                           padding: "5px 10px", borderRadius: 6,
