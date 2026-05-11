@@ -1,23 +1,41 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
 import {
-  Radio, Bot, Award, GraduationCap, Sparkles, Users, Loader2, Activity,
+  Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
+  Loader2, Activity,
 } from "lucide-react";
 
-const ICONS = { Radio, Bot, Award, GraduationCap, Sparkles, Users };
+const ICONS = { Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb };
 
-/* Posições fixas no grid 1000x500 — fluxo da esquerda pra direita.
-   smartolt (alto-esq) → atendimento (centro) ↔ human (baixo)
-   atendimento → evaluator → coach + learning → atendimento (loop)
+/* Layout dinâmico:
+   - IAs ficam no topo/centro do canvas em posições fixas
+   - Atendentes humanos (N variável) ficam dispostos na faixa inferior,
+     distribuídos uniformemente da esquerda pra direita.
 */
-const LAYOUT = {
+const W = 1100, H = 580;
+const AI_LAYOUT = {
   smartolt:    { x: 120, y: 90 },
-  atendimento: { x: 500, y: 250 },
-  evaluator:   { x: 880, y: 90 },
-  coach:       { x: 880, y: 260 },
-  learning:    { x: 880, y: 410 },
-  human:       { x: 120, y: 410 },
+  atendimento: { x: 380, y: 250 },
+  copilot:     { x: 720, y: 250 },   // Co-Pilot bem visível ao lado de Atendimento
+  evaluator:   { x: 960, y: 90 },
+  coach:       { x: 960, y: 410 },
+  learning:    { x: 120, y: 250 },
 };
+
+function humanLayout(humanNodes) {
+  // Linha inferior — distribuída uniformemente
+  const n = humanNodes.length;
+  const yLine = 510;
+  if (n === 0) return {};
+  const positions = {};
+  const margin = 110;
+  const span = W - margin * 2;
+  humanNodes.forEach((node, i) => {
+    const x = n === 1 ? W / 2 : margin + (span * i) / (n - 1);
+    positions[node.id] = { x, y: yLine };
+  });
+  return positions;
+}
 
 export default function AiTopologyCard() {
   const [data, setData] = useState(null);
@@ -40,9 +58,17 @@ export default function AiTopologyCard() {
     return () => clearInterval(id);
   }, [reload]);
 
+  const layout = useMemo(() => {
+    if (!data) return {};
+    const humans = data.nodes.filter((n) => n.kind === "human");
+    return { ...AI_LAYOUT, ...humanLayout(humans) };
+  }, [data]);
+
   const maxEdgeValue = data
     ? Math.max(1, ...data.edges.map((e) => e.value || 0))
     : 1;
+
+  const totals = data?.totals || {};
 
   return (
     <div data-testid="ai-topology-card" style={{
@@ -67,17 +93,17 @@ export default function AiTopologyCard() {
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)",
                           textTransform: "uppercase", letterSpacing: 0.6 }}>
-            Topologia · Agent-to-Agent
+            Topologia · Agent-to-Agent · Agent-to-Human
           </div>
           <h3 style={{ fontSize: 16, fontWeight: 700, margin: "4px 0 0",
                           color: "var(--text-primary)", letterSpacing: "-0.012em" }}>
-            Fluxo de dados entre as IAs (últimas 24h)
+            Fluxo de dados entre IAs e atendentes humanos (últimas 24h)
           </h3>
           <p style={{ fontSize: 12, color: "var(--text-secondary)",
-                        margin: "4px 0 0", maxWidth: 580, lineHeight: 1.5 }}>
-            As IAs trocam contexto em tempo real. Espessura das linhas e
-            velocidade das partículas são proporcionais ao volume real de
-            dados trafegado.
+                        margin: "4px 0 0", maxWidth: 720, lineHeight: 1.5 }}>
+            Co-Pilot IA monitora cada conversa atribuída a humano e envia dicas
+            internas (cliente nunca vê). Espessura das linhas e velocidade
+            das partículas refletem o volume real trafegado.
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8,
@@ -87,6 +113,20 @@ export default function AiTopologyCard() {
             : <Activity size={12} style={{ color: "#16a34a" }} />}
           <span>auto-refresh 30s</span>
         </div>
+      </div>
+
+      {/* KPI strip */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+        gap: 8, marginBottom: 14,
+      }}>
+        <KpiPill label="Recebidas (24h)"  value={totals.wa_inbound_24h ?? 0} color="#0ea5e9" />
+        <KpiPill label="IA respondeu"      value={totals.wa_ai_24h ?? 0}     color="#16a34a" />
+        <KpiPill label="Humano respondeu"  value={totals.wa_human_24h ?? 0}  color="#475569" />
+        <KpiPill label="Dicas Co-Pilot"    value={totals.copilot_hints_24h ?? 0} color="#d97706" />
+        <KpiPill label="Avaliações IA"     value={totals.evaluations_24h ?? 0}   color="#0ea5e9" />
+        <KpiPill label="Atendentes ativos" value={totals.human_attendants ?? 0}  color="#475569" />
       </div>
 
       {err && (
@@ -103,35 +143,44 @@ export default function AiTopologyCard() {
         border: "1px solid var(--border-default)",
         overflow: "hidden",
       }}>
-        <svg viewBox="0 0 1000 500"
+        <svg viewBox={`0 0 ${W} ${H}`}
               style={{ width: "100%", height: "auto", display: "block" }}
               data-testid="ai-topology-svg">
+          {/* Faixa de fundo separando IAs e Humanos */}
+          <rect x="0" y={H - 130} width={W} height="130"
+                fill="rgba(71,85,105,.04)" />
+          <text x="14" y={H - 110} fontSize="10" fontWeight="700"
+                fill="var(--text-muted)"
+                style={{ textTransform: "uppercase", letterSpacing: "1px" }}>
+            Atendentes humanos
+          </text>
+
           {data?.edges.map((e, i) => {
-            const a = LAYOUT[e.from], b = LAYOUT[e.to];
+            const a = layout[e.from], b = layout[e.to];
             if (!a || !b) return null;
             const v = e.value || 0;
             const ratio = v / maxEdgeValue;
-            const stroke = Math.max(1.5, 1.5 + ratio * 5);
-            const opacity = v === 0 ? 0.18 : 0.45 + ratio * 0.5;
-            // Curva quadrática suave
+            const stroke = Math.max(1.3, 1.3 + ratio * 4.5);
+            const opacity = v === 0 ? 0.12 : 0.40 + ratio * 0.5;
+            // Cor especial pro Co-Pilot
+            const isCopilot = e.from === "copilot" || e.to === "copilot";
+            const strokeColor = isCopilot ? "#d97706" : "var(--text-muted)";
+            const dotColor = isCopilot ? "#d97706" : "#16a34a";
             const mx = (a.x + b.x) / 2;
             const my = (a.y + b.y) / 2;
-            // Desloca o controle pra criar curvas que não se sobreponham
-            const offsetY = ((i % 2) === 0 ? -1 : 1) * 30;
-            const cx = mx + (b.x === a.x ? 0 : 0);
-            const cy = my + offsetY;
-            const pathD = `M ${a.x},${a.y} Q ${cx},${cy} ${b.x},${b.y}`;
-            const dotCount = v === 0 ? 0 : Math.min(6, Math.ceil(ratio * 6));
-            const dur = Math.max(2, 6 - ratio * 4);  // mais volume = mais rápido
+            const offsetY = ((i % 2) === 0 ? -1 : 1) * 32;
+            const pathD = `M ${a.x},${a.y} Q ${mx},${my + offsetY} ${b.x},${b.y}`;
+            const dotCount = v === 0 ? 0 : Math.min(5, Math.ceil(ratio * 5));
+            const dur = Math.max(2.2, 6 - ratio * 4);
             return (
               <g key={i} data-testid={`flow-edge-${e.from}-${e.to}`}>
                 <path d={pathD} fill="none"
-                      stroke="var(--text-muted)"
+                      stroke={strokeColor}
                       strokeWidth={stroke}
                       strokeLinecap="round"
                       opacity={opacity} />
                 {Array.from({ length: dotCount }).map((_, di) => (
-                  <circle key={di} r="4" fill="#16a34a"
+                  <circle key={di} r="3.5" fill={dotColor}
                           className="flow-dot"
                           style={{
                             offsetPath: `path('${pathD}')`,
@@ -143,50 +192,70 @@ export default function AiTopologyCard() {
             );
           })}
           {data?.nodes.map((n) => {
-            const pos = LAYOUT[n.id];
+            const pos = layout[n.id];
             if (!pos) return null;
             const Ico = ICONS[n.icon] || Bot;
+            const isHuman = n.kind === "human";
+            const nodeW = isHuman ? 130 : 170;
+            const nodeH = isHuman ? 62 : 76;
             return (
-              <g key={n.id} transform={`translate(${pos.x - 80} ${pos.y - 36})`}
+              <g key={n.id}
+                  transform={`translate(${pos.x - nodeW / 2} ${pos.y - nodeH / 2})`}
                   data-testid={`flow-node-${n.id}`}>
-                <rect width="160" height="72" rx="10"
+                <rect width={nodeW} height={nodeH} rx="10"
                       fill="var(--bg-surface)"
                       stroke={n.color}
-                      strokeWidth="1.5" />
-                <foreignObject x="0" y="0" width="160" height="72">
+                      strokeWidth={isHuman ? "1.2" : "1.5"}
+                      strokeDasharray={isHuman ? "0" : "0"} />
+                <foreignObject x="0" y="0" width={nodeW} height={nodeH}>
                   <div xmlns="http://www.w3.org/1999/xhtml"
                         style={{
-                          padding: "8px 10px",
+                          padding: isHuman ? "6px 8px" : "8px 10px",
                           fontFamily: "inherit",
                           height: "100%",
                           display: "flex", flexDirection: "column",
                           justifyContent: "center",
                         }}>
                     <div style={{ display: "flex", alignItems: "center",
-                                     gap: 6, marginBottom: 4 }}>
+                                     gap: 6, marginBottom: 3 }}>
                       <div style={{
-                        width: 22, height: 22, borderRadius: 5,
+                        width: isHuman ? 18 : 22,
+                        height: isHuman ? 18 : 22, borderRadius: 5,
                         background: n.color, color: "#fff",
-                        display: "grid", placeItems: "center",
+                        display: "grid", placeItems: "center", flexShrink: 0,
                       }}>
-                        <Ico size={13} strokeWidth={1.8} />
+                        <Ico size={isHuman ? 11 : 13} strokeWidth={1.8} />
                       </div>
-                      <div style={{ fontSize: 12, fontWeight: 700,
+                      <div style={{ fontSize: isHuman ? 11 : 12, fontWeight: 700,
                                        color: "var(--text-primary)",
-                                       lineHeight: 1.1, letterSpacing: "-0.01em" }}>
+                                       lineHeight: 1.1, letterSpacing: "-0.01em",
+                                       overflow: "hidden",
+                                       textOverflow: "ellipsis",
+                                       whiteSpace: "nowrap" }}>
                         {n.label}
                       </div>
                     </div>
                     <div style={{ fontSize: 9, color: "var(--text-muted)",
                                      textTransform: "uppercase",
-                                     letterSpacing: 0.4, fontWeight: 600 }}>
+                                     letterSpacing: 0.4, fontWeight: 600,
+                                     overflow: "hidden",
+                                     textOverflow: "ellipsis",
+                                     whiteSpace: "nowrap" }}>
                       {n.subtitle}
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 700,
-                                     color: n.color, marginTop: 3,
+                    <div style={{ fontSize: 10.5, fontWeight: 700,
+                                     color: n.color, marginTop: 2,
                                      fontFamily: "ui-monospace, monospace" }}>
                       {n.metric}
                     </div>
+                    {isHuman && n.hints_received > 0 && (
+                      <div style={{ fontSize: 9, color: "#d97706",
+                                       fontWeight: 700, marginTop: 1,
+                                       display: "flex", alignItems: "center", gap: 3 }}>
+                        <Lightbulb size={9} strokeWidth={2.2} />
+                        {n.hints_received} dica{n.hints_received === 1 ? "" : "s"}
+                      </div>
+                    )}
                   </div>
                 </foreignObject>
               </g>
@@ -195,32 +264,58 @@ export default function AiTopologyCard() {
         </svg>
       </div>
 
-      {/* Legenda */}
+      {/* Legenda — agrupa arestas por tipo */}
       {data?.edges && (
         <div style={{
           marginTop: 14, display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           gap: 8,
         }}>
-          {data.edges.map((e, i) => (
-            <div key={i} style={{
-              padding: "8px 10px", borderRadius: 6,
-              border: "1px solid var(--border-default)",
-              background: "var(--bg-surface)",
-              fontSize: 11,
-            }} data-testid={`flow-legend-${e.from}-${e.to}`}>
-              <div style={{ display: "flex", justifyContent: "space-between",
-                               alignItems: "baseline", gap: 6 }}>
-                <span style={{ color: "var(--text-secondary)" }}>{e.label}</span>
-                <strong style={{ color: e.value > 0 ? "#16a34a" : "var(--text-muted)",
-                                    fontFamily: "ui-monospace, monospace" }}>
-                  {e.value}
-                </strong>
+          {data.edges
+            .filter((e) => e.value > 0)
+            .map((e, i) => (
+              <div key={i} style={{
+                padding: "8px 10px", borderRadius: 6,
+                border: "1px solid var(--border-default)",
+                background: "var(--bg-surface)",
+                fontSize: 11,
+              }} data-testid={`flow-legend-${e.from}-${e.to}`}>
+                <div style={{ display: "flex", justifyContent: "space-between",
+                                 alignItems: "baseline", gap: 6 }}>
+                  <span style={{ color: "var(--text-secondary)" }}>{e.label}</span>
+                  <strong style={{ color: "#16a34a",
+                                      fontFamily: "ui-monospace, monospace" }}>
+                    {e.value}
+                  </strong>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function KpiPill({ label, value, color }) {
+  return (
+    <div style={{
+      padding: "8px 10px", borderRadius: 8,
+      border: "1px solid var(--border-default)",
+      background: "var(--bg-surface)",
+      display: "flex", alignItems: "center", gap: 8,
+    }}>
+      <div style={{ width: 5, height: 24, borderRadius: 3, background: color }} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)",
+                         textTransform: "uppercase", letterSpacing: 0.4 }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text-primary)",
+                         fontFamily: "ui-monospace, monospace",
+                         letterSpacing: "-0.02em", lineHeight: 1 }}>
+          {value}
+        </div>
+      </div>
     </div>
   );
 }

@@ -241,6 +241,27 @@ async def inbound_webhook(payload: InboundIn,
         except Exception as e:
             logger.warning("[wa-baileys] auto-reply falhou: %s", e)
 
+        # --- Co-Pilot IA — dica interna para atendente humano ---
+        # Só dispara quando a conversa está com humano (não-IA).
+        # A IA de atendimento já tem injeção A2A própria via system_prompt.
+        try:
+            conv = await db.wa_conversations.find_one(
+                {"company_id": cid, "phone": payload.phone},
+                {"_id": 0, "assignee_role": 1, "status": 1},
+            )
+            if (conv and conv.get("assignee_role") == "human"
+                    and conv.get("status") != "closed"):
+                from services.copilot_ai import maybe_insert_copilot_hint
+                await maybe_insert_copilot_hint(
+                    company_id=cid,
+                    phone=payload.phone,
+                    last_inbound_text=payload.text,
+                    last_inbound_id=payload.message_id,
+                    subscriber_ctx=subscriber_ctx,
+                )
+        except Exception as e:
+            logger.info("[wa-baileys] copilot skip: %s", e)
+
     return {"ok": True, "subscriber_id": subscriber_id}
 
 

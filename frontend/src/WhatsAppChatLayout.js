@@ -1178,14 +1178,22 @@ function InternalNoteBubble({ msg }) {
   const time = msg.created_at
     ? new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
     : "";
-  const isResolved = msg.internal_kind === "outage_resolved";
-  const accent = isResolved ? "#16a34a" : "#d97706";
-  const bg = isResolved ? "#f0fdf4" : "#fffbeb";
-  const border = isResolved ? "#bbf7d0" : "#fde68a";
+  const kind = msg.internal_kind || "outage_active";
+  let accent, bg, border, badge;
+  if (kind === "copilot_hint") {
+    accent = "#0ea5e9"; bg = "#f0f9ff"; border = "#bae6fd";
+    badge = "Co-Pilot IA · Apenas você vê";
+  } else if (kind === "outage_resolved") {
+    accent = "#16a34a"; bg = "#f0fdf4"; border = "#bbf7d0";
+    badge = "IA · Apenas você vê (não enviado ao cliente)";
+  } else {
+    accent = "#d97706"; bg = "#fffbeb"; border = "#fde68a";
+    badge = "IA · Apenas você vê (não enviado ao cliente)";
+  }
   return (
     <div style={{ display: "flex", justifyContent: "center", padding: "2px 0" }}>
       <div data-testid={`wa-internal-note-${msg.id || ""}`}
-            data-internal-kind={msg.internal_kind || ""}
+            data-internal-kind={kind}
             style={{
         maxWidth: "85%", width: "100%",
         padding: "9px 12px", borderRadius: 8,
@@ -1201,8 +1209,10 @@ function InternalNoteBubble({ msg }) {
           fontSize: 9.5, fontWeight: 800, color: accent,
           textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4,
         }}>
-          <Lock size={10} strokeWidth={2.5} />
-          IA · Apenas você vê (não enviado ao cliente)
+          {kind === "copilot_hint"
+            ? <Lightbulb size={10} strokeWidth={2.5} />
+            : <Lock size={10} strokeWidth={2.5} />}
+          {badge}
         </div>
         <div style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{msg.text}</div>
         <div style={{
