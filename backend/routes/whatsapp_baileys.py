@@ -848,8 +848,9 @@ async def customer_profile(phone: str,
                               user: dict = Depends(require_role("gestor"))):
     """Retorna perfil completo do cliente para popup do chat:
     - WhatsApp: avatar, presença
-    - Subscriber: nome, plano, status, débitos, endereço
-    - SmartOLT: sinal RX/TX, status ONT (se vinculado)
+    - Subscriber: nome, plano, status, débitos, endereço completo
+    - SmartOLT: OLT, porta, VLAN, SN, fabricante, sinal RX/TX, status ONT
+    - Histórico: chamados nos últimos 90 dias (lousa tickets)
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
 
@@ -869,6 +870,7 @@ async def customer_profile(phone: str,
 
     # 2. Subscriber via phone normalization
     subscriber = None
+    address = None
     try:
         from phone_normalizer import link_phone_to_subscriber
         link = await link_phone_to_subscriber(phone, cid)
@@ -879,10 +881,21 @@ async def customer_profile(phone: str,
             )
             if s:
                 subscriber = s
+                # Endereço primário (ou primeiro disponível)
+                addr = await db.subscriber_addresses.find_one(
+                    {"subscriber_id": s["id"], "company_id": cid,
+                     "is_primary": True},
+                    {"_id": 0},
+                ) or await db.subscriber_addresses.find_one(
+                    {"subscriber_id": s["id"], "company_id": cid},
+                    {"_id": 0},
+                )
+                if addr:
+                    address = addr
     except Exception as e:
         logger.warning("[wa-baileys.profile] subscriber lookup falhou: %s", e)
 
-    # 3. SmartOLT (sinal RX/TX) — se subscriber tem pppoe_user
+    # 3. SmartOLT (sinal + topologia) — se subscriber tem pppoe_user
     olt_signal = None
     if subscriber and subscriber.get("pppoe_user"):
         try:
@@ -895,9 +908,41 @@ async def customer_profile(phone: str,
         except Exception as e:
             logger.info("[wa-baileys.profile] olt lookup skip: %s", e)
 
+    # 4. Histórico de chamados (últimos 90 dias) — busca por phone OU pppoe_user
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    cutoff = (_dt.now(_tz.utc) - _td(days=90)).isoformat()
+    tickets_query: Dict[str, Any] = {
+        "company_id": cid,
+        "created_at": {"$gte": cutoff},
+    }
+    or_clauses = [{"client_snapshot.phone": phone}]
+    if subscriber and subscriber.get("pppoe_user"):
+        or_clauses.append({"client_snapshot.pppoe_user": subscriber["pppoe_user"]})
+    if len(or_clauses) > 1:
+        tickets_query["$or"] = or_clauses
+    else:
+        tickets_query.update(or_clauses[0])
+    try:
+        recent = await db.tickets.find(
+            tickets_query,
+            {"_id": 0, "id": 1, "type": 1, "priority": 1, "status": 1,
+             "scheduled_time": 1, "created_at": 1, "closed_at": 1,
+             "outcome": 1, "client_snapshot.relato": 1,
+             "assigned_collaborator_id": 1},
+        ).sort("created_at", -1).limit(50).to_list(50)
+    except Exception as e:
+        logger.warning("[wa-baileys.profile] tickets lookup falhou: %s", e)
+        recent = []
+    open_count = sum(1 for t in recent
+                      if t.get("status") in ("pendente", "aberta", "aguardando_atendimento"))
+
     return {
         "phone": phone,
         "whatsapp": wa,
         "subscriber": subscriber,
+        "address": address,
         "olt_signal": olt_signal,
+        "tickets_90d": recent,
+        "tickets_count_90d": len(recent),
+        "tickets_open": open_count,
     }

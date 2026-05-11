@@ -4,7 +4,7 @@ import {
   Filter, MessageSquare, Clock, MoonStar, Hand, UserCheck,
   CheckCircle2, GraduationCap, ChevronDown, ChevronUp, Lightbulb,
   Wifi, WifiOff, Activity, Info, Signal, MapPin, Phone, CreditCard,
-  AlertCircle, Sparkles, Lock, AlertTriangle,
+  AlertCircle, Sparkles, Lock, AlertTriangle, ClipboardList,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -1300,17 +1300,23 @@ function AssignModal({ attendants, onPick, onClose }) {
 }
 
 /* =============================================================
-   CustomerProfileModal — popup com 1-clique no badge "cliente"
-   Mostra: nome, plano, status, débitos, endereço, sinal RX/TX SmartOLT
+   CustomerProfileModal — perfil profissional do cliente
+   Mostra: endereço completo, OLT/porta/VLAN/SN/sinal, status ONT,
+   PPPoE, fabricante, histórico de chamados (90d), botão criar chamado
 ============================================================= */
 function CustomerProfileModal({ phone, profile, onClose }) {
   const sub = profile?.subscriber;
+  const addr = profile?.address;
   const signal = profile?.olt_signal;
-  const wa = profile;
-  const avatarSrc = profile?.avatar;
-  const rx = signal?.rx_signal_dbm ?? signal?.rx ?? signal?.rx_power;
-  const tx = signal?.tx_signal_dbm ?? signal?.tx ?? signal?.tx_power;
+  const tickets90 = profile?.tickets_90d || [];
+  const ticketsCount = profile?.tickets_count_90d || 0;
+  const ticketsOpen = profile?.tickets_open || 0;
+  const avatarSrc = profile?.avatar || profile?.whatsapp?.avatar;
+  const rx = signal?.signal_1490 ?? signal?.signal_1310 ?? signal?.rx_signal_dbm ?? signal?.rx;
+  const tx = signal?.signal_1310 ?? signal?.tx_signal_dbm ?? signal?.tx;
   const ontStatus = signal?.status || signal?.ont_status;
+  const isOntOnline = String(ontStatus || "").toLowerCase().includes("online");
+  const [creatingTicket, setCreatingTicket] = useState(false);
 
   const rxColor = (v) => {
     if (v == null) return "var(--text-muted)";
@@ -1321,164 +1327,262 @@ function CustomerProfileModal({ phone, profile, onClose }) {
     return "#dc2626";
   };
 
+  const fullAddress = addr ? [
+    [addr.street, addr.number].filter(Boolean).join(", "),
+    addr.complement,
+    addr.district,
+    [addr.city, addr.state].filter(Boolean).join(" / "),
+    addr.zip_code ? `CEP ${addr.zip_code}` : null,
+  ].filter(Boolean).join(" · ") : (sub?.address || null);
+
+  const onCreateTicket = async () => {
+    if (!sub) {
+      alert("Vincule este cliente a um cadastro antes de criar chamado.");
+      return;
+    }
+    setCreatingTicket(true);
+    try {
+      // Busca colaboradores ativos e abre prompt simples pra escolha
+      const cols = await api.listCollaborators();
+      const techs = (cols.items || cols || [])
+        .filter((c) => c.active !== false && !c.atlaz_inbox);
+      if (!techs.length) {
+        alert("Nenhum técnico ativo disponível.");
+        return;
+      }
+      const opts = techs.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
+      const pick = window.prompt(
+        `Atribuir chamado a:\n\n${opts}\n\nDigite o número:`,
+        "1",
+      );
+      const idx = parseInt(pick, 10) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= techs.length) return;
+      const tech = techs[idx];
+      const relato = window.prompt(
+        "Descreva o problema (opcional):",
+        `Cliente ${sub.name} via WhatsApp — solicitação de visita técnica.`,
+      );
+      if (relato === null) return;
+      const payload = {
+        client_name: sub.name,
+        address: fullAddress || "Endereço não cadastrado",
+        neighborhood: addr?.district || "",
+        phone: phone,
+        relato: relato || "",
+        pppoe_user: sub.pppoe_user || "",
+        type: "reparo",
+        priority: "normal",
+        assigned_collaborator_id: tech.id,
+      };
+      const t = await api.lousaCreateTicket(payload);
+      alert(`Chamado criado: ${t.id?.slice(-8) || ""} → ${tech.name}`);
+    } catch (e) {
+      alert("Erro ao criar chamado: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setCreatingTicket(false);
+    }
+  };
+
   return (
     <div onClick={onClose} style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,.55)",
+      position: "fixed", inset: 0, background: "rgba(0,0,0,.6)",
       display: "grid", placeItems: "center", zIndex: 1100,
+      padding: 16,
     }} data-testid="wa-customer-modal">
       <div onClick={(e) => e.stopPropagation()} style={{
         background: "var(--bg-surface)",
-        padding: 0, borderRadius: 16, width: 540,
-        maxHeight: "85vh", overflow: "auto",
+        padding: 0, borderRadius: 14, width: "min(720px, 100%)",
+        maxHeight: "88vh", overflow: "auto",
         boxShadow: "0 20px 50px rgba(0,0,0,.4)",
+        border: "1px solid var(--border-default)",
       }}>
-        {/* Header com avatar do WhatsApp */}
+        {/* Header — sóbrio, sem gradiente */}
         <div style={{
-          padding: "20px 22px",
-          background: "linear-gradient(135deg, rgba(13,148,136,.10), rgba(6,182,212,.06))",
+          padding: "18px 20px",
           borderBottom: "1px solid var(--border-default)",
           display: "flex", alignItems: "center", gap: 14,
         }}>
-          <Avatar name={sub?.name || `+${phone}`} src={avatarSrc} size={56} />
+          <Avatar name={sub?.name || `+${phone}`} src={avatarSrc} size={48} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 800,
-                           color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
-              {sub?.name || "Cliente não identificado"}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <strong style={{ fontSize: 16, fontWeight: 600,
+                                 color: "var(--text-primary)", letterSpacing: "-0.015em" }}>
+                {sub?.name || "Cliente não identificado"}
+              </strong>
+              {sub && (
+                <StatusPill status={sub.status} />
+              )}
             </div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2,
-                           display: "flex", gap: 8, alignItems: "center",
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3,
+                           display: "flex", alignItems: "center", gap: 12,
                            fontFamily: "ui-monospace, monospace" }}>
-              <Phone size={11} /> +{phone}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <Phone size={11} /> +{phone}
+              </span>
+              {sub?.external_code && (
+                <span>{sub.external_code}</span>
+              )}
             </div>
-            {sub?.external_code && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                Cód.: <span className="mono">{sub.external_code}</span>
-              </div>
-            )}
           </div>
-          <button onClick={onClose} className="btn btn-ghost btn-sm">
+          <button onClick={onClose}
+                  data-testid="wa-customer-close"
+                  style={{
+                    width: 30, height: 30, borderRadius: 6,
+                    border: "1px solid var(--border-default)",
+                    background: "transparent", cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    color: "var(--text-muted)",
+                  }}>
             <X size={14} />
           </button>
         </div>
 
-        <div style={{ padding: 18, display: "grid", gap: 14 }}>
-          {!sub && (
-            <div style={{
-              padding: 14, borderRadius: 10,
-              background: "rgba(245,158,11,.10)",
-              border: "1px solid rgba(245,158,11,.30)",
-              fontSize: 12, color: "var(--text-primary)",
-              display: "flex", gap: 10, alignItems: "flex-start",
-            }}>
-              <AlertCircle size={14} strokeWidth={2} style={{ color: "#f59e0b", marginTop: 1 }} />
-              <div>
-                <strong>Telefone sem cadastro vinculado.</strong>
-                <div style={{ color: "var(--text-muted)", marginTop: 3 }}>
-                  Cadastre este cliente em Assinantes para que a IA puxe
-                  automaticamente as informações nas próximas conversas.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {sub && (
-            <>
-              <Field icon={Info} label="Status">
-                <span style={{
-                  fontSize: 12, fontWeight: 700,
-                  padding: "3px 10px", borderRadius: 999,
-                  background: sub.status === "ativo" ? "rgba(34,197,94,.15)"
-                    : sub.status === "bloqueado" ? "rgba(220,38,38,.15)"
-                    : "rgba(148,163,184,.15)",
-                  color: sub.status === "ativo" ? "#16a34a"
-                    : sub.status === "bloqueado" ? "#dc2626"
-                    : "#64748b",
-                }}>{sub.status || "—"}</span>
-              </Field>
-              {sub.plan_name && (
-                <Field icon={Sparkles} label="Plano">
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>{sub.plan_name}</span>
-                </Field>
-              )}
-              {sub.branch && (
-                <Field icon={Activity} label="Filial">
-                  <span style={{ fontSize: 13 }}>{sub.branch}</span>
-                </Field>
-              )}
-              {sub.address && (
-                <Field icon={MapPin} label="Endereço">
-                  <span style={{ fontSize: 13 }}>{sub.address}</span>
-                </Field>
-              )}
-              {sub.pppoe_user && (
-                <Field icon={User} label="Usuário PPPoE">
-                  <span className="mono" style={{ fontSize: 12 }}>{sub.pppoe_user}</span>
-                </Field>
-              )}
-              {(sub.debit_total != null || sub.debits) && (
-                <Field icon={CreditCard} label="Débitos">
-                  <span style={{
-                    fontSize: 13, fontWeight: 700,
-                    color: (sub.debit_total || 0) > 0 ? "#dc2626" : "#16a34a",
-                  }}>
-                    {sub.debit_total != null
-                      ? new Intl.NumberFormat("pt-BR",
-                            { style: "currency", currency: "BRL" }).format(sub.debit_total)
-                      : (sub.debits || "—")}
-                  </span>
-                </Field>
-              )}
-            </>
-          )}
-
-          {/* SmartOLT — sinal RX/TX */}
+        {/* No-link warning */}
+        {!sub && (
           <div style={{
-            padding: 14, borderRadius: 12,
-            border: signal ? "1px solid rgba(13,148,136,.35)" : "1px solid var(--border-default)",
-            background: signal ? "rgba(13,148,136,.06)" : "var(--bg-surface-2)",
+            margin: "16px 20px 0",
+            padding: 12, borderRadius: 8,
+            background: "rgba(245,158,11,.08)",
+            border: "1px solid rgba(245,158,11,.30)",
+            fontSize: 12,
+            display: "flex", gap: 10, alignItems: "flex-start",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <Signal size={14} strokeWidth={2} style={{ color: "#0d9488" }} />
-              <strong style={{ fontSize: 12, color: "#0d9488",
-                                 textTransform: "uppercase", letterSpacing: 0.5 }}>
-                SmartOLT — Sinal Óptico
-              </strong>
-              {ontStatus && (
-                <span style={{
-                  marginLeft: "auto",
-                  padding: "2px 9px", borderRadius: 999,
-                  background: String(ontStatus).toLowerCase().includes("online")
-                    ? "rgba(34,197,94,.15)" : "rgba(220,38,38,.15)",
-                  color: String(ontStatus).toLowerCase().includes("online")
-                    ? "#16a34a" : "#dc2626",
-                  fontSize: 10, fontWeight: 800, letterSpacing: 0.4,
-                }}>{ontStatus}</span>
-              )}
-            </div>
-            {signal ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <SignalCell label="RX (recepção)" value={rx} suffix="dBm" color={rxColor(rx)} />
-                <SignalCell label="TX (envio)" value={tx} suffix="dBm" color="var(--text-primary)" />
-                {signal.olt_name && (
-                  <SignalCell label="OLT" value={signal.olt_name} />
-                )}
-                {signal.pon_port && (
-                  <SignalCell label="Porta PON" value={signal.pon_port} />
-                )}
-                {signal.ont_serial && (
-                  <SignalCell label="Serial ONT" value={signal.ont_serial} mono />
-                )}
-                {signal.uptime && (
-                  <SignalCell label="Uptime" value={signal.uptime} />
-                )}
+            <AlertCircle size={14} strokeWidth={2} style={{ color: "#f59e0b", marginTop: 1, flexShrink: 0 }} />
+            <div>
+              <strong>Telefone não vinculado a nenhum cadastro.</strong>
+              <div style={{ color: "var(--text-muted)", marginTop: 3 }}>
+                Cadastre em Assinantes para que a IA carregue automaticamente os dados.
               </div>
-            ) : (
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {sub?.pppoe_user
-                  ? "Buscando sinal na OLT… (configure SmartOLT em Integrações)"
-                  : "Sem usuário PPPoE cadastrado pra buscar sinal."}
+            </div>
+          </div>
+        )}
+
+        {/* Body — grid de seções */}
+        <div style={{ padding: 20, display: "grid", gap: 16 }}>
+          {/* Quick stats (3 cards) */}
+          {sub && (
+            <div style={{
+              display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 8,
+            }}>
+              <StatCard label="Conexão" value={
+                signal ? (isOntOnline ? "Online" : "Offline") : "—"
+              } color={signal ? (isOntOnline ? "#16a34a" : "#dc2626") : "var(--text-muted)"} />
+              <StatCard label="Chamados (90d)"
+                        value={String(ticketsCount)}
+                        color={ticketsCount >= 3 ? "#dc2626" : "var(--text-primary)"}
+                        sub={ticketsOpen > 0 ? `${ticketsOpen} aberto(s)` : null} />
+              <StatCard label="Sinal RX"
+                        value={rx != null ? `${rx} dBm` : "—"}
+                        color={rxColor(rx)} />
+            </div>
+          )}
+
+          {/* Sessão: Plano + Filial + Cobrança */}
+          {sub && (
+            <Section title="Contrato">
+              <FieldRow label="Plano" value={sub.plan_name} />
+              <FieldRow label="Filial" value={sub.branch} />
+              <FieldRow label="Vencimento" value={sub.due_day ? `Dia ${sub.due_day}` : null} />
+              <FieldRow label="Débitos"
+                          value={sub.debit_total != null
+                            ? new Intl.NumberFormat("pt-BR",
+                                { style: "currency", currency: "BRL" }).format(sub.debit_total)
+                            : sub.debits}
+                          valueColor={(sub.debit_total || 0) > 0 ? "#dc2626" : "var(--text-primary)"} />
+            </Section>
+          )}
+
+          {/* Sessão: Endereço */}
+          {fullAddress && (
+            <Section title="Endereço" icon={MapPin}>
+              <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.6 }}>
+                {fullAddress}
+              </div>
+            </Section>
+          )}
+
+          {/* Sessão: Rede / SmartOLT */}
+          <Section title="Rede & SmartOLT" icon={Signal}>
+            <FieldRow label="PPPoE"
+                        value={sub?.pppoe_user}
+                        mono />
+            <FieldRow label="OLT" value={signal?.olt_name} />
+            <FieldRow label="Placa / Porta"
+                        value={signal && (signal.board || signal.port)
+                          ? `${signal.board || "?"} / ${signal.port || "?"}${signal.onu ? " · ONU " + signal.onu : ""}`
+                          : null} />
+            <FieldRow label="VLAN" value={signal?.vlan || sub?.metadata?.vlan} />
+            <FieldRow label="Serial (SN)" value={signal?.sn} mono />
+            <FieldRow label="Fabricante / Modelo"
+                        value={signal?.onu_type_name || sub?.equipment} />
+            <FieldRow label="Sinal RX" value={rx != null ? `${rx} dBm` : null}
+                        valueColor={rxColor(rx)} mono />
+            {tx != null && (
+              <FieldRow label="Sinal TX" value={`${tx} dBm`} mono />
+            )}
+            <FieldRow label="Status ONT"
+                        value={ontStatus}
+                        valueColor={isOntOnline ? "#16a34a" : "#dc2626"} />
+            {!signal && sub?.pppoe_user && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "4px 0" }}>
+                Aguardando dados da SmartOLT (sincronização periódica).
               </div>
             )}
+            {!signal && !sub?.pppoe_user && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "4px 0" }}>
+                Sem PPPoE cadastrado — não foi possível buscar sinal.
+              </div>
+            )}
+          </Section>
+
+          {/* Sessão: Histórico de chamados (últimos 90 dias) */}
+          <Section title="Histórico de chamados · 90 dias" icon={Activity}>
+            {tickets90.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Nenhum chamado nos últimos 90 dias.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 6, maxHeight: 220, overflowY: "auto" }}>
+                {tickets90.map((t) => (
+                  <TicketHistRow key={t.id} ticket={t} />
+                ))}
+              </div>
+            )}
+          </Section>
+
+          {/* Action: criar chamado */}
+          <div style={{
+            display: "flex", gap: 8, justifyContent: "flex-end",
+            paddingTop: 4,
+          }}>
+            <button onClick={onClose}
+                    data-testid="wa-customer-cancel"
+                    style={{
+                      padding: "8px 14px", borderRadius: 6,
+                      border: "1px solid var(--border-default)",
+                      background: "transparent", color: "var(--text-secondary)",
+                      fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    }}>
+              Fechar
+            </button>
+            <button onClick={onCreateTicket}
+                    disabled={creatingTicket || !sub}
+                    data-testid="wa-customer-create-ticket"
+                    title={!sub ? "Cliente precisa estar cadastrado" : "Criar chamado na Lousa"}
+                    style={{
+                      padding: "8px 14px", borderRadius: 6,
+                      border: "1px solid var(--text-primary)",
+                      background: "var(--text-primary)",
+                      color: "var(--bg-surface)",
+                      fontSize: 12, fontWeight: 600,
+                      cursor: (creatingTicket || !sub) ? "not-allowed" : "pointer",
+                      opacity: (creatingTicket || !sub) ? 0.5 : 1,
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                    }}>
+              <ClipboardList size={13} strokeWidth={2} />
+              {creatingTicket ? "Criando..." : "Criar chamado"}
+            </button>
           </div>
         </div>
       </div>
@@ -1486,37 +1590,129 @@ function CustomerProfileModal({ phone, profile, onClose }) {
   );
 }
 
-function Field({ icon: Ico, label, children }) {
+/* ---- helper sub-components ---- */
+function StatusPill({ status }) {
+  const s = String(status || "").toLowerCase();
+  const isActive = s === "ativo";
+  const isBlocked = s === "bloqueado";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <Ico size={13} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
-      <span style={{ fontSize: 11, color: "var(--text-muted)",
-                       textTransform: "uppercase", letterSpacing: 0.4,
-                       minWidth: 90, fontWeight: 700 }}>{label}</span>
-      <div style={{ flex: 1 }}>{children}</div>
+    <span style={{
+      fontSize: 10, fontWeight: 700,
+      padding: "2px 8px", borderRadius: 4,
+      background: isActive ? "rgba(34,197,94,.15)"
+        : isBlocked ? "rgba(220,38,38,.15)"
+        : "rgba(148,163,184,.15)",
+      color: isActive ? "#16a34a"
+        : isBlocked ? "#dc2626"
+        : "#64748b",
+      textTransform: "uppercase", letterSpacing: 0.5,
+    }}>{status || "—"}</span>
+  );
+}
+
+function StatCard({ label, value, color, sub }) {
+  return (
+    <div style={{
+      padding: "10px 12px", borderRadius: 8,
+      border: "1px solid var(--border-default)",
+      background: "var(--bg-surface-2)",
+    }}>
+      <div style={{ fontSize: 10, color: "var(--text-muted)",
+                     fontWeight: 600, textTransform: "uppercase",
+                     letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 700, marginTop: 4,
+                     color: color || "var(--text-primary)",
+                     letterSpacing: "-0.01em" }}>
+        {value}
+      </div>
+      {sub && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+          {sub}
+        </div>
+      )}
     </div>
   );
 }
 
-function SignalCell({ label, value, suffix, color, mono }) {
+function Section({ title, icon: Ico, children }) {
   return (
     <div>
-      <div style={{ fontSize: 10, color: "var(--text-muted)",
-                     textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 700 }}>
-        {label}
-      </div>
       <div style={{
-        fontSize: 14, fontWeight: 800,
-        color: color || "var(--text-primary)",
-        fontFamily: mono ? "ui-monospace, monospace" : "inherit",
-        marginTop: 2,
+        fontSize: 10, fontWeight: 700, color: "var(--text-muted)",
+        textTransform: "uppercase", letterSpacing: 0.6,
+        display: "flex", alignItems: "center", gap: 6,
+        marginBottom: 8,
+        paddingBottom: 6,
+        borderBottom: "1px solid var(--border-default)",
       }}>
-        {value == null || value === "" ? "—" : value}
-        {value != null && suffix && (
-          <span style={{ fontSize: 10, color: "var(--text-muted)",
-                          fontWeight: 600, marginLeft: 3 }}>{suffix}</span>
-        )}
+        {Ico && <Ico size={11} strokeWidth={2} />}
+        {title}
       </div>
+      <div style={{ display: "grid", gap: 4 }}>{children}</div>
+    </div>
+  );
+}
+
+function FieldRow({ label, value, mono, valueColor }) {
+  if (value == null || value === "") return null;
+  return (
+    <div style={{
+      display: "grid", gridTemplateColumns: "140px 1fr", gap: 12,
+      fontSize: 12, padding: "3px 0", alignItems: "baseline",
+    }}>
+      <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>{label}</span>
+      <span style={{
+        color: valueColor || "var(--text-primary)",
+        fontWeight: valueColor && valueColor !== "var(--text-primary)" ? 600 : 500,
+        fontFamily: mono ? "ui-monospace, monospace" : "inherit",
+        wordBreak: "break-word",
+      }}>{value}</span>
+    </div>
+  );
+}
+
+function TicketHistRow({ ticket }) {
+  const d = ticket.created_at
+    ? new Date(ticket.created_at).toLocaleDateString("pt-BR",
+        { day: "2-digit", month: "2-digit", year: "2-digit" })
+    : "—";
+  const isOpen = ["pendente", "aberta", "aguardando_atendimento"].includes(ticket.status);
+  const closed = ticket.closed_at;
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10,
+      padding: "8px 10px", borderRadius: 6,
+      background: "var(--bg-surface-2)",
+      border: "1px solid var(--border-default)",
+    }}>
+      <span style={{
+        width: 6, height: 6, borderRadius: "50%",
+        background: isOpen ? "#f59e0b" : closed ? "#16a34a" : "#94a3b8",
+        flexShrink: 0,
+      }} />
+      <span style={{ fontSize: 11, color: "var(--text-muted)",
+                       fontFamily: "ui-monospace, monospace",
+                       width: 64, flexShrink: 0 }}>{d}</span>
+      <span style={{ fontSize: 11, fontWeight: 600,
+                       color: "var(--text-primary)",
+                       textTransform: "uppercase",
+                       letterSpacing: 0.3,
+                       width: 80, flexShrink: 0 }}>
+        {ticket.type || "—"}
+      </span>
+      <span style={{ flex: 1, fontSize: 12, color: "var(--text-secondary)",
+                       overflow: "hidden", textOverflow: "ellipsis",
+                       whiteSpace: "nowrap" }}>
+        {ticket.client_snapshot?.relato || ticket.outcome || "—"}
+      </span>
+      <span style={{
+        fontSize: 10, fontWeight: 700,
+        padding: "2px 7px", borderRadius: 4,
+        background: isOpen ? "rgba(245,158,11,.15)" : "rgba(148,163,184,.15)",
+        color: isOpen ? "#d97706" : "#64748b",
+        textTransform: "uppercase", letterSpacing: 0.4,
+        flexShrink: 0,
+      }}>{ticket.status || "?"}</span>
     </div>
   );
 }
