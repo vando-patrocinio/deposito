@@ -204,8 +204,7 @@ function ImpersonationBanner() {
   );
 }
 
-function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModal }) {
-  const [collabsOpen, setCollabsOpen] = useState(false);
+function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModal, isOpen, onClose }) {
   // Items pais expansíveis: começam fechados; abrem quando clicados ou
   // quando o view atual pertence a um filho.
   const [expandedParents, setExpandedParents] = useState(() => new Set());
@@ -227,14 +226,27 @@ function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModa
     });
   };
   return (
-    <aside className={`app-sidebar ${collabsOpen ? "is-open" : ""}`} aria-label="Navegação principal">
-      <div className="app-sidebar__brand">
-        <div className="app-sidebar__brand-logo" aria-hidden="true">P</div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="app-sidebar__brand-name">SmartProv</div>
-          <div className="app-sidebar__brand-tag">{brand || "Operações ISP"}</div>
+    <>
+      {/* Overlay mobile — clica fora fecha o drawer */}
+      {isOpen && (
+        <div
+          data-testid="sidebar-overlay"
+          onClick={onClose}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,.55)",
+            zIndex: 40, display: "none",
+          }}
+          className="app-sidebar__overlay"
+        />
+      )}
+      <aside className={`app-sidebar ${isOpen ? "is-open" : ""}`} aria-label="Navegação principal">
+        <div className="app-sidebar__brand">
+          <div className="app-sidebar__brand-logo" aria-hidden="true">S</div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="app-sidebar__brand-name">SmartProv</div>
+            <div className="app-sidebar__brand-tag">{brand || "Operações ISP"}</div>
+          </div>
         </div>
-      </div>
       <nav className="app-sidebar__nav">
         {NAV_GROUPS.map((group) => {
           // Item pai com children é visível se ele OU algum filho está em activeTabs.
@@ -317,15 +329,31 @@ function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModa
         )}
       </div>
     </aside>
+    </>
   );
 }
 
-function TopBar({ user, companyName, isSuperAdmin, allCompanies, activeCo, onChangeCompany, onLogout, onOpenAIPanel, view, setView }) {
+function TopBar({ user, companyName, isSuperAdmin, allCompanies, activeCo, onChangeCompany, onLogout, onOpenAIPanel, view, setView, onToggleSidebar }) {
   const tab = ALL_TABS.find((t) => t.id === view);
   const groupName = NAV_GROUPS.find((g) => g.items.some((i) => i.id === view))?.label || "Operação";
   const { theme, toggle: toggleTheme } = useTheme();
   return (
     <header className="app-topbar">
+      <button
+        data-testid="sidebar-toggle-btn"
+        onClick={onToggleSidebar}
+        aria-label="Abrir menu"
+        className="app-topbar__hamburger"
+        style={{
+          display: "none",
+          background: "transparent", border: 0, padding: 8, cursor: "pointer",
+          color: "var(--text-primary)", marginRight: 4,
+        }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M3 6h18M3 12h18M3 18h18"/>
+        </svg>
+      </button>
       <div className="app-topbar__crumb" style={{ flex: 1, minWidth: 0 }}>
         <span>{groupName}</span>
         <ChevronRight size={12} strokeWidth={1.75} style={{ opacity: 0.5 }} />
@@ -514,6 +542,11 @@ function AppShell({ view, setView, children }) {
     return true;
   }), [user, tabPerms, isSuperAdmin]);
 
+  // Drawer state (mobile sidebar)
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Fecha o drawer ao trocar de view (impressão de "selecionou item")
+  useEffect(() => { setSidebarOpen(false); }, [view]);
+
   return (
     <div className="app-shell">
       <SidebarNav
@@ -523,6 +556,8 @@ function AppShell({ view, setView, children }) {
         brand={companyName}
         isSuperAdmin={isSuperAdmin}
         onOpenModal={(id) => { if (id === "ai-center") setShowAIPanel(true); }}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
       <main className="app-main">
         <TopBar
@@ -536,6 +571,7 @@ function AppShell({ view, setView, children }) {
           onOpenAIPanel={() => setShowAIPanel(true)}
           view={view}
           setView={setView}
+          onToggleSidebar={() => setSidebarOpen((v) => !v)}
         />
         <div className="app-content">
           <ImpersonationBanner />
@@ -661,7 +697,15 @@ function AppContent() {
   if (mobile) {
     const params = new URLSearchParams(window.location.search);
     const forced = params.get("cid") || null;
-    return <CollaboratorApp mobile forcedCollabId={forced} />;
+    // Gestores e super_admins acessam o painel admin completo (com sidebar drawer)
+    // mesmo no celular. Apenas técnicos/colaboradores caem no CollaboratorApp PWA.
+    const userRoles = Array.isArray(user?.roles) ? user.roles : [];
+    const isManager = userRoles.includes("gestor") || userRoles.includes("super_admin")
+      || userRoles.includes("admin") || userRoles.includes("financeiro");
+    if (!user || !isManager) {
+      return <CollaboratorApp mobile forcedCollabId={forced} />;
+    }
+    // Manager: cai no fluxo admin abaixo (sidebar vira drawer via CSS @media)
   }
 
   if (route.path === "/billing/success") {
