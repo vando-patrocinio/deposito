@@ -9,7 +9,7 @@ export const TAB_DEFINITIONS = [
   { id: "ai-center", label: "Central IA" },
   { id: "ai-ranking", label: "Avaliação IA" },
   { id: "central-ia", label: "Central IA" },
-  { id: "atendimento", label: "Atendimento" },
+  { id: "atendimento", label: "ZapBot" },
   { id: "motor-ia", label: "Motor IA" },
   { id: "cadastro", label: "Cadastro" },
   { id: "subscribers", label: "Assinantes" },

@@ -103,13 +103,16 @@ function useTheme() {
 /* ------------------------------------------------------------
    Sidebar navigation — categorized, sober
 ------------------------------------------------------------ */
+/* ============================================================
+   Navegação — nomenclatura alinhada com o padrão ISP (Atlaz/Voalle/SGP)
+   ============================================================ */
 const NAV_GROUPS = [
   {
     label: "Operação",
     items: [
       { id: "dashboard", icon: BarChart3, label: "Painel", roles: ["gestor", "auditor", "administrador"] },
-      { id: "lousa", icon: Layout, label: "Lousa", roles: ["administrador"] },
-      { id: "estoque", icon: Boxes, label: "Estoque", roles: ["gestor", "administrador"] },
+      { id: "lousa", icon: Layout, label: "Chamados", roles: ["administrador"] },
+      { id: "estoque", icon: Boxes, label: "Movimento", roles: ["gestor", "administrador"] },
     ],
   },
   {
@@ -117,7 +120,7 @@ const NAV_GROUPS = [
     items: [
       { id: "ai-ranking", icon: Sparkles, label: "Avaliação IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "central-ia", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"] },
-      { id: "atendimento", icon: MessageCircle, label: "Atendimento", roles: ["gestor", "auditor", "administrador"] },
+      { id: "atendimento", icon: MessageCircle, label: "ZapBot", roles: ["gestor", "auditor", "administrador"] },
     ],
   },
   {
@@ -139,7 +142,7 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: "Compliance",
+    label: "Relatórios",
     items: [
       { id: "manager", icon: ClipboardList, label: "Auditoria", roles: ["auditor", "administrador"] },
       { id: "sheet", icon: FileSpreadsheet, label: "Espelho", roles: ["gestor", "auditor", "administrador"] },
