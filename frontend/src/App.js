@@ -270,7 +270,7 @@ function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModa
                   if (it.asModal) onOpenModal?.(it.id);
                   else if (hasChildren) toggleParent(it.id);
                   else setView(it.id);
-                  if (!hasChildren) setCollabsOpen(false);
+                  if (!hasChildren) onClose?.();
                 };
                 return (
                   <React.Fragment key={it.id}>
@@ -299,7 +299,7 @@ function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModa
                         <button
                           key={c.id}
                           className={`app-sidebar__link ${cActive ? "is-active" : ""}`}
-                          onClick={() => { setView(c.id); setCollabsOpen(false); }}
+                          onClick={() => { setView(c.id); onClose?.(); }}
                           data-testid={`tab-${c.id}`}
                           style={{ paddingLeft: 32, fontSize: 12.5 }}
                         >
