@@ -70,26 +70,8 @@ export function BillingBanner() {
   }
 
   if (eff === "active") {
-    return (
-      <div data-testid="billing-banner-active" style={{
-        background: "rgba(16,185,129,.08)", border: "1px solid rgba(16,185,129,.25)",
-        color: "#34d399", padding: "8px 16px", borderRadius: 12, fontSize: 12,
-        display: "flex", justifyContent: "space-between", alignItems: "center",
-        marginBottom: 12, fontWeight: 600,
-      }}>
-        <span>✓ {co.plan_name} ativa{co.days_left != null ? ` · renova em ${co.days_left} dia(s)` : ""}</span>
-        <button
-          onClick={startCheckout}
-          disabled={busy}
-          data-testid="billing-renew-btn"
-          style={{
-            background: "transparent", border: "1px solid rgba(16,185,129,.4)",
-            color: "#34d399", padding: "4px 12px", borderRadius: 8, fontSize: 11, cursor: "pointer",
-            fontWeight: 700,
-          }}
-        >Renovar agora</button>
-      </div>
-    );
+    // Banner ocultado a pedido do cliente — assinatura ativa não exibe aviso.
+    return null;
   }
   const isTrial = eff === "trialing";
   const isPastDue = eff === "past_due";
