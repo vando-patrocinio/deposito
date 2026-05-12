@@ -72,6 +72,7 @@ from routes import (
     stok as routes_stok,
     users as routes_users,
     secretaria as routes_secretaria,
+    drive as routes_drive,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -296,6 +297,8 @@ async def _startup() -> None:
     from services.churn_scheduler import start_worker as start_churn_scheduler
     start_churn_scheduler()
     asyncio.create_task(routes_plans.adjustment_scheduler_worker())
+    from services.drive_backup import daily_backup_worker as drive_daily_worker
+    asyncio.create_task(drive_daily_worker())
     logger.info("Scheduler iniciado.")
 
 
@@ -346,6 +349,7 @@ app.include_router(routes_branding.router)
 app.include_router(routes_collab_assets.router)
 app.include_router(routes_vehicle_checklist.router)
 app.include_router(routes_secretaria.router)
+app.include_router(routes_drive.router)
 
 app.add_middleware(
     CORSMiddleware,

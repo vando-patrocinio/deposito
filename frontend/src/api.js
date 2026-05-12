@@ -558,4 +558,15 @@ export const api = {
     client.post(`/secretaria/regenerate-token`).then((r) => r.data),
   secretariaLogs: (limit = 50) =>
     client.get(`/secretaria/logs`, { params: { limit } }).then((r) => r.data),
+
+  // ===== Drive Backup =====
+  driveStatus: () => client.get(`/drive/status`).then((r) => r.data),
+  driveConnect: () => client.get(`/oauth/drive/connect`).then((r) => r.data),
+  driveDisconnect: () => client.post(`/oauth/drive/disconnect`).then((r) => r.data),
+  driveBackupNow: (include_secrets = false) =>
+    client.post(`/drive/backup`, { include_secrets }).then((r) => r.data),
+  driveBackupList: () => client.get(`/drive/backups`).then((r) => r.data),
+  driveRemoteFiles: () => client.get(`/drive/remote-files`).then((r) => r.data),
+  driveRestore: (file_id, mode = "merge", collections = null) =>
+    client.post(`/drive/restore`, { file_id, mode, collections }).then((r) => r.data),
 };

@@ -11,8 +11,9 @@ import { api } from "@/api";
 import { Button, Card } from "@/ui";
 import {
   Send, Copy, RefreshCw, Eye, EyeOff, CheckCircle2, ExternalLink,
-  Bot, User as UserIcon, History as HistoryIcon, Sparkles,
+  Bot, User as UserIcon, History as HistoryIcon, Sparkles, HardDrive,
 } from "lucide-react";
+import DriveBackupTab from "@/DriveBackupTab";
 
 const SUGGESTIONS = [
   "oi minha Ligo, quantos clientes ativos eu tenho?",
@@ -27,10 +28,11 @@ export default function SecretariaIaSection() {
   const [tab, setTab] = useState("chat");
   return (
     <div data-testid="secretaria-section">
-      <div style={{ display: "flex", gap: 4, padding: 4, background: "#e2e8f0", borderRadius: 10, marginBottom: 14, maxWidth: 480 }}>
+      <div style={{ display: "flex", gap: 4, padding: 4, background: "#e2e8f0", borderRadius: 10, marginBottom: 14, maxWidth: 620 }}>
         {[
           { id: "chat", label: "Chat", icon: Bot },
           { id: "gpt", label: "GPT customizado", icon: Sparkles },
+          { id: "drive", label: "Backup Drive", icon: HardDrive },
           { id: "history", label: "Histórico", icon: HistoryIcon },
         ].map(({ id, label, icon: Icon }) => (
           <button
@@ -52,6 +54,7 @@ export default function SecretariaIaSection() {
       </div>
       {tab === "chat" && <ChatTab />}
       {tab === "gpt" && <GptSetupTab />}
+      {tab === "drive" && <DriveBackupTab />}
       {tab === "history" && <HistoryTab />}
     </div>
   );
