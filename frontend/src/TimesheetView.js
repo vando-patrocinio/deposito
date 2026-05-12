@@ -416,6 +416,11 @@ export default function TimesheetView() {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  function downloadCollectivePdf() {
+    const url = api.collectiveTimesheetPdfUrl(year, month);
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
   const monthLabel = useMemo(() => {
     const names = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
     return `${names[month - 1]} / ${year}`;
@@ -519,6 +524,11 @@ export default function TimesheetView() {
         <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
           <Button onClick={downloadPdf} variant="secondary" data-testid="download-pdf-btn">
             <Icon name="export" /> Baixar PDF
+          </Button>
+          <Button onClick={downloadCollectivePdf} variant="soft"
+                   data-testid="download-collective-pdf-btn"
+                   title="Gera 1 PDF único com todos os colaboradores ativos do mês (1 página por colaborador). Útil pro fechamento mensal do RH.">
+            <Icon name="export" /> Espelho coletivo (todos)
           </Button>
           <Button onClick={() => setAuditOpen(true)} variant="soft" data-testid="open-audit-btn">
             <Icon name="shield" /> Auditoria

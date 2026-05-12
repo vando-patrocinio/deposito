@@ -1339,20 +1339,12 @@ def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance,
                   Normais | Noturno | Falta/Atraso | Abono | Ext.Diurna | Ext.Noturna | Saldo
     Legenda (I/P/M/C) + assinaturas + base legal.
     """
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf, pagesize=A4,
-        leftMargin=0.8 * cm, rightMargin=0.8 * cm,
-        topMargin=1.0 * cm, bottomMargin=1.0 * cm,
-    )
-    # Tenta landscape (mais espaço para 14 colunas)
-    from reportlab.lib.pagesizes import landscape
-    doc = SimpleDocTemplate(
-        buf, pagesize=landscape(A4),
-        leftMargin=0.8 * cm, rightMargin=0.8 * cm,
-        topMargin=0.8 * cm, bottomMargin=0.8 * cm,
-    )
-    styles = getSampleStyleSheet()
+def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
+                          company=None, praca=None, totals_extra=None, styles=None):
+    """Gera lista de elementos Platypus do espelho de um colaborador.
+    Usada tanto pelo PDF individual quanto pelo coletivo (com PageBreak entre)."""
+    if styles is None:
+        styles = getSampleStyleSheet()
     elements = []
     company = company or {}
     praca = praca or {}
@@ -1566,7 +1558,49 @@ def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance,
     ]))
     elements.append(sig_table)
 
+    return elements
+
+
+def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance,
+                          company=None, praca=None, totals_extra=None) -> bytes:
+    """PDF individual de espelho de ponto — formato Control iD / Portaria 671/2021-MTE."""
+    from reportlab.lib.pagesizes import landscape
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=landscape(A4),
+        leftMargin=0.8 * cm, rightMargin=0.8 * cm,
+        topMargin=0.8 * cm, bottomMargin=0.8 * cm,
+    )
+    elements = _timesheet_elements(coll, year, month, days, total_worked, total_balance,
+                                     company=company, praca=praca, totals_extra=totals_extra)
     doc.build(elements)
+    buf.seek(0)
+    return buf.read()
+
+
+def _build_collective_pdf(items: list[dict], year: int, month: int,
+                            company: dict = None) -> bytes:
+    """PDF coletivo: itera por colaboradores, gera as páginas e separa com PageBreak.
+    items: [{coll, days, total_worked_min, total_balance_min, totals_extra, praca}]"""
+    from reportlab.lib.pagesizes import landscape
+    from reportlab.platypus import PageBreak
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=landscape(A4),
+        leftMargin=0.8 * cm, rightMargin=0.8 * cm,
+        topMargin=0.8 * cm, bottomMargin=0.8 * cm,
+    )
+    all_elements = []
+    for idx, it in enumerate(items):
+        if idx > 0:
+            all_elements.append(PageBreak())
+        all_elements.extend(_timesheet_elements(
+            it["coll"], year, month, it["days"],
+            it["total_worked_min"], it["total_balance_min"],
+            company=company, praca=it.get("praca"),
+            totals_extra=it.get("totals_extra"),
+        ))
+    doc.build(all_elements)
     buf.seek(0)
     return buf.read()
 
@@ -1641,6 +1675,52 @@ async def timesheet_pdf(cid: str, year: int, month: int):
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/timesheets-collective/{year}/{month}/pdf")
+async def collective_timesheet_pdf(year: int, month: int):
+    """PDF coletivo: 1 página por colaborador ativo com clock_in_enabled.
+    Útil para o fechamento mensal do RH."""
+    company_id = DEMO_COMPANY_ID
+    company_doc = await db.companies.find_one({"id": company_id}, {"_id": 0}) or {}
+    colls = await db.collaborators.find(
+        {"company_id": company_id, "active": True, "clock_in_enabled": True},
+        {"_id": 0},
+    ).sort("name", 1).to_list(length=500)
+    if not colls:
+        raise HTTPException(404, "Nenhum colaborador ativo encontrado")
+    items = []
+    for coll in colls:
+        try:
+            sheet = await timesheet(coll["id"], year, month)
+        except Exception:
+            continue
+        praca_doc = None
+        if coll.get("praca_id"):
+            praca_doc = await db.pracas.find_one({"id": coll["praca_id"]}, {"_id": 0}) or None
+        items.append({
+            "coll": sheet["collaborator"],
+            "days": sheet["days"],
+            "total_worked_min": sheet["total_worked_min"],
+            "total_balance_min": sheet["total_balance_min"],
+            "totals_extra": {
+                "noturno": sheet.get("total_noturno_min", 0),
+                "extra_diurna": sheet.get("total_extra_diurna_min", 0),
+                "extra_noturna": sheet.get("total_extra_noturna_min", 0),
+                "falta_atraso": sheet.get("total_falta_atraso_min", 0),
+                "abono": sheet.get("total_abono_min", 0),
+            },
+            "praca": praca_doc,
+        })
+    pdf_bytes = _build_collective_pdf(items, year, month, company=company_doc)
+    filename = f"espelho-coletivo-{year}-{month:02d}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 
 
 @router.post("/timesheets/send/{cid}")

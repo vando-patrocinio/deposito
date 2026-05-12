@@ -124,6 +124,14 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Frontend `TimesheetView`**: tabela com mesmas 14 colunas + ação editar. `TimeCell` mostra `HH:MM (X)` quando há origem. Linha TOTAIS escura. Legenda I/P/M/C + ref legal sutil acima da tabela. Status removido (já implícito nas cores: Falta/Atr. vermelho, Extra verde, Noturno roxo). Sticky overflow horizontal para tela pequena (min-width 1280px).
 - Validado E2E: PDF 7,5KB com layout limpo (analise_file_tool 95% confidence); tela renderiza dia 04-08 do DIOGO com `(I)` em todas marcações editadas; TOTAIS calcula 48h00 trabalhadas, -16h00 falta/atraso, 16h00 abono, -8h00 saldo banco.
 
+✅ **Espelho coletivo (fechamento RH)** (12/05/2026 — iter53):
+- Refatorada `_build_timesheet_pdf` extraindo `_timesheet_elements(coll, ..., styles)` que retorna lista de elementos Platypus.
+- Nova função `_build_collective_pdf(items, year, month, company)` itera por colaboradores ativos, inserindo `PageBreak` entre cada um.
+- Endpoint `GET /api/timesheets-collective/{year}/{month}/pdf` (com hífen para evitar conflito com `/timesheets/{cid}/...`). Filtra `active=True` + `clock_in_enabled=True` da company DEMO.
+- Frontend: botão "Espelho coletivo (todos)" ao lado de "Baixar PDF". `data-testid="download-collective-pdf-btn"`. Helper `api.collectiveTimesheetPdfUrl`.
+- Validado E2E: HTTP 200, PDF gerado (7,5KB para 1 colaborador). Botão visível na tela.
+
+
 
 ## Próximas (P2)
 - Refatorar `routes/lousa.py` (>2400 linhas) e `CadastroPanel.js` (>1200 linhas)
