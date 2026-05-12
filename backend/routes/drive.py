@@ -77,6 +77,15 @@ async def oauth_connect(user: dict = Depends(require_role("gestor"))):
         prompt="consent",  # força consent pra garantir refresh_token
         state=cid,
     )
+    # PKCE: salva o code_verifier indexado por state pra recuperar no callback
+    code_verifier = getattr(flow, "code_verifier", None)
+    if code_verifier:
+        from core import now_iso
+        await db.drive_oauth_state.update_one(
+            {"state": cid},
+            {"$set": {"state": cid, "code_verifier": code_verifier, "created_at": now_iso()}},
+            upsert=True,
+        )
     return {"authorization_url": auth_url}
 
 
@@ -96,8 +105,14 @@ async def oauth_callback(
     cid = state
     try:
         flow = _flow()
+        # PKCE: recupera o code_verifier salvo no /connect (mesmo state)
+        st_doc = await db.drive_oauth_state.find_one({"state": cid}, {"_id": 0, "code_verifier": 1})
+        if st_doc and st_doc.get("code_verifier"):
+            flow.code_verifier = st_doc["code_verifier"]
         flow.fetch_token(code=code)
         creds = flow.credentials
+        # Limpa o verifier consumido
+        await db.drive_oauth_state.delete_one({"state": cid})
     except Exception as e:
         logger.exception("[drive] callback fetch_token failed: %s", e)
         return RedirectResponse(f"{frontend_url}/?drive_error=fetch_token")
