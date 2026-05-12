@@ -26,7 +26,8 @@ from pathlib import Path
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
 from auth import ensure_auth_indexes, seed_default_users
@@ -351,10 +352,70 @@ app.include_router(routes_vehicle_checklist.router)
 app.include_router(routes_secretaria.router)
 app.include_router(routes_drive.router)
 
+
+# ============================================================
+# Security Headers Middleware
+# ============================================================
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Adiciona headers de segurança em TODAS as respostas.
+
+    Protege contra: clickjacking, MIME-sniffing, XSS reflexivo, downgrade HTTPS.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "geolocation=(self), microphone=(self), camera=(self), payment=()",
+        )
+        # CSP relaxado pra não quebrar SPA atual (sem nonces dinâmicos).
+        # Bloqueia frames externos e mantém compatibilidade com inline-styles
+        # do Tailwind + React.
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.preview.emergentagent.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+            "img-src 'self' data: blob: https:; "
+            "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+            "connect-src 'self' https: wss:; "
+            "frame-ancestors 'none';",
+        )
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+# ============================================================
+# CORS — bloqueio padrão; whitelist em CORS_ORIGINS
+# ============================================================
+def _parse_origins() -> tuple[list, bool]:
+    raw = (os.environ.get("CORS_ORIGINS") or "").strip()
+    if not raw or raw == "*":
+        # Wildcard explícito (compat). Aviso visível nos logs.
+        logging.getLogger("security").warning(
+            "CORS_ORIGINS está vazio ou '*' — em produção, defina domínios específicos."
+        )
+        return (["*"], False)
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    return (origins, True)
+
+
+_cors_origins, _cors_safe = _parse_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    # `allow_credentials=True` exige origins explícitos (não pode ser `*`)
+    allow_credentials=_cors_safe,
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-Id", "X-RateLimit-Remaining"],
 )
