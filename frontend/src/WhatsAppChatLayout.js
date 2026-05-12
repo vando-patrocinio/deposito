@@ -600,7 +600,17 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
      internas no chat (somente o atendente logado vê). */
   const [coachings, setCoachings] = useState([]);
   const [coachingHidden, setCoachingHidden] = useState(false);
+  /* KPIs do atendente (drill-down do Central IA). */
+  const [attendantKpis, setAttendantKpis] = useState([]);
   const scrollRef = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.centralIaAttendants(7).then((r) => {
+      if (alive) setAttendantKpis(r?.items || []);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const loadMessages = useCallback(async () => {
     if (!conv) return;
@@ -771,6 +781,12 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
     presenceLabel = "presença desconhecida";
   }
 
+  /* Drill-down inverso: KPIs do atendente humano que está respondendo
+     (puxados de centralIaAttendants). Só mostra quando humano. */
+  const attendantKpi = (!isAi && conv.assignee_user_id)
+    ? attendantKpis.find((a) => a.user_id === conv.assignee_user_id)
+    : null;
+
   return (
     <div data-testid="wa-chat-thread" style={{
       display: "flex", flexDirection: "column",
@@ -915,6 +931,9 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
           </button>
         </div>
       </div>
+
+      {/* KPI strip do atendente humano — drill-down inverso do Central IA */}
+      {attendantKpi && <AttendantKpiStrip kpi={attendantKpi} />}
 
       {/* Modal de atribuição */}
       {showAssign && (
@@ -1875,6 +1894,59 @@ function TicketHistRow({ ticket }) {
         textTransform: "uppercase", letterSpacing: 0.4,
         flexShrink: 0,
       }}>{ticket.status || "?"}</span>
+    </div>
+  );
+}
+
+
+/* ============================================================= */
+/* AttendantKpiStrip — drill-down inverso: mostra KPIs do atendente
+   humano que está respondendo a conversa atual (puxados do Central IA). */
+function _kpiCsatColor(v) {
+  if (v == null) return "var(--text-muted)";
+  if (v >= 4.5) return "#16a34a";
+  if (v >= 3.5) return "#ca8a04";
+  return "#dc2626";
+}
+function _kpiFmtSecs(s) {
+  if (s == null) return "—";
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  return s < 3600 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h${m % 60}m`;
+}
+
+function AttendantKpiStrip({ kpi }) {
+  if (!kpi) return null;
+  const items = [
+    { label: "CSAT", value: kpi.csat_avg ?? "—", color: _kpiCsatColor(kpi.csat_avg) },
+    { label: "Volume 7d", value: kpi.volume ?? 0, color: "var(--text-primary)" },
+    { label: "FCR", value: kpi.fcr_rate != null ? `${kpi.fcr_rate}%` : "—", color: "var(--text-primary)" },
+    { label: "FRT médio", value: _kpiFmtSecs(kpi.frt_avg_seconds), color: "var(--text-primary)" },
+    { label: "Sent. neg.", value: kpi.negative_count ?? 0, color: kpi.negative_count > 0 ? "#dc2626" : "var(--text-primary)" },
+  ];
+  return (
+    <div data-testid="attendant-kpi-strip" style={{
+      display: "flex", alignItems: "center", gap: 14,
+      padding: "8px 18px",
+      background: "var(--bg-surface)",
+      borderBottom: "1px solid var(--border-default)",
+      fontSize: 11, overflowX: "auto", whiteSpace: "nowrap",
+    }}>
+      <span style={{
+        fontSize: 9.5, fontWeight: 800, color: "var(--text-muted)",
+        textTransform: "uppercase", letterSpacing: 0.5, flexShrink: 0,
+      }}>
+        KPIs · {kpi.name} <span style={{ opacity: 0.6 }}>(últimos 7 dias)</span>
+      </span>
+      {items.map((it) => (
+        <div key={it.label} style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
+          <span style={{
+            fontSize: 9, color: "var(--text-muted)",
+            textTransform: "uppercase", letterSpacing: 0.4,
+          }}>{it.label}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: it.color }}>{it.value}</span>
+        </div>
+      ))}
     </div>
   );
 }
