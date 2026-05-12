@@ -15,7 +15,6 @@ import CentralIaDashboard from "@/CentralIaDashboard";
 const BASE_TABS = [
   { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode, dynamic: true },
   { id: "instancia", label: "Instância", icon: Smartphone },
-  { id: "central_ia", label: "Central IA", icon: Brain },
   { id: "mensagem", label: "Mensagem", icon: MessageCircle },
   { id: "agents", label: "Agentes", icon: Bot },
   { id: "playground", label: "Playground", icon: MessageCircle },
@@ -24,7 +23,7 @@ const BASE_TABS = [
   { id: "history", label: "Histórico", icon: History },
 ];
 
-export default function AIHubPanel({ initialTab = "central_ia" }) {
+export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
   const [tab, setTab] = useState(initialTab);
   const [instanceName, setInstanceName] = useState("Ligo");
   const [waConnected, setWaConnected] = useState(false);
