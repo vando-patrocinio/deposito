@@ -172,9 +172,16 @@ async def webhook_chatgpt(
     cid = await _company_by_token(token)
     if not cid:
         raise HTTPException(403, "Invalid or revoked token")
-    return await secretaria_ask(cid, payload.question or "",
-                                  channel="chatgpt",
-                                  who=payload.asker or "chatgpt")
+    result = await secretaria_ask(cid, payload.question or "",
+                                    channel="chatgpt",
+                                    who=payload.asker or "chatgpt")
+    # Resposta minimalista — apenas `answer` em string plana. ChatGPT GPT-Builder
+    # tem bugs com payloads ricos (arrays aninhados, escapes Unicode). Mantemos
+    # iterations apenas como int simples.
+    return {
+        "answer": result.get("answer", ""),
+        "iterations": int(result.get("iterations", 0)),
+    }
 
 
 # ---------------------------------------------------------------------------
