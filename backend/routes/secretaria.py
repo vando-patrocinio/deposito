@@ -84,11 +84,42 @@ async def get_config(user: dict = Depends(require_role("gestor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     cfg = await _get_or_create_config(cid)
     backend_url = os.environ.get("PUBLIC_BACKEND_URL") or ""
+
+    # Status do GPT customizado: última chamada via webhook
+    from datetime import datetime, timezone, timedelta
+    last_call = await db.secretaria_log.find_one(
+        {"company_id": cid, "channel": "chatgpt"},
+        {"_id": 0, "created_at": 1, "question": 1, "who": 1},
+        sort=[("created_at", -1)],
+    )
+    total_calls_24h = await db.secretaria_log.count_documents({
+        "company_id": cid, "channel": "chatgpt",
+        "created_at": {"$gte": (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()},
+    })
+    chatgpt_online = False
+    last_seen_iso = None
+    last_question = None
+    if last_call:
+        last_seen_iso = last_call.get("created_at")
+        last_question = last_call.get("question")
+        try:
+            ts = datetime.fromisoformat(str(last_seen_iso).replace("Z", "+00:00"))
+            age_min = (datetime.now(timezone.utc) - ts).total_seconds() / 60
+            chatgpt_online = age_min <= 30  # online se chamou nos últimos 30 min
+        except Exception:
+            pass
+
     return {
         "enabled": bool(cfg.get("enabled", True)),
         "webhook_token": cfg.get("webhook_token"),
         "webhook_url": f"{backend_url}/api/secretaria/webhook/chatgpt" if backend_url else "/api/secretaria/webhook/chatgpt",
         "openapi_url": f"{backend_url}/api/secretaria/openapi.json" if backend_url else "/api/secretaria/openapi.json",
+        "chatgpt_status": {
+            "online": chatgpt_online,
+            "last_seen": last_seen_iso,
+            "last_question": (last_question or "")[:120] if last_question else None,
+            "calls_24h": total_calls_24h,
+        },
     }
 
 

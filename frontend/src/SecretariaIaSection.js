@@ -189,7 +189,12 @@ function GptSetupTab() {
     try { setCfg(await api.secretariaConfig()); }
     catch { setCfg(null); }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    // Auto-refresh do status do ChatGPT a cada 20s
+    const id = setInterval(load, 20000);
+    return () => clearInterval(id);
+  }, [load]);
 
   async function regenerate() {
     if (!window.confirm("Gerar novo token? O GPT atual deixará de funcionar até você atualizar a Action.")) return;
@@ -284,7 +289,11 @@ Sempre que o usuário fizer uma pergunta sobre dados operacionais (clientes, té
           {cfg.enabled ? "Webhook ativo" : "Webhook desativado"}
         </div>
 
-        <h4 style={{ margin: "10px 0 4px", fontSize: 12, fontWeight: 700, color: "#475569" }}>URL do Webhook</h4>
+        {/* Indicador ChatGPT Online/Offline */}
+        <h4 style={{ margin: "10px 0 4px", fontSize: 12, fontWeight: 700, color: "#475569" }}>ChatGPT customizado</h4>
+        <ChatGptStatusBadge status={cfg.chatgpt_status} />
+
+        <h4 style={{ margin: "14px 0 4px", fontSize: 12, fontWeight: 700, color: "#475569" }}>URL do Webhook</h4>
         <code style={{ ...codeBlock, display: "block", wordBreak: "break-all", padding: "8px 10px", fontSize: 11 }} data-testid="sec-gpt-webhook-url">
           {cfg.webhook_url}
         </code>
@@ -294,6 +303,62 @@ Sempre que o usuário fizer uma pergunta sobre dados operacionais (clientes, té
           O GPT customizado é construído na sua conta ChatGPT Plus. Para que ele converse com a Ligo, ele chama via HTTPS o webhook acima usando o bearer token gerado aqui. Você pode rotacionar o token a qualquer momento (invalida o GPT antigo).
         </div>
       </Card>
+    </div>
+  );
+}
+
+function ChatGptStatusBadge({ status }) {
+  const s = status || {};
+  const online = s.online;
+  const calls = Number(s.calls_24h || 0);
+  const lastSeen = s.last_seen;
+  const lastQ = s.last_question;
+
+  let lastSeenText = "Nunca recebeu uma chamada do GPT";
+  let lastSeenDetail = "Configure o GPT customizado no ChatGPT Plus e teste com qualquer pergunta.";
+  if (lastSeen) {
+    const dt = new Date(lastSeen);
+    const ageMs = Date.now() - dt.getTime();
+    const ageSec = Math.max(0, Math.floor(ageMs / 1000));
+    if (ageSec < 60) lastSeenText = `${ageSec}s atrás`;
+    else if (ageSec < 3600) lastSeenText = `${Math.floor(ageSec / 60)} min atrás`;
+    else if (ageSec < 86400) lastSeenText = `${Math.floor(ageSec / 3600)}h atrás`;
+    else lastSeenText = `${Math.floor(ageSec / 86400)}d atrás`;
+    lastSeenDetail = dt.toLocaleString("pt-BR");
+  }
+
+  return (
+    <div data-testid="sec-chatgpt-status" style={{
+      padding: 10,
+      background: online ? "#dcfce7" : lastSeen ? "#fef3c7" : "#f1f5f9",
+      border: `1px solid ${online ? "#86efac" : lastSeen ? "#fcd34d" : "#cbd5e1"}`,
+      borderRadius: 8,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{
+          width: 10, height: 10, borderRadius: 999,
+          background: online ? "#22c55e" : lastSeen ? "#f59e0b" : "#94a3b8",
+          boxShadow: online ? "0 0 0 4px rgba(34,197,94,.2)" : "none",
+          animation: online ? "sec-pulse 1.6s infinite" : "none",
+          flexShrink: 0,
+        }} />
+        <span style={{ fontSize: 12, fontWeight: 800, color: online ? "#15803d" : lastSeen ? "#92400e" : "#475569" }}>
+          {online ? "ChatGPT online — falando com a Ligo" : lastSeen ? "ChatGPT inativo" : "ChatGPT nunca conectou"}
+        </span>
+      </div>
+      <div style={{ fontSize: 11, color: "#475569", lineHeight: 1.5 }}>
+        Última chamada: <strong>{lastSeenText}</strong>
+        {lastSeen && <span style={{ color: "#94a3b8", marginLeft: 4 }}>({lastSeenDetail})</span>}
+        <br />
+        Chamadas nas últimas 24h: <strong>{calls}</strong>
+        {lastQ && (
+          <>
+            <br />
+            <span style={{ color: "#64748b" }}>Última pergunta: </span>
+            <em style={{ color: "#0f172a" }}>"{lastQ}"</em>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -385,6 +450,9 @@ const iconBtn = { background: "transparent", border: "1px solid #e2e8f0", border
 if (typeof document !== "undefined" && !document.getElementById("sec-bounce-kf")) {
   const style = document.createElement("style");
   style.id = "sec-bounce-kf";
-  style.textContent = `@keyframes sec-bounce { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }`;
+  style.textContent = `
+    @keyframes sec-bounce { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+    @keyframes sec-pulse  { 0%, 100% { box-shadow: 0 0 0 4px rgba(34,197,94,.2); } 50% { box-shadow: 0 0 0 8px rgba(34,197,94,.05); } }
+  `;
   document.head.appendChild(style);
 }
