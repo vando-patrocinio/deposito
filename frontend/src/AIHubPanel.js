@@ -69,19 +69,25 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
     <div data-testid="aihub-panel"
           data-fullscreen={isWaFull ? "1" : "0"}
           style={{ padding: "0 4px" }}>
-      <div style={{ marginBottom: 14 }}>
-        <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Bot size={24} strokeWidth={1.75} /> Atendimento IA
+      <div style={{ marginBottom: 10 }}>
+        <h1 style={{
+          display: "flex", alignItems: "center", gap: 8,
+          margin: 0, fontSize: 16, fontWeight: 700,
+          color: "var(--text-primary)", letterSpacing: "-0.015em",
+        }}>
+          <Bot size={18} strokeWidth={2} /> Atendimento IA
+          <span style={{
+            fontSize: 11, fontWeight: 500, color: "var(--text-secondary)",
+            marginLeft: 6, paddingLeft: 10, borderLeft: "1px solid var(--border-default)",
+          }}>
+            Agentes conversacionais (Ligo, voz, WhatsApp Cloud)
+          </span>
         </h1>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-          Agentes conversacionais usando IA local. Integre com MagnusBilling (SIP)
-          e WhatsApp Cloud API para atendimento automatizado por voz e texto.
-        </p>
       </div>
 
       <div style={{
-        display: "flex", gap: 4, padding: 4, background: "var(--bg-surface-2)",
-        borderRadius: 12, marginBottom: isWaFull ? 8 : 16,
+        display: "flex", gap: 2, padding: 3, background: "var(--bg-surface-2)",
+        borderRadius: 10, marginBottom: isWaFull ? 6 : 12,
         overflowX: "auto", flexWrap: "wrap",
       }}>
         {TABS.map((t) => {
@@ -93,11 +99,11 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
                     data-testid={`aihub-tab-${t.id}`}
                     style={{
                       position: "relative",
-                      padding: "8px 14px", border: "none", borderRadius: 8,
+                      padding: "6px 11px", border: "none", borderRadius: 7,
                       background: active ? "var(--bg-surface)" : "transparent",
                       color: active ? "var(--text-primary)" : "var(--text-secondary)",
-                      fontWeight: active ? 700 : 500, fontSize: 13, cursor: "pointer",
-                      display: "inline-flex", alignItems: "center", gap: 6,
+                      fontWeight: active ? 700 : 500, fontSize: 12.5, cursor: "pointer",
+                      display: "inline-flex", alignItems: "center", gap: 5,
                       whiteSpace: "nowrap",
                       boxShadow: active ? "var(--shadow-sm)" : "none",
                     }}>

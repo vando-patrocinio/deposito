@@ -203,7 +203,7 @@ export default function WhatsAppChatLayout() {
     <div data-testid="wa-chat-layout" style={{
       display: "grid",
       gridTemplateRows: attendantFilter?.user_id ? "auto 1fr" : "1fr",
-      height: "calc(100vh - 220px)", minHeight: 560,
+      height: "calc(100vh - 170px)", minHeight: 560,
       border: "1px solid var(--border-default)", borderRadius: 14,
       overflow: "hidden", background: "var(--bg-surface)",
     }}>
