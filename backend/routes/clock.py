@@ -821,6 +821,51 @@ def _hm_to_min(hhmm: str) -> int:
     return int(h) * 60 + int(m)
 
 
+def _night_minutes(start_min: int, end_min: int) -> int:
+    """Quantos minutos do intervalo [start_min, end_min) caem na janela
+    noturna CLT (22:00 às 05:00 do dia seguinte). Aceita end < start (atravessou meia-noite)."""
+    if end_min <= start_min:
+        end_min += 24 * 60  # cruzou meia-noite
+    # janela noturna em minutos cumulativos a partir de 00:00 do "dia" (00–05 + 22–29)
+    night_windows = [(0, 5 * 60), (22 * 60, 29 * 60)]
+    total = 0
+    for ns, ne in night_windows:
+        a = max(start_min, ns)
+        b = min(end_min, ne)
+        if b > a:
+            total += (b - a)
+    return total
+
+
+def _origin_tag(r: dict) -> str:
+    """Letra de origem CLT (Portaria 671/2021):
+       (I) Incluído manualmente / (P) Pré-assinalado /
+       (M) Coletor REP-P Mobile/Web / (C) Coletor REP-P físico."""
+    if r.get("manually_edited"):
+        return "I"
+    if r.get("auto_filled") or r.get("preassinalado"):
+        return "P"
+    if r.get("rep_collector") or r.get("origin") == "coletor":
+        return "C"
+    return "M"
+
+
+def _format_previsto(schedule: WorkSchedule, is_weekend: bool, is_sunday: bool) -> str:
+    """Formata o horário previsto (ex: '08:00-12:00 13:00-17:00' ou 'FOLGA')."""
+    if is_sunday:
+        return "FOLGA DSR"
+    if is_weekend:
+        return "—"
+    parts = []
+    if schedule.entrada and schedule.inicio_intervalo:
+        parts.append(f"{schedule.entrada}-{schedule.inicio_intervalo}")
+    if schedule.fim_intervalo and schedule.saida:
+        parts.append(f"{schedule.fim_intervalo}-{schedule.saida}")
+    if not parts and schedule.entrada and schedule.saida:
+        parts.append(f"{schedule.entrada}-{schedule.saida}")
+    return " ".join(parts) if parts else "—"
+
+
 def _calc_day(records: list[dict], schedule: WorkSchedule, *, is_weekend: bool = False,
               is_sunday: bool = False, is_holiday_day: bool = False) -> dict:
     valid = sorted([r for r in records if r["status"] in ("Válido", "Offline sincronizado")], key=lambda r: r["time"])
@@ -838,6 +883,19 @@ def _calc_day(records: list[dict], schedule: WorkSchedule, *, is_weekend: bool =
                        (_hm_to_min(schedule.fim_intervalo) - _hm_to_min(schedule.inicio_intervalo)))
     worked = max(0, total - interval)
     balance = worked - expected
+
+    # ----- Hora noturna (22h-05h CLT) -----
+    noturno = 0
+    if "Entrada" in by_type and "Saída" in by_type:
+        ent = _hm_to_min(by_type["Entrada"]["time"])
+        sai = _hm_to_min(by_type["Saída"]["time"])
+        noturno = _night_minutes(ent, sai)
+        if "Início intervalo" in by_type and "Fim intervalo" in by_type:
+            ii = _hm_to_min(by_type["Início intervalo"]["time"])
+            fi = _hm_to_min(by_type["Fim intervalo"]["time"])
+            noturno = max(0, noturno - _night_minutes(ii, fi))
+
+    # ----- Extras separadas em diurna e noturna -----
     if is_holiday_day or is_sunday:
         overtime_min = worked
         overtime_kind = "sunday_or_holiday" if worked > 0 else None
@@ -847,6 +905,28 @@ def _calc_day(records: list[dict], schedule: WorkSchedule, *, is_weekend: bool =
     else:
         overtime_min = max(0, worked - expected)
         overtime_kind = "weekday" if overtime_min > 0 else None
+
+    # Aproxima a parcela noturna do extra: proporcional do total trabalhado
+    if worked > 0 and overtime_min > 0:
+        noturno_share = noturno / worked
+        extra_noturna = round(overtime_min * noturno_share)
+        extra_diurna = overtime_min - extra_noturna
+    else:
+        extra_noturna = 0
+        extra_diurna = 0
+
+    # ----- Falta / Atraso (saldo negativo em dia útil) -----
+    falta_atraso = 0
+    if not (is_weekend or is_holiday_day) and balance < 0:
+        falta_atraso = -balance  # positivo no relatório (minutos faltantes)
+
+    # ----- Abono (folga, DSR, feriado não trabalhado = previsto computado) -----
+    abono = 0
+    if (is_holiday_day or is_sunday) and worked == 0:
+        # Marca abono igual à jornada padrão de um dia útil (proxy)
+        abono = max(0, _hm_to_min(schedule.saida) - _hm_to_min(schedule.entrada) -
+                    (_hm_to_min(schedule.fim_intervalo) - _hm_to_min(schedule.inicio_intervalo)))
+
     missing = []
     if not (is_weekend or is_holiday_day):
         if "Entrada" not in by_type:
@@ -861,6 +941,14 @@ def _calc_day(records: list[dict], schedule: WorkSchedule, *, is_weekend: bool =
         status = "Folga" if worked == 0 else "Folga trabalhada"
     else:
         status = "Incompleto" if missing else ("Débito" if balance < 0 else "Extra" if balance > 0 else "Regular")
+
+    # Origens das marcações (I/P/M/C — Portaria 671/2021)
+    origens = {}
+    for tp, key in [("Entrada", "entrada"), ("Início intervalo", "inicio_intervalo"),
+                     ("Fim intervalo", "fim_intervalo"), ("Saída", "saida")]:
+        if tp in by_type:
+            origens[key] = _origin_tag(by_type[tp])
+
     return {
         "entrada": by_type.get("Entrada", {}).get("time"),
         "saida": by_type.get("Saída", {}).get("time"),
@@ -868,6 +956,12 @@ def _calc_day(records: list[dict], schedule: WorkSchedule, *, is_weekend: bool =
         "fim_intervalo": by_type.get("Fim intervalo", {}).get("time"),
         "worked": worked, "interval": interval, "expected": expected, "balance": balance,
         "overtime_min": overtime_min, "overtime_kind": overtime_kind,
+        "noturno_min": noturno,
+        "extra_diurna_min": extra_diurna,
+        "extra_noturna_min": extra_noturna,
+        "falta_atraso_min": falta_atraso,
+        "abono_min": abono,
+        "origens": origens,
         "status": status, "missing": missing,
     }
 
@@ -906,6 +1000,12 @@ async def timesheet(cid: str, year: int, month: int):
     total_balance = 0
     total_ot_weekday = 0
     total_ot_sunday_holiday = 0
+    total_noturno = 0
+    total_extra_diurna = 0
+    total_extra_noturna = 0
+    total_falta_atraso = 0
+    total_abono = 0
+    banco_saldo_acumulado = 0
     for d_num in range(1, last_day + 1):
         d_str = f"{year:04d}-{month:02d}-{d_num:02d}"
         day_records = by_date.get(d_str, [])
@@ -916,11 +1016,19 @@ async def timesheet(cid: str, year: int, month: int):
         is_sunday = weekday == 6
         holiday_info = holidays_map.get(d_str)
         is_holiday_day = bool(holiday_info)
+        previsto_str = _format_previsto(schedule, is_weekend, is_sunday)
+        if is_holiday_day:
+            previsto_str = "FERIADO"
         if is_future:
             days.append({
                 "date": d_str, "entrada": None, "saida": None, "inicio_intervalo": None, "fim_intervalo": None,
                 "worked": 0, "interval": 0, "expected": 0, "balance": 0,
                 "overtime_min": 0, "overtime_kind": None,
+                "noturno_min": 0, "extra_diurna_min": 0, "extra_noturna_min": 0,
+                "falta_atraso_min": 0, "abono_min": 0,
+                "previsto": previsto_str,
+                "banco_total_min": 0, "banco_saldo_min": banco_saldo_acumulado,
+                "origens": {},
                 "status": "Futuro", "missing": [],
                 "is_future": True, "is_today": False, "is_weekend": is_weekend,
                 "is_holiday": is_holiday_day, "holiday": holiday_info,
@@ -930,12 +1038,22 @@ async def timesheet(cid: str, year: int, month: int):
         calc = _calc_day(day_records, schedule, is_weekend=is_weekend, is_sunday=is_sunday, is_holiday_day=is_holiday_day)
         total_worked += calc["worked"]
         total_balance += calc["balance"]
+        total_noturno += calc["noturno_min"]
+        total_extra_diurna += calc["extra_diurna_min"]
+        total_extra_noturna += calc["extra_noturna_min"]
+        total_falta_atraso += calc["falta_atraso_min"]
+        total_abono += calc["abono_min"]
         if calc.get("overtime_kind") == "weekday":
             total_ot_weekday += calc["overtime_min"]
         elif calc.get("overtime_kind") == "sunday_or_holiday":
             total_ot_sunday_holiday += calc["overtime_min"]
+        banco_total_dia = calc["balance"]
+        banco_saldo_acumulado += banco_total_dia
         days.append({
             "date": d_str, **calc,
+            "previsto": previsto_str,
+            "banco_total_min": banco_total_dia,
+            "banco_saldo_min": banco_saldo_acumulado,
             "is_future": False, "is_today": is_today, "is_weekend": is_weekend,
             "is_holiday": is_holiday_day, "holiday": holiday_info,
             "weekday": weekday, "records": day_records,
@@ -962,6 +1080,12 @@ async def timesheet(cid: str, year: int, month: int):
         "total_overtime_min": total_overtime_min,
         "total_overtime_weekday_min": total_ot_weekday,
         "total_overtime_sunday_holiday_min": total_ot_sunday_holiday,
+        "total_noturno_min": total_noturno,
+        "total_extra_diurna_min": total_extra_diurna,
+        "total_extra_noturna_min": total_extra_noturna,
+        "total_falta_atraso_min": total_falta_atraso,
+        "total_abono_min": total_abono,
+        "banco_saldo_final_min": banco_saldo_acumulado,
         "paid_overtime_brl": round(paid_overtime_brl, 2),
         "policy_mode": policy.mode,
         "hourly_rate_brl": rate,
@@ -1189,93 +1313,141 @@ def _build_timesheet_email_html(coll, year, month, days, total_worked, total_bal
     """
 
 
+def _fmt_hhmm_signed(mins: int) -> str:
+    """Formata minutos como HH:MM com sinal (estilo Control iD)."""
+    if mins == 0:
+        return "00:00"
+    sign = "-" if mins < 0 else ""
+    a = abs(int(mins))
+    return f"{sign}{a // 60:02d}:{a % 60:02d}"
+
+
+def _fmt_marca(time_str: str | None, origens: dict, key: str) -> str:
+    """Formata uma marcação como 'HH:MM (X)' onde X = I/P/M/C."""
+    if not time_str:
+        return "—"
+    tag = origens.get(key)
+    return f"{time_str} ({tag})" if tag else time_str
+
+
 def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance,
-                          company=None, praca=None) -> bytes:
-    """Espelho de Ponto — layout no padrão Control ID/Henry/SmartPonto:
-    - Cabeçalho com identificação empresa + filial (praça onde lotado)
-    - Bloco do colaborador (matrícula, CPF, função, departamento, PIS, admissão)
-    - Tabela diária com batidas
-    - Resumo de saldo e horas
-    - Espaços de assinatura: colaborador + empresa
+                          company=None, praca=None, totals_extra=None) -> bytes:
+    """Espelho de Ponto — layout Control iD / Portaria 671/2021-MTE.
+    Header: empresa (nome/CNPJ/IE/endereço) + período + emitido em.
+    Bloco colab: PIS, CPF, Matrícula, Função, Depto, Admissão, Jornada.
+    Tabela ampla: Dia | DS | Previsto | ENT.1 | SAI.1 | ENT.2 | SAI.2 |
+                  Normais | Noturno | Falta/Atraso | Abono | Ext.Diurna | Ext.Noturna | Saldo
+    Legenda (I/P/M/C) + assinaturas + base legal.
     """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
-        leftMargin=1.4 * cm, rightMargin=1.4 * cm,
-        topMargin=1.2 * cm, bottomMargin=1.2 * cm,
+        leftMargin=0.8 * cm, rightMargin=0.8 * cm,
+        topMargin=1.0 * cm, bottomMargin=1.0 * cm,
+    )
+    # Tenta landscape (mais espaço para 14 colunas)
+    from reportlab.lib.pagesizes import landscape
+    doc = SimpleDocTemplate(
+        buf, pagesize=landscape(A4),
+        leftMargin=0.8 * cm, rightMargin=0.8 * cm,
+        topMargin=0.8 * cm, bottomMargin=0.8 * cm,
     )
     styles = getSampleStyleSheet()
     elements = []
     company = company or {}
     praca = praca or {}
+    totals_extra = totals_extra or {}
 
-    # ---------- HEADER: Empresa | Praça ----------
-    company_name = company.get("name") or "SmartProv"
+    # ---------- HEADER ----------
+    company_name = (company.get("name") or "SmartProv").upper()
     company_cnpj = company.get("cnpj") or "—"
+    company_ie = company.get("inscricao_estadual") or company.get("ie") or "—"
     praca_name = praca.get("name") or "Sede"
     praca_address = praca.get("address") or company.get("address") or "—"
 
+    emitido_em = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M")
+    last_day_str = f"{calendar.monthrange(year, month)[1]:02d}/{month:02d}/{year}"
+    periodo = f"01/{month:02d}/{year} ATÉ {last_day_str}"
+
     header_rows = [
-        [Paragraph(f"<b>{company_name}</b>", styles["Normal"]),
-         Paragraph("<b>ESPELHO DE PONTO</b>", styles["Normal"])],
-        [Paragraph(f"<font size='8'>CNPJ: {company_cnpj}</font>", styles["Normal"]),
-         Paragraph(f"<font size='8'>Período: {month:02d}/{year}</font>", styles["Normal"])],
-        [Paragraph(f"<font size='8'>Filial / Praça: {praca_name}</font>", styles["Normal"]),
-         Paragraph(f"<font size='8'>Endereço: {praca_address[:60]}</font>", styles["Normal"])],
+        [
+            Paragraph(f"<b><font size='10'>{company_name}</font></b><br/>"
+                       f"<font size='7'>CNPJ: {company_cnpj} &nbsp;·&nbsp; IE: {company_ie}</font><br/>"
+                       f"<font size='7'>Filial: {praca_name} — {praca_address[:80]}</font>",
+                       styles["Normal"]),
+            Paragraph(f"<b><font size='12'>CARTÃO DE PONTO</font></b><br/>"
+                       f"<font size='7'>Período: {periodo}</font><br/>"
+                       f"<font size='7'>Emitido em: {emitido_em}</font>",
+                       styles["Normal"]),
+        ],
     ]
-    header_table = Table(header_rows, colWidths=[10.5 * cm, 7 * cm], hAlign="LEFT")
+    header_table = Table(header_rows, colWidths=[18 * cm, 9 * cm], hAlign="LEFT")
     header_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#020617")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#f1f5f9")),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0b1220")),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ("ALIGN", (1, 1), (1, -1), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     elements.append(header_table)
-    elements.append(Spacer(1, 8))
+    elements.append(Spacer(1, 6))
 
     # ---------- BLOCO IDENTIFICAÇÃO COLABORADOR ----------
     schedule = coll.get("schedule") or {}
-    hours_label = f"{schedule.get('entry', '08:00')} – {schedule.get('exit', '17:00')}"
-    if schedule.get("interval_start"):
-        hours_label += f" (int. {schedule.get('interval_start')}-{schedule.get('interval_end', '')})"
+    hours_label = f"{schedule.get('entrada', '08:00')}-{schedule.get('inicio_intervalo', '12:00')} {schedule.get('fim_intervalo', '13:00')}-{schedule.get('saida', '17:00')}"
+
+    cpf_val = coll.get("cpf") or "—"
+    pis_val = coll.get("pis") or "—"
+    # Não duplicar PIS/CPF — se vier igual, marca o PIS como pendente
+    if pis_val == cpf_val:
+        pis_val = "— (não cadastrado)"
+
+    admit = coll.get("admitted_at") or (coll.get("created_at") or "")[:10] or "—"
+    try:
+        if admit and len(admit) >= 10:
+            y, m, d = admit[:10].split("-")
+            admit = f"{d}/{m}/{y}"
+    except Exception:
+        pass
+
     id_rows = [
-        ["Colaborador", coll.get("name") or "—",
-         "Matrícula", coll.get("matricula") or coll.get("id", "")[:8]],
-        ["CPF", coll.get("cpf") or "—",
-         "PIS", coll.get("pis") or "—"],
-        ["Função", coll.get("function") or coll.get("role") or "—",
-         "Departamento", coll.get("department") or "—"],
-        ["Admissão", coll.get("admitted_at") or coll.get("created_at", "")[:10] or "—",
-         "Jornada", hours_label],
+        ["FUNCIONÁRIO", coll.get("name", "—").upper(),
+         "MATRÍCULA", coll.get("matricula") or coll.get("id", "—")[:8]],
+        ["CPF", cpf_val,
+         "PIS", pis_val],
+        ["FUNÇÃO", (coll.get("function") or coll.get("role") or "—").upper(),
+         "DEPARTAMENTO", (coll.get("department") or "—").upper()],
+        ["ADMISSÃO", admit,
+         "JORNADA SEMANAL", hours_label],
     ]
-    id_table = Table(id_rows, colWidths=[2.7 * cm, 6.8 * cm, 2.5 * cm, 5.5 * cm], hAlign="LEFT")
+    id_table = Table(id_rows, colWidths=[3 * cm, 9 * cm, 3 * cm, 12 * cm], hAlign="LEFT")
     id_table.setStyle(TableStyle([
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f8fafc")),
-        ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#f8fafc")),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#e2e8f0")),
+        ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#e2e8f0")),
         ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
         ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     elements.append(id_table)
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 8))
 
-    # ---------- TABELA DIÁRIA DE PONTO ----------
-    headers = ["Dia", "Semana", "Entrada", "Int. Saída", "Int. Volta", "Saída",
-               "Trabalhado", "Saldo", "Status"]
+    # ---------- TABELA DIÁRIA — 14 COLUNAS Control iD ----------
+    headers = [
+        "DIA", "DS", "PREVISTO",
+        "ENT.1", "SAÍ.1", "ENT.2", "SAÍ.2",
+        "NORMAIS", "NOTURNO", "FALTA/ATR.", "ABONO",
+        "EXTRA D.", "EXTRA N.", "SALDO BANCO",
+    ]
     rows = [headers]
     dias_semana = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
     for d in days:
@@ -1285,62 +1457,106 @@ def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance,
             wd_label = dias_semana[wd]
         except Exception:
             wd_label = "—"
-        rows.append([
-            d["date"][-2:], wd_label,
-            d.get("entrada") or "—",
-            d.get("inicio_intervalo") or "—",
-            d.get("fim_intervalo") or "—",
-            d.get("saida") or "—",
-            _format_min(d["worked"]),
-            _format_min(d["balance"]),
-            d["status"],
-        ])
-    rows.append(["", "", "", "", "", "TOTAIS:",
-                  _format_min(total_worked), _format_min(total_balance), ""])
+        origens = d.get("origens") or {}
+        # Se for dia futuro, deixa células vazias
+        if d.get("is_future"):
+            row = [d["date"][-2:], wd_label, d.get("previsto") or "—",
+                   "—", "—", "—", "—",
+                   "", "", "", "", "", "",
+                   _fmt_hhmm_signed(d.get("banco_saldo_min", 0))]
+        else:
+            row = [
+                d["date"][-2:], wd_label, d.get("previsto") or "—",
+                _fmt_marca(d.get("entrada"), origens, "entrada"),
+                _fmt_marca(d.get("inicio_intervalo"), origens, "inicio_intervalo"),
+                _fmt_marca(d.get("fim_intervalo"), origens, "fim_intervalo"),
+                _fmt_marca(d.get("saida"), origens, "saida"),
+                _fmt_hhmm_signed(d.get("worked", 0)) if d.get("worked", 0) else "—",
+                _fmt_hhmm_signed(d.get("noturno_min", 0)) if d.get("noturno_min", 0) else "—",
+                _fmt_hhmm_signed(d.get("falta_atraso_min", 0)) if d.get("falta_atraso_min", 0) else "—",
+                _fmt_hhmm_signed(d.get("abono_min", 0)) if d.get("abono_min", 0) else "—",
+                _fmt_hhmm_signed(d.get("extra_diurna_min", 0)) if d.get("extra_diurna_min", 0) else "—",
+                _fmt_hhmm_signed(d.get("extra_noturna_min", 0)) if d.get("extra_noturna_min", 0) else "—",
+                _fmt_hhmm_signed(d.get("banco_saldo_min", 0)),
+            ]
+        rows.append(row)
 
+    # Linha TOTAIS
+    rows.append([
+        "", "", "TOTAIS:",
+        "", "", "", "",
+        _fmt_hhmm_signed(total_worked),
+        _fmt_hhmm_signed(totals_extra.get("noturno", 0)),
+        _fmt_hhmm_signed(totals_extra.get("falta_atraso", 0)),
+        _fmt_hhmm_signed(totals_extra.get("abono", 0)),
+        _fmt_hhmm_signed(totals_extra.get("extra_diurna", 0)),
+        _fmt_hhmm_signed(totals_extra.get("extra_noturna", 0)),
+        _fmt_hhmm_signed(total_balance),
+    ])
+
+    # Larguras (em cm) somam ~27cm (landscape A4 = 29.7cm útil)
+    col_widths = [
+        0.8, 0.7, 3.0,   # dia, ds, previsto
+        1.7, 1.7, 1.7, 1.7,  # ent/sai 1 e 2
+        1.4, 1.4, 1.6, 1.4, 1.4, 1.4, 1.7,  # normais, noturno, falta, abono, extra d/n, saldo
+    ]
     table = Table(rows, repeatRows=1, hAlign="LEFT",
-                  colWidths=[1.0 * cm, 1.3 * cm, 1.9 * cm, 1.9 * cm, 1.9 * cm,
-                             1.9 * cm, 2.1 * cm, 1.9 * cm, 3.6 * cm])
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#020617")),
+                  colWidths=[w * cm for w in col_widths])
+    style = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b1220")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("FONTSIZE", (0, 0), (-1, -1), 6.5),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#1f2a3a")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f1f5f9")]),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#1f2937")),
         ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
-    elements.append(table)
-    elements.append(Spacer(1, 14))
-
-    # ---------- RESUMO + OBSERVAÇÕES ----------
-    elements.append(Paragraph(
-        f"<font size='8'>Trabalhado no mês: <b>{_format_min(total_worked)}</b> &nbsp;&nbsp;"
-        f"Saldo do mês: <b>{_format_min(total_balance)}</b></font>",
-        styles["Normal"],
-    ))
-    elements.append(Spacer(1, 4))
-    elements.append(Paragraph(
-        "<font size='7' color='#64748b'><i>Documento emitido eletronicamente pelo SmartProv. "
-        "Em caso de divergências, comunique imediatamente o RH.</i></font>",
-        styles["Normal"],
-    ))
-    elements.append(Spacer(1, 28))
-
-    # ---------- LINHAS DE ASSINATURA ----------
-    sig_rows = [
-        ["_" * 38, "", "_" * 38],
-        [Paragraph(f"<font size='8'><b>{coll.get('name', '—')}</b><br/>Colaborador</font>", styles["Normal"]),
-         "",
-         Paragraph(f"<font size='8'><b>{company_name}</b><br/>Responsável RH / Empresa</font>", styles["Normal"])],
+        ("FONTSIZE", (0, -1), (-1, -1), 7.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]
-    sig_table = Table(sig_rows, colWidths=[8 * cm, 1 * cm, 8 * cm], hAlign="CENTER")
+    # Pinta de cinza linhas de Sáb/Dom/Feriado para destaque visual
+    for i, d in enumerate(days, start=1):
+        if d.get("is_holiday"):
+            style.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#fef9c3")))
+        elif d.get("is_weekend"):
+            style.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#f1f5f9")))
+    table.setStyle(TableStyle(style))
+    elements.append(table)
+    elements.append(Spacer(1, 8))
+
+    # ---------- LEGENDA + BASE LEGAL ----------
+    elements.append(Paragraph(
+        "<font size='6.5'><b>Legenda:</b> (I)=Incluído manualmente · (P)=Pré-assinalado · "
+        "(M)=Coletor REP-P Mobile/Web · (C)=Coletor REP-P físico (iDFace/iDFlex)</font>",
+        styles["Normal"],
+    ))
+    elements.append(Spacer(1, 2))
+    elements.append(Paragraph(
+        "<font size='6.5' color='#475569'>Documento emitido em conformidade com a "
+        "<b>Portaria nº 671/2021 do Ministério do Trabalho e Emprego</b> e art. 74, §2º "
+        "da <b>CLT</b>. Em caso de divergência, o colaborador deve comunicar o RH em até 48h. "
+        "Hora noturna: 22h às 05h, com adicional de 20% (art. 73 CLT).</font>",
+        styles["Normal"],
+    ))
+    elements.append(Spacer(1, 22))
+
+    # ---------- ASSINATURAS ----------
+    sig_rows = [
+        ["_" * 50, "", "_" * 50],
+        [
+            Paragraph(f"<font size='8'><b>{coll.get('name', '—').upper()}</b><br/>"
+                       f"CPF: {cpf_val}<br/>Colaborador</font>", styles["Normal"]),
+            "",
+            Paragraph(f"<font size='8'><b>{company_name}</b><br/>"
+                       f"CNPJ: {company_cnpj}<br/>Responsável RH / Empresa</font>",
+                       styles["Normal"]),
+        ],
+    ]
+    sig_table = Table(sig_rows, colWidths=[12 * cm, 3 * cm, 12 * cm], hAlign="CENTER")
     sig_table.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -1372,7 +1588,14 @@ async def send_timesheet_email(coll: dict, year: int, month: int) -> dict:
     html = _build_timesheet_email_html(coll, year, month, sheet["days"], sheet["total_worked_min"], sheet["total_balance_min"])
     pdf_bytes = _build_timesheet_pdf(coll, year, month, sheet["days"],
                                        sheet["total_worked_min"], sheet["total_balance_min"],
-                                       company=company_doc, praca=praca_doc)
+                                       company=company_doc, praca=praca_doc,
+                                       totals_extra={
+                                           "noturno": sheet.get("total_noturno_min", 0),
+                                           "extra_diurna": sheet.get("total_extra_diurna_min", 0),
+                                           "extra_noturna": sheet.get("total_extra_noturna_min", 0),
+                                           "falta_atraso": sheet.get("total_falta_atraso_min", 0),
+                                           "abono": sheet.get("total_abono_min", 0),
+                                       })
     pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
     params = {
         "from": f"{sender_name} <{sender}>",
@@ -1404,6 +1627,13 @@ async def timesheet_pdf(cid: str, year: int, month: int):
         coll, year, month, sheet["days"],
         sheet["total_worked_min"], sheet["total_balance_min"],
         company=company_doc, praca=praca_doc,
+        totals_extra={
+            "noturno": sheet.get("total_noturno_min", 0),
+            "extra_diurna": sheet.get("total_extra_diurna_min", 0),
+            "extra_noturna": sheet.get("total_extra_noturna_min", 0),
+            "falta_atraso": sheet.get("total_falta_atraso_min", 0),
+            "abono": sheet.get("total_abono_min", 0),
+        },
     )
     filename = f"espelho-{coll['id']}-{year}-{month:02d}.pdf"
     return StreamingResponse(

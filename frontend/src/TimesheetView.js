@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
-import { Button, Card, Field, fmtMin, Icon, inputStyle, Metric, Row, StatusBadge } from "@/ui";
+import { Button, Card, Field, fmtMin, Icon, inputStyle, Metric, Row } from "@/ui";
 
 const TYPES = ["Entrada", "Início intervalo", "Fim intervalo", "Saída"];
 const TYPE_KEYS = {
@@ -212,11 +212,33 @@ function EditDayModal({ open, day, collabId, onClose, onSaved }) {
   );
 }
 
-function TimeCell({ value, missing }) {
-  if (value) return <span>{value}</span>;
+function TimeCell({ value, missing, origin }) {
+  if (value) {
+    return (
+      <span style={{ whiteSpace: "nowrap" }}>
+        {value}
+        {origin && (
+          <span style={{
+            marginLeft: 3, fontSize: 9, color: "#64748b", fontWeight: 600,
+          }}>({origin})</span>
+        )}
+      </span>
+    );
+  }
   if (missing) return <span style={{ color: "#dc2626", fontWeight: 800 }}>—</span>;
   return <span style={{ color: "#94a3b8" }}>—</span>;
 }
+
+const thS = (align = "center") => ({
+  padding: "8px 4px", fontSize: 10, fontWeight: 700,
+  textTransform: "uppercase", letterSpacing: "0.04em",
+  textAlign: align, whiteSpace: "nowrap",
+});
+const tdS = (extra = {}) => ({
+  padding: "6px 4px", textAlign: "center",
+  whiteSpace: "nowrap", fontSize: 12,
+  ...extra,
+});
 
 function downloadCsv(filename, rows) {
   const escape = (v) => {
@@ -515,24 +537,41 @@ export default function TimesheetView() {
         )}
       </Card>
 
-      <Card title={`Dias do mês — ${monthLabel}`}>
+      <Card title={`Espelho mensal — ${monthLabel}`}>
         {!data ? (
           <p style={{ color: "#64748b" }}>Carregando...</p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+          <>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10,
+                          fontSize: 11, color: "#475569" }}>
+              <span><strong>Legenda:</strong></span>
+              <span>(I) Incluído manual</span>
+              <span>(P) Pré-assinalado</span>
+              <span>(M) Mobile/Web</span>
+              <span>(C) Coletor REP</span>
+              <span style={{ marginLeft: "auto", fontStyle: "italic" }}>
+                Portaria 671/2021-MTE · CLT art. 74 §2º
+              </span>
+            </div>
+            <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 10 }}>
+              <table data-testid="sheet-table-controlid" style={{ width: "100%", minWidth: 1280, borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
-                <tr style={{ textAlign: "left", color: "#64748b" }}>
-                  <th style={{ padding: "8px 6px" }}>Dia</th>
-                  <th>Entrada</th>
-                  <th>Início Int.</th>
-                  <th>Fim Int.</th>
-                  <th>Saída</th>
-                  <th>Trabalhado</th>
-                  <th>HE</th>
-                  <th>Saldo</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: "right", paddingRight: 8 }}>Ação</th>
+                <tr style={{ background: "#0b1220", color: "white" }}>
+                  <th style={thS()}>Dia</th>
+                  <th style={thS()}>DS</th>
+                  <th style={thS("left")}>Previsto</th>
+                  <th style={thS()}>Ent. 1</th>
+                  <th style={thS()}>Saí. 1</th>
+                  <th style={thS()}>Ent. 2</th>
+                  <th style={thS()}>Saí. 2</th>
+                  <th style={thS()}>Normais</th>
+                  <th style={thS()}>Noturno</th>
+                  <th style={thS()}>Falta/Atr.</th>
+                  <th style={thS()}>Abono</th>
+                  <th style={thS()}>Extra D.</th>
+                  <th style={thS()}>Extra N.</th>
+                  <th style={thS()}>Saldo banco</th>
+                  <th style={{ ...thS("right"), paddingRight: 8 }}>Ação</th>
                 </tr>
               </thead>
               <tbody>
@@ -555,52 +594,64 @@ export default function TimesheetView() {
                     background: rowBg,
                     color: isFuture ? "#94a3b8" : "#0f172a",
                   };
+                  const orig = d.origens || {};
                   return (
                     <tr key={d.date} style={rowStyle} data-testid={`sheet-row-${d.date}`}>
-                      <td style={{ padding: "8px 6px", fontWeight: 700 }}>
+                      <td style={tdS({ fontWeight: 700, paddingLeft: 8 })}>
                         {String(dayNum).padStart(2, "0")}
-                        <span style={{ marginLeft: 4, fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>{dayName}</span>
-                        {isToday && <span style={{ marginLeft: 6, fontSize: 11, color: "#ea580c" }}>hoje</span>}
-                        {isHoliday && (
-                          <span data-testid={`holiday-tag-${d.date}`} title={d.holiday?.name} style={{
-                            marginLeft: 6, fontSize: 10, fontWeight: 800,
-                            background: "#fde68a", color: "#92400e",
-                            padding: "2px 6px", borderRadius: 999, border: "1px solid #fcd34d",
-                          }}>feriado</span>
-                        )}
+                        {isToday && <span style={{ marginLeft: 4, fontSize: 9, color: "#ea580c" }}>•</span>}
                         {d.manually_edited && (
-                          <span data-testid={`modified-tag-${d.date}`} style={{
-                            marginLeft: 6, fontSize: 10, fontWeight: 800,
-                            background: "#fef3c7", color: "#92400e",
-                            padding: "2px 6px", borderRadius: 999, border: "1px solid #fde68a",
-                          }}>modificado</span>
+                          <span data-testid={`modified-tag-${d.date}`}
+                                title="Algum horário foi editado manualmente"
+                                style={{ marginLeft: 4, fontSize: 9, color: "#92400e" }}>✎</span>
                         )}
                       </td>
-                      <td><TimeCell value={d.entrada} missing={missingEntrada} /></td>
-                      <td><TimeCell value={d.inicio_intervalo} missing={false} /></td>
-                      <td><TimeCell value={d.fim_intervalo} missing={false} /></td>
-                      <td><TimeCell value={d.saida} missing={missingSaida} /></td>
-                      <td>{isFuture ? "—" : fmtMin(d.worked)}</td>
-                      <td style={{ color: d.overtime_min > 0 ? "#16a34a" : "#94a3b8", fontWeight: d.overtime_min > 0 ? 800 : 400 }}>
-                        {isFuture ? "—" : (d.overtime_min > 0 ? `${fmtMin(d.overtime_min)}${d.overtime_kind === "sunday_or_holiday" ? "·100%" : "·50%"}` : "—")}
+                      <td style={tdS({ color: "#64748b", fontSize: 11 })}>{dayName}</td>
+                      <td style={tdS({ textAlign: "left", color: "#475569", fontSize: 11 })}>
+                        {d.previsto || "—"}
+                        {isHoliday && (
+                          <span data-testid={`holiday-tag-${d.date}`} title={d.holiday?.name}
+                                style={{ marginLeft: 4, fontSize: 9, fontWeight: 700, color: "#92400e",
+                                          background: "#fde68a", padding: "1px 5px", borderRadius: 4 }}>
+                            feriado
+                          </span>
+                        )}
                       </td>
-                      <td style={{ color: !isFuture && d.balance < 0 ? "#dc2626" : "inherit", fontWeight: !isFuture && d.balance < 0 ? 800 : 400 }}>
-                        {isFuture ? "—" : fmtMin(d.balance)}
+                      <td style={tdS()}><TimeCell value={d.entrada} missing={missingEntrada} origin={orig.entrada} /></td>
+                      <td style={tdS()}><TimeCell value={d.inicio_intervalo} missing={false} origin={orig.inicio_intervalo} /></td>
+                      <td style={tdS()}><TimeCell value={d.fim_intervalo} missing={false} origin={orig.fim_intervalo} /></td>
+                      <td style={tdS()}><TimeCell value={d.saida} missing={missingSaida} origin={orig.saida} /></td>
+                      <td style={tdS({ fontWeight: d.worked > 0 ? 600 : 400 })}>
+                        {isFuture ? "—" : (d.worked > 0 ? fmtMin(d.worked) : "—")}
                       </td>
-                      <td>
-                        {isFuture
-                          ? <span style={{ color: "#94a3b8", fontSize: 12 }}>Futuro</span>
-                          : <StatusBadge status={d.status} />}
+                      <td style={tdS({ color: d.noturno_min > 0 ? "#7c3aed" : "#94a3b8", fontWeight: d.noturno_min > 0 ? 700 : 400 })}>
+                        {isFuture ? "—" : (d.noturno_min > 0 ? fmtMin(d.noturno_min) : "—")}
                       </td>
-                      <td style={{ textAlign: "right", paddingRight: 8 }}>
+                      <td style={tdS({ color: d.falta_atraso_min > 0 ? "#dc2626" : "#94a3b8", fontWeight: d.falta_atraso_min > 0 ? 700 : 400 })}>
+                        {isFuture ? "—" : (d.falta_atraso_min > 0 ? `-${fmtMin(d.falta_atraso_min)}` : "—")}
+                      </td>
+                      <td style={tdS({ color: d.abono_min > 0 ? "#0369a1" : "#94a3b8" })}>
+                        {isFuture ? "—" : (d.abono_min > 0 ? fmtMin(d.abono_min) : "—")}
+                      </td>
+                      <td style={tdS({ color: d.extra_diurna_min > 0 ? "#16a34a" : "#94a3b8", fontWeight: d.extra_diurna_min > 0 ? 700 : 400 })}>
+                        {isFuture ? "—" : (d.extra_diurna_min > 0 ? fmtMin(d.extra_diurna_min) : "—")}
+                      </td>
+                      <td style={tdS({ color: d.extra_noturna_min > 0 ? "#16a34a" : "#94a3b8", fontWeight: d.extra_noturna_min > 0 ? 700 : 400 })}>
+                        {isFuture ? "—" : (d.extra_noturna_min > 0 ? fmtMin(d.extra_noturna_min) : "—")}
+                      </td>
+                      <td style={tdS({ color: (d.banco_saldo_min || 0) < 0 ? "#dc2626" : (d.banco_saldo_min || 0) > 0 ? "#16a34a" : "inherit",
+                                       fontWeight: 700 })}>
+                        {fmtMin(d.banco_saldo_min || 0)}
+                      </td>
+                      <td style={{ ...tdS({ textAlign: "right", paddingRight: 8 }) }}>
                         {!isFuture && (
                           <button
                             onClick={() => setEditing(d)}
                             data-testid={`edit-day-btn-${d.date}`}
                             title="Editar / corrigir horários"
                             style={{
-                              background: "white", border: "1px solid #cbd5e1", borderRadius: 10,
-                              padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700,
+                              background: "white", border: "1px solid #cbd5e1", borderRadius: 6,
+                              padding: "2px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600,
                             }}
                           >
                             Editar
@@ -610,9 +661,36 @@ export default function TimesheetView() {
                     </tr>
                   );
                 })}
+                {/* Linha TOTAIS — Control iD style */}
+                <tr style={{ background: "#1f2937", color: "white", fontWeight: 700 }}>
+                  <td colSpan={2} style={tdS({ paddingLeft: 8 })}>TOTAIS</td>
+                  <td style={tdS()}></td>
+                  <td style={tdS()}></td>
+                  <td style={tdS()}></td>
+                  <td style={tdS()}></td>
+                  <td style={tdS()}></td>
+                  <td style={tdS()}>{fmtMin(data.total_worked_min || 0)}</td>
+                  <td style={tdS()}>{fmtMin(data.total_noturno_min || 0)}</td>
+                  <td style={tdS({ color: (data.total_falta_atraso_min || 0) > 0 ? "#fca5a5" : "white" })}>
+                    {(data.total_falta_atraso_min || 0) > 0 ? `-${fmtMin(data.total_falta_atraso_min)}` : "—"}
+                  </td>
+                  <td style={tdS()}>{(data.total_abono_min || 0) > 0 ? fmtMin(data.total_abono_min) : "—"}</td>
+                  <td style={tdS({ color: (data.total_extra_diurna_min || 0) > 0 ? "#86efac" : "white" })}>
+                    {(data.total_extra_diurna_min || 0) > 0 ? fmtMin(data.total_extra_diurna_min) : "—"}
+                  </td>
+                  <td style={tdS({ color: (data.total_extra_noturna_min || 0) > 0 ? "#86efac" : "white" })}>
+                    {(data.total_extra_noturna_min || 0) > 0 ? fmtMin(data.total_extra_noturna_min) : "—"}
+                  </td>
+                  <td style={tdS({ color: (data.banco_saldo_final_min || 0) < 0 ? "#fca5a5" :
+                                          (data.banco_saldo_final_min || 0) > 0 ? "#86efac" : "white" })}>
+                    {fmtMin(data.banco_saldo_final_min || data.total_balance_min || 0)}
+                  </td>
+                  <td style={tdS()}></td>
+                </tr>
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </Card>
 
