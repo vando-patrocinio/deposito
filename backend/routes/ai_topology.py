@@ -109,6 +109,23 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
         {"company_id": cid, "csat_score": {"$gte": 8},
          "evaluated_at": {"$gte": cutoff_30}})
 
+    # ── Secretária IA — perguntas respondidas em 24h + status backup Drive ──
+    try:
+        secretaria_24h = await db.secretaria_log.count_documents(
+            {"company_id": cid, "created_at": {"$gte": cutoff}})
+    except Exception:
+        secretaria_24h = 0
+    try:
+        last_backup = await db.drive_backups.find_one(
+            {"company_id": cid, "status": "ok"},
+            {"_id": 0, "started_at": 1}, sort=[("started_at", -1)])
+        drive_connected = bool(await db.drive_credentials.find_one(
+            {"company_id": cid, "refresh_token": {"$nin": [None, ""]}},
+            {"_id": 0, "company_id": 1}))
+    except Exception:
+        last_backup = None
+        drive_connected = False
+
     # ── ATENDENTES HUMANOS INDIVIDUAIS (top-N por volume 24h) ──────────
     # Agrega quantas msgs cada usuário enviou + quantas conversas pegou
     pipe = [
@@ -255,6 +272,16 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
          "model_kind": "rule",
          "metric": f"{active_tickets} ativos",
          "metric_sub": "Bolhas em aberto"},
+        # SECRETÁRIA IA — assistente executiva (Claude + tool-use)
+        {"id": "secretaria", "label": "Secretária Ligo",
+         "subtitle": "Assistente executiva (Claude)",
+         "icon": "Headphones", "color": "#ec4899", "kind": "ai",
+         "model": DEFAULT_M,
+         "model_kind": "llm",
+         "metric": f"{secretaria_24h} perguntas/24h",
+         "metric_sub": ("Drive: " + (
+             ("OK · backup " + (last_backup["started_at"][:10] if last_backup and last_backup.get("started_at") else "—"))
+             if drive_connected else "desconectado"))},
     ]
     nodes.extend(human_nodes)
 
@@ -275,6 +302,8 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
          "label": "Claude p/ alertas", "kind": "motor"},
         {"from": "motor", "to": "lousa_ai",    "value": lousa_ai.get("triaged_24h", 0),
          "label": "Claude p/ triagem", "kind": "motor"},
+        {"from": "motor", "to": "secretaria",  "value": secretaria_24h,
+         "label": "Claude p/ Q&A executivo", "kind": "motor"},
         # Fluxos funcionais entre as IAs
         {"from": "smartolt", "to": "atendimento", "value": outage_aware,
          "label": "Contexto de pane",
@@ -306,6 +335,16 @@ async def topology_flow(user: dict = Depends(require_role("gestor"))) -> Dict[st
         {"from": "lousa_ai", "to": "lousa", "value": lousa_ai.get("triaged_24h", 0),
          "label": "Triados/24h",
          "desc": "Tipo · Prioridade · Técnico · SLA · Tags · Risk Score"},
+        # SECRETÁRIA — lê dados de quase tudo (Lousa, SmartOLT, Atendimento, Coach...)
+        {"from": "lousa", "to": "secretaria", "value": active_tickets,
+         "label": "Status bolhas",
+         "desc": "Tool-use: count_tickets_by_status, list_top_technicians"},
+        {"from": "smartolt", "to": "secretaria", "value": outages_active,
+         "label": "Status rede óptica",
+         "desc": "Tool-use: smartolt_status (ONUs em LOS, panes recentes)"},
+        {"from": "atendimento", "to": "secretaria", "value": wa_inbound,
+         "label": "Recebe perguntas WhatsApp",
+         "desc": "Gestor pergunta no WhatsApp → Secretária responde"},
     ]
     # Co-Pilot → cada humano + cada humano → atendimento
     edges.extend(human_edges_in)

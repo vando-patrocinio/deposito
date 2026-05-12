@@ -2,12 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
 import {
   Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
-  Loader2, Activity, Shield, ClipboardList, Wand2, Cpu,
+  Loader2, Activity, Shield, ClipboardList, Wand2, Cpu, Headphones,
 } from "lucide-react";
 import MotorIaAgentsModal from "@/MotorIaAgentsModal";
 
 const ICONS = { Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
-  Shield, ClipboardList, Wand: Wand2, Cpu };
+  Shield, ClipboardList, Wand: Wand2, Cpu, Headphones };
 
 /* Layout 2026 — Hub-and-spoke:
    - Motor IA no CENTRO (núcleo orquestrador)
@@ -42,9 +42,10 @@ const AI_LAYOUT = {
   coach:       polar(CX, CY, R1, 150),   // baixo-direita
 
   // anel 2 — agentes da Lousa (camada operacional inferior)
-  sentinela:   { x: 220, y: 600 },
-  lousa_ai:    { x: 600, y: 600 },
-  lousa:       { x: 980, y: 600 },
+  sentinela:   { x: 140, y: 600 },
+  lousa_ai:    { x: 460, y: 600 },
+  lousa:       { x: 780, y: 600 },
+  secretaria:  { x: 1100, y: 600 },
 };
 
 function humanLayout(humanNodes) {
