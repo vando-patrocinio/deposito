@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from core import DEMO_COMPANY_ID, now_iso
 from database import db
 from services.motor_ia import AgentDisabledError, chat_completion
+from services.secretaria_tools import TOOLS_SPEC_EXTRA, TOOL_FUNCS_EXTRA
 
 logger = logging.getLogger("secretaria_ia")
 
@@ -467,7 +468,11 @@ TOOL_FUNCS = {
     "count_clients_connected": _tool_count_clients_connected,
     "motor_ia_usage_today": _tool_motor_ia_usage_today,
     "recent_system_events": _tool_recent_system_events,
+    **TOOL_FUNCS_EXTRA,
 }
+
+# Mescla os specs extras na lista de tools (depois do extend, fica visível ao LLM)
+TOOLS_SPEC.extend(TOOLS_SPEC_EXTRA)
 
 
 # ============================================================
