@@ -213,7 +213,7 @@ export default function SoftphoneSection() {
         password: eff.password,
         register: true,
         session_timers: false,
-        user_agent: "PontoIA-Softphone/1.0",
+        user_agent: "SmartProv-Softphone/1.0",
         register_expires: 120,
         connection_recovery_min_interval: 4,
         connection_recovery_max_interval: 30,

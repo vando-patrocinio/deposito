@@ -176,7 +176,7 @@ export function BillingSuccessPage({ sessionId, onDone }) {
             <div style={{ fontSize: 56, marginBottom: 14 }}>🎉</div>
             <h2 style={{ color: "white", margin: 0 }}>Pagamento confirmado!</h2>
             <p style={{ color: "#94a3b8", marginTop: 10, fontSize: 14 }}>
-              Sua assinatura PontoIA Pro está ativa por 30 dias.
+              Sua assinatura SmartProv Pro está ativa por 30 dias.
             </p>
             <button
               onClick={onDone}

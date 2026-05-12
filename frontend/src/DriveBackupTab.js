@@ -159,7 +159,7 @@ export default function DriveBackupTab() {
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>Pasta de backup</div>
             <a href={status.folder_url} target="_blank" rel="noreferrer" style={{ color: "#0d9488", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
-              PontoIA-Backups <ExternalLink size={12} />
+              SmartProv-Backups <ExternalLink size={12} />
             </a>
           </div>
         )}

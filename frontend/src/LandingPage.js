@@ -1,485 +1,714 @@
-import React, { useEffect, useState } from "react";
+/**
+ * SmartProv — Landing Page
+ * Design system: "Swiss & High-Contrast" (light), Stripe-meets-Linear aesthetic.
+ * Refer to /app/design_guidelines.json for tokens.
+ */
+import React, { useEffect } from "react";
 
-const ACCENT = "#10b981"; // verde-vivo (associa "ponto válido")
-const BG_DARK = "#0a1322";
-const BG_DARKER = "#050b16";
+// --------- design tokens ---------
+const C = {
+  bg: "#FFFFFF",
+  bgMuted: "#F8FAFC",
+  bgSubtle: "#F1F5F9",
+  border: "#E2E8F0",
+  borderHover: "#CBD5E1",
+  text: "#0F172A",
+  textSecondary: "#475569",
+  textMuted: "#64748B",
+  brand: "#0055FF",
+  brandHover: "#0044CC",
+  accent: "#00C2FF",
+  success: "#10B981",
+  warning: "#F59E0B",
+  ink: "#020617",
+};
 
 const css = `
-  @keyframes pi-fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes pi-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,.55); } 50% { box-shadow: 0 0 0 18px rgba(16,185,129,0); } }
-  @keyframes pi-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-  .pi-fadeUp { opacity: 0; animation: pi-fadeUp .9s cubic-bezier(.2,.8,.2,1) forwards; }
-  .pi-grain {
-    background-image: radial-gradient(rgba(255,255,255,.03) 1px, transparent 1px);
-    background-size: 3px 3px;
-  }
-  .pi-card-hover { transition: transform .35s cubic-bezier(.2,.8,.2,1), border-color .35s; }
-  .pi-card-hover:hover { transform: translateY(-6px); border-color: rgba(16,185,129,.45); }
-  .pi-cta { transition: transform .25s, box-shadow .25s, background .25s; }
-  .pi-cta:hover { transform: translateY(-2px); box-shadow: 0 18px 40px rgba(16,185,129,.35); }
-  .pi-link { transition: color .2s; }
-  .pi-link:hover { color: #10b981; }
-  .pi-shine {
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);
-    background-size: 200% 100%;
-    animation: pi-shimmer 2.5s linear infinite;
-  }
-  @media (max-width: 720px) {
-    .pi-h1 { font-size: 38px !important; line-height: 1.05 !important; }
-    .pi-hero-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
-    .pi-features-grid { grid-template-columns: 1fr !important; }
-    .pi-nav-actions { display: none !important; }
-  }
-`;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-function PIcon({ name }) {
-  const map = {
-    selfie: "📸",
-    map: "📍",
-    bolt: "⚡",
-    shield: "🛡️",
-    chart: "📊",
-    bell: "🔔",
-    cloud: "☁️",
-    sparkle: "✨",
-    check: "✓",
-  };
-  return <span aria-hidden style={{ fontSize: "inherit" }}>{map[name] || "•"}</span>;
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; }
+
+.sp-page {
+  background: ${C.bg};
+  color: ${C.text};
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
 }
 
-function FeatureCard({ icon, title, desc, delay = 0 }) {
+.sp-display { font-family: 'Space Grotesk', 'Inter', sans-serif; letter-spacing: -0.025em; font-weight: 600; }
+.sp-mono { font-family: 'JetBrains Mono', monospace; }
+
+@keyframes sp-fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes sp-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sp-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes sp-pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+@keyframes sp-tick { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+.sp-fade-up { opacity: 0; animation: sp-fade-up .7s cubic-bezier(.16,1,.3,1) forwards; }
+
+.sp-grid-bg {
+  background-image:
+    linear-gradient(${C.border}66 1px, transparent 1px),
+    linear-gradient(90deg, ${C.border}66 1px, transparent 1px);
+  background-size: 56px 56px;
+  background-position: center;
+  mask-image: radial-gradient(ellipse 60% 60% at center, black 30%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse 60% 60% at center, black 30%, transparent 80%);
+}
+
+.sp-cta-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: ${C.ink}; color: white;
+  padding: 12px 22px; border-radius: 8px;
+  font-weight: 600; font-size: 14.5px;
+  border: 1px solid ${C.ink};
+  cursor: pointer; text-decoration: none;
+  transition: all .2s cubic-bezier(.4,0,.2,1);
+}
+.sp-cta-primary:hover { background: ${C.brand}; border-color: ${C.brand}; transform: translateY(-1px); box-shadow: 0 10px 30px -10px ${C.brand}66; }
+
+.sp-cta-secondary {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: white; color: ${C.text};
+  padding: 12px 22px; border-radius: 8px;
+  font-weight: 600; font-size: 14.5px;
+  border: 1px solid ${C.border};
+  cursor: pointer; text-decoration: none;
+  transition: all .2s;
+}
+.sp-cta-secondary:hover { border-color: ${C.text}; }
+
+.sp-bento {
+  background: ${C.bg};
+  border: 1px solid ${C.border};
+  border-radius: 16px;
+  padding: 26px;
+  transition: all .35s cubic-bezier(.4,0,.2,1);
+  position: relative;
+  overflow: hidden;
+}
+.sp-bento:hover { border-color: ${C.borderHover}; transform: translateY(-2px); box-shadow: 0 12px 32px -16px rgba(15,23,42,.12); }
+.sp-bento-dark { background: ${C.ink}; color: white; border-color: ${C.ink}; }
+.sp-bento-dark:hover { border-color: ${C.brand}; box-shadow: 0 20px 60px -20px ${C.brand}88; }
+
+.sp-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 999px;
+  background: ${C.bgSubtle}; color: ${C.text};
+  font-size: 11.5px; font-weight: 600;
+  border: 1px solid ${C.border};
+  letter-spacing: 0.02em;
+}
+
+.sp-pill-accent {
+  background: ${C.brand}11; color: ${C.brand};
+  border-color: ${C.brand}33;
+}
+
+.sp-link { color: ${C.textSecondary}; text-decoration: none; transition: color .15s; font-size: 14px; font-weight: 500; }
+.sp-link:hover { color: ${C.text}; }
+
+.sp-feature-icon {
+  width: 44px; height: 44px; border-radius: 10px;
+  background: ${C.bgSubtle}; border: 1px solid ${C.border};
+  display: grid; place-items: center;
+  color: ${C.text}; flex-shrink: 0;
+}
+
+.sp-stat-num {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 44px; font-weight: 700;
+  letter-spacing: -0.04em; line-height: 1; color: ${C.text};
+}
+
+.sp-divider { height: 1px; background: ${C.border}; border: 0; margin: 0; }
+
+.sp-shimmer {
+  background-image: linear-gradient(90deg, transparent, ${C.bgSubtle}, transparent);
+  background-size: 200% 100%;
+  animation: sp-shimmer 2.6s linear infinite;
+}
+
+/* Hero blueprint mock */
+.sp-blueprint {
+  background:
+    linear-gradient(${C.ink}, ${C.ink}),
+    radial-gradient(circle at 20% 0%, ${C.brand}33, transparent 50%);
+  background-blend-mode: overlay;
+  background-color: ${C.ink};
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .sp-h1 { font-size: 44px !important; line-height: 1.05 !important; }
+  .sp-h2 { font-size: 32px !important; }
+  .sp-hero-grid { grid-template-columns: 1fr !important; }
+  .sp-bento-grid { grid-template-columns: 1fr !important; }
+  .sp-features-grid { grid-template-columns: 1fr !important; }
+  .sp-nav-links { display: none !important; }
+  .sp-stat-num { font-size: 32px !important; }
+  .sp-section { padding: 60px 22px !important; }
+}
+`;
+
+// ============================================================
+// Icones (sem dependência externa de SVG sprite)
+// ============================================================
+const Ico = {
+  ArrowRight: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+  ),
+  Check: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+  ),
+  Antenna: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 4l14 14M19 4l-14 14M12 9v13M9 22h6"/><circle cx="12" cy="9" r="1.4" fill="currentColor"/></svg>
+  ),
+  Network: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="9" width="6" height="6" rx="1"/><rect x="15" y="9" width="6" height="6" rx="1"/><rect x="9" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M12 9V6M12 18v-3M9 12H6M18 12h-3"/></svg>
+  ),
+  Chat: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/></svg>
+  ),
+  Kanban: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="6" height="14" rx="1"/><rect x="15" y="3" width="6" height="10" rx="1"/><rect x="9" y="3" width="6" height="18" rx="1" fill="currentColor" fillOpacity="0.1"/></svg>
+  ),
+  Brain: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 0 7 4.5v0A2.5 2.5 0 0 0 4.5 7v0A2.5 2.5 0 0 0 4.5 12v0A2.5 2.5 0 0 0 7 14.5v3a2.5 2.5 0 0 0 5 0V4.5A2.5 2.5 0 0 0 9.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 1 17 4.5v0A2.5 2.5 0 0 1 19.5 7v0A2.5 2.5 0 0 1 19.5 12v0A2.5 2.5 0 0 1 17 14.5v3a2.5 2.5 0 0 1-5 0V4.5A2.5 2.5 0 0 1 14.5 2z"/></svg>
+  ),
+  Shield: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z"/><path d="M9 12l2 2 4-4"/></svg>
+  ),
+  Lightning: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>
+  ),
+  Globe: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a14 14 0 0 1 0 20M12 2a14 14 0 0 0 0 20"/></svg>
+  ),
+  Map: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M1 6l8-3 6 3 8-3v15l-8 3-6-3-8 3z"/><path d="M9 3v15M15 6v15"/></svg>
+  ),
+  Phone: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .3 1.9.6 2.8a2 2 0 0 1-.4 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.5 2.8.6a2 2 0 0 1 1.7 2z"/></svg>
+  ),
+};
+
+// ============================================================
+// Componentes
+// ============================================================
+function Logo({ size = 22, dark = false }) {
   return (
-    <div
-      className="pi-card-hover pi-fadeUp"
-      style={{
-        background: "rgba(255,255,255,.03)",
-        border: "1px solid rgba(255,255,255,.08)",
-        borderRadius: 18,
-        padding: "26px 22px",
-        backdropFilter: "blur(8px)",
-        animationDelay: `${delay}ms`,
-      }}
-    >
-      <div style={{
-        width: 46, height: 46, borderRadius: 12,
-        background: "linear-gradient(135deg, rgba(16,185,129,.18), rgba(16,185,129,.06))",
-        border: "1px solid rgba(16,185,129,.25)",
-        display: "grid", placeItems: "center", fontSize: 22, marginBottom: 14,
-      }}><PIcon name={icon} /></div>
-      <h3 style={{ margin: "0 0 8px", color: "#f1f5f9", fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em" }}>{title}</h3>
-      <p style={{ margin: 0, color: "#94a3b8", fontSize: 13.5, lineHeight: 1.6 }}>{desc}</p>
-    </div>
+    <span data-testid="brand-logo" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+      <span style={{
+        width: size + 6, height: size + 6, borderRadius: 7,
+        background: dark ? "white" : C.ink,
+        color: dark ? C.ink : "white",
+        display: "grid", placeItems: "center",
+        fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13,
+        letterSpacing: "-0.04em",
+      }}>S</span>
+      <span className="sp-display" style={{
+        fontSize: size, color: dark ? "white" : C.text, lineHeight: 1,
+        display: "inline-flex", alignItems: "baseline",
+      }}>
+        Smart<span style={{ color: dark ? C.accent : C.brand, fontWeight: 700 }}>Prov</span>
+      </span>
+    </span>
   );
 }
 
-function StepCard({ n, title, desc, delay = 0 }) {
+function Nav({ onLogin, onSignup }) {
   return (
-    <div className="pi-fadeUp" style={{ display: "flex", gap: 18, alignItems: "flex-start", animationDelay: `${delay}ms` }}>
+    <header style={{
+      position: "sticky", top: 0, zIndex: 50,
+      background: "rgba(255,255,255,.85)",
+      backdropFilter: "blur(12px)",
+      borderBottom: `1px solid ${C.border}`,
+    }}>
       <div style={{
-        flexShrink: 0, width: 44, height: 44, borderRadius: 12,
-        background: "linear-gradient(135deg,#10b981,#059669)",
-        color: "white", fontWeight: 900, display: "grid", placeItems: "center",
-        fontSize: 17, boxShadow: "0 10px 24px rgba(16,185,129,.3)",
-      }}>{n}</div>
-      <div>
-        <h4 style={{ margin: "4px 0 6px", color: "#f1f5f9", fontSize: 15.5, fontWeight: 700 }}>{title}</h4>
-        <p style={{ margin: 0, color: "#94a3b8", fontSize: 13.5, lineHeight: 1.6 }}>{desc}</p>
+        maxWidth: 1280, margin: "0 auto",
+        padding: "14px 28px",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <Logo />
+        <nav className="sp-nav-links" style={{ display: "flex", alignItems: "center", gap: 24 }}>
+          <a className="sp-link" href="#produto">Produto</a>
+          <a className="sp-link" href="#modulos">Módulos</a>
+          <a className="sp-link" href="#precos">Preços</a>
+          <a className="sp-link" href="#contato">Contato</a>
+        </nav>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            data-testid="nav-login-btn"
+            onClick={onLogin}
+            style={{ background: "transparent", border: 0, color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 14px" }}
+          >Entrar</button>
+          <button
+            data-testid="nav-signup-btn"
+            onClick={() => onSignup({ plan: "trial" })}
+            className="sp-cta-primary"
+            style={{ padding: "9px 18px", fontSize: 13.5 }}
+          >Começar grátis <Ico.ArrowRight /></button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function Hero({ onSignup }) {
+  return (
+    <section style={{ position: "relative", overflow: "hidden", padding: "100px 28px 80px" }}>
+      <div className="sp-grid-bg" style={{ position: "absolute", inset: 0, opacity: 0.4 }} />
+      <div style={{ position: "relative", maxWidth: 1280, margin: "0 auto" }}>
+        <div className="sp-hero-grid" style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 60, alignItems: "center" }}>
+          <div className="sp-fade-up">
+            <div className="sp-pill sp-pill-accent" style={{ marginBottom: 24 }} data-testid="hero-badge">
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: C.brand, animation: "sp-pulse 1.8s infinite" }} />
+              Plataforma ISP 2026
+            </div>
+            <h1 className="sp-display sp-h1" style={{
+              fontSize: 64, lineHeight: 1.02, margin: "0 0 22px",
+              fontWeight: 600, letterSpacing: "-0.035em", color: C.text,
+            }}>
+              Seu provedor<br/>de internet<br/>
+              <span style={{ color: C.brand }}>operado por IA.</span>
+            </h1>
+            <p style={{ fontSize: 18, lineHeight: 1.55, color: C.textSecondary, margin: "0 0 32px", maxWidth: 540 }}>
+              SmartProv reúne lousa de campo, omnichannel WhatsApp, observabilidade de rede óptica e uma camada de inteligência artificial que aprende com seu time — em um sistema só.
+            </p>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                data-testid="hero-signup-btn"
+                onClick={() => onSignup({ plan: "trial" })}
+                className="sp-cta-primary"
+              >Começar teste gratuito <Ico.ArrowRight /></button>
+              <a href="#produto" className="sp-cta-secondary">Ver produto</a>
+            </div>
+            <div style={{ marginTop: 36, display: "flex", gap: 28, color: C.textMuted, fontSize: 13 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Ico.Check /> 14 dias grátis</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Ico.Check /> Sem cartão</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Ico.Check /> Suporte humano</span>
+            </div>
+          </div>
+          <HeroBlueprint />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HeroBlueprint() {
+  return (
+    <div className="sp-fade-up" style={{ position: "relative", animationDelay: "150ms" }}>
+      <div className="sp-bento sp-bento-dark sp-blueprint" style={{
+        padding: 0, borderRadius: 18, overflow: "hidden",
+        boxShadow: "0 40px 80px -30px rgba(0,85,255,.4)",
+      }}>
+        {/* Window chrome */}
+        <div style={{ padding: "12px 18px", borderBottom: "1px solid rgba(255,255,255,.08)", display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ width: 10, height: 10, borderRadius: 999, background: "#EF4444" }}/>
+          <span style={{ width: 10, height: 10, borderRadius: 999, background: "#F59E0B" }}/>
+          <span style={{ width: 10, height: 10, borderRadius: 999, background: "#10B981" }}/>
+          <span className="sp-mono" style={{ marginLeft: 12, fontSize: 11, color: "rgba(255,255,255,.45)" }}>app.smartprov.com.br/dashboard</span>
+        </div>
+        {/* Body — dashboard mockup */}
+        <div style={{ padding: 22, display: "grid", gap: 14 }}>
+          {/* KPIs */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            {[
+              { label: "ONUs online", val: "1.690", sub: "+ 12 hoje" },
+              { label: "Tickets ativos", val: "23", sub: "SLA OK" },
+              { label: "Churn 30d", val: "0,4%", sub: "↓ 0,2 p.p." },
+            ].map((k, i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, padding: 14 }}>
+                <div className="sp-mono" style={{ fontSize: 10, color: "rgba(255,255,255,.5)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>{k.label}</div>
+                <div className="sp-display" style={{ fontSize: 22, fontWeight: 600, color: "white", lineHeight: 1 }}>{k.val}</div>
+                <div style={{ fontSize: 11, color: C.success, marginTop: 4 }}>{k.sub}</div>
+              </div>
+            ))}
+          </div>
+          {/* Graph mock */}
+          <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,.7)", fontWeight: 600 }}>Tráfego de rede (24h)</span>
+              <span className="sp-pill" style={{ background: "rgba(16,185,129,.15)", border: "1px solid rgba(16,185,129,.3)", color: "#34d399", fontSize: 10 }}>● Online</span>
+            </div>
+            <svg width="100%" height="80" viewBox="0 0 280 80" preserveAspectRatio="none" style={{ display: "block" }}>
+              <defs>
+                <linearGradient id="grad" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor={C.brand} stopOpacity="0.4"/>
+                  <stop offset="100%" stopColor={C.brand} stopOpacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d="M0 60 L20 55 L40 50 L60 56 L80 42 L100 38 L120 44 L140 30 L160 20 L180 28 L200 18 L220 22 L240 14 L260 18 L280 12 L280 80 L0 80 Z" fill="url(#grad)"/>
+              <path d="M0 60 L20 55 L40 50 L60 56 L80 42 L100 38 L120 44 L140 30 L160 20 L180 28 L200 18 L220 22 L240 14 L260 18 L280 12" fill="none" stroke={C.brand} strokeWidth="2"/>
+            </svg>
+          </div>
+          {/* Ticket strip */}
+          <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, padding: 12, display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 999, background: C.warning, animation: "sp-pulse 1.5s infinite" }}/>
+            <div style={{ flex: 1, fontSize: 12, color: "rgba(255,255,255,.85)" }}>
+              <strong>Pane detectada</strong> — OLT-CENTRO-01 | 14 ONUs afetadas
+            </div>
+            <span className="sp-mono" style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>há 2 min</span>
+          </div>
+        </div>
+      </div>
+      {/* floating mini-card */}
+      <div className="sp-bento" style={{
+        position: "absolute", bottom: -32, left: -32,
+        padding: 16, width: 220,
+        boxShadow: "0 20px 50px -10px rgba(15,23,42,.18)",
+      }}>
+        <div className="sp-mono" style={{ fontSize: 9.5, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 6 }}>Secretária Ligo (IA)</div>
+        <div style={{ fontSize: 13, color: C.text, lineHeight: 1.45 }}>
+          <strong>Você tem 2 clientes ativos.</strong> Eddy fechou 5 chamados hoje.
+        </div>
       </div>
     </div>
   );
 }
 
-function PriceCheck({ children }) {
+function LogoStrip() {
   return (
-    <li style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 0", color: "#cbd5e1", fontSize: 14 }}>
-      <span style={{
-        flexShrink: 0, width: 20, height: 20, borderRadius: "50%",
-        background: "rgba(16,185,129,.15)", color: ACCENT,
-        display: "grid", placeItems: "center", fontSize: 12, fontWeight: 900,
-        marginTop: 1,
-      }}>✓</span>
-      <span>{children}</span>
-    </li>
+    <section style={{ borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, padding: "32px 28px", background: C.bgMuted }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <p className="sp-mono" style={{ textAlign: "center", margin: 0, fontSize: 11, color: C.textMuted, textTransform: "uppercase", letterSpacing: ".15em", marginBottom: 18 }}>
+          Provedores que já operam com tecnologia SmartProv
+        </p>
+        <div style={{ display: "flex", justifyContent: "center", gap: 44, flexWrap: "wrap", opacity: 0.55 }}>
+          {["LigoFibra", "VeloNet", "FibraNet", "TecnoLink", "SkyTelecom", "OpticFlow"].map((name) => (
+            <span key={name} className="sp-display" style={{ fontSize: 18, color: C.textSecondary, fontWeight: 500 }}>{name}</span>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
-export default function LandingPage({ onSignup, onLogin }) {
-  // smooth scroll para a âncora #pricing etc.
+function StatsSection() {
+  const stats = [
+    { num: "+38%", label: "Aumento médio na produtividade do campo", note: "vs. operação anterior" },
+    { num: "12 min", label: "Tempo médio de resposta no WhatsApp", note: "com Co-Pilot IA" },
+    { num: "0,4%", label: "Churn mensal médio", note: "abaixo da média do setor" },
+    { num: "99,8%", label: "Uptime monitorado da rede óptica", note: "alertas em < 30s" },
+  ];
+  return (
+    <section style={{ padding: "80px 28px" }} className="sp-section">
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0, borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}` }} className="sp-bento-grid">
+          {stats.map((s, i) => (
+            <div key={i} className="sp-fade-up" style={{
+              padding: "32px 28px",
+              borderRight: i < stats.length - 1 ? `1px solid ${C.border}` : "none",
+              animationDelay: `${i * 80}ms`,
+            }}>
+              <div className="sp-stat-num">{s.num}</div>
+              <div style={{ fontSize: 14, color: C.text, fontWeight: 600, marginTop: 12, lineHeight: 1.4 }}>{s.label}</div>
+              <div className="sp-mono" style={{ fontSize: 11, color: C.textMuted, marginTop: 6, textTransform: "uppercase", letterSpacing: ".06em" }}>{s.note}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ModulesSection() {
+  const modules = [
+    {
+      icon: <Ico.Kanban />, title: "Lousa de Campo (Kanban)",
+      desc: "Distribua chamados por técnico, acompanhe SLA em tempo real e visualize onde cada equipe está agora.",
+      bullets: ["Drag-and-drop", "Geolocalização integrada", "SLA com alertas"],
+    },
+    {
+      icon: <Ico.Chat />, title: "WhatsApp Omnichannel",
+      desc: "Centralize conversas, automatize boletos e use o Co-Pilot IA pra sugerir respostas que melhoram o CSAT.",
+      bullets: ["Múltiplos atendentes", "Sugestões IA contextuais", "Histórico unificado"],
+    },
+    {
+      icon: <Ico.Network />, title: "SmartOLT",
+      desc: "Observabilidade total da rede óptica. Detecta panes, gera ordens preventivas e calcula impacto financeiro.",
+      bullets: ["Suporte multi-vendor", "Alarmes em < 30s", "Impacto MRR projetado"],
+    },
+    {
+      icon: <Ico.Brain />, title: "Motor IA Centralizado",
+      desc: "Claude Sonnet 4.5 orquestrando agentes especializados em triagem, atendimento, churn e suporte técnico.",
+      bullets: ["Kill-switch global", "Custo monitorado", "Audit log completo"],
+    },
+    {
+      icon: <Ico.Phone />, title: "Softphone SIP",
+      desc: "Receba e faça chamadas direto do navegador, integrado ao seu MagnusBilling. Sem app extra.",
+      bullets: ["WebRTC nativo", "CDR no histórico", "Click-to-call"],
+    },
+    {
+      icon: <Ico.Shield />, title: "Secretária Ligo",
+      desc: "Sua IA executiva. Responde KPIs por WhatsApp ou ChatGPT customizado, faz backup automático na nuvem.",
+      bullets: ["28 ferramentas read-only", "Backup Drive diário", "Tool-use Claude"],
+    },
+  ];
+  return (
+    <section id="modulos" style={{ padding: "100px 28px", background: C.bgMuted }} className="sp-section">
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <div style={{ maxWidth: 720, marginBottom: 56 }}>
+          <span className="sp-pill" style={{ marginBottom: 16 }}>Módulos</span>
+          <h2 className="sp-display sp-h2" style={{ fontSize: 48, lineHeight: 1.05, margin: "0 0 14px", letterSpacing: "-0.035em" }}>
+            Tudo o que um provedor precisa.<br/>
+            <span style={{ color: C.textSecondary }}>Em um sistema só.</span>
+          </h2>
+          <p style={{ fontSize: 17, color: C.textSecondary, lineHeight: 1.55, margin: 0 }}>
+            Construído por gente que conhece ISP. Sem patchworks de planilha, sem 5 sistemas pra abrir.
+          </p>
+        </div>
+        <div className="sp-features-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
+          {modules.map((m, i) => (
+            <div key={m.title} className="sp-bento sp-fade-up" data-testid={`module-${i}`} style={{ animationDelay: `${i * 60}ms` }}>
+              <div className="sp-feature-icon" style={{ marginBottom: 16 }}>{m.icon}</div>
+              <h3 className="sp-display" style={{ fontSize: 20, fontWeight: 600, margin: "0 0 10px", letterSpacing: "-0.02em" }}>{m.title}</h3>
+              <p style={{ fontSize: 14, color: C.textSecondary, lineHeight: 1.55, margin: "0 0 16px" }}>{m.desc}</p>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                {m.bullets.map((b) => (
+                  <li key={b} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.text }}>
+                    <span style={{ color: C.brand }}><Ico.Check /></span>{b}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HowItWorks() {
+  const steps = [
+    { num: "01", title: "Importe seu provedor", desc: "Conecte Atlaz, SmartOLT, MagnusBilling — em minutos seus 1.700 clientes aparecem automaticamente." },
+    { num: "02", title: "Configure os agentes IA", desc: "Ative Triagem, Co-Pilot, Sentinela e Secretária Ligo. Defina budget e kill-switch por agente." },
+    { num: "03", title: "Opere com inteligência", desc: "Veja em tempo real: técnicos no campo, atendimentos por IA, panes detectadas, churn previsto." },
+  ];
+  return (
+    <section id="produto" style={{ padding: "100px 28px" }} className="sp-section">
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1.2fr", gap: 60, alignItems: "start" }} className="sp-hero-grid">
+          <div>
+            <span className="sp-pill" style={{ marginBottom: 16 }}>Como funciona</span>
+            <h2 className="sp-display sp-h2" style={{ fontSize: 48, lineHeight: 1.05, margin: "0 0 18px", letterSpacing: "-0.035em" }}>
+              Do importer<br/>ao operacional<br/>
+              <span style={{ color: C.brand }}>em 24h.</span>
+            </h2>
+            <p style={{ fontSize: 16, color: C.textSecondary, lineHeight: 1.55 }}>
+              A maioria dos clientes está com a operação rodando dentro de 1 dia. Sem onboarding meses, sem TI dedicada.
+            </p>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            {steps.map((s, i) => (
+              <div key={s.num} className="sp-fade-up" style={{ display: "flex", gap: 24, padding: "24px 0", borderBottom: i < 2 ? `1px solid ${C.border}` : "none", animationDelay: `${i * 100}ms` }}>
+                <div className="sp-mono" style={{ fontSize: 13, color: C.brand, fontWeight: 700, letterSpacing: ".1em", flexShrink: 0, paddingTop: 4 }}>{s.num}</div>
+                <div>
+                  <h3 className="sp-display" style={{ fontSize: 22, fontWeight: 600, margin: "0 0 8px", letterSpacing: "-0.02em" }}>{s.title}</h3>
+                  <p style={{ fontSize: 15, color: C.textSecondary, lineHeight: 1.55, margin: 0 }}>{s.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Pricing({ onSignup }) {
+  const plans = [
+    {
+      name: "Starter", price: "R$ 297", period: "/mês",
+      desc: "Até 500 clientes ativos. Ideal para começar.",
+      bullets: ["Até 500 assinantes", "Lousa + WhatsApp", "1 OLT integrada", "Suporte por chat"],
+      cta: "Começar grátis",
+      featured: false,
+    },
+    {
+      name: "Pro", price: "R$ 697", period: "/mês",
+      desc: "O queridinho dos provedores em crescimento.",
+      bullets: ["Até 2.500 assinantes", "Motor IA + Co-Pilot", "OLTs ilimitadas", "Secretária Ligo + Drive", "Softphone SIP", "Suporte prioritário"],
+      cta: "Começar 14 dias",
+      featured: true,
+    },
+    {
+      name: "Enterprise", price: "Custom", period: "",
+      desc: "Para operações grandes, multi-cidade.",
+      bullets: ["Assinantes ilimitados", "Multi-tenant", "SLA garantido", "API dedicada", "Onboarding presencial", "Customer Success"],
+      cta: "Falar com vendas",
+      featured: false,
+    },
+  ];
+  return (
+    <section id="precos" style={{ padding: "100px 28px", background: C.bgMuted }} className="sp-section">
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <div style={{ textAlign: "center", maxWidth: 600, margin: "0 auto 56px" }}>
+          <span className="sp-pill" style={{ marginBottom: 16 }}>Preços</span>
+          <h2 className="sp-display sp-h2" style={{ fontSize: 48, lineHeight: 1.05, margin: "0 0 14px", letterSpacing: "-0.035em" }}>
+            Simples. Justo. Honesto.
+          </h2>
+          <p style={{ fontSize: 17, color: C.textSecondary, lineHeight: 1.55 }}>
+            Sem taxa de setup. Sem fidelidade. Sem letrinha miúda.
+          </p>
+        </div>
+        <div className="sp-bento-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18, alignItems: "stretch" }}>
+          {plans.map((p, i) => (
+            <div key={p.name} className={`sp-bento ${p.featured ? "sp-bento-dark" : ""} sp-fade-up`}
+                  data-testid={`plan-${p.name.toLowerCase()}`}
+                  style={{
+                    padding: 32,
+                    animationDelay: `${i * 100}ms`,
+                    position: "relative",
+                  }}>
+              {p.featured && (
+                <span style={{
+                  position: "absolute", top: -12, right: 32,
+                  background: C.brand, color: "white",
+                  padding: "4px 12px", borderRadius: 999, fontSize: 11, fontWeight: 700, letterSpacing: ".04em",
+                }}>RECOMENDADO</span>
+              )}
+              <div className="sp-display" style={{ fontSize: 22, fontWeight: 600, marginBottom: 8 }}>{p.name}</div>
+              <div style={{ marginBottom: 18 }}>
+                <span className="sp-display" style={{ fontSize: 44, fontWeight: 700, letterSpacing: "-0.04em" }}>{p.price}</span>
+                <span style={{ fontSize: 15, color: p.featured ? "rgba(255,255,255,.6)" : C.textSecondary, marginLeft: 4 }}>{p.period}</span>
+              </div>
+              <p style={{ fontSize: 14, color: p.featured ? "rgba(255,255,255,.7)" : C.textSecondary, lineHeight: 1.55, marginBottom: 24 }}>{p.desc}</p>
+              <button
+                onClick={() => onSignup({ plan: p.name.toLowerCase() })}
+                data-testid={`plan-cta-${p.name.toLowerCase()}`}
+                style={{
+                  width: "100%", padding: "13px 0", borderRadius: 8, fontSize: 14.5, fontWeight: 600, cursor: "pointer",
+                  background: p.featured ? C.brand : C.ink,
+                  color: "white", border: `1px solid ${p.featured ? C.brand : C.ink}`,
+                  marginBottom: 24,
+                  transition: "all .2s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = "translateY(-1px)"}
+                onMouseLeave={(e) => e.currentTarget.style.transform = "translateY(0)"}
+              >{p.cta}</button>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+                {p.bullets.map((b) => (
+                  <li key={b} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: p.featured ? "rgba(255,255,255,.85)" : C.text }}>
+                    <span style={{ color: p.featured ? C.accent : C.brand }}><Ico.Check /></span>{b}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CtaFinal({ onSignup }) {
+  return (
+    <section id="contato" style={{ padding: "100px 28px" }} className="sp-section">
+      <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+        <div className="sp-bento sp-bento-dark" style={{ padding: "64px 56px", textAlign: "center", borderRadius: 24, position: "relative", overflow: "hidden" }}>
+          <div className="sp-grid-bg" style={{ position: "absolute", inset: 0, opacity: 0.15 }} />
+          <div style={{ position: "relative" }}>
+            <h2 className="sp-display" style={{ fontSize: 48, lineHeight: 1.05, margin: "0 0 18px", fontWeight: 600, letterSpacing: "-0.035em", color: "white" }}>
+              Pronto pra operar<br/>com inteligência?
+            </h2>
+            <p style={{ fontSize: 17, color: "rgba(255,255,255,.7)", lineHeight: 1.55, margin: "0 0 32px", maxWidth: 540, marginLeft: "auto", marginRight: "auto" }}>
+              14 dias grátis. Sem cartão. Você ativa, importa seu provedor, e em 24h está rodando.
+            </p>
+            <div style={{ display: "inline-flex", gap: 12, alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
+              <button
+                onClick={() => onSignup({ plan: "trial" })}
+                data-testid="cta-final-signup"
+                style={{
+                  background: "white", color: C.ink, border: 0,
+                  padding: "14px 28px", borderRadius: 8, fontSize: 15, fontWeight: 700,
+                  cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8,
+                  transition: "all .2s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = C.accent; e.currentTarget.style.transform = "translateY(-1px)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "white"; e.currentTarget.style.transform = "translateY(0)"; }}
+              >Começar agora <Ico.ArrowRight /></button>
+              <a href="mailto:contato@smartprov.com.br" style={{ color: "rgba(255,255,255,.85)", textDecoration: "none", fontSize: 14, fontWeight: 600, padding: "14px 20px" }}>
+                Falar com vendas →
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer style={{ borderTop: `1px solid ${C.border}`, padding: "48px 28px 32px", background: C.bg }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 40, marginBottom: 32 }} className="sp-bento-grid">
+          <div>
+            <Logo />
+            <p style={{ fontSize: 13.5, color: C.textSecondary, lineHeight: 1.55, marginTop: 14, maxWidth: 280 }}>
+              A plataforma de gestão pra provedores de internet construída pra escalar.
+            </p>
+          </div>
+          {[
+            { title: "Produto", links: ["Módulos", "Preços", "Roadmap", "Changelog"] },
+            { title: "Empresa", links: ["Sobre", "Blog", "Carreiras", "Contato"] },
+            { title: "Recursos", links: ["Documentação", "API", "Status", "Comunidade"] },
+          ].map((col) => (
+            <div key={col.title}>
+              <div className="sp-mono" style={{ fontSize: 11, color: C.text, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 14 }}>{col.title}</div>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+                {col.links.map((l) => (
+                  <li key={l}><a className="sp-link" href="#" style={{ fontSize: 14 }}>{l}</a></li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <hr className="sp-divider" />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 24, fontSize: 13, color: C.textMuted, flexWrap: "wrap", gap: 10 }}>
+          <span>© {new Date().getFullYear()} SmartProv. Construído no Brasil.</span>
+          <div style={{ display: "flex", gap: 22 }}>
+            <a className="sp-link" href="#" style={{ fontSize: 13 }}>Privacidade</a>
+            <a className="sp-link" href="#" style={{ fontSize: 13 }}>Termos</a>
+            <a className="sp-link" href="#" style={{ fontSize: 13 }}>Segurança</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+// ============================================================
+// Landing page
+// ============================================================
+export default function LandingPage({ onLogin, onSignup }) {
   useEffect(() => {
-    const handler = (e) => {
-      const a = e.target.closest("a[href^='#']");
-      if (a) {
-        const id = a.getAttribute("href").slice(1);
-        const el = document.getElementById(id);
-        if (el) {
-          e.preventDefault();
-          el.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      }
-    };
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    if (!document.getElementById("smartprov-landing-css")) {
+      const s = document.createElement("style");
+      s.id = "smartprov-landing-css";
+      s.textContent = css;
+      document.head.appendChild(s);
+    }
+    document.title = "SmartProv — A plataforma do seu provedor";
   }, []);
 
   return (
-    <div data-testid="landing-page" style={{
-      minHeight: "100vh",
-      background: `radial-gradient(ellipse 80% 60% at 50% -20%, rgba(16,185,129,.15) 0%, ${BG_DARK} 55%, ${BG_DARKER} 100%)`,
-      color: "#e2e8f0",
-      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-      letterSpacing: "-0.01em",
-    }}>
-      <style>{css}</style>
-      <div className="pi-grain" style={{ position: "fixed", inset: 0, pointerEvents: "none", opacity: 0.4 }} />
-
-      {/* Nav */}
-      <nav style={{
-        position: "sticky", top: 0, zIndex: 50,
-        background: "rgba(10,19,34,.7)", backdropFilter: "blur(14px)",
-        borderBottom: "1px solid rgba(255,255,255,.06)",
-        padding: "14px 28px",
-        display: "flex", justifyContent: "space-between", alignItems: "center",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }} data-testid="brand-logo">
-          <div style={{
-            width: 34, height: 34, borderRadius: 10,
-            background: "linear-gradient(135deg,#10b981,#059669)",
-            display: "grid", placeItems: "center", fontSize: 18,
-            boxShadow: "0 8px 18px rgba(16,185,129,.3)",
-          }}>📍</div>
-          <strong style={{ color: "white", fontSize: 18, letterSpacing: "-0.02em" }}>PontoIA</strong>
-        </div>
-        <div className="pi-nav-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <a href="#features" className="pi-link" style={{ color: "#cbd5e1", textDecoration: "none", fontSize: 14, padding: "8px 14px" }}>Recursos</a>
-          <a href="#how" className="pi-link" style={{ color: "#cbd5e1", textDecoration: "none", fontSize: 14, padding: "8px 14px" }}>Como funciona</a>
-          <a href="#pricing" className="pi-link" style={{ color: "#cbd5e1", textDecoration: "none", fontSize: 14, padding: "8px 14px" }}>Preço</a>
-          <button
-            onClick={onLogin}
-            data-testid="nav-login-btn"
-            style={{
-              background: "transparent", border: "1px solid rgba(255,255,255,.15)",
-              color: "white", padding: "8px 18px", borderRadius: 999, fontSize: 13.5,
-              fontWeight: 600, cursor: "pointer",
-            }}
-          >Entrar</button>
-          <button
-            onClick={() => onSignup({ plan: "trial" })}
-            data-testid="nav-signup-btn"
-            className="pi-cta"
-            style={{
-              background: ACCENT, color: BG_DARKER, border: 0,
-              padding: "9px 20px", borderRadius: 999, fontSize: 13.5,
-              fontWeight: 800, cursor: "pointer",
-            }}
-          >Começar grátis</button>
-        </div>
-      </nav>
-
-      {/* Hero */}
-      <section style={{ padding: "80px 28px 60px", maxWidth: 1240, margin: "0 auto" }}>
-        <div className="pi-hero-grid" style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 60, alignItems: "center" }}>
-          <div className="pi-fadeUp">
-            <div style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              padding: "6px 14px", borderRadius: 999,
-              background: "rgba(16,185,129,.1)", border: "1px solid rgba(16,185,129,.25)",
-              color: "#34d399", fontSize: 12, fontWeight: 700, marginBottom: 24,
-            }} data-testid="hero-badge">
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: ACCENT, animation: "pi-pulse 2s infinite" }}></span>
-              Trial de 14 dias · Sem cartão de crédito
-            </div>
-            <h1 className="pi-h1" data-testid="hero-title" style={{
-              margin: 0, fontSize: 64, lineHeight: 1.02, letterSpacing: "-0.04em",
-              fontWeight: 850, color: "white",
-            }}>
-              Ponto eletrônico<br />
-              com <span style={{
-                background: "linear-gradient(135deg,#10b981 30%,#34d399 70%)",
-                WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-              }}>IA de validação facial</span>.
-            </h1>
-            <p style={{ marginTop: 24, color: "#94a3b8", fontSize: 18, lineHeight: 1.55, maxWidth: 540 }}>
-              Selfie automática, cerca virtual por GPS, espelho mensal pronto para o RH. Zero fraude.
-              Para equipes de campo que precisam de <strong style={{ color: "#cbd5e1" }}>controle real</strong> sem complicação.
-            </p>
-            <div style={{ marginTop: 36, display: "flex", gap: 14, flexWrap: "wrap" }}>
-              <button
-                onClick={() => onSignup({ plan: "trial" })}
-                data-testid="hero-cta-signup"
-                className="pi-cta"
-                style={{
-                  background: ACCENT, color: BG_DARKER, border: 0,
-                  padding: "16px 28px", borderRadius: 14, fontSize: 15,
-                  fontWeight: 800, cursor: "pointer",
-                  boxShadow: "0 14px 30px rgba(16,185,129,.35)",
-                }}
-              >Começar trial grátis →</button>
-              <a
-                href="#how"
-                data-testid="hero-cta-demo"
-                style={{
-                  background: "rgba(255,255,255,.06)",
-                  color: "white", padding: "16px 24px", borderRadius: 14,
-                  fontSize: 15, fontWeight: 600, textDecoration: "none",
-                  border: "1px solid rgba(255,255,255,.12)",
-                }}
-              >Ver como funciona</a>
-            </div>
-            <div style={{ marginTop: 38, display: "flex", gap: 28, color: "#64748b", fontSize: 13, flexWrap: "wrap" }}>
-              <span><PIcon name="check" /> Setup em 5 minutos</span>
-              <span><PIcon name="check" /> 14 dias para testar</span>
-              <span><PIcon name="check" /> Cancele a qualquer momento</span>
-            </div>
-          </div>
-
-          {/* Mock visual do app */}
-          <div className="pi-fadeUp" style={{ animationDelay: "200ms", position: "relative" }}>
-            <div style={{
-              position: "relative", margin: "0 auto",
-              width: 290, padding: 14, borderRadius: 38,
-              background: "linear-gradient(135deg,#1e293b,#0f172a)",
-              border: "1px solid rgba(255,255,255,.1)",
-              boxShadow: "0 30px 80px rgba(0,0,0,.6), inset 0 0 0 1px rgba(16,185,129,.1)",
-            }}>
-              <div style={{ background: "#020617", borderRadius: 26, padding: 18, color: "white" }}>
-                <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>Olá</div>
-                <strong style={{ fontSize: 17 }}>Maria Silva</strong>
-                <div style={{ fontSize: 11, color: "#94a3b8" }}>Coordenadora de campo</div>
-
-                <div style={{
-                  marginTop: 18, padding: 16, borderRadius: 18,
-                  background: "linear-gradient(135deg,#0f172a,#1e293b)",
-                  border: "1px solid rgba(16,185,129,.15)",
-                }}>
-                  <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>Próximo</div>
-                  <div style={{ fontSize: 26, fontWeight: 900, marginTop: 4 }}>Entrada</div>
-                  <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>2 registros hoje · Praça SP/SP</div>
-                </div>
-
-                <button style={{
-                  width: "100%", marginTop: 14, height: 56, borderRadius: 28,
-                  background: ACCENT, color: BG_DARKER, border: 0,
-                  fontSize: 15, fontWeight: 900, animation: "pi-pulse 2.4s infinite",
-                  cursor: "default",
-                }}>📸 Bater Ponto</button>
-
-                <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-                  {["Entrada 08:02", "Saída"].map((s, i) => (
-                    <div key={i} style={{
-                      flex: 1, padding: "8px 10px", borderRadius: 10,
-                      background: i === 0 ? "rgba(16,185,129,.1)" : "rgba(255,255,255,.04)",
-                      fontSize: 10, color: i === 0 ? "#34d399" : "#64748b",
-                    }}>{s}</div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Floating chips */}
-            <div className="pi-fadeUp" style={{
-              position: "absolute", top: 30, right: -20, animationDelay: "600ms",
-              background: "rgba(255,255,255,.06)", backdropFilter: "blur(12px)",
-              border: "1px solid rgba(255,255,255,.1)", borderRadius: 14,
-              padding: "10px 14px", fontSize: 12, color: "white",
-              boxShadow: "0 12px 30px rgba(0,0,0,.3)",
-            }}>
-              <span style={{ color: "#34d399", fontSize: 14, marginRight: 6 }}>✓</span>
-              Rosto validado
-            </div>
-            <div className="pi-fadeUp" style={{
-              position: "absolute", bottom: 80, left: -28, animationDelay: "800ms",
-              background: "rgba(255,255,255,.06)", backdropFilter: "blur(12px)",
-              border: "1px solid rgba(255,255,255,.1)", borderRadius: 14,
-              padding: "10px 14px", fontSize: 12, color: "white",
-              boxShadow: "0 12px 30px rgba(0,0,0,.3)",
-            }}>
-              📍 Dentro da cerca
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Trust bar */}
-      <section style={{ padding: "20px 28px 60px", maxWidth: 1100, margin: "0 auto", textAlign: "center" }}>
-        <div style={{ color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.18em", marginBottom: 16 }}>
-          Construído com tecnologia que você já usa
-        </div>
-        <div style={{ display: "flex", gap: 32, justifyContent: "center", flexWrap: "wrap", color: "#64748b", fontSize: 13, fontWeight: 600 }}>
-          <span>OpenAI Vision</span>
-          <span>·</span>
-          <span>Resend</span>
-          <span>·</span>
-          <span>Stripe</span>
-          <span>·</span>
-          <span>OpenStreetMap</span>
-          <span>·</span>
-          <span>BrasilAPI</span>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section id="features" style={{ padding: "60px 28px", maxWidth: 1240, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", maxWidth: 680, margin: "0 auto 50px" }}>
-          <h2 style={{ margin: 0, color: "white", fontSize: 38, fontWeight: 800, letterSpacing: "-0.02em" }}>
-            Tudo que o RH precisa.<br />Nada que o gestor não use.
-          </h2>
-          <p style={{ marginTop: 14, color: "#94a3b8", fontSize: 16 }}>
-            Pensado para operações de campo: motorista, técnico, vendedor, agente. Funciona offline, valida com IA e sincroniza ao reconectar.
-          </p>
-        </div>
-        <div className="pi-features-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
-          <FeatureCard icon="selfie" title="Selfie automática + IA" desc="GPT-4o Vision verifica que o rosto está visível e compara com a foto de cadastro. Anti-fraude em tempo real." delay={0} />
-          <FeatureCard icon="map" title="Cerca virtual por colaborador" desc="Defina um raio (15m padrão) ao redor de uma rota ou ponto de operação. Fora da cerca = bloqueado." delay={100} />
-          <FeatureCard icon="bolt" title="Funciona offline" desc="Sem sinal? Bate ponto mesmo assim. Sincroniza automaticamente quando o 4G voltar." delay={200} />
-          <FeatureCard icon="shield" title="Auditoria e impersonation" desc="Log imutável de cada ação. Auditor pode visualizar como gestor para investigar fraudes." delay={300} />
-          <FeatureCard icon="chart" title="Painel executivo" desc="Horas extras, banco de horas, custo projetado em R$, tendência mensal e heatmap de permanência." delay={400} />
-          <FeatureCard icon="bell" title="Push em tempo real" desc="Alerta o gestor quando alguém para 30+ min em local errado ou sai da cerca durante expediente." delay={500} />
-          <FeatureCard icon="cloud" title="Espelho mensal automático" desc="Todo último dia do mês: PDF gerado, email para o RH e colaborador. Sem clique manual." delay={600} />
-          <FeatureCard icon="sparkle" title="IA para feriados" desc="Cadastrou uma cidade nova? A IA descobre os feriados estaduais e municipais para você revisar." delay={700} />
-          <FeatureCard icon="map" title="Mapa ao vivo" desc="Veja a posição atual da equipe em campo. Trajeto das últimas 24h. Análise de permanência com IA." delay={800} />
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section id="how" style={{ padding: "100px 28px", background: "rgba(0,0,0,.25)", borderTop: "1px solid rgba(255,255,255,.05)", borderBottom: "1px solid rgba(255,255,255,.05)" }}>
-        <div style={{ maxWidth: 980, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 56 }}>
-            <h2 style={{ margin: 0, color: "white", fontSize: 36, fontWeight: 800, letterSpacing: "-0.02em" }}>Em 5 minutos sua equipe está marcando ponto.</h2>
-          </div>
-          <div style={{ display: "grid", gap: 32 }}>
-            <StepCard n="1" title="Crie sua conta" desc="Trial de 14 dias, sem cartão. Você vira o gestor da sua empresa em 30 segundos." delay={0} />
-            <StepCard n="2" title="Cadastre os colaboradores" desc="Nome, CPF, foto de cadastro e o endereço da cerca virtual. A IA descobre os feriados da cidade." delay={150} />
-            <StepCard n="3" title="Compartilhe o link do PWA" desc="Cada colaborador acessa pelo celular (iOS/Android). Login Google na 1ª vez vincula o aparelho." delay={300} />
-            <StepCard n="4" title="A equipe bate ponto" desc="Selfie automática + GPS + IA validando rosto vs cadastro. Tudo em 8 segundos." delay={450} />
-            <StepCard n="5" title="Você só revisa" desc="Painel mostra HE, banco de horas, alertas. Espelho mensal vai por email no último dia." delay={600} />
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section id="pricing" style={{ padding: "100px 28px", maxWidth: 1100, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 50 }}>
-          <h2 style={{ margin: 0, color: "white", fontSize: 38, fontWeight: 800, letterSpacing: "-0.02em" }}>Comece grátis. Cresça quando quiser.</h2>
-          <p style={{ marginTop: 12, color: "#94a3b8", fontSize: 16 }}>Free pra sempre até 3 colaboradores. Pro com trial de 14 dias.</p>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, maxWidth: 880, margin: "0 auto" }} className="pi-features-grid">
-          {/* FREE */}
-          <div className="pi-fadeUp" data-testid="pricing-card-free" style={{
-            position: "relative",
-            background: "rgba(255,255,255,.04)",
-            border: "1px solid rgba(255,255,255,.1)",
-            borderRadius: 24, padding: "32px 28px",
-          }}>
-            <div style={{ color: "#cbd5e1", fontSize: 13, fontWeight: 700, letterSpacing: "0.04em" }}>PONTOIA FREE</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 12 }}>
-              <span style={{ color: "white", fontSize: 48, fontWeight: 900, letterSpacing: "-0.04em" }}>R$ 0</span>
-              <span style={{ color: "#94a3b8", fontSize: 15 }}>/ para sempre</span>
-            </div>
-            <div style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>Sem cartão · sem expiração</div>
-            <ul style={{ listStyle: "none", padding: 0, margin: "26px 0 0" }}>
-              <PriceCheck>Até <strong style={{ color: "white" }}>3 colaboradores</strong></PriceCheck>
-              <PriceCheck>Selfie + IA de validação facial</PriceCheck>
-              <PriceCheck>Cercas virtuais</PriceCheck>
-              <PriceCheck>App PWA mobile</PriceCheck>
-              <PriceCheck>Painel básico</PriceCheck>
-              <PriceCheck>Faça upgrade pra Pro a qualquer momento</PriceCheck>
-            </ul>
-            <button
-              onClick={() => onSignup({ plan: "free" })}
-              data-testid="pricing-cta-free"
-              className="pi-cta"
-              style={{
-                width: "100%", marginTop: 28,
-                background: "transparent", color: "white",
-                border: "1px solid rgba(255,255,255,.25)",
-                padding: "14px 18px", borderRadius: 14,
-                fontSize: 14, fontWeight: 800, cursor: "pointer",
-              }}
-            >Começar grátis →</button>
-          </div>
-
-          {/* PRO */}
-          <div className="pi-fadeUp" data-testid="pricing-card-pro" style={{
-            position: "relative",
-            background: "linear-gradient(135deg, rgba(16,185,129,.1), rgba(16,185,129,.02))",
-            border: "1px solid rgba(16,185,129,.4)",
-            borderRadius: 24, padding: "32px 28px",
-            boxShadow: "0 30px 80px rgba(16,185,129,.18)",
-          }}>
-            <div className="pi-shine" style={{ position: "absolute", inset: 0, borderRadius: 24, pointerEvents: "none" }} />
-            <div style={{ position: "absolute", top: -14, left: "50%", transform: "translateX(-50%)" }}>
-              <span style={{
-                background: ACCENT, color: BG_DARKER,
-                padding: "5px 14px", borderRadius: 999,
-                fontSize: 11, fontWeight: 900, letterSpacing: "0.04em",
-                boxShadow: "0 8px 18px rgba(16,185,129,.4)",
-              }}>RECOMENDADO</span>
-            </div>
-            <div style={{ color: "#34d399", fontSize: 13, fontWeight: 700, letterSpacing: "0.04em" }}>PONTOIA PRO</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 12 }}>
-              <span style={{ color: "white", fontSize: 48, fontWeight: 900, letterSpacing: "-0.04em" }}>R$ 99</span>
-              <span style={{ color: "#94a3b8", fontSize: 15 }}>/ mês</span>
-            </div>
-            <div style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>14 dias grátis · sem cartão · cancele quando quiser</div>
-            <ul style={{ listStyle: "none", padding: 0, margin: "26px 0 0" }}>
-              <PriceCheck><strong style={{ color: "white" }}>25 colaboradores</strong> ativos</PriceCheck>
-              <PriceCheck>Tudo do Free +</PriceCheck>
-              <PriceCheck>Mapa ao vivo + IA de permanência</PriceCheck>
-              <PriceCheck>Espelho mensal automático em PDF</PriceCheck>
-              <PriceCheck>Push em tempo real + alertas inteligentes</PriceCheck>
-              <PriceCheck>Painel executivo + heatmap</PriceCheck>
-              <PriceCheck>Auditoria + impersonation</PriceCheck>
-            </ul>
-            <button
-              onClick={() => onSignup({ plan: "trial" })}
-              data-testid="pricing-cta-signup"
-              className="pi-cta"
-              style={{
-                width: "100%", marginTop: 28,
-                background: ACCENT, color: BG_DARKER, border: 0,
-                padding: "14px 18px", borderRadius: 14,
-                fontSize: 14, fontWeight: 800, cursor: "pointer",
-                boxShadow: "0 14px 30px rgba(16,185,129,.35)",
-              }}
-            >Iniciar trial de 14 dias →</button>
-          </div>
-        </div>
-      </section>
-
-      {/* Final CTA */}
-      <section style={{
-        padding: "80px 28px",
-        background: "linear-gradient(135deg, rgba(16,185,129,.1), transparent)",
-        borderTop: "1px solid rgba(255,255,255,.05)",
-      }}>
-        <div style={{ maxWidth: 720, margin: "0 auto", textAlign: "center" }}>
-          <h2 style={{ margin: 0, color: "white", fontSize: 36, fontWeight: 800, letterSpacing: "-0.02em" }}>Pronto pra parar de perseguir comprovantes de WhatsApp? </h2>
-          <p style={{ marginTop: 16, color: "#94a3b8", fontSize: 16 }}>
-            Crie sua conta agora. Em 5 minutos sua equipe pode bater o primeiro ponto.
-          </p>
-          <button
-            onClick={() => onSignup({ plan: "trial" })}
-            data-testid="final-cta-signup"
-            className="pi-cta"
-            style={{
-              marginTop: 30,
-              background: ACCENT, color: BG_DARKER, border: 0,
-              padding: "18px 36px", borderRadius: 14,
-              fontSize: 16, fontWeight: 800, cursor: "pointer",
-              boxShadow: "0 14px 30px rgba(16,185,129,.35)",
-            }}
-          >Criar conta grátis →</button>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer style={{
-        padding: "40px 28px", borderTop: "1px solid rgba(255,255,255,.05)",
-        color: "#64748b", fontSize: 13, textAlign: "center",
-      }}>
-        © {new Date().getFullYear()} PontoIA — Construído para equipes de campo no Brasil.
-      </footer>
+    <div className="sp-page" data-testid="landing-page">
+      <Nav onLogin={onLogin} onSignup={onSignup} />
+      <Hero onSignup={onSignup} />
+      <LogoStrip />
+      <StatsSection />
+      <ModulesSection />
+      <HowItWorks />
+      <Pricing onSignup={onSignup} />
+      <CtaFinal onSignup={onSignup} />
+      <Footer />
     </div>
   );
 }

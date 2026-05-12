@@ -231,7 +231,7 @@ function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModa
       <div className="app-sidebar__brand">
         <div className="app-sidebar__brand-logo" aria-hidden="true">P</div>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="app-sidebar__brand-name">PontoIA</div>
+          <div className="app-sidebar__brand-name">SmartProv</div>
           <div className="app-sidebar__brand-tag">{brand || "Operações ISP"}</div>
         </div>
       </div>

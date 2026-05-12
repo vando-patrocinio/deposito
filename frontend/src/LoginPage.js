@@ -63,7 +63,7 @@ export default function LoginPage({ onBack }) {
               fontSize: 16, fontWeight: 800, letterSpacing: "-0.04em",
             }}>P</div>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text-primary)" }}>PontoIA</div>
+              <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text-primary)" }}>SmartProv</div>
               <div style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.04em", textTransform: "uppercase", fontWeight: 600 }}>Operações ISP</div>
             </div>
           </div>
