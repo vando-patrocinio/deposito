@@ -378,6 +378,27 @@ async def toggle_agent(agent_id: str, payload: AgentSwitchIn,
     return {"ok": True, **result}
 
 
+@router.put("/agents/group/{group_name}")
+async def toggle_group(group_name: str, payload: AgentSwitchIn,
+                          user: dict = Depends(require_role("administrador"))):
+    """Liga/desliga TODOS os agentes do grupo. Útil em manutenções programadas
+    (ex.: pausar 'Rede óptica' durante upgrade de OLT)."""
+    from services.motor_ia import AGENT_CATALOG
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    user_label = user.get("name") or user.get("email") or user.get("id")
+    affected = [a["id"] for a in AGENT_CATALOG
+                  if (a.get("group") or "Outros") == group_name]
+    if not affected:
+        raise HTTPException(404, f"Grupo '{group_name}' não encontrado.")
+    changed: List[str] = []
+    for aid in affected:
+        result = await set_agent_state(cid, aid, payload.enabled, user_label)
+        if result.get("changed"):
+            changed.append(aid)
+    return {"ok": True, "group": group_name, "affected": affected,
+              "changed": changed, "total": len(affected)}
+
+
 @router.get("/agents/history")
 async def agents_history(
     days: int = Query(7, ge=1, le=90),

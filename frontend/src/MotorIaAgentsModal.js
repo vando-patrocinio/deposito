@@ -17,6 +17,7 @@ export default function MotorIaAgentsModal({ onClose }) {
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState(null);
+  const [pendingGroup, setPendingGroup] = useState(null);
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
@@ -45,6 +46,27 @@ export default function MotorIaAgentsModal({ onClose }) {
       setErr(e?.response?.data?.detail || e.message);
     } finally {
       setPendingId(null);
+    }
+  };
+
+  const toggleGroup = async (groupName, currentItems) => {
+    // Se TODOS ativos → pausar todos; senão → ativar todos
+    const allOn = currentItems.every((x) => x.enabled);
+    const target = !allOn;
+    if (!window.confirm(
+      `${target ? "Reativar" : "Pausar"} ${currentItems.length} agente(s) do grupo "${groupName}"?`
+    )) return;
+    setPendingGroup(groupName); setErr("");
+    try {
+      await api.motorIaGroupToggle(groupName, target);
+      const ids = new Set(currentItems.map((x) => x.id));
+      setAgents((prev) => prev.map((x) =>
+        ids.has(x.id) ? { ...x, enabled: target, updated_at: new Date().toISOString() } : x
+      ));
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    } finally {
+      setPendingGroup(null);
     }
   };
 
@@ -194,6 +216,8 @@ export default function MotorIaAgentsModal({ onClose }) {
               }
               return groups.map((g) => {
                 const offCount = g.items.filter((x) => !x.enabled).length;
+                const allOn = offCount === 0;
+                const groupPending = pendingGroup === g.name;
                 return (
                   <div key={g.name} data-testid={`agent-group-${g.name}`}>
                     <div style={{
@@ -217,6 +241,25 @@ export default function MotorIaAgentsModal({ onClose }) {
                           fontSize: 9,
                         }}>{offCount} OFF</span>
                       )}
+                      <button
+                        onClick={() => toggleGroup(g.name, g.items)}
+                        disabled={groupPending}
+                        data-testid={`group-toggle-${g.name}`}
+                        title={allOn ? `Pausar todos os ${g.items.length} agentes deste grupo`
+                                       : `Reativar todos os ${g.items.length} agentes deste grupo`}
+                        style={{
+                          marginLeft: "auto",
+                          padding: "3px 8px", border: 0, borderRadius: 999,
+                          background: allOn ? "#fef2f2" : "#dcfce7",
+                          color: allOn ? "#be123c" : "#166534",
+                          cursor: groupPending ? "wait" : "pointer",
+                          fontSize: 9, fontWeight: 800,
+                          textTransform: "uppercase", letterSpacing: 0.3,
+                          opacity: groupPending ? 0.6 : 1,
+                          transition: "opacity .15s",
+                        }}>
+                        {groupPending ? "..." : (allOn ? "Pausar grupo" : "Reativar grupo")}
+                      </button>
                     </div>
                     {g.items.map((a) => (
                       <div key={a.id}

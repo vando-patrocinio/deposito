@@ -1,5 +1,30 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Kill-switch por grupo (bulk pause/resume)
+
+### Backend (`routes/motor_ia.py`)
+- Novo endpoint `PUT /api/motor-ia/agents/group/{group_name}` (admin only)
+- Aplica `set_agent_state` em loop para todos os agentes do grupo
+- Retorna `{group, affected:[ids], changed:[ids], total}` — cliente sabe quantos efetivamente mudaram
+- Grupo inexistente → HTTP 404
+
+### Frontend (`MotorIaAgentsModal.js`)
+- Botão **"Pausar grupo" / "Reativar grupo"** no header de cada grupo (à direita)
+- Vermelho quando todos ativos (oferece pausar), verde quando algum/todos pausados (oferece reativar)
+- Confirmação com `window.confirm` antes de aplicar
+- Otimistic update na UI após sucesso
+- `api.motorIaGroupToggle(groupName, enabled)` adicionada
+- `pendingGroup` state evita clicks duplos
+
+### Validação ✓
+- `PUT /agents/group/Rede óptica` (encoded) com `{enabled:false}` → 2 agentes pausados + auditoria gravada
+- Reativar idem (2 changes)
+- Grupo inexistente retorna 404 com mensagem clara
+- Lint frontend + backend limpos
+
+---
+
+
 ## Feb 11, 2026 — Agrupamento de Agentes no Painel (6 grupos lógicos)
 
 ### Backend (`services/motor_ia.py`)

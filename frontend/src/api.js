@@ -228,6 +228,9 @@ export const api = {
   motorIaAgentsList: () => client.get(`/motor-ia/agents`).then((r) => r.data),
   motorIaAgentToggle: (agentId, enabled) =>
     client.put(`/motor-ia/agents/${agentId}`, { enabled }).then((r) => r.data),
+  motorIaGroupToggle: (groupName, enabled) =>
+    client.put(`/motor-ia/agents/group/${encodeURIComponent(groupName)}`,
+                  { enabled }).then((r) => r.data),
   motorIaAgentsHistory: (days = 7) =>
     client.get(`/motor-ia/agents/history`, { params: { days } }).then((r) => r.data),
   churnDashboard: (days = 180) =>
