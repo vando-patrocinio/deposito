@@ -14,7 +14,7 @@ import os
 import secrets as _secrets
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from core import DEMO_COMPANY_ID, get_current_user, require_role
@@ -154,15 +154,21 @@ async def list_logs(user: dict = Depends(require_role("gestor")), limit: int = 5
 async def webhook_chatgpt(
     payload: WebhookAskIn,
     authorization: Optional[str] = Header(None),
+    key: Optional[str] = Query(None, description="Token alternativo via query string (fallback)"),
 ):
     """Endpoint chamado pelo "GPT customizado" via Actions.
 
-    Auth: header `Authorization: Bearer <webhook_token>`. O token é gerado por
-    empresa e visível em /api/secretaria/config (apenas pro gestor).
+    Auth aceita duas formas (qualquer uma serve):
+      1. Header `Authorization: Bearer <webhook_token>` (recomendado)
+      2. Query string `?key=<webhook_token>` (fallback — mais simples no GPT Builder)
     """
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(401, "Missing bearer token")
-    token = authorization.split(" ", 1)[1].strip()
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    elif key:
+        token = key.strip()
+    if not token:
+        raise HTTPException(401, "Missing token (use Bearer header or ?key= query param)")
     cid = await _company_by_token(token)
     if not cid:
         raise HTTPException(403, "Invalid or revoked token")
@@ -175,9 +181,74 @@ async def webhook_chatgpt(
 # OpenAPI 3.1 spec — usado para criar Actions no GPT Builder
 # ---------------------------------------------------------------------------
 @router.get("/openapi.json")
-async def openapi_for_gpt(request: Request):
-    """Devolve uma spec OpenAPI 3.1 mínima para o GPT customizado."""
+async def openapi_for_gpt(request: Request, key: Optional[str] = Query(None)):
+    """Devolve uma spec OpenAPI 3.1 mínima para o GPT customizado.
+
+    Se ?key=<webhook_token> for passado, gera uma spec SEM Authentication
+    com a query string `?key=` embutida na URL — bypass do Bearer setup.
+    """
     base = os.environ.get("PUBLIC_BACKEND_URL") or str(request.base_url).rstrip("/")
+
+    # Versão simplificada — token na query, sem Authentication
+    if key:
+        return {
+            "openapi": "3.1.0",
+            "info": {
+                "title": "Secretária IA - Ligo",
+                "description": "Pergunte à Ligo qualquer coisa sobre clientes, lousa, OLT, técnicos, churn ou agentes IA.",
+                "version": "1.0.0",
+            },
+            "servers": [{"url": base}],
+            "paths": {
+                "/api/secretaria/webhook/chatgpt": {
+                    "post": {
+                        "operationId": "askLigo",
+                        "summary": "Pergunte à Ligo",
+                        "description": "Envia uma pergunta em linguagem natural e recebe a resposta da Ligo (em pt-BR).",
+                        "parameters": [
+                            {
+                                "name": "key",
+                                "in": "query",
+                                "required": True,
+                                "schema": {"type": "string", "default": key},
+                                "description": "Token de acesso (já preenchido)",
+                            }
+                        ],
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "question": {"type": "string"}
+                                        },
+                                        "required": ["question"],
+                                    }
+                                }
+                            },
+                        },
+                        "responses": {
+                            "200": {
+                                "description": "Resposta",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "properties": {
+                                                "answer": {"type": "string"}
+                                            },
+                                        }
+                                    }
+                                },
+                            }
+                        },
+                    }
+                }
+            },
+        }
+
+    # Versão original com Bearer (mantida)
     return {
         "openapi": "3.1.0",
         "info": {
