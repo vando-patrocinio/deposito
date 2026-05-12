@@ -175,9 +175,28 @@ async def webhook_chatgpt(
     result = await secretaria_ask(cid, payload.question or "",
                                     channel="chatgpt",
                                     who=payload.asker or "chatgpt")
-    # Resposta minimalista — apenas `answer` em string plana. ChatGPT GPT-Builder
-    # tem bugs com payloads ricos (arrays aninhados, escapes Unicode). Mantemos
-    # iterations apenas como int simples.
+    return {
+        "answer": result.get("answer", ""),
+        "iterations": int(result.get("iterations", 0)),
+    }
+
+
+# Endpoint com token EMBUTIDO no path — elimina confirmação no ChatGPT
+# pois o GPT não precisa passar nada além do body com `question`.
+@router.post("/ask/{token}")
+async def webhook_chatgpt_pathauth(token: str, payload: WebhookAskIn):
+    """Variante com token na URL — evita o popup de confirmação no ChatGPT GPT.
+
+    Como o token vai na URL fixa do schema (não como parâmetro), o GPT não o
+    apresenta para o usuário a cada chamada → "Always Allow" funciona de verdade
+    e a interação fica fluida (texto + voz).
+    """
+    cid = await _company_by_token(token.strip())
+    if not cid:
+        raise HTTPException(403, "Invalid or revoked token")
+    result = await secretaria_ask(cid, payload.question or "",
+                                    channel="chatgpt",
+                                    who=payload.asker or "chatgpt")
     return {
         "answer": result.get("answer", ""),
         "iterations": int(result.get("iterations", 0)),
