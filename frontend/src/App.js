@@ -650,6 +650,20 @@ function AppContent() {
     setViewState(v);
     if (typeof window !== "undefined") window.localStorage.setItem("ponto_active_tab", v);
   };
+
+  // Deep-link: ao clicar num atendente humano no Central IA, navegar para Atendimento IA com filtro
+  useEffect(() => {
+    const onOpenAttendant = (e) => {
+      const detail = e?.detail || {};
+      if (!detail.user_id) return;
+      try {
+        window.localStorage.setItem("smartprov_attendant_filter", JSON.stringify(detail));
+      } catch { /* ignore */ }
+      setView("atendimento");
+    };
+    window.addEventListener("smartprov-open-attendant", onOpenAttendant);
+    return () => window.removeEventListener("smartprov-open-attendant", onOpenAttendant);
+  }, []);
   const [route, setRoute] = useState(() => {
     if (typeof window === "undefined") return { path: "/", params: {} };
     const path = window.location.pathname || "/";

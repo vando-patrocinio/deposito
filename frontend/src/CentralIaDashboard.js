@@ -409,8 +409,24 @@ function AttendantsCard({ items }) {
             </tr>
           </thead>
           <tbody>
-            {items.map((a) => (
-              <tr key={a.user_id || a.name} style={{ borderTop: "1px solid var(--border-default)" }}>
+            {items.map((a) => {
+              const clickable = !a.is_ai && a.user_id;
+              return (
+              <tr key={a.user_id || a.name}
+                  data-testid={clickable ? `ci-attendant-row-${a.user_id}` : undefined}
+                  onClick={clickable ? () => {
+                    window.dispatchEvent(new CustomEvent("smartprov-open-attendant", {
+                      detail: { user_id: a.user_id, name: a.name },
+                    }));
+                  } : undefined}
+                  title={clickable ? `Abrir conversas de ${a.name} no Atendimento IA` : undefined}
+                  style={{
+                    borderTop: "1px solid var(--border-default)",
+                    cursor: clickable ? "pointer" : "default",
+                    transition: "background .12s",
+                  }}
+                  onMouseEnter={clickable ? (e) => { e.currentTarget.style.background = "var(--accent-soft)"; } : undefined}
+                  onMouseLeave={clickable ? (e) => { e.currentTarget.style.background = "transparent"; } : undefined}>
                 <td style={{ padding: "8px 4px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     {a.is_ai ? (
@@ -456,7 +472,8 @@ function AttendantsCard({ items }) {
                   ) : "—"}
                 </td>
               </tr>
-            ))}
+            );
+            })}
           </tbody>
         </table>
       )}

@@ -109,12 +109,12 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ Pytest backend + ESLint frontend ativos
 
 
-✅ **Modal customizado de delete + Reorganização Atendimento IA** (12/05/2026 — iter53):
+✅ **Modal customizado de delete + Reorganização Atendimento IA + Deep-link Central IA → Atendimento IA** (12/05/2026 — iter53):
 - **PlatformAdminPanel**: substituído `window.prompt("APAGAR")` por modal React (`ConfirmDeleteModal`) com input de texto, validação `typed === "APAGAR"` (case-sensitive), lista de empresas afetadas, botões Cancelar/Apagar (`data-testid: confirm-delete-modal/input/cancel/confirm`).
 - **Sidebar**: renomeado `ZapBot` → `Atendimento IA` em `App.js` (item id `atendimento`) e em `TabPermissionsCard.TAB_DEFINITIONS`.
 - **Separação Central IA vs Atendimento IA**: agora cada sidebar item abre um componente diferente — Central IA renderiza direto `CentralIaDashboard` (Dashboard IA + SmartOLT AI + Churn), Atendimento IA renderiza `AIHubPanel` (Ligo · Mensagem · Playground · Discar · WhatsApp Cloud · Histórico). Antes os dois apontavam pro mesmo AIHubPanel.
 - **Secretária Ligo (`SecretariaIaSection`)**: sub-tabs `sec-tab-instancia` e `sec-tab-agents` movidos para cá (acessadas via botão IA no topbar → AICenterPanel modal). `AgentsTab` exportado de `AIHubPanel.js`.
-- Testing agent iter53: 95% success rate validado via Playwright. Sem regressões.
+- **Deep-link Central IA → Atendimento IA**: clicar numa linha de atendente humano (não-IA) no `AttendantsCard` dispara `CustomEvent("smartprov-open-attendant")` → `App.js` muda para `view="atendimento"` + grava filtro em localStorage → `WhatsAppChatLayout` aplica filtro `assignee_user_id`, força bucket `manual` e renderiza banner azul "Filtrando conversas atribuídas a {nome} · {count} conversa(s)" com botão "Limpar filtro". `data-testid`: `ci-attendant-row-{user_id}`, `attendant-filter-banner`, `clear-attendant-filter`. Validado E2E via Playwright.
 
 
 ## Próximas (P2)

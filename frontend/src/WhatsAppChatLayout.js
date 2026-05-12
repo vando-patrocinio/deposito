@@ -72,6 +72,35 @@ export default function WhatsAppChatLayout() {
   const [contactProfiles, setContactProfiles] = useState({});
   const warmingRef = useRef(new Set());
 
+  /* Filtro de atendente vindo do Central IA (deep-link). */
+  const [attendantFilter, setAttendantFilter] = useState(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem("smartprov_attendant_filter");
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+
+  useEffect(() => {
+    const onChange = (e) => {
+      const d = e?.detail || null;
+      setAttendantFilter(d);
+      if (d) setBucket("manual");
+    };
+    window.addEventListener("smartprov-open-attendant", onChange);
+    return () => window.removeEventListener("smartprov-open-attendant", onChange);
+  }, []);
+
+  /* Quando o filtro é setado, vai pro bucket "manual" (onde estão as humanas). */
+  useEffect(() => {
+    if (attendantFilter?.user_id) setBucket("manual");
+  }, [attendantFilter?.user_id]);
+
+  const clearAttendantFilter = useCallback(() => {
+    setAttendantFilter(null);
+    try { window.localStorage.removeItem("smartprov_attendant_filter"); } catch { /* ignore */ }
+  }, []);
+
   const loadConversations = useCallback(async () => {
     try {
       const r = await api.waBaileysConversations();
@@ -132,9 +161,15 @@ export default function WhatsAppChatLayout() {
 
   const filteredConvs = useMemo(() => {
     /* Se há busca, vasculha TODOS os buckets (não só o ativo). */
-    const inBucket = search.trim()
+    let inBucket = search.trim()
       ? conversations
       : conversations.filter((c) => c.bucket === bucket);
+
+    /* Filtro de atendente (deep-link do Central IA). */
+    if (attendantFilter?.user_id) {
+      inBucket = inBucket.filter((c) => c.assignee_user_id === attendantFilter.user_id);
+    }
+
     if (!search.trim()) return inBucket;
     const q = search.toLowerCase();
     return inBucket.filter((c) =>
@@ -146,7 +181,7 @@ export default function WhatsAppChatLayout() {
       (c.last_text || "").toLowerCase().includes(q) ||
       (c.assignee_name || "").toLowerCase().includes(q)
     );
-  }, [conversations, bucket, search]);
+  }, [conversations, bucket, search, attendantFilter]);
 
   const selectedConv = useMemo(
     () => conversations.find((c) => c.phone === selectedPhone) || null,
@@ -167,11 +202,45 @@ export default function WhatsAppChatLayout() {
   return (
     <div data-testid="wa-chat-layout" style={{
       display: "grid",
-      gridTemplateColumns: "220px 360px 1fr",
-      gap: 0, height: "calc(100vh - 220px)", minHeight: 560,
+      gridTemplateRows: attendantFilter?.user_id ? "auto 1fr" : "1fr",
+      height: "calc(100vh - 220px)", minHeight: 560,
       border: "1px solid var(--border-default)", borderRadius: 14,
       overflow: "hidden", background: "var(--bg-surface)",
     }}>
+      {attendantFilter?.user_id && (
+        <div data-testid="attendant-filter-banner" style={{
+          display: "flex", alignItems: "center", gap: 10,
+          padding: "10px 16px", background: "var(--accent-soft)",
+          borderBottom: "1px solid var(--border-default)",
+          fontSize: 13, color: "var(--text-primary)",
+        }}>
+          <span style={{
+            width: 8, height: 8, borderRadius: "50%",
+            background: "var(--accent)", flexShrink: 0,
+          }} />
+          <span>
+            Filtrando conversas atribuídas a <strong>{attendantFilter.name}</strong>
+            <span style={{ marginLeft: 8, color: "var(--text-muted)", fontSize: 12 }}>
+              · {filteredConvs.length} conversa(s)
+            </span>
+          </span>
+          <span style={{ flex: 1 }} />
+          <button
+            onClick={clearAttendantFilter}
+            data-testid="clear-attendant-filter"
+            style={{
+              padding: "5px 12px", borderRadius: 6,
+              border: "1px solid var(--border-default)", background: "var(--bg-surface)",
+              color: "var(--text-secondary)", fontSize: 12, fontWeight: 600, cursor: "pointer",
+            }}
+          >Limpar filtro</button>
+        </div>
+      )}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "220px 360px 1fr",
+        gap: 0, minHeight: 0,
+      }}>
       {/* COLUNA 1 — Buckets */}
       <BucketSidebar bucket={bucket} setBucket={setBucket}
                       counts={buckets} unreadByBucket={bucketMetrics} />
@@ -191,6 +260,7 @@ export default function WhatsAppChatLayout() {
         onWarmContact={warmContact}
         onChange={loadConversations}
       />
+      </div>
     </div>
   );
 }
