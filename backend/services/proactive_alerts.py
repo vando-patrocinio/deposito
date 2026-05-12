@@ -119,18 +119,32 @@ async def resolve_pending(pending_id: str, decision: str,
 # ---------------------------------------------------------------------------
 # Public API — disparado pelos workers
 # ---------------------------------------------------------------------------
+# Cache de snippets gerados pelo Claude (por OLT) para evitar custo repetido
+_CONTEXT_CACHE: Dict[str, Dict[str, Any]] = {}
+_CONTEXT_TTL_SECONDS = 600   # 10min
+
+
 async def _build_outage_context(company_id: str,
                                     outage: Dict[str, Any]) -> Optional[str]:
     """Resume últimas panes da mesma OLT em até 14 dias.
 
-    Retorna trecho pronto pra inserir no WhatsApp (ou None se não houver
-    histórico relevante). Inclui: nº de panes, severidade média, motivo
-    recorrente (extraído de ai_insight), tempo médio de resolução.
+    Estratégia: agrega dados brutos do Mongo → pede ao Claude para redigir
+    um trecho curto em pt-BR (2-3 linhas). Fallback para template fixo se
+    Claude falhar ou agente desabilitado.
+
+    Resultado é cacheado em memória por 10min/OLT.
     """
     olt = outage.get("olt_name")
     outage_id = outage.get("id")
     if not olt:
         return None
+
+    # Cache hit?
+    cache_key = f"{company_id}:{olt}"
+    cached = _CONTEXT_CACHE.get(cache_key)
+    if cached and (datetime.now(timezone.utc).timestamp() - cached["ts"]) < _CONTEXT_TTL_SECONDS:
+        return cached["text"]
+
     cutoff_14d = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
     cur = db.network_outages.find(
         {"company_id": company_id, "olt_name": olt,
@@ -152,28 +166,87 @@ async def _build_outage_context(company_id: str,
                    for r in rows if r.get("duration_minutes")]
     avg_dur = int(sum(durations) / len(durations)) if durations else None
 
-    # Conta os "headlines" dos ai_insight pra detectar padrão recorrente
     causes: Dict[str, int] = {}
     for r in rows:
         ins = r.get("ai_insight") or {}
         cause = (ins.get("probable_cause") or ins.get("category") or "").strip()
         if cause:
             causes[cause] = causes.get(cause, 0) + 1
-    top_cause = None
-    if causes:
-        top_cause = max(causes.items(), key=lambda x: x[1])
+    top_cause = max(causes.items(), key=lambda x: x[1]) if causes else None
 
-    parts = [f"_Esta OLT teve {n} pane(s) em 14 dias_"]
+    # 1) Tenta gerar com Claude
+    summary = await _claude_outage_context_summary(
+        company_id, olt=olt, n=n, sev_avg=sev_avg, avg_dur=avg_dur,
+        top_cause=top_cause)
+
+    # 2) Fallback: template fixo
+    if not summary:
+        parts = [f"_Esta OLT teve {n} pane(s) em 14 dias_"]
+        if avg_dur is not None:
+            if avg_dur >= 60:
+                parts.append(f"tempo médio de resolução: {avg_dur // 60}h{avg_dur % 60:02d}min")
+            else:
+                parts.append(f"tempo médio de resolução: {avg_dur}min")
+        parts.append(f"severidade média: {sev_avg}%")
+        if top_cause and top_cause[1] >= 2:
+            parts.append(f"causa recorrente: _{top_cause[0]}_ ({top_cause[1]}x)")
+        summary = "\n".join("• " + p for p in parts)
+
+    _CONTEXT_CACHE[cache_key] = {
+        "text": summary,
+        "ts": datetime.now(timezone.utc).timestamp(),
+    }
+    return summary
+
+
+async def _claude_outage_context_summary(
+    company_id: str, *, olt: str, n: int, sev_avg: float,
+    avg_dur: Optional[int], top_cause: Optional[tuple],
+) -> Optional[str]:
+    """Pede ao Claude para redigir o snippet em linguagem natural pt-BR.
+    Retorna None se falhar (agente desabilitado, timeout, etc).
+
+    Custo aproximado: 60-90 tokens/chamada → ~$0.0003/pane.
+    """
+    from services.motor_ia import chat_completion, AgentDisabledError
+    avg_dur_txt = "não disponível"
     if avg_dur is not None:
-        if avg_dur >= 60:
-            parts.append(f"tempo médio de resolução: {avg_dur // 60}h{avg_dur % 60:02d}min")
-        else:
-            parts.append(f"tempo médio de resolução: {avg_dur}min")
-    parts.append(f"severidade média: {sev_avg}%")
+        avg_dur_txt = (f"{avg_dur // 60}h{avg_dur % 60:02d}min"
+                         if avg_dur >= 60 else f"{avg_dur}min")
+    cause_txt = "—"
     if top_cause and top_cause[1] >= 2:
-        parts.append(f"causa recorrente: _{top_cause[0]}_ ({top_cause[1]}x)")
+        cause_txt = f"{top_cause[0]} ({top_cause[1]}x)"
 
-    return "\n".join("• " + p for p in parts)
+    prompt = (
+        "Você é o assistente operacional de um provedor de internet. "
+        "Redija 2-3 linhas curtas (máx 240 caracteres no total) sobre o histórico "
+        "desta OLT, em pt-BR, com tom direto e prático, para o gestor decidir "
+        "rápido. Use bullets (• ou -). Não invente dados, use apenas o que está "
+        "abaixo. Se algum dado for '—' ou 'não disponível', omita-o.\n\n"
+        f"OLT: {olt}\n"
+        f"Panes em 14 dias: {n}\n"
+        f"Severidade média: {sev_avg}%\n"
+        f"Tempo médio de resolução: {avg_dur_txt}\n"
+        f"Causa mais recorrente: {cause_txt}\n\n"
+        "Responda APENAS com os bullets, sem cabeçalho."
+    )
+    try:
+        result = await chat_completion(
+            company_id,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=120, temperature=0.3,
+            agent="proactive_outage_context",
+        )
+        text = (result.get("content") or "").strip()
+        # sanity check — só aceita se realmente é curto
+        if 20 < len(text) < 600:
+            return text
+    except AgentDisabledError:
+        return None
+    except Exception as e:
+        logger.warning("[proactive] context summary fail: %s", e)
+        return None
+    return None
 
 
 async def notify_outage(company_id: str, outage: Dict[str, Any]) -> Optional[str]:

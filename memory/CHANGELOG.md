@@ -1,5 +1,30 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Contexto de pane redigido pelo Claude (linguagem natural)
+
+### Backend (`services/proactive_alerts.py`)
+- `_build_outage_context` agora:
+  1. Agrega dados brutos do Mongo (panes, severidade, tempo, causa recorrente)
+  2. Pede ao Claude (`agent="proactive_outage_context"`, `max_tokens=120`, `temperature=0.3`) para redigir 2-3 bullets curtos em pt-BR
+  3. Cacheia o resultado em memória por 10min/OLT — evita custo repetido
+  4. Fallback automático para template fixo se Claude falhar ou agente desabilitado
+- Novo agente registrado em `AGENT_CATALOG` + `AGENT_LABELS`: `proactive_outage_context` (aparece no Painel de Agentes com kill-switch e métricas)
+- Custo aproximado: ~80 tokens/pane (~$0.0003), com cache de 10min é efetivamente <$0.01/dia
+
+### Validação ✓
+- 3 panes seed (2 cortes de fibra + 1 manutenção) → Claude gerou:
+  ```
+  • 3 panes em 14 dias, severidade média de 73,3%
+  • Tempo médio de resolução: 1h26min
+  • Causa principal: corte de fibra (2 ocorrências)
+  ```
+- Cache funciona: segunda chamada retorna mesmo texto sem nova chamada Claude
+- Fallback testado (mesma estrutura, sem dependência de Claude)
+- Lint backend limpo
+
+---
+
+
 ## Feb 11, 2026 — Contexto rico na notificação de pane (histórico recente)
 
 ### Backend (`services/proactive_alerts.py`)
