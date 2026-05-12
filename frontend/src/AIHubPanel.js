@@ -69,17 +69,15 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
     <div data-testid="aihub-panel"
           data-fullscreen={isWaFull ? "1" : "0"}
           style={{ padding: "0 4px" }}>
-      {!isWaFull && (
-        <div style={{ marginBottom: 14 }}>
-          <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Bot size={24} strokeWidth={1.75} /> Atendimento IA
-          </h1>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-            Agentes conversacionais usando IA local. Integre com MagnusBilling (SIP)
-            e WhatsApp Cloud API para atendimento automatizado por voz e texto.
-          </p>
-        </div>
-      )}
+      <div style={{ marginBottom: 14 }}>
+        <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Bot size={24} strokeWidth={1.75} /> Atendimento IA
+        </h1>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
+          Agentes conversacionais usando IA local. Integre com MagnusBilling (SIP)
+          e WhatsApp Cloud API para atendimento automatizado por voz e texto.
+        </p>
+      </div>
 
       <div style={{
         display: "flex", gap: 4, padding: 4, background: "var(--bg-surface-2)",
