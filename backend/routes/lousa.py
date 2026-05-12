@@ -474,6 +474,14 @@ async def lousa_grid(
     cids = [c["id"] for c in collabs]
     is_historical = bool(date_from or date_to)
 
+    # Regra de negócio: a grade de uma data só pode conter bolhas cuja data
+    # de calendário (scheduled_time > opened_at > created_at) bata com a data
+    # selecionada. Helper `_ticket_day_iso` é o mesmo usado pela Lousa Mobile.
+    selected_date = (date_from or _today_br_iso())
+
+    def _matches_selected_date(t: dict) -> bool:
+        return _ticket_day_iso(t) == selected_date
+
     if is_historical:
         # Período: usa today se não fornecido
         df = date_from or today_str()
@@ -484,9 +492,10 @@ async def lousa_grid(
         to_iso = f"{next_d}T00:00:00"
 
         # Tickets que TOCARAM o período: criado dentro OU encerrado dentro OU
-        # aberto antes E (ainda aberto OU encerrado depois)
+        # aberto antes E (ainda aberto OU encerrado depois). Em seguida aplicamos
+        # o filtro de scheduled_time para honrar a regra "bolha = data agendada".
         all_active = []
-        all_resolved = await db.tickets.find(
+        raw_resolved = await db.tickets.find(
             {"assigned_collaborator_id": {"$in": cids},
              "$or": [
                  {"created_at": {"$gte": from_iso, "$lt": to_iso}},
@@ -496,20 +505,23 @@ async def lousa_grid(
              ]},
             {"_id": 0},
         ).to_list(5000)
+        all_resolved = [t for t in raw_resolved if _matches_selected_date(t)]
     else:
         active_states = ["pendente", "aberta", "aguardando_atendimento"]
-        all_active = await db.tickets.find(
+        raw_active = await db.tickets.find(
             {"assigned_collaborator_id": {"$in": cids}, "status": {"$in": active_states}},
             {"_id": 0},
         ).to_list(2000)
+        all_active = [t for t in raw_active if _matches_selected_date(t)]
         # Inclui também os últimos 24h finalizados/encerrados — para gap entre serviços e duração
         cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-        all_resolved = await db.tickets.find(
+        raw_resolved = await db.tickets.find(
             {"assigned_collaborator_id": {"$in": cids},
              "status": {"$in": ["finalizada", "encerrada", "cancelada", "reagendada"]},
              "closed_at": {"$gte": cutoff_24h}},
             {"_id": 0},
         ).to_list(1000)
+        all_resolved = [t for t in raw_resolved if _matches_selected_date(t)]
 
     # Settings da empresa para SLA + grade fixa
     company_id = user.get("company_id") or DEMO_COMPANY_ID
