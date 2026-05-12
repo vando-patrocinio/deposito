@@ -124,9 +124,9 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: "Pessoas",
+    label: "Cadastro",
     items: [
-      { id: "cadastro", icon: Users, label: "Cadastro", roles: ["gestor", "auditor", "administrador"] },
+      { id: "cadastro", icon: Users, label: "Colaboradores", roles: ["gestor", "auditor", "administrador"] },
       {
         id: "clientes",
         icon: UserCircle,
