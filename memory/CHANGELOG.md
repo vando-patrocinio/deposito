@@ -1,5 +1,30 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Contexto rico na notificação de pane (histórico recente)
+
+### Backend (`services/proactive_alerts.py`)
+- Novo helper `_build_outage_context(cid, outage)`:
+  - Busca panes da mesma OLT em 14 dias
+  - Agrega: total de panes, severidade média, tempo médio de resolução, causa recorrente (extraída do `ai_insight.probable_cause` quando o mesmo motivo aparece ≥2x)
+- `notify_outage` insere o snippet entre as KPIs e as opções:
+  ```
+  📊 Histórico recente:
+  • Esta OLT teve 3 pane(s) em 14 dias
+  • tempo médio de resolução: 1h35min
+  • severidade média: 58.3%
+  • causa recorrente: corte de fibra (2x)
+  ```
+- Sem histórico (pane inédita) → snippet é omitido automaticamente
+
+### Validação ✓
+- Seed com 3 panes (2 cortes de fibra + 1 queda de energia) → snippet gerado corretamente identificando "corte de fibra" como causa recorrente (2x)
+- Tempo médio formatado (`58min` ou `1h35min`)
+- Sem histórico → snippet vazio, mensagem original mantida
+- Lint backend limpo
+
+---
+
+
 ## Feb 11, 2026 — Lista numerada de ações no WhatsApp do gestor
 
 Substituí "sim/não" por menu numerado de até 4 opções. Mais expressivo, mantém simplicidade.

@@ -119,6 +119,63 @@ async def resolve_pending(pending_id: str, decision: str,
 # ---------------------------------------------------------------------------
 # Public API — disparado pelos workers
 # ---------------------------------------------------------------------------
+async def _build_outage_context(company_id: str,
+                                    outage: Dict[str, Any]) -> Optional[str]:
+    """Resume últimas panes da mesma OLT em até 14 dias.
+
+    Retorna trecho pronto pra inserir no WhatsApp (ou None se não houver
+    histórico relevante). Inclui: nº de panes, severidade média, motivo
+    recorrente (extraído de ai_insight), tempo médio de resolução.
+    """
+    olt = outage.get("olt_name")
+    outage_id = outage.get("id")
+    if not olt:
+        return None
+    cutoff_14d = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    cur = db.network_outages.find(
+        {"company_id": company_id, "olt_name": olt,
+         "id": {"$ne": outage_id},
+         "first_detected_at": {"$gte": cutoff_14d}},
+        {"_id": 0, "severity_pct": 1, "duration_minutes": 1,
+         "ai_insight": 1, "status": 1, "first_detected_at": 1},
+    ).sort("first_detected_at", -1).limit(20)
+    rows: List[Dict[str, Any]] = []
+    async for r in cur:
+        rows.append(r)
+    if not rows:
+        return None
+
+    n = len(rows)
+    sev_vals = [float(r.get("severity_pct") or 0) for r in rows]
+    sev_avg = round(sum(sev_vals) / len(sev_vals), 1) if sev_vals else 0
+    durations = [int(r.get("duration_minutes") or 0)
+                   for r in rows if r.get("duration_minutes")]
+    avg_dur = int(sum(durations) / len(durations)) if durations else None
+
+    # Conta os "headlines" dos ai_insight pra detectar padrão recorrente
+    causes: Dict[str, int] = {}
+    for r in rows:
+        ins = r.get("ai_insight") or {}
+        cause = (ins.get("probable_cause") or ins.get("category") or "").strip()
+        if cause:
+            causes[cause] = causes.get(cause, 0) + 1
+    top_cause = None
+    if causes:
+        top_cause = max(causes.items(), key=lambda x: x[1])
+
+    parts = [f"_Esta OLT teve {n} pane(s) em 14 dias_"]
+    if avg_dur is not None:
+        if avg_dur >= 60:
+            parts.append(f"tempo médio de resolução: {avg_dur // 60}h{avg_dur % 60:02d}min")
+        else:
+            parts.append(f"tempo médio de resolução: {avg_dur}min")
+    parts.append(f"severidade média: {sev_avg}%")
+    if top_cause and top_cause[1] >= 2:
+        parts.append(f"causa recorrente: _{top_cause[0]}_ ({top_cause[1]}x)")
+
+    return "\n".join("• " + p for p in parts)
+
+
 async def notify_outage(company_id: str, outage: Dict[str, Any]) -> Optional[str]:
     """Avisa o gestor sobre nova pane SmartOLT com lista numerada de ações.
     Idempotente: usa `proactive_notified_at` no doc (anti-flood 30min)."""
@@ -158,12 +215,14 @@ async def notify_outage(company_id: str, outage: Dict[str, Any]) -> Optional[str
             o["n"] = i
 
     opts_text = "\n".join(f"*{o['n']}* — {o['label']}" for o in options)
+    context_snippet = await _build_outage_context(company_id, outage)
     text = (
         f"🚨 *Pane detectada — {olt}*\n"
         f"_(SmartOLT AI · {sev}% das ONUs offline)_\n\n"
         f"• {los}/{total} ONUs em LOS\n"
         f"• {affected} cliente(s) com telefone cadastrado\n"
         + (f"• Análise IA: {insight}\n" if insight else "")
+        + (f"\n📊 *Histórico recente:*\n{context_snippet}\n" if context_snippet else "")
         + "\n*O que devo fazer?*\n"
         + opts_text + "\n\n"
         + "Responda com o *número* da opção (ou _sim_ para a 1, _não_ para a última)."
