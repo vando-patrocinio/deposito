@@ -672,6 +672,15 @@ async def lousa_grid(
         await enrich_tickets_with_live_signal(all_t, company_id)
     except Exception as _e:
         logger.warning("[lousa] enrich live_signal falhou: %s", _e)
+
+    # Ordena colunas: técnicos com MAIS bolhas (ativas) à esquerda → menos à direita.
+    # Tiebreaker: nome alfabético para resultado estável.
+    def _bubble_count(col: dict) -> int:
+        n = len(col.get("unscheduled") or [])
+        for s in col.get("slots") or []:
+            n += len(s.get("tickets") or [])
+        return n
+    columns.sort(key=lambda c: (-_bubble_count(c), (c.get("collaborator") or {}).get("name", "")))
     return {
         "columns": columns,
         "historical": is_historical,
