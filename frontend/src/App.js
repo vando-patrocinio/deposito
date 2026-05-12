@@ -138,7 +138,6 @@ const NAV_GROUPS = [
         ],
       },
       { id: "pracas", icon: MapPin, label: "Praças", roles: ["gestor", "auditor", "administrador"] },
-      { id: "users", icon: ShieldCheck, label: "Usuários", roles: ["auditor", "administrador"] },
     ],
   },
   {
@@ -165,6 +164,7 @@ const NAV_GROUPS = [
   {
     label: "Sistema",
     items: [
+      { id: "users", icon: ShieldCheck, label: "Usuários", roles: ["auditor", "administrador"] },
       { id: "motor-ia", icon: Cpu, label: "Motor IA", roles: ["administrador"] },
       { id: "settings", icon: SettingsIcon, label: "Configurações", roles: ["auditor", "administrador"] },
       { id: "platform", icon: Building2, label: "Plataforma", roles: ["auditor", "administrador"], superAdminOnly: true },
