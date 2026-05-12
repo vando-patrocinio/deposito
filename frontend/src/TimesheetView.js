@@ -360,8 +360,14 @@ export default function TimesheetView() {
 
   useEffect(() => {
     api.listCollaborators().then((cs) => {
-      setCollabs(cs);
-      if (cs[0]) setCollabId(cs[0].id);
+      // Filtra: apenas colaboradores ATIVOS e habilitados a bater ponto.
+      // Critério: active !== false E clock_in_enabled === true (definido em Cadastro → Colaboradores).
+      const eligible = (cs || []).filter(
+        (c) => c.active !== false && c.clock_in_enabled === true
+      );
+      setCollabs(eligible);
+      if (eligible[0]) setCollabId(eligible[0].id);
+      else setCollabId(null);
     });
   }, []);
 
@@ -448,6 +454,17 @@ export default function TimesheetView() {
       )}
 
       <Card title="Espelho mensal">
+        {collabs.length === 0 ? (
+          <div data-testid="sheet-empty-state" style={{
+            padding: "20px 16px", background: "#fef3c7", border: "1px solid #fcd34d",
+            borderRadius: 10, color: "#92400e", fontSize: 13, lineHeight: 1.55,
+          }}>
+            <strong>Nenhum colaborador habilitado para bater ponto.</strong><br />
+            Vá em <strong>Cadastro → Colaboradores</strong>, edite o colaborador
+            desejado e marque a opção <em>"Habilitado para bater ponto"</em>.
+          </div>
+        ) : (
+          <>
         <Row label="Colaborador" value={
           <select value={collabId || ""} onChange={(e) => setCollabId(e.target.value)} data-testid="sheet-collab-select">
             {collabs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -494,6 +511,8 @@ export default function TimesheetView() {
           <Button onClick={send} data-testid="send-timesheet-btn"><Icon name="mail" /> Enviar agora</Button>
           {msg && <span style={{ alignSelf: "center", color: msg.startsWith("Erro") || msg.startsWith("Não") ? "#be123c" : "#166534" }}>{msg}</span>}
         </div>
+          </>
+        )}
       </Card>
 
       <Card title={`Dias do mês — ${monthLabel}`}>
