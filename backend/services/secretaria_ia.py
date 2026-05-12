@@ -135,7 +135,33 @@ TOOLS_SPEC: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "ai_agents_status",
-            "description": "Status dos agentes de IA: quais estão ativos/pausados. Use para 'os agentes IA estão funcionando?', 'quem tá pausado'.",
+            "description": "Status dos AGENTES DE IA (bots): quais estão ativos/pausados. Use para 'os agentes IA estão funcionando?', 'quem tá pausado'.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "count_human_attendants_online",
+            "description": "Conta ATENDENTES HUMANOS ativos no momento (que enviaram mensagem nos últimos N minutos). Use para perguntas tipo 'quantos atendentes online?', 'quem está atendendo agora?', 'minha equipe está trabalhando?'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "window_minutes": {
+                        "type": "integer",
+                        "description": "Janela em minutos pra considerar 'online' (default 10).",
+                        "minimum": 1,
+                        "maximum": 120,
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "count_clients_connected",
+            "description": "Conta CLIENTES (ONUs) conectados no momento na rede óptica. Use para 'quantos clientes online?', 'quantas ONUs ativas?', 'quantas pessoas estão conectadas?'.",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -321,7 +347,7 @@ async def _tool_find_subscriber(cid: str, args: Dict[str, Any]) -> Dict[str, Any
 
 
 async def _tool_ai_agents_status(cid: str, _: Dict[str, Any]) -> Dict[str, Any]:
-    """Lista agentes IA e se estão ativos."""
+    """Lista agentes IA (BOTS) e se estão ativos."""
     from services.motor_ia import AGENT_CATALOG, is_agent_enabled
     items = []
     for agent in AGENT_CATALOG:
@@ -330,6 +356,60 @@ async def _tool_ai_agents_status(cid: str, _: Dict[str, Any]) -> Dict[str, Any]:
     paused = [i for i in items if not i["enabled"]]
     return {"total": len(items), "paused_count": len(paused),
             "paused": [p["label"] for p in paused]}
+
+
+async def _tool_count_human_attendants_online(cid: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Atendentes HUMANOS online = colaboradores que enviaram mensagem WhatsApp
+    (direction=outbound, ai_generated=false) nos últimos N min."""
+    window = int(args.get("window_minutes") or 10)
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=window)).isoformat()
+    pipeline = [
+        {"$match": {
+            "company_id": cid,
+            "direction": "outbound",
+            "ai_generated": {"$ne": True},
+            "created_at": {"$gte": cutoff},
+            "sent_by_user_id": {"$nin": [None, ""]},
+        }},
+        {"$group": {"_id": "$sent_by_user_id", "last_msg": {"$max": "$created_at"},
+                     "messages": {"$sum": 1}}},
+        {"$sort": {"last_msg": -1}},
+    ]
+    rows = []
+    async for r in db.aihub_wa_messages.aggregate(pipeline):
+        uid = r.get("_id")
+        if not uid:
+            continue
+        user = await db.users.find_one(
+            {"id": uid, "company_id": cid},
+            {"_id": 0, "name": 1, "email": 1, "roles": 1},
+        )
+        rows.append({
+            "user_id": uid,
+            "name": (user or {}).get("name") or (user or {}).get("email") or "—",
+            "messages_in_window": int(r.get("messages", 0)),
+            "last_activity": r.get("last_msg"),
+        })
+    return {"count": len(rows), "window_minutes": window, "attendants": rows[:15]}
+
+
+async def _tool_count_clients_connected(cid: str, _: Dict[str, Any]) -> Dict[str, Any]:
+    """Clientes online = ONUs com status online no SmartOLT."""
+    total = await db.smartolt_onus.count_documents({"company_id": cid})
+    online = await db.smartolt_onus.count_documents({
+        "company_id": cid,
+        "status": {"$in": ["online", "ONLINE", "Online", "active", "ATIVE", "ATIVO"]},
+    })
+    offline = await db.smartolt_onus.count_documents({
+        "company_id": cid,
+        "status": {"$in": ["offline", "OFFLINE", "LOS", "los", "Offline"]},
+    })
+    return {
+        "total_onus": total,
+        "online": online,
+        "offline_or_los": offline,
+        "online_percent": round((online / total * 100), 1) if total else 0,
+    }
 
 
 async def _tool_motor_ia_usage_today(cid: str, _: Dict[str, Any]) -> Dict[str, Any]:
@@ -383,6 +463,8 @@ TOOL_FUNCS = {
     "churn_summary": _tool_churn_summary,
     "find_subscriber": _tool_find_subscriber,
     "ai_agents_status": _tool_ai_agents_status,
+    "count_human_attendants_online": _tool_count_human_attendants_online,
+    "count_clients_connected": _tool_count_clients_connected,
     "motor_ia_usage_today": _tool_motor_ia_usage_today,
     "recent_system_events": _tool_recent_system_events,
 }
