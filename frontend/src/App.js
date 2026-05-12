@@ -435,7 +435,7 @@ function TopBar({ user, companyName, isSuperAdmin, allCompanies, activeCo, onCha
             className="btn btn-ghost btn-sm"
             title="Abrir Central IA"
           >
-            <Brain size={14} strokeWidth={1.75} /> IA
+            <Brain size={14} strokeWidth={1.75} /> Inteligência
           </button>
         )}
 
