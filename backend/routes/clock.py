@@ -1189,42 +1189,167 @@ def _build_timesheet_email_html(coll, year, month, days, total_worked, total_bal
     """
 
 
-def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance) -> bytes:
+def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance,
+                          company=None, praca=None) -> bytes:
+    """Espelho de Ponto — layout no padrão Control ID/Henry/SmartPonto:
+    - Cabeçalho com identificação empresa + filial (praça onde lotado)
+    - Bloco do colaborador (matrícula, CPF, função, departamento, PIS, admissão)
+    - Tabela diária com batidas
+    - Resumo de saldo e horas
+    - Espaços de assinatura: colaborador + empresa
+    """
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=1.6 * cm, rightMargin=1.6 * cm, topMargin=1.6 * cm, bottomMargin=1.6 * cm)
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=1.4 * cm, rightMargin=1.4 * cm,
+        topMargin=1.2 * cm, bottomMargin=1.2 * cm,
+    )
     styles = getSampleStyleSheet()
     elements = []
-    elements.append(Paragraph(f"<b>Espelho de Ponto — {month:02d}/{year}</b>", styles["Title"]))
-    elements.append(Spacer(1, 6))
-    elements.append(Paragraph(f"<b>Colaborador:</b> {coll['name']}", styles["Normal"]))
-    elements.append(Paragraph(f"<b>CPF:</b> {coll.get('cpf', '—')} &nbsp;&nbsp; <b>E-mail:</b> {coll.get('email', '—')}", styles["Normal"]))
-    elements.append(Spacer(1, 12))
-    headers = ["Data", "Entrada", "Início Int.", "Fim Int.", "Saída", "Trabalhado", "Saldo", "Status"]
+    company = company or {}
+    praca = praca or {}
+
+    # ---------- HEADER: Empresa | Praça ----------
+    company_name = company.get("name") or "SmartProv"
+    company_cnpj = company.get("cnpj") or "—"
+    praca_name = praca.get("name") or "Sede"
+    praca_address = praca.get("address") or company.get("address") or "—"
+
+    header_rows = [
+        [Paragraph(f"<b>{company_name}</b>", styles["Normal"]),
+         Paragraph("<b>ESPELHO DE PONTO</b>", styles["Normal"])],
+        [Paragraph(f"<font size='8'>CNPJ: {company_cnpj}</font>", styles["Normal"]),
+         Paragraph(f"<font size='8'>Período: {month:02d}/{year}</font>", styles["Normal"])],
+        [Paragraph(f"<font size='8'>Filial / Praça: {praca_name}</font>", styles["Normal"]),
+         Paragraph(f"<font size='8'>Endereço: {praca_address[:60]}</font>", styles["Normal"])],
+    ]
+    header_table = Table(header_rows, colWidths=[10.5 * cm, 7 * cm], hAlign="LEFT")
+    header_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#020617")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#f1f5f9")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("ALIGN", (1, 1), (1, -1), "RIGHT"),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 8))
+
+    # ---------- BLOCO IDENTIFICAÇÃO COLABORADOR ----------
+    schedule = coll.get("schedule") or {}
+    hours_label = f"{schedule.get('entry', '08:00')} – {schedule.get('exit', '17:00')}"
+    if schedule.get("interval_start"):
+        hours_label += f" (int. {schedule.get('interval_start')}-{schedule.get('interval_end', '')})"
+    id_rows = [
+        ["Colaborador", coll.get("name") or "—",
+         "Matrícula", coll.get("matricula") or coll.get("id", "")[:8]],
+        ["CPF", coll.get("cpf") or "—",
+         "PIS", coll.get("pis") or "—"],
+        ["Função", coll.get("function") or coll.get("role") or "—",
+         "Departamento", coll.get("department") or "—"],
+        ["Admissão", coll.get("admitted_at") or coll.get("created_at", "")[:10] or "—",
+         "Jornada", hours_label],
+    ]
+    id_table = Table(id_rows, colWidths=[2.7 * cm, 6.8 * cm, 2.5 * cm, 5.5 * cm], hAlign="LEFT")
+    id_table.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f8fafc")),
+        ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#f8fafc")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    elements.append(id_table)
+    elements.append(Spacer(1, 10))
+
+    # ---------- TABELA DIÁRIA DE PONTO ----------
+    headers = ["Dia", "Semana", "Entrada", "Int. Saída", "Int. Volta", "Saída",
+               "Trabalhado", "Saldo", "Status"]
     rows = [headers]
+    dias_semana = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
     for d in days:
+        try:
+            y, m, dnum = d["date"].split("-")
+            wd = date(int(y), int(m), int(dnum)).weekday()
+            wd_label = dias_semana[wd]
+        except Exception:
+            wd_label = "—"
         rows.append([
-            d["date"], d.get("entrada") or "—",
-            d.get("inicio_intervalo") or "—", d.get("fim_intervalo") or "—",
+            d["date"][-2:], wd_label,
+            d.get("entrada") or "—",
+            d.get("inicio_intervalo") or "—",
+            d.get("fim_intervalo") or "—",
             d.get("saida") or "—",
-            _format_min(d["worked"]), _format_min(d["balance"]), d["status"],
+            _format_min(d["worked"]),
+            _format_min(d["balance"]),
+            d["status"],
         ])
-    rows.append(["", "", "", "", "Totais:", _format_min(total_worked), _format_min(total_balance), ""])
-    table = Table(rows, repeatRows=1, hAlign="LEFT")
+    rows.append(["", "", "", "", "", "TOTAIS:",
+                  _format_min(total_worked), _format_min(total_balance), ""])
+
+    table = Table(rows, repeatRows=1, hAlign="LEFT",
+                  colWidths=[1.0 * cm, 1.3 * cm, 1.9 * cm, 1.9 * cm, 1.9 * cm,
+                             1.9 * cm, 2.1 * cm, 1.9 * cm, 3.6 * cm])
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#020617")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e2e8f0")),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#1f2a3a")),
+        ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     elements.append(table)
     elements.append(Spacer(1, 14))
-    elements.append(Paragraph("<i>Em caso de divergência, procure seu gestor responsável.</i>", styles["Italic"]))
+
+    # ---------- RESUMO + OBSERVAÇÕES ----------
+    elements.append(Paragraph(
+        f"<font size='8'>Trabalhado no mês: <b>{_format_min(total_worked)}</b> &nbsp;&nbsp;"
+        f"Saldo do mês: <b>{_format_min(total_balance)}</b></font>",
+        styles["Normal"],
+    ))
+    elements.append(Spacer(1, 4))
+    elements.append(Paragraph(
+        "<font size='7' color='#64748b'><i>Documento emitido eletronicamente pelo SmartProv. "
+        "Em caso de divergências, comunique imediatamente o RH.</i></font>",
+        styles["Normal"],
+    ))
+    elements.append(Spacer(1, 28))
+
+    # ---------- LINHAS DE ASSINATURA ----------
+    sig_rows = [
+        ["_" * 38, "", "_" * 38],
+        [Paragraph(f"<font size='8'><b>{coll.get('name', '—')}</b><br/>Colaborador</font>", styles["Normal"]),
+         "",
+         Paragraph(f"<font size='8'><b>{company_name}</b><br/>Responsável RH / Empresa</font>", styles["Normal"])],
+    ]
+    sig_table = Table(sig_rows, colWidths=[8 * cm, 1 * cm, 8 * cm], hAlign="CENTER")
+    sig_table.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
+        ("TOPPADDING", (0, 1), (-1, 1), 0),
+    ]))
+    elements.append(sig_table)
+
     doc.build(elements)
     buf.seek(0)
     return buf.read()
@@ -1239,8 +1364,15 @@ async def send_timesheet_email(coll: dict, year: int, month: int) -> dict:
     sender = s.sender_email or os.environ.get("SENDER_EMAIL") or "onboarding@resend.dev"
     sender_name = s.sender_name or "Ponto do Colaborador"
     sheet = await timesheet(coll["id"], year, month)
+    cid = coll.get("company_id") or DEMO_COMPANY_ID
+    company_doc = await db.companies.find_one({"id": cid}, {"_id": 0}) or {}
+    praca_doc = None
+    if coll.get("praca_id"):
+        praca_doc = await db.pracas.find_one({"id": coll["praca_id"]}, {"_id": 0}) or None
     html = _build_timesheet_email_html(coll, year, month, sheet["days"], sheet["total_worked_min"], sheet["total_balance_min"])
-    pdf_bytes = _build_timesheet_pdf(coll, year, month, sheet["days"], sheet["total_worked_min"], sheet["total_balance_min"])
+    pdf_bytes = _build_timesheet_pdf(coll, year, month, sheet["days"],
+                                       sheet["total_worked_min"], sheet["total_balance_min"],
+                                       company=company_doc, praca=praca_doc)
     pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
     params = {
         "from": f"{sender_name} <{sender}>",
@@ -1263,7 +1395,16 @@ async def send_timesheet_email(coll: dict, year: int, month: int) -> dict:
 async def timesheet_pdf(cid: str, year: int, month: int):
     sheet = await timesheet(cid, year, month)
     coll = sheet["collaborator"]
-    pdf_bytes = _build_timesheet_pdf(coll, year, month, sheet["days"], sheet["total_worked_min"], sheet["total_balance_min"])
+    company_id = coll.get("company_id") or DEMO_COMPANY_ID
+    company_doc = await db.companies.find_one({"id": company_id}, {"_id": 0}) or {}
+    praca_doc = None
+    if coll.get("praca_id"):
+        praca_doc = await db.pracas.find_one({"id": coll["praca_id"]}, {"_id": 0}) or None
+    pdf_bytes = _build_timesheet_pdf(
+        coll, year, month, sheet["days"],
+        sheet["total_worked_min"], sheet["total_balance_min"],
+        company=company_doc, praca=praca_doc,
+    )
     filename = f"espelho-{coll['id']}-{year}-{month:02d}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),

@@ -145,8 +145,21 @@ const NAV_GROUPS = [
     label: "Relatórios",
     items: [
       { id: "manager", icon: ClipboardList, label: "Auditoria", roles: ["auditor", "administrador"] },
-      { id: "sheet", icon: FileSpreadsheet, label: "Espelho", roles: ["gestor", "auditor", "administrador"] },
       { id: "logs", icon: HistoryIcon, label: "Logs", roles: ["gestor", "auditor", "administrador"] },
+    ],
+  },
+  {
+    label: "RH",
+    items: [
+      {
+        id: "espelho",
+        icon: FileSpreadsheet,
+        label: "Espelho",
+        roles: ["gestor", "auditor", "administrador"],
+        children: [
+          { id: "sheet", label: "Ponto Colaborador" },
+        ],
+      },
     ],
   },
   {
