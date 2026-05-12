@@ -5,18 +5,13 @@ import {
   Plus, Trash2, Edit2, Play, Save, X, RefreshCw, CheckCircle2,
   AlertTriangle, Wifi, WifiOff, Plug,
   Sparkles, Building2, DollarSign, Star, Wand2, ArrowUp, QrCode,
-  Brain, Smartphone,
 } from "lucide-react";
 import WhatsAppQRPanel from "@/WhatsAppQRPanel";
-import WhatsAppInstancePanel from "@/WhatsAppInstancePanel";
-import SmartOltAiPanel from "@/SmartOltAiPanel";
 import CentralIaDashboard from "@/CentralIaDashboard";
 
 const BASE_TABS = [
   { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode, dynamic: true },
-  { id: "instancia", label: "Instância", icon: Smartphone },
   { id: "mensagem", label: "Mensagem", icon: MessageCircle },
-  { id: "agents", label: "Agentes", icon: Bot },
   { id: "playground", label: "Playground", icon: MessageCircle },
   { id: "dial", label: "Discar (outbound)", icon: Phone },
   { id: "whatsapp", label: "WhatsApp Cloud", icon: Send },
@@ -144,9 +139,7 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
 
       {tab === "central_ia" && <CentralIaDashboard />}
       {tab === "whatsapp_qr" && <WhatsAppQRPanel />}
-      {tab === "instancia" && <WhatsAppInstancePanel />}
       {tab === "mensagem" && <MensagemTab />}
-      {tab === "agents" && <AgentsTab />}
       {tab === "playground" && <PlaygroundTab />}
       {tab === "dial" && <DialTab />}
       {tab === "whatsapp" && <WhatsappCloudTab />}
@@ -257,7 +250,7 @@ function MessageChannelCard({ name, subtitle, description, status, testId }) {
 /* =============================================================
    Agents
 ============================================================= */
-function AgentsTab() {
+export function AgentsTab() {
   const [agents, setAgents] = useState([]);
   const [editing, setEditing] = useState(null);  // {id?, ...}
   const [busy, setBusy] = useState(false);

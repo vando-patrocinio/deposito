@@ -1,0 +1,29 @@
+{
+  "summary": "Iter53 — Frontend-only validation of 3 UI changes: (1) Sidebar rename 'ZapBot' → 'Atendimento IA', (2) AIHubPanel sub-tabs reorganization (Instância/Agentes removed; moved to Secretária Ligo), (3) PlatformAdminPanel custom delete confirmation modal. 5 of 6 test groups PASS end-to-end via Playwright. Modal flow code-reviewed (correct) but UI flow blocked because only the (non-deletable) demo company exists in tenant — POST /api/saas/admin/companies via fetch returned error in eval. No regressions found. Login admin@empresa.com/123456 works; user is Super Admin so Plataforma tab visible.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "PlatformAdminPanel — Signups chart", "issues": ["Recharts emite warnings 'width(-1)/height(-1) should be > 0' (ResponsiveContainer dentro de div com height fixo 220px funciona, mas durante render inicial gera warning). Não afeta funcionalidade."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Opcional, prioridade BAIXA) Para permitir teste real do modal de delete em ambientes com apenas a demo company, considerar criar via seed um 2º tenant fake (TEST_DELETE) ou expor um endpoint admin para criar empresas de teste com auth simples. Atual implementação do modal está correta — apenas não foi exercitada via UI nesta iteração por falta de empresa não-demo."
+  ],
+  "critical_code_review_comments": [
+    "PlatformAdminPanel.js linha 50: state `confirmDelete = { ids: [...] }` armazenado como objeto — OK, mas usar apenas array de ids tornaria o código levemente mais simples (ConfirmDeleteModal só consome ids).",
+    "PlatformAdminPanel.js linhas 87-91: o `window.alert` após delete é UX pobre — em iteração futura considerar substituir por toast (consistente com resto do app).",
+    "PlatformAdminPanel.js linha 71: bloqueio de 'co-demo' usa `window.alert` enquanto o restante do flow já usa o modal customizado; checkbox da co-demo já vem desabilitado (linha 244), então este alert é defensivo/redundante — pode ser substituído por um console.warn ou removido.",
+    "AIHubPanel.js: AgentsTab agora é exportado (export function AgentsTab) e importado em SecretariaIaSection — OK. WhatsAppQRPanel e CentralIaDashboard ainda importados em AIHubPanel mas apenas WhatsAppQRPanel é usado no tab atual (whatsapp_qr); import de CentralIaDashboard parece morto (linha 10) já que tab='central_ia' não está mais em BASE_TABS — apenas referenciado em linha 140 que nunca executa. Sugerir remover import + condicional morta."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A (frontend-only)", "frontend": "95%" },
+  "test_credentials": "admin@empresa.com / 123456 (resolveu como SUPER ADMIN nesta tenant — Plataforma visível)",
+  "seed_data_creation": "Tentativa de POST /api/saas/admin/companies via page.evaluate falhou (TypeError stream already read no error path). Nenhum dado criado/modificado.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Resultados detalhados Playwright: TEST1 sidebar (✅ 'Atendimento IA' presente, 'ZapBot' ausente em todo DOM). TEST2 Sidebar 'Atendimento IA' → AIHubPanel render ✅, sub-tabs presentes: whatsapp_qr/mensagem/playground/dial/whatsapp(Cloud)/history; AUSENTES: aihub-tab-instancia, aihub-tab-agents ✅. TEST3 Sidebar 'Central IA' → mesma AIHubPanel sem Instância/Agentes ✅. TEST4 Topbar IA btn (ai-preventive-open-btn) → AICenterPanel modal → tab 'Secretária Ligo' → sub-tabs sec-tab-{chat,instancia,agents,gpt,drive,history} TODAS presentes ✅. TEST5 sec-tab-instancia mostra WhatsAppInstancePanel (Renomear instância 'Ligo', QR conectado, +5521965680949) — screenshot confirmou visualmente ✅. sec-tab-agents mostra AgentsTab CRUD (texto 'Agentes IA cadastrados' + botão aihub-new-agent-btn) ✅. TEST6 Modal de delete: PlatformAdminPanel renderiza com data-testid correto; platform-select-all checkbox presente; per-row checkboxes presentes; co-demo checkbox desabilitado corretamente (única empresa do tenant). Code review confirma: openDeleteModal seta state -> renderiza ConfirmDeleteModal (custom React, NÃO window.prompt nativo); input data-testid='confirm-delete-input', botões 'confirm-delete-cancel' e 'confirm-delete-confirm'; confirm-btn disabled={!valid || busy} onde valid = typed.trim() === 'APAGAR' (case-sensitive uppercase exato). Cancel chama onCancel→setConfirmDelete(null) fechando modal. Lógica está 100% correta — não foi possível exercitar a UI por falta de empresa não-demo selecionável. NO regressions encontradas.",
+  "rca of the issue": "N/A — todas as 3 mudanças (rename ZapBot, reorg sub-abas, modal customizado) estão implementadas corretamente. Único gap de teste é exercitar o modal end-to-end via UI por ausência de empresa não-demo no tenant — código foi validado por review."
+}

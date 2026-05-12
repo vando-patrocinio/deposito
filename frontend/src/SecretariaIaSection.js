@@ -12,8 +12,11 @@ import { Button, Card } from "@/ui";
 import {
   Send, Copy, RefreshCw, Eye, EyeOff, CheckCircle2, ExternalLink,
   Bot, User as UserIcon, History as HistoryIcon, Sparkles, HardDrive,
+  Smartphone,
 } from "lucide-react";
 import DriveBackupTab from "@/DriveBackupTab";
+import WhatsAppInstancePanel from "@/WhatsAppInstancePanel";
+import { AgentsTab } from "@/AIHubPanel";
 
 const SUGGESTIONS = [
   "oi minha Ligo, quantos clientes ativos eu tenho?",
@@ -28,9 +31,11 @@ export default function SecretariaIaSection() {
   const [tab, setTab] = useState("chat");
   return (
     <div data-testid="secretaria-section">
-      <div style={{ display: "flex", gap: 4, padding: 4, background: "#e2e8f0", borderRadius: 10, marginBottom: 14, maxWidth: 620 }}>
+      <div style={{ display: "flex", gap: 4, padding: 4, background: "#e2e8f0", borderRadius: 10, marginBottom: 14, flexWrap: "wrap" }}>
         {[
           { id: "chat", label: "Chat", icon: Bot },
+          { id: "instancia", label: "Instância", icon: Smartphone },
+          { id: "agents", label: "Agentes", icon: Sparkles },
           { id: "gpt", label: "GPT customizado", icon: Sparkles },
           { id: "drive", label: "Backup Drive", icon: HardDrive },
           { id: "history", label: "Histórico", icon: HistoryIcon },
@@ -40,7 +45,7 @@ export default function SecretariaIaSection() {
             data-testid={`sec-tab-${id}`}
             onClick={() => setTab(id)}
             style={{
-              flex: 1, padding: "8px 12px", border: "none", borderRadius: 8,
+              flex: "1 1 110px", padding: "8px 12px", border: "none", borderRadius: 8,
               background: tab === id ? "white" : "transparent",
               color: tab === id ? "#0f172a" : "#475569",
               fontWeight: 700, fontSize: 13, cursor: "pointer",
@@ -53,6 +58,8 @@ export default function SecretariaIaSection() {
         ))}
       </div>
       {tab === "chat" && <ChatTab />}
+      {tab === "instancia" && <WhatsAppInstancePanel />}
+      {tab === "agents" && <AgentsTab />}
       {tab === "gpt" && <GptSetupTab />}
       {tab === "drive" && <DriveBackupTab />}
       {tab === "history" && <HistoryTab />}

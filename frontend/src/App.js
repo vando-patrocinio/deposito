@@ -120,7 +120,7 @@ const NAV_GROUPS = [
     items: [
       { id: "ai-ranking", icon: Sparkles, label: "Avaliação IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "central-ia", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"] },
-      { id: "atendimento", icon: MessageCircle, label: "ZapBot", roles: ["gestor", "auditor", "administrador"] },
+      { id: "atendimento", icon: MessageCircle, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador"] },
     ],
   },
   {

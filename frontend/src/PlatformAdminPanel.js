@@ -47,6 +47,7 @@ export default function PlatformAdminPanel() {
   const [editing, setEditing] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null); // { ids: [...] }
 
   function reload() {
     return Promise.all([api.saasAdminMetrics(), api.saasListCompanies()])
@@ -62,7 +63,7 @@ export default function PlatformAdminPanel() {
     });
   }
 
-  async function handleBulkDelete(visibleIds) {
+  function openDeleteModal(visibleIds) {
     const ids = visibleIds.filter((id) => selected.has(id));
     if (!ids.length) return;
     const blocked = ids.filter((id) => id === "co-demo");
@@ -70,11 +71,10 @@ export default function PlatformAdminPanel() {
       window.alert("A empresa de demonstração (co-demo) não pode ser apagada. Desmarque-a.");
       return;
     }
-    const confirm = window.prompt(
-      `Você está prestes a APAGAR PERMANENTEMENTE ${ids.length} empresa(s) e TODOS os dados associados ` +
-      `(usuários, clientes, lousa, OLT, agentes IA, backups, etc).\n\nDigite "APAGAR" para confirmar.`
-    );
-    if (confirm !== "APAGAR") return;
+    setConfirmDelete({ ids });
+  }
+
+  async function executeBulkDelete(ids) {
     setDeleting(true);
     try {
       const r = await api.saasBulkDeleteCompanies(ids);
@@ -85,6 +85,7 @@ export default function PlatformAdminPanel() {
         msg += `\n\nFalhas (${fail.length}):\n` + fail.map((f) => `• ${f.id}: ${f.error}`).join("\n");
       }
       window.alert(msg);
+      setConfirmDelete(null);
       await reload();
     } catch (e) {
       window.alert("Erro: " + (e?.response?.data?.detail || e.message));
@@ -192,7 +193,7 @@ export default function PlatformAdminPanel() {
           >Limpar seleção</button>
           <span style={{ flex: 1 }} />
           <button
-            onClick={() => handleBulkDelete(filtered.map((c) => c.id))}
+            onClick={() => openDeleteModal(filtered.map((c) => c.id))}
             disabled={deleting}
             data-testid="platform-delete-selected"
             style={{
@@ -278,6 +279,110 @@ export default function PlatformAdminPanel() {
       </div>
 
       {editing && <EditCompanyModal company={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+      {confirmDelete && (
+        <ConfirmDeleteModal
+          companies={companies.filter((c) => confirmDelete.ids.includes(c.id))}
+          busy={deleting}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => executeBulkDelete(confirmDelete.ids)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConfirmDeleteModal({ companies, busy, onCancel, onConfirm }) {
+  const [typed, setTyped] = useState("");
+  const valid = typed.trim() === "APAGAR";
+  return (
+    <div
+      data-testid="confirm-delete-modal"
+      onClick={busy ? undefined : onCancel}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(15,23,42,.6)",
+        display: "grid", placeItems: "center", zIndex: 200, padding: 20,
+      }}
+    >
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "white", borderRadius: 18, padding: 28, maxWidth: 520, width: "100%",
+        boxShadow: "0 30px 60px rgba(15,23,42,.4)",
+      }}>
+        <div style={{
+          width: 52, height: 52, borderRadius: 14,
+          background: "#fee2e2", color: "#dc2626",
+          display: "grid", placeItems: "center", marginBottom: 14,
+          fontSize: 28,
+        }}>⚠️</div>
+
+        <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>
+          Apagar {companies.length} empresa(s)?
+        </h3>
+        <p style={{ margin: "8px 0 16px", fontSize: 13.5, color: "#475569", lineHeight: 1.55 }}>
+          Esta ação é <strong>irreversível</strong> e apagará permanentemente todos os dados associados
+          (usuários, clientes, lousa, OLT, agentes IA, backups, etc).
+        </p>
+
+        <div style={{
+          background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10,
+          padding: "10px 14px", marginBottom: 18, maxHeight: 140, overflowY: "auto",
+        }}>
+          {companies.map((c) => (
+            <div key={c.id} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              fontSize: 12.5, padding: "4px 0", color: "#0f172a",
+            }}>
+              <span style={{ fontWeight: 600 }}>{c.name}</span>
+              <code style={{ fontSize: 11, color: "#94a3b8" }}>{c.id}</code>
+            </div>
+          ))}
+        </div>
+
+        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          Digite <span style={{ color: "#dc2626", fontFamily: "monospace" }}>APAGAR</span> para confirmar
+        </label>
+        <input
+          type="text"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          autoFocus
+          disabled={busy}
+          data-testid="confirm-delete-input"
+          placeholder="APAGAR"
+          style={{
+            width: "100%", padding: "11px 14px", borderRadius: 10,
+            border: `1.5px solid ${valid ? "#10b981" : "#cbd5e1"}`,
+            fontSize: 14, outline: "none", boxSizing: "border-box",
+            fontFamily: "monospace", letterSpacing: "0.05em",
+            background: busy ? "#f8fafc" : "white",
+          }}
+          onKeyDown={(e) => { if (e.key === "Enter" && valid && !busy) onConfirm(); }}
+        />
+
+        <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            data-testid="confirm-delete-cancel"
+            style={{
+              flex: 1, padding: "11px 16px", borderRadius: 10,
+              border: "1px solid #cbd5e1", background: "white",
+              color: "#475569", fontSize: 13, fontWeight: 700,
+              cursor: busy ? "not-allowed" : "pointer",
+            }}
+          >Cancelar</button>
+          <button
+            onClick={onConfirm}
+            disabled={!valid || busy}
+            data-testid="confirm-delete-confirm"
+            style={{
+              flex: 1, padding: "11px 16px", borderRadius: 10, border: 0,
+              background: !valid || busy ? "#fca5a5" : "#dc2626",
+              color: "white", fontSize: 13, fontWeight: 800,
+              cursor: (!valid || busy) ? "not-allowed" : "pointer",
+            }}
+          >{busy ? "Apagando…" : `Apagar ${companies.length}`}</button>
+        </div>
+      </div>
     </div>
   );
 }
