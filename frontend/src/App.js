@@ -28,6 +28,7 @@ import EstoquePanel from "@/EstoquePanel";
 import AICenterPanel from "@/AICenterPanel";
 import AiRankingPanel from "@/AiRankingPanel";
 import AIHubPanel from "@/AIHubPanel";
+import CentralIaDashboard from "@/CentralIaDashboard";
 import NotificationsBell from "@/NotificationsBell";
 import OfflineTimeBanner from "@/OfflineTimeBanner";
 import ServerClock from "@/ServerClock";
@@ -772,7 +773,7 @@ function AppContent() {
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} />}
           {view === "estoque" && <EstoquePanel />}
           {view === "ai-ranking" && <AiRankingPanel />}
-          {view === "central-ia" && <AIHubPanel initialTab="central_ia" />}
+          {view === "central-ia" && <CentralIaDashboard />}
           {view === "atendimento" && <AIHubPanel initialTab="whatsapp_qr" />}
           {view === "cadastro" && <CadastroPanel />}
           {view === "subscribers" && <SubscribersPanel />}

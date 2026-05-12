@@ -7,7 +7,6 @@ import {
   Sparkles, Building2, DollarSign, Star, Wand2, ArrowUp, QrCode,
 } from "lucide-react";
 import WhatsAppQRPanel from "@/WhatsAppQRPanel";
-import CentralIaDashboard from "@/CentralIaDashboard";
 
 const BASE_TABS = [
   { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode, dynamic: true },
@@ -137,7 +136,6 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
         })}
       </div>
 
-      {tab === "central_ia" && <CentralIaDashboard />}
       {tab === "whatsapp_qr" && <WhatsAppQRPanel />}
       {tab === "mensagem" && <MensagemTab />}
       {tab === "playground" && <PlaygroundTab />}
