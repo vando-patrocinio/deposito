@@ -772,7 +772,7 @@ export default function AICenterPanel({ onClose }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 100, padding: 20, overflowY: "auto" }}>
       <div onClick={(e) => e.stopPropagation()} data-testid="ai-center-panel"
-           style={{ background: "#f8fafc", maxWidth: 1280, margin: "0 auto", borderRadius: 18, padding: 22, minHeight: "92vh" }}>
+           style={{ background: "#f8fafc", margin: "0", borderRadius: 18, padding: 22, minHeight: "92vh" }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
           <div>
