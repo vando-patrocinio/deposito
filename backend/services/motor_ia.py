@@ -469,7 +469,8 @@ async def get_agents_state(company_id: str) -> List[Dict[str, Any]]:
     """Retorna catálogo de agentes com estado atual (enabled + metadata)."""
     cur = db.ai_agent_switches.find(
         {"company_id": company_id},
-        {"_id": 0, "agent_id": 1, "enabled": 1, "updated_at": 1, "updated_by": 1},
+        {"_id": 0, "agent_id": 1, "enabled": 1, "updated_at": 1,
+         "updated_by": 1, "paused_until": 1},
     )
     state: Dict[str, Dict[str, Any]] = {}
     async for d in cur:
@@ -485,18 +486,25 @@ async def get_agents_state(company_id: str) -> List[Dict[str, Any]]:
             "enabled": bool(s.get("enabled", True)),
             "updated_at": s.get("updated_at"),
             "updated_by": s.get("updated_by"),
+            "paused_until": s.get("paused_until"),
         })
     return out
 
 
 async def set_agent_state(company_id: str, agent_id: str,
-                            enabled: bool, user_label: Optional[str] = None) -> Dict[str, Any]:
+                            enabled: bool, user_label: Optional[str] = None,
+                            paused_until: Optional[str] = None) -> Dict[str, Any]:
     """Persiste estado do kill-switch e registra histórico (auditoria).
+
+    Args:
+      paused_until: ISO datetime UTC. Se enabled=False e paused_until informado,
+        o auto-resume worker irá reativar automaticamente após essa hora.
+        Se enabled=True, paused_until é limpo.
+
     Lança ValueError se agent_id inválido."""
     if agent_id not in AGENT_IDS:
         raise ValueError(f"Agente desconhecido: {agent_id}")
 
-    # Lê estado atual pra detectar transição (e gravar histórico só se mudou)
     prev = await db.ai_agent_switches.find_one(
         {"company_id": company_id, "agent_id": agent_id},
         {"_id": 0, "enabled": 1},
@@ -505,19 +513,26 @@ async def set_agent_state(company_id: str, agent_id: str,
     changed = prev_enabled != bool(enabled)
 
     ts = now_iso()
+    set_doc = {
+        "enabled": bool(enabled),
+        "updated_at": ts,
+        "updated_by": user_label or "system",
+    }
+    # paused_until só faz sentido quando estamos PAUSANDO
+    if not enabled and paused_until:
+        set_doc["paused_until"] = paused_until
+    elif enabled:
+        # Limpa qualquer agendamento prévio ao reativar
+        set_doc["paused_until"] = None
+
     await db.ai_agent_switches.update_one(
         {"company_id": company_id, "agent_id": agent_id},
-        {"$set": {
-            "enabled": bool(enabled),
-            "updated_at": ts,
-            "updated_by": user_label or "system",
-        },
+        {"$set": set_doc,
          "$setOnInsert": {"company_id": company_id, "agent_id": agent_id}},
         upsert=True,
     )
 
     if changed:
-        # Grava histórico apenas em transições reais
         await db.ai_agent_switch_history.insert_one({
             "company_id": company_id,
             "agent_id": agent_id,
@@ -525,9 +540,11 @@ async def set_agent_state(company_id: str, agent_id: str,
             "enabled": bool(enabled),
             "changed_by": user_label or "system",
             "changed_at": ts,
+            "paused_until": paused_until if not enabled else None,
         })
 
-    return {"agent_id": agent_id, "enabled": bool(enabled), "changed": changed}
+    return {"agent_id": agent_id, "enabled": bool(enabled),
+              "changed": changed, "paused_until": paused_until if not enabled else None}
 
 
 async def get_agent_history(company_id: str, days: int = 30) -> List[Dict[str, Any]]:
@@ -539,3 +556,55 @@ async def get_agent_history(company_id: str, days: int = 30) -> List[Dict[str, A
         {"_id": 0},
     ).sort("changed_at", -1).limit(500)
     return [d async for d in cur]
+
+
+
+# ---------------------------------------------------------------------------
+# Auto-resume worker: reativa agentes quando `paused_until` vence
+# ---------------------------------------------------------------------------
+import asyncio  # noqa: E402
+
+_auto_resume_task: Optional[asyncio.Task] = None
+AUTO_RESUME_CHECK_SECONDS = 60
+
+
+async def _auto_resume_loop():
+    while True:
+        try:
+            from datetime import datetime, timezone
+            now_iso_str = datetime.now(timezone.utc).isoformat()
+            cursor = db.ai_agent_switches.find(
+                {"enabled": False,
+                 "paused_until": {"$ne": None, "$lt": now_iso_str}},
+                {"_id": 0, "company_id": 1, "agent_id": 1, "paused_until": 1},
+            )
+            async for doc in cursor:
+                try:
+                    await set_agent_state(
+                        doc["company_id"], doc["agent_id"],
+                        enabled=True, user_label="auto_resume",
+                    )
+                    logger.info(
+                        "[motor-ia] auto-resume %s/%s (paused_until=%s)",
+                        doc["company_id"], doc["agent_id"],
+                        doc.get("paused_until"))
+                except Exception as e:
+                    logger.warning("[motor-ia] auto-resume falhou: %s", e)
+        except Exception as e:
+            logger.exception("[motor-ia] auto-resume loop err: %s", e)
+        await asyncio.sleep(AUTO_RESUME_CHECK_SECONDS)
+
+
+def start_auto_resume_worker():
+    global _auto_resume_task
+    if _auto_resume_task and not _auto_resume_task.done():
+        return
+    _auto_resume_task = asyncio.create_task(_auto_resume_loop())
+    logger.info("[motor-ia] auto-resume worker iniciado (check %ds)",
+                  AUTO_RESUME_CHECK_SECONDS)
+
+
+def stop_auto_resume_worker():
+    global _auto_resume_task
+    if _auto_resume_task and not _auto_resume_task.done():
+        _auto_resume_task.cancel()

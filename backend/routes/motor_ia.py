@@ -350,6 +350,7 @@ async def budget_status(user: dict = Depends(require_role("gestor"))):
 
 class AgentSwitchIn(BaseModel):
     enabled: bool
+    paused_until_minutes: Optional[int] = Field(None, ge=1, le=24 * 60)
 
 
 @router.get("/agents")
@@ -365,13 +366,18 @@ async def list_agents(user: dict = Depends(require_role("gestor"))):
 @router.put("/agents/{agent_id}")
 async def toggle_agent(agent_id: str, payload: AgentSwitchIn,
                           user: dict = Depends(require_role("administrador"))):
-    """Liga/desliga um agente específico. Quando desligado, todas as
-    chamadas LLM daquele agente são rejeitadas com AgentDisabledError."""
+    """Liga/desliga um agente específico. Aceita `paused_until_minutes` para
+    pausa temporizada (auto-resume worker reativa após o prazo)."""
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    paused_until = None
+    if not payload.enabled and payload.paused_until_minutes:
+        paused_until = (datetime.now(timezone.utc)
+                          + timedelta(minutes=payload.paused_until_minutes)).isoformat()
     try:
         result = await set_agent_state(
             cid, agent_id, payload.enabled,
             user_label=user.get("name") or user.get("email") or user.get("id"),
+            paused_until=paused_until,
         )
     except ValueError as e:
         raise HTTPException(404, str(e)) from e
@@ -381,8 +387,8 @@ async def toggle_agent(agent_id: str, payload: AgentSwitchIn,
 @router.put("/agents/group/{group_name}")
 async def toggle_group(group_name: str, payload: AgentSwitchIn,
                           user: dict = Depends(require_role("administrador"))):
-    """Liga/desliga TODOS os agentes do grupo. Útil em manutenções programadas
-    (ex.: pausar 'Rede óptica' durante upgrade de OLT)."""
+    """Liga/desliga TODOS os agentes do grupo. Aceita `paused_until_minutes`
+    para pausa temporizada (auto-resume worker reativa após o prazo)."""
     from services.motor_ia import AGENT_CATALOG
     cid = user.get("company_id") or DEMO_COMPANY_ID
     user_label = user.get("name") or user.get("email") or user.get("id")
@@ -390,13 +396,19 @@ async def toggle_group(group_name: str, payload: AgentSwitchIn,
                   if (a.get("group") or "Outros") == group_name]
     if not affected:
         raise HTTPException(404, f"Grupo '{group_name}' não encontrado.")
+    paused_until = None
+    if not payload.enabled and payload.paused_until_minutes:
+        paused_until = (datetime.now(timezone.utc)
+                          + timedelta(minutes=payload.paused_until_minutes)).isoformat()
     changed: List[str] = []
     for aid in affected:
-        result = await set_agent_state(cid, aid, payload.enabled, user_label)
+        result = await set_agent_state(cid, aid, payload.enabled, user_label,
+                                          paused_until=paused_until)
         if result.get("changed"):
             changed.append(aid)
     return {"ok": True, "group": group_name, "affected": affected,
-              "changed": changed, "total": len(affected)}
+              "changed": changed, "total": len(affected),
+              "paused_until": paused_until}
 
 
 @router.get("/agents/history")
