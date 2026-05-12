@@ -1,9 +1,9 @@
 /* ============================================================
-   PontoIA — Design System (Swiss & High-Contrast, Enterprise 2026)
-   Fonts: Manrope (body) · JetBrains Mono (data)
-   Palette: Slate + Teal accent
+   SmartProv — Design System (Swiss & High-Contrast, ISP-focused 2026)
+   Display: Space Grotesk · Body: Inter · Mono: JetBrains Mono
+   Palette: Slate ink + Azure Blue accent (#0055FF)
    ============================================================ */
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -11,7 +11,7 @@
 
 :root {
   /* Surfaces */
-  --bg-app: #f6f7f9;
+  --bg-app: #f8fafc;
   --bg-surface: #ffffff;
   --bg-surface-2: #f1f5f9;
   --bg-surface-3: #e2e8f0;
@@ -20,43 +20,46 @@
   --bg-sidebar-active: #1c2433;
 
   /* Borders */
-  --border-default: #e6e8ee;
-  --border-strong: #d4d7df;
+  --border-default: #e2e8f0;
+  --border-strong: #cbd5e1;
   --border-sidebar: #1f2a3a;
 
   /* Text */
-  --text-primary: #0b1220;
+  --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-muted: #64748b;
   --text-onDark: #e2e8f0;
   --text-onDark-muted: #94a3b8;
 
-  /* Brand & accents */
-  --brand-primary: #0b1220;
-  --accent: #0d9488;       /* teal-600 */
-  --accent-hover: #0f766e; /* teal-700 */
-  --accent-soft: #ccfbf1;  /* teal-100 */
-  --accent-soft-fg: #115e59;
+  /* Brand & accents — SmartProv Azure Blue */
+  --brand-primary: #020617;          /* ink */
+  --brand-ink: #020617;
+  --accent: #0055ff;                 /* SmartProv Azure */
+  --accent-hover: #0044cc;
+  --accent-bright: #00c2ff;          /* cyan accent */
+  --accent-soft: #dbe6ff;            /* azure-50 */
+  --accent-soft-fg: #003db3;         /* azure-700 */
 
   /* Status */
-  --success: #16a34a;
-  --success-soft: #dcfce7;
-  --success-soft-fg: #15803d;
-  --warning: #d97706;
+  --success: #10b981;
+  --success-soft: #d1fae5;
+  --success-soft-fg: #047857;
+  --warning: #f59e0b;
   --warning-soft: #fef3c7;
   --warning-soft-fg: #92400e;
-  --danger: #dc2626;
+  --danger: #ef4444;
   --danger-soft: #fee2e2;
   --danger-soft-fg: #b91c1c;
   --info: #0369a1;
   --info-soft: #e0f2fe;
   --info-soft-fg: #075985;
 
-  /* Shadows (subtle, professional) */
-  --shadow-xs: 0 1px 2px rgba(11, 18, 32, 0.04);
-  --shadow-sm: 0 1px 3px rgba(11, 18, 32, 0.06), 0 1px 2px rgba(11, 18, 32, 0.04);
-  --shadow-md: 0 4px 12px rgba(11, 18, 32, 0.06);
-  --shadow-lg: 0 12px 28px rgba(11, 18, 32, 0.08);
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 12px 28px -10px rgba(15, 23, 42, 0.10);
+  --shadow-brand: 0 10px 30px -10px rgba(0, 85, 255, 0.35);
 
   /* Radius scale */
   --radius-sm: 6px;
@@ -64,82 +67,81 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
 
-  /* shadcn tokens (HSL) — keep mapped to palette */
-  --background: 220 14% 97%;
-  --foreground: 222 33% 8%;
+  /* shadcn tokens (HSL) — mapped to SmartProv palette */
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
   --card: 0 0% 100%;
-  --card-foreground: 222 33% 8%;
+  --card-foreground: 222 47% 11%;
   --popover: 0 0% 100%;
-  --popover-foreground: 222 33% 8%;
-  --primary: 222 33% 8%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 222 47% 11%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 16% 95%;
-  --secondary-foreground: 222 33% 8%;
-  --muted: 210 16% 95%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
   --muted-foreground: 215 16% 47%;
-  --accent: 175 84% 32%;
+  --accent: 222 100% 50%;         /* SmartProv Azure */
   --accent-foreground: 0 0% 100%;
-  --destructive: 0 72% 51%;
+  --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --border: 220 13% 92%;
-  --input: 220 13% 92%;
-  --ring: 175 84% 32%;
-  --chart-1: 175 84% 32%;
-  --chart-2: 217 91% 60%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 222 100% 50%;
+  --chart-1: 222 100% 50%;
+  --chart-2: 194 100% 50%;
   --chart-3: 38 92% 50%;
   --chart-4: 142 71% 45%;
-  --chart-5: 0 72% 51%;
+  --chart-5: 0 84% 60%;
   --radius: 0.5rem;
 }
 
 .dark {
-  --bg-app: #0b1220;
+  --bg-app: #020617;
   --bg-surface: #0f172a;
   --bg-surface-2: #111c33;
   --bg-surface-3: #1e293b;
   --border-default: #1f2a3a;
-  --border-strong: #2a374a;
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --border-strong: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
 
-  /* Status — soft backgrounds tuned for dark canvas */
-  --success-soft: rgba(22, 163, 74, 0.18);
-  --success-soft-fg: #4ade80;
-  --warning-soft: rgba(217, 119, 6, 0.20);
+  --success-soft: rgba(16, 185, 129, 0.18);
+  --success-soft-fg: #34d399;
+  --warning-soft: rgba(245, 158, 11, 0.20);
   --warning-soft-fg: #fbbf24;
-  --danger-soft: rgba(220, 38, 38, 0.20);
+  --danger-soft: rgba(239, 68, 68, 0.20);
   --danger-soft-fg: #f87171;
   --info-soft: rgba(3, 105, 161, 0.22);
   --info-soft-fg: #7dd3fc;
-  --accent-soft: rgba(13, 148, 136, 0.22);
-  --accent-soft-fg: #5eead4;
+  --accent-soft: rgba(0, 85, 255, 0.18);
+  --accent-soft-fg: #60a5fa;
 
-  /* Shadows in dark canvas need more contrast */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.40);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.30);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.55);
+  --shadow-brand: 0 10px 30px -10px rgba(0, 85, 255, 0.50);
 
-  --background: 222 33% 8%;
-  --foreground: 210 20% 92%;
-  --card: 222 33% 12%;
-  --card-foreground: 210 20% 92%;
-  --popover: 222 33% 12%;
-  --popover-foreground: 210 20% 92%;
-  --primary: 210 20% 92%;
-  --primary-foreground: 222 33% 8%;
-  --secondary: 222 25% 18%;
-  --secondary-foreground: 210 20% 92%;
-  --muted: 222 25% 18%;
+  --background: 222 47% 4%;
+  --foreground: 210 20% 95%;
+  --card: 222 47% 8%;
+  --card-foreground: 210 20% 95%;
+  --popover: 222 47% 8%;
+  --popover-foreground: 210 20% 95%;
+  --primary: 210 20% 95%;
+  --primary-foreground: 222 47% 4%;
+  --secondary: 222 25% 14%;
+  --secondary-foreground: 210 20% 95%;
+  --muted: 222 25% 14%;
   --muted-foreground: 215 16% 64%;
-  --accent: 175 70% 40%;
+  --accent: 222 100% 60%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 62% 45%;
   --destructive-foreground: 0 0% 100%;
   --border: 222 25% 18%;
   --input: 222 25% 18%;
-  --ring: 175 70% 40%;
+  --ring: 222 100% 60%;
 }
 
 /* Dark-mode adaptors for surfaces that hardcode #fff/#f8fafc backgrounds */
@@ -153,7 +155,7 @@ html, body, #root {
 
 body {
   margin: 0;
-  font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "ss01", "cv11";
@@ -163,6 +165,14 @@ body {
   line-height: 1.5;
 }
 
+/* Display headings use Space Grotesk for SmartProv brand identity */
+h1, h2, h3,
+.sp-display,
+.app-sidebar__brand-name {
+  font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
 code, pre, .mono, [data-mono] {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-feature-settings: "zero", "ss02";
@@ -170,10 +180,10 @@ code, pre, .mono, [data-mono] {
 
 /* Headings — tight, distinctive */
 h1, h2, h3, h4, h5 {
-  font-family: "Manrope", system-ui, sans-serif;
-  letter-spacing: -0.018em;
+  font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+  letter-spacing: -0.022em;
   color: var(--text-primary);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* Scrollbar refinement */
@@ -337,11 +347,12 @@ textarea.input { height: auto; min-height: 80px; padding: 10px 12px; resize: ver
 }
 .app-sidebar__brand-logo {
   width: 30px; height: 30px; border-radius: 8px;
-  background: linear-gradient(135deg, #14b8a6, #0d9488);
-  display: grid; place-items: center; color: #052e2a; font-weight: 800; font-size: 14px;
+  background: #fff;
+  display: grid; place-items: center; color: var(--brand-ink); font-weight: 700; font-size: 14px;
   letter-spacing: -0.04em;
+  font-family: "Space Grotesk", "Inter", sans-serif;
 }
-.app-sidebar__brand-name { font-weight: 700; font-size: 14px; letter-spacing: -0.01em; color: #fff; }
+.app-sidebar__brand-name { font-weight: 600; font-size: 15px; letter-spacing: -0.018em; color: #fff; font-family: "Space Grotesk", "Inter", sans-serif; }
 .app-sidebar__brand-tag { font-size: 11px; color: var(--text-onDark-muted); }
 .app-sidebar__nav { padding: 12px 10px 24px; flex: 1; }
 .app-sidebar__group { margin-top: 16px; }
@@ -373,8 +384,8 @@ textarea.input { height: auto; min-height: 80px; padding: 10px 12px; resize: ver
 .app-sidebar__link.is-active {
   background: var(--bg-sidebar-active);
   color: #fff;
-  border-color: rgba(13, 148, 136, 0.4);
-  box-shadow: inset 2px 0 0 0 #14b8a6;
+  border-color: rgba(0, 85, 255, 0.4);
+  box-shadow: inset 2px 0 0 0 var(--accent);
 }
 .app-sidebar__link svg { width: 16px; height: 16px; flex-shrink: 0; }
 .app-sidebar__footer {
