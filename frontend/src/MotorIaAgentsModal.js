@@ -180,70 +180,112 @@ export default function MotorIaAgentsModal({ onClose }) {
               <Loader2 size={14} className="animate-spin" /> Carregando agentes...
             </div>
           ) : (
-            agents.map((a) => (
-              <div key={a.id}
-                   data-testid={`agent-row-${a.id}`}
-                   style={{
-                     padding: "12px 22px",
-                     display: "flex", alignItems: "center", gap: 14,
-                     borderBottom: "1px solid var(--border-default, #f1f5f9)",
-                     opacity: a.enabled ? 1 : 0.65,
-                     transition: "opacity 0.2s",
-                   }}>
-                <div style={{
-                  width: 10, height: 10, borderRadius: "50%",
-                  background: a.enabled ? "#16a34a" : "#94a3b8",
-                  boxShadow: a.enabled ? "0 0 0 3px rgba(22,163,74,0.15)" : "none",
-                  flexShrink: 0,
-                }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700,
-                                  color: "var(--text-primary, #0f172a)" }}>
-                    {a.label}
-                    {!a.enabled && (
-                      <span style={{
-                        marginLeft: 8, fontSize: 10, fontWeight: 700,
-                        padding: "2px 7px", borderRadius: 999,
-                        background: "#fef2f2", color: "#be123c",
-                      }}>PAUSADO</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11.5, color: "var(--text-muted, #64748b)",
-                                  marginTop: 2, lineHeight: 1.4 }}>
-                    {a.description}
-                  </div>
-                  {a.updated_at && (
-                    <div style={{ fontSize: 10, color: "var(--text-muted, #94a3b8)",
-                                    marginTop: 3 }}>
-                      Última alteração: {new Date(a.updated_at).toLocaleString("pt-BR")}
-                      {a.updated_by && ` · por ${a.updated_by}`}
+            (() => {
+              // Agrupar por `group`, preservando ordem do catálogo
+              const groups = [];
+              const idx = {};
+              for (const a of agents) {
+                const g = a.group || "Outros";
+                if (!(g in idx)) {
+                  idx[g] = groups.length;
+                  groups.push({ name: g, items: [] });
+                }
+                groups[idx[g]].items.push(a);
+              }
+              return groups.map((g) => {
+                const offCount = g.items.filter((x) => !x.enabled).length;
+                return (
+                  <div key={g.name} data-testid={`agent-group-${g.name}`}>
+                    <div style={{
+                      padding: "10px 22px 6px",
+                      display: "flex", alignItems: "center",
+                      gap: 8, background: "var(--bg-surface, #fff)",
+                      position: "sticky", top: 0, zIndex: 2,
+                      fontSize: 10, fontWeight: 800,
+                      textTransform: "uppercase", letterSpacing: 0.6,
+                      color: "var(--text-muted, #64748b)",
+                      borderTop: "1px solid var(--border-default, #f1f5f9)",
+                    }}>
+                      <span style={{ color: "var(--text-primary, #0f172a)" }}>{g.name}</span>
+                      <span style={{ fontWeight: 600, opacity: 0.6 }}>
+                        · {g.items.length} agente(s)
+                      </span>
+                      {offCount > 0 && (
+                        <span style={{
+                          padding: "1px 6px", borderRadius: 999,
+                          background: "#fef2f2", color: "#be123c",
+                          fontSize: 9,
+                        }}>{offCount} OFF</span>
+                      )}
                     </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => toggle(a)}
-                  disabled={pendingId === a.id}
-                  data-testid={`agent-toggle-${a.id}`}
-                  style={{
-                    position: "relative", width: 46, height: 24,
-                    borderRadius: 999, border: 0, cursor: pendingId ? "wait" : "pointer",
-                    background: a.enabled ? "#16a34a" : "#cbd5e1",
-                    transition: "background 0.2s", flexShrink: 0,
-                  }}
-                >
-                  <div style={{
-                    position: "absolute", top: 2,
-                    left: a.enabled ? 24 : 2,
-                    width: 20, height: 20, borderRadius: "50%",
-                    background: "#fff", transition: "left 0.2s",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                    display: "grid", placeItems: "center",
-                  }}>
-                    {pendingId === a.id && <Loader2 size={11} className="animate-spin" color="#64748b" />}
+                    {g.items.map((a) => (
+                      <div key={a.id}
+                           data-testid={`agent-row-${a.id}`}
+                           style={{
+                             padding: "12px 22px",
+                             display: "flex", alignItems: "center", gap: 14,
+                             borderBottom: "1px solid var(--border-default, #f1f5f9)",
+                             opacity: a.enabled ? 1 : 0.65,
+                             transition: "opacity 0.2s",
+                           }}>
+                        <div style={{
+                          width: 10, height: 10, borderRadius: "50%",
+                          background: a.enabled ? "#16a34a" : "#94a3b8",
+                          boxShadow: a.enabled ? "0 0 0 3px rgba(22,163,74,0.15)" : "none",
+                          flexShrink: 0,
+                        }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700,
+                                          color: "var(--text-primary, #0f172a)" }}>
+                            {a.label}
+                            {!a.enabled && (
+                              <span style={{
+                                marginLeft: 8, fontSize: 10, fontWeight: 700,
+                                padding: "2px 7px", borderRadius: 999,
+                                background: "#fef2f2", color: "#be123c",
+                              }}>PAUSADO</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 11.5, color: "var(--text-muted, #64748b)",
+                                          marginTop: 2, lineHeight: 1.4 }}>
+                            {a.description}
+                          </div>
+                          {a.updated_at && (
+                            <div style={{ fontSize: 10, color: "var(--text-muted, #94a3b8)",
+                                            marginTop: 3 }}>
+                              Última alteração: {new Date(a.updated_at).toLocaleString("pt-BR")}
+                              {a.updated_by && ` · por ${a.updated_by}`}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => toggle(a)}
+                          disabled={pendingId === a.id}
+                          data-testid={`agent-toggle-${a.id}`}
+                          style={{
+                            position: "relative", width: 46, height: 24,
+                            borderRadius: 999, border: 0, cursor: pendingId ? "wait" : "pointer",
+                            background: a.enabled ? "#16a34a" : "#cbd5e1",
+                            transition: "background 0.2s", flexShrink: 0,
+                          }}
+                        >
+                          <div style={{
+                            position: "absolute", top: 2,
+                            left: a.enabled ? 24 : 2,
+                            width: 20, height: 20, borderRadius: "50%",
+                            background: "#fff", transition: "left 0.2s",
+                            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                            display: "grid", placeItems: "center",
+                          }}>
+                            {pendingId === a.id && <Loader2 size={11} className="animate-spin" color="#64748b" />}
+                          </div>
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                </button>
-              </div>
-            ))
+                );
+              });
+            })()
           )}
         </div>
         </>

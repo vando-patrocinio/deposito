@@ -1,5 +1,31 @@
 # PontoIA — Changelog
 
+## Feb 11, 2026 — Agrupamento de Agentes no Painel (6 grupos lógicos)
+
+### Backend (`services/motor_ia.py`)
+- Adicionado campo `group` no `AGENT_CATALOG` para cada agente:
+  - **Rede óptica**: `smartolt_ai`, `proactive_outage_context`
+  - **Operação · Lousa**: `sentinela_lousa`, `lousa_triagem`
+  - **Atendimento**: `copilot_ai`, `isabella_whatsapp`, `voice_ai`
+  - **Qualidade**: `central_ia_eval`, `central_ia_coach`
+  - **AI Hub**: `aihub_chat`, `aihub_textgen`
+  - **Insights & Analytics**: `ai_dashboard_insight`, `churn_insight`
+- Reordenado catálogo para que agentes do mesmo grupo fiquem adjacentes
+- `get_agents_state()` agora retorna `group` em cada agente (default `"Outros"`)
+
+### Frontend (`MotorIaAgentsModal.js`)
+- Lista renderiza com **cabeçalho sticky** por grupo (uppercase pequeno, contador de agentes + badge "X OFF" se houver pausados)
+- Ordem dos grupos preserva ordem do catálogo (não alfabético)
+- Mantém compatibilidade total — `data-testid` antigo (`agent-row-{id}`, `agent-toggle-{id}`) preservado
+
+### Validação ✓
+- `GET /agents` retorna 13 agentes em 6 grupos
+- Frontend renderiza com cabeçalhos por grupo
+- Lint frontend + backend limpos
+
+---
+
+
 ## Feb 11, 2026 — Contexto de pane redigido pelo Claude (linguagem natural)
 
 ### Backend (`services/proactive_alerts.py`)
