@@ -411,6 +411,14 @@ function AttendantsCard({ items }) {
           <tbody>
             {items.map((a) => {
               const clickable = !a.is_ai && a.user_id;
+              const csat = a.csat_avg;
+              const neg = a.negative_count || 0;
+              /* Em risco: CSAT < 3.5 OU 2+ sentimentos negativos em 7 dias.
+                 Ignora atendentes IA (a IA tem ranking/ARR próprio). */
+              const atRisk = !a.is_ai && ((csat != null && csat < 3.5) || neg >= 2);
+              const riskReasons = [];
+              if (csat != null && csat < 3.5) riskReasons.push(`CSAT ${csat} < 3.5`);
+              if (neg >= 2) riskReasons.push(`${neg} clientes insatisfeitos`);
               return (
               <tr key={a.user_id || a.name}
                   data-testid={clickable ? `ci-attendant-row-${a.user_id}` : undefined}
@@ -422,6 +430,7 @@ function AttendantsCard({ items }) {
                   title={clickable ? `Abrir conversas de ${a.name} no Atendimento IA` : undefined}
                   style={{
                     borderTop: "1px solid var(--border-default)",
+                    borderLeft: atRisk ? "3px solid #dc2626" : "3px solid transparent",
                     cursor: clickable ? "pointer" : "default",
                     transition: "background .12s",
                   }}
@@ -453,6 +462,20 @@ function AttendantsCard({ items }) {
                                       background: "rgba(13,148,136,.15)", color: "#0d9488",
                                       padding: "1px 6px", borderRadius: 999 }}>
                         IA
+                      </span>
+                    )}
+                    {atRisk && (
+                      <span
+                        data-testid={`ci-attendant-risk-${a.user_id}`}
+                        title={`Em risco: ${riskReasons.join(" · ")}. Clique para abrir as conversas.`}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 3,
+                          fontSize: 9, fontWeight: 800,
+                          background: "#fee2e2", color: "#991b1b",
+                          padding: "1px 7px", borderRadius: 999,
+                          letterSpacing: "0.04em", textTransform: "uppercase",
+                        }}>
+                        <AlertTriangle size={9} strokeWidth={2.5} /> Em risco
                       </span>
                     )}
                   </div>
