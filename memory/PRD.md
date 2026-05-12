@@ -109,6 +109,14 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ Pytest backend + ESLint frontend ativos
 
 
+✅ **Modal customizado de delete + Reorganização Atendimento IA** (12/05/2026 — iter53):
+- **PlatformAdminPanel**: substituído `window.prompt("APAGAR")` por modal React (`ConfirmDeleteModal`) com input de texto, validação `typed === "APAGAR"` (case-sensitive), lista de empresas afetadas, botões Cancelar/Apagar (`data-testid: confirm-delete-modal/input/cancel/confirm`).
+- **Sidebar**: renomeado `ZapBot` → `Atendimento IA` em `App.js` (item id `atendimento`) e em `TabPermissionsCard.TAB_DEFINITIONS`.
+- **AIHubPanel sub-tabs limpadas**: removidas `Instância` (WhatsAppInstancePanel) e `Agentes` (AgentsTab) das `BASE_TABS`. Restam: WhatsApp · Mensagem · Playground · Discar · WhatsApp Cloud · Histórico.
+- **Secretária Ligo (`SecretariaIaSection`)**: adicionadas sub-tabs `sec-tab-instancia` e `sec-tab-agents` — importa `WhatsAppInstancePanel` e `AgentsTab` (este último agora exportado via `export function AgentsTab` em `AIHubPanel.js`).
+- Testing agent iter53: 95% success rate (5/6 grupos PASS via Playwright; o 6º — exercitar delete modal end-to-end — não testado porque o tenant só tem co-demo (não-deletável), mas code review confirmou correção da implementação). Sem regressões.
+
+
 ## Próximas (P2)
 - Refatorar `routes/lousa.py` (>2400 linhas) e `CadastroPanel.js` (>1200 linhas)
 - Melhorar matching Atlaz↔SmartOLT para chegar próximo de 100% (ainda 11/20 unmatched)
