@@ -1,0 +1,204 @@
+"""Rotas da Secretária IA "Ligo".
+
+- POST /api/secretaria/ask          → chat interno (auth)
+- GET  /api/secretaria/config       → token webhook (gestor)
+- POST /api/secretaria/regenerate-token  → rotaciona token
+- POST /api/secretaria/webhook/chatgpt   → para GPT customizado (bearer)
+- GET  /api/secretaria/openapi.json      → spec OpenAPI 3.1 para GPT Actions
+- GET  /api/secretaria/logs              → histórico de perguntas
+"""
+from __future__ import annotations
+
+import logging
+import os
+import secrets as _secrets
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import BaseModel
+
+from core import DEMO_COMPANY_ID, get_current_user, require_role
+from database import db
+from services.secretaria_ia import ask as secretaria_ask
+
+logger = logging.getLogger("routes.secretaria")
+router = APIRouter(prefix="/api/secretaria", tags=["secretaria"])
+
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+class AskIn(BaseModel):
+    question: str
+    channel: Optional[str] = "internal"
+
+
+class WebhookAskIn(BaseModel):
+    question: str
+    asker: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+async def _get_or_create_config(company_id: str) -> dict:
+    """Lê (ou cria) a config da Secretária. Inclui o webhook_token."""
+    doc = await db.secretaria_config.find_one({"company_id": company_id}, {"_id": 0})
+    if not doc:
+        doc = {
+            "company_id": company_id,
+            "webhook_token": _secrets.token_urlsafe(32),
+            "enabled": True,
+        }
+        await db.secretaria_config.insert_one(dict(doc))
+    return doc
+
+
+async def _company_by_token(token: str) -> Optional[str]:
+    """Resolve company_id a partir do bearer token do webhook."""
+    if not token:
+        return None
+    doc = await db.secretaria_config.find_one(
+        {"webhook_token": token}, {"_id": 0, "company_id": 1, "enabled": 1}
+    )
+    if not doc or not doc.get("enabled"):
+        return None
+    return doc.get("company_id")
+
+
+# ---------------------------------------------------------------------------
+# Internal (autenticado)
+# ---------------------------------------------------------------------------
+@router.post("/ask")
+async def api_ask(payload: AskIn, user: dict = Depends(get_current_user)):
+    """Chat interno — usado pela UI do sistema."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    return await secretaria_ask(cid, payload.question,
+                                  channel=payload.channel or "internal",
+                                  who=user.get("email") or user.get("name"))
+
+
+@router.get("/config")
+async def get_config(user: dict = Depends(require_role("gestor"))):
+    """Devolve a configuração da Secretária (token webhook etc.) — apenas gestor."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_or_create_config(cid)
+    backend_url = os.environ.get("PUBLIC_BACKEND_URL") or ""
+    return {
+        "enabled": bool(cfg.get("enabled", True)),
+        "webhook_token": cfg.get("webhook_token"),
+        "webhook_url": f"{backend_url}/api/secretaria/webhook/chatgpt" if backend_url else "/api/secretaria/webhook/chatgpt",
+        "openapi_url": f"{backend_url}/api/secretaria/openapi.json" if backend_url else "/api/secretaria/openapi.json",
+    }
+
+
+@router.post("/regenerate-token")
+async def regenerate_token(user: dict = Depends(require_role("gestor"))):
+    """Rotaciona o token (invalida o GPT customizado antigo)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    new_token = _secrets.token_urlsafe(32)
+    await db.secretaria_config.update_one(
+        {"company_id": cid},
+        {"$set": {"webhook_token": new_token}},
+        upsert=True,
+    )
+    return {"webhook_token": new_token}
+
+
+@router.get("/logs")
+async def list_logs(user: dict = Depends(require_role("gestor")), limit: int = 50):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cur = db.secretaria_log.find(
+        {"company_id": cid},
+        {"_id": 0, "id": 1, "channel": 1, "who": 1, "question": 1, "answer": 1,
+         "iterations": 1, "elapsed_ms": 1, "created_at": 1},
+    ).sort("created_at", -1).limit(min(limit, 200))
+    return {"items": await cur.to_list(min(limit, 200))}
+
+
+# ---------------------------------------------------------------------------
+# Webhook público (bearer) — usado pelo GPT customizado do ChatGPT
+# ---------------------------------------------------------------------------
+@router.post("/webhook/chatgpt")
+async def webhook_chatgpt(
+    payload: WebhookAskIn,
+    authorization: Optional[str] = Header(None),
+):
+    """Endpoint chamado pelo "GPT customizado" via Actions.
+
+    Auth: header `Authorization: Bearer <webhook_token>`. O token é gerado por
+    empresa e visível em /api/secretaria/config (apenas pro gestor).
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Missing bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+    cid = await _company_by_token(token)
+    if not cid:
+        raise HTTPException(403, "Invalid or revoked token")
+    return await secretaria_ask(cid, payload.question or "",
+                                  channel="chatgpt",
+                                  who=payload.asker or "chatgpt")
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI 3.1 spec — usado para criar Actions no GPT Builder
+# ---------------------------------------------------------------------------
+@router.get("/openapi.json")
+async def openapi_for_gpt(request: Request):
+    """Devolve uma spec OpenAPI 3.1 mínima para o GPT customizado."""
+    base = os.environ.get("PUBLIC_BACKEND_URL") or str(request.base_url).rstrip("/")
+    return {
+        "openapi": "3.1.0",
+        "info": {
+            "title": "Secretária IA - Ligo",
+            "description": "Assistente executiva da operação ISP. Pergunte qualquer coisa sobre clientes, lousa, OLT, técnicos, churn, agentes IA.",
+            "version": "1.0.0",
+        },
+        "servers": [{"url": base}],
+        "paths": {
+            "/api/secretaria/webhook/chatgpt": {
+                "post": {
+                    "operationId": "askLigo",
+                    "summary": "Pergunte à Secretária IA",
+                    "description": "Envia uma pergunta em linguagem natural e recebe a resposta da Ligo (em pt-BR).",
+                    "security": [{"bearerAuth": []}],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "question": {"type": "string", "description": "Pergunta do gestor."},
+                                        "asker": {"type": "string", "description": "Nome de quem está perguntando (opcional)."},
+                                    },
+                                    "required": ["question"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Resposta da Ligo",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "answer": {"type": "string"},
+                                            "iterations": {"type": "integer"},
+                                        },
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            }
+        },
+        "components": {
+            "securitySchemes": {
+                "bearerAuth": {"type": "http", "scheme": "bearer"}
+            }
+        },
+    }

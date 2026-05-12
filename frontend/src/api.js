@@ -549,4 +549,13 @@ export const api = {
     client.post(`/plans/scheduled-adjustments/${sid}/notify`, body).then((r) => r.data),
   planAdjustmentHistory: (id) =>
     client.get(`/plans/${id}/adjustment/history`).then((r) => r.data),
+
+  // ===== Secretária IA "Ligo" =====
+  secretariaAsk: (question, channel = "internal") =>
+    client.post(`/secretaria/ask`, { question, channel }).then((r) => r.data),
+  secretariaConfig: () => client.get(`/secretaria/config`).then((r) => r.data),
+  secretariaRegenerateToken: () =>
+    client.post(`/secretaria/regenerate-token`).then((r) => r.data),
+  secretariaLogs: (limit = 50) =>
+    client.get(`/secretaria/logs`, { params: { limit } }).then((r) => r.data),
 };

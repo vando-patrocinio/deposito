@@ -454,10 +454,21 @@ async def handle_manager_message(company_id: str, phone: str,
     elif intent == "tickets_today":
         reply = await _cmd_tickets_today(company_id)
     else:
-        reply = (
-            "Não reconheci esse comando. Envie *ajuda* para ver as opções "
-            "disponíveis."
-        )
+        # FALLBACK: pergunta livre → Secretária IA "Ligo" responde com tool-use
+        try:
+            from services.secretaria_ia import ask as secretaria_ask
+            sec = await secretaria_ask(company_id, text, channel="whatsapp", who=phone)
+            reply = sec.get("answer") or (
+                "Não reconheci esse comando. Envie *ajuda* para ver as opções "
+                "disponíveis."
+            )
+            intent = "secretaria_qa"
+        except Exception as e:
+            logger.warning("[manager-assistant] secretaria fallback fail: %s", e)
+            reply = (
+                "Não reconheci esse comando. Envie *ajuda* para ver as opções "
+                "disponíveis."
+            )
 
     # 4) Audit log (best-effort)
     try:

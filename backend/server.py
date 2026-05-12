@@ -71,6 +71,7 @@ from routes import (
     vehicle_checklist as routes_vehicle_checklist,
     stok as routes_stok,
     users as routes_users,
+    secretaria as routes_secretaria,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -344,6 +345,7 @@ app.include_router(routes_plans.router)
 app.include_router(routes_branding.router)
 app.include_router(routes_collab_assets.router)
 app.include_router(routes_vehicle_checklist.router)
+app.include_router(routes_secretaria.router)
 
 app.add_middleware(
     CORSMiddleware,

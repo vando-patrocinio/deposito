@@ -83,6 +83,9 @@ AGENT_CATALOG: List[Dict[str, str]] = [
     {"id": "churn_insight",       "label": "Churn Insight",
      "group": "Insights & Analytics",
      "description": "Briefing executivo do dashboard de churn (Claude Sonnet 4.5)."},
+    {"id": "secretaria_ia",       "label": "Secretária IA (Ligo)",
+     "group": "Assistente Executivo",
+     "description": "Assistente executiva. Responde perguntas do gestor sobre dados do sistema, integrada ao WhatsApp e GPT customizado."},
 ]
 AGENT_IDS = {a["id"] for a in AGENT_CATALOG}
 

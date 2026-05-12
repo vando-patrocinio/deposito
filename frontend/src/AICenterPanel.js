@@ -6,6 +6,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import AIPreventivePanel from "@/AIPreventivePanel";
 import SoftphoneSection from "@/SoftphoneSection";
+import SecretariaIaSection from "@/SecretariaIaSection";
 
 // Fix marker icons (compat with react-leaflet)
 delete L.Icon.Default.prototype._getIconUrl;
@@ -17,6 +18,7 @@ L.Icon.Default.mergeOptions({
 
 const SUB_TABS = [
   { id: "overview", label: "Overview" },
+  { id: "secretaria", label: "Secretária Ligo" },
   { id: "softphone", label: "Softphone SIP" },
   { id: "preventive", label: "Preventivas" },
   { id: "tech_spending", label: "Gastos/Técnico" },
@@ -749,6 +751,7 @@ function ManufacturerQualitySection({ days }) {
 // ============================================================
 const TAB_COMPONENTS = {
   overview: OverviewSection,
+  secretaria: SecretariaIaSection,
   softphone: SoftphoneSection,
   tech_spending: TechSpendingSection,
   repair_map: RepairMapSection,
