@@ -4,6 +4,33 @@ import { api } from "@/api";
 const TOKEN_KEY = "ponto_token";
 const AuthCtx = createContext(null);
 
+// Chaves do localStorage QUE PERTENCEM AO USUÁRIO (limpas no logout).
+// IMPORTANTE: nunca incluir aqui chaves "de dispositivo" como theme ou device_id —
+// elas são preferências do navegador, não do usuário.
+const USER_SCOPED_KEYS = [
+  "ponto_token",            // JWT principal
+  "ponto_active_company",   // empresa selecionada pelo super_admin
+  "ponto_active_tab",       // última aba aberta no app
+  "ponto_onboarding_done",  // flag de onboarding completo
+  "collab_token",           // sessão do colaborador (PWA)
+  "collab_id",              // id do colaborador logado
+];
+// Chaves do sessionStorage (mais simples — mata tudo)
+const USER_SCOPED_SESSION_KEYS = [
+  "ponto_mode",
+];
+
+// Limpa TODOS os dados do usuário anterior. Chamado em logout e antes de cada login.
+function purgeUserState() {
+  if (typeof window === "undefined") return;
+  try {
+    USER_SCOPED_KEYS.forEach((k) => window.localStorage.removeItem(k));
+    USER_SCOPED_SESSION_KEYS.forEach((k) => window.sessionStorage.removeItem(k));
+  } catch (e) {
+    console.warn("purgeUserState failed", e);
+  }
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => (typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null));
   const [user, setUser] = useState(null);
@@ -28,6 +55,7 @@ export function AuthProvider({ children }) {
         if (!cancelled) {
           setToken(null);
           setUser(null);
+          purgeUserState();
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -39,6 +67,8 @@ export function AuthProvider({ children }) {
   }, [token]);
 
   const login = useCallback(async (email, password) => {
+    // Antes de aceitar credenciais, limpa qualquer resíduo de outro usuário.
+    purgeUserState();
     const r = await api.login(email, password);
     setToken(r.access_token);
     setUser(r.user);
@@ -46,6 +76,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const loginWithGoogle = useCallback(async (session_id) => {
+    purgeUserState();
     const r = await api.googleLogin(session_id);
     setToken(r.access_token);
     setUser(r.user);
@@ -76,8 +107,16 @@ export function AuthProvider({ children }) {
   }, [loginWithGoogle]);
 
   const logout = useCallback(() => {
+    // Tenta avisar o backend (best-effort — não bloqueia se falhar)
+    try { api.logout?.(); } catch { /* ignore */ }
     setToken(null);
     setUser(null);
+    purgeUserState();
+    // Hard reload pra garantir que toda memória do app (axios cache, SWR, polling,
+    // event sources, timers) seja descartada. Single-user-per-device garantido.
+    if (typeof window !== "undefined") {
+      window.location.replace("/login");
+    }
   }, []);
 
   const impersonate = useCallback(async (uid) => {

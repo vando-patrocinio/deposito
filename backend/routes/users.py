@@ -60,10 +60,34 @@ async def login(payload: LoginIn):
         raise HTTPException(401, "E-mail ou senha incorretos")
     await record_login_attempt(db, email, success=True)
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    token = create_access_token(user["id"], user["email"], user["role"], company_id=cid)
+    # Session singleton: gera novo SID e grava no user. Qualquer JWT anterior
+    # com SID diferente vira inválido no get_current_user.
+    sid = uuid.uuid4().hex
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"active_session_id": sid, "last_login_at": now_iso()}},
+    )
+    token = create_access_token(user["id"], user["email"], user["role"], company_id=cid, session_id=sid)
     user.pop("_id", None)
     user.pop("password_hash", None)
+    user["active_session_id"] = sid
     return {"ok": True, "access_token": token, "user": user}
+
+
+@router.post("/auth/logout")
+async def logout(user: dict = Depends(get_current_user)):
+    """Invalida a sessão atual: limpa active_session_id no user.
+
+    Como o JWT é stateless, o efeito real é: o próximo request que usar
+    este token recebe 401 ("Sessão substituída por novo login") porque o
+    SID gravado deixou de bater. Combinado com o purge do frontend,
+    garante single-user-per-device.
+    """
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"active_session_id": None, "last_logout_at": now_iso()}},
+    )
+    return {"ok": True}
 
 
 class GoogleLoginIn(BaseModel):
@@ -159,11 +183,6 @@ async def google_login(payload: GoogleLoginIn):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     token = create_access_token(user["id"], user["email"], user["role"], company_id=cid)
     return {"ok": True, "access_token": token, "user": user, "super_admin": is_super}
-
-
-@router.post("/auth/logout")
-async def logout(_user: dict = Depends(get_current_user)):
-    return {"ok": True}
 
 
 @router.get("/auth/me")

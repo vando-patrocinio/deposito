@@ -8,6 +8,9 @@ export default function LoginPage({ onBack }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Mostra aviso quando o usuário cai aqui após sessão invalidada (login em outro device)
+  const sessionExpired = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("session_expired") === "1";
 
   async function submit(e) {
     e?.preventDefault?.();
@@ -58,15 +61,27 @@ export default function LoginPage({ onBack }) {
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
             <div style={{
               width: 36, height: 36, borderRadius: 10,
-              background: "linear-gradient(135deg, #14b8a6, #0d9488)",
-              display: "grid", placeItems: "center", color: "#052e2a",
-              fontSize: 16, fontWeight: 800, letterSpacing: "-0.04em",
-            }}>P</div>
+              background: "#020617",
+              display: "grid", placeItems: "center", color: "#fff",
+              fontSize: 16, fontWeight: 700, letterSpacing: "-0.04em",
+              fontFamily: "'Space Grotesk', 'Inter', sans-serif",
+            }}>S</div>
             <div>
               <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text-primary)" }}>SmartProv</div>
               <div style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.04em", textTransform: "uppercase", fontWeight: 600 }}>Operações ISP</div>
             </div>
           </div>
+
+          {sessionExpired && (
+            <div data-testid="session-expired-banner" style={{
+              padding: "10px 14px", borderRadius: 8,
+              background: "var(--warning-soft)", color: "var(--warning-soft-fg)",
+              border: "1px solid rgba(245,158,11,.3)",
+              fontSize: 12.5, marginBottom: 16, lineHeight: 1.5,
+            }}>
+              <strong>Sua sessão expirou.</strong> Outro acesso foi feito com a mesma conta ou seu token venceu. Entre novamente.
+            </div>
+          )}
 
           <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.025em", margin: "0 0 6px" }}>Bem-vindo de volta</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: 14, margin: "0 0 28px" }}>

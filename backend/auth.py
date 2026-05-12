@@ -40,7 +40,8 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(user_id: str, email: str, role: str,
                         company_id: Optional[str] = None,
-                        impersonator: Optional[dict] = None) -> str:
+                        impersonator: Optional[dict] = None,
+                        session_id: Optional[str] = None) -> str:
     payload: dict = {
         "sub": user_id,
         "email": email,
@@ -52,6 +53,12 @@ def create_access_token(user_id: str, email: str, role: str,
     }
     if impersonator:
         payload["impersonator"] = impersonator
+    if session_id:
+        # SID identifica unicamente a sessão. Quando o usuário loga de novo
+        # (mesmo ou outro dispositivo), um novo SID é gerado e gravado em
+        # users.active_session_id; tokens com SID antigo viram inválidos
+        # (single-user-per-account, ou single-session-per-user).
+        payload["sid"] = session_id
     return jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALGORITHM)
 
 
@@ -161,6 +168,17 @@ def make_dependencies(get_db_callable):
         user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
         if not user or not user.get("active", True):
             raise HTTPException(401, "Usuário inativo ou inexistente")
+        # Session singleton: o usuário só tem 1 sessão ativa por vez.
+        #  - users.active_session_id == None  →  sessão foi explicitamente encerrada (logout).
+        #  - SID do token != SID atual do user → outro login substituiu esta sessão.
+        # Em ambos os casos, o token é considerado obsoleto.
+        token_sid = payload.get("sid")
+        active_sid = user.get("active_session_id")
+        if token_sid:
+            if not active_sid:
+                raise HTTPException(401, "Sessão encerrada")
+            if token_sid != active_sid:
+                raise HTTPException(401, "Sessão substituída por novo login")
         # Anexa company_id (do JWT ou do user doc) — fallback para demo
         user["company_id"] = payload.get("company_id") or user.get("company_id") or "co-demo"
         # Super admin: respeita header X-Active-Company para drill-down em painel

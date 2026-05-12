@@ -17,15 +17,28 @@ client.interceptors.request.use((cfg) => {
   return cfg;
 });
 
-// Interceptor de resposta: 401 → limpa token (AuthContext detecta e volta para login)
+// Interceptor de resposta:
+//  - 401 em endpoints autenticados → limpa estado do usuário e força redirect ao /login.
+//  - Não dispara em /auth/login nem /auth/logout (esses tratam o erro localmente).
 client.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err?.response?.status === 401 && typeof window !== "undefined") {
       const url = err?.config?.url || "";
-      // Não dispara logout em /auth/login (senão login com senha errada zera tudo)
-      if (!url.includes("/auth/login")) {
-        window.localStorage.removeItem("ponto_token");
+      const isAuthEndpoint = url.includes("/auth/login") || url.includes("/auth/logout") || url.includes("/auth/google-login");
+      if (!isAuthEndpoint) {
+        // Mesmas chaves de USER_SCOPED_KEYS do AuthContext (evita import circular).
+        ["ponto_token", "ponto_active_company", "ponto_active_tab",
+         "ponto_onboarding_done", "collab_token", "collab_id"].forEach((k) => {
+          try { window.localStorage.removeItem(k); } catch { /* ignore */ }
+        });
+        // Hard redirect: garante que toda memória do app é descartada.
+        // Se já está em /login ou na landing, não recarrega (evita loop).
+        const path = window.location.pathname || "";
+        const isLoginPath = path === "/login" || path === "/" || path === "/preview" || path === "/demo";
+        if (!isLoginPath) {
+          window.location.replace("/login?session_expired=1");
+        }
       }
     }
     return Promise.reject(err);
@@ -95,6 +108,7 @@ export const api = {
   // Auth
   adminLogin: (password) => client.post("/auth/admin-login", { password }).then((r) => r.data),
   login: (email, password) => client.post("/auth/login", { email, password }).then((r) => r.data),
+  logout: () => client.post("/auth/logout").then((r) => r.data).catch(() => ({ ok: false })),
   googleLogin: (session_id) => client.post("/auth/google-login", { session_id }).then((r) => r.data),
   me: () => client.get("/auth/me").then((r) => r.data),
   impersonate: (uid) => client.post(`/auth/impersonate/${uid}`).then((r) => r.data),
