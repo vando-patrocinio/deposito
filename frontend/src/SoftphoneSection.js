@@ -30,8 +30,55 @@ const STATUS_LABELS = {
   idle: { txt: "Desconectado", color: "#64748b", dot: "#94a3b8" },
   connecting: { txt: "Conectando…", color: "#0f766e", dot: "#fbbf24" },
   registered: { txt: "Registrado", color: "#15803d", dot: "#22c55e" },
-  failed: { txt: "Falha de registro", color: "#b91c1c", dot: "#ef4444" },
+  failed: { txt: "Falha de conexão", color: "#b91c1c", dot: "#ef4444" },
   unregistered: { txt: "Não registrado", color: "#64748b", dot: "#94a3b8" },
+  ws_error: { txt: "WSS indisponível", color: "#b91c1c", dot: "#ef4444" },
+  auth_error: { txt: "Autenticação rejeitada", color: "#b91c1c", dot: "#ef4444" },
+  timeout: { txt: "Timeout de registro", color: "#b91c1c", dot: "#ef4444" },
+  no_creds: { txt: "Sem credenciais", color: "#a16207", dot: "#fbbf24" },
+};
+
+const ERROR_DIAGNOSTICS = {
+  ws_error: {
+    title: "Não consegui abrir o WebSocket Seguro (WSS)",
+    causes: [
+      "O servidor MagnusBilling/Asterisk não está com chan_pjsip + transport-wss habilitado.",
+      "A porta WSS (padrão 8089) está bloqueada por firewall.",
+      "Certificado TLS do servidor inválido (browser bloqueia WSS com cert ruim).",
+      "URL WSS errada (host/porta/path em Configurações avançadas).",
+    ],
+    fix: "Peça à TudoVoIP para ativar WebRTC no ramal. Depois confirme em https://<servidor>:8089/ws (deve responder 426 Upgrade Required).",
+  },
+  auth_error: {
+    title: "Servidor rejeitou suas credenciais",
+    causes: [
+      "Usuário/senha SIP incorretos.",
+      "O ramal não tem permissão para registrar via WebRTC.",
+      "Realm/domínio diferente do servidor (override em Configurações avançadas).",
+    ],
+    fix: "Confira usuário e senha no painel do MagnusBilling > SIP Accounts.",
+  },
+  timeout: {
+    title: "Servidor não respondeu ao registro",
+    causes: [
+      "Pacotes SIP/WS bloqueados em algum salto.",
+      "Servidor congestionado ou caído.",
+    ],
+    fix: "Tente novamente em alguns segundos ou confirme com o suporte da TudoVoIP.",
+  },
+  failed: {
+    title: "Falha genérica de registro",
+    causes: [
+      "Veja o detalhe técnico abaixo. Se contém 'WebSocket' → WSS indisponível.",
+      "Se contém '401/403' → autenticação rejeitada.",
+    ],
+    fix: "Abra o console do navegador (F12) para ver o stack completo do JsSIP.",
+  },
+  no_creds: {
+    title: "Credenciais SIP não preenchidas",
+    causes: ["Card MagnusBilling sem usuário/senha/servidor SIP."],
+    fix: "Vá em Atendimento > IA Hub > Integrações > MagnusBilling e preencha os campos da seção 'Conta SIP'.",
+  },
 };
 
 function loadOverrides() {
@@ -53,6 +100,8 @@ export default function SoftphoneSection() {
   const [status, setStatus] = useState("idle");
   const [showSettings, setShowSettings] = useState(false);
   const [error, setError] = useState("");
+  const [lastErrorAt, setLastErrorAt] = useState(null);
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
   const [dial, setDial] = useState("");
   const [activeCall, setActiveCall] = useState(null); // { dir, peer, startedAt, muted }
   const [callElapsed, setCallElapsed] = useState(0);
@@ -109,13 +158,53 @@ export default function SoftphoneSection() {
   const wssUrl = `wss://${eff.server}:${eff.wssPort}${eff.wssPath}`;
   const sipUri = `sip:${eff.username}@${eff.realm || eff.server}`;
 
+  // ---- Probe do WebSocket — testa se o servidor aceita WSS antes de tentar registrar ----
+  const probeWss = useCallback((url, timeoutMs = 5000) => new Promise((resolve) => {
+    let done = false;
+    const finish = (result) => { if (!done) { done = true; resolve(result); } };
+    try {
+      const ws = new WebSocket(url, ["sip"]);
+      const to = setTimeout(() => {
+        try { ws.close(); } catch {}
+        finish({ ok: false, reason: "timeout", detail: `Sem resposta em ${timeoutMs}ms` });
+      }, timeoutMs);
+      ws.onopen = () => { clearTimeout(to); try { ws.close(); } catch {} finish({ ok: true }); };
+      ws.onerror = () => {
+        clearTimeout(to);
+        finish({ ok: false, reason: "ws_error", detail: "WebSocket recusado (verifique se WSS está habilitado no servidor)" });
+      };
+      ws.onclose = (ev) => {
+        clearTimeout(to);
+        if (!done) {
+          // Código 1006 = aborted before TLS / no listener
+          finish({ ok: false, reason: "ws_error", detail: `WebSocket fechou (code=${ev.code})` });
+        }
+      };
+    } catch (e) {
+      finish({ ok: false, reason: "ws_error", detail: e?.message || String(e) });
+    }
+  }), []);
+
   // ---- Conectar / desconectar ----
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!eff.username || !eff.password || !eff.server) {
-      setError("Configure credenciais SIP no card MagnusBilling ou em Configurações avançadas.");
+      setStatus("no_creds");
+      setError("Preencha usuário, senha e servidor SIP (card MagnusBilling ou Configurações avançadas).");
+      setLastErrorAt(new Date().toISOString());
       return;
     }
     setError("");
+    setStatus("connecting");
+
+    // 1. Probe rápido de WSS — diagnostica indisponibilidade ANTES do JsSIP
+    const probe = await probeWss(wssUrl, 6000);
+    if (!probe.ok) {
+      setStatus(probe.reason === "timeout" ? "timeout" : "ws_error");
+      setError(probe.detail || "Não foi possível abrir conexão WSS.");
+      setLastErrorAt(new Date().toISOString());
+      return;
+    }
+
     try {
       const socket = new JsSIP.WebSocketInterface(wssUrl);
       const ua = new JsSIP.UA({
@@ -125,16 +214,49 @@ export default function SoftphoneSection() {
         register: true,
         session_timers: false,
         user_agent: "PontoIA-Softphone/1.0",
+        register_expires: 120,
+        connection_recovery_min_interval: 4,
+        connection_recovery_max_interval: 30,
       });
+
+      // Timer de timeout caso JsSIP fique pendurado
+      const regTimeout = setTimeout(() => {
+        if (uaRef.current === ua && status !== "registered") {
+          setStatus("timeout");
+          setError("Servidor não respondeu ao REGISTER em 12s.");
+          setLastErrorAt(new Date().toISOString());
+          try { ua.stop(); } catch {}
+        }
+      }, 12000);
 
       ua.on("connecting", () => setStatus("connecting"));
       ua.on("connected", () => setStatus("connecting"));
-      ua.on("disconnected", () => setStatus("idle"));
-      ua.on("registered", () => { setStatus("registered"); setError(""); });
+      ua.on("disconnected", (e) => {
+        clearTimeout(regTimeout);
+        // Se a desconexão veio por erro (não foi stop() manual), reporta
+        if (e?.error || e?.code) {
+          setStatus("ws_error");
+          setError(`WebSocket caiu — code=${e?.code ?? "?"} reason="${e?.reason || "sem motivo"}"`);
+          setLastErrorAt(new Date().toISOString());
+        } else {
+          setStatus("idle");
+        }
+      });
+      ua.on("registered", () => {
+        clearTimeout(regTimeout);
+        setStatus("registered");
+        setError("");
+      });
       ua.on("unregistered", () => setStatus("unregistered"));
       ua.on("registrationFailed", (e) => {
-        setStatus("failed");
-        setError(`Registro falhou: ${e?.cause || "verifique credenciais/WSS"}`);
+        clearTimeout(regTimeout);
+        const cause = String(e?.cause || "").toLowerCase();
+        const isAuth = cause.includes("auth") || cause.includes("403") || cause.includes("401") ||
+                       cause.includes("rejected") || cause.includes("unauthorized");
+        setStatus(isAuth ? "auth_error" : "failed");
+        setError(`SIP REGISTER rejeitado: ${e?.cause || "motivo desconhecido"}` +
+                 (e?.response?.status_code ? ` (HTTP ${e.response.status_code})` : ""));
+        setLastErrorAt(new Date().toISOString());
       });
 
       ua.on("newRTCSession", (data) => {
@@ -167,16 +289,18 @@ export default function SoftphoneSection() {
           setActiveCall(null);
           setCallElapsed(0);
           setError(`Chamada falhou: ${e?.cause || "desconhecido"}`);
+          setLastErrorAt(new Date().toISOString());
         });
       });
 
       ua.start();
       uaRef.current = ua;
     } catch (e) {
-      setError(`Erro ao iniciar UA: ${e?.message || e}`);
       setStatus("failed");
+      setError(`Erro ao iniciar UA: ${e?.message || e}`);
+      setLastErrorAt(new Date().toISOString());
     }
-  }, [eff.username, eff.password, eff.server, eff.realm, eff.wssPort, eff.wssPath, wssUrl, sipUri, loadCdr]);
+  }, [eff.username, eff.password, eff.server, eff.realm, eff.wssPort, eff.wssPath, wssUrl, sipUri, loadCdr, probeWss, status]);
 
   const disconnect = useCallback(() => {
     try { sessionRef.current?.terminate(); } catch {}
@@ -300,9 +424,34 @@ export default function SoftphoneSection() {
           </div>
 
           {error && (
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 6, padding: 10, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#b91c1c", fontSize: 12, marginBottom: 10 }}>
-              <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-              <span data-testid="softphone-error">{error}</span>
+            <div data-testid="softphone-error-box" style={{ padding: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 6, color: "#b91c1c", fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span data-testid="softphone-error">{error}</span>
+              </div>
+              {lastErrorAt && (
+                <div style={{ fontSize: 10, color: "#7f1d1d", marginTop: 2 }}>
+                  Falha em {new Date(lastErrorAt).toLocaleTimeString("pt-BR")}
+                </div>
+              )}
+              {ERROR_DIAGNOSTICS[status] && (
+                <button
+                  onClick={() => setShowDiagnostic((v) => !v)}
+                  data-testid="softphone-diagnostic-toggle"
+                  style={{ marginTop: 8, background: "transparent", border: "1px solid #fca5a5", color: "#b91c1c", padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                >{showDiagnostic ? "Ocultar diagnóstico" : "Por que não conectou?"}</button>
+              )}
+              {showDiagnostic && ERROR_DIAGNOSTICS[status] && (
+                <div data-testid="softphone-diagnostic" style={{ marginTop: 10, padding: 10, background: "#fff", border: "1px solid #fecaca", borderRadius: 6, fontSize: 11, lineHeight: 1.55, color: "#7f1d1d" }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6, color: "#991b1b" }}>{ERROR_DIAGNOSTICS[status].title}</div>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Possíveis causas:</div>
+                  <ul style={{ margin: "0 0 8px", paddingLeft: 18 }}>
+                    {ERROR_DIAGNOSTICS[status].causes.map((c, i) => <li key={i} style={{ marginBottom: 2 }}>{c}</li>)}
+                  </ul>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Como resolver:</div>
+                  <div>{ERROR_DIAGNOSTICS[status].fix}</div>
+                </div>
+              )}
             </div>
           )}
 
