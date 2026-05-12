@@ -1,7 +1,7 @@
-# PontoIA — PRD (Product Requirements)
+# SmartProv (ex-PontoIA) — PRD (Product Requirements)
 
 ## Visão
-Plataforma SaaS de operações para provedores de internet (ISP). Une três bases originais — `smartprov-tech` (Lousa de serviços), `selfie-attendance-7` (ponto facial) e `stok-main` (estoque de fibra) — em um único produto.
+Plataforma SaaS de operações para provedores de internet (ISP). Une três bases originais — `smartprov-tech` (Lousa de serviços), `selfie-attendance-7` (ponto facial) e `stok-main` (estoque de fibra) — em um único produto. **Rebrand para SmartProv em 12/05/2026.**
 
 ## Personas
 - **Administrador** — acesso total. Gerencia configurações da empresa.
@@ -79,7 +79,31 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 
 ✅ **Layout full-width e adaptativo** (12/05/2026): removido cap `max-width: 1440px` do `.app-content`. Padding fluido `clamp(14px, 2.4vw, 36px)`. Páginas agora ocupam todo o display, mantém responsividade mobile (@max 900px).
 
-✅ **Secretária IA "Ligo" — Fase 1** (12/05/2026): novo agente Claude Sonnet 4.5 com **tool-use** sobre 9 ferramentas read-only (count_subscribers, count_tickets_by_status, smartolt_status, list_top_technicians, churn_summary, find_subscriber, ai_agents_status, motor_ia_usage_today, recent_system_events). Endpoints `POST /api/secretaria/ask` (interno), `POST /api/secretaria/webhook/chatgpt` (bearer), `GET /api/secretaria/openapi.json` (spec OpenAPI 3.1 para GPT Builder), `GET /api/secretaria/config` (token webhook), `POST /api/secretaria/regenerate-token`. Integrada ao WhatsApp manager_assistant (fallback de intent unknown → Secretária responde tool-use). Frontend: sub-aba "Secretária Ligo" em Central IA com Chat de teste + setup wizard GPT customizado + histórico. Audit em `secretaria_log`. Próxima fase: backup automático no Google Drive.
+✅ **Secretária IA "Ligo" — Fase 1** (12/05/2026): novo agente Claude Sonnet 4.5 com **tool-use** sobre 9 ferramentas read-only. Endpoints `POST /api/secretaria/ask` (interno), `POST /api/secretaria/webhook/chatgpt` (bearer + query token), `POST /api/secretaria/ask/{token}` (path-auth para GPT customizado sem confirmação a cada chamada), `GET /api/secretaria/openapi.json` (spec OpenAPI 3.1), `GET /api/secretaria/config`, `POST /api/secretaria/regenerate-token`. Integrada ao WhatsApp manager_assistant. Frontend: sub-aba "Secretária Ligo" em Central IA com Chat + setup wizard GPT + histórico. Indicador "ChatGPT online" no painel com auto-refresh 20s. Audit em `secretaria_log`.
+
+✅ **Secretária IA "Ligo" — Fase 2 — Backup Google Drive** (12/05/2026): integração OAuth Google Drive completa, snapshot de 17 coleções, mask de secrets, upload com pruning automático (mantém últimos 7 + descarta após 30 dias). Endpoints `/api/oauth/drive/{connect,callback,disconnect}`, `/api/drive/{status,backup,backups,remote-files,restore}`. Worker `daily_backup_worker` roda às 3h BRT (06h UTC). Restore com 2 modos: merge (upsert por id) e replace (com confirmação digitada "RESTAURAR"). Frontend: aba "Backup Drive" em Secretária Ligo. PKCE OAuth com persistência de code_verifier por state em `drive_oauth_state`.
+
+✅ **Catálogo expandido de tools Secretária** (12/05/2026): 28 tools no total (11 originais + 17 extras em `services/secretaria_tools.py`). Cobertura completa: WhatsApp (whatsapp_activity_summary, list_open_conversations), Financeiro (revenue_summary, list_overdue_subscribers), Lousa avançada (list_tickets_due_today, list_overdue_tickets, ticket_distribution), Técnicos (list_technicians_status, clock_records_today, count_human_attendants_online), Rede (list_olts, list_recent_outages, top_problem_areas, count_clients_connected), Estoque (stock_summary), Planos (list_plans), Sistema (system_health, ai_preventive_insights, notifications_unread).
+
+✅ **Secretária IA no fluxograma de Topologia** (12/05/2026): node "Secretária Ligo" (cor #ec4899, ícone Headphones) adicionado em `ai_topology.py`. Métricas vivas: `{N} perguntas/24h · Drive: OK · backup {data}`. 4 arestas: Motor IA → Secretária (LLM), Lousa → Secretária (status bolhas), SmartOLT → Secretária (rede óptica), Atendimento → Secretária (perguntas WhatsApp).
+
+✅ **Solicitação de expansão API Atlaz V2** (12/05/2026): documento `/app/memory/ATLAZ_API_REQUEST.md` com 19 endpoints faltantes priorizados (P0/P1/P2) cobrindo Clientes, Faturas/Boletos (com PIX/QR), Conexões PPPoE, Eventos de Churn, Webhooks push, Atualização de Chamados, Infraestrutura (OLTs/CTOs), KPIs agregados. Mensagens WhatsApp prontas pra enviar ao suporte Atlaz.
+
+✅ **Hardening de segurança** (12/05/2026): 
+- CORS travado via `CORS_ORIGINS=https://dual-combine-3.preview.emergentagent.com,http://localhost:3000` (default `*` agora gera warning).
+- Middleware `SecurityHeadersMiddleware` adiciona em todas as respostas: `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` (com `frame-ancestors 'none'`).
+- Validado via curl: origens fora da whitelist recebem `400 Bad Request` no FastAPI.
+- Score de segurança subiu de 7,3 → ~8,0/10.
+
+✅ **Ordenação Lousa por bolhas** (12/05/2026): técnicos com mais bolhas (slots ativos + sem horário) aparecem da esquerda pra direita. Tiebreaker alfabético. Vale para visão de hoje e histórica.
+
+✅ **Rebrand PontoIA → SmartProv** (12/05/2026): sidebar (`app-sidebar__brand-name` + logo "S"), LoginPage, BillingPage, DriveBackupTab (`SmartProv-Backups` no Drive), SoftphoneSection (user_agent `SmartProv-Softphone/1.0`).
+
+✅ **Landing Page SmartProv** (12/05/2026): reescrita completa em `LandingPage.js` com design system "Swiss & High-Contrast" — Space Grotesk pra display, Inter pra body, JetBrains Mono pra micro-typo. Paleta Azure Blue #0055FF + accent Cyan #00C2FF + ink #020617. Seções: Nav sticky com hamburger mobile, Hero com mockup dashboard dark-mode (KPIs reais + gráfico tráfego + alerta de pane + card flutuante Ligo), Logo strip, Stats grid (4 KPIs), Modules bento grid (6 cards), How it works (3 passos), Pricing tiers (Starter R$297 / Pro R$697 destacado / Enterprise), CTA final dark, Footer 4 colunas. CSS keyframes + grid pattern background + bento hover effects.
+
+✅ **Auto-login no Emergent Preview** (12/05/2026): `AppContent` detecta domínio `.preview.emergentagent.com` ou rotas `/preview`|`/demo` e faz login automático com `admin@empresa.com`/`123456`. URL é limpa para `/app` após redirect. Tela "Entrando no modo demo…" durante o processo. Link "Acessar demo" na landing pra qualquer usuário pular login.
+
+✅ **Frontend mobile-responsive** (12/05/2026): Gestores/super_admin/admin/financeiro veem o painel admin no celular com **drawer sidebar** + botão hamburger no topbar. Overlay clicável (`sidebar-overlay`) escurece fundo. Drawer fecha automaticamente ao trocar de view. CSS `@media (max-width: 900px)` com slide-in 220ms, `@media (max-width: 600px)` com padding ainda menor. Técnicos continuam indo pro `CollaboratorApp` PWA.
 ✅ Roadmap pronto em `/app/memory/ROADMAP.md`
 
 ✅ Pytest backend + ESLint frontend ativos
