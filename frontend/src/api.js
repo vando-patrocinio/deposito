@@ -158,6 +158,8 @@ export const api = {
   saasListCompanies: () => client.get(`/saas/admin/companies`).then((r) => r.data),
   saasAdminMetrics: () => client.get(`/saas/admin/metrics`).then((r) => r.data),
   saasUpdateCompany: (cid, data) => client.patch(`/saas/admin/companies/${cid}`, data).then((r) => r.data),
+  saasDeleteCompany: (cid) => client.delete(`/saas/admin/companies/${cid}`).then((r) => r.data),
+  saasBulkDeleteCompanies: (ids) => client.post(`/saas/admin/companies/bulk-delete`, { ids }).then((r) => r.data),
 
   // ============== LOUSA (notas de serviço) ==============
   lousaByCollaborator: (cid) => client.get(`/lousa/by-collaborator/${cid}`).then((r) => r.data),

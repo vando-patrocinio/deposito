@@ -640,6 +640,100 @@ async def update_company(cid: str, payload: CompanyUpdate, user: dict = Depends(
     return new_co
 
 
+@router.delete("/admin/companies/{cid}")
+async def delete_company(cid: str, user: dict = Depends(get_current_user)):
+    """Apaga a empresa e TODOS os dados associados (purge). Apenas super_admin.
+
+    Bloqueios de segurança:
+    - Não apaga a `co-demo` (necessária para o sistema)
+    - Não apaga a empresa do próprio super_admin logado
+    - Não apaga empresas marcadas com `is_protected=true`
+    """
+    if not is_super_admin(user):
+        raise HTTPException(403, "Acesso restrito ao super admin")
+    if cid == "co-demo":
+        raise HTTPException(400, "Não é permitido apagar a empresa de demonstração")
+    if cid == user.get("company_id"):
+        raise HTTPException(400, "Não é permitido apagar a própria empresa enquanto estiver logado nela")
+    co = await db.companies.find_one({"id": cid}, {"_id": 0})
+    if not co:
+        raise HTTPException(404, "Empresa não encontrada")
+    if co.get("is_protected"):
+        raise HTTPException(400, "Empresa protegida — desproteja antes de apagar")
+
+    # Coleções que carregam company_id e serão purgadas em cascata
+    cascade_collections = [
+        "users", "collaborators", "pracas", "plans", "subscribers", "tickets",
+        "clock_records", "leaves", "stok_stock", "stok_onts", "stok_services",
+        "aihub_agents", "aihub_integrations", "aihub_settings", "aihub_templates",
+        "aihub_wa_messages", "aihub_conversations", "wa_conversations",
+        "smartolt_olts", "smartolt_onus", "smartolt_panes", "network_outages",
+        "motor_ia_config", "motor_ia_usage", "motor_ia_budget",
+        "ai_agent_switches", "ai_agent_switch_history",
+        "ai_preventive_suggestions", "ai_insights", "ai_briefings",
+        "aihub_evaluations", "copilot_hints",
+        "secretaria_config", "secretaria_log",
+        "drive_credentials", "drive_oauth_state", "drive_backups",
+        "branding", "settings", "tab_permissions", "system_alerts",
+        "lousa_logs", "notifications", "manager_assistant_logs",
+        "plan_adjustments_scheduled", "vehicle_checklists",
+        "collaborator_assets", "location_logs",
+        "whatsapp_system_events", "churn_briefings",
+    ]
+
+    summary: dict[str, int] = {}
+    for coll in cascade_collections:
+        try:
+            res = await db[coll].delete_many({"company_id": cid})
+            if res.deleted_count:
+                summary[coll] = res.deleted_count
+        except Exception:
+            continue
+
+    # Por fim, apaga a empresa
+    await db.companies.delete_one({"id": cid})
+
+    # Audit log
+    try:
+        await db.platform_audit.insert_one({
+            "id": f"audit-{cid}-{int(datetime.now(timezone.utc).timestamp())}",
+            "action": "delete_company",
+            "company_id": cid,
+            "company_name": co.get("name"),
+            "by_user": user.get("email"),
+            "by_user_id": user.get("id"),
+            "cascade_summary": summary,
+            "created_at": now_iso(),
+        })
+    except Exception:
+        pass
+
+    return {"ok": True, "deleted_company": cid, "purged": summary}
+
+
+@router.post("/admin/companies/bulk-delete")
+async def bulk_delete_companies(payload: dict, user: dict = Depends(get_current_user)):
+    """Apaga várias empresas em lote. Body: {ids: [...]}."""
+    if not is_super_admin(user):
+        raise HTTPException(403, "Acesso restrito ao super admin")
+    ids = [str(x).strip() for x in (payload.get("ids") or []) if x]
+    if not ids:
+        raise HTTPException(400, "Lista de IDs vazia")
+    if len(ids) > 50:
+        raise HTTPException(400, "Máximo 50 empresas por lote")
+    results = []
+    for cid in ids:
+        try:
+            r = await delete_company(cid, user=user)
+            results.append({"id": cid, "ok": True, "purged": r.get("purged", {})})
+        except HTTPException as e:
+            results.append({"id": cid, "ok": False, "error": e.detail})
+        except Exception as e:
+            results.append({"id": cid, "ok": False, "error": str(e)[:200]})
+    return {"results": results, "total": len(results),
+            "deleted": sum(1 for r in results if r["ok"])}
+
+
 @router.get("/admin/metrics")
 async def admin_metrics(user: dict = Depends(get_current_user)):
     """KPIs globais para o painel /platform-admin do super admin.

@@ -45,11 +45,52 @@ export default function PlatformAdminPanel() {
   const [search, setSearch] = useState("");
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState(null);
+  const [selected, setSelected] = useState(() => new Set());
+  const [deleting, setDeleting] = useState(false);
 
   function reload() {
     return Promise.all([api.saasAdminMetrics(), api.saasListCompanies()])
-      .then(([metrics, list]) => { setM(metrics); setCompanies(list); })
+      .then(([metrics, list]) => { setM(metrics); setCompanies(list); setSelected(new Set()); })
       .catch((e) => setErr(e?.response?.data?.detail || e.message));
+  }
+
+  function toggleOne(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkDelete(visibleIds) {
+    const ids = visibleIds.filter((id) => selected.has(id));
+    if (!ids.length) return;
+    const blocked = ids.filter((id) => id === "co-demo");
+    if (blocked.length) {
+      window.alert("A empresa de demonstração (co-demo) não pode ser apagada. Desmarque-a.");
+      return;
+    }
+    const confirm = window.prompt(
+      `Você está prestes a APAGAR PERMANENTEMENTE ${ids.length} empresa(s) e TODOS os dados associados ` +
+      `(usuários, clientes, lousa, OLT, agentes IA, backups, etc).\n\nDigite "APAGAR" para confirmar.`
+    );
+    if (confirm !== "APAGAR") return;
+    setDeleting(true);
+    try {
+      const r = await api.saasBulkDeleteCompanies(ids);
+      const ok = r.deleted || 0;
+      const fail = (r.results || []).filter((x) => !x.ok);
+      let msg = `${ok} empresa(s) apagada(s) com sucesso.`;
+      if (fail.length) {
+        msg += `\n\nFalhas (${fail.length}):\n` + fail.map((f) => `• ${f.id}: ${f.error}`).join("\n");
+      }
+      window.alert(msg);
+      await reload();
+    } catch (e) {
+      window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setDeleting(false);
+    }
   }
 
   useEffect(() => {
@@ -134,11 +175,53 @@ export default function PlatformAdminPanel() {
         ))}
       </div>
 
+      {/* Bulk actions bar — só aparece quando há seleção */}
+      {selected.size > 0 && (
+        <div data-testid="platform-bulk-bar" style={{
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "10px 14px", marginBottom: 12,
+          background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10,
+        }}>
+          <span style={{ fontSize: 13, color: "#991b1b", fontWeight: 700 }}>
+            {selected.size} empresa(s) selecionada(s)
+          </span>
+          <button
+            onClick={() => setSelected(new Set())}
+            data-testid="platform-clear-selection"
+            style={{ background: "transparent", border: "1px solid #fca5a5", color: "#991b1b", padding: "5px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+          >Limpar seleção</button>
+          <span style={{ flex: 1 }} />
+          <button
+            onClick={() => handleBulkDelete(filtered.map((c) => c.id))}
+            disabled={deleting}
+            data-testid="platform-delete-selected"
+            style={{
+              background: deleting ? "#94a3b8" : "#dc2626", color: "white",
+              border: 0, padding: "7px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+              cursor: deleting ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", gap: 6,
+            }}
+          >🗑 {deleting ? "Apagando…" : "Apagar selecionadas"}</button>
+        </div>
+      )}
+
       {/* Tabela */}
       <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12 }}>
         <table data-testid="platform-companies-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#f8fafc", color: "#475569", textAlign: "left" }}>
+              <th style={{ padding: "11px 14px", fontWeight: 700, width: 36 }}>
+                <input
+                  type="checkbox"
+                  data-testid="platform-select-all"
+                  checked={filtered.length > 0 && filtered.every((c) => selected.has(c.id))}
+                  onChange={(e) => {
+                    if (e.target.checked) setSelected(new Set(filtered.map((c) => c.id)));
+                    else setSelected(new Set());
+                  }}
+                  style={{ cursor: "pointer", width: 15, height: 15 }}
+                />
+              </th>
               <th style={{ padding: "11px 14px", fontWeight: 700 }}>Empresa</th>
               <th style={{ padding: "11px 14px", fontWeight: 700 }}>Plano</th>
               <th style={{ padding: "11px 14px", fontWeight: 700 }}>Status</th>
@@ -150,7 +233,18 @@ export default function PlatformAdminPanel() {
           </thead>
           <tbody>
             {filtered.map((c) => (
-              <tr key={c.id} style={{ borderTop: "1px solid #e2e8f0" }}>
+              <tr key={c.id} style={{ borderTop: "1px solid #e2e8f0", background: selected.has(c.id) ? "#fef2f2" : "transparent" }}>
+                <td style={{ padding: "11px 14px" }}>
+                  <input
+                    type="checkbox"
+                    data-testid={`platform-select-${c.id}`}
+                    checked={selected.has(c.id)}
+                    onChange={() => toggleOne(c.id)}
+                    disabled={c.id === "co-demo"}
+                    title={c.id === "co-demo" ? "Empresa de demonstração não pode ser apagada" : ""}
+                    style={{ cursor: c.id === "co-demo" ? "not-allowed" : "pointer", width: 15, height: 15, opacity: c.id === "co-demo" ? 0.4 : 1 }}
+                  />
+                </td>
                 <td style={{ padding: "11px 14px", fontWeight: 600, color: "#0f172a" }}>{c.name}{c.is_demo && <span style={{ marginLeft: 6, fontSize: 10, background: "#fef3c7", color: "#92400e", padding: "1px 6px", borderRadius: 4 }}>DEMO</span>}</td>
                 <td style={{ padding: "11px 14px", color: "#475569" }}>
                   {c.plan === "free" ? "Free"
@@ -177,7 +271,7 @@ export default function PlatformAdminPanel() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} style={{ padding: 24, textAlign: "center", color: "#94a3b8" }}>Nenhuma empresa encontrada.</td></tr>
+              <tr><td colSpan={8} style={{ padding: 24, textAlign: "center", color: "#94a3b8" }}>Nenhuma empresa encontrada.</td></tr>
             )}
           </tbody>
         </table>
