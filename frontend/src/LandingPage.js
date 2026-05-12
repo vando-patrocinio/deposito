@@ -286,6 +286,11 @@ function Hero({ onSignup }) {
                 className="sp-cta-primary"
               >Começar teste gratuito <Ico.ArrowRight /></button>
               <a href="#produto" className="sp-cta-secondary">Ver produto</a>
+              <a
+                href="/preview"
+                data-testid="hero-demo-link"
+                style={{ color: C.textMuted, fontSize: 13, fontWeight: 500, textDecoration: "underline", textDecorationColor: C.border, textUnderlineOffset: 4 }}
+              >Acessar demo</a>
             </div>
             <div style={{ marginTop: 36, display: "flex", gap: 28, color: C.textMuted, fontSize: 13 }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Ico.Check /> 14 dias grátis</span>

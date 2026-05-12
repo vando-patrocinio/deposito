@@ -549,8 +549,44 @@ function AppShell({ view, setView, children }) {
 
 function AppContent() {
   useEffect(() => { startServerTime(); }, []);
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, login } = useAuth();
   const mobile = useMobileMode();
+  const [autoLoginState, setAutoLoginState] = useState(() => {
+    if (typeof window === "undefined") return "idle";
+    const path = window.location.pathname || "";
+    if (path === "/preview" || path === "/demo") return "pending";
+    // Auto-redirect só em ambientes Emergent preview (domínio .preview.emergentagent.com)
+    // e somente se ainda não estiver logado nem em rota específica.
+    const host = window.location.hostname || "";
+    const isPreviewHost = host.endsWith(".preview.emergentagent.com");
+    const alreadyHasToken = !!window.localStorage.getItem("ponto_token");
+    const isRootPath = path === "/" || path === "";
+    if (isPreviewHost && isRootPath && !alreadyHasToken) return "pending";
+    return "idle";
+  });
+
+  // Auto-login para demonstração: rota `/preview` ou `/demo` faz login com
+  // credenciais do test_credentials.md e redireciona pro app. Útil para
+  // visualizadores externos (Emergent preview, sales demos, QA).
+  useEffect(() => {
+    if (autoLoginState !== "pending") return;
+    if (user) {
+      setAutoLoginState("done");
+      window.history.replaceState({}, "", "/app");
+      return;
+    }
+    (async () => {
+      try {
+        await login("admin@empresa.com", "123456");
+        setAutoLoginState("done");
+        window.history.replaceState({}, "", "/app");
+      } catch (e) {
+        console.error("[preview] auto-login failed:", e);
+        setAutoLoginState("error");
+        window.history.replaceState({}, "", "/login");
+      }
+    })();
+  }, [autoLoginState, user, login]);
   const [systemStatus, setSystemStatus] = useState({ offline: false, drift_blocked: false });
   const [view, setViewState] = useState(() => {
     if (typeof window === "undefined") return "dashboard";
@@ -614,10 +650,10 @@ function AppContent() {
     return () => { alive = false; };
   }, [user]);
 
-  if (loading) {
+  if (loading || autoLoginState === "pending") {
     return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--text-secondary)" }}>
-        Carregando…
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--text-secondary)" }} data-testid={autoLoginState === "pending" ? "auto-login-loading" : "auth-loading"}>
+        {autoLoginState === "pending" ? "Entrando no modo demo…" : "Carregando…"}
       </div>
     );
   }
