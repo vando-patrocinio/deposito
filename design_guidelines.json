@@ -1,164 +1,214 @@
 {
-  "theme_and_archetype": {
-    "theme": "Light",
-    "archetype": "Archetype 4 (Swiss & High-Contrast)",
-    "description": "Enterprise-grade, highly functional, and authoritative. Clean, sober, and minimal aesthetic tailored to telecommunications and field operations."
+  "project_info": {
+    "name": "SmartProv",
+    "domain": "ISP Management SaaS",
+    "theme_mode": "light",
+    "archetype": "Archetype 4: Swiss & High-Contrast",
+    "description": "Stripe-meets-Linear-meets-Telefônica. High-density, function-first, crisp, and authoritative."
   },
-  "typography": {
-    "rules": "No Inter. Use typography scales that prioritize data scannability.",
-    "headings": {
-      "family": "Satoshi, sans-serif",
-      "weights": ["500", "700"],
-      "tracking": "tracking-tight"
-    },
-    "body": {
-      "family": "Manrope, sans-serif",
-      "weights": ["400", "500", "600"],
-      "tracking": "tracking-normal"
-    },
-    "monospace": {
-      "family": "JetBrains Mono, monospace",
-      "usage": "Used for IP addresses, MAC addresses, ticket IDs, and log timestamps."
-    },
-    "scale": {
-      "h1": "text-2xl sm:text-3xl font-bold",
-      "h2": "text-xl sm:text-2xl font-semibold",
-      "h3": "text-lg font-medium",
-      "body": "text-sm",
-      "caption": "text-xs text-muted-foreground uppercase tracking-[0.05em]"
-    }
+  "brand": {
+    "name": "SmartProv",
+    "logo_concept": "Heavy, crisp sans-serif wordmark. 'Smart' in Midnight Indigo (#0F172A), 'Prov' in Azure Blue (#0055FF). Sharp, precise geometric cuts in the letters.",
+    "tone": "Professional, reliable, cutting-edge, authoritative."
   },
   "colors": {
-    "background": "#f8fafc",
+    "background": {
+      "default": "#FFFFFF",
+      "muted": "#F8FAFC",
+      "subtle": "#F1F5F9"
+    },
     "surface": {
-      "primary": "#ffffff",
-      "secondary": "#f1f5f9",
-      "tertiary": "#e2e8f0"
+      "card": "#FFFFFF",
+      "glass": "bg-white/70 backdrop-blur-xl border border-slate-200/50"
     },
     "border": {
-      "default": "#e2e8f0",
-      "focus": "#cbd5e1"
+      "default": "#E2E8F0",
+      "focus": "#0055FF",
+      "divider": "#F1F5F9"
     },
     "text": {
-      "primary": "#0f172a",
-      "secondary": "#475569",
-      "muted": "#94a3b8"
+      "primary": "#0F172A",
+      "secondary": "#64748B",
+      "tertiary": "#94A3B8",
+      "inverse": "#FFFFFF",
+      "code": "#334155"
     },
     "brand": {
-      "primary": "#0f172a",
-      "accent": "#0d9488"
+      "primary": "#0055FF",
+      "primary_hover": "#0044CC",
+      "accent": "#00C2FF"
     },
     "status": {
-      "success": { "bg": "#dcfce7", "text": "#15803d" },
-      "warning": { "bg": "#fef3c7", "text": "#b45309" },
-      "danger": { "bg": "#fee2e2", "text": "#b91c1c" },
-      "info": { "bg": "#e0f2fe", "text": "#0369a1" }
+      "success": "#10B981",
+      "error": "#EF4444",
+      "warning": "#F59E0B",
+      "info": "#3B82F6"
     }
   },
-  "layout_architecture": {
-    "global": "Left Sidebar App Shell pattern (replaces top-tabs). Fixed sidebar (width: 260px) on desktop, hamburger off-canvas on mobile.",
-    "topbar": "Sticky top bar (h-14) with global search, breadcrumbs, server clock, notifications bell, and user profile.",
-    "page_content": "Max-width wrapper within the remaining viewport. Uses 'F-pattern' layout. Generous padding (p-6 or p-8).",
-    "map_panels": "Split view: 70% width for React-Leaflet map, 30% width for data/filter side panel."
-  },
-  "components_system": {
-    "card": {
-      "style": "bg-white border border-slate-200 rounded-xl shadow-sm",
-      "header": "Border-bottom on header to separate from content. p-5.",
-      "content": "p-5 for text, p-0 for tables to ensure edge-to-edge flush design."
+  "typography": {
+    "font_families": {
+      "heading": "Clash Display, sans-serif",
+      "body": "Satoshi, sans-serif",
+      "mono": "JetBrains Mono, monospace"
     },
-    "button": {
-      "primary": "bg-slate-900 text-white hover:bg-slate-800 rounded-md font-medium px-4 py-2 transition-colors",
-      "secondary": "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50",
-      "accent": "bg-teal-600 text-white hover:bg-teal-700"
-    },
-    "kanban_lousa": {
-      "layout": "Horizontal scroll container. Columns represent technicians (or time slots, depending on backend mapping).",
-      "column_header": "Sticky top, shows technician avatar, name, and total tickets.",
-      "ticket_card": "Minimalist bubble card. Left border color indicates priority. Contains: Ticket ID (mono), Customer Name (truncate), Location chip, SLA Timer (red/amber/green pill).",
-      "interactions": "Drag-and-drop affordance visible on hover (grip icon). Quick actions dropdown (\u22EE) on right."
-    },
-    "banners": {
-      "impersonation": "Solid warning surface (bg-amber-100 border-amber-300 text-amber-900) instead of violet gradients. Fixed top, minimal padding.",
-      "super_admin": "Outlined chip (border-slate-800 text-slate-800) instead of gradient fills."
+    "scale": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight leading-none font-semibold",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight leading-tight font-semibold",
+      "h3": "text-xl sm:text-2xl tracking-tight font-medium",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-sm sm:text-base leading-relaxed",
+      "small": "text-xs font-medium uppercase tracking-widest text-slate-500",
+      "code": "text-xs font-mono tracking-tight"
     }
   },
-  "icons_and_assets": {
-    "library": "lucide-react",
-    "rules": "No emojis. Replace all current emojis with sleek, uniform 1.5px stroke weight Lucide icons.",
-    "media": {
-      "landing_hero": "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&q=80&w=2000",
-      "login_bg": "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&q=80&w=2000"
+  "spacing_and_layout": {
+    "marketing": {
+      "grid": "grid-cols-1 md:grid-cols-8 lg:grid-cols-12 gap-8 lg:gap-12",
+      "section_padding": "py-24 sm:py-32",
+      "container": "max-w-7xl mx-auto px-6 lg:px-8",
+      "bento_gap": "gap-4 sm:gap-6"
+    },
+    "dashboard": {
+      "grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4",
+      "padding": "p-4 sm:p-6 lg:p-8",
+      "density": "compact layouts, minimal whitespace between related data points to maximize screen real estate"
+    },
+    "radius": {
+      "default": "rounded-none sm:rounded-md",
+      "button": "rounded-md",
+      "card": "rounded-lg",
+      "badge": "rounded-full"
     }
   },
-  "motion_and_interactions": {
-    "transitions": "Fast, functional animations. 150ms ease-in-out for hovers.",
-    "modals": "Fade-in + subtle slide-up (translate-y-2) using Framer Motion.",
-    "kanban": "Layout animations for drag-and-drop state changes."
-  },
-  "testing": {
-    "requirements": "All interactive elements MUST have role-based data-testid attributes (e.g., data-testid='lousa-ticket-drag-handle', data-testid='sidebar-nav-link-estoque')."
-  },
-  "implementation_plan": {
-    "phase_1": {
-      "name": "Design Tokens & App Shell refactor",
-      "files": [
-        "tailwind.config.js",
-        "index.css",
-        "App.css",
-        "App.js"
-      ],
-      "actions": [
-        "Update tailwind.config.js with new color palette (Slate/Teal), typography (Satoshi/Manrope), and remove any legacy purple/violet gradients.",
-        "Refactor App.js: Remove top tabs and replace with a Left Sidebar navigation.",
-        "Implement persistent Top Bar with breadcrumbs and server clock.",
-        "Remove all inline styles in App.js."
-      ]
+  "components": {
+    "icons": {
+      "library": "@phosphor-icons/react",
+      "style": "Duotone for marketing, Regular/Bold for dense dashboard UI"
     },
-    "phase_2": {
-      "name": "Lousa (Kanban) Redesign",
-      "files": [
-        "LousaAdminPanel.js",
-        "lousa/CreateTicketModal.js",
-        "lousa/EditTicketModal.js",
-        "lousa/RescheduleModal.js"
-      ],
-      "actions": [
-        "Refactor LousaAdminPanel to use a strict columnar layout (technicians as columns).",
-        "Redesign ticket bubble cards removing gradients, using priority left-borders and SLA status pills.",
-        "Implement Shadcn/UI primitives (Dialog, Select, Input, DropdownMenu) across all Lousa Modals.",
-        "Ensure drag-and-drop logic is preserved and visually clear."
-      ]
+    "buttons": {
+      "primary": "bg-brand-primary text-white hover:bg-brand-primary_hover transition-colors font-medium rounded-md px-4 py-2 shadow-sm",
+      "secondary": "bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors font-medium rounded-md px-4 py-2 shadow-sm",
+      "ghost": "bg-transparent text-slate-600 hover:bg-slate-100 transition-colors font-medium rounded-md px-4 py-2"
     },
-    "phase_3": {
-      "name": "Core Panels & Map Views",
-      "files": [
-        "AICenterPanel.js",
-        "EstoquePanel.js",
-        "CadastroPanel.js",
-        "PracasPanel.js"
-      ],
-      "actions": [
-        "Refactor AI Center and Pra\u00e7as map panels to a 70/30 split layout (Map/Sidebar).",
-        "Update Estoque and Cadastro to use Shadcn Table with sticky headers and robust filtering.",
-        "Redesign metrics/stat cards using the new Card component standard."
-      ]
+    "cards": {
+      "default": "bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden",
+      "interactive": "hover:shadow-md hover:border-brand-primary/50 transition-all cursor-pointer",
+      "metric": "p-4 sm:p-5 flex flex-col gap-1 border-l-4 border-l-transparent hover:border-l-brand-primary transition-all"
     },
-    "phase_4": {
-      "name": "Settings, Mobile & Landing",
-      "files": [
-        "SettingsPanel.js",
-        "CollaboratorApp.js",
-        "LandingPage.js",
-        "LoginPage.js"
-      ],
-      "actions": [
-        "Refactor Settings to use a left-vertical tab layout (Section-based).",
-        "Redesign CollaboratorApp for mobile: large functional CTAs, high-contrast offline indicators.",
-        "Revamp LandingPage and LoginPage to match the 'Enterprise SaaS 2026' aesthetic using the new typography and color tokens.",
-        "Remove any final lingering emojis and custom UI components from ui.js."
-      ]
+    "tables": {
+      "container": "w-full border-collapse text-sm overflow-x-auto",
+      "header": "bg-slate-50/80 backdrop-blur-sm border-y border-slate-200 text-left text-xs font-medium text-slate-500 uppercase tracking-wider sticky top-0 z-10",
+      "cell": "py-2.5 px-4 border-b border-slate-100 whitespace-nowrap",
+      "row": "hover:bg-slate-50/50 transition-colors even:bg-slate-50/30",
+      "numeric_cell": "text-right font-mono text-xs"
+    },
+    "forms": {
+      "input": "w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary transition-all shadow-sm",
+      "label": "block text-sm font-medium text-slate-700 mb-1.5"
     }
   },
-  "instructions_to_main_agent": "Implement changes using strictly raw HTML/Tailwind for layouts and customized Shadcn/UI for interactive components. Follow the 4-phase plan meticulously. DO NOT use the .tsx extension for any new or modified files; the project uses .js. ALWAYS preserve data-testid attributes for testing."
+  "landing_page_blueprint": {
+    "hero": {
+      "copy_direction": "Clear, quantified outcomes. Example: 'A infraestrutura do seu provedor, orquestrada com IA.'",
+      "layout": "Split layout or centered text over an immersive subtle background (using server room image). Use glassmorphism for floating UI elements showing platform preview.",
+      "cta_hierarchy": "Primary CTA: 'Agendar Demonstração' (Azure Blue). Secondary CTA: 'Conheça a Plataforma' (Ghost)."
+    },
+    "social_proof": {
+      "layout": "Horizontal marquee of telecom/ISP client logos in grayscale.",
+      "copy": "Confiado por mais de 500 provedores regionais."
+    },
+    "features_bento": {
+      "layout": "Asymmetric Bento Grid (TETRIS mode). 1 large hero cell (SmartOLT), 2 medium (Lousa, WhatsApp), 1 tall (Map).",
+      "style": "Cards with 1px border, subtle inner glow. High contrast text."
+    },
+    "pricing": {
+      "layout": "Pricing cards with 'Tracing Beam' border effect on the recommended tier.",
+      "copy_direction": "Transparent, scalable per subscriber."
+    },
+    "cta_section": {
+      "layout": "Full width, deep Midnight Indigo background, Stark White text, Azure Blue button.",
+      "copy": "Pronto para evoluir seu ISP?"
+    }
+  },
+  "app_navigation_pattern": {
+    "sidebar": {
+      "style": "Left-aligned, collapsible. Background: Midnight Indigo (#0F172A) for strong separation, or stark white with a solid right border.",
+      "items": "Phosphor icons + Text. Active state gets an Azure Blue left border highlight and light blue background tint."
+    },
+    "topbar": {
+      "style": "Sticky, glassmorphism or stark white with thin bottom border. Contains global search (Cmd+K), notifications, user profile.",
+      "actions": "Quick-add button (e.g., '+ Novo Assinante') prominently displayed."
+    }
+  },
+  "states": {
+    "empty": "Subtle gray dashed border container, central Phosphor icon (Duotone, text-slate-300), clear heading, and a primary CTA to create the first item.",
+    "loading": "Skeleton loaders matching the layout geometry. No generic spinners for full pages. Use a subtle shimmer effect.",
+    "error": "Card with left border Signal Red. Clear error message + 'Tentar novamente' button.",
+    "success": "Toast notifications (using Sonner) at top-right or bottom-center. Green icon, dark text."
+  },
+  "motion": {
+    "hover": "transition-all duration-200 ease-in-out",
+    "entrance": "animate-in fade-in slide-in-from-bottom-4 duration-500",
+    "modal": "animate-in zoom-in-95 duration-200",
+    "microinteractions": "Buttons scale down slightly on active state (active:scale-[0.98])."
+  },
+  "accessibility": {
+    "contrast": "Ensure 4.5:1 minimum contrast. Use text-slate-700 or darker for body text.",
+    "focus": "focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2 on all interactive elements.",
+    "aria": "Include aria-labels for icon-only buttons. Use data-testid on all interactive elements."
+  },
+  "mobile_responsiveness": {
+    "breakpoints": "Mobile-first approach. Use hidden md:block to hide complex tables on mobile, replacing them with stacked card layouts.",
+    "navigation": "Hamburger menu triggers a full-screen or sliding drawer for the sidebar.",
+    "touch_targets": "Minimum 44x44px for buttons and icon buttons on mobile."
+  },
+  "specific_panels": {
+    "kanban": {
+      "layout": "flex overflow-x-auto gap-4 pb-4 h-[calc(100vh-12rem)] snap-x",
+      "column": "w-80 flex-shrink-0 flex flex-col bg-slate-50 border border-slate-200 rounded-lg p-3 snap-center",
+      "card": "bg-white border border-slate-200 rounded-md p-3 mb-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-brand-primary/50 transition-colors",
+      "tags": "Use subtle background colors (e.g., bg-blue-50 text-blue-700) for visual categorization."
+    },
+    "map_technicians": {
+      "style": "Muted-light map style to reduce visual noise. High contrast Azure Blue markers for technicians.",
+      "overlay": "Floating glassmorphism panel (backdrop-blur-xl bg-white/90 border border-slate-200) for technician details. Absolute positioning over the map."
+    },
+    "smart_olt": {
+      "aesthetic": "Technical, dense, 'Control Room' vibe.",
+      "typography": "Heavy use of JetBrains Mono for IP, MAC addresses, and dBm readings.",
+      "indicators": "Pulsing status dots (Green for Online, Red for LOS/Alarm). Use dense grid layouts for ONU lists."
+    },
+    "whatsapp_omnichannel": {
+      "layout": "Split pane: 1/3 list (left), 2/3 chat window (right). Full height layout (h-[calc(100vh-4rem)]).",
+      "chat_list": "Dense list. Unread messages have a bold font and a blue dot indicator.",
+      "chat_bubble": "rounded-2xl px-4 py-2 max-w-[80%]. Outgoing: bg-brand-primary text-white. Incoming: bg-slate-100 text-slate-900."
+    }
+  },
+  "media": {
+    "images": [
+      {
+        "url": "https://static.prod-images.emergentagent.com/jobs/0f7afc70-e3c4-4925-8f2c-a35d20f80a39/images/90419bc70c7b9e4ae43623d8fcfaa23d82c80edc4e635267fa2ee52328e48c9f.png",
+        "category": "hero_background",
+        "description": "Architectural photograph of a modern server room, glowing with subtle cyan lights. Use for Landing Page Hero background with a glassmorphism overlay."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1606814540563-5c02d62fd409?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHwxfHxmaWJlciUyMG9wdGljJTIwY2FibGV8ZW58MHx8fHwxNzc4NjAzMDU3fDA&ixlib=rb-4.1.0&q=85",
+        "category": "feature_fiber",
+        "description": "Blue and white light fiber optic cables. Use for SmartOLT or infrastructure features on the landing page Bento Grid."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1681041319083-3222b7e3913d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTN8MHwxfHNlYXJjaHwxfHx0ZWxlY29tJTIwZmllbGQlMjB0ZWNobmljaWFufGVufDB8fHx8MTc3ODYwMzA1N3ww&ixlib=rb-4.1.0&q=85",
+        "category": "feature_technician",
+        "description": "Telecom field technician on a tower. Use for the Map/Field Tech management feature section."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Ensure all interactive elements have data-testid attributes (kebab-case, role-based).",
+    "Use Phosphor Icons (yarn add @phosphor-icons/react). Avoid default lucide-react if possible to maintain the specific brand aesthetic.",
+    "Do not use generic Shadcn 'Card' wrappers for marketing page layouts. Use raw divs with grid systems to achieve the Bento layouts and overlapping sections.",
+    "Implement dense tables with sticky headers, zebra striping, and right-aligned numbers for the 10k+ row data views.",
+    "Use JetBrains Mono for any technical data (IPs, MAC addresses, connection stats) in the dashboard.",
+    "Never use generic purple gradients. Stick strictly to the crisp, high-contrast, 'Telefônica-Blue' and Stark White theme."
+  ]
 }
