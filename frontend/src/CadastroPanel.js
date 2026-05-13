@@ -15,6 +15,7 @@ const EMPTY = {
   phone: "",
   role: "Colaborador de Campo",
   praca_id: "",
+  praca_ids_extra: [],
   schedule: { entrada: "08:00", inicio_intervalo: "12:00", fim_intervalo: "13:00", saida: "17:00" },
   overtime_policy: { mode: "banco", hourly_rate_brl: 0, weekday_multiplier: 1.5, sunday_multiplier: 2.0 },
   is_test_mode: false,
@@ -118,6 +119,7 @@ export default function CadastroPanel() {
       name: c.name, cpf: c.cpf, email: c.email, phone: c.phone,
       role: c.role || "Colaborador de Campo",
       praca_id: c.praca_id || "",
+      praca_ids_extra: Array.isArray(c.praca_ids_extra) ? [...c.praca_ids_extra] : [],
       schedule: c.schedule || EMPTY.schedule,
       overtime_policy: c.overtime_policy || EMPTY.overtime_policy,
       is_test_mode: !!c.is_test_mode,
@@ -499,7 +501,7 @@ export default function CadastroPanel() {
           <Field label="Cargo">
             <input style={inputStyle} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} />
           </Field>
-          <Field label="Praça (local onde trabalha a maior parte do tempo)">
+          <Field label="Praça principal (local onde trabalha a maior parte do tempo)">
             {pracas.length === 0 ? (
               <div style={{ background: "#fffbeb", border: "1px dashed #fde68a", color: "#92400e", padding: 10, borderRadius: 12, fontSize: 13 }}>
                 Nenhuma praça cadastrada ainda. Vá até a aba <strong>Praças</strong> e cadastre uma — ela aparecerá aqui.
@@ -527,6 +529,67 @@ export default function CadastroPanel() {
               </div>
             )}
           </Field>
+
+          {/* Praças secundárias — usadas quando o colaborador opera em mais de
+              uma unidade. A cerca virtual e os feriados consideram QUALQUER
+              uma das praças listadas (principal + secundárias). */}
+          {pracas.length > 0 && form.praca_id && form.praca_id !== "NOTA" && (
+            <Field label="Praças adicionais (opcional — colaborador opera em mais de um local)">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                {(form.praca_ids_extra || []).map((pid) => {
+                  const p = pracas.find((x) => x.id === pid);
+                  if (!p) return null;
+                  return (
+                    <span key={pid} data-testid={`c-extra-praca-tag-${pid}`} style={{
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      padding: "4px 10px", borderRadius: 999,
+                      background: "#ecfdf5", border: "1px solid #86efac",
+                      color: "#065f46", fontSize: 12, fontWeight: 600,
+                    }}>
+                      📍 {p.city}/{p.state} — {p.name}
+                      <button
+                        type="button"
+                        onClick={() => setForm({
+                          ...form,
+                          praca_ids_extra: (form.praca_ids_extra || []).filter((x) => x !== pid),
+                        })}
+                        style={{
+                          border: "none", background: "transparent", color: "#065f46",
+                          cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1,
+                        }}
+                      >×</button>
+                    </span>
+                  );
+                })}
+                {(form.praca_ids_extra || []).length === 0 && (
+                  <span style={{ fontSize: 12, color: "#94a3b8" }}>Nenhuma praça adicional.</span>
+                )}
+              </div>
+              <select
+                data-testid="inp-praca-extra-add"
+                value=""
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) return;
+                  const cur = form.praca_ids_extra || [];
+                  if (cur.includes(val)) return;
+                  setForm({ ...form, praca_ids_extra: [...cur, val] });
+                  e.target.value = "";
+                }}
+                style={{ ...inputStyle, maxWidth: 380 }}
+              >
+                <option value="">+ Adicionar praça adicional...</option>
+                {pracas
+                  .filter((p) => p.id !== form.praca_id && !(form.praca_ids_extra || []).includes(p.id))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>{p.city}/{p.state} — {p.name}</option>
+                  ))}
+              </select>
+              <p style={{ marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
+                As cercas virtuais e feriados dessas praças adicionais também serão aceitas para este colaborador.
+              </p>
+            </Field>
+          )}
 
           {/* Modo de trabalho — controla se o colaborador bate ponto */}
           <div data-testid="clock-in-mode-block" style={{

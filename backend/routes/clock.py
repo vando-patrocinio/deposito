@@ -82,6 +82,7 @@ class CollaboratorIn(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     praca_id: Optional[str] = None
+    praca_ids_extra: list[str] = Field(default_factory=list)
     is_test_mode: bool = False  # ADMIN: marca colaborador como TESTE — bypassa cerca/selfie
     clock_in_enabled: bool = True  # CLT bate ponto. False = freelancer/MEI/3rd party — Lousa direta sem ponto.
     active: bool = True  # False = colaborador inativo (desligado, em férias longas, etc)
