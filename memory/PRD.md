@@ -139,6 +139,12 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Redesign sóbrio** (alinhado com PracasPanel / Atendimento IA): novo helper `chipStyle(tone)` com paleta unificada (slate/amber/sky/emerald/teal); cards mais compactos (padding 12, radius 12, sem box-shadow pesado); chips sem emojis nos rótulos ("não bate ponto", "sem avatar", "dispositivo OK", "aguardando Google", "modo teste"); botões "Bate ponto: ON/OFF" e "Pontos" sem emojis (🕐/🚫) — apenas ícone lucide opcional.
 - Validado E2E (Playwright via testing_agent iter54): duplicate de cerca de DIOGO (CLT) para JUNIOR (não-CLT) — `fence-count-col-dd5d2c1a` mudou de "0" para "1" com label "(inativas)"; ZERO `fences-disabled-*` na página; cleanup OK.
 
+✅ **Aba Auditoria — Cercas órfãs** (13/05/2026 — iter54):
+- Nova seção em `ManagerPanel.js` que lista cercas salvas em colaboradores `clock_in_enabled=false` (terceirizado/MEI) — cercas guardadas no DB mas que não são aplicadas.
+- Para cada cerca órfã exibe: colaborador, chip "não bate ponto", nome/tipo/endereço/raio da cerca, e dois CTAs: **"Ativar ponto"** (reativa o batimento — todas as cercas voltam a valer) e **🗑 remover** (delete da cerca).
+- Badge `data-testid="orphan-count-badge"` com contagem no título do card; `data-testid="orphan-row-{fenceId}"`, `orphan-enable-{cid}`, `orphan-remove-{fenceId}`.
+- Validado E2E (Playwright + curl): seed de cerca em col-dd5d2c1a (não-CLT) → badge mostra "1" + linha completa na aba Auditoria → cleanup OK.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)

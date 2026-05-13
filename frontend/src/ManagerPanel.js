@@ -6,16 +6,66 @@ import LiveMap from "@/LiveMap";
 export default function ManagerPanel() {
   const [records, setRecords] = useState([]);
   const [collabs, setCollabs] = useState([]);
+  const [orphanFences, setOrphanFences] = useState([]); // cercas salvas em colab não-CLT
   const [busy, setBusy] = useState(false);
+  const [orphanBusy, setOrphanBusy] = useState(null);
+  const [orphanFlash, setOrphanFlash] = useState("");
 
   async function reload() {
     const [r, c] = await Promise.all([api.listClockRecords(), api.listCollaborators()]);
     setRecords(r);
     setCollabs(c);
+    // Detecta cercas órfãs: pertencem a colab com clock_in_enabled=false
+    const nonClt = c.filter((x) => x.clock_in_enabled === false);
+    const orphans = [];
+    await Promise.all(nonClt.map(async (col) => {
+      try {
+        const fs = await api.listGeofences(col.id);
+        for (const f of fs) orphans.push({ ...f, _collab: col });
+      } catch { /* ignora colab */ }
+    }));
+    setOrphanFences(orphans);
   }
   useEffect(() => { reload(); }, []);
 
   const collabName = (cid) => collabs.find((c) => c.id === cid)?.name || cid;
+
+  async function enableClockIn(col) {
+    if (!window.confirm(`Ativar batimento de ponto para ${col.name}?\n\nA partir de agora as cercas dele(a) serão aplicadas e ele(a) verá a tela de Entrada/Intervalo/Saída no app.`)) return;
+    setOrphanBusy(col.id);
+    try {
+      await api.updateCollaborator(col.id, {
+        name: col.name, cpf: col.cpf, email: col.email, phone: col.phone,
+        role: col.role, company: col.company,
+        schedule: col.schedule, overtime_policy: col.overtime_policy,
+        city: col.city ?? null, state: col.state ?? null, praca_id: col.praca_id ?? null,
+        is_test_mode: !!col.is_test_mode,
+        clock_in_enabled: true,
+      });
+      setOrphanFlash(`✅ ${col.name} agora bate ponto — cercas reativadas.`);
+      await reload();
+      setTimeout(() => setOrphanFlash(""), 4000);
+    } catch (e) {
+      setOrphanFlash(`❌ Erro: ${e?.response?.data?.detail || e.message}`);
+      setTimeout(() => setOrphanFlash(""), 4000);
+    }
+    setOrphanBusy(null);
+  }
+
+  async function removeOrphan(fenceId, colName) {
+    if (!window.confirm(`Remover esta cerca de ${colName}?\n\nEla está inativa porque o colaborador não bate ponto. Esta ação não pode ser desfeita.`)) return;
+    setOrphanBusy(fenceId);
+    try {
+      await api.deleteGeofence(fenceId);
+      setOrphanFlash(`✅ Cerca removida.`);
+      await reload();
+      setTimeout(() => setOrphanFlash(""), 3000);
+    } catch (e) {
+      setOrphanFlash(`❌ Erro: ${e?.response?.data?.detail || e.message}`);
+      setTimeout(() => setOrphanFlash(""), 4000);
+    }
+    setOrphanBusy(null);
+  }
 
   const valid = records.filter((r) => r.status === "Válido" || r.status === "Offline sincronizado");
   const pending = records.filter((r) => r.status === "Pendente");
@@ -61,6 +111,78 @@ export default function ManagerPanel() {
               <span style={{ color: "#be123c", fontSize: 13 }}>{r.date} {r.time} • IP {r.public_ip || "—"} • Motivo interno: {r.internal_block_reason}</span>
             </div>
           ))}
+        </Card>
+
+        <Card
+          title={
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Cercas órfãs
+              <span data-testid="orphan-count-badge" style={{
+                background: orphanFences.length ? "#fef3c7" : "#f1f5f9",
+                color: orphanFences.length ? "#92400e" : "#64748b",
+                border: `1px solid ${orphanFences.length ? "#fde68a" : "#e2e8f0"}`,
+                fontSize: 11, fontWeight: 800, padding: "1px 8px", borderRadius: 999,
+              }}>
+                {orphanFences.length}
+              </span>
+            </span>
+          }
+        >
+          <p style={{ color: "#64748b", fontSize: 13, marginTop: -4, marginBottom: 10 }}>
+            Cercas salvas em colaboradores que <strong>não batem ponto</strong> (terceirizado/MEI) — ficam guardadas no DB mas
+            não são aplicadas. Reative o ponto para validar ou remova a cerca.
+          </p>
+          {orphanFlash && (
+            <div data-testid="orphan-flash" style={{
+              background: orphanFlash.startsWith("✅") ? "#dcfce7" : "#fee2e2",
+              color: orphanFlash.startsWith("✅") ? "#166534" : "#991b1b",
+              padding: 10, borderRadius: 12, marginBottom: 10, fontWeight: 700, fontSize: 13,
+            }}>{orphanFlash}</div>
+          )}
+          {orphanFences.length === 0 ? (
+            <p data-testid="orphan-empty" style={{ color: "#64748b" }}>Nenhuma cerca órfã. Tudo limpo.</p>
+          ) : (
+            orphanFences.map((f) => (
+              <div key={f.id} data-testid={`orphan-row-${f.id}`} style={{
+                display: "flex", justifyContent: "space-between", gap: 10,
+                padding: "10px 0", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap",
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <strong>{f._collab.name}</strong>
+                  <span style={{
+                    marginLeft: 8, fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 999,
+                    background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0",
+                  }}>não bate ponto</span>
+                  <div style={{ color: "#475569", fontSize: 13, marginTop: 2 }}>
+                    <Icon name="map" /> {f.name} <span style={{ color: "#94a3b8" }}>· {f.type}</span>
+                  </div>
+                  <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 1 }}>
+                    {f.address} · raio {f.radius}m
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignSelf: "center" }}>
+                  <Button
+                    variant="soft"
+                    onClick={() => enableClockIn(f._collab)}
+                    disabled={orphanBusy === f._collab.id}
+                    data-testid={`orphan-enable-${f._collab.id}`}
+                    title="Reativa o batimento de ponto deste colaborador — todas as cercas dele voltam a valer"
+                  >
+                    {orphanBusy === f._collab.id ? "..." : "Ativar ponto"}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={() => removeOrphan(f.id, f._collab.name)}
+                    disabled={orphanBusy === f.id}
+                    data-testid={`orphan-remove-${f.id}`}
+                    title="Remove a cerca permanentemente"
+                  >
+                    {orphanBusy === f.id ? "..." : <Icon name="trash" />}
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
         </Card>
       </div>
 
