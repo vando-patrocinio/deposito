@@ -182,6 +182,16 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Backend**: zero changes — reutiliza endpoints existentes `GET/POST/PATCH/DELETE /api/aihub/agents`, `GET /api/aihub/catalog/models`, `GET /api/aihub/catalog/tools`, `GET /api/whatsapp-baileys/qr`, `POST /api/whatsapp-baileys/logout`, `GET/PUT /api/whatsapp-baileys/auto-reply`.
 - Validado E2E (testing_agent iter57): 9/9 asserts passaram — modal abre, 5 sections renderizam, sidebar lista 1 agente (Isabella · gpt-5-mini), criar/salvar/excluir novo agente funciona end-to-end com `window.confirm`, modal fecha sem regressão no banner.
 
+✅ **Roteamento IA Multi-Agente** (13/05/2026 — iter58):
+- **Backend**: novo `backend/services/routing.py` (~180 linhas) com função `pick_agent_for_message(company_id, phone, user_text)` que implementa cascata de 3 estratégias:
+  1. **Conversa já roteada** → reusa `wa_conversations.routed_agent_id` (consistência — mesma conversa permanece com o mesmo agente nas mensagens seguintes, evita "Olá! Sou outro agente" no meio do papo).
+  2. **Score por keywords** (offline, sem LLM) — bate tokens do `routing_intent` do agente + buckets genéricos PT-BR (vendas/suporte/financeiro/agendamento/cancelamento).
+  3. **LLM classifier** — chamada com `temperature=0`, `max_tokens=10`, pede ao motor_ia para escolher o número do agente. Fallback gracioso se LLM falhar.
+- **Schema**: novo campo `routing_intent` (string, livre, max 400 chars) em `aihub_agents`. Patch em `AgentIn` e `AgentUpdate`.
+- **Wire**: `_maybe_auto_reply` em `whatsapp_baileys.py` agora chama `pick_agent_for_message` antes de responder — quando há 1 agente, comportamento idêntico ao anterior; quando há 2+, roteia inteligentemente.
+- **Frontend**: novo textarea `agent-config-field-routing` na section "Auto-reply / Ativação" do `AgentConfigModal`, com placeholder/hint explicando o uso ("Ex: vendas e novos planos · preço · contratação").
+- **Validação E2E** (testing_agent iter58): 6/6 backend + frontend Playwright. Vendas ("quero contratar 600 mega") → Isabella ✓; Suporte ("sem sinal, internet caiu") → Bruno ✓; 2ª msg do mesmo cliente vendas continuou com Isabella ✓.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
