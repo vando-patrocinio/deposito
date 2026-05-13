@@ -283,28 +283,28 @@ export default function CadastroPanel() {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <strong style={{ fontSize: 15 }}>{c.name}</strong>
                     {!c.avatar_data_url && (
-                      <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}>
+                      <span style={{ fontSize: 9.5, fontWeight: 600, padding: "1px 7px", borderRadius: 999, background: "#fef3c7", color: "#92400e" }}>
                         sem avatar facial
                       </span>
                     )}
                     {c.device_id && (
-                      <span title={`Vinculado a: ${c.google_email || "(Google)"}`} style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#dcfce7", color: "#166534", border: "1px solid #bbf7d0" }}>
-                        📱 dispositivo vinculado
+                      <span title={`Vinculado a: ${c.google_email || "(Google)"}`} style={{ fontSize: 9.5, fontWeight: 600, padding: "1px 7px", borderRadius: 999, background: "#dcfce7", color: "#166534" }}>
+                        dispositivo vinculado
                       </span>
                     )}
                     {!c.device_id && c.email && (
-                      <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#e0f2fe", color: "#075985", border: "1px solid #bae6fd" }}>
+                      <span style={{ fontSize: 9.5, fontWeight: 600, padding: "1px 7px", borderRadius: 999, background: "#e0f2fe", color: "#075985" }}>
                         aguardando 1º login Google
                       </span>
                     )}
                     {c.is_test_mode && (
-                      <span title="Modo teste — bate ponto em qualquer local com qualquer selfie" style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#f0fdfa", color: "#0d9488", border: "1px solid #5eead4" }}>
-                        🧪 MODO TESTE
+                      <span title="Modo teste — bate ponto em qualquer local com qualquer selfie" style={{ fontSize: 9.5, fontWeight: 600, padding: "1px 7px", borderRadius: 999, background: "#f0fdfa", color: "#0d9488" }}>
+                        modo teste
                       </span>
                     )}
                     {c.clock_in_enabled === false && (
-                      <span title="Colaborador externo — app abre direto na Lousa, sem registro de ponto" style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#fff7ed", color: "#9a3412", border: "1px solid #fdba74" }}>
-                        🚫 NÃO BATE PONTO
+                      <span title="Colaborador externo — app abre direto na Lousa, sem registro de ponto" style={{ fontSize: 9.5, fontWeight: 600, padding: "1px 7px", borderRadius: 999, background: "#fff7ed", color: "#9a3412" }}>
+                        não bate ponto
                       </span>
                     )}
                   </div>
