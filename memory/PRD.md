@@ -156,6 +156,18 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Novo Card "Insights IA · Frota"** em `ManagerPanel.js` (aba Auditoria) com summary, bullets, top_priority destacado e tabela detalhada de defeitos recorrentes.
 - Validado E2E (testing_agent iter55): 8/8 backend pytest + 10/10 frontend testids; gpt-4o retornou para DIOGO score=95 status='atenção' open_critical=['Pressão dos pneus'].
 
+✅ **Fix CRÍTICO · Diagnóstico "Isabela Online mas não responde"** (13/05/2026 — iter56):
+- **Bug raiz**: 4 caminhos de falha silenciosa em `_maybe_auto_reply` (`whatsapp_baileys.py`) faziam `return None` sem alertar ninguém — quando auto-reply estava OFF, agente Jerusa não cadastrado, Motor IA falhava (OpenRouter sem créditos) ou sidecar Node desconectado, o cliente ficava sem resposta e o gestor via "Isabela: Online" no painel.
+- **Backend fix**: nova função `_persist_ai_failure()` registra cada falha como `outbound` com `delivery_status="failed_<code>"` (codes: `failed_disabled`, `failed_no_agent`, `failed_llm_error`, `failed_motor_ia_unavailable`, `failed_empty_reply`, `failed_sidecar`) + `delivery_error` em PT-BR + dispara `wa_system_events` quando 3+ falhas/24h.
+- **Novo endpoint** `GET /api/whatsapp-baileys/ai-health` retorna diagnóstico completo: `status: healthy|degraded|down`, `auto_reply_enabled`, `agent_active`, `motor_ia_configured`, `sidecar_status`, `stats_24h.{sent,failed,failed_1h}`, `last_ok`, `last_fail`, `reasons[]` (cada um com code/severity/message em PT-BR).
+- **Aggregation de `/conversations`** agora retorna `last_outbound_status` e `last_outbound_error` por phone, permitindo destacar conversas com falha na lista.
+- **Frontend (3 pontos de exibição visual)**:
+  - **Banner** no topo do Atendimento IA (`WhatsAppChatLayout.js` · `AiHealthBanner`) com pílula 🟢/🟡/🔴 + razão principal + CTA "Ativar auto-reply" (1 clique) + popover de detalhes com 6 cells de diagnóstico + última falha/última OK.
+  - **Chip "⚠ Falha IA"** vermelho nas conv rows quando última outbound começa com `failed_` (`ConvRow` · `data-testid="wa-conv-ai-fail-{phone}"`).
+  - **Card "Saúde do Atendimento IA · Isabela"** no Central IA (`CentralIaDashboard.js` · `AiAttendantHealthCard`) com mesma matriz de diagnóstico, motivos detectados, última falha e botão "Ativar auto-reply".
+  - **`MsgBubble`** detecta `delivery_status.startsWith("failed_")` e renderiza balão vermelho + label PT-BR ("IA desligada — não respondeu" / "Motor IA falhou" / "IA retornou resposta vazia" etc).
+- Validado E2E (testing_agent iter56): backend 3/3 pytest passou · frontend E2E Playwright validou TODOS data-testids (banner, reason, details panel, enable btn, 2 chips conv-ai-fail-*, card Central IA com 6 cells + reasons).
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
