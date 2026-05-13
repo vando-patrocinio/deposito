@@ -8,6 +8,24 @@ import AssetsSection from "@/AssetsSection";
 import DeactivationAssetsModal from "@/DeactivationAssetsModal";
 import VehicleChecklistModal from "@/VehicleChecklistModal";
 
+// Paleta de chips sóbria — usada nos cards de colaborador
+const CHIP_PALETTE = {
+  slate:   { bg: "#f1f5f9", fg: "#475569", bd: "#e2e8f0" },
+  amber:   { bg: "#fef3c7", fg: "#92400e", bd: "#fde68a" },
+  sky:     { bg: "#e0f2fe", fg: "#075985", bd: "#bae6fd" },
+  emerald: { bg: "#dcfce7", fg: "#166534", bd: "#bbf7d0" },
+  teal:    { bg: "#f0fdfa", fg: "#0d9488", bd: "#99f6e4" },
+};
+function chipStyle(tone = "slate") {
+  const p = CHIP_PALETTE[tone] || CHIP_PALETTE.slate;
+  return {
+    fontSize: 10, fontWeight: 700, letterSpacing: ".02em",
+    padding: "1px 7px", borderRadius: 999,
+    background: p.bg, color: p.fg, border: `1px solid ${p.bd}`,
+    whiteSpace: "nowrap",
+  };
+}
+
 const EMPTY = {
   name: "",
   cpf: "",
@@ -247,17 +265,27 @@ export default function CadastroPanel() {
             </div>
           )}
           {list.length === 0 && <p style={{ color: "#64748b" }}>Nenhum colaborador cadastrado.</p>}
-          {list.map((c) => (
+          {list.map((c) => {
+            const clockOn = c.clock_in_enabled !== false;
+            const indiv = fenceCounts[c.id] ?? 0;
+            const hasPraca = c.praca_id && c.praca_id !== "NOTA";
+            const totalFences = indiv + (hasPraca ? 1 : 0);
+            const fenceTitle = !clockOn
+              ? `${indiv} cerca(s) salva(s), mas não são aplicadas — colaborador não bate ponto (terceirizado/MEI). Para reativar, ligue "Bate ponto".`
+              : hasPraca
+                ? `${indiv} cerca(s) individual(is) + 1 praça vinculada`
+                : `${indiv} cerca(s) individual(is)`;
+            const praca = pracas.find((x) => x.id === c.praca_id);
+            return (
             <div
               key={c.id}
               data-testid={`collab-card-${c.id}`}
               style={{
                 background: "white",
                 border: "1px solid #e2e8f0",
-                borderRadius: 16,
-                padding: 14,
-                marginBottom: 10,
-                boxShadow: "0 2px 6px rgba(15,23,42,.04)",
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 8,
               }}
             >
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
@@ -268,10 +296,10 @@ export default function CadastroPanel() {
                   title={c.avatar_data_url ? "Clique para ampliar" : "Sem foto cadastrada"}
                   data-testid={`avatar-${c.id}`}
                   style={{
-                    width: 56, height: 56, borderRadius: "50%", overflow: "hidden",
-                    background: "linear-gradient(135deg,#e2e8f0,#cbd5e1)",
-                    display: "grid", placeItems: "center", fontSize: 22,
-                    border: "2px solid white", boxShadow: "0 4px 12px rgba(15,23,42,.08)",
+                    width: 44, height: 44, borderRadius: "50%", overflow: "hidden",
+                    background: "#f1f5f9",
+                    display: "grid", placeItems: "center", fontSize: 16,
+                    border: "1px solid #e2e8f0",
                     padding: 0, flexShrink: 0,
                     cursor: c.avatar_data_url ? "zoom-in" : "default",
                   }}
@@ -280,51 +308,44 @@ export default function CadastroPanel() {
                 </button>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <strong style={{ fontSize: 15 }}>{c.name}</strong>
-                    {!c.avatar_data_url && (
-                      <span style={{ fontSize: 9.5, fontWeight: 600, padding: "1px 7px", borderRadius: 999, background: "#fef3c7", color: "#92400e" }}>
-                        sem avatar facial
-                      </span>
-                    )}
-                    {c.device_id && (
-                      <span title={`Vinculado a: ${c.google_email || "(Google)"}`} style={{ fontSize: 9.5, fontWeight: 600, padding: "1px 7px", borderRadius: 999, background: "#dcfce7", color: "#166534" }}>
-                        dispositivo vinculado
-                      </span>
-                    )}
-                    {!c.device_id && c.email && (
-                      <span style={{ fontSize: 9.5, fontWeight: 600, padding: "1px 7px", borderRadius: 999, background: "#e0f2fe", color: "#075985" }}>
-                        aguardando 1º login Google
-                      </span>
-                    )}
-                    {c.is_test_mode && (
-                      <span title="Modo teste — bate ponto em qualquer local com qualquer selfie" style={{ fontSize: 9.5, fontWeight: 600, padding: "1px 7px", borderRadius: 999, background: "#f0fdfa", color: "#0d9488" }}>
-                        modo teste
-                      </span>
-                    )}
-                    {c.clock_in_enabled === false && (
-                      <span title="Colaborador externo — app abre direto na Lousa, sem registro de ponto" style={{ fontSize: 9.5, fontWeight: 600, padding: "1px 7px", borderRadius: 999, background: "#fff7ed", color: "#9a3412" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <strong style={{ fontSize: 14, letterSpacing: ".01em" }}>{c.name}</strong>
+                    {!clockOn && (
+                      <span title="Colaborador externo — app abre direto na Lousa, sem registro de ponto" style={chipStyle("slate")}>
                         não bate ponto
                       </span>
                     )}
+                    {c.is_test_mode && (
+                      <span title="Modo teste — bate ponto em qualquer local com qualquer selfie" style={chipStyle("teal")}>
+                        modo teste
+                      </span>
+                    )}
+                    {!c.avatar_data_url && (
+                      <span style={chipStyle("amber")}>sem avatar</span>
+                    )}
+                    {!c.device_id && c.email && (
+                      <span style={chipStyle("sky")}>aguardando Google</span>
+                    )}
+                    {c.device_id && (
+                      <span title={`Vinculado a: ${c.google_email || "(Google)"}`} style={chipStyle("emerald")}>
+                        dispositivo OK
+                      </span>
+                    )}
                   </div>
-                  <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>
-                    {c.role}{(() => {
-                      const p = pracas.find((x) => x.id === c.praca_id);
-                      return p ? ` · ${p.city}/${p.state}` : c.company ? ` · ${c.company}` : "";
-                    })()}
+                  <div style={{ color: "#64748b", fontSize: 12, marginTop: 3 }}>
+                    {c.role}{praca ? ` · ${praca.city}/${praca.state}` : c.company ? ` · ${c.company}` : ""}
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 6, fontSize: 12, color: "#475569" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 14px", marginTop: 4, fontSize: 12, color: "#475569" }}>
                     <span><span style={{ color: "#94a3b8" }}>CPF</span>&nbsp;{c.cpf}</span>
-                    <span><span style={{ color: "#94a3b8" }}>E-mail</span>&nbsp;{c.email}</span>
-                    <span><span style={{ color: "#94a3b8" }}>Tel</span>&nbsp;{c.phone}</span>
+                    {c.email && <span><span style={{ color: "#94a3b8" }}>E-mail</span>&nbsp;{c.email}</span>}
+                    {c.phone && <span><span style={{ color: "#94a3b8" }}>Tel</span>&nbsp;{c.phone}</span>}
                   </div>
 
                   <CollabShareLink collaborator={c} />
                 </div>
               </div>
 
-              <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #f1f5f9", display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #f1f5f9", display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 {confirmDelete === c.id ? (
                   <>
                     <span style={{ alignSelf: "center", marginRight: "auto", fontSize: 12, color: "#be123c", fontWeight: 700 }}>Apagar tudo? Não dá pra desfazer.</span>
@@ -345,36 +366,33 @@ export default function CadastroPanel() {
                   </>
                 ) : (
                   <>
-                    {c.clock_in_enabled !== false ? (
-                      <Button variant="soft" onClick={() => setSelectedId(c.id)} data-testid={`fences-${c.id}`}>
-                        <Icon name="map" /> Cercas
-                        {(() => {
-                          const indiv = fenceCounts[c.id] ?? 0;
-                          const hasPraca = c.praca_id && c.praca_id !== "NOTA";
-                          const total = indiv + (hasPraca ? 1 : 0);
-                          const title = hasPraca
-                            ? `${indiv} cerca(s) individual(is) + 1 praça vinculada`
-                            : `${indiv} cerca(s) individual(is)`;
-                          return (
-                            <span title={title} data-testid={`fence-count-${c.id}`} style={{ marginLeft: 6, background: total ? "#0ea5e9" : "#94a3b8", color: "white", borderRadius: 999, padding: "1px 7px", fontSize: 10, fontWeight: 900 }}>
-                              {total}
-                            </span>
-                          );
-                        })()}
-                      </Button>
-                    ) : (
-                      <span
-                        data-testid={`fences-disabled-${c.id}`}
-                        title="Colaborador externo (não-CLT) — cercas não se aplicam, validação de localização e selfie estão desativadas"
-                        style={{
-                          fontSize: 11, fontWeight: 700, color: "#9a3412",
-                          background: "#fff7ed", border: "1px dashed #fdba74",
-                          padding: "6px 12px", borderRadius: 999,
-                        }}
-                      >
-                        🚫 Cerca não se aplica
+                    {/* Cercas — SEMPRE visível quando há cercas em DB (mesmo p/ não-CLT), p/ usuário ver
+                        que a cerca foi salva. Apenas o estilo muda quando inativo. */}
+                    <Button
+                      variant="soft"
+                      onClick={() => setSelectedId(c.id)}
+                      data-testid={`fences-${c.id}`}
+                      title={fenceTitle}
+                      style={!clockOn ? {
+                        background: "#fafafa", color: "#64748b",
+                        border: "1px dashed #cbd5e1", fontWeight: 600,
+                      } : undefined}
+                    >
+                      <Icon name="map" /> Cercas
+                      <span data-testid={`fence-count-${c.id}`} style={{
+                        marginLeft: 6,
+                        background: !clockOn ? "#cbd5e1" : (totalFences ? "#0f172a" : "#94a3b8"),
+                        color: "white", borderRadius: 999, padding: "1px 7px",
+                        fontSize: 10, fontWeight: 800,
+                      }}>
+                        {totalFences}
                       </span>
-                    )}
+                      {!clockOn && totalFences > 0 && (
+                        <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "#9a3412" }}>
+                          (inativas)
+                        </span>
+                      )}
+                    </Button>
                     <Button
                       variant="soft"
                       onClick={() => setConfirmReset(c.id)}
@@ -382,36 +400,33 @@ export default function CadastroPanel() {
                       title={c.avatar_data_url ? "Remove a foto de referência — próxima selfie válida vira o novo avatar" : "Colaborador ainda não tem avatar"}
                       data-testid={`reset-face-${c.id}`}
                     >
-                      <Icon name="camera" /> Resetar avatar e dispositivo
+                      <Icon name="camera" /> Resetar
                     </Button>
                     <Button
                       variant="soft"
                       onClick={() => toggleClockInEnabled(c)}
                       disabled={togglingId === c.id}
                       data-testid={`toggle-clock-${c.id}`}
-                      title={c.clock_in_enabled !== false
+                      title={clockOn
                         ? "Clique para desativar — colaborador não vai mais bater ponto, app abre direto na Lousa"
                         : "Clique para ativar — colaborador volta a bater ponto e a tela home padrão"}
                       style={{
-                        background: c.clock_in_enabled !== false ? "#ecfeff" : "#fff7ed",
-                        color: c.clock_in_enabled !== false ? "#0e7490" : "#9a3412",
-                        border: `1px solid ${c.clock_in_enabled !== false ? "#67e8f9" : "#fdba74"}`,
-                        fontWeight: 700,
+                        background: clockOn ? "#f0fdf4" : "#fff7ed",
+                        color: clockOn ? "#166534" : "#9a3412",
+                        border: `1px solid ${clockOn ? "#bbf7d0" : "#fdba74"}`,
+                        fontWeight: 600,
                       }}
                     >
-                      {togglingId === c.id
-                        ? "..."
-                        : c.clock_in_enabled !== false ? "🕐 Bate ponto: ON" : "🚫 Bate ponto: OFF"}
+                      {togglingId === c.id ? "..." : clockOn ? "Bate ponto: ON" : "Bate ponto: OFF"}
                     </Button>
-                    {c.clock_in_enabled !== false && (
+                    {clockOn && (
                       <Button
                         variant="soft"
                         onClick={() => setClockHistoryFor(c)}
                         data-testid={`view-clock-${c.id}`}
                         title="Ver batimentos de ponto deste colaborador"
-                        style={{ background: "#ecfdf5", color: "#065f46", border: "1px solid #6ee7b7" }}
                       >
-                        🕐 Pontos
+                        <Icon name="clock" /> Pontos
                       </Button>
                     )}
                     <Button
@@ -419,7 +434,6 @@ export default function CadastroPanel() {
                       onClick={() => setAssetsFor(c)}
                       data-testid={`view-assets-${c.id}`}
                       title="Itens em custódia (Checklist EPIs)"
-                      style={{ background: "var(--accent-soft)", color: "var(--accent-soft-fg)", border: "1px solid #99f6e4" }}
                     >
                       <Icon name="clipboard" /> Checklist
                     </Button>
@@ -428,7 +442,6 @@ export default function CadastroPanel() {
                       onClick={() => setVehicleChecklistFor(c)}
                       data-testid={`view-vehicle-${c.id}`}
                       title="Checklist veicular pré-jornada (CONTRAN)"
-                      style={{ background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe" }}
                     >
                       <Car size={14} strokeWidth={1.75} /> Veicular
                     </Button>
@@ -442,7 +455,8 @@ export default function CadastroPanel() {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </Card>
 
         {selectedId && (
