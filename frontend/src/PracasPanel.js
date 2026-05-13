@@ -21,6 +21,7 @@ const EMPTY = {
   holidays_extra: [],
   logo_url: "", cnpj: "", inscricao_estadual: "",
   phone: "", email: "", site: "",
+  branch_codes: [],
 };
 const SCOPES = [
   { value: "municipal", label: "Municipal" },
@@ -244,6 +245,8 @@ export default function PracasPanel() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [aiPraca, setAiPraca] = useState(null);
 
+  const [filiaisAtlaz, setFiliaisAtlaz] = useState([]);
+
   // form para nova entrada de feriado
   const [hDate, setHDate] = useState("");
   const [hName, setHName] = useState("");
@@ -254,6 +257,12 @@ export default function PracasPanel() {
     catch (e) { setError(e?.response?.data?.detail || e.message); }
   }
   useEffect(() => { reload(); }, []);
+  useEffect(() => {
+    // Carrega filiais Atlaz uma vez para popular o multi-select
+    api.atlazGetSettings()
+      .then((c) => setFiliaisAtlaz(Array.isArray(c?.filiais) ? c.filiais : []))
+      .catch(() => setFiliaisAtlaz([]));
+  }, []);
 
   function startNew() { setForm(EMPTY); setEditing("new"); setError(""); }
   function startEdit(p) {
@@ -263,6 +272,9 @@ export default function PracasPanel() {
       neighborhood: p.neighborhood || "", postal_code: p.postal_code || "",
       lat: p.lat ?? null, lng: p.lng ?? null,
       holidays_extra: [...(p.holidays_extra || [])],
+      logo_url: p.logo_url || "", cnpj: p.cnpj || "", inscricao_estadual: p.inscricao_estadual || "",
+      phone: p.phone || "", email: p.email || "", site: p.site || "",
+      branch_codes: Array.isArray(p.branch_codes) ? [...p.branch_codes] : [],
     });
     setEditing(p.id); setError("");
   }
@@ -352,6 +364,20 @@ export default function PracasPanel() {
                 <div style={{ color: "#64748b", fontSize: 12 }}>{p.city} · {p.state}</div>
                 {p.full_address && <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 2 }}>{p.full_address}</div>}
                 <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 4 }}>{(p.holidays_extra || []).length} feriado(s) cadastrado(s)</div>
+                {(p.branch_codes || []).length > 0 && (
+                  <div data-testid={`praca-branches-${p.id}`} style={{
+                    display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8,
+                  }}>
+                    {(p.branch_codes || []).map((b) => (
+                      <span key={b} style={{
+                        display: "inline-flex", alignItems: "center", gap: 3,
+                        padding: "2px 7px", borderRadius: 999,
+                        background: "#dbeafe", border: "1px solid #93c5fd",
+                        color: "#1e40af", fontSize: 10.5, fontWeight: 700,
+                      }}>🏢 {b}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #f1f5f9", display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -518,6 +544,69 @@ export default function PracasPanel() {
                        onChange={(e) => setForm({ ...form, site: e.target.value })}
                        placeholder="www.empresa.com.br" />
               </Field>
+            </div>
+
+            {/* Filiais Atlaz vinculadas — uma praça pode operar com várias filiais */}
+            <div style={{ marginTop: 4 }}>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#475569",
+                              textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+                Filiais (Atlaz) que operam nesta praça
+              </label>
+              {filiaisAtlaz.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>
+                  Nenhuma filial cadastrada no Atlaz. Cadastre primeiro em
+                  <strong> Sistema → Configurações → Atlaz → Mapeamento Filial</strong>.
+                </p>
+              ) : (
+                <>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                    {(form.branch_codes || []).map((b) => (
+                      <span key={b} data-testid={`p-branch-tag-${b}`} style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        padding: "4px 10px", borderRadius: 999,
+                        background: "#dbeafe", border: "1px solid #93c5fd",
+                        color: "#1e40af", fontSize: 12, fontWeight: 600,
+                      }}>
+                        🏢 {b}
+                        <button
+                          type="button"
+                          onClick={() => setForm({
+                            ...form,
+                            branch_codes: (form.branch_codes || []).filter((x) => x !== b),
+                          })}
+                          style={{
+                            border: "none", background: "transparent", color: "#1e40af",
+                            cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1,
+                          }}
+                        >×</button>
+                      </span>
+                    ))}
+                    {(form.branch_codes || []).length === 0 && (
+                      <span style={{ fontSize: 12, color: "#94a3b8" }}>Nenhuma filial selecionada.</span>
+                    )}
+                  </div>
+                  <select
+                    data-testid="p-branch-add"
+                    value=""
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      if ((form.branch_codes || []).includes(val)) return;
+                      setForm({ ...form, branch_codes: [...(form.branch_codes || []), val] });
+                      e.target.value = "";
+                    }}
+                    style={{ ...inputStyle, maxWidth: 320 }}
+                  >
+                    <option value="">+ Adicionar filial...</option>
+                    {filiaisAtlaz.filter((f) => !(form.branch_codes || []).includes(f)).map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                  <p style={{ marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
+                    Quando um chamado Atlaz vier de uma dessas filiais, ele será roteado para esta praça.
+                  </p>
+                </>
+              )}
             </div>
           </div>
 

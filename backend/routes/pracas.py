@@ -66,6 +66,9 @@ class PracaIn(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     site: Optional[str] = None
+    # Filiais Atlaz que operam nesta praça (multi). Quando chamado Atlaz vem de
+    # uma dessas filiais, ele é roteado para os técnicos desta praça.
+    branch_codes: list[str] = Field(default_factory=list)
 
 
 @router.get("/pracas")
@@ -97,6 +100,7 @@ async def create_praca(payload: PracaIn, user: dict = Depends(require_role("gest
         "phone": (payload.phone or "").strip() or None,
         "email": (payload.email or "").strip() or None,
         "site": (payload.site or "").strip() or None,
+        "branch_codes": [b.strip() for b in (payload.branch_codes or []) if b and b.strip()],
         "created_at": now_iso(),
         "updated_at": now_iso(),
     }
@@ -126,6 +130,7 @@ async def update_praca(pid: str, payload: PracaIn, user: dict = Depends(require_
         "phone": (payload.phone or "").strip() or None,
         "email": (payload.email or "").strip() or None,
         "site": (payload.site or "").strip() or None,
+        "branch_codes": [b.strip() for b in (payload.branch_codes or []) if b and b.strip()],
         "updated_at": now_iso(),
     }
     res = await db.pracas.update_one({"id": pid}, {"$set": update})
