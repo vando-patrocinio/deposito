@@ -16,6 +16,9 @@ const EMPTY = {
   role: "Colaborador de Campo",
   praca_id: "",
   praca_ids_extra: [],
+  pis: "",
+  admitted_at: "",
+  matricula: "",
   schedule: { entrada: "08:00", inicio_intervalo: "12:00", fim_intervalo: "13:00", saida: "17:00" },
   overtime_policy: { mode: "banco", hourly_rate_brl: 0, weekday_multiplier: 1.5, sunday_multiplier: 2.0 },
   is_test_mode: false,
@@ -120,6 +123,9 @@ export default function CadastroPanel() {
       role: c.role || "Colaborador de Campo",
       praca_id: c.praca_id || "",
       praca_ids_extra: Array.isArray(c.praca_ids_extra) ? [...c.praca_ids_extra] : [],
+      pis: c.pis || "",
+      admitted_at: (c.admitted_at || "").slice(0, 10),
+      matricula: c.matricula || "",
       schedule: c.schedule || EMPTY.schedule,
       overtime_policy: c.overtime_policy || EMPTY.overtime_policy,
       is_test_mode: !!c.is_test_mode,
@@ -492,6 +498,32 @@ export default function CadastroPanel() {
           <Field label="CPF">
             <input data-testid="inp-cpf" style={inputStyle} value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} placeholder="000.000.000-00" />
           </Field>
+
+          {/* Dados RH — aparecem no cabeçalho do espelho de ponto (Control iD) */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10,
+            padding: 12, background: "#f8fafc", borderRadius: 12,
+            border: "1px solid #e2e8f0", marginTop: 4, marginBottom: 4,
+          }}>
+            <Field label="PIS / PASEP">
+              <input data-testid="inp-pis" style={inputStyle}
+                     value={form.pis || ""}
+                     onChange={(e) => setForm({ ...form, pis: e.target.value })}
+                     placeholder="000.00000.00-0" />
+            </Field>
+            <Field label="Data de admissão">
+              <input data-testid="inp-admitted-at" type="date" style={inputStyle}
+                     value={form.admitted_at || ""}
+                     onChange={(e) => setForm({ ...form, admitted_at: e.target.value })} />
+            </Field>
+            <Field label="Nº matrícula">
+              <input data-testid="inp-matricula" style={inputStyle}
+                     value={form.matricula || ""}
+                     onChange={(e) => setForm({ ...form, matricula: e.target.value })}
+                     placeholder="0001" />
+            </Field>
+          </div>
+
           <Field label="E-mail">
             <input data-testid="inp-email" style={inputStyle} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </Field>

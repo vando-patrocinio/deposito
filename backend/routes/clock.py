@@ -83,6 +83,10 @@ class CollaboratorIn(BaseModel):
     state: Optional[str] = None
     praca_id: Optional[str] = None
     praca_ids_extra: list[str] = Field(default_factory=list)
+    # Dados RH (cabeçalho do espelho de ponto — Portaria 671/2021)
+    pis: Optional[str] = None  # PIS/PASEP — obrigatório no cartão de ponto
+    admitted_at: Optional[str] = None  # data de admissão ISO YYYY-MM-DD
+    matricula: Optional[str] = None  # nº de matrícula interno
     is_test_mode: bool = False  # ADMIN: marca colaborador como TESTE — bypassa cerca/selfie
     clock_in_enabled: bool = True  # CLT bate ponto. False = freelancer/MEI/3rd party — Lousa direta sem ponto.
     active: bool = True  # False = colaborador inativo (desligado, em férias longas, etc)
