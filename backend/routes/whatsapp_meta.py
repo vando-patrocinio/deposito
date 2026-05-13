@@ -40,8 +40,8 @@ from database import db
 logger = logging.getLogger("ponto.whatsapp_meta")
 router = APIRouter(prefix="/api/whatsapp-meta", tags=["whatsapp_meta"])
 
-GRAPH_BASE = "https://graph.facebook.com/v20.0"
-IG_GRAPH_BASE = "https://graph.instagram.com/v20.0"
+GRAPH_BASE = "https://graph.facebook.com/v25.0"
+IG_GRAPH_BASE = "https://graph.instagram.com/v25.0"
 
 
 # ---------------------------------------------------------------------------
@@ -89,16 +89,22 @@ class MetaConfigIn(BaseModel):
     page_access_token: Optional[str] = Field(None, max_length=400)
     ig_business_account_id: Optional[str] = Field(None, max_length=64)
     business_id: Optional[str] = Field(None, max_length=64)
+    # WhatsApp Cloud API (oficial Meta, paralelo ao Twilio)
+    wa_phone_number_id: Optional[str] = Field(None, max_length=64)
+    wa_business_account_id: Optional[str] = Field(None, max_length=64)
+    wa_access_token: Optional[str] = Field(None, max_length=1000)
+    wa_display_phone: Optional[str] = Field(None, max_length=32)
     enabled_messenger: Optional[bool] = None
     enabled_instagram: Optional[bool] = None
+    enabled_whatsapp_cloud: Optional[bool] = None
 
 
 class MetaSendIn(BaseModel):
-    platform: str = Field(..., pattern="^(messenger|instagram)$")
+    platform: str = Field(..., pattern="^(messenger|instagram|whatsapp_cloud)$")
     recipient_id: str = Field(..., min_length=1, max_length=64)
     text: Optional[str] = Field(None, max_length=2000)
     attachment_url: Optional[str] = Field(None, max_length=2000)
-    attachment_type: Optional[str] = Field(None, pattern="^(image|video|audio|file)$")
+    attachment_type: Optional[str] = Field(None, pattern="^(image|video|audio|file|document)$")
 
 
 # ---------------------------------------------------------------------------
@@ -125,17 +131,22 @@ async def get_config(user: dict = Depends(require_role("administrador"))):
         if public_base else "/api/whatsapp-meta/webhook"
     )
     return {
-        "configured": bool(creds.get("page_access_token")),
+        "configured": bool(creds.get("page_access_token") or creds.get("wa_access_token")),
         "app_id": creds.get("app_id") or "",
         "app_secret_masked": _mask(creds.get("app_secret")),
         "page_id": creds.get("page_id") or "",
         "page_access_token_masked": _mask(creds.get("page_access_token")),
         "ig_business_account_id": creds.get("ig_business_account_id") or "",
         "business_id": creds.get("business_id") or "",
+        "wa_phone_number_id": creds.get("wa_phone_number_id") or "",
+        "wa_business_account_id": creds.get("wa_business_account_id") or "",
+        "wa_access_token_masked": _mask(creds.get("wa_access_token")),
+        "wa_display_phone": creds.get("wa_display_phone") or "",
         "verify_token": creds.get("verify_token") or "",
         "webhook_url": webhook_url,
         "enabled_messenger": bool(creds.get("enabled_messenger", False)),
         "enabled_instagram": bool(creds.get("enabled_instagram", False)),
+        "enabled_whatsapp_cloud": bool(creds.get("enabled_whatsapp_cloud", False)),
         "updated_at": creds.get("updated_at"),
     }
 
@@ -153,7 +164,9 @@ async def save_config(payload: MetaConfigIn,
     data = payload.model_dump(exclude_none=True)
     for k in ("app_id", "app_secret", "page_id", "page_access_token",
               "ig_business_account_id", "business_id",
-              "enabled_messenger", "enabled_instagram"):
+              "wa_phone_number_id", "wa_business_account_id",
+              "wa_access_token", "wa_display_phone",
+              "enabled_messenger", "enabled_instagram", "enabled_whatsapp_cloud"):
         if k in data:
             update[k] = data[k]
     # Gera verify token na primeira vez
@@ -236,7 +249,7 @@ async def webhook_receive(request: Request):
     if not entries:
         return {"ok": True, "ignored": "no_entries"}
 
-    # Identifica company pelo entry.id (Page ID ou IG Account ID)
+    # Identifica company pelo entry.id (Page ID, IG Account ID ou WABA ID)
     entry_id = str(entries[0].get("id") or "")
     creds = None
     if entry_id:
@@ -244,6 +257,7 @@ async def webhook_receive(request: Request):
             {"$or": [
                 {"page_id": entry_id},
                 {"ig_business_account_id": entry_id},
+                {"wa_business_account_id": entry_id},
             ]},
             {"_id": 0},
         )
@@ -267,13 +281,20 @@ async def webhook_receive(request: Request):
         for evt in entry.get("messaging", []) or []:
             if await _persist_messenger_event(cid, entry, evt):
                 saved += 1
-        # Instagram: entry.changes[].value (messages)
+        # Instagram & WhatsApp: entry.changes[].value
         for change in entry.get("changes", []) or []:
             if change.get("field") != "messages":
                 continue
             val = change.get("value") or {}
-            if await _persist_instagram_event(cid, entry, val):
-                saved += 1
+            # WhatsApp Cloud: tem messaging_product=whatsapp
+            if val.get("messaging_product") == "whatsapp":
+                for wmsg in val.get("messages") or []:
+                    if await _persist_whatsapp_cloud_event(cid, entry, val, wmsg):
+                        saved += 1
+            else:
+                # Instagram
+                if await _persist_instagram_event(cid, entry, val):
+                    saved += 1
     logger.info("[meta] webhook %s entries=%d salvos=%d company=%s",
                 obj_type, len(entries), saved, cid)
     return {"ok": True, "saved": saved}
@@ -386,6 +407,97 @@ async def _persist_instagram_event(cid: str, entry: dict, val: dict) -> bool:
         return False
 
 
+async def _persist_whatsapp_cloud_event(cid: str, entry: dict, val: dict,
+                                          wmsg: dict) -> bool:
+    """Salva 1 mensagem WhatsApp Cloud API em `aihub_wa_messages`.
+
+    Estrutura típica do `wmsg`:
+    {
+        "from": "5521998176526",   # phone E.164 sem '+'
+        "id": "wamid.HBgL...",
+        "timestamp": "1234567890",
+        "type": "text" | "image" | "audio" | "video" | "document",
+        "text": {"body": "..."}
+    }
+    """
+    sender = wmsg.get("from")
+    mid = wmsg.get("id") or f"meta-{uuid.uuid4().hex[:12]}"
+    msg_type = wmsg.get("type", "text")
+    text = ""
+    attachments = []
+    if msg_type == "text":
+        text = ((wmsg.get("text") or {}).get("body") or "").strip()
+    elif msg_type in ("image", "audio", "video", "document"):
+        att = wmsg.get(msg_type) or {}
+        attachments.append({
+            "type": msg_type,
+            "media_id": att.get("id"),
+            "mime_type": att.get("mime_type"),
+            "caption": att.get("caption"),
+        })
+        text = att.get("caption") or f"[{msg_type}]"
+    elif msg_type == "interactive":
+        # Botão / lista clicada
+        interactive = wmsg.get("interactive") or {}
+        if interactive.get("type") == "button_reply":
+            text = (interactive.get("button_reply") or {}).get("title") or ""
+        elif interactive.get("type") == "list_reply":
+            text = (interactive.get("list_reply") or {}).get("title") or ""
+    else:
+        text = f"[{msg_type}]"
+
+    if not sender or (not text and not attachments):
+        return False
+
+    # phone padronizado: '+' + dígitos (igual conv WhatsApp Baileys/Twilio)
+    phone = f"+{sender}" if not sender.startswith("+") else sender
+    doc = {
+        "id": mid,
+        "company_id": cid,
+        "channel": "meta_whatsapp_cloud",
+        "platform": "whatsapp_cloud",
+        "phone": phone,
+        "external_id": sender,
+        "direction": "inbound",
+        "text": text,
+        "attachments": attachments,
+        "meta_message_id": mid,
+        "wa_phone_number_id": (val.get("metadata") or {}).get("phone_number_id"),
+        "wa_business_account_id": (entry.get("id") or ""),
+        "created_at": now_iso(),
+    }
+    try:
+        await db.aihub_wa_messages.update_one(
+            {"id": mid, "company_id": cid},
+            {"$setOnInsert": doc},
+            upsert=True,
+        )
+        # Usa o mesmo wa_conversations dos outros canais WhatsApp.
+        # Pega nome do contato se vier
+        profile_name = None
+        for c in val.get("contacts") or []:
+            if c.get("wa_id") == sender:
+                profile_name = (c.get("profile") or {}).get("name")
+                break
+        update_conv = {"last_message_at": now_iso(),
+                          "channel": "meta_whatsapp_cloud",
+                          "platform": "whatsapp_cloud"}
+        if profile_name:
+            update_conv["contact_name"] = profile_name
+        await db.wa_conversations.update_one(
+            {"company_id": cid, "phone": phone},
+            {"$set": update_conv,
+             "$setOnInsert": {"company_id": cid, "phone": phone,
+                                "status": "open", "assignee_role": "ai",
+                                "created_at": now_iso()}},
+            upsert=True,
+        )
+        return True
+    except Exception as e:
+        logger.warning("[meta.wa_cloud] erro persistir: %s", e)
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Send — envia mensagem para PSID/IGSID
 # ---------------------------------------------------------------------------
@@ -401,39 +513,62 @@ async def send_message(payload: MetaSendIn,
     creds = await _get_creds(cid)
     if not creds:
         raise HTTPException(400, "Canal Meta não configurado.")
-    token = creds.get("page_access_token")
-    if not token:
-        raise HTTPException(400, "Page Access Token ausente.")
-    if payload.platform == "messenger":
-        if not creds.get("enabled_messenger"):
-            raise HTTPException(400, "Messenger desabilitado nesta empresa.")
-        account_id = creds.get("page_id")
-        base = GRAPH_BASE
-    else:  # instagram
-        if not creds.get("enabled_instagram"):
-            raise HTTPException(400, "Instagram desabilitado nesta empresa.")
-        account_id = creds.get("ig_business_account_id") or creds.get("page_id")
-        base = GRAPH_BASE  # Use Graph API for IG Business messaging
-    if not account_id:
-        raise HTTPException(400, "ID da conta não configurado.")
 
-    # Monta corpo
-    body: dict = {"recipient": {"id": payload.recipient_id}}
-    if payload.text:
-        body["message"] = {"text": payload.text}
-    elif payload.attachment_url and payload.attachment_type:
-        body["message"] = {
-            "attachment": {
-                "type": payload.attachment_type,
-                "payload": {"url": payload.attachment_url, "is_reusable": True},
-            }
-        }
+    if payload.platform == "whatsapp_cloud":
+        if not creds.get("enabled_whatsapp_cloud"):
+            raise HTTPException(400, "WhatsApp Cloud desabilitado nesta empresa.")
+        token = creds.get("wa_access_token")
+        account_id = creds.get("wa_phone_number_id")
+        if not token or not account_id:
+            raise HTTPException(400,
+                                "wa_access_token ou wa_phone_number_id ausente.")
+        # WhatsApp Cloud usa payload com `messaging_product`
+        wa_to = payload.recipient_id.lstrip("+")
+        body: dict = {"messaging_product": "whatsapp", "to": wa_to}
+        if payload.text:
+            body["type"] = "text"
+            body["text"] = {"body": payload.text}
+        elif payload.attachment_url and payload.attachment_type:
+            t = payload.attachment_type
+            body["type"] = t
+            body[t] = {"link": payload.attachment_url}
+        else:
+            raise HTTPException(400, "Forneça `text` OU (attachment_url + attachment_type).")
+        url = f"{GRAPH_BASE}/{account_id}/messages"
     else:
-        raise HTTPException(400, "Forneça `text` OU (attachment_url + attachment_type).")
+        token = creds.get("page_access_token")
+        if not token:
+            raise HTTPException(400, "Page Access Token ausente.")
+        if payload.platform == "messenger":
+            if not creds.get("enabled_messenger"):
+                raise HTTPException(400, "Messenger desabilitado nesta empresa.")
+            account_id = creds.get("page_id")
+        else:  # instagram
+            if not creds.get("enabled_instagram"):
+                raise HTTPException(400, "Instagram desabilitado nesta empresa.")
+            account_id = creds.get("ig_business_account_id") or creds.get("page_id")
+        if not account_id:
+            raise HTTPException(400, "ID da conta não configurado.")
 
-    url = f"{base}/{account_id}/messages"
+        # Monta corpo Messenger/Instagram
+        body: dict = {"recipient": {"id": payload.recipient_id}}
+        if payload.text:
+            body["message"] = {"text": payload.text}
+        elif payload.attachment_url and payload.attachment_type:
+            body["message"] = {
+                "attachment": {
+                    "type": payload.attachment_type,
+                    "payload": {"url": payload.attachment_url, "is_reusable": True},
+                }
+            }
+        else:
+            raise HTTPException(400, "Forneça `text` OU (attachment_url + attachment_type).")
+        url = f"{GRAPH_BASE}/{account_id}/messages"
+
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.post(url, params={"access_token": token}, json=body)
+        # WhatsApp Cloud usa Authorization Bearer; Messenger/IG aceita ambos
+        headers = {"Authorization": f"Bearer {token}"}
+        r = await client.post(url, headers=headers, json=body)
         try:
             resp_data = r.json()
         except Exception:
@@ -443,15 +578,22 @@ async def send_message(payload: MetaSendIn,
             logger.warning("[meta.send] %s falhou: %s", payload.platform, err)
             raise HTTPException(r.status_code, f"Meta API: {err}")
 
-    mid = resp_data.get("message_id") or f"meta-{uuid.uuid4().hex[:12]}"
-    pseudo_phone = ("fb:" if payload.platform == "messenger" else "ig:") + payload.recipient_id
+    # Extrai message_id (estrutura difere: WhatsApp tem `messages: [{id}]`)
+    if payload.platform == "whatsapp_cloud":
+        msgs = resp_data.get("messages") or []
+        mid = (msgs[0].get("id") if msgs else None) or f"meta-{uuid.uuid4().hex[:12]}"
+        phone_storage = "+" + payload.recipient_id.lstrip("+")
+    else:
+        mid = resp_data.get("message_id") or f"meta-{uuid.uuid4().hex[:12]}"
+        phone_storage = (("fb:" if payload.platform == "messenger" else "ig:")
+                            + payload.recipient_id)
     # Persiste outbound
     await db.aihub_wa_messages.insert_one({
         "id": mid,
         "company_id": cid,
         "channel": f"meta_{payload.platform}",
         "platform": payload.platform,
-        "phone": pseudo_phone,
+        "phone": phone_storage,
         "external_id": payload.recipient_id,
         "direction": "outbound",
         "text": payload.text or f"[{payload.attachment_type}]",
@@ -475,8 +617,9 @@ async def list_messages(limit: int = 50,
                           user: dict = Depends(require_role("auditor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     q: dict = {"company_id": cid, "channel": {"$in": ["meta_messenger",
-                                                          "meta_instagram"]}}
-    if platform in ("messenger", "instagram"):
+                                                          "meta_instagram",
+                                                          "meta_whatsapp_cloud"]}}
+    if platform in ("messenger", "instagram", "whatsapp_cloud"):
         q["platform"] = platform
     docs = await db.aihub_wa_messages.find(
         q, {"_id": 0},
