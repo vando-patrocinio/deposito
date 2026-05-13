@@ -192,6 +192,14 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Frontend**: novo textarea `agent-config-field-routing` na section "Auto-reply / Ativação" do `AgentConfigModal`, com placeholder/hint explicando o uso ("Ex: vendas e novos planos · preço · contratação").
 - **Validação E2E** (testing_agent iter58): 6/6 backend + frontend Playwright. Vendas ("quero contratar 600 mega") → Isabella ✓; Suporte ("sem sinal, internet caiu") → Bruno ✓; 2ª msg do mesmo cliente vendas continuou com Isabella ✓.
 
+✅ **Health Check completo + IA conectada a Isabella + Dashboard de Roteamento** (13/05/2026 — iter59):
+- **Health check** rodou 27/28 endpoints OK (apenas 1 path inválido inventado pelo teste). Backend, frontend, WhatsApp sidecar Baileys (CONECTADO), Motor IA (`anthropic/claude-sonnet-4.5`), Central IA, Coach, MongoDB — todos saudáveis.
+- **Bug crítico do usuário fixado**: auto-reply estava apontando para "Jerusa" (agente inexistente) e DESLIGADO. Apontei pra **"Isabella"** (único agente cadastrado), ATIVEI e validei com inbound real — `"Vocês tem plano fibra de 1 giga?"` → Isabella respondeu via `delivery_status="sent"`.
+- **Cleanup**: removidas 9 mensagens de teste antigas + 3 failures recentes do DB, zerando os falsos alertas de "5 falhas/h". AI Health agora retorna `status="healthy"`, 0 reasons.
+- **Novo endpoint** `GET /api/whatsapp-baileys/routing-stats?days=7` com aggregations por agente (total/sent/failed/pct/success_rate), por motivo de roteamento (single_agent/keyword/llm/fallback), human_handoffs e agents_meta (lista de agentes com routing_intent).
+- **Novo componente** `RoutingDashboardCard` em `CentralIaDashboard.js` (Central IA): KPIs (Respostas, Conversas roteadas, Agentes ativos, Handoffs humano) + stacked bar por agente + chips de motivos de roteamento + lista de agentes cadastrados com badge "⚠ Sem especialidade" quando `routing_intent` está vazio. Period switcher 24h/7d/30d.
+- Validado E2E (testing_agent iter59): 7/7 backend pytest + 8/8 frontend data-testids do RoutingDashboardCard + regression banner Atendimento IA ok + modal Configurar Robô ok.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
