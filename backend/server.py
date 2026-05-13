@@ -68,6 +68,7 @@ from routes import (
     churn as routes_churn,
     subscribers as routes_subscribers,
     branding as routes_branding,
+    checklist_ai as routes_checklist_ai,
     collaborator_assets as routes_collab_assets,
     vehicle_checklist as routes_vehicle_checklist,
     stok as routes_stok,
@@ -349,6 +350,7 @@ app.include_router(routes_plans.router)
 app.include_router(routes_branding.router)
 app.include_router(routes_collab_assets.router)
 app.include_router(routes_vehicle_checklist.router)
+app.include_router(routes_checklist_ai.router)
 app.include_router(routes_secretaria.router)
 app.include_router(routes_drive.router)
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Car, Plus, Printer, Trash2, X, CheckCircle2, AlertTriangle, Minus, FileText, Image as ImageIcon, Upload } from "lucide-react";
+import { Car, Plus, Printer, Trash2, X, CheckCircle2, AlertTriangle, Minus, FileText, Image as ImageIcon, Upload, Sparkles, Activity, ScanLine } from "lucide-react";
 import { api } from "@/api";
 import { Button } from "@/ui";
 import VehicleSilhouette, { VIEW_KEYS, VIEW_LABELS, DAMAGE_TYPES } from "@/VehicleSilhouettes";
@@ -36,6 +36,16 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
   const [attachments, setAttachments] = useState([]);   // [{kind, label, data_url}]
   const fileInputRef = useRef(null);
 
+  // ====== IA Panel state ======
+  const [health, setHealth] = useState(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [aiBusy, setAiBusy] = useState(null);     // chk_id em análise
+  const [aiResults, setAiResults] = useState({}); // {chk_id: result}
+  const [aiError, setAiError] = useState("");
+  const ocrInputRef = useRef(null);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrResult, setOcrResult] = useState(null);
+
   useEffect(() => {
     let alive = true;
     api.vehicleChecklistTemplate().then((r) => {
@@ -57,8 +67,85 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
 
   useEffect(() => {
     if (tab === "history") loadHistory();
+    if (tab === "ai") {
+      loadHistory();
+      loadHealth();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  async function loadHealth() {
+    setHealthLoading(true);
+    try {
+      const r = await api.vchkAiCollabHealth(collaborator.id, 90);
+      setHealth(r);
+    } catch (e) {
+      setHealth({ error: e?.response?.data?.detail || e.message });
+    } finally {
+      setHealthLoading(false);
+    }
+  }
+
+  async function analyzeDamageOnChecklist(h) {
+    setAiBusy(h.id);
+    setAiError("");
+    try {
+      const full = await api.vehicleChecklistGet(h.id);
+      const photoIdx = (full.attachments || [])
+        .map((a, i) => (a.kind === "photo" ? i : null))
+        .filter((i) => i !== null);
+      if (photoIdx.length === 0) {
+        setAiError("Este checklist não tem fotos de avaria (kind=photo) para analisar.");
+        setAiBusy(null);
+        return;
+      }
+      const r = await api.vchkAiAnalyzeDamage(h.id, photoIdx, null);
+      setAiResults((prev) => ({ ...prev, [h.id]: r.analysis }));
+    } catch (e) {
+      setAiError(e?.response?.data?.detail || e.message);
+    } finally {
+      setAiBusy(null);
+    }
+  }
+
+  async function handleOcrFile(file) {
+    if (!file) return;
+    setOcrBusy(true);
+    setOcrResult(null);
+    setAiError("");
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      const templ = items.map((it) => it.name);
+      const r = await api.vchkAiOcrPaper(dataUrl, templ);
+      setOcrResult(r.ocr);
+    } catch (e) {
+      setAiError(e?.response?.data?.detail || e.message);
+    } finally {
+      setOcrBusy(false);
+    }
+  }
+
+  function applyOcrToForm() {
+    if (!ocrResult) return;
+    if (ocrResult.plate) setPlate(String(ocrResult.plate).toUpperCase());
+    if (ocrResult.km_initial != null) setKmI(String(ocrResult.km_initial));
+    // Mapeia status por nome (match aproximado case-insensitive)
+    const mapByName = new Map((ocrResult.items || []).map((it) => [
+      (it.name || "").toLowerCase().trim(), it,
+    ]));
+    setItems((prev) => prev.map((cur) => {
+      const found = mapByName.get((cur.name || "").toLowerCase().trim());
+      if (!found) return cur;
+      return { ...cur, status: found.status || cur.status, notes: found.notes || cur.notes };
+    }));
+    if (ocrResult.general_notes) setNotes(ocrResult.general_notes);
+    setTab("new");
+  }
 
   const setItemStatus = (idx, status) => {
     setItems((prev) => prev.map((it, i) => {
@@ -217,6 +304,7 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
           {[
             { id: "new", label: "Novo checklist", icon: Plus },
             { id: "history", label: "Histórico", icon: FileText },
+            { id: "ai", label: "IA", icon: Sparkles },
           ].map((t) => {
             const Ico = t.icon;
             const active = tab === t.id;
@@ -625,6 +713,196 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
                 </table>
               )}
             </>
+          )}
+
+          {tab === "ai" && (
+            <div data-testid="vchk-ai-tab" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              {aiError && (
+                <div data-testid="vchk-ai-error" className="surface-soft" style={{
+                  background: "var(--danger-soft)", color: "var(--danger-soft-fg)",
+                  padding: 12, borderRadius: 10, fontSize: 13,
+                }}>{aiError}</div>
+              )}
+
+              {/* (d) Health card por colaborador */}
+              <section data-testid="vchk-ai-health" className="surface" style={{ padding: 16 }}>
+                <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Activity size={16} strokeWidth={1.75} />
+                    <strong style={{ fontSize: 14 }}>Saúde dos equipamentos · {collaborator.name}</strong>
+                  </div>
+                  <button onClick={loadHealth} disabled={healthLoading}
+                          className="btn btn-ghost btn-sm" data-testid="vchk-ai-health-reload">
+                    {healthLoading ? "..." : "Atualizar"}
+                  </button>
+                </header>
+                {healthLoading && <div style={{ color: "var(--text-secondary)" }}>Consultando IA…</div>}
+                {!healthLoading && health && health.ai && (
+                  <div>
+                    <div style={{ display: "flex", gap: 18, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: ".05em" }}>SCORE</div>
+                        <div data-testid="vchk-ai-health-score" style={{
+                          fontSize: 36, fontWeight: 800,
+                          color: health.ai.score >= 80 ? "var(--success-soft-fg)"
+                               : health.ai.score >= 50 ? "var(--warning-soft-fg)"
+                               : "var(--danger-soft-fg)",
+                        }}>
+                          {health.ai.score ?? "—"}
+                        </div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 200 }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                          <span data-testid="vchk-ai-health-status" className={`pill pill--${
+                            health.ai.status === "bom" ? "success" :
+                            health.ai.status === "crítico" || health.ai.status === "critico" ? "danger" : "warning"
+                          }`}>{health.ai.status || "—"}</span>
+                          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                            tendência: <strong>{health.ai.trend || "—"}</strong>
+                          </span>
+                          <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>
+                            {health.history_count} checklist(s) · {health.period_days}d
+                          </span>
+                        </div>
+                        <p data-testid="vchk-ai-health-summary" style={{ margin: 0, fontSize: 13, color: "var(--text-primary)" }}>
+                          {health.ai.summary}
+                        </p>
+                      </div>
+                    </div>
+                    {(health.ai.open_critical?.length || 0) > 0 && (
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-default)" }}>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: ".05em", marginBottom: 4 }}>CRÍTICOS ABERTOS</div>
+                        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+                          {health.ai.open_critical.map((c, i) => <li key={i}>{c}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {health.ai.next_action && (
+                      <div data-testid="vchk-ai-next-action" style={{ marginTop: 10, padding: 10, background: "var(--bg-surface-2)", borderRadius: 8, fontSize: 13 }}>
+                        <strong>Próxima ação · </strong>
+                        {health.ai.next_action.what}
+                        {health.ai.next_action.when && (
+                          <span style={{ color: "var(--text-secondary)" }}> · {health.ai.next_action.when}</span>
+                        )}
+                      </div>
+                    )}
+                    {health.ai.error && (
+                      <div style={{ marginTop: 10, fontSize: 12, color: "var(--danger-soft-fg)" }}>
+                        ⚠ {health.ai.error}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+
+              {/* (c) OCR de checklist em papel */}
+              <section data-testid="vchk-ai-ocr" className="surface" style={{ padding: 16 }}>
+                <header style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <ScanLine size={16} strokeWidth={1.75} />
+                  <strong style={{ fontSize: 14 }}>OCR · Importar checklist em papel</strong>
+                </header>
+                <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-secondary)" }}>
+                  Fotografe um checklist preenchido à mão. A IA lê e preenche automaticamente a aba <strong>Novo checklist</strong>.
+                </p>
+                <input ref={ocrInputRef} type="file" accept="image/jpeg,image/png,image/webp"
+                       data-testid="vchk-ai-ocr-input"
+                       onChange={(e) => handleOcrFile(e.target.files?.[0])}
+                       style={{ display: "none" }} />
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <button className="btn btn-secondary"
+                          onClick={() => ocrInputRef.current?.click()}
+                          disabled={ocrBusy}
+                          data-testid="vchk-ai-ocr-btn">
+                    <Upload size={14} strokeWidth={1.75} /> {ocrBusy ? "Lendo com IA…" : "Selecionar foto do checklist"}
+                  </button>
+                  {ocrResult && (
+                    <button className="btn btn-primary"
+                            onClick={applyOcrToForm}
+                            data-testid="vchk-ai-ocr-apply">
+                      Aplicar à aba "Novo checklist"
+                    </button>
+                  )}
+                </div>
+                {ocrResult && (
+                  <div data-testid="vchk-ai-ocr-result" style={{ marginTop: 10, padding: 10, background: "var(--bg-surface-2)", borderRadius: 8, fontSize: 13 }}>
+                    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 6 }}>
+                      <span><span style={{ color: "var(--text-muted)" }}>Placa:</span> <strong>{ocrResult.plate || "—"}</strong></span>
+                      <span><span style={{ color: "var(--text-muted)" }}>KM ini:</span> <strong>{ocrResult.km_initial ?? "—"}</strong></span>
+                      <span><span style={{ color: "var(--text-muted)" }}>KM fim:</span> <strong>{ocrResult.km_final ?? "—"}</strong></span>
+                      <span><span style={{ color: "var(--text-muted)" }}>Data:</span> <strong>{ocrResult.date || "—"}</strong></span>
+                      {ocrResult.confidence != null && (
+                        <span style={{ marginLeft: "auto" }}>
+                          <span style={{ color: "var(--text-muted)" }}>conf:</span>{" "}
+                          <strong>{Math.round((ocrResult.confidence || 0) * 100)}%</strong>
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                      {(ocrResult.items || []).length} item(ns) reconhecido(s) · <em>{ocrResult.general_notes || "sem observações"}</em>
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              {/* (a) Analisar fotos de avaria */}
+              <section data-testid="vchk-ai-damage" className="surface" style={{ padding: 16 }}>
+                <header style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <ImageIcon size={16} strokeWidth={1.75} />
+                  <strong style={{ fontSize: 14 }}>Análise IA de fotos de avaria</strong>
+                </header>
+                <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-secondary)" }}>
+                  Clique em <strong>Analisar</strong> em um checklist com fotos (kind=photo) para extrair descrição/gravidade/ação sugerida.
+                </p>
+                {history.length === 0 && (
+                  <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>Nenhum checklist neste colaborador ainda.</div>
+                )}
+                {history.map((h) => {
+                  const res = aiResults[h.id];
+                  return (
+                    <div key={h.id} data-testid={`vchk-ai-row-${h.id}`} style={{
+                      borderTop: "1px solid var(--border-default)", padding: "10px 0",
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <div>
+                          <strong className="mono">{h.plate}</strong>
+                          <span style={{ color: "var(--text-muted)", marginLeft: 8, fontSize: 12 }}>
+                            {(h.created_at || "").slice(0, 10)} · {h.vehicle_brand || ""} {h.vehicle_model || ""}
+                          </span>
+                        </div>
+                        <button className="btn btn-secondary btn-sm"
+                                onClick={() => analyzeDamageOnChecklist(h)}
+                                disabled={aiBusy === h.id}
+                                data-testid={`vchk-ai-analyze-${h.id}`}>
+                          <Sparkles size={12} strokeWidth={1.75} /> {aiBusy === h.id ? "Analisando…" : "Analisar fotos"}
+                        </button>
+                      </div>
+                      {res && (
+                        <div data-testid={`vchk-ai-result-${h.id}`} style={{ marginTop: 8, padding: 10, background: "var(--bg-surface-2)", borderRadius: 8, fontSize: 13 }}>
+                          <div style={{ marginBottom: 6 }}>
+                            <span className={`pill pill--${
+                              res.result?.max_severity === "grave" ? "danger" :
+                              res.result?.max_severity === "moderada" ? "warning" : "success"
+                            }`}>{res.result?.max_severity || "—"}</span>
+                            <strong style={{ marginLeft: 8 }}>{res.result?.overall || "—"}</strong>
+                          </div>
+                          <ul style={{ margin: 0, paddingLeft: 18 }}>
+                            {(res.result?.items || []).map((it, i) => (
+                              <li key={i} style={{ marginBottom: 4 }}>
+                                <strong>{it.description}</strong>
+                                <span style={{ color: "var(--text-muted)" }}>
+                                  {" "}· {it.severity} · {it.suggested_action}
+                                  {it.location && ` · ${it.location}`}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </section>
+            </div>
           )}
         </div>
 

@@ -411,6 +411,16 @@ export const api = {
     return `${base}/vehicle-checklist/${id}/pdf`;
   },
 
+  // ===== Checklist Veicular · IA (vision + análise) =====
+  vchkAiAnalyzeDamage: (id, attachment_indices = null, extra_context = null) =>
+    client.post(`/vehicle-checklist/ai/${id}/analyze-damage`, { attachment_indices, extra_context }).then((r) => r.data),
+  vchkAiRecurrentInsights: (days = 30, min_count = 3) =>
+    client.get(`/vehicle-checklist/ai/recurrent-insights`, { params: { days, min_count } }).then((r) => r.data),
+  vchkAiOcrPaper: (image_data_url, template_items = null) =>
+    client.post(`/vehicle-checklist/ai/ocr-paper`, { image_data_url, template_items }).then((r) => r.data),
+  vchkAiCollabHealth: (cid, days = 60) =>
+    client.get(`/vehicle-checklist/ai/collaborator-health/${cid}`, { params: { days } }).then((r) => r.data),
+
   // ===== Atendimento IA Hub =====
   aihubModels: () => client.get(`/aihub/catalog/models`).then((r) => r.data),
   aihubTools: () => client.get(`/aihub/catalog/tools`).then((r) => r.data),

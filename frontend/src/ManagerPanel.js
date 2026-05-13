@@ -67,6 +67,25 @@ export default function ManagerPanel() {
     setOrphanBusy(null);
   }
 
+  // === Insights IA · Frota (defeitos recorrentes em checklist veicular) ===
+  const [fleetInsights, setFleetInsights] = useState(null);
+  const [fleetLoading, setFleetLoading] = useState(false);
+  const [fleetError, setFleetError] = useState("");
+
+  async function loadFleetInsights() {
+    setFleetLoading(true);
+    setFleetError("");
+    try {
+      const r = await api.vchkAiRecurrentInsights(30, 2);
+      setFleetInsights(r);
+    } catch (e) {
+      setFleetError(e?.response?.data?.detail || e.message);
+    } finally {
+      setFleetLoading(false);
+    }
+  }
+  useEffect(() => { loadFleetInsights(); }, []);
+
   const valid = records.filter((r) => r.status === "Válido" || r.status === "Offline sincronizado");
   const pending = records.filter((r) => r.status === "Pendente");
   const rejected = records.filter((r) => r.status === "Recusado");
@@ -182,6 +201,90 @@ export default function ManagerPanel() {
                 </div>
               </div>
             ))
+          )}
+        </Card>
+
+        <Card
+          title={
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <Icon name="bot" /> Insights IA · Frota
+              <span data-testid="fleet-ai-badge" style={{
+                background: "#0f172a", color: "white", fontSize: 10, fontWeight: 800,
+                padding: "1px 7px", borderRadius: 999,
+              }}>30d</span>
+            </span>
+          }
+          action={
+            <Button variant="soft" onClick={loadFleetInsights} disabled={fleetLoading} data-testid="fleet-ai-reload">
+              {fleetLoading ? "Consultando IA…" : "Atualizar"}
+            </Button>
+          }
+        >
+          <p style={{ color: "#64748b", fontSize: 13, marginTop: -4, marginBottom: 10 }}>
+            A IA analisa os checklists veiculares dos últimos 30 dias e destaca padrões de defeitos recorrentes,
+            sugerindo prioridade de manutenção.
+          </p>
+          {fleetError && (
+            <div data-testid="fleet-ai-error" style={{
+              background: "#fee2e2", color: "#991b1b",
+              padding: 10, borderRadius: 10, marginBottom: 10, fontWeight: 700, fontSize: 13,
+            }}>{fleetError}</div>
+          )}
+          {fleetLoading && !fleetInsights && (
+            <div style={{ color: "#64748b" }}>Consultando IA…</div>
+          )}
+          {fleetInsights && (
+            <div>
+              <div data-testid="fleet-ai-summary" style={{
+                padding: 12, background: "#f0f9ff", border: "1px solid #bae6fd",
+                borderRadius: 10, fontSize: 14, fontWeight: 600, color: "#075985", marginBottom: 10,
+              }}>
+                {fleetInsights.ai?.summary || "—"}
+              </div>
+              {(fleetInsights.ai?.bullets?.length || 0) > 0 && (
+                <ul data-testid="fleet-ai-bullets" style={{ margin: "0 0 10px", paddingLeft: 18, fontSize: 13, color: "#334155" }}>
+                  {fleetInsights.ai.bullets.map((b, i) => (
+                    <li key={i} style={{ marginBottom: 4 }}>{b}</li>
+                  ))}
+                </ul>
+              )}
+              {fleetInsights.ai?.top_priority && (
+                <div data-testid="fleet-ai-priority" style={{
+                  padding: 10, background: "#fef3c7", border: "1px solid #fde68a",
+                  borderRadius: 10, fontSize: 13, color: "#78350f", marginBottom: 10,
+                }}>
+                  <strong>🔴 Top prioridade · {fleetInsights.ai.top_priority.plate}:</strong>{" "}
+                  {fleetInsights.ai.top_priority.reason}
+                </div>
+              )}
+              {(fleetInsights.alerts?.length || 0) > 0 && (
+                <details style={{ fontSize: 12, color: "#475569" }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+                    Ver dados brutos ({fleetInsights.alerts.length} alerta(s))
+                  </summary>
+                  <table style={{ width: "100%", marginTop: 6, fontSize: 11, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "#f8fafc" }}>
+                        <th style={{ textAlign: "left", padding: 4, borderBottom: "1px solid #e2e8f0" }}>Placa</th>
+                        <th style={{ textAlign: "left", padding: 4, borderBottom: "1px solid #e2e8f0" }}>Item</th>
+                        <th style={{ textAlign: "right", padding: 4, borderBottom: "1px solid #e2e8f0" }}>Ocorrências</th>
+                        <th style={{ textAlign: "left", padding: 4, borderBottom: "1px solid #e2e8f0" }}>Último</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fleetInsights.alerts.map((a, i) => (
+                        <tr key={i} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: 4 }}><strong>{a.plate}</strong></td>
+                          <td style={{ padding: 4 }}>{a.item}</td>
+                          <td style={{ padding: 4, textAlign: "right", fontWeight: 700 }}>{a.count}×</td>
+                          <td style={{ padding: 4 }}>{(a.last_at || "").slice(0, 10)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
+            </div>
           )}
         </Card>
       </div>
