@@ -221,6 +221,11 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Fix**: novos helpers `extractErrorMessage(e)` (AgentConfigModal.js) e `extractErrorFromAxios(e)` (WhatsAppChatLayout.js) que convertem 3 formatos comuns (string, array Pydantic, objeto solto) em string segura para JSX. Aplicados em TODOS os `setError(...)`/`setErr(...)` dos dois arquivos via `replace_all`.
 - Validado com screenshot: digitei nome="X" + system_prompt="oi" (ambos curtos demais), cliquei Save → mensagem PT-BR renderizou normalmente ("Parâmetros (system_prompt) precisam de pelo menos 10 caracteres."). Save válido criou agente "Carlos Teste" + delete OK (cleanup).
 
+✅ **Limites de prompts elevados** (13/05/2026 — iter62):
+- Backend `aihub.py`: `system_prompt` 8k→32k chars · `max_tokens` 8k→16k · `company_info`/`pricing_info`/`priority_situations` 4k→16k cada (configurações comuns para provedores de internet ultrapassam facilmente os limites antigos).
+- Frontend `AgentConfigModal.js`: input max_tokens aceita até 16000 · todos os textareas mostram **contador em tempo real "X/16000"** no hint · validação client-side em PT-BR antes de submeter (evita 422).
+- Validado curl: salvou Isabella com prompt 11k chars + max_tokens 12k + 8k em cada campo extra com sucesso.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
