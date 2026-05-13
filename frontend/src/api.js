@@ -478,6 +478,14 @@ export const api = {
     client.get(`/whatsapp-baileys/instance`).then((r) => r.data),
   waBaileysSetInstance: (display_name) =>
     client.put(`/whatsapp-baileys/instance`, { display_name }).then((r) => r.data),
+  // Auto-reply config
+  waBaileysGetAutoReply: () =>
+    client.get(`/whatsapp-baileys/auto-reply`).then((r) => r.data),
+  waBaileysSetAutoReply: (enabled, agent_name = "Jerusa") =>
+    client.put(`/whatsapp-baileys/auto-reply`, { enabled, agent_name }).then((r) => r.data),
+  // AI Health — diagnóstico Isabela
+  waBaileysAiHealth: () =>
+    client.get(`/whatsapp-baileys/ai-health`).then((r) => r.data),
 
   // ===== Central IA Dashboard =====
   centralIaKpis: (days = 7) =>

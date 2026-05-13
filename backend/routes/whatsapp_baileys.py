@@ -393,25 +393,88 @@ async def _fetch_human_few_shots(cid: str, limit: int = 3) -> List[Dict[str, Any
     return examples
 
 
+async def _persist_ai_failure(cid: str, phone: str, subscriber_id: Optional[str],
+                                reason_code: str, reason_msg: str,
+                                user_text: str = "",
+                                agent: Optional[dict] = None) -> None:
+    """Persiste uma falha do auto-reply IA. Substitui o antigo `return None`
+    silencioso. Cada falha vira um registro outbound com `delivery_status`
+    iniciado por 'failed_' para que o frontend possa destacar."""
+    doc = {
+        "id": f"wam-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "direction": "outbound",
+        "phone": phone,
+        "text": "",  # nada foi enviado
+        "subscriber_id": subscriber_id,
+        "session_id": f"wa-{phone}",
+        "auto_reply": True,
+        "delivery_status": f"failed_{reason_code}",
+        "delivery_error": reason_msg[:300],
+        "user_text_snapshot": (user_text or "")[:240],
+        "created_at": now_iso(),
+    }
+    if agent:
+        doc["agent_id"] = agent.get("id")
+        doc["agent_name"] = agent.get("name")
+    try:
+        await db.aihub_wa_messages.insert_one(doc)
+    except Exception as e:
+        logger.warning("[wa-baileys] falha ao persistir failure: %s", e)
+    # Dispara system_event se acumular ≥3 falhas em 24h (recurso já existente)
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        n = await db.aihub_wa_messages.count_documents({
+            "company_id": cid, "direction": "outbound",
+            "auto_reply": True,
+            "delivery_status": {"$regex": "^failed_"},
+            "created_at": {"$gte": cutoff},
+        })
+        if n >= 3:
+            await db.wa_system_events.insert_one({
+                "id": f"sys-{uuid.uuid4().hex[:10]}",
+                "company_id": cid,
+                "kind": "ai_attendant_unhealthy",
+                "text": f"IA com {n} falha(s) nas últimas 24h · {reason_code}",
+                "data": {"reason_code": reason_code, "failures_24h": n,
+                         "last_reason": reason_msg[:120]},
+                "created_at": now_iso(),
+            })
+    except Exception as e:
+        logger.info("[wa-baileys] system_event ai_unhealthy skip: %s", e)
+
+
 async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                               subscriber_id: Optional[str],
                               subscriber_ctx: Optional[str]) -> Optional[str]:
     """Se auto-reply estiver habilitado, gera resposta com a Jerusa
-    e envia via sidecar. Retorna o texto enviado (ou None se desligado)."""
+    e envia via sidecar. Retorna o texto enviado (ou None se desligado).
+
+    Cada caminho de falha persiste um registro com `delivery_status`
+    `failed_*` para que o gestor enxergue o problema no painel.
+    """
     # 0. Se humano assumiu essa conversa, NÃO responde com IA
     conv = await db.wa_conversations.find_one(
         {"company_id": cid, "phone": phone}, {"_id": 0}
     )
     if conv and conv.get("assignee_role") == "human" and conv.get("status") != "closed":
         logger.info("[wa-baileys] auto-reply pulado — humano atendendo (%s)", phone)
-        return None
+        return None  # NÃO é falha — humano assumiu intencionalmente
 
     # 1. Lê config de auto-reply
     cfg = await db.aihub_settings.find_one(
         {"company_id": cid, "key": "whatsapp_auto_reply"}, {"_id": 0}
     )
     if not cfg or not cfg.get("enabled"):
-        return None  # auto-reply desligado
+        await _persist_ai_failure(
+            cid, phone, subscriber_id,
+            reason_code="disabled",
+            reason_msg=("Auto-reply do WhatsApp está DESLIGADO em "
+                        "Atendimento IA → WhatsApp. Cliente mandou mensagem "
+                        "mas a Isabela não responde até ser reativada."),
+            user_text=user_text,
+        )
+        return None
 
     # 2. Carrega o agente (Jerusa por padrão, ou outro definido em cfg)
     agent_name = cfg.get("agent_name") or "Jerusa"
@@ -424,7 +487,23 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         try:
             from routes.voice import _ensure_jerusa_agent
             agent = await _ensure_jerusa_agent(cid)
-        except Exception:
+        except Exception as e:
+            await _persist_ai_failure(
+                cid, phone, subscriber_id,
+                reason_code="no_agent",
+                reason_msg=(f"Agente '{agent_name}' não cadastrado/desativado "
+                            f"e bootstrap falhou: {e}"),
+                user_text=user_text,
+            )
+            return None
+        if not agent:
+            await _persist_ai_failure(
+                cid, phone, subscriber_id,
+                reason_code="no_agent",
+                reason_msg=(f"Agente '{agent_name}' não cadastrado nem "
+                            "criado automaticamente."),
+                user_text=user_text,
+            )
             return None
 
     # 3. Monta prompt — herda personalidade/preços/situações + contexto do cliente
@@ -526,7 +605,13 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     # 4. Chama LLM via Motor IA (OpenRouter)
     try:
         from services.motor_ia import chat_completion
-    except ImportError:
+    except ImportError as e:
+        await _persist_ai_failure(
+            cid, phone, subscriber_id, agent=agent,
+            reason_code="motor_ia_unavailable",
+            reason_msg=f"services.motor_ia indisponível: {e}",
+            user_text=user_text,
+        )
         return None
     try:
         result = await chat_completion(
@@ -542,10 +627,22 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         )
         reply_text = (result.get("content") or "").strip()
     except Exception as e:
-        logger.warning("[wa-baileys] LLM falhou: %s", e)
+        await _persist_ai_failure(
+            cid, phone, subscriber_id, agent=agent,
+            reason_code="llm_error",
+            reason_msg=f"Motor IA falhou ({type(e).__name__}): {e}",
+            user_text=user_text,
+        )
         return None
 
     if not reply_text:
+        await _persist_ai_failure(
+            cid, phone, subscriber_id, agent=agent,
+            reason_code="empty_reply",
+            reason_msg="LLM retornou resposta vazia — possível bloqueio de "
+                        "safety, prompt incompleto ou modelo confuso.",
+            user_text=user_text,
+        )
         return None
 
     # 5. Envia via sidecar
@@ -582,7 +679,7 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         "agent_name": agent["name"],
         "session_id": f"wa-{phone}",
         "auto_reply": True,
-        "delivery_status": "sent" if send_ok else "failed",
+        "delivery_status": "sent" if send_ok else "failed_sidecar",
         "delivery_error": send_error,
         "created_at": now_iso(),
     })
@@ -591,6 +688,26 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     else:
         logger.warning("[wa-baileys] auto-reply gerado mas envio falhou (%s): %s",
                         send_error, reply_text[:80])
+        # Registra system_event se acumular falhas de sidecar
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            n = await db.aihub_wa_messages.count_documents({
+                "company_id": cid, "direction": "outbound",
+                "delivery_status": {"$regex": "^failed_"},
+                "created_at": {"$gte": cutoff},
+            })
+            if n >= 3:
+                await db.wa_system_events.insert_one({
+                    "id": f"sys-{uuid.uuid4().hex[:10]}",
+                    "company_id": cid,
+                    "kind": "ai_attendant_unhealthy",
+                    "text": f"IA com {n} falha(s) de envio (sidecar) em 24h",
+                    "data": {"reason_code": "sidecar", "failures_24h": n,
+                             "last_reason": (send_error or "")[:120]},
+                    "created_at": now_iso(),
+                })
+        except Exception as e:
+            logger.info("[wa-baileys] sidecar event skip: %s", e)
     return reply_text
 
 
@@ -637,6 +754,145 @@ async def set_auto_reply(payload: AutoReplySettingsIn,
                  user.get("email"))
     return {"ok": True, "enabled": payload.enabled,
             "agent_name": payload.agent_name or "Jerusa"}
+
+
+# ---------------------------------------------------------------------------
+# AI Health — diagnóstico do Atendimento IA (Isabela/Jerusa)
+# ---------------------------------------------------------------------------
+@router.get("/ai-health")
+async def ai_health(user: dict = Depends(require_role("gestor"))):
+    """Diagnóstico completo da Isabela: por que ela responde ou não.
+
+    Retorna `status` global (healthy | degraded | down) + razões objetivas
+    para que o gestor enxergue exatamente onde o atendimento IA falha.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    cutoff_1h = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+
+    # 1. Auto-reply config
+    cfg = await db.aihub_settings.find_one(
+        {"company_id": cid, "key": "whatsapp_auto_reply"}, {"_id": 0}
+    ) or {"enabled": False, "agent_name": "Jerusa"}
+    auto_reply_enabled = bool(cfg.get("enabled", False))
+    agent_name = cfg.get("agent_name") or "Jerusa"
+
+    # 2. Agente ativo
+    agent = await db.aihub_agents.find_one(
+        {"company_id": cid, "name": agent_name, "active": {"$ne": False}},
+        {"_id": 0, "id": 1, "name": 1, "model": 1, "active": 1},
+    )
+    agent_active = bool(agent)
+
+    # 3. Motor IA configurado
+    motor_cfg = await db.motor_ia_config.find_one(
+        {"company_id": cid}, {"_id": 0, "enabled": 1, "openrouter_api_key": 1,
+                              "default_text_model": 1}
+    ) or {}
+    motor_ia_configured = bool(motor_cfg.get("enabled")
+                                and motor_cfg.get("openrouter_api_key"))
+
+    # 4. Sidecar status (WhatsApp connected?)
+    sidecar_status = "unknown"
+    sidecar_error: Optional[str] = None
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as cli:
+            r = await cli.get(f"{SIDECAR_BASE}/status")
+            if r.status_code < 400:
+                body = r.json()
+                sidecar_status = ("connected" if body.get("connected")
+                                  else (body.get("state") or "disconnected"))
+            else:
+                sidecar_status = f"http_{r.status_code}"
+                sidecar_error = (r.text or "")[:200]
+    except Exception as e:
+        sidecar_status = "unreachable"
+        sidecar_error = str(e)[:200]
+
+    # 5. Sucesso/falha últimas 24h
+    last_ok = await db.aihub_wa_messages.find_one(
+        {"company_id": cid, "direction": "outbound",
+         "delivery_status": "sent", "auto_reply": True},
+        {"_id": 0, "created_at": 1, "phone": 1, "text": 1},
+        sort=[("created_at", -1)],
+    )
+    last_fail = await db.aihub_wa_messages.find_one(
+        {"company_id": cid, "direction": "outbound",
+         "delivery_status": {"$regex": "^failed_"}, "auto_reply": True},
+        {"_id": 0, "created_at": 1, "phone": 1, "delivery_status": 1,
+         "delivery_error": 1},
+        sort=[("created_at", -1)],
+    )
+    failures_24h = await db.aihub_wa_messages.count_documents({
+        "company_id": cid, "direction": "outbound",
+        "delivery_status": {"$regex": "^failed_"}, "auto_reply": True,
+        "created_at": {"$gte": cutoff_24h},
+    })
+    failures_1h = await db.aihub_wa_messages.count_documents({
+        "company_id": cid, "direction": "outbound",
+        "delivery_status": {"$regex": "^failed_"}, "auto_reply": True,
+        "created_at": {"$gte": cutoff_1h},
+    })
+    ok_24h = await db.aihub_wa_messages.count_documents({
+        "company_id": cid, "direction": "outbound",
+        "delivery_status": "sent", "auto_reply": True,
+        "created_at": {"$gte": cutoff_24h},
+    })
+
+    # 6. Razões e status overall
+    reasons: List[Dict[str, str]] = []
+    if not auto_reply_enabled:
+        reasons.append({"code": "auto_reply_off", "severity": "high",
+                         "message": "Auto-reply do WhatsApp está DESLIGADO. "
+                                    "Cliente manda mensagem mas a IA não responde."})
+    if not agent_active:
+        reasons.append({"code": "no_agent", "severity": "high",
+                         "message": f"Agente '{agent_name}' não cadastrado ou desativado."})
+    if not motor_ia_configured:
+        reasons.append({"code": "no_motor_ia", "severity": "high",
+                         "message": "Motor IA (OpenRouter) não configurado em "
+                                    "Sistema → Motor IA."})
+    if sidecar_status not in ("connected", "open"):
+        reasons.append({"code": "sidecar_down", "severity": "high",
+                         "message": f"WhatsApp sidecar não conectado (status={sidecar_status}). "
+                                    f"{(sidecar_error or '')[:120]}"})
+    if failures_1h >= 3:
+        reasons.append({"code": "high_recent_failures", "severity": "high",
+                         "message": f"{failures_1h} falha(s) na última hora."})
+    elif failures_24h >= 3:
+        reasons.append({"code": "elevated_failures", "severity": "medium",
+                         "message": f"{failures_24h} falha(s) nas últimas 24h."})
+
+    if any(r["severity"] == "high" for r in reasons):
+        status = "down"
+    elif reasons:
+        status = "degraded"
+    else:
+        status = "healthy"
+
+    return {
+        "status": status,
+        "auto_reply_enabled": auto_reply_enabled,
+        "agent_name": agent_name,
+        "agent_active": agent_active,
+        "agent_model": (agent or {}).get("model"),
+        "motor_ia_configured": motor_ia_configured,
+        "motor_ia_model": motor_cfg.get("default_text_model"),
+        "sidecar_status": sidecar_status,
+        "sidecar_error": sidecar_error,
+        "stats_24h": {"sent": ok_24h, "failed": failures_24h, "failed_1h": failures_1h},
+        "last_ok": last_ok and {
+            "at": last_ok.get("created_at"), "phone": last_ok.get("phone"),
+            "preview": (last_ok.get("text") or "")[:80],
+        },
+        "last_fail": last_fail and {
+            "at": last_fail.get("created_at"), "phone": last_fail.get("phone"),
+            "status": last_fail.get("delivery_status"),
+            "error": (last_fail.get("delivery_error") or "")[:160],
+        },
+        "reasons": reasons,
+        "checked_at": now_iso(),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -776,10 +1032,19 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
                     async for r in db.aihub_wa_messages.aggregate(unread_pipeline)}
     last_out_pipeline = [
         {"$match": {"company_id": cid, "direction": "outbound"}},
-        {"$group": {"_id": "$phone", "last_out_at": {"$max": "$created_at"}}},
+        {"$sort": {"created_at": -1}},
+        {"$group": {"_id": "$phone",
+                     "last_out_at": {"$first": "$created_at"},
+                     "last_out_status": {"$first": "$delivery_status"},
+                     "last_out_error": {"$first": "$delivery_error"}}},
     ]
-    last_out_map = {r["_id"]: r["last_out_at"]
-                     async for r in db.aihub_wa_messages.aggregate(last_out_pipeline)}
+    last_out_map: Dict[str, Dict[str, Any]] = {}
+    async for r in db.aihub_wa_messages.aggregate(last_out_pipeline):
+        last_out_map[r["_id"]] = {
+            "at": r.get("last_out_at"),
+            "status": r.get("last_out_status"),
+            "error": r.get("last_out_error"),
+        }
 
     # 3) Lê assignments persistidos (+ last_seen_at p/ unread mais preciso)
     convs_map = {}
@@ -886,7 +1151,10 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
         # Unread: inbound após last outbound (ou todas se nunca houve outbound).
         # Refina com last_seen_at do operador (quando ele abriu a conversa).
         last_seen_at = conv.get("last_seen_at")
-        last_out_at = last_out_map.get(phone)
+        last_out_info = last_out_map.get(phone) or {}
+        last_out_at = last_out_info.get("at")
+        last_out_status = last_out_info.get("status")
+        last_out_error = last_out_info.get("error")
         threshold = max(filter(None, [last_seen_at, last_out_at]), default=None)
         inbound_ts = inbound_map.get(phone, [])
         if threshold:
@@ -922,6 +1190,9 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
             "unread": unread,
             "msg_count": r.get("msg_count", 0),
             "status": conv.get("status", "open"),
+            # Última resposta IA — para exibir chip de falha na lista
+            "last_outbound_status": last_out_status,
+            "last_outbound_error": last_out_error,
         }
         bucket = _bucket_for_conversation(conv_view)
         conv_view["bucket"] = bucket

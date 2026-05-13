@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   Activity, AlertTriangle, Award, Bot, Brain,
   Clock, Smile, Frown, Meh, Sparkles, TrendingDown, TrendingUp,
-  Users, Zap, RefreshCw, GraduationCap, Radio,
+  Users, Zap, RefreshCw, GraduationCap, Radio, MessageCircle,
 } from "lucide-react";
 import { api } from "@/api";
 import SmartOltAiPanel from "@/SmartOltAiPanel";
@@ -236,6 +236,9 @@ export default function CentralIaDashboard() {
 
       {/* Coaching IA — só contadores (detalhe é individual no chat) */}
       <CoachingStatsCard />
+
+      {/* Saúde do Atendimento IA — diagnóstico Isabela */}
+      <AiAttendantHealthCard />
 
       {/* Alertas proativos */}
       <AlertsCard items={alerts} onReload={reload} />
@@ -1447,3 +1450,162 @@ function AiLearningCard({ data }) {
   );
 }
 
+
+
+/* =============================================================
+   AiAttendantHealthCard — diagnóstico da Isabela IA (Atendimento WhatsApp).
+============================================================= */
+function AiAttendantHealthCard() {
+  const [h, setH] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [toggling, setToggling] = useState(false);
+
+  const reload = useCallback(async () => {
+    setBusy(true);
+    try { setH(await api.waBaileysAiHealth()); }
+    catch { /* manter último */ }
+    finally { setBusy(false); }
+  }, []);
+  useEffect(() => {
+    reload();
+    const id = setInterval(reload, 30000);
+    return () => clearInterval(id);
+  }, [reload]);
+
+  async function toggle() {
+    if (!h) return;
+    setToggling(true);
+    try {
+      await api.waBaileysSetAutoReply(!h.auto_reply_enabled, h.agent_name || "Jerusa");
+      await reload();
+    } finally { setToggling(false); }
+  }
+
+  const status = h?.status || "loading";
+  const meta = (() => {
+    if (!h) return { color: "#94a3b8", bg: "var(--bg-surface-2)", label: "Verificando..." };
+    if (status === "healthy") return { color: "#10b981", bg: "rgba(16,185,129,.08)", label: "Online" };
+    if (status === "degraded") return { color: "#f59e0b", bg: "rgba(245,158,11,.10)", label: "Degradada" };
+    return { color: "#dc2626", bg: "rgba(220,38,38,.08)", label: "Inativa" };
+  })();
+
+  return (
+    <div data-testid="ci-ai-health-card" className="surface" style={{
+      padding: 16, borderRadius: 14,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 10,
+          background: meta.bg, color: meta.color,
+          display: "grid", placeItems: "center",
+        }}>
+          <MessageCircle size={18} strokeWidth={1.75} />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, letterSpacing: "-0.01em" }}>
+            Saúde do Atendimento IA · Isabela
+          </h3>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            Diagnóstico do WhatsApp + auto-reply + Motor IA + sidecar.
+          </div>
+        </div>
+        <span data-testid="ci-ai-health-status" style={{
+          padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800,
+          background: meta.bg, color: meta.color, border: `1px solid ${meta.color}33`,
+        }}>{meta.label.toUpperCase()}</span>
+        <button onClick={reload} disabled={busy}
+                data-testid="ci-ai-health-refresh"
+                style={{
+                  padding: 6, borderRadius: 6,
+                  border: "1px solid var(--border-default)",
+                  background: "var(--bg-surface)", color: "var(--text-secondary)",
+                  cursor: busy ? "wait" : "pointer", display: "grid", placeItems: "center",
+                }} title="Atualizar">
+          <RefreshCw size={14} className={busy ? "spin" : ""} />
+        </button>
+      </div>
+
+      {h && (
+        <div style={{
+          display: "grid", gap: 10,
+          gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", marginBottom: 12,
+        }}>
+          <CiHealthCell label="Auto-reply" value={h.auto_reply_enabled ? "ATIVADO" : "DESLIGADO"}
+                         ok={h.auto_reply_enabled} testid="ci-ai-cell-autoreply" />
+          <CiHealthCell label="Agente" value={`${h.agent_name}${h.agent_active ? "" : " (criar)"}`}
+                         ok={h.agent_active} testid="ci-ai-cell-agent" />
+          <CiHealthCell label="Motor IA" value={h.motor_ia_model || "—"} ok={h.motor_ia_configured}
+                         testid="ci-ai-cell-motor" />
+          <CiHealthCell label="WhatsApp" value={h.sidecar_status}
+                         ok={h.sidecar_status === "connected" || h.sidecar_status === "open"}
+                         testid="ci-ai-cell-sidecar" />
+          <CiHealthCell label="Sucessos 24h" value={String(h.stats_24h?.sent ?? 0)}
+                         ok={(h.stats_24h?.sent ?? 0) > 0} testid="ci-ai-cell-sent" />
+          <CiHealthCell label="Falhas 24h" value={String(h.stats_24h?.failed ?? 0)}
+                         ok={(h.stats_24h?.failed ?? 0) === 0} testid="ci-ai-cell-failed" />
+        </div>
+      )}
+
+      {h?.reasons?.length > 0 && (
+        <div data-testid="ci-ai-reasons" style={{
+          padding: 10, background: "var(--bg-surface-2)", borderRadius: 10, marginBottom: 10,
+        }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 800, letterSpacing: ".06em", marginBottom: 4 }}>
+            MOTIVOS DETECTADOS
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5 }}>
+            {h.reasons.map((r, i) => (
+              <li key={i} style={{
+                color: r.severity === "high" ? "#dc2626" : "#92400e",
+                marginBottom: 3, fontWeight: 600,
+              }}>
+                <strong>{r.code.replaceAll("_", " ")}</strong> · {r.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {h && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {!h.auto_reply_enabled && (
+            <button onClick={toggle} disabled={toggling}
+                    data-testid="ci-ai-enable-btn"
+                    style={{
+                      padding: "8px 14px", borderRadius: 8,
+                      border: "1px solid #16a34a", background: "#16a34a", color: "white",
+                      fontSize: 12, fontWeight: 800,
+                      cursor: toggling ? "wait" : "pointer",
+                    }}>
+              {toggling ? "Ativando..." : "Ativar auto-reply"}
+            </button>
+          )}
+          {h?.last_fail && (
+            <div data-testid="ci-ai-last-fail" style={{
+              flex: 1, padding: 8, fontSize: 11.5, color: "#991b1b",
+              background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8,
+            }}>
+              <strong>Última falha:</strong> {(h.last_fail.at || "").slice(0, 16).replace("T", " ")} · {h.last_fail.phone}
+              <br /><span style={{ fontWeight: 500 }}>{h.last_fail.error || h.last_fail.status}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CiHealthCell({ label, value, ok, testid }) {
+  return (
+    <div data-testid={testid} style={{
+      padding: 8, background: "var(--bg-surface-2)", borderRadius: 8,
+      border: `1px solid ${ok ? "rgba(16,185,129,.3)" : "rgba(220,38,38,.3)"}`,
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".04em",
+                    color: "var(--text-muted)" }}>{label.toUpperCase()}</div>
+      <div style={{ fontSize: 13, fontWeight: 700,
+                    color: ok ? "#047857" : "#dc2626", wordBreak: "break-word",
+                    marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}

@@ -1,0 +1,26 @@
+{
+  "summary": "Iter56 — Full validation of 'Atendimento IA Saúde' (banner + chip Falha IA + Central IA card + silent-failure persistence). Backend: 3/3 pytest cases passed — ai-health shape (down + reasons), silent-failure persistence (inbound → failed_disabled outbound persisted with PT-BR delivery_error), and PUT auto-reply toggle round-trip with revert. Frontend: E2E Playwright validated all data-testids — wa-ai-health-banner ('Isabela: Inativa'), wa-ai-health-reason, wa-ai-health-details opens wa-ai-health-detail-panel, wa-ai-enable-btn present (since auto_reply_off), 2 wa-conv-ai-fail-* chips with text 'Falha IA' on Automático bucket, ci-ai-health-card on Central IA with status INATIVA + 6 ci-ai-cell-* + ci-ai-reasons.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_wa_ai_health.py",
+    "/app/test_reports/pytest/iter56_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "whatsapp_baileys.py _persist_ai_failure — confirmed it persists outbound with delivery_status='failed_disabled' and a PT-BR delivery_error narrativa. Tested OK.",
+    "ai-health endpoint returns reasons with code/severity/message — well structured. Current state correctly returns status='down' with reasons ['auto_reply_off','no_agent'].",
+    "Recharts console warnings 'width(-1) and height(-1) of chart should be greater than 0' are noisy on Atendimento IA / Central IA — pre-existing, not related to this feature, but worth cleaning up (set minWidth/minHeight on ResponsiveContainer).",
+    "Frontend banner: enable-btn rendered when reasons.includes('auto_reply_off') — confirmed visible. No regression."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_wa_ai_health.py (new)"
+  ],
+  "success_rate": {"backend": "100% (3/3)", "frontend": "100% (12/12 asserts)"},
+  "test_credentials": "admin@empresa.com / 123456 — login returns access_token. WA_INBOUND_TOKEN from /app/backend/.env.",
+  "seed_data_creation": "Test created 1 fresh inbound message (TEST_ prefixed message_id) which produced 1 failed_disabled outbound — left in DB to feed the Central IA card stats; phone is dynamic per run (55119{ts%1e8}). Pre-existing fail conversations 5511978645657 + 5511900000001 already in DB (chips visible).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression: /app/backend/tests/test_wa_ai_health.py covers ai-health shape, silent-failure persistence, and auto-reply toggle round-trip. Each run leaves a transient TEST_* inbound + failed_disabled outbound — harmless and even helpful for UI testing because it keeps the chip 'Falha IA' populated. To validate the happy path (status='healthy'), main agent would need to (a) create Jerusa agent via /api/whatsapp-cloud/agents, (b) PUT /api/whatsapp-baileys/auto-reply {enabled:true,agent_name:'Jerusa'} — then ai-health should flip to healthy/degraded (motor IA stays anthropic/claude-sonnet-4.5 which the user can verify via UI). The 'Ativar auto-reply' button inside the banner is wired but not clicked during this iteration to preserve original 'down' state.",
+  "rca of the issue": "N/A — bug fix validated end-to-end. All 4 silent-failure paths now persist outbound records (verified failed_disabled in current state); UI surfaces the problem in 3 places (banner + chip + Central card) as designed."
+}

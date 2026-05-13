@@ -199,14 +199,51 @@ export default function WhatsAppChatLayout() {
     return unread;
   }, [conversations]);
 
+  // === AI Health (Isabela) — diagnóstico do atendimento IA ===
+  const [aiHealth, setAiHealth] = useState(null);
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const loadHealth = useCallback(async () => {
+    try {
+      const r = await api.waBaileysAiHealth();
+      setAiHealth(r);
+    } catch (e) { /* manter último estado */ }
+  }, []);
+  useEffect(() => {
+    loadHealth();
+    const id = setInterval(loadHealth, 30000);
+    return () => clearInterval(id);
+  }, [loadHealth]);
+
+  async function toggleAutoReply() {
+    if (!aiHealth) return;
+    setToggling(true);
+    try {
+      await api.waBaileysSetAutoReply(!aiHealth.auto_reply_enabled, aiHealth.agent_name || "Jerusa");
+      await loadHealth();
+    } catch (e) {
+      // no-op (chip mostra erro via health)
+    } finally {
+      setToggling(false);
+    }
+  }
+
   return (
     <div data-testid="wa-chat-layout" style={{
       display: "grid",
-      gridTemplateRows: attendantFilter?.user_id ? "auto 1fr" : "1fr",
+      gridTemplateRows: `auto ${attendantFilter?.user_id ? "auto " : ""}1fr`,
       height: "calc(100vh - 170px)", minHeight: 560,
       border: "1px solid var(--border-default)", borderRadius: 14,
       overflow: "hidden", background: "var(--bg-surface)",
     }}>
+      <AiHealthBanner
+        health={aiHealth}
+        open={healthOpen}
+        setOpen={setHealthOpen}
+        onToggleAutoReply={toggleAutoReply}
+        toggling={toggling}
+        onReload={loadHealth}
+      />
       {attendantFilter?.user_id && (
         <div data-testid="attendant-filter-banner" style={{
           display: "flex", alignItems: "center", gap: 10,
@@ -559,6 +596,22 @@ function ConvRow({ conv, selected, onClick, profile }) {
           }}>
             {conv.last_text}
           </span>
+          {(conv.last_outbound_status || "").startsWith("failed") && (
+            <span
+              data-testid={`wa-conv-ai-fail-${conv.phone}`}
+              title={conv.last_outbound_error
+                ? `IA falhou: ${conv.last_outbound_error}`
+                : "Última resposta IA falhou"}
+              style={{
+                padding: "1px 7px", borderRadius: 999,
+                background: "#fee2e2", color: "#991b1b",
+                fontSize: 10, fontWeight: 800,
+                display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0,
+                border: "1px solid #fecaca",
+              }}>
+              <AlertTriangle size={10} strokeWidth={2.5} /> Falha IA
+            </span>
+          )}
           {unread > 0 && (
             <span data-testid={`wa-unread-${conv.phone}`} style={{
               minWidth: 20, height: 20, padding: "0 6px",
@@ -1320,8 +1373,21 @@ function MsgBubble({ msg }) {
   }
   const out = msg.direction === "outbound";
   const isAi = !!msg.auto_reply;
-  const failed = out && msg.delivery_status === "failed";
-  const sent = out && msg.delivery_status === "sent";
+  const dst = msg.delivery_status || "";
+  const failed = out && (dst === "failed" || dst.startsWith("failed_"));
+  const sent = out && dst === "sent";
+  // Failed AI sem texto (gerou erro antes de redigir) → render como placeholder
+  const aiSilentFailure = failed && isAi && !msg.text;
+  const failureLabel = (() => {
+    if (!failed) return null;
+    if (dst === "failed_disabled") return "IA desligada — não respondeu";
+    if (dst === "failed_no_agent") return "Agente IA não cadastrado";
+    if (dst === "failed_llm_error") return "Motor IA falhou";
+    if (dst === "failed_motor_ia_unavailable") return "Motor IA indisponível";
+    if (dst === "failed_empty_reply") return "IA retornou resposta vazia";
+    if (dst === "failed_sidecar") return "Falha ao enviar para WhatsApp";
+    return "Não entregue";
+  })();
   const time = msg.created_at
     ? new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
     : "";
@@ -1346,13 +1412,17 @@ function MsgBubble({ msg }) {
         opacity: failed ? 0.95 : 1,
       }}>
         {out && isAi && (
-          <div style={{ fontSize: 9, fontWeight: 800, color: "#0369a1",
+          <div style={{ fontSize: 9, fontWeight: 800, color: failed ? "#dc2626" : "#0369a1",
                          marginBottom: 3, textTransform: "uppercase",
                          letterSpacing: 0.5 }}>
-            Isabella IA
+            {failed ? "⚠ Isabella IA — falhou" : "Isabella IA"}
           </div>
         )}
-        <div>{msg.text}</div>
+        <div>{aiSilentFailure
+          ? <em style={{ color: "#991b1b" }}>
+              Cliente mandou mensagem, mas a IA não respondeu — {failureLabel}.
+            </em>
+          : msg.text}</div>
         <div style={{
           fontSize: 9, color: failed ? "#dc2626" : "#64748b", marginTop: 3,
           display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end",
@@ -1361,14 +1431,15 @@ function MsgBubble({ msg }) {
           <span>{time}</span>
           {out && (failed ? (
             <span title={msg.delivery_error
-                          ? `Falha na entrega: ${msg.delivery_error}`
-                          : "Não entregue ao WhatsApp"}
+                          ? `${failureLabel}: ${msg.delivery_error}`
+                          : failureLabel}
+                  data-testid={`wa-msg-failed-${msg.id || ""}`}
                   style={{
                     display: "inline-flex", alignItems: "center", gap: 3,
                     color: "#dc2626",
                   }}>
               <AlertTriangle size={11} strokeWidth={2.5} />
-              <span>não entregue</span>
+              <span>{failureLabel}</span>
             </span>
           ) : sent ? (
             <CheckCheck size={11} style={{ color: "#0ea5e9" }} />
@@ -1951,3 +2022,157 @@ function AttendantKpiStrip({ kpi }) {
   );
 }
 
+
+
+/* =============================================================
+   AiHealthBanner — diagnóstico da Isabela IA.
+   Sempre visível: chip compacto + popover com razões + CTA "Ativar".
+============================================================= */
+function AiHealthBanner({ health, open, setOpen, onToggleAutoReply, toggling, onReload }) {
+  const status = health?.status || "loading";
+  const isLoading = !health;
+  const meta = useMemo(() => {
+    if (isLoading) return { bg: "var(--bg-surface-2)", fg: "var(--text-muted)", dot: "#94a3b8", label: "Verificando IA…" };
+    if (status === "healthy") return { bg: "rgba(16,185,129,.10)", fg: "#047857", dot: "#10b981", label: "Isabela: Online" };
+    if (status === "degraded") return { bg: "rgba(245,158,11,.12)", fg: "#92400e", dot: "#f59e0b", label: `Isabela: Degradada` };
+    return { bg: "rgba(220,38,38,.10)", fg: "#991b1b", dot: "#dc2626", label: "Isabela: Inativa" };
+  }, [status, isLoading]);
+
+  return (
+    <div data-testid="wa-ai-health-banner" style={{
+      display: "flex", alignItems: "center", gap: 10,
+      padding: "8px 16px",
+      background: meta.bg, color: meta.fg,
+      borderBottom: "1px solid var(--border-default)",
+      fontSize: 12, fontWeight: 600,
+      flexWrap: "wrap",
+    }}>
+      <span style={{
+        width: 8, height: 8, borderRadius: "50%",
+        background: meta.dot, flexShrink: 0,
+        boxShadow: status === "healthy" ? `0 0 0 3px ${meta.dot}33` : "none",
+      }} />
+      <span data-testid="wa-ai-health-label">{meta.label}</span>
+
+      {health && (
+        <>
+          {health.reasons?.length > 0 && (
+            <span data-testid="wa-ai-health-reason" style={{ fontWeight: 500 }}>
+              · {health.reasons[0].message}
+            </span>
+          )}
+          {health.stats_24h && (
+            <span style={{ marginLeft: 8, fontWeight: 500, color: meta.fg, opacity: .85 }}>
+              · {health.stats_24h.sent} resp. OK
+              {health.stats_24h.failed > 0 && (
+                <span data-testid="wa-ai-health-failed-count" style={{ color: "#dc2626", fontWeight: 700 }}>
+                  {" "}· {health.stats_24h.failed} falha(s)/24h
+                </span>
+              )}
+            </span>
+          )}
+          <span style={{ flex: 1 }} />
+          {status !== "healthy" && health.reasons?.some((r) => r.code === "auto_reply_off") && (
+            <button
+              data-testid="wa-ai-enable-btn"
+              onClick={onToggleAutoReply}
+              disabled={toggling}
+              style={{
+                padding: "4px 12px", borderRadius: 999, fontSize: 11, fontWeight: 800,
+                border: "1px solid #16a34a", background: "#16a34a", color: "white",
+                cursor: toggling ? "wait" : "pointer",
+              }}
+            >
+              {toggling ? "..." : "Ativar auto-reply"}
+            </button>
+          )}
+          <button
+            data-testid="wa-ai-health-details"
+            onClick={() => setOpen(!open)}
+            style={{
+              padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+              border: "1px solid currentColor", background: "transparent", color: meta.fg,
+              cursor: "pointer", opacity: .85,
+            }}
+          >{open ? "Fechar" : "Detalhes"}</button>
+          <button
+            data-testid="wa-ai-health-refresh"
+            onClick={onReload}
+            style={{
+              padding: 4, borderRadius: 6,
+              border: "1px solid currentColor", background: "transparent", color: meta.fg,
+              cursor: "pointer", opacity: .65, display: "grid", placeItems: "center",
+            }} title="Recarregar diagnóstico"
+          ><RefreshCw size={12} /></button>
+        </>
+      )}
+
+      {open && health && (
+        <div data-testid="wa-ai-health-detail-panel" style={{
+          flex: "1 0 100%",
+          marginTop: 8, padding: 12,
+          background: "white", color: "#1e293b",
+          borderRadius: 10, border: "1px solid var(--border-default)",
+          fontSize: 12, lineHeight: 1.55, fontWeight: 500,
+        }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))", gap: 10, marginBottom: 10 }}>
+            <DetailCell label="Auto-reply" value={health.auto_reply_enabled ? "ATIVADO" : "DESLIGADO"}
+                        ok={health.auto_reply_enabled} />
+            <DetailCell label="Agente" value={health.agent_name + (health.agent_active ? "" : " (não existe)")}
+                        ok={health.agent_active} />
+            <DetailCell label="Motor IA" value={health.motor_ia_model || "—"} ok={health.motor_ia_configured} />
+            <DetailCell label="WhatsApp sidecar" value={health.sidecar_status}
+                        ok={health.sidecar_status === "connected" || health.sidecar_status === "open"} />
+            <DetailCell label="Respostas OK (24h)" value={String(health.stats_24h?.sent ?? 0)} ok={(health.stats_24h?.sent ?? 0) > 0} />
+            <DetailCell label="Falhas (24h)" value={String(health.stats_24h?.failed ?? 0)}
+                        ok={(health.stats_24h?.failed ?? 0) === 0} />
+          </div>
+          {health.reasons?.length > 0 && (
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 11, color: "#475569", marginBottom: 4, letterSpacing: ".04em" }}>
+                MOTIVOS DETECTADOS
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {health.reasons.map((r, i) => (
+                  <li key={i} data-testid={`wa-ai-reason-${r.code}`} style={{
+                    color: r.severity === "high" ? "#dc2626" : "#92400e",
+                    marginBottom: 3,
+                  }}>
+                    <strong>{r.code.replaceAll("_", " ")}</strong> · {r.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {health.last_fail && (
+            <div style={{ marginTop: 8, padding: 8, background: "#fef2f2", borderRadius: 6, color: "#991b1b" }}>
+              Última falha · <strong>{health.last_fail.phone}</strong> · {(health.last_fail.at || "").slice(0,16).replace("T"," ")}
+              <br /><span style={{ fontWeight: 500 }}>{health.last_fail.error || health.last_fail.status}</span>
+            </div>
+          )}
+          {health.last_ok && (
+            <div style={{ marginTop: 6, fontSize: 11, color: "#475569" }}>
+              Última resposta OK: {(health.last_ok.at || "").slice(0,16).replace("T"," ")} · {health.last_ok.phone}
+              <br /><em style={{ color: "#64748b" }}>"{health.last_ok.preview}"</em>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetailCell({ label, value, ok }) {
+  return (
+    <div style={{ padding: 8, background: "var(--bg-surface-2)", borderRadius: 8 }}>
+      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, letterSpacing: ".04em" }}>
+        {label.toUpperCase()}
+      </div>
+      <div style={{
+        fontWeight: 700, fontSize: 12,
+        color: ok ? "#047857" : "#dc2626",
+        wordBreak: "break-word",
+      }}>{value}</div>
+    </div>
+  );
+}
