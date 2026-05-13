@@ -3,7 +3,8 @@ import {
   X, Bot, Brain, FileText, Plug, Mic, Sparkles, Save, RotateCcw, Play,
   ChevronRight, Plus, Trash2, Star, Building2, DollarSign, User,
   Settings, Smartphone, Loader2, CheckCircle2, AlertTriangle, RefreshCw,
-  LogOut, Wand2, ArrowUpCircle, Copy, Power, Cloud,
+  LogOut, Wand2, ArrowUpCircle, Copy, Power, Cloud, MessageSquare,
+  Send, Inbox, Shield, Eye, EyeOff,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -27,6 +28,7 @@ const SECTIONS = [
   { id: "model",       label: "Modelo de IA",              icon: Sparkles },
   { id: "whatsapp",    label: "WhatsApp (QR Baileys)",     icon: Smartphone },
   { id: "twilio",      label: "Canal Oficial (Twilio)",    icon: Cloud },
+  { id: "meta_cloud",  label: "Meta Cloud (oficial)",      icon: MessageSquare },
   { id: "tools",       label: "Tools",                     icon: Plug },
   { id: "autoreply",   label: "Auto-reply / Ativação",     icon: Power },
 ];
@@ -424,6 +426,9 @@ export default function AgentConfigModal({ open, onClose }) {
               )}
               {section === "twilio" && (
                 <TwilioSection />
+              )}
+              {section === "meta_cloud" && (
+                <MetaCloudSection />
               )}
               {section === "tools" && (
                 <ToolsSection draft={draft} patch={patch} tools={tools} />
@@ -1018,6 +1023,472 @@ function TwilioSection() {
     </div>
   );
 }
+
+/* =============================================================
+   MetaCloudSection — Canal Oficial Meta direto (sem BSP)
+   WhatsApp Cloud API + Instagram DM + Facebook Messenger
+============================================================= */
+function MetaCloudSection() {
+  const [cfg, setCfg] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState("");
+  const [err, setErr] = useState("");
+
+  const [appId, setAppId] = useState("");
+  const [appSecret, setAppSecret] = useState("");
+  const [businessId, setBusinessId] = useState("");
+  const [waPhoneNumberId, setWaPhoneNumberId] = useState("");
+  const [waBusinessAccountId, setWaBusinessAccountId] = useState("");
+  const [waAccessToken, setWaAccessToken] = useState("");
+  const [waDisplayPhone, setWaDisplayPhone] = useState("");
+  const [enabledWaCloud, setEnabledWaCloud] = useState(false);
+  const [pageId, setPageId] = useState("");
+  const [pageAccessToken, setPageAccessToken] = useState("");
+  const [igBusinessAccountId, setIgBusinessAccountId] = useState("");
+  const [enabledMessenger, setEnabledMessenger] = useState(false);
+  const [enabledInstagram, setEnabledInstagram] = useState(false);
+
+  const [testTo, setTestTo] = useState("");
+  const [testPlatform, setTestPlatform] = useState("whatsapp_cloud");
+  const [testText, setTestText] = useState("🚀 Teste SmartProv via Meta Cloud API");
+  const [messages, setMessages] = useState([]);
+  const [showSecrets, setShowSecrets] = useState(false);
+
+  const reload = useCallback(async () => {
+    try {
+      const c = await api.metaConfig();
+      setCfg(c);
+      setAppId(c?.app_id || "");
+      setBusinessId(c?.business_id || "");
+      setWaPhoneNumberId(c?.wa_phone_number_id || "");
+      setWaBusinessAccountId(c?.wa_business_account_id || "");
+      setWaDisplayPhone(c?.wa_display_phone || "");
+      setEnabledWaCloud(!!c?.enabled_whatsapp_cloud);
+      setPageId(c?.page_id || "");
+      setIgBusinessAccountId(c?.ig_business_account_id || "");
+      setEnabledMessenger(!!c?.enabled_messenger);
+      setEnabledInstagram(!!c?.enabled_instagram);
+      try {
+        const m = await api.metaMessages(20);
+        setMessages(m?.items || []);
+      } catch { /* ignore */ }
+    } catch (e) {
+      setErr(extractErrorMessage(e));
+    } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+
+  async function save() {
+    setErr("");
+    setBusy(true);
+    try {
+      const payload = {};
+      if (appId.trim()) payload.app_id = appId.trim();
+      if (appSecret.trim()) payload.app_secret = appSecret.trim();
+      if (businessId.trim()) payload.business_id = businessId.trim();
+      if (waPhoneNumberId.trim()) payload.wa_phone_number_id = waPhoneNumberId.trim();
+      if (waBusinessAccountId.trim()) payload.wa_business_account_id = waBusinessAccountId.trim();
+      if (waAccessToken.trim()) payload.wa_access_token = waAccessToken.trim();
+      if (waDisplayPhone.trim()) payload.wa_display_phone = waDisplayPhone.trim();
+      payload.enabled_whatsapp_cloud = enabledWaCloud;
+      if (pageId.trim()) payload.page_id = pageId.trim();
+      if (pageAccessToken.trim()) payload.page_access_token = pageAccessToken.trim();
+      if (igBusinessAccountId.trim()) payload.ig_business_account_id = igBusinessAccountId.trim();
+      payload.enabled_messenger = enabledMessenger;
+      payload.enabled_instagram = enabledInstagram;
+
+      await api.metaSetConfig(payload);
+      setFlash("✅ Credenciais salvas.");
+      setAppSecret("");
+      setWaAccessToken("");
+      setPageAccessToken("");
+      await reload();
+      setTimeout(() => setFlash(""), 3500);
+    } catch (e) {
+      setErr(extractErrorMessage(e));
+    } finally { setBusy(false); }
+  }
+
+  async function sendTest() {
+    setErr("");
+    if (!testTo.trim()) { setErr("Informe o destinatário."); return; }
+    setBusy(true);
+    try {
+      const r = await api.metaSend({
+        platform: testPlatform,
+        recipient_id: testTo.trim().replace(/[^\d]/g, ""),
+        text: testText,
+      });
+      if (r.ok) {
+        setFlash(`✅ Enviada · ID: ${(r.message_id || "").slice(-16)}`);
+        await reload();
+      } else {
+        setErr("Falha ao enviar.");
+      }
+      setTimeout(() => setFlash(""), 5000);
+    } catch (e) {
+      setErr(extractErrorMessage(e));
+    } finally { setBusy(false); }
+  }
+
+  function copy(text, label = "Copiado") {
+    if (text) {
+      navigator.clipboard?.writeText(text);
+      setFlash(`📋 ${label}`);
+      setTimeout(() => setFlash(""), 2000);
+    }
+  }
+
+  async function rotateVerifyToken() {
+    if (!window.confirm("Rotacionar o Verify Token invalidará o webhook atual no Meta. Confirma?")) return;
+    setBusy(true);
+    try {
+      await api.metaRotateVerifyToken();
+      setFlash("🔁 Verify Token rotacionado. Atualize no Meta.");
+      await reload();
+      setTimeout(() => setFlash(""), 4000);
+    } catch (e) {
+      setErr(extractErrorMessage(e));
+    } finally { setBusy(false); }
+  }
+
+  if (loading) return <div style={{ padding: 20, fontSize: 12, color: "var(--text-muted)" }}>Carregando...</div>;
+
+  const isWaConfigured = !!cfg?.wa_phone_number_id && !!cfg?.wa_access_token_masked;
+  const isMsgConfigured = !!cfg?.page_id && !!cfg?.page_access_token_masked;
+  const isIgConfigured = !!cfg?.ig_business_account_id && !!cfg?.page_access_token_masked;
+
+  return (
+    <div style={{ display: "grid", gap: 16 }} data-testid="meta-cloud-section">
+      <SectionTitle icon={MessageSquare}
+                    title="Canal Oficial — Meta Cloud (direto)"
+                    subtitle="WhatsApp Business Cloud + Instagram DM + Messenger via Meta Graph API." />
+
+      {flash && (
+        <div data-testid="meta-flash" style={{
+          background: "#dcfce7", color: "#166534",
+          padding: 8, borderRadius: 8, fontSize: 12, fontWeight: 700,
+        }}>{flash}</div>
+      )}
+      {err && (
+        <div data-testid="meta-error" style={{
+          background: "#fef2f2", color: "#991b1b",
+          padding: 8, borderRadius: 8, fontSize: 12, fontWeight: 700,
+        }}>{err}</div>
+      )}
+
+      <div style={{ display: "grid",
+                       gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                       gap: 10 }}>
+        <MetaStatusCard dt="meta-status-wa" label="WhatsApp Cloud" color="#25D366"
+                          ok={isWaConfigured && cfg?.enabled_whatsapp_cloud}
+                          configured={isWaConfigured} enabled={cfg?.enabled_whatsapp_cloud}
+                          subtitle={cfg?.wa_display_phone || "—"} />
+        <MetaStatusCard dt="meta-status-msg" label="Messenger" color="#0084FF"
+                          ok={isMsgConfigured && cfg?.enabled_messenger}
+                          configured={isMsgConfigured} enabled={cfg?.enabled_messenger}
+                          subtitle={cfg?.page_id ? `Page ${cfg.page_id.slice(0,10)}…` : "—"} />
+        <MetaStatusCard dt="meta-status-ig" label="Instagram DM" color="#E4405F"
+                          ok={isIgConfigured && cfg?.enabled_instagram}
+                          configured={isIgConfigured} enabled={cfg?.enabled_instagram}
+                          subtitle={cfg?.ig_business_account_id ? `IG ${cfg.ig_business_account_id.slice(0,10)}…` : "—"} />
+      </div>
+
+      <div className="surface" data-testid="meta-webhook-card" style={{
+        padding: 14, borderRadius: 10,
+        border: "1px solid var(--border-default)",
+        background: "linear-gradient(135deg, rgba(99,102,241,.06), var(--bg-surface) 70%)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <Shield size={15} color="#6366f1" />
+          <strong style={{ fontSize: 13 }}>Webhook (configurar no painel Meta)</strong>
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          <Field icon={Inbox} label="URL de retorno (Callback URL)">
+            <div style={{ display: "flex", gap: 6 }}>
+              <input readOnly value={cfg?.webhook_url || ""} style={inputStyle()}
+                     data-testid="meta-webhook-url" />
+              <button onClick={() => copy(cfg?.webhook_url, "URL copiada")}
+                      data-testid="meta-copy-webhook"
+                      style={btnStyle("ghost")}>
+                <Copy size={13} /> Copiar
+              </button>
+            </div>
+          </Field>
+          <Field icon={Shield} label="Token de verificação (Verify Token)">
+            <div style={{ display: "flex", gap: 6 }}>
+              <input readOnly type={showSecrets ? "text" : "password"}
+                     value={cfg?.verify_token || ""}
+                     style={inputStyle()} data-testid="meta-verify-token" />
+              <button onClick={() => setShowSecrets((v) => !v)}
+                      style={btnStyle("ghost")}>
+                {showSecrets ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+              <button onClick={() => copy(cfg?.verify_token, "Verify token copiado")}
+                      data-testid="meta-copy-verify"
+                      style={btnStyle("ghost")}>
+                <Copy size={13} /> Copiar
+              </button>
+              <button onClick={rotateVerifyToken} disabled={busy}
+                      data-testid="meta-rotate-verify"
+                      style={btnStyle("ghost")}>
+                <RotateCcw size={13} /> Rotacionar
+              </button>
+            </div>
+          </Field>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>
+            No painel Meta, em <strong>WhatsApp → Configuração → Webhook</strong>, cole esta URL e o Verify Token.
+            Depois, marque o campo <code>messages</code> e clique em <strong>Verificar e salvar</strong>.
+          </div>
+        </div>
+      </div>
+
+      <div className="surface" style={{
+        padding: 14, borderRadius: 10, border: "1px solid var(--border-default)",
+        background: "var(--bg-surface)", display: "grid", gap: 10,
+      }}>
+        <strong style={{ fontSize: 12, color: "var(--text-muted)",
+                          textTransform: "uppercase", letterSpacing: ".05em" }}>
+          App Meta (raiz)
+        </strong>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="App ID">
+            <input value={appId} onChange={(e) => setAppId(e.target.value)}
+                   data-testid="meta-app-id" style={inputStyle()}
+                   placeholder="1771613244212273" />
+          </Field>
+          <Field label="App Secret"
+                 hint={cfg?.app_secret_masked ? `Atual: ${cfg.app_secret_masked}` : "Settings → Basic"}>
+            <input value={appSecret} onChange={(e) => setAppSecret(e.target.value)}
+                   type="password" data-testid="meta-app-secret"
+                   style={inputStyle()}
+                   placeholder={cfg?.app_secret_masked ? "•••••••• (vazio p/ manter)" : "32-char hex"} />
+          </Field>
+          <Field label="Business Manager ID">
+            <input value={businessId} onChange={(e) => setBusinessId(e.target.value)}
+                   data-testid="meta-business-id" style={inputStyle()}
+                   placeholder="278728139433613" />
+          </Field>
+        </div>
+      </div>
+
+      <div className="surface" data-testid="meta-wa-block" style={{
+        padding: 14, borderRadius: 10,
+        border: `1px solid ${enabledWaCloud ? "#25D366" : "var(--border-default)"}`,
+        background: "var(--bg-surface)", display: "grid", gap: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <MessageSquare size={15} color="#25D366" />
+          <strong style={{ fontSize: 13 }}>WhatsApp Cloud API</strong>
+          <span style={{ flex: 1 }} />
+          <label style={{ display: "flex", alignItems: "center", gap: 6,
+                              fontSize: 12, cursor: "pointer" }}>
+            <input type="checkbox" checked={enabledWaCloud}
+                   onChange={(e) => setEnabledWaCloud(e.target.checked)}
+                   data-testid="meta-wa-enabled" />
+            Habilitado
+          </label>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="Phone Number ID">
+            <input value={waPhoneNumberId}
+                   onChange={(e) => setWaPhoneNumberId(e.target.value)}
+                   data-testid="meta-wa-phone-id" style={inputStyle()}
+                   placeholder="765733073283397" />
+          </Field>
+          <Field label="WABA ID">
+            <input value={waBusinessAccountId}
+                   onChange={(e) => setWaBusinessAccountId(e.target.value)}
+                   data-testid="meta-wa-waba-id" style={inputStyle()}
+                   placeholder="972303201594461" />
+          </Field>
+          <Field label="Access Token"
+                 hint={cfg?.wa_access_token_masked ? "Atual armazenado (criptografado)" : "Temporário 24h ou permanente"}>
+            <input value={waAccessToken} onChange={(e) => setWaAccessToken(e.target.value)}
+                   type="password" data-testid="meta-wa-token"
+                   style={inputStyle()}
+                   placeholder={cfg?.wa_access_token_masked ? "•••••••• (vazio p/ manter)" : "EAANk..."} />
+          </Field>
+          <Field label="Número exibido (display)">
+            <input value={waDisplayPhone}
+                   onChange={(e) => setWaDisplayPhone(e.target.value)}
+                   data-testid="meta-wa-display" style={inputStyle()}
+                   placeholder="+55 800 021 2111" />
+          </Field>
+        </div>
+      </div>
+
+      <div className="surface" style={{
+        padding: 14, borderRadius: 10, border: "1px solid var(--border-default)",
+        background: "var(--bg-surface)", display: "grid", gap: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <strong style={{ fontSize: 13 }}>Messenger & Instagram (Page-based)</strong>
+          <span style={{ flex: 1 }} />
+          <label style={{ display: "flex", alignItems: "center", gap: 6,
+                              fontSize: 12, cursor: "pointer" }}>
+            <input type="checkbox" checked={enabledMessenger}
+                   onChange={(e) => setEnabledMessenger(e.target.checked)}
+                   data-testid="meta-msg-enabled" />
+            Messenger
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6,
+                              fontSize: 12, cursor: "pointer" }}>
+            <input type="checkbox" checked={enabledInstagram}
+                   onChange={(e) => setEnabledInstagram(e.target.checked)}
+                   data-testid="meta-ig-enabled" />
+            Instagram
+          </label>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="Facebook Page ID">
+            <input value={pageId} onChange={(e) => setPageId(e.target.value)}
+                   data-testid="meta-page-id" style={inputStyle()} />
+          </Field>
+          <Field label="Instagram Business Account ID">
+            <input value={igBusinessAccountId}
+                   onChange={(e) => setIgBusinessAccountId(e.target.value)}
+                   data-testid="meta-ig-id" style={inputStyle()} />
+          </Field>
+          <Field label="Page Access Token"
+                 hint={cfg?.page_access_token_masked ? "Atual armazenado" : "Gerado via Business Manager"}>
+            <input value={pageAccessToken}
+                   onChange={(e) => setPageAccessToken(e.target.value)}
+                   type="password" data-testid="meta-page-token"
+                   style={inputStyle()}
+                   placeholder={cfg?.page_access_token_masked ? "•••••••• (vazio p/ manter)" : "EAANk..."} />
+          </Field>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button onClick={save} disabled={busy}
+                data-testid="meta-save" style={btnStyle("primary", busy)}>
+          <Save size={13} /> {busy ? "Salvando..." : "Salvar credenciais"}
+        </button>
+      </div>
+
+      <div className="surface" data-testid="meta-test-card" style={{
+        padding: 14, borderRadius: 10, border: "1px solid var(--border-default)",
+        background: "var(--bg-surface)", display: "grid", gap: 10,
+      }}>
+        <strong style={{ fontSize: 13 }}>🧪 Enviar mensagem de teste</strong>
+        <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 10 }}>
+          <Field label="Plataforma">
+            <select value={testPlatform}
+                    onChange={(e) => setTestPlatform(e.target.value)}
+                    data-testid="meta-test-platform" style={inputStyle()}>
+              <option value="whatsapp_cloud">WhatsApp Cloud</option>
+              <option value="messenger">Messenger</option>
+              <option value="instagram">Instagram</option>
+            </select>
+          </Field>
+          <Field label={testPlatform === "whatsapp_cloud" ? "Número destino" : "ID destinatário"}>
+            <input value={testTo} onChange={(e) => setTestTo(e.target.value)}
+                   data-testid="meta-test-to" style={inputStyle()}
+                   placeholder={testPlatform === "whatsapp_cloud" ? "+5521999999999" : "1234567890"} />
+          </Field>
+        </div>
+        <Field label="Mensagem">
+          <textarea value={testText} onChange={(e) => setTestText(e.target.value)}
+                    data-testid="meta-test-text" rows={2} style={textareaStyle()} />
+        </Field>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={sendTest} disabled={busy}
+                  data-testid="meta-send-test" style={btnStyle("primary", busy)}>
+            <Send size={13} /> {busy ? "Enviando..." : "Enviar teste"}
+          </button>
+        </div>
+      </div>
+
+      <div className="surface" data-testid="meta-messages-list" style={{
+        padding: 14, borderRadius: 10, border: "1px solid var(--border-default)",
+        background: "var(--bg-surface)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <Inbox size={15} color="#6366f1" />
+          <strong style={{ fontSize: 13 }}>Mensagens recentes ({messages.length})</strong>
+          <span style={{ flex: 1 }} />
+          <button onClick={reload} style={btnStyle("ghost")}>
+            <RefreshCw size={13} /> Atualizar
+          </button>
+        </div>
+        {messages.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic",
+                          padding: "16px 0", textAlign: "center" }}>
+            Sem mensagens ainda. Envie uma de teste ou aguarde clientes responderem.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 6, maxHeight: 280, overflowY: "auto" }}>
+            {messages.map((m) => (
+              <div key={m.id} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "6px 8px", borderRadius: 6,
+                background: m.direction === "inbound" ? "rgba(99,102,241,.05)" : "rgba(16,185,129,.05)",
+                fontSize: 12,
+              }}>
+                <span style={{
+                  padding: "1px 6px", borderRadius: 4, fontSize: 9, fontWeight: 800,
+                  background: m.direction === "inbound" ? "#6366f1" : "#10b981",
+                  color: "white", textTransform: "uppercase",
+                }}>
+                  {m.direction === "inbound" ? "RX" : "TX"}
+                </span>
+                <span style={{ fontWeight: 700, minWidth: 100 }}>{m.phone}</span>
+                <span style={{ fontSize: 9, color: "var(--text-muted)",
+                                  textTransform: "uppercase", letterSpacing: ".05em" }}>
+                  {(m.platform || m.channel || "").replace("meta_", "")}
+                </span>
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap" }}>{m.text}</span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                  {new Date(m.created_at).toLocaleTimeString("pt-BR",
+                    { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MetaStatusCard({ dt, label, color, ok, configured, subtitle }) {
+  const statusColor = ok ? "#10b981" : configured ? "#f59e0b" : "#94a3b8";
+  const statusText = ok ? "ONLINE" : configured ? "DESABILITADO" : "NÃO CONFIG";
+  return (
+    <div data-testid={dt} style={{
+      padding: 12, borderRadius: 10,
+      border: `1px solid ${ok ? color : "var(--border-default)"}`,
+      background: "var(--bg-surface)", display: "flex", gap: 10, alignItems: "center",
+    }}>
+      <div style={{
+        width: 36, height: 36, borderRadius: 8,
+        background: ok ? color : "var(--bg-surface-2)",
+        color: ok ? "white" : color,
+        display: "grid", placeItems: "center",
+      }}>
+        <MessageSquare size={18} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-primary)" }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 10, color: statusColor, fontWeight: 800,
+                          letterSpacing: ".05em" }}>
+          {statusText}
+        </div>
+        <div style={{ fontSize: 10, color: "var(--text-muted)",
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {subtitle}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function ToolsSection({ draft, patch, tools }) {
   function toggle(id) {

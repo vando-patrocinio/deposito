@@ -506,6 +506,18 @@ export const api = {
   twilioSendTest: (phone, text) =>
     client.post(`/whatsapp-twilio/test`, { phone, text }).then((r) => r.data),
 
+  // === Canal Meta Oficial (WhatsApp Cloud API / Instagram / Messenger) ===
+  metaConfig: () =>
+    client.get(`/whatsapp-meta/config`).then((r) => r.data),
+  metaSetConfig: (data) =>
+    client.put(`/whatsapp-meta/config`, data).then((r) => r.data),
+  metaSend: (data) =>
+    client.post(`/whatsapp-meta/send`, data).then((r) => r.data),
+  metaMessages: (limit = 50, platform = null) =>
+    client.get(`/whatsapp-meta/messages`, { params: { limit, platform } }).then((r) => r.data),
+  metaRotateVerifyToken: () =>
+    client.post(`/whatsapp-meta/verify-token/rotate`).then((r) => r.data),
+
   // ===== Central IA Dashboard =====
   centralIaKpis: (days = 7) =>
     client.get(`/central-ia/dashboard/kpis`, { params: { days } }).then((r) => r.data),
