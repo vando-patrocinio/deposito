@@ -368,34 +368,68 @@ export default function PracasPanel() {
               usa os dados da matriz.
             </p>
 
-            <Field label="Logo da praça (URL)">
-              <input
-                data-testid="p-logo-url" style={inputStyle}
-                value={form.logo_url || ""}
-                onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
-                placeholder="https://... (PNG/JPG/SVG · ideal 400×400)"
-              />
-              {form.logo_url ? (
-                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10 }}>
+            <Field label="Logo da praça">
+              <div style={{
+                display: "flex", alignItems: "center", gap: 14,
+                padding: 10, background: "white",
+                border: "1.5px dashed #cbd5e1", borderRadius: 12,
+              }}>
+                {form.logo_url ? (
                   <img
                     src={form.logo_url} alt="logo praça"
                     style={{
-                      width: 56, height: 56, borderRadius: 10, objectFit: "contain",
+                      width: 64, height: 64, borderRadius: 10, objectFit: "contain",
                       border: "1px solid #e2e8f0", background: "white", padding: 4,
+                      flexShrink: 0,
                     }}
-                    onError={(e) => { e.target.style.opacity = 0.3; }}
                   />
-                  <button
-                    type="button"
-                    data-testid="p-logo-remove"
-                    onClick={() => setForm({ ...form, logo_url: "" })}
-                    style={{
-                      border: "1px solid #fecaca", color: "#dc2626", background: "white",
-                      borderRadius: 8, padding: "4px 10px", fontSize: 12, cursor: "pointer",
+                ) : (
+                  <div style={{
+                    width: 64, height: 64, borderRadius: 10,
+                    background: "#f1f5f9", display: "grid", placeItems: "center",
+                    color: "#94a3b8", fontSize: 11, fontWeight: 700, flexShrink: 0,
+                  }}>LOGO</div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    data-testid="p-logo-file"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const MAX = 1.5 * 1024 * 1024;
+                      if (file.size > MAX) {
+                        alert(`Imagem maior que 1.5 MB (atual: ${(file.size / 1024 / 1024).toFixed(2)} MB).`);
+                        e.target.value = "";
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setForm((f) => ({ ...f, logo_url: reader.result }));
+                      };
+                      reader.readAsDataURL(file);
                     }}
-                  >× Remover logo</button>
+                    style={{ fontSize: 12, color: "#475569" }}
+                  />
+                  {form.logo_url && (
+                    <button
+                      type="button"
+                      data-testid="p-logo-remove"
+                      onClick={() => setForm({ ...form, logo_url: "" })}
+                      style={{
+                        marginTop: 6, marginLeft: 0,
+                        border: "1px solid #fecaca", color: "#dc2626", background: "white",
+                        borderRadius: 8, padding: "3px 10px", fontSize: 11, fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >× Remover logo</button>
+                  )}
+                  <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 4 }}>
+                    PNG/JPG/SVG · max 1.5 MB · ideal 400×400 px
+                  </div>
                 </div>
-              ) : null}
+              </div>
             </Field>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
