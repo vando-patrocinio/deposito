@@ -1,0 +1,37 @@
+{
+  "summary": "Tested WhatsApp LID privacy resolution end-to-end. Backend pytest: 6/8 PASS (2 minor failures on response shape, not core behavior). Frontend UI: 100% PASS — LID chip 'LID anônimo', thread warn banner, link button, modal with input & submit, modal closes after successful submit. Core LID flow (inbound resolution, sender_pn auto-resolve, manual link migration, lid-map persistence, future-msg auto-routing) all working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/whatsapp-baileys/inbound", "issue": "When LID inbound triggers auto-reply branch (line ~474), response returns {ok, subscriber_id, auto_reply} WITHOUT the phone/lid fields. The final return at line 500 includes them, but the auto-reply early-return path does not. Spec expected {ok:true, phone:'<lid>', lid:'<lid>'}. Functionality is fine (conv created with phone_is_lid=true confirmed), only response shape is inconsistent across branches."},
+      {"endpoint": "GET /api/whatsapp-baileys/conversations", "issue": "lid_linked_at is persisted in DB (wa_conversations) by /lid-link migration (line 274) but NOT exposed in list_conversations response (line 1461 only emits phone_is_lid + lid). UI cannot show 'vinculado em <data>' badge."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_whatsapp_lid.py",
+    "/app/test_reports/pytest/lid_results.xml"
+  ],
+  "action_items": [
+    "Add phone+lid keys to the auto-reply early-return in inbound_webhook so response shape stays consistent (file: /app/backend/routes/whatsapp_baileys.py ~line 474).",
+    "Expose lid_linked_at field in list_conversations response (file: /app/backend/routes/whatsapp_baileys.py ~line 1461) so UI can show link timestamp."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routes/whatsapp_baileys.py is 1825 lines — exceeds 700-line guideline; recommend splitting LID resolution + auto-reply + co-pilot into separate modules.",
+    "Inbound endpoint has 3 different return shapes ({manager_assistant}, {auto_reply}, {phone,lid}). Standardize to always include subscriber_id, phone, lid for predictable contracts."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_whatsapp_lid.py (new)"
+  ],
+  "success_rate": {"backend": "75% (6/8 — failures are response-shape only, core LID flow 100% functional)", "frontend": "100% (chip, warn banner, link button, modal, input, submit, modal close all working)"},
+  "test_credentials": "admin@empresa.com / 123456 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created via curl POST /api/whatsapp-baileys/inbound: LIDs 999999999999999 (linked manually to 5521977770000), 200000000000 (auto-resolved via sender_pn → 5521988880001), 888888888888888 (linked via UI modal to 5521966660000). All test conversations cleaned up via DELETE /api/whatsapp-baileys/conversations/<phone> after tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "WA_INBOUND_TOKEN read from /app/backend/.env (key WA_INBOUND_TOKEN). Inbound endpoint /api/whatsapp-baileys/inbound requires header X-WA-Token. lid_link requires gestor auth. The 2 minor backend failures are response-shape inconsistencies (not functional bugs) — actual LID resolution, sender_pn auto-resolve, manual link migration of messages (172 messages migrated in user's prior real test), and future-message auto-routing via wa_lid_map all confirmed working. Frontend testids: wa-conv-lid-{phone}, wa-thread-lid-warn, wa-thread-lid-link-btn, wa-lid-link-modal, wa-lid-link-input, wa-lid-link-submit — all present and wired correctly.",
+  "rca of the issue": "Original user bug ('+5521998176526 appearing as different number') ROOT CAUSE: Sidecar used jid.split('@')[0] as phone; for WhatsApp privacy-LID jids (e.g. 169410773958706@lid), this produced an opaque numeric ID rather than the real MSISDN, preventing subscriber auto-link. FIX VERIFIED: (1) Sidecar now forwards is_lid/lid/sender_pn; (2) Backend prefers sender_pn (Baileys 6.7+) — test_lid_map_persisted PASSED with source='sender_pn'; (3) Falls back to wa_lid_map manual mapping — test_manual_link migrated 1+ msgs and merged conv; (4) Last fallback persists conv with phone_is_lid=true + lid for UI to surface — test_conversation_marked_phone_is_lid PASSED; (5) UI surfaces chip + warn + 'Vincular telefone' modal — all wired and functional."
+}

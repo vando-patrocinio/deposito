@@ -286,12 +286,29 @@ async function startSock() {
             msg.videoMessage?.caption ||
             "";
           const fromJid = m.key.remoteJid || "";
-          const phone = fromJid.split("@")[0];
-          // Notifica FastAPI (com retry leve: 1 tentativa extra após 500ms)
+          const rawId = fromJid.split("@")[0];
+          const server = fromJid.split("@")[1] || "";
+          const isLid = server === "lid";
+          // WhatsApp 2025+: senderPn pode estar no key (privacidade LID)
+          const senderPn = m.key.senderPn || m.key.participantPn ||
+                           msg.senderKeyDistributionMessage?.groupId || null;
+          let realPhone = null;
+          if (senderPn) {
+            const cleanPn = String(senderPn).split("@")[0].split(":")[0].replace(/\D/g, "");
+            if (cleanPn && !cleanPn.startsWith("169") && cleanPn.length >= 10 && cleanPn.length <= 15) {
+              realPhone = cleanPn;
+            }
+          }
+          // Se for LID e não tem senderPn → mantemos LID como ID, mas marcamos
+          const phone = realPhone || (isLid ? rawId : rawId);
           const payload = {
             phone, jid: fromJid, from_me: false, text,
             message_id: m.key.id, timestamp: m.messageTimestamp,
             push_name: m.pushName || null,
+            // Novos campos para o backend decidir como identificar
+            is_lid: isLid,
+            lid: isLid ? rawId : null,
+            sender_pn: realPhone,
           };
           const headers = INBOUND_TOKEN ? { "X-WA-Token": INBOUND_TOKEN } : {};
           try {
@@ -304,7 +321,7 @@ async function startSock() {
               await axios.post(`${WEBHOOK_BASE}/whatsapp-baileys/inbound`,
                                 payload, { timeout: 15000, headers });
             } catch (err2) {
-              logger.warn({ err: err2.message, phone }, "webhook inbound falhou (2x)");
+              logger.warn({ err: err2.message, phone, isLid }, "webhook inbound falhou (2x)");
             }
           }
         }

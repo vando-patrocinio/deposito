@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import uuid
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone, timedelta
@@ -155,6 +156,10 @@ class InboundIn(BaseModel):
     message_id: Optional[str] = None
     timestamp: Optional[Any] = None
     push_name: Optional[str] = None
+    # WhatsApp LID privacy (2025+)
+    is_lid: bool = False
+    lid: Optional[str] = None
+    sender_pn: Optional[str] = None
 
 
 class SystemEventIn(BaseModel):
@@ -210,6 +215,101 @@ async def list_system_events(user: dict = Depends(require_role("gestor"))):
     return {"events": docs}
 
 
+# ---------------------------------------------------------------------------
+# LID manual link — WhatsApp privacidade (jid@lid → telefone real)
+# ---------------------------------------------------------------------------
+class LidLinkIn(BaseModel):
+    lid: str = Field(..., min_length=5, max_length=40)
+    phone: str = Field(..., min_length=8, max_length=20)
+
+
+@router.post("/lid-link")
+async def lid_link(payload: LidLinkIn,
+                    user: dict = Depends(require_role("gestor"))):
+    """Vincula manualmente um LID (jid anônimo @lid) a um telefone real.
+
+    Quando o cliente envia msg com privacidade LID ativada, o sidecar
+    persiste a conversa usando o número LID (ex.: `169410773958706`)
+    porque o telefone real fica oculto. Este endpoint permite ao gestor
+    informar o telefone correto:
+      1. Cria/atualiza wa_lid_map (LID → phone).
+      2. Migra mensagens/conversas anteriores do LID para o novo phone.
+      3. Mensagens futuras com o mesmo LID resolvem automaticamente.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    lid_raw = re.sub(r"\D", "", payload.lid)
+    phone_raw = re.sub(r"\D", "", payload.phone)
+    if not lid_raw or not phone_raw:
+        raise HTTPException(400, "LID ou telefone inválido (apenas dígitos).")
+
+    # 1. Cria mapping
+    await db.wa_lid_map.update_one(
+        {"company_id": cid, "lid": lid_raw},
+        {"$set": {"phone": phone_raw, "source": "manual",
+                  "linked_by_user_id": user.get("id"),
+                  "linked_by_email": user.get("email"),
+                  "linked_at": now_iso()}},
+        upsert=True,
+    )
+
+    # 2. Migra mensagens existentes (phone == LID) para o novo phone
+    msgs_result = await db.aihub_wa_messages.update_many(
+        {"company_id": cid, "phone": lid_raw},
+        {"$set": {"phone": phone_raw, "phone_is_lid": False,
+                   "lid": lid_raw}},
+    )
+    # 3. Migra/merge a conversa
+    old_conv = await db.wa_conversations.find_one(
+        {"company_id": cid, "phone": lid_raw}, {"_id": 0},
+    )
+    if old_conv:
+        await db.wa_conversations.delete_one(
+            {"company_id": cid, "phone": lid_raw},
+        )
+        # Merge: campos do lid_conv aplicam só se não existirem na phone_conv
+        merge_doc = {k: v for k, v in old_conv.items()
+                      if k not in ("_id", "company_id", "phone")}
+        merge_doc["phone_is_lid"] = False
+        merge_doc["lid"] = lid_raw
+        merge_doc["lid_linked_at"] = now_iso()
+        await db.wa_conversations.update_one(
+            {"company_id": cid, "phone": phone_raw},
+            {"$set": merge_doc},
+            upsert=True,
+        )
+
+    # 4. Auto-link com subscriber (se houver)
+    subscriber_id = None
+    try:
+        from phone_normalizer import link_phone_to_subscriber
+        link = await link_phone_to_subscriber(phone_raw, cid)
+        if link:
+            subscriber_id = link.get("subscriber_id")
+    except Exception:
+        pass
+
+    logger.info("[wa-baileys] LID %s vinculado a %s (msgs migradas=%d) por %s",
+                lid_raw, phone_raw, msgs_result.modified_count,
+                user.get("email"))
+    return {
+        "ok": True,
+        "lid": lid_raw,
+        "phone": phone_raw,
+        "messages_migrated": msgs_result.modified_count,
+        "subscriber_id": subscriber_id,
+    }
+
+
+@router.get("/lid-map")
+async def list_lid_mappings(user: dict = Depends(require_role("gestor"))):
+    """Lista todos os mapeamentos LID→phone cadastrados."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    items = await db.wa_lid_map.find(
+        {"company_id": cid}, {"_id": 0},
+    ).sort("linked_at", -1).limit(200).to_list(200)
+    return {"items": items, "total": len(items)}
+
+
 
 @router.post("/inbound")
 async def inbound_webhook(payload: InboundIn,
@@ -236,11 +336,45 @@ async def inbound_webhook(payload: InboundIn,
     is_group = (payload.jid or "").endswith("@g.us")
 
     cid = DEMO_COMPANY_ID  # multi-tenant TODO
+
+    # === LID resolution (WhatsApp privacy) ===
+    # Quando o WhatsApp envia mensagem com privacidade LID, o jid vem como
+    # `<lid>@lid` e o número real fica oculto. Tentamos resolver via:
+    #   1. sender_pn (Baileys 6.7+ expõe em alguns casos)
+    #   2. Mapeamento manual persistido em `wa_lid_map` (gestor vincula)
+    # Se NADA resolve, mantemos o LID como identificador, mas marcamos a
+    # conversa com `phone_is_lid=true` pra UI destacar e oferecer vínculo.
+    effective_phone = payload.phone
+    if payload.is_lid and payload.lid:
+        if payload.sender_pn:
+            effective_phone = payload.sender_pn
+            # Persiste o mapping para futuras mensagens
+            try:
+                await db.wa_lid_map.update_one(
+                    {"company_id": cid, "lid": payload.lid},
+                    {"$set": {"phone": payload.sender_pn, "source": "sender_pn",
+                              "linked_at": now_iso()}},
+                    upsert=True,
+                )
+            except Exception:
+                pass
+        else:
+            # Tenta resolver via mapping manual já cadastrado
+            try:
+                m = await db.wa_lid_map.find_one(
+                    {"company_id": cid, "lid": payload.lid},
+                    {"_id": 0, "phone": 1},
+                )
+                if m and m.get("phone"):
+                    effective_phone = m["phone"]
+            except Exception:
+                pass
+
     subscriber_id = None
     subscriber_ctx = None
     try:
         from phone_normalizer import link_phone_to_subscriber
-        link = await link_phone_to_subscriber(payload.phone, cid)
+        link = await link_phone_to_subscriber(effective_phone, cid)
         if link and link.get("subscriber_id"):
             subscriber_id = link["subscriber_id"]
             sub = await db.subscribers.find_one(
@@ -268,16 +402,30 @@ async def inbound_webhook(payload: InboundIn,
         "id": f"wam-{uuid.uuid4().hex[:10]}",
         "company_id": cid,
         "direction": "inbound",
-        "phone": payload.phone,
+        "phone": effective_phone,
         "jid": payload.jid,
         "text": payload.text,
         "push_name": payload.push_name,
         "message_id": payload.message_id,
         "wa_timestamp": payload.timestamp,
         "subscriber_id": subscriber_id,
+        "phone_is_lid": payload.is_lid and effective_phone == payload.lid,
+        "lid": payload.lid,
         "created_at": now_iso(),
     })
-    logger.info("[wa-baileys] inbound %s (%s): %s", payload.phone,
+    # Atualiza conv com flag LID quando aplicável
+    if payload.is_lid:
+        await db.wa_conversations.update_one(
+            {"company_id": cid, "phone": effective_phone},
+            {"$set": {
+                "phone_is_lid": effective_phone == payload.lid,
+                "lid": payload.lid,
+            }},
+            upsert=True,
+        )
+    logger.info("[wa-baileys] inbound %s%s (%s): %s",
+                effective_phone,
+                f" [LID={payload.lid}]" if payload.is_lid else "",
                 payload.push_name, payload.text[:80])
 
     # --- Manager Assistant — gestor manda comando, IA executa ---
@@ -287,14 +435,15 @@ async def inbound_webhook(payload: InboundIn,
         try:
             from services.manager_assistant import handle_manager_message
             mgr_reply = await handle_manager_message(
-                cid, payload.phone, payload.text)
+                cid, effective_phone, payload.text)
             if mgr_reply:
-                # Envia resposta de volta via sidecar
+                # Envia resposta de volta via sidecar (usa JID original)
                 try:
                     async with httpx.AsyncClient(timeout=12.0) as cli:
                         await cli.post(
                             f"{SIDECAR_BASE}/send",
-                            json={"phone": payload.phone, "text": mgr_reply},
+                            json={"phone": payload.jid or effective_phone,
+                                  "text": mgr_reply},
                         )
                 except Exception as e:
                     logger.warning("[wa-baileys] manager reply send fail: %s", e)
@@ -303,7 +452,7 @@ async def inbound_webhook(payload: InboundIn,
                     "id": f"wam-{uuid.uuid4().hex[:10]}",
                     "company_id": cid,
                     "direction": "outbound",
-                    "phone": payload.phone,
+                    "phone": effective_phone,
                     "text": mgr_reply,
                     "created_at": now_iso(),
                     "metadata": {"manager_assistant": True},
@@ -316,7 +465,7 @@ async def inbound_webhook(payload: InboundIn,
     if not is_group:
         try:
             reply = await _maybe_auto_reply(
-                cid=cid, phone=payload.phone,
+                cid=cid, phone=effective_phone,
                 user_text=payload.text,
                 subscriber_id=subscriber_id,
                 subscriber_ctx=subscriber_ctx,
@@ -332,7 +481,7 @@ async def inbound_webhook(payload: InboundIn,
         # A IA de atendimento já tem injeção A2A própria via system_prompt.
         try:
             conv = await db.wa_conversations.find_one(
-                {"company_id": cid, "phone": payload.phone},
+                {"company_id": cid, "phone": effective_phone},
                 {"_id": 0, "assignee_role": 1, "status": 1},
             )
             if (conv and conv.get("assignee_role") == "human"
@@ -340,7 +489,7 @@ async def inbound_webhook(payload: InboundIn,
                 from services.copilot_ai import maybe_insert_copilot_hint
                 await maybe_insert_copilot_hint(
                     company_id=cid,
-                    phone=payload.phone,
+                    phone=effective_phone,
                     last_inbound_text=payload.text,
                     last_inbound_id=payload.message_id,
                     subscriber_ctx=subscriber_ctx,
@@ -348,7 +497,8 @@ async def inbound_webhook(payload: InboundIn,
         except Exception as e:
             logger.info("[wa-baileys] copilot skip: %s", e)
 
-    return {"ok": True, "subscriber_id": subscriber_id}
+    return {"ok": True, "subscriber_id": subscriber_id,
+            "phone": effective_phone, "lid": payload.lid}
 
 
 async def _fetch_human_few_shots(cid: str, limit: int = 3) -> List[Dict[str, Any]]:
@@ -1307,6 +1457,9 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
             # Última resposta IA — para exibir chip de falha na lista
             "last_outbound_status": last_out_status,
             "last_outbound_error": last_out_error,
+            # WhatsApp LID privacy
+            "phone_is_lid": conv.get("phone_is_lid", False),
+            "lid": conv.get("lid"),
         }
         bucket = _bucket_for_conversation(conv_view)
         conv_view["bucket"] = bucket

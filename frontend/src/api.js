@@ -489,6 +489,11 @@ export const api = {
   // Routing stats — dashboard multi-agente
   waBaileysRoutingStats: (days = 7) =>
     client.get(`/whatsapp-baileys/routing-stats`, { params: { days } }).then((r) => r.data),
+  // LID — vincular jid@lid anônimo a telefone real
+  waBaileysLidLink: (lid, phone) =>
+    client.post(`/whatsapp-baileys/lid-link`, { lid, phone }).then((r) => r.data),
+  waBaileysLidMap: () =>
+    client.get(`/whatsapp-baileys/lid-map`).then((r) => r.data),
 
   // ===== Central IA Dashboard =====
   centralIaKpis: (days = 7) =>

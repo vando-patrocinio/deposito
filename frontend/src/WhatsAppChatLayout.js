@@ -624,6 +624,20 @@ function ConvRow({ conv, selected, onClick, profile }) {
               <AlertTriangle size={10} strokeWidth={2.5} /> Falha IA
             </span>
           )}
+          {conv.phone_is_lid && (
+            <span
+              data-testid={`wa-conv-lid-${conv.phone}`}
+              title={`WhatsApp LID anônimo — número real oculto pela privacidade. Clique na conversa para vincular ao telefone correto. LID: ${conv.lid || conv.phone}`}
+              style={{
+                padding: "1px 7px", borderRadius: 999,
+                background: "#fef3c7", color: "#92400e",
+                fontSize: 10, fontWeight: 800,
+                display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0,
+                border: "1px solid #fde68a",
+              }}>
+              <Lock size={10} strokeWidth={2.5} /> LID anônimo
+            </span>
+          )}
           {unread > 0 && (
             <span data-testid={`wa-unread-${conv.phone}`} style={{
               minWidth: 20, height: 20, padding: "0 6px",
@@ -912,6 +926,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
           <div style={{
             fontSize: 11, color: "var(--text-muted)",
             display: "flex", alignItems: "center", gap: 6, marginTop: 3,
+            flexWrap: "wrap",
           }}>
             <span className="mono">+{conv.phone}</span>
             <span style={{ opacity: 0.4 }}>·</span>
@@ -919,6 +934,23 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
               color: online ? "#16a34a" : "var(--text-muted)",
               fontWeight: online ? 600 : 400,
             }}>{presenceLabel}</span>
+            {conv.phone_is_lid && (
+              <>
+                <span style={{ opacity: 0.4 }}>·</span>
+                <span data-testid="wa-thread-lid-warn"
+                       title="Número real ocultado por privacidade WhatsApp. Clique 'Vincular telefone' para identificar o cliente."
+                       style={{
+                         padding: "1px 7px", borderRadius: 999,
+                         background: "#fef3c7", color: "#92400e",
+                         fontSize: 10, fontWeight: 800,
+                         border: "1px solid #fde68a",
+                         display: "inline-flex", alignItems: "center", gap: 3,
+                       }}>
+                  <Lock size={9} strokeWidth={2.5} /> LID anônimo
+                </span>
+                <LidLinkButton conv={conv} onLinked={onChange} />
+              </>
+            )}
           </div>
         </div>
 
@@ -2199,3 +2231,123 @@ function DetailCell({ label, value, ok }) {
     </div>
   );
 }
+
+/* =============================================================
+   LidLinkButton — vincula um jid@lid (anônimo) ao telefone real.
+   Aparece no header da conversa quando phone_is_lid=true.
+============================================================= */
+function LidLinkButton({ conv, onLinked }) {
+  const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function submit(e) {
+    e?.preventDefault();
+    setErr("");
+    const clean = (phone || "").replace(/\D/g, "");
+    if (clean.length < 10) {
+      setErr("Telefone inválido — informe DDI + DDD + número (ex: 5521998176526).");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await api.waBaileysLidLink(conv.lid || conv.phone, clean);
+      setOpen(false);
+      setPhone("");
+      // Notifica o pai (reload) e tenta abrir a conv nova (telefone real)
+      onLinked?.(r?.phone);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        data-testid="wa-thread-lid-link-btn"
+        title="Informe o telefone real do cliente. As mensagens serão migradas e o cliente vinculado."
+        style={{
+          padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800,
+          border: "1px solid #f59e0b", background: "#f59e0b", color: "white",
+          cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3,
+        }}>
+        <Lightbulb size={9} strokeWidth={2.5} /> Vincular telefone
+      </button>
+      {open && (
+        <div onClick={() => !busy && setOpen(false)}
+             style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.55)",
+                        display: "grid", placeItems: "center", zIndex: 9999 }}>
+          <form onSubmit={submit} onClick={(e) => e.stopPropagation()}
+                 data-testid="wa-lid-link-modal"
+                 style={{ background: "var(--bg-surface)", borderRadius: 14,
+                           padding: 22, width: "min(480px, 92vw)",
+                           boxShadow: "0 20px 60px rgba(0,0,0,.35)" }}>
+            <h3 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 800 }}>
+              Vincular LID a telefone real
+            </h3>
+            <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.55 }}>
+              Este cliente está usando a privacidade do WhatsApp <strong>(LID)</strong> e o
+              número real está oculto. Informe o telefone correto e o sistema vai:
+            </p>
+            <ul style={{ margin: "0 0 14px", paddingLeft: 20, fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+              <li>Migrar todas as mensagens deste LID para o telefone real</li>
+              <li>Tentar vincular automaticamente a um assinante existente</li>
+              <li>Lembrar do mapping nas próximas mensagens deste mesmo LID</li>
+            </ul>
+
+            <div style={{ padding: 10, background: "var(--bg-surface-2)", borderRadius: 8,
+                            fontSize: 12, marginBottom: 12 }}>
+              <strong>LID atual:</strong> <span className="mono">{conv.lid || conv.phone}</span>
+            </div>
+
+            <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+              Telefone real (DDI + DDD + número)
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              autoFocus
+              placeholder="5521998176526"
+              data-testid="wa-lid-link-input"
+              disabled={busy}
+              style={{
+                width: "100%", padding: "9px 12px",
+                border: "1px solid var(--border-default)", borderRadius: 8,
+                fontSize: 14, fontFamily: "ui-monospace, monospace",
+                background: "var(--bg-surface)", color: "var(--text-primary)",
+                marginBottom: 12,
+              }}
+            />
+
+            {err && (
+              <div style={{ background: "var(--danger-soft)", color: "var(--danger-soft-fg)",
+                              padding: 8, borderRadius: 8, fontSize: 12, marginBottom: 10 }}>
+                {err}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setOpen(false)} disabled={busy}
+                       style={{ padding: "8px 14px", borderRadius: 8,
+                                  border: "1px solid var(--border-default)",
+                                  background: "var(--bg-surface)", color: "var(--text-secondary)",
+                                  fontSize: 12, fontWeight: 700, cursor: busy ? "wait" : "pointer" }}>
+                Cancelar
+              </button>
+              <button type="submit" disabled={busy} data-testid="wa-lid-link-submit"
+                       style={{ padding: "8px 14px", borderRadius: 8,
+                                  border: "1px solid #f59e0b", background: "#f59e0b", color: "white",
+                                  fontSize: 12, fontWeight: 800, cursor: busy ? "wait" : "pointer" }}>
+                {busy ? "Migrando..." : "Vincular e migrar"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </>
+  );
+}
+
