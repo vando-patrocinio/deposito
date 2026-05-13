@@ -305,11 +305,13 @@ class _OpenRouterChat:
         kwargs: dict = {
             "model": self._model,
             "messages": self._messages,
-            "max_tokens": 1500,
+            "max_tokens": 800,
             "temperature": 0.4,
         }
         if self._fallbacks:
-            kwargs["extra_body"] = {"models": [self._model, *self._fallbacks]}
+            # OpenRouter aceita no máximo 3 modelos no array (1 principal + 2 fallbacks).
+            models_arr = [self._model, *self._fallbacks][:3]
+            kwargs["extra_body"] = {"models": models_arr}
         resp = await self._client.chat.completions.create(**kwargs)
         out = (resp.choices[0].message.content or "").strip()
         self._messages.append({"role": "assistant", "content": out})

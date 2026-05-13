@@ -200,13 +200,29 @@ async def discover_holidays(pid: str, year: int, _user: dict = Depends(require_r
     try:
         suggestions = await _ai_discover_holidays(praca["city"], praca["state"], year)
     except Exception as e:
+        err_str = str(e)
         logger.exception("[ai_discover_holidays] erro: %s", e)
         await db.system_alerts.insert_one({
             "id": uuid.uuid4().hex[:14], "type": "ai_holidays_failure",
             "message": f"Falha ao buscar feriados via IA para {praca['city']}/{praca['state']} ({year}): {e}",
             "at": now_iso(), "severity": "warning",
         })
-        raise HTTPException(502, "IA indisponível para sugerir feriados. Tente novamente em instantes.")
+        # Mensagem amigável conforme o tipo de erro
+        if "402" in err_str or "credits" in err_str.lower() or "afford" in err_str.lower():
+            raise HTTPException(
+                503,
+                "Sem créditos na OpenRouter. Vá em Sistema → Motor IA → recarregar saldo, "
+                "ou cadastre os feriados manualmente abaixo.",
+            )
+        if "401" in err_str or "unauthorized" in err_str.lower() or "api" in err_str.lower() and "key" in err_str.lower():
+            raise HTTPException(
+                503,
+                "Motor IA sem chave configurada. Vá em Sistema → Motor IA para configurar.",
+            )
+        raise HTTPException(
+            502,
+            "IA indisponível no momento. Tente em instantes ou cadastre manualmente.",
+        )
     return {"year": year, "city": praca["city"], "state": praca["state"], "suggestions": suggestions}
 
 
