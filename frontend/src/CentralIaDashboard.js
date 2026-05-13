@@ -8,6 +8,8 @@ import { api } from "@/api";
 import SmartOltAiPanel from "@/SmartOltAiPanel";
 import CopilotRankingCard from "@/CopilotRankingCard";
 import ChurnDashboardPanel from "@/ChurnDashboardPanel";
+import MotorIaUsageCard from "@/MotorIaUsageCard";
+import { DollarSign, Coins, ChevronDown, ChevronUp } from "lucide-react";
 
 /* =============================================================
    Central IA Dashboard — KPIs + ranking + intents + alertas proativos
@@ -47,13 +49,15 @@ export default function CentralIaDashboard() {
   const [productivity, setProductivity] = useState(null);
   const [aiEval, setAiEval] = useState(null);
   const [aiLearning, setAiLearning] = useState(null);
+  const [costToday, setCostToday] = useState(null);
+  const [showCostDetail, setShowCostDetail] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const reload = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [k, a, i, al, p, ae, al2] = await Promise.all([
+      const [k, a, i, al, p, ae, al2, ct] = await Promise.all([
         api.centralIaKpis(days),
         api.centralIaAttendants(days),
         api.centralIaIntents(days),
@@ -61,12 +65,14 @@ export default function CentralIaDashboard() {
         api.centralIaProductivity(days).catch(() => null),
         api.centralIaAiEvaluations(days).catch(() => null),
         api.centralIaAiLearning(Math.max(days, 7)).catch(() => null),
+        api.motorIaUsage(1).catch(() => null),
       ]);
       setKpis(k); setAttendants(a.items || []); setIntents(i.items || []);
       setAlerts(al.items || []);
       setProductivity(p);
       setAiEval(ae);
       setAiLearning(al2);
+      setCostToday(ct);
     } catch (e) {
       console.error(e);
     } finally { setLoading(false); setRefreshing(false); }
@@ -155,6 +161,18 @@ export default function CentralIaDashboard() {
           </button>
         </div>
       </div>
+
+      {/* Medidor de Custo IA — hoje, em tempo real (auto-refresh 30s) */}
+      <LiveCostMeter
+        data={costToday}
+        expanded={showCostDetail}
+        onToggle={() => setShowCostDetail((v) => !v)}
+      />
+      {showCostDetail && (
+        <div data-testid="ci-cost-detail-card">
+          <MotorIaUsageCard />
+        </div>
+      )}
 
       {kpis?.no_data && (
         <div className="surface" style={{
@@ -1815,3 +1833,140 @@ function KpiCell({ label, value, testid, accent }) {
   );
 }
 
+
+
+/* =============================================================
+   LiveCostMeter — strip ao vivo com custo de IA do dia
+   Atualiza a cada reload do pai (30s). Mostra: USD hoje, total
+   de tokens, chamadas, top agente. Botão expande para card
+   completo (MotorIaUsageCard) com detalhamento por período.
+============================================================= */
+function fmtUSDshort(n) {
+  const v = Number(n || 0);
+  if (v === 0) return "US$ 0";
+  if (v < 0.01) return `US$ ${v.toFixed(4)}`;
+  if (v < 1) return `US$ ${v.toFixed(3)}`;
+  return `US$ ${v.toFixed(2)}`;
+}
+function fmtTokens(n) {
+  const v = Number(n || 0);
+  if (v < 1000) return String(v);
+  if (v < 1_000_000) return `${(v / 1000).toFixed(1)}k`;
+  return `${(v / 1_000_000).toFixed(2)}M`;
+}
+
+function LiveCostMeter({ data, expanded, onToggle }) {
+  const totals = data?.totals || {};
+  const topAgent = (data?.by_agent || [])[0];
+  const calls = totals.calls || 0;
+  const usd = totals.cost_usd || 0;
+  const totalTokens = totals.total_tokens || 0;
+  const promptTokens = totals.prompt_tokens || 0;
+  const completionTokens = totals.completion_tokens || 0;
+  // Pulso visual quando há atividade nas últimas chamadas
+  const isActive = calls > 0;
+
+  return (
+    <div data-testid="ci-live-cost-meter" className="surface" style={{
+      padding: 14, borderRadius: 12,
+      border: "1px solid var(--border-default)",
+      background: "linear-gradient(135deg, rgba(99,102,241,.06) 0%, var(--bg-surface) 70%)",
+      display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+    }}>
+      <div style={{
+        width: 42, height: 42, borderRadius: 10,
+        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+        color: "#fff", display: "grid", placeItems: "center",
+        boxShadow: "0 4px 12px rgba(99,102,241,.35)",
+        position: "relative",
+      }}>
+        <Coins size={20} strokeWidth={1.75} />
+        {isActive && (
+          <span style={{
+            position: "absolute", top: -3, right: -3, width: 10, height: 10,
+            borderRadius: 999, background: "#22c55e",
+            border: "2px solid var(--bg-surface)",
+            animation: "ci-pulse 1.6s ease-in-out infinite",
+          }} />
+        )}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", minWidth: 130 }}>
+        <span style={{ fontSize: 10, fontWeight: 800, color: "var(--text-muted)",
+                          textTransform: "uppercase", letterSpacing: ".05em" }}>
+          Custo IA · Hoje
+        </span>
+        <span data-testid="ci-cost-today-usd" style={{
+          fontSize: 22, fontWeight: 800, color: "var(--text-primary)",
+          letterSpacing: "-0.02em", lineHeight: 1.1,
+        }}>
+          {fmtUSDshort(usd)}
+        </span>
+        <span style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+          {calls} chamada{calls === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      <div style={{ width: 1, height: 38, background: "var(--border-default)" }} />
+
+      <div style={{ display: "flex", flexDirection: "column", minWidth: 110 }}>
+        <span style={{ fontSize: 10, fontWeight: 800, color: "var(--text-muted)",
+                          textTransform: "uppercase", letterSpacing: ".05em" }}>
+          Tokens (in/out)
+        </span>
+        <span data-testid="ci-cost-today-tokens" style={{
+          fontSize: 17, fontWeight: 700, color: "var(--text-primary)",
+          fontVariantNumeric: "tabular-nums", lineHeight: 1.2,
+        }}>
+          {fmtTokens(promptTokens)} / {fmtTokens(completionTokens)}
+        </span>
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          total {fmtTokens(totalTokens)}
+        </span>
+      </div>
+
+      <div style={{ width: 1, height: 38, background: "var(--border-default)" }} />
+
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 160 }}>
+        <span style={{ fontSize: 10, fontWeight: 800, color: "var(--text-muted)",
+                          textTransform: "uppercase", letterSpacing: ".05em" }}>
+          Agente que mais gasta
+        </span>
+        {topAgent ? (
+          <>
+            <span data-testid="ci-cost-today-top-agent" style={{
+              fontSize: 15, fontWeight: 700, color: "var(--text-primary)",
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}>
+              {topAgent.label || topAgent.agent}
+            </span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)",
+                              fontVariantNumeric: "tabular-nums" }}>
+              {fmtUSDshort(topAgent.cost_usd)} · {fmtTokens(topAgent.total_tokens)} tok
+            </span>
+          </>
+        ) : (
+          <span style={{ fontSize: 13, color: "var(--text-muted)", fontStyle: "italic" }}>
+            Sem atividade ainda hoje
+          </span>
+        )}
+      </div>
+
+      <button
+        onClick={onToggle}
+        data-testid="ci-cost-detail-toggle"
+        style={{
+          padding: "8px 14px", borderRadius: 8,
+          border: "1px solid var(--border-default)",
+          background: "var(--bg-surface)",
+          color: "var(--text-primary)",
+          fontSize: 12, fontWeight: 700, cursor: "pointer",
+          display: "inline-flex", alignItems: "center", gap: 6,
+        }}>
+        <DollarSign size={13} />
+        {expanded ? "Ocultar detalhes" : "Ver detalhes"}
+        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
+    </div>
+  );
+}

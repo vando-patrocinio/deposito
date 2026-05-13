@@ -258,6 +258,16 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **`ACTIONS_MAP`** (constante no arquivo) documenta as ações + conexões de cada 10 IAs (motor, smartolt, atendimento, copilot, evaluator, coach, learning, sentinela, lousa_ai, secretaria). Fácil de editar no futuro.
 - Validado screenshot: SmartOLT clicado → modal com 4 actions + 5 conexões. Drag de 200px persistido em localStorage + botão reset apareceu.
 
+✅ **Medidor de Custo IA ao vivo na Central IA** (14/02/2026):
+- `CentralIaDashboard.js` — adicionado strip `LiveCostMeter` no topo da aba "Dashboard IA" com:
+  - **Custo do dia** (USD), número de chamadas, tokens entrada/saída/totais, top agente que mais gasta
+  - Indicador pulsante verde quando há atividade (calls > 0)
+  - Botão **"Ver detalhes"** que expande o `MotorIaUsageCard` completo (período 7/30/90 dias, custo por agente, por modelo, sparkline diário)
+- Reutiliza o endpoint existente `GET /api/motor-ia/usage?days=1` (já agregando `motor_ia_usage` collection)
+- Auto-refresh sincronizado com o reload do CentralIaDashboard (30s)
+- testids: `ci-live-cost-meter`, `ci-cost-today-usd`, `ci-cost-today-tokens`, `ci-cost-today-top-agent`, `ci-cost-detail-toggle`, `ci-cost-detail-card`
+- Validado via curl: 449 chamadas, US$ 2,95 hoje, top agente "Central IA · Avaliação" US$ 1,54
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
