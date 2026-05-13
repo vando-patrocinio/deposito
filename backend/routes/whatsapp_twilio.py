@@ -125,8 +125,18 @@ async def put_config(payload: ConfigIn,
 
 def _build_webhook_url(cid: str) -> str:
     # URL pública para o cliente colar no Twilio Console.
-    backend_url = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
-    return f"{backend_url}/api/whatsapp-twilio/webhook?tenant={cid}"
+    # Backend não tem REACT_APP_BACKEND_URL (essa é var só do frontend),
+    # então tentamos primeiro PUBLIC_BACKEND_URL, depois APP_BASE_URL,
+    # e como último fallback um placeholder claro pro usuário.
+    base = (
+        os.environ.get("PUBLIC_BACKEND_URL")
+        or os.environ.get("APP_BASE_URL")
+        or os.environ.get("REACT_APP_BACKEND_URL")
+        or ""
+    ).rstrip("/")
+    if not base:
+        base = "https://[SEU-DOMINIO]"
+    return f"{base}/api/whatsapp-twilio/webhook?tenant={cid}"
 
 
 # ---------------------------------------------------------------------------

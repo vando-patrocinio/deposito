@@ -226,6 +226,22 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - Frontend `AgentConfigModal.js`: input max_tokens aceita até 16000 · todos os textareas mostram **contador em tempo real "X/16000"** no hint · validação client-side em PT-BR antes de submeter (evita 422).
 - Validado curl: salvou Isabella com prompt 11k chars + max_tokens 12k + 8k em cada campo extra com sucesso.
 
+✅ **Canal Twilio WhatsApp Business — paralelo ao Baileys** (13/05/2026 — iter63):
+- **Backend NEW** `/app/backend/routes/whatsapp_twilio.py` (~420 linhas):
+  - `GET/PUT /api/whatsapp-twilio/config` — CRUD credenciais (Account SID, Auth Token, From Number, enabled, sandbox). Tokens persistidos em `db.whatsapp_twilio_creds` (multi-tenant). Retorna `webhook_url` ABSOLUTA pronta pra colar no Twilio Console.
+  - `GET /api/whatsapp-twilio/status` — consulta saldo Twilio em tempo real (`/Accounts/{SID}/Balance.json`). Status: connected/disabled/error/unreachable.
+  - `POST /api/whatsapp-twilio/send` — envia mensagem texto+mídia, persiste em `aihub_wa_messages` com `channel="twilio"`.
+  - `POST /api/whatsapp-twilio/webhook` — recebe inbound da Twilio com validação **HMAC-SHA1** do `X-Twilio-Signature` usando AuthToken. Auto-link com subscriber + dispara auto-reply via `services.routing.pick_agent_for_message` + envia resposta via Twilio.
+  - `POST /test` envia mensagem de teste sem persistir.
+  - `GET /messages` lista últimas msgs do canal Twilio.
+- **Backend env**: `PUBLIC_BACKEND_URL` adicionada em `/app/backend/.env` pra construir webhook URL absoluta (Twilio precisa de URL pública).
+- **Frontend** `AgentConfigModal.js`: nova section **"Canal Oficial (Twilio)"** entre WhatsApp e Tools com:
+  - Card de status (CONECTADO/DESABILITADO/ERRO) com saldo Twilio
+  - Card amarelo "Configure no Twilio Console" com URL do webhook + botão Copy
+  - Form de credenciais (SID + Auth Token mascarado + From Number E.164 + checkboxes Habilitar/Sandbox)
+  - Bloco "Enviar mensagem de teste" (aparece quando configurado)
+- Validado E2E (testing_agent iter61): 7/7 backend pytest + 100% frontend (11 testids) + webhook URL absoluta após fix. Fake creds geram "ERRO Authentication" como esperado.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
