@@ -240,6 +240,9 @@ export default function CentralIaDashboard() {
       {/* Saúde do Atendimento IA — diagnóstico Isabela */}
       <AiAttendantHealthCard />
 
+      {/* Roteamento Multi-Agente */}
+      <RoutingDashboardCard />
+
       {/* Alertas proativos */}
       <AlertsCard items={alerts} onReload={reload} />
       </>
@@ -1609,3 +1612,206 @@ function CiHealthCell({ label, value, ok, testid }) {
     </div>
   );
 }
+
+/* =============================================================
+   RoutingDashboardCard — distribuição multi-agente do auto-reply.
+============================================================= */
+function RoutingDashboardCard() {
+  const [data, setData] = useState(null);
+  const [days, setDays] = useState(7);
+  const [busy, setBusy] = useState(false);
+
+  const reload = useCallback(async () => {
+    setBusy(true);
+    try { setData(await api.waBaileysRoutingStats(days)); }
+    catch (e) { setData({ error: e?.response?.data?.detail || e.message }); }
+    finally { setBusy(false); }
+  }, [days]);
+  useEffect(() => { reload(); }, [reload]);
+
+  const REASON_LABEL = {
+    single_agent: "Único agente",
+    keyword: "Keyword match",
+    llm: "Classificador IA",
+    fallback: "Fallback",
+  };
+  const REASON_COLOR = {
+    single_agent: "#94a3b8",
+    keyword: "#10b981",
+    llm: "#7c3aed",
+    fallback: "#f59e0b",
+  };
+  const AGENT_COLORS = ["#7c3aed", "#10b981", "#f59e0b", "#0ea5e9", "#ec4899", "#6366f1", "#84cc16"];
+
+  return (
+    <div data-testid="ci-routing-card" className="surface" style={{ padding: 16, borderRadius: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 10,
+          background: "linear-gradient(135deg, #7c3aed, #6366f1)", color: "white",
+          display: "grid", placeItems: "center",
+        }}>
+          <Radio size={18} strokeWidth={1.75} />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, letterSpacing: "-0.01em" }}>
+            Roteamento Multi-Agente
+          </h3>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            Distribuição de respostas por agente · classificação por intenção · handoffs humanos.
+          </div>
+        </div>
+        <select value={days} onChange={(e) => setDays(parseInt(e.target.value, 10))}
+                data-testid="ci-routing-period"
+                style={{
+                  padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                  border: "1px solid var(--border-default)", background: "var(--bg-surface)",
+                  color: "var(--text-secondary)",
+                }}>
+          <option value={1}>24h</option>
+          <option value={7}>7d</option>
+          <option value={30}>30d</option>
+        </select>
+        <button onClick={reload} disabled={busy}
+                data-testid="ci-routing-refresh"
+                style={{
+                  padding: 6, borderRadius: 6,
+                  border: "1px solid var(--border-default)",
+                  background: "var(--bg-surface)", color: "var(--text-secondary)",
+                  cursor: busy ? "wait" : "pointer", display: "grid", placeItems: "center",
+                }} title="Atualizar">
+          <RefreshCw size={14} className={busy ? "spin" : ""} />
+        </button>
+      </div>
+
+      {data?.error && (
+        <div style={{ background: "var(--danger-soft)", color: "var(--danger-soft-fg)",
+                       padding: 10, borderRadius: 10 }}>{data.error}</div>
+      )}
+
+      {data && !data.error && (
+        <>
+          {/* KPIs */}
+          <div style={{ display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(140px,1fr))",
+                          gap: 10, marginBottom: 14 }}>
+            <KpiCell testid="ci-routing-total-responses" label="Respostas" value={data.total_responses || 0} />
+            <KpiCell testid="ci-routing-total-conversations" label="Conversas roteadas" value={data.total_routed_conversations || 0} />
+            <KpiCell testid="ci-routing-agents-count" label="Agentes ativos"
+                     value={(data.agents_meta || []).filter(a => a.active).length} />
+            <KpiCell testid="ci-routing-handoffs" label="Handoffs humano" value={data.human_handoffs || 0}
+                     accent={(data.human_handoffs || 0) > 0 ? "#f59e0b" : null} />
+          </div>
+
+          {/* Distribuição por agente — stacked bar */}
+          {(data.by_agent || []).length > 0 ? (
+            <div data-testid="ci-routing-by-agent" style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".06em",
+                              color: "var(--text-muted)", marginBottom: 6 }}>
+                DISTRIBUIÇÃO POR AGENTE
+              </div>
+              <div style={{ display: "flex", height: 28, borderRadius: 8, overflow: "hidden",
+                              border: "1px solid var(--border-default)" }}>
+                {data.by_agent.map((a, i) => (
+                  <div key={a.agent_name}
+                       title={`${a.agent_name}: ${a.total} respostas (${a.pct}%) · ${a.success_rate}% sucesso`}
+                       data-testid={`ci-routing-bar-${a.agent_name.replace(/\s+/g, "-").toLowerCase()}`}
+                       style={{
+                         width: `${a.pct}%`,
+                         background: AGENT_COLORS[i % AGENT_COLORS.length],
+                         color: "white", fontSize: 10, fontWeight: 700,
+                         display: "grid", placeItems: "center",
+                         textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap",
+                       }}>
+                    {a.pct >= 8 && `${a.pct}%`}
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 }}>
+                {data.by_agent.map((a, i) => (
+                  <div key={a.agent_name} style={{ display: "inline-flex", alignItems: "center",
+                                                     gap: 6, fontSize: 11 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 2,
+                                      background: AGENT_COLORS[i % AGENT_COLORS.length] }} />
+                    <strong style={{ color: "var(--text-primary)" }}>{a.agent_name}</strong>
+                    <span style={{ color: "var(--text-muted)" }}>
+                      · {a.total} ({a.pct}%) · {a.success_rate}% OK
+                    </span>
+                    {a.failed > 0 && (
+                      <span style={{ color: "#dc2626", fontWeight: 700 }}>· {a.failed} falhas</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 14 }}>
+              Sem respostas no período. Ative o auto-reply para começar.
+            </p>
+          )}
+
+          {/* Por motivo de roteamento */}
+          {(data.by_reason || []).length > 0 && (
+            <div data-testid="ci-routing-by-reason" style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".06em",
+                              color: "var(--text-muted)", marginBottom: 6 }}>
+                COMO O ROTEAMENTO ESCOLHEU
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {data.by_reason.map((r) => (
+                  <span key={r.reason} style={{
+                    padding: "5px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800,
+                    background: `${REASON_COLOR[r.reason] || "#94a3b8"}22`,
+                    color: REASON_COLOR[r.reason] || "#475569",
+                    border: `1px solid ${REASON_COLOR[r.reason] || "#cbd5e1"}66`,
+                  }}>{REASON_LABEL[r.reason] || r.reason}: {r.count}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Agentes cadastrados — quem tem routing_intent */}
+          {(data.agents_meta || []).length > 0 && (
+            <div data-testid="ci-routing-agents-meta">
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".06em",
+                              color: "var(--text-muted)", marginBottom: 6 }}>
+                AGENTES CADASTRADOS · ESPECIALIDADES
+              </div>
+              {data.agents_meta.map((a) => (
+                <div key={a.id} style={{
+                  display: "flex", gap: 10, padding: "8px 10px",
+                  background: "var(--bg-surface-2)", borderRadius: 8, marginBottom: 4,
+                  alignItems: "center", flexWrap: "wrap",
+                }}>
+                  <strong style={{ fontSize: 12, minWidth: 80 }}>{a.name}</strong>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{a.model_name}</span>
+                  <span style={{ flex: 1, fontSize: 11, color: a.has_routing_intent ? "var(--text-secondary)" : "#dc2626", fontStyle: a.has_routing_intent ? "normal" : "italic" }}>
+                    {a.has_routing_intent ? a.routing_intent : "⚠ Sem especialidade — não participará do roteamento multi-agente"}
+                  </span>
+                  <span className={`pill pill--${a.active ? "success" : "muted"}`}>
+                    {a.active ? "ATIVO" : "INATIVO"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function KpiCell({ label, value, testid, accent }) {
+  return (
+    <div data-testid={testid} style={{
+      padding: 10, background: "var(--bg-surface-2)", borderRadius: 8,
+      border: accent ? `1px solid ${accent}66` : "1px solid var(--border-default)",
+    }}>
+      <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 800,
+                       letterSpacing: ".04em" }}>{label.toUpperCase()}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: accent || "var(--text-primary)",
+                       marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+

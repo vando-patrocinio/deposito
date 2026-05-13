@@ -486,6 +486,9 @@ export const api = {
   // AI Health — diagnóstico Isabela
   waBaileysAiHealth: () =>
     client.get(`/whatsapp-baileys/ai-health`).then((r) => r.data),
+  // Routing stats — dashboard multi-agente
+  waBaileysRoutingStats: (days = 7) =>
+    client.get(`/whatsapp-baileys/routing-stats`, { params: { days } }).then((r) => r.data),
 
   // ===== Central IA Dashboard =====
   centralIaKpis: (days = 7) =>

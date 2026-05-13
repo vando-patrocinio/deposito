@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 59 — Validated full stack of Isabella IA: backend health endpoints, new /api/whatsapp-baileys/routing-stats schema, REAL inbound→Isabella reply, frontend RoutingDashboardCard (all data-testids), and Atendimento IA regression (banner + Configurar Robô modal). 7/7 pytest tests PASS. All 8 frontend data-testids for routing card present and the period switcher reloads data. Isabella autoresponded to test phone 5511988887777 with delivery_status='sent' (real LLM call). Auto-reply remains ENABLED → Isabella as requested.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Central IA → RoutingDashboardCard", "issues": ["Recharts emits multiple 'width(-1) height(-1)' warnings on initial render before container has dimensions. Cosmetic — charts render correctly after first paint. Consider adding minWidth/minHeight to ResponsiveContainer."]},
+      {"screen": "Atendimento IA banner", "issues": ["Banner exibe 'Isabela: Online' (1 L) enquanto o agente registrado é 'Isabella' (2 L). Inconsistência de branding entre UI label e nome do agente persistido."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter59_routing_stats.py",
+    "/app/test_reports/pytest/iter59_routing.xml"
+  ],
+  "action_items": [
+    "Opcional: alinhar branding 'Isabela' (UI) vs 'Isabella' (DB) — unificar grafia.",
+    "Opcional: silenciar warnings do Recharts adicionando minWidth/minHeight no ResponsiveContainer do gráfico de roteamento."
+  ],
+  "critical_code_review_comments": [
+    "routes/whatsapp_baileys.py:914-1008 — endpoint /routing-stats bem escrito, exclui _id corretamente na projeção do agents_meta, agrega por agent_name/routed_reason em paralelo, retorna pct e success_rate calculados. OK.",
+    "CentralIaDashboard.js:1619+ RoutingDashboardCard usa hooks corretamente (useState/useEffect), passa days como dependência → recarrega ao trocar de período. KpiCell é reutilizável.",
+    "api.js:490 waBaileysRoutingStats(days) — helper simples e correto via authenticated client.",
+    "Nenhum vazamento de _id em qualquer payload testado.",
+    "Linha 1647 e seguintes: testids consistentes (ci-routing-*) — fácil de manter."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter59_routing_stats.py (created)"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (10/10 checks)"},
+  "test_credentials": "admin@empresa.com / 123456 (from /app/memory/test_credentials.md). WA_INBOUND_TOKEN lido de /app/backend/.env.",
+  "seed_data_creation": "Criada uma conversa de teste em +5511988887777 (texto: 'Bom dia! Vocês tem plano fibra de 1 giga?'). Isabella respondeu com sucesso e delivery_status='sent'. Auto-reply MANTIDO ATIVO apontando para Isabella conforme solicitação do usuário.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "RoutingDashboardCard está em /app/frontend/src/CentralIaDashboard.js (linha ~1619). Testids: ci-routing-card / ci-routing-total-responses / ci-routing-total-conversations / ci-routing-agents-count / ci-routing-handoffs / ci-routing-period / ci-routing-refresh / ci-routing-by-agent / ci-routing-by-reason / ci-routing-agents-meta. Endpoint /api/whatsapp-baileys/routing-stats?days=N retorna {period_days,total_responses,total_routed_conversations,human_handoffs,by_agent[{agent_name,total,sent,failed,pct,success_rate,last_at}],by_reason[{reason,count}],agents_meta[{id,name,active,routing_intent,has_routing_intent,model_name}]}. Inbound webhook exige campo 'jid' obrigatório (não só phone) — usar formato '<phone>@s.whatsapp.net'.",
+  "rca of the issue": "N/A — nenhum bug encontrado. Único ajuste no script de teste: campo 'jid' é obrigatório no InboundIn (Pydantic), descoberto via 422 inicial. Corrigido."
+}

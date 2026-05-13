@@ -909,6 +909,107 @@ async def ai_health(user: dict = Depends(require_role("gestor"))):
 
 
 # ---------------------------------------------------------------------------
+# Routing Dashboard — estatísticas multi-agente
+# ---------------------------------------------------------------------------
+@router.get("/routing-stats")
+async def routing_stats(days: int = 7, user: dict = Depends(require_role("gestor"))):
+    """Estatísticas de roteamento por agente nos últimos N dias.
+
+    - Conta respostas outbound auto-reply agrupadas por `agent_name`
+    - Distribuição percentual (qual agente está respondendo mais)
+    - Top routing_reason (single_agent / keyword / llm / fallback)
+    - Conversas com handoff humano (status=closed e human_assignee_id present)
+    - Taxa de falhas por agente
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    # Por agente: total respostas, sucessos, falhas
+    pipeline_agents = [
+        {"$match": {
+            "company_id": cid, "direction": "outbound",
+            "auto_reply": True, "created_at": {"$gte": cutoff},
+            "agent_name": {"$ne": None},
+        }},
+        {"$group": {
+            "_id": "$agent_name",
+            "total": {"$sum": 1},
+            "sent": {"$sum": {"$cond": [{"$eq": ["$delivery_status", "sent"]}, 1, 0]}},
+            "failed": {"$sum": {"$cond": [
+                {"$regexMatch": {"input": {"$ifNull": ["$delivery_status", ""]},
+                                  "regex": "^failed_"}}, 1, 0]}},
+            "last_at": {"$max": "$created_at"},
+        }},
+        {"$sort": {"total": -1}},
+    ]
+    by_agent_raw = []
+    async for r in db.aihub_wa_messages.aggregate(pipeline_agents):
+        by_agent_raw.append({
+            "agent_name": r["_id"],
+            "total": r["total"],
+            "sent": r["sent"],
+            "failed": r["failed"],
+            "last_at": r.get("last_at"),
+        })
+    total_all = sum(a["total"] for a in by_agent_raw) or 1
+    by_agent = [{
+        **a,
+        "pct": round(100 * a["total"] / total_all, 1),
+        "success_rate": round(100 * a["sent"] / a["total"], 1) if a["total"] else 0,
+    } for a in by_agent_raw]
+
+    # Distribuição de motivos de roteamento
+    reasons_pipeline = [
+        {"$match": {"company_id": cid, "routed_at": {"$gte": cutoff},
+                     "routed_reason": {"$ne": None}}},
+        {"$group": {"_id": "$routed_reason", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+    ]
+    by_reason = []
+    async for r in db.wa_conversations.aggregate(reasons_pipeline):
+        by_reason.append({"reason": r["_id"], "count": r["count"]})
+
+    # Total conversas roteadas no período
+    total_routed = await db.wa_conversations.count_documents({
+        "company_id": cid,
+        "routed_at": {"$gte": cutoff},
+    })
+
+    # Handoffs para humano (assignee_role=human nas conversas ativas)
+    human_handoffs = await db.wa_conversations.count_documents({
+        "company_id": cid,
+        "assignee_role": "human",
+        "last_inbound_at": {"$gte": cutoff},
+    })
+
+    # Lista de agentes cadastrados com routing_intent (para o gestor visualizar
+    # quais estão configurados)
+    agents_meta = []
+    async for a in db.aihub_agents.find(
+        {"company_id": cid},
+        {"_id": 0, "id": 1, "name": 1, "active": 1, "routing_intent": 1, "model_name": 1},
+    ):
+        agents_meta.append({
+            "id": a["id"], "name": a["name"],
+            "active": a.get("active", True),
+            "model_name": a.get("model_name"),
+            "routing_intent": (a.get("routing_intent") or "")[:200],
+            "has_routing_intent": bool((a.get("routing_intent") or "").strip()),
+        })
+
+    return {
+        "period_days": days,
+        "total_responses": total_all if by_agent_raw else 0,
+        "total_routed_conversations": total_routed,
+        "human_handoffs": human_handoffs,
+        "by_agent": by_agent,
+        "by_reason": by_reason,
+        "agents_meta": agents_meta,
+        "checked_at": now_iso(),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Histórico de mensagens (UI)
 # ---------------------------------------------------------------------------
 class InstanceSettingsIn(BaseModel):
