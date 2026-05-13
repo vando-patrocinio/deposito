@@ -145,6 +145,17 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - Badge `data-testid="orphan-count-badge"` com contagem no título do card; `data-testid="orphan-row-{fenceId}"`, `orphan-enable-{cid}`, `orphan-remove-{fenceId}`.
 - Validado E2E (Playwright + curl): seed de cerca em col-dd5d2c1a (não-CLT) → badge mostra "1" + linha completa na aba Auditoria → cleanup OK.
 
+✅ **Checklist IA · 4 funcionalidades de visão** (13/05/2026 — iter55):
+- Novo módulo `backend/routes/checklist_ai.py` (prefixo `/api/vehicle-checklist/ai`) com 4 endpoints, todos gestor+, usando `EMERGENT_LLM_KEY` + `LlmChat(openai, gpt-4o)` (vision-capable) via `emergentintegrations`:
+  - **(a)** `POST /{chk_id}/analyze-damage` — recebe `attachment_indices` (default = todas fotos `kind=photo`), envia para gpt-4o como ImageContent[] e retorna `{items:[{description, severity, suggested_action, location}], overall, max_severity}`. Persiste o resultado em `db.vehicle_checklists.ai_analyses[]` para auditoria.
+  - **(b)** `GET /recurrent-insights?days=30&min_count=3` — agrega defeitos `status=defeito` agrupados por (placa, item) e gera narrativa em PT-BR: `{summary, bullets:[], top_priority:{plate, reason}}`. Fallback gracioso se LLM falhar.
+  - **(c)** `POST /ocr-paper` — recebe `image_data_url` (JPEG/PNG/WEBP base64) e `template_items[]`, faz OCR/parse em PT-BR: `{plate, km_initial, km_final, date, driver_name, items:[{name, status, notes}], general_notes, confidence}`.
+  - **(d)** `GET /collaborator-health/{cid}?days=60` — agrega histórico de checklists do colab, envia resumo (sem fotos base64) e retorna health card: `{score 0-100, status: bom|atenção|crítico, summary, trend, open_critical[], next_action:{what, when}}`.
+- Frontend: novos helpers `api.vchkAiAnalyzeDamage/RecurrentInsights/OcrPaper/CollabHealth` em `api.js`.
+- **Nova aba "IA"** em `VehicleChecklistModal.js` com 3 seções: Health card do colaborador (auto-load), OCR de papel (botão Upload → preview → "Aplicar à aba Novo checklist"), Análise IA de fotos por checklist (lista do histórico + botão "Analisar fotos").
+- **Novo Card "Insights IA · Frota"** em `ManagerPanel.js` (aba Auditoria) com summary, bullets, top_priority destacado e tabela detalhada de defeitos recorrentes.
+- Validado E2E (testing_agent iter55): 8/8 backend pytest + 10/10 frontend testids; gpt-4o retornou para DIOGO score=95 status='atenção' open_critical=['Pressão dos pneus'].
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
