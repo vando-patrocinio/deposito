@@ -216,6 +216,11 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
   - Novo modal `LidLinkButton` (final do arquivo) com input + submit, migra automaticamente.
 - **Validação** (testing_agent iter60): 6/8 backend pytest pass (2 minor de response shape · já corrigidos). 100% frontend UI: chip, warn banner, link button, modal com input/submit, modal fecha após sucesso. **Validado manualmente curl**: 172 mensagens do LID `169410773958706` migradas para `5521998176526` e auto-vinculadas ao subscriber Vando Patrocinio (LIGO RIO · Fibra 500 Mega).
 
+✅ **Fix CRÍTICO · React crash ao Salvar agente** (13/05/2026 — iter61):
+- **Bug**: Quando o backend retornava 422 (Pydantic validation error), o `detail` vinha como array de objetos `[{type, loc, msg, input, ctx, url}]`. O frontend tentava renderizar isso direto em JSX (`{error}`) e React explodia com "Objects are not valid as a React child".
+- **Fix**: novos helpers `extractErrorMessage(e)` (AgentConfigModal.js) e `extractErrorFromAxios(e)` (WhatsAppChatLayout.js) que convertem 3 formatos comuns (string, array Pydantic, objeto solto) em string segura para JSX. Aplicados em TODOS os `setError(...)`/`setErr(...)` dos dois arquivos via `replace_all`.
+- Validado com screenshot: digitei nome="X" + system_prompt="oi" (ambos curtos demais), cliquei Save → mensagem PT-BR renderizou normalmente ("Parâmetros (system_prompt) precisam de pelo menos 10 caracteres."). Save válido criou agente "Carlos Teste" + delete OK (cleanup).
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)

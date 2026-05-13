@@ -29,6 +29,33 @@ const SECTIONS = [
   { id: "autoreply",   label: "Auto-reply / Ativação",     icon: Power },
 ];
 
+/**
+ * Extrai uma mensagem legível de um erro Axios/Fetch/runtime.
+ * Lida com 3 formatos comuns:
+ *  - string simples: "Não autorizado"
+ *  - 422 Pydantic: array de {type, loc, msg, input, ctx, url}
+ *  - objeto solto: {detail: "..."} ou {msg: "..."} ou {error: "..."}
+ * NUNCA retorna objeto — sempre string segura para JSX.
+ */
+function extractErrorMessage(e) {
+  const detail = e?.response?.data?.detail ?? e?.response?.data ?? e?.message;
+  if (!detail) return "Erro desconhecido.";
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    // Pydantic validation errors
+    return detail.map((d) => {
+      if (typeof d === "string") return d;
+      const loc = Array.isArray(d?.loc) ? d.loc.filter((x) => x !== "body").join(".") : "";
+      const msg = d?.msg || d?.message || JSON.stringify(d);
+      return loc ? `${loc}: ${msg}` : msg;
+    }).filter(Boolean).join(" · ");
+  }
+  if (typeof detail === "object") {
+    return detail.msg || detail.message || detail.error || detail.detail || JSON.stringify(detail);
+  }
+  return String(detail);
+}
+
 const BLANK_AGENT = {
   name: "",
   description: "",
@@ -76,7 +103,7 @@ export default function AgentConfigModal({ open, onClose }) {
       setTools(t.tools || []);
       setAutoReply({ enabled: !!ar.enabled, agent_name: ar.agent_name || "" });
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message);
+      setError(extractErrorMessage(e));
     }
   }, []);
 
@@ -159,7 +186,7 @@ export default function AgentConfigModal({ open, onClose }) {
       await reload();
       setTimeout(() => setFlash(""), 3500);
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message);
+      setError(extractErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -177,7 +204,7 @@ export default function AgentConfigModal({ open, onClose }) {
       setFlash("✅ Agente excluído.");
       setTimeout(() => setFlash(""), 3000);
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message);
+      setError(extractErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -196,7 +223,7 @@ export default function AgentConfigModal({ open, onClose }) {
       setFlash(`✅ Agente clonado: ${cloned.name}`);
       setTimeout(() => setFlash(""), 3000);
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message);
+      setError(extractErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -212,7 +239,7 @@ export default function AgentConfigModal({ open, onClose }) {
       setFlash(target ? "✅ Auto-reply ATIVADO" : "✅ Auto-reply DESLIGADO");
       setTimeout(() => setFlash(""), 3000);
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message);
+      setError(extractErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -578,7 +605,7 @@ function WhatsAppSection({ autoReply, reload }) {
       setMe(r.me || null);
       setErr(null);
     } catch (e) {
-      setErr(e?.response?.data?.detail || e.message);
+      setErr(extractErrorMessage(e));
       setStatus("disconnected");
     }
   }, []);
@@ -593,7 +620,7 @@ function WhatsAppSection({ autoReply, reload }) {
     if (!window.confirm("Desconectar este número do WhatsApp?")) return;
     setBusy(true);
     try { await api.waBaileysLogout(); await fetchState(); }
-    catch (e) { setErr(e?.response?.data?.detail || e.message); }
+    catch (e) { setErr(extractErrorMessage(e)); }
     finally { setBusy(false); }
   }
 

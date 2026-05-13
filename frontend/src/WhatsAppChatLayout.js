@@ -2258,7 +2258,7 @@ function LidLinkButton({ conv, onLinked }) {
       // Notifica o pai (reload) e tenta abrir a conv nova (telefone real)
       onLinked?.(r?.phone);
     } catch (e) {
-      setErr(e?.response?.data?.detail || e.message);
+      setErr(extractErrorFromAxios(e));
     } finally { setBusy(false); }
   }
 
@@ -2351,3 +2351,24 @@ function LidLinkButton({ conv, onLinked }) {
   );
 }
 
+
+
+/* extractErrorFromAxios — converte qualquer formato de erro (string,
+   422 Pydantic array, objeto) numa string segura para JSX. */
+function extractErrorFromAxios(e) {
+  const d = e?.response?.data?.detail ?? e?.response?.data ?? e?.message;
+  if (!d) return "Erro desconhecido.";
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    return d.map((x) => {
+      if (typeof x === "string") return x;
+      const loc = Array.isArray(x?.loc) ? x.loc.filter((y) => y !== "body").join(".") : "";
+      const msg = x?.msg || x?.message || JSON.stringify(x);
+      return loc ? `${loc}: ${msg}` : msg;
+    }).filter(Boolean).join(" · ");
+  }
+  if (typeof d === "object") {
+    return d.msg || d.message || d.error || d.detail || JSON.stringify(d);
+  }
+  return String(d);
+}
