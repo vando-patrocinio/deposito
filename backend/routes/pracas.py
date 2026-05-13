@@ -59,6 +59,13 @@ class PracaIn(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     holidays_extra: list[HolidayExtra] = Field(default_factory=list)
+    # Identificação fiscal & branding (aparece no cabeçalho do espelho/romaneio)
+    logo_url: Optional[str] = None
+    cnpj: Optional[str] = None
+    inscricao_estadual: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    site: Optional[str] = None
 
 
 @router.get("/pracas")
@@ -84,6 +91,12 @@ async def create_praca(payload: PracaIn, user: dict = Depends(require_role("gest
         "neighborhood": payload.neighborhood, "postal_code": payload.postal_code,
         "lat": payload.lat, "lng": payload.lng,
         "holidays_extra": [h.model_dump() for h in payload.holidays_extra],
+        "logo_url": (payload.logo_url or "").strip() or None,
+        "cnpj": (payload.cnpj or "").strip() or None,
+        "inscricao_estadual": (payload.inscricao_estadual or "").strip() or None,
+        "phone": (payload.phone or "").strip() or None,
+        "email": (payload.email or "").strip() or None,
+        "site": (payload.site or "").strip() or None,
         "created_at": now_iso(),
         "updated_at": now_iso(),
     }
@@ -107,6 +120,12 @@ async def update_praca(pid: str, payload: PracaIn, user: dict = Depends(require_
         "neighborhood": payload.neighborhood, "postal_code": payload.postal_code,
         "lat": payload.lat, "lng": payload.lng,
         "holidays_extra": [h.model_dump() for h in payload.holidays_extra],
+        "logo_url": (payload.logo_url or "").strip() or None,
+        "cnpj": (payload.cnpj or "").strip() or None,
+        "inscricao_estadual": (payload.inscricao_estadual or "").strip() or None,
+        "phone": (payload.phone or "").strip() or None,
+        "email": (payload.email or "").strip() or None,
+        "site": (payload.site or "").strip() or None,
         "updated_at": now_iso(),
     }
     res = await db.pracas.update_one({"id": pid}, {"$set": update})

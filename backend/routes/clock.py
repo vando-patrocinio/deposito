@@ -1351,11 +1351,18 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
     totals_extra = totals_extra or {}
 
     # ---------- HEADER ----------
-    company_name = (company.get("name") or "SmartProv").upper()
-    company_cnpj = company.get("cnpj") or "—"
-    company_ie = company.get("inscricao_estadual") or company.get("ie") or "—"
+    # Se a praça tem dados fiscais próprios (CNPJ/IE/logo), eles têm prioridade
+    # sobre os dados da matriz — útil pra holdings com várias razões sociais.
+    eff = {
+        "name": (praca.get("name_business") or praca.get("name") if praca.get("cnpj") else None) or company.get("name") or "SmartProv",
+        "cnpj": praca.get("cnpj") or company.get("cnpj") or "—",
+        "inscricao_estadual": praca.get("inscricao_estadual") or company.get("inscricao_estadual") or company.get("ie") or "—",
+    }
+    company_name = (eff["name"]).upper()
+    company_cnpj = eff["cnpj"]
+    company_ie = eff["inscricao_estadual"]
     praca_name = praca.get("name") or "Sede"
-    praca_address = praca.get("address") or company.get("address") or "—"
+    praca_address = praca.get("full_address") or praca.get("address") or company.get("address") or "—"
 
     emitido_em = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M")
     last_day_str = f"{calendar.monthrange(year, month)[1]:02d}/{month:02d}/{year}"

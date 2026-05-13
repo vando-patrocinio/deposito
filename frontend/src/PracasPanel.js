@@ -19,6 +19,8 @@ const EMPTY = {
   full_address: "", street: "", number: "", neighborhood: "", postal_code: "",
   lat: null, lng: null,
   holidays_extra: [],
+  logo_url: "", cnpj: "", inscricao_estadual: "",
+  phone: "", email: "", site: "",
 };
 const SCOPES = [
   { value: "municipal", label: "Municipal" },
@@ -348,6 +350,84 @@ export default function PracasPanel() {
             <Field label="CEP">
               <input data-testid="p-cep" style={inputStyle} value={form.postal_code || ""} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} placeholder="00000-000" />
             </Field>
+          </div>
+
+          {/* ===== Identificação fiscal & branding da praça =====
+              Esses dados aparecem no cabeçalho do espelho de ponto (Control iD).
+              Quando preenchidos, sobrescrevem os dados da matriz para os
+              colaboradores lotados nesta praça. */}
+          <div style={{
+            background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12,
+            padding: 14, marginTop: 16, marginBottom: 8,
+          }}>
+            <h4 style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
+              Identificação fiscal & branding
+            </h4>
+            <p style={{ margin: "0 0 12px", fontSize: 12, color: "#64748b" }}>
+              Aparece no <strong>cabeçalho do espelho de ponto</strong> e do romaneio. Se em branco,
+              usa os dados da matriz.
+            </p>
+
+            <Field label="Logo da praça (URL)">
+              <input
+                data-testid="p-logo-url" style={inputStyle}
+                value={form.logo_url || ""}
+                onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
+                placeholder="https://... (PNG/JPG/SVG · ideal 400×400)"
+              />
+              {form.logo_url ? (
+                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10 }}>
+                  <img
+                    src={form.logo_url} alt="logo praça"
+                    style={{
+                      width: 56, height: 56, borderRadius: 10, objectFit: "contain",
+                      border: "1px solid #e2e8f0", background: "white", padding: 4,
+                    }}
+                    onError={(e) => { e.target.style.opacity = 0.3; }}
+                  />
+                  <button
+                    type="button"
+                    data-testid="p-logo-remove"
+                    onClick={() => setForm({ ...form, logo_url: "" })}
+                    style={{
+                      border: "1px solid #fecaca", color: "#dc2626", background: "white",
+                      borderRadius: 8, padding: "4px 10px", fontSize: 12, cursor: "pointer",
+                    }}
+                  >× Remover logo</button>
+                </div>
+              ) : null}
+            </Field>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field label="CNPJ">
+                <input data-testid="p-cnpj" style={inputStyle} value={form.cnpj || ""}
+                       onChange={(e) => setForm({ ...form, cnpj: e.target.value })}
+                       placeholder="00.000.000/0000-00" />
+              </Field>
+              <Field label="Inscrição Estadual">
+                <input data-testid="p-ie" style={inputStyle} value={form.inscricao_estadual || ""}
+                       onChange={(e) => setForm({ ...form, inscricao_estadual: e.target.value })}
+                       placeholder="000000000" />
+              </Field>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <Field label="Telefone">
+                <input data-testid="p-phone" style={inputStyle} value={form.phone || ""}
+                       onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                       placeholder="(21) 4042-9393" />
+              </Field>
+              <Field label="E-mail">
+                <input data-testid="p-email" type="email" style={inputStyle} value={form.email || ""}
+                       onChange={(e) => setForm({ ...form, email: e.target.value })}
+                       placeholder="contato@praca.com" />
+              </Field>
+              <Field label="Site">
+                <input data-testid="p-site" style={inputStyle} value={form.site || ""}
+                       onChange={(e) => setForm({ ...form, site: e.target.value })}
+                       placeholder="www.empresa.com.br" />
+              </Field>
+            </div>
           </div>
 
           <h4 style={{ margin: "18px 0 8px", display: "flex", alignItems: "center", gap: 10 }}>
