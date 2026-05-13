@@ -1684,8 +1684,78 @@ async def send_timesheet_email(coll: dict, year: int, month: int) -> dict:
         return {"sent": False, "reason": str(e), "to": coll["email"]}
 
 
+async def _get_requester_optional(request: Request) -> Optional[dict]:
+    """Lê user a partir de Authorization header OU cookie access_token.
+    Retorna None se não houver — endpoint segue funcionando, só sem nome
+    no filename do PDF."""
+    token = None
+    auth = (request.headers.get("Authorization") or "")
+    if auth.startswith("Bearer "):
+        token = auth[7:]
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        return None
+    try:
+        from auth import decode_token  # lazy import (já usado em outras funções deste arquivo)
+        payload = decode_token(token)
+        return await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    except Exception:
+        return None
+
+
+def _format_pdf_filename(coll: dict, praca: dict | None, requester: dict | None,
+                          year: int, month: int) -> str:
+    """Gera nome de arquivo padrão:
+       PRIMEIRO_SEGUNDO_PRACA_REQUESTERFIRSTNAME_YYYYMMDD-HHMM.pdf
+    Tudo em uppercase, sem acentos, sem espaços (use _)."""
+    import re
+    import unicodedata
+
+    def _slug(s: str) -> str:
+        if not s:
+            return "SEM_NOME"
+        # remove acentos
+        s = "".join(
+            c for c in unicodedata.normalize("NFD", s)
+            if unicodedata.category(c) != "Mn"
+        )
+        # mantém letras/números/underscore, troca espaços por _
+        s = re.sub(r"[^A-Za-z0-9_\s]", "", s).strip()
+        s = re.sub(r"\s+", "_", s)
+        return s.upper() or "SEM_NOME"
+
+    # Nome do colaborador — pega primeiro + segundo nome
+    full_name = (coll.get("name") or "").strip()
+    parts = full_name.split()
+    if len(parts) >= 2:
+        coll_name = f"{parts[0]}_{parts[1]}"
+    elif parts:
+        coll_name = parts[0]
+    else:
+        coll_name = "SEM_NOME"
+
+    # Praça (apenas a principal). Se não houver, usa SEM_PRACA
+    praca_name = (praca.get("name") if praca else None) or "SEM_PRACA"
+
+    # Quem pediu o PDF — primeiro nome
+    requester_name = "ANONIMO"
+    if requester:
+        rn = (requester.get("name") or requester.get("email", "").split("@")[0] or "").strip()
+        rp = rn.split()
+        if rp:
+            requester_name = rp[0]
+
+    # Data + hora local de Brasília (BRT = UTC-3)
+    from datetime import timedelta
+    now_brt = datetime.now(timezone.utc) - timedelta(hours=3)
+    stamp = now_brt.strftime("%Y%m%d-%H%M")
+
+    return f"{_slug(coll_name)}_{_slug(praca_name)}_{_slug(requester_name)}_{stamp}.pdf"
+
+
 @router.get("/timesheets/{cid}/{year}/{month}/pdf")
-async def timesheet_pdf(cid: str, year: int, month: int):
+async def timesheet_pdf(cid: str, year: int, month: int, request: Request):
     sheet = await timesheet(cid, year, month)
     coll = sheet["collaborator"]
     company_id = coll.get("company_id") or DEMO_COMPANY_ID
@@ -1705,7 +1775,8 @@ async def timesheet_pdf(cid: str, year: int, month: int):
             "abono": sheet.get("total_abono_min", 0),
         },
     )
-    filename = f"espelho-{coll['id']}-{year}-{month:02d}.pdf"
+    requester = await _get_requester_optional(request)
+    filename = _format_pdf_filename(coll, praca_doc, requester, year, month)
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
@@ -1714,7 +1785,7 @@ async def timesheet_pdf(cid: str, year: int, month: int):
 
 
 @router.get("/timesheets-collective/{year}/{month}/pdf")
-async def collective_timesheet_pdf(year: int, month: int):
+async def collective_timesheet_pdf(year: int, month: int, request: Request):
     """PDF coletivo: 1 página por colaborador ativo com clock_in_enabled.
     Útil para o fechamento mensal do RH."""
     company_id = DEMO_COMPANY_ID
@@ -1749,7 +1820,28 @@ async def collective_timesheet_pdf(year: int, month: int):
             "praca": praca_doc,
         })
     pdf_bytes = _build_collective_pdf(items, year, month, company=company_doc)
-    filename = f"espelho-coletivo-{year}-{month:02d}.pdf"
+    # Filename coletivo: ESPELHO_COLETIVO_<EMPRESA>_<USUARIO>_<DATA-HORA>.pdf
+    import re
+    import unicodedata
+    def _slug(s):
+        if not s:
+            return "SEM_NOME"
+        s = "".join(c for c in unicodedata.normalize("NFD", s)
+                    if unicodedata.category(c) != "Mn")
+        s = re.sub(r"[^A-Za-z0-9_\s]", "", s).strip()
+        return (re.sub(r"\s+", "_", s).upper() or "SEM_NOME")
+    requester = await _get_requester_optional(request)
+    requester_name = "ANONIMO"
+    if requester:
+        rn = (requester.get("name") or requester.get("email", "").split("@")[0] or "").strip()
+        rp = rn.split()
+        if rp:
+            requester_name = rp[0]
+    from datetime import timedelta
+    now_brt = datetime.now(timezone.utc) - timedelta(hours=3)
+    stamp = now_brt.strftime("%Y%m%d-%H%M")
+    empresa = (company_doc.get("name") or "EMPRESA")
+    filename = f"ESPELHO_COLETIVO_{_slug(empresa)}_{_slug(requester_name)}_{stamp}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
