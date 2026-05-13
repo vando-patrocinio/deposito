@@ -154,10 +154,10 @@ const NAV_GROUPS = [
       {
         id: "espelho",
         icon: FileSpreadsheet,
-        label: "Espelho",
+        label: "Ponto",
         roles: ["gestor", "auditor", "administrador"],
         children: [
-          { id: "sheet", label: "Ponto Colaborador" },
+          { id: "sheet", label: "Espelho" },
         ],
       },
     ],
