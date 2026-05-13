@@ -76,6 +76,7 @@ export const api = {
   timesheet: (cid, year, month) => client.get(`/timesheets/${cid}/${year}/${month}`).then((r) => r.data),
   timesheetPdfUrl: (cid, year, month) => `${API}/timesheets/${cid}/${year}/${month}/pdf`,
   collectiveTimesheetPdfUrl: (year, month) => `${API}/timesheets-collective/${year}/${month}/pdf`,
+  printAuditList: (limit = 30) => client.get(`/timesheets/print-audit`, { params: { limit } }).then((r) => r.data),
   sendTimesheetNow: (cid, year, month) => client.post(`/timesheets/send/${cid}`, null, { params: { year, month } }).then((r) => r.data),
   runMonthlyNow: () => client.post("/scheduler/run-monthly-now").then((r) => r.data),
   overtimeDashboard: (year, month) => client.get(`/dashboard/overtime/${year}/${month}`).then((r) => r.data),

@@ -1350,7 +1350,8 @@ def _fmt_marca(time_str: str | None, origens: dict, key: str) -> str:
 
 
 def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
-                          company=None, praca=None, totals_extra=None, styles=None):
+                          company=None, praca=None, totals_extra=None, styles=None,
+                          print_id=None):
     """Gera lista de elementos Platypus do espelho — formato Control iD fiel.
     A4 PORTRAIT, 1 página, header azul, bloco identificação sem bordas,
     cabeçalho de jornada SEG-DOM, tabela sem zebra, prefixo (P)/(I)/(M)/(C)
@@ -1569,6 +1570,11 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
         "conforme art. 73 CLT.</font>",
         styles["Normal"],
     ))
+    if print_id:
+        elements.append(Paragraph(
+            f"<font size='6' color='#94a3b8'><b>ID DE IMPRESSÃO:</b> {print_id}</font>",
+            styles["Normal"],
+        ))
     elements.append(Spacer(1, 10))
 
     # ---------- ASSINATURAS ----------
@@ -1597,7 +1603,8 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
 
 
 def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance,
-                          company=None, praca=None, totals_extra=None) -> bytes:
+                          company=None, praca=None, totals_extra=None,
+                          print_id=None) -> bytes:
     """PDF individual de espelho de ponto — formato Control iD / Portaria 671/2021-MTE.
     A4 PORTRAIT, 1 página. Reproduz fielmente o exemplo Control iD: header azul,
     bloco identificação sem bordas, tabela sem zebra, prefixo (P) no PREVISTO,
@@ -1609,16 +1616,18 @@ def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance,
         topMargin=0.6 * cm, bottomMargin=0.6 * cm,
     )
     elements = _timesheet_elements(coll, year, month, days, total_worked, total_balance,
-                                     company=company, praca=praca, totals_extra=totals_extra)
+                                     company=company, praca=praca, totals_extra=totals_extra,
+                                     print_id=print_id)
     doc.build(elements)
     buf.seek(0)
     return buf.read()
 
 
 def _build_collective_pdf(items: list[dict], year: int, month: int,
-                            company: dict = None) -> bytes:
+                            company: dict = None, print_id_prefix: str | None = None) -> bytes:
     """PDF coletivo: itera por colaboradores, gera as páginas e separa com PageBreak.
-    items: [{coll, days, total_worked_min, total_balance_min, totals_extra, praca}]"""
+    items: [{coll, days, total_worked_min, total_balance_min, totals_extra, praca}]
+    print_id_prefix: ID base que aparece no rodapé de cada página (sufixado pelo nome do colab)."""
     from reportlab.platypus import PageBreak
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -1630,11 +1639,16 @@ def _build_collective_pdf(items: list[dict], year: int, month: int,
     for idx, it in enumerate(items):
         if idx > 0:
             all_elements.append(PageBreak())
+        page_id = None
+        if print_id_prefix:
+            cname = (it["coll"].get("name") or "").upper().replace(" ", "_")
+            page_id = f"{print_id_prefix}#{cname}"
         all_elements.extend(_timesheet_elements(
             it["coll"], year, month, it["days"],
             it["total_worked_min"], it["total_balance_min"],
             company=company, praca=it.get("praca"),
             totals_extra=it.get("totals_extra"),
+            print_id=page_id,
         ))
     doc.build(all_elements)
     buf.seek(0)
@@ -1702,6 +1716,13 @@ async def _get_requester_optional(request: Request) -> Optional[dict]:
         return await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
     except Exception:
         return None
+
+
+def print_id_value(coll: dict, praca: dict | None, requester: dict | None) -> str:
+    """Mesmo helper de filename, mas sem '.pdf' — usado como ID de Impressão
+    impresso dentro do PDF e gravado em db.print_audit."""
+    fname = _format_pdf_filename(coll, praca, requester, 0, 0)
+    return fname.replace(".pdf", "")
 
 
 def _format_pdf_filename(coll: dict, praca: dict | None, requester: dict | None,
@@ -1774,9 +1795,25 @@ async def timesheet_pdf(cid: str, year: int, month: int, request: Request):
             "falta_atraso": sheet.get("total_falta_atraso_min", 0),
             "abono": sheet.get("total_abono_min", 0),
         },
+        print_id=print_id_value(coll, praca_doc, requester_for_id := await _get_requester_optional(request)),
     )
-    requester = await _get_requester_optional(request)
-    filename = _format_pdf_filename(coll, praca_doc, requester, year, month)
+    filename = _format_pdf_filename(coll, praca_doc, requester_for_id, year, month)
+    # Persiste o ID de impressão (auditoria)
+    await db.print_audit.insert_one({
+        "id": filename.replace(".pdf", ""),
+        "type": "timesheet",
+        "collaborator_id": coll.get("id"),
+        "collaborator_name": coll.get("name"),
+        "praca_id": (praca_doc or {}).get("id"),
+        "praca_name": (praca_doc or {}).get("name"),
+        "year": year, "month": month,
+        "requested_by_user_id": (requester_for_id or {}).get("id"),
+        "requested_by_user_name": (requester_for_id or {}).get("name"),
+        "company_id": company_id,
+        "ip": (request.client.host if request.client else None),
+        "user_agent": request.headers.get("user-agent", "")[:300],
+        "at": now_iso(),
+    })
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
@@ -1819,7 +1856,8 @@ async def collective_timesheet_pdf(year: int, month: int, request: Request):
             },
             "praca": praca_doc,
         })
-    pdf_bytes = _build_collective_pdf(items, year, month, company=company_doc)
+    pdf_bytes = _build_collective_pdf(items, year, month, company=company_doc,
+                                         print_id_prefix=None)
     # Filename coletivo: ESPELHO_COLETIVO_<EMPRESA>_<USUARIO>_<DATA-HORA>.pdf
     import re
     import unicodedata
@@ -1842,6 +1880,22 @@ async def collective_timesheet_pdf(year: int, month: int, request: Request):
     stamp = now_brt.strftime("%Y%m%d-%H%M")
     empresa = (company_doc.get("name") or "EMPRESA")
     filename = f"ESPELHO_COLETIVO_{_slug(empresa)}_{_slug(requester_name)}_{stamp}.pdf"
+    print_id = filename.replace(".pdf", "")
+    # Re-monta com print_id agora que temos o filename
+    pdf_bytes = _build_collective_pdf(items, year, month, company=company_doc,
+                                         print_id_prefix=print_id)
+    await db.print_audit.insert_one({
+        "id": print_id,
+        "type": "timesheet_collective",
+        "count_collaborators": len(items),
+        "year": year, "month": month,
+        "requested_by_user_id": (requester or {}).get("id"),
+        "requested_by_user_name": (requester or {}).get("name"),
+        "company_id": company_id,
+        "ip": (request.client.host if request.client else None),
+        "user_agent": request.headers.get("user-agent", "")[:300],
+        "at": now_iso(),
+    })
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
@@ -1857,3 +1911,17 @@ async def send_timesheet_now(cid: str, year: int, month: int):
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado")
     return await send_timesheet_email(coll, year, month)
+
+
+@router.get("/timesheets/print-audit")
+async def list_print_audit(limit: int = 50, user: dict = Depends(require_role("gestor"))):
+    """Histórico de impressões/downloads/envios de espelho de ponto.
+    Cada entrada tem o ID de impressão, quem pediu, quando, IP e User-Agent."""
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    cursor = db.print_audit.find(
+        {"company_id": company_id},
+        {"_id": 0},
+    ).sort("at", -1).limit(max(1, min(limit, 500)))
+    items = await cursor.to_list(length=500)
+    return {"items": items, "total": len(items)}
+

@@ -704,6 +704,8 @@ export default function TimesheetView() {
         )}
       </Card>
 
+      <PrintAuditCard />
+
       <EditDayModal
         open={!!editing}
         day={editing}
@@ -820,3 +822,72 @@ function BatchFixModal({ open, collabId, year, month, monthLabel, onClose, onDon
     </div>
   );
 }
+
+/* ============================================================= */
+/* PrintAuditCard — histórico de impressões / downloads / envios
+   do espelho de ponto. Compliance: cada ação fica rastreada. */
+function PrintAuditCard() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.printAuditList(30)
+      .then((r) => setItems(r?.items || []))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return null;
+  if (!items.length) return null;
+
+  return (
+    <Card title="Histórico de impressões (ID de Impressão)" style={{ marginTop: 16 }}>
+      <p style={{ fontSize: 12, color: "#64748b", marginTop: 0, marginBottom: 12 }}>
+        Cada vez que um espelho é baixado, impresso ou enviado, o sistema gera um
+        <strong> ID de Impressão</strong> único, gravado nesta auditoria para fins de
+        compliance (Portaria 671/2021).
+      </p>
+      <div style={{ overflowX: "auto" }}>
+        <table data-testid="print-audit-table" style={{
+          width: "100%", borderCollapse: "collapse", fontSize: 12,
+        }}>
+          <thead>
+            <tr style={{ background: "#f1f5f9", color: "#475569" }}>
+              <th style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, textTransform: "uppercase" }}>ID de Impressão</th>
+              <th style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, textTransform: "uppercase" }}>Tipo</th>
+              <th style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, textTransform: "uppercase" }}>Colaborador</th>
+              <th style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, textTransform: "uppercase" }}>Solicitante</th>
+              <th style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, textTransform: "uppercase" }}>Quando</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it) => (
+              <tr key={it.id} style={{ borderTop: "1px solid #e2e8f0" }}>
+                <td style={{ padding: "6px 8px", fontFamily: "monospace", fontSize: 10.5 }}>
+                  {it.id}
+                </td>
+                <td style={{ padding: "6px 8px" }}>
+                  <span style={{
+                    padding: "2px 7px", borderRadius: 999, fontSize: 10, fontWeight: 700,
+                    background: it.type === "timesheet_collective" ? "#fef3c7" : "#dbeafe",
+                    color: it.type === "timesheet_collective" ? "#92400e" : "#1e40af",
+                  }}>
+                    {it.type === "timesheet_collective" ? "COLETIVO" : "INDIVIDUAL"}
+                  </span>
+                </td>
+                <td style={{ padding: "6px 8px" }}>
+                  {it.collaborator_name || (it.count_collaborators ? `${it.count_collaborators} colaborador(es)` : "—")}
+                </td>
+                <td style={{ padding: "6px 8px" }}>{it.requested_by_user_name || "—"}</td>
+                <td style={{ padding: "6px 8px", color: "#64748b" }}>
+                  {it.at ? new Date(it.at).toLocaleString("pt-BR") : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
