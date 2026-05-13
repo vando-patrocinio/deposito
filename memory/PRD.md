@@ -168,6 +168,20 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
   - **`MsgBubble`** detecta `delivery_status.startsWith("failed_")` e renderiza balão vermelho + label PT-BR ("IA desligada — não respondeu" / "Motor IA falhou" / "IA retornou resposta vazia" etc).
 - Validado E2E (testing_agent iter56): backend 3/3 pytest passou · frontend E2E Playwright validou TODOS data-testids (banner, reason, details panel, enable btn, 2 chips conv-ai-fail-*, card Central IA com 6 cells + reasons).
 
+✅ **Popup "Configurar Robô" estilo Ligo Fibra** (13/05/2026 — iter57):
+- Novo componente `frontend/src/AgentConfigModal.js` (550+ linhas) — espelha o layout do PDF anexado pelo usuário.
+- **Sidebar de agentes** (left): lista todos `aihub_agents` da empresa com chip "NOVO"/"AUTO-REPLY" + botão **"+ Novo"** para criar agentes adicionais (Isabella, Jerusa, etc — quantos quiser).
+- **5 sections-tab no main content**:
+  1. **Personalidade & Expertise** — Nome do Assistente · Mensagem inicial · Informações e Regras · Preços e Valores · Parâmetros (system_prompt) · Situações Prioritárias (exatos campos do PDF).
+  2. **Modelo de IA** — Provedor/Modelo (Gemini 2.5 Flash/Pro, Claude Sonnet/Haiku 4.5, GPT-5/mini) + Temperatura + Max tokens (via Emergent LLM Key, sem chave externa).
+  3. **Conectar WhatsApp** — QR Code embutido + chip de status (CONECTADO/CONECTANDO/DESCONECTADO em tempo real, polling 3-8s) + botão Desconectar.
+  4. **Tools** — checkboxes para `send_whatsapp`, `transfer_to_human`, `create_lead`, `schedule_lousa_ticket`, etc.
+  5. **Auto-reply / Ativação** — toggle global do auto-reply WhatsApp + checkbox "Agente ATIVO" + flag visual quando o agente atual está como auto-reply ativo.
+- **Footer**: Clonar · Excluir · Salvar (estados dirty/loading).
+- **Wiring**: novo botão **"⚙ Configurar Robô"** (roxo, `data-testid="wa-open-agent-config"`) no banner do Atendimento IA — abre o modal de qualquer estado (online/degradado/inativo). Banner permanece intocado, chat principal não foi alterado.
+- **Backend**: zero changes — reutiliza endpoints existentes `GET/POST/PATCH/DELETE /api/aihub/agents`, `GET /api/aihub/catalog/models`, `GET /api/aihub/catalog/tools`, `GET /api/whatsapp-baileys/qr`, `POST /api/whatsapp-baileys/logout`, `GET/PUT /api/whatsapp-baileys/auto-reply`.
+- Validado E2E (testing_agent iter57): 9/9 asserts passaram — modal abre, 5 sections renderizam, sidebar lista 1 agente (Isabella · gpt-5-mini), criar/salvar/excluir novo agente funciona end-to-end com `window.confirm`, modal fecha sem regressão no banner.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
