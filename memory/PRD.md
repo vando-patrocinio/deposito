@@ -200,6 +200,22 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Novo componente** `RoutingDashboardCard` em `CentralIaDashboard.js` (Central IA): KPIs (Respostas, Conversas roteadas, Agentes ativos, Handoffs humano) + stacked bar por agente + chips de motivos de roteamento + lista de agentes cadastrados com badge "⚠ Sem especialidade" quando `routing_intent` está vazio. Period switcher 24h/7d/30d.
 - Validado E2E (testing_agent iter59): 7/7 backend pytest + 8/8 frontend data-testids do RoutingDashboardCard + regression banner Atendimento IA ok + modal Configurar Robô ok.
 
+✅ **Fix CRÍTICO · LID anônimo do WhatsApp (cliente não reconhecido)** (13/05/2026 — iter60):
+- **Bug raiz**: WhatsApp envia mensagens com privacidade LID (Linked Identity) — jid vem como `169410773958706@lid` em vez de `5521998176526@s.whatsapp.net`. O sidecar fazia `jid.split("@")[0]` cegamente, persistindo o LID como "telefone" e impedindo o match com a base de Assinantes — cliente real ficava invisível.
+- **Sidecar fix** (`/app/whatsapp-service/server.js`): captura `m.key.senderPn`/`participantPn` (Baileys 6.7+ expõe em alguns fluxos) e envia `is_lid`, `lid`, `sender_pn` no webhook.
+- **Backend** (`/app/backend/routes/whatsapp_baileys.py`):
+  - `InboundIn` model ganhou 3 campos novos.
+  - Inbound webhook resolve LID em cascata: (1) `sender_pn` direto, (2) `wa_lid_map` salvo, (3) fallback usando LID como phone com flag `phone_is_lid=true`.
+  - Nova coleção `wa_lid_map` (`{lid, phone, source, linked_by_user_id, linked_at}`).
+  - Novo endpoint `POST /api/whatsapp-baileys/lid-link` que migra todas as mensagens + conversa do LID para o telefone real e dispara auto-link com subscriber.
+  - Novo endpoint `GET /api/whatsapp-baileys/lid-map` lista todos os mappings.
+  - `/conversations` expõe `phone_is_lid`, `lid`, `lid_linked_at` em cada entry.
+- **Frontend** (`/app/frontend/src/WhatsAppChatLayout.js`):
+  - ConvRow exibe chip amarelo "🔒 LID anônimo" (`data-testid=wa-conv-lid-{phone}`) quando `phone_is_lid=true`.
+  - ChatThread header mostra warn + botão laranja "💡 Vincular telefone" (`wa-thread-lid-link-btn`).
+  - Novo modal `LidLinkButton` (final do arquivo) com input + submit, migra automaticamente.
+- **Validação** (testing_agent iter60): 6/8 backend pytest pass (2 minor de response shape · já corrigidos). 100% frontend UI: chip, warn banner, link button, modal com input/submit, modal fecha após sucesso. **Validado manualmente curl**: 172 mensagens do LID `169410773958706` migradas para `5521998176526` e auto-vinculadas ao subscriber Vando Patrocinio (LIGO RIO · Fibra 500 Mega).
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)

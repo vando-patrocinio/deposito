@@ -472,6 +472,7 @@ async def inbound_webhook(payload: InboundIn,
             )
             if reply:
                 return {"ok": True, "subscriber_id": subscriber_id,
+                        "phone": effective_phone, "lid": payload.lid,
                         "auto_reply": reply[:120]}
         except Exception as e:
             logger.warning("[wa-baileys] auto-reply falhou: %s", e)
@@ -1460,6 +1461,7 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
             # WhatsApp LID privacy
             "phone_is_lid": conv.get("phone_is_lid", False),
             "lid": conv.get("lid"),
+            "lid_linked_at": conv.get("lid_linked_at"),
         }
         bucket = _bucket_for_conversation(conv_view)
         conv_view["bucket"] = bucket
