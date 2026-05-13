@@ -478,15 +478,15 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
 
     # 2. Carrega o agente (Jerusa por padrão, ou outro definido em cfg)
     agent_name = cfg.get("agent_name") or "Jerusa"
-    agent = await db.aihub_agents.find_one(
+    default_agent = await db.aihub_agents.find_one(
         {"company_id": cid, "name": agent_name, "active": {"$ne": False}},
         {"_id": 0},
     )
-    if not agent:
+    if not default_agent:
         # Cria Jerusa se ainda não existir (mesma lógica de voice.py)
         try:
             from routes.voice import _ensure_jerusa_agent
-            agent = await _ensure_jerusa_agent(cid)
+            default_agent = await _ensure_jerusa_agent(cid)
         except Exception as e:
             await _persist_ai_failure(
                 cid, phone, subscriber_id,
@@ -496,7 +496,7 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                 user_text=user_text,
             )
             return None
-        if not agent:
+        if not default_agent:
             await _persist_ai_failure(
                 cid, phone, subscriber_id,
                 reason_code="no_agent",
@@ -505,6 +505,19 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                 user_text=user_text,
             )
             return None
+
+    # 2b. Roteador IA — se houver múltiplos agentes ativos, escolhe o melhor
+    # baseado em routing_intent. Em conversas existentes, mantém o agente
+    # escolhido anteriormente (consistência).
+    try:
+        from services.routing import pick_agent_for_message
+        agent = await pick_agent_for_message(cid, phone, user_text,
+                                              default_agent=default_agent)
+    except Exception as e:
+        logger.info("[wa-baileys] routing fallback (%s)", e)
+        agent = default_agent
+    if not agent:
+        agent = default_agent
 
     # 3. Monta prompt — herda personalidade/preços/situações + contexto do cliente
     sys_prompt = agent["system_prompt"]

@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 58 intelligent routing tested end-to-end (backend pytest + frontend Playwright). All 6 backend tests PASS. Frontend modal field 'agent-config-field-routing' visible with saved value, dirty indicator + Save button work. Routing correctly directs sales intent to Isabella and support intent to Bruno Suporte; conversation consistency maintained (2nd inbound on sales phone stayed with Isabella via routed_agent_id). LLM was called (gpt-5-mini and gemini-2.5-flash) — gemini returned empty reply for support but agent selection was still correct (this is an existing LLM provider issue, not a routing bug).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/whatsapp-baileys/inbound (gemini-2.5-flash)", "issue": "Bruno Suporte's gemini-2.5-flash model occasionally returns empty reply (delivery_status=failed_empty_reply). Routing decision is still correct (agent_name=Bruno Suporte persisted), so this does not affect the intelligent-routing feature, but reply text was empty."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter58_routing.py",
+    "/app/test_reports/pytest/iter58_routing.xml"
+  ],
+  "action_items": [
+    "Optional: investigate gemini-2.5-flash empty-reply on simple Portuguese support prompts (separate issue, not blocking routing feature)."
+  ],
+  "critical_code_review_comments": [
+    "services/routing.py: clean, well-commented (3-tier strategy: keyword → LLM → fallback). Persists routed_agent_id on wa_conversations for consistency — verified working in test_05.",
+    "services/routing.py uses __import__('core').now_iso() inside _persist_routing — works but a top-level import would be cleaner.",
+    "Behavior verified: with only 1 active agent, routing returns it directly (no LLM call) preserving old behavior.",
+    "AgentConfigModal: routing_intent textarea has explanatory hint with concrete examples — good UX."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter58_routing.py (created)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created two test conversations (5511955550101 — Cliente V — routed to Isabella; 5511955550102 — Cliente S — routed to Bruno Suporte). Bruno Suporte agent created and deleted by fixture teardown. Conversations remain in DB with routed_agent_id (acceptable — auto-reply turned OFF at the end so no future replies).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Routing feature lives in /app/backend/services/routing.py and is invoked from whatsapp_baileys._maybe_auto_reply. routing_intent field is on aihub_agents (PATCH/POST supported). Frontend field testid: agent-config-field-routing inside section agent-config-section-autoreply. Auto-reply state was disabled at end of test (enabled:false). Isabella keeps routing_intent='vendas, novos planos, contratação, preço'.",
+  "rca of the issue": "No bugs found. Initial 3 test failures during first run were due to test code using direction=='out' and 'timestamp' field, while API returns direction='outbound' and 'wa_timestamp'/'created_at'. Fixed in test script — all tests pass on retry."
+}

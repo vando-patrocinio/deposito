@@ -87,6 +87,8 @@ class AgentIn(BaseModel):
     company_info: str = Field(default="", max_length=4000)
     pricing_info: str = Field(default="", max_length=4000)
     priority_situations: str = Field(default="", max_length=4000)
+    # Roteamento inteligente (multi-agente)
+    routing_intent: str = Field(default="", max_length=400)
 
 
 class AgentUpdate(BaseModel):
@@ -105,6 +107,7 @@ class AgentUpdate(BaseModel):
     company_info: Optional[str] = Field(default=None, max_length=4000)
     pricing_info: Optional[str] = Field(default=None, max_length=4000)
     priority_situations: Optional[str] = Field(default=None, max_length=4000)
+    routing_intent: Optional[str] = Field(default=None, max_length=400)
 
 
 class PlaygroundIn(BaseModel):

@@ -44,6 +44,7 @@ const BLANK_AGENT = {
   company_info: "",
   pricing_info: "",
   priority_situations: "",
+  routing_intent: "",
 };
 
 export default function AgentConfigModal({ open, onClose }) {
@@ -115,6 +116,7 @@ export default function AgentConfigModal({ open, onClose }) {
       company_info: a.company_info || "",
       pricing_info: a.pricing_info || "",
       priority_situations: a.priority_situations || "",
+      routing_intent: a.routing_intent || "",
     });
     setDirty(false);
   }
@@ -753,6 +755,15 @@ function AutoReplySection({ draft, patch, autoReply, onToggle, busy, isNew }) {
         </label>
       </Field>
 
+      <Field icon={Bot} label="Especialidade / Roteamento IA"
+              hint="Descreva quando este agente deve ser escolhido em uma conversa nova. Com 2+ agentes ativos, o roteador lê a 1ª msg do cliente e escolhe automaticamente. Ex: 'vendas e novos planos · preço · contratação' / 'suporte técnico · sem sinal · lentidão' / 'financeiro · 2ª via · cobranças'.">
+        <textarea data-testid="agent-config-field-routing"
+                   rows={3} value={draft.routing_intent}
+                   onChange={(e) => patch("routing_intent", e.target.value)}
+                   placeholder="Ex: vendas e novos planos, contratação, preço, oferta, cobertura"
+                   style={textareaStyle()} />
+      </Field>
+
       <div data-testid="agent-config-autoreply-card" style={{
         padding: 16, borderRadius: 12, background: "var(--bg-surface-2)",
         border: `1px solid ${thisAgentActive ? "#16a34a" : "var(--border-default)"}`,
@@ -763,6 +774,9 @@ function AutoReplySection({ draft, patch, autoReply, onToggle, busy, isNew }) {
             <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4, lineHeight: 1.55 }}>
               Quando ativo, qualquer mensagem recebida no WhatsApp é respondida automaticamente
               pelo agente <strong>{autoReply.agent_name || "(nenhum)"}</strong>.
+              {" "}Se você tem múltiplos agentes ATIVOS com <em>Especialidade</em> preenchida,
+              o <strong>Roteador IA</strong> escolhe o melhor agente por conversa
+              (mantendo a escolha consistente nas mensagens seguintes).
               {isNew && " · Salve este agente primeiro para poder ativá-lo aqui."}
             </div>
           </div>
