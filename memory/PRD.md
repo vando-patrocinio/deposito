@@ -133,8 +133,18 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 
 
 
+✅ **Fix UI cercas "fantasma" + Redesign sóbrio Colaboradores** (13/05/2026 — iter54):
+- **Bug raiz**: Quando colaborador `clock_in_enabled=false` (não-CLT/MEI), a UI escondia totalmente o contador de cercas e exibia apenas o placeholder `🚫 Cerca não se aplica`. Após duplicar uma cerca para esse colaborador, o usuário via o card "sem cerca" mesmo com a cerca salva no DB — bug perceptual.
+- **Fix em `CadastroPanel.js`**: removido o placeholder `fences-disabled-*`; agora o botão `fences-{cid}` é renderizado SEMPRE com a contagem real (`fence-count-{cid}`), aplicando estilo cinza-tracejado + label `(inativas)` quando o colaborador está com `clock_in_enabled=false`.
+- **Redesign sóbrio** (alinhado com PracasPanel / Atendimento IA): novo helper `chipStyle(tone)` com paleta unificada (slate/amber/sky/emerald/teal); cards mais compactos (padding 12, radius 12, sem box-shadow pesado); chips sem emojis nos rótulos ("não bate ponto", "sem avatar", "dispositivo OK", "aguardando Google", "modo teste"); botões "Bate ponto: ON/OFF" e "Pontos" sem emojis (🕐/🚫) — apenas ícone lucide opcional.
+- Validado E2E (Playwright via testing_agent iter54): duplicate de cerca de DIOGO (CLT) para JUNIOR (não-CLT) — `fence-count-col-dd5d2c1a` mudou de "0" para "1" com label "(inativas)"; ZERO `fences-disabled-*` na página; cleanup OK.
+
 ## Próximas (P2)
-- Refatorar `routes/lousa.py` (>2400 linhas) e `CadastroPanel.js` (>1200 linhas)
-- Melhorar matching Atlaz↔SmartOLT para chegar próximo de 100% (ainda 11/20 unmatched)
-- Tema dark: revisar painéis com backgrounds hardcoded (`#fff`/`#f8fafc` em alguns modais)
+- Rate limiting global via `slowapi` (P1)
+- TTL/rotação do token webhook Secretária IA (P2)
+- Botão "Sync Atlaz" na aba Assinantes para puxar clientes ativos (P2)
+- Refatorar `routes/lousa.py` (>2500 linhas) e `WhatsAppChatLayout.js` (>1500 linhas) (P3)
+- Conflict Resolution UI para Assinantes (quando phone bate em múltiplas subs) (P3)
+- Melhorar matching Atlaz↔SmartOLT para chegar próximo de 100%
+- Tema dark: revisar painéis com backgrounds hardcoded
 
