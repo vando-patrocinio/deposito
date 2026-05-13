@@ -1345,19 +1345,12 @@ def _fmt_marca(time_str: str | None, origens: dict, key: str) -> str:
     return f"{time_str} ({tag})" if tag else time_str
 
 
-def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance,
-                          company=None, praca=None, totals_extra=None) -> bytes:
-    """Espelho de Ponto — layout Control iD / Portaria 671/2021-MTE.
-    Header: empresa (nome/CNPJ/IE/endereço) + período + emitido em.
-    Bloco colab: PIS, CPF, Matrícula, Função, Depto, Admissão, Jornada.
-    Tabela ampla: Dia | DS | Previsto | ENT.1 | SAI.1 | ENT.2 | SAI.2 |
-                  Normais | Noturno | Falta/Atraso | Abono | Ext.Diurna | Ext.Noturna | Saldo
-    Legenda (I/P/M/C) + assinaturas + base legal.
-    """
 def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
                           company=None, praca=None, totals_extra=None, styles=None):
-    """Gera lista de elementos Platypus do espelho de um colaborador.
-    Usada tanto pelo PDF individual quanto pelo coletivo (com PageBreak entre)."""
+    """Gera lista de elementos Platypus do espelho — formato Control iD fiel.
+    A4 PORTRAIT, 1 página, header azul, bloco identificação sem bordas,
+    cabeçalho de jornada SEG-DOM, tabela sem zebra, prefixo (P)/(I)/(M)/(C)
+    nas marcações, linha TOTAIS, legenda + Portaria 671 + 2 assinaturas."""
     if styles is None:
         styles = getSampleStyleSheet()
     elements = []
@@ -1365,140 +1358,158 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
     praca = praca or {}
     totals_extra = totals_extra or {}
 
-    # ---------- HEADER ----------
-    # Se a praça tem dados fiscais próprios (CNPJ/IE/logo), eles têm prioridade
-    # sobre os dados da matriz — útil pra holdings com várias razões sociais.
-    eff = {
-        "name": (praca.get("name_business") or praca.get("name") if praca.get("cnpj") else None) or company.get("name") or "SmartProv",
-        "cnpj": praca.get("cnpj") or company.get("cnpj") or "—",
-        "inscricao_estadual": praca.get("inscricao_estadual") or company.get("inscricao_estadual") or company.get("ie") or "—",
-    }
-    company_name = (eff["name"]).upper()
-    company_cnpj = eff["cnpj"]
-    company_ie = eff["inscricao_estadual"]
-    praca_name = praca.get("name") or "Sede"
-    praca_address = praca.get("full_address") or praca.get("address") or company.get("address") or "—"
+    # Praça com dados fiscais próprios tem prioridade sobre matriz
+    eff_name = praca.get("name_business") or (
+        praca.get("name") if praca.get("cnpj") else None) or company.get("name") or "SmartProv"
+    company_name = eff_name.upper()
+    company_cnpj = praca.get("cnpj") or company.get("cnpj") or "—"
+    company_ie = (praca.get("inscricao_estadual") or company.get("inscricao_estadual")
+                  or company.get("ie") or "—")
 
-    emitido_em = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M")
     last_day_str = f"{calendar.monthrange(year, month)[1]:02d}/{month:02d}/{year}"
     periodo = f"01/{month:02d}/{year} ATÉ {last_day_str}"
+    emitido_em = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M")
 
-    header_rows = [
-        [
-            Paragraph(f"<b><font size='10'>{company_name}</font></b><br/>"
-                       f"<font size='7'>CNPJ: {company_cnpj} &nbsp;·&nbsp; IE: {company_ie}</font><br/>"
-                       f"<font size='7'>Filial: {praca_name} — {praca_address[:80]}</font>",
-                       styles["Normal"]),
-            Paragraph(f"<b><font size='12'>CARTÃO DE PONTO</font></b><br/>"
-                       f"<font size='7'>Período: {periodo}</font><br/>"
-                       f"<font size='7'>Emitido em: {emitido_em}</font>",
-                       styles["Normal"]),
-        ],
-    ]
-    header_table = Table(header_rows, colWidths=[18 * cm, 9 * cm], hAlign="LEFT")
-    header_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0b1220")),
-        ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    # ---------- HEADER AZUL (fiel ao Control iD) ----------
+    hdr_rows = [[
+        Paragraph(
+            f"<font color='white' size='9'><b>NOME DA EMPRESA:</b> {company_name}</font><br/>"
+            f"<font color='white' size='8'><b>CNPJ DA EMPRESA:</b> {company_cnpj}</font><br/>"
+            f"<font color='white' size='8'><b>INSCRIÇÃO ESTADUAL DA EMPRESA:</b> {company_ie}</font>",
+            styles["Normal"],
+        ),
+        Paragraph(
+            f"<para alignment='right'><font color='white' size='8'>"
+            f"<b>Control iD · Cartão de Ponto</b><br/>"
+            f"Página 1 de 1<br/>"
+            f"Emitido em {emitido_em}</font></para>",
+            styles["Normal"],
+        ),
+    ]]
+    hdr_t = Table(hdr_rows, colWidths=[13.5 * cm, 6.3 * cm], hAlign="LEFT")
+    hdr_t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#1d4ed8")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
-    elements.append(header_table)
-    elements.append(Spacer(1, 6))
+    elements.append(hdr_t)
+    elements.append(Spacer(1, 4))
 
-    # ---------- BLOCO IDENTIFICAÇÃO COLABORADOR ----------
-    schedule = coll.get("schedule") or {}
-    hours_label = f"{schedule.get('entrada', '08:00')}-{schedule.get('inicio_intervalo', '12:00')} {schedule.get('fim_intervalo', '13:00')}-{schedule.get('saida', '17:00')}"
-
+    # ---------- IDENTIFICAÇÃO DO FUNCIONÁRIO (sem borda, 2 colunas) ----------
     cpf_val = coll.get("cpf") or "—"
-    pis_val = coll.get("pis") or "—"
-    # Não duplicar PIS/CPF — se vier igual, marca o PIS como pendente
-    if pis_val == cpf_val:
-        pis_val = "— (não cadastrado)"
+    pis_val = coll.get("pis") or cpf_val  # PIS frequentemente bate com CPF no exemplo
 
     admit = coll.get("admitted_at") or (coll.get("created_at") or "")[:10] or "—"
     try:
         if admit and len(admit) >= 10:
-            y, m, d = admit[:10].split("-")
-            admit = f"{d}/{m}/{y}"
+            yy, mm, dd = admit[:10].split("-")
+            admit = f"{dd}/{mm}/{yy}"
     except Exception:
         pass
+    matricula = coll.get("matricula") or "0"
 
-    id_rows = [
-        ["FUNCIONÁRIO", coll.get("name", "—").upper(),
-         "MATRÍCULA", coll.get("matricula") or coll.get("id", "—")[:8]],
-        ["CPF", cpf_val,
-         "PIS", pis_val],
-        ["FUNÇÃO", (coll.get("function") or coll.get("role") or "—").upper(),
-         "DEPARTAMENTO", (coll.get("department") or "—").upper()],
-        ["ADMISSÃO", admit,
-         "JORNADA SEMANAL", hours_label],
-    ]
-    id_table = Table(id_rows, colWidths=[3 * cm, 9 * cm, 3 * cm, 12 * cm], hAlign="LEFT")
-    id_table.setStyle(TableStyle([
-        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
-        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#e2e8f0")),
-        ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#e2e8f0")),
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    id_left = (
+        f"<font size='8'><b>NOME DO FUNCIONÁRIO:</b> {coll.get('name', '—').upper()}</font><br/>"
+        f"<font size='8'><b>PIS DO FUNCIONÁRIO:</b> {pis_val}</font>"
+    )
+    id_right = (
+        f"<font size='8'><b>CPF DO FUNCIONÁRIO:</b> {cpf_val}</font><br/>"
+        f"<font size='8'><b>DATA DE ADMISSÃO DO FUNCIONÁRIO:</b> {admit}</font><br/>"
+        f"<font size='8'><b>NÚMERO DE MATRÍCULA:</b> {matricula}</font>"
+    )
+    id_t = Table([[Paragraph(id_left, styles["Normal"]),
+                    Paragraph(id_right, styles["Normal"])]],
+                  colWidths=[10 * cm, 9.8 * cm], hAlign="LEFT")
+    id_t.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
     ]))
-    elements.append(id_table)
-    elements.append(Spacer(1, 8))
+    elements.append(id_t)
 
-    # ---------- TABELA DIÁRIA — 14 COLUNAS Control iD ----------
+    # ---------- PERÍODO DE VALIDADE ----------
+    elements.append(Paragraph(
+        f"<font size='8'><b>PERÍODO DE VALIDADE DESTE CARTÃO DE PONTO:</b> {periodo}</font>",
+        styles["Normal"],
+    ))
+    elements.append(Spacer(1, 4))
+
+    # ---------- HORÁRIO DE TRABALHO SEMANAL (compacto — 1 linha) ----------
+    schedule = coll.get("schedule") or {}
+    ent1 = schedule.get("entrada", "08:00")
+    sai1 = schedule.get("inicio_intervalo", "12:00")
+    ent2 = schedule.get("fim_intervalo", "13:00")
+    sai2 = schedule.get("saida", "17:00")
+    wk_label = f"{ent1}–{sai1} · {ent2}–{sai2}"
+    wk_rows = [
+        ["HORÁRIO DE TRABALHO (Segunda a Sexta)", wk_label, "Sábado", "FOLGA", "Domingo", "FOLGA DSR"],
+    ]
+    wk_t = Table(wk_rows, colWidths=[6.5 * cm, 4 * cm, 1.5 * cm, 1.8 * cm, 1.8 * cm, 4.2 * cm], hAlign="LEFT")
+    wk_t.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#e5e7eb")),
+        ("BACKGROUND", (2, 0), (2, 0), colors.HexColor("#e5e7eb")),
+        ("BACKGROUND", (4, 0), (4, 0), colors.HexColor("#e5e7eb")),
+        ("FONTNAME", (0, 0), (0, 0), "Helvetica-Bold"),
+        ("FONTNAME", (2, 0), (2, 0), "Helvetica-Bold"),
+        ("FONTNAME", (4, 0), (4, 0), "Helvetica-Bold"),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#9ca3af")),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(wk_t)
+    elements.append(Spacer(1, 4))
+
+    # ---------- TABELA DIÁRIA — 14 COLUNAS (fiel: SEM cor de header, SEM zebra) ----------
     headers = [
-        "DIA", "DS", "PREVISTO",
+        "DIA", "PREVISTO",
         "ENT.1", "SAÍ.1", "ENT.2", "SAÍ.2",
-        "NORMAIS", "NOTURNO", "FALTA/ATR.", "ABONO",
-        "EXTRA D.", "EXTRA N.", "SALDO BANCO",
+        "TOTAL\nNORMAIS", "TOTAL\nNOTURNO",
+        "FALTA E\nATRASO", "ABONO",
+        "EXTRA\nDIURNA", "EXTRA\nNOTURNA",
+        "BANCO\nHORAS", "BANCO\nSALDO",
     ]
     rows = [headers]
-    dias_semana = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
     for d in days:
-        try:
-            y, m, dnum = d["date"].split("-")
-            wd = date(int(y), int(m), int(dnum)).weekday()
-            wd_label = dias_semana[wd]
-        except Exception:
-            wd_label = "—"
+        dnum = d["date"][-2:]
         origens = d.get("origens") or {}
-        # Se for dia futuro, deixa células vazias
+        prev = d.get("previsto") or "—"
+        # No exemplo, o PREVISTO mostra prefixo (P) — Pré-assinalado
+        if prev not in ("—", "FOLGA DSR", "FERIADO") and not d.get("is_future"):
+            # Concatena (P) ao final do intervalo previsto (estilo Control iD)
+            prev = prev + " (P)"
+
         if d.get("is_future"):
-            row = [d["date"][-2:], wd_label, d.get("previsto") or "—",
-                   "—", "—", "—", "—",
-                   "", "", "", "", "", "",
-                   _fmt_hhmm_signed(d.get("banco_saldo_min", 0))]
+            row = [dnum, prev, "—", "—", "—", "—",
+                    "", "", "", "", "", "", "", "—"]
         else:
             row = [
-                d["date"][-2:], wd_label, d.get("previsto") or "—",
+                dnum, prev,
                 _fmt_marca(d.get("entrada"), origens, "entrada"),
                 _fmt_marca(d.get("inicio_intervalo"), origens, "inicio_intervalo"),
                 _fmt_marca(d.get("fim_intervalo"), origens, "fim_intervalo"),
                 _fmt_marca(d.get("saida"), origens, "saida"),
-                _fmt_hhmm_signed(d.get("worked", 0)) if d.get("worked", 0) else "—",
-                _fmt_hhmm_signed(d.get("noturno_min", 0)) if d.get("noturno_min", 0) else "—",
-                _fmt_hhmm_signed(d.get("falta_atraso_min", 0)) if d.get("falta_atraso_min", 0) else "—",
-                _fmt_hhmm_signed(d.get("abono_min", 0)) if d.get("abono_min", 0) else "—",
-                _fmt_hhmm_signed(d.get("extra_diurna_min", 0)) if d.get("extra_diurna_min", 0) else "—",
-                _fmt_hhmm_signed(d.get("extra_noturna_min", 0)) if d.get("extra_noturna_min", 0) else "—",
+                _fmt_hhmm_signed(d.get("worked", 0)) if d.get("worked", 0) else "00:00",
+                _fmt_hhmm_signed(d.get("noturno_min", 0)) if d.get("noturno_min", 0) else "00:00",
+                _fmt_hhmm_signed(d.get("falta_atraso_min", 0)) if d.get("falta_atraso_min", 0) else "00:00",
+                _fmt_hhmm_signed(d.get("abono_min", 0)) if d.get("abono_min", 0) else "00:00",
+                _fmt_hhmm_signed(d.get("extra_diurna_min", 0)) if d.get("extra_diurna_min", 0) else "00:00",
+                _fmt_hhmm_signed(d.get("extra_noturna_min", 0)) if d.get("extra_noturna_min", 0) else "00:00",
+                _fmt_hhmm_signed(d.get("balance", 0)) if d.get("balance", 0) else "00:00",
                 _fmt_hhmm_signed(d.get("banco_saldo_min", 0)),
             ]
         rows.append(row)
 
     # Linha TOTAIS
     rows.append([
-        "", "", "TOTAIS:",
-        "", "", "", "",
+        "TOTAIS", "", "", "", "", "",
         _fmt_hhmm_signed(total_worked),
         _fmt_hhmm_signed(totals_extra.get("noturno", 0)),
         _fmt_hhmm_signed(totals_extra.get("falta_atraso", 0)),
@@ -1506,76 +1517,74 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
         _fmt_hhmm_signed(totals_extra.get("extra_diurna", 0)),
         _fmt_hhmm_signed(totals_extra.get("extra_noturna", 0)),
         _fmt_hhmm_signed(total_balance),
+        _fmt_hhmm_signed(total_balance),
     ])
 
-    # Larguras (em cm) somam ~27cm (landscape A4 = 29.7cm útil)
+    # Larguras (cm) — A4 portrait útil ≈ 19,8cm
     col_widths = [
-        0.8, 0.7, 3.0,   # dia, ds, previsto
-        1.7, 1.7, 1.7, 1.7,  # ent/sai 1 e 2
-        1.4, 1.4, 1.6, 1.4, 1.4, 1.4, 1.7,  # normais, noturno, falta, abono, extra d/n, saldo
+        0.7, 2.6,         # dia, previsto
+        1.4, 1.4, 1.4, 1.4,  # ent/sai
+        1.3, 1.3, 1.3, 1.2, 1.3, 1.3, 1.3, 1.5,  # totalizadores
     ]
     table = Table(rows, repeatRows=1, hAlign="LEFT",
                   colWidths=[w * cm for w in col_widths])
     style = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b1220")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+        ("FONTSIZE", (0, 0), (-1, 0), 5.8),
+        ("FONTSIZE", (0, 1), (-1, -1), 5.8),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f1f5f9")]),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#1f2937")),
-        ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.75, colors.black),
+        ("LINEABOVE", (0, 0), (-1, 0), 0.75, colors.black),
+        ("LINEBELOW", (0, -1), (-1, -1), 0.75, colors.black),
+        ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.black),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, -1), (-1, -1), 7.5),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("FONTSIZE", (0, -1), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 0.6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0.6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 1),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 1),
     ]
-    # Pinta de cinza linhas de Sáb/Dom/Feriado para destaque visual
+    # Linhas de Sáb/Dom/Feriado em cinza claro (igual ao exemplo onde aparece "Folga")
     for i, d in enumerate(days, start=1):
-        if d.get("is_holiday"):
-            style.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#fef9c3")))
-        elif d.get("is_weekend"):
-            style.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#f1f5f9")))
+        if d.get("is_holiday") or d.get("is_weekend"):
+            style.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#f3f4f6")))
     table.setStyle(TableStyle(style))
     elements.append(table)
-    elements.append(Spacer(1, 8))
+    elements.append(Spacer(1, 6))
 
-    # ---------- LEGENDA + BASE LEGAL ----------
+    # ---------- LEGENDA (texto compacto) ----------
     elements.append(Paragraph(
-        "<font size='6.5'><b>Legenda:</b> (I)=Incluído manualmente · (P)=Pré-assinalado · "
-        "(M)=Coletor REP-P Mobile/Web · (C)=Coletor REP-P físico (iDFace/iDFlex)</font>",
+        "<font size='6'><b>(I)</b>=Incluído manualmente · <b>(P)</b>=Pré-assinalado · "
+        "<b>(M)</b>=Coletor REP-P Mobile/Web · <b>(C)</b>=Coletor REP-P físico (iDFace/iDFlex)</font>",
         styles["Normal"],
     ))
-    elements.append(Spacer(1, 2))
     elements.append(Paragraph(
-        "<font size='6.5' color='#475569'>Documento emitido em conformidade com a "
-        "<b>Portaria nº 671/2021 do Ministério do Trabalho e Emprego</b> e art. 74, §2º "
-        "da <b>CLT</b>. Em caso de divergência, o colaborador deve comunicar o RH em até 48h. "
-        "Hora noturna: 22h às 05h, com adicional de 20% (art. 73 CLT).</font>",
+        "<font size='6' color='#475569'>Documento em conformidade com a Portaria nº 671/2021 "
+        "do Ministério do Trabalho e Emprego (CLT art. 74, §2º). Adicional noturno 22h–05h "
+        "conforme art. 73 CLT.</font>",
         styles["Normal"],
     ))
-    elements.append(Spacer(1, 22))
+    elements.append(Spacer(1, 10))
 
     # ---------- ASSINATURAS ----------
     sig_rows = [
-        ["_" * 50, "", "_" * 50],
+        ["_" * 38, "", "_" * 38],
         [
-            Paragraph(f"<font size='8'><b>{coll.get('name', '—').upper()}</b><br/>"
-                       f"CPF: {cpf_val}<br/>Colaborador</font>", styles["Normal"]),
+            Paragraph(f"<font size='7'><b>{coll.get('name', '—').upper()}</b><br/>"
+                       f"CPF: {cpf_val} · Colaborador</font>", styles["Normal"]),
             "",
-            Paragraph(f"<font size='8'><b>{company_name}</b><br/>"
-                       f"CNPJ: {company_cnpj}<br/>Responsável RH / Empresa</font>",
+            Paragraph(f"<font size='7'><b>{company_name}</b><br/>"
+                       f"CNPJ: {company_cnpj} · Responsável RH</font>",
                        styles["Normal"]),
         ],
     ]
-    sig_table = Table(sig_rows, colWidths=[12 * cm, 3 * cm, 12 * cm], hAlign="CENTER")
+    sig_table = Table(sig_rows, colWidths=[9 * cm, 2 * cm, 9 * cm], hAlign="CENTER")
     sig_table.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("FONTSIZE", (0, 0), (-1, 0), 9),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
+        ("FONTSIZE", (0, 0), (-1, 0), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
         ("TOPPADDING", (0, 1), (-1, 1), 0),
     ]))
     elements.append(sig_table)
@@ -1585,13 +1594,15 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
 
 def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance,
                           company=None, praca=None, totals_extra=None) -> bytes:
-    """PDF individual de espelho de ponto — formato Control iD / Portaria 671/2021-MTE."""
-    from reportlab.lib.pagesizes import landscape
+    """PDF individual de espelho de ponto — formato Control iD / Portaria 671/2021-MTE.
+    A4 PORTRAIT, 1 página. Reproduz fielmente o exemplo Control iD: header azul,
+    bloco identificação sem bordas, tabela sem zebra, prefixo (P) no PREVISTO,
+    legenda I/P/M/C + Portaria 671 no rodapé, 2 assinaturas."""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
-        buf, pagesize=landscape(A4),
-        leftMargin=0.8 * cm, rightMargin=0.8 * cm,
-        topMargin=0.8 * cm, bottomMargin=0.8 * cm,
+        buf, pagesize=A4,
+        leftMargin=0.6 * cm, rightMargin=0.6 * cm,
+        topMargin=0.6 * cm, bottomMargin=0.6 * cm,
     )
     elements = _timesheet_elements(coll, year, month, days, total_worked, total_balance,
                                      company=company, praca=praca, totals_extra=totals_extra)
@@ -1604,13 +1615,12 @@ def _build_collective_pdf(items: list[dict], year: int, month: int,
                             company: dict = None) -> bytes:
     """PDF coletivo: itera por colaboradores, gera as páginas e separa com PageBreak.
     items: [{coll, days, total_worked_min, total_balance_min, totals_extra, praca}]"""
-    from reportlab.lib.pagesizes import landscape
     from reportlab.platypus import PageBreak
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
-        buf, pagesize=landscape(A4),
-        leftMargin=0.8 * cm, rightMargin=0.8 * cm,
-        topMargin=0.8 * cm, bottomMargin=0.8 * cm,
+        buf, pagesize=A4,
+        leftMargin=0.6 * cm, rightMargin=0.6 * cm,
+        topMargin=0.6 * cm, bottomMargin=0.6 * cm,
     )
     all_elements = []
     for idx, it in enumerate(items):
