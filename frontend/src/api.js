@@ -495,6 +495,17 @@ export const api = {
   waBaileysLidMap: () =>
     client.get(`/whatsapp-baileys/lid-map`).then((r) => r.data),
 
+  // === Canal Twilio (oficial WhatsApp Business) ===
+  twilioConfig: () =>
+    client.get(`/whatsapp-twilio/config`).then((r) => r.data),
+  twilioSetConfig: (account_sid, auth_token, from_number, enabled = true, sandbox = false) =>
+    client.put(`/whatsapp-twilio/config`,
+      { account_sid, auth_token, from_number, enabled, sandbox }).then((r) => r.data),
+  twilioStatus: () =>
+    client.get(`/whatsapp-twilio/status`).then((r) => r.data),
+  twilioSendTest: (phone, text) =>
+    client.post(`/whatsapp-twilio/test`, { phone, text }).then((r) => r.data),
+
   // ===== Central IA Dashboard =====
   centralIaKpis: (days = 7) =>
     client.get(`/central-ia/dashboard/kpis`, { params: { days } }).then((r) => r.data),

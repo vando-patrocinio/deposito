@@ -71,6 +71,7 @@ from routes import (
     checklist_ai as routes_checklist_ai,
     collaborator_assets as routes_collab_assets,
     vehicle_checklist as routes_vehicle_checklist,
+    whatsapp_twilio as routes_whatsapp_twilio,
     stok as routes_stok,
     users as routes_users,
     secretaria as routes_secretaria,
@@ -350,6 +351,7 @@ app.include_router(routes_plans.router)
 app.include_router(routes_branding.router)
 app.include_router(routes_collab_assets.router)
 app.include_router(routes_vehicle_checklist.router)
+app.include_router(routes_whatsapp_twilio.router)
 app.include_router(routes_checklist_ai.router)
 app.include_router(routes_secretaria.router)
 app.include_router(routes_drive.router)

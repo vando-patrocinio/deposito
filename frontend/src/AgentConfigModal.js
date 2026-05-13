@@ -3,7 +3,7 @@ import {
   X, Bot, Brain, FileText, Plug, Mic, Sparkles, Save, RotateCcw, Play,
   ChevronRight, Plus, Trash2, Star, Building2, DollarSign, User,
   Settings, Smartphone, Loader2, CheckCircle2, AlertTriangle, RefreshCw,
-  LogOut, Wand2, ArrowUpCircle, Copy, Power,
+  LogOut, Wand2, ArrowUpCircle, Copy, Power, Cloud,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -13,18 +13,20 @@ import { api } from "@/api";
    Estrutura (espelha o PDF):
    - Coluna esquerda: lista de agentes (selecionar, criar, excluir) +
      atalhos para Conectar WhatsApp.
-   - Conteúdo principal: 5 seções (nav top-bar):
+   - Conteúdo principal: 6 seções (nav top-bar):
      1. Personalidade & Expertise  (nome, info, preços, parâmetros, prioridades)
      2. Modelo de IA               (provider, model, temperature, max_tokens)
-     3. Conectar WhatsApp          (QR, status, logout)
-     4. Tools                      (checkboxes)
-     5. Auto-reply                 (toggle global + escolha do agente ativo)
+     3. Conectar WhatsApp          (QR Baileys — não-oficial)
+     4. Canal Oficial (Twilio)     (API oficial Meta · sem LID · número real)
+     5. Tools                      (checkboxes)
+     6. Auto-reply                 (toggle global + escolha do agente ativo)
 ============================================================= */
 
 const SECTIONS = [
   { id: "personality", label: "Personalidade & Expertise", icon: Brain },
   { id: "model",       label: "Modelo de IA",              icon: Sparkles },
-  { id: "whatsapp",    label: "Conectar WhatsApp",         icon: Smartphone },
+  { id: "whatsapp",    label: "WhatsApp (QR Baileys)",     icon: Smartphone },
+  { id: "twilio",      label: "Canal Oficial (Twilio)",    icon: Cloud },
   { id: "tools",       label: "Tools",                     icon: Plug },
   { id: "autoreply",   label: "Auto-reply / Ativação",     icon: Power },
 ];
@@ -420,6 +422,9 @@ export default function AgentConfigModal({ open, onClose }) {
               {section === "whatsapp" && (
                 <WhatsAppSection autoReply={autoReply} reload={reload} />
               )}
+              {section === "twilio" && (
+                <TwilioSection />
+              )}
               {section === "tools" && (
                 <ToolsSection draft={draft} patch={patch} tools={tools} />
               )}
@@ -742,6 +747,272 @@ function WhatsAppSection({ autoReply, reload }) {
               <RefreshCw size={13} /> Atualizar QR
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function TwilioSection() {
+  const [cfg, setCfg] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [flash, setFlash] = useState("");
+
+  // form
+  const [accountSid, setAccountSid] = useState("");
+  const [authToken, setAuthToken] = useState("");
+  const [fromNumber, setFromNumber] = useState("");
+  const [enabled, setEnabled] = useState(true);
+  const [sandbox, setSandbox] = useState(false);
+
+  // test
+  const [testTo, setTestTo] = useState("");
+  const [testText, setTestText] = useState("Teste SmartProv — Twilio OK ✅");
+
+  const reload = useCallback(async () => {
+    try {
+      const [c, s] = await Promise.all([
+        api.twilioConfig(),
+        api.twilioStatus().catch(() => null),
+      ]);
+      setCfg(c);
+      setStatus(s);
+      if (c?.from_number) setFromNumber(c.from_number);
+      setEnabled(!!c?.enabled);
+      setSandbox(!!c?.sandbox);
+    } catch (e) {
+      setErr(extractErrorMessage(e));
+    }
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+
+  async function save() {
+    setErr("");
+    if (!accountSid.trim() || !authToken.trim() || !fromNumber.trim()) {
+      setErr("Preencha Account SID, Auth Token e From Number.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.twilioSetConfig(accountSid.trim(), authToken.trim(),
+                                  fromNumber.trim(), enabled, sandbox);
+      setFlash("✅ Credenciais salvas.");
+      setAccountSid("");
+      setAuthToken("");
+      await reload();
+      setTimeout(() => setFlash(""), 3000);
+    } catch (e) {
+      setErr(extractErrorMessage(e));
+    } finally { setBusy(false); }
+  }
+
+  async function toggleEnabled() {
+    if (!cfg?.configured) { setErr("Configure primeiro."); return; }
+    setBusy(true);
+    try {
+      // Reusa as creds atuais (mascaradas no GET, então pegamos do form se
+      // o usuário acabou de digitar; senão, ao toggle precisamos re-enviar).
+      // Estratégia: PUT com mesmo SID/token mascarado falha — então
+      // pedimos pro user digitar de novo se quiser desligar via UI.
+      // Atalho: PUT com o objeto atual descrito (account_sid e auth_token vazios → erro).
+      // Solução: o backend aceita PUT separado se eu acrescentar; mas mantemos
+      // simples — toggle só funciona quando user digita as credenciais
+      // (caso comum: ele acabou de configurar).
+      setErr("Para alterar o status, digite as credenciais novamente abaixo e marque/desmarque 'Habilitado'.");
+    } finally { setBusy(false); }
+  }
+
+  async function sendTest() {
+    setErr("");
+    if (!testTo.trim()) { setErr("Informe o telefone destino."); return; }
+    setBusy(true);
+    try {
+      const r = await api.twilioSendTest(testTo.trim(), testText);
+      if (r.ok) {
+        setFlash(`✅ Enviada · SID: ${r.message_sid?.slice(-10) || "—"}`);
+      } else {
+        setErr(`Falha: ${r.error || "desconhecido"}`);
+      }
+      setTimeout(() => setFlash(""), 4000);
+    } catch (e) {
+      setErr(extractErrorMessage(e));
+    } finally { setBusy(false); }
+  }
+
+  function copyWebhook() {
+    const url = cfg?.webhook_url;
+    if (url) {
+      navigator.clipboard?.writeText(url);
+      setFlash("📋 URL do webhook copiada.");
+      setTimeout(() => setFlash(""), 2500);
+    }
+  }
+
+  const isHealthy = status?.status === "connected";
+  const statusMeta = (() => {
+    if (!status) return { color: "#94a3b8", label: "—" };
+    if (status.status === "connected") return { color: "#10b981", label: "CONECTADO" };
+    if (status.status === "disabled") return { color: "#94a3b8", label: "DESABILITADO" };
+    return { color: "#dc2626", label: "ERRO" };
+  })();
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <SectionTitle icon={Cloud} title="Canal Oficial — Twilio WhatsApp Business"
+                     subtitle="API oficial Meta via Twilio (BSP). Sem LID anônimo. Número real, estável, suporte global." />
+
+      {flash && (
+        <div data-testid="twilio-flash"
+              style={{ background: "#dcfce7", color: "#166534",
+                         padding: 8, borderRadius: 8, fontSize: 12, fontWeight: 700 }}>{flash}</div>
+      )}
+      {err && (
+        <div data-testid="twilio-error"
+              style={{ background: "var(--danger-soft)", color: "var(--danger-soft-fg)",
+                         padding: 10, borderRadius: 10, fontSize: 13, fontWeight: 600 }}>{err}</div>
+      )}
+
+      {/* Status atual */}
+      <div data-testid="twilio-status-card" className="surface" style={{
+        padding: 14, borderRadius: 12,
+        background: `linear-gradient(135deg, ${statusMeta.color}22, var(--bg-surface) 70%)`,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 12, background: statusMeta.color, color: "white",
+            display: "grid", placeItems: "center",
+          }}><Cloud size={20} strokeWidth={1.75} /></div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <strong style={{ fontSize: 14 }}>
+              {cfg?.configured
+                ? `Twilio ${cfg?.from_number || ""}`
+                : "Twilio não configurado"}
+            </strong>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+              {isHealthy && status?.balance
+                ? `Saldo: ${status.balance} ${status.currency || "USD"}`
+                : status?.error
+                  ? status.error.slice(0, 100)
+                  : "Configure abaixo para começar."}
+            </div>
+          </div>
+          <span data-testid="twilio-status-pill" style={{
+            padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 800,
+            background: `${statusMeta.color}22`, color: statusMeta.color,
+            border: `1px solid ${statusMeta.color}66`, letterSpacing: ".05em",
+          }}>{statusMeta.label}</span>
+        </div>
+      </div>
+
+      {/* Webhook URL */}
+      {cfg?.webhook_url && (
+        <div data-testid="twilio-webhook-card" style={{
+          padding: 12, borderRadius: 10, background: "#fef3c7",
+          border: "1px solid #fde68a", fontSize: 12, color: "#92400e",
+        }}>
+          <strong>⚙️ Configure no Twilio Console</strong>
+          <div style={{ marginTop: 4, lineHeight: 1.55 }}>
+            No painel da Twilio (Messaging → WhatsApp → Senders → seu número → A message comes in):
+            cole essa URL como webhook do WhatsApp (POST):
+          </div>
+          <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center" }}>
+            <code data-testid="twilio-webhook-url" style={{
+              flex: 1, padding: 6, background: "white", borderRadius: 4,
+              fontSize: 11, fontFamily: "ui-monospace, monospace",
+              overflow: "auto", whiteSpace: "nowrap", border: "1px solid #fde68a",
+            }}>{cfg.webhook_url}</code>
+            <button onClick={copyWebhook}
+                    data-testid="twilio-copy-webhook"
+                    style={{
+                      padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+                      border: "1px solid #f59e0b", background: "#f59e0b", color: "white",
+                      cursor: "pointer",
+                    }}>
+              <Copy size={11} /> Copiar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Form de credenciais */}
+      <div className="surface" style={{ padding: 16, borderRadius: 12 }}>
+        <h4 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800 }}>
+          Credenciais Twilio
+        </h4>
+        <p style={{ margin: "0 0 12px", fontSize: 11.5, color: "var(--text-secondary)", lineHeight: 1.55 }}>
+          Obtenha em <strong>https://console.twilio.com</strong> → Account → API keys & tokens.
+          Os valores são armazenados criptografados.
+        </p>
+
+        <Field label="Account SID" required hint="Começa com 'AC...' (34 chars)">
+          <input data-testid="twilio-field-sid" type="text"
+                  value={accountSid} onChange={(e) => setAccountSid(e.target.value)}
+                  placeholder={cfg?.account_sid || "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+                  style={inputStyle()} disabled={busy} />
+        </Field>
+
+        <Field label="Auth Token" required hint="Token primário da conta (esconda em produção).">
+          <input data-testid="twilio-field-token" type="password"
+                  value={authToken} onChange={(e) => setAuthToken(e.target.value)}
+                  placeholder={cfg?.auth_token || "Auth Token (32 chars)"}
+                  style={inputStyle()} disabled={busy} />
+        </Field>
+
+        <Field label="From Number (WhatsApp aprovado)" required
+                hint="Formato E.164. Sandbox usa +14155238886.">
+          <input data-testid="twilio-field-from" type="tel"
+                  value={fromNumber} onChange={(e) => setFromNumber(e.target.value)}
+                  placeholder="+5521998176526"
+                  style={inputStyle()} disabled={busy} />
+        </Field>
+
+        <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700 }}>
+            <input type="checkbox" checked={enabled}
+                    onChange={(e) => setEnabled(e.target.checked)}
+                    data-testid="twilio-field-enabled" />
+            Habilitar canal
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700 }}>
+            <input type="checkbox" checked={sandbox}
+                    onChange={(e) => setSandbox(e.target.checked)}
+                    data-testid="twilio-field-sandbox" />
+            Modo Sandbox (teste)
+          </label>
+        </div>
+
+        <button onClick={save} disabled={busy}
+                data-testid="twilio-save"
+                style={btnStyle("primary", busy)}>
+          <Save size={13} /> {busy ? "Salvando..." : "Salvar credenciais"}
+        </button>
+      </div>
+
+      {/* Teste de envio */}
+      {cfg?.configured && cfg?.enabled && (
+        <div className="surface" style={{ padding: 16, borderRadius: 12 }}>
+          <h4 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800 }}>
+            Enviar mensagem de teste
+          </h4>
+          <Field label="Telefone destino" hint="Use o seu próprio celular pra testar.">
+            <input data-testid="twilio-test-to" type="tel"
+                    value={testTo} onChange={(e) => setTestTo(e.target.value)}
+                    placeholder="+5521988887777"
+                    style={inputStyle()} disabled={busy} />
+          </Field>
+          <Field label="Texto">
+            <input data-testid="twilio-test-text" type="text"
+                    value={testText} onChange={(e) => setTestText(e.target.value)}
+                    style={inputStyle()} disabled={busy} />
+          </Field>
+          <button onClick={sendTest} disabled={busy}
+                  data-testid="twilio-test-send"
+                  style={btnStyle("primary", busy)}>
+            <Play size={13} /> {busy ? "Enviando..." : "Enviar teste"}
+          </button>
         </div>
       )}
     </div>

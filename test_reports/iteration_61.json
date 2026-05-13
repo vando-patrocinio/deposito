@@ -1,0 +1,43 @@
+{
+  "summary": "Structural integration test of Twilio WhatsApp Business channel (paralelo ao Baileys). Backend pytest: 7/7 PASS. Frontend UI: 100% PASS — all 11 required data-testids present, status pill correctly shows ERRO with fake creds (Twilio 401 'Authentication Error - invalid username'), form fill/save works, masked credentials shown after PUT, inbound webhook persists messages correctly. Found 1 MINOR bug: webhook_url in /config response is relative (no https:// host), preventing customer copy-paste into Twilio Console.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET/PUT /api/whatsapp-twilio/config",
+        "issue": "webhook_url returns relative path '/api/whatsapp-twilio/webhook?tenant=co-demo' instead of absolute URL. Root cause: /app/backend/routes/whatsapp_twilio.py line 128 reads os.environ.get('REACT_APP_BACKEND_URL','') but that env var is ONLY in frontend/.env. Backend/.env has PUBLIC_BACKEND_URL=https://dual-combine-3.preview.emergentagent.com — use that instead. Customer would copy '/api/whatsapp-twilio/webhook?tenant=co-demo' into Twilio Console which won't work.",
+        "priority": "HIGH"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AgentConfigModal · Twilio section", "issues": ["The webhook URL shown in twilio-webhook-url is a relative path (because backend returns it relative) — UI displays /api/whatsapp-twilio/webhook?tenant=co-demo. Copy button copies the same relative string. Once backend fix is applied, UI will automatically render correct full URL."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter61_whatsapp_twilio.py",
+    "/app/test_reports/pytest/iter61_twilio.xml"
+  ],
+  "action_items": [
+    "Fix /app/backend/routes/whatsapp_twilio.py _build_webhook_url (line 126-129): replace os.environ.get('REACT_APP_BACKEND_URL','') with os.environ.get('PUBLIC_BACKEND_URL') or os.environ.get('REACT_APP_BACKEND_URL','') as fallback so webhook URL is absolute. After fix, UI twilio-webhook-url will automatically display full https://...webhook?tenant=co-demo."
+  ],
+  "critical_code_review_comments": [
+    "whatsapp_twilio.py uses REACT_APP_BACKEND_URL inside backend code — anti-pattern. Backend should use a backend-scoped env var (PUBLIC_BACKEND_URL exists). Cross-process env coupling is fragile.",
+    "Status endpoint hits Twilio /Balance.json on every call without caching. If UI polls, this can rate-limit. Consider 30s TTL cache.",
+    "send_via_twilio + _generate_and_send_twilio_reply both insert outbound rows separately — _generate_and_send_twilio_reply inserts AFTER send_via_twilio already inserted (via send_via_twilio? no, send_via_twilio does NOT insert — only the /send endpoint does). OK, no double-insert. But _generate_and_send_twilio_reply persists even when send_result.ok=false (failed_twilio) — consider distinguishing UI ghost messages from successful ones.",
+    "Webhook signature validation: if header missing → bypassed (line 286-287). For prod, recommend rejecting unsigned requests when creds.auth_token is present. Currently anyone can POST to /webhook?tenant=co-demo and inject fake inbound msgs into history."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter61_whatsapp_twilio.py (new)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (11/11 testids visible, save flow works, status correctly reflects fake creds)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "PUT /api/whatsapp-twilio/config persisted fake creds (account_sid=AC_fake_sid_test_12345678 / auth_token=fake_token_abcdef123456 / from_number=+5521998176526) in db.whatsapp_twilio_creds for company_id=co-demo with enabled=True, sandbox=True. Inbound webhook simulation inserted 1 message in db.aihub_wa_messages (channel=twilio, direction=inbound, phone=5511988887777, text='oi twilio iter61'). Original user note says ok to leave fake creds — channel will simply show ERRO until real creds.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Twilio testids all wired: agent-config-section-twilio, twilio-status-card, twilio-status-pill (texts: DESABILITADO/CONECTADO/ERRO), twilio-field-sid/token/from/enabled/sandbox, twilio-save, twilio-flash, twilio-webhook-card, twilio-webhook-url, twilio-copy-webhook, twilio-test-to/text/send. Webhook is PUBLIC (no auth) — Twilio calls it. Signature validation is HMAC-SHA1 and is BYPASSED when X-Twilio-Signature header is absent (intentional for first config). Auto-reply pipeline integrated via routes.whatsapp_baileys._maybe_auto_reply → falls into _generate_and_send_twilio_reply (uses services.routing.pick_agent_for_message + services.motor_ia.chat_completion). With fake creds + enabled=True, the LLM will generate a reply but send_via_twilio will fail (401), creating a row with delivery_status='failed_twilio'. To avoid polluting auto-reply history during retest, set enabled=False via PUT /config before sending webhook simulations.",
+  "rca of the issue": "Webhook URL relative-path bug: routes/whatsapp_twilio.py line 128 → os.environ.get('REACT_APP_BACKEND_URL','') returns '' because REACT_APP_BACKEND_URL only exists in frontend/.env (not backend/.env). _build_webhook_url then returns ''.rstrip('/') + '/api/whatsapp-twilio/webhook?tenant=' + cid = '/api/whatsapp-twilio/webhook?tenant=co-demo'. Fix: use PUBLIC_BACKEND_URL from backend/.env (already set to https://dual-combine-3.preview.emergentagent.com)."
+}
