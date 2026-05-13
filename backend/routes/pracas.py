@@ -149,7 +149,18 @@ async def delete_praca(pid: str, user: dict = Depends(require_role("gestor"))):
     return {"ok": True}
 
 
-async def _ai_discover_holidays(city: str, state: str, year: int) -> list[dict]:
+async def _ai_discover_holidays(city: str, state: str, year: int,
+                                  neighborhood: str | None = None,
+                                  full_address: str | None = None) -> list[dict]:
+    # Monta contexto de localização — quanto mais específico, melhor a IA acerta
+    # feriados de padroeira local, aniversário de bairro, etc.
+    location_lines = [f"Cidade: {city} - {state} (Brasil)"]
+    if neighborhood:
+        location_lines.append(f"Bairro: {neighborhood}")
+    if full_address:
+        location_lines.append(f"Endereço de referência: {full_address}")
+    location_block = "\n".join(location_lines)
+
     chat = await llm_chat(
         session_id=f"holidays-{state}-{city}-{year}-{uuid.uuid4().hex[:6]}",
         system=(
@@ -157,12 +168,15 @@ async def _ai_discover_holidays(city: str, state: str, year: int) -> list[dict]:
             "Responda APENAS com um JSON válido no formato: "
             '{"holidays": [{"date": "YYYY-MM-DD", "name": "string", "scope": "estadual|municipal|facultativo"}]}. '
             "Não inclua feriados nacionais (ex.: 1º Janeiro, 7 Setembro, 25 Dezembro) — só estaduais e municipais. "
+            "Considere o endereço fornecido: se houver bairro, inclua feriados específicos do bairro/distrito "
+            "(ex.: dia da padroeira, aniversário do bairro, festa religiosa local). "
             "Inclua datas reais e amplamente reconhecidas. Se não tiver certeza absoluta de uma data, omita-a. "
             "Retorne lista vazia se não houver feriados específicos."
         ),
     )
     msg = UserMessage(text=(
-        f"Quais são os feriados ESTADUAIS e MUNICIPAIS da cidade de {city} - {state}, Brasil, no ano de {year}? "
+        f"Quais são os feriados ESTADUAIS, MUNICIPAIS e LOCAIS (bairro/distrito) para o seguinte local, "
+        f"no ano de {year}?\n\n{location_block}\n\n"
         "Inclua também pontos facultativos amplamente observados (carnaval — terça e quarta de cinzas até meio-dia, "
         "Corpus Christi se for estadual). Datas no formato ISO YYYY-MM-DD."
     ))
@@ -198,7 +212,11 @@ async def discover_holidays(pid: str, year: int, _user: dict = Depends(require_r
     if year < 2000 or year > 2100:
         raise HTTPException(400, "Ano inválido")
     try:
-        suggestions = await _ai_discover_holidays(praca["city"], praca["state"], year)
+        suggestions = await _ai_discover_holidays(
+            praca["city"], praca["state"], year,
+            neighborhood=praca.get("neighborhood"),
+            full_address=praca.get("full_address"),
+        )
     except Exception as e:
         err_str = str(e)
         logger.exception("[ai_discover_holidays] erro: %s", e)

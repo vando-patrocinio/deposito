@@ -125,8 +125,19 @@ function AiHolidaysModal({ open, praca, onClose, onApplied }) {
         </div>
         <div style={{ overflowY: "auto", padding: "0 22px 22px" }}>
           <p style={{ color: "#64748b", margin: "0 0 12px", fontSize: 13 }}>
-            A IA vai sugerir feriados <strong>estaduais</strong> e <strong>municipais</strong> de
-            <strong> {praca.city} - {praca.state}</strong> (não inclui nacionais — esses já vêm da BrasilAPI).
+            A IA vai sugerir feriados <strong>estaduais</strong>, <strong>municipais</strong> e
+            <strong> locais (bairro/distrito)</strong> de
+            <strong> {praca.city} - {praca.state}</strong>
+            {praca.neighborhood && <> · <em>bairro {praca.neighborhood}</em></>}
+            {praca.full_address && (
+              <span style={{ display: "block", fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                📍 {praca.full_address}
+              </span>
+            )}
+            <br/>
+            <span style={{ fontSize: 12, color: "#94a3b8" }}>
+              (Feriados nacionais não são incluídos — eles vêm da BrasilAPI.)
+            </span>
           </p>
 
           <div style={{ display: "flex", gap: 8, alignItems: "end", marginBottom: 12 }}>
