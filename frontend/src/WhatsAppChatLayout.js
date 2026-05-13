@@ -5,8 +5,10 @@ import {
   CheckCircle2, GraduationCap, ChevronDown, ChevronUp, Lightbulb,
   Wifi, WifiOff, Activity, Info, Signal, MapPin, Phone, CreditCard,
   AlertCircle, Sparkles, Lock, AlertTriangle, ClipboardList, RefreshCw,
+  Settings,
 } from "lucide-react";
 import { api } from "@/api";
+import AgentConfigModal from "@/AgentConfigModal";
 
 /* =============================================================
    FocusChat-style 3-column WhatsApp UI
@@ -228,6 +230,14 @@ export default function WhatsAppChatLayout() {
     }
   }
 
+  // === Config modal ===
+  const [configOpen, setConfigOpen] = useState(false);
+  const openConfig = useCallback(() => setConfigOpen(true), []);
+  const closeConfig = useCallback(() => {
+    setConfigOpen(false);
+    loadHealth(); // recarrega health após mudanças no modal
+  }, [loadHealth]);
+
   return (
     <div data-testid="wa-chat-layout" style={{
       display: "grid",
@@ -243,7 +253,9 @@ export default function WhatsAppChatLayout() {
         onToggleAutoReply={toggleAutoReply}
         toggling={toggling}
         onReload={loadHealth}
+        onOpenConfig={openConfig}
       />
+      <AgentConfigModal open={configOpen} onClose={closeConfig} />
       {attendantFilter?.user_id && (
         <div data-testid="attendant-filter-banner" style={{
           display: "flex", alignItems: "center", gap: 10,
@@ -2028,7 +2040,7 @@ function AttendantKpiStrip({ kpi }) {
    AiHealthBanner — diagnóstico da Isabela IA.
    Sempre visível: chip compacto + popover com razões + CTA "Ativar".
 ============================================================= */
-function AiHealthBanner({ health, open, setOpen, onToggleAutoReply, toggling, onReload }) {
+function AiHealthBanner({ health, open, setOpen, onToggleAutoReply, toggling, onReload, onOpenConfig }) {
   const status = health?.status || "loading";
   const isLoading = !health;
   const meta = useMemo(() => {
@@ -2072,6 +2084,17 @@ function AiHealthBanner({ health, open, setOpen, onToggleAutoReply, toggling, on
             </span>
           )}
           <span style={{ flex: 1 }} />
+          <button
+            data-testid="wa-open-agent-config"
+            onClick={onOpenConfig}
+            style={{
+              padding: "4px 12px", borderRadius: 999, fontSize: 11, fontWeight: 800,
+              border: "1px solid #7c3aed", background: "#7c3aed", color: "white",
+              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4,
+            }}
+          >
+            <Settings size={11} /> Configurar Robô
+          </button>
           {status !== "healthy" && health.reasons?.some((r) => r.code === "auto_reply_off") && (
             <button
               data-testid="wa-ai-enable-btn"

@@ -1,0 +1,27 @@
+{
+  "summary": "FRONTEND-ONLY E2E testing of new AgentConfigModal ('Configurar Robô' popup) on the Atendimento IA banner. All 9 specified assertions PASSED. Button opens the modal, all 5 sections (personality/model/whatsapp/tools/autoreply) render with their expected data-testids; Isabella selected by default with prefilled fields; model section loads 6 options; WhatsApp section shows status CONECTADO with logout button (instance is connected); Tools section shows 6 tools, toggling triggers dirty footer + enables Save; Auto-reply section shows card/status/active checkbox/toggle; new agent flow creates 'Bot Teste E2E' (success flash visible), new row appears in sidebar, deletion via window.confirm works (cleanup OK), modal closes and banner stays visible (regression OK).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AgentConfigModal sidebar row", "issues": ["Cosmetic: avatar initial letter renders glued to the agent name in compact width (e.g. 'BBot Teste E2E', 'IIsabella') because the 30x30 avatar and the name share the same line without a visual gap when the row text is concatenated via textContent — visual rendering itself is fine (separate elements), but consider adding an explicit space if used in screen readers/snapshots."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AgentConfigModal.js (~862 lines) is on the edge of the 700-line guideline — consider splitting each Section component into its own file (PersonalitySection, ModelSection, WhatsAppSection, ToolsSection, AutoReplySection) for maintainability.",
+    "WhatsAppSection useEffect polls every 3s/8s and depends on `status` — every status change re-creates the interval. Functional but slightly wasteful; consider single ref-based interval.",
+    "BLANK_AGENT initial_message contains an emoji and a Portuguese string; fine, but value isn't applied to a brand-new agent because `startNew` overrides with empty placeholder behaviour. Currently it does spread BLANK_AGENT so initial_message default works — OK.",
+    "No optimistic UI for delete: relies on reload(). Acceptable.",
+    "All interactive elements DO have data-testid coverage — good."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (40/40 assertions passed)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Created 'Bot Teste E2E' agent during test, deleted via UI confirm dialog. DB returned to baseline (only 'Isabella' agent remaining).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "AgentConfigModal is fully wired and stable. Backend endpoints used (/api/aihub/agents CRUD, /api/aihub/catalog/models, /api/aihub/catalog/tools, /api/whatsapp/baileys/qr|status|logout|auto-reply) all responded successfully via this modal. WhatsApp Baileys instance is currently CONNECTED (number +5521965680949). Isabella agent is the seeded one and is using gpt-5-mini. 6 models and 6 tools available in catalogs. window.confirm-based delete works with page.on('dialog', accept)."
+}
