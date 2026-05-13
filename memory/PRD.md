@@ -242,6 +242,22 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
   - Bloco "Enviar mensagem de teste" (aparece quando configurado)
 - Validado E2E (testing_agent iter61): 7/7 backend pytest + 100% frontend (11 testids) + webhook URL absoluta após fix. Fake creds geram "ERRO Authentication" como esperado.
 
+✅ **Fluxograma IA · cards clicáveis + drag-and-drop** (13/05/2026 — iter64):
+- `AiTopologyCard.js` — todos os 12 nós (não só Motor IA) ficaram clicáveis. Clicar abre **`NodeDetailModal`** com:
+  - Header colorido + ícone + título + métricas (chamadas/24h, sessões ativas, etc)
+  - Descrição funcional (rica em PT-BR)
+  - Chips de modelo (claude-sonnet-4.5, gpt-4o, etc) + tipo (núcleo, agente IA, humano) + métrica
+  - **"O QUE ESTA IA FAZ"** — lista de ações reais (4-5 bullet points por nó)
+  - **"CONEXÕES ATIVAS (24h)"** — edges entrantes (`←` azul) e saindo (`→` verde) com contadores
+  - **"FLUXOS DOCUMENTADOS"** — descrições narrativas de quem conversa com quem
+  - Dica de drag
+- **Drag-and-drop** com mouse: `nodeMouseDown` calcula offset em coords SVG, `mousemove` global move o nó preservando dentro do viewBox 60-W-60/40-H-40, `mouseup` persiste em **localStorage** (`smartprov.ai_topology.positions.v1`).
+- **Cursor visual**: `grab` ao passar, `grabbing` ao arrastar, opacity .55 nos não-dragged.
+- **Botão "⟲ Resetar posições"** aparece no header só quando há overrides — `window.confirm` antes de limpar.
+- Mantém comportamento legado do Motor IA (clique abre `MotorIaAgentsModal` em vez do NodeDetailModal).
+- **`ACTIONS_MAP`** (constante no arquivo) documenta as ações + conexões de cada 10 IAs (motor, smartolt, atendimento, copilot, evaluator, coach, learning, sentinela, lousa_ai, secretaria). Fácil de editar no futuro.
+- Validado screenshot: SmartOLT clicado → modal com 4 actions + 5 conexões. Drag de 200px persistido em localStorage + botão reset apareceu.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)

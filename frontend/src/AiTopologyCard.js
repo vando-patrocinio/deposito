@@ -1,13 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/api";
 import {
   Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
   Loader2, Activity, Shield, ClipboardList, Wand2, Cpu, Headphones,
+  X, Move, RotateCcw, ArrowRight, ArrowLeft, Tag, Power, Zap,
 } from "lucide-react";
 import MotorIaAgentsModal from "@/MotorIaAgentsModal";
 
 const ICONS = { Radio, Bot, Award, GraduationCap, Sparkles, Users, User, Lightbulb,
   Shield, ClipboardList, Wand: Wand2, Cpu, Headphones };
+
+const POSITIONS_KEY = "smartprov.ai_topology.positions.v1";
 
 /* Layout 2026 — Hub-and-spoke:
    - Motor IA no CENTRO (núcleo orquestrador)
@@ -68,6 +71,32 @@ export default function AiTopologyCard() {
   const [refreshing, setRefreshing] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
 
+  // Detail popup do nó clicado
+  const [selectedNode, setSelectedNode] = useState(null);
+
+  // Posições customizadas (drag) — persistidas em localStorage
+  const [overrides, setOverrides] = useState(() => {
+    try {
+      const raw = localStorage.getItem(POSITIONS_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+
+  // Drag state em ref para não disparar re-render no movimento
+  const svgRef = useRef(null);
+  const dragRef = useRef(null);
+  const [dragId, setDragId] = useState(null);
+
+  const persistOverrides = useCallback((next) => {
+    setOverrides(next);
+    try { localStorage.setItem(POSITIONS_KEY, JSON.stringify(next)); } catch {}
+  }, []);
+
+  const resetPositions = useCallback(() => {
+    if (!window.confirm("Restaurar posições padrão de todos os cards?")) return;
+    persistOverrides({});
+  }, [persistOverrides]);
+
   const reload = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -87,8 +116,78 @@ export default function AiTopologyCard() {
   const layout = useMemo(() => {
     if (!data) return {};
     const humans = data.nodes.filter((n) => n.kind === "human");
-    return { ...AI_LAYOUT, ...humanLayout(humans) };
-  }, [data]);
+    const base = { ...AI_LAYOUT, ...humanLayout(humans) };
+    // aplica overrides do usuário
+    for (const [id, pos] of Object.entries(overrides)) {
+      if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
+        base[id] = pos;
+      }
+    }
+    return base;
+  }, [data, overrides]);
+
+  // Drag handlers
+  const justDraggedRef = useRef(false);
+  function nodeMouseDown(e, nodeId) {
+    if (!svgRef.current) return;
+    e.stopPropagation();
+    const svg = svgRef.current;
+    const pt = svg.createSVGPoint();
+    const startCTM = svg.getScreenCTM().inverse();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const start = pt.matrixTransform(startCTM);
+    const nodePos = layout[nodeId];
+    if (!nodePos) return;
+    dragRef.current = {
+      nodeId,
+      offsetX: start.x - nodePos.x,
+      offsetY: start.y - nodePos.y,
+      moved: false,
+    };
+    setDragId(nodeId);
+  }
+
+  useEffect(() => {
+    function onMove(ev) {
+      const d = dragRef.current;
+      if (!d || !svgRef.current) return;
+      const svg = svgRef.current;
+      const pt = svg.createSVGPoint();
+      pt.x = ev.clientX; pt.y = ev.clientY;
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return;
+      const loc = pt.matrixTransform(ctm.inverse());
+      const x = Math.max(60, Math.min(W - 60, loc.x - d.offsetX));
+      const y = Math.max(40, Math.min(H - 40, loc.y - d.offsetY));
+      d.moved = true;
+      setOverrides((prev) => ({ ...prev, [d.nodeId]: { x, y } }));
+    }
+    function onUp() {
+      const d = dragRef.current;
+      if (!d) return;
+      if (d.moved) {
+        justDraggedRef.current = true;
+        setTimeout(() => { justDraggedRef.current = false; }, 50);
+        setOverrides((curr) => {
+          try { localStorage.setItem(POSITIONS_KEY, JSON.stringify(curr)); } catch {}
+          return curr;
+        });
+      }
+      dragRef.current = null;
+      setDragId(null);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  function handleNodeClick(e, node) {
+    e.stopPropagation();
+    setSelectedNode(node);
+  }
 
   const maxEdgeValue = data
     ? Math.max(1, ...data.edges.map((e) => e.value || 0))
@@ -138,6 +237,20 @@ export default function AiTopologyCard() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8,
                          fontSize: 11, color: "var(--text-muted)" }}>
+          {Object.keys(overrides).length > 0 && (
+            <button
+              onClick={resetPositions}
+              data-testid="ai-topology-reset-positions"
+              title="Restaurar layout original"
+              style={{
+                padding: "3px 10px", borderRadius: 6, fontSize: 10.5, fontWeight: 700,
+                border: "1px solid var(--border-default)",
+                background: "var(--bg-surface)", color: "var(--text-secondary)",
+                cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4,
+              }}>
+              <RotateCcw size={11} /> Resetar posições
+            </button>
+          )}
           {refreshing
             ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
             : <Activity size={12} style={{ color: "#16a34a" }} />}
@@ -199,8 +312,10 @@ export default function AiTopologyCard() {
         border: "1px solid var(--border-default)",
         overflow: "hidden",
       }}>
-        <svg viewBox={`0 0 ${W} ${H}`}
-              style={{ width: "100%", height: "auto", display: "block" }}
+        <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`}
+              style={{ width: "100%", height: "auto", display: "block",
+                          userSelect: dragId ? "none" : "auto",
+                          cursor: dragId ? "grabbing" : "default" }}
               data-testid="ai-topology-svg">
           <defs>
             <radialGradient id="motor-glow">
@@ -276,8 +391,21 @@ export default function AiTopologyCard() {
               <g key={n.id}
                   transform={`translate(${pos.x - nodeW / 2} ${pos.y - nodeH / 2})`}
                   data-testid={`flow-node-${n.id}`}
-                  onClick={isCore ? () => setAgentsOpen(true) : undefined}
-                  style={isCore ? { cursor: "pointer" } : undefined}>
+                  onMouseDown={(e) => nodeMouseDown(e, n.id)}
+                  onClick={(e) => {
+                    if (justDraggedRef.current) return; // suprime click após drag
+                    if (isCore) {
+                      // Motor IA mantém comportamento legado (abre modal de agentes)
+                      setAgentsOpen(true);
+                      return;
+                    }
+                    handleNodeClick(e, n);
+                  }}
+                  style={{
+                    cursor: dragId === n.id ? "grabbing" : "grab",
+                    opacity: dragId && dragId !== n.id ? 0.55 : 1,
+                    transition: dragId === n.id ? "none" : "opacity 0.15s ease",
+                  }}>
                 {isCore && (
                   <>
                     <circle cx={nodeW/2} cy={nodeH/2} r={nodeW * 0.85}
@@ -416,6 +544,14 @@ export default function AiTopologyCard() {
         </div>
       )}
       {agentsOpen && <MotorIaAgentsModal onClose={() => setAgentsOpen(false)} />}
+      {selectedNode && (
+        <NodeDetailModal
+          node={selectedNode}
+          edges={data?.edges || []}
+          allNodes={data?.nodes || []}
+          onClose={() => setSelectedNode(null)}
+        />
+      )}
     </div>
   );
 }
@@ -512,3 +648,348 @@ function KpiPill({ label, value, color }) {
     </div>
   );
 }
+
+/* =============================================================
+   ACTIONS_MAP — descreve as ações que cada IA executa.
+   Editar aqui é a forma mais simples de manter o painel atualizado.
+============================================================= */
+const ACTIONS_MAP = {
+  motor: {
+    description: "Orquestrador central — roteia todas as chamadas LLM para o provider correto e enforce rate limits/budget.",
+    actions: [
+      "Multiplexa OpenAI, Anthropic, Gemini via Emergent LLM Key",
+      "Aplica purpose-based throttling (atendimento, evaluator, coach, etc)",
+      "Persiste cada chamada em motor_ia_calls para audit + custos",
+      "Distribui modelos por agente (atendimento vs default)",
+    ],
+    connections: [
+      "Recebe TODA chamada LLM das IAs filhas",
+      "Retorna texto/JSON sem expor a key",
+      "Bloqueia se budget mensal for excedido",
+    ],
+  },
+  smartolt: {
+    description: "Detecta quedas de rede analisando logs OLT + correlaciona com clientes afetados.",
+    actions: [
+      "Polling do SmartOLT a cada 60s",
+      "Identifica ONU offline em massa (≥5 simultâneas)",
+      "Pede a Claude analisar a causa raiz (cabo, energia, splitter)",
+      "Cria network_outage e injeta contexto no Atendimento IA",
+    ],
+    connections: [
+      "→ Atendimento IA: avisa cliente afetado proativamente",
+      "→ Sentinela Lousa: dispara alerta para gestores",
+      "→ Lousa AI: pré-classifica tickets relacionados como 'rede regional'",
+    ],
+  },
+  atendimento: {
+    description: "Isabella — atende cliente final no WhatsApp 24/7 com personalidade configurável.",
+    actions: [
+      "Lê mensagem inbound + recupera contexto subscriber",
+      "Roteia para Isabella/Bruno/Jerusa conforme intent (multi-agente)",
+      "Gera resposta cordial em PT-BR + envia via Baileys ou Twilio",
+      "Detecta intenção de cancelamento/upsell → marca tags",
+      "Transfere pra humano se confidence < threshold ou pedido explícito",
+    ],
+    connections: [
+      "← Motor IA (LLM)",
+      "← SmartOLT (contexto de queda)",
+      "← Aprendizado (few-shot CSAT≥8)",
+      "→ Coach IA (avalia cada conversa)",
+      "→ Avaliador IA (CSAT/sentimento)",
+      "→ Humanos (handover quando precisar)",
+    ],
+  },
+  copilot: {
+    description: "Co-Pilot — gera sugestão de resposta para o atendente humano em tempo real (cliente NÃO vê).",
+    actions: [
+      "Trigga quando humano abre uma conversa",
+      "Analisa últimas 5 mensagens + dados do subscriber",
+      "Sugere resposta + escalas alternativas",
+      "Loga aceitação/rejeição do atendente para fine-tune",
+    ],
+    connections: [
+      "← Motor IA",
+      "→ Cada atendente humano (overlay no chat)",
+      "→ Coach IA (mede aceitação por atendente)",
+    ],
+  },
+  evaluator: {
+    description: "Avaliador — pontua cada conversa fechada com CSAT, sentimento e flag de FCR (resolveu em 1 contato?).",
+    actions: [
+      "Roda a cada 10min em conversas com status=closed",
+      "Gera score 0-10 + classificação (positivo/neutro/negativo)",
+      "Detecta tópicos não resolvidos para retomar",
+      "Alimenta o pipeline de Aprendizado com casos CSAT≥8",
+    ],
+    connections: [
+      "← Atendimento IA + Humanos",
+      "→ Central IA (dashboard)",
+      "→ Aprendizado (few-shot)",
+      "→ Coach IA (recomenda treino)",
+    ],
+  },
+  coach: {
+    description: "Coach — gera recomendações pós-conversa para o atendente humano evoluir tecnicamente.",
+    actions: [
+      "Analisa conversa fechada vs benchmark da equipe",
+      "Identifica gap específico (tempo médio, empatia, resolução)",
+      "Gera 1-3 dicas inline no chat",
+      "Envia push semanal de Top 3 áreas de melhoria",
+    ],
+    connections: [
+      "← Avaliador IA",
+      "→ Cada atendente humano (recomendações personalizadas)",
+      "→ Central IA (ranking de evolução)",
+    ],
+  },
+  learning: {
+    description: "Aprendizado — coleta as melhores conversas (CSAT≥8) e injeta como few-shot no prompt do Atendimento.",
+    actions: [
+      "Filtra conversas com CSAT≥8 nos últimos 30 dias",
+      "Indexa por intent (cancelamento, suporte, vendas, etc)",
+      "Reescreve para anonimizar (LGPD)",
+      "Injeta top-3 exemplos relevantes a cada nova conversa",
+    ],
+    connections: [
+      "← Avaliador IA (filtra os bons)",
+      "→ Atendimento IA (few-shot)",
+    ],
+  },
+  sentinela: {
+    description: "Sentinela Lousa — monitora chamados parados e padrões anormais; alerta gestores.",
+    actions: [
+      "Roda a cada 5min nos tickets ativos",
+      "Detecta SLA estourado, chamados sem update >24h",
+      "Identifica clusters geográficos suspeitos (várias OS na mesma rua)",
+      "Envia push pro gestor + chip vermelho na Lousa",
+    ],
+    connections: [
+      "← SmartOLT (correlação rede)",
+      "← Lousa (tickets em tempo real)",
+      "→ Gestor (alertas push/WhatsApp)",
+    ],
+  },
+  lousa_ai: {
+    description: "Lousa AI Triagem — classifica tickets novos por categoria, urgência e técnico sugerido.",
+    actions: [
+      "Lê descrição livre do chamado",
+      "Classifica: categoria, urgência (P0-P3), tipo (visita/remoto)",
+      "Sugere técnico baseado em geo + carga + skill",
+      "Pre-preenche checklist veicular e EPIs do serviço",
+    ],
+    connections: [
+      "← Lousa (tickets novos)",
+      "← SmartOLT (contexto rede)",
+      "→ Kanban (move pra coluna correta)",
+      "→ Sentinela (se P0 dispara alerta)",
+    ],
+  },
+  secretaria: {
+    description: "Secretária IA Ligo — atende ligação telefônica, transcreve áudio, responde com TTS.",
+    actions: [
+      "Recebe webhook SIP da chamada entrante",
+      "Transcreve áudio (Whisper) em tempo real",
+      "Gera resposta (Claude) + voz natural (ElevenLabs)",
+      "Salva resumo da ligação no CRM",
+    ],
+    connections: [
+      "← Cliente final (voz)",
+      "← Motor IA",
+      "→ Drive backup (áudio relevante)",
+    ],
+  },
+};
+
+function NodeDetailModal({ node, edges, allNodes, onClose }) {
+  const info = ACTIONS_MAP[node.id] || {
+    description: node.subtitle || "Componente do fluxo de IA.",
+    actions: [],
+    connections: [],
+  };
+  // Calcula edges reais que tocam esse nó
+  const incoming = edges.filter((e) => e.to === node.id);
+  const outgoing = edges.filter((e) => e.from === node.id);
+  const nodeMap = Object.fromEntries(allNodes.map((n) => [n.id, n]));
+  const Icon = ICONS[node.icon] || Bot;
+  return (
+    <div onClick={onClose}
+         data-testid="ai-node-modal"
+         style={{
+           position: "fixed", inset: 0, background: "rgba(15,23,42,.6)",
+           display: "grid", placeItems: "center", zIndex: 9999, padding: 16,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "var(--bg-surface)", borderRadius: 16,
+             width: "min(720px, 96vw)", maxHeight: "90vh",
+             overflow: "hidden", display: "grid", gridTemplateRows: "auto 1fr",
+             boxShadow: "0 24px 80px rgba(0,0,0,.4)",
+           }}>
+        {/* Header */}
+        <header style={{
+          padding: "16px 22px", display: "flex", alignItems: "center", gap: 12,
+          background: `linear-gradient(135deg, ${node.color}22, var(--bg-surface) 70%)`,
+          borderBottom: "1px solid var(--border-default)",
+        }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 12, background: node.color,
+            color: "white", display: "grid", placeItems: "center", flexShrink: 0,
+          }}>
+            <Icon size={22} strokeWidth={1.75} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 data-testid="ai-node-modal-title"
+                style={{ margin: 0, fontSize: 18, fontWeight: 800, letterSpacing: "-0.01em" }}>
+              {node.label}
+            </h2>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+              {node.subtitle} · <strong>{node.metric}</strong>
+            </div>
+          </div>
+          <button onClick={onClose} data-testid="ai-node-modal-close"
+                  style={{
+                    padding: 6, borderRadius: 8, border: "1px solid var(--border-default)",
+                    background: "var(--bg-surface)", color: "var(--text-secondary)",
+                    cursor: "pointer",
+                  }}>
+            <X size={18} />
+          </button>
+        </header>
+
+        {/* Body */}
+        <div style={{ overflow: "auto", padding: 18, display: "grid", gap: 18 }}>
+          {info.description && (
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: "var(--text-primary)" }}>
+              {info.description}
+            </p>
+          )}
+
+          {/* Chips de modelo/kind */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {node.model && (
+              <span style={{
+                padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+                background: "var(--bg-surface-2)", color: "var(--text-secondary)",
+                border: "1px solid var(--border-default)",
+              }}>
+                <Tag size={10} style={{ marginRight: 4 }} />
+                {node.model}
+              </span>
+            )}
+            <span style={{
+              padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+              background: "#7c3aed12", color: "#7c3aed",
+              border: "1px solid #7c3aed44",
+            }}>
+              <Power size={10} style={{ marginRight: 4 }} />
+              {node.kind === "core" ? "Núcleo orquestrador"
+                : node.kind === "ai" ? "Agente IA"
+                : node.kind === "human" ? "Atendente humano"
+                : node.kind}
+            </span>
+            <span style={{
+              padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+              background: "#10b98112", color: "#047857",
+              border: "1px solid #10b98144",
+            }}>
+              <Zap size={10} style={{ marginRight: 4 }} /> {node.metric_sub || "—"}
+            </span>
+          </div>
+
+          {/* Ações */}
+          {info.actions.length > 0 && (
+            <section data-testid="ai-node-actions">
+              <h3 style={{
+                margin: "0 0 8px", fontSize: 11, color: "var(--text-muted)",
+                fontWeight: 800, letterSpacing: ".06em",
+              }}>O QUE ESTA IA FAZ</h3>
+              <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13.5, lineHeight: 1.6 }}>
+                {info.actions.map((a, i) => (
+                  <li key={i} style={{ marginBottom: 4 }}>{a}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Conexões reais detectadas */}
+          {(incoming.length > 0 || outgoing.length > 0) && (
+            <section data-testid="ai-node-connections">
+              <h3 style={{
+                margin: "0 0 8px", fontSize: 11, color: "var(--text-muted)",
+                fontWeight: 800, letterSpacing: ".06em",
+              }}>CONEXÕES ATIVAS (24h)</h3>
+              <div style={{ display: "grid", gap: 6 }}>
+                {incoming.map((e, i) => {
+                  const src = nodeMap[e.from];
+                  return (
+                    <div key={`in-${i}`} style={{
+                      display: "flex", gap: 8, alignItems: "center",
+                      padding: 8, background: "var(--bg-surface-2)", borderRadius: 8,
+                      fontSize: 12,
+                    }}>
+                      <ArrowLeft size={14} color="#0ea5e9" strokeWidth={2.5} />
+                      <strong>{src?.label || e.from}</strong>
+                      <span style={{ color: "var(--text-muted)" }}>{e.label || "fluxo"}</span>
+                      <span style={{ marginLeft: "auto", fontWeight: 700, color: "#0ea5e9" }}>
+                        {e.value ?? "—"}
+                      </span>
+                    </div>
+                  );
+                })}
+                {outgoing.map((e, i) => {
+                  const tgt = nodeMap[e.to];
+                  return (
+                    <div key={`out-${i}`} style={{
+                      display: "flex", gap: 8, alignItems: "center",
+                      padding: 8, background: "var(--bg-surface-2)", borderRadius: 8,
+                      fontSize: 12,
+                    }}>
+                      <ArrowRight size={14} color="#16a34a" strokeWidth={2.5} />
+                      <strong>{tgt?.label || e.to}</strong>
+                      <span style={{ color: "var(--text-muted)" }}>{e.label || "fluxo"}</span>
+                      <span style={{ marginLeft: "auto", fontWeight: 700, color: "#16a34a" }}>
+                        {e.value ?? "—"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* Conexões documentadas (do ACTIONS_MAP) */}
+          {info.connections.length > 0 && (
+            <section data-testid="ai-node-docs-connections">
+              <h3 style={{
+                margin: "0 0 8px", fontSize: 11, color: "var(--text-muted)",
+                fontWeight: 800, letterSpacing: ".06em",
+              }}>FLUXOS DOCUMENTADOS</h3>
+              <ul style={{ margin: 0, paddingLeft: 20, fontSize: 12.5, lineHeight: 1.6,
+                            color: "var(--text-secondary)" }}>
+                {info.connections.map((c, i) => (
+                  <li key={i} style={{ marginBottom: 3 }}>{c}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Dica de drag */}
+          <div style={{
+            padding: 10, background: "#f0f9ff",
+            border: "1px solid #bae6fd", borderRadius: 8,
+            fontSize: 11.5, color: "#075985",
+            display: "flex", alignItems: "center", gap: 6,
+          }}>
+            <Move size={14} />
+            <span>
+              <strong>Dica:</strong> arraste qualquer card no fluxograma para reorganizar.
+              As posições são salvas automaticamente.
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
