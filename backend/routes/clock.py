@@ -987,14 +987,28 @@ async def timesheet(cid: str, year: int, month: int):
         by_date.setdefault(r["date"], []).append(r)
     holidays_list = await get_cached_holidays(year, "national")
     holidays_map = {h["date"]: {**h, "scope": "national"} for h in holidays_list}
-    if coll.get("praca_id"):
-        praca = await db.pracas.find_one({"id": coll["praca_id"]}, {"_id": 0})
-        if praca:
+
+    # ----- Feriados de TODAS as praças do colaborador (principal + adicionais) -----
+    praca_ids_check: list[str] = []
+    if coll.get("praca_id") and coll["praca_id"] != "NOTA":
+        praca_ids_check.append(coll["praca_id"])
+    for pid in (coll.get("praca_ids_extra") or []):
+        if pid and pid != "NOTA" and pid not in praca_ids_check:
+            praca_ids_check.append(pid)
+    if praca_ids_check:
+        pracas_docs = await db.pracas.find(
+            {"id": {"$in": praca_ids_check}}, {"_id": 0},
+        ).to_list(length=20)
+        for praca in pracas_docs:
             for h in praca.get("holidays_extra", []) or []:
                 d = h.get("date")
                 if d and d.startswith(f"{year:04d}-{month:02d}"):
                     if d not in holidays_map:
-                        holidays_map[d] = {**h, "scope": h.get("scope", "municipal")}
+                        holidays_map[d] = {
+                            **h,
+                            "scope": h.get("scope", "municipal"),
+                            "from_praca": praca.get("name"),
+                        }
     today_s = today_str()
     days = []
     total_worked = 0
