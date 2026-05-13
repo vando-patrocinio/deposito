@@ -152,11 +152,19 @@ async def delete_praca(pid: str, user: dict = Depends(require_role("gestor"))):
 async def _ai_discover_holidays(city: str, state: str, year: int,
                                   neighborhood: str | None = None,
                                   full_address: str | None = None) -> list[dict]:
-    # Monta contexto de localização — quanto mais específico, melhor a IA acerta
-    # feriados de padroeira local, aniversário de bairro, etc.
-    location_lines = [f"Cidade: {city} - {state} (Brasil)"]
+    """REGRA DURA: a IA só pode sugerir feriados que sejam OFICIAIS em:
+       - país: Brasil
+       - estado: {state}
+       - município: {city}
+    Tudo que não bater nas 3 chaves é descartado pós-resposta."""
+    country = "Brasil"
+    location_lines = [
+        f"País: {country}",
+        f"Estado (UF): {state}",
+        f"Município: {city}",
+    ]
     if neighborhood:
-        location_lines.append(f"Bairro: {neighborhood}")
+        location_lines.append(f"Bairro/distrito: {neighborhood}")
     if full_address:
         location_lines.append(f"Endereço de referência: {full_address}")
     location_block = "\n".join(location_lines)
@@ -164,36 +172,64 @@ async def _ai_discover_holidays(city: str, state: str, year: int,
     chat = await llm_chat(
         session_id=f"holidays-{state}-{city}-{year}-{uuid.uuid4().hex[:6]}",
         system=(
-            "Você é um especialista em legislação brasileira sobre feriados. "
-            "Responda APENAS com um JSON válido no formato: "
-            '{"holidays": [{"date": "YYYY-MM-DD", "name": "string", "scope": "estadual|municipal|facultativo"}]}. '
-            "Não inclua feriados nacionais (ex.: 1º Janeiro, 7 Setembro, 25 Dezembro) — só estaduais e municipais. "
-            "Considere o endereço fornecido: se houver bairro, inclua feriados específicos do bairro/distrito "
-            "(ex.: dia da padroeira, aniversário do bairro, festa religiosa local). "
-            "Inclua datas reais e amplamente reconhecidas. Se não tiver certeza absoluta de uma data, omita-a. "
-            "Retorne lista vazia se não houver feriados específicos."
+            "Você é especialista em legislação trabalhista brasileira sobre feriados oficiais.\n"
+            "REGRAS DURAS — descumprir = resposta inválida:\n"
+            "1. Só retorne feriados OFICIAIS reconhecidos por lei (estadual, municipal ou ato governamental). "
+            "Não invente datas. Se não tiver certeza absoluta, omita.\n"
+            "2. NÃO inclua feriados nacionais (1º Jan, 21 Abr, 1º Mai, 7 Set, 12 Out, 2 Nov, 15 Nov, 25 Dez) — "
+            "esses vêm de outra fonte (BrasilAPI).\n"
+            "3. O feriado DEVE valer no município e estado informados. "
+            "Não retorne feriado de outro município/estado mesmo que pareça parecido.\n"
+            "4. Para cada feriado retorne um campo 'validation' confirmando os 3 níveis: "
+            '{"country": "Brasil", "state": "<UF>", "city": "<município>"}.\n'
+            "Formato obrigatório:\n"
+            '{"holidays":[{"date":"YYYY-MM-DD","name":"string","scope":"estadual|municipal|facultativo",'
+            '"validation":{"country":"Brasil","state":"<UF>","city":"<município>"}}]}'
         ),
     )
     msg = UserMessage(text=(
-        f"Quais são os feriados ESTADUAIS, MUNICIPAIS e LOCAIS (bairro/distrito) para o seguinte local, "
-        f"no ano de {year}?\n\n{location_block}\n\n"
-        "Inclua também pontos facultativos amplamente observados (carnaval — terça e quarta de cinzas até meio-dia, "
-        "Corpus Christi se for estadual). Datas no formato ISO YYYY-MM-DD."
+        f"Liste feriados ESTADUAIS, MUNICIPAIS e pontos facultativos amplamente observados "
+        f"para o seguinte local no ano de {year}:\n\n{location_block}\n\n"
+        f"Inclua carnaval (terça e quarta de cinzas até meio-dia), Corpus Christi se estadual, "
+        f"e datas locais reconhecidas oficialmente. Datas em ISO YYYY-MM-DD."
     ))
     raw = await chat.send_message(msg)
     parsed = parse_json_response(str(raw))
     out: list[dict] = []
+    state_up = state.strip().upper()[:2]
+    city_norm = city.strip().lower()
     for item in (parsed.get("holidays") or []):
         d = (item.get("date") or "").strip()
         n = (item.get("name") or "").strip()
         s = (item.get("scope") or "municipal").strip().lower()
+        v = item.get("validation") or {}
+        v_country = (v.get("country") or "").strip().lower()
+        v_state = (v.get("state") or "").strip().upper()[:2]
+        v_city = (v.get("city") or "").strip().lower()
+
+        # ----- FILTROS DUROS -----
         if not d or not n:
             continue
         if s not in ("estadual", "municipal", "facultativo"):
             s = "municipal"
         if not d.startswith(f"{year:04d}-"):
             continue
-        out.append({"date": d, "name": n, "scope": s, "source": "ai"})
+        # país obrigatório = Brasil
+        if v_country and "bras" not in v_country:
+            continue
+        # estado obrigatório igual
+        if v_state and v_state != state_up:
+            continue
+        # município obrigatório igual (case insensitive). Se for estadual, aceita
+        # qualquer município do mesmo estado.
+        if s == "municipal" and v_city and v_city != city_norm:
+            continue
+
+        out.append({
+            "date": d, "name": n, "scope": s, "source": "ai",
+            "validation": {"country": "Brasil", "state": state_up, "city": city.strip()},
+        })
+
     seen: set[str] = set()
     unique: list[dict] = []
     for h in sorted(out, key=lambda x: x["date"]):

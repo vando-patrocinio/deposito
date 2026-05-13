@@ -124,20 +124,66 @@ function AiHolidaysModal({ open, praca, onClose, onApplied }) {
           <button onClick={onClose} data-testid="ai-close" style={{ background: "transparent", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b" }}>×</button>
         </div>
         <div style={{ overflowY: "auto", padding: "0 22px 22px" }}>
-          <p style={{ color: "#64748b", margin: "0 0 12px", fontSize: 13 }}>
+          <p style={{ color: "#475569", margin: "0 0 8px", fontSize: 13 }}>
             A IA vai sugerir feriados <strong>estaduais</strong>, <strong>municipais</strong> e
-            <strong> locais (bairro/distrito)</strong> de
-            <strong> {praca.city} - {praca.state}</strong>
-            {praca.neighborhood && <> · <em>bairro {praca.neighborhood}</em></>}
-            {praca.full_address && (
-              <span style={{ display: "block", fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                📍 {praca.full_address}
+            <strong> facultativos</strong> oficiais do local abaixo:
+          </p>
+
+          {/* Chips de validação dura — Município · Estado · País */}
+          <div style={{
+            display: "flex", gap: 8, flexWrap: "wrap",
+            marginTop: 6, marginBottom: 4,
+          }}>
+            <span data-testid="loc-chip-city" style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "5px 11px", borderRadius: 999,
+              background: "#eff6ff", border: "1px solid #bfdbfe",
+              color: "#1e3a8a", fontSize: 12, fontWeight: 700,
+            }}>
+              <span style={{ opacity: 0.6, fontSize: 10, fontWeight: 600 }}>MUNICÍPIO</span>
+              {praca.city}
+            </span>
+            <span data-testid="loc-chip-state" style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "5px 11px", borderRadius: 999,
+              background: "#f0fdf4", border: "1px solid #bbf7d0",
+              color: "#14532d", fontSize: 12, fontWeight: 700,
+            }}>
+              <span style={{ opacity: 0.6, fontSize: 10, fontWeight: 600 }}>ESTADO</span>
+              {praca.state}
+            </span>
+            <span data-testid="loc-chip-country" style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "5px 11px", borderRadius: 999,
+              background: "#fefce8", border: "1px solid #fde68a",
+              color: "#713f12", fontSize: 12, fontWeight: 700,
+            }}>
+              <span style={{ opacity: 0.6, fontSize: 10, fontWeight: 600 }}>PAÍS</span>
+              Brasil
+            </span>
+            {praca.neighborhood && (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "5px 11px", borderRadius: 999,
+                background: "#faf5ff", border: "1px solid #ddd6fe",
+                color: "#5b21b6", fontSize: 12, fontWeight: 600,
+              }}>
+                <span style={{ opacity: 0.6, fontSize: 10, fontWeight: 600 }}>BAIRRO</span>
+                {praca.neighborhood}
               </span>
             )}
-            <br/>
-            <span style={{ fontSize: 12, color: "#94a3b8" }}>
-              (Feriados nacionais não são incluídos — eles vêm da BrasilAPI.)
-            </span>
+          </div>
+
+          {praca.full_address && (
+            <p style={{ marginTop: 4, marginBottom: 6, fontSize: 11, color: "#94a3b8" }}>
+              📍 {praca.full_address}
+            </p>
+          )}
+
+          <p style={{ marginTop: 8, fontSize: 12, color: "#64748b", marginBottom: 14 }}>
+            <strong>Regra dura:</strong> só são aceitos feriados oficiais validados nos três níveis
+            (município · estado · país). Feriados nacionais não entram nessa lista — eles vêm
+            automaticamente da BrasilAPI.
           </p>
 
           <div style={{ display: "flex", gap: 8, alignItems: "end", marginBottom: 12 }}>
