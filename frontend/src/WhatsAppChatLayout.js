@@ -642,6 +642,22 @@ function ConvRow({ conv, selected, onClick, profile }) {
           }}>
             {conv.last_text}
           </span>
+          {/* Canal de origem: só mostra quando NÃO é Baileys (padrão) */}
+          {conv.last_channel && conv.last_channel !== "baileys" && (
+            <ChannelBadge channel={conv.last_channel} small />
+          )}
+          {/* Multi-canal: o mesmo contato fala por 2+ canais diferentes */}
+          {(conv.channels_used || []).filter((c) => c).length > 1 && (
+            <span title={`Este contato fala por: ${(conv.channels_used || []).join(", ")}`}
+                   style={{
+                     padding: "1px 5px", borderRadius: 4,
+                     background: "#fef3c7", color: "#92400e",
+                     border: "1px solid #fcd34d",
+                     fontSize: 8.5, fontWeight: 700, flexShrink: 0,
+                   }}>
+              {(conv.channels_used || []).filter((c) => c).length}× canais
+            </span>
+          )}
           {(conv.last_outbound_status || "").startsWith("failed") && (
             <span
               data-testid={`wa-conv-ai-fail-${conv.phone}`}
@@ -1258,6 +1274,35 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
   );
 }
 
+// Badge discreto que mostra o canal de origem da mensagem.
+// Aparece sempre que o canal NÃO é o padrão (baileys) — assim o gestor
+// identifica visualmente que aquela conversa pode ter rotas múltiplas.
+function ChannelBadge({ channel, small }) {
+  if (!channel) return null;
+  const map = {
+    baileys: { label: "Baileys", color: "#15803d", bg: "#f0fdf4", border: "#bbf7d0" },
+    twilio: { label: "Twilio", color: "#b91c1c", bg: "#fef2f2", border: "#fecaca" },
+    meta_whatsapp_cloud: { label: "Meta Cloud", color: "#0369a1", bg: "#eff6ff", border: "#bfdbfe" },
+    meta_messenger: { label: "Messenger", color: "#0369a1", bg: "#eff6ff", border: "#bfdbfe" },
+    meta_instagram: { label: "Instagram", color: "#7c3aed", bg: "#faf5ff", border: "#e9d5ff" },
+  };
+  const info = map[channel] || { label: channel, color: "#64748b", bg: "#f8fafc", border: "#e2e8f0" };
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 3,
+      padding: small ? "1px 5px" : "2px 7px",
+      borderRadius: 4, fontSize: small ? 8.5 : 10, fontWeight: 700,
+      color: info.color, background: info.bg,
+      border: `1px solid ${info.border}`,
+      letterSpacing: 0.3, textTransform: "uppercase",
+      marginBottom: small ? 3 : 0, marginRight: 4,
+    }}>
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: info.color }} />
+      {info.label}
+    </span>
+  );
+}
+
 // Helper: encontra a última mensagem inbound (do cliente) ANTES da bolha
 // que está sendo corrigida — essa é a "pergunta" que originou a resposta.
 function _findPrevUserQuestion(timeline, idx) {
@@ -1603,6 +1648,10 @@ function MsgBubble({ msg, onCorrect }) {
         boxShadow: "0 1px 2px rgba(0,0,0,.05)",
         opacity: failed ? 0.95 : 1,
       }}>
+        {/* Channel badge — discreto, mostra de onde a msg veio/saiu */}
+        {msg.channel && msg.channel !== "baileys" && (
+          <ChannelBadge channel={msg.channel} small />
+        )}
         {out && isAi && (
           <div style={{ fontSize: 9, fontWeight: 800, color: failed ? "#dc2626" : (isCorrection ? "#15803d" : "#0369a1"),
                          marginBottom: 3, textTransform: "uppercase",
