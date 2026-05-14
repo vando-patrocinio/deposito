@@ -5,9 +5,12 @@ export default function SelfieCamera({ onCapture, onCancel, eventType }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  const detectorRef = useRef(null);
   const [status, setStatus] = useState("starting");
   const [errorMsg, setErrorMsg] = useState("");
   const [countdown, setCountdown] = useState(3);
+  const [faceAligned, setFaceAligned] = useState(null); // null = sem detecção, true/false quando detector ativo
+  const faceSupported = typeof window !== "undefined" && "FaceDetector" in window;
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +56,44 @@ export default function SelfieCamera({ onCapture, onCancel, eventType }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
+  // Loop de detecção facial em tempo real (Chrome/Edge Android via FaceDetector API)
+  useEffect(() => {
+    if (status !== "ready" || !faceSupported) return;
+    try {
+      detectorRef.current = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+    } catch { return; }
+    let alive = true;
+    let timer = null;
+
+    async function tick() {
+      if (!alive) return;
+      const v = videoRef.current;
+      if (v && v.readyState >= 2 && detectorRef.current) {
+        try {
+          const faces = await detectorRef.current.detect(v);
+          if (faces && faces.length > 0) {
+            const f = faces[0].boundingBox;
+            const cx = f.x + f.width / 2;
+            const cy = f.y + f.height / 2;
+            const W = v.videoWidth || 720;
+            const H = v.videoHeight || 960;
+            // Considera "alinhado" se o centro do rosto está no terço central (X)
+            // e na metade superior (Y) — onde a oval guia espera.
+            const okX = cx > W * 0.30 && cx < W * 0.70;
+            const okY = cy > H * 0.18 && cy < H * 0.65;
+            const okSize = f.width > W * 0.20 && f.width < W * 0.75;
+            setFaceAligned(okX && okY && okSize);
+          } else {
+            setFaceAligned(false);
+          }
+        } catch { /* ignora frames com falha */ }
+      }
+      timer = setTimeout(tick, 350);
+    }
+    tick();
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+  }, [status, faceSupported]);
+
   function capture() {
     const v = videoRef.current;
     const c = canvasRef.current;
@@ -93,19 +134,36 @@ export default function SelfieCamera({ onCapture, onCancel, eventType }) {
         />
         <canvas ref={canvasRef} style={{ display: "none" }} />
 
-        {status !== "error" && (
-          <div style={{ position: "absolute", inset: 0, pointerEvents: "none", display: "grid", placeItems: "center" }}>
-            <div style={{ width: "62%", height: "74%", borderRadius: "50%", border: "3px dashed rgba(255,255,255,.75)", boxShadow: "0 0 0 9999px rgba(2,6,23,.35) inset" }} />
-          </div>
-        )}
+        {status !== "error" && (() => {
+          const borderColor = faceAligned === true
+            ? "rgba(34,197,94,.95)"
+            : faceAligned === false
+              ? "rgba(239,68,68,.85)"
+              : "rgba(255,255,255,.75)";
+          const borderStyle = faceAligned === true ? "solid" : "dashed";
+          return (
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none", display: "grid", placeItems: "center" }}>
+              <div
+                data-testid="face-guide"
+                data-face-aligned={faceAligned === true ? "yes" : faceAligned === false ? "no" : "unknown"}
+                style={{
+                  width: "62%", height: "74%", borderRadius: "50%",
+                  border: `3px ${borderStyle} ${borderColor}`,
+                  boxShadow: "0 0 0 9999px rgba(2,6,23,.35) inset",
+                  transition: "border-color .25s, border-style .25s",
+                }}
+              />
+            </div>
+          );
+        })()}
 
         <div style={{ position: "absolute", top: 10, left: 10, right: 10, display: "flex", justifyContent: "space-between", gap: 8 }}>
           <span style={{ background: "rgba(2,6,23,.55)", color: "white", padding: "6px 10px", borderRadius: 999, fontSize: 12, fontWeight: 800 }}>
             <Icon name="camera" /> Câmera frontal
           </span>
           {status === "ready" && (
-            <span data-testid="countdown" style={{ background: "#0f172a", color: "white", padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 900 }}>
-              Capturando em {countdown}s…
+            <span data-testid="countdown" style={{ background: faceAligned === false ? "#b91c1c" : "#0f172a", color: "white", padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 900, transition: "background-color .25s" }}>
+              {faceAligned === false ? "Centralize o rosto" : `Capturando em ${countdown}s…`}
             </span>
           )}
           {status === "starting" && (
