@@ -254,6 +254,31 @@ async def chat_completion(company_id: str,
     used_model = getattr(resp, "model", primary)
     provider = getattr(resp, "provider", None) or "openrouter"
 
+    # Detecta resposta corrompida (modelo gerou token garbage no meio).
+    # Causas comuns: V4 Pro instável, context overflow, repetition penalty 0.
+    # Se detectada, tenta automaticamente os fallbacks na ordem.
+    if _is_garbage_response(content):
+        logger.warning(
+            "[motor-ia] resposta corrompida detectada (model=%s, len=%d). "
+            "Iniciando retry com fallbacks...",
+            used_model, len(content),
+        )
+        for fb_model in fallbacks:
+            try:
+                kwargs["model"] = fb_model
+                kwargs["extra_body"] = {}  # sem cadeia OR
+                resp2 = await client.chat.completions.create(**kwargs)
+                content2 = (resp2.choices[0].message.content or "").strip()
+                if not _is_garbage_response(content2):
+                    content = content2
+                    used_model = getattr(resp2, "model", fb_model)
+                    provider = getattr(resp2, "provider", None) or "openrouter"
+                    logger.info("[motor-ia] fallback %s gerou resposta limpa.", fb_model)
+                    break
+                logger.warning("[motor-ia] fallback %s também corrompido.", fb_model)
+            except Exception as e:
+                logger.warning("[motor-ia] fallback %s ERRO: %s", fb_model, e)
+
     # Registra uso (best-effort, não bloqueia resposta)
     try:
         usage = getattr(resp, "usage", None)
@@ -268,6 +293,68 @@ async def chat_completion(company_id: str,
         "model": used_model,
         "provider": provider,
     }
+
+
+def _is_garbage_response(text: str) -> bool:
+    """Detecta respostas corrompidas/incoerentes que LLMs instáveis produzem
+    quando entram em loop. Sinais:
+    - Mais de 4% de caracteres em scripts estrangeiros (CJK, Cyrillic, Coreano,
+      Árabe, Hebraico, Tailandês, Grego, etc.) — IA pt-BR não deve emitir isso.
+    - Sequências de palavras-coladas estilo "PROMLesterNOT" (uppercase no meio
+      de minúsculas, multiple times)
+    - Caracteres de controle não-imprimíveis
+    """
+    if not text or len(text) < 20:
+        return False
+
+    # 1) Conta chars em scripts não-latinos (mas permite emoji + acentos PT-BR)
+    foreign = 0
+    countable = 0
+    for ch in text:
+        cp = ord(ch)
+        # Pular whitespace, pontuação ASCII e quebras
+        if cp < 0x80:
+            countable += 1
+            continue
+        # Emoji range (Misc Symbols, Pictographs, etc.) — não conta como garbage
+        if (0x2600 <= cp <= 0x27BF) or (0x1F000 <= cp <= 0x1FFFF):
+            countable += 1
+            continue
+        # Acentos latinos (Latin-1 Supplement + Latin Extended-A/B): permitido
+        if 0x00C0 <= cp <= 0x024F:
+            countable += 1
+            continue
+        # Pontuação geral
+        if 0x2000 <= cp <= 0x206F:
+            countable += 1
+            continue
+        # Qualquer outro chunk fora desses é foreign (cyrillic, CJK, greek,
+        # arabic, hebrew, korean, thai, japanese kana...)
+        foreign += 1
+        countable += 1
+    if countable > 0 and foreign / countable > 0.04:
+        return True
+
+    # 2) Palavras coladas (loop de geração): "PROMLesterNOT", "ridgeáriaToday"
+    # Regex captura uppercase no meio de minúsculas — 2+ ocorrências = suspeito
+    import re as _re
+    weird_caps = _re.findall(r"\b[a-záéíóúâêôãõç]{2,}[A-Z][a-záéíóúâêôãõç]{2,}", text)
+    if len(weird_caps) >= 2:
+        return True
+
+    # 3) Sequências curtas de palavras + UPPERCASE puro (não-acrônimo) — sinal
+    # de "lixo gerado": "PROMLesterNOT_db003 Recall removes753anske"
+    # Detecta 3+ palavras seguidas com mix CAPS/digit caótico
+    chunks = _re.findall(r"[A-Z]{2,}[a-z]+\w*[A-Z]", text)
+    if len(chunks) >= 3:
+        return True
+
+    # 4) Caracteres de controle não-permitidos
+    control = sum(1 for ch in text if ord(ch) < 32 and ch not in "\n\r\t")
+    if control > 2:
+        return True
+
+    return False
 
 
 # ---------------------------------------------------------------------------
