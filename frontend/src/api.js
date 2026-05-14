@@ -146,6 +146,8 @@ export const api = {
   collabLogout: (token) => client.post(`/collaborator-auth/logout`, {}, { headers: { Authorization: `Bearer ${token}` }, withCredentials: true }).then((r) => r.data),
   resetCollaboratorFace: (cid, resetDevice = false) =>
     client.post(`/collaborators/${cid}/reset-face`, null, { params: { reset_device: resetDevice } }).then((r) => r.data),
+  uploadCollaboratorPhoto: (cid, photoDataUrl) =>
+    client.post(`/collaborators/${cid}/photo`, { photo_data_url: photoDataUrl }).then((r) => r.data),
 
   // Logs (sistema)
   listLogs: (params = {}) => client.get(`/logs`, { params }).then((r) => r.data),

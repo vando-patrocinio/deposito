@@ -391,6 +391,47 @@ async def reset_collaborator_face(cid: str, reset_device: bool = False):
     }
 
 
+@router.post("/collaborators/{cid}/photo")
+async def upload_collaborator_photo(cid: str, payload: dict):
+    """Sobe a foto do crachá (`foto_id`) do colaborador.
+
+    Body JSON: {"photo_data_url": "data:image/jpeg;base64,..."}.
+    Atualiza simultaneamente:
+      - collaborator.avatar_data_url (base64) — usada em todo o sistema
+      - collaborator.foto_id          (mesmo conteúdo, semântica de "foto crachá")
+      - collaborator.foto_id_updated_at
+    Se houver `user` vinculado pelo google_email, atualiza também `users.avatar_url`
+    pra deixar consistente no chat, ranking, lousa, etc.
+    """
+    data_url = (payload or {}).get("photo_data_url") or ""
+    if not data_url.startswith("data:image/"):
+        raise HTTPException(400, "Forneça `photo_data_url` em formato data:image/...;base64,...")
+    # Limite de ~3MB (data URL chega a ~33% maior que o binário)
+    if len(data_url) > 4_500_000:
+        raise HTTPException(413, "Imagem muito grande — máx ~3MB.")
+    now = now_iso()
+    update = {
+        "avatar_data_url": data_url,
+        "foto_id": data_url,
+        "foto_id_updated_at": now,
+        "updated_at": now,
+    }
+    res = await db.collaborators.update_one({"id": cid}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Colaborador não encontrado")
+    # Propaga pro user vinculado (mesmo email) — chat, lousa, ranking, etc.
+    coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "google_email": 1, "email": 1})
+    email = (coll or {}).get("google_email") or (coll or {}).get("email")
+    user_updated = False
+    if email:
+        ur = await db.users.update_one(
+            {"email": email.lower().strip()},
+            {"$set": {"avatar_url": data_url, "updated_at": now}},
+        )
+        user_updated = ur.matched_count > 0
+    return {"ok": True, "user_updated": user_updated, "foto_id_updated_at": now}
+
+
 # -------------------------------------------------------------------------
 # Geofences
 # -------------------------------------------------------------------------

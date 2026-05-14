@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Car } from "lucide-react";
 import { api } from "@/api";
 import { AvatarZoomModal, Button, Card, Field, Icon, inputStyle, Row, StatusBadge } from "@/ui";
@@ -149,6 +149,8 @@ export default function CadastroPanel() {
       is_test_mode: !!c.is_test_mode,
       clock_in_enabled: c.clock_in_enabled !== false,  // default true (legado)
       active: c.active !== false,  // default true
+      avatar_data_url: c.avatar_data_url || c.foto_id || "",
+      foto_id: c.foto_id || c.avatar_data_url || "",
     });
     setEditing(c.id);
     setError("");
@@ -506,6 +508,20 @@ export default function CadastroPanel() {
       {editing !== null ? (
         <Card title={editing === "new" ? "Novo colaborador" : "Editar colaborador"}>
           {error && <div data-testid="form-error" style={{ background: "#fee2e2", color: "#991b1b", padding: 10, borderRadius: 12, marginBottom: 10 }}>{error}</div>}
+
+          {/* Avatar / Foto do crachá ("foto_id") */}
+          {editing !== "new" && (
+            <AvatarUploader
+              collaboratorId={editing}
+              currentUrl={form.avatar_data_url || form.foto_id || null}
+              name={form.name}
+              onUpdated={(dataUrl) => {
+                setForm({ ...form, avatar_data_url: dataUrl, foto_id: dataUrl });
+                reload();
+              }}
+            />
+          )}
+
           <Field label="Nome completo">
             <input data-testid="inp-name" style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
@@ -1324,4 +1340,137 @@ function CollabShareLink({ collaborator }) {
       </div>
     </div>
   );
+}
+
+
+/* =============================================================
+   AvatarUploader — sobe a foto do crachá (foto_id) do colaborador.
+   Mesma imagem é replicada pelo backend pra:
+     - collaborators.avatar_data_url (usado no chat, lousa, ranking)
+     - collaborators.foto_id          (foto do crachá)
+     - users.avatar_url               (mesma pessoa logada)
+============================================================= */
+function AvatarUploader({ collaboratorId, currentUrl, name, onUpdated }) {
+  const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [error, setError] = useState("");
+  const initials = (name || "??").split(" ")
+    .slice(0, 2).map((s) => s[0]).join("").toUpperCase();
+  const fileRef = useRef(null);
+
+  function pickFile() { fileRef.current?.click(); }
+
+  async function handleFile(e) {
+    const f = e.target.files?.[0];
+    e.target.value = ""; // permite re-selecionar o mesmo arquivo
+    if (!f) return;
+    if (!/^image\//.test(f.type)) {
+      setError("Apenas imagens (JPG/PNG/WebP).");
+      return;
+    }
+    if (f.size > 3_500_000) {
+      setError("Imagem maior que ~3MB. Reduza antes de subir.");
+      return;
+    }
+    setError("");
+    // Lê + redimensiona client-side pra não estourar limite do servidor
+    const dataUrl = await resizeImageToDataUrl(f, 512, 0.85);
+    setPreview(dataUrl);
+    setBusy(true);
+    try {
+      await api.uploadCollaboratorPhoto(collaboratorId, dataUrl);
+      onUpdated && onUpdated(dataUrl);
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "Erro ao subir.");
+      setPreview(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const shownSrc = preview || currentUrl;
+
+  return (
+    <div data-testid="avatar-uploader" style={{
+      display: "flex", alignItems: "center", gap: 14,
+      padding: 14, marginBottom: 14,
+      background: "linear-gradient(135deg, rgba(99,102,241,.07), #f8fafc 70%)",
+      border: "1px solid #e2e8f0", borderRadius: 12,
+    }}>
+      <div style={{
+        width: 88, height: 88, borderRadius: "50%",
+        overflow: "hidden", flexShrink: 0,
+        border: "3px solid #6366f1",
+        boxShadow: "0 4px 12px rgba(99,102,241,.25)",
+        background: shownSrc ? "transparent"
+          : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+        color: "white", display: "grid", placeItems: "center",
+        fontSize: 28, fontWeight: 800,
+      }}>
+        {shownSrc ? (
+          <img src={shownSrc} alt={name}
+               style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : initials}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 11, fontWeight: 800, color: "#64748b",
+          textTransform: "uppercase", letterSpacing: ".05em",
+        }}>
+          Foto do crachá (foto_id)
+        </div>
+        <div style={{ fontSize: 13, color: "#0f172a", marginTop: 2 }}>
+          {shownSrc ? "Foto cadastrada. Esta imagem é usada em todos os módulos."
+                          : "Sem foto. Suba a foto do crachá pra usar em todo o sistema."}
+        </div>
+        <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <input ref={fileRef} type="file" accept="image/*"
+                 onChange={handleFile}
+                 data-testid="avatar-input"
+                 style={{ display: "none" }} />
+          <Button variant="primary" onClick={pickFile} disabled={busy}
+                  data-testid="avatar-upload-btn">
+            {busy ? "Enviando..." : (shownSrc ? "Trocar foto" : "Subir foto")}
+          </Button>
+          <span style={{ fontSize: 10, color: "#94a3b8",
+                          alignSelf: "center" }}>
+            JPG/PNG/WebP · até 3MB · redimensiona para 512px
+          </span>
+        </div>
+        {error && (
+          <div style={{ marginTop: 6, fontSize: 11, color: "#dc2626",
+                          fontWeight: 700 }}>
+            ⚠ {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Redimensiona imagem antes do upload pra evitar payloads gigantes.
+ * Retorna dataURL JPEG. Mantém aspect-ratio. Lado maior = `maxSize`.
+ */
+async function resizeImageToDataUrl(file, maxSize = 512, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1);
+        const w = Math.round(img.width * ratio);
+        const h = Math.round(img.height * ratio);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
