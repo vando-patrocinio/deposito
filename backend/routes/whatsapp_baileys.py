@@ -839,6 +839,11 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                     parts.append(f"Filial: {ident_sub['branch']}")
                 extra.append("=== CLIENTE RECÉM-IDENTIFICADO POR CPF ===\n"
                               + " · ".join(parts))
+                # CRÍTICO: atualiza o subscriber_id local pra que o bloco
+                # 3a-bis (check_connection) saiba que o cliente está agora
+                # identificado e possa rodar a verificação técnica NA MESMA
+                # resposta — sem obrigar o cliente a repetir a reclamação.
+                subscriber_id = ident_sub.get("id")
             extra.append(instruction["directive"])
         except Exception as e:
             logger.info("[wa-baileys] cpf identifier skip: %s", e)
@@ -886,23 +891,92 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         logger.info("[wa-baileys] outage check skip: %s", e)
 
     # 3a-bis. VERIFICAÇÃO PROATIVA DA CONEXÃO DO CLIENTE — Quando o cliente
-    # reclamar de problema/defeito/internet caiu, consultamos o SmartOLT pra
-    # saber se o equipamento dele está online/offline/LOS e injetamos esse
-    # contexto na IA. Isso permite respostas tipo "Já verifiquei aqui, seu
-    # equipamento está online com sinal bom — vamos checar seu WiFi..." em
-    # vez de "Vou pedir pra você reiniciar o modem" (que assume problema).
+    # reclamar de problema/defeito/internet caiu E o cliente está identificado,
+    # consultamos o SmartOLT em tempo real e injetamos o status REAL (Online /
+    # Offline / LOS / Power fail + sinal RX/TX). A IA responde a VERDADE — sem
+    # alucinação. Quando NÃO identificado, a IA pede CPF primeiro (já tratado
+    # no bloco 3 — handle_unidentified_inbound).
+    #
+    # Rastreamos também se o cliente FALOU de problema nas últimas 5 mensagens
+    # do histórico — se o cliente reclamou ANTES, mandou o CPF, e a IA acabou
+    # de identificar AGORA, queremos rodar o check_connection JÁ NA MESMA
+    # RESPOSTA (em vez de obrigar o cliente a repetir a reclamação).
     try:
         from services.subscriber_connection import (
             is_problem_intent, check_connection_for_phone, format_for_prompt,
         )
-        if is_problem_intent(user_text):
-            conn_info = await check_connection_for_phone(cid, phone)
+        cur_msg_has_problem = is_problem_intent(user_text)
+
+        # Se a msg atual já tem o intent: usa direto.
+        # Senão, e se o cliente acabou de ser identificado por CPF, olhamos as
+        # últimas 5 inbound dele pra ver se reclamou de defeito.
+        should_run_check = cur_msg_has_problem
+        had_recent_problem = False
+        if not cur_msg_has_problem and subscriber_id:
+            # Cliente já identificado nesta resposta — talvez veio do fluxo CPF
+            recent = db.aihub_wa_messages.find(
+                {"company_id": cid, "phone": phone, "direction": "inbound"},
+                {"_id": 0, "text": 1, "created_at": 1}
+            ).sort([("created_at", -1)]).limit(5)
+            async for m in recent:
+                t = m.get("text") or ""
+                if is_problem_intent(t):
+                    had_recent_problem = True
+                    should_run_check = True
+                    break
+
+        if should_run_check and subscriber_id:
+            # Cliente IDENTIFICADO → verifica de verdade.
+            # Passa subscriber_id direto pra suportar caso recém-CPF-identificado
+            # (em que subscriber_phones ainda não foi atualizado).
+            conn_info = await check_connection_for_phone(
+                cid, phone, subscriber_id=subscriber_id
+            )
             extra.append(format_for_prompt(conn_info))
+
+            # AÇÃO REAL: se for LOS/Offline/Power fail, abre chamado técnico
+            # automaticamente (com dedupe de 6h pra não criar duplicado).
+            try:
+                from services.subscriber_connection import (
+                    ensure_repair_ticket, format_ticket_for_prompt,
+                )
+                conn_info["subscriber_id"] = subscriber_id
+                ticket_info = await ensure_repair_ticket(
+                    cid, conn_info, phone, user_text
+                )
+                if ticket_info:
+                    extra.append(format_ticket_for_prompt(ticket_info))
+            except Exception as e:
+                logger.info("[wa-baileys] auto-ticket skip: %s", e)
+
             logger.info(
-                "[wa-baileys] subscriber connection check phone=%s found=%s "
-                "connected=%s status=%s",
-                phone, conn_info.get("found"), conn_info.get("connected"),
-                conn_info.get("status"),
+                "[wa-baileys] connection check phone=%s sub=%s found=%s connected=%s "
+                "status=%s (cur_intent=%s recent_intent=%s)",
+                phone, subscriber_id, conn_info.get("found"),
+                conn_info.get("connected"), conn_info.get("status"),
+                cur_msg_has_problem, had_recent_problem
+            )
+        elif cur_msg_has_problem and not subscriber_id:
+            # NÃO IDENTIFICADO + reclamou de problema → NÃO inventa.
+            # Instrui a IA a explicar que vai verificar APÓS receber o CPF.
+            extra.append(
+                "=== RECLAMAÇÃO DE PROBLEMA SEM IDENTIFICAÇÃO ===\n"
+                "O cliente está reclamando de problema/defeito na conexão, "
+                "MAS este telefone NÃO está vinculado a nenhum assinante. "
+                "AÇÃO OBRIGATÓRIA:\n"
+                "1. NÃO INVENTE o status da conexão dele. NÃO diga 'verifiquei "
+                "   e está online' nem 'parece estar tudo bem' — você NÃO "
+                "   verificou nada e seria mentira.\n"
+                "2. Reconheça o problema com empatia.\n"
+                "3. Diga que pra fazer a verificação técnica em tempo real você "
+                "   precisa do CPF do titular (segurança).\n"
+                "4. PROMETA: 'Assim que confirmar seu CPF, eu verifico aqui "
+                "   mesmo a qualidade do seu sinal e te respondo com a verdade.'\n"
+                "5. Peça o CPF de forma natural (sem ser robótico)."
+            )
+            logger.info(
+                "[wa-baileys] problem intent but unidentified phone=%s — "
+                "instructed AI to request CPF first", phone
             )
     except Exception as e:
         logger.info("[wa-baileys] connection check skip: %s", e)

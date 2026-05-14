@@ -13,14 +13,21 @@ Casos de retorno:
     - {found: True, connected: True/False, status, signal, olt, port,
        last_change, board}
     - {found: False, reason: <motivo amigável>}
+
+AÇÃO REAL — Quando detectarmos LOS/Offline/Power fail num cliente
+identificado, criamos AUTOMATICAMENTE um ticket de reparo no Kanban (em
+`db.tickets`), com anti-duplicado de 6h. A IA é informada do ID do ticket
+e usa isso na resposta ("Já abri o chamado #TKT-XYZ pra você").
 """
 from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
+from core import now_iso
 from database import db
 
 logger = logging.getLogger("subscriber_connection")
@@ -53,43 +60,58 @@ def is_problem_intent(text: str) -> bool:
 
 
 async def check_connection_for_phone(
-    company_id: str, phone: str
+    company_id: str, phone: str, subscriber_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Consulta o status atual da ONU vinculada ao telefone.
 
     Retorna um dict pronto pra serializar e injetar no prompt da IA.
     NUNCA levanta exceção — sempre retorna {found: bool, ...}.
+
+    Se `subscriber_id` for passado, pula o lookup phone→subscriber e usa
+    direto — útil quando o cliente acabou de ser identificado por CPF e
+    ainda não foi indexado em `subscriber_phones`.
     """
-    if not phone or not company_id:
-        return {"found": False, "reason": "telefone vazio"}
+    if not company_id or (not phone and not subscriber_id):
+        return {"found": False, "reason": "parâmetros vazios"}
 
-    # 1. phone → subscriber (tenta múltiplos formatos)
-    digits = re.sub(r"\D", "", phone)
-    candidates = {digits}
-    if digits.startswith("55") and len(digits) >= 12:
-        candidates.add(digits[2:])  # sem DDI
-    if len(digits) >= 11:
-        candidates.add(digits[-11:])  # últimos 11 (DDD + número)
-
-    sub_phone_doc = None
-    for cand in candidates:
-        sub_phone_doc = await db.subscriber_phones.find_one(
-            {"company_id": company_id,
-             "$or": [{"normalized_number": cand}, {"phone": cand}, {"raw_number": cand}]},
-            {"_id": 0, "subscriber_id": 1},
+    sub = None
+    if subscriber_id:
+        # Caminho direto — cliente identificado por CPF nesta inbound
+        sub = await db.subscribers.find_one(
+            {"company_id": company_id, "id": subscriber_id},
+            {"_id": 0, "name": 1, "pppoe_user": 1, "plan_name": 1,
+             "external_code": 1, "branch": 1, "document": 1, "status": 1},
         )
-        if sub_phone_doc:
-            break
-    if not sub_phone_doc:
-        return {"found": False, "reason": "telefone não vinculado a nenhum assinante"}
 
-    sub = await db.subscribers.find_one(
-        {"company_id": company_id, "id": sub_phone_doc["subscriber_id"]},
-        {"_id": 0, "name": 1, "pppoe_user": 1, "plan_name": 1,
-         "external_code": 1, "branch": 1, "document": 1, "status": 1},
-    )
     if not sub:
-        return {"found": False, "reason": "assinante não encontrado"}
+        # 1. phone → subscriber (tenta múltiplos formatos)
+        digits = re.sub(r"\D", "", phone or "")
+        candidates = {digits}
+        if digits.startswith("55") and len(digits) >= 12:
+            candidates.add(digits[2:])  # sem DDI
+        if len(digits) >= 11:
+            candidates.add(digits[-11:])  # últimos 11 (DDD + número)
+
+        sub_phone_doc = None
+        for cand in candidates:
+            sub_phone_doc = await db.subscriber_phones.find_one(
+                {"company_id": company_id,
+                 "$or": [{"normalized_number": cand},
+                         {"phone": cand}, {"raw_number": cand}]},
+                {"_id": 0, "subscriber_id": 1},
+            )
+            if sub_phone_doc:
+                break
+        if not sub_phone_doc:
+            return {"found": False,
+                    "reason": "telefone não vinculado a nenhum assinante"}
+        sub = await db.subscribers.find_one(
+            {"company_id": company_id, "id": sub_phone_doc["subscriber_id"]},
+            {"_id": 0, "name": 1, "pppoe_user": 1, "plan_name": 1,
+             "external_code": 1, "branch": 1, "document": 1, "status": 1},
+        )
+        if not sub:
+            return {"found": False, "reason": "assinante não encontrado"}
 
     # 2. Acha a ONU — prioridade: pppoe_user > external_code > nome
     onu = None
@@ -257,4 +279,160 @@ def format_for_prompt(info: Dict[str, Any]) -> str:
         "Use linguagem leiga (ex: 'verifiquei aqui no sistema e seu equipamento "
         "está online com sinal bom'). Apenas mencione 'OLT', 'porta', 'LOS', "
         "'sinal -28dBm' se o cliente perguntar especificamente."
+    )
+
+
+
+# Status técnicos que justificam abrir ticket de reparo automaticamente.
+TICKET_TRIGGER_STATUSES = {"los", "offline", "power fail", "powerfail"}
+
+# Janela de dedupe — não cria ticket novo se já tem um aberto pro mesmo cliente.
+TICKET_DEDUPE_HOURS = 6
+
+
+async def ensure_repair_ticket(
+    company_id: str, conn_info: Dict[str, Any], phone: str,
+    triggered_by_text: str,
+) -> Optional[Dict[str, Any]]:
+    """Cria (se já não existe) um ticket de reparo no Kanban a partir do
+    diagnóstico técnico.
+
+    Regras:
+    - Só dispara se `conn_info.found == True` e `status` está em
+      TICKET_TRIGGER_STATUSES (LOS / Offline / Power fail).
+    - Dedup: se cliente já tem ticket "pendente" / "em_andamento" criado
+      nas últimas 6h, retorna o existente sem criar duplicado.
+    - O ticket é criado com `created_by: "isabella_ai"` para auditoria.
+
+    Retorna o dict do ticket criado/encontrado, ou None se não aplicável.
+    """
+    if not conn_info or not conn_info.get("found"):
+        return None
+    status = (conn_info.get("status") or "").strip().lower()
+    if status not in TICKET_TRIGGER_STATUSES:
+        return None
+
+    subscriber_id = conn_info.get("subscriber_id") or conn_info.get("onu_id")
+    sub_name = conn_info.get("subscriber_name") or "Cliente"
+
+    # 1. Dedupe — procura ticket recente aberto pro mesmo cliente
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=TICKET_DEDUPE_HOURS)
+              ).isoformat()
+    existing = await db.tickets.find_one(
+        {"company_id": company_id,
+         "status": {"$in": ["pendente", "em_andamento", "aceito"]},
+         "type": "reparo",
+         "created_by": "isabella_ai",
+         "client_snapshot.name": sub_name,
+         "created_at": {"$gte": cutoff}},
+        {"_id": 0, "id": 1, "status": 1, "created_at": 1, "priority": 1},
+        sort=[("created_at", -1)],
+    )
+    if existing:
+        logger.info(
+            "[subscriber_connection] ticket DUPLICADO ignorado pro %s "
+            "(já existe %s · status=%s)",
+            sub_name, existing.get("id"), existing.get("status")
+        )
+        return existing
+
+    # 2. Cria o ticket novo
+    ticket_id = f"tkt-{uuid.uuid4().hex[:10]}"
+    priority = "prioridade" if status == "los" else "padrao"
+    description = (
+        f"Cliente {sub_name} reportou: \"{(triggered_by_text or '')[:120]}\"\n"
+        f"\n"
+        f"Diagnóstico SmartOLT (automático):\n"
+        f"  Status: {conn_info.get('status')}\n"
+        f"  Sinal RX (1490nm): {conn_info.get('signal_1490', '—')} dBm\n"
+        f"  Sinal TX (1310nm): {conn_info.get('signal_1310', '—')} dBm\n"
+        f"  Sinal qualitativo: {conn_info.get('signal_text', '—')}\n"
+        f"  OLT: {conn_info.get('olt_name')} · "
+        f"Placa {conn_info.get('board')} · Porta {conn_info.get('port')}\n"
+        f"  ONU: {conn_info.get('onu_name')} (ID {conn_info.get('onu_id')})\n"
+        f"  Tempo desde mudança de status: "
+        f"{conn_info.get('minutes_since_change', '?')} min\n"
+        f"\n"
+        f"⚠️ Aberto automaticamente pela Isabella IA via WhatsApp ({phone})."
+    )
+    ticket = {
+        "id": ticket_id,
+        "company_id": company_id,
+        "client_id": subscriber_id,
+        "client_snapshot": {
+            "name": sub_name,
+            "plan": conn_info.get("plan_name"),
+            "branch": conn_info.get("branch"),
+            "external_code": conn_info.get("external_code"),
+            "phone": phone,
+            "address": None,
+        },
+        "type": "reparo",
+        "priority": priority,
+        "scheduled_time": None,
+        "position": 0,
+        "status": "pendente",
+        "assigned_collaborator_id": None,
+        "opened_at": now_iso(),
+        "closed_at": None,
+        "closed_by": None,
+        "outcome": None,
+        "whatsapp_status": "nao_enviado",
+        "whatsapp_last_message": None,
+        "admin_action": None,
+        "admin_notes": None,
+        "created_by": "isabella_ai",
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "source": "whatsapp_ai_auto",
+        "ai_diagnosis": {
+            "trigger_text": triggered_by_text,
+            "status": conn_info.get("status"),
+            "olt_name": conn_info.get("olt_name"),
+            "port": conn_info.get("port"),
+            "signal_1490": conn_info.get("signal_1490"),
+            "minutes_since_change": conn_info.get("minutes_since_change"),
+            "onu_id": conn_info.get("onu_id"),
+            "phone": phone,
+        },
+        "description": description,
+    }
+    await db.tickets.insert_one(ticket)
+    logger.info(
+        "[subscriber_connection] TICKET CRIADO id=%s priority=%s status=%s "
+        "client=%s phone=%s",
+        ticket_id, priority, status, sub_name, phone,
+    )
+    return {"id": ticket_id, "status": "pendente", "priority": priority,
+             "created_at": ticket["created_at"], "isNew": True}
+
+
+def format_ticket_for_prompt(ticket_info: Dict[str, Any]) -> str:
+    """Adiciona ao prompt uma seção explicando que o chamado foi aberto."""
+    if not ticket_info:
+        return ""
+    is_new = ticket_info.get("isNew", False)
+    ticket_id = ticket_info.get("id")
+    priority = ticket_info.get("priority", "padrao")
+    priority_label = "PRIORITÁRIO" if priority == "prioridade" else "padrão"
+    if is_new:
+        return (
+            "=== AÇÃO EXECUTADA: CHAMADO TÉCNICO ABERTO AUTOMATICAMENTE ===\n"
+            f"Ticket #{ticket_id} criado agora ({priority_label}). Status: pendente.\n"
+            "A equipe técnica já recebeu o chamado e vai entrar em contato em "
+            "até 24h úteis (residencial) ou 12h úteis (empresarial).\n\n"
+            "AÇÃO: informe o cliente que VOCÊ JÁ ABRIU o chamado (use o número "
+            f"#{ticket_id}, sem o prefixo 'tkt-'). Diga o prazo de SLA. "
+            "Pergunte se ele tem alguma observação adicional (ex: melhor "
+            "horário de visita, se a luz vai estar disponível, telefone "
+            "alternativo). NÃO peça pra ele abrir o chamado — ele JÁ ESTÁ "
+            "ABERTO."
+        )
+    return (
+        "=== INFO: JÁ EXISTE CHAMADO EM ANDAMENTO ===\n"
+        f"Cliente já tem um chamado de reparo aberto pela Isabella nas "
+        f"últimas {TICKET_DEDUPE_HOURS}h (#{ticket_id}, status: "
+        f"{ticket_info.get('status')}). NÃO crie outro chamado — informe ao "
+        "cliente que o chamado dele JÁ ESTÁ EM ANDAMENTO. Pergunte se ele "
+        "precisa de mais alguma coisa enquanto a equipe técnica não chega."
     )
