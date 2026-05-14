@@ -47,7 +47,8 @@ export default function WhatsAppInstancePanel() {
     let currentInterval = null;
     const setupPoll = () => {
       const need = status !== "connected";
-      const interval = need ? 3000 : 8000;
+      // Polling rápido enquanto aguarda escanear o QR → reflete conexão em ~1.5s
+      const interval = need ? 1500 : 8000;
       if (currentInterval !== interval) {
         if (pollRef.current) clearInterval(pollRef.current);
         pollRef.current = setInterval(fetchState, interval);

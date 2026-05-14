@@ -100,7 +100,10 @@ export default function WhatsAppQRPanel() {
 
   useEffect(() => {
     fetchState();
-    const id = setInterval(fetchState, stickyConnected ? 12000 : 4000);
+    // Quando desconectado/aguardando QR: poll RÁPIDO (1.5s) para mostrar o
+    // chat assim que o WhatsApp conectar (~1s após escanear o QR).
+    // Quando conectado e estável: 12s — economiza requests.
+    const id = setInterval(fetchState, stickyConnected ? 12000 : 1500);
     return () => clearInterval(id);
   }, [fetchState, stickyConnected]);
 
