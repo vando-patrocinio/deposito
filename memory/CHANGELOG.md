@@ -1,6 +1,27 @@
 # PontoIA — Changelog
 
-## Feb 14, 2026 — BottomSheet drag-to-dismiss em todos os modais do colaborador ★
+## Feb 14, 2026 — Fix: Romaneio popup blocker no checklist do colaborador ★
+
+### Bug reportado
+Botões "Romaneio (todos)" e "Romaneio (só ativos)" no cadastro/checklist do colaborador "não estavam funcionando" — clique não abria o PDF.
+
+### Causa raiz
+`window.open(URL.createObjectURL(blob), "_blank")` executado **depois** de `fetch().then().then()` é bloqueado pelo popup blocker porque não está mais no contexto direto de um event handler de click.
+
+### Fix aplicado
+- `AssetsSection.js:openRomaneio()` — abre janela IMEDIATAMENTE no clique com `window.open("about:blank", "_blank")` (síncrono, evento direto), mostra placeholder "Gerando romaneio…", e depois atribui `win.location.href = blobUrl` quando o fetch retorna
+- `DeactivationAssetsModal.js:submit()` — mesmo padrão aplicado ao termo de devolução assinado
+- Mensagem clara se popup bloqueado: "Permita popups deste site nas configurações do navegador"
+
+### Validação ✓
+- Frontend Playwright PASS (iter 71)
+- Logs HTTP confirmados: `[200] /api/collab-assets/romaneio/{cid}` + `[200] blob:http://localhost:3000/...`
+- Demais ações (editar, devolver, remover) já funcionavam — confirmadas sem regressão
+- Zero UI bugs, integration issues ou design issues
+
+---
+
+
 
 ### Frontend
 - **`BottomSheet.js`** (NEW) — componente genérico reutilizável estilo iOS/Android:
@@ -177,7 +198,7 @@
 ---
 
 
-## Feb 14, 2026 — UX clean no app do colaborador + Delete permanente no admin ★★
+## Feb 14, 2026 — BottomSheet drag-to-dismiss em todos os modais do colaborador ★
 
 ### Backend
 - Auto-lock: `analyze_doc` marca automaticamente `status="pending_review"` quando ≥1 anomalia crítica (NET_DROP/RISE ≥25%, ZERO_NET, DUPLICATE).
