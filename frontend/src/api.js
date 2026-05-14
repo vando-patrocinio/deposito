@@ -471,6 +471,20 @@ export const api = {
   waBaileysStatus: () => client.get(`/whatsapp-baileys/status`).then((r) => r.data),
   waBaileysSend: (phone, text) =>
     client.post(`/whatsapp-baileys/send`, { phone, text }).then((r) => r.data),
+  waBaileysSendImage: (phone, imageDataUrl, caption = "") =>
+    client.post(`/whatsapp-baileys/send-image`, {
+      phone, image_data_url: imageDataUrl, caption,
+    }).then((r) => r.data),
+  // Subscribers — busca + by-phone (autocomplete no modal de Agendamento)
+  subscribersSearch: (q, limit = 10) =>
+    client.get(`/subscribers/search`, { params: { q, limit } }).then((r) => r.data),
+  subscribersByPhone: (phone) =>
+    client.get(`/subscribers/by-phone`, { params: { phone } }).then((r) => r.data),
+  // Appointments
+  scheduleCreate: (data) =>
+    client.post(`/appointments`, data).then((r) => r.data),
+  scheduleList: (params = {}) =>
+    client.get(`/appointments`, { params }).then((r) => r.data),
   waBaileysLogout: () =>
     client.post(`/whatsapp-baileys/logout`).then((r) => r.data),
   waBaileysMessages: (limit = 50) =>

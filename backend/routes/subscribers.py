@@ -582,6 +582,47 @@ async def match_phone(payload: MatchPhoneIn,
     return await find_subscriber_by_phone(cid, payload.phone)
 
 
+@router.get("/search")
+async def search_subscribers(q: str,
+                                limit: int = 10,
+                                user: dict = Depends(require_role("gestor"))):
+    """Busca rápida (autocomplete) por nome, CPF ou telefone — usado no modal
+    de Agendamento e em outras seleções de cliente no chat.
+    """
+    cid = _cid(user)
+    q = (q or "").strip()
+    if len(q) < 2:
+        return {"items": []}
+    digits = "".join(c for c in q if c.isdigit())
+    or_filters = [{"name": {"$regex": q, "$options": "i"}}]
+    if digits:
+        or_filters.append({"document": {"$regex": digits}})
+        # Junta com tabela de telefones
+        sphs = await db.subscriber_phones.find(
+            {"company_id": cid, "phone": {"$regex": digits}},
+            {"_id": 0, "subscriber_id": 1},
+        ).limit(50).to_list(50)
+        sids = [s["subscriber_id"] for s in sphs]
+        if sids:
+            or_filters.append({"id": {"$in": sids}})
+    items = await db.subscribers.find(
+        {"company_id": cid, "$or": or_filters},
+        {"_id": 0, "id": 1, "name": 1, "document": 1, "email": 1, "due_day": 1,
+         "external_code": 1, "plan_name": 1, "status": 1},
+    ).limit(min(max(limit, 1), 30)).to_list(30)
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/by-phone")
+async def by_phone(phone: str,
+                     user: dict = Depends(require_role("gestor"))):
+    """Resolve um telefone para o assinante correspondente (1ª ocorrência)."""
+    cid = _cid(user)
+    res = await find_subscriber_by_phone(cid, phone)
+    sub = res.get("subscriber") if res.get("status") == "matched" else None
+    return {"subscriber": sub, "status": res.get("status"), "normalized": res.get("normalized")}
+
+
 @router.get("/{sid}")
 async def get_subscriber(sid: str,
                           user: dict = Depends(require_role("gestor"))):

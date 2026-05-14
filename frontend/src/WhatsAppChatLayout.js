@@ -5,7 +5,7 @@ import {
   CheckCircle2, GraduationCap, ChevronDown, ChevronUp, Lightbulb,
   Wifi, WifiOff, Activity, Info, Signal, MapPin, Phone, CreditCard,
   AlertCircle, Sparkles, Lock, AlertTriangle, ClipboardList, RefreshCw,
-  Settings, RotateCcw,
+  Settings, RotateCcw, Image, CalendarPlus,
 } from "lucide-react";
 import { api } from "@/api";
 import AgentConfigModal from "@/AgentConfigModal";
@@ -789,6 +789,8 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
   };
 
   const [resetting, setResetting] = useState(false);
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
   const resetConversation = async () => {
     if (!window.confirm(
       "Resetar esta conversa?\n\n" +
@@ -1013,6 +1015,22 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
             />
           )}
           <IconBtn
+            data-testid="wa-attach-image-btn"
+            onClick={() => setShowImagePicker(true)}
+            disabled={busy}
+            icon={<Image size={14} strokeWidth={2} />}
+            tooltip="Anexar arquivo de imagem"
+            hoverColor="#0ea5e9"
+          />
+          <IconBtn
+            data-testid="wa-schedule-btn"
+            onClick={() => setShowSchedule(true)}
+            disabled={busy}
+            icon={<CalendarPlus size={14} strokeWidth={2} />}
+            tooltip="Criar agendamento (data, hora, motivo, cliente Atlaz)"
+            hoverColor="#8b5cf6"
+          />
+          <IconBtn
             data-testid="wa-finalize-btn"
             onClick={finalize}
             disabled={busy}
@@ -1030,6 +1048,25 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
           />
         </div>
       </div>
+
+      {/* Image Picker — anexar foto à conversa */}
+      {showImagePicker && (
+        <ImagePickerModal
+          phone={conv.phone}
+          onClose={() => setShowImagePicker(false)}
+          onSent={async () => { setShowImagePicker(false); await loadMessages(); }}
+        />
+      )}
+
+      {/* Agendamento — bolha de serviço (data, hora, motivo, cliente) */}
+      {showSchedule && (
+        <ScheduleModal
+          phone={conv.phone}
+          conv={conv}
+          onClose={() => setShowSchedule(false)}
+          onSaved={async () => { setShowSchedule(false); await loadMessages(); }}
+        />
+      )}
 
       {/* KPI strip do atendente humano — drill-down inverso do Central IA */}
       {attendantKpi && <AttendantKpiStrip kpi={attendantKpi} />}
@@ -1737,6 +1774,339 @@ function AiCorrectionModal({ phone, original, userQuestion, onClose, onSaved }) 
     </div>
   );
 }
+
+// Modal para anexar imagem à conversa — escolher do dispositivo + preview + legenda.
+function ImagePickerModal({ phone, onClose, onSent }) {
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [caption, setCaption] = useState("");
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState("");
+  const inputRef = useRef(null);
+
+  const handleFile = (f) => {
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
+      setErr("Selecione um arquivo de imagem (PNG, JPG, WebP, GIF).");
+      return;
+    }
+    if (f.size > 8 * 1024 * 1024) {
+      setErr("Arquivo muito grande — máximo 8 MB.");
+      return;
+    }
+    setErr("");
+    setFile(f);
+    const url = URL.createObjectURL(f);
+    setPreviewUrl(url);
+  };
+
+  useEffect(() => {
+    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
+  }, [previewUrl]);
+
+  const send = async () => {
+    if (!file) { setErr("Escolha uma imagem primeiro."); return; }
+    setSending(true); setErr("");
+    try {
+      // Converte para base64 e envia
+      const reader = new FileReader();
+      const dataUrl = await new Promise((res, rej) => {
+        reader.onload = () => res(reader.result);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      await api.waBaileysSendImage(phone, dataUrl, caption || "");
+      if (onSent) await onSent();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Falha ao enviar.");
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div onClick={onClose} data-testid="image-picker-modal" style={{
+      position: "fixed", inset: 0, background: "rgba(2,6,23,.55)",
+      display: "grid", placeItems: "center", zIndex: 1000, padding: 16,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "white", borderRadius: 14, width: "100%", maxWidth: 480,
+        padding: 22, border: "1px solid #e2e8f0",
+        boxShadow: "0 20px 60px rgba(2,6,23,.25)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: "#dbeafe", color: "#0369a1",
+            display: "grid", placeItems: "center",
+            border: "1px solid #bae6fd",
+          }}><Image size={18} /></div>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
+              Anexar imagem
+            </h3>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#64748b" }}>
+              Escolha uma foto do dispositivo e adicione uma legenda opcional.
+            </p>
+          </div>
+        </div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          onChange={(e) => handleFile(e.target.files?.[0])}
+          style={{ display: "none" }}
+          data-testid="image-picker-file-input"
+        />
+
+        {previewUrl ? (
+          <div style={{ marginBottom: 12 }}>
+            <img src={previewUrl} alt="preview"
+                  style={{ width: "100%", maxHeight: 280, objectFit: "contain", borderRadius: 8, background: "#f8fafc", border: "1px solid #e2e8f0" }} />
+            <button onClick={() => inputRef.current?.click()}
+                     data-testid="image-picker-change"
+                     style={{ marginTop: 8, padding: "6px 12px", border: "1px solid #e2e8f0", borderRadius: 8, background: "white", color: "#475569", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              Trocar imagem
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => inputRef.current?.click()}
+            data-testid="image-picker-choose"
+            style={{
+              width: "100%", padding: "32px 16px",
+              border: "2px dashed #cbd5e1", borderRadius: 10,
+              background: "#f8fafc", color: "#475569",
+              fontSize: 13, fontWeight: 600, cursor: "pointer",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+              marginBottom: 12,
+            }}
+          >
+            <Image size={28} strokeWidth={1.5} style={{ color: "#94a3b8" }} />
+            Clique para escolher uma imagem
+            <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 500 }}>PNG, JPG, WebP, GIF · até 8 MB</span>
+          </button>
+        )}
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 4 }}>
+            Legenda (opcional)
+          </label>
+          <input
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            placeholder="Adicione uma legenda..."
+            data-testid="image-picker-caption"
+            style={{
+              width: "100%", padding: "8px 12px",
+              border: "1px solid #e2e8f0", borderRadius: 8,
+              fontSize: 13, color: "#0f172a", boxSizing: "border-box",
+            }}
+          />
+        </div>
+
+        {err && <div style={{ background: "#fef2f2", color: "#991b1b", padding: "8px 12px", borderRadius: 8, fontSize: 12, marginBottom: 10, border: "1px solid #fecaca" }}>{err}</div>}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onClose} disabled={sending}
+                   style={{ padding: "8px 14px", border: "1px solid #e2e8f0", borderRadius: 8, background: "white", color: "#475569", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+            Cancelar
+          </button>
+          <button
+            onClick={send}
+            disabled={sending || !file}
+            data-testid="image-picker-send"
+            style={{ padding: "8px 16px", border: 0, borderRadius: 8, background: "#0f172a", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: sending || !file ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            <Send size={13} /> {sending ? "Enviando..." : "Enviar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal de Agendamento — cria uma bolha de serviço com data, hora, motivo,
+// descrição e cliente Atlaz (autocomplete por nome/CPF/telefone).
+function ScheduleModal({ phone, conv, onClose, onSaved }) {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [time, setTime] = useState("09:00");
+  const [reason, setReason] = useState("");
+  const [description, setDescription] = useState("");
+  const [clientName, setClientName] = useState(conv?.subscriber_name || conv?.profile_name || "");
+  const [clientResults, setClientResults] = useState([]);
+  const [clientPicked, setClientPicked] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  // Tenta auto-detectar pelo telefone na primeira renderização
+  useEffect(() => {
+    if (!phone || clientPicked) return;
+    (async () => {
+      try {
+        const r = await api.subscribersByPhone?.(phone);
+        if (r?.subscriber) {
+          setClientPicked(r.subscriber);
+          setClientName(r.subscriber.name);
+        }
+      } catch { /* ignore */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone]);
+
+  const searchClient = async (q) => {
+    setClientName(q);
+    setClientPicked(null);
+    if (q.length < 3) { setClientResults([]); return; }
+    setSearching(true);
+    try {
+      const r = await api.subscribersSearch?.(q);
+      setClientResults(r?.items || []);
+    } catch { setClientResults([]); }
+    finally { setSearching(false); }
+  };
+
+  const save = async () => {
+    if (!date || !time) { setErr("Data e hora são obrigatórias."); return; }
+    if (!reason.trim()) { setErr("Informe o motivo do agendamento."); return; }
+    setSaving(true); setErr("");
+    try {
+      await api.scheduleCreate?.({
+        phone,
+        date,
+        time,
+        reason: reason.trim(),
+        description: description.trim(),
+        subscriber_id: clientPicked?.id,
+        subscriber_name: clientPicked?.name || clientName.trim() || "Não identificado",
+        subscriber_document: clientPicked?.document,
+      });
+      if (onSaved) await onSaved();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Falha ao salvar.");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div onClick={onClose} data-testid="schedule-modal" style={{
+      position: "fixed", inset: 0, background: "rgba(2,6,23,.55)",
+      display: "grid", placeItems: "center", zIndex: 1000, padding: 16,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "white", borderRadius: 14, width: "100%", maxWidth: 560,
+        padding: 22, border: "1px solid #e2e8f0",
+        boxShadow: "0 20px 60px rgba(2,6,23,.25)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: "#ede9fe", color: "#6d28d9",
+            display: "grid", placeItems: "center",
+            border: "1px solid #ddd6fe",
+          }}><CalendarPlus size={18} /></div>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
+              Novo agendamento
+            </h3>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#64748b" }}>
+              Cria uma bolha de serviço com data, hora, motivo e cliente Atlaz.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={schLabel}>Data</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+                    data-testid="schedule-date" style={schInput} />
+          </div>
+          <div>
+            <label style={schLabel}>Hora</label>
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
+                    data-testid="schedule-time" style={schInput} />
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 10, position: "relative" }}>
+          <label style={schLabel}>Cliente (Atlaz)</label>
+          <input
+            value={clientName}
+            onChange={(e) => searchClient(e.target.value)}
+            placeholder="Buscar por nome, CPF ou telefone..."
+            data-testid="schedule-client-search"
+            style={schInput}
+          />
+          {clientPicked && (
+            <div style={{ marginTop: 6, padding: "6px 10px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 6, fontSize: 11, color: "#166534" }}>
+              ✓ Vinculado: <strong>{clientPicked.name}</strong> · {clientPicked.document || "—"}
+            </div>
+          )}
+          {clientResults.length > 0 && !clientPicked && (
+            <div style={{
+              position: "absolute", top: "100%", left: 0, right: 0,
+              background: "white", border: "1px solid #e2e8f0", borderRadius: 8,
+              marginTop: 4, maxHeight: 180, overflowY: "auto", zIndex: 10,
+              boxShadow: "0 8px 24px rgba(0,0,0,.08)",
+            }}>
+              {clientResults.slice(0, 8).map((c) => (
+                <button key={c.id}
+                         onClick={() => { setClientPicked(c); setClientName(c.name); setClientResults([]); }}
+                         data-testid={`schedule-client-pick-${c.id}`}
+                         style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", border: 0, borderBottom: "1px solid #f1f5f9", background: "transparent", cursor: "pointer", fontSize: 12, color: "#0f172a" }}>
+                  <strong>{c.name}</strong> <span style={{ color: "#94a3b8" }}>· {c.document || "—"}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {searching && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>buscando...</div>}
+        </div>
+
+        <div style={{ marginBottom: 10 }}>
+          <label style={schLabel}>Motivo do agendamento</label>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Ex.: Instalação fibra, troca de equipamento, visita técnica"
+            data-testid="schedule-reason"
+            style={schInput}
+          />
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={schLabel}>Descrição (opcional)</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            placeholder="Detalhes adicionais — endereço, observações, contato secundário..."
+            data-testid="schedule-description"
+            style={{ ...schInput, resize: "vertical", fontFamily: "inherit" }}
+          />
+        </div>
+
+        {err && <div style={{ background: "#fef2f2", color: "#991b1b", padding: "8px 12px", borderRadius: 8, fontSize: 12, marginBottom: 10, border: "1px solid #fecaca" }}>{err}</div>}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onClose} disabled={saving}
+                   style={{ padding: "8px 14px", border: "1px solid #e2e8f0", borderRadius: 8, background: "white", color: "#475569", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+            Cancelar
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || !reason.trim()}
+            data-testid="schedule-save"
+            style={{ padding: "8px 16px", border: 0, borderRadius: 8, background: "#0f172a", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: saving ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            <CalendarPlus size={13} /> {saving ? "Salvando..." : "Criar agendamento"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const schLabel = { fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 4 };
+const schInput = { width: "100%", padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, color: "#0f172a", boxSizing: "border-box" };
 
 function AssignModal({ attendants, onPick, onClose }) {
   const [search, setSearch] = useState("");
