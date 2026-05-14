@@ -52,10 +52,13 @@ class CorrectionIn(BaseModel):
 async def create_correction(payload: CorrectionIn,
                               user: dict = Depends(require_role("gestor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    phone = (payload.phone or "").strip()
+    if not phone or len(phone) < 8:
+        raise HTTPException(400, "Telefone inválido.")
     doc = {
         "id": f"corr-{uuid.uuid4().hex[:12]}",
         "company_id": cid,
-        "phone": payload.phone.strip(),
+        "phone": phone,
         "original_msg_id": payload.original_msg_id,
         "user_question": payload.user_question.strip()[:1000],
         "ai_original_reply": payload.ai_original_reply.strip()[:2000],

@@ -15,8 +15,10 @@ logger = logging.getLogger("ponto.ai_history")
 
 # Limite default (100 mensagens) — usuário pediu janela maior pra IA entender
 # conversas longas. Cap por orçamento de tokens evita estourar a janela do LLM.
+# 5000 tokens deixa margem segura (~15%) considerando que ~4 chars/token
+# subestima ligeiramente PT-BR vs tiktoken cl100k.
 DEFAULT_HISTORY_LIMIT = 100
-DEFAULT_TOKEN_BUDGET = 6000  # ~24KB de texto — sobra espaço pro system prompt
+DEFAULT_TOKEN_BUDGET = 5000  # ~20KB de texto — sobra espaço pro system prompt
 
 
 def _approx_tokens(text: str) -> int:
