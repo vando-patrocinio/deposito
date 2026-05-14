@@ -78,19 +78,40 @@ export default function WhatsAppChatLayout() {
   const [contactProfiles, setContactProfiles] = useState({});
   const warmingRef = useRef(new Set());
 
-  /* Filtro de atendente vindo do Central IA (deep-link). */
+  /* Filtro de atendente vindo do Central IA (deep-link).
+     Expira automaticamente após 30 min para evitar ficar "preso" e
+     o usuário pensar que o sistema travou (queremos UX previsível). */
+  const ATTENDANT_FILTER_TTL_MS = 30 * 60 * 1000;
   const [attendantFilter, setAttendantFilter] = useState(() => {
     if (typeof window === "undefined") return null;
     try {
       const raw = window.localStorage.getItem("smartprov_attendant_filter");
-      return raw ? JSON.parse(raw) : null;
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const ts = parsed?.__set_at;
+      if (ts && (Date.now() - ts) > ATTENDANT_FILTER_TTL_MS) {
+        // expirou — descarta
+        window.localStorage.removeItem("smartprov_attendant_filter");
+        return null;
+      }
+      return parsed;
     } catch { return null; }
   });
 
   useEffect(() => {
     const onChange = (e) => {
       const d = e?.detail || null;
+      if (d) d.__set_at = Date.now();
       setAttendantFilter(d);
+      try {
+        if (d) {
+          window.localStorage.setItem(
+            "smartprov_attendant_filter", JSON.stringify(d)
+          );
+        } else {
+          window.localStorage.removeItem("smartprov_attendant_filter");
+        }
+      } catch { /* ignore */ }
       if (d) setBucket("manual");
     };
     window.addEventListener("smartprov-open-attendant", onChange);
@@ -292,29 +313,55 @@ export default function WhatsAppChatLayout() {
       <AgentConfigModal open={configOpen} onClose={closeConfig} />
       {attendantFilter?.user_id && (
         <div data-testid="attendant-filter-banner" style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "10px 16px", background: "var(--accent-soft)",
-          borderBottom: "1px solid var(--border-default)",
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "12px 16px",
+          background: filteredConvs.length === 0
+            ? "rgba(245, 158, 11, 0.12)" : "var(--accent-soft)",
+          borderBottom: filteredConvs.length === 0
+            ? "1px solid rgba(245, 158, 11, 0.4)"
+            : "1px solid var(--border-default)",
           fontSize: 13, color: "var(--text-primary)",
         }}>
           <span style={{
-            width: 8, height: 8, borderRadius: "50%",
-            background: "var(--accent)", flexShrink: 0,
+            width: 10, height: 10, borderRadius: "50%",
+            background: filteredConvs.length === 0 ? "#f59e0b" : "var(--accent)",
+            flexShrink: 0,
+            boxShadow: filteredConvs.length === 0
+              ? "0 0 8px rgba(245, 158, 11, 0.6)" : "none",
+            animation: filteredConvs.length === 0
+              ? "wa-pulse 1.8s ease-in-out infinite" : "none",
           }} />
-          <span>
-            Filtrando conversas atribuídas a <strong>{attendantFilter.name}</strong>
-            <span style={{ marginLeft: 8, color: "var(--text-muted)", fontSize: 12 }}>
-              · {filteredConvs.length} conversa(s)
-            </span>
+          <span style={{ flex: 1 }}>
+            {filteredConvs.length === 0 ? (
+              <>
+                <strong style={{ color: "#92400e" }}>Filtro ativo:</strong>{" "}
+                vendo só conversas de <strong>{attendantFilter.name}</strong> —
+                {" "}<strong>NENHUMA conversa</strong> encontrada com esse filtro.
+                <span style={{ marginLeft: 6, color: "#92400e", fontSize: 11.5 }}>
+                  (Sem conversas? Clique em "Limpar filtro" pra ver tudo.)
+                </span>
+              </>
+            ) : (
+              <>
+                Filtrando conversas atribuídas a <strong>{attendantFilter.name}</strong>
+                <span style={{ marginLeft: 8, color: "var(--text-muted)", fontSize: 12 }}>
+                  · {filteredConvs.length} conversa(s)
+                </span>
+              </>
+            )}
           </span>
-          <span style={{ flex: 1 }} />
           <button
             onClick={clearAttendantFilter}
             data-testid="clear-attendant-filter"
             style={{
-              padding: "5px 12px", borderRadius: 6,
-              border: "1px solid var(--border-default)", background: "var(--bg-surface)",
-              color: "var(--text-secondary)", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              padding: "7px 14px", borderRadius: 7,
+              border: filteredConvs.length === 0
+                ? "1px solid #f59e0b" : "1px solid var(--border-default)",
+              background: filteredConvs.length === 0
+                ? "#f59e0b" : "var(--bg-surface)",
+              color: filteredConvs.length === 0 ? "#fff" : "var(--text-secondary)",
+              fontSize: 12, fontWeight: 700, cursor: "pointer",
+              transition: "all .15s",
             }}
           >Limpar filtro</button>
         </div>
