@@ -1354,6 +1354,8 @@ function AvatarUploader({ collaboratorId, currentUrl, name, onUpdated }) {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const [cropImage, setCropImage] = useState(null);
   const initials = (name || "??").split(" ")
     .slice(0, 2).map((s) => s[0]).join("").toUpperCase();
   const fileRef = useRef(null);
@@ -1362,19 +1364,25 @@ function AvatarUploader({ collaboratorId, currentUrl, name, onUpdated }) {
 
   async function handleFile(e) {
     const f = e.target.files?.[0];
-    e.target.value = ""; // permite re-selecionar o mesmo arquivo
+    e.target.value = "";
     if (!f) return;
     if (!/^image\//.test(f.type)) {
       setError("Apenas imagens (JPG/PNG/WebP).");
       return;
     }
-    if (f.size > 3_500_000) {
-      setError("Imagem maior que ~3MB. Reduza antes de subir.");
+    if (f.size > 6_000_000) {
+      setError("Imagem maior que ~6MB. Reduza antes de subir.");
       return;
     }
     setError("");
-    // Lê + redimensiona client-side pra não estourar limite do servidor
-    const dataUrl = await resizeImageToDataUrl(f, 512, 0.85);
+    // Lê a imagem original e abre o cropper centralizado no rosto
+    const reader = new FileReader();
+    reader.onload = () => setCropImage(reader.result);
+    reader.readAsDataURL(f);
+  }
+
+  async function saveCropped(dataUrl) {
+    setCropImage(null);
     setPreview(dataUrl);
     setBusy(true);
     try {
@@ -1397,16 +1405,20 @@ function AvatarUploader({ collaboratorId, currentUrl, name, onUpdated }) {
       background: "linear-gradient(135deg, rgba(99,102,241,.07), #f8fafc 70%)",
       border: "1px solid #e2e8f0", borderRadius: 12,
     }}>
-      <div style={{
-        width: 88, height: 88, borderRadius: "50%",
-        overflow: "hidden", flexShrink: 0,
-        border: "3px solid #6366f1",
-        boxShadow: "0 4px 12px rgba(99,102,241,.25)",
-        background: shownSrc ? "transparent"
-          : "linear-gradient(135deg, #6366f1, #8b5cf6)",
-        color: "white", display: "grid", placeItems: "center",
-        fontSize: 28, fontWeight: 800,
-      }}>
+      <div
+        onDoubleClick={() => shownSrc && setZoomOpen(true)}
+        title={shownSrc ? "Clique duas vezes para ampliar" : ""}
+        style={{
+          width: 88, height: 88, borderRadius: "50%",
+          overflow: "hidden", flexShrink: 0,
+          border: "3px solid #6366f1",
+          boxShadow: "0 4px 12px rgba(99,102,241,.25)",
+          background: shownSrc ? "transparent"
+            : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+          color: "white", display: "grid", placeItems: "center",
+          fontSize: 28, fontWeight: 800,
+          cursor: shownSrc ? "zoom-in" : "default",
+        }}>
         {shownSrc ? (
           <img src={shownSrc} alt={name}
                style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -1420,7 +1432,7 @@ function AvatarUploader({ collaboratorId, currentUrl, name, onUpdated }) {
           Foto do crachá (foto_id)
         </div>
         <div style={{ fontSize: 13, color: "#0f172a", marginTop: 2 }}>
-          {shownSrc ? "Foto cadastrada. Esta imagem é usada em todos os módulos."
+          {shownSrc ? "Foto cadastrada. Clique 2× no avatar para ampliar."
                           : "Sem foto. Suba a foto do crachá pra usar em todo o sistema."}
         </div>
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1432,9 +1444,15 @@ function AvatarUploader({ collaboratorId, currentUrl, name, onUpdated }) {
                   data-testid="avatar-upload-btn">
             {busy ? "Enviando..." : (shownSrc ? "Trocar foto" : "Subir foto")}
           </Button>
+          {shownSrc && (
+            <Button variant="ghost" onClick={() => setZoomOpen(true)}
+                    data-testid="avatar-zoom-btn">
+              <Icon name="search" /> Ver grande
+            </Button>
+          )}
           <span style={{ fontSize: 10, color: "#94a3b8",
                           alignSelf: "center" }}>
-            JPG/PNG/WebP · até 3MB · redimensiona para 512px
+            Centralize o rosto após escolher · ↑ qualidade
           </span>
         </div>
         {error && (
@@ -1443,6 +1461,204 @@ function AvatarUploader({ collaboratorId, currentUrl, name, onUpdated }) {
             ⚠ {error}
           </div>
         )}
+      </div>
+
+      {zoomOpen && shownSrc && (
+        <AvatarZoomModal src={shownSrc} alt={name}
+                          caption={name}
+                          onClose={() => setZoomOpen(false)} />
+      )}
+      {cropImage && (
+        <FaceCropModal src={cropImage} name={name}
+                          onCancel={() => setCropImage(null)}
+                          onConfirm={saveCropped} />
+      )}
+    </div>
+  );
+}
+
+/* =============================================================
+   FaceCropModal — cropper circular pra centralizar no rosto.
+   Tenta auto-detectar o rosto com FaceDetector API (Chrome/Edge);
+   senão, usuário arrasta/zoom manual.
+============================================================= */
+function FaceCropModal({ src, name, onCancel, onConfirm }) {
+  const canvasRef = useRef(null);
+  const imgRef = useRef(null);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
+  const [drag, setDrag] = useState(null);
+  const [autoTried, setAutoTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const STAGE = 360;   // tamanho da área redonda visível
+  const OUTPUT = 512;  // imagem final exportada (quadrada)
+
+  useEffect(() => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = async () => {
+      imgRef.current = img;
+      setImgSize({ w: img.width, h: img.height });
+      // Auto-detect facial (best effort)
+      const hasFD = typeof window !== "undefined" && "FaceDetector" in window;
+      if (hasFD && !autoTried) {
+        try {
+          const fd = new window.FaceDetector({ fastMode: true,
+                                                  maxDetectedFaces: 1 });
+          const faces = await fd.detect(img);
+          if (faces?.[0]?.boundingBox) {
+            const b = faces[0].boundingBox;
+            const fcx = b.x + b.width / 2;
+            const fcy = b.y + b.height / 2;
+            // Calcula zoom pra rosto ocupar ~70% do crop
+            const targetSize = Math.max(b.width, b.height) * 1.55;
+            const z = STAGE / Math.min(img.width, img.height)
+                       * (Math.min(img.width, img.height) / targetSize);
+            setZoom(Math.max(0.5, Math.min(4, z)));
+            // Offset pra centralizar o rosto na stage
+            setOffset({
+              x: (img.width / 2 - fcx) * z,
+              y: (img.height / 2 - fcy) * z,
+            });
+          } else {
+            initialFit(img);
+          }
+        } catch {
+          initialFit(img);
+        }
+      } else {
+        initialFit(img);
+      }
+      setAutoTried(true);
+    };
+    img.src = src;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
+
+  function initialFit(img) {
+    const z = STAGE / Math.min(img.width, img.height);
+    setZoom(z);
+    setOffset({ x: 0, y: 0 });
+  }
+
+  useEffect(() => { draw(); /* eslint-disable-next-line */ }, [zoom, offset, imgSize]);
+
+  function draw() {
+    const c = canvasRef.current; if (!c) return;
+    const img = imgRef.current; if (!img) return;
+    const ctx = c.getContext("2d");
+    ctx.clearRect(0, 0, STAGE, STAGE);
+    // Fundo escuro
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, STAGE, STAGE);
+    // Imagem
+    const dw = img.width * zoom;
+    const dh = img.height * zoom;
+    const dx = (STAGE - dw) / 2 + offset.x;
+    const dy = (STAGE - dh) / 2 + offset.y;
+    ctx.drawImage(img, dx, dy, dw, dh);
+    // Máscara redonda (escurece fora do círculo)
+    ctx.save();
+    ctx.fillStyle = "rgba(15,23,42,.65)";
+    ctx.fillRect(0, 0, STAGE, STAGE);
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.beginPath();
+    ctx.arc(STAGE / 2, STAGE / 2, STAGE / 2 - 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // Anel
+    ctx.strokeStyle = "#6366f1";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(STAGE / 2, STAGE / 2, STAGE / 2 - 6, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  function startDrag(e) {
+    const evt = e.touches ? e.touches[0] : e;
+    setDrag({ x: evt.clientX - offset.x, y: evt.clientY - offset.y });
+  }
+  function moveDrag(e) {
+    if (!drag) return;
+    const evt = e.touches ? e.touches[0] : e;
+    setOffset({ x: evt.clientX - drag.x, y: evt.clientY - drag.y });
+  }
+  function endDrag() { setDrag(null); }
+
+  function exportCrop() {
+    const img = imgRef.current; if (!img) return;
+    setBusy(true);
+    // Exporta canvas redondo de OUTPUT×OUTPUT
+    const out = document.createElement("canvas");
+    out.width = OUTPUT; out.height = OUTPUT;
+    const ctx = out.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, OUTPUT, OUTPUT);
+    const scale = OUTPUT / STAGE;
+    const dw = img.width * zoom * scale;
+    const dh = img.height * zoom * scale;
+    const dx = (OUTPUT - dw) / 2 + offset.x * scale;
+    const dy = (OUTPUT - dh) / 2 + offset.y * scale;
+    ctx.drawImage(img, dx, dy, dw, dh);
+    const dataUrl = out.toDataURL("image/jpeg", 0.9);
+    onConfirm(dataUrl);
+    setBusy(false);
+  }
+
+  return (
+    <div data-testid="face-crop-modal" style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,.7)",
+      zIndex: 1100, display: "grid", placeItems: "center", padding: 20,
+    }} onClick={onCancel}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "#fff", borderRadius: 16, overflow: "hidden",
+        width: 460, maxWidth: "94vw",
+      }}>
+        <div style={{ padding: "12px 20px", borderBottom: "1px solid #e2e8f0",
+                          display: "flex", alignItems: "center" }}>
+          <strong style={{ fontSize: 14 }}>Ajustar foto — {name}</strong>
+          <span style={{ flex: 1 }} />
+          <button onClick={onCancel} style={{ background: "transparent",
+                       border: "none", cursor: "pointer", fontSize: 20,
+                       color: "#64748b" }}>×</button>
+        </div>
+        <div style={{ padding: 16, display: "grid", placeItems: "center",
+                          gap: 12 }}>
+          <canvas ref={canvasRef} width={STAGE} height={STAGE}
+                  onMouseDown={startDrag} onMouseMove={moveDrag}
+                  onMouseUp={endDrag} onMouseLeave={endDrag}
+                  onTouchStart={startDrag} onTouchMove={moveDrag}
+                  onTouchEnd={endDrag}
+                  data-testid="crop-canvas"
+                  style={{ width: STAGE, height: STAGE, borderRadius: 12,
+                            cursor: drag ? "grabbing" : "grab",
+                            touchAction: "none" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8,
+                          width: "100%", fontSize: 11, color: "#64748b" }}>
+            <span>Zoom</span>
+            <input type="range" min={0.2} max={4} step={0.05} value={zoom}
+                   onChange={(e) => setZoom(parseFloat(e.target.value))}
+                   data-testid="crop-zoom"
+                   style={{ flex: 1 }} />
+            <span style={{ width: 30, textAlign: "right" }}>
+              {Math.round(zoom * 100)}%
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center" }}>
+            Arraste o rosto para centralizar dentro do círculo
+            {imgSize.w > 0 && autoTried &&
+              " · Detecção automática do rosto aplicada quando possível"}
+          </div>
+        </div>
+        <div style={{ padding: 12, borderTop: "1px solid #e2e8f0",
+                          display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
+          <Button variant="primary" onClick={exportCrop} disabled={busy}
+                  data-testid="crop-confirm">
+            {busy ? "Salvando..." : "Salvar foto"}
+          </Button>
+        </div>
       </div>
     </div>
   );
