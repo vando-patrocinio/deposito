@@ -385,12 +385,6 @@ function TopBar({ user, companyName, isSuperAdmin, allCompanies, activeCo, onCha
         <span>{groupName}</span>
         <ChevronRight size={12} strokeWidth={1.75} style={{ opacity: 0.5 }} />
         <span className="app-topbar__title">{tab?.label || "Painel"}</span>
-        {companyName && (
-          <>
-            <span style={{ width: 1, height: 14, background: "var(--border-default)", margin: "0 6px" }} />
-            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{companyName}</span>
-          </>
-        )}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
