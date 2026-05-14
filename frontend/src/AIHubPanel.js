@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/api";
 import {
   Bot, MessageCircle, Phone, Send, Settings, History,
@@ -64,62 +64,7 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
     <div data-testid="aihub-panel"
           data-fullscreen={isWaFull ? "1" : "0"}
           style={{ padding: "0 4px" }}>
-      <div style={{
-        display: "flex", gap: 2, padding: 3, background: "var(--bg-surface-2)",
-        borderRadius: 10, marginBottom: isWaFull ? 6 : 12,
-        overflowX: "auto", flexWrap: "wrap",
-      }}>
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          const isLigo = t.dynamic;
-          return (
-            <button key={t.id} onClick={() => setTab(t.id)}
-                    data-testid={`aihub-tab-${t.id}`}
-                    style={{
-                      position: "relative",
-                      padding: "6px 11px", border: "none", borderRadius: 7,
-                      background: active ? "var(--bg-surface)" : "transparent",
-                      color: active ? "var(--text-primary)" : "var(--text-secondary)",
-                      fontWeight: active ? 700 : 500, fontSize: 12.5, cursor: "pointer",
-                      display: "inline-flex", alignItems: "center", gap: 5,
-                      whiteSpace: "nowrap",
-                      boxShadow: active ? "var(--shadow-sm)" : "none",
-                    }}>
-              {isLigo ? (
-                <span data-testid="ligo-status-indicator"
-                      title={waConnected ? "WhatsApp conectado" : "WhatsApp desconectado"}
-                      style={{
-                        position: "relative", display: "inline-flex",
-                        alignItems: "center", justifyContent: "center",
-                      }}>
-                  <Plug size={14}
-                         strokeWidth={2}
-                         style={{
-                           color: waConnected ? "#16a34a" : "var(--text-muted)",
-                           transition: "color .25s",
-                         }} />
-                  <span style={{
-                    position: "absolute",
-                    top: -2, right: -3,
-                    width: 7, height: 7, borderRadius: "50%",
-                    background: waConnected ? "#16a34a" : "#94a3b8",
-                    boxShadow: waConnected
-                      ? "0 0 0 2px var(--bg-surface-2), 0 0 6px rgba(22,163,74,.7)"
-                      : "0 0 0 2px var(--bg-surface-2)",
-                    animation: waConnected ? "ligo-pulse 2s ease-in-out infinite" : "none",
-                  }} />
-                </span>
-              ) : (
-                <Icon size={14} />
-              )}
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {tab === "whatsapp_qr" && <WhatsAppQRPanel />}
+      <WhatsAppChatAutoRecover waConnected={waConnected} />
       {tab === "mensagem" && <MensagemTab />}
       {tab === "playground" && <PlaygroundTab />}
       {tab === "dial" && <DialTab />}
@@ -127,6 +72,98 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
       {tab === "history" && <HistoryTab />}
     </div>
   );
+}
+
+// Wrapper resiliente — sempre renderiza o chat. Se a sessão WhatsApp cair
+// (detectado via status backend ou error boundary), automaticamente tenta
+// reconectar a cada 8s sem precisar de interação do usuário.
+function WhatsAppChatAutoRecover({ waConnected }) {
+  const [errorKey, setErrorKey] = useState(0);
+  const [lastErr, setLastErr] = useState(null);
+
+  // Quando volta a conectar, força remount do chat para limpar estado preso.
+  const prevConnectedRef = useRef(waConnected);
+  useEffect(() => {
+    if (!prevConnectedRef.current && waConnected) {
+      setErrorKey((k) => k + 1);
+      setLastErr(null);
+    }
+    prevConnectedRef.current = waConnected;
+  }, [waConnected]);
+
+  return (
+    <ChatErrorBoundary
+      onError={(e) => { setLastErr(e); }}
+      onRetry={() => { setErrorKey((k) => k + 1); setLastErr(null); }}
+    >
+      <WhatsAppQRPanel key={errorKey} />
+      {lastErr && (
+        <div role="alert" data-testid="chat-auto-recovering" style={{
+          position: "fixed", bottom: 14, right: 14, zIndex: 100,
+          background: "#fef3c7", border: "1px solid #fcd34d",
+          color: "#92400e", padding: "8px 14px", borderRadius: 8,
+          fontSize: 12, fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,.15)",
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <span style={{
+            width: 8, height: 8, borderRadius: "50%",
+            background: "#f59e0b",
+            animation: "ligo-pulse 1s ease-in-out infinite",
+          }} />
+          Reconectando ao WhatsApp…
+        </div>
+      )}
+    </ChatErrorBoundary>
+  );
+}
+
+// Boundary que captura erro do chat e auto-retry a cada 8s.
+class ChatErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+    this._timer = null;
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(err) {
+    this.props.onError?.(err);
+    if (!this._timer) {
+      this._timer = setTimeout(() => {
+        this._timer = null;
+        this.setState({ hasError: false });
+        this.props.onRetry?.();
+      }, 8000);
+    }
+  }
+  componentWillUnmount() {
+    if (this._timer) clearTimeout(this._timer);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div data-testid="chat-recovering-panel" style={{
+          padding: 40, textAlign: "center",
+          color: "var(--text-secondary)", fontSize: 13,
+        }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 10,
+            background: "#fef3c7", display: "grid", placeItems: "center",
+            margin: "0 auto 12px",
+          }}>
+            <span style={{
+              width: 12, height: 12, borderRadius: "50%",
+              background: "#f59e0b",
+              animation: "ligo-pulse 1s ease-in-out infinite",
+            }} />
+          </div>
+          O chat travou — refazendo em instantes…
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 /* =============================================================
