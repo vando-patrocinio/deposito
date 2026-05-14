@@ -28,14 +28,11 @@ const SUGGESTIONS = [
 ];
 
 export default function SecretariaIaSection() {
-  const [tab, setTab] = useState("chat");
+  const [tab, setTab] = useState("gpt");
   return (
     <div data-testid="secretaria-section">
       <div style={{ display: "flex", gap: 4, padding: 4, background: "#e2e8f0", borderRadius: 10, marginBottom: 14, flexWrap: "wrap" }}>
         {[
-          { id: "chat", label: "Chat", icon: Bot },
-          { id: "instancia", label: "Instância", icon: Smartphone },
-          { id: "agents", label: "Agentes", icon: Sparkles },
           { id: "gpt", label: "GPT customizado", icon: Sparkles },
           { id: "drive", label: "Backup Drive", icon: HardDrive },
           { id: "history", label: "Histórico", icon: HistoryIcon },
@@ -57,9 +54,6 @@ export default function SecretariaIaSection() {
           </button>
         ))}
       </div>
-      {tab === "chat" && <ChatTab />}
-      {tab === "instancia" && <WhatsAppInstancePanel />}
-      {tab === "agents" && <AgentsTab />}
       {tab === "gpt" && <GptSetupTab />}
       {tab === "drive" && <DriveBackupTab />}
       {tab === "history" && <HistoryTab />}
