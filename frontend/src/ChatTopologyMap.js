@@ -62,10 +62,11 @@ export default function ChatTopologyMap() {
     twilio:       { x: 280, y: 240, color: "#ef4444" },
     meta:         { x: 280, y: 400, color: "#0ea5e9" },
     backend:      { x: 500, y: 240, color: "#8b5cf6" },
-    mongo:        { x: 720, y: 360, color: "#10b981" },
+    mongo:        { x: 720, y: 400, color: "#10b981" },
     orchestrator: { x: 720, y: 130, color: "#f59e0b" },
-    openrouter:   { x: 920, y: 60,  color: "#ec4899" },
-    atlaz:        { x: 920, y: 240, color: "#06b6d4" },
+    isabella:     { x: 920, y: 130, color: "#d946ef" },
+    openrouter:   { x: 920, y: 30,  color: "#ec4899" },
+    atlaz:        { x: 920, y: 280, color: "#06b6d4" },
   };
 
   const nodeMap = Object.fromEntries(nodes.map((n) => [n.id, n]));
@@ -183,6 +184,7 @@ function iconForKind(kind) {
     core: "⚙",
     storage: "🗄",
     ai: "🧠",
+    agent: "✦",
     data: "📊",
   }[kind] || "•";
 }
