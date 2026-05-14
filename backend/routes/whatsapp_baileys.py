@@ -696,13 +696,58 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     Cada caminho de falha persiste um registro com `delivery_status`
     `failed_*` para que o gestor enxergue o problema no painel.
     """
-    # 0. Se humano assumiu essa conversa, NÃO responde com IA
+    # 0. Se humano assumiu essa conversa, NÃO responde com IA — exceto
+    # quando o atendente está INATIVO há > 30min (conversa órfã).
+    # Nesse caso devolvemos para a IA automaticamente e seguimos.
     conv = await db.wa_conversations.find_one(
         {"company_id": cid, "phone": phone}, {"_id": 0}
     )
     if conv and conv.get("assignee_role") == "human" and conv.get("status") != "closed":
-        logger.info("[wa-baileys] auto-reply pulado — humano atendendo (%s)", phone)
-        return None  # NÃO é falha — humano assumiu intencionalmente
+        # Verifica última msg outbound DO HUMANO atendente (ignora handover automatic).
+        last_human_msg = await db.aihub_wa_messages.find_one(
+            {"company_id": cid, "phone": phone,
+             "direction": "outbound", "auto_reply": {"$ne": True},
+             "is_handover_message": {"$ne": True}},
+            {"_id": 0, "created_at": 1}, sort=[("created_at", -1)]
+        )
+        # Janela de "abandono": 30 minutos sem msg humana
+        IDLE_LIMIT_MIN = 30
+        idle_too_long = False
+        try:
+            from datetime import datetime, timezone, timedelta
+            ref_iso = (last_human_msg or {}).get("created_at") \
+                       or conv.get("assignee_assigned_at") \
+                       or conv.get("updated_at")
+            if ref_iso:
+                ref_dt = datetime.fromisoformat(ref_iso.replace("Z", "+00:00"))
+                idle_too_long = (datetime.now(timezone.utc) - ref_dt) \
+                                  > timedelta(minutes=IDLE_LIMIT_MIN)
+        except Exception:
+            idle_too_long = False
+
+        if idle_too_long:
+            # AUTO-RELEASE — atendente abandonou. Devolve pra IA.
+            await db.wa_conversations.update_one(
+                {"company_id": cid, "phone": phone},
+                {"$set": {
+                    "assignee_role": "ai",
+                    "assignee_user_id": None,
+                    "auto_released_at": now_iso(),
+                    "auto_release_reason": f"humano inativo há >{IDLE_LIMIT_MIN}min",
+                    "updated_at": now_iso(),
+                }},
+            )
+            logger.info(
+                "[wa-baileys] AUTO-RELEASE — atendente inativo há >%dmin, "
+                "devolvendo %s pra IA", IDLE_LIMIT_MIN, phone
+            )
+            # Continua o fluxo — IA responde normalmente abaixo.
+            conv = None
+        else:
+            logger.info(
+                "[wa-baileys] auto-reply pulado — humano atendendo (%s)", phone
+            )
+            return None  # NÃO é falha — humano assumiu intencionalmente
 
     # 1. Lê config de auto-reply
     cfg = await db.aihub_settings.find_one(
@@ -1776,6 +1821,7 @@ async def assign_conversation(phone: str, payload: AssignIn,
             "company_id": cid, "phone": phone,
             "assignee_user_id": payload.assignee_user_id,
             "assignee_role": role,
+            "assignee_assigned_at": now_iso(),
             "status": "open",   # garante reabertura ao assumir
             "updated_at": now_iso(),
             "updated_by": user.get("email") or user.get("id"),

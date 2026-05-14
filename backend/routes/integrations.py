@@ -23,7 +23,7 @@ logger = logging.getLogger("ponto.integrations")
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
 
-SIDECAR_BASE = os.environ.get("WA_SIDECAR_URL", "http://localhost:8002")
+SIDECAR_BASE = os.environ.get("WA_SIDECAR_URL", "http://127.0.0.1:3002")
 
 
 async def _check_baileys() -> Dict[str, Any]:
