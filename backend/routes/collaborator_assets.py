@@ -29,6 +29,39 @@ logger = logging.getLogger("ponto.assets")
 router = APIRouter(prefix="/api/collab-assets", tags=["collaborator_assets"])
 
 
+async def _branding_with_praca(company_id: str, coll: dict) -> dict:
+    """Mescla o branding global com os dados da praça (filial) do colaborador.
+    A praça TEM PRIORIDADE sempre que tiver o campo cadastrado — assim o romaneio
+    sai com a razão social/CNPJ/logo da filial e não da matriz.
+    """
+    branding = (await get_branding(company_id)).model_dump()
+    praca_id = (coll or {}).get("praca_id")
+    if not praca_id:
+        return branding
+    praca = await db.pracas.find_one({"id": praca_id}, {"_id": 0})
+    if not praca:
+        return branding
+    if praca.get("name_business") or praca.get("name"):
+        branding["company_name"] = praca.get("name_business") or praca.get("name")
+    for k in ("cnpj", "inscricao_estadual", "phone", "email", "city", "state",
+              "postal_code", "address", "full_address"):
+        if praca.get(k):
+            branding[k] = praca[k]
+    # Compatibilidade: branding usa "zip_code"; praça usa "postal_code"
+    if praca.get("postal_code"):
+        branding["zip_code"] = praca["postal_code"]
+    # Praça usa "full_address" para o endereço; substitui o da matriz quando existe
+    if praca.get("full_address"):
+        branding["address"] = praca["full_address"]
+    # Site da praça (campo "site") → branding usa "website"
+    if praca.get("site"):
+        branding["website"] = praca["site"]
+    # Logo: praça primeiro
+    if praca.get("logo_url"):
+        branding["logo_data_url"] = praca["logo_url"]
+    return branding
+
+
 CATEGORIES = ["uniforme", "epi", "ferramenta", "veiculo", "eletronico", "outro"]
 STATUSES = ["ativo", "devolvido", "danificado", "perdido"]
 
@@ -386,8 +419,10 @@ def _build_romaneio_pdf(branding: dict, collaborator: dict,
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=1.5 * cm, rightMargin=1.5 * cm,
                             topMargin=1.2 * cm, bottomMargin=1.2 * cm,
-                            title=("Romaneio de Devolução" if is_return
-                                   else "Romaneio de Entrega"))
+                            title=("SmartProv — Romaneio de Devolução" if is_return
+                                   else "SmartProv — Romaneio de Entrega"),
+                            author="SmartProv", creator="SmartProv",
+                            subject="Romaneio de Custódia de Bens")
     styles = getSampleStyleSheet()
     story: list = []
 
@@ -743,7 +778,7 @@ async def return_confirm(cid: str, payload: ReturnConfirmIn,
             )
 
     # Gera PDF com assinatura embutida
-    branding = (await get_branding(company_id)).model_dump()
+    branding = await _branding_with_praca(company_id, coll)
     pdf = _build_romaneio_pdf(branding, coll, assets, mode="return",
                               extra_items=extras, receiver=receiver)
     fname = f"devolucao_{(coll.get('name') or cid).replace(' ', '_').lower()}_{return_id[-6:]}.pdf"
@@ -781,7 +816,7 @@ async def romaneio_pdf(cid: str,
     assets = await db.collaborator_assets.find(q, {"_id": 0}).sort(
         "delivered_at", 1).to_list(500)
     extra = (await _collect_extra_custody(company_id, cid)) if mode == "return" else None
-    branding = (await get_branding(company_id)).model_dump()
+    branding = await _branding_with_praca(company_id, coll)
     pdf = _build_romaneio_pdf(branding, coll, assets, mode=mode, extra_items=extra)
     suffix = "devolucao" if mode == "return" else "romaneio"
     fname = f"{suffix}_{(coll.get('name') or cid).replace(' ', '_').lower()}.pdf"
@@ -804,7 +839,7 @@ async def public_romaneio_pdf(cid: str,
     assets = await db.collaborator_assets.find(q, {"_id": 0}).sort(
         "delivered_at", 1).to_list(500)
     extra = (await _collect_extra_custody(company_id, cid)) if mode == "return" else None
-    branding = (await get_branding(company_id)).model_dump()
+    branding = await _branding_with_praca(company_id, coll)
     pdf = _build_romaneio_pdf(branding, coll, assets, mode=mode, extra_items=extra)
     suffix = "devolucao" if mode == "return" else "romaneio"
     fname = f"{suffix}_{(coll.get('name') or cid).replace(' ', '_').lower()}.pdf"
