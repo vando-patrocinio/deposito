@@ -259,6 +259,7 @@ function RepairMapSection({ days }) {
       </Card>
     </>
   );
+}
 
 /* =============================================================
    CriticalMapSection — todas as ONUs em estado crítico/offline
@@ -480,8 +481,6 @@ function CriticalMapSection() {
       </Card>
     </>
   );
-}
-
 }
 
 function DefectiveSection({ days }) {
