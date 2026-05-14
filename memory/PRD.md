@@ -21,6 +21,7 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 8. **Permissões dinâmicas** — admin configura quais abas cada role vê (`tab_permissions` em branding).
 9. **Auditoria & Logs** — todas as ações destrutivas/sensíveis são logadas (lousa_logs, sync_logs).
 10. **Plataforma multi-tenant** — super admin lista empresas, faz impersonation com banner de aviso.
+11. **Training Studio (Multi-Agent Simulator)** — 60 cenários realistas, 20 testes de validação executáveis (Isabela IA + Avaliador IA), 31 regras da matriz de decisão, scoring 100pts, histórico completo de runs. Acessível via Central IA → "Abrir Training Studio". (Feb/2026)
 
 ## Arquitetura técnica
 - **Backend**: FastAPI · MongoDB (Motor async) · APScheduler · workers async (atlaz, smartolt, ai_preventive, holidays).

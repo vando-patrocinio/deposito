@@ -162,7 +162,7 @@ function ScenariosTab() {
           >
             <option value="">Todas categorias</option>
             {Object.entries(categories).map(([k, n]) => (
-              <option key={k} value={k}>{CATEGORY_LABELS[k] || k} ({n})</option>
+              <option key={k} value={k}>{`${CATEGORY_LABELS[k] || k} (${n})`}</option>
             ))}
           </select>
           <Button onClick={load} variant="secondary" size="sm">
@@ -1054,6 +1054,14 @@ export default function TrainingStudio({ embedded = false, onClose }) {
     ]).then(([s, t, m]) => setCounts({ scenarios: s, tests: t, matrix: m }));
   }, []);
 
+  // ESC para fechar o modal
+  useEffect(() => {
+    if (embedded || !onClose) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [embedded, onClose]);
+
   const content = (
     <>
       <div style={{
@@ -1080,11 +1088,15 @@ export default function TrainingStudio({ embedded = false, onClose }) {
   if (embedded) return content;
 
   return (
-    <div data-testid="training-studio-modal" style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,.55)",
-      zIndex: 9999, display: "grid", placeItems: "center", padding: 24,
-    }}>
-      <div style={{
+    <div
+      data-testid="training-studio-modal"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,.55)",
+        zIndex: 9999, display: "grid", placeItems: "center", padding: 24,
+      }}
+    >
+      <div onClick={(e) => e.stopPropagation()} style={{
         background: "var(--bg-surface)", borderRadius: 14,
         width: "min(1280px, 96vw)", maxHeight: "94vh", overflow: "auto",
         padding: 20,

@@ -1,5 +1,53 @@
 # PontoIA — Changelog
 
+## Feb 14, 2026 — Training Studio (Simulador de Treinamento Multi-Agente) ★★★
+
+### Backend
+- **60 cenários de treinamento** seedados em `ai_training_scenarios` (categorias: rede_smartolt 14, agendamento_kanban 10, atendimento_humano 6, avaliacao_coach 10, falhas_escalonamento 10, variacao_dificil 10)
+  - Scripts: `seed_scenarios_batch1.py` (#1-#14), `batch2.py` (#15-#24), `batch4_5.py` (#25-#40), `batch6.py` (#41-#60)
+  - Cada cenário tem: objetivo, contexto, agentes envolvidos, fluxo ideal, simulação completa da conversa multi-agente, resposta correta, erros a evitar, critérios de avaliação, notas esperadas, lição
+- **20 testes de validação** em `ai_training_tests` (script: `seed_training_tests.py`)
+  - Cada teste verifica entrada do cliente vs agentes esperados + erro crítico + critério binário
+- **31 regras da matriz de decisão** em `ai_training_decision_matrix` (script: `seed_decision_matrix.py`)
+  - 10 categorias: rede, agendamento, risco, supervisão, sistema, ticket, qualidade, transparência, cadastro, especial
+  - Cada regra: condição → ação, com agente origem/destino e prioridade (crítica/alta/média/baixa)
+- **Endpoints novos em `routes/ai_training.py`**:
+  - `GET /api/ai-training/tests` (com `last_run` agregado)
+  - `GET /api/ai-training/tests/{n}`
+  - `POST /api/ai-training/tests/{n}/run` — executa Isabela IA real → Avaliador IA → score 0-10 + breakdown 100pts
+  - `POST /api/ai-training/tests/run-all` — batch async com semáforo (5 concorrentes)
+  - `GET /api/ai-training/decision-matrix`
+  - `GET /api/ai-training/runs`, `/runs/{id}`, `/runs/batch/{id}`
+- **Engine de avaliação**: Avaliador IA usa prompt estruturado JSON mode (modelo 100pts: fluxo 30 + fonte 25 + sem invenção 20 + empatia 10 + risco 10 + transparência 5; penalidades automáticas -15/-10/-5)
+- Persistência completa em `ai_training_runs` para auditoria/histórico
+
+### Frontend
+- **`TrainingStudio.js` (NEW · 1130 linhas)** — modal completo acessado via Central IA → "Abrir Training Studio" (botão roxo gradient)
+  - **4 tabs**:
+    1. **Cenários (60)** — busca, filtro por categoria, detalhe lateral com simulação colorida por agente (Cliente preto, Co-Pilot rosa, Avaliador laranja, Motor roxo, SmartOLT azul, Isabela teal, Kanban indigo, Sentinela vermelho, Aprendizado lima)
+    2. **Testes (20)** — botão "Executar" individual + "Executar todos" (batch) · cada linha mostra última execução com score e pass/fail
+    3. **Matriz (31)** — 10 categorias com chips de filtro · linhas com Condição → Ação, agente origem→destino, prioridade
+    4. **Histórico** — KPIs (execuções, aprovados, reprovados, nota média) + lista de runs com score badge
+  - Detalhe de run mostra: resposta literal da Isabela + breakdown visual (barras de progresso por critério) + penalidades + justificativa + agentes acionados/faltando + sugestões
+  - **ESC fecha modal** + **click no backdrop fecha modal**
+- `AiTrainingPanel.js` ganhou botão "Abrir Training Studio" ao lado do "Recarregar treinamento"
+- `api.js` expandida: `aiTrainingTests`, `aiTrainingRunTest`, `aiTrainingRunAll`, `aiTrainingDecisionMatrix`, `aiTrainingRuns`, `aiTrainingRun`, `aiTrainingBatchRuns`
+
+### Testing ✓
+- Backend pytest 12/12 PASS em 20.5s (`/app/backend/tests/test_iter65_ai_training.py`)
+- Frontend Playwright PASS — todas as 4 tabs renderizando, modal funcional, executar single test integrado (score 9.5/10 em 18s)
+- Execução real Isabela IA → Avaliador IA → score 9.5/10 verificada end-to-end
+
+### Validação ✓
+- 60 cenários cobertos (todos os casos do prompt do usuário + 10 variações difíceis)
+- 20 testes prontos para validar comportamento das IAs
+- 31 regras da matriz de decisão disponíveis para consulta visual
+- Sistema de scoring 100pts implementado conforme prompt original
+- Modal fechável via X, ESC e backdrop click
+
+---
+
+
 ## Feb 11, 2026 — Kill-switch por grupo (bulk pause/resume)
 
 ### Backend (`routes/motor_ia.py`)
