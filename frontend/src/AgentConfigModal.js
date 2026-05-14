@@ -174,24 +174,24 @@ export default function AgentConfigModal({ open, onClose }) {
       setError("Parâmetros (system_prompt) precisam de pelo menos 10 caracteres.");
       return;
     }
-    if (draft.system_prompt.length > 32000) {
-      setError(`Parâmetros (system_prompt) muito longo (${draft.system_prompt.length} chars). Limite: 32000.`);
+    if (draft.system_prompt.length > 200000) {
+      setError(`Parâmetros (system_prompt) excedeu o limite máximo do banco (${draft.system_prompt.length} chars). Limite técnico: 200.000.`);
       return;
     }
-    if ((draft.company_info || "").length > 16000) {
-      setError(`Informações e Regras muito longo (${draft.company_info.length} chars). Limite: 16000.`);
+    if ((draft.company_info || "").length > 200000) {
+      setError(`Informações e Regras excedeu o limite máximo (${draft.company_info.length} chars). Limite técnico: 200.000.`);
       return;
     }
-    if ((draft.pricing_info || "").length > 16000) {
-      setError(`Preços e Valores muito longo (${draft.pricing_info.length} chars). Limite: 16000.`);
+    if ((draft.pricing_info || "").length > 200000) {
+      setError(`Preços e Valores excedeu o limite máximo (${draft.pricing_info.length} chars). Limite técnico: 200.000.`);
       return;
     }
-    if ((draft.priority_situations || "").length > 16000) {
-      setError(`Situações Prioritárias muito longo (${draft.priority_situations.length} chars). Limite: 16000.`);
+    if ((draft.priority_situations || "").length > 200000) {
+      setError(`Situações Prioritárias excedeu o limite máximo (${draft.priority_situations.length} chars). Limite técnico: 200.000.`);
       return;
     }
-    if (draft.max_tokens > 16000) {
-      setError(`Max tokens fora do limite (${draft.max_tokens}). Use até 16000.`);
+    if (draft.max_tokens > 32000) {
+      setError(`Max tokens fora do limite (${draft.max_tokens}). Use até 32000.`);
       return;
     }
     setBusy(true);
@@ -530,41 +530,37 @@ function PersonalitySection({ draft, patch }) {
       </Field>
 
       <Field icon={Building2} label="Informações e Regras"
-              hint={`Informações básicas sobre sua empresa que a IA deve conhecer (SLA, horários, políticas). ${(draft.company_info || "").length}/16000`}>
+              hint="Informações básicas sobre sua empresa que a IA deve conhecer (SLA, horários, políticas).">
         <textarea data-testid="agent-config-field-company"
                    rows={4} value={draft.company_info}
                    onChange={(e) => patch("company_info", e.target.value)}
-                   maxLength={16000}
                    placeholder="SLA, tempo de atendimento para reparo: 24h.\nHorário comercial: seg-sex 08-18h."
                    style={textareaStyle()} />
       </Field>
 
       <Field icon={DollarSign} label="Preços e Valores"
-              hint={`Tabela de preços e informações sobre produtos/serviços. ${(draft.pricing_info || "").length}/16000`}>
+              hint="Tabela de preços e informações sobre produtos/serviços.">
         <textarea data-testid="agent-config-field-pricing"
                    rows={5} value={draft.pricing_info}
                    onChange={(e) => patch("pricing_info", e.target.value)}
-                   maxLength={16000}
                    placeholder="PLANOS E VALORES\n- 400 MEGA Fibra: R$ 109,90/mês\n- 600 MEGA Fibra: R$ 139,90/mês"
                    style={textareaStyle()} />
       </Field>
 
       <Field icon={Settings} label="Parâmetros (system prompt)" required
-              hint={`Configure parâmetros específicos e diretrizes de comportamento para a IA. ${(draft.system_prompt || "").length}/32000`}>
+              hint="Configure parâmetros específicos e diretrizes de comportamento para a IA.">
         <textarea data-testid="agent-config-field-prompt"
                    rows={8} value={draft.system_prompt}
                    onChange={(e) => patch("system_prompt", e.target.value)}
-                   maxLength={32000}
                    placeholder="# PROMPT_AGENTE_V1\n\nObjetivo & Persona\n..."
                    style={textareaStyle()} />
       </Field>
 
       <Field icon={Star} label="Situações Prioritárias"
-              hint={`Situações de negócio que merecem atenção prioritária (não emergências, mas prioridades). ${(draft.priority_situations || "").length}/16000`}>
+              hint="Situações de negócio que merecem atenção prioritária (não emergências, mas prioridades).">
         <textarea data-testid="agent-config-field-priority"
                    rows={5} value={draft.priority_situations}
                    onChange={(e) => patch("priority_situations", e.target.value)}
-                   maxLength={16000}
                    placeholder="Reconquista de ex-cliente: tom acolhedor e oferta exclusiva..."
                    style={textareaStyle()} />
       </Field>
@@ -603,9 +599,9 @@ function ModelSection({ draft, patch, models }) {
                  onChange={(e) => patch("temperature", parseFloat(e.target.value) || 0)}
                  style={inputStyle()} />
         </Field>
-        <Field label="Max tokens" hint="Tamanho máximo da resposta (50-16000)">
+        <Field label="Max tokens" hint="Tamanho máximo da resposta (50-32000)">
           <input data-testid="agent-config-field-maxtok" type="number"
-                 min={50} max={16000} step={50} value={draft.max_tokens}
+                 min={50} max={32000} step={50} value={draft.max_tokens}
                  onChange={(e) => patch("max_tokens", parseInt(e.target.value, 10) || 50)}
                  style={inputStyle()} />
         </Field>

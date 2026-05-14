@@ -73,20 +73,20 @@ class FormField(BaseModel):
 class AgentIn(BaseModel):
     name: str = Field(..., min_length=2, max_length=80)
     description: Optional[str] = Field(default=None, max_length=300)
-    initial_message: str = Field(default="", max_length=500)
-    system_prompt: str = Field(..., min_length=10, max_length=32000)
+    initial_message: str = Field(default="", max_length=2000)
+    system_prompt: str = Field(..., min_length=10, max_length=200000)
     model_provider: Literal["gemini", "anthropic", "openai"] = "gemini"
     model_name: str = Field(default="gemini-2.5-flash", max_length=80)
     temperature: float = Field(default=0.6, ge=0.0, le=2.0)
-    max_tokens: int = Field(default=700, ge=50, le=16000)
+    max_tokens: int = Field(default=700, ge=50, le=32000)
     form_fields: List[FormField] = Field(default_factory=list)
     tools_enabled: List[str] = Field(default_factory=list)
     webhook_url: Optional[str] = Field(default=None, max_length=400)
     active: bool = True
     # Personalidade & Expertise (estilo PDF Ligo Fibra)
-    company_info: str = Field(default="", max_length=16000)
-    pricing_info: str = Field(default="", max_length=16000)
-    priority_situations: str = Field(default="", max_length=16000)
+    company_info: str = Field(default="", max_length=200000)
+    pricing_info: str = Field(default="", max_length=200000)
+    priority_situations: str = Field(default="", max_length=200000)
     # Roteamento inteligente (multi-agente)
     routing_intent: str = Field(default="", max_length=400)
 
@@ -94,19 +94,19 @@ class AgentIn(BaseModel):
 class AgentUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=80)
     description: Optional[str] = Field(default=None, max_length=300)
-    initial_message: Optional[str] = Field(default=None, max_length=500)
-    system_prompt: Optional[str] = Field(default=None, min_length=10, max_length=32000)
+    initial_message: Optional[str] = Field(default=None, max_length=2000)
+    system_prompt: Optional[str] = Field(default=None, min_length=10, max_length=200000)
     model_provider: Optional[Literal["gemini", "anthropic", "openai"]] = None
     model_name: Optional[str] = Field(default=None, max_length=80)
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
-    max_tokens: Optional[int] = Field(default=None, ge=50, le=16000)
+    max_tokens: Optional[int] = Field(default=None, ge=50, le=32000)
     form_fields: Optional[List[FormField]] = None
     tools_enabled: Optional[List[str]] = None
     webhook_url: Optional[str] = Field(default=None, max_length=400)
     active: Optional[bool] = None
-    company_info: Optional[str] = Field(default=None, max_length=16000)
-    pricing_info: Optional[str] = Field(default=None, max_length=16000)
-    priority_situations: Optional[str] = Field(default=None, max_length=16000)
+    company_info: Optional[str] = Field(default=None, max_length=200000)
+    pricing_info: Optional[str] = Field(default=None, max_length=200000)
+    priority_situations: Optional[str] = Field(default=None, max_length=200000)
     routing_intent: Optional[str] = Field(default=None, max_length=400)
 
 
