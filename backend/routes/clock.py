@@ -22,7 +22,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from core import (
     DEMO_COMPANY_ID,
@@ -1404,6 +1404,33 @@ def _fmt_marca(time_str: str | None, origens: dict, key: str) -> str:
     return f"{time_str} ({tag})" if tag else time_str
 
 
+def _logo_flowable(logo_src: str | None, max_w_cm: float = 2.4, max_h_cm: float = 2.0):
+    """Carrega um logo (data URL base64 ou URL http) e devolve um Image
+    Flowable do ReportLab. Falha silenciosa → retorna None.
+    """
+    if not logo_src or not isinstance(logo_src, str):
+        return None
+    try:
+        if logo_src.startswith("data:"):
+            # data:image/png;base64,XXXX
+            header, _, b64 = logo_src.partition(",")
+            if not b64:
+                return None
+            raw = base64.b64decode(b64)
+            buf = io.BytesIO(raw)
+        elif logo_src.startswith("http://") or logo_src.startswith("https://"):
+            import urllib.request
+            with urllib.request.urlopen(logo_src, timeout=3) as resp:
+                buf = io.BytesIO(resp.read())
+        else:
+            return None
+        img = Image(buf, width=max_w_cm * cm, height=max_h_cm * cm, kind="proportional")
+        return img
+    except Exception:
+        return None
+
+
+
 def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
                           company=None, praca=None, totals_extra=None, styles=None,
                           print_id=None):
@@ -1418,35 +1445,45 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
     praca = praca or {}
     totals_extra = totals_extra or {}
 
-    # Praça com dados fiscais próprios tem prioridade sobre matriz
-    eff_name = praca.get("name_business") or (
-        praca.get("name") if praca.get("cnpj") else None) or company.get("name") or "SmartProv"
+    # Praça é a "filial" do colaborador — TEM PRIORIDADE TOTAL sobre a matriz
+    # para todos os dados que aparecem no espelho. Só cai pra company se a
+    # praça não tiver o campo cadastrado.
+    eff_name = (praca.get("name_business") or praca.get("name")
+                or company.get("name") or "SmartProv")
     company_name = eff_name.upper()
     company_cnpj = praca.get("cnpj") or company.get("cnpj") or "—"
     company_ie = (praca.get("inscricao_estadual") or company.get("inscricao_estadual")
                   or company.get("ie") or "—")
+    # Logo: praça primeiro, depois branding/company
+    company_logo = (praca.get("logo_url") or praca.get("logo_data_url")
+                    or company.get("logo_data_url") or company.get("logo_url"))
 
     last_day_str = f"{calendar.monthrange(year, month)[1]:02d}/{month:02d}/{year}"
     periodo = f"01/{month:02d}/{year} ATÉ {last_day_str}"
     emitido_em = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M")
 
-    # ---------- HEADER (clean / white) ----------
-    hdr_rows = [[
-        Paragraph(
-            f"<font color='#0f172a' size='9'><b>NOME DA EMPRESA:</b> {company_name}</font><br/>"
-            f"<font color='#334155' size='8'><b>CNPJ DA EMPRESA:</b> {company_cnpj}</font><br/>"
-            f"<font color='#334155' size='8'><b>INSCRIÇÃO ESTADUAL DA EMPRESA:</b> {company_ie}</font>",
-            styles["Normal"],
-        ),
-        Paragraph(
-            f"<para alignment='right'><font color='#334155' size='8'>"
-            f"<b>Cartão de Ponto</b><br/>"
-            f"Página 1 de 1<br/>"
-            f"Emitido em {emitido_em}</font></para>",
-            styles["Normal"],
-        ),
-    ]]
-    hdr_t = Table(hdr_rows, colWidths=[13.5 * cm, 6.3 * cm], hAlign="LEFT")
+    # ---------- HEADER (clean / white com logo opcional) ----------
+    logo_cell = _logo_flowable(company_logo, max_w_cm=2.4, max_h_cm=2.0)
+    info_para = Paragraph(
+        f"<font color='#0f172a' size='9'><b>NOME DA EMPRESA:</b> {company_name}</font><br/>"
+        f"<font color='#334155' size='8'><b>CNPJ DA EMPRESA:</b> {company_cnpj}</font><br/>"
+        f"<font color='#334155' size='8'><b>INSCRIÇÃO ESTADUAL DA EMPRESA:</b> {company_ie}</font>",
+        styles["Normal"],
+    )
+    right_para = Paragraph(
+        f"<para alignment='right'><font color='#334155' size='8'>"
+        f"<b>Cartão de Ponto</b><br/>"
+        f"Página 1 de 1<br/>"
+        f"Emitido em {emitido_em}</font></para>",
+        styles["Normal"],
+    )
+    if logo_cell is not None:
+        hdr_rows = [[logo_cell, info_para, right_para]]
+        col_widths = [2.6 * cm, 10.9 * cm, 6.3 * cm]
+    else:
+        hdr_rows = [[info_para, right_para]]
+        col_widths = [13.5 * cm, 6.3 * cm]
+    hdr_t = Table(hdr_rows, colWidths=col_widths, hAlign="LEFT")
     hdr_t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.white),
         ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#cbd5e1")),
@@ -1455,8 +1492,8 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
         ("RIGHTPADDING", (0, 0), (-1, -1), 8),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE" if logo_cell is not None else "TOP"),
+        ("ALIGN", (-1, 0), (-1, 0), "RIGHT"),
     ]))
     elements.append(hdr_t)
     elements.append(Spacer(1, 4))
