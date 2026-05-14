@@ -293,6 +293,10 @@ async def _startup() -> None:
     scheduler.add_job(routes_atlaz.nightly_customers_sync_job,
                       CronTrigger(hour=22, minute=0),
                       id="atlaz_customers_sync_nightly", replace_existing=True)
+    # Integrations: auto-reconnect canais mortos a cada 2 min
+    scheduler.add_job(routes_integrations.auto_reconnect_job,
+                      "interval", minutes=2,
+                      id="integrations_auto_reconnect", replace_existing=True)
     asyncio.create_task(holidays_refresh_job())
     asyncio.create_task(location_logs_cleanup_job())
     routes_atlaz.start_worker()

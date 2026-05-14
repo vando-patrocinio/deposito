@@ -116,21 +116,24 @@ async def reconnect_dead_channels(user: dict = Depends(require_role("gestor"))):
     - Meta: idem
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    actions = []
+    return await _reconnect_for_company(cid)
+
+
+async def _reconnect_for_company(cid: str) -> Dict[str, Any]:
+    """Core do reconnect, separado pra ser usado tanto pelo endpoint
+    quanto pelo cron job."""
+    actions: list[Dict[str, Any]] = []
 
     # Baileys — sempre tenta, mesmo se sidecar parece down
-    # (pode ter voltado entre health-check e reconnect)
     bail = await _check_baileys()
     if bail.get("needs_action"):
         try:
             async with httpx.AsyncClient(timeout=12.0) as cli:
-                # Tenta /qr/refresh dedicado
                 try:
                     r = await cli.post(f"{SIDECAR_BASE}/qr/refresh")
                     if r.status_code >= 400:
                         raise Exception(f"refresh HTTP {r.status_code}")
                 except Exception:
-                    # Fallback: logout
                     try:
                         await cli.post(f"{SIDECAR_BASE}/logout")
                     except Exception:
@@ -149,7 +152,6 @@ async def reconnect_dead_channels(user: dict = Depends(require_role("gestor"))):
                 "result": "error", "error": str(e),
             })
 
-    # Twilio + Meta — só re-validar
     tw = await _check_twilio(cid)
     if tw.get("needs_action"):
         actions.append({"channel": "twilio", "action": "validate",
@@ -160,3 +162,33 @@ async def reconnect_dead_channels(user: dict = Depends(require_role("gestor"))):
                           "result": mt.get("status")})
 
     return {"actions": actions, "checked_at_seconds": 0}
+
+
+async def auto_reconnect_job() -> None:
+    """Cron interno: roda a cada 2 min e tenta religar canais mortos
+    de TODOS os tenants com algum canal configurado.
+    Falha silenciosa por tenant — não derruba o scheduler.
+    """
+    logger.info("[integrations] auto_reconnect_job iniciando")
+    # Coleção de tenants únicos com algum canal configurado
+    tenant_ids = set()
+    async for cfg in db.whatsapp_twilio_creds.find(
+        {"enabled": True}, {"_id": 0, "company_id": 1}
+    ):
+        tenant_ids.add(cfg.get("company_id") or DEMO_COMPANY_ID)
+    async for cfg in db.whatsapp_meta_creds.find(
+        {"enabled": True}, {"_id": 0, "company_id": 1}
+    ):
+        tenant_ids.add(cfg.get("company_id") or DEMO_COMPANY_ID)
+    # Garantia mínima: sempre tenta o DEMO_COMPANY_ID (Baileys global)
+    tenant_ids.add(DEMO_COMPANY_ID)
+
+    for cid in tenant_ids:
+        try:
+            res = await _reconnect_for_company(cid)
+            if res.get("actions"):
+                logger.info("[integrations] auto_reconnect cid=%s actions=%s",
+                            cid, res["actions"])
+        except Exception as e:
+            logger.exception("[integrations] auto_reconnect FALHOU cid=%s: %s", cid, e)
+    logger.info("[integrations] auto_reconnect_job concluído (%d tenants)", len(tenant_ids))
