@@ -108,6 +108,166 @@ async def integrations_health(user: dict = Depends(require_role("gestor"))):
     }
 
 
+async def _check_mongo() -> Dict[str, Any]:
+    """Ping MongoDB pra confirmar que o backend ainda fala com o banco."""
+    try:
+        await db.command("ping")
+        return {"node": "mongodb", "label": "MongoDB", "ok": True, "status": "online"}
+    except Exception as e:
+        return {"node": "mongodb", "label": "MongoDB", "ok": False, "status": "error",
+                "error": str(e)[:120]}
+
+
+async def _check_openrouter(cid: str) -> Dict[str, Any]:
+    """Verifica se a LLM externa (OpenRouter) está acessível e com chave."""
+    try:
+        cfg = await db.motor_ia_config.find_one(
+            {"company_id": cid}, {"_id": 0, "openrouter_api_key": 1,
+                                      "atendimento_model": 1, "enabled": 1})
+        if not cfg or not cfg.get("openrouter_api_key"):
+            return {"node": "openrouter", "label": "OpenRouter (LLM)",
+                    "ok": False, "status": "no_key"}
+        return {"node": "openrouter", "label": "OpenRouter (LLM)",
+                "ok": True, "status": "configured",
+                "model": cfg.get("atendimento_model") or "default"}
+    except Exception as e:
+        return {"node": "openrouter", "label": "OpenRouter (LLM)",
+                "ok": False, "status": "error", "error": str(e)[:120]}
+
+
+async def _check_atlaz(cid: str) -> Dict[str, Any]:
+    """Status da API Atlaz pra sync de assinantes."""
+    cfg = await db.atlaz_config.find_one(
+        {"company_id": cid}, {"_id": 0, "enabled": 1, "api_key": 1,
+                                  "last_customer_sync_at": 1})
+    if not cfg or not cfg.get("enabled") or not cfg.get("api_key"):
+        return {"node": "atlaz", "label": "Atlaz API", "ok": False,
+                "status": "not_configured"}
+    return {"node": "atlaz", "label": "Atlaz API", "ok": True,
+            "status": "configured",
+            "last_sync_at": cfg.get("last_customer_sync_at")}
+
+
+@router.get("/topology")
+async def integrations_topology(
+    user: dict = Depends(require_role("gestor"))):
+    """Diagrama interativo: status em tempo real de todos os nós da
+    arquitetura do chat WhatsApp.
+
+    Retorna nodes + edges + stats das últimas 24h por canal.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    from datetime import datetime, timedelta, timezone
+
+    # Stats das últimas 24h (mensagens inbound + outbound + ai/humano)
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    since_iso = since.isoformat()
+
+    # Aggregation: total inbound, outbound, ai_reply (auto_reply=true)
+    msg_stats = {"inbound_24h": 0, "outbound_24h": 0, "ai_replies_24h": 0,
+                 "human_replies_24h": 0}
+    cursor = db.aihub_wa_messages.aggregate([
+        {"$match": {"company_id": cid, "created_at": {"$gte": since_iso}}},
+        {"$group": {
+            "_id": {"direction": "$direction", "auto_reply": "$auto_reply"},
+            "count": {"$sum": 1},
+        }},
+    ])
+    async for row in cursor:
+        d = row["_id"].get("direction") or "inbound"
+        is_ai = bool(row["_id"].get("auto_reply"))
+        if d == "inbound":
+            msg_stats["inbound_24h"] += row["count"]
+        elif d == "outbound":
+            msg_stats["outbound_24h"] += row["count"]
+            if is_ai:
+                msg_stats["ai_replies_24h"] += row["count"]
+            else:
+                msg_stats["human_replies_24h"] += row["count"]
+
+    # Total de conversas ativas
+    convs_active = await db.wa_conversations.count_documents({
+        "company_id": cid,
+        "$or": [{"status": "open"}, {"status": {"$exists": False}}],
+    })
+
+    # Checa todos os nós em paralelo
+    bail, twi, mt, mongo, openr, atlaz = await asyncio.gather(
+        _check_baileys(),
+        _check_twilio(cid),
+        _check_meta(cid),
+        _check_mongo(),
+        _check_openrouter(cid),
+        _check_atlaz(cid),
+    )
+
+    nodes = [
+        {"id": "client", "label": "Cliente WhatsApp", "kind": "endpoint",
+         "ok": True, "status": "external"},
+        {"id": "baileys", "label": "Sidecar Baileys", "kind": "channel",
+         "ok": bail.get("connected"), "status": bail.get("status"),
+         "needs_action": bail.get("needs_action")},
+        {"id": "twilio", "label": "Twilio API", "kind": "channel",
+         "ok": twi.get("connected"), "status": twi.get("status"),
+         "needs_action": twi.get("needs_action")},
+        {"id": "meta", "label": "Meta Cloud", "kind": "channel",
+         "ok": mt.get("connected"), "status": mt.get("status"),
+         "needs_action": mt.get("needs_action")},
+        {"id": "backend", "label": "FastAPI Backend", "kind": "core",
+         "ok": True, "status": "running"},
+        {"id": "mongo", "label": mongo.get("label"), "kind": "storage",
+         "ok": mongo.get("ok"), "status": mongo.get("status"),
+         "error": mongo.get("error")},
+        {"id": "orchestrator", "label": "AI Orchestrator", "kind": "ai",
+         "ok": True, "status": "active"},
+        {"id": "openrouter", "label": openr.get("label"), "kind": "ai",
+         "ok": openr.get("ok"), "status": openr.get("status"),
+         "model": openr.get("model")},
+        {"id": "atlaz", "label": atlaz.get("label"), "kind": "data",
+         "ok": atlaz.get("ok"), "status": atlaz.get("status"),
+         "last_sync_at": atlaz.get("last_sync_at")},
+    ]
+
+    edges = [
+        {"from": "client", "to": "baileys", "label": "WhatsApp Web",
+         "active": bail.get("connected")},
+        {"from": "client", "to": "twilio", "label": "Twilio API",
+         "active": twi.get("connected")},
+        {"from": "client", "to": "meta", "label": "Graph API",
+         "active": mt.get("connected")},
+        {"from": "baileys", "to": "backend", "label": "webhook",
+         "active": bail.get("connected")},
+        {"from": "twilio", "to": "backend", "label": "webhook",
+         "active": twi.get("connected")},
+        {"from": "meta", "to": "backend", "label": "webhook",
+         "active": mt.get("connected")},
+        {"from": "backend", "to": "mongo", "label": "persist",
+         "active": mongo.get("ok")},
+        {"from": "backend", "to": "orchestrator", "label": "if no human",
+         "active": True},
+        {"from": "orchestrator", "to": "openrouter", "label": "LLM call",
+         "active": openr.get("ok")},
+        {"from": "orchestrator", "to": "atlaz", "label": "customer data",
+         "active": atlaz.get("ok")},
+        {"from": "mongo", "to": "atlaz", "label": "sync 22h", "active": atlaz.get("ok")},
+    ]
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "stats": {
+            **msg_stats,
+            "conversations_active": convs_active,
+            "ai_share_24h": round(
+                100 * msg_stats["ai_replies_24h"]
+                / max(1, msg_stats["ai_replies_24h"] + msg_stats["human_replies_24h"]),
+                1,
+            ),
+        },
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.post("/reconnect")
 async def reconnect_dead_channels(user: dict = Depends(require_role("gestor"))):
     """Tenta religar todos os canais que estão desconectados:

@@ -552,6 +552,7 @@ export const api = {
   // Health check + auto-reconnect dos canais
   integrationsHealth: () => client.get(`/integrations/health`).then((r) => r.data),
   integrationsReconnect: () => client.post(`/integrations/reconnect`).then((r) => r.data),
+  integrationsTopology: () => client.get(`/integrations/topology`).then((r) => r.data),
 
   // ===== Holerite =====
   holeriteList: (params = {}) =>

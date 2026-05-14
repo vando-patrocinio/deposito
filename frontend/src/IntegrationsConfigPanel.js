@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Card } from "@/ui";
 import { api } from "@/api";
 import WhatsAppInstancePanel from "@/WhatsAppInstancePanel";
+import ChatTopologyMap from "@/ChatTopologyMap";
 import {
   CheckCircle2, AlertCircle, RefreshCw, Plug, Wifi, WifiOff,
 } from "lucide-react";
@@ -100,6 +101,9 @@ export default function IntegrationsConfigPanel() {
           </div>
         )}
       </Card>
+
+      {/* Topologia em tempo real */}
+      <ChatTopologyMap />
 
       {/* Painel completo de Instância Baileys (QR, número, auto-reply, etc.) */}
       <WhatsAppInstancePanel />
