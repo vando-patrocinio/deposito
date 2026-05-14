@@ -70,7 +70,24 @@ export default function WhatsAppInstancePanel() {
     } finally { setBusy(false); }
   };
 
-  const refreshNow = async () => { setBusy(true); await fetchState(); setBusy(false); };
+  const refreshNow = async () => {
+    setBusy(true); setErr(null);
+    try {
+      // Força um QR novo no sidecar (logout + reconnect interno)
+      const r = await api.waBaileysRefreshQR();
+      setStatus(r?.status || "qr_pending");
+      if (r?.qr) {
+        setQr(r.qr);
+        setLastQrAt(new Date().toISOString());
+      }
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Falha ao gerar novo QR");
+      // Mesmo falhando, faz fetch normal para mostrar status
+      try { await fetchState(); } catch { /* ignore */ }
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const info = STATE_MAP[status] || STATE_MAP.disconnected;
   const StatusIcon = info.icon;

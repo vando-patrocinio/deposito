@@ -468,6 +468,7 @@ export const api = {
     client.post(`/aihub/agents/text-gen`, payload).then((r) => r.data),
   // ===== WhatsApp Baileys (QR) =====
   waBaileysQR: () => client.get(`/whatsapp-baileys/qr`).then((r) => r.data),
+  waBaileysRefreshQR: () => client.post(`/whatsapp-baileys/qr/refresh`).then((r) => r.data),
   waBaileysStatus: () => client.get(`/whatsapp-baileys/status`).then((r) => r.data),
   waBaileysSend: (phone, text) =>
     client.post(`/whatsapp-baileys/send`, { phone, text }).then((r) => r.data),

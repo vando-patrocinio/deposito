@@ -75,6 +75,31 @@ async def get_qr(user: dict = Depends(require_role("gestor"))):
     return await _sidecar_get("/qr")
 
 
+@router.post("/qr/refresh")
+async def refresh_qr(user: dict = Depends(require_role("gestor"))):
+    """Força a geração de um QR novo. Tenta primeiro /qr/refresh no sidecar;
+    se não existir, faz logout + delay curto e retorna o /qr atual.
+    """
+    # 1) Tenta endpoint específico no sidecar (Baileys >= 6.7)
+    try:
+        async with httpx.AsyncClient(timeout=15) as cli:
+            r = await cli.post(f"{SIDECAR_BASE}/qr/refresh")
+            if r.status_code < 400:
+                return await _sidecar_get("/qr")
+    except Exception as e:
+        logger.info("[wa-baileys] /qr/refresh sidecar não disponível: %s", e)
+
+    # 2) Fallback: logout + aguarda + busca novo QR
+    try:
+        await _sidecar_post("/logout")
+    except Exception as e:
+        logger.info("[wa-baileys] /logout falhou: %s", e)
+    # pequeno delay para a sessão zerar e o sidecar gerar QR novo
+    import asyncio as _asyncio
+    await _asyncio.sleep(1.2)
+    return await _sidecar_get("/qr")
+
+
 @router.get("/status")
 async def get_status(user: dict = Depends(require_role("gestor"))):
     return await _sidecar_get("/status")
