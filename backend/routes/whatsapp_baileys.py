@@ -885,6 +885,28 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     except Exception as e:
         logger.info("[wa-baileys] outage check skip: %s", e)
 
+    # 3a-bis. VERIFICAÇÃO PROATIVA DA CONEXÃO DO CLIENTE — Quando o cliente
+    # reclamar de problema/defeito/internet caiu, consultamos o SmartOLT pra
+    # saber se o equipamento dele está online/offline/LOS e injetamos esse
+    # contexto na IA. Isso permite respostas tipo "Já verifiquei aqui, seu
+    # equipamento está online com sinal bom — vamos checar seu WiFi..." em
+    # vez de "Vou pedir pra você reiniciar o modem" (que assume problema).
+    try:
+        from services.subscriber_connection import (
+            is_problem_intent, check_connection_for_phone, format_for_prompt,
+        )
+        if is_problem_intent(user_text):
+            conn_info = await check_connection_for_phone(cid, phone)
+            extra.append(format_for_prompt(conn_info))
+            logger.info(
+                "[wa-baileys] subscriber connection check phone=%s found=%s "
+                "connected=%s status=%s",
+                phone, conn_info.get("found"), conn_info.get("connected"),
+                conn_info.get("status"),
+            )
+    except Exception as e:
+        logger.info("[wa-baileys] connection check skip: %s", e)
+
     # 3b. Few-shot — exemplos de atendentes humanos com CSAT alto (>=8) dos
     # últimos 30 dias. Ensina padrão de tom e estrutura sem replicar erros.
     try:
