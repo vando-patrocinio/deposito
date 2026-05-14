@@ -1,6 +1,29 @@
 # PontoIA — Changelog
 
-## Feb 14, 2026 — Fix: Romaneio popup blocker no checklist do colaborador ★
+## Feb 14, 2026 — Fix: Romaneio aparecia em branco na nova aba ★
+
+### Bug reportado
+Após o fix anterior do popup blocker, a nova aba abria mas mostrava **página em branco** — o PDF não renderizava.
+
+### Causa raiz
+`URL.createObjectURL(blob)` cria um blob URL **escopado à origem** da janela que o criou. Como a janela nova era `about:blank` (origem "null"), o blob URL criado na janela principal não era acessível lá. O `win.location.href = blobUrl` não carregava nada.
+
+### Fix aplicado em `AssetsSection.js`
+- `openRomaneioInNewTab(onlyActive)`: usa `<embed type="application/pdf">` **dentro da janela nova** via `document.write` — o PDF carrega nativamente no navegador
+- Cria o blob URL no contexto da janela nova (`win.URL.createObjectURL`) quando disponível, com fallback para `URL.createObjectURL`
+- Placeholder "Gerando romaneio…" aparece imediatamente; substituído pelo `<embed>` quando o fetch completa
+- Mensagem de erro renderizada DENTRO da nova janela se o fetch falha
+- `openRomaneio(onlyActive)`: variante de **download direto** via `<a download="romaneio_nome.pdf">` (não depende de popup)
+- Novo botão "↓" no header do checklist para baixar o PDF direto
+
+### Validação ✓
+- Nova aba tem `<embed>` com blob URL (confirmado: body length 245, embed=true)
+- HTTP 200 no fetch do PDF
+- PDF backend gera corretamente (1023 chars de texto, 18.6KB, 1 página com Colaborador + tabela completa de itens)
+
+---
+
+
 
 ### Bug reportado
 Botões "Romaneio (todos)" e "Romaneio (só ativos)" no cadastro/checklist do colaborador "não estavam funcionando" — clique não abria o PDF.
@@ -198,7 +221,7 @@ Botões "Romaneio (todos)" e "Romaneio (só ativos)" no cadastro/checklist do co
 ---
 
 
-## Feb 14, 2026 — BottomSheet drag-to-dismiss em todos os modais do colaborador ★
+## Feb 14, 2026 — Fix: Romaneio popup blocker no checklist do colaborador ★
 
 ### Backend
 - Auto-lock: `analyze_doc` marca automaticamente `status="pending_review"` quando ≥1 anomalia crítica (NET_DROP/RISE ≥25%, ZERO_NET, DUPLICATE).

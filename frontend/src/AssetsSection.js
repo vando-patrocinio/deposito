@@ -99,15 +99,49 @@ export default function AssetsSection({ collaborator, onClose }) {
   };
 
   const openRomaneio = (onlyActive = false) => {
-    // Abre janela IMEDIATAMENTE no click handler (não em then) para evitar popup blocker
-    const win = window.open("about:blank", "_blank");
+    const url = api.assetRomaneioUrl(collaborator.id, onlyActive);
+    const token = localStorage.getItem("ponto_token");
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.blob();
+      })
+      .then((blob) => {
+        // Cria blob URL e força download/abertura via <a> programático
+        // (funciona em todos navegadores, sem depender de popup window).
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        const name = `romaneio_${(collaborator.name || "colaborador")
+          .replace(/[^a-z0-9]+/gi, "_").toLowerCase()}${onlyActive ? "_ativos" : ""}.pdf`;
+        a.download = name;
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Revoga após 60s para liberar memória
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      })
+      .catch((e) => {
+        alert("Falha ao gerar romaneio: " + (e?.message || e));
+      });
+  };
+
+  const openRomaneioInNewTab = (onlyActive = false) => {
+    // Variante: abre em nova aba para visualizar antes de baixar/imprimir.
+    // window.open SÍNCRONO no event handler evita popup blocker.
+    const win = window.open("", "_blank");
     if (!win) {
-      alert("Popup bloqueado. Permita popups deste site nas configurações do navegador.");
+      // Fallback: download direto
+      openRomaneio(onlyActive);
       return;
     }
     win.document.write(
-      '<div style="font-family:system-ui;padding:24px;text-align:center;color:#475569">' +
-      '<p>Gerando romaneio…</p></div>'
+      '<title>Gerando romaneio…</title>' +
+      '<div style="font-family:system-ui;padding:40px;text-align:center;color:#475569">' +
+      '<div style="font-size:14px;font-weight:700;margin-bottom:8px">Gerando romaneio…</div>' +
+      '<div style="font-size:12px;color:#94a3b8">Aguarde um instante.</div>' +
+      '</div>'
     );
     const url = api.assetRomaneioUrl(collaborator.id, onlyActive);
     const token = localStorage.getItem("ponto_token");
@@ -117,11 +151,26 @@ export default function AssetsSection({ collaborator, onClose }) {
         return r.blob();
       })
       .then((blob) => {
-        win.location.href = URL.createObjectURL(blob);
+        // Cria blob URL na própria janela (resolve cross-origin null)
+        const blobUrl = (win.URL || URL).createObjectURL(blob);
+        // Substitui via <embed> dentro da janela nova
+        win.document.open();
+        win.document.write(
+          '<!doctype html><html><head><title>Romaneio</title>' +
+          '<style>body{margin:0}embed{width:100%;height:100vh;border:0}</style>' +
+          '</head><body>' +
+          `<embed src="${blobUrl}" type="application/pdf"/>` +
+          '</body></html>'
+        );
+        win.document.close();
       })
       .catch((e) => {
-        try { win.close(); } catch {}
-        alert("Falha ao gerar romaneio: " + (e?.message || e));
+        try {
+          win.document.body.innerHTML =
+            '<div style="font-family:system-ui;padding:40px;text-align:center;color:#dc2626">' +
+            '<div style="font-size:14px;font-weight:700;margin-bottom:8px">Falha ao gerar romaneio</div>' +
+            `<div style="font-size:12px">${(e?.message || e)}</div></div>`;
+        } catch {}
       });
   };
 
@@ -156,12 +205,16 @@ export default function AssetsSection({ collaborator, onClose }) {
               {' '}{data.summary.pending_signature || 0} pendentes de assinatura
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Button variant="soft" onClick={() => openRomaneio(false)} data-testid="asset-print-all">
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Button variant="soft" onClick={() => openRomaneioInNewTab(false)} data-testid="asset-print-all">
               📄 Romaneio (todos)
             </Button>
-            <Button variant="soft" onClick={() => openRomaneio(true)} data-testid="asset-print-active">
+            <Button variant="soft" onClick={() => openRomaneioInNewTab(true)} data-testid="asset-print-active">
               📄 Romaneio (só ativos)
+            </Button>
+            <Button variant="ghost" onClick={() => openRomaneio(false)} data-testid="asset-download-all"
+                      title="Baixar PDF do romaneio">
+              ↓
             </Button>
             <Button onClick={onClose}>Fechar</Button>
           </div>
