@@ -18,14 +18,19 @@ client.interceptors.request.use((cfg) => {
 });
 
 // Interceptor de resposta:
-//  - 401 em endpoints autenticados → limpa estado do usuário e força redirect ao /login.
+//  - 401 em endpoints autenticados → limpa estado do usuário e dispara
+//    evento global `smartprov-session-expired` que o AppContent escuta.
+//    NÃO faz hard redirect (preserva o estado da app em memória).
 //  - Não dispara em /auth/login nem /auth/logout (esses tratam o erro localmente).
 client.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err?.response?.status === 401 && typeof window !== "undefined") {
       const url = err?.config?.url || "";
-      const isAuthEndpoint = url.includes("/auth/login") || url.includes("/auth/logout") || url.includes("/auth/google-login");
+      const isAuthEndpoint = url.includes("/auth/login")
+        || url.includes("/auth/logout")
+        || url.includes("/auth/google-login")
+        || url.includes("/auth/me");
       if (!isAuthEndpoint) {
         // Limpa SOMENTE credenciais — preserva preferências de UI
         // (ponto_active_tab, theme, etc.) para que, após re-login, o
@@ -34,13 +39,16 @@ client.interceptors.response.use(
          "ponto_onboarding_done", "collab_token", "collab_id"].forEach((k) => {
           try { window.localStorage.removeItem(k); } catch { /* ignore */ }
         });
-        // Hard redirect: garante que toda memória do app é descartada.
-        // Se já está em /login ou na landing, não recarrega (evita loop).
-        const path = window.location.pathname || "";
-        const isLoginPath = path === "/login" || path === "/" || path === "/preview" || path === "/demo";
-        if (!isLoginPath) {
-          window.location.replace("/login?session_expired=1");
-        }
+        // Em vez de hard redirect (que destrói TODO o estado e força
+        // o usuário a recarregar a página inteira), apenas dispara
+        // um evento. O AppContent escuta e renderiza a tela de login
+        // dentro do mesmo componente, preservando aba atual, scroll,
+        // dados em memória, etc. UX muito mais suave.
+        try {
+          window.dispatchEvent(new CustomEvent("smartprov-session-expired", {
+            detail: { url, reason: err?.response?.data?.detail || "Sessão expirada" },
+          }));
+        } catch { /* ignore */ }
       }
     }
     return Promise.reject(err);

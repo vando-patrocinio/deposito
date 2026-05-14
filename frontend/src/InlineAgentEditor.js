@@ -33,6 +33,7 @@ export default function InlineAgentEditor() {
   const [flash, setFlash] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -42,8 +43,17 @@ export default function InlineAgentEditor() {
       ]);
       setAgents(a.items || []);
       setModels(m.models || []);
+      setAuthError(false);
     } catch (e) {
-      setError(extractErrorMessage(e));
+      const status = e?.response?.status;
+      if (status === 401 || status === 403) {
+        // Sessão expirou — NÃO mostre "Nenhum agente cadastrado"
+        // (assusta o usuário fazendo pensar que perdeu os dados).
+        // Mostra mensagem clara de reauth.
+        setAuthError(true);
+      } else {
+        setError(extractErrorMessage(e));
+      }
     } finally {
       setLoading(false);
     }
@@ -265,6 +275,36 @@ export default function InlineAgentEditor() {
                data-testid="inline-agent-loading">
             <Loader2 size={20} className="spin" />
             <div style={{ marginTop: 8 }}>Carregando agentes…</div>
+          </div>
+        ) : authError ? (
+          <div style={{ padding: 30, textAlign: "center" }}
+               data-testid="inline-agent-auth-error">
+            <AlertTriangle size={28}
+                            style={{ color: "#f59e0b", margin: "0 auto" }} />
+            <p style={{ marginTop: 10, fontSize: 13.5, color: "var(--text-primary)",
+                          fontWeight: 600 }}>
+              Sessão expirada
+            </p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)",
+                          marginTop: 4, maxWidth: 380, margin: "4px auto 0",
+                          lineHeight: 1.5 }}>
+              Seu agente <strong>NÃO foi apagado</strong> — está seguro no banco.
+              Faça login novamente para continuar editando.
+            </p>
+            <button onClick={() => {
+              try { localStorage.removeItem("ponto_token"); } catch { /* ignore */ }
+              window.location.reload();
+            }}
+                    data-testid="inline-agent-relogin-btn"
+                    style={{
+                      marginTop: 12,
+                      padding: "8px 16px", borderRadius: 8,
+                      background: "#0f172a", color: "white",
+                      border: "none", fontSize: 12, fontWeight: 700,
+                      cursor: "pointer",
+                    }}>
+              Fazer login
+            </button>
           </div>
         ) : agents.length === 0 ? (
           <div style={{ padding: 30, textAlign: "center" }}

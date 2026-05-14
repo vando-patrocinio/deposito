@@ -171,17 +171,15 @@ def make_dependencies(get_db_callable):
         user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
         if not user or not user.get("active", True):
             raise HTTPException(401, "Usuário inativo ou inexistente")
-        # Session singleton: o usuário só tem 1 sessão ativa por vez.
-        #  - users.active_session_id == None  →  sessão foi explicitamente encerrada (logout).
-        #  - SID do token != SID atual do user → outro login substituiu esta sessão.
-        # Em ambos os casos, o token é considerado obsoleto.
-        token_sid = payload.get("sid")
-        active_sid = user.get("active_session_id")
-        if token_sid:
-            if not active_sid:
-                raise HTTPException(401, "Sessão encerrada")
-            if token_sid != active_sid:
-                raise HTTPException(401, "Sessão substituída por novo login")
+        # NOTA: removida a verificação single-session-per-user (14/05/2026).
+        # Antes: se `payload.sid != users.active_session_id`, retornava 401.
+        # Isso derrubava o usuário toda vez que ele abria 2 abas, logava em
+        # outro dispositivo, ou quando o auto-login do preview disparava.
+        # Agora: o JWT é válido até `exp` (30 dias) — só sai por logout
+        # explícito ou expiração natural. Padrão de mercado para SaaS B2B
+        # (Slack, Gmail, Notion). O campo `active_session_id` continua
+        # sendo gravado no login (pode ser usado no futuro para feature
+        # "Encerrar outras sessões" no perfil do usuário).
         # Anexa company_id (do JWT ou do user doc) — fallback para demo
         user["company_id"] = payload.get("company_id") or user.get("company_id") or "co-demo"
         # Super admin: respeita header X-Active-Company para drill-down em painel

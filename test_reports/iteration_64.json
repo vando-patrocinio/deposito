@@ -1,0 +1,59 @@
+{
+  "summary": "Iteration 64 — Backend (pytest 8/8 PASS) + Frontend (Playwright PASS) validation of the fix that removes single-session-per-user invalidation in /app/backend/auth.py. User reported being kicked out on every reload; fix removes the SID check and converts frontend 401 handling to event-based instead of hard redirect. All 10 acceptance criteria from review request validated.",
+  "tests_executed": {
+    "backend_pytest": "8/8 PASS — /app/backend/tests/test_iter64_auth_no_single_session.py",
+    "1_login_basic": "PASS — POST /api/auth/login admin@empresa.com/123456 → 200 + access_token (string, len>20) + user.role=administrador",
+    "2_two_parallel_tokens_both_valid": "PASS — Two consecutive logins for SAME user produce DIFFERENT tokens; BOTH return 200 on /api/auth/me AND /api/aihub/agents simultaneously. This was the critical regression — confirmed FIXED.",
+    "3_old_token_no_session_replaced_msg": "PASS — Token A still valid after Token B login; response body does NOT contain 'Sessão substituída' or 'Sessão encerrada'",
+    "4_logout_still_works_but_token_remains_valid": "PASS — POST /api/auth/logout → {ok:true}; same token afterwards STILL passes /api/auth/me (new behavior — JWT is stateless until exp)",
+    "5_expired_jwt_returns_401_sessao_expirada": "PASS — Forged JWT with exp in the past → 401 with 'Sessão expirada' message; TTL protection preserved",
+    "6_garbage_token_returns_401": "PASS — Non-JWT string → 401 'Token inválido'",
+    "7_wrong_type_token_rejected": "PASS — JWT with type='refresh' → 401 'Tipo de token inválido'",
+    "8_brute_force_lockout_still_works": "PASS — 6 consecutive wrong logins on same email → 429 (15 minutes lockout) preserved",
+    "frontend_playwright": "PASS — full flow validated",
+    "9_login_flow_works_and_isabella_visible": "PASS — login admin@empresa.com/123456 → dashboard → sidebar 'Atendimento IA' → top sub-tab 'Configuração' → InlineAgentEditor [data-testid='inline-agent-editor'] renders with name field = 'Isabella'. 'Nenhum agente cadastrado' NOT present.",
+    "10_reload_preserves_session_after_parallel_login": "PASS — Simulated parallel login (would have written new active_session_id, breaking Token A in OLD behavior), then page.reload() → page does NOT redirect to login, Isabella still visible, inline-agent-editor still mounted, no 'Sessão expirada' text. Confirms fix end-to-end."
+  },
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Inteligência dashboard",
+        "issues": ["Recharts width(-1)/height(-1) warnings still spam console — pre-existing, not related to current changes"]
+      }
+    ]
+  },
+  "critical_code_review_comments": [
+    "auth.py: single-session check correctly removed (lines 174-182 of get_current_user). Comment block clearly explains rationale and that active_session_id is still being written on login (useful for future 'kill other sessions' feature).",
+    "auth.py: ExpiredSignatureError and InvalidTokenError still caught and mapped to 401 — TTL + signature protection preserved.",
+    "users.py login still writes active_session_id (now unused by get_current_user) — harmless but consider documenting that this field is reserved for future use to avoid confusion.",
+    "users.py logout still clears active_session_id but no longer has the original effect (since SID is not checked). The route still returns ok=True so frontend can purge localStorage — this is the correct behavior for a stateless-JWT model. Consider adding a comment in users.py:logout explaining the docstring is now stale ('o próximo request ... recebe 401' is no longer true).",
+    "Frontend api.js + AuthContext.js changes (interceptor → event, only log out on 401/403, not on network errors) match best practice for SPA resilience.",
+    "InlineAgentEditor authError state prevents the misleading 'Nenhum agente cadastrado' empty state from rendering on transient auth errors — good defensive UX.",
+    "No new file >700 lines; no new duplicated code introduced."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter64_auth_no_single_session.py",
+    "/app/test_reports/pytest/iter64_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Update docstring of POST /api/auth/logout in routes/users.py to reflect the new behavior — current docstring still says 'o próximo request que usar este token recebe 401'. That is now incorrect after the fix; could mislead future developers.",
+    "(Optional) Either start enforcing or remove the active_session_id write on login since it is no longer consulted. Currently the write is harmless but increases noise."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (8/8 pytest pass)",
+    "frontend": "100% (all 2 frontend acceptance criteria pass)"
+  },
+  "test_credentials": "admin@empresa.com / 123456 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None — used existing admin user and existing Isabella agent",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Single-session-per-user invalidation has been REMOVED. Two parallel JWTs for the same user are now both valid until natural exp (30 days). Logout clears active_session_id but JWT remains valid until exp — by design, matches Slack/Notion model. Regression suite for this in /app/backend/tests/test_iter64_auth_no_single_session.py (8 cases). If future change re-introduces session invalidation, these tests will catch it.",
+  "rca_of_the_issue": "Original bug: backend/auth.py get_current_user compared payload.sid against users.active_session_id. Every login wrote a new SID, so ANY second login (other tab, other device, preview auto-login race) silently invalidated the older token — user got booted with 'Sessão substituída por novo login' on next API call. Fix correctly removes that comparison and converts the model to standard stateless JWT (valid until exp). Frontend api.js interceptor was also fixed to broadcast a soft event instead of hard-redirecting on every 401, which avoids tearing down state on transient errors. Confirmed via: (a) pytest 2-token parallel test, (b) Playwright reload-after-parallel-login test."
+}

@@ -53,9 +53,18 @@ export function AuthProvider({ children }) {
         if (!cancelled) setUser(me);
       } catch (e) {
         if (!cancelled) {
-          setToken(null);
-          setUser(null);
-          purgeUserState();
+          // Só limpa se for 401 REAL — erros de rede/timeout NÃO devem
+          // deslogar o usuário (manter sessão e tentar de novo no próximo poll).
+          const status = e?.response?.status;
+          if (status === 401 || status === 403) {
+            setToken(null);
+            setUser(null);
+            purgeUserState();
+          } else {
+            // Erro de rede: manter token, mostrar usuário como "carregando"
+            // e o componente que renderizar pode tentar de novo.
+            console.warn("[auth] /me falhou (rede/timeout):", e?.message);
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -65,6 +74,21 @@ export function AuthProvider({ children }) {
     load();
     return () => { cancelled = true; };
   }, [token]);
+
+  // Escuta evento global de sessão expirada (disparado pelo interceptor 401
+  // em api.js). Quando dispara: limpa o token (que vai cair em /login) sem
+  // hard reload — preservando todo o estado da app em memória.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onExpired = (e) => {
+      console.warn("[auth] sessão expirada:", e?.detail?.reason);
+      setToken(null);
+      setUser(null);
+      purgeUserState();
+    };
+    window.addEventListener("smartprov-session-expired", onExpired);
+    return () => window.removeEventListener("smartprov-session-expired", onExpired);
+  }, []);
 
   const login = useCallback(async (email, password) => {
     // Antes de aceitar credenciais, limpa qualquer resíduo de outro usuário.
