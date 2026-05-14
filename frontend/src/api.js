@@ -411,6 +411,7 @@ export const api = {
   publicAssetsList: (cid) => client.get(`/collab-assets/public/by-collaborator/${cid}`).then((r) => r.data),
   publicHoleritesList: (cid) => client.get(`/holerites/public/by-collaborator/${cid}`).then((r) => r.data),
   publicHoleriteFileUrl: (cid, docId) => `${API}/holerites/public/${cid}/${docId}/file`,
+  publicSignedHoleriteFileUrl: (cid, docId) => `${API}/holerites/public/${cid}/${docId}/signed-file`,
   publicAssetSign: (d) => client.post(`/collab-assets/public/sign`, d).then((r) => r.data),
   publicBranding: () => client.get(`/branding/public`).then((r) => r.data),
   publicRomaneioUrl: (cid, only_active = false) => {

@@ -56,6 +56,37 @@ MAX_PDF_BYTES = 10 * 1024 * 1024  # 10MB
 DEFAULT_TOKEN_TTL_HOURS = 72
 
 
+def _default_pay_date(year: int, month: int) -> str:
+    """Data padrão de pagamento = 5º dia útil do mês seguinte à competência.
+
+    Para simplificar, usamos 5º dia corrido (formato ISO YYYY-MM-DD).
+    Pode ser alterada manualmente pelo admin no upload.
+    """
+    next_m = month + 1
+    next_y = year
+    if next_m > 12:
+        next_m = 1
+        next_y += 1
+    return f"{next_y:04d}-{next_m:02d}-05"
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _has_pdf_signature(pdf_bytes: bytes) -> bool:
+    """Detecta se um PDF tem assinatura digital embarcada.
+
+    Verifica a presença de:
+    - /AcroForm com /SigFlags
+    - /ByteRange (presente em PDFs assinados pelo gov.br)
+    - /Sig ou /Sig.V (campos de assinatura)
+    """
+    sample = pdf_bytes[:50_000] + pdf_bytes[-50_000:] if len(pdf_bytes) > 100_000 else pdf_bytes
+    markers = [b"/ByteRange", b"/Sig", b"/SigFlags", b"adbe.pkcs7"]
+    return any(m in sample for m in markers)
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -148,6 +179,17 @@ def _doc_to_out(d: dict) -> dict:
         "approved_at": d.get("approved_at"),
         "approved_by_name": d.get("approved_by_name"),
         "approval_note": d.get("approval_note"),
+        # Assinatura digital
+        "signed_at": d.get("signed_at"),
+        "signed_method": d.get("signed_method"),
+        "signed_by_name": d.get("signed_by_name"),
+        "signature_valid": bool(d.get("signature_valid")),
+        "signature_hash": d.get("signature_hash"),
+        "signed_file_size_kb": int(
+            (d.get("signed_file_size_bytes", 0) or 0) / 1024,
+        ),
+        # Data de pagamento (release date pro colaborador)
+        "pay_date": d.get("pay_date"),
         "status": d.get("status", "available"),
         "file_size_kb": int((d.get("file_size_bytes", 0) or 0) / 1024),
         "created_at": d.get("created_at"),
@@ -208,11 +250,13 @@ async def upload_holerite(
         "employee_phone": (employee_phone or "").strip() or None,
         "competence_month": competence_month,
         "competence_year": competence_year,
+        "pay_date": _default_pay_date(competence_year, competence_month),
         "gross": float(gross or 0),
         "net": float(net or 0),
         "file_uuid": file_uuid,
         "file_path": str(file_path),
         "file_size_bytes": len(data),
+        "file_hash": _sha256_bytes(data),
         "status": "available",
         "created_at": now_iso(),
         "created_by": user.get("id"),
@@ -731,6 +775,9 @@ async def ai_import_holerite(
             "employee_phone": (employee_phone or "").strip() or None,
             "competence_month": payload.competence_month,
             "competence_year": payload.competence_year,
+            "pay_date": _default_pay_date(
+                payload.competence_year, payload.competence_month
+            ),
             "gross": float(parsed_emp.get("gross") or 0),
             "net": float(parsed_emp.get("net") or 0),
             "deductions_total": float(parsed_emp.get("deductions_total") or 0),
@@ -942,14 +989,23 @@ async def _company_for_collab(cid: str) -> str:
 async def collab_list_holerites(cid: str):
     """Lista holerites do colaborador (acesso via link único do app).
 
-    Não exige JWT — autenticação é o próprio collab_id (URL única
-    compartilhada pelo gestor).
+    REGRA: Mostra apenas holerites cuja `pay_date <= hoje` (já foram pagos)
+    e `status="available"` (não pending_review nem revoked).
+    Não exige JWT — autenticação é o próprio collab_id.
     """
     company_id = await _company_for_collab(cid)
+    today_iso = datetime.now(timezone.utc).date().isoformat()
     docs = await db.payroll_documents.find(
-        {"company_id": company_id, "employee_id": cid,
-         "status": "available"},
-        {"_id": 0, "file_path": 0, "file_uuid": 0,
+        {
+            "company_id": company_id, "employee_id": cid,
+            "status": "available",
+            "$or": [
+                {"pay_date": {"$lte": today_iso}},
+                {"pay_date": {"$exists": False}},  # docs antigos sem pay_date
+                {"pay_date": None},
+            ],
+        },
+        {"_id": 0, "file_path": 0, "file_uuid": 0, "signed_file_path": 0,
          "anomalies": 0, "earnings_breakdown": 0, "deductions_breakdown": 0},
     ).sort("created_at", -1).to_list(500)
     col = await db.collaborators.find_one(
@@ -1003,3 +1059,114 @@ async def collab_get_file_public(cid: str, doc_id: str, request: Request):
             ),
         },
     )
+
+
+@router.post("/public/{cid}/{doc_id}/sign-upload")
+async def collab_upload_signed(
+    cid: str, doc_id: str, request: Request,
+    file: UploadFile = File(...),
+):
+    """Recebe PDF assinado pelo colaborador via gov.br.
+
+    Fluxo:
+    1. Colaborador baixou o original.
+    2. Acessou https://assinador.iti.br/ e assinou com conta gov.br.
+    3. Faz upload aqui do PDF assinado.
+
+    Referências legais (FEB/2026):
+    - Lei 14.063/2020 — assinatura "avançada" gov.br vale para relação
+      empregado-empregador.
+    - STJ reconhece validade para holerites.
+    """
+    company_id = await _company_for_collab(cid)
+    doc = await db.payroll_documents.find_one(
+        {"id": doc_id, "company_id": company_id, "employee_id": cid,
+         "status": "available"},
+        {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(404, "Holerite não encontrado.")
+
+    data = await file.read()
+    if len(data) > MAX_PDF_BYTES:
+        raise HTTPException(413, "Arquivo maior que 10MB.")
+    if not data[:5].startswith(b"%PDF-"):
+        raise HTTPException(400, "Arquivo não é PDF válido.")
+
+    sig_detected = _has_pdf_signature(data)
+    hash_signed = _sha256_bytes(data)
+
+    cdir = STORAGE_DIR / company_id / "signed"
+    cdir.mkdir(parents=True, exist_ok=True)
+    fname = f"{doc_id}_signed_{uuid.uuid4().hex[:8]}.pdf"
+    fpath = cdir / fname
+    fpath.write_bytes(data)
+
+    col = await db.collaborators.find_one(
+        {"id": cid}, {"_id": 0, "name": 1},
+    )
+    update = {
+        "signed_at": now_iso(),
+        "signed_method": "govbr_manual_upload",
+        "signed_by": cid,
+        "signed_by_name": (col or {}).get("name") or "—",
+        "signed_file_path": str(fpath),
+        "signed_file_size_bytes": len(data),
+        "signature_hash": hash_signed,
+        "signature_valid": bool(sig_detected),
+    }
+    await db.payroll_documents.update_one(
+        {"id": doc_id, "company_id": company_id},
+        {"$set": update},
+    )
+    await _audit(
+        doc_id, company_id, "sign_upload", cid, "collaborator", request,
+        extra={
+            "size_bytes": len(data),
+            "signature_detected": sig_detected,
+            "hash": hash_signed[:16] + "...",
+        },
+    )
+    return {
+        "ok": True,
+        "doc_id": doc_id,
+        "signature_valid": bool(sig_detected),
+        "signature_hash": hash_signed,
+        "signed_at": update["signed_at"],
+        "warning": (
+            None if sig_detected else
+            "PDF não contém marcadores de assinatura digital detectáveis. "
+            "Foi salvo, mas verifique se foi mesmo assinado via gov.br."
+        ),
+    }
+
+
+@router.get("/public/{cid}/{doc_id}/signed-file")
+async def collab_get_signed_file(cid: str, doc_id: str, request: Request):
+    """Stream do PDF ASSINADO pelo colaborador."""
+    company_id = await _company_for_collab(cid)
+    doc = await db.payroll_documents.find_one(
+        {"id": doc_id, "company_id": company_id, "employee_id": cid},
+        {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(404, "Holerite não encontrado.")
+    fp = doc.get("signed_file_path")
+    if not fp or not Path(fp).exists():
+        raise HTTPException(404, "Holerite ainda não foi assinado.")
+    await _audit(
+        doc_id, company_id, "view_signed", cid, "collaborator", request,
+    )
+    return FileResponse(
+        path=fp,
+        media_type="application/pdf",
+        filename=(
+            f"holerite-assinado-{doc['competence_year']}-"
+            f"{doc['competence_month']:02d}.pdf"
+        ),
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
