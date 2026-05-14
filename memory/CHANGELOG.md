@@ -1,5 +1,43 @@
 # PontoIA — Changelog
 
+## Feb 14, 2026 — Holerite IA (Claude) + Holerite no app do colaborador ★★★
+
+### Backend
+- **`services/holerite_ai.py`** (NEW) — pipeline completo:
+  - `extract_pdf_text` via pypdf (text-based PDFs CLT/eSocial)
+  - `parse_pdf_with_ai` via Claude Sonnet 4.5 (OpenRouter) com prompt estruturado em JSON mode
+  - `match_employee` via RapidFuzz token_set_ratio + Unidecode + CPF exact (3 níveis: cpf_exact/name_high/name_medium/no_match)
+  - Best practices: BRL parsing, CPF normalization, validação gross=soma(earnings), net=gross-deductions
+- **Endpoints novos em `routes/holerite.py`**:
+  - `POST /api/holerites/ai-parse` (multipart: file + threshold) — parse + match (não persiste, retorna preview com parse_id)
+  - `POST /api/holerites/ai-import` (parse_id + items[]) — confirma e cria 1 payroll_document por funcionário
+  - `GET /api/holerites/public/by-collaborator/{cid}` — público (sem JWT), lista do próprio colaborador
+  - `GET /api/holerites/public/{cid}/{doc_id}/file` — público, stream PDF + marca viewed_at + audit log
+- **`scripts/seed_holerite_ai_agent.py`** — 11º agente (Holerite IA) seedado no `aihub_agents`
+- **Dependências novas**: `pypdf==6.11.0`, `Unidecode==1.4.0`, `RapidFuzz==3.14.5` (em requirements.txt)
+- LGPD: PDFs continuam armazenados criptografados, audit log em todas as ações
+
+### Frontend
+- **`HoleritePanel.js`**: botão "Importar com Holerite IA" (gradient roxo) + `HoleriteAIImportModal` com stepper 4-stages (Upload → Analisar com IA → Revisar matches → Importar)
+  - UploadStep: drag-drop + slider threshold (50-100, default 85) com labels dinâmicos
+  - ReviewStep: 5 mini-KPIs (Identificados, Match auto, Não encontrados, Bruto total, Líquido total) + 1 linha por match com status colorido, score%, select de colaborador, checkbox "Ignorar"
+  - DoneStep: card de sucesso com X imported / Y skipped
+- **`MyHoleritesModal.js` (NEW)** — modal mobile do colaborador
+  - Cards com mês/ano colorido (gradient roxo), líquido em destaque, bruto + descontos abaixo
+  - Botão "Baixar PDF" abre em nova aba via endpoint público
+  - Filtro por ano/mês/valor
+  - LGPD strip embaixo
+- **`CollaboratorApp.js`** — KebabMenu (3 pontinhos) ganhou item "Meus holerites" (testid: `kebab-holerites`) com ícone Receipt
+- **`api.js`**: `publicHoleritesList`, `publicHoleriteFileUrl`, `_client` (acesso raw axios para upload)
+
+### Validação ✓
+- Backend pytest **10/10 PASS** em iter 67
+- Frontend admin: PDF de teste (3 funcionários) parseou em ~9s · matches 100% · CPF exato detectado
+- Frontend mobile: kebab → "Meus holerites" → lista holerite (R$ 3.015,00) → "Baixar PDF" abre em nova aba
+- Zero issues críticos, menores, integração ou UI
+
+---
+
 ## Feb 14, 2026 — Training Studio Scheduler (Auto-Run + Drift Alert) ★★
 
 ### Backend
