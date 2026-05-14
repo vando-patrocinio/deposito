@@ -7,6 +7,7 @@ import ServerClock from "@/ServerClock";
 import { serverNow } from "@/serverTime";
 import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Row, StatusBadge } from "@/ui";
 import { enqueue as enqueueOffline, count as offlineCount, flush as flushOffline } from "@/offlineClockQueue";
+import { cropAvatarFromSelfie } from "@/faceCrop";
 
 const EVENT_TYPES = ["Entrada", "Início intervalo", "Fim intervalo", "Saída"];
 const GEOFENCE_REQUIRED = new Set(["Entrada", "Saída"]);
@@ -281,6 +282,20 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
         setScreen("receipt");
       }
       setForceCloseOpen(false);
+
+      // Pós-sucesso: se for a 1ª selfie válida, gera avatar com rosto centralizado
+      // usando FaceDetector API (com fallback de crop superior). Substitui o
+      // avatar_data_url que o backend acabou de copiar do selfie cheio.
+      try {
+        const needsAvatar = !collab?.avatar_data_url || (collab?.avatar_data_url?.length || 0) < 2000;
+        if (needsAvatar && rec.status !== "Bloqueado") {
+          const cropped = await cropAvatarFromSelfie(dataUrl, 320);
+          if (cropped && cropped !== dataUrl) {
+            await api.uploadCollaboratorPhoto(collabId, cropped);
+          }
+        }
+      } catch { /* não bloqueia o fluxo principal */ }
+
       await refresh(collabId);
     } catch (e) {
       const status = e?.response?.status;
