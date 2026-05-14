@@ -973,7 +973,6 @@ def _calc_day(records: list[dict], schedule: WorkSchedule, *, is_weekend: bool =
 
 @router.get("/timesheets/{cid}/{year}/{month}")
 async def timesheet(cid: str, year: int, month: int):
-    from routes.admin import get_cached_holidays  # lazy
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0})
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado")
@@ -989,30 +988,26 @@ async def timesheet(cid: str, year: int, month: int):
     by_date: dict[str, list[dict]] = {}
     for r in records:
         by_date.setdefault(r["date"], []).append(r)
-    holidays_list = await get_cached_holidays(year, "national")
-    holidays_map = {h["date"]: {**h, "scope": "national"} for h in holidays_list}
 
-    # ----- Feriados de TODAS as praças do colaborador (principal + adicionais) -----
-    praca_ids_check: list[str] = []
-    if coll.get("praca_id") and coll["praca_id"] != "NOTA":
-        praca_ids_check.append(coll["praca_id"])
-    for pid in (coll.get("praca_ids_extra") or []):
-        if pid and pid != "NOTA" and pid not in praca_ids_check:
-            praca_ids_check.append(pid)
-    if praca_ids_check:
-        pracas_docs = await db.pracas.find(
-            {"id": {"$in": praca_ids_check}}, {"_id": 0},
-        ).to_list(length=20)
-        for praca in pracas_docs:
-            for h in praca.get("holidays_extra", []) or []:
-                d = h.get("date")
-                if d and d.startswith(f"{year:04d}-{month:02d}"):
-                    if d not in holidays_map:
-                        holidays_map[d] = {
-                            **h,
-                            "scope": h.get("scope", "municipal"),
-                            "from_praca": praca.get("name"),
-                        }
+    # ----- Feriados (sistema centralizado /api/feriados) -----
+    # Busca TODOS os feriados da empresa que caem no mês solicitado.
+    # Inclui nacional/estadual/municipal/empresa.
+    company_id = coll.get("company_id") or DEMO_COMPANY_ID
+    holidays_map: dict[str, dict] = {}
+    fers = await db.feriados.find(
+        {"company_id": company_id,
+         "data": {"$regex": f"^{year:04d}-{month:02d}"}},
+        {"_id": 0},
+    ).to_list(200)
+    for f in fers:
+        d = f.get("data")
+        if d:
+            holidays_map[d] = {
+                "date": d,
+                "name": f.get("nome"),
+                "scope": f.get("tipo", "nacional"),
+                "source": "feriados_central",
+            }
     today_s = today_str()
     days = []
     total_worked = 0

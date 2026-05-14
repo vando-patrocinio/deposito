@@ -34,7 +34,6 @@ export default function OnboardingWizard({ user, onDone }) {
         city: pracaCity.trim(),
         state: pracaState.trim().toUpperCase().slice(0, 2),
         full_address: null,
-        holidays_extra: [],
       });
       setPracaId(p.id);
       setStep(2);

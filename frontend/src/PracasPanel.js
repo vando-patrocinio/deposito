@@ -18,16 +18,10 @@ const EMPTY = {
   name: "", city: "", state: "",
   full_address: "", street: "", number: "", neighborhood: "", postal_code: "",
   lat: null, lng: null,
-  holidays_extra: [],
   logo_url: "", cnpj: "", inscricao_estadual: "",
   phone: "", email: "", site: "",
   branch_codes: [],
 };
-const SCOPES = [
-  { value: "municipal", label: "Municipal" },
-  { value: "estadual", label: "Estadual" },
-  { value: "facultativo", label: "Facultativo" },
-];
 
 function AddressAutocomplete({ value, onChange, onSelect }) {
   const [results, setResults] = useState([]);
@@ -77,164 +71,6 @@ function AddressAutocomplete({ value, onChange, onSelect }) {
   );
 }
 
-function AiHolidaysModal({ open, praca, onClose, onApplied }) {
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [loading, setLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
-  const [selected, setSelected] = useState({});
-  const [err, setErr] = useState("");
-  const [appliedMsg, setAppliedMsg] = useState("");
-
-  useEffect(() => { if (!open) { setSuggestions([]); setSelected({}); setErr(""); setAppliedMsg(""); } }, [open]);
-
-  if (!open || !praca) return null;
-
-  async function discover() {
-    setLoading(true); setErr(""); setAppliedMsg("");
-    try {
-      const r = await api.discoverHolidays(praca.id, year);
-      setSuggestions(r.suggestions || []);
-      // marca tudo selecionado por padrão
-      const sel = {};
-      (r.suggestions || []).forEach((s, i) => { sel[i] = true; });
-      setSelected(sel);
-    } catch (e) {
-      setErr(e?.response?.data?.detail || e.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function apply() {
-    const toApply = suggestions.filter((_, i) => selected[i]);
-    if (toApply.length === 0) { setErr("Selecione pelo menos um feriado para aplicar."); return; }
-    try {
-      const r = await api.applyHolidays(praca.id, toApply);
-      setAppliedMsg(`✅ ${r.added} feriado(s) novo(s) aplicado(s) (total: ${r.total}).`);
-      onApplied && onApplied(r.holidays_extra);
-    } catch (e) {
-      setErr(e?.response?.data?.detail || e.message);
-    }
-  }
-
-  return (
-    <div role="dialog" data-testid="ai-holidays-modal" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: "white", borderRadius: 22, width: "100%", maxWidth: 600, maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 60px rgba(15,23,42,.32)" }}>
-        <div style={{ padding: "18px 22px 8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ margin: 0 }}>Buscar feriados com IA</h3>
-          <button onClick={onClose} data-testid="ai-close" style={{ background: "transparent", border: "none", fontSize: 22, cursor: "pointer", color: "#64748b" }}>×</button>
-        </div>
-        <div style={{ overflowY: "auto", padding: "0 22px 22px" }}>
-          <p style={{ color: "#475569", margin: "0 0 8px", fontSize: 13 }}>
-            A IA vai sugerir feriados <strong>estaduais</strong>, <strong>municipais</strong> e
-            <strong> facultativos</strong> oficiais do local abaixo:
-          </p>
-
-          {/* Chips de validação dura — Município · Estado · País */}
-          <div style={{
-            display: "flex", gap: 8, flexWrap: "wrap",
-            marginTop: 6, marginBottom: 4,
-          }}>
-            <span data-testid="loc-chip-city" style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              padding: "5px 11px", borderRadius: 999,
-              background: "#eff6ff", border: "1px solid #bfdbfe",
-              color: "#1e3a8a", fontSize: 12, fontWeight: 700,
-            }}>
-              <span style={{ opacity: 0.6, fontSize: 10, fontWeight: 600 }}>MUNICÍPIO</span>
-              {praca.city}
-            </span>
-            <span data-testid="loc-chip-state" style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              padding: "5px 11px", borderRadius: 999,
-              background: "#f0fdf4", border: "1px solid #bbf7d0",
-              color: "#14532d", fontSize: 12, fontWeight: 700,
-            }}>
-              <span style={{ opacity: 0.6, fontSize: 10, fontWeight: 600 }}>ESTADO</span>
-              {praca.state}
-            </span>
-            <span data-testid="loc-chip-country" style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              padding: "5px 11px", borderRadius: 999,
-              background: "#fefce8", border: "1px solid #fde68a",
-              color: "#713f12", fontSize: 12, fontWeight: 700,
-            }}>
-              <span style={{ opacity: 0.6, fontSize: 10, fontWeight: 600 }}>PAÍS</span>
-              Brasil
-            </span>
-            {praca.neighborhood && (
-              <span style={{
-                display: "inline-flex", alignItems: "center", gap: 6,
-                padding: "5px 11px", borderRadius: 999,
-                background: "#faf5ff", border: "1px solid #ddd6fe",
-                color: "#5b21b6", fontSize: 12, fontWeight: 600,
-              }}>
-                <span style={{ opacity: 0.6, fontSize: 10, fontWeight: 600 }}>BAIRRO</span>
-                {praca.neighborhood}
-              </span>
-            )}
-          </div>
-
-          {praca.full_address && (
-            <p style={{ marginTop: 4, marginBottom: 6, fontSize: 11, color: "#94a3b8" }}>
-              📍 {praca.full_address}
-            </p>
-          )}
-
-          <p style={{ marginTop: 8, fontSize: 12, color: "#64748b", marginBottom: 14 }}>
-            <strong>Regra dura:</strong> só são aceitos feriados oficiais validados nos três níveis
-            (município · estado · país). Feriados nacionais não entram nessa lista — eles vêm
-            automaticamente da BrasilAPI.
-          </p>
-
-          <div style={{ display: "flex", gap: 8, alignItems: "end", marginBottom: 12 }}>
-            <Field label="Ano">
-              <input data-testid="ai-year" type="number" min="2000" max="2100" style={{ ...inputStyle, width: 140 }} value={year} onChange={(e) => setYear(Number(e.target.value))} />
-            </Field>
-            <Button onClick={discover} disabled={loading} data-testid="ai-discover-btn">
-              {loading ? "Consultando IA..." : <><Icon name="sync" /> Buscar com IA</>}
-            </Button>
-          </div>
-
-          {err && <div data-testid="ai-error" style={{ background: "#fee2e2", color: "#991b1b", padding: 10, borderRadius: 12, marginBottom: 10, fontSize: 13 }}>{err}</div>}
-          {appliedMsg && <div data-testid="ai-success" style={{ background: "#dcfce7", color: "#166534", padding: 10, borderRadius: 12, marginBottom: 10, fontSize: 13 }}>{appliedMsg}</div>}
-
-          {suggestions.length > 0 && (
-            <>
-              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: 8, marginBottom: 10 }} data-testid="ai-suggestions">
-                {suggestions.map((s, i) => (
-                  <label key={i} data-testid={`ai-sug-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderBottom: i < suggestions.length - 1 ? "1px solid #f1f5f9" : "none", cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={!!selected[i]}
-                      onChange={(e) => setSelected({ ...selected, [i]: e.target.checked })}
-                      data-testid={`ai-sug-chk-${i}`}
-                    />
-                    <strong style={{ minWidth: 96, fontSize: 13 }}>{s.date}</strong>
-                    <span style={{ flex: 1, fontSize: 13 }}>{s.name}</span>
-                    <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: s.scope === "estadual" ? "#dbeafe" : s.scope === "facultativo" ? "#e2e8f0" : "#fde68a", color: s.scope === "estadual" ? "#1e3a8a" : s.scope === "facultativo" ? "#475569" : "#92400e" }}>
-                      {s.scope}
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <Button variant="secondary" onClick={onClose} data-testid="ai-cancel">Cancelar</Button>
-                <Button onClick={apply} data-testid="ai-apply-btn">Aplicar selecionados</Button>
-              </div>
-            </>
-          )}
-
-          {!loading && suggestions.length === 0 && !err && (
-            <p style={{ color: "#94a3b8", fontSize: 12, fontStyle: "italic" }}>
-              Clique em "Buscar com IA" para listar sugestões. Você poderá revisar antes de aplicar.
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function PracasPanel() {
   const [list, setList] = useState([]);
@@ -243,14 +79,8 @@ export default function PracasPanel() {
   const [error, setError] = useState("");
   const [flash, setFlash] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [aiPraca, setAiPraca] = useState(null);
 
   const [filiaisAtlaz, setFiliaisAtlaz] = useState([]);
-
-  // form para nova entrada de feriado
-  const [hDate, setHDate] = useState("");
-  const [hName, setHName] = useState("");
-  const [hScope, setHScope] = useState("municipal");
 
   async function reload() {
     try { setList(await api.listPracas()); }
@@ -271,7 +101,6 @@ export default function PracasPanel() {
       full_address: p.full_address || "", street: p.street || "", number: p.number || "",
       neighborhood: p.neighborhood || "", postal_code: p.postal_code || "",
       lat: p.lat ?? null, lng: p.lng ?? null,
-      holidays_extra: [...(p.holidays_extra || [])],
       logo_url: p.logo_url || "", cnpj: p.cnpj || "", inscricao_estadual: p.inscricao_estadual || "",
       phone: p.phone || "", email: p.email || "", site: p.site || "",
       branch_codes: Array.isArray(p.branch_codes) ? [...p.branch_codes] : [],
@@ -299,16 +128,6 @@ export default function PracasPanel() {
       lat: r.lat, lng: r.lng,
       city, state: (state || "").toUpperCase().slice(0, 2),
     });
-  }
-
-  function addHoliday() {
-    if (!hDate || !hName.trim()) { setError("Preencha data e nome do feriado."); return; }
-    setForm({ ...form, holidays_extra: [...form.holidays_extra, { date: hDate, name: hName.trim(), scope: hScope, source: "manual" }] });
-    setHDate(""); setHName(""); setHScope("municipal"); setError("");
-  }
-  function removeHoliday(i) {
-    const arr = [...form.holidays_extra]; arr.splice(i, 1);
-    setForm({ ...form, holidays_extra: arr });
   }
 
   async function save() {
@@ -363,7 +182,6 @@ export default function PracasPanel() {
                 <strong>{p.name}</strong>
                 <div style={{ color: "#64748b", fontSize: 12 }}>{p.city} · {p.state}</div>
                 {p.full_address && <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 2 }}>{p.full_address}</div>}
-                <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 4 }}>{(p.holidays_extra || []).length} feriado(s) cadastrado(s)</div>
                 {(p.branch_codes || []).length > 0 && (
                   <div data-testid={`praca-branches-${p.id}`} style={{
                     display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8,
@@ -389,9 +207,6 @@ export default function PracasPanel() {
                 </>
               ) : (
                 <>
-                  <Button variant="soft" onClick={() => setAiPraca(p)} data-testid={`ai-praca-${p.id}`} title="Buscar feriados com IA">
-                    <Icon name="sync" /> Feriados IA
-                  </Button>
                   <Button variant="secondary" onClick={() => startEdit(p)} data-testid={`edit-praca-${p.id}`}><Icon name="gear" /> Editar</Button>
                   <Button variant="danger" onClick={() => setConfirmDelete(p.id)} data-testid={`del-praca-${p.id}`}><Icon name="trash" /></Button>
                 </>
@@ -610,50 +425,7 @@ export default function PracasPanel() {
             </div>
           </div>
 
-          <h4 style={{ margin: "18px 0 8px", display: "flex", alignItems: "center", gap: 10 }}>
-            Feriados específicos da praça
-            {editing !== "new" && (
-              <Button variant="soft" onClick={() => setAiPraca({ ...form, id: editing })} data-testid="ai-from-form-btn" style={{ marginLeft: "auto", fontSize: 12 }}>
-                <Icon name="sync" /> Buscar com IA
-              </Button>
-            )}
-          </h4>
-          <p style={{ color: "#64748b", fontSize: 12, marginTop: 0 }}>
-            Adicione manualmente ou use a IA para sugerir os feriados <strong>municipais</strong> e <strong>estaduais</strong> daqui.
-          </p>
-
-          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, marginBottom: 10 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr auto", gap: 6, alignItems: "center" }}>
-              <input data-testid="ph-date" type="date" style={{ ...inputStyle, padding: 8 }} value={hDate} onChange={(e) => setHDate(e.target.value)} />
-              <input data-testid="ph-name" style={{ ...inputStyle, padding: 8 }} placeholder="Nome do feriado" value={hName} onChange={(e) => setHName(e.target.value)} />
-              <select data-testid="ph-scope" style={{ ...inputStyle, padding: 8 }} value={hScope} onChange={(e) => setHScope(e.target.value)}>
-                {SCOPES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
-              <Button variant="soft" onClick={addHoliday} data-testid="add-holiday-btn"><Icon name="plus" /></Button>
-            </div>
-          </div>
-
-          {form.holidays_extra.length === 0 ? (
-            <p style={{ color: "#94a3b8", fontSize: 12, fontStyle: "italic" }}>Nenhum feriado adicionado.</p>
-          ) : (
-            <div style={{ marginBottom: 10 }}>
-              {form.holidays_extra.map((h, i) => (
-                <div key={i} data-testid={`praca-holiday-${i}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: "1px solid #f1f5f9", fontSize: 13 }}>
-                  <strong style={{ minWidth: 96 }}>{h.date}</strong>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    {h.name}
-                    {h.source === "ai" && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 999, background: "#ccfbf1", color: "#0f766e" }}>IA</span>}
-                  </span>
-                  <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: h.scope === "estadual" ? "#dbeafe" : h.scope === "facultativo" ? "#e2e8f0" : "#fde68a", color: h.scope === "estadual" ? "#1e3a8a" : h.scope === "facultativo" ? "#475569" : "#92400e" }}>
-                    {h.scope}
-                  </span>
-                  <button onClick={() => removeHoliday(i)} data-testid={`rm-holiday-${i}`} style={{ background: "transparent", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 16, padding: 4 }}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
             <Button onClick={save} data-testid="save-praca-btn">Salvar praça</Button>
             <Button variant="secondary" onClick={() => setEditing(null)}>Cancelar</Button>
           </div>
@@ -661,27 +433,10 @@ export default function PracasPanel() {
       ) : (
         <Card title="Como funciona">
           <Row label="Endereço" value="Use o autocompletar para buscar o endereço completo da operação." />
-          <Row label="Feriados nacionais" value="Buscados da BrasilAPI automaticamente — você não precisa cadastrar." />
-          <Row label="Feriados estaduais/municipais" value="Use o botão 'Feriados IA' para que o sistema sugira os feriados — você revisa e aplica." />
-          <Row label="Como aparece no espelho" value="Toda batida no dia de feriado vira HE 100% (CLT)." />
-          <p style={{ color: "#64748b", fontSize: 12, marginTop: 14 }}>
-            🤖 A IA pode falhar ocasionalmente — sempre revise as sugestões antes de aplicar. Você ainda pode adicionar feriados manualmente.
-          </p>
+          <Row label="Feriados" value="Gerenciados de forma centralizada em RH → Feriados. Aplicam-se a todas as praças da empresa." />
+          <Row label="Como aparece no espelho" value="Toda batida em dia de feriado vira HE 100% (CLT)." />
         </Card>
       )}
-
-      <AiHolidaysModal
-        open={!!aiPraca}
-        praca={aiPraca}
-        onClose={() => setAiPraca(null)}
-        onApplied={async (merged) => {
-          // Atualiza form se estiver editando a mesma praça
-          if (editing && aiPraca && editing === aiPraca.id) {
-            setForm((f) => ({ ...f, holidays_extra: merged }));
-          }
-          await reload();
-        }}
-      />
     </div>
   );
 }

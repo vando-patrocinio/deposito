@@ -83,8 +83,7 @@ export const api = {
   overtimeTrend: (months = 6) => client.get(`/dashboard/overtime/trend`, { params: { months } }).then((r) => r.data),
 
   // Feriados
-  listHolidays: (year) => client.get(`/holidays/${year}`).then((r) => r.data),
-  refreshHolidays: (year) => client.post(`/holidays/refresh/${year}`).then((r) => r.data),
+  // (Endpoints de feriados antigos removidos — usar feriadosList/feriadoCreate)
   systemAlerts: (limit = 50) => client.get("/system/alerts", { params: { limit } }).then((r) => r.data),
 
   // Edição manual de ponto pelo gestor
@@ -104,8 +103,7 @@ export const api = {
   createPraca: (data) => client.post("/pracas", data).then((r) => r.data),
   updatePraca: (id, data) => client.put(`/pracas/${id}`, data).then((r) => r.data),
   deletePraca: (id) => client.delete(`/pracas/${id}`).then((r) => r.data),
-  discoverHolidays: (id, year) => client.post(`/pracas/${id}/discover-holidays`, null, { params: { year } }).then((r) => r.data),
-  applyHolidays: (id, holidays) => client.post(`/pracas/${id}/apply-holidays`, { holidays }).then((r) => r.data),
+  // (Endpoints discoverHolidays/applyHolidays removidos — feriados são gerenciados em /api/feriados)
 
   // Auth
   adminLogin: (password) => client.post("/auth/admin-login", { password }).then((r) => r.data),
