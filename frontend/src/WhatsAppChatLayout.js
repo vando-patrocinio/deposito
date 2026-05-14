@@ -532,9 +532,13 @@ export default function WhatsAppChatLayout() {
         gridTemplateColumns: "220px 360px 1fr",
         gap: 0, minHeight: 0,
       }}>
-      {/* COLUNA 1 — Buckets */}
+      {/* COLUNA 1 — Buckets + Filtros */}
       <BucketSidebar bucket={bucket} setBucket={setBucket}
-                      counts={buckets} unreadByBucket={bucketMetrics} />
+                      counts={buckets} unreadByBucket={bucketMetrics}
+                      advFilter={advFilter}
+                      onAdvFilterChange={persistAdvFilter}
+                      onAdvFilterClear={() => persistAdvFilter(makeBlankFilter())}
+                      authUser={authUser} attendants={attendants} />
 
       {/* COLUNA 2 — Lista de conversas */}
       <ConversationList
@@ -542,9 +546,6 @@ export default function WhatsAppChatLayout() {
         setSelectedPhone={setSelectedPhone} search={search} setSearch={setSearch}
         loading={loading} totalInBucket={buckets[bucket] || 0}
         contactProfiles={contactProfiles}
-        advFilter={advFilter} onAdvFilterChange={persistAdvFilter}
-        onAdvFilterClear={() => persistAdvFilter(makeBlankFilter())}
-        authUser={authUser} attendants={attendants}
       />
 
       {/* COLUNA 3 — Thread aberta */}
@@ -560,7 +561,9 @@ export default function WhatsAppChatLayout() {
 }
 
 /* ============================================================= */
-function BucketSidebar({ bucket, setBucket, counts, unreadByBucket }) {
+function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
+                            advFilter, onAdvFilterChange, onAdvFilterClear,
+                            authUser, attendants }) {
   return (
     <div data-testid="wa-buckets-sidebar" style={{
       background: "var(--bg-surface)",
@@ -568,10 +571,23 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket }) {
       padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2,
     }}>
       <div style={{
-        fontSize: 10, fontWeight: 700, color: "var(--text-muted)",
-        textTransform: "uppercase", letterSpacing: 0.8, padding: "4px 10px 10px",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "4px 10px 10px",
       }}>
-        Atendimentos
+        <div style={{
+          fontSize: 10, fontWeight: 700, color: "var(--text-muted)",
+          textTransform: "uppercase", letterSpacing: 0.8,
+        }}>
+          Atendimentos
+        </div>
+        <WaChatFilterPopover
+          value={advFilter}
+          onChange={onAdvFilterChange}
+          onClear={onAdvFilterClear}
+          authUser={authUser}
+          attendants={attendants}
+          align="left"
+        />
       </div>
       {BUCKETS.map((b) => {
         const Ico = b.icon;
@@ -644,8 +660,7 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket }) {
 /* ============================================================= */
 function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
                               search, setSearch, loading, totalInBucket,
-                              contactProfiles, advFilter, onAdvFilterChange,
-                              onAdvFilterClear, authUser, attendants }) {
+                              contactProfiles }) {
   const bucketLabel = BUCKETS.find((b) => b.id === bucket)?.label || bucket;
   return (
     <div data-testid="wa-conversation-list" style={{
@@ -655,37 +670,19 @@ function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
       minHeight: 0,
     }}>
       <div style={{
-        padding: "10px 12px", borderBottom: "1px solid var(--border-default)",
+        padding: "12px 14px", borderBottom: "1px solid var(--border-default)",
         display: "flex", alignItems: "center", gap: 8,
       }}>
-        <div style={{
-          flex: 1, display: "flex", alignItems: "center", gap: 8,
-          padding: "6px 10px",
-          border: "1px solid var(--border-default)",
-          borderRadius: 8,
-          background: "var(--bg-surface-2)",
-          minWidth: 0,
-        }}>
-          <Search size={14} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)}
-                 placeholder={search.trim()
-                   ? "Buscar em todas as conversas..."
-                   : `Buscar em ${bucketLabel.toLowerCase()}...`}
-                 data-testid="wa-search-input"
-                 style={{
-                   flex: 1, border: "none", outline: "none",
-                   background: "transparent",
-                   fontSize: 13, color: "var(--text-primary)",
-                   minWidth: 0,
-                 }} />
-        </div>
-        <WaChatFilterPopover
-          value={advFilter}
-          onChange={onAdvFilterChange}
-          onClear={onAdvFilterClear}
-          authUser={authUser}
-          attendants={attendants}
-        />
+        <Search size={14} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
+        <input value={search} onChange={(e) => setSearch(e.target.value)}
+               placeholder={search.trim()
+                 ? "Buscar em todas as conversas..."
+                 : `Buscar em ${bucketLabel.toLowerCase()}...`}
+               data-testid="wa-search-input"
+               style={{
+                 flex: 1, border: "none", outline: "none", background: "transparent",
+                 fontSize: 13, color: "var(--text-primary)",
+               }} />
       </div>
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         {loading ? (

@@ -55,7 +55,8 @@ export function makeBlankFilter() {
 }
 
 export default function WaChatFilterPopover({ value, onChange, onClear,
-                                                  authUser, attendants }) {
+                                                  authUser, attendants,
+                                                  align = "right" }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => ({ ...BLANK_FILTER, ...(value || {}) }));
   const wrapperRef = useRef(null);
@@ -136,9 +137,10 @@ export default function WaChatFilterPopover({ value, onChange, onClear,
         <div data-testid="wa-filter-popover" style={{
           position: "absolute",
           top: "calc(100% + 8px)",
-          right: 0,
+          ...(align === "left" ? { left: 0 } : { right: 0 }),
           zIndex: 100,
           width: 380,
+          maxWidth: "calc(100vw - 40px)",
           maxHeight: "calc(100vh - 200px)",
           overflowY: "auto",
           background: "var(--bg-surface)",
