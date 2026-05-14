@@ -36,6 +36,10 @@ router = APIRouter(prefix="/api/aihub", tags=["aihub"])
 # Modelos suportados (via Emergent LLM Key)
 # ---------------------------------------------------------------------------
 SUPPORTED_MODELS = [
+    {"provider": "deepseek", "model": "deepseek-v4-pro", "label": "DeepSeek V4 Pro (recomendado, melhor PT-BR + custo baixo)"},
+    {"provider": "deepseek", "model": "deepseek-v4-flash", "label": "DeepSeek V4 Flash (rápido)"},
+    {"provider": "deepseek", "model": "deepseek-r1", "label": "DeepSeek R1 (raciocínio profundo)"},
+    {"provider": "deepseek", "model": "deepseek-chat", "label": "DeepSeek Chat (clássico)"},
     {"provider": "gemini", "model": "gemini-2.5-flash", "label": "Gemini 2.5 Flash (rápido, barato)"},
     {"provider": "gemini", "model": "gemini-2.5-pro", "label": "Gemini 2.5 Pro (raciocínio profundo)"},
     {"provider": "anthropic", "model": "claude-sonnet-4-5-20250929", "label": "Claude Sonnet 4.5 (equilibrado)"},
@@ -75,8 +79,8 @@ class AgentIn(BaseModel):
     description: Optional[str] = Field(default=None, max_length=300)
     initial_message: str = Field(default="", max_length=2000)
     system_prompt: str = Field(..., min_length=10, max_length=200000)
-    model_provider: Literal["gemini", "anthropic", "openai"] = "gemini"
-    model_name: str = Field(default="gemini-2.5-flash", max_length=80)
+    model_provider: Literal["deepseek", "gemini", "anthropic", "openai"] = "deepseek"
+    model_name: str = Field(default="deepseek-v4-pro", max_length=80)
     temperature: float = Field(default=0.6, ge=0.0, le=2.0)
     max_tokens: int = Field(default=700, ge=50, le=32000)
     form_fields: List[FormField] = Field(default_factory=list)
@@ -96,7 +100,7 @@ class AgentUpdate(BaseModel):
     description: Optional[str] = Field(default=None, max_length=300)
     initial_message: Optional[str] = Field(default=None, max_length=2000)
     system_prompt: Optional[str] = Field(default=None, min_length=10, max_length=200000)
-    model_provider: Optional[Literal["gemini", "anthropic", "openai"]] = None
+    model_provider: Optional[Literal["deepseek", "gemini", "anthropic", "openai"]] = None
     model_name: Optional[str] = Field(default=None, max_length=80)
     temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(default=None, ge=50, le=32000)
