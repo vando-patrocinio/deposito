@@ -1465,9 +1465,9 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
     # ---------- HEADER (clean / white com logo opcional) ----------
     logo_cell = _logo_flowable(company_logo, max_w_cm=2.4, max_h_cm=2.0)
     info_para = Paragraph(
-        f"<font color='#0f172a' size='9'><b>NOME DA EMPRESA:</b> {company_name}</font><br/>"
-        f"<font color='#334155' size='8'><b>CNPJ DA EMPRESA:</b> {company_cnpj}</font><br/>"
-        f"<font color='#334155' size='8'><b>INSCRIÇÃO ESTADUAL DA EMPRESA:</b> {company_ie}</font>",
+        f"<font color='#0f172a' size='9'><b>Empresa:</b> {company_name}</font><br/>"
+        f"<font color='#334155' size='8'><b>CNPJ:</b> {company_cnpj}</font><br/>"
+        f"<font color='#334155' size='8'><b>IE:</b> {company_ie}</font>",
         styles["Normal"],
     )
     right_para = Paragraph(
@@ -1511,15 +1511,17 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
     except Exception:
         pass
     matricula = coll.get("matricula") or "—"
+    role_val = (coll.get("role") or "").strip().upper() or "—"
 
     id_left = (
-        f"<font size='8'><b>NOME DO FUNCIONÁRIO:</b> {coll.get('name', '—').upper()}</font><br/>"
-        f"<font size='8'><b>PIS DO FUNCIONÁRIO:</b> {pis_val}</font>"
+        f"<font size='8'><b>NOME:</b> {coll.get('name', '—').upper()}</font><br/>"
+        f"<font size='8'><b>FUNÇÃO:</b> {role_val}</font><br/>"
+        f"<font size='8'><b>PIS:</b> {pis_val}</font>"
     )
     id_right = (
-        f"<font size='8'><b>CPF DO FUNCIONÁRIO:</b> {cpf_val}</font><br/>"
-        f"<font size='8'><b>DATA DE ADMISSÃO DO FUNCIONÁRIO:</b> {admit}</font><br/>"
-        f"<font size='8'><b>NÚMERO DE MATRÍCULA:</b> {matricula}</font>"
+        f"<font size='8'><b>CPF:</b> {cpf_val}</font><br/>"
+        f"<font size='8'><b>ADMISSÃO:</b> {admit}</font><br/>"
+        f"<font size='8'><b>MATRÍCULA:</b> {matricula}</font>"
     )
     id_t = Table([[Paragraph(id_left, styles["Normal"]),
                     Paragraph(id_right, styles["Normal"])]],

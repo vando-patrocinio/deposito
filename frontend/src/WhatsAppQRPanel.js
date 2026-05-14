@@ -14,25 +14,46 @@ import WhatsAppChatLayout from "@/WhatsAppChatLayout";
 export default function WhatsAppQRPanel() {
   const [status, setStatus] = useState("connecting");
   const [err, setErr] = useState(null);
+  // "sticky connected": uma vez conectado, exige N falhas SEGUIDAS antes
+  // de mostrar a tela de desconectado. Evita flicker em picos de latência.
+  const [stickyConnected, setStickyConnected] = useState(false);
+  const failsRef = React.useRef(0);
+  const FAIL_THRESHOLD = 3;  // ~36s sem responder OK (12s × 3) → tela desconectada
 
   const fetchState = useCallback(async () => {
     try {
       const r = await api.waBaileysQR();
-      setStatus(r.status || "disconnected");
+      const st = r.status || "disconnected";
+      setStatus(st);
       setErr(null);
+      if (st === "connected") {
+        setStickyConnected(true);
+        failsRef.current = 0;
+      } else {
+        failsRef.current += 1;
+        // Só desativa o sticky se acumular falhas consecutivas
+        if (failsRef.current >= FAIL_THRESHOLD) {
+          setStickyConnected(false);
+        }
+      }
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
-      setStatus("disconnected");
+      failsRef.current += 1;
+      if (failsRef.current >= FAIL_THRESHOLD) {
+        setStickyConnected(false);
+        setStatus("disconnected");
+      }
     }
   }, []);
 
   useEffect(() => {
     fetchState();
-    const id = setInterval(fetchState, status === "connected" ? 12000 : 4000);
+    const id = setInterval(fetchState, stickyConnected ? 12000 : 4000);
     return () => clearInterval(id);
-  }, [fetchState, status]);
+  }, [fetchState, stickyConnected]);
 
-  if (status === "connected") {
+  // Enquanto sticky=true, sempre mostra o chat — mesmo que um poll falhe.
+  if (stickyConnected || status === "connected") {
     return <WhatsAppChatLayout />;
   }
 
