@@ -705,6 +705,26 @@ export const api = {
   // ===== AI Training (multiagente) =====
   aiTrainingStatus: () => client.get(`/ai-training/status`).then((r) => r.data),
   aiTrainingReload: () => client.post(`/ai-training/reload`).then((r) => r.data),
+  aiTrainingScenarios: (params = {}) =>
+    client.get(`/ai-training/scenarios`, { params }).then((r) => r.data),
+  aiTrainingScenario: (n) =>
+    client.get(`/ai-training/scenarios/${n}`).then((r) => r.data),
+  aiTrainingTests: (params = {}) =>
+    client.get(`/ai-training/tests`, { params }).then((r) => r.data),
+  aiTrainingTest: (n) =>
+    client.get(`/ai-training/tests/${n}`).then((r) => r.data),
+  aiTrainingRunTest: (n) =>
+    client.post(`/ai-training/tests/${n}/run`).then((r) => r.data),
+  aiTrainingRunAll: () =>
+    client.post(`/ai-training/tests/run-all`).then((r) => r.data),
+  aiTrainingDecisionMatrix: () =>
+    client.get(`/ai-training/decision-matrix`).then((r) => r.data),
+  aiTrainingRuns: (limit = 100) =>
+    client.get(`/ai-training/runs`, { params: { limit } }).then((r) => r.data),
+  aiTrainingRun: (id) =>
+    client.get(`/ai-training/runs/${id}`).then((r) => r.data),
+  aiTrainingBatchRuns: (batchId) =>
+    client.get(`/ai-training/runs/batch/${batchId}`).then((r) => r.data),
   driveBackupNow: (include_secrets = false) =>
     client.post(`/drive/backup`, { include_secrets }).then((r) => r.data),
   driveBackupList: () => client.get(`/drive/backups`).then((r) => r.data),

@@ -1,0 +1,59 @@
+{
+  "summary": "Iteration 65 — AI Training Studio (Simulador Multiagente). Backend 12/12 PASS via pytest (scenarios 60, tests 20, matrix 31, single-run with real LLM, runs history, auth). Frontend Playwright PASS — all 4 tabs render correctly inside Training Studio modal: Cenários (60), Testes (20 + Executar todos), Matriz (31 with category chips), Histórico (KPIs Execuções=2, Aprovados=1, Reprovados=1, Nota Média=8.15/10). Scenario detail shows simulacao_conversa as colored conversation panel with agent labels (Cliente, Atendente humano, Co-Pilot IA, Isabela IA, etc.). One real LLM-backed test run (#1) completed in ~18s with score 9.5/10 and another at 6.8/10 visible in history — proving end-to-end Isabela→Avaliador pipeline works.",
+  "tests_executed": {
+    "backend_pytest": "12/12 PASS in 20.5s — /app/backend/tests/test_iter65_ai_training.py",
+    "scenarios_list_60": "PASS — count=60, categories aggregation working (rede_smartolt, agendamento_kanban, atendimento_humano, avaliacao_coach, falhas_escalonamento, variacao_dificil)",
+    "scenario_detail_simulacao_conversa": "PASS — array non-empty, structured turns",
+    "scenario_filter_category": "PASS — server-side filter applied",
+    "scenario_404": "PASS",
+    "tests_list_20": "PASS — exactly 20 validation tests with required fields (name, entrada_cliente, agentes_esperados, criterio_aprovacao)",
+    "test_detail_404": "PASS",
+    "decision_matrix_31": "PASS — count=31, by_categoria has 10 categories",
+    "run_test_1": "PASS — POST /tests/1/run returned 200 in 17.9s with isabela_response + evaluation.score_decimal + pass:bool + breakdown",
+    "runs_list_with_kpis": "PASS — count/passed/failed/average_score present",
+    "run_detail_by_id": "PASS",
+    "auth_required": "PASS — no token → 401/403",
+    "frontend_playwright_login": "PASS — admin@empresa.com/123456 login → /app",
+    "frontend_central_ia_panel": "PASS — sidebar 'Central IA' → panel 'Treinamento Multiagente' visible with purple 'Abrir Training Studio' button",
+    "frontend_modal_tabs": "PASS — 4 tabs (Cenários 60, Testes 20, Matriz 31, Histórico) visible and switchable",
+    "frontend_scenarios_tab": "PASS — 60 scenario cards listed, click opens detail panel with badges (Cliente, Atendente humano, Co-Pilot IA, Isabela IA, Motor IA, SmartOLT AI, Avaliador IA, Coach IA, Aprendizado), 'Fluxo Ideal Esperado' steps + 'Simulação da Conversa' colored by agent",
+    "frontend_tests_tab": "PASS — 20 'Executar' buttons + 1 'Executar todos'; first test shows 'Última: 6.8/10' badge from real run",
+    "frontend_matrix_tab": "PASS — 31 rules grouped by category (rede 4, agendamento 3, risco 5, supervisao 2, sistema 4, ticket 1, qualidade 4, transparencia 3, cadastro 3, especial 2) with chip filter + ACIONAR priority labels (CRITICA, ALTA, MEDIA)",
+    "frontend_history_tab": "PASS — KPI cards (Execuções 2, Aprovados 1, Reprovados 1, Nota Média 8.15/10) + 2 past runs listed with score badges"
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "TrainingStudio Modal", "issue": "Modal does NOT close on ESC key press — only via the X button. Minor UX gap.", "selector": "[data-testid='training-s...']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "TrainingStudio Modal — Cenários tab select", "issues": ["Console hydration warning: '<span> cannot be a child of <option>'. Comes from emergent dev-only wrapper around <option> children inside the category <select>. Dev-only — no user-facing impact but adds console noise."]}
+    ]
+  },
+  "critical_code_review_comments": [
+    "ai_training.py: Run-test endpoint correctly executes Isabela (chat_completion) → captures response → Avaliador with json_mode=True. Handles stripped ```json wrappers. Persists runs in ai_training_runs with full payload — good for history/audit.",
+    "ai_training.py: run-all uses Semaphore(5) — reasonable concurrency for OpenRouter rate limits.",
+    "ai_training.py: All endpoints exclude _id projection — no MongoDB ObjectId leak.",
+    "ai_training.py: Uses require_role('gestor') — proper RBAC. Returns 401/403 without token (verified).",
+    "TrainingStudio.js: Select <option> children contain dynamic <span> wrappers causing React hydration warning. Should ensure option content is plain text only (e.g., `<option value=...>{label}</option>` without nested expressions that compile to spans).",
+    "TrainingStudio.js: Modal lacks ESC-to-close handler (window.addEventListener('keydown')). Consider adding for accessibility.",
+    "No file exceeds 700 lines noticeably (TrainingStudio is ~1090 lines for the WHOLE modal+4 tabs — borderline, could be split into tabs/ folder for maintainability, but acceptable since each tab is a self-contained sub-component)."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter65_ai_training.py",
+    "/app/test_reports/pytest/iter65_results.xml"
+  ],
+  "action_items": [
+    "(Optional/Low) Add ESC-to-close handler in TrainingStudio modal for better UX/accessibility.",
+    "(Optional/Low) Refactor category <select> options in ScenariosTab to avoid React hydration warning ('<span> cannot be a child of <option>'). The warning is benign in production builds but pollutes dev console.",
+    "(Optional) Consider splitting TrainingStudio.js (~1090 lines) into /TrainingStudio/{ScenariosTab,TestsTab,MatrixTab,HistoryTab}.js for maintainability."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (12/12 pytest pass)", "frontend": "100% (all 5 frontend acceptance criteria pass)"},
+  "test_credentials": "admin@empresa.com / 123456 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None — all 60 scenarios, 20 tests, 31 matrix rules were already seeded by main agent. One real test run (#1) was executed during testing and persisted in ai_training_runs (visible in Histórico tab with score 9.5/10).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Training Studio is fully functional end-to-end. Backend regression suite in /app/backend/tests/test_iter65_ai_training.py (12 cases, ~20s). Real LLM call for run-test takes ~18-30s. Run-all NOT tested (would take ~5min × 20 tests at avg 15s each). If LLM cost/latency is a concern, consider skipping or rate-limiting run-all in production. POST /tests/run-all endpoint exists and is wired in UI ('Executar todos' button visible). No critical bugs; only 2 low-priority polish items (ESC handler + option<span> hydration warning)."
+}

@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   RefreshCw, CheckCircle2, AlertTriangle, Bot, Database, BookOpen,
-  Loader2, ChevronRight,
+  Loader2, ChevronRight, Sparkles,
 } from "lucide-react";
 import { Card } from "@/ui";
 import { api } from "@/api";
+import TrainingStudio from "@/TrainingStudio";
 
 /**
  * Painel de Treinamento Multiagente — mostra status dos 10 agentes IA +
- * 5 docs KB + botão "Recarregar treinamento".
+ * 5 docs KB + botão "Recarregar treinamento" + botão "Abrir Training Studio".
  *
  * Pensado para ser embedado no CentralIaDashboard.
  */
@@ -18,6 +19,7 @@ export default function AiTrainingPanel() {
   const [reloading, setReloading] = useState(false);
   const [flash, setFlash] = useState("");
   const [error, setError] = useState("");
+  const [studioOpen, setStudioOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -103,6 +105,21 @@ export default function AiTrainingPanel() {
           <RefreshCw size={13}
                       style={{ animation: reloading ? "spin 1s linear infinite" : "none" }} />
           {reloading ? "Recarregando…" : "Recarregar treinamento"}
+        </button>
+        <button onClick={() => setStudioOpen(true)}
+                data-testid="open-training-studio-btn"
+                style={{
+                  padding: "8px 14px", borderRadius: 8,
+                  border: "1px solid #8b5cf6",
+                  background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+                  color: "white",
+                  fontSize: 12, fontWeight: 800, cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  transition: "all .15s",
+                  boxShadow: "0 4px 12px rgba(139,92,246,.25)",
+                }}>
+          <Sparkles size={13} />
+          Abrir Training Studio
         </button>
       </div>
 
@@ -190,6 +207,9 @@ export default function AiTrainingPanel() {
           ))}
         </div>
       </details>
+      {studioOpen && (
+        <TrainingStudio onClose={() => setStudioOpen(false)} />
+      )}
     </Card>
   );
 }
