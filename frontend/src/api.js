@@ -701,6 +701,10 @@ export const api = {
   driveStatus: () => client.get(`/drive/status`).then((r) => r.data),
   driveConnect: () => client.get(`/oauth/drive/connect`).then((r) => r.data),
   driveDisconnect: () => client.post(`/oauth/drive/disconnect`).then((r) => r.data),
+
+  // ===== AI Training (multiagente) =====
+  aiTrainingStatus: () => client.get(`/ai-training/status`).then((r) => r.data),
+  aiTrainingReload: () => client.post(`/ai-training/reload`).then((r) => r.data),
   driveBackupNow: (include_secrets = false) =>
     client.post(`/drive/backup`, { include_secrets }).then((r) => r.data),
   driveBackupList: () => client.get(`/drive/backups`).then((r) => r.data),

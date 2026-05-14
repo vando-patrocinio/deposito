@@ -10,6 +10,7 @@ import CopilotRankingCard from "@/CopilotRankingCard";
 import ChurnDashboardPanel from "@/ChurnDashboardPanel";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
 import AtlazSubPanel from "@/AtlazSubPanel";
+import AiTrainingPanel from "@/AiTrainingPanel";
 import { DollarSign, Coins, ChevronDown, ChevronUp } from "lucide-react";
 
 /* =============================================================
@@ -177,6 +178,9 @@ export default function CentralIaDashboard() {
           <MotorIaUsageCard />
         </div>
       )}
+
+      {/* Painel de Treinamento Multiagente — 10 IAs + KB + reload */}
+      <AiTrainingPanel />
 
       {kpis?.no_data && (
         <div className="surface" style={{
