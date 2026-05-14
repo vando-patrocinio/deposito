@@ -1,6 +1,34 @@
 # PontoIA — Changelog
 
-## Feb 14, 2026 — Holerite IA: Detecção Automática de Anomalias ★★
+## Feb 14, 2026 — Lock automático de holerite com anomalia crítica ★
+
+### Backend
+- **Auto-lock**: Quando `analyze_doc` detecta ≥1 anomalia crítica (NET_DROP/RISE ≥25%, ZERO_NET, DUPLICATE), o holerite vai automaticamente para `status="pending_review"` com `pending_review_reason` preenchido.
+- **`POST /api/holerites/{doc_id}/notify`** retorna HTTP 423 (Locked) se status=pending_review — não envia ao colaborador.
+- **`GET /api/holerites/public/by-collaborator/{cid}`** filtra `status="available"` (pending_review fica oculto para o colaborador).
+- **`POST /api/holerites/{doc_id}/approve`** (NEW) — RH libera com nota opcional. Marca `approved_at`, `approved_by`, `approval_note`.
+- **`POST /api/holerites/{doc_id}/reject`** (NEW) — RH rejeita e revoga, registrando motivo.
+- Audit log em todas as ações de aprovação/rejeição.
+
+### Frontend
+- **Badge na linha**: `🔒 AGUARDA RH` (laranja claro) quando status=pending_review.
+- **`AnomaliesModal` ganhou seção de revisão**:
+  - Banner vermelho/gradient explicando o lock
+  - Banner verde quando já aprovado (mostra reviewer + timestamp + nota)
+  - Textarea de nota do revisor (com placeholder útil)
+  - Botão "Rejeitar e revogar" (vermelho) + "Aprovar e liberar" (verde)
+- `api.js`: `holeriteApprove`, `holeriteReject`, `holeriteReanalyze`, `holeriteAnomalies`.
+
+### Validação ✓
+- Jefferson com -98.2% líquido (R$ 2492 → R$ 46) auto-bloqueou em pending_review
+- Notify retornou HTTP 423 (Locked) — confirma proteção
+- Lista pública do colaborador filtrou pending_review automaticamente
+- Approve com nota libera o doc + persiste reviewer (Administrador) + timestamp
+- UI mostra todo o fluxo: banner lock → chips anomalias → nota → aprovar/rejeitar
+
+---
+
+
 
 ### Backend
 - **`services/holerite_anomaly.py`** (NEW) — engine determinística (sem LLM) que compara holerite com mês anterior do mesmo funcionário
@@ -26,6 +54,19 @@
 - PDF com Diogo perdendo R$ 1.262 (-41.9% líquido, com falta nova) gerou 4 anomalias precisas (1 crítica + 3 warnings)
 - Reanalyze endpoint funciona para docs antigos
 - UI mostra modal completo com todos os chips de severidade corretamente coloridos
+
+---
+
+
+## Feb 14, 2026 — Holerite IA: Detecção Automática de Anomalias ★★
+
+- Engine determinística de detecção comparando holerite recém-importado com o mês anterior.
+- 10 tipos de anomalia: NET_DROP/RISE, GROSS_DROP/RISE (≥10%, crítico ≥25%), NEW_EARNING, MISSING_EARNING, NEW_DEDUCTION, INSS_HIGH (>15%), ZERO_NET, DUPLICATE, FIRST_HOLERITE.
+- Normalização Unidecode resolve "salário" vs "salario".
+- Detecção roda automaticamente após cada `/ai-import` + endpoints `GET /anomalies` e `POST /{doc_id}/reanalyze`.
+- Persistência em `payroll_documents.anomalies` + counters.
+- Frontend: badge laranja/vermelho com contador em cada linha + `AnomaliesModal` com chips coloridos por severidade + summary no DoneStep do import.
+- Validação: Diogo com -41.9% líquido gerou 4 anomalias precisas (1 crítica + 3 warnings).
 
 ---
 

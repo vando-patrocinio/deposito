@@ -144,6 +144,10 @@ def _doc_to_out(d: dict) -> dict:
         "anomalies": d.get("anomalies") or [],
         "anomalies_count": int(d.get("anomalies_count") or 0),
         "anomalies_critical": int(d.get("anomalies_critical") or 0),
+        "pending_review_reason": d.get("pending_review_reason"),
+        "approved_at": d.get("approved_at"),
+        "approved_by_name": d.get("approved_by_name"),
+        "approval_note": d.get("approval_note"),
         "status": d.get("status", "available"),
         "file_size_kb": int((d.get("file_size_bytes", 0) or 0) / 1024),
         "created_at": d.get("created_at"),
@@ -278,6 +282,11 @@ async def notify_holerite(doc_id: str, payload: NotifyIn, request: Request,
         raise HTTPException(404, "Holerite não encontrado.")
     if doc.get("status") == "revoked":
         raise HTTPException(400, "Holerite revogado.")
+    if doc.get("status") == "pending_review":
+        raise HTTPException(
+            423,  # Locked
+            f"Holerite aguardando revisão do RH. {doc.get('pending_review_reason', '')}"
+        )
     phone = doc.get("employee_phone")
     if not phone:
         raise HTTPException(400, "Colaborador sem telefone WhatsApp cadastrado.")
@@ -755,7 +764,7 @@ async def ai_import_holerite(
                             ),
                             "parse_id": payload.parse_id,
                         })
-        # Detecta anomalias comparando com mês anterior
+        # Detecta anomalias comparando com mês anterior (auto-lock se crítica)
         try:
             from services import holerite_anomaly as ha_anom
             anomalies = await ha_anom.analyze_doc(doc_id, cid)
@@ -764,6 +773,12 @@ async def ai_import_holerite(
             doc["anomalies_critical"] = sum(
                 1 for a in anomalies if a.get("severity") == "critical"
             )
+            if doc["anomalies_critical"] > 0:
+                doc["status"] = "pending_review"
+                doc["pending_review_reason"] = (
+                    f"{doc['anomalies_critical']} anomalia(s) crítica(s) "
+                    "detectada(s) — aprovação do RH necessária."
+                )
         except Exception as e:
             logger.warning("[holerite-ai] anomaly detect falhou %s: %s",
                               doc_id, e)
@@ -837,6 +852,79 @@ async def reanalyze_anomalies(doc_id: str,
     }
 
 
+class ApprovalIn(BaseModel):
+    """Aprovação manual de holerite em pending_review."""
+    reviewer_note: Optional[str] = Field(None, max_length=500)
+
+
+@router.post("/{doc_id}/approve")
+async def approve_holerite(
+    doc_id: str, payload: ApprovalIn, request: Request,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Libera um holerite que estava em pending_review.
+
+    Marca status='available' + registra reviewer + timestamp + nota.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.payroll_documents.find_one(
+        {"id": doc_id, "company_id": cid}, {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(404, "Holerite não encontrado.")
+    if doc.get("status") == "revoked":
+        raise HTTPException(400, "Holerite revogado — não pode ser aprovado.")
+    if doc.get("status") == "available":
+        return {"ok": True, "message": "Holerite já estava liberado.",
+                  "status": "available"}
+
+    await db.payroll_documents.update_one(
+        {"id": doc_id, "company_id": cid},
+        {"$set": {
+            "status": "available",
+            "approved_at": now_iso(),
+            "approved_by": user.get("id"),
+            "approved_by_name": user.get("name") or user.get("email"),
+            "approval_note": (payload.reviewer_note or "").strip() or None,
+            "pending_review_reason": None,
+        }},
+    )
+    await _audit(doc_id, cid, "approve", user.get("id"), "rh", request,
+                    extra={"note": payload.reviewer_note})
+    return {"ok": True, "status": "available", "doc_id": doc_id}
+
+
+@router.post("/{doc_id}/reject")
+async def reject_holerite(
+    doc_id: str, payload: ApprovalIn, request: Request,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Rejeita um holerite em pending_review (revoga).
+
+    Usado quando o RH confirma o erro do contador e pede correção.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.payroll_documents.find_one(
+        {"id": doc_id, "company_id": cid}, {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(404, "Holerite não encontrado.")
+
+    await db.payroll_documents.update_one(
+        {"id": doc_id, "company_id": cid},
+        {"$set": {
+            "status": "revoked",
+            "rejected_at": now_iso(),
+            "rejected_by": user.get("id"),
+            "rejected_by_name": user.get("name") or user.get("email"),
+            "rejection_note": (payload.reviewer_note or "").strip() or None,
+        }},
+    )
+    await _audit(doc_id, cid, "reject", user.get("id"), "rh", request,
+                    extra={"note": payload.reviewer_note})
+    return {"ok": True, "status": "revoked", "doc_id": doc_id}
+
+
 # ---------------------------------------------------------------------------
 # Endpoints PÚBLICOS (app do colaborador — autenticação por collab_id)
 # ---------------------------------------------------------------------------
@@ -861,7 +949,8 @@ async def collab_list_holerites(cid: str):
     docs = await db.payroll_documents.find(
         {"company_id": company_id, "employee_id": cid,
          "status": "available"},
-        {"_id": 0, "file_path": 0, "file_uuid": 0},
+        {"_id": 0, "file_path": 0, "file_uuid": 0,
+         "anomalies": 0, "earnings_breakdown": 0, "deductions_breakdown": 0},
     ).sort("created_at", -1).to_list(500)
     col = await db.collaborators.find_one(
         {"id": cid}, {"_id": 0, "name": 1, "role": 1},

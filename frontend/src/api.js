@@ -578,6 +578,14 @@ export const api = {
     client.post(`/holerites/${id}/notify`, { ttl_hours, custom_message }).then((r) => r.data),
   holeriteAudit: (id) =>
     client.get(`/holerites/audit/${id}`).then((r) => r.data),
+  holeriteApprove: (id, note) =>
+    client.post(`/holerites/${id}/approve`, { reviewer_note: note || null }).then((r) => r.data),
+  holeriteReject: (id, note) =>
+    client.post(`/holerites/${id}/reject`, { reviewer_note: note || null }).then((r) => r.data),
+  holeriteReanalyze: (id) =>
+    client.post(`/holerites/${id}/reanalyze`).then((r) => r.data),
+  holeriteAnomalies: (params = {}) =>
+    client.get(`/holerites/anomalies`, { params }).then((r) => r.data),
   // Token público (sem auth)
   holeriteTokenInfo: (token) =>
     client.get(`/holerites/token/${token}/info`).then((r) => r.data),

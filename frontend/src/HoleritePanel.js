@@ -260,6 +260,7 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
 
   const statusBadge = (() => {
     if (h.status === "revoked") return { color: "#dc2626", bg: "#fef2f2", text: "REVOGADO" };
+    if (h.status === "pending_review") return { color: "#ea580c", bg: "#fff7ed", text: "🔒 AGUARDA RH" };
     if (h.viewed_at) return { color: "#10b981", bg: "#dcfce7", text: "VISTO" };
     if (h.notified_at) return { color: "#0ea5e9", bg: "#dbeafe", text: "ENVIADO" };
     return { color: "#64748b", bg: "var(--bg-surface-2)", text: "PENDENTE" };
@@ -345,15 +346,51 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
         </button>
       </Td>
       {showAnomalies && (
-        <AnomaliesModal h={h} onClose={() => setShowAnomalies(false)} />
+        <AnomaliesModal h={h} onClose={() => setShowAnomalies(false)} onReload={onReload} />
       )}
     </tr>
   );
 }
 
-function AnomaliesModal({ h, onClose }) {
+function AnomaliesModal({ h, onClose, onReload }) {
   const anomalies = h.anomalies || [];
   const visible = anomalies.filter((a) => a.severity !== "info");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const isLocked = h.status === "pending_review";
+
+  async function approve() {
+    if (!window.confirm(
+      "Aprovar este holerite e liberar para o colaborador?\n\n" +
+      "Você confirma que verificou as anomalias com o contador/RH e os valores estão corretos."
+    )) return;
+    setBusy(true);
+    try {
+      await api.holeriteApprove(h.id, note);
+      window.alert("✅ Holerite aprovado e liberado.");
+      onReload?.();
+      onClose();
+    } catch (e) {
+      window.alert(extractErr(e));
+    } finally { setBusy(false); }
+  }
+
+  async function reject() {
+    if (!window.confirm(
+      "Rejeitar este holerite e marcar como REVOGADO?\n\n" +
+      "Use quando o contador precisa corrigir o arquivo. Esta ação não pode ser desfeita por aqui."
+    )) return;
+    setBusy(true);
+    try {
+      await api.holeriteReject(h.id, note);
+      window.alert("Holerite rejeitado e revogado.");
+      onReload?.();
+      onClose();
+    } catch (e) {
+      window.alert(extractErr(e));
+    } finally { setBusy(false); }
+  }
+
   return (
     <td colSpan={6}>
       <div onClick={onClose} style={{
@@ -388,13 +425,79 @@ function AnomaliesModal({ h, onClose }) {
             </button>
           </div>
 
+          {isLocked && (
+            <div data-testid="lock-banner" style={{
+              padding: 10, borderRadius: 8, marginBottom: 12,
+              background: "linear-gradient(135deg, #fee2e2, #fef3c7)",
+              border: "1px solid #dc2626",
+              fontSize: 12.5, color: "#991b1b",
+              display: "flex", alignItems: "flex-start", gap: 8,
+            }}>
+              <span style={{ fontSize: 16 }}>🔒</span>
+              <div>
+                <strong>Holerite bloqueado.</strong> O colaborador NÃO recebeu
+                este holerite ainda. Anomalias críticas exigem aprovação manual
+                do RH antes da liberação.
+              </div>
+            </div>
+          )}
+
+          {h.approved_at && (
+            <div data-testid="approved-banner" style={{
+              padding: 10, borderRadius: 8, marginBottom: 12,
+              background: "rgba(22,163,74,.10)", color: "#15803d",
+              fontSize: 12.5, borderLeft: "3px solid #16a34a",
+            }}>
+              ✓ Aprovado em {new Date(h.approved_at).toLocaleString("pt-BR")}
+              {h.approved_by_name && ` por ${h.approved_by_name}`}
+              {h.approval_note && (<><br/><em>"{h.approval_note}"</em></>)}
+            </div>
+          )}
+
           {visible.length === 0 ? (
             <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
               Nenhuma anomalia significativa.
             </div>
           ) : (
-            <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ display: "grid", gap: 6, marginBottom: 14 }}>
               {visible.map((a, i) => <AnomalyChip key={i} a={a} />)}
+            </div>
+          )}
+
+          {isLocked && (
+            <div style={{ marginTop: 12, paddingTop: 14,
+              borderTop: "1px solid var(--border-default)" }}>
+              <label style={{
+                display: "block", fontSize: 11, fontWeight: 800,
+                color: "var(--text-muted)", marginBottom: 5,
+                textTransform: "uppercase", letterSpacing: ".5px",
+              }}>
+                Nota do revisor (opcional)
+              </label>
+              <textarea
+                value={note} onChange={(e) => setNote(e.target.value)}
+                placeholder="Ex.: Confirmado com contador — foi falta justificada do dia 15."
+                data-testid="reviewer-note"
+                style={{
+                  width: "100%", padding: 9, borderRadius: 7,
+                  border: "1px solid var(--border-default)", fontSize: 12.5,
+                  background: "var(--bg-surface)", color: "var(--text-primary)",
+                  minHeight: 60, resize: "vertical", marginBottom: 10,
+                }}
+              />
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button onClick={reject} disabled={busy}
+                        data-testid={`anomaly-reject-${h.id}`}
+                        style={{ ...btn("secondary"), color: "#dc2626" }}>
+                  <Ban size={13} /> Rejeitar e revogar
+                </button>
+                <button onClick={approve} disabled={busy}
+                        data-testid={`anomaly-approve-${h.id}`}
+                        style={{ ...btn("primary"),
+                          background: "#16a34a", borderColor: "#16a34a" }}>
+                  <Check size={13} /> Aprovar e liberar
+                </button>
+              </div>
             </div>
           )}
         </div>

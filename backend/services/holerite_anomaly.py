@@ -237,12 +237,22 @@ async def analyze_doc(doc_id: str, company_id: str) -> List[Dict[str, Any]]:
             "details": {"duplicate_doc_id": dup["id"]},
         })
 
+    critical_count = sum(1 for a in anomalies if a.get("severity") == "critical")
+    update_fields = {
+        "anomalies": anomalies,
+        "anomalies_count": len(anomalies),
+        "anomalies_critical": critical_count,
+    }
+    # ★ Auto-lock se houver anomalia crítica e doc estiver available
+    if critical_count > 0 and curr.get("status") == "available":
+        update_fields["status"] = "pending_review"
+        update_fields["pending_review_reason"] = (
+            f"{critical_count} anomalia(s) crítica(s) detectada(s) "
+            f"— aprovação do RH necessária."
+        )
+
     await db.payroll_documents.update_one(
         {"id": doc_id, "company_id": company_id},
-        {"$set": {"anomalies": anomalies,
-                    "anomalies_count": len(anomalies),
-                    "anomalies_critical": sum(
-                        1 for a in anomalies if a.get("severity") == "critical"
-                    )}},
+        {"$set": update_fields},
     )
     return anomalies
