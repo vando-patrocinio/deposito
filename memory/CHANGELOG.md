@@ -1,6 +1,31 @@
 # PontoIA — Changelog
 
-## Feb 14, 2026 — UX clean no app do colaborador + Delete permanente no admin ★★
+## Feb 14, 2026 — BottomSheet drag-to-dismiss em todos os modais do colaborador ★
+
+### Frontend
+- **`BottomSheet.js`** (NEW) — componente genérico reutilizável estilo iOS/Android:
+  - Animação de entrada com curva spring `cubic-bezier(.16,1,.3,1)`
+  - Drag handle visual (40x4px) com testid `sheet-drag-handle`
+  - Suporta **touch** (mobile) e **mouse** (desktop)
+  - Dismiss automático quando arrastado > 35% da altura **OU** velocidade > 0.6px/ms
+  - Snap-back com curva spring `cubic-bezier(.34,1.56,.64,1)` quando abaixo do threshold
+  - Drag para cima limitado com 15% de resistência
+  - ESC fecha + click no backdrop fecha
+  - Body scrollável com `overscrollBehavior: contain` (não interfere no drag)
+- **Refatorado em todos os 3 modais do kebab**:
+  - `MyHoleritesModal` → BottomSheet
+  - `MyAssetsModal` → BottomSheet
+  - `SignWithGovBrModal` (interno do Holerites) → BottomSheet
+- Padrão visual consistente: pull handle no topo, header sóbrio, footer LGPD compacto
+
+### Validação ✓
+- Frontend Playwright **13/13 critérios PASS** (iter 70)
+- Drag visual confirmado em screenshots (sheet sobe → drag pra baixo → fecha)
+- Zero issues UI/design/integração
+
+---
+
+
 
 ### Backend
 - **`DELETE /api/holerites/{doc_id}/permanent`** (NEW) — hard delete:
@@ -152,7 +177,7 @@
 ---
 
 
-## Feb 14, 2026 — Holerite: Assinatura gov.br + Filtro por data de pagamento ★★★
+## Feb 14, 2026 — UX clean no app do colaborador + Delete permanente no admin ★★
 
 ### Backend
 - Auto-lock: `analyze_doc` marca automaticamente `status="pending_review"` quando ≥1 anomalia crítica (NET_DROP/RISE ≥25%, ZERO_NET, DUPLICATE).
