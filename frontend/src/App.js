@@ -5,7 +5,7 @@ import {
   Boxes, Sparkles, Users, MapPin, ShieldCheck, ClipboardList,
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
   Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle, Cpu,
-  Receipt, CalendarDays,
+  Receipt, CalendarDays, Wand2,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
@@ -31,6 +31,7 @@ import LousaAdminPanel from "@/LousaAdminPanel";
 import EstoquePanel from "@/EstoquePanel";
 import AICenterPanel from "@/AICenterPanel";
 import AiRankingPanel from "@/AiRankingPanel";
+import AiCorrectionsPanel from "@/AiCorrectionsPanel";
 import AIHubPanel from "@/AIHubPanel";
 import CentralIaDashboard from "@/CentralIaDashboard";
 import NotificationsBell from "@/NotificationsBell";
@@ -124,6 +125,7 @@ const NAV_GROUPS = [
     label: "Inteligência",
     items: [
       { id: "ai-ranking", icon: Sparkles, label: "Avaliação IA", roles: ["gestor", "auditor", "administrador"] },
+      { id: "ai-corrections", icon: Wand2, label: "Correções IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "central-ia", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "atendimento", icon: MessageCircle, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador"] },
     ],
@@ -802,6 +804,7 @@ function AppContent() {
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} />}
           {view === "estoque" && <EstoquePanel />}
           {view === "ai-ranking" && <AiRankingPanel />}
+          {view === "ai-corrections" && <AiCorrectionsPanel />}
           {view === "central-ia" && <CentralIaDashboard />}
           {view === "atendimento" && <AIHubPanel initialTab="whatsapp_qr" />}
           {view === "cadastro" && <CadastroPanel />}
