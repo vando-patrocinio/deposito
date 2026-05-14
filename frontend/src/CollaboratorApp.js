@@ -5,7 +5,7 @@ import LousaMobile from "@/LousaMobile";
 import MyAssetsModal from "@/MyAssetsModal";
 import ServerClock from "@/ServerClock";
 import { serverNow } from "@/serverTime";
-import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Row, softButtonStyle, StatusBadge } from "@/ui";
+import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Row, StatusBadge } from "@/ui";
 import { enqueue as enqueueOffline, count as offlineCount, flush as flushOffline } from "@/offlineClockQueue";
 
 const EVENT_TYPES = ["Entrada", "Início intervalo", "Fim intervalo", "Saída"];
@@ -355,8 +355,9 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     } catch {}
   };
 
-  const appCard = { background: "white", border: "1px solid #e2e8f0", borderRadius: 24, padding: 16, boxShadow: "0 10px 24px rgba(15,23,42,.06)", marginBottom: 14 };
-  const softCard = { ...appCard, background: "#f8fafc", boxShadow: "none" };
+  const appCard = { background: "white", border: "1px solid #e5e7eb", borderRadius: 14, padding: 18, boxShadow: "0 1px 2px rgba(15,23,42,.04)", marginBottom: 12 };
+  const softCard = { ...appCard, background: "#f8fafc", boxShadow: "none", border: "1px solid #eef2f7" };
+  const sectionLabel = { fontSize: 10, fontWeight: 700, color: "#64748b", letterSpacing: 1, textTransform: "uppercase" };
 
   if (!collabs.length) {
     return (
@@ -370,20 +371,26 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   if (!collabId) {
     return (
       <Wrapper>
-        <div data-testid="screen-no-link" style={{ ...appCard, padding: 24, textAlign: "center" }}>
-          <div style={{ fontSize: 56, marginBottom: 8 }}>🔗</div>
-          <h2 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 900, color: "#0f172a" }}>
+        <div data-testid="screen-no-link" style={{ ...appCard, padding: 28, textAlign: "center" }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 14, margin: "0 auto 14px",
+            background: "#f1f5f9", display: "grid", placeItems: "center",
+            border: "1px solid #e2e8f0",
+          }}>
+            <Icon name="phone" size={26} style={{ color: "#475569" }} />
+          </div>
+          <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 700, color: "#0f172a" }}>
             Acesso pelo link próprio
           </h2>
           <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5, margin: "0 0 16px" }}>
-            Cada técnico tem um <strong>link único</strong> enviado pelo gestor (geralmente por
+            Cada técnico tem um <strong style={{ color: "#0f172a" }}>link único</strong> enviado pelo gestor (geralmente por
             WhatsApp). Abra o link que você recebeu para entrar na sua Lousa.
           </p>
           <div style={{
-            background: "#fef3c7", border: "1px dashed #f59e0b",
-            borderRadius: 12, padding: 12, fontSize: 12, color: "#78350f", textAlign: "left",
+            background: "#f8fafc", border: "1px solid #e2e8f0",
+            borderRadius: 10, padding: 12, fontSize: 12, color: "#475569", textAlign: "left",
           }}>
-            <strong>Não tem o link?</strong>
+            <strong style={{ color: "#0f172a" }}>Não tem o link?</strong>
             <br/>
             Procure o gestor da sua filial. Ele consegue gerar/copiar/enviar o seu link em segundos
             pela aba <em>Cadastro</em> do painel.
@@ -398,15 +405,15 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
       <Wrapper>
         {mobile && overrideMode && (
           <div data-testid="exit-mobile-bar" style={{
-            background: "linear-gradient(90deg,#0f172a,#334155)", color: "white",
+            background: "#0f172a", color: "white",
             padding: "8px 14px", display: "flex", justifyContent: "space-between",
             alignItems: "center", fontSize: 12, position: "sticky", top: 0, zIndex: 50,
           }}>
-            <span>👁️ Visualizando como o colaborador no celular</span>
+            <span>Visualizando como o colaborador no celular</span>
             <button
               data-testid="exit-mobile-btn"
               onClick={exitMobile}
-              style={{ background: "white", color: "#0f172a", border: 0, padding: "4px 10px", borderRadius: 8, fontWeight: 800, cursor: "pointer", fontSize: 11 }}
+              style={{ background: "white", color: "#0f172a", border: 0, padding: "4px 10px", borderRadius: 6, fontWeight: 700, cursor: "pointer", fontSize: 11 }}
             >
               ← Voltar ao painel
             </button>
@@ -414,12 +421,13 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
         )}
         {isAdminTest && (
           <div data-testid="admin-test-banner" style={{
-            background: "linear-gradient(90deg,#7c3aed,#a855f7)", color: "white",
-            padding: "10px 14px", fontSize: 12, fontWeight: 700,
+            background: "#fffbeb", color: "#92400e",
+            borderBottom: "1px solid #fcd34d",
+            padding: "10px 14px", fontSize: 12, fontWeight: 600,
             display: "flex", alignItems: "center", gap: 10,
           }}>
-            <span style={{ fontSize: 18 }}>🧪</span>
-            <span>MODO TESTE ADMIN — cerca virtual ignorada (bater ponto em qualquer localização)</span>
+            <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#f59e0b" }} />
+            <span>Modo teste admin — cerca virtual ignorada (bater ponto em qualquer localização)</span>
           </div>
         )}
         <div style={{ padding: mobile ? "16px 16px 32px" : 18 }}>
@@ -434,12 +442,12 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 title={collab?.avatar_data_url ? "Toque 2x para ampliar" : "Sem foto cadastrada — bata seu primeiro ponto"}
                 data-testid="user-avatar-btn"
                 style={{
-                  width: 64, height: 64, borderRadius: "50%", overflow: "hidden",
-                  background: "linear-gradient(135deg,#0ea5e9,#0284c7)",
-                  display: "grid", placeItems: "center", fontSize: 26, color: "white",
-                  border: "3px solid white", boxShadow: "0 8px 18px rgba(14,165,233,.35)",
+                  width: 56, height: 56, borderRadius: "50%", overflow: "hidden",
+                  background: "#0f172a",
+                  display: "grid", placeItems: "center", fontSize: 22, fontWeight: 700, color: "white",
+                  border: "2px solid #ffffff", boxShadow: "0 0 0 1px #e2e8f0",
                   padding: 0, cursor: collab?.avatar_data_url ? "zoom-in" : "default",
-                  flexShrink: 0,
+                  flexShrink: 0, letterSpacing: 0.5,
                 }}
               >
                 {collab?.avatar_data_url
@@ -447,11 +455,11 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                   : (collab?.name?.[0] || "?").toUpperCase()}
               </button>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Olá,</div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>Olá</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
                   {collab?.name?.split(" ")[0] || "—"}
                 </div>
-                <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: 11, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {collab?.role || ""}
                 </div>
               </div>
@@ -466,13 +474,13 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                   disabled={flushingOffline}
                   title={`${pendingCount} batida(s) salvas localmente — clique para tentar reenviar agora`}
                   style={{
-                    border: 0, padding: "4px 10px", borderRadius: 999,
-                    background: flushingOffline ? "#fde68a" : "#fef3c7",
-                    color: "#78350f", fontSize: 11, fontWeight: 800,
+                    border: "1px solid #fcd34d", padding: "4px 10px", borderRadius: 8,
+                    background: flushingOffline ? "#fef3c7" : "#fffbeb",
+                    color: "#92400e", fontSize: 11, fontWeight: 700,
                     cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
                   }}
                 >
-                  {flushingOffline ? "↻" : "📥"} {pendingCount} pend.
+                  {flushingOffline ? "↻" : "•"} {pendingCount} pend.
                 </button>
               )}
               <ServerClock compact />
@@ -490,7 +498,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
           {/* Sem seletor de colaborador — cada técnico acessa pelo SEU link único compartilhado pelo gestor.
               Se a página for aberta sem ?cid=, mostramos uma tela orientativa em vez de uma lista. */}
 
-          {error && screen !== "selfie-error" && <div style={{ background: "#fee2e2", color: "#991b1b", padding: 10, borderRadius: 12, marginBottom: 10 }}>{error}</div>}
+          {error && screen !== "selfie-error" && <div style={{ background: "#fef2f2", color: "#991b1b", padding: "10px 12px", borderRadius: 10, marginBottom: 10, fontSize: 12, border: "1px solid #fecaca" }}>{error}</div>}
 
           {screen === "home" && today && (() => {
             const clockEnabled = collab?.clock_in_enabled !== false;
@@ -498,12 +506,12 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             if (!clockEnabled) {
               return (
                 <div data-testid="screen-home-no-clock">
-                  <div style={{ ...appCard, background: "linear-gradient(135deg,#7c3aed,#a855f7)", color: "white", border: "none", padding: 20 }}>
-                    <div style={{ color: "#e9d5ff", fontSize: 12, fontWeight: 700, letterSpacing: 0.5 }}>COLABORADOR EXTERNO</div>
-                    <div style={{ fontSize: 22, fontWeight: 950, marginTop: 6 }}>
+                  <div style={{ ...appCard, padding: 18 }}>
+                    <div style={sectionLabel}>Colaborador externo</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6, color: "#0f172a", letterSpacing: -0.3 }}>
                       Você não bate ponto
                     </div>
-                    <div style={{ marginTop: 6, color: "#e9d5ff", fontSize: 12, lineHeight: 1.5 }}>
+                    <div style={{ marginTop: 6, color: "#64748b", fontSize: 12, lineHeight: 1.5 }}>
                       Acompanhe e finalize seus serviços diretamente na Lousa.
                     </div>
                   </div>
@@ -512,32 +520,30 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                     data-testid="open-lousa-btn-primary"
                     onClick={() => setScreen("lousa")}
                     style={{
-                      width: "100%", height: 72, borderRadius: 36, border: 0,
-                      background: "linear-gradient(135deg,#0ea5e9,#0284c7)",
-                      color: "white", fontWeight: 950, fontSize: 18,
-                      marginTop: 4, marginBottom: 10,
-                      boxShadow: "0 18px 36px rgba(14,165,233,.45)",
-                      cursor: "pointer", letterSpacing: 0.4,
+                      width: "100%", height: 56, borderRadius: 12, border: 0,
+                      background: "#0f172a",
+                      color: "white", fontWeight: 700, fontSize: 15,
+                      marginTop: 2, marginBottom: 10,
+                      cursor: "pointer", letterSpacing: 0.2,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
                     }}
                   >
-                    📋 Abrir Lousa de Serviços
+                    <Icon name="clipboard" /> Abrir Lousa de Serviços
                   </button>
 
                   {/* Resumo do último serviço */}
                   {lousaSummary?.last_finished_ticket && (
                     <div data-testid="last-service-summary" style={{
-                      marginTop: 10, padding: 12, borderRadius: 12,
-                      background: "#ecfeff", border: "1px solid #67e8f9",
-                      fontSize: 12, color: "#0e7490",
+                      marginTop: 10, padding: 14, borderRadius: 12,
+                      background: "white", border: "1px solid #e2e8f0",
+                      fontSize: 12, color: "#475569",
                     }}>
-                      <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#155e75" }}>
-                        🧾 Último serviço encerrado
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                        <span>{lousaSummary.last_finished_ticket.client_snapshot?.name}</span>
-                        <strong>
+                      <div style={{ ...sectionLabel, marginBottom: 6 }}>Último serviço encerrado</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        <span style={{ color: "#0f172a", fontWeight: 600 }}>{lousaSummary.last_finished_ticket.client_snapshot?.name}</span>
+                        <strong style={{ color: "#0f172a" }}>
                           {lousaSummary.last_finished_ticket.duration_minutes != null
-                            ? `🕐 ${formatDur(lousaSummary.last_finished_ticket.duration_minutes)}`
+                            ? formatDur(lousaSummary.last_finished_ticket.duration_minutes)
                             : ""}
                         </strong>
                       </div>
@@ -565,57 +571,58 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             // Layout CLT padrão (com bater ponto)
             return (
             <div data-testid="screen-home">
-              <div style={{ ...appCard, background: "linear-gradient(135deg,#0f172a,#1e293b)", color: "white", border: "none", padding: 18 }}>
-                <div style={{ color: "#cbd5e1", fontSize: 12 }}>Próximo</div>
-                <div style={{ fontSize: 28, fontWeight: 950, marginTop: 4 }}>{today.next_expected}</div>
-                <div style={{ marginTop: 6, color: "#94a3b8", fontSize: 11 }}>{today.records.length} registro(s) hoje</div>
+              <div style={{ ...appCard, padding: 18 }}>
+                <div style={sectionLabel}>Próximo ponto</div>
+                <div style={{ fontSize: 30, fontWeight: 800, marginTop: 6, color: "#0f172a", letterSpacing: -0.5 }}>{today.next_expected}</div>
+                <div style={{ marginTop: 4, color: "#64748b", fontSize: 12 }}>{today.records.length} registro(s) hoje</div>
               </div>
 
               <button
                 data-testid="open-clock-btn"
                 onClick={quickClock}
                 disabled={busy || !collabId}
-                style={{ width: "100%", height: 72, borderRadius: 36, border: 0, background: "linear-gradient(135deg, #10b981, #059669)", color: "white", fontWeight: 950, fontSize: 18, marginBottom: 10, boxShadow: "0 18px 36px rgba(16,185,129,.45)", cursor: "pointer", opacity: busy ? 0.6 : 1, letterSpacing: 0.4 }}
+                style={{ width: "100%", height: 56, borderRadius: 12, border: 0, background: "#0f172a", color: "white", fontWeight: 700, fontSize: 15, marginBottom: 10, cursor: "pointer", opacity: busy ? 0.6 : 1, letterSpacing: 0.2, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}
               >
                 <Icon name="camera" /> {busy ? "..." : `Bater ${today.next_expected || "Ponto"}`}
               </button>
-              {geoError && <div style={{ color: "#be123c", fontSize: 11, marginBottom: 8 }}><Icon name="alert" /> {geoError}</div>}
+              {geoError && <div style={{ color: "#b91c1c", fontSize: 11, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><Icon name="alert" /> {geoError}</div>}
 
               <button
                 data-testid="open-lousa-btn"
                 onClick={() => setScreen("lousa")}
                 style={{
-                  ...softButtonStyle(),
-                  width: "100%", height: 56, marginTop: 4,
-                  background: "linear-gradient(135deg, #fef3c7, #fde68a)",
-                  border: "1px solid #f59e0b",
-                  color: "#78350f",
+                  width: "100%", height: 48, marginTop: 2, marginBottom: 4,
+                  background: "white",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  color: "#0f172a",
+                  fontWeight: 600, fontSize: 14,
+                  cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
                 }}
               >
-                <div style={{ fontSize: 18 }}>📋</div><strong>Lousa de Serviços</strong>
+                <Icon name="clipboard" /> Lousa de Serviços
               </button>
 
               {/* Resumo do último serviço — visível antes de bater Saída */}
               {lousaSummary?.last_finished_ticket && (
                 <div data-testid="last-service-summary" style={{
-                  marginTop: 10, padding: 12, borderRadius: 12,
-                  background: "#ecfeff", border: "1px solid #67e8f9",
-                  fontSize: 12, color: "#0e7490",
+                  marginTop: 10, padding: 14, borderRadius: 12,
+                  background: "white", border: "1px solid #e2e8f0",
+                  fontSize: 12, color: "#475569",
                 }}>
-                  <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4, color: "#155e75" }}>
-                    🧾 Último serviço encerrado
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                    <span>{lousaSummary.last_finished_ticket.client_snapshot?.name}</span>
-                    <strong>
+                  <div style={{ ...sectionLabel, marginBottom: 6 }}>Último serviço encerrado</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ color: "#0f172a", fontWeight: 600 }}>{lousaSummary.last_finished_ticket.client_snapshot?.name}</span>
+                    <strong style={{ color: "#0f172a" }}>
                       {lousaSummary.last_finished_ticket.duration_minutes != null
-                        ? `🕐 ${formatDur(lousaSummary.last_finished_ticket.duration_minutes)}`
+                        ? formatDur(lousaSummary.last_finished_ticket.duration_minutes)
                         : ""}
                     </strong>
                   </div>
                   {lousaSummary.minutes_since_last_close != null && (
-                    <div style={{ marginTop: 6, fontStyle: "italic", color: "#0891b2" }}>
-                      ⏱ Há {formatGap(lousaSummary.minutes_since_last_close)} desde o encerramento — bata Saída assim que terminar.
+                    <div style={{ marginTop: 8, color: "#64748b", fontSize: 11 }}>
+                      Há {formatGap(lousaSummary.minutes_since_last_close)} desde o encerramento — bata Saída assim que terminar.
                     </div>
                   )}
                 </div>
@@ -665,16 +672,16 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
           {screen === "selfie-error" && (
             <div data-testid="screen-selfie-error">
               <div style={{ textAlign: "center", padding: "24px 0" }}>
-                <div style={{ width: 110, height: 110, borderRadius: "50%", background: "#fef3c7", display: "grid", placeItems: "center", fontSize: 50, margin: "0 auto", border: "6px solid white", boxShadow: "0 16px 34px rgba(15,23,42,.16)" }}>
-                  <Icon name="alert" />
+                <div style={{ width: 72, height: 72, borderRadius: 18, background: "#fef3c7", display: "grid", placeItems: "center", margin: "0 auto", border: "1px solid #fcd34d" }}>
+                  <Icon name="alert" size={32} style={{ color: "#b45309" }} />
                 </div>
-                <h2 style={{ marginBottom: 6 }}>Não conseguimos validar sua selfie</h2>
-                <p style={{ color: "#b45309", marginTop: 0, fontWeight: 700 }}>{error || "Erro ao registrar o ponto. Tente novamente."}</p>
+                <h2 style={{ marginBottom: 6, marginTop: 14, fontSize: 17, fontWeight: 700, color: "#0f172a" }}>Não conseguimos validar sua selfie</h2>
+                <p style={{ color: "#b45309", marginTop: 0, fontWeight: 600, fontSize: 13 }}>{error || "Erro ao registrar o ponto. Tente novamente."}</p>
               </div>
-              <Button onClick={retrySelfie} style={{ width: "100%", borderRadius: 28, marginBottom: 8 }} data-testid="selfie-retry-btn">
+              <Button onClick={retrySelfie} style={{ width: "100%", borderRadius: 12, marginBottom: 8 }} data-testid="selfie-retry-btn">
                 <Icon name="camera" /> Refazer selfie
               </Button>
-              <Button variant="soft" onClick={() => { setError(""); setScreen("home"); }} style={{ width: "100%", borderRadius: 28 }} data-testid="selfie-error-home-btn">
+              <Button variant="soft" onClick={() => { setError(""); setScreen("home"); }} style={{ width: "100%", borderRadius: 12 }} data-testid="selfie-error-home-btn">
                 Voltar ao início
               </Button>
             </div>
@@ -683,16 +690,16 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
           {screen === "blocked" && receipt && (
             <div data-testid="screen-blocked">
               <div style={{ textAlign: "center", padding: "24px 0" }}>
-                <div style={{ width: 110, height: 110, borderRadius: "50%", background: "#fee2e2", display: "grid", placeItems: "center", fontSize: 50, margin: "0 auto", border: "6px solid white", boxShadow: "0 16px 34px rgba(15,23,42,.16)" }}>
-                  <Icon name="block" />
+                <div style={{ width: 72, height: 72, borderRadius: 18, background: "#fee2e2", display: "grid", placeItems: "center", margin: "0 auto", border: "1px solid #fecaca" }}>
+                  <Icon name="block" size={32} style={{ color: "#b91c1c" }} />
                 </div>
-                <h2 style={{ marginBottom: 6 }}>Ponto não registrado</h2>
-                <p style={{ color: "#be123c", marginTop: 0, fontWeight: 700 }}>{receipt.public_block_message || receipt.note}</p>
+                <h2 style={{ marginBottom: 6, marginTop: 14, fontSize: 17, fontWeight: 700, color: "#0f172a" }}>Ponto não registrado</h2>
+                <p style={{ color: "#b91c1c", marginTop: 0, fontWeight: 600, fontSize: 13 }}>{receipt.public_block_message || receipt.note}</p>
               </div>
-              <Button onClick={retrySelfie} style={{ width: "100%", borderRadius: 28, marginBottom: 8 }} data-testid="blocked-retry-btn">
+              <Button onClick={retrySelfie} style={{ width: "100%", borderRadius: 12, marginBottom: 8 }} data-testid="blocked-retry-btn">
                 <Icon name="camera" /> Refazer selfie
               </Button>
-              <Button variant="soft" onClick={() => { setReceipt(null); setScreen("home"); }} style={{ width: "100%", borderRadius: 28 }} data-testid="blocked-home-btn">
+              <Button variant="soft" onClick={() => { setReceipt(null); setScreen("home"); }} style={{ width: "100%", borderRadius: 12 }} data-testid="blocked-home-btn">
                 Voltar ao início
               </Button>
             </div>
@@ -702,11 +709,13 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             <div data-testid="screen-receipt">
               <div style={{ textAlign: "center", padding: "12px 0" }}>
                 {receipt.selfie_url && (
-                  <img src={receipt.selfie_url} alt="Selfie" style={{ width: 120, height: 150, objectFit: "cover", borderRadius: 22, border: "5px solid white", boxShadow: "0 12px 26px rgba(15,23,42,.16)" }} />
+                  <img src={receipt.selfie_url} alt="Selfie" style={{ width: 110, height: 140, objectFit: "cover", borderRadius: 14, border: "1px solid #e2e8f0" }} />
                 )}
-                <div style={{ fontSize: 36, marginTop: 8 }}><Icon name="check" /></div>
-                <h2 style={{ marginBottom: 4 }}>{receipt.type} registrada</h2>
-                <p style={{ color: "#64748b", marginTop: 0 }}>{receipt.protocol}</p>
+                <div style={{ marginTop: 12 }}>
+                  <Icon name="check" size={28} style={{ color: "#059669" }} />
+                </div>
+                <h2 style={{ marginBottom: 4, marginTop: 6, fontSize: 17, fontWeight: 700, color: "#0f172a" }}>{receipt.type} registrada</h2>
+                <p style={{ color: "#64748b", marginTop: 0, fontSize: 12 }}>{receipt.protocol}</p>
               </div>
               <div style={appCard}>
                 <Row label="Data/hora" value={`${receipt.date} ${receipt.time}`} />
@@ -715,13 +724,13 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 <Row label="Cerca" value={<StatusBadge status={receipt.geo_status} />} />
                 <Row label="Status" value={<StatusBadge status={receipt.status} />} />
               </div>
-              <Button onClick={() => setScreen("home")} style={{ width: "100%", borderRadius: 28 }} data-testid="receipt-done-btn">Concluir</Button>
+              <Button onClick={() => setScreen("home")} style={{ width: "100%", borderRadius: 12 }} data-testid="receipt-done-btn">Concluir</Button>
             </div>
           )}
 
           {screen === "history" && today && (
             <div data-testid="screen-history">
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
                 <Button variant="soft" onClick={() => setScreen("home")} data-testid="back-home-btn">← Voltar</Button>
                 <Button
                   variant="soft"
@@ -729,23 +738,23 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                   disabled={refreshing}
                   data-testid="history-refresh-btn"
                   style={{
-                    background: refreshFlash ? "#dcfce7" : refreshing ? "#fef9c3" : "#dbeafe",
-                    color: refreshFlash ? "#166534" : refreshing ? "#92400e" : "#1e40af",
-                    border: `1px solid ${refreshFlash ? "#86efac" : refreshing ? "#fde68a" : "#93c5fd"}`,
+                    background: refreshFlash ? "#f0fdf4" : refreshing ? "#fefce8" : "#f8fafc",
+                    color: refreshFlash ? "#15803d" : refreshing ? "#a16207" : "#475569",
+                    border: `1px solid ${refreshFlash ? "#bbf7d0" : refreshing ? "#fef08a" : "#e2e8f0"}`,
                     transition: "background-color .25s",
                   }}
                 >
-                  {refreshing ? "⏳ Atualizando..." : refreshFlash ? "✓ Atualizado" : "🔄 Atualizar"}
+                  {refreshing ? "Atualizando…" : refreshFlash ? "✓ Atualizado" : "Atualizar"}
                 </Button>
               </div>
-              <h2>Hoje ({today.date})</h2>
-              {today.records.length === 0 && <p style={{ color: "#64748b" }}>Sem registros ainda.</p>}
+              <div style={{ ...sectionLabel, marginBottom: 8 }}>Hoje ({today.date})</div>
+              {today.records.length === 0 && <p style={{ color: "#64748b", fontSize: 13 }}>Sem registros ainda.</p>}
               {today.records.map((r) => (
-                <div key={r.id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 18, padding: 12, marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <strong>{r.type}</strong><StatusBadge status={r.status} />
+                <div key={r.id} style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <strong style={{ color: "#0f172a", fontSize: 13 }}>{r.type}</strong><StatusBadge status={r.status} />
                   </div>
-                  <div style={{ color: "#64748b", fontSize: 13 }}>{r.time} • {r.geofence_name || "—"} {r.distance_m != null ? `(${r.distance_m}m)` : ""}</div>
+                  <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>{r.time} • {r.geofence_name || "—"} {r.distance_m != null ? `(${r.distance_m}m)` : ""}</div>
                 </div>
               ))}
             </div>
@@ -766,13 +775,20 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
               onClick={() => setExitConfirm(false)}
             >
               <div onClick={(e) => e.stopPropagation()} style={{
-                background: "white", borderRadius: 22, padding: 22, maxWidth: 380, width: "100%",
+                background: "white", borderRadius: 14, padding: 22, maxWidth: 380, width: "100%",
+                border: "1px solid #e2e8f0",
               }}>
-                <div style={{ fontSize: 50, textAlign: "center" }}>⚠️</div>
-                <h2 style={{ textAlign: "center", margin: "8px 0 4px" }}>Você tem nota(s) em aberto</h2>
-                <p style={{ color: "#64748b", textAlign: "center", margin: "0 0 18px", fontSize: 13 }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: 14, background: "#fef3c7",
+                  display: "grid", placeItems: "center", margin: "0 auto 12px",
+                  border: "1px solid #fcd34d",
+                }}>
+                  <Icon name="alert" size={26} style={{ color: "#b45309" }} />
+                </div>
+                <h2 style={{ textAlign: "center", margin: "0 0 6px", fontSize: 16, fontWeight: 700, color: "#0f172a" }}>Você tem nota(s) em aberto</h2>
+                <p style={{ color: "#64748b", textAlign: "center", margin: "0 0 18px", fontSize: 13, lineHeight: 1.5 }}>
                   Deseja encerrar essas notas e bater o ponto de Saída?<br />
-                  <strong>O gestor será notificado</strong>.
+                  <strong style={{ color: "#0f172a" }}>O gestor será notificado</strong>.
                 </p>
                 <Button
                   data-testid="confirm-close-tickets-btn"
@@ -782,14 +798,14 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                     setCameraKey((k) => k + 1);
                     setScreen("camera");
                   }}
-                  style={{ width: "100%", marginBottom: 8, background: "#dc2626" }}
+                  style={{ width: "100%", marginBottom: 8, background: "#0f172a", color: "white", borderRadius: 10 }}
                 >
                   Sim, encerrar e bater Saída
                 </Button>
                 <Button
                   variant="soft"
                   onClick={() => setExitConfirm(false)}
-                  style={{ width: "100%" }}
+                  style={{ width: "100%", borderRadius: 10 }}
                   data-testid="cancel-exit-btn"
                 >
                   Cancelar — voltar e finalizar manualmente
@@ -883,15 +899,15 @@ function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, 
   }, [open]);
 
   const items = [];
-  items.push({ key: "history", label: "Histórico", icon: "📋", onClick: () => { onOpenHistory && onOpenHistory(); setOpen(false); } });
+  items.push({ key: "history", label: "Histórico", icon: "history", onClick: () => { onOpenHistory && onOpenHistory(); setOpen(false); } });
   if (onOpenAssets) {
-    items.push({ key: "assets", label: "Meus itens em custódia", icon: "🎒", onClick: () => { onOpenAssets(); setOpen(false); } });
+    items.push({ key: "assets", label: "Meus itens em custódia", icon: "boxes", onClick: () => { onOpenAssets(); setOpen(false); } });
   }
   if (forcedCollabId && onLogoutGoogle) {
-    items.push({ key: "logout", label: "Sair da conta Google", icon: "🚪", onClick: () => { onLogoutGoogle(); setOpen(false); } });
+    items.push({ key: "logout", label: "Sair da conta Google", icon: "logout", onClick: () => { onLogoutGoogle(); setOpen(false); } });
   }
   if (onExitMobile) {
-    items.push({ key: "exit-mobile", label: "Voltar ao painel", icon: "↩️", onClick: () => { onExitMobile(); setOpen(false); } });
+    items.push({ key: "exit-mobile", label: "Voltar ao painel", icon: "chevron", onClick: () => { onExitMobile(); setOpen(false); } });
   }
 
   return (
@@ -926,13 +942,13 @@ function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, 
               style={{
                 display: "flex", alignItems: "center", gap: 10, width: "100%",
                 background: "transparent", border: 0, padding: "10px 12px",
-                fontSize: 13, fontWeight: 600, color: "#0f172a",
+                fontSize: 13, fontWeight: 500, color: "#0f172a",
                 cursor: "pointer", borderRadius: 8, textAlign: "left",
               }}
               onMouseOver={(e) => (e.currentTarget.style.background = "#f1f5f9")}
               onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
             >
-              <span style={{ fontSize: 16 }}>{it.icon}</span>
+              <Icon name={it.icon} size={15} style={{ color: "#64748b" }} />
               {it.label}
             </button>
           ))}
