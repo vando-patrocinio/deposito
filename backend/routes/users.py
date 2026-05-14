@@ -76,12 +76,17 @@ async def login(payload: LoginIn):
 
 @router.post("/auth/logout")
 async def logout(user: dict = Depends(get_current_user)):
-    """Invalida a sessão atual: limpa active_session_id no user.
+    """Logout "soft": zera active_session_id no documento do user.
 
-    Como o JWT é stateless, o efeito real é: o próximo request que usar
-    este token recebe 401 ("Sessão substituída por novo login") porque o
-    SID gravado deixou de bater. Combinado com o purge do frontend,
-    garante single-user-per-device.
+    NOTA (14/05/2026): após removermos o single-session-per-user check em
+    auth.py, o JWT continua válido até `exp` mesmo após o logout. Este
+    endpoint serve principalmente para:
+      (1) o frontend chamar antes de limpar o localStorage (cleanup);
+      (2) atualizar `last_logout_at` para auditoria;
+      (3) reservar a coluna `active_session_id` para futura feature
+          "Encerrar outras sessões" (que vai consultar este campo).
+    Em outras palavras: o token NÃO vira inválido aqui — só o frontend
+    descarta sua cópia. Padrão de SaaS B2B (Slack, Gmail, Notion).
     """
     await db.users.update_one(
         {"id": user["id"]},

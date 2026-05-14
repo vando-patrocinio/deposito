@@ -303,6 +303,15 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - testids: `inline-agent-editor`, `inline-agent-tab-personality`, `inline-agent-tab-model`, `inline-agent-save`, `inline-agent-selector`, `inline-agent-flash`, `inline-agent-error`, `inline-agent-loading`, `inline-agent-empty`, `inline-agent-create-new`.
 - **Validado por testing_agent iter63**: 14/14 acceptance criteria PASS, zero regressões no chat Ligo, zero novos bugs.
 
+✅ **Sessão caindo toda hora — REMOVIDO single-session-per-user** (14/05/2026 — iter67):
+- **Bug P0 reportado pelo usuário**: "preciso que o sistema para de cair, atualisa, cai, ctrl+shft+r, cai denovo, toda hora tenho que logar". Cada Ctrl+Shift+R → /login?session_expired=1 → re-login obrigatório. InlineAgentEditor mostrava "Nenhum agente cadastrado" assustando o usuário a pensar que o Isabella tinha sido apagado.
+- **Causa raiz**: `auth.py` get_current_user comparava `payload.sid` contra `users.active_session_id`. CADA login gravava SID novo, então qualquer segundo login (outra aba, outro device, auto-login do preview Emergent, outro gestor com mesma conta) silenciosamente invalidava o token anterior → próximo request 401 "Sessão substituída por novo login" → frontend hard redirect.
+- **Fix backend** (`/app/backend/auth.py`): removida verificação SID nas linhas 174-184 do `get_current_user`. JWT continua válido até `exp` natural (30 dias). Mantido `active_session_id` na coluna do user (gravado no login) para futura feature "Encerrar outras sessões". Logout virou "soft" — zera o campo mas não invalida o token (padrão Slack/Gmail/Notion).
+- **Fix frontend interceptor** (`/app/frontend/src/api.js`): 401 NÃO faz mais `window.location.replace` (hard redirect destruía toda a UI). Em vez disso dispara `CustomEvent("smartprov-session-expired")` que o AuthContext escuta — limpa o token e renderiza tela de login dentro do mesmo SPA, preservando aba atual, scroll, dados em memória, polling, etc.
+- **Fix AuthContext** (`/app/frontend/src/AuthContext.js`): `load()` só desloga em 401/403 reais — erros de rede/timeout NÃO derrubam mais a sessão (apenas log + retry no próximo poll). Novo `useEffect` ouve `smartprov-session-expired` e faz purge limpo.
+- **Fix UX defensivo** (`/app/frontend/src/InlineAgentEditor.js`): novo estado `authError`. Quando `/aihub/agents` falha por 401, mostra mensagem clara "Sessão expirada · Seu agente NÃO foi apagado · está seguro no banco" + botão "Fazer login" — em vez do antigo "Nenhum agente cadastrado" + "+ Criar agente" que sugeria que o agente tinha sido deletado.
+- **Validado por testing_agent iter64**: 8/8 backend pytest (`/app/backend/tests/test_iter64_auth_no_single_session.py`) + 2/2 frontend Playwright. 2 tokens consecutivos do mesmo user agora coexistem; reload após login paralelo externo preserva Isabella.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
