@@ -725,6 +725,10 @@ export const api = {
     client.get(`/ai-training/runs/${id}`).then((r) => r.data),
   aiTrainingBatchRuns: (batchId) =>
     client.get(`/ai-training/runs/batch/${batchId}`).then((r) => r.data),
+  aiTrainingSchedule: () =>
+    client.get(`/ai-training/schedule`).then((r) => r.data),
+  aiTrainingScheduleUpdate: (data) =>
+    client.put(`/ai-training/schedule`, data).then((r) => r.data),
   driveBackupNow: (include_secrets = false) =>
     client.post(`/drive/backup`, { include_secrets }).then((r) => r.data),
   driveBackupList: () => client.get(`/drive/backups`).then((r) => r.data),

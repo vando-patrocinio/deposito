@@ -1,5 +1,36 @@
 # PontoIA — Changelog
 
+## Feb 14, 2026 — Training Studio Scheduler (Auto-Run + Drift Alert) ★★
+
+### Backend
+- **`services/ai_training_scheduler.py`** (NEW) — worker que checa a cada 60s e dispara batch dos 20 testes no horário configurado (default 03h UTC ≈ 00h BRT)
+- Idempotente via `last_run_date` (1x/dia por empresa)
+- Roda os 20 testes em paralelo (semáforo=3 para não sobrecarregar OpenRouter)
+- Persiste runs em `ai_training_runs` com flag `automated=True`
+- **Drift detection**: se média < `alert_threshold` (default 7.5/10), cria notificação in-app na coleção `notifications` (severity=warning, kind=training_drift)
+- **Endpoints novos** em `routes/ai_training.py`:
+  - `GET /api/ai-training/schedule` — retorna config (com defaults)
+  - `PUT /api/ai-training/schedule` — atualiza enabled/hour_utc/minute/alert_threshold (validação 0-23/0-59/0.0-10.0)
+- Worker registrado em `server.py:_startup` junto com churn_scheduler
+
+### Frontend
+- **5ª tab "Agendamento"** no Training Studio (icon: CalendarClock)
+- Card de configuração: toggle Ativado, Hora UTC, Minuto, Threshold de alerta
+- Mostra **próxima execução prevista** (calculada local em tempo real)
+- Card "Última execução automática" com KPIs (data, aprovados X/20, reprovados, nota média)
+- Banner vermelho de **"Drift detectado!"** quando última run < threshold
+- `api.aiTrainingSchedule()` + `api.aiTrainingScheduleUpdate(data)` adicionadas
+
+### Validação ✓
+- PUT /schedule retorna 200 com payload válido
+- Worker disparou após 60s e executou os 20 testes em ~3min
+- Nota média 6.06/10 (real) < 7.5 threshold → drift alert disparado
+- UI exibe todos os KPIs + banner vermelho corretamente
+- Schedule persiste configuração entre restarts
+
+---
+
+
 ## Feb 14, 2026 — Training Studio (Simulador de Treinamento Multi-Agente) ★★★
 
 ### Backend

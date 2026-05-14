@@ -314,6 +314,10 @@ async def _startup() -> None:
     start_lousa_ai()
     from services.churn_scheduler import start_worker as start_churn_scheduler
     start_churn_scheduler()
+    from services.ai_training_scheduler import (
+        start_worker as start_ai_training_scheduler,
+    )
+    start_ai_training_scheduler()
     asyncio.create_task(routes_plans.adjustment_scheduler_worker())
     from services.drive_backup import daily_backup_worker as drive_daily_worker
     asyncio.create_task(drive_daily_worker())

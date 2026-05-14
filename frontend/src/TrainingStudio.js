@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   X, RefreshCw, Play, Loader2, CheckCircle2, XCircle, AlertTriangle,
   Bot, BookOpen, ListChecks, Network, History, Search,
-  ChevronRight, Award, Target, Clock, Zap, Filter,
+  ChevronRight, Award, Target, Clock, Zap, Filter, CalendarClock, Save,
 } from "lucide-react";
 import { Card, Button } from "@/ui";
 import { api } from "@/api";
@@ -1040,6 +1040,243 @@ function KpiCard({ label, value, suffix, color }) {
 }
 
 /* ============================================================
+   AGENDAMENTO TAB — auto-run + alerta de drift
+============================================================ */
+function ScheduleTab() {
+  const [cfg, setCfg] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [flash, setFlash] = useState("");
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.aiTrainingSchedule()
+      .then((r) => setCfg(r))
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const r = await api.aiTrainingScheduleUpdate({
+        enabled: !!cfg.enabled,
+        hour_utc: parseInt(cfg.hour_utc, 10) || 3,
+        minute: parseInt(cfg.minute, 10) || 0,
+        alert_threshold: parseFloat(cfg.alert_threshold) || 7.5,
+      });
+      setCfg(r.schedule);
+      setFlash("Configuração salva com sucesso ✓");
+      setTimeout(() => setFlash(""), 3000);
+    } catch (e) {
+      alert("Erro ao salvar: " + (e?.response?.data?.detail || e.message));
+    } finally { setSaving(false); }
+  }
+
+  if (loading) return (
+    <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)" }}>
+      <Loader2 size={14} className="spin" /> Carregando agendamento…
+    </div>
+  );
+  if (!cfg) return null;
+
+  // Próxima execução prevista (apenas estimativa local)
+  const now = new Date();
+  const targetUtc = new Date(now);
+  targetUtc.setUTCHours(cfg.hour_utc, cfg.minute, 0, 0);
+  if (targetUtc <= now) targetUtc.setUTCDate(targetUtc.getUTCDate() + 1);
+  const nextLocal = targetUtc.toLocaleString();
+
+  return (
+    <div style={{ display: "grid", gap: 16, maxWidth: 720 }}>
+      <Card style={{ padding: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: cfg.enabled ? "linear-gradient(135deg, #16a34a, #22c55e)"
+                                       : "linear-gradient(135deg, #64748b, #94a3b8)",
+            color: "white", display: "grid", placeItems: "center",
+          }}>
+            <CalendarClock size={18} strokeWidth={1.75} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "var(--text-primary)" }}>
+              Execução automática diária
+            </h3>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1 }}>
+              Roda os 20 testes de validação todo dia · gera alerta se drift detectado
+            </div>
+          </div>
+          <label style={{
+            display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer",
+            padding: "6px 12px", borderRadius: 999,
+            background: cfg.enabled ? "rgba(22,163,74,.10)" : "var(--bg-surface-2)",
+            border: `1px solid ${cfg.enabled ? "#16a34a" : "var(--border-default)"}`,
+          }}>
+            <input
+              type="checkbox" checked={!!cfg.enabled}
+              data-testid="ts-schedule-enabled"
+              onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })}
+              style={{ accentColor: "#16a34a" }}
+            />
+            <span style={{
+              fontSize: 12, fontWeight: 700,
+              color: cfg.enabled ? "#16a34a" : "var(--text-muted)",
+            }}>{cfg.enabled ? "Ativado" : "Desativado"}</span>
+          </label>
+        </div>
+
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12,
+        }}>
+          <Field label="Hora UTC">
+            <input
+              type="number" min="0" max="23"
+              value={cfg.hour_utc ?? 3}
+              data-testid="ts-schedule-hour"
+              onChange={(e) => setCfg({ ...cfg, hour_utc: e.target.value })}
+              style={inputStyle}
+            />
+            <Hint>
+              UTC. Padrão 03h UTC ≈ 00h BRT (madrugada).
+            </Hint>
+          </Field>
+          <Field label="Minuto">
+            <input
+              type="number" min="0" max="59"
+              value={cfg.minute ?? 0}
+              data-testid="ts-schedule-minute"
+              onChange={(e) => setCfg({ ...cfg, minute: e.target.value })}
+              style={inputStyle}
+            />
+          </Field>
+          <Field label="Threshold de alerta">
+            <input
+              type="number" min="0" max="10" step="0.1"
+              value={cfg.alert_threshold ?? 7.5}
+              data-testid="ts-schedule-threshold"
+              onChange={(e) => setCfg({ ...cfg, alert_threshold: e.target.value })}
+              style={inputStyle}
+            />
+            <Hint>
+              Notifica se nota média &lt; este valor (0-10).
+            </Hint>
+          </Field>
+        </div>
+
+        <div style={{
+          marginTop: 16, padding: 12, borderRadius: 8,
+          background: cfg.enabled ? "rgba(14,165,233,.08)" : "var(--bg-surface-2)",
+          border: `1px solid ${cfg.enabled ? "#0ea5e944" : "var(--border-default)"}`,
+          fontSize: 12, color: "var(--text-primary)",
+        }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+            <Clock size={14} style={{ marginTop: 1, color: cfg.enabled ? "#0ea5e9" : "var(--text-muted)" }} />
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>
+                Próxima execução prevista:
+              </div>
+              <div style={{ color: "var(--text-secondary)" }}>
+                {cfg.enabled ? nextLocal : "Scheduler desativado"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+          {flash && (
+            <div style={{
+              flex: 1, fontSize: 12, fontWeight: 700, color: "#16a34a",
+              display: "inline-flex", alignItems: "center", gap: 6,
+            }}>
+              <CheckCircle2 size={13} /> {flash}
+            </div>
+          )}
+          <Button
+            onClick={save}
+            disabled={saving}
+            variant="primary"
+            data-testid="ts-schedule-save"
+          >
+            {saving ? <Loader2 size={13} className="spin" /> : <Save size={13} />}
+            {saving ? "Salvando…" : "Salvar configuração"}
+          </Button>
+        </div>
+      </Card>
+
+      {/* Última execução automática */}
+      <Card title="Última execução automática" style={{ padding: 16 }}>
+        {cfg.last_run_at ? (
+          <div data-testid="ts-schedule-last-run">
+            <div style={{
+              display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 10, marginBottom: 12,
+            }}>
+              <KpiCard label="Data" value={String(cfg.last_run_at).slice(0,16).replace("T", " ")} color="#0f172a" />
+              <KpiCard label="Aprovados" value={`${cfg.last_passed || 0}/${cfg.last_total || 0}`} color="#16a34a" />
+              <KpiCard label="Reprovados" value={cfg.last_failed || 0} color="#dc2626" />
+              <KpiCard
+                label="Nota média"
+                value={cfg.last_average?.toFixed?.(2) || cfg.last_average || "—"}
+                suffix="/10"
+                color={SCORE_COLOR(cfg.last_average || 0)}
+              />
+            </div>
+            {cfg.last_alert_at && (
+              <div style={{
+                padding: 10, borderRadius: 8,
+                background: "rgba(220,38,38,.08)", color: "#b91c1c",
+                fontSize: 12, display: "flex", gap: 8, alignItems: "flex-start",
+              }}>
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                <div>
+                  <strong>Drift detectado!</strong> Em
+                  {" "}{String(cfg.last_alert_at).slice(0,16).replace("T"," ")}
+                  {" "}a nota média foi {cfg.last_alert_avg?.toFixed?.(2)}/10
+                  (abaixo do threshold {cfg.alert_threshold}/10).
+                  Verifique a aba Histórico para identificar regressões.
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: 8 }}>
+            Ainda não houve execução automática. Ative o scheduler e aguarde o horário programado.
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div>
+      <label style={{
+        display: "block", fontSize: 11, fontWeight: 800,
+        color: "var(--text-muted)", marginBottom: 5,
+        textTransform: "uppercase", letterSpacing: ".5px",
+      }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function Hint({ children }) {
+  return (
+    <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4, lineHeight: 1.3 }}>
+      {children}
+    </div>
+  );
+}
+
+const inputStyle = {
+  width: "100%", padding: "8px 10px", borderRadius: 7,
+  border: "1px solid var(--border-default)", fontSize: 13,
+  background: "var(--bg-surface)", color: "var(--text-primary)",
+};
+
+/* ============================================================
    MAIN — TrainingStudio
 ============================================================ */
 export default function TrainingStudio({ embedded = false, onClose }) {
@@ -1076,12 +1313,15 @@ export default function TrainingStudio({ embedded = false, onClose }) {
               active={tab === "matriz"} onClick={setTab} />
         <Tab id="historico" label="Histórico" icon={History}
               active={tab === "historico"} onClick={setTab} />
+        <Tab id="agendamento" label="Agendamento" icon={CalendarClock}
+              active={tab === "agendamento"} onClick={setTab} />
       </div>
 
       {tab === "cenarios" && <ScenariosTab />}
       {tab === "testes" && <TestsTab />}
       {tab === "matriz" && <MatrixTab />}
       {tab === "historico" && <HistoryTab />}
+      {tab === "agendamento" && <ScheduleTab />}
     </>
   );
 

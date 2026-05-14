@@ -535,3 +535,51 @@ async def batch_runs(batch_id: str, user: dict = Depends(require_role("gestor"))
         "average_score": round(avg, 2),
         "items": items,
     }
+
+
+# ===================================================================
+# SCHEDULER (auto-run diário)
+# ===================================================================
+from services import ai_training_scheduler  # noqa: E402
+
+
+@router.get("/schedule")
+async def schedule_get(user: dict = Depends(require_role("gestor"))):
+    """Retorna a config do scheduler para a empresa."""
+    cid = user.get("company_id", "co-demo")
+    return await ai_training_scheduler.get_schedule(cid)
+
+
+@router.put("/schedule")
+async def schedule_put(payload: dict,
+                        user: dict = Depends(require_role("gestor"))):
+    """Atualiza a config do scheduler.
+
+    Aceita campos: enabled (bool), hour_utc (0-23), minute (0-59),
+    alert_threshold (0-10 float).
+    """
+    cid = user.get("company_id", "co-demo")
+    clean: dict = {}
+    if "enabled" in payload:
+        clean["enabled"] = bool(payload["enabled"])
+    if "hour_utc" in payload:
+        h = int(payload["hour_utc"])
+        if not 0 <= h <= 23:
+            raise HTTPException(400, "hour_utc deve ser 0..23")
+        clean["hour_utc"] = h
+    if "minute" in payload:
+        m = int(payload["minute"])
+        if not 0 <= m <= 59:
+            raise HTTPException(400, "minute deve ser 0..59")
+        clean["minute"] = m
+    if "alert_threshold" in payload:
+        t = float(payload["alert_threshold"])
+        if not 0.0 <= t <= 10.0:
+            raise HTTPException(400, "alert_threshold deve ser 0..10")
+        clean["alert_threshold"] = t
+    if not clean:
+        raise HTTPException(400, "Nenhum campo válido para atualizar")
+    updated = await ai_training_scheduler.save_schedule(
+        cid, clean, updated_by=user.get("name") or user.get("email"),
+    )
+    return {"ok": True, "schedule": updated}

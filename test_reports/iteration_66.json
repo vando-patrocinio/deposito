@@ -1,0 +1,55 @@
+{
+  "summary": "Iter 66 — AI Training Studio Scheduler (auto-run + drift alert). Backend 11/11 PASS via pytest in 2.71s (/api/ai-training/schedule GET defaults, PUT happy path with GET-verified persistence, validation 400 for hour_utc>23/minute>59/alert_threshold out of 0..10/empty payload, auth required, last_run+last_alert state present from earlier worker run). Worker confirmed running via supervisor logs: '[ai-training-scheduler] worker iniciado (check 60s)' + 'disparando p/ co-demo (threshold 7.5)' + 'DRIFT ALERT co-demo avg=6.06 threshold=7.5'. Frontend Playwright PASS — 5th tab 'Agendamento' (CalendarClock icon) renders inside Training Studio modal with all 5 expected testids (ts-schedule-enabled toggle Ativado/Desativado, ts-schedule-hour=3, ts-schedule-minute=0, ts-schedule-threshold=7.5, ts-schedule-save). 'Próxima execução prevista' calculates correctly (5/15/2026 3:00:00 AM). Save → flash 'Configuração salva com sucesso' appears. KPI card 'Última execução automática' shows Data 2026-05-14 15:19, Aprovados 6/20, Reprovados 14, Nota média 6.06/10. Red banner 'Drift detectado!' visible with full message referencing threshold 7.5/10.",
+  "tests_executed": {
+    "backend_pytest": "11/11 PASS — /app/backend/tests/test_iter66_ai_training_schedule.py (2.71s)",
+    "test_schedule_get_requires_auth": "PASS — 401/403 without token",
+    "test_schedule_put_requires_auth": "PASS — 401/403 without token",
+    "test_schedule_get_returns_config": "PASS — all keys enabled/hour_utc/minute/alert_threshold present, types correct, ranges valid",
+    "test_schedule_put_update_and_persist": "PASS — PUT {enabled:true,hour_utc:3,minute:0,alert_threshold:7.5} → 200 + ok:true + schedule echoed. GET verifies persistence.",
+    "test_schedule_put_change_threshold": "PASS — alert_threshold:8.0 saved and GET-verified, then restored to 7.5",
+    "test_schedule_put_invalid_hour": "PASS — hour_utc:25 → 400",
+    "test_schedule_put_invalid_minute": "PASS — minute:99 → 400",
+    "test_schedule_put_invalid_threshold_high": "PASS — alert_threshold:11.5 → 400",
+    "test_schedule_put_invalid_threshold_negative": "PASS — alert_threshold:-1.0 → 400",
+    "test_schedule_put_empty_payload": "PASS — empty {} → 400 'Nenhum campo válido para atualizar'",
+    "test_schedule_has_last_run_history": "PASS — last_run_at + last_average=6.06 + last_alert_at all set (proving worker ran + drift was emitted earlier today)",
+    "worker_startup_log": "PASS — confirmed in /var/log/supervisor/backend.err.log: '[ai-training-scheduler] worker iniciado (check 60s)' and 'DRIFT ALERT co-demo avg=6.06 threshold=7.5'",
+    "frontend_login": "PASS — admin@empresa.com/123456 → /app",
+    "frontend_navigate_to_schedule_tab": "PASS — Sidebar Central IA → Abrir Training Studio modal → 5 tabs (Cenários 60, Testes 20, Matriz 31, Histórico, Agendamento) with CalendarClock icon on 5th",
+    "frontend_schedule_controls": "PASS — toggle Ativado/Desativado + 3 number inputs (hour 0-23, minute 0-59, threshold 0-10 step 0.1) + Salvar button. All data-testids present.",
+    "frontend_next_run_estimate": "PASS — 'Próxima execução prevista: 5/15/2026, 3:00:00 AM' rendered correctly (3h UTC tomorrow because today already passed)",
+    "frontend_save_flash": "PASS — saving with threshold change → green flash 'Configuração salva com sucesso ✓' visible",
+    "frontend_last_run_kpis": "PASS — Data 2026-05-14 15:19 | Aprovados 6/20 | Reprovados 14 | Nota Média 6.06/10",
+    "frontend_drift_banner": "PASS — red banner 'Drift detectado! Em 2026-05-14 15:19 a nota média foi 6.06/10 (abaixo do threshold 7.5/10). Verifique a aba Histórico para identificar regressões.'"
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "critical_code_review_comments": [
+    "ai_training_scheduler.py — clean separation: _run_batch (executor), _emit_alert (notification side-effect + log), _process_schedule (idempotent gate by last_run_date + hour/minute window), _worker_loop (60s tick). Good use of asyncio.Semaphore(3) for off-hours batch.",
+    "ai_training_scheduler.py — get_schedule returns sensible defaults (enabled=False, hour_utc=3, minute=0, alert_threshold=7.5) even when no DB doc exists. Avoids 404 noise on first UI load.",
+    "ai_training.py PUT /schedule — proper Pydantic-less manual validation with explicit 400 for hour/minute/threshold ranges. clean dict pattern + raise on empty payload prevents silent no-op.",
+    "ai_training.py — lazy import of services.ai_training_scheduler at bottom avoids circular import with routes/ai_training (good).",
+    "TrainingStudio.js ScheduleTab — Save uses optimistic UI with flash setTimeout(3000); error handling via alert() works but could be replaced with toast for consistency (low priority).",
+    "TrainingStudio.js — 'Próxima execução prevista' calc uses local Date but server uses UTC hours; display via toLocaleString is correct since input is hour_utc. Logic of bumping to next day when targetUtc<=now is sound.",
+    "Notification insert uses kind='training_drift' / severity='warning' — NotificationsBell should pick this up automatically (out of scope for this iter test).",
+    "(carryover from iter65) TrainingStudio.js is now ~1380 lines — recommend splitting into /TrainingStudio/{ScenariosTab,TestsTab,MatrixTab,HistoryTab,ScheduleTab}.js for maintainability."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter66_ai_training_schedule.py",
+    "/app/test_reports/pytest/iter66_results.xml"
+  ],
+  "action_items": [
+    "(Optional/Low) Consider splitting TrainingStudio.js (~1380 lines) into per-tab modules.",
+    "(Optional/Low) Replace alert() in ScheduleTab save-error path with toast for UX consistency.",
+    "No blocking issues — feature ready for production."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter66_ai_training_schedule.py (new)"
+  ],
+  "success_rate": {"backend": "100% (11/11 pytest pass)", "frontend": "100% (all 11 acceptance criteria pass)"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "None — used existing ai_training_schedule doc for co-demo (worker had already executed today at 15:19 UTC with avg=6.06, drift alert emitted). Tests temporarily changed alert_threshold to 8.0 then restored to 7.5.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Scheduler regression suite at /app/backend/tests/test_iter66_ai_training_schedule.py (11 cases, ~3s). Worker is idempotent via last_run_date=YYYY-MM-DD; will NOT re-run today. To force a new auto-run for testing, manually clear last_run_date in ai_training_schedule collection OR call services.ai_training_scheduler.run_now(cid) which bypasses the date gate. The drift alert state (last_alert_at) is what drives the red banner — to test the 'no drift' UI variant, would need a batch with avg>=threshold. End-to-end is fully working."
+}
