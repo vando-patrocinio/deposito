@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Loader2, AlertTriangle, Smartphone } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { api } from "@/api";
 import WhatsAppChatLayout from "@/WhatsAppChatLayout";
+import WhatsAppInstancePanel from "@/WhatsAppInstancePanel";
 
 /* =============================================================
-   Aba WhatsApp — agora mostra APENAS o chat (FocusChat).
-   A configuração (QR code, número conectado, auto-reply) foi
-   movida para a sub-aba "Instância".
-
-   Quando não há conexão: mostra mensagem orientando ir pra Instância.
+   Aba WhatsApp — chat principal com fallback automático para o
+   painel de Instância (QR Code) quando desconectado.
+   Nada de mensagens "vá em Atendimento → Instância" — a UI
+   apresenta o QR code direto pra reconexão imediata.
 ============================================================= */
 
 export default function WhatsAppQRPanel() {
@@ -57,56 +57,22 @@ export default function WhatsAppQRPanel() {
     return <WhatsAppChatLayout />;
   }
 
-  return (
-    <div data-testid="wa-disconnected-state" style={{
-      padding: 36, textAlign: "center",
-      border: "1px solid var(--border-default)",
-      borderRadius: 14, background: "var(--bg-surface)",
-    }}>
-      <div style={{
-        width: 56, height: 56, borderRadius: 14,
-        background: "var(--bg-surface-2)",
-        margin: "0 auto 14px",
-        display: "grid", placeItems: "center",
-        color: "var(--text-muted)",
+  // Estado "verificando" inicial — só enquanto não temos resposta
+  if (status === "connecting" && !err) {
+    return (
+      <div data-testid="wa-checking-state" style={{
+        padding: 36, textAlign: "center",
+        border: "1px solid var(--border-default)",
+        borderRadius: 14, background: "var(--bg-surface)",
       }}>
-        {status === "connecting" ? (
-          <Loader2 size={26} style={{ animation: "spin 1.2s linear infinite" }} />
-        ) : (
-          <Smartphone size={26} strokeWidth={1.75} />
-        )}
+        <Loader2 size={26} style={{ animation: "spin 1.2s linear infinite", color: "var(--text-muted)" }} />
+        <p style={{ marginTop: 12, fontSize: 13, color: "var(--text-secondary)" }}>
+          Verificando conexão WhatsApp…
+        </p>
       </div>
-      <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0,
-                     color: "var(--text-primary)",
-                     letterSpacing: "-0.012em" }}>
-        {status === "connecting"
-          ? "Verificando conexão..."
-          : "WhatsApp não conectado"}
-      </h3>
-      <p style={{ fontSize: 12, color: "var(--text-secondary)",
-                    margin: "8px auto 0", maxWidth: 420, lineHeight: 1.5 }}>
-        {status === "connecting"
-          ? "Aguarde um instante enquanto checamos o status da instância."
-          : "Para começar a usar o WhatsApp, vá em "}
-        {status !== "connecting" && (
-          <strong style={{ color: "var(--text-primary)" }}>
-            Atendimento → Instância
-          </strong>
-        )}
-        {status !== "connecting" && " e conecte um número via QR Code."}
-      </p>
-      {err && (
-        <div style={{
-          marginTop: 12, padding: 10, borderRadius: 8, maxWidth: 420,
-          margin: "12px auto 0",
-          background: "rgba(220,38,38,.08)",
-          border: "1px solid rgba(220,38,38,.25)",
-          fontSize: 11, color: "#dc2626",
-          display: "flex", gap: 6, alignItems: "center", justifyContent: "center",
-        }}>
-          <AlertTriangle size={12} /> {err}
-        </div>
-      )}
-    </div>
-  );
+    );
+  }
+
+  // Desconectado / erro → exibe o painel de Instância (QR Code) direto
+  return <WhatsAppInstancePanel />;
 }
