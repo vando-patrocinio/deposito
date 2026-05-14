@@ -947,6 +947,133 @@ async def customers_stats(user: dict = Depends(require_role("gestor"))):
     }
 
 
+async def _customers_sync_internal(company_id: str) -> Dict[str, Any]:
+    """Versão interna do sync de assinantes — usada pelo cron noturno.
+    Replica a lógica do endpoint POST /customers/sync sem depender de auth.
+    """
+    cfg = await _get_config(company_id)
+    if not cfg.enabled or not cfg.api_key:
+        return {"skipped": "atlaz_disabled"}
+
+    stats = {
+        "pages_fetched": 0,
+        "items_seen": 0,
+        "inserted": 0,
+        "updated": 0,
+        "skipped_no_doc": 0,
+        "errors": 0,
+        "phones_attached": 0,
+    }
+    started = datetime.now(timezone.utc)
+    try:
+        page1 = await _fetch_assinantes_page(cfg, 1)
+        total_pages = int(page1.get("total_de_paginas") or 1)
+        stats["total_pages"] = total_pages
+        pages_data = [page1]
+        for p in range(2, min(total_pages, 100) + 1):
+            try:
+                pages_data.append(await _fetch_assinantes_page(cfg, p))
+            except Exception as e:
+                logger.warning("[atlaz] cron sync page %d falhou: %s", p, e)
+                stats["errors"] += 1
+
+        for pg_data in pages_data:
+            stats["pages_fetched"] += 1
+            for entry in (pg_data.get("assinantes") or {}).values():
+                a = entry.get("assinante") or {}
+                stats["items_seen"] += 1
+                doc_cpf = _digits(a.get("cpf_cnpj"))
+                ext_id = a.get("id_assinante")
+                if not doc_cpf and not ext_id:
+                    stats["skipped_no_doc"] += 1
+                    continue
+                ext_code = f"ATLAZ-{ext_id}" if ext_id else None
+                phone_raw = _digits(a.get("telefone"))
+                payload = {
+                    "company_id": company_id,
+                    "name": (a.get("nome") or "").strip()[:160] or "—",
+                    "document": doc_cpf or None,
+                    "email": (a.get("email") or "").strip()[:200] or None,
+                    "external_code": ext_code,
+                    "due_day": (int(a.get("dia_de_vencimento"))
+                                 if str(a.get("dia_de_vencimento") or "").isdigit() else None),
+                    "status": "ATIVO",
+                    "metadata": {"atlaz_id_assinante": ext_id},
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+                match = None
+                if doc_cpf:
+                    match = await db.subscribers.find_one(
+                        {"company_id": company_id, "document": doc_cpf},
+                        {"_id": 0, "id": 1},
+                    )
+                if not match and ext_code:
+                    match = await db.subscribers.find_one(
+                        {"company_id": company_id, "external_code": ext_code},
+                        {"_id": 0, "id": 1},
+                    )
+                if match:
+                    sid = match["id"]
+                    await db.subscribers.update_one({"id": sid}, {"$set": payload})
+                    stats["updated"] += 1
+                else:
+                    sid = f"sub-{uuid.uuid4().hex[:12]}"
+                    payload.update({"id": sid, "created_at": payload["updated_at"]})
+                    await db.subscribers.insert_one(payload)
+                    payload.pop("_id", None)
+                    stats["inserted"] += 1
+                if phone_raw and len(phone_raw) >= 10:
+                    existing = await db.subscriber_phones.find_one(
+                        {"company_id": company_id, "phone": phone_raw},
+                        {"_id": 0, "subscriber_id": 1},
+                    )
+                    if not existing:
+                        await db.subscriber_phones.insert_one({
+                            "id": f"sph-{uuid.uuid4().hex[:10]}",
+                            "company_id": company_id,
+                            "subscriber_id": sid,
+                            "phone": phone_raw,
+                            "label": "atlaz",
+                            "is_primary": True,
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                        })
+                        stats["phones_attached"] += 1
+    except Exception as e:
+        logger.exception("[atlaz] cron sync falhou: %s", e)
+        stats["errors"] += 1
+        stats["fatal_error"] = str(e)
+
+    stats["duration_s"] = round((datetime.now(timezone.utc) - started).total_seconds(), 1)
+    stats["finished_at"] = datetime.now(timezone.utc).isoformat()
+    stats["triggered_by"] = "cron_nightly_22h"
+    await db.atlaz_config.update_one(
+        {"company_id": company_id},
+        {"$set": {"last_customer_sync_at": stats["finished_at"],
+                   "last_customer_sync_stats": stats}},
+        upsert=True,
+    )
+    return stats
+
+
+async def nightly_customers_sync_job() -> None:
+    """Cron job: roda às 22h00 (America/Sao_Paulo) para TODAS as empresas
+    com Atlaz habilitado. Falha silenciosa por tenant — não derruba o
+    scheduler.
+    """
+    logger.info("[atlaz] nightly_customers_sync_job INICIANDO")
+    cursor = db.atlaz_config.find({"enabled": True}, {"_id": 0, "company_id": 1})
+    total_companies = 0
+    async for cfg_doc in cursor:
+        cid = cfg_doc.get("company_id") or DEMO_COMPANY_ID
+        total_companies += 1
+        try:
+            stats = await _customers_sync_internal(cid)
+            logger.info("[atlaz] nightly sync cid=%s -> %s", cid, stats)
+        except Exception as e:
+            logger.exception("[atlaz] nightly sync FALHOU cid=%s: %s", cid, e)
+    logger.info("[atlaz] nightly_customers_sync_job FIM (%d empresas)", total_companies)
+
+
 @router.post("/reassign-existing")
 async def reassign_existing_tickets(user: dict = Depends(require_role("gestor"))):
     """Re-resolve o colaborador de TODAS as bolhas Atlaz pendentes da empresa

@@ -287,6 +287,10 @@ async def _startup() -> None:
                       id="location_cleanup", replace_existing=True)
     scheduler.add_job(dwell_push_job, "interval", minutes=2,
                       id="dwell_push", replace_existing=True)
+    # Atlaz: sync de assinantes diário às 22h00 (America/Sao_Paulo)
+    scheduler.add_job(routes_atlaz.nightly_customers_sync_job,
+                      CronTrigger(hour=22, minute=0),
+                      id="atlaz_customers_sync_nightly", replace_existing=True)
     asyncio.create_task(holidays_refresh_job())
     asyncio.create_task(location_logs_cleanup_job())
     routes_atlaz.start_worker()
