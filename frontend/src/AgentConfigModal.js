@@ -78,7 +78,7 @@ export const BLANK_AGENT = {
   routing_intent: "",
 };
 
-export default function AgentConfigModal({ open, onClose }) {
+export default function AgentConfigModal({ open, onClose, initialAgentId }) {
   const [agents, setAgents] = useState([]);
   const [models, setModels] = useState([]);
   const [tools, setTools] = useState([]);
@@ -117,17 +117,27 @@ export default function AgentConfigModal({ open, onClose }) {
       setSection("personality");
       setError("");
       setFlash("");
+    } else {
+      // Ao fechar, reseta a seleção pra que próxima abertura honre o
+      // initialAgentId (deep-link do TopologyMap).
+      setSelectedId(null);
+      setCreatingNew(false);
     }
   }, [open, reload]);
 
-  /* Quando a lista chega, seleciona o primeiro agente (ou abre form novo). */
+  /* Quando a lista chega, prioriza initialAgentId (deep-link do TopologyMap)
+     senão seleciona o primeiro agente. */
   useEffect(() => {
     if (!open) return;
     if (agents.length > 0 && !selectedId && !creatingNew) {
+      if (initialAgentId) {
+        const found = agents.find((a) => a.id === initialAgentId);
+        if (found) { pickAgent(found); return; }
+      }
       pickAgent(agents[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agents, open]);
+  }, [agents, open, initialAgentId]);
 
   function pickAgent(a) {
     setCreatingNew(false);
