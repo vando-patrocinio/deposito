@@ -549,6 +549,10 @@ export const api = {
   metaRotateVerifyToken: () =>
     client.post(`/whatsapp-meta/verify-token/rotate`).then((r) => r.data),
 
+  // Health check + auto-reconnect dos canais
+  integrationsHealth: () => client.get(`/integrations/health`).then((r) => r.data),
+  integrationsReconnect: () => client.post(`/integrations/reconnect`).then((r) => r.data),
+
   // ===== Holerite =====
   holeriteList: (params = {}) =>
     client.get(`/holerites`, { params }).then((r) => r.data),

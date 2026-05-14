@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { api } from "@/api";
 import WhatsAppChatLayout from "@/WhatsAppChatLayout";
-import WhatsAppInstancePanel from "@/WhatsAppInstancePanel";
 
 /* =============================================================
    Aba WhatsApp — chat principal com fallback automático para o
@@ -128,6 +127,41 @@ export default function WhatsAppQRPanel() {
     );
   }
 
-  // Desconectado / erro → exibe o painel de Instância (QR Code) direto
-  return <WhatsAppInstancePanel />;
+  // Desconectado / erro → orienta o usuário a ir pra aba Configuração
+  // onde está o painel completo de QR Code + Instância.
+  return (
+    <div data-testid="wa-disconnected-state" style={{
+      padding: 36, textAlign: "center",
+      border: "1px solid var(--border-default)",
+      borderRadius: 14, background: "var(--bg-surface)",
+    }}>
+      <div style={{
+        width: 56, height: 56, borderRadius: 14,
+        background: "#fef3c7",
+        margin: "0 auto 14px",
+        display: "grid", placeItems: "center",
+        color: "#b45309",
+      }}>!</div>
+      <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0,
+                     color: "var(--text-primary)",
+                     letterSpacing: "-0.012em" }}>
+        WhatsApp não conectado
+      </h3>
+      <p style={{ fontSize: 12, color: "var(--text-secondary)",
+                    margin: "8px auto 0", maxWidth: 420, lineHeight: 1.5 }}>
+        Vá em <strong style={{ color: "var(--text-primary)" }}>Atendimento IA → Configuração</strong> e escaneie o QR Code para reconectar.
+      </p>
+      {err && (
+        <div style={{
+          marginTop: 12, padding: 10, borderRadius: 8, maxWidth: 420,
+          margin: "12px auto 0",
+          background: "rgba(220,38,38,.08)",
+          border: "1px solid rgba(220,38,38,.25)",
+          fontSize: 11, color: "#dc2626",
+        }}>
+          {err}
+        </div>
+      )}
+    </div>
+  );
 }

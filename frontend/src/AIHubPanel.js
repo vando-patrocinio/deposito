@@ -7,9 +7,11 @@ import {
   Sparkles, Building2, DollarSign, Star, Wand2, ArrowUp, QrCode,
 } from "lucide-react";
 import WhatsAppQRPanel from "@/WhatsAppQRPanel";
+import IntegrationsConfigPanel from "@/IntegrationsConfigPanel";
 
 const BASE_TABS = [
   { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode, dynamic: true },
+  { id: "configuracao", label: "Configuração", icon: Settings },
 ];
 
 export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
@@ -64,9 +66,48 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
     <div data-testid="aihub-panel"
           data-fullscreen={isWaFull ? "1" : "0"}
           style={{ padding: "0 4px" }}>
-      <ChatErrorBoundary>
-        <WhatsAppQRPanel />
-      </ChatErrorBoundary>
+      {/* Barra de abas */}
+      <div style={{
+        display: "flex", gap: 2, padding: 3, background: "var(--bg-surface-2)",
+        borderRadius: 10, marginBottom: isWaFull ? 6 : 12, flexWrap: "wrap",
+      }}>
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)}
+                    data-testid={`aihub-tab-${t.id}`}
+                    style={{
+                      padding: "6px 12px", border: 0, borderRadius: 7,
+                      background: active ? "var(--bg-surface)" : "transparent",
+                      color: active ? "var(--text-primary)" : "var(--text-secondary)",
+                      fontWeight: active ? 700 : 500, fontSize: 12.5, cursor: "pointer",
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      whiteSpace: "nowrap",
+                      boxShadow: active ? "var(--shadow-sm)" : "none",
+                    }}>
+              {t.dynamic ? (
+                <span title={waConnected ? "Conectado" : "Desconectado"}
+                      style={{
+                        width: 8, height: 8, borderRadius: "50%",
+                        background: waConnected ? "#16a34a" : "#94a3b8",
+                        boxShadow: waConnected ? "0 0 4px rgba(22,163,74,.6)" : "none",
+                      }} />
+              ) : (
+                <Icon size={14} strokeWidth={1.75} />
+              )}
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "whatsapp_qr" && (
+        <ChatErrorBoundary>
+          <WhatsAppQRPanel />
+        </ChatErrorBoundary>
+      )}
+      {tab === "configuracao" && <IntegrationsConfigPanel />}
       {tab === "mensagem" && <MensagemTab />}
       {tab === "playground" && <PlaygroundTab />}
       {tab === "dial" && <DialTab />}

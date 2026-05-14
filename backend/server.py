@@ -81,6 +81,7 @@ from routes import (
     drive as routes_drive,
     ai_corrections as routes_ai_corrections,
     appointments as routes_appointments,
+    integrations as routes_integrations,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -369,6 +370,7 @@ app.include_router(routes_secretaria.router)
 app.include_router(routes_drive.router)
 app.include_router(routes_ai_corrections.router)
 app.include_router(routes_appointments.router)
+app.include_router(routes_integrations.router)
 
 
 # ============================================================
