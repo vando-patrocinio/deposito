@@ -10,11 +10,6 @@ import WhatsAppQRPanel from "@/WhatsAppQRPanel";
 
 const BASE_TABS = [
   { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode, dynamic: true },
-  { id: "mensagem", label: "Mensagem", icon: MessageCircle },
-  { id: "playground", label: "Playground", icon: MessageCircle },
-  { id: "dial", label: "Discar (outbound)", icon: Phone },
-  { id: "whatsapp", label: "WhatsApp Cloud", icon: Send },
-  { id: "history", label: "Histórico", icon: History },
 ];
 
 export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
