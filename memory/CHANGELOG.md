@@ -1,5 +1,35 @@
 # PontoIA — Changelog
 
+## Feb 14, 2026 — Holerite IA: Detecção Automática de Anomalias ★★
+
+### Backend
+- **`services/holerite_anomaly.py`** (NEW) — engine determinística (sem LLM) que compara holerite com mês anterior do mesmo funcionário
+- **10 tipos de anomalia** detectados:
+  - `NET_DROP/RISE` · `GROSS_DROP/RISE` (≥10% configurável, crítico ≥25%)
+  - `NEW_EARNING` · `MISSING_EARNING` (rubricas que aparecem/somem)
+  - `NEW_DEDUCTION` (descontos novos, ignora INSS/IRRF/FGTS padrão)
+  - `INSS_HIGH` (>15% do bruto · limite legal ~14%)
+  - `ZERO_NET` (líquido ≤ 0 — provável erro de extração)
+  - `DUPLICATE` (já existe holerite ativo na mesma competência)
+  - `FIRST_HOLERITE` (info — sem comparação histórica)
+- Normalização de rubricas via Unidecode (resolve "salário" vs "salario")
+- Anomalias persistem em `payroll_documents.anomalies` + counters (count, critical)
+- **Endpoints novos**: `GET /api/holerites/anomalies` (lista global filtrável por severity/year/month) · `POST /api/holerites/{doc_id}/reanalyze`
+- Detecção roda **automaticamente após cada `/ai-import`** — inclusas na resposta
+
+### Frontend
+- **`HoleritePanel.js`**: badge laranja/vermelho com contador de anomalias em cada linha (testid `holerite-anomalies-{id}`) → click abre `AnomaliesModal`
+- `AnomaliesModal` lista cada anomalia com chip colorido por severidade (kind em uppercase + mensagem)
+- **`DoneStep` do import** agora mostra resumo automático: "⚠️ N anomalias detectadas" com badge crítico em destaque + breakdown por funcionário
+
+### Validação ✓
+- PDF com Diogo perdendo R$ 1.262 (-41.9% líquido, com falta nova) gerou 4 anomalias precisas (1 crítica + 3 warnings)
+- Reanalyze endpoint funciona para docs antigos
+- UI mostra modal completo com todos os chips de severidade corretamente coloridos
+
+---
+
+
 ## Feb 14, 2026 — Holerite IA (Claude) + Holerite no app do colaborador ★★★
 
 ### Backend

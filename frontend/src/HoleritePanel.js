@@ -216,6 +216,7 @@ export default function HoleritePanel() {
 function HoleriteRow({ h, onReload, onShowAudit }) {
   const [busy, setBusy] = useState(false);
   const [lastLink, setLastLink] = useState(null);
+  const [showAnomalies, setShowAnomalies] = useState(false);
 
   async function notify() {
     if (!h.employee_phone) {
@@ -300,6 +301,24 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
             👁 {new Date(h.viewed_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
           </div>
         )}
+        {(h.anomalies_count || 0) > 0 && (
+          <button
+            onClick={() => setShowAnomalies(true)}
+            data-testid={`holerite-anomalies-${h.id}`}
+            style={{
+              marginTop: 4, padding: "2px 7px", borderRadius: 4,
+              fontSize: 10, fontWeight: 800,
+              border: "none", cursor: "pointer",
+              background: h.anomalies_critical > 0 ? "#dc2626" : "#f59e0b",
+              color: "white",
+              display: "inline-flex", alignItems: "center", gap: 4,
+            }}
+            title="Ver anomalias detectadas"
+          >
+            <AlertTriangle size={10} />
+            {h.anomalies_count} {h.anomalies_count === 1 ? "anomalia" : "anomalias"}
+          </button>
+        )}
       </Td>
       <Td align="right">
         {lastLink && (
@@ -325,7 +344,62 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
           <Ban size={11} />
         </button>
       </Td>
+      {showAnomalies && (
+        <AnomaliesModal h={h} onClose={() => setShowAnomalies(false)} />
+      )}
     </tr>
+  );
+}
+
+function AnomaliesModal({ h, onClose }) {
+  const anomalies = h.anomalies || [];
+  const visible = anomalies.filter((a) => a.severity !== "info");
+  return (
+    <td colSpan={6}>
+      <div onClick={onClose} style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,.55)",
+        zIndex: 200, display: "grid", placeItems: "center", padding: 20,
+      }}>
+        <div onClick={(e) => e.stopPropagation()}
+              data-testid={`anomalies-modal-${h.id}`}
+              style={{
+                background: "var(--bg-surface)", borderRadius: 12,
+                width: "min(680px, 96vw)", maxHeight: "90vh", overflow: "auto",
+                padding: 18,
+              }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+            marginBottom: 14, gap: 10 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <AlertTriangle size={18}
+                  color={h.anomalies_critical > 0 ? "#dc2626" : "#f59e0b"} />
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>
+                  Anomalias detectadas
+                </h3>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {h.employee_name} · {MONTHS[h.competence_month - 1]}/{h.competence_year}
+                {" · Líquido "}<strong>{fmtBRL(h.net)}</strong>
+              </div>
+            </div>
+            <button onClick={onClose} style={{ padding: 6, border: "none",
+              background: "transparent", cursor: "pointer", color: "var(--text-muted)" }}>
+              <X size={18} />
+            </button>
+          </div>
+
+          {visible.length === 0 ? (
+            <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+              Nenhuma anomalia significativa.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 6 }}>
+              {visible.map((a, i) => <AnomalyChip key={i} a={a} />)}
+            </div>
+          )}
+        </div>
+      </div>
+    </td>
   );
 }
 
@@ -1081,29 +1155,104 @@ function MiniKpi({ label, value, color }) {
 }
 
 function DoneStep({ result, onClose }) {
+  const totalAnomalies = (result.items || []).reduce(
+    (sum, it) => sum + (it.anomalies_count || 0), 0,
+  );
+  const criticalAnomalies = (result.items || []).reduce(
+    (sum, it) => sum + (it.anomalies_critical || 0), 0,
+  );
   return (
-    <div data-testid="ai-import-done" style={{
-      padding: 30, textAlign: "center",
+    <div data-testid="ai-import-done" style={{ padding: 24 }}>
+      <div style={{ textAlign: "center", marginBottom: 18 }}>
+        <div style={{
+          width: 60, height: 60, borderRadius: "50%",
+          background: "rgba(22,163,74,.15)", color: "#16a34a",
+          display: "inline-grid", placeItems: "center", marginBottom: 12,
+        }}>
+          <CheckCircle2 size={32} />
+        </div>
+        <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "var(--text-primary)" }}>
+          Import concluído!
+        </h3>
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 6 }}>
+          <strong>{result.imported}</strong> holerites importados ·
+          {" "}<strong>{result.skipped}</strong> ignorados.
+        </div>
+      </div>
+
+      {totalAnomalies > 0 && (
+        <div data-testid="ai-import-anomalies-summary" style={{
+          padding: 14, borderRadius: 10, marginBottom: 16,
+          background: criticalAnomalies > 0
+            ? "linear-gradient(135deg, #fee2e2, #fef3c7)"
+            : "rgba(245,158,11,.08)",
+          border: `1px solid ${criticalAnomalies > 0 ? "#dc2626" : "#f59e0b"}`,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <AlertTriangle size={18} color={criticalAnomalies > 0 ? "#dc2626" : "#f59e0b"} />
+            <strong style={{ fontSize: 14, color: criticalAnomalies > 0 ? "#991b1b" : "#92400e" }}>
+              ⚠️ {totalAnomalies} {totalAnomalies === 1 ? "anomalia detectada" : "anomalias detectadas"}
+              {criticalAnomalies > 0 && (
+                <span style={{ marginLeft: 8, padding: "1px 8px",
+                  borderRadius: 999, background: "#dc2626", color: "white",
+                  fontSize: 11, fontWeight: 800 }}>
+                  {criticalAnomalies} crítica{criticalAnomalies > 1 ? "s" : ""}
+                </span>
+              )}
+            </strong>
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {(result.items || []).filter((it) => (it.anomalies_count || 0) > 0)
+              .map((it) => (
+                <div key={it.id} style={{
+                  padding: 10, borderRadius: 8, background: "white",
+                  border: "1px solid var(--border-default)",
+                }}>
+                  <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 6, color: "#0f172a" }}>
+                    {it.employee_name} · {String(it.competence_month).padStart(2,"0")}/{it.competence_year}
+                  </div>
+                  <div style={{ display: "grid", gap: 4 }}>
+                    {(it.anomalies || []).filter((a) => a.severity !== "info").map((a, i) => (
+                      <AnomalyChip key={i} a={a} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ textAlign: "center" }}>
+        <button onClick={onClose}
+                data-testid="ai-import-close"
+                style={btn("primary")}>
+          Fechar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AnomalyChip({ a }) {
+  const colors = {
+    critical: { bg: "rgba(220,38,38,.10)", color: "#991b1b", border: "#dc2626" },
+    warning: { bg: "rgba(245,158,11,.10)", color: "#92400e", border: "#f59e0b" },
+    info: { bg: "rgba(14,165,233,.08)", color: "#075985", border: "#0ea5e9" },
+  };
+  const c = colors[a.severity] || colors.info;
+  return (
+    <div style={{
+      padding: "6px 10px", borderRadius: 6, fontSize: 11.5,
+      background: c.bg, color: c.color,
+      borderLeft: `3px solid ${c.border}`,
+      display: "flex", alignItems: "flex-start", gap: 6,
     }}>
-      <div style={{
-        width: 60, height: 60, borderRadius: "50%",
-        background: "rgba(22,163,74,.15)", color: "#16a34a",
-        display: "inline-grid", placeItems: "center", marginBottom: 12,
-      }}>
-        <CheckCircle2 size={32} />
-      </div>
-      <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "var(--text-primary)" }}>
-        Import concluído!
-      </h3>
-      <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 6 }}>
-        <strong>{result.imported}</strong> holerites importados ·
-        {" "}<strong>{result.skipped}</strong> ignorados.
-      </div>
-      <button onClick={onClose}
-              data-testid="ai-import-close"
-              style={{ ...btn("primary"), marginTop: 18 }}>
-        Fechar
-      </button>
+      <span style={{
+        padding: "1px 6px", borderRadius: 4, fontSize: 9.5, fontWeight: 800,
+        background: c.border, color: "white", textTransform: "uppercase",
+        letterSpacing: ".4px", flexShrink: 0,
+      }}>{a.kind.replace(/_/g, " ")}</span>
+      <span>{a.message}</span>
     </div>
   );
 }

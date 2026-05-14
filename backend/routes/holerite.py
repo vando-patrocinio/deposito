@@ -141,6 +141,9 @@ def _doc_to_out(d: dict) -> dict:
         "source": d.get("source") or "manual",
         "ai_match_score": d.get("ai_match_score"),
         "ai_match_status": d.get("ai_match_status"),
+        "anomalies": d.get("anomalies") or [],
+        "anomalies_count": int(d.get("anomalies_count") or 0),
+        "anomalies_critical": int(d.get("anomalies_critical") or 0),
         "status": d.get("status", "available"),
         "file_size_kb": int((d.get("file_size_bytes", 0) or 0) / 1024),
         "created_at": d.get("created_at"),
@@ -752,7 +755,23 @@ async def ai_import_holerite(
                             ),
                             "parse_id": payload.parse_id,
                         })
-        imported.append(_doc_to_out(doc))
+        # Detecta anomalias comparando com mês anterior
+        try:
+            from services import holerite_anomaly as ha_anom
+            anomalies = await ha_anom.analyze_doc(doc_id, cid)
+            doc["anomalies"] = anomalies
+            doc["anomalies_count"] = len(anomalies)
+            doc["anomalies_critical"] = sum(
+                1 for a in anomalies if a.get("severity") == "critical"
+            )
+        except Exception as e:
+            logger.warning("[holerite-ai] anomaly detect falhou %s: %s",
+                              doc_id, e)
+        out = _doc_to_out(doc)
+        out["anomalies"] = doc.get("anomalies") or []
+        out["anomalies_count"] = doc.get("anomalies_count", 0)
+        out["anomalies_critical"] = doc.get("anomalies_critical", 0)
+        imported.append(out)
 
     # Marca draft como consumido (mas mantém pra auditoria)
     await db.holerite_ai_drafts.update_one(
@@ -767,6 +786,54 @@ async def ai_import_holerite(
         "imported": len(imported),
         "skipped": skipped,
         "items": imported,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Anomalias (Holerite IA Watchdog)
+# ---------------------------------------------------------------------------
+@router.get("/anomalies")
+async def list_anomalies(
+    user: dict = Depends(require_role("gestor")),
+    severity: Optional[str] = None,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+):
+    """Lista holerites que têm anomalias detectadas."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    filt: dict = {"company_id": cid, "anomalies_count": {"$gt": 0}}
+    if severity == "critical":
+        filt["anomalies_critical"] = {"$gt": 0}
+    if year:
+        filt["competence_year"] = int(year)
+    if month:
+        filt["competence_month"] = int(month)
+    docs = await db.payroll_documents.find(
+        filt, {"_id": 0, "file_path": 0, "file_uuid": 0},
+    ).sort([("anomalies_critical", -1), ("competence_year", -1),
+              ("competence_month", -1)]).limit(500).to_list(500)
+    return {
+        "items": [_doc_to_out(d) for d in docs],
+        "count": len(docs),
+        "critical_count": sum(
+            1 for d in docs if int(d.get("anomalies_critical") or 0) > 0
+        ),
+    }
+
+
+@router.post("/{doc_id}/reanalyze")
+async def reanalyze_anomalies(doc_id: str,
+                                  user: dict = Depends(require_role("gestor"))):
+    """Re-roda a detecção de anomalias para um doc específico."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    from services import holerite_anomaly as ha_anom
+    anomalies = await ha_anom.analyze_doc(doc_id, cid)
+    return {
+        "ok": True,
+        "doc_id": doc_id,
+        "anomalies": anomalies,
+        "count": len(anomalies),
+        "critical": sum(1 for a in anomalies if a.get("severity") == "critical"),
     }
 
 
