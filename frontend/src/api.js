@@ -157,6 +157,11 @@ export const api = {
     client.get(`/ai-corrections`, { params: { limit } }).then((r) => r.data),
   aiCorrectionDelete: (id) => client.delete(`/ai-corrections/${id}`).then((r) => r.data),
 
+  // Atlaz — sync de assinantes
+  atlazCustomerPreview: () => client.get(`/atlaz/customers/preview`).then((r) => r.data),
+  atlazCustomerSync: () => client.post(`/atlaz/customers/sync`).then((r) => r.data),
+  atlazCustomerStats: () => client.get(`/atlaz/customers/stats`).then((r) => r.data),
+
   // Logs (sistema)
   listLogs: (params = {}) => client.get(`/logs`, { params }).then((r) => r.data),
 

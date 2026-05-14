@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, now_iso, require_role
@@ -742,6 +742,209 @@ async def test_connection(user: dict = Depends(require_role("gestor"))):
 async def sync_now(user: dict = Depends(require_role("gestor"))):
     company_id = user.get("company_id") or DEMO_COMPANY_ID
     return await run_sync(company_id)
+
+
+# ---------------------------------------------------------------------------
+# SYNC DE ASSINANTES (Atlaz /listaclientes → db.subscribers)
+# ---------------------------------------------------------------------------
+async def _fetch_assinantes_page(cfg: AtlazConfig, page: int) -> Dict[str, Any]:
+    """Busca uma página de /listaclientes (Atlaz V2). Retorna {assinantes, total_de_paginas}."""
+    async with httpx.AsyncClient(timeout=cfg.timeout_seconds) as cli:
+        r = await cli.get(
+            f"{ATLAZ_BASE_URL}/listaclientes",
+            params={"token": cfg.api_key, "pagina": page},
+        )
+    if r.status_code >= 400:
+        raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
+    data = r.json()
+    if data.get("success") != "true":
+        raise RuntimeError(f"Atlaz erro: {data.get('msg') or data}")
+    return data
+
+
+def _digits(s: Any) -> str:
+    return "".join(c for c in str(s or "") if c.isdigit())
+
+
+@router.get("/customers/preview")
+async def preview_customers(user: dict = Depends(require_role("gestor"))):
+    """Mostra um sample da 1ª página + total — sem persistir nada.
+    Útil pro gestor inspecionar o que vai vir antes de sincronizar.
+    """
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(company_id)
+    if not cfg.enabled or not cfg.api_key:
+        raise HTTPException(400, "Atlaz não configurado/desabilitado.")
+    try:
+        page1 = await _fetch_assinantes_page(cfg, 1)
+    except Exception as e:
+        raise HTTPException(502, f"Falha ao consultar Atlaz: {e}")
+    items = []
+    for entry in (page1.get("assinantes") or {}).values():
+        a = entry.get("assinante") or {}
+        items.append({
+            "id_assinante": a.get("id_assinante"),
+            "nome": a.get("nome"),
+            "cpf_cnpj": a.get("cpf_cnpj"),
+            "email": a.get("email"),
+            "telefone": a.get("telefone"),
+            "dia_de_vencimento": a.get("dia_de_vencimento"),
+        })
+    total_pages = int(page1.get("total_de_paginas") or 0)
+    per_page = len(items)
+    return {
+        "sample": items[:10],
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "estimated_total": total_pages * per_page,
+    }
+
+
+@router.post("/customers/sync")
+async def sync_customers(user: dict = Depends(require_role("gestor"))):
+    """Sincroniza assinantes Atlaz → `db.subscribers` (upsert por CPF/CNPJ).
+    De-dup também por id_assinante via `external_code = "ATLAZ-<id>"`.
+
+    Salva o telefone em `subscriber_phones` (formato normalizado, só dígitos).
+    """
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(company_id)
+    if not cfg.enabled or not cfg.api_key:
+        raise HTTPException(400, "Atlaz não configurado/desabilitado.")
+
+    stats = {
+        "pages_fetched": 0,
+        "items_seen": 0,
+        "inserted": 0,
+        "updated": 0,
+        "skipped_no_doc": 0,
+        "errors": 0,
+        "phones_attached": 0,
+    }
+    started = datetime.now(timezone.utc)
+    try:
+        # Página 1 — descobre total de páginas
+        page1 = await _fetch_assinantes_page(cfg, 1)
+        total_pages = int(page1.get("total_de_paginas") or 1)
+        stats["total_pages"] = total_pages
+        pages_data = [page1]
+        # Demais páginas (limit em 100 pra não estourar)
+        for p in range(2, min(total_pages, 100) + 1):
+            try:
+                pages_data.append(await _fetch_assinantes_page(cfg, p))
+            except Exception as e:
+                logger.warning("[atlaz] sync_customers page %d falhou: %s", p, e)
+                stats["errors"] += 1
+
+        for pg_data in pages_data:
+            stats["pages_fetched"] += 1
+            for entry in (pg_data.get("assinantes") or {}).values():
+                a = entry.get("assinante") or {}
+                stats["items_seen"] += 1
+                doc_cpf = _digits(a.get("cpf_cnpj"))
+                ext_id = a.get("id_assinante")
+                if not doc_cpf and not ext_id:
+                    stats["skipped_no_doc"] += 1
+                    continue
+
+                ext_code = f"ATLAZ-{ext_id}" if ext_id else None
+                phone_raw = _digits(a.get("telefone"))
+                payload = {
+                    "company_id": company_id,
+                    "name": (a.get("nome") or "").strip()[:160] or "—",
+                    "document": doc_cpf or None,
+                    "email": (a.get("email") or "").strip()[:200] or None,
+                    "external_code": ext_code,
+                    "due_day": (int(a.get("dia_de_vencimento"))
+                                 if str(a.get("dia_de_vencimento") or "").isdigit() else None),
+                    "status": "ATIVO",
+                    "metadata": {"atlaz_id_assinante": ext_id},
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+                # Match: 1) document; 2) external_code (ATLAZ-id)
+                match = None
+                if doc_cpf:
+                    match = await db.subscribers.find_one(
+                        {"company_id": company_id, "document": doc_cpf},
+                        {"_id": 0, "id": 1},
+                    )
+                if not match and ext_code:
+                    match = await db.subscribers.find_one(
+                        {"company_id": company_id, "external_code": ext_code},
+                        {"_id": 0, "id": 1},
+                    )
+
+                if match:
+                    sid = match["id"]
+                    await db.subscribers.update_one(
+                        {"id": sid}, {"$set": payload}
+                    )
+                    stats["updated"] += 1
+                else:
+                    sid = f"sub-{uuid.uuid4().hex[:12]}"
+                    payload.update({
+                        "id": sid,
+                        "created_at": payload["updated_at"],
+                    })
+                    await db.subscribers.insert_one(payload)
+                    payload.pop("_id", None)
+                    stats["inserted"] += 1
+
+                # Telefone (normaliza + dedupe na coleção subscriber_phones)
+                if phone_raw and len(phone_raw) >= 10:
+                    existing = await db.subscriber_phones.find_one(
+                        {"company_id": company_id, "phone": phone_raw},
+                        {"_id": 0, "subscriber_id": 1},
+                    )
+                    if not existing:
+                        await db.subscriber_phones.insert_one({
+                            "id": f"sph-{uuid.uuid4().hex[:10]}",
+                            "company_id": company_id,
+                            "subscriber_id": sid,
+                            "phone": phone_raw,
+                            "label": "atlaz",
+                            "is_primary": True,
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                        })
+                        stats["phones_attached"] += 1
+
+    except Exception as e:
+        logger.exception("[atlaz] sync_customers falhou: %s", e)
+        stats["errors"] += 1
+        stats["fatal_error"] = str(e)
+
+    stats["duration_s"] = round((datetime.now(timezone.utc) - started).total_seconds(), 1)
+    stats["finished_at"] = datetime.now(timezone.utc).isoformat()
+    # Persiste o último sync de assinantes (para mostrar no painel)
+    await db.atlaz_config.update_one(
+        {"company_id": company_id},
+        {"$set": {"last_customer_sync_at": stats["finished_at"],
+                   "last_customer_sync_stats": stats}},
+        upsert=True,
+    )
+    return stats
+
+
+@router.get("/customers/stats")
+async def customers_stats(user: dict = Depends(require_role("gestor"))):
+    """KPIs rápidos: total no Atlaz, total local, último sync, etc."""
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    cfg_doc = await db.atlaz_config.find_one(
+        {"company_id": company_id},
+        {"_id": 0, "last_customer_sync_at": 1, "last_customer_sync_stats": 1, "enabled": 1},
+    ) or {}
+    local_total = await db.subscribers.count_documents({"company_id": company_id})
+    local_from_atlaz = await db.subscribers.count_documents(
+        {"company_id": company_id, "external_code": {"$regex": "^ATLAZ-"}}
+    )
+    return {
+        "configured": bool(cfg_doc.get("enabled")),
+        "local_total": local_total,
+        "local_from_atlaz": local_from_atlaz,
+        "last_sync_at": cfg_doc.get("last_customer_sync_at"),
+        "last_sync_stats": cfg_doc.get("last_customer_sync_stats"),
+    }
 
 
 @router.post("/reassign-existing")

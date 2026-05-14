@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   Activity, AlertTriangle, Award, Bot, Brain,
   Clock, Smile, Frown, Meh, Sparkles, TrendingDown, TrendingUp,
-  Users, Zap, RefreshCw, GraduationCap, Radio, MessageCircle,
+  Users, Zap, RefreshCw, GraduationCap, Radio, MessageCircle, Database,
 } from "lucide-react";
 import { api } from "@/api";
 import SmartOltAiPanel from "@/SmartOltAiPanel";
 import CopilotRankingCard from "@/CopilotRankingCard";
 import ChurnDashboardPanel from "@/ChurnDashboardPanel";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
+import AtlazSubPanel from "@/AtlazSubPanel";
 import { DollarSign, Coins, ChevronDown, ChevronUp } from "lucide-react";
 
 /* =============================================================
@@ -111,10 +112,13 @@ export default function CentralIaDashboard() {
                     icon={Radio} label="SmartOLT AI" testId="subtab-smartolt" />
         <SubTabBtn active={section === "churn"} onClick={() => setSection("churn")}
                     icon={TrendingDown} label="Churn" testId="subtab-churn" />
+        <SubTabBtn active={section === "atlaz"} onClick={() => setSection("atlaz")}
+                    icon={Database} label="Atlaz" testId="subtab-atlaz" />
       </div>
 
       {section === "smartolt" ? <SmartOltAiPanel /> :
-       section === "churn" ? <ChurnDashboardPanel /> : (
+       section === "churn" ? <ChurnDashboardPanel /> :
+       section === "atlaz" ? <AtlazSubPanel /> : (
       <>
 
       {/* Header + period toggle */}
