@@ -1140,6 +1140,13 @@ async def timesheet(cid: str, year: int, month: int):
             "schedule": coll.get("schedule", {}),
             "overtime_policy": policy.model_dump(),
             "city": coll.get("city"), "state": coll.get("state"),
+            "pis": coll.get("pis"),
+            "matricula": coll.get("matricula"),
+            "admitted_at": coll.get("admitted_at"),
+            "hire_date": coll.get("hire_date"),
+            "role": coll.get("role"),
+            "praca_id": coll.get("praca_id"),
+            "company_id": coll.get("company_id"),
         },
         "year": year, "month": month, "days": days,
         "total_worked_min": total_worked,
@@ -1423,17 +1430,17 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
     periodo = f"01/{month:02d}/{year} ATÉ {last_day_str}"
     emitido_em = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M")
 
-    # ---------- HEADER AZUL (fiel ao Control iD) ----------
+    # ---------- HEADER (clean / white) ----------
     hdr_rows = [[
         Paragraph(
-            f"<font color='white' size='9'><b>NOME DA EMPRESA:</b> {company_name}</font><br/>"
-            f"<font color='white' size='8'><b>CNPJ DA EMPRESA:</b> {company_cnpj}</font><br/>"
-            f"<font color='white' size='8'><b>INSCRIÇÃO ESTADUAL DA EMPRESA:</b> {company_ie}</font>",
+            f"<font color='#0f172a' size='9'><b>NOME DA EMPRESA:</b> {company_name}</font><br/>"
+            f"<font color='#334155' size='8'><b>CNPJ DA EMPRESA:</b> {company_cnpj}</font><br/>"
+            f"<font color='#334155' size='8'><b>INSCRIÇÃO ESTADUAL DA EMPRESA:</b> {company_ie}</font>",
             styles["Normal"],
         ),
         Paragraph(
-            f"<para alignment='right'><font color='white' size='8'>"
-            f"<b>Control iD · Cartão de Ponto</b><br/>"
+            f"<para alignment='right'><font color='#334155' size='8'>"
+            f"<b>Cartão de Ponto</b><br/>"
             f"Página 1 de 1<br/>"
             f"Emitido em {emitido_em}</font></para>",
             styles["Normal"],
@@ -1441,11 +1448,13 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
     ]]
     hdr_t = Table(hdr_rows, colWidths=[13.5 * cm, 6.3 * cm], hAlign="LEFT")
     hdr_t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#1d4ed8")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#cbd5e1")),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.6, colors.HexColor("#cbd5e1")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
     ]))
@@ -1454,16 +1463,17 @@ def _timesheet_elements(coll, year, month, days, total_worked, total_balance,
 
     # ---------- IDENTIFICAÇÃO DO FUNCIONÁRIO (sem borda, 2 colunas) ----------
     cpf_val = coll.get("cpf") or "—"
-    pis_val = coll.get("pis") or cpf_val  # PIS frequentemente bate com CPF no exemplo
+    pis_val = coll.get("pis") or "—"
 
-    admit = coll.get("admitted_at") or (coll.get("created_at") or "")[:10] or "—"
+    admit_raw = coll.get("admitted_at") or coll.get("hire_date") or ""
+    admit = "—"
     try:
-        if admit and len(admit) >= 10:
-            yy, mm, dd = admit[:10].split("-")
+        if admit_raw and len(admit_raw) >= 10:
+            yy, mm, dd = admit_raw[:10].split("-")
             admit = f"{dd}/{mm}/{yy}"
     except Exception:
         pass
-    matricula = coll.get("matricula") or "0"
+    matricula = coll.get("matricula") or "—"
 
     id_left = (
         f"<font size='8'><b>NOME DO FUNCIONÁRIO:</b> {coll.get('name', '—').upper()}</font><br/>"
@@ -1658,10 +1668,14 @@ def _build_timesheet_pdf(coll, year, month, days, total_worked, total_balance,
     bloco identificação sem bordas, tabela sem zebra, prefixo (P) no PREVISTO,
     legenda I/P/M/C + Portaria 671 no rodapé, 2 assinaturas."""
     buf = io.BytesIO()
+    pdf_title = f"SmartProv — Cartão de Ponto ({(coll.get('name') or '').strip()} {month:02d}/{year})".strip()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=0.6 * cm, rightMargin=0.6 * cm,
         topMargin=0.6 * cm, bottomMargin=0.6 * cm,
+        title=pdf_title, author="SmartProv",
+        subject="Espelho de Ponto — Portaria 671/2021-MTE",
+        creator="SmartProv",
     )
     elements = _timesheet_elements(coll, year, month, days, total_worked, total_balance,
                                      company=company, praca=praca, totals_extra=totals_extra,
@@ -1678,10 +1692,14 @@ def _build_collective_pdf(items: list[dict], year: int, month: int,
     print_id_prefix: ID base que aparece no rodapé de cada página (sufixado pelo nome do colab)."""
     from reportlab.platypus import PageBreak
     buf = io.BytesIO()
+    pdf_title = f"SmartProv — Cartões de Ponto ({month:02d}/{year})"
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=0.6 * cm, rightMargin=0.6 * cm,
         topMargin=0.6 * cm, bottomMargin=0.6 * cm,
+        title=pdf_title, author="SmartProv",
+        subject="Espelho de Ponto — Portaria 671/2021-MTE",
+        creator="SmartProv",
     )
     all_elements = []
     for idx, it in enumerate(items):
@@ -1829,6 +1847,16 @@ async def timesheet_pdf(cid: str, year: int, month: int, request: Request):
     coll = sheet["collaborator"]
     company_id = coll.get("company_id") or DEMO_COMPANY_ID
     company_doc = await db.companies.find_one({"id": company_id}, {"_id": 0}) or {}
+    # Mescla branding (CNPJ/IE/nome fantasia ficam lá) por cima do company doc
+    branding_doc = await db.company_branding.find_one({"company_id": company_id}, {"_id": 0}) or {}
+    if branding_doc:
+        merged = dict(company_doc)
+        if branding_doc.get("company_name"):
+            merged["name"] = branding_doc["company_name"]
+        for k in ("cnpj", "inscricao_estadual", "address", "city", "state", "phone", "email"):
+            if branding_doc.get(k):
+                merged[k] = branding_doc[k]
+        company_doc = merged
     praca_doc = None
     if coll.get("praca_id"):
         praca_doc = await db.pracas.find_one({"id": coll["praca_id"]}, {"_id": 0}) or None
@@ -1875,6 +1903,15 @@ async def collective_timesheet_pdf(year: int, month: int, request: Request):
     Útil para o fechamento mensal do RH."""
     company_id = DEMO_COMPANY_ID
     company_doc = await db.companies.find_one({"id": company_id}, {"_id": 0}) or {}
+    branding_doc = await db.company_branding.find_one({"company_id": company_id}, {"_id": 0}) or {}
+    if branding_doc:
+        merged = dict(company_doc)
+        if branding_doc.get("company_name"):
+            merged["name"] = branding_doc["company_name"]
+        for k in ("cnpj", "inscricao_estadual", "address", "city", "state", "phone", "email"):
+            if branding_doc.get(k):
+                merged[k] = branding_doc[k]
+        company_doc = merged
     colls = await db.collaborators.find(
         {"company_id": company_id, "active": True, "clock_in_enabled": True},
         {"_id": 0},
