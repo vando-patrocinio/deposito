@@ -14,6 +14,7 @@ import PlansPanel from "@/PlansPanel";
 import ManagerPanel from "@/ManagerPanel";
 import TimesheetView from "@/TimesheetView";
 import HoleritePanel from "@/HoleritePanel";
+import HoleriteViewer from "@/HoleriteViewer";
 import SettingsPanel from "@/SettingsPanel";
 import MotorIaCard from "@/MotorIaCard";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
@@ -748,6 +749,13 @@ function AppContent() {
   }
   if (route.path === "/billing/cancel") {
     return <BillingCancelPage onDone={() => navigate(user ? "/app" : "/")} />;
+  }
+
+  // Página pública do holerite (acessada via link WhatsApp).
+  // É independente da sessão — colaborador autentica dentro do componente.
+  if (route.path && route.path.startsWith("/holerite/")) {
+    const token = route.path.replace("/holerite/", "").replace(/\/$/, "");
+    return <HoleriteViewer token={token} onBack={() => navigate("/")} />;
   }
 
   if (!user) {

@@ -518,6 +518,25 @@ export const api = {
   metaRotateVerifyToken: () =>
     client.post(`/whatsapp-meta/verify-token/rotate`).then((r) => r.data),
 
+  // ===== Holerite =====
+  holeriteList: (params = {}) =>
+    client.get(`/holerites`, { params }).then((r) => r.data),
+  holeriteUpload: (formData) =>
+    client.post(`/holerites/upload`, formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    ).then((r) => r.data),
+  holeriteRevoke: (id) =>
+    client.delete(`/holerites/${id}`).then((r) => r.data),
+  holeriteNotify: (id, ttl_hours = 72, custom_message = null) =>
+    client.post(`/holerites/${id}/notify`, { ttl_hours, custom_message }).then((r) => r.data),
+  holeriteAudit: (id) =>
+    client.get(`/holerites/audit/${id}`).then((r) => r.data),
+  // Token público (sem auth)
+  holeriteTokenInfo: (token) =>
+    client.get(`/holerites/token/${token}/info`).then((r) => r.data),
+  holeriteTokenAccess: (token, password) =>
+    client.post(`/holerites/token/${token}/access`, { password }).then((r) => r.data),
+
   // ===== Central IA Dashboard =====
   centralIaKpis: (days = 7) =>
     client.get(`/central-ia/dashboard/kpis`, { params: { days } }).then((r) => r.data),

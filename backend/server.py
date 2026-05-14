@@ -73,6 +73,7 @@ from routes import (
     vehicle_checklist as routes_vehicle_checklist,
     whatsapp_twilio as routes_whatsapp_twilio,
     whatsapp_meta as routes_whatsapp_meta,
+    holerite as routes_holerite,
     stok as routes_stok,
     users as routes_users,
     secretaria as routes_secretaria,
@@ -354,6 +355,7 @@ app.include_router(routes_collab_assets.router)
 app.include_router(routes_vehicle_checklist.router)
 app.include_router(routes_whatsapp_twilio.router)
 app.include_router(routes_whatsapp_meta.router)
+app.include_router(routes_holerite.router)
 app.include_router(routes_checklist_ai.router)
 app.include_router(routes_secretaria.router)
 app.include_router(routes_drive.router)
