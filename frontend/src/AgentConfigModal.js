@@ -529,15 +529,6 @@ function PersonalitySection({ draft, patch }) {
                placeholder="Isabella" style={inputStyle()} />
       </Field>
 
-      <Field icon={Bot} label="Mensagem inicial"
-              hint="Primeira mensagem enviada quando alguém inicia conversa com este agente.">
-        <input data-testid="agent-config-field-initial"
-               value={draft.initial_message}
-               onChange={(e) => patch("initial_message", e.target.value)}
-               placeholder="Olá! Como posso te ajudar hoje? 😊"
-               style={inputStyle()} />
-      </Field>
-
       <Field icon={Building2} label="Informações e Regras"
               hint={`Informações básicas sobre sua empresa que a IA deve conhecer (SLA, horários, políticas). ${(draft.company_info || "").length}/16000`}>
         <textarea data-testid="agent-config-field-company"
