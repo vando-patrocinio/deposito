@@ -577,8 +577,8 @@ export default function CadastroPanel() {
           </Field>
 
           {/* Praças secundárias — usadas quando o colaborador opera em mais de
-              uma unidade. A cerca virtual e os feriados consideram QUALQUER
-              uma das praças listadas (principal + secundárias). */}
+              uma unidade. A cerca virtual considera QUALQUER uma das praças
+              listadas (principal + secundárias). */}
           {pracas.length > 0 && form.praca_id && form.praca_id !== "NOTA" && (
             <Field label="Praças adicionais (opcional — colaborador opera em mais de um local)">
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
@@ -632,7 +632,7 @@ export default function CadastroPanel() {
                   ))}
               </select>
               <p style={{ marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
-                As cercas virtuais e feriados dessas praças adicionais também serão aceitas para este colaborador.
+                As cercas virtuais dessas praças adicionais também serão aceitas para este colaborador.
               </p>
             </Field>
           )}
