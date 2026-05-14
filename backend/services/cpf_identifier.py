@@ -271,27 +271,63 @@ async def _link_phone_to_subscriber(company_id: str, subscriber: Dict[str, Any],
     """Adiciona o telefone à lista do subscriber se ainda não estiver lá.
 
     Marca com flag added_via='ai_cpf_validation' para auditoria.
+
+    IMPORTANTE: também cria entry em `subscriber_phones` (collection separada
+    usada pelo lookup phone→subscriber em routes/subscribers.find_subscriber_by_phone).
+    Sem isso, próximas mensagens deste número não seriam vinculadas
+    automaticamente — o cliente teria que mandar CPF de novo!
     """
     ph = await _normalize_phone(phone)
     if not ph:
         return
     existing_phones = subscriber.get("phones") or []
+    already_in_embedded = False
     for p in existing_phones:
         if isinstance(p, dict):
             if "".join(c for c in (p.get("number") or "") if c.isdigit()) == ph:
-                return  # já existe
+                already_in_embedded = True
+                break
         else:
             if "".join(c for c in str(p) if c.isdigit()) == ph:
-                return
-    new_phone = {
-        "number": phone,
-        "kind": "mobile",
-        "added_via": "ai_cpf_validation",
-        "added_at": now_iso(),
-    }
-    await db.subscribers.update_one(
-        {"id": subscriber["id"]},
-        {"$push": {"phones": new_phone}},
+                already_in_embedded = True
+                break
+    if not already_in_embedded:
+        new_phone = {
+            "number": phone,
+            "kind": "mobile",
+            "added_via": "ai_cpf_validation",
+            "added_at": now_iso(),
+        }
+        await db.subscribers.update_one(
+            {"id": subscriber["id"]},
+            {"$push": {"phones": new_phone}},
+        )
+        logger.info(
+            "[cpf-identifier] telefone %s adicionado ao subscriber %s",
+            phone, subscriber.get("id"),
+        )
+
+    # 2) ALSO insert em subscriber_phones (collection separada usada pelo
+    # phone→subscriber lookup). Sem isso o próximo inbound não vincula!
+    import uuid as _uuid
+    existing_sp = await db.subscriber_phones.find_one(
+        {"company_id": company_id, "normalized_number": ph,
+         "subscriber_id": subscriber["id"]},
+        {"_id": 0, "id": 1},
     )
-    logger.info("[cpf-identifier] telefone %s adicionado ao subscriber %s",
-                 phone, subscriber.get("id"))
+    if not existing_sp:
+        await db.subscriber_phones.insert_one({
+            "id": f"sphone-{_uuid.uuid4().hex[:10]}",
+            "company_id": company_id,
+            "subscriber_id": subscriber["id"],
+            "label": "ai_cpf_validation",
+            "raw_number": phone,
+            "normalized_number": ph,
+            "is_whatsapp": True,
+            "is_primary": False,
+            "created_at": now_iso(),
+        })
+        logger.info(
+            "[cpf-identifier] subscriber_phones criado para %s → %s",
+            ph, subscriber.get("id"),
+        )

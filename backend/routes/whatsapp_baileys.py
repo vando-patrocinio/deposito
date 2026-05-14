@@ -933,21 +933,58 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                 cid, phone, subscriber_id=subscriber_id
             )
             extra.append(format_for_prompt(conn_info))
+            conn_info["subscriber_id"] = subscriber_id
 
-            # AÇÃO REAL: se for LOS/Offline/Power fail, abre chamado técnico
-            # automaticamente (com dedupe de 6h pra não criar duplicado).
+            # AÇÃO REAL — estratégia diferenciada por status:
+            #   - LOS / Offline: TENTAR REBOOT REMOTO PRIMEIRO. Se OK, peça
+            #     pro cliente aguardar 2min. Só abre ticket se NÃO conseguiu
+            #     rebootar (problema físico) ou se já foi reiniciado
+            #     recentemente.
+            #   - Power fail: NÃO é problema nosso (queda de luz no cliente).
+            #     Ofereça agendamento de visita técnica.
+            status_l = (conn_info.get("status") or "").strip().lower()
             try:
                 from services.subscriber_connection import (
-                    ensure_repair_ticket, format_ticket_for_prompt,
+                    REBOOT_FIRST_STATUSES, try_reboot_onu, ensure_repair_ticket,
+                    format_ticket_for_prompt, format_reboot_for_prompt,
+                    format_power_fail_offer_for_prompt,
                 )
-                conn_info["subscriber_id"] = subscriber_id
-                ticket_info = await ensure_repair_ticket(
-                    cid, conn_info, phone, user_text
-                )
-                if ticket_info:
-                    extra.append(format_ticket_for_prompt(ticket_info))
+                if conn_info.get("found") and status_l in REBOOT_FIRST_STATUSES:
+                    # Tenta reboot remoto. Se OK e é a primeira vez agora,
+                    # NÃO abre ticket — espera o cliente confirmar se voltou.
+                    reboot_info = await try_reboot_onu(cid, conn_info, phone)
+                    if reboot_info.get("action") == "rebooted":
+                        # Reset bem-sucedido — instrui IA a aguardar feedback
+                        extra.append(format_reboot_for_prompt(reboot_info))
+                    elif reboot_info.get("action") == "skipped_recent":
+                        # Já tentou recentemente — abre ticket
+                        extra.append(format_reboot_for_prompt(reboot_info))
+                        ticket_info = await ensure_repair_ticket(
+                            cid, conn_info, phone, user_text
+                        )
+                        if ticket_info:
+                            extra.append(format_ticket_for_prompt(ticket_info))
+                    else:
+                        # Reboot falhou (SmartOLT desabilitado/erro) — abre ticket
+                        ticket_info = await ensure_repair_ticket(
+                            cid, conn_info, phone, user_text
+                        )
+                        if ticket_info:
+                            extra.append(format_ticket_for_prompt(ticket_info))
+                elif conn_info.get("found") and status_l in {"power fail", "powerfail"}:
+                    # Cliente sem energia — instrui IA a oferecer agendamento
+                    # E cria ticket com priority=padrao (não é prioridade pq
+                    # problema é do lado do cliente, não da rede). Isso evita
+                    # mentira: a IA promete agendar, e o ticket REALMENTE existe
+                    # no Kanban pra o atendente confirmar.
+                    extra.append(format_power_fail_offer_for_prompt())
+                    ticket_info = await ensure_repair_ticket(
+                        cid, conn_info, phone, user_text
+                    )
+                    if ticket_info:
+                        extra.append(format_ticket_for_prompt(ticket_info))
             except Exception as e:
-                logger.info("[wa-baileys] auto-ticket skip: %s", e)
+                logger.info("[wa-baileys] auto-action skip: %s", e)
 
             logger.info(
                 "[wa-baileys] connection check phone=%s sub=%s found=%s connected=%s "

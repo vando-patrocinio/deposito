@@ -286,8 +286,157 @@ def format_for_prompt(info: Dict[str, Any]) -> str:
 # Status técnicos que justificam abrir ticket de reparo automaticamente.
 TICKET_TRIGGER_STATUSES = {"los", "offline", "power fail", "powerfail"}
 
+# Status que primeiro tentam reboot remoto antes de abrir ticket (somente
+# quando faz sentido — Power fail por exemplo NÃO adianta rebootar).
+REBOOT_FIRST_STATUSES = {"los", "offline"}
+
 # Janela de dedupe — não cria ticket novo se já tem um aberto pro mesmo cliente.
 TICKET_DEDUPE_HOURS = 6
+
+# Janela de dedupe pro reboot — se já fez reboot recente, não tenta de novo
+# (evita ficar em loop reiniciando a ONU toda hora se cliente reclamar).
+REBOOT_DEDUPE_MINUTES = 30
+
+
+async def try_reboot_onu(
+    company_id: str, conn_info: Dict[str, Any], phone: str,
+) -> Dict[str, Any]:
+    """Tenta reiniciar a ONU remotamente via SmartOLT API.
+
+    Retorna:
+      - {ok: True, action: "rebooted", was_recent: False}  → reboot disparado agora
+      - {ok: True, action: "skipped_recent", was_recent: True}  → já houve reboot recente
+      - {ok: False, action: "disabled"|"no_onu_id"|"http_error", error: ...}
+    """
+    onu_id = conn_info.get("onu_id")
+    if not onu_id:
+        return {"ok": False, "action": "no_onu_id"}
+
+    # Dedupe — se reboot foi feito nos últimos 30 min, NÃO tenta de novo.
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=REBOOT_DEDUPE_MINUTES)
+              ).isoformat()
+    recent = await db.smartolt_actions.find_one(
+        {"company_id": company_id, "action": "reboot",
+         "external_id": onu_id,
+         "result_ok": True,
+         "created_at": {"$gte": cutoff}},
+        {"_id": 0, "id": 1, "created_at": 1},
+    )
+    if recent:
+        logger.info(
+            "[subscriber_connection] reboot SKIP (já feito recentemente): "
+            "onu=%s last=%s", onu_id, recent.get("created_at"),
+        )
+        return {"ok": True, "action": "skipped_recent", "was_recent": True,
+                 "last_reboot_at": recent.get("created_at")}
+
+    # Chama SmartOLT API
+    try:
+        from routes.smartolt import _get_config, _http_post
+    except ImportError as e:
+        return {"ok": False, "action": "import_error", "error": str(e)}
+    cfg = await _get_config(company_id)
+    if not cfg.enabled or not cfg.subdomain or not cfg.api_key:
+        return {"ok": False, "action": "disabled",
+                 "error": "SmartOLT não configurado/desabilitado"}
+    try:
+        resp = await _http_post(cfg, f"/onu/reboot/{onu_id}")
+    except Exception as e:
+        logger.warning(
+            "[subscriber_connection] reboot FALHOU onu=%s err=%s", onu_id, e
+        )
+        # Registra a tentativa falha pra auditoria.
+        await db.smartolt_actions.insert_one({
+            "id": f"sma-{uuid.uuid4().hex[:10]}",
+            "company_id": company_id,
+            "action": "reboot",
+            "external_id": onu_id,
+            "onu_name": conn_info.get("onu_name"),
+            "olt_name": conn_info.get("olt_name"),
+            "actor_user": "isabella_ai",
+            "actor_user_id": "isabella_ai",
+            "result_ok": False,
+            "result_raw": {"error": str(e)},
+            "phone": phone,
+            "trigger_status": conn_info.get("status"),
+            "created_at": now_iso(),
+        })
+        return {"ok": False, "action": "http_error", "error": str(e)}
+
+    ok = bool(resp.get("status"))
+    await db.smartolt_actions.insert_one({
+        "id": f"sma-{uuid.uuid4().hex[:10]}",
+        "company_id": company_id,
+        "action": "reboot",
+        "external_id": onu_id,
+        "onu_name": conn_info.get("onu_name"),
+        "olt_name": conn_info.get("olt_name"),
+        "actor_user": "isabella_ai",
+        "actor_user_id": "isabella_ai",
+        "result_ok": ok,
+        "result_raw": resp,
+        "phone": phone,
+        "trigger_status": conn_info.get("status"),
+        "created_at": now_iso(),
+    })
+    if ok:
+        logger.info(
+            "[subscriber_connection] REBOOT REMOTO ok onu=%s phone=%s",
+            onu_id, phone,
+        )
+        return {"ok": True, "action": "rebooted", "was_recent": False,
+                 "raw": resp}
+    return {"ok": False, "action": "smartolt_refused",
+             "error": resp.get("error") or str(resp)}
+
+
+def format_reboot_for_prompt(reboot_info: Dict[str, Any]) -> str:
+    """Bloco pra IA dizer ao cliente que reiniciou remotamente."""
+    if not reboot_info:
+        return ""
+    action = reboot_info.get("action")
+    if action == "rebooted":
+        return (
+            "=== AÇÃO EXECUTADA: ONU REINICIADA REMOTAMENTE ===\n"
+            "ACABEI DE REINICIAR a ONT/ONU do cliente remotamente, agora "
+            "neste exato momento. Ele NÃO precisa fazer nada — só esperar "
+            "1-2 minutos.\n\n"
+            "AÇÃO PRO CLIENTE: informe que você reiniciou o equipamento dele "
+            "remotamente (sem precisar dele desligar/religar a tomada), e "
+            "peça pra ele AGUARDAR 2 minutos e testar novamente. Diga que "
+            "se em 2 minutos não voltar, é só responder aqui que aí você "
+            "abre o chamado técnico imediatamente. Tom: confiante, mas sem "
+            "garantir 100%."
+        )
+    if action == "skipped_recent":
+        last = reboot_info.get("last_reboot_at", "")
+        return (
+            "=== INFO: ONU JÁ FOI REINICIADA RECENTEMENTE ===\n"
+            f"A ONU deste cliente já foi reiniciada remotamente em {last[:16]}. "
+            "Reiniciar de novo NÃO vai ajudar (problema real exige técnico). "
+            "PROSSIGA direto pra abertura do chamado técnico — não tente "
+            "reset de novo. NÃO mencione a tentativa anterior pro cliente "
+            "(seria confuso)."
+        )
+    return ""  # erro técnico — não polui o prompt; ticket vai abrir mesmo
+
+
+def format_power_fail_offer_for_prompt() -> str:
+    """Pra Power fail, IA oferece agendamento em vez de só abrir chamado."""
+    return (
+        "=== ESTRATÉGIA — POWER FAIL ===\n"
+        "O equipamento está sem energia (provavelmente queda de luz na casa "
+        "do cliente ou tomada desligada). NÃO abra chamado técnico imediato "
+        "— problema NÃO é nosso. AÇÃO:\n"
+        "1. Pergunte: 'A energia da sua casa está OK?' / 'O modem está "
+        "   ligado na tomada?'\n"
+        "2. Se for queda de energia local: oriente a aguardar voltar.\n"
+        "3. Se for problema persistente (cliente diz que ligou tudo e ainda "
+        "   nada): OFEREÇA AGENDAR VISITA TÉCNICA: 'Quer que eu agende uma "
+        "   visita pra amanhã (manhã 8h-12h ou tarde 13h-17h)?' Quando o "
+        "   cliente confirmar o turno, agradeça e diga que vai abrir o "
+        "   chamado já com o horário marcado."
+    )
 
 
 async def ensure_repair_ticket(
@@ -321,7 +470,7 @@ async def ensure_repair_ticket(
     existing = await db.tickets.find_one(
         {"company_id": company_id,
          "status": {"$in": ["pendente", "em_andamento", "aceito"]},
-         "type": "reparo",
+         "type": {"$in": ["reparo", "visita"]},
          "created_by": "isabella_ai",
          "client_snapshot.name": sub_name,
          "created_at": {"$gte": cutoff}},
@@ -338,7 +487,14 @@ async def ensure_repair_ticket(
 
     # 2. Cria o ticket novo
     ticket_id = f"tkt-{uuid.uuid4().hex[:10]}"
-    priority = "prioridade" if status == "los" else "padrao"
+    # LOS → prioridade (fibra rompida · rede)
+    # Offline → prioridade (sem conexão · rede)
+    # Power fail → padrao (cliente sem energia local · não é nosso problema)
+    if status == "los" or status == "offline":
+        priority = "prioridade"
+    else:
+        priority = "padrao"
+    ticket_type = "reparo" if status != "power fail" else "visita"
     description = (
         f"Cliente {sub_name} reportou: \"{(triggered_by_text or '')[:120]}\"\n"
         f"\n"
@@ -367,7 +523,7 @@ async def ensure_repair_ticket(
             "phone": phone,
             "address": None,
         },
-        "type": "reparo",
+        "type": ticket_type,
         "priority": priority,
         "scheduled_time": None,
         "position": 0,
