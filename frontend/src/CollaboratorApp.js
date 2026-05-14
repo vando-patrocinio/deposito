@@ -51,6 +51,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   const [pendingCount, setPendingCount] = useState(() => offlineCount());  // batidas offline aguardando reenvio
   const [flushingOffline, setFlushingOffline] = useState(false);
   const [showMyAssets, setShowMyAssets] = useState(false);
+  const [avatarJustUpdated, setAvatarJustUpdated] = useState(false);
 
   // Worker que tenta reenviar a fila offline. Chamado quando: (a) GPS muda, (b) volta online.
   const flushPending = useCallback(async () => {
@@ -286,12 +287,14 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
       // Pós-sucesso: se for a 1ª selfie válida, gera avatar com rosto centralizado
       // usando FaceDetector API (com fallback de crop superior). Substitui o
       // avatar_data_url que o backend acabou de copiar do selfie cheio.
+      setAvatarJustUpdated(false);
       try {
         const needsAvatar = !collab?.avatar_data_url || (collab?.avatar_data_url?.length || 0) < 2000;
         if (needsAvatar && rec.status !== "Bloqueado") {
           const cropped = await cropAvatarFromSelfie(dataUrl, 320);
           if (cropped && cropped !== dataUrl) {
             await api.uploadCollaboratorPhoto(collabId, cropped);
+            setAvatarJustUpdated(true);
           }
         }
       } catch { /* não bloqueia o fluxo principal */ }
@@ -739,7 +742,20 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 <Row label="Cerca" value={<StatusBadge status={receipt.geo_status} />} />
                 <Row label="Status" value={<StatusBadge status={receipt.status} />} />
               </div>
-              <Button onClick={() => setScreen("home")} style={{ width: "100%", borderRadius: 12 }} data-testid="receipt-done-btn">Concluir</Button>
+              {avatarJustUpdated && (
+                <div
+                  data-testid="avatar-updated-banner"
+                  style={{
+                    marginBottom: 10, padding: "10px 12px", borderRadius: 10,
+                    background: "#f0fdf4", border: "1px solid #bbf7d0",
+                    color: "#15803d", fontSize: 12, fontWeight: 600,
+                    display: "flex", alignItems: "center", gap: 8,
+                  }}
+                >
+                  <Icon name="check" size={14} /> Foto do crachá atualizada
+                </div>
+              )}
+              <Button onClick={() => { setAvatarJustUpdated(false); setScreen("home"); }} style={{ width: "100%", borderRadius: 12 }} data-testid="receipt-done-btn">Concluir</Button>
             </div>
           )}
 
