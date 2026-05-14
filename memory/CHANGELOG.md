@@ -1,6 +1,35 @@
 # PontoIA — Changelog
 
-## Feb 14, 2026 — Fix: Romaneio aparecia em branco na nova aba ★
+## Feb 14, 2026 — Fix: Romaneio em modal interno (PDF viewer inline) ★
+
+### Bug reportado
+"Kd o romaneio em PDF? A página está em branco" — depois do fix anterior do popup blocker, a nova aba abria com `about:blank` mas o PDF não renderizava.
+
+### Causa raiz
+Blob URLs criados na janela principal (`document.location.origin = https://...`) não funcionam em janelas com `about:blank` (origem `null`). O `window.location.href = blobUrl` falhava silenciosamente.
+
+### Fix final aplicado em `AssetsSection.js`
+- **Removida** completamente a abordagem `window.open()` (causa popup blocker + cross-origin)
+- **Adicionado** componente `RomaneioPdfModal` interno com:
+  - Header: "TERMO DE RESPONSABILIDADE" + nome do arquivo gerado
+  - `<iframe src={blobUrl}>` que renderiza o PDF nativamente (navegador usa plugin built-in)
+  - Botões: `↓ Baixar` (via `<a download>`), `🖨 Imprimir` (chama `iframe.contentWindow.print()`), `Fechar`
+  - Loader "Gerando romaneio…" enquanto fetch executa
+  - Mensagem de erro inline (não alert)
+  - `URL.revokeObjectURL` ao fechar (limpa memória)
+- Backdrop escuro com click-to-close
+- Zero dependência de popup blocker ou janela externa
+
+### Validação ✓
+- Modal abre instantaneamente no click
+- iframe.src = `blob:http://localhost:3000/{uuid}` válido (confirmado via Playwright)
+- HTTP 200 application/pdf no fetch (18.6KB com tabela completa)
+- Funciona em qualquer navegador moderno (Chrome, Firefox, Edge, Safari)
+- Mesma técnica pode ser reaplicada em outros lugares que geram PDF
+
+---
+
+
 
 ### Bug reportado
 Após o fix anterior do popup blocker, a nova aba abria mas mostrava **página em branco** — o PDF não renderizava.
@@ -221,7 +250,7 @@ Botões "Romaneio (todos)" e "Romaneio (só ativos)" no cadastro/checklist do co
 ---
 
 
-## Feb 14, 2026 — Fix: Romaneio popup blocker no checklist do colaborador ★
+## Feb 14, 2026 — Fix: Romaneio aparecia em branco na nova aba ★
 
 ### Backend
 - Auto-lock: `analyze_doc` marca automaticamente `status="pending_review"` quando ≥1 anomalia crítica (NET_DROP/RISE ≥25%, ZERO_NET, DUPLICATE).
