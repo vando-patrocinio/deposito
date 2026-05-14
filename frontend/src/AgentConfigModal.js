@@ -66,7 +66,7 @@ const BLANK_AGENT = {
   initial_message: "Olá! Como posso te ajudar hoje? 😊",
   system_prompt: "Você é uma assistente virtual cordial e objetiva. Use português do Brasil, no máximo 4 frases curtas, com emojis sutis quando fizer sentido.",
   model_provider: "deepseek",
-  model_name: "deepseek-v4-pro",
+  model_name: "deepseek-v3.1-terminus",
   temperature: 0.6,
   max_tokens: 700,
   form_fields: [],
