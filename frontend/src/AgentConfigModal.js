@@ -41,7 +41,7 @@ const SECTIONS = [
  *  - objeto solto: {detail: "..."} ou {msg: "..."} ou {error: "..."}
  * NUNCA retorna objeto — sempre string segura para JSX.
  */
-function extractErrorMessage(e) {
+export function extractErrorMessage(e) {
   const detail = e?.response?.data?.detail ?? e?.response?.data ?? e?.message;
   if (!detail) return "Erro desconhecido.";
   if (typeof detail === "string") return detail;
@@ -60,7 +60,7 @@ function extractErrorMessage(e) {
   return String(detail);
 }
 
-const BLANK_AGENT = {
+export const BLANK_AGENT = {
   name: "",
   description: "",
   initial_message: "Olá! Como posso te ajudar hoje? 😊",
@@ -516,7 +516,7 @@ function AgentRow({ agent, selected, onClick, pill }) {
   );
 }
 
-function PersonalitySection({ draft, patch }) {
+export function PersonalitySection({ draft, patch }) {
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <SectionTitle icon={Brain} title="Personalidade & Expertise"
@@ -568,7 +568,7 @@ function PersonalitySection({ draft, patch }) {
   );
 }
 
-function ModelSection({ draft, patch, models }) {
+export function ModelSection({ draft, patch, models }) {
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <SectionTitle icon={Sparkles} title="Modelo de IA"

@@ -1,0 +1,64 @@
+{
+  "summary": "Frontend-only validation of NEW InlineAgentEditor embedded inside Atendimento IA → Configuração tab. All 14 acceptance criteria from review request PASS. No regression on Ligo (chat) tab.",
+  "tests_executed": {
+    "login_admin": "PASS — admin@empresa.com / 123456 redirects to Inteligência dashboard",
+    "navigate_atendimento_ia_configuracao": "PASS — sub-tabs 'Ligo' and 'Configuração' visible; click switches view",
+    "saude_dos_canais_card": "PASS — top card renders with WhatsApp Baileys/Twilio/Meta tiles + integrations-reconnect-btn visible",
+    "kpis_row": "PASS — INBOUND 24H (120), OUTBOUND 24H (40), IA RESPONDEU (38), HUMANO RESPONDEU (2), % IA AUTÔNOMA (95%), CONVERSAS ATIVAS (19) all render",
+    "topology_graph": "PASS — ChatTopologyMap shows all 10 nodes: Cliente WhatsApp, Sidecar Baileys (sidecar_down), Twilio API, Meta Cloud, FastAPI Backend, AI Orchestrator, Isabella IA, OpenRouter (LLM), Atlaz API, MongoDB",
+    "inline_agent_editor_present": "PASS — data-testid='inline-agent-editor' renders below topology and above WhatsAppInstancePanel",
+    "editor_header": "PASS — purple Bot icon + 'Agente IA · Personalidade & Modelo' + subtitle 'Edite identidade, expertise e modelo do robô — alterações afetam o WhatsApp em tempo real.' + 'Sem alterações' disabled button (no agent selector dropdown shown since only 1 agent — correct behavior)",
+    "tab_personality_default": "PASS — Personality tab is default. Shows: Nome do Assistente (current value 'Isabella'), Informações e Regras, Preços e Valores, Parâmetros (system prompt), Situações Prioritárias",
+    "tab_model_switch": "PASS — clicking 'Modelo de IA' (data-testid='inline-agent-tab-model') shows Provedor/Modelo (DeepSeek V3.1 Terminus recomendado), Temperatura 1.4, Max tokens 16000, all model options listed (DeepSeek/Gemini/Claude/GPT-5)",
+    "dirty_state_save_btn": "PASS — editing data-testid='agent-config-field-name' flips save button from 'Sem alterações' (gray, disabled) → 'Salvar alterações' (green #16a34a, enabled). data-testid='inline-agent-save' confirmed",
+    "whatsapp_instance_panel_below": "PASS — WhatsAppInstancePanel renders below InlineAgentEditor with 'Nome da Instância WhatsApp: Ligo · Instância ativa e funcional'",
+    "connected_view_redesign": "PASS — NEW ConnectedView shows green gradient card with large CheckCircle2, 'CONECTADO COMO' label, '+5521965680949' phone, 'Patrocínio 🇧🇷' name, and 'Desconectar' button (data-testid='wa-logout-btn')",
+    "qr_section_polish": "PASS — 'Conectar WhatsApp por QR Code' header card shows CONECTADO badge in green pill (instead of QR since already connected)",
+    "ligo_chat_no_regression": "PASS — Ligo sub-tab still renders AIHubPanel chat: Isabella Online badge, atendimento filters (Automático 11/2, Aguardando 0, Fora de hora 0, Manual 2/7, Grupo 6/12), conversation list with Vando Patrocinio, +158587691208798, etc. 'Configurar Robô' + 'Detalhes' buttons present"
+  },
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Saúde dos canais (Configuração tab)",
+        "issues": [
+          "Inconsistency: 'Saúde dos canais' card shows WhatsApp Baileys = 'sidecar_down — All connection attempts failed', BUT the WhatsAppInstancePanel below shows the same channel as CONECTADO (+5521965680949). Likely two distinct sources of truth (health probe vs. baileys session metadata). Could confuse user — consider unifying. Not blocking the new InlineAgentEditor feature."
+        ]
+      },
+      {
+        "screen": "Topology console warnings",
+        "issues": [
+          "Recharts width(-1) height(-1) warnings spam on Inteligência dashboard (pre-existing, not related to current changes)"
+        ]
+      }
+    ]
+  },
+  "critical_code_review_comments": [
+    "InlineAgentEditor.js (281 lines) is well-scoped and DRY: reuses exported PersonalitySection / ModelSection / BLANK_AGENT / extractErrorMessage from AgentConfigModal — zero duplication with the popup. Good architecture decision.",
+    "API hits: aihubAgentsList + aihubModels run on mount only, no polling — efficient.",
+    "Auto-select first agent useEffect uses agents-only dep with eslint-disable — acceptable but the dep array suppression comment is correct.",
+    "Save validates name.trim() and system_prompt.length >= 10 — matches popup validation rules. Good.",
+    "Editor scrolls inside parent (max-height not set), so long Personality form pushes WhatsApp panel down. Fine UX since user expects long forms.",
+    "Saved flash auto-clears after 3500ms — good UX.",
+    "Note: when agents.length === 1, no agent selector dropdown shows (only renders if length > 1) — correct, prevents needless UI noise.",
+    "No business-logic bugs detected in the diff."
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend-only request)",
+    "frontend": "100% (14/14 acceptance criteria pass)"
+  },
+  "test_credentials": "admin@empresa.com / 123456 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None — used existing Isabella agent + production-connected WhatsApp number +5521965680949 (Patrocínio)",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "InlineAgentEditor lives in /app/frontend/src/InlineAgentEditor.js and reuses exports from AgentConfigModal.js (PersonalitySection, ModelSection, BLANK_AGENT, extractErrorMessage). Mounted in IntegrationsConfigPanel.js between <ChatTopologyMap/> and <WhatsAppInstancePanel/>. Test ids to remember: inline-agent-editor, inline-agent-tab-personality, inline-agent-tab-model, inline-agent-save, inline-agent-selector (only when 2+ agents), agent-config-field-name (reused from popup). To reach the panel: login → sidebar 'Atendimento IA' → top sub-tab 'Configuração' → wait 4-5s for topology then scroll. WhatsApp connected as +5521965680949 (real production session), so QR view does NOT render — only ConnectedView with green gradient + wa-logout-btn.",
+  "rca_of_the_issue": "N/A — no issues found. Feature works end-to-end as designed."
+}

@@ -3,6 +3,7 @@ import { Card } from "@/ui";
 import { api } from "@/api";
 import WhatsAppInstancePanel from "@/WhatsAppInstancePanel";
 import ChatTopologyMap from "@/ChatTopologyMap";
+import InlineAgentEditor from "@/InlineAgentEditor";
 import {
   CheckCircle2, AlertCircle, RefreshCw, Plug, Wifi, WifiOff,
 } from "lucide-react";
@@ -104,6 +105,9 @@ export default function IntegrationsConfigPanel() {
 
       {/* Topologia em tempo real */}
       <ChatTopologyMap />
+
+      {/* Editor inline do Agente IA — Personalidade & Modelo */}
+      <InlineAgentEditor />
 
       {/* Painel completo de Instância Baileys (QR, número, auto-reply, etc.) */}
       <WhatsAppInstancePanel />
