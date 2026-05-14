@@ -64,22 +64,6 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
     <div data-testid="aihub-panel"
           data-fullscreen={isWaFull ? "1" : "0"}
           style={{ padding: "0 4px" }}>
-      <div style={{ marginBottom: 10 }}>
-        <h1 style={{
-          display: "flex", alignItems: "center", gap: 8,
-          margin: 0, fontSize: 16, fontWeight: 700,
-          color: "var(--text-primary)", letterSpacing: "-0.015em",
-        }}>
-          <Bot size={18} strokeWidth={2} /> Atendimento IA
-          <span style={{
-            fontSize: 11, fontWeight: 500, color: "var(--text-secondary)",
-            marginLeft: 6, paddingLeft: 10, borderLeft: "1px solid var(--border-default)",
-          }}>
-            Agentes conversacionais (Ligo, voz, WhatsApp Cloud)
-          </span>
-        </h1>
-      </div>
-
       <div style={{
         display: "flex", gap: 2, padding: 3, background: "var(--bg-surface-2)",
         borderRadius: 10, marginBottom: isWaFull ? 6 : 12,
