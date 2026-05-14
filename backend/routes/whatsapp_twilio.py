@@ -402,13 +402,43 @@ async def _generate_and_send_twilio_reply(
     sys_prompt = agent.get("system_prompt", "")
     if subscriber_ctx:
         sys_prompt += f"\n\n[Dados do cliente]\n{subscriber_ctx}"
+    # Memória de correções (Edit & Teach)
+    try:
+        from routes.ai_corrections import (fetch_recent_for_prompt,
+                                              format_corrections_for_prompt)
+        corr_block = format_corrections_for_prompt(
+            await fetch_recent_for_prompt(cid, limit=12))
+        if corr_block:
+            sys_prompt += "\n\n" + corr_block
+    except Exception:
+        pass
+    # Orquestração com outras IAs
+    try:
+        from services.ai_orchestrator import build_orchestrated_context
+        orchestrated = await build_orchestrated_context(
+            cid, phone, user_text, subscriber_id=subscriber_id
+        )
+        if orchestrated:
+            sys_prompt += "\n\n" + orchestrated
+    except Exception:
+        pass
+    # Histórico de conversa (janela 100, truncate por tokens)
+    try:
+        from services.ai_history import fetch_history_turns
+        history_turns = await fetch_history_turns(cid, phone, limit=100,
+                                                    token_budget=6000)
+    except Exception:
+        history_turns = []
     # Chama LLM
     try:
         from services.motor_ia import chat_completion
+        chat_messages = [{"role": "system", "content": sys_prompt}]
+        chat_messages.extend(history_turns)
+        if not history_turns or history_turns[-1].get("content") != user_text:
+            chat_messages.append({"role": "user", "content": user_text})
         result = await chat_completion(
             cid,
-            messages=[{"role": "system", "content": sys_prompt},
-                       {"role": "user", "content": user_text}],
+            messages=chat_messages,
             temperature=agent.get("temperature", 0.6),
             max_tokens=agent.get("max_tokens", 700),
             purpose="atendimento", agent="isabella_twilio",

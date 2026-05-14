@@ -1,0 +1,36 @@
+{
+  "summary": "Backend-only validation of new 'Edit & Teach' feature for Isabella IA (AI corrections CRUD + Motor IA multi-vendor + ai_history/ai_orchestrator integration + Baileys non-regression). 19/19 pytest tests PASS (100%). All review_request items verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter62_ai_corrections.py",
+    "/app/test_reports/pytest/iter62_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/ai_corrections.py: validation depends on Pydantic Field min_length=2 on correct_reply only — there is NO max validation for phone format. A malformed/empty phone would be accepted (stored as empty string after strip). Suggest at minimum reject empty phone (HTTPException 400).",
+    "routes/ai_corrections.py _resend_corrected: always inserts a row in db.aihub_wa_messages even when the sidecar is offline (delivery_status='failed'). This is GOOD for gestor visibility, but ensure the WhatsApp chat UI handles delivery_status='failed' with a clear icon so the gestor knows the message did NOT actually reach the customer.",
+    "services/ai_history.py uses ~4 chars/token approximation. For PT-BR with many accents/long words it slightly under-estimates → with limit=100 + budget=6000 tokens, real token count may overshoot ~10-15% on GPT-4o tokenizer (tiktoken cl100k). Consider tiktoken for production accuracy, or lower DEFAULT_TOKEN_BUDGET to 5000 to keep safety margin.",
+    "services/ai_orchestrator.py _motor_ia_context: keyword detection uses a hardcoded PT-BR list. A user typing 'sem net' OR 'tá ruim' might miss the technical branch. Consider extracting to config or using a small classifier — but acceptable for MVP.",
+    "routes/motor_ia.py: format validation accepts ANY string with '/' (e.g., 'foo/bar') — no whitelist of known vendors. If the user enters a vendor not supported by OpenRouter, the failure will surface only at runtime during chat_completion. Consider validating against a known prefix list (deepseek/anthropic/openai/google/meta/mistral/x-ai).",
+    "DEFAULT_HISTORY_LIMIT=100 correctly matches the review_request requirement of '100 mensagens'.",
+    "All endpoints exclude MongoDB _id correctly (verified in test_list_corrections_contains_new)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter62_ai_corrections.py (new)"
+  ],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "not tested (backend-only per request)"},
+  "test_credentials": "admin@empresa.com / 123456 (role: administrador — has full access since require_role grants administrador/auditor super-role bypass)",
+  "seed_data_creation": "Test created and cleaned up its own correction rows. NO residual test data left in db.ai_corrections (verified via DELETE + GET 404). Motor IA atendimento_model was temporarily changed to anthropic/claude-3.5-sonnet, openai/gpt-4o-mini, google/gemini-pro-1.5 during tests and RESTORED to the original value in test_restore_original_atendimento_model.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test file at /app/backend/tests/test_iter62_ai_corrections.py covers: (1) AI corrections CRUD with 422 validation on short reply, 404 on unknown delete, 401/403 on unauth; (2) Motor IA accepting anthropic/openai/google vendor models, rejecting models without slash, filtering invalid fallbacks; (3) In-process import + functional smoke of services.ai_history.fetch_history_turns (confirms DEFAULT_HISTORY_LIMIT==100) and services.ai_orchestrator.build_orchestrated_context; (4) Prompt block formatting via fetch_recent_for_prompt + format_corrections_for_prompt confirms 'MEMÓRIA DE CORREÇÕES' header is built when at least one correction exists; (5) Baileys conversations + messages endpoints still 200 after prompt-builder changes. IMPORTANT for future async-in-pytest: use a single module-scoped event loop (see TestInternalServiceImports.setup_class) — Motor binds executor to first loop; recreating loops causes 'Event loop is closed'.",
+  "rca of the issue": "N/A — no bugs found. Initial test run hit an 'Event loop is closed' error in TestInternalServiceImports.test_corrections_prompt_helpers because each asyncio.run() created a fresh loop while Motor (async MongoDB driver) had cached its executor to the first loop. Fix: shared class-level event loop via setup_class/teardown_class. This is a test-infra fix only — no production code changed."
+}

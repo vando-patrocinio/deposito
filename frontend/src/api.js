@@ -149,6 +149,12 @@ export const api = {
   uploadCollaboratorPhoto: (cid, photoDataUrl) =>
     client.post(`/collaborators/${cid}/photo`, { photo_data_url: photoDataUrl }).then((r) => r.data),
 
+  // AI Corrections (Edit & Teach — Isabella aprende com correções do gestor)
+  aiCorrectionCreate: (data) => client.post(`/ai-corrections`, data).then((r) => r.data),
+  aiCorrectionList: (limit = 50) =>
+    client.get(`/ai-corrections`, { params: { limit } }).then((r) => r.data),
+  aiCorrectionDelete: (id) => client.delete(`/ai-corrections/${id}`).then((r) => r.data),
+
   // Logs (sistema)
   listLogs: (params = {}) => client.get(`/logs`, { params }).then((r) => r.data),
 

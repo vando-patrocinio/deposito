@@ -250,47 +250,54 @@ export default function MotorIaCard() {
         </div>
         <p style={{ fontSize: 11, color: "var(--text-secondary)",
                       margin: "0 0 12px", lineHeight: 1.5 }}>
-          Todos os Agentes de Atendimento (Isabella WhatsApp, Jerusa Voz, Playground)
-          usam <strong>DeepSeek</strong> como motor. Custo ~10× menor que GPT-4o e
-          excelente em PT-BR. Não é permitido trocar por outro provedor — apenas o
-          modelo específico DeepSeek pode ser ajustado.
+          Modelo usado pela <strong>Isabella WhatsApp</strong>, <strong>Jerusa Voz</strong>{" "}
+          e Playground. DeepSeek é a opção padrão (custo ~10× menor que GPT-4o,
+          excelente em PT-BR). Você pode trocar por Claude Sonnet 4.5,
+          Gemini 2.5 Flash, GPT-4o-mini ou qualquer outro do OpenRouter.
         </p>
-        <Row label="Modelo DeepSeek">
-          <input list="deepseek-models"
+        <Row label="Modelo do agente">
+          <input list="atendimento-models"
                   value={atendModel}
                   onChange={(e) => setAtendModel(e.target.value)}
                   data-testid="motor-ia-atend-model"
-                  placeholder="deepseek/deepseek-v4-flash"
+                  placeholder="deepseek/deepseek-chat"
                   style={{ ...inputStyle, fontFamily: "ui-monospace, monospace" }} />
-          <datalist id="deepseek-models">
+          <datalist id="atendimento-models">
             <option value="deepseek/deepseek-chat">DeepSeek Chat (rápido, custo baixo)</option>
-            <option value="deepseek/deepseek-v4-flash">DeepSeek V4 Flash (recomendado)</option>
+            <option value="deepseek/deepseek-v4-flash">DeepSeek V4 Flash</option>
             <option value="deepseek/deepseek-r1">DeepSeek R1 (raciocínio profundo)</option>
             <option value="deepseek/deepseek-chat-v3.1">DeepSeek Chat v3.1</option>
-            <option value="deepseek/deepseek-r1-distill-llama-70b">R1 Distill Llama 70B</option>
-            <option value="deepseek/deepseek-r1:free">DeepSeek R1 (Free tier)</option>
+            <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet (alta qualidade)</option>
+            <option value="anthropic/claude-3-haiku">Claude 3 Haiku (rápido)</option>
+            <option value="anthropic/claude-sonnet-4">Claude Sonnet 4</option>
+            <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+            <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
+            <option value="openai/gpt-4o-mini">GPT-4o mini (custo baixo)</option>
+            <option value="openai/gpt-4o">GPT-4o (premium)</option>
+            <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
+            <option value="mistralai/mistral-large">Mistral Large</option>
+            <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B</option>
           </datalist>
           <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-            Digite ou escolha qualquer modelo com prefixo <code>deepseek/</code>.
-            Veja a lista completa em{" "}
-            <a href="https://openrouter.ai/deepseek" target="_blank" rel="noreferrer"
+            Digite ou escolha qualquer modelo no formato <code>vendor/modelo</code>.
+            Lista completa em{" "}
+            <a href="https://openrouter.ai/models" target="_blank" rel="noreferrer"
                 style={{ color: "var(--accent)", textDecoration: "underline" }}>
-              openrouter.ai/deepseek
+              openrouter.ai/models
             </a>
           </div>
         </Row>
-        <Row label="Fallbacks DeepSeek">
+        <Row label="Fallbacks (se o principal falhar)">
           <textarea value={atendFallbacks}
                       onChange={(e) => setAtendFallbacks(e.target.value)}
                       rows={2}
                       data-testid="motor-ia-atend-fallbacks"
-                      placeholder={"deepseek/deepseek-r1\ndeepseek/deepseek-chat-v3.1"}
+                      placeholder={"deepseek/deepseek-r1\nanthropic/claude-3-haiku"}
                       style={{ ...inputStyle, fontFamily: "ui-monospace, monospace",
                                 resize: "vertical" }} />
         </Row>
         <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-          ⓘ Os fallbacks só aceitam modelos do prefixo <code>deepseek/</code> — qualquer
-          outro valor é ignorado pelo backend.
+          ⓘ Use uma linha por modelo, no formato <code>vendor/modelo</code>.
         </div>
       </div>
 

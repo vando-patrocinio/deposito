@@ -681,6 +681,8 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
   const [coachingHidden, setCoachingHidden] = useState(false);
   /* KPIs do atendente (drill-down do Central IA). */
   const [attendantKpis, setAttendantKpis] = useState([]);
+  /* Edit & Teach — modal de correção da resposta da Isabella */
+  const [correctingMsg, setCorrectingMsg] = useState(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -1059,7 +1061,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
              backgroundSize: "20px 20px",
            }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {timeline.map((it) => (
+          {timeline.map((it, idx) => (
             it._kind === "coaching"
               ? <InternalCoachingBubble key={`c-${it.id}`} coach={it}
                   onAcknowledge={async () => {
@@ -1082,7 +1084,11 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
                         c.id === it.id ? { ...c, read: true } : c));
                     } catch { /* ignore */ }
                   }} />
-              : <MsgBubble key={`m-${it.id}`} msg={it} />
+              : <MsgBubble key={`m-${it.id}`} msg={it}
+                            onCorrect={() => setCorrectingMsg({
+                              msg: it,
+                              userQuestion: _findPrevUserQuestion(timeline, idx),
+                            })} />
           ))}
           {timeline.length === 0 && (
             <div style={{ textAlign: "center", color: "var(--text-muted)",
@@ -1167,8 +1173,29 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
           50% { transform:scale(1.25); opacity:.7; } }
         @keyframes wa-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
       `}</style>
+
+      {correctingMsg && (
+        <AiCorrectionModal
+          phone={conv?.phone}
+          original={correctingMsg.msg}
+          userQuestion={correctingMsg.userQuestion}
+          onClose={() => setCorrectingMsg(null)}
+          onSaved={async () => { setCorrectingMsg(null); await loadMessages(); }}
+        />
+      )}
     </div>
   );
+}
+
+// Helper: encontra a última mensagem inbound (do cliente) ANTES da bolha
+// que está sendo corrigida — essa é a "pergunta" que originou a resposta.
+function _findPrevUserQuestion(timeline, idx) {
+  for (let i = idx - 1; i >= 0; i--) {
+    const t = timeline[i];
+    if (t._kind === "coaching") continue;
+    if (t.direction === "inbound" && t.text) return t.text;
+  }
+  return "";
 }
 
 /* =============================================================
@@ -1410,13 +1437,14 @@ function InternalNoteBubble({ msg }) {
   );
 }
 
-function MsgBubble({ msg }) {
+function MsgBubble({ msg, onCorrect }) {
   // Nota interna (co-piloto IA — NUNCA enviada ao cliente)
   if (msg.direction === "internal" || msg.is_internal_note) {
     return <InternalNoteBubble msg={msg} />;
   }
   const out = msg.direction === "outbound";
   const isAi = !!msg.auto_reply;
+  const isCorrection = !!msg.is_correction;
   const dst = msg.delivery_status || "";
   const failed = out && (dst === "failed" || dst.startsWith("failed_"));
   const sent = out && dst === "sent";
@@ -1456,10 +1484,27 @@ function MsgBubble({ msg }) {
         opacity: failed ? 0.95 : 1,
       }}>
         {out && isAi && (
-          <div style={{ fontSize: 9, fontWeight: 800, color: failed ? "#dc2626" : "#0369a1",
+          <div style={{ fontSize: 9, fontWeight: 800, color: failed ? "#dc2626" : (isCorrection ? "#15803d" : "#0369a1"),
                          marginBottom: 3, textTransform: "uppercase",
-                         letterSpacing: 0.5 }}>
-            {failed ? "⚠ Isabella IA — falhou" : "Isabella IA"}
+                         letterSpacing: 0.5, display: "flex", alignItems: "center", gap: 6 }}>
+            {failed ? "⚠ Isabella IA — falhou"
+              : isCorrection ? "Isabella IA · Corrigida" : "Isabella IA"}
+            {!failed && msg.text && onCorrect && (
+              <button
+                onClick={() => onCorrect()}
+                data-testid={`wa-correct-btn-${msg.id || ""}`}
+                title="Corrigir esta resposta e ensinar a Isabella"
+                style={{
+                  marginLeft: "auto", border: "1px solid #bae6fd",
+                  background: "rgba(255,255,255,.6)", color: "#0369a1",
+                  borderRadius: 999, padding: "1px 8px",
+                  fontSize: 9, fontWeight: 700, cursor: "pointer",
+                  letterSpacing: 0.3,
+                }}
+              >
+                ✏ Corrigir
+              </button>
+            )}
           </div>
         )}
         <div>{aiSilentFailure
@@ -1490,6 +1535,154 @@ function MsgBubble({ msg }) {
           ) : (
             <Check size={11} style={{ color: "#94a3b8" }} />
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal Edit & Teach — Corrigir resposta da Isabella e ensinar
+function AiCorrectionModal({ phone, original, userQuestion, onClose, onSaved }) {
+  const [correctReply, setCorrectReply] = useState("");
+  const [reason, setReason] = useState("");
+  const [resend, setResend] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const save = async () => {
+    if (correctReply.trim().length < 2) {
+      setErr("Digite a resposta correta.");
+      return;
+    }
+    setSaving(true); setErr("");
+    try {
+      await api.aiCorrectionCreate({
+        phone,
+        original_msg_id: original?.id,
+        user_question: userQuestion || "",
+        ai_original_reply: original?.text || "",
+        correct_reply: correctReply.trim(),
+        reason: reason.trim(),
+        resend_to_client: resend,
+      });
+      if (onSaved) await onSaved();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Falha ao salvar.");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div onClick={onClose} data-testid="ai-correction-modal" style={{
+      position: "fixed", inset: 0, background: "rgba(2,6,23,.55)",
+      display: "grid", placeItems: "center", zIndex: 1000, padding: 16,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "white", borderRadius: 14, width: "100%", maxWidth: 560,
+        padding: 22, border: "1px solid #e2e8f0",
+        boxShadow: "0 20px 60px rgba(2,6,23,.25)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: "#fef3c7", color: "#b45309",
+            display: "grid", placeItems: "center",
+            border: "1px solid #fcd34d",
+          }}>✏</div>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
+              Corrigir e Ensinar a Isabella IA
+            </h3>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: "#64748b" }}>
+              A correção vira memória permanente — a IA não vai mais repetir o erro.
+            </p>
+          </div>
+        </div>
+
+        {userQuestion && (
+          <div style={{ marginTop: 14, marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>
+              Cliente perguntou
+            </div>
+            <div style={{
+              padding: "8px 12px", background: "#f8fafc",
+              border: "1px solid #e2e8f0", borderRadius: 8,
+              fontSize: 12, color: "#334155", maxHeight: 80, overflow: "auto",
+            }}>{userQuestion}</div>
+          </div>
+        )}
+
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#b91c1c", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>
+            Resposta atual (errada)
+          </div>
+          <div style={{
+            padding: "8px 12px", background: "#fef2f2",
+            border: "1px solid #fecaca", borderRadius: 8,
+            fontSize: 12, color: "#7f1d1d", maxHeight: 100, overflow: "auto",
+          }}>{original?.text || "—"}</div>
+        </div>
+
+        <div style={{ marginBottom: 10 }}>
+          <label style={{ fontSize: 10, fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 4 }}>
+            Resposta correta
+          </label>
+          <textarea
+            data-testid="ai-correction-textarea"
+            value={correctReply}
+            onChange={(e) => setCorrectReply(e.target.value)}
+            rows={4}
+            autoFocus
+            placeholder="Como a Isabella deveria ter respondido neste contexto?"
+            style={{
+              width: "100%", padding: "10px 12px",
+              background: "#f0fdf4", border: "1px solid #bbf7d0",
+              borderRadius: 8, fontSize: 13, color: "#0f172a",
+              resize: "vertical", fontFamily: "inherit",
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 4 }}>
+            Motivo (opcional)
+          </label>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Ex.: ignorou que o cliente já tem plano premium"
+            style={{
+              width: "100%", padding: "8px 12px",
+              border: "1px solid #e2e8f0", borderRadius: 8,
+              fontSize: 12, color: "#0f172a", boxSizing: "border-box",
+            }}
+          />
+        </div>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#0f172a", cursor: "pointer", marginBottom: 14 }}>
+          <input
+            type="checkbox"
+            checked={resend}
+            onChange={(e) => setResend(e.target.checked)}
+            data-testid="ai-correction-resend"
+          />
+          Reenviar versão corrigida ao cliente agora
+        </label>
+
+        {err && <div style={{ background: "#fef2f2", color: "#991b1b", padding: "8px 12px", borderRadius: 8, fontSize: 12, marginBottom: 10, border: "1px solid #fecaca" }}>{err}</div>}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onClose} disabled={saving}
+                   style={{ padding: "8px 14px", border: "1px solid #e2e8f0", borderRadius: 8, background: "white", color: "#475569", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+            Cancelar
+          </button>
+          <button
+            data-testid="ai-correction-save"
+            onClick={save}
+            disabled={saving || correctReply.trim().length < 2}
+            style={{ padding: "8px 16px", border: 0, borderRadius: 8, background: "#0f172a", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: saving ? 0.6 : 1 }}
+          >
+            {saving ? "Salvando..." : "Salvar correção"}
+          </button>
         </div>
       </div>
     </div>

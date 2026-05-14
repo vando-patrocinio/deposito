@@ -764,7 +764,39 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             extra.append("\n".join(lines))
     except Exception as e:
         logger.info("[wa-baileys] few-shot skip: %s", e)
+    # 3c. Memória de correções — exemplos do que NÃO fazer (Edit & Teach)
+    try:
+        from routes.ai_corrections import (fetch_recent_for_prompt,
+                                              format_corrections_for_prompt)
+        corr_items = await fetch_recent_for_prompt(cid, limit=12)
+        corr_block = format_corrections_for_prompt(corr_items)
+        if corr_block:
+            extra.append(corr_block)
+    except Exception as e:
+        logger.info("[wa-baileys] corrections injection skip: %s", e)
+
+    # 3e. Orquestração com outras IAs (Motor IA / Coach / Avaliador) —
+    # consulta serviços auxiliares pra IA responder INFORMADA, não genérica.
+    try:
+        from services.ai_orchestrator import build_orchestrated_context
+        orchestrated = await build_orchestrated_context(
+            cid, phone, user_text, subscriber_id=subscriber_id
+        )
+        if orchestrated:
+            extra.append(orchestrated)
+    except Exception as e:
+        logger.info("[wa-baileys] orchestrator skip: %s", e)
+
     sys_prompt += "\n\n" + "\n\n".join(extra)
+
+    # 3d. Histórico de conversa (janela 100, truncate por tokens)
+    try:
+        from services.ai_history import fetch_history_turns
+        history_turns = await fetch_history_turns(cid, phone, limit=100,
+                                                    token_budget=6000)
+    except Exception as e:
+        logger.info("[wa-baileys] history fetch skip: %s", e)
+        history_turns = []
 
     # 4. Chama LLM via Motor IA (OpenRouter)
     try:
@@ -778,12 +810,16 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         )
         return None
     try:
+        # Monta lista de mensagens: system → histórico → user atual (se ainda não estiver no histórico)
+        chat_messages = [{"role": "system", "content": sys_prompt}]
+        chat_messages.extend(history_turns)
+        # Se o último turn do histórico não for o user_text atual, adiciona
+        if not history_turns or history_turns[-1].get("content") != user_text:
+            chat_messages.append({"role": "user", "content": user_text})
+
         result = await chat_completion(
             cid,
-            messages=[
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": user_text},
-            ],
+            messages=chat_messages,
             temperature=agent.get("temperature", 0.6),
             max_tokens=agent.get("max_tokens", 350),
             purpose="atendimento",
