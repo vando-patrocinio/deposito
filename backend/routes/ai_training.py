@@ -73,3 +73,40 @@ async def training_reload(user: dict = Depends(require_role("gestor"))):
         "kb_documents": kb_count,
         "agents": sorted(agents, key=lambda x: x.get("topology_node") or ""),
     }
+
+
+@router.get("/scenarios")
+async def scenarios_list(user: dict = Depends(require_role("gestor")),
+                          category: str | None = None,
+                          tag: str | None = None,
+                          q: str | None = None):
+    """Lista cenários de treinamento. Filtros opcionais: category, tag, q."""
+    cid = user.get("company_id", "co-demo")
+    filt = {"company_id": cid}
+    if category:
+        filt["category"] = category
+    if tag:
+        filt["tags"] = tag
+    if q:
+        filt["$or"] = [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"objetivo": {"$regex": q, "$options": "i"}},
+            {"licao": {"$regex": q, "$options": "i"}},
+        ]
+    items = await db.ai_training_scenarios.find(
+        filt, {"_id": 0}
+    ).sort("number", 1).to_list(200)
+    total = await db.ai_training_scenarios.count_documents({"company_id": cid})
+    return {"ok": True, "count": len(items), "total": total, "items": items}
+
+
+@router.get("/scenarios/{number}")
+async def scenario_get(number: int, user: dict = Depends(require_role("gestor"))):
+    """Pega um cenário específico pelo número."""
+    cid = user.get("company_id", "co-demo")
+    s = await db.ai_training_scenarios.find_one(
+        {"company_id": cid, "number": number}, {"_id": 0}
+    )
+    if not s:
+        raise HTTPException(404, f"Cenário #{number} não encontrado")
+    return s
