@@ -213,7 +213,10 @@ async function startSock() {
       const { connection, lastDisconnect: ld, qr } = update;
       if (qr) {
         try {
-          currentQr = await qrcode.toDataURL(qr, { width: 380, margin: 1 });
+          currentQr = await qrcode.toDataURL(qr, {
+            width: 512, margin: 1, errorCorrectionLevel: "M",
+            color: { dark: "#0f172a", light: "#ffffff" },
+          });
           lastQrAt = new Date().toISOString();
           logger.info("novo QR gerado");
         } catch (e) { logger.error({ err: e.message }, "qr encode err"); }

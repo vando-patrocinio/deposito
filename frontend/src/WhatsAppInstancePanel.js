@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Loader2, CheckCircle2, AlertTriangle, RefreshCw, LogOut,
   MessageSquare, Smartphone, Edit2, Save, X, Plug,
+  Maximize2, QrCode, ShieldCheck, Wifi, WifiOff,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -98,6 +99,8 @@ export default function WhatsAppInstancePanel() {
       <style>{`
         @keyframes wa-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
         @keyframes wa-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes wa-fade-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+        @keyframes wa-success-pop { 0% { transform: scale(.6); opacity: 0; } 60% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
       `}</style>
 
       {/* Card de Renomear instância (sempre visível) */}
@@ -143,7 +146,7 @@ export default function WhatsAppInstancePanel() {
         </div>
       </div>
 
-      {err && (
+      {err && status === "connected" && (
         <div style={{
           padding: 10, borderRadius: 8,
           background: "var(--danger-soft)", color: "var(--danger-soft-fg)",
@@ -157,111 +160,438 @@ export default function WhatsAppInstancePanel() {
         <ConnectedView phoneNumber={phoneNumber} me={me} onLogout={logout} busy={busy} />
       ) : (
         <QrView qr={qr} lastQrAt={lastQrAt} status={status}
-                  onRefresh={refreshNow} busy={busy} />
+                  onRefresh={refreshNow} busy={busy} errDetail={err} />
       )}
     </div>
   );
 }
 
-function QrView({ qr, lastQrAt, status, onRefresh, busy }) {
+function QrView({ qr, lastQrAt, status, onRefresh, busy, errDetail }) {
+  const [fullscreen, setFullscreen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const prevQrRef = useRef(qr);
+  const [qrPulse, setQrPulse] = useState(false);
+
+  // Atualiza o relógio a cada segundo para o countdown
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Animação de fade quando um novo QR chega
+  useEffect(() => {
+    if (qr && qr !== prevQrRef.current) {
+      setQrPulse(true);
+      const id = setTimeout(() => setQrPulse(false), 600);
+      prevQrRef.current = qr;
+      return () => clearTimeout(id);
+    }
+  }, [qr]);
+
+  // Countdown — Baileys renova ~60s
+  const QR_TTL_MS = 60_000;
+  const ageMs = lastQrAt ? now - new Date(lastQrAt).getTime() : null;
+  const remaining = ageMs != null
+    ? Math.max(0, Math.min(QR_TTL_MS, QR_TTL_MS - ageMs))
+    : null;
+  const remainingSec = remaining != null ? Math.ceil(remaining / 1000) : null;
+  const pctLeft = remaining != null ? Math.max(0, Math.min(1, remaining / QR_TTL_MS)) : 1;
+  const willExpire = remainingSec != null && remainingSec <= 10 && qr;
+
+  const isAuthErr = !!errDetail && /n[aã]o\s+autenticad|unauthor|401/i.test(String(errDetail));
+  const isSidecarErr = !!errDetail && /sidecar|503|indispon/i.test(String(errDetail));
+
+  // Computa cor do ring por urgência
+  const ringColor = remainingSec == null
+    ? "#16a34a"
+    : remainingSec <= 5 ? "#dc2626"
+    : remainingSec <= 15 ? "#f59e0b"
+    : "#16a34a";
+
+  // Tamanho do QR
+  const QR_SIZE = 340;
+  const RING_STROKE = 6;
+  const RING_R = (QR_SIZE + RING_STROKE * 3) / 2;
+  const RING_C = 2 * Math.PI * RING_R;
+
+  // SubLabel principal
+  let subLabel = "Aguardando você escanear…";
+  let subColor = "var(--text-muted)";
+  if (!qr) {
+    subLabel = "Inicializando WhatsApp…";
+    subColor = "var(--text-muted)";
+  } else if (willExpire) {
+    subLabel = `QR expira em ${remainingSec}s — escaneie já!`;
+    subColor = "#dc2626";
+  } else if (remainingSec != null) {
+    subLabel = `Aguardando escaneamento · QR válido por ${remainingSec}s`;
+    subColor = "#16a34a";
+  }
+
   return (
-    <div className="surface" style={{ padding: 24, borderRadius: 14 }}
-         data-testid="wa-qr-view">
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 24,
-                     alignItems: "center", flexWrap: "wrap" }}>
+    <>
+      <div className="surface" style={{ padding: 24, borderRadius: 14 }}
+           data-testid="wa-qr-view">
         <div style={{
-          width: 320, height: 320, borderRadius: 14,
-          background: "#fff", padding: 14,
-          display: "grid", placeItems: "center",
-          border: "1px solid var(--border-default)",
+          display: "grid",
+          gridTemplateColumns: `${QR_SIZE + RING_STROKE * 4 + 20}px 1fr`,
+          gap: 28, alignItems: "center", flexWrap: "wrap",
         }}>
-          {qr ? (
-            <img src={qr} alt="WhatsApp QR Code" data-testid="wa-qr-image"
-                 style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-          ) : (
-            <div style={{ textAlign: "center", color: "#666" }}>
-              <Loader2 size={36}
-                         style={{ animation: "wa-spin 1.2s linear infinite", marginBottom: 8 }} />
-              <div style={{ fontSize: 12 }}>Gerando QR Code...</div>
-            </div>
-          )}
-        </div>
-        <div>
-          <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 800 }}>
-            Como conectar
-          </h3>
-          <ol style={{ paddingLeft: 18, margin: 0, fontSize: 13, lineHeight: 1.8,
-                       color: "var(--text-primary)" }}>
-            <li>Abra o <strong>WhatsApp</strong> no seu celular</li>
-            <li>Toque em <strong>Mais opções</strong> ou <strong>Configurações</strong></li>
-            <li>Toque em <strong>Aparelhos conectados</strong></li>
-            <li>Toque em <strong>Conectar um aparelho</strong></li>
-            <li>Aponte a câmera para o QR Code ao lado</li>
-          </ol>
+          {/* ---------- Bloco do QR com ring countdown ---------- */}
           <div style={{
-            marginTop: 14, padding: 10, borderRadius: 8,
-            background: "var(--info-soft)", color: "var(--info-soft-fg)",
-            fontSize: 11, display: "flex", alignItems: "flex-start", gap: 8,
+            position: "relative",
+            width: QR_SIZE + RING_STROKE * 4,
+            height: QR_SIZE + RING_STROKE * 4,
+            margin: "0 auto",
           }}>
-            <Smartphone size={14} strokeWidth={1.75}
-                          style={{ flexShrink: 0, marginTop: 1 }} />
-            <span>
-              O QR <strong>expira a cada ~60s</strong> e atualiza sozinho.
-              {lastQrAt && (
-                <> Último gerado: <span className="mono">
-                  {new Date(lastQrAt).toLocaleTimeString("pt-BR")}</span>.</>
+            {/* Ring SVG */}
+            {qr && (
+              <svg width={QR_SIZE + RING_STROKE * 4}
+                   height={QR_SIZE + RING_STROKE * 4}
+                   style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
+                <circle cx={(QR_SIZE + RING_STROKE * 4) / 2}
+                        cy={(QR_SIZE + RING_STROKE * 4) / 2}
+                        r={RING_R}
+                        stroke="rgba(148,163,184,0.18)"
+                        strokeWidth={RING_STROKE}
+                        fill="none" />
+                <circle cx={(QR_SIZE + RING_STROKE * 4) / 2}
+                        cy={(QR_SIZE + RING_STROKE * 4) / 2}
+                        r={RING_R}
+                        stroke={ringColor}
+                        strokeWidth={RING_STROKE}
+                        strokeLinecap="round"
+                        fill="none"
+                        strokeDasharray={RING_C}
+                        strokeDashoffset={RING_C * (1 - pctLeft)}
+                        style={{
+                          transition: "stroke-dashoffset .8s linear, stroke .3s",
+                          filter: willExpire ? "drop-shadow(0 0 6px #dc262688)" : "none",
+                        }} />
+              </svg>
+            )}
+
+            {/* Card QR central */}
+            <div style={{
+              position: "absolute",
+              top: RING_STROKE * 2, left: RING_STROKE * 2,
+              width: QR_SIZE, height: QR_SIZE,
+              borderRadius: 18,
+              background: "#fff",
+              padding: 12,
+              display: "grid", placeItems: "center",
+              border: "1px solid rgba(15,23,42,.08)",
+              boxShadow: "0 8px 32px rgba(15,23,42,.06)",
+              overflow: "hidden",
+              cursor: qr ? "zoom-in" : "default",
+              transition: "transform .2s",
+            }}
+                 onClick={() => qr && setFullscreen(true)}
+                 onMouseEnter={(e) => { if (qr) e.currentTarget.style.transform = "scale(1.012)"; }}
+                 onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}>
+              {qr ? (
+                <>
+                  <img src={qr} alt="WhatsApp QR Code" data-testid="wa-qr-image"
+                       style={{
+                         width: "100%", height: "100%", objectFit: "contain",
+                         opacity: qrPulse ? 0.65 : 1,
+                         transform: qrPulse ? "scale(.985)" : "scale(1)",
+                         transition: "opacity .35s ease, transform .35s ease",
+                         imageRendering: "pixelated",
+                       }} />
+                  {/* Indicador de hover/expand */}
+                  <div style={{
+                    position: "absolute", top: 10, right: 10,
+                    width: 28, height: 28, borderRadius: 8,
+                    background: "rgba(15,23,42,.78)", color: "#fff",
+                    display: "grid", placeItems: "center",
+                    pointerEvents: "none",
+                    opacity: .85,
+                  }}>
+                    <Maximize2 size={14} />
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign: "center", color: "#475569" }}
+                     data-testid="wa-qr-loading">
+                  <div style={{
+                    width: 64, height: 64, borderRadius: 16,
+                    background: "linear-gradient(135deg, #25d36622, #25d36608)",
+                    margin: "0 auto 12px",
+                    display: "grid", placeItems: "center",
+                    animation: "wa-pulse 1.6s ease-in-out infinite",
+                  }}>
+                    <QrCode size={32} strokeWidth={1.6} style={{ color: "#25d366" }} />
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
+                    Inicializando WhatsApp…
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                    Aguarde alguns segundos para o QR Code aparecer
+                  </div>
+                </div>
               )}
-            </span>
+            </div>
+
+            {/* Badge countdown abaixo do QR */}
+            {qr && remainingSec != null && (
+              <div data-testid="wa-qr-countdown" style={{
+                position: "absolute",
+                bottom: -10,
+                left: "50%",
+                transform: "translateX(-50%)",
+                background: ringColor,
+                color: "#fff",
+                fontSize: 11,
+                fontWeight: 800,
+                padding: "4px 12px",
+                borderRadius: 999,
+                letterSpacing: 0.4,
+                boxShadow: "0 4px 12px rgba(15,23,42,.18)",
+                display: "inline-flex", alignItems: "center", gap: 5,
+                animation: willExpire ? "wa-pulse 1s ease-in-out infinite" : "none",
+              }}>
+                <span className="mono">{remainingSec}s</span>
+                <span style={{ opacity: .85 }}>· {willExpire ? "expirando" : "válido"}</span>
+              </div>
+            )}
           </div>
-          <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
-            <button className="btn btn-ghost btn-sm" onClick={onRefresh} disabled={busy}
-                    data-testid="wa-refresh-btn">
-              <RefreshCw size={13} /> Atualizar
-            </button>
-            {status === "connecting" && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)",
-                             display: "flex", alignItems: "center", gap: 6,
-                             animation: "wa-pulse 1.6s ease-in-out infinite" }}>
-                <Loader2 size={12} style={{ animation: "wa-spin 1.2s linear infinite" }} />
-                Aguardando escaneamento...
+
+          {/* ---------- Instruções ---------- */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <Smartphone size={20} strokeWidth={1.75} style={{ color: "#25d366" }} />
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, letterSpacing: "-0.012em" }}>
+                Como conectar
+              </h3>
+            </div>
+
+            <ol style={{
+              paddingLeft: 22, margin: 0, fontSize: 13, lineHeight: 1.85,
+              color: "var(--text-primary)",
+            }}>
+              <li>Abra o <strong>WhatsApp</strong> no seu celular</li>
+              <li>Toque em <strong>Mais opções</strong> (⋮) ou <strong>Configurações</strong></li>
+              <li>Toque em <strong>Aparelhos conectados</strong></li>
+              <li>Toque em <strong>Conectar um aparelho</strong></li>
+              <li>Aponte a câmera para o <strong>QR Code ao lado</strong></li>
+            </ol>
+
+            <div style={{ marginTop: 14, fontSize: 12, color: subColor,
+                            fontWeight: willExpire ? 800 : 600,
+                            display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: "50%",
+                background: ringColor,
+                animation: willExpire ? "wa-pulse 1s ease-in-out infinite" : "none",
+              }} />
+              {subLabel}
+            </div>
+
+            {lastQrAt && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
+                Gerado às <span className="mono">{new Date(lastQrAt).toLocaleTimeString("pt-BR")}</span>
+              </div>
+            )}
+
+            {/* Mensagens de erro amigáveis */}
+            {isAuthErr && (
+              <div data-testid="wa-qr-auth-error" style={{
+                marginTop: 14, padding: 12, borderRadius: 10,
+                background: "rgba(220,38,38,.08)",
+                border: "1px solid rgba(220,38,38,.25)",
+                fontSize: 12, color: "#b91c1c",
+                display: "flex", alignItems: "flex-start", gap: 8,
+              }}>
+                <ShieldCheck size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                <div>
+                  <strong>Sessão expirada.</strong> Faça login novamente para acessar a conexão WhatsApp.
+                  <div style={{ marginTop: 6 }}>
+                    <button onClick={() => { try { localStorage.removeItem("token"); } catch {} ; window.location.reload(); }}
+                            style={{ ...btnInlineStyle("danger") }}
+                            data-testid="wa-qr-relogin-btn">
+                      Fazer login
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isSidecarErr && (
+              <div data-testid="wa-qr-sidecar-error" style={{
+                marginTop: 14, padding: 12, borderRadius: 10,
+                background: "rgba(245,158,11,.10)",
+                border: "1px solid rgba(245,158,11,.30)",
+                fontSize: 12, color: "#92400e",
+                display: "flex", alignItems: "flex-start", gap: 8,
+              }}>
+                <WifiOff size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                <div>
+                  <strong>Serviço WhatsApp indisponível.</strong> Reconectando ao servidor…
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button onClick={onRefresh} disabled={busy}
+                      data-testid="wa-refresh-btn"
+                      style={btnInlineStyle("primary")}>
+                <RefreshCw size={13}
+                            style={{ animation: busy ? "wa-spin 1s linear infinite" : "none" }} />
+                Gerar novo QR
+              </button>
+              {qr && (
+                <button onClick={() => setFullscreen(true)}
+                        data-testid="wa-fullscreen-btn"
+                        style={btnInlineStyle("ghost")}>
+                  <Maximize2 size={13} /> Ampliar
+                </button>
+              )}
+              {status === "connecting" && (
+                <div style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "8px 12px",
+                  fontSize: 11, color: "var(--text-muted)",
+                  background: "var(--bg-surface-2)", borderRadius: 8,
+                }}>
+                  <Loader2 size={12} style={{ animation: "wa-spin 1.2s linear infinite" }} />
+                  Aguardando escaneamento…
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ---------- Modal Fullscreen ---------- */}
+      {fullscreen && qr && (
+        <div data-testid="wa-qr-fullscreen"
+             onClick={() => setFullscreen(false)}
+             style={{
+               position: "fixed", inset: 0, zIndex: 9999,
+               background: "rgba(2,6,23,.86)",
+               display: "grid", placeItems: "center",
+               cursor: "zoom-out",
+               animation: "wa-fade-in .2s ease-out",
+             }}>
+          <button onClick={() => setFullscreen(false)}
+                  data-testid="wa-qr-fullscreen-close"
+                  style={{
+                    position: "absolute", top: 24, right: 24,
+                    width: 40, height: 40, borderRadius: 12,
+                    background: "rgba(255,255,255,.12)", color: "#fff",
+                    border: "1px solid rgba(255,255,255,.22)",
+                    cursor: "pointer", display: "grid", placeItems: "center",
+                    backdropFilter: "blur(8px)",
+                  }}>
+            <X size={20} />
+          </button>
+          <div onClick={(e) => e.stopPropagation()}
+               style={{
+                 background: "#fff",
+                 padding: 24,
+                 borderRadius: 24,
+                 boxShadow: "0 24px 80px rgba(0,0,0,.45)",
+                 textAlign: "center",
+               }}>
+            <img src={qr} alt="QR" data-testid="wa-qr-fullscreen-image"
+                 style={{ width: "min(70vh, 70vw)", height: "min(70vh, 70vw)",
+                          imageRendering: "pixelated" }} />
+            <div style={{ marginTop: 14, fontSize: 13, color: "#475569" }}>
+              Aponte seu celular para o QR Code · clique fora para fechar
+            </div>
+            {remainingSec != null && (
+              <div style={{
+                marginTop: 10, fontSize: 13, fontWeight: 800,
+                color: ringColor,
+              }}>
+                <span className="mono">{remainingSec}s</span> restantes
               </div>
             )}
           </div>
         </div>
-      </div>
-    </div>
+      )}
+    </>
   );
+}
+
+/** Botão inline reutilizável dentro do painel WhatsApp */
+function btnInlineStyle(tone) {
+  const palettes = {
+    primary: { bg: "#25d366", fg: "#fff", border: "transparent" },
+    ghost:   { bg: "var(--bg-surface-2)", fg: "var(--text-primary)", border: "var(--border-default)" },
+    danger:  { bg: "#dc2626", fg: "#fff", border: "transparent" },
+  };
+  const p = palettes[tone] || palettes.ghost;
+  return {
+    display: "inline-flex", alignItems: "center", gap: 6,
+    padding: "8px 14px", fontSize: 12, fontWeight: 700,
+    background: p.bg, color: p.fg,
+    border: `1px solid ${p.border}`,
+    borderRadius: 8, cursor: "pointer",
+    transition: "transform .12s ease, box-shadow .12s ease",
+  };
 }
 
 function ConnectedView({ phoneNumber, me, onLogout, busy }) {
   return (
-    <div style={{ display: "grid", gap: 14 }}>
+    <div style={{ display: "grid", gap: 14 }} data-testid="wa-connected-view">
       <div className="surface" style={{
-        padding: 16, borderRadius: 12,
-        background: "linear-gradient(135deg, rgba(22,163,74,.12) 0%, var(--bg-surface) 60%)",
+        padding: 22, borderRadius: 14,
+        background: "linear-gradient(135deg, rgba(22,163,74,.14) 0%, var(--bg-surface) 60%)",
         border: "1px solid #16a34a55",
+        position: "relative", overflow: "hidden",
       }}>
-        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-          <CheckCircle2 size={28} strokeWidth={1.75} style={{ color: "#16a34a" }} />
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)",
-                           textTransform: "uppercase", letterSpacing: 0.6 }}>
-              Conectado como
+        {/* Glow decorativo */}
+        <div style={{
+          position: "absolute", top: -40, right: -40,
+          width: 160, height: 160, borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(22,163,74,.22) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }} />
+        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap",
+                       position: "relative" }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 16,
+            background: "linear-gradient(135deg, #16a34a, #0f9d58)",
+            display: "grid", placeItems: "center",
+            boxShadow: "0 8px 24px rgba(22,163,74,.35)",
+            animation: "wa-success-pop .55s cubic-bezier(.34,1.56,.64,1) both",
+          }}>
+            <CheckCircle2 size={30} strokeWidth={2.2} style={{ color: "#fff" }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#15803d",
+                              textTransform: "uppercase", letterSpacing: 0.8 }}>
+                Conectado como
+              </span>
+              <span style={{
+                width: 7, height: 7, borderRadius: "50%",
+                background: "#22c55e",
+                boxShadow: "0 0 8px #22c55e",
+                animation: "wa-pulse 2s ease-in-out infinite",
+              }} />
             </div>
             <div data-testid="wa-connected-phone"
                  className="mono"
-                 style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>
+                 style={{ fontSize: 22, fontWeight: 800, marginTop: 4,
+                            letterSpacing: "-0.01em", color: "#0f172a" }}>
               +{phoneNumber || "—"}
             </div>
             {me?.name && (
-              <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+              <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>
                 {me.name}
               </div>
             )}
           </div>
           <button className="btn btn-ghost btn-sm" onClick={onLogout} disabled={busy}
                   data-testid="wa-logout-btn"
-                  style={{ color: "var(--danger)" }}>
+                  style={{
+                    color: "#dc2626",
+                    border: "1px solid #fecaca",
+                    background: "rgba(255,255,255,.7)",
+                  }}>
             <LogOut size={13} /> Desconectar
           </button>
         </div>

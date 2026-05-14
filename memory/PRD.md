@@ -268,6 +268,22 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - testids: `ci-live-cost-meter`, `ci-cost-today-usd`, `ci-cost-today-tokens`, `ci-cost-today-top-agent`, `ci-cost-detail-toggle`, `ci-cost-detail-card`
 - Validado via curl: 449 chamadas, US$ 2,95 hoje, top agente "Central IA · Avaliação" US$ 1,54
 
+✅ **QR Code WhatsApp — redesign premium** (14/05/2026 — iter65):
+- **Sidecar Baileys** (`whatsapp-service/server.js`): resolução aumentada de **380px → 512px** com errorCorrectionLevel `M` e cores high-contrast (#0f172a no escuro · branco puro no claro) — QR muito mais nítido em qualquer ampliação.
+- **`WhatsAppInstancePanel.js · QrView` reescrito** (~250 linhas novas):
+  - **QR Code 340×340** (em vez de 224 efetivo) com card branco, border-radius 18, sombra suave
+  - **Ring countdown SVG circular** ao redor do QR — verde (>15s) → laranja (≤15s) → vermelho com glow (≤5s) — atualiza a cada segundo
+  - **Badge countdown** abaixo do QR ("Xs · válido" / "Xs · expirando" pulsante)
+  - **Click-to-fullscreen**: clicar no QR abre overlay escuro (rgba(2,6,23,.86)) com QR em `min(70vh,70vw)`, card branco, botão X glass-morphism, contagem regressiva e click-fora-pra-fechar
+  - **Fade transition** entre QRs novos (opacity .65 + scale .985 → 1 em 350ms)
+  - **Estado inicial polido** (sem QR ainda): ícone QrCode pulsando + "Inicializando WhatsApp…" + subtítulo amigável (substitui o feio "Gerando QR Code...")
+  - **Mensagens de erro inline**: detecta "Não autenticado" → mostra card vermelho com ShieldCheck + botão "Fazer login" que limpa o token e reload; detecta "503/sidecar/indisponível" → card laranja "Serviço WhatsApp indisponível · Reconectando"
+  - **Status sub-label dinâmico**: "Inicializando…" → "Aguardando você escanear · QR válido por Xs" (verde) → "QR expira em Xs — escaneie já!" (vermelho pulse)
+  - Botões: **"Gerar novo QR"** (primary verde, ícone gira no busy) + **"Ampliar"** (ghost)
+- **`ConnectedView` também redesenhado**: gradient #16a34a, glow radial decorativo, ícone CheckCircle2 56px com bounce animation (`wa-success-pop` cubic-bezier), dot verde pulsante "online", número de telefone 22px JetBrains Mono, botão Desconectar com border vermelho suave.
+- testids: `wa-qr-view`, `wa-qr-image`, `wa-qr-loading`, `wa-qr-countdown`, `wa-qr-auth-error`, `wa-qr-sidecar-error`, `wa-qr-relogin-btn`, `wa-refresh-btn`, `wa-fullscreen-btn`, `wa-qr-fullscreen`, `wa-qr-fullscreen-close`, `wa-qr-fullscreen-image`, `wa-connected-view`.
+- Validado via Playwright (3 estados): conectado ✓, QR válido (50s restantes - ring verde) ✓, QR expirando (5s - ring vermelho + pulse) ✓, fullscreen overlay ✓.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
