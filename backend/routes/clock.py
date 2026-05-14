@@ -990,9 +990,17 @@ async def timesheet(cid: str, year: int, month: int):
         by_date.setdefault(r["date"], []).append(r)
 
     # ----- Feriados (sistema centralizado /api/feriados) -----
-    # Busca TODOS os feriados da empresa que caem no mês solicitado.
-    # Inclui nacional/estadual/municipal/empresa.
+    # Busca todos os feriados da empresa que caem no mês. Filtra por praça:
+    # - Se feriado.praca_ids está vazio → vale para TODOS (nacional/empresa)
+    # - Se tem IDs → só vale se uma das praças do colaborador estiver na lista
     company_id = coll.get("company_id") or DEMO_COMPANY_ID
+    coll_praca_ids: list[str] = []
+    if coll.get("praca_id") and coll["praca_id"] != "NOTA":
+        coll_praca_ids.append(coll["praca_id"])
+    for pid in (coll.get("praca_ids_extra") or []):
+        if pid and pid != "NOTA" and pid not in coll_praca_ids:
+            coll_praca_ids.append(pid)
+
     holidays_map: dict[str, dict] = {}
     fers = await db.feriados.find(
         {"company_id": company_id,
@@ -1000,6 +1008,10 @@ async def timesheet(cid: str, year: int, month: int):
         {"_id": 0},
     ).to_list(200)
     for f in fers:
+        f_pracas = f.get("praca_ids") or []
+        # Filtro: vale se não tem restrição OU se intersecta com praças do colab
+        if f_pracas and not any(p in coll_praca_ids for p in f_pracas):
+            continue
         d = f.get("data")
         if d:
             holidays_map[d] = {

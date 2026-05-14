@@ -23,11 +23,12 @@ const MONTHS_FULL = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
 
 export default function FeriadosPanel() {
   const [items, setItems] = useState([]);
+  const [pracas, setPracas] = useState([]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [tipo, setTipo] = useState("");
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(null);    // doc OR {} (new)
+  const [editing, setEditing] = useState(null);
   const [seedBusy, setSeedBusy] = useState(false);
 
   const reload = useCallback(async () => {
@@ -39,6 +40,10 @@ export default function FeriadosPanel() {
   }, [year, tipo]);
 
   useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    api.listPracas().then((list) => setPracas(Array.isArray(list) ? list : []))
+      .catch(() => setPracas([]));
+  }, []);
 
   const filtered = useMemo(() => {
     if (!filter) return items;
@@ -207,7 +212,7 @@ export default function FeriadosPanel() {
                 </span>
               </div>
               {byMonth[m].map((it) => (
-                <FeriadoRow key={it.id} item={it}
+                <FeriadoRow key={it.id} item={it} pracas={pracas}
                               onEdit={() => setEditing(it)}
                               onDelete={() => remove(it)} />
               ))}
@@ -217,7 +222,7 @@ export default function FeriadosPanel() {
       )}
 
       {editing !== null && (
-        <FeriadoModal item={editing}
+        <FeriadoModal item={editing} pracas={pracas}
                        onClose={() => setEditing(null)}
                        onSaved={() => { setEditing(null); reload(); }} />
       )}
@@ -225,12 +230,19 @@ export default function FeriadosPanel() {
   );
 }
 
-function FeriadoRow({ item, onEdit, onDelete }) {
+function FeriadoRow({ item, pracas, onEdit, onDelete }) {
   const t = TIPOS.find((x) => x.value === item.tipo) || TIPOS[0];
   const Icon = t.icon;
   const d = new Date(item.data + "T12:00:00");
   const dia = d.getDate();
   const dow = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][d.getDay()];
+  const linkedPracaIds = item.praca_ids || [];
+  const linkedPracaNames = linkedPracaIds
+    .map((id) => (pracas.find((p) => p.id === id) || {}).name)
+    .filter(Boolean);
+  const aplica = linkedPracaIds.length === 0
+    ? "Todos os colaboradores"
+    : `${linkedPracaIds.length} praça${linkedPracaIds.length > 1 ? "s" : ""}`;
 
   return (
     <div data-testid={`feriado-row-${item.id}`} style={{
@@ -266,6 +278,16 @@ function FeriadoRow({ item, onEdit, onDelete }) {
           {item.uf && <span>UF: <strong>{item.uf}</strong></span>}
           {item.municipio && <span>{item.municipio}</span>}
           {item.recorrente && <span style={{ color: "#10b981" }}>↺ recorrente</span>}
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 3,
+            padding: "1px 7px", borderRadius: 999,
+            background: linkedPracaIds.length === 0 ? "#dcfce7" : "#dbeafe",
+            color: linkedPracaIds.length === 0 ? "#166534" : "#1e40af",
+            fontSize: 10, fontWeight: 700,
+          }}
+                title={linkedPracaNames.join(", ") || "Aplica a todos"}>
+            🎯 {aplica}
+          </span>
           {item.observacao && (
             <span style={{ fontStyle: "italic", maxWidth: 280,
                               overflow: "hidden", textOverflow: "ellipsis",
@@ -290,7 +312,7 @@ function FeriadoRow({ item, onEdit, onDelete }) {
   );
 }
 
-function FeriadoModal({ item, onClose, onSaved }) {
+function FeriadoModal({ item, pracas, onClose, onSaved }) {
   const isNew = !item.id;
   const [data, setData] = useState(item.data || todayISO());
   const [nome, setNome] = useState(item.nome || "");
@@ -299,8 +321,16 @@ function FeriadoModal({ item, onClose, onSaved }) {
   const [municipio, setMunicipio] = useState(item.municipio || "");
   const [recorrente, setRecorrente] = useState(item.recorrente !== false);
   const [observacao, setObservacao] = useState(item.observacao || "");
+  const [pracaIds, setPracaIds] = useState(item.praca_ids || []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+
+  function togglePraca(id) {
+    setPracaIds((cur) => cur.includes(id)
+      ? cur.filter((x) => x !== id) : [...cur, id]);
+  }
+  function selectAllPracas() { setPracaIds(pracas.map((p) => p.id)); }
+  function clearPracas() { setPracaIds([]); }
 
   async function submit() {
     setErr("");
@@ -312,6 +342,7 @@ function FeriadoModal({ item, onClose, onSaved }) {
       uf: uf.trim().toUpperCase() || null,
       municipio: municipio.trim() || null,
       recorrente, observacao: observacao.trim() || null,
+      praca_ids: pracaIds,
     };
     try {
       if (isNew) await api.feriadoCreate(payload);
@@ -388,6 +419,66 @@ function FeriadoModal({ item, onClose, onSaved }) {
               )}
             </div>
           )}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Lbl>Aplica-se a</Lbl>
+              <span style={{ flex: 1 }} />
+              <button type="button" onClick={selectAllPracas}
+                       data-testid="feriado-pracas-all"
+                       style={{ ...btn("ghost", "xs"), fontSize: 10 }}>
+                Selecionar todas
+              </button>
+              <button type="button" onClick={clearPracas}
+                       data-testid="feriado-pracas-clear"
+                       style={{ ...btn("ghost", "xs"), fontSize: 10 }}>
+                Limpar
+              </button>
+            </div>
+            {pracas.length === 0 ? (
+              <div style={{ fontSize: 11, color: "var(--text-muted)",
+                              fontStyle: "italic", padding: "8px 0" }}>
+                Sem praças cadastradas — feriado valerá para todos.
+              </div>
+            ) : (
+              <div style={{
+                padding: 8, borderRadius: 8,
+                border: "1px solid var(--border-default)",
+                background: "var(--bg-surface-2)",
+                maxHeight: 140, overflowY: "auto",
+              }}>
+                {pracaIds.length === 0 && (
+                  <div style={{ fontSize: 11, color: "#166534",
+                                    background: "#dcfce7", padding: 6,
+                                    borderRadius: 6, marginBottom: 6,
+                                    fontWeight: 700 }}>
+                    🌍 Aplica para TODOS os colaboradores (nenhuma praça marcada)
+                  </div>
+                )}
+                {pracas.map((p) => (
+                  <label key={p.id} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "4px 0", cursor: "pointer", fontSize: 12,
+                  }}>
+                    <input type="checkbox"
+                           checked={pracaIds.includes(p.id)}
+                           onChange={() => togglePraca(p.id)}
+                           data-testid={`feriado-praca-${p.id}`} />
+                    <strong>{p.name}</strong>
+                    <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
+                      {p.city} · {p.state}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <p style={{ fontSize: 10, color: "var(--text-muted)",
+                          margin: "4px 0 0" }}>
+              💡 Marque praças específicas pra feriados estaduais/municipais —
+              só colaboradores destas praças terão o dia como feriado.
+              Deixe vazio pra valer pra todos.
+            </p>
+          </div>
+
           <div>
             <Lbl>Observação (opcional)</Lbl>
             <textarea value={observacao}

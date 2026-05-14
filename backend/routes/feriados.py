@@ -43,6 +43,11 @@ class FeriadoIn(BaseModel):
     municipio: Optional[str] = Field(None, max_length=80)
     recorrente: bool = True
     observacao: Optional[str] = Field(None, max_length=400)
+    # IDs das praças onde este feriado se aplica. Lista vazia/None → vale
+    # para TODOS os colaboradores da empresa (típico de feriado nacional).
+    # Quando tem IDs, só vale para colaboradores cuja praca_id (ou
+    # praca_ids_extra) esteja na lista.
+    praca_ids: list[str] = Field(default_factory=list)
 
     @field_validator("tipo")
     @classmethod
