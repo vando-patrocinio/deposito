@@ -2903,7 +2903,6 @@ function AiHealthBanner({ health, open, setOpen, onToggleAutoReply, toggling, on
           {health.last_ok && (
             <div style={{ marginTop: 6, fontSize: 11, color: "#475569" }}>
               Última resposta OK: {(health.last_ok.at || "").slice(0,16).replace("T"," ")} · {health.last_ok.phone}
-              <br /><em style={{ color: "#64748b" }}>"{health.last_ok.preview}"</em>
             </div>
           )}
         </div>
