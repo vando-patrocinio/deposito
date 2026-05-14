@@ -8,6 +8,7 @@ import {
   Settings, RotateCcw, Image, CalendarPlus,
 } from "lucide-react";
 import { api } from "@/api";
+import { useAuth } from "@/AuthContext";
 import AgentConfigModal from "@/AgentConfigModal";
 import { chimeNewMessage, notifyBrowser, requestNotificationPermission } from "@/chatSounds";
 
@@ -65,6 +66,7 @@ function Avatar({ name, src, size = 38, isAi = false, ring = false }) {
 }
 
 export default function WhatsAppChatLayout() {
+  const { user: authUser } = useAuth();
   const [bucket, setBucket] = useState("automatico");
   const [conversations, setConversations] = useState([]);
   const lastUnreadRef = React.useRef({}); // phone -> unread_count anterior
@@ -127,6 +129,25 @@ export default function WhatsAppChatLayout() {
     setAttendantFilter(null);
     try { window.localStorage.removeItem("smartprov_attendant_filter"); } catch { /* ignore */ }
   }, []);
+
+  /** Filtra rapidinho só as conversas atribuídas ao usuário logado.
+   * UX: gestor abre o chat e quer ver SÓ o que ele tá atendendo. */
+  const applyMyFilter = useCallback(() => {
+    if (!authUser?.id) return;
+    const filter = {
+      user_id: authUser.id,
+      name: (authUser.name || authUser.email || "minhas").split(" ")[0],
+      __set_at: Date.now(),
+      __self: true,  // diferencia do filtro vindo do Central IA
+    };
+    setAttendantFilter(filter);
+    try {
+      window.localStorage.setItem(
+        "smartprov_attendant_filter", JSON.stringify(filter)
+      );
+    } catch { /* ignore */ }
+    setBucket("manual");
+  }, [authUser?.id, authUser?.name, authUser?.email]);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -293,10 +314,17 @@ export default function WhatsAppChatLayout() {
     loadHealth(); // recarrega health após mudanças no modal
   }, [loadHealth]);
 
+  // Calcula gridTemplateRows considerando: health banner (auto) +
+  // strip "ver minhas" (auto, só quando sem filtro + user logado) +
+  // banner filtro (auto, só quando há filtro) + main (1fr).
+  const hasMyStrip = !attendantFilter?.user_id && !!authUser?.id;
+  const hasFilterBanner = !!attendantFilter?.user_id;
+  const gridRows = `auto ${hasMyStrip ? "auto " : ""}${hasFilterBanner ? "auto " : ""}1fr`;
+
   return (
     <div data-testid="wa-chat-layout" style={{
       display: "grid",
-      gridTemplateRows: `auto ${attendantFilter?.user_id ? "auto " : ""}1fr`,
+      gridTemplateRows: gridRows,
       height: "calc(100vh - 170px)", minHeight: 560,
       border: "1px solid var(--border-default)", borderRadius: 14,
       overflow: "hidden", background: "var(--bg-surface)",
@@ -311,6 +339,45 @@ export default function WhatsAppChatLayout() {
         onOpenConfig={openConfig}
       />
       <AgentConfigModal open={configOpen} onClose={closeConfig} />
+      {/* Botão "Ver minhas conversas" — aparece SÓ quando NÃO há filtro
+          ativo e o usuário está logado (gestor / atendente). Atalho útil
+          pro gestor monitorar só o que ele está atendendo, sem precisar
+          passar pelo Central IA. */}
+      {!attendantFilter?.user_id && authUser?.id && (
+        <div data-testid="my-conversations-strip" style={{
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "8px 16px",
+          background: "var(--bg-surface-2)",
+          borderBottom: "1px solid var(--border-default)",
+          fontSize: 12, color: "var(--text-muted)",
+        }}>
+          <UserCheck size={13} style={{ color: "var(--text-muted)" }} />
+          <span>Quer ver apenas as conversas atribuídas a você?</span>
+          <button
+            onClick={applyMyFilter}
+            data-testid="my-conversations-btn"
+            style={{
+              padding: "5px 12px", borderRadius: 7,
+              border: "1px solid var(--border-default)",
+              background: "var(--bg-surface)",
+              color: "var(--text-primary)",
+              fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+              display: "inline-flex", alignItems: "center", gap: 5,
+              transition: "all .15s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--accent-soft)";
+              e.currentTarget.style.borderColor = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--bg-surface)";
+              e.currentTarget.style.borderColor = "var(--border-default)";
+            }}
+          >
+            <UserCheck size={11} /> Ver minhas conversas
+          </button>
+        </div>
+      )}
       {attendantFilter?.user_id && (
         <div data-testid="attendant-filter-banner" style={{
           display: "flex", alignItems: "center", gap: 12,
