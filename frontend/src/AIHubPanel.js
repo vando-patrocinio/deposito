@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
 import {
   Bot, MessageCircle, Phone, Send, Settings, History,
@@ -64,7 +64,9 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
     <div data-testid="aihub-panel"
           data-fullscreen={isWaFull ? "1" : "0"}
           style={{ padding: "0 4px" }}>
-      <WhatsAppChatAutoRecover waConnected={waConnected} />
+      <ChatErrorBoundary>
+        <WhatsAppQRPanel />
+      </ChatErrorBoundary>
       {tab === "mensagem" && <MensagemTab />}
       {tab === "playground" && <PlaygroundTab />}
       {tab === "dial" && <DialTab />}
@@ -74,66 +76,24 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
   );
 }
 
-// Wrapper resiliente — sempre renderiza o chat. Se a sessão WhatsApp cair
-// (detectado via status backend ou error boundary), automaticamente tenta
-// reconectar a cada 8s sem precisar de interação do usuário.
-function WhatsAppChatAutoRecover({ waConnected }) {
-  const [errorKey, setErrorKey] = useState(0);
-  const [lastErr, setLastErr] = useState(null);
-
-  // Quando volta a conectar, força remount do chat para limpar estado preso.
-  const prevConnectedRef = useRef(waConnected);
-  useEffect(() => {
-    if (!prevConnectedRef.current && waConnected) {
-      setErrorKey((k) => k + 1);
-      setLastErr(null);
-    }
-    prevConnectedRef.current = waConnected;
-  }, [waConnected]);
-
-  return (
-    <ChatErrorBoundary
-      onError={(e) => { setLastErr(e); }}
-      onRetry={() => { setErrorKey((k) => k + 1); setLastErr(null); }}
-    >
-      <WhatsAppQRPanel key={errorKey} />
-      {lastErr && (
-        <div role="alert" data-testid="chat-auto-recovering" style={{
-          position: "fixed", bottom: 14, right: 14, zIndex: 100,
-          background: "#fef3c7", border: "1px solid #fcd34d",
-          color: "#92400e", padding: "8px 14px", borderRadius: 8,
-          fontSize: 12, fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,.15)",
-          display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <span style={{
-            width: 8, height: 8, borderRadius: "50%",
-            background: "#f59e0b",
-            animation: "ligo-pulse 1s ease-in-out infinite",
-          }} />
-          Reconectando ao WhatsApp…
-        </div>
-      )}
-    </ChatErrorBoundary>
-  );
-}
-
 // Boundary que captura erro do chat e auto-retry a cada 8s.
+// Só dispara em exceções JS reais (não em status de conexão WhatsApp,
+// que tem polling próprio dentro do chat).
 class ChatErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, retryKey: 0 };
     this._timer = null;
   }
   static getDerivedStateFromError() {
     return { hasError: true };
   }
   componentDidCatch(err) {
-    this.props.onError?.(err);
+    console.warn("[ChatErrorBoundary]", err);
     if (!this._timer) {
       this._timer = setTimeout(() => {
         this._timer = null;
-        this.setState({ hasError: false });
-        this.props.onRetry?.();
+        this.setState((s) => ({ hasError: false, retryKey: s.retryKey + 1 }));
       }, 8000);
     }
   }
@@ -162,7 +122,7 @@ class ChatErrorBoundary extends React.Component {
         </div>
       );
     }
-    return this.props.children;
+    return <React.Fragment key={this.state.retryKey}>{this.props.children}</React.Fragment>;
   }
 }
 
