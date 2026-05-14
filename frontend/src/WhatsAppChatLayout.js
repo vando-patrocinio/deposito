@@ -10,6 +10,9 @@ import {
 import { api } from "@/api";
 import { useAuth } from "@/AuthContext";
 import AgentConfigModal from "@/AgentConfigModal";
+import WaChatFilterPopover, {
+  makeBlankFilter, countActiveFilters, CHANNEL_OPTIONS,
+} from "@/WaChatFilterPopover";
 import { chimeNewMessage, notifyBrowser, requestNotificationPermission } from "@/chatSounds";
 
 /* =============================================================
@@ -80,9 +83,41 @@ export default function WhatsAppChatLayout() {
   const [contactProfiles, setContactProfiles] = useState({});
   const warmingRef = useRef(new Set());
 
-  /* Filtro de atendente vindo do Central IA (deep-link).
-     Expira automaticamente após 30 min para evitar ficar "preso" e
-     o usuário pensar que o sistema travou (queremos UX previsível). */
+  /* Filtro avançado de conversas — popover ao estilo BotZap/ChatGuru.
+     Persistido em localStorage com TTL de 30min. Substitui o antigo
+     "attendantFilter" como o canal central de filtros. */
+  const ADV_FILTER_TTL_MS = 30 * 60 * 1000;
+  const [advFilter, setAdvFilter] = useState(() => {
+    if (typeof window === "undefined") return makeBlankFilter();
+    try {
+      const raw = window.localStorage.getItem("smartprov_chat_filter");
+      if (!raw) return makeBlankFilter();
+      const parsed = JSON.parse(raw);
+      if (parsed.__set_at && (Date.now() - parsed.__set_at) > ADV_FILTER_TTL_MS) {
+        window.localStorage.removeItem("smartprov_chat_filter");
+        return makeBlankFilter();
+      }
+      return { ...makeBlankFilter(), ...parsed };
+    } catch { return makeBlankFilter(); }
+  });
+
+  function persistAdvFilter(f) {
+    setAdvFilter(f);
+    try {
+      const isBlank = countActiveFilters(f) === 0;
+      if (isBlank) {
+        window.localStorage.removeItem("smartprov_chat_filter");
+      } else {
+        window.localStorage.setItem(
+          "smartprov_chat_filter",
+          JSON.stringify({ ...f, __set_at: Date.now() }),
+        );
+      }
+    } catch { /* ignore */ }
+  }
+
+  /* Filtro de atendente vindo do Central IA (deep-link) — mantido por
+     compat. Quando ativo, é tratado como uma seleção forçada de userIds. */
   const ATTENDANT_FILTER_TTL_MS = 30 * 60 * 1000;
   const [attendantFilter, setAttendantFilter] = useState(() => {
     if (typeof window === "undefined") return null;
@@ -238,18 +273,83 @@ export default function WhatsAppChatLayout() {
   }, [conversations, bucket]);
 
   const filteredConvs = useMemo(() => {
-    /* Se há busca, vasculha TODOS os buckets (não só o ativo). */
-    let inBucket = search.trim()
+    /* Se há busca (do header) OU busca do popover, vasculha TODOS os buckets. */
+    const popSearch = (advFilter.search || "").trim();
+    const headerSearch = search.trim();
+    const anySearch = !!(popSearch || headerSearch);
+    let inBucket = anySearch
       ? conversations
       : conversations.filter((c) => c.bucket === bucket);
 
-    /* Filtro de atendente (deep-link do Central IA). */
-    if (attendantFilter?.user_id) {
-      inBucket = inBucket.filter((c) => c.assignee_user_id === attendantFilter.user_id);
+    /* === Filtro avançado === */
+    // Apenas não lidas
+    if (advFilter.unreadOnly) {
+      inBucket = inBucket.filter((c) => (c.unread || 0) > 0);
+    }
+    // Apenas meus atendimentos
+    if (advFilter.onlyMine && authUser?.id) {
+      inBucket = inBucket.filter((c) => c.assignee_user_id === authUser.id);
+    }
+    // Filtrar por usuários
+    if ((advFilter.userIds || []).length > 0) {
+      const set = new Set(advFilter.userIds);
+      inBucket = inBucket.filter((c) =>
+        c.assignee_user_id && set.has(c.assignee_user_id)
+      );
+    }
+    // Filtrar por canais
+    if ((advFilter.channels || []).length > 0) {
+      const set = new Set(advFilter.channels);
+      inBucket = inBucket.filter((c) => {
+        const ch = (c.channel || c.source || "baileys").toLowerCase();
+        return set.has(ch);
+      });
+    }
+    // Data range — data inicial do atendimento (assignee_assigned_at ou created_at)
+    if (advFilter.dateAtendimentoIni) {
+      const ini = new Date(advFilter.dateAtendimentoIni).getTime();
+      inBucket = inBucket.filter((c) => {
+        const t = c.assignee_assigned_at || c.created_at;
+        if (!t) return false;
+        return new Date(t).getTime() >= ini;
+      });
+    }
+    if (advFilter.dateAtendimentoFim) {
+      const fim = new Date(advFilter.dateAtendimentoFim).getTime() + 86399999;
+      inBucket = inBucket.filter((c) => {
+        const t = c.assignee_assigned_at || c.created_at;
+        if (!t) return false;
+        return new Date(t).getTime() <= fim;
+      });
+    }
+    // Data range — última interação (last_inbound_at / last_message_at / updated_at)
+    if (advFilter.dateInteracaoIni) {
+      const ini = new Date(advFilter.dateInteracaoIni).getTime();
+      inBucket = inBucket.filter((c) => {
+        const t = c.last_message_at || c.last_inbound_at || c.updated_at;
+        if (!t) return false;
+        return new Date(t).getTime() >= ini;
+      });
+    }
+    if (advFilter.dateInteracaoFim) {
+      const fim = new Date(advFilter.dateInteracaoFim).getTime() + 86399999;
+      inBucket = inBucket.filter((c) => {
+        const t = c.last_message_at || c.last_inbound_at || c.updated_at;
+        if (!t) return false;
+        return new Date(t).getTime() <= fim;
+      });
     }
 
-    if (!search.trim()) return inBucket;
-    const q = search.toLowerCase();
+    /* === Filtro de atendente do Central IA (deep-link legado) === */
+    if (attendantFilter?.user_id) {
+      inBucket = inBucket.filter(
+        (c) => c.assignee_user_id === attendantFilter.user_id
+      );
+    }
+
+    /* === Texto livre === */
+    const q = (popSearch || headerSearch).toLowerCase();
+    if (!q) return inBucket;
     return inBucket.filter((c) =>
       (c.phone || "").includes(q) ||
       (c.subscriber_name || "").toLowerCase().includes(q) ||
@@ -259,7 +359,7 @@ export default function WhatsAppChatLayout() {
       (c.last_text || "").toLowerCase().includes(q) ||
       (c.assignee_name || "").toLowerCase().includes(q)
     );
-  }, [conversations, bucket, search, attendantFilter]);
+  }, [conversations, bucket, search, attendantFilter, advFilter, authUser?.id]);
 
   const selectedConv = useMemo(
     () => conversations.find((c) => c.phone === selectedPhone) || null,
@@ -314,12 +414,13 @@ export default function WhatsAppChatLayout() {
     loadHealth(); // recarrega health após mudanças no modal
   }, [loadHealth]);
 
-  // Calcula gridTemplateRows considerando: health banner (auto) +
-  // strip "ver minhas" (auto, só quando sem filtro + user logado) +
-  // banner filtro (auto, só quando há filtro) + main (1fr).
-  const hasMyStrip = !attendantFilter?.user_id && !!authUser?.id;
+  // Calcula gridTemplateRows: header health (auto) + opcional banner do
+  // attendant filter legacy (auto) + opcional banner do filtro avançado
+  // com resumo (auto) + main (1fr).
   const hasFilterBanner = !!attendantFilter?.user_id;
-  const gridRows = `auto ${hasMyStrip ? "auto " : ""}${hasFilterBanner ? "auto " : ""}1fr`;
+  const advCount = countActiveFilters(advFilter);
+  const hasAdvBanner = advCount > 0 && !hasFilterBanner;
+  const gridRows = `auto ${hasFilterBanner ? "auto " : ""}${hasAdvBanner ? "auto " : ""}1fr`;
 
   return (
     <div data-testid="wa-chat-layout" style={{
@@ -339,45 +440,6 @@ export default function WhatsAppChatLayout() {
         onOpenConfig={openConfig}
       />
       <AgentConfigModal open={configOpen} onClose={closeConfig} />
-      {/* Botão "Ver minhas conversas" — aparece SÓ quando NÃO há filtro
-          ativo e o usuário está logado (gestor / atendente). Atalho útil
-          pro gestor monitorar só o que ele está atendendo, sem precisar
-          passar pelo Central IA. */}
-      {!attendantFilter?.user_id && authUser?.id && (
-        <div data-testid="my-conversations-strip" style={{
-          display: "flex", alignItems: "center", gap: 12,
-          padding: "8px 16px",
-          background: "var(--bg-surface-2)",
-          borderBottom: "1px solid var(--border-default)",
-          fontSize: 12, color: "var(--text-muted)",
-        }}>
-          <UserCheck size={13} style={{ color: "var(--text-muted)" }} />
-          <span>Quer ver apenas as conversas atribuídas a você?</span>
-          <button
-            onClick={applyMyFilter}
-            data-testid="my-conversations-btn"
-            style={{
-              padding: "5px 12px", borderRadius: 7,
-              border: "1px solid var(--border-default)",
-              background: "var(--bg-surface)",
-              color: "var(--text-primary)",
-              fontSize: 11.5, fontWeight: 700, cursor: "pointer",
-              display: "inline-flex", alignItems: "center", gap: 5,
-              transition: "all .15s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--accent-soft)";
-              e.currentTarget.style.borderColor = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--bg-surface)";
-              e.currentTarget.style.borderColor = "var(--border-default)";
-            }}
-          >
-            <UserCheck size={11} /> Ver minhas conversas
-          </button>
-        </div>
-      )}
       {attendantFilter?.user_id && (
         <div data-testid="attendant-filter-banner" style={{
           display: "flex", alignItems: "center", gap: 12,
@@ -433,6 +495,38 @@ export default function WhatsAppChatLayout() {
           >Limpar filtro</button>
         </div>
       )}
+      {hasAdvBanner && (
+        <div data-testid="adv-filter-summary-banner" style={{
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "10px 16px",
+          background: filteredConvs.length === 0
+            ? "rgba(245, 158, 11, 0.10)" : "var(--accent-soft)",
+          borderBottom: "1px solid var(--border-default)",
+          fontSize: 12.5, color: "var(--text-primary)",
+        }}>
+          <Filter size={14} style={{
+            color: filteredConvs.length === 0 ? "#f59e0b" : "var(--accent)",
+          }} />
+          <span style={{ flex: 1 }}>
+            <strong>{advCount} filtro{advCount > 1 ? "s" : ""} ativo{advCount > 1 ? "s" : ""}</strong>
+            {" · "}<span style={{ color: "var(--text-muted)" }}>
+              {filteredConvs.length} conversa{filteredConvs.length !== 1 ? "s" : ""} encontrada{filteredConvs.length !== 1 ? "s" : ""}
+            </span>
+          </span>
+          <button
+            onClick={() => persistAdvFilter(makeBlankFilter())}
+            data-testid="clear-adv-filter"
+            style={{
+              padding: "5px 12px", borderRadius: 6,
+              border: "1px solid var(--border-default)",
+              background: "var(--bg-surface)",
+              color: "var(--text-secondary)", fontSize: 11.5,
+              fontWeight: 700, cursor: "pointer",
+              display: "inline-flex", alignItems: "center", gap: 5,
+            }}
+          ><RotateCcw size={10} /> Limpar filtros</button>
+        </div>
+      )}
       <div style={{
         display: "grid",
         gridTemplateColumns: "220px 360px 1fr",
@@ -448,6 +542,9 @@ export default function WhatsAppChatLayout() {
         setSelectedPhone={setSelectedPhone} search={search} setSearch={setSearch}
         loading={loading} totalInBucket={buckets[bucket] || 0}
         contactProfiles={contactProfiles}
+        advFilter={advFilter} onAdvFilterChange={persistAdvFilter}
+        onAdvFilterClear={() => persistAdvFilter(makeBlankFilter())}
+        authUser={authUser} attendants={attendants}
       />
 
       {/* COLUNA 3 — Thread aberta */}
@@ -547,7 +644,8 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket }) {
 /* ============================================================= */
 function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
                               search, setSearch, loading, totalInBucket,
-                              contactProfiles }) {
+                              contactProfiles, advFilter, onAdvFilterChange,
+                              onAdvFilterClear, authUser, attendants }) {
   const bucketLabel = BUCKETS.find((b) => b.id === bucket)?.label || bucket;
   return (
     <div data-testid="wa-conversation-list" style={{
@@ -557,19 +655,37 @@ function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
       minHeight: 0,
     }}>
       <div style={{
-        padding: "12px 14px", borderBottom: "1px solid var(--border-default)",
+        padding: "10px 12px", borderBottom: "1px solid var(--border-default)",
         display: "flex", alignItems: "center", gap: 8,
       }}>
-        <Search size={14} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
-        <input value={search} onChange={(e) => setSearch(e.target.value)}
-               placeholder={search.trim()
-                 ? "Buscar em todas as conversas..."
-                 : `Buscar em ${bucketLabel.toLowerCase()}...`}
-               data-testid="wa-search-input"
-               style={{
-                 flex: 1, border: "none", outline: "none", background: "transparent",
-                 fontSize: 13, color: "var(--text-primary)",
-               }} />
+        <div style={{
+          flex: 1, display: "flex", alignItems: "center", gap: 8,
+          padding: "6px 10px",
+          border: "1px solid var(--border-default)",
+          borderRadius: 8,
+          background: "var(--bg-surface-2)",
+          minWidth: 0,
+        }}>
+          <Search size={14} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)}
+                 placeholder={search.trim()
+                   ? "Buscar em todas as conversas..."
+                   : `Buscar em ${bucketLabel.toLowerCase()}...`}
+                 data-testid="wa-search-input"
+                 style={{
+                   flex: 1, border: "none", outline: "none",
+                   background: "transparent",
+                   fontSize: 13, color: "var(--text-primary)",
+                   minWidth: 0,
+                 }} />
+        </div>
+        <WaChatFilterPopover
+          value={advFilter}
+          onChange={onAdvFilterChange}
+          onClear={onAdvFilterClear}
+          authUser={authUser}
+          attendants={attendants}
+        />
       </div>
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         {loading ? (
