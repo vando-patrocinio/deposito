@@ -1,6 +1,45 @@
 # PontoIA — Changelog
 
-## Feb 14, 2026 — Holerite: Assinatura gov.br + Filtro por data de pagamento ★★★
+## Feb 14, 2026 — UX clean no app do colaborador + Delete permanente no admin ★★
+
+### Backend
+- **`DELETE /api/holerites/{doc_id}/permanent`** (NEW) — hard delete:
+  - Apaga `payroll_documents` + arquivos físicos (original e assinado) do disco
+  - Apaga `payroll_access_tokens` associados
+  - Preserva audit log (registra `permanent_delete` ANTES de apagar com dados do doc)
+  - Requer role gestor
+- Endpoint anterior (revoke soft delete) mantido
+
+### Frontend admin (`HoleritePanel.js`)
+- Botão lixeira (Trash2) ao lado do Ban (revoke) em cada linha
+- Confirm duplo: "APAGAR PERMANENTEMENTE" + "Tem CERTEZA?"
+- testid `holerite-delete-{id}`
+
+### Frontend colaborador (`MyHoleritesModal.js` REWRITE)
+- **Layout bottom-sheet style** (iOS/Android nativo) com pull handle no topo
+- **Removida** a barra de pesquisa (limpeza visual)
+- **Card minimalista**:
+  - MÊS YEAR em uppercase pequeno cinza
+  - R$ valor BEM grande, fonte 22px peso 800
+  - Bruto/Descontos em 2 colunas secundárias 11px
+  - Badge "● Assinado" verde clean (sem peso)
+- **Botão único dinâmico** (3 estados via `localStorage`):
+  - **Estado A** (não baixado): `Baixar` (preto #0f172a, ícone ↓)
+  - **Estado B** (baixado, não assinado): `Enviar assinado` (azul gov.br #1351b4, ícone ↑) + hint "Já baixou? Assine no gov.br e envie aqui."
+  - **Estado C** (assinado): `Baixar assinado` (preto, ícone ✓) + hint "Assinado em DD/MM/YYYY · digital validada"
+- localStorage key: `holerite_dl_{cid}_{docId}`
+- Footer LGPD compacto e centralizado
+- SignWithGovBrModal também refeito com mesma estética bottom-sheet sóbria
+
+### Validação ✓
+- Backend pytest **5/5 PASS** (iter 69)
+- Frontend PASS: transição Baixar→Enviar→Baixar assinado validada visualmente
+- Audit log persiste após permanent delete (recuperável via `/api/holerites/audit/{doc_id}`)
+- Zero issues críticos/menores/integração/UI/design
+
+---
+
+
 
 ### Pesquisa jurídica (web search 2026)
 - STJ reconheceu validade da assinatura gov.br em fev/2026 para documentos trabalhistas
@@ -113,7 +152,7 @@
 ---
 
 
-## Feb 14, 2026 — Lock automático de holerite com anomalia crítica ★
+## Feb 14, 2026 — Holerite: Assinatura gov.br + Filtro por data de pagamento ★★★
 
 ### Backend
 - Auto-lock: `analyze_doc` marca automaticamente `status="pending_review"` quando ≥1 anomalia crítica (NET_DROP/RISE ≥25%, ZERO_NET, DUPLICATE).
