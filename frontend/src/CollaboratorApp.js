@@ -451,7 +451,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 }}
               >
                 {collab?.avatar_data_url
-                  ? <img src={collab.avatar_data_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ? <img src={collab.avatar_data_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 28%" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
                   : (collab?.name?.[0] || "?").toUpperCase()}
               </button>
               <div style={{ minWidth: 0, flex: 1 }}>

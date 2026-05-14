@@ -43,10 +43,10 @@ export function startServerTime() {
   setInterval(_syncOnce, 60_000);
 }
 
-/** Retorna timestamp em ms sincronizado com o servidor (cai pra Date.now() se ainda não sincronizado). */
+/** Retorna timestamp em ms (inteiro) sincronizado com o servidor. */
 export function serverNow() {
   if (offsetMs == null) return Date.now();
-  return _perfNow() + offsetMs;
+  return Math.floor(_perfNow() + offsetMs);
 }
 
 /** Retorna Date object sincronizado. */

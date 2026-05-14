@@ -216,6 +216,8 @@ export function fmtMin(min) {
 }
 
 export function AvatarZoomModal({ src, alt = "Foto do colaborador", onClose, caption }) {
+  const [imgError, setImgError] = React.useState(false);
+  React.useEffect(() => { setImgError(false); }, [src]);
   if (!src) return null;
   return (
     <div
@@ -229,16 +231,37 @@ export function AvatarZoomModal({ src, alt = "Foto do colaborador", onClose, cap
       }}
     >
       <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: "92vw", maxHeight: "92vh", position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        <img
-          src={src}
-          alt={alt}
-          data-testid="avatar-zoom-img"
-          style={{
-            maxWidth: "100%", maxHeight: "80vh", objectFit: "contain",
-            borderRadius: 18, border: "4px solid white",
-            boxShadow: "0 30px 80px rgba(0,0,0,.55)",
-          }}
-        />
+        {imgError ? (
+          <div
+            data-testid="avatar-zoom-fallback"
+            style={{
+              width: "min(80vw, 360px)", height: "min(80vw, 360px)",
+              borderRadius: 18, border: "4px solid white",
+              background: "#0f172a", color: "white",
+              display: "grid", placeItems: "center", textAlign: "center",
+              padding: 24, fontSize: 14, lineHeight: 1.5,
+              boxShadow: "0 30px 80px rgba(0,0,0,.55)",
+            }}
+          >
+            Foto indisponível.<br/>
+            Peça ao colaborador uma nova selfie para atualizar a foto do crachá.
+          </div>
+        ) : (
+          <img
+            src={src}
+            alt={alt}
+            data-testid="avatar-zoom-img"
+            onError={() => setImgError(true)}
+            style={{
+              maxWidth: "min(92vw, 480px)", maxHeight: "80vh",
+              width: "auto", height: "auto",
+              objectFit: "cover", objectPosition: "center 28%",
+              borderRadius: 18, border: "4px solid white",
+              boxShadow: "0 30px 80px rgba(0,0,0,.55)",
+              background: "#0f172a",
+            }}
+          />
+        )}
         {caption && <div style={{ color: "white", fontWeight: 600, fontSize: 13 }}>{caption}</div>}
         <button
           onClick={onClose}
