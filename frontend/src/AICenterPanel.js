@@ -23,6 +23,7 @@ const SUB_TABS = [
   { id: "preventive", label: "Preventivas" },
   { id: "tech_spending", label: "Gastos/Técnico" },
   { id: "repair_map", label: "Mapa de defeitos" },
+  { id: "critical_map", label: "Mapa crítico" },
   { id: "defective", label: "Equipamentos" },
   { id: "common_issues", label: "Chamados" },
   { id: "recurring", label: "Reincidência" },
@@ -258,6 +259,229 @@ function RepairMapSection({ days }) {
       </Card>
     </>
   );
+
+/* =============================================================
+   CriticalMapSection — todas as ONUs em estado crítico/offline
+============================================================= */
+const ONU_SEVERITY = {
+  offline:  { color: "#dc2626", label: "Offline",  desc: "Sem sinal / LOS" },
+  bad:      { color: "#ea580c", label: "Crítico",  desc: "Sinal ≤ -30 dBm" },
+  critical: { color: "#f59e0b", label: "Atenção",  desc: "Entre -27 e -30 dBm" },
+  warn:     { color: "#facc15", label: "Alerta",   desc: "Próximo do limite" },
+};
+
+function CriticalMapSection() {
+  const [reloadKey, setReloadKey] = useState(0);
+  const [onlyCritical, setOnlyCritical] = useState(false);
+  const [includeOffline, setIncludeOffline] = useState(true);
+  const d = useFetch(
+    () => api.aiDashOnuCriticalMap({
+      only_critical: onlyCritical,
+      include_offline: includeOffline,
+    }),
+    [reloadKey, onlyCritical, includeOffline]
+  );
+  const [filter, setFilter] = useState("all");
+  const points = useMemo(() => {
+    if (!d) return [];
+    return filter === "all" ? d.points : d.points.filter((p) => p.severity === filter);
+  }, [d, filter]);
+  const center = useMemo(() => {
+    if (!d) return [-14.235, -51.925];
+    if (d.center) return d.center;
+    if (points.length === 0) return [-14.235, -51.925];
+    const lat = points.reduce((s, p) => s + p.latitude, 0) / points.length;
+    const lng = points.reduce((s, p) => s + p.longitude, 0) / points.length;
+    return [lat, lng];
+  }, [d, points]);
+  useEffect(() => {
+    if (d?.pending_geocode > 0) {
+      const t = setTimeout(() => setReloadKey((k) => k + 1), 1800);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [d, reloadKey]);
+
+  if (!d) return <Card>Carregando ONUs críticas…</Card>;
+
+  return (
+    <>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12,
+                       alignItems: "center", flexWrap: "wrap" }}>
+        <strong style={{ fontSize: 13, color: "var(--text-primary)" }}>
+          {points.length} ONU(s) no mapa
+        </strong>
+        <select value={filter} onChange={(e) => setFilter(e.target.value)}
+                className="input" style={{ width: 200, height: 30, fontSize: 12 }}
+                data-testid="critical-map-filter">
+          <option value="all">Todas severidades ({d.count})</option>
+          {Object.entries(d.by_severity || {}).map(([k, v]) =>
+            <option key={k} value={k}>
+              {(ONU_SEVERITY[k]?.label || k)} ({v})
+            </option>)}
+        </select>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4,
+                            fontSize: 11, cursor: "pointer" }}>
+          <input type="checkbox" checked={onlyCritical}
+                 onChange={(e) => setOnlyCritical(e.target.checked)}
+                 data-testid="critical-map-only" />
+          Só críticas (≤ -30 dBm)
+        </label>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4,
+                            fontSize: 11, cursor: "pointer" }}>
+          <input type="checkbox" checked={includeOffline}
+                 onChange={(e) => setIncludeOffline(e.target.checked)}
+                 data-testid="critical-map-offline" />
+          Incluir offline
+        </label>
+        {d.pending_geocode > 0 && (
+          <span className="pill pill--warning">
+            {d.pending_geocode} pendentes — geolocalizando…
+          </span>
+        )}
+        {d.geocoded_now > 0 && (
+          <span className="pill pill--success">
+            +{d.geocoded_now} geolocalizadas agora
+          </span>
+        )}
+        <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>
+          Atualiza a cada sync SmartOLT · clique numa bolha pra ver detalhes
+        </span>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        {Object.entries(ONU_SEVERITY).map(([k, info]) => (
+          <span key={k} style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            padding: "2px 8px", borderRadius: 999,
+            background: "var(--bg-surface-2)", fontSize: 11,
+          }}>
+            <span style={{ width: 10, height: 10, borderRadius: 999,
+                              background: info.color }} />
+            <strong>{info.label}</strong>
+            <span style={{ color: "var(--text-muted)" }}>· {info.desc}</span>
+          </span>
+        ))}
+      </div>
+
+      <Card data-testid="critical-map-card" padding={0}>
+        <div style={{ height: 540, borderRadius: 12, overflow: "hidden" }}>
+          <MapContainer center={center} zoom={6}
+                        style={{ height: "100%", width: "100%" }} scrollWheelZoom>
+            <TileLayer
+              attribution="&copy; OpenStreetMap"
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              subdomains={["a", "b", "c"]} />
+            <FitBoundsOnUpdate points={points} bbox={d.bbox} />
+            {points.map((p) => {
+              const info = ONU_SEVERITY[p.severity] || ONU_SEVERITY.warn;
+              return (
+                <Circle key={p.id} center={[p.latitude, p.longitude]}
+                        radius={140}
+                        pathOptions={{ color: info.color, fillColor: info.color,
+                                          fillOpacity: 0.7, weight: 2 }}>
+                  <Popup>
+                    <div style={{ fontSize: 12, minWidth: 230 }}>
+                      <strong>{p.name || "—"}</strong>
+                      <span style={{
+                        marginLeft: 6, padding: "1px 6px", borderRadius: 999,
+                        fontSize: 10, fontWeight: 800,
+                        background: info.color, color: "white",
+                      }}>
+                        {info.label.toUpperCase()}
+                      </span>
+                      <br />
+                      <span style={{ color: "var(--text-secondary)" }}>
+                        {p.address}
+                      </span>
+                      <br />
+                      {p.rx_dbm != null && (
+                        <div style={{ marginTop: 4, fontWeight: 700 }}>
+                          {p.rx_dbm.toFixed(1)} dBm
+                          <span style={{ color: "var(--text-muted)",
+                                            marginLeft: 6, fontSize: 11 }}>
+                            ({p.signal_text || "—"})
+                          </span>
+                        </div>
+                      )}
+                      <div style={{ marginTop: 4, fontSize: 11,
+                                       color: "var(--text-muted)" }}>
+                        Status: <strong>{p.status || "—"}</strong>
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        {p.olt_name} · slot {p.board}/{p.port}
+                      </div>
+                      {p.model && (
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          {p.model}
+                        </div>
+                      )}
+                      {p.synced_at && (
+                        <div style={{ marginTop: 4, fontSize: 10,
+                                         color: "var(--text-muted)" }}>
+                          ↻ sync: {new Date(p.synced_at).toLocaleString("pt-BR")}
+                        </div>
+                      )}
+                    </div>
+                  </Popup>
+                </Circle>
+              );
+            })}
+          </MapContainer>
+        </div>
+      </Card>
+
+      <Card title={`Lista — ${points.length} ONUs`} style={{ marginTop: 14 }}>
+        <div style={{ maxHeight: 320, overflowY: "auto" }}>
+          <table style={css.table}>
+            <thead><tr>
+              <th style={css.th}>Severidade</th>
+              <th style={css.th}>Nome / PPPoE</th>
+              <th style={css.th}>Endereço</th>
+              <th style={css.th}>Sinal</th>
+              <th style={css.th}>OLT / slot</th>
+            </tr></thead>
+            <tbody>
+              {points.length === 0 ? (
+                <tr><td colSpan={5} style={css.emptyTd}>
+                  Sem ONUs no critério.
+                </td></tr>
+              ) : points.map((p) => {
+                const info = ONU_SEVERITY[p.severity] || ONU_SEVERITY.warn;
+                return (
+                  <tr key={p.id}>
+                    <td style={css.td}>
+                      <span style={{
+                        padding: "2px 8px", borderRadius: 999,
+                        background: info.color, color: "white",
+                        fontSize: 10, fontWeight: 800,
+                      }}>{info.label}</span>
+                    </td>
+                    <td style={css.td}><strong>{p.name}</strong></td>
+                    <td style={css.td}>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        {p.address}
+                      </span>
+                    </td>
+                    <td style={css.td}>
+                      {p.rx_dbm != null ? `${p.rx_dbm.toFixed(1)} dBm` : "—"}
+                    </td>
+                    <td style={css.td}>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        {p.olt_name || "—"} · {p.board}/{p.port}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </>
+  );
+}
+
 }
 
 function DefectiveSection({ days }) {
@@ -755,6 +979,7 @@ const TAB_COMPONENTS = {
   softphone: SoftphoneSection,
   tech_spending: TechSpendingSection,
   repair_map: RepairMapSection,
+  critical_map: CriticalMapSection,
   defective: DefectiveSection,
   common_issues: CommonIssuesSection,
   recurring: RecurringSection,

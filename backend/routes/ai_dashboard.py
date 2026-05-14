@@ -204,7 +204,7 @@ async def _geocode_one(addr: str) -> tuple[Optional[float], Optional[float]]:
 
 @router.get("/repair-map")
 async def repair_map(days: int = 30, only_finalized: bool = False,
-                     auto_geocode: bool = True, max_geocode: int = 60,
+                     auto_geocode: bool = True, max_geocode: int = 12,
                      user: dict = Depends(require_role("gestor"))):
     """Mapa de defeitos. Plotagem todas as bolhas (Lousa) com lat/lng nos últimos N dias.
 
@@ -309,6 +309,196 @@ def _build_repair_point(t: dict, snap: dict, lat: float, lng: float) -> dict:
         "created_at": t.get("created_at"),
         "scheduled_time": t.get("scheduled_time"),
         "atlaz_external_id": t.get("atlaz_external_id"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# 3b) ONU Critical Map — todas as ONUs com sinal crítico/offline
+# ---------------------------------------------------------------------------
+@router.get("/onu-critical-map")
+async def onu_critical_map(
+    include_offline: bool = True,
+    only_critical: bool = False,
+    auto_geocode: bool = True, max_geocode: int = 15,
+    user: dict = Depends(require_role("gestor"))
+):
+    """Mapa com TODAS as ONUs em estado degradado.
+
+    Critérios (CLT do óptico, padrão de mercado):
+    - **critical**: rx_dbm < -27 dBm (sinal fraco, perto do limiar)
+    - **bad**:      rx_dbm < -30 dBm (já no degrau, tende a quedas)
+    - **offline**:  status != online (LOS, sem sinal, dying gasp, etc.)
+
+    Endereços vêm de `smartolt_onus.address` (campo do SmartOLT) OU
+    do último ticket conhecido cruzando pelo `name_norm` (PPPoE).
+    Geocoding sob-demanda como no /repair-map.
+    """
+    cid = _cid(user)
+    # Critérios — ajustáveis via query
+    critical_threshold = -27.0
+    bad_threshold = -30.0
+
+    q: Dict[str, Any] = {"company_id": cid}
+    # Filtro pela severidade desejada (se only_critical: só os bad)
+    filt_or = []
+    if only_critical:
+        filt_or.append({"signal_1490": {"$lte": bad_threshold}})
+        if include_offline:
+            filt_or.append({"status": {"$nin": ["online", "ONLINE", "Online"]}})
+    else:
+        filt_or.append({"signal_1490": {"$lte": critical_threshold}})
+        if include_offline:
+            filt_or.append({"status": {"$nin": ["online", "ONLINE", "Online"]}})
+    if filt_or:
+        q["$or"] = filt_or
+    else:
+        return {"count": 0, "points": [], "by_severity": {},
+                "center": None, "bbox": None,
+                "geocoded_now": 0, "pending_geocode": 0}
+
+    out: List[dict] = []
+    sev_counter: Counter = Counter()
+    pending: List[dict] = []  # ONUs com address mas sem lat/lng
+
+    cur = db.smartolt_onus.find(q, {
+        "_id": 0, "unique_external_id": 1, "name": 1, "name_norm": 1,
+        "sn": 1, "address": 1, "status": 1, "signal_1490": 1, "signal_text": 1,
+        "olt_name": 1, "board": 1, "port": 1, "zone_name": 1,
+        "synced_at": 1, "onu_type_name": 1,
+        "geo_lat": 1, "geo_lng": 1,
+    })
+
+    # Buffer de ONUs sem geo embutida → tentamos pelos tickets
+    needs_lookup: List[dict] = []
+    async for o in cur:
+        if o.get("geo_lat") is not None and o.get("geo_lng") is not None:
+            out.append(_build_onu_point(o, o["geo_lat"], o["geo_lng"],
+                                            critical_threshold, bad_threshold))
+            sev_counter[out[-1]["severity"]] += 1
+        else:
+            needs_lookup.append(o)
+
+    # Para ONUs sem lat/lng salvo, cruzamos com tickets recentes:
+    # 1º) pega o `client_snapshot.address` (mais confiável que o address do SmartOLT,
+    #     que muitas vezes vem como "Sinal-XX" depois de uma desautorização)
+    # 2º) se o snapshot tem lat/lng → usa direto; senão → vai pra geocode
+    # Normalização agressiva (remove underscores e qualquer não alfanumérico)
+    # pra garantir match entre nomes SmartOLT (sem _) e PPPoEs Atlaz (com _).
+    def _norm(s: Optional[str]) -> str:
+        import re
+        return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+    if needs_lookup:
+        tic_cur = db.tickets.find(
+            {"company_id": cid,
+             "client_snapshot.pppoe_user": {"$exists": True}},
+            {"_id": 0, "client_snapshot": 1, "created_at": 1},
+        ).sort("created_at", -1).limit(3000)
+        snap_by_norm: Dict[str, dict] = {}
+        async for t in tic_cur:
+            snap = t.get("client_snapshot") or {}
+            pp_norm = _norm(snap.get("pppoe_user"))
+            if pp_norm and pp_norm not in snap_by_norm:
+                snap_by_norm[pp_norm] = snap
+        for o in needs_lookup:
+            pp = _norm(o.get("name") or o.get("name_norm"))
+            snap = snap_by_norm.get(pp) or {}
+            addr_from_ticket = (snap.get("address") or "").strip()
+            if snap.get("latitude") and snap.get("longitude"):
+                out.append(_build_onu_point(o, snap["latitude"], snap["longitude"],
+                                                critical_threshold, bad_threshold,
+                                                snap_address=addr_from_ticket))
+                sev_counter[out[-1]["severity"]] += 1
+            elif addr_from_ticket and len(addr_from_ticket) > 8:
+                pending.append({**o, "address": addr_from_ticket})
+            elif (o.get("address") or "").strip() and len(o.get("address", "")) > 8 \
+                    and not o.get("address", "").lower().startswith(("sinal", "sem ", "off")):
+                pending.append(o)
+
+    # Geocode opportunistic
+    geocoded_count = 0
+    if auto_geocode and pending:
+        batch = pending[:max(1, int(max_geocode))]
+        results = await asyncio.gather(
+            *(_geocode_one(o["address"]) for o in batch),
+            return_exceptions=False,
+        )
+        write_ops = []
+        for o, (lat2, lng2) in zip(batch, results):
+            if lat2 is None or lng2 is None:
+                continue
+            geocoded_count += 1
+            out.append(_build_onu_point(o, lat2, lng2,
+                                            critical_threshold, bad_threshold))
+            sev_counter[out[-1]["severity"]] += 1
+            write_ops.append((o["unique_external_id"], lat2, lng2))
+        if write_ops:
+            await asyncio.gather(*[
+                db.smartolt_onus.update_one(
+                    {"company_id": cid, "unique_external_id": ext_id},
+                    {"$set": {"geo_lat": la, "geo_lng": ln,
+                                 "geocoded_at": now_iso()}},
+                ) for (ext_id, la, ln) in write_ops
+            ])
+
+    # Bounds + center
+    center: Optional[List[float]] = None
+    bbox: Optional[List[List[float]]] = None
+    if out:
+        lats = sorted(p["latitude"] for p in out)
+        lngs = sorted(p["longitude"] for p in out)
+        n = len(out)
+        lo = int(n * 0.15)
+        hi = max(lo + 1, int(n * 0.85))
+        center = [lats[n // 2], lngs[n // 2]]
+        bbox = [[lats[lo], lngs[lo]],
+                [lats[min(hi, n - 1)], lngs[min(hi, n - 1)]]]
+
+    pending_remaining = max(0, len(pending) - (max_geocode if auto_geocode else 0))
+    return {
+        "count": len(out),
+        "points": out,
+        "by_severity": dict(sev_counter.most_common()),
+        "thresholds": {"critical": critical_threshold, "bad": bad_threshold},
+        "center": center, "bbox": bbox,
+        "geocoded_now": geocoded_count,
+        "pending_geocode": pending_remaining,
+    }
+
+
+def _build_onu_point(onu: dict, lat: float, lng: float,
+                          critical_threshold: float, bad_threshold: float,
+                          snap_address: Optional[str] = None) -> dict:
+    rx = onu.get("signal_1490")
+    try:
+        rxf = float(rx) if rx is not None else None
+    except (TypeError, ValueError):
+        rxf = None
+    status = (onu.get("status") or "").lower()
+    is_offline = status not in ("online", "")
+    if is_offline:
+        severity = "offline"
+    elif rxf is not None and rxf <= bad_threshold:
+        severity = "bad"
+    elif rxf is not None and rxf <= critical_threshold:
+        severity = "critical"
+    else:
+        severity = "warn"
+    return {
+        "id": onu.get("unique_external_id"),
+        "name": onu.get("name"),
+        "sn": onu.get("sn"),
+        "model": onu.get("onu_type_name"),
+        "olt_name": onu.get("olt_name"),
+        "board": onu.get("board"), "port": onu.get("port"),
+        "address": snap_address or onu.get("address") or "—",
+        "rx_dbm": rxf,
+        "signal_text": onu.get("signal_text"),
+        "status": onu.get("status"),
+        "severity": severity,
+        "zone_name": onu.get("zone_name"),
+        "synced_at": onu.get("synced_at"),
+        "latitude": lat, "longitude": lng,
     }
 
 

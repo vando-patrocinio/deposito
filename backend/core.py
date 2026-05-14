@@ -224,14 +224,25 @@ class GeocodeResult(BaseModel):
 
 
 async def geocode_address(address: str) -> GeocodeResult:
+    """Geocode com viés pra Brasil e detalhes de endereço (rua/bairro/cidade).
+    Usar `countrycodes=br` melhora muito a precisão pra endereços daqui.
+    """
     async with httpx.AsyncClient(timeout=10.0, headers={"User-Agent": USER_AGENT}) as c:
-        r = await c.get(GEOCODE_URL, params={"q": address, "format": "json", "limit": 1, "addressdetails": 0})
+        r = await c.get(GEOCODE_URL, params={
+            "q": address,
+            "format": "json",
+            "limit": 1,
+            "addressdetails": 1,
+            "countrycodes": "br",
+            "accept-language": "pt-BR",
+        })
         r.raise_for_status()
         data = r.json()
         if not data:
             raise HTTPException(status_code=400, detail=f"Endereço não localizado: {address}")
         first = data[0]
-        return GeocodeResult(lat=float(first["lat"]), lng=float(first["lon"]), display_name=first.get("display_name", address))
+        return GeocodeResult(lat=float(first["lat"]), lng=float(first["lon"]),
+                                 display_name=first.get("display_name", address))
 
 
 # -------------------------------------------------------------------------

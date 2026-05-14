@@ -342,6 +342,7 @@ export const api = {
   aiDashOverview: (days = 30) => client.get(`/ai/dashboard/overview`, { params: { days } }).then((r) => r.data),
   aiDashTechSpending: (days = 30) => client.get(`/ai/dashboard/tech-spending`, { params: { days } }).then((r) => r.data),
   aiDashRepairMap: (days = 30) => client.get(`/ai/dashboard/repair-map`, { params: { days } }).then((r) => r.data),
+  aiDashOnuCriticalMap: (params = {}) => client.get(`/ai/dashboard/onu-critical-map`, { params }).then((r) => r.data),
   aiDashDefective: (days = 90) => client.get(`/ai/dashboard/defective-equipment`, { params: { days } }).then((r) => r.data),
   aiDashCommonIssues: (days = 30) => client.get(`/ai/dashboard/common-issues`, { params: { days } }).then((r) => r.data),
   aiDashRecurring: (days = 30) => client.get(`/ai/dashboard/recurring-tickets`, { params: { days } }).then((r) => r.data),
