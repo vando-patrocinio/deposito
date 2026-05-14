@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   Receipt, Upload, Search, Calendar, User as UserIcon, Shield, MessageCircle,
   Eye, Ban, History, FileText, AlertCircle, CheckCircle2, RefreshCw, X,
-  Sparkles, Bot, AlertTriangle, Loader2, Check, Users,
+  Sparkles, Bot, AlertTriangle, Loader2, Check, Users, Trash2,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -251,6 +251,23 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
     } finally { setBusy(false); }
   }
 
+  async function deletePermanent() {
+    if (!window.confirm(
+      "⚠️ APAGAR PERMANENTEMENTE este lançamento?\n\n" +
+      "Esta ação não pode ser desfeita. O arquivo PDF original e qualquer " +
+      "versão assinada serão removidos do servidor.\n\n" +
+      "Use apenas quando o lançamento foi feito por engano."
+    )) return;
+    if (!window.confirm("Tem CERTEZA? Esta ação é IRREVERSÍVEL.")) return;
+    setBusy(true);
+    try {
+      await api.holeriteDeletePermanent(h.id);
+      await onReload();
+    } catch (e) {
+      window.alert(extractErr(e));
+    } finally { setBusy(false); }
+  }
+
   function copyLink() {
     if (lastLink) {
       navigator.clipboard?.writeText(lastLink);
@@ -341,8 +358,14 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
         <button onClick={revoke} disabled={busy || h.status === "revoked"}
                 data-testid={`holerite-revoke-${h.id}`}
                 style={{ ...btn("ghost", "xs"), color: "#dc2626", marginLeft: 4 }}
-                title="Revogar">
+                title="Revogar (soft delete)">
           <Ban size={11} />
+        </button>
+        <button onClick={deletePermanent} disabled={busy}
+                data-testid={`holerite-delete-${h.id}`}
+                style={{ ...btn("ghost", "xs"), color: "#991b1b", marginLeft: 2 }}
+                title="Apagar permanentemente (com auditoria)">
+          <Trash2 size={11} />
         </button>
       </Td>
       {showAnomalies && (

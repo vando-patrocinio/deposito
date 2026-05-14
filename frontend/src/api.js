@@ -575,6 +575,8 @@ export const api = {
     ).then((r) => r.data),
   holeriteRevoke: (id) =>
     client.delete(`/holerites/${id}`).then((r) => r.data),
+  holeriteDeletePermanent: (id) =>
+    client.delete(`/holerites/${id}/permanent`).then((r) => r.data),
   holeriteNotify: (id, ttl_hours = 72, custom_message = null) =>
     client.post(`/holerites/${id}/notify`, { ttl_hours, custom_message }).then((r) => r.data),
   holeriteAudit: (id) =>

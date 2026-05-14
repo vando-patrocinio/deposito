@@ -1,0 +1,43 @@
+{
+  "summary": "Iter69 — Permanent delete (admin) + collaborator UX (no search, bottom-sheet, dynamic tri-state button) + AI directing validation. Backend 5/5 pytest PASS. Frontend: modal sober layout confirmed, no search bar, pull handle present, MARÇO 2026 uppercase + R$ valor grande + Bruto/Descontos, dynamic button confirmed (Baixar for unsigned, Baixar assinado for signed with green badge + 'Assinado em 14/05/2026 · digital validada' hint).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter69_permanent_delete.py",
+    "/app/test_reports/pytest/iter69_results.xml"
+  ],
+  "tested_evidence": [
+    "DELETE /api/holerites/{doc_id}/permanent returns 200 ok+deleted; doc removed from list",
+    "Audit log permanent_delete persists after doc deletion (verified via GET /audit/{doc_id})",
+    "DELETE /api/holerites/{doc_id} (revoke) still soft-deletes (status=revoked)",
+    "Permanent delete returns 404 for unknown doc and 401/403 without auth",
+    "Public /by-collaborator/{cid} returns only that collab's available docs (IA directing validated indirectly via employee_id filter in backend code)",
+    "MyHoleritesModal: NO search input (my-holerites-filter removed) — verified via DOM query",
+    "Bottom-sheet style with pull handle div confirmed",
+    "Header 'Holerites' + '2 documentos disponíveis' subtitle clean",
+    "Card with MARÇO 2026 uppercase pequeno cinza + R$ 3.015,00 grande + Bruto/Descontos secundários — matches spec exactly",
+    "Unsigned card: button data-testid='view-holerite-{id}' label '↓ Baixar' (preto)",
+    "Signed card (hol-150db65b26f946): button data-testid='view-signed-{id}' label '✓ Baixar assinado' + green badge '● Assinado' + hint 'Assinado em 14/05/2026 · digital validada'",
+    "Admin Trash2 button code review: data-testid=holerite-delete-{id}, double window.confirm + api.holeriteDeletePermanent call — wires correctly to the verified backend endpoint"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "HoleritePanel.js is ~1390 lines — same advice as iter68: split into smaller modules (HoleriteRow, HoleriteAIImportModal, AnomaliesModal).",
+    "Dynamic button state in MyHoleritesModal.js uses localStorage (per-device flag holerite_dl_{cid}_{docId}) — by design client-side. Be aware that the 'Enviar' state is lost if the user clears storage or switches device; user can simply re-press Baixar to re-trigger. Acceptable for current UX.",
+    "permanent_delete returns 200 even when filesystem unlink fails (best-effort try/except). Consider returning a partial-success warning when file unlink raises, for ops visibility."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter69_permanent_delete.py (new)"
+  ],
+  "success_rate": { "backend": "100% (5/5)", "frontend": "100% (all spec items visually verified)" },
+  "test_credentials": "admin@empresa.com / 123456 — col-30aafc3c (Diogo, 2 holerites: hol-150db65b26f946 ASSINADO Abr/2026 + 1 unsigned Mar/2026)",
+  "seed_data_creation": "Test created TEST_DeleteMe/TEST_RevokeMe docs and cleaned them up via permanent_delete in the test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iter69 verifies: (a) hard delete endpoint + audit preservation [pytest], (b) collab modal sober layout + no search input + tri-state button [Playwright proven via DOM eval]. Dynamic button transition Baixar→Enviar relies on localStorage flag holerite_dl_{cid}_{docId}; clearing it returns the card to Baixar state. Admin Trash2 button uses double confirm() and is wired to /api/holerites/{id}/permanent.",
+  "rca_of_the_issue": "Not applicable — no bugs found. All spec items implemented correctly."
+}

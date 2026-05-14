@@ -315,6 +315,56 @@ async def revoke_holerite(doc_id: str, request: Request,
     return {"ok": True}
 
 
+@router.delete("/{doc_id}/permanent")
+async def permanent_delete_holerite(
+    doc_id: str, request: Request,
+    user: dict = Depends(require_role("gestor")),
+):
+    """HARD DELETE — remove o documento, arquivo PDF e arquivo assinado do disco.
+
+    Use para erros de lançamento que precisam ser totalmente eliminados.
+    Audit log fica gravado para compliance LGPD.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.payroll_documents.find_one(
+        {"id": doc_id, "company_id": cid}, {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(404, "Holerite não encontrado.")
+
+    # Auditoria ANTES de apagar (deixa rastro de quem apagou e quando)
+    await _audit(
+        doc_id, cid, "permanent_delete", user.get("id"), "rh", request,
+        extra={
+            "employee_id": doc.get("employee_id"),
+            "employee_name": doc.get("employee_name"),
+            "competence": (
+                f"{doc.get('competence_month'):02d}/{doc.get('competence_year')}"
+            ),
+            "gross": doc.get("gross"),
+            "net": doc.get("net"),
+            "had_signature": bool(doc.get("signed_at")),
+        },
+    )
+
+    # Apaga arquivos físicos
+    for key in ("file_path", "signed_file_path"):
+        fp = doc.get(key)
+        if fp:
+            try:
+                p = Path(fp)
+                if p.exists():
+                    p.unlink()
+            except Exception as e:
+                logger.warning("[holerite] falha ao apagar %s: %s", fp, e)
+
+    # Apaga doc + tokens
+    await db.payroll_documents.delete_one({"id": doc_id, "company_id": cid})
+    await db.payroll_access_tokens.delete_many({"doc_id": doc_id})
+
+    return {"ok": True, "deleted": doc_id}
+
+
 @router.post("/{doc_id}/notify")
 async def notify_holerite(doc_id: str, payload: NotifyIn, request: Request,
                               user: dict = Depends(require_role("gestor"))):
