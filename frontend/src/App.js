@@ -5,7 +5,7 @@ import {
   Boxes, Sparkles, Users, MapPin, ShieldCheck, ClipboardList,
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
   Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle, Cpu,
-  Receipt,
+  Receipt, CalendarDays,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
@@ -15,6 +15,7 @@ import ManagerPanel from "@/ManagerPanel";
 import TimesheetView from "@/TimesheetView";
 import HoleritePanel from "@/HoleritePanel";
 import HoleriteViewer from "@/HoleriteViewer";
+import FeriadosPanel from "@/FeriadosPanel";
 import SettingsPanel from "@/SettingsPanel";
 import MotorIaCard from "@/MotorIaCard";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
@@ -164,6 +165,8 @@ const NAV_GROUPS = [
         ],
       },
       { id: "holerite", icon: Receipt, label: "Holerite",
+        roles: ["gestor", "auditor", "administrador"] },
+      { id: "feriados", icon: CalendarDays, label: "Feriados",
         roles: ["gestor", "auditor", "administrador"] },
     ],
   },
@@ -809,6 +812,7 @@ function AppContent() {
           {view === "manager" && <ManagerPanel />}
           {view === "sheet" && <TimesheetView />}
           {view === "holerite" && <HoleritePanel />}
+          {view === "feriados" && <FeriadosPanel />}
           {view === "logs" && <LogsPanel />}
           {view === "settings" && <SettingsPanel />}
           {view === "motor-ia" && (

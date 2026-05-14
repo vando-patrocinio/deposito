@@ -537,6 +537,14 @@ export const api = {
   holeriteTokenAccess: (token, password) =>
     client.post(`/holerites/token/${token}/access`, { password }).then((r) => r.data),
 
+  // ===== Feriados =====
+  feriadosList: (year, tipo) =>
+    client.get(`/feriados`, { params: { year, tipo } }).then((r) => r.data),
+  feriadoCreate: (data) => client.post(`/feriados`, data).then((r) => r.data),
+  feriadoUpdate: (id, data) => client.put(`/feriados/${id}`, data).then((r) => r.data),
+  feriadoDelete: (id) => client.delete(`/feriados/${id}`).then((r) => r.data),
+  feriadosSeedBr: (year) => client.post(`/feriados/seed-br?year=${year}`).then((r) => r.data),
+
   // ===== Central IA Dashboard =====
   centralIaKpis: (days = 7) =>
     client.get(`/central-ia/dashboard/kpis`, { params: { days } }).then((r) => r.data),
