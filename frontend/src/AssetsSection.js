@@ -99,12 +99,30 @@ export default function AssetsSection({ collaborator, onClose }) {
   };
 
   const openRomaneio = (onlyActive = false) => {
+    // Abre janela IMEDIATAMENTE no click handler (não em then) para evitar popup blocker
+    const win = window.open("about:blank", "_blank");
+    if (!win) {
+      alert("Popup bloqueado. Permita popups deste site nas configurações do navegador.");
+      return;
+    }
+    win.document.write(
+      '<div style="font-family:system-ui;padding:24px;text-align:center;color:#475569">' +
+      '<p>Gerando romaneio…</p></div>'
+    );
     const url = api.assetRomaneioUrl(collaborator.id, onlyActive);
     const token = localStorage.getItem("ponto_token");
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.blob())
-      .then((blob) => window.open(URL.createObjectURL(blob), "_blank"))
-      .catch((e) => alert("Falha: " + e.message));
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.blob();
+      })
+      .then((blob) => {
+        win.location.href = URL.createObjectURL(blob);
+      })
+      .catch((e) => {
+        try { win.close(); } catch {}
+        alert("Falha ao gerar romaneio: " + (e?.message || e));
+      });
   };
 
   const fld = (key, label, opts = {}) => (

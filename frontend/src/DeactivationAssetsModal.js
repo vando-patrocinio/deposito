@@ -288,6 +288,16 @@ function SignatureStep({ collaborator, allItems, checkedKeys, busy, setBusy, onB
       alert("Informe o nome do recebedor."); return;
     }
     if (!hasInk) { alert("Assine no quadro antes de confirmar."); return; }
+    // Abre janela ANTES do await pra evitar popup blocker
+    const win = window.open("about:blank", "_blank");
+    if (!win) {
+      alert("Popup bloqueado. Permita popups deste site nas configurações do navegador.");
+      return;
+    }
+    win.document.write(
+      '<div style="font-family:system-ui;padding:24px;text-align:center;color:#475569">' +
+      '<p>Confirmando devolução e gerando termo…</p></div>'
+    );
     setBusy(true);
     try {
       const dataUrl = canvasRef.current.toDataURL("image/png");
@@ -298,10 +308,10 @@ function SignatureStep({ collaborator, allItems, checkedKeys, busy, setBusy, onB
         notes: notes.trim() || undefined,
         confirmed_item_keys: checkedKeys,
       });
-      const obj = URL.createObjectURL(blob);
-      window.open(obj, "_blank");
+      win.location.href = URL.createObjectURL(blob);
       onClose();
     } catch (e) {
+      try { win.close(); } catch {}
       alert("Falha: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
