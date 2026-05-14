@@ -1540,6 +1540,57 @@ async def get_conversation_messages(phone: str, limit: int = 100,
     return {"items": docs, "phone": phone, "count": len(docs)}
 
 
+@router.delete("/conversations/{phone}")
+async def reset_conversation(phone: str,
+                                user: dict = Depends(require_role("gestor"))):
+    """Reseta UMA conversa específica — apaga TODAS as mensagens (inbound +
+    outbound + notas internas + coaching IA) e reseta o estado da conversa
+    (assignee, badges). Útil pra testes da IA: começa do zero sem afetar
+    outras conversas.
+
+    Mantém: o registro do contato (db.wa_conversations) — mas zera last_msg,
+    last_msg_at e unread_count. Mantém também os logs de auditoria (db.logs).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    res_msgs = await db.aihub_wa_messages.delete_many(
+        {"company_id": cid, "phone": phone}
+    )
+    res_coach = await db.coachings.delete_many(
+        {"company_id": cid, "phone": phone}
+    )
+    res_eval = await db.ai_evaluations.delete_many(
+        {"company_id": cid, "phone": phone}
+    )
+
+    # Reseta o estado da conversa — mantém o contato pra não perder o profile
+    await db.wa_conversations.update_one(
+        {"company_id": cid, "phone": phone},
+        {"$set": {
+            "last_msg": None,
+            "last_msg_at": None,
+            "last_msg_direction": None,
+            "unread_count": 0,
+            "assignee_user_id": None,
+            "assignee_name": None,
+            "assignee_role": "ai",
+            "status": "open",
+            "reset_at": now_iso(),
+            "reset_by": user.get("email") or user.get("id"),
+        }},
+    )
+
+    logger.info("[wa-baileys] conversation reset: phone=%s by=%s msgs=%d",
+                phone, user.get("email"), res_msgs.deleted_count)
+    return {
+        "ok": True,
+        "phone": phone,
+        "messages_deleted": res_msgs.deleted_count,
+        "coachings_deleted": res_coach.deleted_count,
+        "evaluations_deleted": res_eval.deleted_count,
+    }
+
+
 class AssignIn(BaseModel):
     assignee_user_id: Optional[str] = None    # None = remove atribuição (volta IA)
     assignee_role: Optional[str] = "human"     # "human" | "ai" | None

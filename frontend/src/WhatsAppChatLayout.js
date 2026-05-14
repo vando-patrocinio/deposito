@@ -5,7 +5,7 @@ import {
   CheckCircle2, GraduationCap, ChevronDown, ChevronUp, Lightbulb,
   Wifi, WifiOff, Activity, Info, Signal, MapPin, Phone, CreditCard,
   AlertCircle, Sparkles, Lock, AlertTriangle, ClipboardList, RefreshCw,
-  Settings,
+  Settings, RotateCcw,
 } from "lucide-react";
 import { api } from "@/api";
 import AgentConfigModal from "@/AgentConfigModal";
@@ -788,6 +788,25 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
     } finally { setBusy(false); }
   };
 
+  const [resetting, setResetting] = useState(false);
+  const resetConversation = async () => {
+    if (!window.confirm(
+      "Resetar esta conversa?\n\n" +
+      "Vai APAGAR TODAS as mensagens (cliente + IA + coaching) " +
+      "para começar do zero — útil pra testes da IA.\n\n" +
+      "O contato permanece, mas o histórico de mensagens será perdido."
+    )) return;
+    setResetting(true);
+    try {
+      const r = await api.waBaileysResetConversation(conv.phone);
+      alert(`Conversa resetada (${r.messages_deleted} mensagens apagadas).`);
+      await loadMessages();
+      onChange();
+    } catch (e) {
+      alert("Erro ao resetar: " + (e?.response?.data?.detail || e.message));
+    } finally { setResetting(false); }
+  };
+
   /* Timeline mesclada: mensagens reais (WhatsApp) + coaching INTERNO (só você vê),
      ordenado por created_at. Mantém este hook ANTES de qualquer early return
      pra atender a regra dos React Hooks. */
@@ -976,58 +995,39 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
             </span>
           )}
           {isAi ? (
-            <button onClick={() => setShowAssign(true)} disabled={busy}
-                    data-testid="wa-take-over-btn"
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 5,
-                      padding: "6px 12px", height: 30, borderRadius: 6,
-                      background: "var(--text-primary)",
-                      color: "var(--bg-surface)",
-                      border: "1px solid var(--text-primary)",
-                      fontSize: 11, fontWeight: 600, cursor: busy ? "not-allowed" : "pointer",
-                      opacity: busy ? 0.6 : 1,
-                      whiteSpace: "nowrap",
-                    }}>
-              <Hand size={12} strokeWidth={2} /> Assumir
-            </button>
+            <IconBtn
+              data-testid="wa-take-over-btn"
+              onClick={() => setShowAssign(true)}
+              disabled={busy}
+              icon={<Hand size={14} strokeWidth={2} />}
+              tooltip="Assumir conversa (parar resposta automática da IA)"
+              variant="primary"
+            />
           ) : (
-            <button onClick={giveBackToAi} disabled={busy}
-                    data-testid="wa-give-back-ai-btn"
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 5,
-                      padding: "6px 12px", height: 30, borderRadius: 6,
-                      background: "transparent",
-                      color: "var(--text-secondary)",
-                      border: "1px solid var(--border-default)",
-                      fontSize: 11, fontWeight: 600, cursor: busy ? "not-allowed" : "pointer",
-                      opacity: busy ? 0.6 : 1,
-                      whiteSpace: "nowrap",
-                    }}>
-              <Bot size={12} strokeWidth={2} /> Devolver IA
-            </button>
+            <IconBtn
+              data-testid="wa-give-back-ai-btn"
+              onClick={giveBackToAi}
+              disabled={busy}
+              icon={<Bot size={14} strokeWidth={2} />}
+              tooltip="Devolver para a Isabella IA"
+            />
           )}
-          <button onClick={finalize} disabled={busy}
-                  data-testid="wa-finalize-btn"
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 5,
-                    padding: "6px 12px", height: 30, borderRadius: 6,
-                    background: "transparent",
-                    color: "var(--text-secondary)",
-                    border: "1px solid var(--border-default)",
-                    fontSize: 11, fontWeight: 600, cursor: busy ? "not-allowed" : "pointer",
-                    opacity: busy ? 0.6 : 1,
-                    whiteSpace: "nowrap",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = "var(--danger)";
-                    e.currentTarget.style.borderColor = "var(--danger)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color = "var(--text-secondary)";
-                    e.currentTarget.style.borderColor = "var(--border-default)";
-                  }}>
-            <CheckCircle2 size={12} strokeWidth={2} /> Finalizar
-          </button>
+          <IconBtn
+            data-testid="wa-finalize-btn"
+            onClick={finalize}
+            disabled={busy}
+            icon={<CheckCircle2 size={14} strokeWidth={2} />}
+            tooltip="Finalizar conversa (encerrar atendimento)"
+            hoverColor="var(--danger)"
+          />
+          <IconBtn
+            data-testid="wa-reset-conv-btn"
+            onClick={resetConversation}
+            disabled={busy || resetting}
+            icon={<RotateCcw size={14} strokeWidth={2} className={resetting ? "spin" : ""} />}
+            tooltip="Resetar esta conversa (apaga todas as mensagens — use só em testes)"
+            hoverColor="#f59e0b"
+          />
         </div>
       </div>
 
@@ -1205,6 +1205,55 @@ function _findPrevUserQuestion(timeline, idx) {
    • Nunca vai pelo WhatsApp pro cliente
    • Label "🔒 SOMENTE VOCÊ VÊ" pra reforçar
 ============================================================= */
+// Botão circular só com ícone — tooltip aparece no hover.
+function IconBtn({ icon, tooltip, onClick, disabled, variant = "default",
+                    hoverColor, ...rest }) {
+  const [hover, setHover] = useState(false);
+  const isPrimary = variant === "primary";
+  const baseColor = isPrimary ? "var(--bg-surface)" : "var(--text-secondary)";
+  const baseBg = isPrimary ? "var(--text-primary)" : "transparent";
+  const baseBorder = isPrimary ? "var(--text-primary)" : "var(--border-default)";
+  const hoverC = hoverColor || (isPrimary ? baseColor : "var(--text-primary)");
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          width: 32, height: 32, borderRadius: 8,
+          background: baseBg,
+          color: hover && !disabled && !isPrimary ? hoverC : baseColor,
+          border: `1px solid ${hover && !disabled && !isPrimary ? hoverC : baseBorder}`,
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.5 : 1,
+          transition: "color 0.15s, border-color 0.15s, transform 0.15s",
+          transform: hover && !disabled ? "translateY(-1px)" : "none",
+        }}
+        {...rest}
+      >
+        {icon}
+      </button>
+      {hover && tooltip && (
+        <div role="tooltip"
+              style={{
+                position: "absolute", top: "calc(100% + 6px)", right: 0,
+                background: "rgba(15,23,42,.95)", color: "white",
+                padding: "5px 10px", borderRadius: 6,
+                fontSize: 11, fontWeight: 500,
+                whiteSpace: "nowrap", maxWidth: 280,
+                pointerEvents: "none", zIndex: 100,
+                boxShadow: "0 6px 18px rgba(0,0,0,.25)",
+              }}>
+          {tooltip}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InternalCoachingBubble({ coach, onRead, onAcknowledge, onDismiss }) {
   const [expanded, setExpanded] = useState(!coach.read);
   const [acting, setActing] = useState(false);

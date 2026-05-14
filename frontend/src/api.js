@@ -478,6 +478,8 @@ export const api = {
     client.put(`/whatsapp-baileys/conversations/${encodeURIComponent(phone)}/finalize`, { outcome }).then((r) => r.data),
   waBaileysMarkSeen: (phone) =>
     client.post(`/whatsapp-baileys/conversations/${encodeURIComponent(phone)}/mark-seen`).then((r) => r.data),
+  waBaileysResetConversation: (phone) =>
+    client.delete(`/whatsapp-baileys/conversations/${encodeURIComponent(phone)}`).then((r) => r.data),
   waBaileysAttendants: () =>
     client.get(`/whatsapp-baileys/attendants`).then((r) => r.data),
   // Configurações da instância (nome de exibição)
