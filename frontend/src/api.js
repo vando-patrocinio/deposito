@@ -27,8 +27,10 @@ client.interceptors.response.use(
       const url = err?.config?.url || "";
       const isAuthEndpoint = url.includes("/auth/login") || url.includes("/auth/logout") || url.includes("/auth/google-login");
       if (!isAuthEndpoint) {
-        // Mesmas chaves de USER_SCOPED_KEYS do AuthContext (evita import circular).
-        ["ponto_token", "ponto_active_company", "ponto_active_tab",
+        // Limpa SOMENTE credenciais — preserva preferências de UI
+        // (ponto_active_tab, theme, etc.) para que, após re-login, o
+        // usuário volte exatamente onde estava.
+        ["ponto_token", "ponto_active_company",
          "ponto_onboarding_done", "collab_token", "collab_id"].forEach((k) => {
           try { window.localStorage.removeItem(k); } catch { /* ignore */ }
         });

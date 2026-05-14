@@ -6,11 +6,11 @@ const AuthCtx = createContext(null);
 
 // Chaves do localStorage QUE PERTENCEM AO USUÁRIO (limpas no logout).
 // IMPORTANTE: nunca incluir aqui chaves "de dispositivo" como theme ou device_id —
-// elas são preferências do navegador, não do usuário.
+// elas são preferências do navegador, não do usuário. Também NÃO incluímos
+// `ponto_active_tab` aqui — última aba é preferência de UI, não dado sensível.
 const USER_SCOPED_KEYS = [
   "ponto_token",            // JWT principal
   "ponto_active_company",   // empresa selecionada pelo super_admin
-  "ponto_active_tab",       // última aba aberta no app
   "ponto_onboarding_done",  // flag de onboarding completo
   "collab_token",           // sessão do colaborador (PWA)
   "collab_id",              // id do colaborador logado

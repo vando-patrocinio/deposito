@@ -12,7 +12,10 @@ from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
 JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_TTL_MIN = 60 * 8  # 8 horas — cobre jornada de trabalho
+# 30 dias: o usuário fica logado entre sessões; só é deslogado por
+# logout explícito, mudança de senha (invalida o SID) ou login em outro
+# dispositivo (single-session policy).
+ACCESS_TOKEN_TTL_MIN = 60 * 24 * 30  # 30 dias
 
 VALID_ROLES = ("colaborador", "gestor", "administrador", "auditor")
 
