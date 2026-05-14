@@ -382,10 +382,20 @@ export default function TimesheetView() {
 
   useEffect(() => {
     api.listCollaborators().then((cs) => {
-      // Filtra: apenas colaboradores ATIVOS e habilitados a bater ponto.
-      // Critério: active !== false E clock_in_enabled === true (definido em Cadastro → Colaboradores).
-      const eligible = (cs || []).filter(
-        (c) => c.active !== false && c.clock_in_enabled === true
+      // Mostra TODOS os colaboradores ativos, exceto os com clock_in_enabled
+      // explicitamente desligado (false). Aceita true/null/undefined.
+      // Também exclui o pseudo-colaborador "Sem técnico (Atlaz)" usado para
+      // chamados sem técnico vinculado.
+      const eligible = (cs || []).filter((c) => {
+        if (c.active === false) return false;
+        if (c.clock_in_enabled === false) return false;
+        const nm = (c.name || c.full_name || "").toLowerCase();
+        if (nm.includes("sem técnico") || nm.includes("sem tecnico")) return false;
+        return true;
+      });
+      // Ordena alfabeticamente por nome pra ficar previsível no select
+      eligible.sort((a, b) =>
+        (a.name || a.full_name || "").localeCompare(b.name || b.full_name || "")
       );
       setCollabs(eligible);
       if (eligible[0]) setCollabId(eligible[0].id);
