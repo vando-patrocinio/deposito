@@ -5,7 +5,7 @@ import {
   User, Download, AlertTriangle, Globe, Ban, Network,
   Settings, Plus, Trash2, Mail, Map, FileText, Activity,
   Boxes, Bot, ClipboardList, ScanFace, Building2, Cog, LogOut,
-  Search, ChevronRight,
+  Search, ChevronRight, Receipt,
 } from "lucide-react";
 
 /* ------------------------------------------------------------
@@ -18,7 +18,7 @@ const ICON_MAP = {
   check: CheckCircle2, ip: Globe, block: Ban, network: Network, gear: Settings,
   plus: Plus, trash: Trash2, mail: Mail, leaflet: Map, file: FileText, activity: Activity,
   boxes: Boxes, bot: Bot, clipboard: ClipboardList, face: ScanFace, building: Building2,
-  cog: Cog, logout: LogOut, search: Search, chevron: ChevronRight,
+  cog: Cog, logout: LogOut, search: Search, chevron: ChevronRight, receipt: Receipt,
 };
 
 export function Icon({ name, size = 16, className = "", style = {} }) {

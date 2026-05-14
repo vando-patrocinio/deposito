@@ -1,0 +1,38 @@
+{
+  "summary": "Iter 67 — Holerite IA (Claude) + public collaborator holerites: ALL CRITICAL FLOWS PASS. Backend 10/10 tests pass (pytest). Frontend admin AI import modal opens, parses real PDF in ~9s via Claude (3/3 funcionários, 100% scores, CPF exato + Nome alta), KPIs and review UI render correctly. Collaborator mobile app kebab → 'Meus holerites' opens MyHoleritesModal, lists holerite (R$ 3.015,00) and 'Baixar PDF' opens PDF in new tab.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard (Painel)", "issues": ["Recurring console warning: 'The width(-1) and height(-1) of chart should be greater than 0' for several Recharts containers — purely cosmetic, no UX impact"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter67_holerite_ai.py",
+    "/app/test_reports/pytest/iter67_results.xml"
+  ],
+  "action_items": [
+    "(Optional, low priority) Fix Recharts width/height=-1 warning by ensuring container has minWidth/minHeight when chart mounts before layout settles.",
+    "(Optional) Add data-testid attributes on Holerite IA modal step rows (e.g. match row, ignorar checkbox, select) to enable deterministic Playwright tests in future iterations."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routes/holerite.py is 850 lines — consider splitting holerite_ai endpoints into a separate router file for maintainability.",
+    "ai-import endpoint duplicates the same PDF bytes per matched employee onto disk (one physical file per employee). For large rosters this wastes storage; recommend using a single shared file_uuid referenced by all docs, with file_path reuse.",
+    "Threshold validation in ai-parse uses int(threshold) but FastAPI Form(int) already coerces — minor redundancy.",
+    "No automatic cleanup of /drafts/*.pdf nor holerite_ai_drafts collection; recommend TTL index or periodic cleanup job to honor LGPD minimization."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter67_holerite_ai.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456 (gestor). col-30aafc3c (Diogo) for collaborator app.",
+  "seed_data_creation": "ai-import test deliberately skip=True for all items to avoid DB pollution. The pre-existing 4 payroll_documents (1 manual + 3 AI from previous run) are kept.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Holerite IA is fully functional end-to-end. PDF /tmp/holerite_teste.pdf still available (3 funcionários — Diogo, Junior, Jefferson). Backend test_iter67_holerite_ai.py covers ai-parse (happy + 3 validation errors), ai-import (skip-all + 404 unknown), public list/file endpoints (200/404/PDF stream). Frontend admin modal has stepper 'Upload→Analisar→Revisar→Importar', KPI cards work, match badges render (CPF EXATO / NOME ALTA visible in screenshot). Mobile kebab item testid='kebab-holerites' working. Public endpoint test_public_file_stream confirms PDF binary streamed with correct Content-Type. Claude parsing takes ~9-13s.",
+  "rca of the issue": "N/A — no bugs found."
+}

@@ -56,6 +56,7 @@ client.interceptors.response.use(
 );
 
 export const api = {
+  _client: client,
   // Colaboradores
   listCollaborators: () => client.get("/collaborators").then((r) => r.data),
   getCollaborator: (id) => client.get(`/collaborators/${id}`).then((r) => r.data),
@@ -408,6 +409,8 @@ export const api = {
   assetReturnsHistory: (cid) => client.get(`/collab-assets/returns/${cid}`).then((r) => r.data),
   // Public mobile (no auth)
   publicAssetsList: (cid) => client.get(`/collab-assets/public/by-collaborator/${cid}`).then((r) => r.data),
+  publicHoleritesList: (cid) => client.get(`/holerites/public/by-collaborator/${cid}`).then((r) => r.data),
+  publicHoleriteFileUrl: (cid, docId) => `${API}/holerites/public/${cid}/${docId}/file`,
   publicAssetSign: (d) => client.post(`/collab-assets/public/sign`, d).then((r) => r.data),
   publicBranding: () => client.get(`/branding/public`).then((r) => r.data),
   publicRomaneioUrl: (cid, only_active = false) => {

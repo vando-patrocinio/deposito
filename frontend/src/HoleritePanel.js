@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   Receipt, Upload, Search, Calendar, User as UserIcon, Shield, MessageCircle,
   Eye, Ban, History, FileText, AlertCircle, CheckCircle2, RefreshCw, X,
+  Sparkles, Bot, AlertTriangle, Loader2, Check, Users,
 } from "lucide-react";
 import { api } from "@/api";
 
@@ -24,6 +25,7 @@ export default function HoleritePanel() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(0);
   const [showUpload, setShowUpload] = useState(false);
+  const [showAiImport, setShowAiImport] = useState(false);
   const [auditOf, setAuditOf] = useState(null);
 
   const reload = useCallback(async () => {
@@ -72,6 +74,20 @@ export default function HoleritePanel() {
         <span style={{ flex: 1 }} />
         <button onClick={reload} style={btn("ghost")} title="Atualizar">
           <RefreshCw size={13} />
+        </button>
+        <button onClick={() => setShowAiImport(true)}
+                data-testid="holerite-ai-import-btn"
+                style={{
+                  padding: "8px 14px", borderRadius: 8,
+                  border: "1px solid #8b5cf6",
+                  background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+                  color: "white",
+                  fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  boxShadow: "0 4px 12px rgba(139,92,246,.25)",
+                  transition: "all .15s",
+                }}>
+          <Sparkles size={14} /> Importar com Holerite IA
         </button>
         <button onClick={() => setShowUpload(true)}
                 data-testid="holerite-add-btn"
@@ -180,6 +196,12 @@ export default function HoleritePanel() {
       {showUpload && (
         <UploadModal onClose={() => setShowUpload(false)}
                      onSubmit={reload} collabs={collabs} />
+      )}
+      {showAiImport && (
+        <HoleriteAIImportModal
+          onClose={() => setShowAiImport(false)}
+          onSuccess={reload}
+        />
       )}
       {auditOf && (
         <AuditModal doc={auditOf} onClose={() => setAuditOf(null)} />
@@ -626,6 +648,466 @@ function fmtBRL(v) {
   const n = Number(v || 0);
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
+
+/* =============================================================
+   HoleriteAIImportModal — upload PDF do contador + parsing IA
+============================================================= */
+function HoleriteAIImportModal({ onClose, onSuccess }) {
+  const [step, setStep] = useState("upload"); // upload | parsing | review | importing | done
+  const [file, setFile] = useState(null);
+  const [threshold, setThreshold] = useState(85);
+  const [preview, setPreview] = useState(null);
+  const [error, setError] = useState("");
+  const [decisions, setDecisions] = useState({}); // {parsed_index: {employee_id, skip}}
+  const [importResult, setImportResult] = useState(null);
+  const [collabs, setCollabs] = useState([]);
+
+  useEffect(() => {
+    api.listCollaborators().then((d) => setCollabs(d.items || d || [])).catch(() => {});
+  }, []);
+
+  async function handleParse() {
+    if (!file) { setError("Selecione um PDF primeiro."); return; }
+    setError(""); setStep("parsing");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("threshold", String(threshold));
+      const { data } = await api._client.post("/holerites/ai-parse", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 180000,
+      });
+      setPreview(data);
+      const d = {};
+      (data.matches || []).forEach((m, i) => {
+        d[i] = {
+          employee_id: m.match?.id || null,
+          skip: !m.match,
+        };
+      });
+      setDecisions(d);
+      setStep("review");
+    } catch (e) {
+      setError(extractErr(e));
+      setStep("upload");
+    }
+  }
+
+  async function handleImport() {
+    if (!preview) return;
+    setStep("importing"); setError("");
+    try {
+      const items = (preview.matches || []).map((m, i) => ({
+        parsed_index: i,
+        employee_id: decisions[i]?.employee_id || null,
+        skip: !!decisions[i]?.skip,
+      }));
+      const { data } = await api._client.post("/holerites/ai-import", {
+        parse_id: preview.parse_id,
+        competence_month: preview.competence?.month || new Date().getMonth() + 1,
+        competence_year: preview.competence?.year || new Date().getFullYear(),
+        items,
+      });
+      setImportResult(data);
+      setStep("done");
+      onSuccess?.();
+    } catch (e) {
+      setError(extractErr(e));
+      setStep("review");
+    }
+  }
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)",
+                zIndex: 9999, display: "grid", placeItems: "center", padding: 20 }}
+    >
+      <div onClick={(e) => e.stopPropagation()}
+            data-testid="ai-import-modal"
+            style={{
+              background: "var(--bg-surface)", borderRadius: 12,
+              width: "min(1100px, 96vw)", maxHeight: "94vh", overflow: "hidden",
+              display: "flex", flexDirection: "column",
+            }}>
+        <div style={{
+          padding: 18,
+          borderBottom: "1px solid var(--border-default)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 10,
+              background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+              color: "white", display: "grid", placeItems: "center",
+              boxShadow: "0 4px 14px rgba(139,92,246,.3)",
+            }}>
+              <Bot size={20} strokeWidth={1.75} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>
+                Holerite IA · Import do PDF do contador
+              </h3>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                Claude Sonnet 4.5 extrai cada funcionário · faz match com cadastro · gera holerite digital
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ padding: 6, border: "none",
+            background: "transparent", cursor: "pointer", color: "var(--text-muted)" }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ padding: 18, overflow: "auto", flex: 1 }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 16, alignItems: "center" }}>
+            <StepDot active={step === "upload"} done={["parsing","review","importing","done"].includes(step)} label="Upload" />
+            <Arrow />
+            <StepDot active={step === "parsing"} done={["review","importing","done"].includes(step)} label="Analisar com IA" />
+            <Arrow />
+            <StepDot active={step === "review"} done={["importing","done"].includes(step)} label="Revisar matches" />
+            <Arrow />
+            <StepDot active={step === "importing" || step === "done"} done={step === "done"} label="Importar" />
+          </div>
+
+          {error && (
+            <div style={{
+              padding: 10, borderRadius: 8, marginBottom: 14,
+              background: "rgba(220,38,38,.10)", color: "#b91c1c",
+              fontSize: 12.5, display: "flex", gap: 8, alignItems: "flex-start",
+            }}>
+              <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+              <div>{error}</div>
+            </div>
+          )}
+
+          {step === "upload" && (
+            <UploadStep file={file} setFile={setFile}
+                          threshold={threshold} setThreshold={setThreshold}
+                          onParse={handleParse} />
+          )}
+          {step === "parsing" && (
+            <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
+              <Loader2 size={32} className="spin"
+                        style={{ color: "#8b5cf6", marginBottom: 12 }} />
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
+                Holerite IA analisando o PDF…
+              </div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>
+                Pode levar até 30-60 segundos. Identificando funcionários, valores e período.
+              </div>
+            </div>
+          )}
+          {step === "review" && preview && (
+            <ReviewStep preview={preview} collabs={collabs}
+                          decisions={decisions} setDecisions={setDecisions} />
+          )}
+          {step === "importing" && (
+            <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
+              <Loader2 size={32} className="spin"
+                        style={{ color: "#8b5cf6", marginBottom: 12 }} />
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
+                Importando holerites no sistema…
+              </div>
+            </div>
+          )}
+          {step === "done" && importResult && (
+            <DoneStep result={importResult} onClose={onClose} />
+          )}
+        </div>
+
+        {step === "review" && (
+          <div style={{
+            padding: 14, borderTop: "1px solid var(--border-default)",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            background: "var(--bg-surface-2)",
+          }}>
+            <div style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
+              <strong>{Object.values(decisions).filter((d) => !d.skip && d.employee_id).length}</strong>
+              {" "}de {preview?.matches?.length || 0} serão importados
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setStep("upload")}
+                      data-testid="ai-import-back"
+                      style={btn("secondary")}>
+                ← Trocar arquivo
+              </button>
+              <button onClick={handleImport}
+                      data-testid="ai-import-confirm"
+                      style={btn("primary")}>
+                <Check size={14} /> Confirmar e importar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StepDot({ active, done, label }) {
+  const color = done ? "#16a34a" : active ? "#8b5cf6" : "#cbd5e1";
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <div style={{
+        width: 22, height: 22, borderRadius: 999,
+        background: done || active ? color : "var(--bg-surface)",
+        border: `2px solid ${color}`,
+        display: "grid", placeItems: "center",
+        color: done || active ? "white" : color, fontSize: 11, fontWeight: 800,
+      }}>{done ? "✓" : ""}</div>
+      <span style={{ fontSize: 11.5, fontWeight: 700,
+        color: done || active ? "var(--text-primary)" : "var(--text-muted)" }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+function Arrow() {
+  return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>→</span>;
+}
+
+function UploadStep({ file, setFile, threshold, setThreshold, onParse }) {
+  return (
+    <div>
+      <div
+        onDrop={(e) => {
+          e.preventDefault();
+          const f = e.dataTransfer.files?.[0];
+          if (f && f.type === "application/pdf") setFile(f);
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        style={{
+          border: "2px dashed var(--border-default)",
+          borderRadius: 10, padding: 28, textAlign: "center",
+          background: "var(--bg-surface-2)",
+        }}
+      >
+        <Upload size={32} style={{ color: "#8b5cf6", marginBottom: 8 }} />
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
+          Solte o PDF do contador aqui
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>
+          Pode conter 1 ou múltiplos funcionários. Máximo 10MB.
+        </div>
+        <input type="file" accept="application/pdf"
+                data-testid="ai-import-file"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                style={{ marginTop: 14, fontSize: 12 }} />
+        {file && (
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700,
+            color: "#16a34a", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <FileText size={14} /> {file.name} · {(file.size / 1024).toFixed(0)}KB
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 16, padding: 12, borderRadius: 8,
+        background: "rgba(139,92,246,.06)",
+        border: "1px solid rgba(139,92,246,.18)" }}>
+        <label style={{ fontSize: 11, fontWeight: 700, color: "#6d28d9",
+          textTransform: "uppercase", letterSpacing: ".5px",
+          display: "block", marginBottom: 6 }}>
+          Threshold de match de nomes
+        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <input type="range" min="50" max="100" step="1"
+                  value={threshold}
+                  data-testid="ai-import-threshold"
+                  onChange={(e) => setThreshold(parseInt(e.target.value, 10))}
+                  style={{ flex: 1, accentColor: "#8b5cf6" }} />
+          <span style={{ minWidth: 50, textAlign: "right",
+            fontSize: 14, fontWeight: 800, color: "#6d28d9" }}>{threshold}%</span>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>
+          {threshold >= 90 ? "Rigoroso — só matches quase exatos." :
+            threshold >= 75 ? "Equilibrado — recomendado." :
+              "Permissivo — pode haver falsos positivos."}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+        <button onClick={onParse}
+                data-testid="ai-import-parse"
+                disabled={!file}
+                style={btn("primary", "md", !file)}>
+          <Sparkles size={14} /> Analisar com Holerite IA
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReviewStep({ preview, collabs, decisions, setDecisions }) {
+  const stats = preview.stats || {};
+  return (
+    <div>
+      <div style={{
+        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+        gap: 8, marginBottom: 16,
+      }}>
+        <MiniKpi label="Identificados" value={stats.parsed_count} color="#0f172a" />
+        <MiniKpi label="Match auto" value={stats.matched_count} color="#16a34a" />
+        <MiniKpi label="Não encontrados" value={stats.unmatched_count} color="#ef4444" />
+        <MiniKpi label="Bruto total" value={fmtBRL(stats.total_gross)} color="#f59e0b" />
+        <MiniKpi label="Líquido total" value={fmtBRL(stats.total_net)} color="#0ea5e9" />
+      </div>
+
+      <div style={{
+        padding: 10, borderRadius: 8, marginBottom: 14,
+        background: "var(--bg-surface-2)",
+        fontSize: 12, color: "var(--text-secondary)",
+      }}>
+        <strong>Competência:</strong> {String(preview.competence?.month || "?").padStart(2, "0")}/{preview.competence?.year || "?"}
+        {" · "}<strong>Empresa:</strong> {preview.company?.name || "—"}
+        {preview.company?.cnpj && (<> · CNPJ {preview.company.cnpj}</>)}
+      </div>
+
+      <div data-testid="ai-import-matches" style={{ display: "grid", gap: 8, maxHeight: 380, overflow: "auto" }}>
+        {(preview.matches || []).map((m, i) => (
+          <MatchRow key={i} index={i} m={m} collabs={collabs}
+                      decision={decisions[i] || {}}
+                      onChange={(d) => setDecisions({ ...decisions, [i]: d })} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MatchRow({ index, m, collabs, decision, onChange }) {
+  const p = m.parsed || {};
+  const status = m.match_status;
+  const statusColor = {
+    cpf_exact: "#16a34a",
+    name_high: "#0ea5e9",
+    name_medium: "#f59e0b",
+    no_match: "#dc2626",
+  }[status] || "#64748b";
+  const statusLabel = {
+    cpf_exact: "CPF exato",
+    name_high: "Nome (alta)",
+    name_medium: "Nome (média)",
+    no_match: "Sem match",
+  }[status] || status;
+
+  return (
+    <div data-testid={`ai-match-${index}`} style={{
+      padding: 12, borderRadius: 8,
+      border: `1px solid ${decision.skip ? "rgba(220,38,38,.4)" : "var(--border-default)"}`,
+      background: decision.skip ? "rgba(220,38,38,.04)" : "var(--bg-surface)",
+      display: "grid", gridTemplateColumns: "auto 1fr auto 1fr auto", gap: 12,
+      alignItems: "center", opacity: decision.skip ? 0.65 : 1,
+    }}>
+      <div style={{
+        width: 30, height: 30, borderRadius: 8,
+        background: statusColor + "22", color: statusColor,
+        display: "grid", placeItems: "center", fontSize: 12, fontWeight: 900,
+      }}>#{index + 1}</div>
+
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
+          {p.full_name}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+          {p.cpf && <>CPF {p.cpf} · </>}
+          Bruto <strong>{fmtBRL(p.gross)}</strong> · Líquido <strong>{fmtBRL(p.net)}</strong>
+        </div>
+      </div>
+
+      <div style={{ textAlign: "center" }}>
+        <span style={{
+          padding: "3px 8px", borderRadius: 4,
+          background: statusColor + "22", color: statusColor,
+          fontSize: 10.5, fontWeight: 800, textTransform: "uppercase",
+        }}>{statusLabel}</span>
+        {m.match_score > 0 && (
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>
+            {Math.round(m.match_score)}%
+          </div>
+        )}
+      </div>
+
+      <div>
+        <select
+          value={decision.employee_id || ""}
+          data-testid={`ai-match-select-${index}`}
+          disabled={decision.skip}
+          onChange={(e) => onChange({ ...decision, employee_id: e.target.value || null })}
+          style={input()}
+        >
+          <option value="">— Selecionar colaborador —</option>
+          {collabs.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+        {decision.employee_id !== (m.match?.id || null) && decision.employee_id && (
+          <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 3 }}>
+            ⚠️ Match alterado manualmente
+          </div>
+        )}
+      </div>
+
+      <label style={{
+        display: "inline-flex", alignItems: "center", gap: 5,
+        cursor: "pointer", fontSize: 11, fontWeight: 700,
+        color: decision.skip ? "#dc2626" : "var(--text-muted)",
+      }}>
+        <input type="checkbox" checked={!!decision.skip}
+                data-testid={`ai-match-skip-${index}`}
+                onChange={(e) => onChange({ ...decision, skip: e.target.checked })}
+                style={{ accentColor: "#dc2626" }} />
+        Ignorar
+      </label>
+    </div>
+  );
+}
+
+function MiniKpi({ label, value, color }) {
+  return (
+    <div style={{
+      padding: 10, borderRadius: 8,
+      border: "1px solid var(--border-default)",
+      background: "var(--bg-surface)",
+    }}>
+      <div style={{ fontSize: 10, color: "var(--text-muted)",
+        fontWeight: 700, textTransform: "uppercase", letterSpacing: ".4px" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 16, fontWeight: 900, color, marginTop: 2 }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function DoneStep({ result, onClose }) {
+  return (
+    <div data-testid="ai-import-done" style={{
+      padding: 30, textAlign: "center",
+    }}>
+      <div style={{
+        width: 60, height: 60, borderRadius: "50%",
+        background: "rgba(22,163,74,.15)", color: "#16a34a",
+        display: "inline-grid", placeItems: "center", marginBottom: 12,
+      }}>
+        <CheckCircle2 size={32} />
+      </div>
+      <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "var(--text-primary)" }}>
+        Import concluído!
+      </h3>
+      <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 6 }}>
+        <strong>{result.imported}</strong> holerites importados ·
+        {" "}<strong>{result.skipped}</strong> ignorados.
+      </div>
+      <button onClick={onClose}
+              data-testid="ai-import-close"
+              style={{ ...btn("primary"), marginTop: 18 }}>
+        Fechar
+      </button>
+    </div>
+  );
+}
+
 function extractErr(e) {
   const d = e?.response?.data?.detail ?? e?.response?.data ?? e?.message;
   if (!d) return "Erro desconhecido.";

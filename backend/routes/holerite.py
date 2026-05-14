@@ -33,7 +33,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import (APIRouter, Depends, File, Form, HTTPException, Request,
@@ -132,6 +132,15 @@ def _doc_to_out(d: dict) -> dict:
         "competence_year": int(d.get("competence_year", 0)),
         "gross": float(d.get("gross", 0)),
         "net": float(d.get("net", 0)),
+        "deductions_total": float(d.get("deductions_total", 0)),
+        "earnings_breakdown": d.get("earnings_breakdown") or [],
+        "deductions_breakdown": d.get("deductions_breakdown") or [],
+        "matricula": d.get("matricula"),
+        "position": d.get("position"),
+        "cpf": d.get("cpf"),
+        "source": d.get("source") or "manual",
+        "ai_match_score": d.get("ai_match_score"),
+        "ai_match_status": d.get("ai_match_status"),
         "status": d.get("status", "available"),
         "file_size_kb": int((d.get("file_size_bytes", 0) or 0) / 1024),
         "created_at": d.get("created_at"),
@@ -558,3 +567,283 @@ async def list_audit(doc_id: str,
         {"doc_id": doc_id, "company_id": cid}, {"_id": 0},
     ).sort("created_at", -1).limit(200).to_list(200)
     return {"items": docs, "count": len(docs)}
+
+
+# ---------------------------------------------------------------------------
+# Holerite IA — Upload + parse + match
+# ---------------------------------------------------------------------------
+@router.post("/ai-parse")
+async def ai_parse_holerite(
+    request: Request,
+    file: UploadFile = File(...),
+    threshold: int = Form(85),
+    user: dict = Depends(require_role("gestor")),
+):
+    """Recebe PDF do contador, extrai funcionários via Holerite IA (Claude)
+    e faz match com colaboradores da empresa.
+
+    NÃO persiste nada — apenas devolve preview pra confirmação.
+    """
+    from services import holerite_ai as ha
+
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    data = await file.read()
+    if len(data) > MAX_PDF_BYTES:
+        raise HTTPException(413, "Arquivo maior que 10MB.")
+    if not data[:5].startswith(b"%PDF-"):
+        raise HTTPException(400, "Arquivo não é PDF válido.")
+    if not 50 <= int(threshold) <= 100:
+        raise HTTPException(400, "threshold deve estar entre 50 e 100.")
+
+    try:
+        parsed = await ha.parse_pdf_with_ai(cid, data)
+    except RuntimeError as e:
+        raise HTTPException(422, str(e))
+    except Exception as e:
+        logger.exception("[holerite-ai] erro parsing: %s", e)
+        raise HTTPException(500, f"Falha ao processar com IA: {e}")
+
+    preview = await ha.match_all(cid, parsed, threshold=int(threshold))
+
+    # Guarda o resultado temporário pra import posterior (TTL implícito via cleanup)
+    parse_id = f"hai-{uuid.uuid4().hex[:14]}"
+    await db.holerite_ai_drafts.insert_one({
+        "id": parse_id,
+        "company_id": cid,
+        "preview": preview,
+        "raw_pdf_size": len(data),
+        "created_at": now_iso(),
+        "created_by": user.get("id"),
+    })
+
+    # Salva o PDF cru temporariamente (mesma pasta, prefixo "drafts/")
+    cdir = STORAGE_DIR / cid / "drafts"
+    cdir.mkdir(parents=True, exist_ok=True)
+    draft_path = cdir / f"{parse_id}.pdf"
+    draft_path.write_bytes(data)
+
+    await _audit(parse_id, cid, "ai_parse", user.get("id"), "rh", request,
+                    extra={
+                        "parsed": preview["stats"]["parsed_count"],
+                        "matched": preview["stats"]["matched_count"],
+                        "size_bytes": len(data),
+                    })
+
+    return {
+        "ok": True,
+        "parse_id": parse_id,
+        **preview,
+    }
+
+
+class AiImportItem(BaseModel):
+    """1 item do import (corresponde a 1 funcionário identificado)."""
+    parsed_index: int            # índice dentro de preview.matches
+    employee_id: Optional[str] = None  # confirmado/alterado pelo gestor
+    skip: bool = False           # se True, ignora este funcionário
+
+
+class AiImportIn(BaseModel):
+    parse_id: str
+    competence_month: int = Field(..., ge=1, le=12)
+    competence_year: int = Field(..., ge=2000, le=2100)
+    items: List[AiImportItem]
+
+
+@router.post("/ai-import")
+async def ai_import_holerite(
+    payload: AiImportIn, request: Request,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Confirma o import: cria 1 payroll_document por funcionário matched.
+
+    O PDF original é compartilhado por todos (mesmo arquivo do contador).
+    Cada doc filtra o nome do funcionário para exibição.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    draft = await db.holerite_ai_drafts.find_one(
+        {"id": payload.parse_id, "company_id": cid}, {"_id": 0},
+    )
+    if not draft:
+        raise HTTPException(404, "Draft de parsing não encontrado.")
+
+    preview = draft["preview"]
+    matches = preview.get("matches", [])
+
+    # Localiza arquivo cru
+    draft_path = STORAGE_DIR / cid / "drafts" / f"{payload.parse_id}.pdf"
+    if not draft_path.exists():
+        raise HTTPException(404, "Arquivo do draft expirou ou foi removido.")
+    pdf_bytes = draft_path.read_bytes()
+
+    imported: List[Dict[str, Any]] = []
+    skipped = 0
+    for it in payload.items:
+        if it.skip:
+            skipped += 1
+            continue
+        if it.parsed_index < 0 or it.parsed_index >= len(matches):
+            continue
+        match_item = matches[it.parsed_index]
+        parsed_emp = match_item.get("parsed", {})
+        eid = it.employee_id or (
+            match_item.get("match", {}) or {}
+        ).get("id")
+        if not eid:
+            continue  # sem match e sem manual → pula
+
+        # Pega dados do colaborador (telefone para WhatsApp)
+        col = await db.collaborators.find_one(
+            {"id": eid, "company_id": cid},
+            {"_id": 0, "name": 1, "phone": 1},
+        )
+        employee_name = (
+            col.get("name") if col else parsed_emp.get("full_name")
+        ) or "—"
+        employee_phone = (col or {}).get("phone")
+
+        # Cada funcionário ganha uma cópia do mesmo PDF (caminho único)
+        file_uuid = uuid.uuid4().hex
+        physical_name = f"{file_uuid}.pdf"
+        cdir = STORAGE_DIR / cid
+        cdir.mkdir(parents=True, exist_ok=True)
+        file_path = cdir / physical_name
+        file_path.write_bytes(pdf_bytes)
+
+        doc_id = f"hol-{uuid.uuid4().hex[:14]}"
+        doc = {
+            "id": doc_id,
+            "company_id": cid,
+            "employee_id": eid,
+            "employee_name": employee_name.strip(),
+            "employee_phone": (employee_phone or "").strip() or None,
+            "competence_month": payload.competence_month,
+            "competence_year": payload.competence_year,
+            "gross": float(parsed_emp.get("gross") or 0),
+            "net": float(parsed_emp.get("net") or 0),
+            "deductions_total": float(parsed_emp.get("deductions_total") or 0),
+            "earnings_breakdown": parsed_emp.get("earnings", []),
+            "deductions_breakdown": parsed_emp.get("deductions", []),
+            "fgts_base": parsed_emp.get("fgts_base"),
+            "irrf_base": parsed_emp.get("irrf_base"),
+            "inss_base": parsed_emp.get("inss_base"),
+            "matricula": parsed_emp.get("matricula"),
+            "position": parsed_emp.get("position"),
+            "cpf": parsed_emp.get("cpf"),
+            "source": "ai_import",
+            "ai_parse_id": payload.parse_id,
+            "ai_match_score": match_item.get("match_score"),
+            "ai_match_status": match_item.get("match_status"),
+            "file_uuid": file_uuid,
+            "file_path": str(file_path),
+            "file_size_bytes": len(pdf_bytes),
+            "status": "available",
+            "created_at": now_iso(),
+            "created_by": user.get("id"),
+        }
+        await db.payroll_documents.insert_one(doc)
+        await _audit(doc_id, cid, "ai_import", user.get("id"), "rh", request,
+                        extra={
+                            "employee_id": eid,
+                            "match_score": match_item.get("match_score"),
+                            "competence": (
+                                f"{payload.competence_month:02d}/"
+                                f"{payload.competence_year}"
+                            ),
+                            "parse_id": payload.parse_id,
+                        })
+        imported.append(_doc_to_out(doc))
+
+    # Marca draft como consumido (mas mantém pra auditoria)
+    await db.holerite_ai_drafts.update_one(
+        {"id": payload.parse_id},
+        {"$set": {"imported_at": now_iso(),
+                    "imported_count": len(imported),
+                    "skipped_count": skipped}},
+    )
+
+    return {
+        "ok": True,
+        "imported": len(imported),
+        "skipped": skipped,
+        "items": imported,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Endpoints PÚBLICOS (app do colaborador — autenticação por collab_id)
+# ---------------------------------------------------------------------------
+async def _company_for_collab(cid: str) -> str:
+    """Retorna company_id do colaborador ou DEMO_COMPANY_ID."""
+    col = await db.collaborators.find_one(
+        {"id": cid}, {"_id": 0, "company_id": 1},
+    )
+    if not col:
+        raise HTTPException(404, "Colaborador não encontrado.")
+    return col.get("company_id") or DEMO_COMPANY_ID
+
+
+@router.get("/public/by-collaborator/{cid}")
+async def collab_list_holerites(cid: str):
+    """Lista holerites do colaborador (acesso via link único do app).
+
+    Não exige JWT — autenticação é o próprio collab_id (URL única
+    compartilhada pelo gestor).
+    """
+    company_id = await _company_for_collab(cid)
+    docs = await db.payroll_documents.find(
+        {"company_id": company_id, "employee_id": cid,
+         "status": "available"},
+        {"_id": 0, "file_path": 0, "file_uuid": 0},
+    ).sort("created_at", -1).to_list(500)
+    col = await db.collaborators.find_one(
+        {"id": cid}, {"_id": 0, "name": 1, "role": 1},
+    )
+    return {
+        "collaborator": col or {},
+        "items": [_doc_to_out(d) for d in docs],
+        "count": len(docs),
+    }
+
+
+@router.get("/public/{cid}/{doc_id}/file")
+async def collab_get_file_public(cid: str, doc_id: str, request: Request):
+    """Stream do PDF do holerite para o colaborador (sem JWT).
+
+    Marca viewed_at + registra audit log. O acesso é restrito a docs do
+    próprio collab_id.
+    """
+    company_id = await _company_for_collab(cid)
+    doc = await db.payroll_documents.find_one(
+        {"id": doc_id, "company_id": company_id, "employee_id": cid,
+         "status": "available"},
+        {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(404, "Holerite não encontrado.")
+    fp = Path(doc.get("file_path") or "")
+    if not fp.exists():
+        raise HTTPException(404, "Arquivo do holerite indisponível.")
+    if not doc.get("viewed_at"):
+        await db.payroll_documents.update_one(
+            {"id": doc_id, "company_id": company_id},
+            {"$set": {"viewed_at": now_iso()}},
+        )
+    await _audit(doc_id, company_id, "view_collab_public",
+                    cid, "collaborator", request)
+    return FileResponse(
+        path=str(fp),
+        media_type="application/pdf",
+        filename=(
+            f"holerite-{doc['competence_year']}-"
+            f"{doc['competence_month']:02d}.pdf"
+        ),
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": (
+                f'inline; filename="holerite-{doc["competence_year"]}-'
+                f'{doc["competence_month"]:02d}.pdf"'
+            ),
+        },
+    )

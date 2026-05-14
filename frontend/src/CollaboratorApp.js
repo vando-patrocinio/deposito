@@ -3,6 +3,7 @@ import { api } from "@/api";
 import SelfieCamera from "@/SelfieCamera";
 import LousaMobile from "@/LousaMobile";
 import MyAssetsModal from "@/MyAssetsModal";
+import MyHoleritesModal from "@/MyHoleritesModal";
 import ServerClock from "@/ServerClock";
 import { serverNow } from "@/serverTime";
 import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Row, StatusBadge } from "@/ui";
@@ -51,6 +52,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   const [pendingCount, setPendingCount] = useState(() => offlineCount());  // batidas offline aguardando reenvio
   const [flushingOffline, setFlushingOffline] = useState(false);
   const [showMyAssets, setShowMyAssets] = useState(false);
+  const [showMyHolerites, setShowMyHolerites] = useState(false);
   const [avatarJustUpdated, setAvatarJustUpdated] = useState(false);
 
   // Worker que tenta reenviar a fila offline. Chamado quando: (a) GPS muda, (b) volta online.
@@ -509,6 +511,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 onExitMobile={mobile && !forcedCollabId ? exitMobile : null}
                 onOpenHistory={() => setScreen("history")}
                 onOpenAssets={() => setShowMyAssets(true)}
+                onOpenHolerites={collabId ? () => setShowMyHolerites(true) : null}
               />
             </div>
           </div>
@@ -883,6 +886,10 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
       {showMyAssets && (
         <MyAssetsModal collaboratorId={collabId} onClose={() => setShowMyAssets(false)} />
       )}
+
+      {showMyHolerites && (
+        <MyHoleritesModal collaboratorId={collabId} onClose={() => setShowMyHolerites(false)} />
+      )}
     </div>
   );
 }
@@ -918,7 +925,7 @@ function parseDevice(ua) {
 }
 
 
-function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, onOpenHistory, onOpenAssets }) {
+function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, onOpenHistory, onOpenAssets, onOpenHolerites }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
 
@@ -931,6 +938,9 @@ function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, 
 
   const items = [];
   items.push({ key: "history", label: "Histórico", icon: "history", onClick: () => { onOpenHistory && onOpenHistory(); setOpen(false); } });
+  if (onOpenHolerites) {
+    items.push({ key: "holerites", label: "Meus holerites", icon: "receipt", onClick: () => { onOpenHolerites(); setOpen(false); } });
+  }
   if (onOpenAssets) {
     items.push({ key: "assets", label: "Meus itens em custódia", icon: "boxes", onClick: () => { onOpenAssets(); setOpen(false); } });
   }
