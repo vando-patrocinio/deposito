@@ -84,19 +84,31 @@ export default function ChatTopologyMap() {
   const stats = topo.stats || {};
 
   /* === Layout consolidado ===
-     Antes: 10 nós, alguns canais espalhados (baileys, twilio, meta separados).
-     Agora: 1 bolha por integração externa, descrita por dentro. */
+     16 nós no total — 4 nós base (cliente, channels, backend, mongo) +
+     10 agentes IA + 2 integrações externas (openrouter, atlaz). */
   const POS = {
-    client:       { x: 80,   y: 240, color: "#3b82f6" },
-    channels:     { x: 280,  y: 240, color: "#22c55e" },  // Consolidado: WA/Meta/Twilio
-    backend:      { x: 500,  y: 240, color: "#8b5cf6" },
-    orchestrator: { x: 720,  y: 130, color: "#f59e0b" },
-    motor_ia:     { x: 720,  y: 340, color: "#ef4444" },
-    isabella:     { x: 920,  y: 130, color: "#d946ef" },
-    evaluator:    { x: 920,  y: 240, color: "#a855f7" },
-    openrouter:   { x: 920,  y: 30,  color: "#ec4899" },
-    atlaz:        { x: 920,  y: 340, color: "#06b6d4" },
-    mongo:        { x: 920,  y: 450, color: "#10b981" },
+    // Coluna 1 — Cliente/Entrada
+    client:       { x: 60,   y: 320, color: "#3b82f6" },
+    channels:     { x: 220,  y: 320, color: "#22c55e" },
+    // Coluna 2 — Backend
+    backend:      { x: 400,  y: 320, color: "#8b5cf6" },
+    // Coluna 3 — IA Layer (cascata: triagem → orquestrador → co_pilot → motor)
+    triagem:      { x: 580,  y: 80,  color: "#0ea5e9" },
+    orchestrator: { x: 580,  y: 200, color: "#f59e0b" },
+    co_pilot:     { x: 580,  y: 320, color: "#84cc16" },
+    motor_ia:     { x: 580,  y: 440, color: "#ef4444" },
+    // Coluna 4 — IA principais
+    isabella:     { x: 760,  y: 200, color: "#d946ef" },
+    smartolt_ai:  { x: 760,  y: 320, color: "#06b6d4" },
+    evaluator:    { x: 760,  y: 440, color: "#a855f7" },
+    // Coluna 5 — Pós-atendimento + Storage
+    coach:        { x: 940,  y: 80,  color: "#f472b6" },
+    aprendizado:  { x: 940,  y: 200, color: "#fbbf24" },
+    sentinela:    { x: 940,  y: 320, color: "#dc2626" },
+    openrouter:   { x: 940,  y: 440, color: "#ec4899" },
+    // Coluna 6 — Persistência
+    atlaz:        { x: 1120, y: 200, color: "#06b6d4" },
+    mongo:        { x: 1120, y: 320, color: "#10b981" },
   };
 
   // Mapeia o backend topology (que vem com nós separados) para o layout
@@ -132,7 +144,7 @@ export default function ChatTopologyMap() {
           {refreshing && <div style={{ fontSize: 10, color: "#10b981" }}>● atualizando</div>}
         </div>
 
-        <svg viewBox="0 0 1040 530" style={{ width: "100%", height: "auto", maxHeight: 530 }}>
+        <svg viewBox="0 0 1220 530" style={{ width: "100%", height: "auto", maxHeight: 540 }}>
           <defs>
             <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
                      markerWidth="6" markerHeight="6" orient="auto">
@@ -247,11 +259,30 @@ export default function ChatTopologyMap() {
   );
 }
 
-const IA_NODE_IDS = new Set(["isabella", "orchestrator", "evaluator", "motor_ia"]);
+const IA_NODE_IDS = new Set([
+  "isabella", "orchestrator", "evaluator", "motor_ia",
+  "co_pilot", "smartolt_ai", "coach", "sentinela", "aprendizado", "triagem",
+]);
+
+/** Metadata visual para mostrar mais info no fluxograma. */
+const IA_META = {
+  isabella:     { label: "Isabela IA",      kind: "ai", role: "Chefe atend." },
+  orchestrator: { label: "Orquestrador",    kind: "ai", role: "Monta contexto" },
+  motor_ia:     { label: "Motor IA",        kind: "ai", role: "Supervisor LLM" },
+  evaluator:    { label: "Avaliador IA",    kind: "ai", role: "Nota oficial" },
+  co_pilot:     { label: "Co-Pilot IA",     kind: "ai", role: "Escuta + dicas" },
+  smartolt_ai:  { label: "SmartOLT AI",     kind: "ai", role: "Fonte rede" },
+  coach:        { label: "Coach IA",        kind: "ai", role: "Pós-atend." },
+  sentinela:    { label: "Sentinela",       kind: "ai", role: "Alertas oper." },
+  aprendizado:  { label: "Aprendizado",     kind: "ai", role: "Memória inst." },
+  triagem:      { label: "Lousa Triagem",   kind: "ai", role: "Classifica" },
+};
 
 function consolidateNodes(nodes, edges) {
   // Agrupa channels (baileys/twilio/meta) em 1 nó "channels"
-  const channelIds = new Set(["baileys", "twilio", "meta", "meta_messenger", "meta_instagram"]);
+  const channelIds = new Set([
+    "baileys", "twilio", "meta", "meta_messenger", "meta_instagram",
+  ]);
   const channelNodes = nodes.filter((n) => channelIds.has(n.id));
   const anyChannelOk = channelNodes.some((n) => n.ok);
   const channelStatuses = channelNodes
@@ -268,33 +299,78 @@ function consolidateNodes(nodes, edges) {
       _sub_nodes: channelNodes,
     });
   }
-  // Adiciona Motor IA + Evaluator (mesmo se backend não mandar)
-  const hasMotor = consolidatedNodes.some((n) => n.id === "motor_ia");
-  if (!hasMotor) {
-    consolidatedNodes.push({
-      id: "motor_ia", label: "Motor IA", kind: "ai",
-      ok: true, status: "active",
-    });
-  }
-  const hasEval = consolidatedNodes.some((n) => n.id === "evaluator");
-  if (!hasEval) {
-    consolidatedNodes.push({
-      id: "evaluator", label: "Avaliador", kind: "ai",
-      ok: true, status: "active",
-    });
-  }
+
+  // Garante presença de TODOS os 10 nós IA do ecossistema, mesmo se o
+  // backend não enviar. Eles são entidades de configuração — sempre devem
+  // aparecer pra o gestor poder clicar e configurar.
+  const present = new Set(consolidatedNodes.map((n) => n.id));
+  Object.entries(IA_META).forEach(([id, meta]) => {
+    if (!present.has(id)) {
+      consolidatedNodes.push({
+        id,
+        label: meta.label,
+        kind: meta.kind,
+        ok: true,
+        status: meta.role,
+      });
+    } else {
+      // Override label/status com o IA_META se backend enviou genérico
+      const node = consolidatedNodes.find((n) => n.id === id);
+      if (node) {
+        node.label = meta.label;
+        node.status = meta.role;
+      }
+    }
+  });
+
   // Mapeia edges: tudo que ia pra baileys/twilio/meta agora vai pra channels
   const consolidatedEdges = edges.map((e) => ({
     ...e,
     from: channelIds.has(e.from) ? "channels" : e.from,
     to: channelIds.has(e.to) ? "channels" : e.to,
   }));
-  // Adiciona edges Backend→Motor IA, Motor IA→OpenRouter, Backend→Evaluator
-  consolidatedEdges.push(
-    { from: "backend", to: "motor_ia", active: true },
-    { from: "motor_ia", to: "openrouter", active: true },
-    { from: "backend", to: "evaluator", active: true },
-  );
+
+  // Adiciona edges do fluxo ideal (todos ativos):
+  //   client → channels → backend
+  //   backend → triagem (classifica ticket)
+  //   backend → orchestrator (monta contexto)
+  //   backend → co_pilot (escuta)
+  //   backend → motor_ia (supervisor)
+  //   orchestrator → isabella (executa)
+  //   co_pilot → isabella (orienta)
+  //   isabella → smartolt_ai (consulta rede)
+  //   motor_ia → smartolt_ai (também consulta direto)
+  //   motor_ia → openrouter (chama LLM)
+  //   isabella → evaluator (avaliação pós)
+  //   evaluator → coach (recomenda melhoria)
+  //   evaluator → aprendizado (registra padrão)
+  //   motor_ia → sentinela (alertas)
+  //   backend → atlaz (sync subscribers)
+  //   backend → mongo (persistência)
+  const idealEdges = [
+    { from: "backend",      to: "triagem",     active: true },
+    { from: "backend",      to: "orchestrator", active: true },
+    { from: "backend",      to: "co_pilot",    active: true },
+    { from: "backend",      to: "motor_ia",    active: true },
+    { from: "orchestrator", to: "isabella",    active: true },
+    { from: "co_pilot",     to: "isabella",    active: true },
+    { from: "isabella",     to: "smartolt_ai", active: true },
+    { from: "motor_ia",     to: "smartolt_ai", active: true },
+    { from: "motor_ia",     to: "openrouter",  active: true },
+    { from: "isabella",     to: "evaluator",   active: true },
+    { from: "evaluator",    to: "coach",       active: true },
+    { from: "evaluator",    to: "aprendizado", active: true },
+    { from: "motor_ia",     to: "sentinela",   active: true },
+    { from: "backend",      to: "atlaz",       active: true },
+    { from: "backend",      to: "mongo",       active: true },
+  ];
+  // Remove duplicatas (mesma from→to)
+  const edgeKey = (e) => `${e.from}>${e.to}`;
+  const existing = new Set(consolidatedEdges.map(edgeKey));
+  idealEdges.forEach((e) => {
+    if (!existing.has(edgeKey(e))) consolidatedEdges.push(e);
+  });
+
   return { nodes: consolidatedNodes, edges: consolidatedEdges };
 }
 
