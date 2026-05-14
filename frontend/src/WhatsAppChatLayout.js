@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { api } from "@/api";
 import AgentConfigModal from "@/AgentConfigModal";
+import { chimeNewMessage, notifyBrowser, requestNotificationPermission } from "@/chatSounds";
 
 /* =============================================================
    FocusChat-style 3-column WhatsApp UI
@@ -24,6 +25,7 @@ const BUCKETS = [
   { id: "manual",      label: "Manual",       icon: Hand,      color: "#0ea5e9" },
   { id: "grupo",       label: "Grupo",        icon: Users,     color: "#94a3b8" },
 ];
+
 
 function avatarColor(name) {
   let h = 0;
@@ -65,6 +67,8 @@ function Avatar({ name, src, size = 38, isAi = false, ring = false }) {
 export default function WhatsAppChatLayout() {
   const [bucket, setBucket] = useState("automatico");
   const [conversations, setConversations] = useState([]);
+  const lastUnreadRef = React.useRef({}); // phone -> unread_count anterior
+  const firstLoadRef = React.useRef(true);
   const [buckets, setBuckets] = useState({});
   const [selectedPhone, setSelectedPhone] = useState(null);
   const [search, setSearch] = useState("");
@@ -106,7 +110,36 @@ export default function WhatsAppChatLayout() {
   const loadConversations = useCallback(async () => {
     try {
       const r = await api.waBaileysConversations();
-      setConversations(r.items || []);
+      const items = r.items || [];
+
+      // Detecta novas mensagens em conversas SEM atendente humano
+      // (assignee_role === "ai" OU sem assignee_user_id) e dispara beep
+      // + notificação. Pula no 1º load pra não tocar ao abrir o painel.
+      if (!firstLoadRef.current) {
+        for (const c of items) {
+          const prev = lastUnreadRef.current[c.phone] || 0;
+          const curr = c.unread_count || 0;
+          const isUnassigned = !c.assignee_user_id ||
+                                c.assignee_role === "ai" ||
+                                c.assignee_role === "bot";
+          if (curr > prev && isUnassigned && c.last_msg_direction === "inbound") {
+            chimeNewMessage();
+            const who = c.subscriber_name || c.profile_name || c.phone || "Cliente";
+            const lastText = (c.last_msg || "").slice(0, 80);
+            notifyBrowser(`Nova mensagem de ${who}`, lastText, "wa-new-msg");
+            break; // só 1 alerta por ciclo (o debounce interno também segura)
+          }
+        }
+      } else {
+        firstLoadRef.current = false;
+      }
+
+      // Atualiza o cache de unread anterior
+      const newMap = {};
+      for (const c of items) newMap[c.phone] = c.unread_count || 0;
+      lastUnreadRef.current = newMap;
+
+      setConversations(items);
       setBuckets(r.buckets || {});
       setLoading(false);
     } catch (e) {
@@ -142,6 +175,7 @@ export default function WhatsAppChatLayout() {
   useEffect(() => {
     loadConversations();
     loadAttendants();
+    requestNotificationPermission();
     const id = setInterval(loadConversations, 6000);
     return () => clearInterval(id);
   }, [loadConversations, loadAttendants]);
