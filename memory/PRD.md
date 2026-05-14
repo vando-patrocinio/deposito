@@ -284,6 +284,25 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - testids: `wa-qr-view`, `wa-qr-image`, `wa-qr-loading`, `wa-qr-countdown`, `wa-qr-auth-error`, `wa-qr-sidecar-error`, `wa-qr-relogin-btn`, `wa-refresh-btn`, `wa-fullscreen-btn`, `wa-qr-fullscreen`, `wa-qr-fullscreen-close`, `wa-qr-fullscreen-image`, `wa-connected-view`.
 - Validado via Playwright (3 estados): conectado ✓, QR válido (50s restantes - ring verde) ✓, QR expirando (5s - ring vermelho + pulse) ✓, fullscreen overlay ✓.
 
+✅ **InlineAgentEditor — Personalidade & Modelo no Configuração** (14/05/2026 — iter66):
+- **Novo arquivo** `/app/frontend/src/InlineAgentEditor.js` (~280 linhas) embeda as seções "Personalidade & Expertise" e "Modelo de IA" do popup `AgentConfigModal` diretamente na aba **Atendimento IA → Configuração**.
+- **Refactor `AgentConfigModal.js`**: exportadas as funções/constantes para reuso DRY:
+  - `export function PersonalitySection({ draft, patch })` (linha 519)
+  - `export function ModelSection({ draft, patch, models })` (linha 571)
+  - `export const BLANK_AGENT` (linha 63)
+  - `export function extractErrorMessage(e)` (linha 44)
+- **`IntegrationsConfigPanel.js`** ganhou `<InlineAgentEditor />` entre `<ChatTopologyMap />` e `<WhatsAppInstancePanel />`. Layout: Saúde dos canais → KPIs → Topology → **Agente IA editor** → Instância WhatsApp (QR/Connected).
+- **UX do editor**:
+  - Header com ícone Bot roxo + "Agente IA · Personalidade & Modelo" + botão "Sem alterações"/"Salvar alterações" (cinza→verde quando dirty)
+  - Tabs internas "Personalidade & Expertise" (roxo) e "Modelo de IA" (azul) com underline animado
+  - Seletor de agente (dropdown) aparece SÓ se há 2+ agentes — limpa ruído quando há 1 só
+  - Flash verde de sucesso + banner vermelho de erro (com extractErrorMessage tratando arrays Pydantic)
+  - Auto-seleção do primeiro agente quando lista chega
+  - Validação client-side: nome obrigatório + system_prompt ≥ 10 chars (antes de chamar API)
+- **Endpoints reutilizados (zero novos)**: `GET /api/aihub/agents`, `PATCH /api/aihub/agents/{id}`, `POST /api/aihub/agents`, `GET /api/aihub/catalog/models`.
+- testids: `inline-agent-editor`, `inline-agent-tab-personality`, `inline-agent-tab-model`, `inline-agent-save`, `inline-agent-selector`, `inline-agent-flash`, `inline-agent-error`, `inline-agent-loading`, `inline-agent-empty`, `inline-agent-create-new`.
+- **Validado por testing_agent iter63**: 14/14 acceptance criteria PASS, zero regressões no chat Ligo, zero novos bugs.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
