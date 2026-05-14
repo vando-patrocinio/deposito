@@ -1,0 +1,37 @@
+{
+  "summary": "Frontend-only test of BottomSheet drag-to-dismiss applied to the 3 collaborator kebab modals (MyHoleritesModal, MyAssetsModal, SignWithGovBrModal). All 13 acceptance criteria validated with Playwright at 420x800 viewport on /coletor?cid=col-30aafc3c.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "BottomSheet.js: handleEnd's velocity is computed only against the LAST mousemove event before mouseup; if user drags then pauses 200ms then releases, velocity correctly reads ~0, but with very few movement events velocity may be slightly noisy. Working as expected in tests.",
+    "BottomSheet.js line 121: dragging.current is a ref so React won't re-render when its value changes — transitionStyle is recomputed on each render but during an active drag the transition is removed only via the offset-driven re-render (still works because setOffset triggers re-render). Functional, but a `useState` for `isDragging` would be cleaner.",
+    "BottomSheet.js: backdrop has touchAction:'none' which is correct, but body content uses overflowY:auto. The current design only attaches drag listeners to the small handle area, so body scroll works fine — confirmed in tests.",
+    "When SignWithGovBrModal opens on top of MyHoleritesModal, two BottomSheet backdrops/sheets stack. ESC closes only the top one (sign-govbr) because both modals add a keydown listener; the most recent listener fires first via React effect order. Verified behavior is correct in test.",
+    "MyAssetsModal.js still has an inner SignaturePad rendered as a plain fixed overlay (not a BottomSheet) — out of scope per the request, but worth noting for future consistency."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A", "frontend": "100%" },
+  "test_credentials": "Collaborator: col-30aafc3c (Diogo) — 2 holerites available",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "BottomSheet UX validated. Confirmed: drag handle present in all 3 modals (data-testid='sheet-drag-handle'), ESC closes, backdrop click closes, small drag (~50px) snaps back, big drag (~60% of 598px sheet height) dismisses, fast swipe (single 100px movement) triggers velocity-based dismiss. Nested sign-govbr-modal renders with its own drag handle and ESC closes the topmost sheet first. Sheet inner testid pattern: '{testid}-sheet'.",
+  "test_results_detail": {
+    "esc_closes_holerites": "PASS",
+    "backdrop_click_closes": "PASS",
+    "small_drag_snap_back": "PASS (modal still open after 50px drag)",
+    "big_drag_dismiss": "PASS (~60% of 598px → closed)",
+    "assets_sheet_drag_handle_present": "PASS",
+    "assets_esc_close": "PASS",
+    "assets_fast_swipe_velocity_dismiss": "PASS",
+    "sign_govbr_nested_bottomsheet": "PASS (2 drag handles when nested)",
+    "drag_handle_testid": "sheet-drag-handle present in all 3 sheets",
+    "modal_testids": "my-holerites-modal, my-assets-modal, sign-govbr-modal all confirmed"
+  }
+}

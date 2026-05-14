@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/ui";
+import BottomSheet from "@/BottomSheet";
 import { api } from "@/api";
 
 const CATEGORY_ICON = {
@@ -33,14 +34,8 @@ export default function MyAssetsModal({ collaboratorId, onClose }) {
   };
 
   return (
-    <div onClick={onClose} style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 100,
-      padding: 12, overflowY: "auto",
-    }}>
-      <div onClick={(e) => e.stopPropagation()} data-testid="my-assets-modal" style={{
-        background: "white", maxWidth: 480, margin: "0 auto",
-        borderRadius: 22, padding: 16, minHeight: "70vh",
-      }}>
+    <BottomSheet open onClose={onClose} testid="my-assets-modal">
+      <div style={{ padding: "8px 18px 0" }}>
         <div style={{ display: "flex", justifyContent: "space-between",
                        alignItems: "center", marginBottom: 12 }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a" }}>Meus itens em custódia </h2>
@@ -157,7 +152,7 @@ export default function MyAssetsModal({ collaboratorId, onClose }) {
           />
         )}
       </div>
-    </div>
+    </BottomSheet>
   );
 }
 

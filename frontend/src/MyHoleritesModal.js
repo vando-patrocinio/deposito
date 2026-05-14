@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Button } from "@/ui";
+import BottomSheet from "@/BottomSheet";
 import { api } from "@/api";
 
 const MONTHS_FULL = [
@@ -43,24 +44,8 @@ export default function MyHoleritesModal({ collaboratorId, onClose }) {
   const items = data.items || [];
 
   return (
-    <div onClick={onClose} data-testid="my-holerites-modal" style={{
-      position: "fixed", inset: 0, background: "rgba(15,23,42,.72)",
-      zIndex: 100, padding: 0, overflowY: "auto",
-      display: "flex", alignItems: "flex-end",
-    }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        width: "100%", background: "#fafafa",
-        borderRadius: "20px 20px 0 0",
-        padding: "20px 18px 28px",
-        boxShadow: "0 -20px 50px rgba(0,0,0,.28)",
-        maxHeight: "92vh", overflowY: "auto",
-      }}>
-        {/* Pull handle */}
-        <div style={{
-          width: 40, height: 4, borderRadius: 999,
-          background: "#cbd5e1", margin: "0 auto 16px",
-        }} />
-
+    <BottomSheet open onClose={onClose} testid="my-holerites-modal">
+      <div style={{ padding: "8px 18px 0" }}>
         {/* Header sóbrio */}
         <div style={{ marginBottom: 18, display: "flex",
           justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -121,17 +106,17 @@ export default function MyHoleritesModal({ collaboratorId, onClose }) {
           Documentos protegidos pela LGPD. Você pode assinar digitalmente
           com gov.br (Lei 14.063/2020).
         </div>
-
-        {signing && (
-          <SignWithGovBrModal
-            doc={signing}
-            collaboratorId={collaboratorId}
-            onClose={() => setSigning(null)}
-            onSuccess={() => { setSigning(null); reload(); }}
-          />
-        )}
       </div>
-    </div>
+
+      {signing && (
+        <SignWithGovBrModal
+          doc={signing}
+          collaboratorId={collaboratorId}
+          onClose={() => setSigning(null)}
+          onSuccess={() => { setSigning(null); reload(); }}
+        />
+      )}
+    </BottomSheet>
   );
 }
 
@@ -302,53 +287,41 @@ function SignWithGovBrModal({ doc, collaboratorId, onClose, onSuccess }) {
   }
 
   return (
-    <div onClick={onClose} data-testid="sign-govbr-modal" style={{
-      position: "fixed", inset: 0, background: "rgba(15,23,42,.72)",
-      zIndex: 200, padding: 0, overflowY: "auto",
-      display: "flex", alignItems: "flex-end",
-    }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        width: "100%", background: "white",
-        borderRadius: "20px 20px 0 0",
-        maxHeight: "92vh", overflow: "auto",
-        boxShadow: "0 -20px 50px rgba(0,0,0,.28)",
-      }}>
-        <div style={{ padding: "16px 18px 0" }}>
-          <div style={{ width: 40, height: 4, borderRadius: 999,
-            background: "#cbd5e1", margin: "0 auto 14px" }} />
-          <div style={{ display: "flex", justifyContent: "space-between",
-            alignItems: "flex-start", marginBottom: 14 }}>
-            <div>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#1351b4",
-                textTransform: "uppercase", letterSpacing: ".06em" }}>
-                Assinatura gov.br
-              </div>
-              <h3 style={{ margin: "2px 0 0", fontSize: 17, fontWeight: 800,
-                color: "#0f172a", letterSpacing: "-.015em" }}>
-                {MONTHS_SHORT[doc.competence_month - 1]}/{doc.competence_year} ·
-                {" "}{fmtBRL(doc.net)}
-              </h3>
+    <BottomSheet open onClose={onClose} testid="sign-govbr-modal">
+      <div style={{ padding: "8px 18px 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between",
+          alignItems: "flex-start", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#1351b4",
+              textTransform: "uppercase", letterSpacing: ".06em" }}>
+              Assinatura gov.br
             </div>
-            <button onClick={onClose} style={{
-              width: 30, height: 30, borderRadius: "50%",
-              background: "#f1f5f9", border: "none", color: "#64748b",
-              fontSize: 16, cursor: "pointer",
-            }}>×</button>
+            <h3 style={{ margin: "2px 0 0", fontSize: 17, fontWeight: 800,
+              color: "#0f172a", letterSpacing: "-.015em" }}>
+              {MONTHS_SHORT[doc.competence_month - 1]}/{doc.competence_year} ·
+              {" "}{fmtBRL(doc.net)}
+            </h3>
           </div>
-
-          {/* Step indicator minimalista */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 18 }}>
-            {[1, 2, 3].map((n) => (
-              <div key={n} style={{
-                flex: 1, height: 3, borderRadius: 4,
-                background: step >= n ? "#1351b4" : "#e2e8f0",
-                transition: "background .25s",
-              }} />
-            ))}
-          </div>
+          <button onClick={onClose} style={{
+            width: 30, height: 30, borderRadius: "50%",
+            background: "#f1f5f9", border: "none", color: "#64748b",
+            fontSize: 16, cursor: "pointer",
+          }}>×</button>
         </div>
 
-        <div style={{ padding: "0 18px 22px" }}>
+        {/* Step indicator minimalista */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 18 }}>
+          {[1, 2, 3].map((n) => (
+            <div key={n} style={{
+              flex: 1, height: 3, borderRadius: 4,
+              background: step >= n ? "#1351b4" : "#e2e8f0",
+              transition: "background .25s",
+            }} />
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: "0 18px" }}>
           {step === 1 && (
             <div data-testid="sign-step-1">
               <h4 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#0f172a" }}>
@@ -538,8 +511,7 @@ function SignWithGovBrModal({ doc, collaboratorId, onClose, onSuccess }) {
               </Button>
             </div>
           )}
-        </div>
       </div>
-    </div>
+    </BottomSheet>
   );
 }
