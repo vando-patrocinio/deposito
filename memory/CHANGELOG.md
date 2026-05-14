@@ -1,6 +1,48 @@
 # PontoIA — Changelog
 
-## Feb 14, 2026 — Lock automático de holerite com anomalia crítica ★
+## Feb 14, 2026 — Holerite: Assinatura gov.br + Filtro por data de pagamento ★★★
+
+### Pesquisa jurídica (web search 2026)
+- STJ reconheceu validade da assinatura gov.br em fev/2026 para documentos trabalhistas
+- Lei 14.063/2020 valida assinatura "avançada" gov.br para relação empregado-empregador
+- TRTs 8ª e 9ª regiões já validaram em casos rescisórios
+- Recomendado adicionar timestamp + SHA-256 hash para integridade jurídica
+
+### Backend
+- **Filtro por `pay_date`**: `GET /public/by-collaborator/{cid}` agora só retorna holerites cuja `pay_date <= hoje` (esconde holerites futuros do colaborador)
+- **Auto pay_date no import**: `_default_pay_date(year, month)` calcula automaticamente o 5º dia do mês seguinte à competência
+- **`POST /public/{cid}/{doc_id}/sign-upload`** (NEW) — recebe PDF assinado pelo colaborador:
+  - Valida magic bytes %PDF-, tamanho ≤ 10MB
+  - Detecta marcadores de assinatura digital (`/ByteRange`, `/Sig`, `adbe.pkcs7`) via heurística
+  - Calcula SHA-256 do conteúdo (integridade)
+  - Persiste: `signed_at`, `signed_method='govbr_manual_upload'`, `signed_by_name`, `signature_valid` (bool), `signature_hash`
+  - Salva em `STORAGE_DIR/{company}/signed/{doc_id}_signed_{uuid}.pdf` separado do original
+  - Audit log com hash truncado
+- **`GET /public/{cid}/{doc_id}/signed-file`** (NEW) — stream do PDF assinado
+- **Hash SHA-256 do PDF original** (`file_hash`) também é calculado e persistido no import manual
+
+### Frontend
+- **`MyHoleritesModal.js`** (REWRITE):
+  - Card verde quando assinado (gradient verde + badge "✓ Assinado em DD/MM/YYYY")
+  - Card roxo quando não assinado (gradient indigo + botão "Assinar gov.br" azul royal #1351b4)
+  - Botões dinâmicos: "Baixar original" sempre + "Baixar assinado" OU "Assinar gov.br"
+  - Footer LGPD atualizado mencionando Lei 14.063/2020
+- **`SignWithGovBrModal`** (NEW) — fluxo guiado em 3 passos:
+  - **Passo 1**: Botão "Baixar PDF original" + auto-avança ao step 2
+  - **Passo 2**: Lista 5 instruções + box informativo sobre Lei 14.063 + link externo `https://assinador.iti.br/`
+  - **Passo 3**: Drop zone + input file PDF + botão "Confirmar envio"
+  - **Passo 4** (sucesso): Mostra status (validada/observação), warning se aplicável, SHA-256 hash truncado
+  - Step indicator visual no topo
+  - Header gradient azul gov.br (#1351b4)
+
+### Validação ✓
+- Backend pytest **10/10 PASS** em iter 68
+- Frontend Playwright PASS: modal abre, wizard 3 passos completo, upload PDF detecta `/ByteRange`, SHA-256 hash visível, badge "assinado" renderiza, botões toggle (sign↔view-signed) baseado em `signed_at`
+- Zero issues críticos/menores/integração/UI
+
+---
+
+
 
 ### Backend
 - **Auto-lock**: Quando `analyze_doc` detecta ≥1 anomalia crítica (NET_DROP/RISE ≥25%, ZERO_NET, DUPLICATE), o holerite vai automaticamente para `status="pending_review"` com `pending_review_reason` preenchido.
@@ -67,6 +109,26 @@
 - Persistência em `payroll_documents.anomalies` + counters.
 - Frontend: badge laranja/vermelho com contador em cada linha + `AnomaliesModal` com chips coloridos por severidade + summary no DoneStep do import.
 - Validação: Diogo com -41.9% líquido gerou 4 anomalias precisas (1 crítica + 3 warnings).
+
+---
+
+
+## Feb 14, 2026 — Lock automático de holerite com anomalia crítica ★
+
+### Backend
+- Auto-lock: `analyze_doc` marca automaticamente `status="pending_review"` quando ≥1 anomalia crítica (NET_DROP/RISE ≥25%, ZERO_NET, DUPLICATE).
+- `POST /notify` retorna HTTP 423 (Locked) se pending_review — não envia ao colaborador.
+- `GET /public/by-collaborator/{cid}` filtra pending_review → holerite fica invisível pro funcionário.
+- Endpoints `POST /{doc_id}/approve` (libera com nota) e `/reject` (revoga) com audit log.
+
+### Frontend
+- Badge na linha: `🔒 AGUARDA RH` (laranja claro).
+- `AnomaliesModal` ganhou: banner vermelho/gradient explicando o lock, banner verde quando já aprovado (mostra reviewer + timestamp + nota), textarea de nota do revisor, botões "Rejeitar e revogar" (vermelho) + "Aprovar e liberar" (verde).
+
+### Validação ✓
+- Jefferson com -98.2% líquido auto-bloqueou em pending_review
+- Notify retornou HTTP 423 — confirma proteção
+- Approve com nota libera o doc + persiste reviewer + timestamp
 
 ---
 
