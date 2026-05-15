@@ -859,4 +859,23 @@ export const api = {
     client.post(`/rede-ia/qrcode/scan`, { payload }).then((r) => r.data),
   redeIaQrBindPort: (data) =>
     client.post(`/rede-ia/qrcode/bind-port`, data).then((r) => r.data),
+
+  // -------------------- Budget / Orçamento_IA --------------------
+  budgetList: () => client.get(`/budget`).then((r) => r.data),
+  budgetKpis: () => client.get(`/budget/kpis`).then((r) => r.data),
+  budgetCreate: (payload) => client.post(`/budget`, payload).then((r) => r.data),
+  budgetGet: (bid) => client.get(`/budget/${bid}`).then((r) => r.data),
+  budgetUpdate: (bid, payload) =>
+    client.put(`/budget/${bid}`, payload).then((r) => r.data),
+  budgetDelete: (bid) => client.delete(`/budget/${bid}`).then((r) => r.data),
+  budgetUploadCsv: (bid, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return client.post(`/budget/${bid}/upload-csv`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+  budgetAnalyze: (bid) =>
+    client.post(`/budget/${bid}/analyze`, null, { timeout: 90000 }).then((r) => r.data),
+  budgetPdfUrl: (bid) => `${API}/budget/${bid}/pdf`,
 };

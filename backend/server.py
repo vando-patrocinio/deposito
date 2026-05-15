@@ -83,6 +83,7 @@ from routes import (
     drive as routes_drive,
     ai_corrections as routes_ai_corrections,
     appointments as routes_appointments,
+    budget as routes_budget,
     integrations as routes_integrations,
     ai_training as routes_ai_training,
     connections as routes_connections,
@@ -392,6 +393,7 @@ app.include_router(routes_wa_baileys.router)
 app.include_router(routes_central_ia.router)
 app.include_router(routes_rede_ia.router)
 app.include_router(routes_rede_ia_map.router)
+app.include_router(routes_budget.router)
 app.include_router(routes_churn.router)
 app.include_router(routes_subscribers.router)
 app.include_router(routes_plans.router)

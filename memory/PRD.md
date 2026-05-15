@@ -392,6 +392,29 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **testids**: `wa-bucket-content-{id}`.
 - **Validado E2E** (Playwright 1920×900): default abre Automático com 20 convs nested; demais fechados; clique em Aguardando recolhe Automático e expande Aguardando com empty state "Sem conversas em Aguardando". Visual idêntico ao vídeo.
 
+✅ **Módulo Comercial · Orçamento_IA** (15/02/2026 — iter74):
+- **Pedido do usuário**: aba "Orçamento" com IA que recebe lista de itens, busca 3 preços, escolhe a média, calcula com %ganho/%imposto/%mão-de-obra (opcional editar), gera romaneio imprimível.
+- **Escolhas**: 1b (upload CSV) · 2c (Claude estima sem web search) · 3a (PDF imprimível) · 4c (menu novo "Comercial") · 5a (admin+gestor+financeiro).
+- **Backend** (`/app/backend/routes/budget.py` · 350 linhas + `/app/backend/services/budget_pdf.py`):
+  - `POST /api/budget` — cria orçamento (name + description, default margin 25%).
+  - `POST /api/budget/{id}/upload-csv` — parseia CSV (separador `;` ou `,`, UTF-8/Latin-1, colunas item·qtde·unidade·especificacao com variações de nome aceitas).
+  - `POST /api/budget/{id}/analyze` — **Orçamento_IA** = Claude Sonnet 4.5 via Emergent LLM Key, retorna JSON `{items:[{id,low,mid,high,sources,confidence}]}`. Calcula `avg_price = (low+mid+high)/3` e persiste. Tempo médio: 5s para 5 itens.
+  - `PUT /api/budget/{id}` — edita name/desc/margin_pct/tax_pct/labor_pct + array de items (suporta `manual_override` por item).
+  - `GET /api/budget` — lista; `GET /api/budget/{id}` — detalhe; `DELETE` — exclui.
+  - `GET /api/budget/kpis` — KPIs: total, draft/analyzed/final, avg_margin_pct, total_value, avg_value.
+  - `GET /api/budget/{id}/pdf` — romaneio ReportLab A4 retrato com tabela de itens (Item·Qtde·Unid·Preço·Subtotal·Fonte+conf), totais (Base·Ganho·Mão-de-obra·Subtotal·Imposto·**Total Final**), rodapé com nota da IA + assinaturas. Marca status="final" na primeira geração.
+  - `require_role("administrador","gestor","financeiro")` — `colaborador` recebe 403.
+- **Frontend** (`/app/frontend/src/BudgetPanel.js` · 450 linhas):
+  - Painel principal: 4 KPI cards no topo (Orçamentos, Valor total, Margem média, Finalizados/Conversão) + busca + lista de orçamentos (cada linha mostra nome, status, itens, margem, total final, botão excluir).
+  - Botão "Novo orçamento" → modal de criação (nome + descrição) → abre drawer.
+  - Drawer (960px, fixed direita): toolbar com "Subir CSV", "Analisar com Orçamento_IA" (roxo, disabled se sem itens), "Imprimir PDF" (disabled até ter preços). Tabela editável com 6 colunas (Item, Qtde, Unid, Preços IA B/M/A, Unit. usado com input override, Subtotal). Footer sticky com 3 sliders (%Ganho/%Mão-de-obra/%Imposto) + resumo em tempo real (Base → Total Final destacado).
+  - Sliders usam debounce via `onMouseUp` para não saturar o backend.
+  - PDF abre via `fetch + blob` (preserva header Authorization Bearer) em nova aba.
+- **Wiring** (`App.js`): novo grupo "Comercial" no `NAV_GROUPS` com item "Orçamento" (icon `Calculator`, roles admin/gestor/financeiro), rota `view === "budget"`.
+- **Endpoints API client** (`api.js`): `budgetList`, `budgetKpis`, `budgetCreate`, `budgetGet`, `budgetUpdate`, `budgetDelete`, `budgetUploadCsv` (FormData), `budgetAnalyze` (timeout 90s), `budgetPdfUrl`.
+- **Pytest** `/app/backend/tests/test_iter74_budget.py`: 6/6 PASS — cria draft, CSV parser, percentuais recalculam, override manual recalcula (base = 2×100 + 100×100 = 10200), KPIs, PDF retorna bytes `%PDF-...`. 1 skip (colaborador 403, sem conta de teste no ambiente).
+- **Validado E2E** (Playwright 1920×900): menu "Comercial > Orçamento" aparece; painel renderiza KPIs (1 orçamento · R$ 1.018,18 · 30% · 100% conversão); orçamento "Obra CTO-Centro · Finalizado" aparece com 5 itens; drawer abre com tabela completa mostrando preços IA (Mercado Livre·Furukawa·FiberHome·Intelbras), inputs override, e footer com totais (Base R$ 656,25 → Total Final R$ 1.018,18 com sliders %Ganho 30 · %Mão-de-obra 15 · %Imposto 7).
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
