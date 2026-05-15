@@ -352,6 +352,16 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
   - Screenshot Playwright: bolha sem cadeado, `disabled=None`, clique habilitado ✓
 - **Impacto**: 0 regressão — endpoint `public_open_ticket` não validava `compute_locked_positions`, então a abertura sempre foi permitida no backend. O bug era puramente frontend → backend campo errado.
 
+✅ **Fix · Bolhas IA agrupadas no chat (parágrafos viravam 1 mensagem só)** (15/02/2026 — iter70):
+- **Bug reportado pelo usuário**: "AS BOLHAS DA CONVERSAÇÃO NO CHAT NÃO ESTÃO SEPARADAS, ESTÃO SENDO AGRUPADAS MESMO QUANDO O PROMPT MANDA ESTAR SEPARADA". A IA gerava resposta com 2-3 parágrafos separados por `\n\n` (como pedido no prompt) mas o backend enviava tudo como UMA mensagem no sidecar Baileys → cliente recebia 1 muralhão de texto no WhatsApp.
+- **Causa raiz**: `_maybe_auto_reply` em `routes/whatsapp_baileys.py` (linha 1118-1156) fazia 1 chamada `POST /send` com `text=reply_text` inteiro e persistia 1 linha em `aihub_wa_messages`. Não havia quebra.
+- **Fix backend**:
+  - Novo helper `_split_ai_reply(text, max_chunks=6, min_chunk_chars=12)` em `whatsapp_baileys.py` que (1) separa por `\n\n` ou marcador `---`, (2) junta micros < 12 chars com o próximo, (3) cap em 6 chunks (overflow → último chunk), (4) preserva `\n` simples dentro de bullets/listas.
+  - Loop em `_maybe_auto_reply` envia cada chunk via `/send` com delay de 600ms entre eles (cadência humana) e persiste cada bolha como linha separada em `aihub_wa_messages` com `chunk_index`/`chunk_total`.
+  - `delivery_status` por chunk individual — bolha que falha não derruba as outras.
+- **Pytest** `/app/backend/tests/test_iter70_ai_reply_split.py`: 8/8 PASS cobrindo parágrafos múltiplos, texto único, bullets, cap de overflow, separador `---`, merge de micro, vazios, newlines simples preservados.
+- **Validado E2E real**: trigger `POST /api/whatsapp-baileys/inbound` com mensagem do cliente "quero saber 3 coisas..." → Isabella gerou resposta em 3 parágrafos `\n\n` → backend quebrou em 3 chunks (`chunk_index 0/3, 1/3, 2/3`) → 3 bolhas separadas no DB com `delivery_status: sent` ✓.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)

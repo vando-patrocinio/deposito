@@ -36,6 +36,59 @@ SIDECAR_BASE = "http://127.0.0.1:3002"
 WA_INBOUND_TOKEN = os.environ.get("WA_INBOUND_TOKEN", "")
 
 
+# ---------------------------------------------------------------------------
+# Helper: quebra a resposta da IA em múltiplas bolhas
+# ---------------------------------------------------------------------------
+def _split_ai_reply(text: str, max_chunks: int = 6,
+                     min_chunk_chars: int = 12) -> List[str]:
+    """Quebra a resposta da IA em chunks que viram bolhas separadas no
+    WhatsApp.
+
+    Regras:
+    1. Separa por linhas em branco (`\\n\\n`) ou marcador explícito `---`.
+    2. Junta chunks micro (< min_chunk_chars) no chunk seguinte para
+       evitar bolhas de 1-2 palavras.
+    3. Cap em `max_chunks`: o excedente é concatenado no último chunk
+       (assim a IA não consegue 'flood' o cliente).
+    4. Quebras de linha simples (`\\n`) DENTRO de um chunk são preservadas
+       (ex.: lista de bullets).
+    5. Se a resposta for curta ou inteira numa linha só, devolve [text].
+    """
+    if not text:
+        return []
+    raw = text.replace("\r\n", "\n").strip()
+    # Separador explícito `---` em linha sozinha vira "\n\n" pra unificar
+    raw = re.sub(r"\n\s*---+\s*\n", "\n\n", raw)
+    parts = re.split(r"\n{2,}", raw)
+    # Limpa e remove vazios
+    parts = [p.strip() for p in parts if p.strip()]
+    if not parts:
+        return []
+    # Junta micros (< min_chunk_chars) com o próximo
+    merged: List[str] = []
+    buf = ""
+    for p in parts:
+        if len(p) < min_chunk_chars and not buf:
+            buf = p
+            continue
+        if buf:
+            merged.append((buf + "\n\n" + p).strip())
+            buf = ""
+        else:
+            merged.append(p)
+    if buf:
+        if merged:
+            merged[-1] = (merged[-1] + "\n\n" + buf).strip()
+        else:
+            merged.append(buf)
+    # Cap em max_chunks (overflow junta no último)
+    if len(merged) > max_chunks:
+        head = merged[: max_chunks - 1]
+        tail = "\n\n".join(merged[max_chunks - 1:])
+        merged = head + [tail]
+    return merged
+
+
 async def _sidecar_get(path: str) -> Dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=8.0) as cli:
@@ -1115,47 +1168,72 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         )
         return None
 
-    # 5. Envia via sidecar
-    send_ok = False
-    send_error: Optional[str] = None
-    send_body: Dict[str, Any] = {}
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as cli:
-            send_r = await cli.post(f"{SIDECAR_BASE}/send",
-                                     json={"phone": phone, "text": reply_text})
-            try:
-                send_body = send_r.json()
-            except Exception:
-                send_body = {"raw": send_r.text}
-            if send_r.status_code < 400 and send_body.get("ok"):
-                send_ok = True
-            else:
-                send_error = (send_body.get("error")
-                              or f"HTTP {send_r.status_code}")
-    except Exception as e:
-        logger.warning("[wa-baileys] sidecar /send falhou: %s", e)
-        send_error = str(e)
+    # 5. Quebra a resposta da IA em múltiplas bolhas (paragraphs separados por
+    # "\n\n" ou marcador explícito "---") para enviar como mensagens distintas.
+    # Mantém a sensação de "ela mandou 3 mensagens" em vez de um parágrafo
+    # gigante numa bolha só. Cap de 6 chunks pra evitar spam — overflow vira
+    # 1 último chunk com o restante.
+    chunks = _split_ai_reply(reply_text, max_chunks=6)
 
-    # 6. Persiste resposta no histórico (com delivery_status)
-    await db.aihub_wa_messages.insert_one({
-        "id": f"wam-{uuid.uuid4().hex[:10]}",
-        "company_id": cid,
-        "direction": "outbound",
-        "phone": phone,
-        "text": reply_text,
-        "channel": "baileys",
-        "message_id": send_body.get("message_id"),
-        "subscriber_id": subscriber_id,
-        "agent_id": agent["id"],
-        "agent_name": agent["name"],
-        "session_id": f"wa-{phone}",
-        "auto_reply": True,
-        "delivery_status": "sent" if send_ok else "failed_sidecar",
-        "delivery_error": send_error,
-        "created_at": now_iso(),
-    })
+    # 6. Envia cada chunk via sidecar (sequencial, pequeno delay entre eles).
+    import asyncio as _asyncio
+    any_sent = False
+    last_send_error: Optional[str] = None
+    for idx, chunk in enumerate(chunks):
+        send_ok = False
+        send_error: Optional[str] = None
+        send_body: Dict[str, Any] = {}
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as cli:
+                send_r = await cli.post(f"{SIDECAR_BASE}/send",
+                                         json={"phone": phone, "text": chunk})
+                try:
+                    send_body = send_r.json()
+                except Exception:
+                    send_body = {"raw": send_r.text}
+                if send_r.status_code < 400 and send_body.get("ok"):
+                    send_ok = True
+                    any_sent = True
+                else:
+                    send_error = (send_body.get("error")
+                                  or f"HTTP {send_r.status_code}")
+                    last_send_error = send_error
+        except Exception as e:
+            logger.warning("[wa-baileys] sidecar /send falhou: %s", e)
+            send_error = str(e)
+            last_send_error = send_error
+
+        # Persiste cada bolha como linha separada (assim o chat mostra 1 bolha
+        # por mensagem, idêntico ao que o cliente recebe no WhatsApp).
+        await db.aihub_wa_messages.insert_one({
+            "id": f"wam-{uuid.uuid4().hex[:10]}",
+            "company_id": cid,
+            "direction": "outbound",
+            "phone": phone,
+            "text": chunk,
+            "channel": "baileys",
+            "message_id": send_body.get("message_id"),
+            "subscriber_id": subscriber_id,
+            "agent_id": agent["id"],
+            "agent_name": agent["name"],
+            "session_id": f"wa-{phone}",
+            "auto_reply": True,
+            "chunk_index": idx,
+            "chunk_total": len(chunks),
+            "delivery_status": "sent" if send_ok else "failed_sidecar",
+            "delivery_error": send_error,
+            "created_at": now_iso(),
+        })
+        # Pequeno delay entre bolhas pra não saturar o sidecar/WhatsApp e
+        # gerar uma cadência mais "humana".
+        if idx < len(chunks) - 1 and send_ok:
+            await _asyncio.sleep(0.6)
+
+    send_ok = any_sent
+    send_error = last_send_error
     if send_ok:
-        logger.info("[wa-baileys] auto-reply enviado para %s: %s", phone, reply_text[:80])
+        logger.info("[wa-baileys] auto-reply enviado em %d bolha(s) para %s: %s",
+                     len(chunks), phone, reply_text[:80])
     else:
         logger.warning("[wa-baileys] auto-reply gerado mas envio falhou (%s): %s",
                         send_error, reply_text[:80])
