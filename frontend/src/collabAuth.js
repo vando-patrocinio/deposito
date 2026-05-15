@@ -29,12 +29,11 @@ export function clearLocalSession() {
 }
 
 export function startGoogleLogin() {
-  // Ao voltar do Google, queremos cair na MESMA URL com mode=app preservado
+  // Ao voltar do Google, queremos cair na origem da app com mode=app preservado.
+  // Usa window.location.origin (não href) para garantir redirect consistente
+  // entre preview, produção e domínios customizados.
   // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-  const u = new URL(window.location.href);
-  if (u.searchParams.get("mode") !== "app") u.searchParams.set("mode", "app");
-  u.hash = "";
-  const redirectUrl = u.toString();
+  const redirectUrl = window.location.origin + "/?mode=app";
   window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
 }
 
