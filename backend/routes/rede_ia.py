@@ -524,17 +524,62 @@ async def validate_cto(cto_id: str, body: ValidationActionIn,
 
     # Auto-gera PDF + sobe pro Drive (apenas quando aprovada)
     pdf_meta = None
+    smartolt_zone_meta = None
     if body.action == "approve":
         try:
             pdf_meta = await _generate_and_upload_cto_pdf(cid, cto_id, user.get("name"))
         except Exception as e:
             logger.exception("[rede-ia] auto-PDF falhou: %s", e)
-            # Não bloqueia a aprovação — apenas registra
             pdf_meta = {"ok": False, "error": str(e)[:200]}
+
+        # Sync inversa: garante que a zone existe no SmartOLT
+        try:
+            smartolt_zone_meta = await _sync_cto_zone_to_smartolt(cid, cto_id, user.get("name"))
+        except Exception as e:
+            logger.exception("[rede-ia] sync zone SmartOLT falhou: %s", e)
+            smartolt_zone_meta = {"ok": False, "error": str(e)[:200]}
 
     return {"ok": True, "action": body.action,
             "status": new_cto_status_map[body.action],
-            "pdf": pdf_meta}
+            "pdf": pdf_meta,
+            "smartolt_zone": smartolt_zone_meta}
+
+
+async def _sync_cto_zone_to_smartolt(company_id: str, cto_id: str,
+                                         actor: Optional[str]) -> Dict[str, Any]:
+    """Sync inversa Rede_IA → SmartOLT: garante zone com nome da CTO.
+
+    Idempotente, append-only. Não falha a aprovação se SmartOLT estiver indisponível.
+    """
+    from services.smartolt_zones import ensure_zone_exists
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": company_id}, {"_id": 0})
+    if not cto:
+        return {"ok": False, "error": "CTO não encontrada para sync"}
+    zone_name = cto.get("name") or ""
+    if not zone_name:
+        return {"ok": False, "error": "CTO sem nome"}
+    try:
+        result = await ensure_zone_exists(company_id, zone_name, actor=actor or "rede_IA")
+        await db.ctos.update_one(
+            {"id": cto_id, "company_id": company_id},
+            {"$set": {
+                "smartolt_zone_synced": True,
+                "smartolt_zone_synced_at": now_iso(),
+                "smartolt_zone_created": result["created"],
+            }},
+        )
+        await db.cto_history.insert_one({
+            "id": _new_id("hist"), "company_id": company_id, "cto_id": cto_id,
+            "action": "smartolt_zone_sync",
+            "before": None, "after": result,
+            "by_user_id": None, "by_user_name": "rede_IA (automático)",
+            "by_role": "system",
+            "motivo": result["message"],
+            "timestamp": now_iso(),
+        })
+        return {"ok": True, **result}
+    except RuntimeError as e:
+        return {"ok": False, "error": str(e)}
 
 
 async def _generate_and_upload_cto_pdf(company_id: str, cto_id: str,
@@ -1213,3 +1258,44 @@ async def download_cto_pdf(cto_id: str, user: dict = Depends(get_current_user)):
     return Response(content=pdf_bytes, media_type="application/pdf", headers={
         "Content-Disposition": f"inline; filename=\"CTO-{safe_name}.pdf\"",
     })
+
+
+@router.post("/ctos/{cto_id}/sync-smartolt-zone")
+async def force_sync_smartolt_zone(cto_id: str,
+                                       user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
+    """Força sync da zone SmartOLT (manual). Útil quando CTO foi aprovada mas
+    o SmartOLT estava offline na primeira tentativa.
+    """
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+    if cto.get("status") != "approved":
+        raise HTTPException(409, "Apenas CTOs aprovadas sincronizam zone")
+    result = await _sync_cto_zone_to_smartolt(cid, cto_id, user.get("name"))
+    if not result.get("ok"):
+        raise HTTPException(503, result.get("error", "Falha SmartOLT"))
+    return result
+
+
+@router.get("/smartolt/zones")
+async def list_smartolt_zones(user: dict = Depends(get_current_user)):
+    """Lista zones atualmente no SmartOLT — útil para auditoria."""
+    from services.smartolt_zones import list_zones
+    cid = _user_company(user)
+    try:
+        zones = await list_zones(cid, force_refresh=True)
+        return {"items": zones, "total": len(zones)}
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+
+@router.get("/smartolt/zone-audit")
+async def smartolt_zone_audit(limit: int = Query(50, ge=1, le=200),
+                                  user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
+    """Log de operações de sync SmartOLT (criadas, race, erros)."""
+    cid = _user_company(user)
+    items = await db.smartolt_zone_audit.find(
+        {"company_id": cid}, {"_id": 0},
+    ).sort("timestamp", -1).to_list(limit)
+    return {"items": items, "total": len(items)}

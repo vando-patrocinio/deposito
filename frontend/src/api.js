@@ -849,6 +849,12 @@ export const api = {
   redeIaNotifMarkRead: (notification_id = null, mark_all = false) =>
     client.post(`/rede-ia/notifications/mark-read`,
                   { notification_id, mark_all }).then((r) => r.data),
+  redeIaSyncSmartoltZone: (cto_id) =>
+    client.post(`/rede-ia/ctos/${cto_id}/sync-smartolt-zone`).then((r) => r.data),
+  redeIaSmartoltZones: () =>
+    client.get(`/rede-ia/smartolt/zones`).then((r) => r.data),
+  redeIaSmartoltZoneAudit: () =>
+    client.get(`/rede-ia/smartolt/zone-audit`).then((r) => r.data),
   redeIaQrScan: (payload) =>
     client.post(`/rede-ia/qrcode/scan`, { payload }).then((r) => r.data),
   redeIaQrBindPort: (data) =>

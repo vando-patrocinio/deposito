@@ -1552,3 +1552,33 @@ Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
 - Polling a cada 25s
 - Panel dropdown com lista de notificações + botão "Marcar todas"
 - Click em notificação não-lida → marca como lida
+
+## 2026-05-15 (final 6) — Sync bidirecional Rede_IA ↔ SmartOLT
+### Novo: `services/smartolt_zones.py`
+- `ensure_zone_exists(company_id, zone_name)`: idempotente, case-insensitive
+- Cache 60s das zones (reduz chamadas SmartOLT)
+- Race condition tratada (409 + texto "exist")
+- Audit em `smartolt_zone_audit`
+
+### Sync automático na aprovação de CTO
+- `routes/rede_ia.py` → ao chamar `POST /validate?action=approve`:
+  1. Gera PDF + sobe pro Drive
+  2. **NOVO**: cria zone no SmartOLT com mesmo nome da CTO (idempotente)
+  3. Marca CTO com `smartolt_zone_synced=true` + timestamp
+  4. Audita em `cto_history` action=`smartolt_zone_sync`
+- Falha SmartOLT não bloqueia aprovação (graceful)
+
+### Endpoints novos
+- `POST /api/rede-ia/ctos/{id}/sync-smartolt-zone` — força sync manual
+- `GET /api/rede-ia/smartolt/zones` — lista zones em tempo real
+- `GET /api/rede-ia/smartolt/zone-audit` — log de operações
+
+### Validação E2E
+- ✅ GET retornou 50+ zones do SmartOLT real (LigoFibra)
+- ✅ POST criou `CTO 001_301_TST` no SmartOLT: "Zone CTO 001_301_TST added successfully"
+- ✅ 2ª chamada (idempotência): `created=false`, "Zone já existe"
+- ✅ Audit log: 2 entradas registradas
+
+### Limitação conhecida
+SmartOLT não expõe PUT/PATCH/DELETE para zones na coleção pública. Renomear/excluir
+requer ação manual no painel SmartOLT.
