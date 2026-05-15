@@ -22,6 +22,9 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 9. **Auditoria & Logs** — todas as ações destrutivas/sensíveis são logadas (lousa_logs, sync_logs).
 10. **Plataforma multi-tenant** — super admin lista empresas, faz impersonation com banner de aviso.
 11. **Training Studio (Multi-Agent Simulator)** — 60 cenários realistas, 20 testes de validação executáveis (Isabela IA + Avaliador IA), 31 regras da matriz de decisão, scoring 100pts, histórico completo de runs. Acessível via Central IA → "Abrir Training Studio". (Feb/2026)
+12. **Conexões / Integrações (Card unificado)** — Em Configurações, lista todas as 8 integrações externas (Atlaz, SmartOLT, Twilio, Meta WhatsApp, OpenRouter, Resend, Stripe, Google Drive) com chaves mascaradas e modal de edição. Cobre auditoria de troca de credenciais. (Feb/2026)
+13. **Financeiro (Fase 1+2)** — Módulo financeiro interno + clientes. Sub-abas implementadas: Categoria, Fornecedor, Método de Cobrança, Caixa. Sub-abas Fluxo de Caixa e Contas a Pagar como placeholders. Nova role `financeiro`. (Feb/2026)
+
 
 ## Arquitetura técnica
 - **Backend**: FastAPI · MongoDB (Motor async) · APScheduler · workers async (atlaz, smartolt, ai_preventive, holidays).

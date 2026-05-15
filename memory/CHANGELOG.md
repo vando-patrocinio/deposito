@@ -1,4 +1,55 @@
 # PontoIA — Changelog
+# PontoIA — Changelog
+
+## Feb 15, 2026 — Module: Financeiro (Fase 1+2) + Card unificado de Conexões ★
+
+### O que foi implementado
+
+**Fase 1 — Card unificado de Conexões em Configurações**
+- Novo endpoint backend `/app/backend/routes/connections.py`:
+  - `GET /api/connections/` → retorna 8 integrações com chaves mascaradas
+  - `PUT /api/connections/{integration_id}` → atualiza credenciais (secret vazio mantém atual)
+  - Integrações cobertas: Atlaz V2, SmartOLT, Twilio, Meta WhatsApp Cloud, OpenRouter, Resend, Stripe, Google Drive
+  - Auditoria em `db.connection_audit`
+- Novo componente frontend `/app/frontend/src/ConnectionsCard.js`:
+  - Tabela com Nome / Categoria / Credencial mascarada / Status / Ação
+  - Modal de edição com olho mostrar/esconder secrets
+  - Inseridoem `SettingsPanel.js` antes dos cards legados Atlaz/SmartOLT/Magnus
+
+**Fase 2 — Módulo Financeiro (cadastros base)**
+- Nova role `financeiro` adicionada a `VALID_ROLES` em `/app/backend/auth.py`
+- Novo router `/app/backend/routes/financeiro.py` com CRUDs:
+  - `/api/financeiro/categories` (despesa/receita/ambos, cor, parent_id)
+  - `/api/financeiro/suppliers` (CPF/CNPJ, contato, endereço)
+  - `/api/financeiro/payment-methods` (PIX/Boleto/Cartão/Dinheiro/Transferência + taxa% + D+)
+  - `/api/financeiro/cash-accounts` (banco/caixa físico/wallet, saldo inicial/atual)
+  - `/api/financeiro/summary` (contadores + saldo total)
+- Coleções Mongo novas: `fin_categories`, `fin_suppliers`, `fin_payment_methods`, `fin_cash_accounts`
+- Novo painel `/app/frontend/src/FinanceiroPanel.js` com 6 sub-abas:
+  - **Fluxo de Caixa** (placeholder Fase 3)
+  - **Contas a Pagar** (placeholder Fase 3)
+  - **Caixa** (CRUD)
+  - **Método de Cobrança** (CRUD)
+  - **Categoria** (CRUD)
+  - **Fornecedor** (CRUD)
+- Componente genérico `CrudTab` + `CrudModal` reusado por todas sub-abas
+- Novo grupo "Financeiro" na sidebar (`NAV_GROUPS` em `App.js`), acesso `auditor`/`administrador`/`financeiro`
+
+### Próximas fases planejadas
+- **Fase 3**: contas a pagar com movimentação + fluxo de caixa (entrada/saída) + gráficos
+- **Fase 4**: integração financeira com Atlaz V2 (pull de faturas/pagamentos dos assinantes)
+- **Fase 5**: relatórios DRE + conciliação bancária + exportação PDF/Excel
+
+### Tests
+- `/app/test_reports/iteration_72.json` — 21/21 backend PASS + 100% frontend E2E PASS
+- Pytest file: `/app/backend/tests/test_iter72_connections_financeiro.py`
+
+### Deploy readiness
+- Health check `deployment_agent` PASS após corrigir `.gitignore` (estava bloqueando `.env`), CORS adicionado `https://dual-combine-3.emergent.host`, e `collabAuth.js` migrado de `window.location.href` para `window.location.origin`.
+
+---
+
+
 
 ## Feb 14, 2026 — Fix: Romaneio em modal interno (PDF viewer inline) ★
 
