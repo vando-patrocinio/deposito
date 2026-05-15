@@ -17,10 +17,11 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   MapContainer, TileLayer, Marker, Popup, Polyline,
-  useMap, CircleMarker, Tooltip,
+  useMap, CircleMarker, Tooltip, useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "leaflet.heat";
 import { api } from "@/api";
 import { Card } from "@/ui";
 
@@ -107,6 +108,42 @@ function FitBounds({ ctos }) {
   return null;
 }
 
+// Camada Heatmap: pesos baseados em score de saúde (quanto pior, mais quente)
+function HeatLayer({ ctos, enabled }) {
+  const map = useMap();
+  const layerRef = useRef(null);
+  useEffect(() => {
+    if (layerRef.current) {
+      map.removeLayer(layerRef.current);
+      layerRef.current = null;
+    }
+    if (!enabled || ctos.length === 0) return;
+    const points = ctos
+      .filter((c) => c.health.status !== "no_data")
+      .map((c) => {
+        // weight: 1.0 quando crítico (score 0), 0.0 quando saudável (score 100)
+        const score = c.health.score ?? 100;
+        const weight = Math.max(0, Math.min(1, (100 - score) / 100));
+        return [c.lat, c.lng, weight];
+      });
+    if (points.length === 0) return;
+    layerRef.current = L.heatLayer(points, {
+      radius: 35, blur: 25, maxZoom: 17,
+      max: 1.0,
+      gradient: {
+        0.0: "#22c55e",
+        0.3: "#facc15",
+        0.6: "#f97316",
+        1.0: "#dc2626",
+      },
+    }).addTo(map);
+    return () => {
+      if (layerRef.current) { map.removeLayer(layerRef.current); layerRef.current = null; }
+    };
+  }, [map, ctos, enabled]);
+  return null;
+}
+
 export default function RedeIaMap() {
   const [data, setData] = useState({ ctos: [], ces: [], cables: [], vlans: [],
                                           center: { lat: -22.9068, lng: -43.1729 } });
@@ -114,8 +151,12 @@ export default function RedeIaMap() {
   const [vlanFilter, setVlanFilter] = useState("");
   const [healthFilter, setHealthFilter] = useState("");
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState("view"); // view | drag | add-ce | add-cable
-  const [cableDraft, setCableDraft] = useState({ from: null, to: null });
+  const [mode, setMode] = useState("view"); // view | drag | add-cable
+  const [cableDraft, setCableDraft] = useState({
+    from: null,      // { id, type, lat, lng, name }
+    cableType: "12fo",
+  });
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const [legendOpen, setLegendOpen] = useState(true);
 
   const load = useCallback(async () => {
@@ -170,6 +211,40 @@ export default function RedeIaMap() {
       alert("Falha ao salvar posição: " + (e?.response?.data?.detail || e.message));
     }
   }, []);
+
+  // Handler: clique em CTO/CE durante modo add-cable
+  const handleEntityClick = useCallback(async (entity) => {
+    if (mode !== "add-cable") return false;
+    // entity: { id, type: "cto"|"ce", lat, lng, name }
+    if (!cableDraft.from) {
+      setCableDraft({ ...cableDraft, from: entity });
+      return true;
+    }
+    if (cableDraft.from.id === entity.id) {
+      // mesmo nó → cancela
+      setCableDraft({ ...cableDraft, from: null });
+      return true;
+    }
+    // cria o cabo
+    try {
+      await api.redeIaCableCreate({
+        type: cableDraft.cableType,
+        from_id: cableDraft.from.id, from_type: cableDraft.from.type,
+        to_id: entity.id, to_type: entity.type,
+        segments: [
+          { lat: cableDraft.from.lat, lng: cableDraft.from.lng },
+          { lat: entity.lat, lng: entity.lng },
+        ],
+        length_m: null,
+        notes: `Criado manualmente via mapa interativo`,
+      });
+      setCableDraft({ ...cableDraft, from: null });
+      load();
+    } catch (e) {
+      alert("Erro ao criar cabo: " + (e?.response?.data?.detail || e.message));
+    }
+    return true;
+  }, [mode, cableDraft, load]);
 
   const autoGenerate = async () => {
     if (!window.confirm("rede_IA vai agrupar CTOs próximas em CEs e criar cabos 24FO automaticamente. Continuar?")) return;
@@ -257,17 +332,23 @@ export default function RedeIaMap() {
           {busy ? "Processando..." : "🤖 rede_IA gerar CEs"}
         </button>
         <button data-testid="map-share-btn" onClick={async () => {
+          const ttlInput = window.prompt("Validade do link (dias, 1-365):", "30");
+          const ttl = parseInt(ttlInput, 10);
+          if (!ttl || ttl < 1 || ttl > 365) return;
           try {
-            const r = await api.redeIaPublicTokenCreate(vlanFilter || null);
+            const r = await api.redeIaPublicTokenCreate(vlanFilter || null, ttl);
             const url = `${window.location.origin}${r.share_url}`;
-            // copy to clipboard
             try { await navigator.clipboard.writeText(url); } catch (_) {}
-            window.prompt("Link público (read-only) — copiado:", url);
+            const exp = new Date(r.expires_at).toLocaleString("pt-BR");
+            window.prompt(
+              `Link público (read-only) — copiado!\nExpira em ${exp} (${ttl} dias):`,
+              url,
+            );
           } catch (e) {
             alert("Erro: " + (e?.response?.data?.detail || e.message));
           }
         }} style={tbBtn("#16a34a")}
-            title="Gera link público read-only para compartilhar (sem dados sensíveis)">
+            title="Gera link público read-only com TTL configurável">
           🔗 Compartilhar
         </button>
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>
@@ -323,6 +404,7 @@ export default function RedeIaMap() {
             maxZoom={19}
           />
           <FitBounds ctos={filteredCtos} />
+          <HeatLayer ctos={filteredCtos} enabled={showHeatmap} />
 
           {/* Cabos */}
           {data.cables.map((cab) => {
@@ -425,6 +507,12 @@ export default function RedeIaMap() {
                   draggable={mode === "drag"}
                   eventHandlers={{
                     dragend: (e) => handleDragEnd("cto", c.id, e.target.getLatLng()),
+                    click: () => {
+                      if (mode === "add-cable") {
+                        handleEntityClick({ id: c.id, type: "cto",
+                                             lat: c.lat, lng: c.lng, name: c.name });
+                      }
+                    },
                   }}>
                   <Tooltip direction="top" offset={[0, -15]}>
                     <strong>{c.name}</strong>
@@ -553,15 +641,53 @@ export default function RedeIaMap() {
           background: "rgba(255,255,255,0.96)",
           borderRadius: 10, padding: 8, zIndex: 1000,
           border: "1px solid #e2e8f0", boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-          display: "flex", flexDirection: "column", gap: 6,
+          display: "flex", flexDirection: "column", gap: 6, minWidth: 140,
         }}>
           <button data-testid="map-mode-view"
-            onClick={() => setMode("view")}
+            onClick={() => { setMode("view"); setCableDraft({ ...cableDraft, from: null }); }}
             style={modeBtn(mode === "view")}>👁 Ver</button>
           <button data-testid="map-mode-drag"
-            onClick={() => setMode("drag")}
+            onClick={() => { setMode("drag"); setCableDraft({ ...cableDraft, from: null }); }}
             style={modeBtn(mode === "drag")}>✋ Mover</button>
+          <button data-testid="map-mode-cable"
+            onClick={() => { setMode("add-cable"); setCableDraft({ ...cableDraft, from: null }); }}
+            style={modeBtn(mode === "add-cable")}>➕ Cabo</button>
+          {mode === "add-cable" && (
+            <select data-testid="map-cable-type"
+              value={cableDraft.cableType}
+              onChange={(e) => setCableDraft({ ...cableDraft, cableType: e.target.value })}
+              style={{
+                padding: "4px 6px", borderRadius: 6,
+                border: "1px solid #cbd5e1", fontSize: 11, fontWeight: 600,
+              }}>
+              <option value="drop">Drop (1FO)</option>
+              <option value="6fo">6 FO</option>
+              <option value="12fo">12 FO</option>
+              <option value="24fo">24 FO</option>
+              <option value="48fo">48 FO</option>
+              <option value="96fo">96 FO</option>
+            </select>
+          )}
+          <button data-testid="map-mode-heatmap"
+            onClick={() => setShowHeatmap(!showHeatmap)}
+            style={modeBtn(showHeatmap)}>🔥 Heatmap</button>
         </div>
+
+        {/* Banner instruções para modo add-cable */}
+        {mode === "add-cable" && (
+          <div data-testid="cable-instructions" style={{
+            position: "absolute", top: 12, left: "50%",
+            transform: "translateX(-50%)", zIndex: 1000,
+            background: "rgba(124,58,237,0.96)", color: "#fff",
+            padding: "8px 14px", borderRadius: 8,
+            fontSize: 12, fontWeight: 600,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+          }}>
+            {cableDraft.from
+              ? `✅ Origem: ${cableDraft.from.name} → Clique no destino (CTO ou CE)`
+              : "➕ Modo cabo · Clique na CTO/CE de origem"}
+          </div>
+        )}
       </div>
     </Card>
   );

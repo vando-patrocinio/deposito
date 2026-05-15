@@ -8,14 +8,14 @@ Módulo responsável por:
 - Exportar dados para fluxograma React Flow
 - (Fase 5) chamada LLM para análise de inconsistências
 - QR Code criptografado por CTO (apenas o app SmartProv decodifica)
+
+Sub-módulos relacionados:
+- `routes/rede_ia_map.py`   — mapa interativo Leaflet (CTOs/CEs/cabos/heatmap)
+- `services/rede_ia_qr.py`  — geração/validação HMAC do QR Code da CTO
+- `services/cto_pdf.py`     — geração do PDF da CTO
+- `services/drive_backup.py`— upload genérico ao Google Drive
 """
-import base64
-import hashlib
-import hmac
-import io
-import json
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -26,59 +26,14 @@ from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, now_iso, require_role, get_current_user
 from database import db
+from services.rede_ia_qr import (
+    build_qr_token as _build_qr_token,
+    verify_qr_token as _verify_qr_token,
+    render_qr_png as _render_qr_png,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/rede-ia", tags=["rede_ia"])
-
-# ---------------------------------------------------------------------------
-# QR Code crypto
-# ---------------------------------------------------------------------------
-QR_SECRET = os.environ.get("REDE_IA_QR_SECRET") or "smartprov-rede-ia-2026-default-secret-change-me"
-QR_VERSION = "v1"
-QR_PREFIX = "SPCTO"  # SmartProv CTO — identifica origem do QR
-
-
-def _qr_sign(payload_b64: str) -> str:
-    """HMAC-SHA256 sobre o payload base64 + segredo do servidor."""
-    return hmac.new(
-        QR_SECRET.encode("utf-8"),
-        msg=payload_b64.encode("utf-8"),
-        digestmod=hashlib.sha256,
-    ).hexdigest()[:32]
-
-
-def _build_qr_token(cto_id: str, company_id: str, name: str) -> str:
-    """Formato: SPCTO|v1|<b64payload>|<hmac>"""
-    payload = {
-        "cid": company_id,
-        "id": cto_id,
-        "name": name,
-        "ts": int(datetime.now(timezone.utc).timestamp()),
-        "n": uuid.uuid4().hex[:8],
-    }
-    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    b64 = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
-    sig = _qr_sign(b64)
-    return f"{QR_PREFIX}|{QR_VERSION}|{b64}|{sig}"
-
-
-def _verify_qr_token(token: str) -> Optional[Dict[str, Any]]:
-    """Valida HMAC e devolve o payload, ou None se inválido."""
-    try:
-        parts = (token or "").split("|")
-        if len(parts) != 4:
-            return None
-        prefix, version, b64, sig = parts
-        if prefix != QR_PREFIX or version != QR_VERSION:
-            return None
-        if not hmac.compare_digest(_qr_sign(b64), sig):
-            return None
-        # restore padding
-        pad = "=" * (-len(b64) % 4)
-        raw = base64.urlsafe_b64decode(b64 + pad)
-        return json.loads(raw.decode("utf-8"))
-    except Exception:
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -1010,7 +965,6 @@ async def analyze_rede(body: AnalyzeIn,
 @router.get("/ctos/{cto_id}/qrcode.png")
 async def cto_qrcode_png(cto_id: str, user: dict = Depends(get_current_user)):
     """Gera PNG do QR Code da CTO. Só funciona para CTOs aprovadas."""
-    import qrcode
     cid = _user_company(user)
     cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
     if not cto:
@@ -1019,11 +973,8 @@ async def cto_qrcode_png(cto_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(409, "Apenas CTOs aprovadas podem gerar QR Code")
 
     token = _build_qr_token(cto_id, cid, cto.get("name") or "")
-    img = qrcode.make(token, box_size=8, border=2)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return Response(content=buf.getvalue(), media_type="image/png", headers={
+    png_bytes = _render_qr_png(token)
+    return Response(content=png_bytes, media_type="image/png", headers={
         "Cache-Control": "private, max-age=300",
         "Content-Disposition": f"inline; filename=\"qr-{cto.get('name','cto')}.png\"",
     })

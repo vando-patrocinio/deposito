@@ -1478,3 +1478,33 @@ Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
 - ✅ Endpoint público sem auth retorna dados sanitizados; campos sensíveis ausentes
 - ✅ Token inválido → HTTP 403
 - ✅ Página `/rede-publica` renderiza mapa + legenda + KPIs sem login
+
+## 2026-05-15 (final 3) — Backlog Future entregue
+### 1. TTL nos tokens públicos
+- Campo `exp` no payload do token (unix timestamp); `_verify_public_token` rejeita expirados
+- Endpoint `POST /map/public/token` aceita `ttl_days` (1-365, default 30)
+- Response inclui `expires_at` ISO + `ttl_days`
+- Frontend: prompt pede TTL antes de gerar link; alerta mostra data de expiração
+
+### 2. Modo "Adicionar cabo" no mapa
+- Novo modo no toolbar (➕ Cabo) + seletor inline de tipo (drop/6FO/12FO/24FO/48FO/96FO)
+- Fluxo: clique CTO/CE origem → banner roxo no topo guia → clique destino → POST `/cables` cria cabo automaticamente entre os 2 pontos
+- Drag-mode e cable-mode mutuamente exclusivos
+
+### 3. Heatmap de problemas por região
+- `leaflet.heat@0.2.0` adicionada
+- Botão 🔥 Heatmap toggle no toolbar
+- Peso por CTO: `(100 - score_saude) / 100` — quanto pior, mais quente
+- Gradient: verde (saudável) → amarelo → laranja → vermelho (crítico)
+- Ignora CTOs sem dados (`no_data`)
+
+### 4. Refactor parcial `rede_ia.py`
+- Sub-módulo: `services/rede_ia_qr.py` (HMAC + build/verify/render)
+- Removido código duplicado de QR de `rede_ia.py` (-90 linhas)
+- `rede_ia.py`: 1264 → 1215 linhas
+- `rede_ia_map.py`: 664 linhas (mapa + público + heatmap independente)
+- Sub-módulos relacionados: cto_pdf, drive_backup, rede_ia_qr — todos isolados
+- Documentação inline no docstring de `rede_ia.py` lista os sub-módulos
+
+### Dependências
+- frontend: `leaflet.heat@0.2.0`

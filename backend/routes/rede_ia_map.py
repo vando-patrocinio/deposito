@@ -514,11 +514,14 @@ def _public_sign(b64: str) -> str:
                       hashlib.sha256).hexdigest()[:32]
 
 
-def _build_public_token(company_id: str, vlan_filter: Optional[int] = None) -> str:
+def _build_public_token(company_id: str, vlan_filter: Optional[int] = None,
+                          ttl_days: int = 30) -> str:
+    now = int(datetime.now(timezone.utc).timestamp())
     payload = {
         "cid": company_id,
         "vlan": vlan_filter,
-        "ts": int(datetime.now(timezone.utc).timestamp()),
+        "ts": now,
+        "exp": now + (ttl_days * 86400),
         "n": uuid.uuid4().hex[:8],
     }
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -539,26 +542,37 @@ def _verify_public_token(token: str) -> Optional[Dict[str, Any]]:
             return None
         pad = "=" * (-len(b64) % 4)
         raw = base64.urlsafe_b64decode(b64 + pad)
-        return json.loads(raw.decode("utf-8"))
+        payload = json.loads(raw.decode("utf-8"))
+        # Verifica expiração
+        exp = payload.get("exp")
+        if exp is not None:
+            now = int(datetime.now(timezone.utc).timestamp())
+            if now > exp:
+                return None
+        return payload
     except Exception:
         return None
 
 
 class PublicTokenIn(BaseModel):
     vlan: Optional[int] = None
+    ttl_days: int = Field(30, ge=1, le=365)
 
 
 @router.post("/map/public/token")
 async def create_public_token(body: PublicTokenIn,
                                 user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
-    """Gera token público compartilhável para visualização do mapa."""
+    """Gera token público compartilhável com TTL (padrão 30 dias)."""
     cid = _company(user)
-    token = _build_public_token(cid, body.vlan)
+    token = _build_public_token(cid, body.vlan, body.ttl_days)
+    expires_at = (datetime.now(timezone.utc).timestamp() + body.ttl_days * 86400)
     return {
         "token": token,
         "share_url": f"/rede-publica?t={token}",
         "company_id": cid,
         "vlan_filter": body.vlan,
+        "ttl_days": body.ttl_days,
+        "expires_at": datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat(),
     }
 
 
