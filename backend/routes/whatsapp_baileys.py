@@ -163,6 +163,75 @@ class SendIn(BaseModel):
     text: str = Field(..., min_length=1, max_length=4096)
 
 
+class SendAudioIn(BaseModel):
+    phone: str = Field(..., min_length=8, max_length=25)
+    audio_b64: str = Field(..., min_length=100, max_length=8 * 1024 * 1024)
+    mimetype: Optional[str] = "audio/ogg; codecs=opus"
+    duration_sec: Optional[float] = None
+
+
+@router.post("/send-audio")
+async def send_audio(payload: SendAudioIn,
+                        user: dict = Depends(require_role("gestor"))):
+    """Envia áudio gravado pelo navegador (MediaRecorder API) como voice note
+    PTT no WhatsApp. Aceita base64 (default webm/opus do Chrome).
+
+    Persiste mensagem outbound com `text="🎤 Áudio (Xs)"` e flag `media_type`.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    send_ok = False
+    send_error: Optional[str] = None
+    out: Dict[str, Any] = {}
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as cli:
+            r = await cli.post(
+                f"{SIDECAR_BASE}/send-audio",
+                json={
+                    "phone": payload.phone,
+                    "audio_b64": payload.audio_b64,
+                    "mimetype": payload.mimetype,
+                },
+            )
+            try:
+                out = r.json()
+            except Exception:
+                out = {"raw": r.text}
+            if r.status_code < 400 and out.get("ok"):
+                send_ok = True
+            else:
+                send_error = (out.get("error") or f"HTTP {r.status_code}")
+    except httpx.HTTPError as e:
+        logger.warning("[wa-baileys] sidecar /send-audio falhou: %s", e)
+        send_error = str(e)
+
+    dur_s = int(payload.duration_sec or 0)
+    label = f"🎤 Áudio{f' ({dur_s}s)' if dur_s else ''}"
+    await db.aihub_wa_messages.insert_one({
+        "id": f"wam-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "direction": "outbound",
+        "phone": payload.phone,
+        "text": label,
+        "media_type": "audio",
+        "media_mimetype": payload.mimetype,
+        "media_duration_sec": dur_s,
+        "channel": "baileys",
+        "message_id": out.get("message_id"),
+        "created_at": now_iso(),
+        "actor_user": user.get("email") or user.get("id"),
+        "sent_by_user_id": user.get("id"),
+        "auto_reply": False,
+        "delivery_status": "sent" if send_ok else "failed",
+        "delivery_error": send_error,
+    })
+    if not send_ok:
+        raise HTTPException(
+            status_code=502,
+            detail=f"WhatsApp não enviou o áudio: {send_error or 'erro desconhecido'}",
+        )
+    return {"ok": True, "message_id": out.get("message_id")}
+
+
 @router.post("/send")
 async def send_message(payload: SendIn,
                         user: dict = Depends(require_role("gestor"))):

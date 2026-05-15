@@ -417,6 +417,40 @@ app.post("/send", async (req, res) => {
   }
 });
 
+app.post("/send-audio", async (req, res) => {
+  if (connState !== "connected" || !sock) {
+    return res.status(503).json({ ok: false, error: "WhatsApp não conectado." });
+  }
+  let { phone, audio_b64, mimetype } = req.body || {};
+  if (!phone || !audio_b64) {
+    return res.status(400).json({ ok: false, error: "phone e audio_b64 obrigatórios" });
+  }
+  phone = String(phone).replace(/\D/g, "");
+  const jid = `${phone}@s.whatsapp.net`;
+  await applyRateLimit();
+  try {
+    const buffer = Buffer.from(String(audio_b64), "base64");
+    const r = await withTimeout(
+      sock.sendMessage(jid, {
+        audio: buffer,
+        mimetype: mimetype || "audio/ogg; codecs=opus",
+        ptt: true,
+      }),
+      30000, "sendAudio",
+    );
+    lastSuccessAt = Date.now();
+    return res.json({ ok: true, message_id: r.key?.id, jid });
+  } catch (e) {
+    const msg = String(e?.message || "");
+    logger.error({ err: msg, phone }, "send-audio err");
+    if (/timeout|closed|terminat|connection|stale|stream/i.test(msg)) {
+      forceReconnect(`send-audio:${msg}`);
+    }
+    return res.status(502).json({ ok: false, error: msg || "erro desconhecido" });
+  }
+});
+
+
 app.post("/logout", async (_req, res) => {
   try {
     if (sock) {

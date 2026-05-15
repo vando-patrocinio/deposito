@@ -5,7 +5,7 @@ import {
   CheckCircle2, GraduationCap, ChevronDown, ChevronUp, Lightbulb,
   Wifi, WifiOff, Activity, Info, Signal, MapPin, Phone, CreditCard,
   AlertCircle, Sparkles, Lock, AlertTriangle, ClipboardList, RefreshCw,
-  Settings, RotateCcw, Image, CalendarPlus,
+  Settings, RotateCcw, Image, CalendarPlus, Mic,
 } from "lucide-react";
 import { api } from "@/api";
 import { useAuth } from "@/AuthContext";
@@ -1230,6 +1230,78 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
     } finally { setSending(false); }
   };
 
+  // ---- Áudio (MediaRecorder) ----
+  const [recording, setRecording] = useState(false);
+  const [recDuration, setRecDuration] = useState(0);
+  const recorderRef = useRef(null);
+  const recChunksRef = useRef([]);
+  const recTimerRef = useRef(null);
+
+  const startRecording = async () => {
+    if (!conv || isAi || recording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Prefer webm/opus pra compat com Baileys (ele faz transcode pro ogg).
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+            ? "audio/ogg;codecs=opus" : "audio/webm");
+      const mr = new MediaRecorder(stream, { mimeType: mime });
+      recChunksRef.current = [];
+      mr.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) recChunksRef.current.push(ev.data);
+      };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(recChunksRef.current, { type: mime });
+        if (blob.size < 1000) {
+          alert("Áudio muito curto, segure por mais tempo.");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const b64 = String(reader.result || "").split(",")[1];
+          if (!b64) return;
+          setSending(true);
+          try {
+            await api.waBaileysSendAudio(conv.phone, b64, mime, recDuration);
+            await loadMessages();
+          } catch (e) {
+            alert("Erro ao enviar áudio: " + (e?.response?.data?.detail || e.message));
+          } finally {
+            setSending(false);
+            setRecDuration(0);
+          }
+        };
+        reader.readAsDataURL(blob);
+      };
+      mr.start();
+      recorderRef.current = mr;
+      setRecording(true);
+      setRecDuration(0);
+      recTimerRef.current = setInterval(
+        () => setRecDuration((d) => d + 1), 1000);
+    } catch (e) {
+      alert("Não foi possível acessar o microfone: " + e.message);
+    }
+  };
+
+  const stopRecording = (cancel = false) => {
+    if (!recording) return;
+    if (recTimerRef.current) {
+      clearInterval(recTimerRef.current);
+      recTimerRef.current = null;
+    }
+    setRecording(false);
+    const mr = recorderRef.current;
+    if (cancel && mr) {
+      // Limpa chunks pra onstop ignorar (size < 1000 vai abortar)
+      recChunksRef.current = [];
+    }
+    try { mr?.stop(); } catch { /* ignore */ }
+    recorderRef.current = null;
+  };
+
   const assignTo = async (userId) => {
     setBusy(true);
     try {
@@ -1587,7 +1659,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
         />
       )}
 
-      {/* Mensagens — fundo com doodles estilo WhatsApp */}
+      {/* Mensagens — papel de parede customizado Ligo */}
       <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex" }}>
       <div ref={scrollRef}
            data-testid="wa-messages-scroll"
@@ -1595,9 +1667,10 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
              flex: 1, minHeight: 0,
              overflowY: "auto", padding: "16px 18px",
              backgroundColor: "#efeae2",
-             backgroundImage: "url(\"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300' viewBox='0 0 300 300'%3E%3Cg fill='none' stroke='%23d9d2c8' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round' opacity='0.85'%3E%3Cpath d='M20 30 q0 -12 12 -12 h24 q12 0 12 12 v12 q0 12 -12 12 h-18 l-10 8 v-8 q-8 0 -8 -12 z'/%3E%3Cpath d='M82 28 q-6 -8 -14 0 q-8 8 0 18 l14 14 l14 -14 q8 -10 0 -18 q-8 -8 -14 0 z'/%3E%3Crect x='118' y='14' width='20' height='36' rx='3'/%3E%3Cpath d='M160 50 l0 -28 l16 -4 l0 24'/%3E%3Ccircle cx='160' cy='50' r='3'/%3E%3Ccircle cx='176' cy='46' r='3'/%3E%3Crect x='200' y='22' width='32' height='22' rx='2'/%3E%3Ccircle cx='216' cy='33' r='6'/%3E%3Ccircle cx='258' cy='32' r='6'/%3E%3Cpath d='M258 18 v4 M258 42 v4 M244 32 h4 M268 32 h4'/%3E%3Crect x='20' y='80' width='32' height='20' rx='1'/%3E%3Cpath d='M20 82 l16 12 l16 -12'/%3E%3Cpath d='M70 100 v-4 q0 -14 14 -14 q14 0 14 14 v4'/%3E%3Crect x='66' y='98' width='8' height='14' rx='2'/%3E%3Crect x='94' y='98' width='8' height='14' rx='2'/%3E%3Ccircle cx='130' cy='92' r='11'/%3E%3Cpath d='M130 86 v6 l4 3'/%3E%3Cpath d='M170 80 q-9 0 -9 9 q0 4 3 7 v4 h12 v-4 q3 -3 3 -7 q0 -9 -9 -9 z'/%3E%3Cpath d='M210 80 l3 8 h8 l-6 6 l2 9 l-7 -5 l-7 5 l2 -9 l-6 -6 h8 z'/%3E%3Cpath d='M250 80 l16 22 h-32 z'/%3E%3Ccircle cx='28' cy='150' r='8'/%3E%3Cellipse cx='28' cy='150' rx='14' ry='4'/%3E%3Cpath d='M72 140 q4 -10 8 -10 q4 0 8 10 v18 h-16 z'/%3E%3Cpath d='M118 152 q-6 0 -6 -6 q0 -7 8 -7 q2 -7 10 -7 q9 0 11 8 q6 0 6 7 q0 5 -6 5 z'/%3E%3Crect x='170' y='138' width='20' height='20' rx='1'/%3E%3Cpath d='M214 138 l8 8 l-8 8 l-8 -8 z'/%3E%3Crect x='250' y='138' width='10' height='14' rx='5'/%3E%3Ccircle cx='30' cy='210' r='11'/%3E%3Cpath d='M70 200 h20 v12 q0 6 -6 6 h-8 q-6 0 -6 -6 z'/%3E%3Cpath d='M114 202 q8 -4 16 0 v16 q-8 -4 -16 0 z'/%3E%3Cpath d='M130 202 q8 -4 16 0 v16 q-8 -4 -16 0'/%3E%3Ccircle cx='166' cy='206' r='5'/%3E%3Ccircle cx='210' cy='216' r='6'/%3E%3Ccircle cx='226' cy='216' r='6'/%3E%3Cpath d='M260 202 q-12 0 -12 10 h24 q0 -10 -12 -10 z'/%3E%3Cpath d='M18 268 l24 -6 l4 -4 l4 4 l-4 8 l-22 4 z'/%3E%3Crect x='70' y='260' width='16' height='14'/%3E%3Crect x='158' y='258' width='18' height='22' rx='1'/%3E%3Cpath d='M200 258 l8 8 l-12 12 l-8 -8 z'/%3E%3Cpath d='M240 256 v18 q-3 1 -3 4 q0 4 4 4 q4 0 4 -4 q0 -3 -3 -4 v-18 z'/%3E%3C/g%3E%3C/svg%3E\")",
+             backgroundImage: 'url("/wa-wallpaper-ligo.png")',
              backgroundRepeat: "repeat",
-             backgroundSize: "300px 300px",
+             backgroundSize: "auto",
+             backgroundBlendMode: "multiply",
            }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {timeline.map((it, idx) => {
@@ -1740,15 +1813,49 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
         </button>
         <input className="input" placeholder={isAi
           ? "Assuma a conversa para responder manualmente..."
-          : "Digite sua mensagem (vai pro cliente via WhatsApp)..."}
+          : (recording
+              ? `🔴 Gravando áudio... ${recDuration}s — clique no microfone novamente para enviar`
+              : "Digite sua mensagem (vai pro cliente via WhatsApp)...")}
           value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !sending && send()}
-          disabled={isAi}
+          disabled={isAi || recording}
           data-testid="wa-composer-input"
           style={{ flex: 1 }} />
-        <button onClick={send} disabled={sending || !text.trim() || isAi}
+        {/* Botão de microfone — clica pra começar, clica pra parar/enviar.
+            Long-press pra cancelar (segura por 1s e arrasta sai). */}
+        {!isAi && !text.trim() && (
+          <button
+            data-testid="wa-mic-btn"
+            onClick={() => (recording ? stopRecording(false) : startRecording())}
+            onContextMenu={(e) => { e.preventDefault(); stopRecording(true); }}
+            disabled={sending}
+            title={recording
+              ? "Parar e enviar áudio (botão direito = cancelar)"
+              : "Gravar mensagem de voz"}
+            style={{
+              flexShrink: 0,
+              width: 40, height: 40, borderRadius: "50%",
+              border: "none", cursor: "pointer",
+              display: "grid", placeItems: "center",
+              background: recording
+                ? "linear-gradient(135deg, #ef4444, #b91c1c)"
+                : "linear-gradient(135deg, #25d366, #128c7e)",
+              color: "#fff",
+              boxShadow: recording
+                ? "0 0 0 4px rgba(239,68,68,.3)" : "0 1px 3px rgba(18,140,126,.3)",
+              transition: "all .2s",
+              animation: recording ? "wa-pulse 1.4s ease-in-out infinite" : "none",
+            }}>
+            <Mic size={18} strokeWidth={2.2} />
+          </button>
+        )}
+        <button onClick={send} disabled={sending || !text.trim() || isAi || recording}
                 className="btn btn-primary btn-sm"
-                data-testid="wa-composer-send">
+                data-testid="wa-composer-send"
+                style={{ visibility: text.trim() ? "visible" : "hidden",
+                          width: text.trim() ? "auto" : 0,
+                          padding: text.trim() ? undefined : 0,
+                          margin: text.trim() ? undefined : 0 }}>
           <Send size={13} /> {sending ? "..." : "Enviar"}
         </button>
       </div>

@@ -488,6 +488,10 @@ export const api = {
     client.post(`/whatsapp-baileys/send-image`, {
       phone, image_data_url: imageDataUrl, caption,
     }).then((r) => r.data),
+  waBaileysSendAudio: (phone, audioB64, mimetype, durationSec) =>
+    client.post(`/whatsapp-baileys/send-audio`, {
+      phone, audio_b64: audioB64, mimetype, duration_sec: durationSec,
+    }, { timeout: 60000 }).then((r) => r.data),
   // Subscribers — busca + by-phone (autocomplete no modal de Agendamento)
   subscribersSearch: (q, limit = 10) =>
     client.get(`/subscribers/search`, { params: { q, limit } }).then((r) => r.data),
