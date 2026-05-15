@@ -66,15 +66,47 @@ def _money(v: float) -> float:
     return round(float(v or 0), 2)
 
 
+def _resolve_unit_price(item: Dict[str, Any]) -> float:
+    """Resolve o preço unitário aplicado, na ordem de prioridade:
+    1. manual_override (se setado e != "")
+    2. preço escolhido via price_choice (low/mid/high) buscado em `prices`
+    3. avg_price (fallback — compat com itens antigos sem price_choice)
+    """
+    if item.get("manual_override") not in (None, ""):
+        try:
+            return float(item["manual_override"])
+        except (ValueError, TypeError):
+            pass
+    choice = (item.get("price_choice") or "").lower()
+    prices = item.get("prices") or []
+    # prices vem como [{"label":"Baixo","value":X},{"label":"Médio",...},...]
+    label_map = {"low": "baixo", "mid": "médio", "high": "alto",
+                  "baixo": "baixo", "médio": "médio", "medio": "médio",
+                  "alto": "alto"}
+    target = label_map.get(choice)
+    if target:
+        for p in prices:
+            if (p.get("label") or "").strip().lower() == target:
+                try:
+                    return float(p.get("value") or 0)
+                except (ValueError, TypeError):
+                    pass
+    try:
+        return float(item.get("avg_price") or 0)
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def _calc_totals(items: List[Dict[str, Any]], margin_pct: float,
                    tax_pct: float, labor_pct: float) -> Dict[str, float]:
-    """Calcula totais. base = soma(qtde * avg_price). Final = base * (1+ganho+labor+imposto)."""
+    """Calcula totais. base = soma(qtde * unit). unit obedece a price_choice
+    do item (low/mid/high) ou manual_override quando setado. Final = base *
+    (1+ganho+labor+imposto).
+    """
     base = 0.0
     for it in items or []:
         qty = float(it.get("qty") or 0)
-        # avg_price > manual_override > 0
-        unit = float(it.get("manual_override")) if it.get("manual_override") not in (None, "") \
-               else float(it.get("avg_price") or 0)
+        unit = _resolve_unit_price(it)
         base += qty * unit
     base = _money(base)
     margin_val = _money(base * (margin_pct or 0) / 100.0)
@@ -205,13 +237,18 @@ async def update_budget(bid: str, body: BudgetUpdateIn,
     if body.labor_pct is not None:
         upd["labor_pct"] = float(body.labor_pct)
     if body.items is not None:
-        # Mantém os campos originais e aplica overrides nos campos editáveis
+        # Mantém os campos originais e aplica overrides nos campos editáveis.
+        # manual_override aceita None (= limpar override e voltar ao price_choice).
         existing = {it["id"]: it for it in doc.get("items", []) if it.get("id")}
         new_items: List[Dict[str, Any]] = []
         for it in body.items:
             iid = it.get("id")
             base = existing.get(iid, {})
-            merged = {**base, **{k: v for k, v in it.items() if v is not None}}
+            # Aceita explicitamente manual_override=None (limpar) mas filtra
+            # outros valores None para não zerar dados acidentalmente.
+            patch = {k: v for k, v in it.items()
+                       if v is not None or k == "manual_override"}
+            merged = {**base, **patch}
             new_items.append(merged)
         upd["items"] = new_items
     await db.budgets.update_one({"id": bid, "company_id": cid}, {"$set": upd})
@@ -558,6 +595,10 @@ async def analyze_budget(bid: str,
             it["sources"] = ai.get("sources") or []
             it["confidence"] = ai.get("confidence") or "medium"
             it["avg_price"] = _money(avg)
+            # Default escolha = "mid" (médio). Usuário pode trocar pra low/high
+            # clicando nos chips na UI.
+            if not it.get("price_choice"):
+                it["price_choice"] = "mid"
         updated.append(it)
 
     await db.budgets.update_one(

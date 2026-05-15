@@ -110,6 +110,53 @@ def test_item_manual_override(budget_id, auth):
     assert body["totals"]["final"] == 10200.0
 
 
+def test_price_choice_changes_totals(auth):
+    """Item com prices [B=10, M=20, A=40] e qty=1: trocar choice muda total."""
+    r = requests.post(f"{BASE}/api/budget", headers=auth,
+                       json={"name": "TestChoice"}, timeout=10)
+    bid = r.json()["id"]
+    try:
+        # Cria item manualmente via PUT
+        item = {
+            "id": "itm-test1", "name": "X", "qty": 1.0, "unit": "un",
+            "spec": "", "prices": [
+                {"label": "Baixo", "value": 10.0},
+                {"label": "Médio", "value": 20.0},
+                {"label": "Alto", "value": 40.0},
+            ], "avg_price": 23.33, "manual_override": None,
+            "price_choice": "mid",
+        }
+        rr = requests.put(f"{BASE}/api/budget/{bid}",
+                            headers=auth,
+                            json={"items": [item], "margin_pct": 0,
+                                   "tax_pct": 0, "labor_pct": 0},
+                            timeout=10)
+        assert rr.json()["totals"]["final"] == 20.0  # mid
+        # Trocar pra low
+        rr = requests.put(f"{BASE}/api/budget/{bid}",
+                            headers=auth,
+                            json={"items": [{"id": "itm-test1",
+                                              "price_choice": "low"}]},
+                            timeout=10)
+        assert rr.json()["totals"]["final"] == 10.0  # low
+        # Trocar pra high
+        rr = requests.put(f"{BASE}/api/budget/{bid}",
+                            headers=auth,
+                            json={"items": [{"id": "itm-test1",
+                                              "price_choice": "high"}]},
+                            timeout=10)
+        assert rr.json()["totals"]["final"] == 40.0  # high
+        # manual_override tem prioridade sobre price_choice
+        rr = requests.put(f"{BASE}/api/budget/{bid}",
+                            headers=auth,
+                            json={"items": [{"id": "itm-test1",
+                                              "manual_override": 99.0}]},
+                            timeout=10)
+        assert rr.json()["totals"]["final"] == 99.0  # override
+    finally:
+        requests.delete(f"{BASE}/api/budget/{bid}", headers=auth, timeout=5)
+
+
 def test_kpis_endpoint(auth, budget_id):
     r = requests.get(f"{BASE}/api/budget/kpis", headers=auth, timeout=10)
     assert r.status_code == 200

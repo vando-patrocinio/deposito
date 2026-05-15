@@ -381,6 +381,17 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
     await handlePersist({ items });
   }
 
+  async function handlePriceChoice(itemId, choice) {
+    // choice: "low" | "mid" | "high"
+    // Trocar a opção também limpa o manual_override pra não conflitar.
+    const items = (budget.items || []).map((it) =>
+      it.id === itemId
+        ? { ...it, id: it.id, price_choice: choice, manual_override: null }
+        : { id: it.id }
+    );
+    await handlePersist({ items });
+  }
+
   function openPdf() {
     const url = api.budgetPdfUrl(budget.id);
     // Abre em nova aba com Authorization no header via cookie temp:
@@ -511,16 +522,21 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
                   <th style={{ padding: "8px 10px", textAlign: "left" }}>Item</th>
                   <th style={{ padding: "8px 10px", textAlign: "right" }}>Qtde</th>
                   <th style={{ padding: "8px 10px", textAlign: "left" }}>Unid</th>
-                  <th style={{ padding: "8px 10px", textAlign: "left" }}>Preços IA (B/M/A)</th>
+                  <th style={{ padding: "8px 10px", textAlign: "left" }}>Preços IA — clique p/ escolher</th>
                   <th style={{ padding: "8px 10px", textAlign: "right" }}>Unit. usado</th>
                   <th style={{ padding: "8px 10px", textAlign: "right" }}>Subtotal</th>
                 </tr>
               </thead>
               <tbody>
                 {(budget.items || []).map((it) => {
-                  const unit = it.manual_override != null && it.manual_override !== ""
+                  const isManual = it.manual_override != null && it.manual_override !== "";
+                  const choice = (it.price_choice || "mid").toLowerCase();
+                  const choiceMap = { low: 0, mid: 1, high: 2 };
+                  const selectedIdx = choiceMap[choice] ?? 1;
+                  const unit = isManual
                               ? Number(it.manual_override)
-                              : Number(it.avg_price || 0);
+                              : ((it.prices || [])[selectedIdx]?.value
+                                  ?? Number(it.avg_price || 0));
                   const subtotal = unit * Number(it.qty || 0);
                   return (
                     <tr key={it.id} style={{ borderBottom: "1px solid var(--border-default)" }}>
@@ -540,14 +556,33 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
                           ? <span style={{ color: "var(--text-muted)" }}>—</span>
                           : (
                             <div style={{ display: "flex", gap: 4 }}>
-                              {it.prices.map((p, idx) => (
-                                <span key={idx} style={{
-                                  padding: "2px 6px", borderRadius: 4, fontSize: 10,
-                                  background: idx === 1 ? "rgba(13,148,136,.15)" : "var(--bg-surface-2)",
-                                  color: idx === 1 ? "#0d9488" : "var(--text-secondary)",
-                                  fontWeight: idx === 1 ? 700 : 500,
-                                }}>{p.label[0]} {fmtMoney(p.value)}</span>
-                              ))}
+                              {it.prices.map((p, idx) => {
+                                const choiceKey = ["low", "mid", "high"][idx];
+                                const isSelected = !isManual && choiceKey === choice;
+                                return (
+                                  <button
+                                    key={idx} type="button"
+                                    data-testid={`budget-price-choice-${it.id}-${choiceKey}`}
+                                    title={`${p.label} · clique para usar este valor`}
+                                    onClick={() => handlePriceChoice(it.id, choiceKey)}
+                                    style={{
+                                      padding: "3px 7px", borderRadius: 4, fontSize: 10,
+                                      cursor: "pointer", fontWeight: isSelected ? 800 : 500,
+                                      background: isSelected
+                                        ? "linear-gradient(180deg,#0d9488,#0f766e)"
+                                        : "var(--bg-surface-2)",
+                                      color: isSelected ? "#fff" : "var(--text-secondary)",
+                                      border: isSelected
+                                        ? "1px solid #0f766e"
+                                        : "1px solid var(--border-default)",
+                                      boxShadow: isSelected
+                                        ? "0 1px 2px rgba(13,148,136,.35)" : "none",
+                                      transition: "all .12s",
+                                    }}>
+                                    {p.label[0]} {fmtMoney(p.value)}
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
                       </td>
@@ -556,7 +591,7 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
                           type="number" step="0.01" min="0"
                           data-testid={`budget-item-override-${it.id}`}
                           defaultValue={it.manual_override ?? ""}
-                          placeholder={fmtMoney(it.avg_price || 0)}
+                          placeholder={fmtMoney(unit)}
                           onBlur={(e) => {
                             const newVal = e.target.value;
                             const oldVal = it.manual_override ?? "";
@@ -566,9 +601,12 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
                           }}
                           style={{
                             width: 90, padding: "5px 7px", borderRadius: 4,
-                            border: "1px solid var(--border-default)",
+                            border: isManual
+                              ? "1px solid #f59e0b"
+                              : "1px solid var(--border-default)",
                             fontSize: 11, textAlign: "right",
-                            background: "var(--bg-surface)",
+                            background: isManual
+                              ? "rgba(245,158,11,.08)" : "var(--bg-surface)",
                             color: "var(--text-primary)",
                           }}
                         />
