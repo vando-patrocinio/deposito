@@ -671,7 +671,17 @@ async def budget_pdf(bid: str,
             {"$set": {"status": "final", "finalized_at": now_iso(),
                        "finalized_by": user.get("name")}},
         )
-    safe = re.sub(r"[^\w\-]+", "-", doc.get("name", "orcamento")).strip("-")
+    safe_name = re.sub(r"[^\w\-]+", "-",
+                         doc.get("name", "orcamento")).strip("-") or "orcamento"
+    # Data e hora local Brasil (BRT/BRST)
+    from datetime import timedelta
+    br_tz = timezone(timedelta(hours=-3))
+    stamp = datetime.now(br_tz).strftime("%Y-%m-%d_%H-%M")
+    # Código de segurança: 8 chars hex aleatórios (não previsível, único por
+    # download — permite rastrear cada cópia distribuída).
+    import secrets as _secrets
+    sec_code = _secrets.token_hex(4).upper()
+    filename = f"{safe_name}_{stamp}_{sec_code}.pdf"
     return Response(content=pdf_bytes, media_type="application/pdf", headers={
-        "Content-Disposition": f"inline; filename=\"Orcamento-{safe}.pdf\"",
+        "Content-Disposition": f'inline; filename="{filename}"',
     })
