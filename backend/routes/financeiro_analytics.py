@@ -79,13 +79,28 @@ def _range_for(range_: str) -> tuple[str, str]:
 @router.get("/analytics")
 async def analytics(
     range_: str = Query("30d", alias="range",
-                         pattern="^(1d|7d|30d|3m|6m|1y|all)$"),
+                         pattern="^(1d|7d|30d|3m|6m|1y|all|custom)$"),
     period: str = Query("day", pattern="^(day|month|year)$"),
+    from_date: Optional[str] = Query(None,
+        pattern="^\\d{4}-\\d{2}-\\d{2}$",
+        description="Data inicial YYYY-MM-DD (usado quando range=custom)"),
+    to_date: Optional[str] = Query(None,
+        pattern="^\\d{4}-\\d{2}-\\d{2}$",
+        description="Data final YYYY-MM-DD (usado quando range=custom)"),
     user: dict = Depends(require_finance()),
 ):
     """Série de Recebimentos vs Despesas + médias + coeficiente de variação."""
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    from_date, to_date = _range_for(range_)
+    if range_ == "custom":
+        if not from_date or not to_date:
+            from fastapi import HTTPException
+            raise HTTPException(400,
+                "range=custom exige from_date e to_date no formato YYYY-MM-DD")
+        if from_date > to_date:
+            from fastapi import HTTPException
+            raise HTTPException(400, "from_date deve ser <= to_date")
+    else:
+        from_date, to_date = _range_for(range_)
 
     # 1) Recebimentos = cash_movements income + subscriber_invoices pagas
     income_q = {"company_id": cid, "type": "income",

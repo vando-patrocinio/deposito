@@ -20,7 +20,16 @@ const RANGES = [
   { v: "6m", l: "6 meses" },
   { v: "1y", l: "1 ano" },
   { v: "all", l: "5 anos" },
+  { v: "custom", l: "Personalizado" },
 ];
+
+function _todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+function _daysAgoStr(d) {
+  const x = new Date(); x.setDate(x.getDate() - d);
+  return x.toISOString().slice(0, 10);
+}
 
 const PERIODS = [
   { v: "day", l: "Dia" },
@@ -42,20 +51,40 @@ const REGULARITY_LABEL = {
 export default function AnalyticsChart() {
   const [range, setRange] = useState("30d");
   const [period, setPeriod] = useState("day");
+  const [customFrom, setCustomFrom] = useState(_daysAgoStr(30));
+  const [customTo, setCustomTo] = useState(_todayStr());
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [chartType, setChartType] = useState("line"); // 'line' | 'area'
 
   async function reload() {
     setLoading(true);
+    setError("");
     try {
-      const r = await api._client.get(
-        `/financeiro/analytics?range=${range}&period=${period}`,
-      ).then((r) => r.data);
+      let url = `/financeiro/analytics?range=${range}&period=${period}`;
+      if (range === "custom") {
+        if (!customFrom || !customTo) {
+          setError("Selecione data inicial e final");
+          setData(null);
+          setLoading(false);
+          return;
+        }
+        if (customFrom > customTo) {
+          setError("Data inicial deve ser anterior à final");
+          setData(null);
+          setLoading(false);
+          return;
+        }
+        url += `&from_date=${customFrom}&to_date=${customTo}`;
+      }
+      const r = await api._client.get(url).then((r) => r.data);
       setData(r);
+    } catch (e) {
+      setError(e?.response?.data?.detail || e.message);
     } finally { setLoading(false); }
   }
-  useEffect(() => { reload(); }, [range, period]); // eslint-disable-line
+  useEffect(() => { reload(); }, [range, period, customFrom, customTo]); // eslint-disable-line
 
   // Auto-ajusta period se range for muito longo/curto
   useEffect(() => {
@@ -110,6 +139,84 @@ export default function AnalyticsChart() {
           ))}
         </div>
       </div>
+
+      {/* Date pickers (visível quando range=custom) */}
+      {range === "custom" && (
+        <div style={{
+          display: "flex", flexWrap: "wrap", gap: 12,
+          padding: 12, marginBottom: 14,
+          background: "#f8fafc", borderRadius: 10,
+          border: "1px solid #e2e8f0",
+          alignItems: "center",
+        }} data-testid="analytics-custom-range">
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 11, color: "#64748b",
+                            fontWeight: 700, textTransform: "uppercase" }}>
+              De
+            </span>
+            <input type="date" value={customFrom} max={customTo}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              data-testid="analytics-custom-from"
+              style={{
+                padding: "8px 10px", borderRadius: 8,
+                border: "1px solid #cbd5e1", fontSize: 13,
+                color: "#0f172a", background: "#fff",
+              }} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 11, color: "#64748b",
+                            fontWeight: 700, textTransform: "uppercase" }}>
+              Até
+            </span>
+            <input type="date" value={customTo} min={customFrom}
+              max={_todayStr()}
+              onChange={(e) => setCustomTo(e.target.value)}
+              data-testid="analytics-custom-to"
+              style={{
+                padding: "8px 10px", borderRadius: 8,
+                border: "1px solid #cbd5e1", fontSize: 13,
+                color: "#0f172a", background: "#fff",
+              }} />
+          </label>
+          <div style={{ display: "flex", gap: 4, marginLeft: 4 }}>
+            <button onClick={() => {
+                const d = new Date();
+                setCustomFrom(new Date(d.getFullYear(), d.getMonth(), 1)
+                  .toISOString().slice(0, 10));
+                setCustomTo(_todayStr());
+              }}
+              style={preset_btn} data-testid="analytics-preset-this-month">
+              Este mês
+            </button>
+            <button onClick={() => {
+                const d = new Date();
+                setCustomFrom(new Date(d.getFullYear(), d.getMonth() - 1, 1)
+                  .toISOString().slice(0, 10));
+                setCustomTo(new Date(d.getFullYear(), d.getMonth(), 0)
+                  .toISOString().slice(0, 10));
+              }}
+              style={preset_btn} data-testid="analytics-preset-last-month">
+              Mês passado
+            </button>
+            <button onClick={() => {
+                const d = new Date();
+                setCustomFrom(new Date(d.getFullYear(), 0, 1)
+                  .toISOString().slice(0, 10));
+                setCustomTo(_todayStr());
+              }}
+              style={preset_btn} data-testid="analytics-preset-ytd">
+              Ano corrente
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div style={{ padding: 10, background: "#fee2e2", color: "#991b1b",
+                      borderRadius: 8, fontSize: 12, marginBottom: 10 }}>
+          {error}
+        </div>
+      )}
 
       {loading || !data ? (
         <div style={{ color: "#94a3b8", padding: 20 }}>Carregando…</div>
