@@ -204,15 +204,12 @@ def build_budget_pdf(budget: Dict[str, Any], generated_by: str = "",
     story.append(tbl)
     story.append(Spacer(1, 0.5 * cm))
 
-    # ---- 5. Totais (sem margem de ganho — info interna, não exposta ao cliente) ----
+    # ---- 5. Totais (mostra apenas Base · Mão de obra · TOTAL FINAL) ----
     t = budget.get("totals") or {}
     totals_data = [
         ["Base (soma dos subtotais)", _money_br(t.get("base", 0))],
         [f"Mão de obra ({budget.get('labor_pct', 0):.1f}%)",
          _money_br(t.get("labor_val", 0))],
-        ["Subtotal", _money_br(t.get("subtotal", 0))],
-        [f"Imposto ({budget.get('tax_pct', 0):.1f}%)",
-         _money_br(t.get("tax_val", 0))],
         ["TOTAL FINAL", _money_br(t.get("final", 0))],
     ]
     totals_tbl = Table(totals_data, colWidths=[90 * mm, 40 * mm], hAlign="RIGHT")
@@ -223,7 +220,7 @@ def build_budget_pdf(budget: Dict[str, Any], generated_by: str = "",
         ("FONTSIZE", (0, -1), (-1, -1), 12),
         ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#0f172a")),
         ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
-        ("LINEABOVE", (0, 2), (-1, 2), 0.6, colors.HexColor("#94a3b8")),
+        ("LINEABOVE", (0, -1), (-1, -1), 0.6, colors.HexColor("#94a3b8")),
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
         ("RIGHTPADDING", (0, 0), (-1, -1), 8),
