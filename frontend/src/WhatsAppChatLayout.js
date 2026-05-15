@@ -1234,6 +1234,27 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
               color: online ? "#16a34a" : "var(--text-muted)",
               fontWeight: online ? 600 : 400,
             }}>{presenceLabel}</span>
+            {conv.last_channel && (
+              <>
+                <span style={{ opacity: 0.4 }}>·</span>
+                <span data-testid="wa-thread-channel">
+                  <ChannelBadge channel={conv.last_channel} />
+                </span>
+              </>
+            )}
+            {(conv.channels_used || []).filter((c) => c).length > 1 && (
+              <span data-testid="wa-thread-multi-channel"
+                    title={`Este contato fala por: ${(conv.channels_used || []).join(", ")}`}
+                    style={{
+                      padding: "1px 7px", borderRadius: 999,
+                      background: "#fef3c7", color: "#92400e",
+                      fontSize: 10, fontWeight: 800,
+                      border: "1px solid #fde68a",
+                      display: "inline-flex", alignItems: "center", gap: 3,
+                    }}>
+                {(conv.channels_used || []).filter((c) => c).length}× canais
+              </span>
+            )}
             {conv.phone_is_lid && (
               <>
                 <span style={{ opacity: 0.4 }}>·</span>
