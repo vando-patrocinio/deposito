@@ -820,4 +820,6 @@ export const api = {
     client.get(`/rede-ia/ctos/${cto_id}/qrcode`).then((r) => r.data),
   redeIaQrScan: (payload) =>
     client.post(`/rede-ia/qrcode/scan`, { payload }).then((r) => r.data),
+  redeIaQrBindPort: (data) =>
+    client.post(`/rede-ia/qrcode/bind-port`, data).then((r) => r.data),
 };

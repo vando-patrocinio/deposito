@@ -868,3 +868,129 @@ async def qrcode_scan(body: QrScanIn,
         "scanned_at": now_iso(),
         "scanned_by": user.get("name"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Bind subscriber to CTO port + create OS (Fase 7)
+# ---------------------------------------------------------------------------
+class BindPortIn(BaseModel):
+    cto_id: str
+    port_number: int
+    subscriber_name: str
+    pppoe: Optional[str] = None
+    subscriber_phone: Optional[str] = None
+    subscriber_id: Optional[str] = None
+    service_type: str = "instalacao"  # instalacao | manutencao | troca_porta
+    notes: str = ""
+
+
+@router.post("/qrcode/bind-port")
+async def bind_port(body: BindPortIn,
+                     user: dict = Depends(get_current_user)):
+    """Vincula assinante a uma porta livre da CTO e gera uma OS.
+
+    Fluxo invocado após o técnico escanear o QR e escolher porta+cliente.
+    """
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": body.cto_id, "company_id": cid}, {"_id": 0})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+    if cto.get("status") != "approved":
+        raise HTTPException(409, "Apenas CTOs aprovadas aceitam vincular cliente")
+
+    # Encontra a porta
+    ports = list(cto.get("ports") or [])
+    target = next((p for p in ports if p.get("number") == body.port_number), None)
+    if not target:
+        raise HTTPException(404, f"Porta {body.port_number} não existe nesta CTO")
+    if target.get("status") == "used":
+        raise HTTPException(409, f"Porta {body.port_number} já está ocupada por "
+                                  f"{target.get('client_pppoe') or 'outro cliente'}")
+
+    # Atualiza a porta
+    new_ports = []
+    for p in ports:
+        if p.get("number") == body.port_number:
+            new_ports.append({
+                **p,
+                "status": "used",
+                "client_subscriber_id": body.subscriber_id,
+                "client_pppoe": body.pppoe,
+                "client_name": body.subscriber_name,
+                "client_phone": body.subscriber_phone,
+                "linked_by_user_id": user.get("id"),
+                "linked_by_user_name": user.get("name"),
+                "linked_at": now_iso(),
+                "linked_via_qr": True,
+            })
+        else:
+            new_ports.append(p)
+
+    await db.ctos.update_one(
+        {"id": body.cto_id, "company_id": cid},
+        {"$set": {"ports": new_ports, "updated_at": now_iso()}},
+    )
+
+    # Cria OS no Kanban (lousa)
+    ticket_id = f"tkt-{uuid.uuid4().hex[:10]}"
+    collab_id = user.get("collaborator_id") or user.get("id")
+    last = await db.tickets.find(
+        {"assigned_collaborator_id": collab_id,
+         "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]},
+         "company_id": cid},
+        {"_id": 0, "position": 1},
+    ).sort("position", -1).to_list(1)
+    next_pos = (last[0]["position"] + 1) if last else 0
+
+    type_label_map = {
+        "instalacao": "Instalação",
+        "manutencao": "Manutenção",
+        "troca_porta": "Troca de porta",
+    }
+    ticket_doc = {
+        "id": ticket_id,
+        "client_id": body.subscriber_id or str(uuid.uuid4()),
+        "client_snapshot": {
+            "name": body.subscriber_name,
+            "address": f"{cto.get('address',{}).get('rua','')}, {cto.get('address',{}).get('numero','')}",
+            "neighborhood": cto.get("address", {}).get("bairro"),
+            "phone": body.subscriber_phone,
+            "relato": body.notes or f"Vínculo via QR — {cto.get('name')} porta {body.port_number}",
+            "pppoe_user": body.pppoe,
+            "cto_name": cto.get("name"),
+            "cto_port": body.port_number,
+            "cto_vlan": cto.get("vlan"),
+            "test_history": [],
+        },
+        "type": type_label_map.get(body.service_type, body.service_type),
+        "priority": "alta" if body.service_type == "manutencao" else "horario",
+        "scheduled_time": None,
+        "position": next_pos,
+        "status": "pendente",
+        "assigned_collaborator_id": collab_id,
+        "company_id": cid,
+        "opened_at": now_iso(),
+        "created_at": now_iso(),
+        "source": "rede_ia_qr",
+        "cto_id": body.cto_id,
+    }
+    await db.tickets.insert_one(ticket_doc)
+
+    # Audit
+    await _audit(
+        "bind_port", body.cto_id,
+        {"port": body.port_number, "previous_status": "free"},
+        {"port": body.port_number, "subscriber": body.subscriber_name,
+         "ticket_id": ticket_id, "service_type": body.service_type},
+        user,
+        f"Vínculo via QR — porta {body.port_number} → {body.subscriber_name}",
+    )
+
+    return {
+        "ok": True,
+        "ticket_id": ticket_id,
+        "cto_id": body.cto_id,
+        "port_number": body.port_number,
+        "subscriber_name": body.subscriber_name,
+        "service_type": body.service_type,
+    }
