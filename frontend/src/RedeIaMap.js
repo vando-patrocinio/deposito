@@ -97,6 +97,16 @@ function makeCeIcon(ce) {
   });
 }
 
+// Camada que captura clique no mapa (modos add-ce / draw-cable)
+function MapClickHandler({ enabled, onClick }) {
+  useMapEvents({
+    click: (e) => {
+      if (enabled) onClick(e.latlng);
+    },
+  });
+  return null;
+}
+
 // Helper: centraliza no mapa ao carregar
 function FitBounds({ ctos }) {
   const map = useMap();
@@ -151,11 +161,13 @@ export default function RedeIaMap() {
   const [vlanFilter, setVlanFilter] = useState("");
   const [healthFilter, setHealthFilter] = useState("");
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState("view"); // view | drag | add-cable
+  const [mode, setMode] = useState("view"); // view | drag | add-cable | add-ce | draw-cable
   const [cableDraft, setCableDraft] = useState({
-    from: null,      // { id, type, lat, lng, name }
+    from: null,           // { id, type, lat, lng, name }
+    waypoints: [],        // [{lat,lng}] intermediários do draw-cable
     cableType: "12fo",
   });
+  const [newCe, setNewCe] = useState(null); // { lat, lng } pendente nome
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [legendOpen, setLegendOpen] = useState(true);
 
@@ -212,38 +224,96 @@ export default function RedeIaMap() {
     }
   }, []);
 
-  // Handler: clique em CTO/CE durante modo add-cable
-  const handleEntityClick = useCallback(async (entity) => {
-    if (mode !== "add-cable") return false;
-    // entity: { id, type: "cto"|"ce", lat, lng, name }
-    if (!cableDraft.from) {
-      setCableDraft({ ...cableDraft, from: entity });
-      return true;
+  // Handler: clique no mapa (modos add-ce / draw-cable waypoint)
+  const handleMapClick = useCallback((latlng) => {
+    if (mode === "add-ce") {
+      setNewCe({ lat: latlng.lat, lng: latlng.lng });
+    } else if (mode === "draw-cable" && cableDraft.from) {
+      // adiciona waypoint
+      setCableDraft((d) => ({
+        ...d,
+        waypoints: [...d.waypoints, { lat: latlng.lat, lng: latlng.lng }],
+      }));
     }
-    if (cableDraft.from.id === entity.id) {
-      // mesmo nó → cancela
-      setCableDraft({ ...cableDraft, from: null });
-      return true;
-    }
-    // cria o cabo
+  }, [mode, cableDraft.from]);
+
+  // Confirma criação da CE (modal/prompt)
+  const confirmCreateCe = useCallback(async (name, type, capacity) => {
+    if (!newCe || !name) return;
     try {
-      await api.redeIaCableCreate({
-        type: cableDraft.cableType,
-        from_id: cableDraft.from.id, from_type: cableDraft.from.type,
-        to_id: entity.id, to_type: entity.type,
-        segments: [
-          { lat: cableDraft.from.lat, lng: cableDraft.from.lng },
-          { lat: entity.lat, lng: entity.lng },
-        ],
-        length_m: null,
-        notes: `Criado manualmente via mapa interativo`,
+      await api.redeIaCeCreate({
+        name, type: type || "secundaria",
+        capacity_fo: capacity || 24,
+        lat: newCe.lat, lng: newCe.lng,
+        address: "", notes: "Criada manualmente via mapa interativo",
       });
-      setCableDraft({ ...cableDraft, from: null });
+      setNewCe(null);
       load();
     } catch (e) {
-      alert("Erro ao criar cabo: " + (e?.response?.data?.detail || e.message));
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
-    return true;
+  }, [newCe, load]);
+
+  // Handler: clique em CTO/CE durante modo add-cable OU draw-cable
+  const handleEntityClick = useCallback(async (entity) => {
+    if (mode === "add-cable") {
+      if (!cableDraft.from) {
+        setCableDraft({ ...cableDraft, from: entity });
+        return true;
+      }
+      if (cableDraft.from.id === entity.id) {
+        setCableDraft({ ...cableDraft, from: null });
+        return true;
+      }
+      // cria cabo reta
+      try {
+        await api.redeIaCableCreate({
+          type: cableDraft.cableType,
+          from_id: cableDraft.from.id, from_type: cableDraft.from.type,
+          to_id: entity.id, to_type: entity.type,
+          segments: [
+            { lat: cableDraft.from.lat, lng: cableDraft.from.lng },
+            { lat: entity.lat, lng: entity.lng },
+          ],
+          length_m: null,
+          notes: "Criado manualmente via mapa interativo",
+        });
+        setCableDraft({ ...cableDraft, from: null });
+        load();
+      } catch (e) {
+        alert("Erro: " + (e?.response?.data?.detail || e.message));
+      }
+      return true;
+    }
+    if (mode === "draw-cable") {
+      if (!cableDraft.from) {
+        setCableDraft({ ...cableDraft, from: entity, waypoints: [] });
+        return true;
+      }
+      if (cableDraft.from.id === entity.id) return true;
+      // finaliza: cria cabo com waypoints intermediários
+      try {
+        const segs = [
+          { lat: cableDraft.from.lat, lng: cableDraft.from.lng },
+          ...cableDraft.waypoints,
+          { lat: entity.lat, lng: entity.lng },
+        ];
+        await api.redeIaCableCreate({
+          type: cableDraft.cableType,
+          from_id: cableDraft.from.id, from_type: cableDraft.from.type,
+          to_id: entity.id, to_type: entity.type,
+          segments: segs,
+          length_m: null,
+          notes: `Desenhado com ${cableDraft.waypoints.length} pontos intermediários`,
+        });
+        setCableDraft({ ...cableDraft, from: null, waypoints: [] });
+        load();
+      } catch (e) {
+        alert("Erro: " + (e?.response?.data?.detail || e.message));
+      }
+      return true;
+    }
+    return false;
   }, [mode, cableDraft, load]);
 
   const autoGenerate = async () => {
@@ -257,6 +327,57 @@ export default function RedeIaMap() {
       alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
+
+  // Atualiza waypoints de um cabo existente após drag (modo drag)
+  const updateCableWaypoint = useCallback(async (cableId, idx, latlng) => {
+    const cable = data.cables.find((c) => c.id === cableId);
+    if (!cable) return;
+    const newSegs = [...(cable.segments || [])];
+    newSegs[idx] = { lat: latlng.lat, lng: latlng.lng };
+    try {
+      await api.redeIaCableUpdate(cableId, {
+        type: cable.type,
+        from_id: cable.from_id, from_type: cable.from_type,
+        to_id: cable.to_id, to_type: cable.to_type,
+        segments: newSegs,
+        length_m: cable.length_m,
+        notes: cable.notes || "",
+      });
+      // atualiza local
+      setData((d) => ({
+        ...d,
+        cables: d.cables.map((c) =>
+          c.id === cableId ? { ...c, segments: newSegs } : c),
+      }));
+    } catch (e) {
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
+    }
+  }, [data.cables]);
+
+  // Insere waypoint no meio do cabo (clique em segmento)
+  const insertCableWaypoint = useCallback(async (cableId, latlng, afterIdx) => {
+    const cable = data.cables.find((c) => c.id === cableId);
+    if (!cable) return;
+    const segs = [...(cable.segments || [])];
+    segs.splice(afterIdx + 1, 0, { lat: latlng.lat, lng: latlng.lng });
+    try {
+      await api.redeIaCableUpdate(cableId, {
+        type: cable.type,
+        from_id: cable.from_id, from_type: cable.from_type,
+        to_id: cable.to_id, to_type: cable.to_type,
+        segments: segs,
+        length_m: cable.length_m,
+        notes: cable.notes || "",
+      });
+      setData((d) => ({
+        ...d,
+        cables: d.cables.map((c) =>
+          c.id === cableId ? { ...c, segments: segs } : c),
+      }));
+    } catch (e) {
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
+    }
+  }, [data.cables]);
 
   const removeCable = async (id) => {
     if (!window.confirm("Excluir este cabo?")) return;
@@ -405,43 +526,117 @@ export default function RedeIaMap() {
           />
           <FitBounds ctos={filteredCtos} />
           <HeatLayer ctos={filteredCtos} enabled={showHeatmap} />
+          <MapClickHandler
+            enabled={mode === "add-ce" || mode === "draw-cable"}
+            onClick={handleMapClick}
+          />
+
+          {/* Prévia do cabo em desenho (modo draw-cable) */}
+          {mode === "draw-cable" && cableDraft.from && (
+            <Polyline
+              positions={[
+                [cableDraft.from.lat, cableDraft.from.lng],
+                ...cableDraft.waypoints.map((w) => [w.lat, w.lng]),
+              ]}
+              pathOptions={{
+                color: CABLE_COLORS[cableDraft.cableType] || "#7c3aed",
+                weight: 4, opacity: 0.6, dashArray: "8 8",
+              }}
+            />
+          )}
+          {/* Waypoints da prévia */}
+          {mode === "draw-cable" && cableDraft.waypoints.map((w, i) => (
+            <CircleMarker key={`wp-${i}`} center={[w.lat, w.lng]}
+              radius={6}
+              pathOptions={{
+                color: "#7c3aed", fillColor: "#fff",
+                fillOpacity: 1, weight: 3,
+              }}
+              eventHandlers={{
+                click: () => {
+                  // remove waypoint clicado
+                  setCableDraft((d) => ({
+                    ...d,
+                    waypoints: d.waypoints.filter((_, idx) => idx !== i),
+                  }));
+                },
+              }}>
+              <Tooltip>{`Ponto ${i + 1} · clique para remover`}</Tooltip>
+            </CircleMarker>
+          ))}
+
+          {/* CE preview (modo add-ce) */}
+          {newCe && (
+            <Marker position={[newCe.lat, newCe.lng]} icon={makeCeIcon({})}>
+              <Popup autoOpen>
+                <CeCreationForm
+                  onCancel={() => setNewCe(null)}
+                  onConfirm={confirmCreateCe}
+                />
+              </Popup>
+            </Marker>
+          )}
 
           {/* Cabos */}
           {data.cables.map((cab) => {
             const path = buildCablePath(cab);
             if (!path) return null;
             return (
-              <Polyline key={cab.id} positions={path}
-                pathOptions={{
-                  color: CABLE_COLORS[cab.type] || "#64748b",
-                  weight: CABLE_WIDTHS[cab.type] || 3,
-                  opacity: 0.85,
-                  dashArray: cab.type === "drop" ? "6 6" : null,
-                }}>
-                <Popup>
-                  <div style={{ minWidth: 200 }}>
-                    <div style={{ fontWeight: 800, marginBottom: 4 }}>
-                      Cabo {cab.type.toUpperCase()}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#64748b" }}>
-                      {cab.fo_count} fibras · {cab.length_m
-                        ? `${Math.round(cab.length_m)}m` : "comprimento ?"}
-                    </div>
-                    {cab.notes && (
-                      <div style={{ fontSize: 11, marginTop: 6, color: "#475569" }}>
-                        {cab.notes}
+              <React.Fragment key={cab.id}>
+                <Polyline positions={path}
+                  pathOptions={{
+                    color: CABLE_COLORS[cab.type] || "#64748b",
+                    weight: CABLE_WIDTHS[cab.type] || 3,
+                    opacity: 0.85,
+                    dashArray: cab.type === "drop" ? "6 6" : null,
+                  }}>
+                  <Popup>
+                    <div style={{ minWidth: 200 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 4 }}>
+                        Cabo {cab.type.toUpperCase()}
                       </div>
-                    )}
-                    <button onClick={() => removeCable(cab.id)}
-                      style={{ marginTop: 8, padding: "4px 10px", border: 0,
-                                background: "#dc2626", color: "#fff",
-                                borderRadius: 6, fontSize: 11, cursor: "pointer",
-                                fontWeight: 700 }}>
-                      Excluir cabo
-                    </button>
-                  </div>
-                </Popup>
-              </Polyline>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>
+                        {cab.fo_count} fibras · {cab.length_m
+                          ? `${Math.round(cab.length_m)}m` : "comprimento ?"}
+                      </div>
+                      {cab.notes && (
+                        <div style={{ fontSize: 11, marginTop: 6, color: "#475569" }}>
+                          {cab.notes}
+                        </div>
+                      )}
+                      <button onClick={() => removeCable(cab.id)}
+                        style={{ marginTop: 8, padding: "4px 10px", border: 0,
+                                  background: "#dc2626", color: "#fff",
+                                  borderRadius: 6, fontSize: 11, cursor: "pointer",
+                                  fontWeight: 700 }}>
+                        Excluir cabo
+                      </button>
+                    </div>
+                  </Popup>
+                </Polyline>
+                {/* Waypoints intermediários (índices 1..n-2 — exclui pontas) */}
+                {mode === "drag" && (cab.segments || []).map((seg, idx) => {
+                  if (idx === 0 || idx === (cab.segments.length - 1)) return null;
+                  return (
+                    <Marker key={`${cab.id}-wp-${idx}`}
+                      position={[seg.lat, seg.lng]}
+                      draggable={true}
+                      icon={L.divIcon({
+                        className: "waypoint",
+                        html: `<div style="width:14px;height:14px;border-radius:50%;
+                          background:#fff;border:3px solid ${CABLE_COLORS[cab.type] || "#64748b"};
+                          box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>`,
+                        iconSize: [14, 14], iconAnchor: [7, 7],
+                      })}
+                      eventHandlers={{
+                        dragend: (e) => updateCableWaypoint(cab.id, idx,
+                                                              e.target.getLatLng()),
+                      }}>
+                      <Tooltip>Arraste para curvar o cabo</Tooltip>
+                    </Marker>
+                  );
+                })}
+              </React.Fragment>
             );
           })}
 
@@ -641,18 +836,33 @@ export default function RedeIaMap() {
           background: "rgba(255,255,255,0.96)",
           borderRadius: 10, padding: 8, zIndex: 1000,
           border: "1px solid #e2e8f0", boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-          display: "flex", flexDirection: "column", gap: 6, minWidth: 140,
+          display: "flex", flexDirection: "column", gap: 6, minWidth: 160,
         }}>
           <button data-testid="map-mode-view"
-            onClick={() => { setMode("view"); setCableDraft({ ...cableDraft, from: null }); }}
+            onClick={() => { setMode("view");
+                              setCableDraft({ ...cableDraft, from: null, waypoints: [] });
+                              setNewCe(null); }}
             style={modeBtn(mode === "view")}>👁 Ver</button>
           <button data-testid="map-mode-drag"
-            onClick={() => { setMode("drag"); setCableDraft({ ...cableDraft, from: null }); }}
-            style={modeBtn(mode === "drag")}>✋ Mover</button>
+            onClick={() => { setMode("drag");
+                              setCableDraft({ ...cableDraft, from: null, waypoints: [] });
+                              setNewCe(null); }}
+            style={modeBtn(mode === "drag")}>✋ Mover/Curvar</button>
+          <button data-testid="map-mode-add-ce"
+            onClick={() => { setMode("add-ce");
+                              setCableDraft({ ...cableDraft, from: null, waypoints: [] }); }}
+            style={modeBtn(mode === "add-ce")}>📍 Criar CE</button>
           <button data-testid="map-mode-cable"
-            onClick={() => { setMode("add-cable"); setCableDraft({ ...cableDraft, from: null }); }}
-            style={modeBtn(mode === "add-cable")}>➕ Cabo</button>
-          {mode === "add-cable" && (
+            onClick={() => { setMode("add-cable");
+                              setCableDraft({ ...cableDraft, from: null, waypoints: [] });
+                              setNewCe(null); }}
+            style={modeBtn(mode === "add-cable")}>➕ Cabo reto</button>
+          <button data-testid="map-mode-draw-cable"
+            onClick={() => { setMode("draw-cable");
+                              setCableDraft({ ...cableDraft, from: null, waypoints: [] });
+                              setNewCe(null); }}
+            style={modeBtn(mode === "draw-cable")}>✏️ Desenhar cabo</button>
+          {(mode === "add-cable" || mode === "draw-cable") && (
             <select data-testid="map-cable-type"
               value={cableDraft.cableType}
               onChange={(e) => setCableDraft({ ...cableDraft, cableType: e.target.value })}
@@ -673,19 +883,26 @@ export default function RedeIaMap() {
             style={modeBtn(showHeatmap)}>🔥 Heatmap</button>
         </div>
 
-        {/* Banner instruções para modo add-cable */}
+        {/* Banner instruções por modo */}
         {mode === "add-cable" && (
-          <div data-testid="cable-instructions" style={{
-            position: "absolute", top: 12, left: "50%",
-            transform: "translateX(-50%)", zIndex: 1000,
-            background: "rgba(124,58,237,0.96)", color: "#fff",
-            padding: "8px 14px", borderRadius: 8,
-            fontSize: 12, fontWeight: 600,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-          }}>
+          <div data-testid="cable-instructions" style={instructionsBanner("#7c3aed")}>
             {cableDraft.from
               ? `✅ Origem: ${cableDraft.from.name} → Clique no destino (CTO ou CE)`
-              : "➕ Modo cabo · Clique na CTO/CE de origem"}
+              : "➕ Modo cabo reto · Clique na CTO/CE de origem"}
+          </div>
+        )}
+        {mode === "draw-cable" && (
+          <div data-testid="draw-cable-instructions" style={instructionsBanner("#0ea5e9")}>
+            {!cableDraft.from
+              ? "✏️ Modo desenhar · Clique na CTO/CE de ORIGEM"
+              : cableDraft.waypoints.length === 0
+                ? `✅ ${cableDraft.from.name} · Agora clique no mapa para criar pontos (curvas) · depois clique na CTO/CE de destino`
+                : `${cableDraft.waypoints.length} ponto${cableDraft.waypoints.length>1?"s":""} adicionados · Clique no mapa para mais OU na CTO/CE de destino para finalizar`}
+          </div>
+        )}
+        {mode === "add-ce" && (
+          <div data-testid="add-ce-instructions" style={instructionsBanner("#16a34a")}>
+            📍 Clique no mapa onde a CE será instalada
           </div>
         )}
       </div>
@@ -713,6 +930,72 @@ const modeBtn = (active) => ({
   color: active ? "#fff" : "#0f172a",
   fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
 });
+
+const instructionsBanner = (color) => ({
+  position: "absolute", top: 12, left: "50%",
+  transform: "translateX(-50%)", zIndex: 1000,
+  background: color, color: "#fff",
+  padding: "8px 16px", borderRadius: 8,
+  fontSize: 12, fontWeight: 600, maxWidth: 540, textAlign: "center",
+  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+});
+
+function CeCreationForm({ onCancel, onConfirm }) {
+  const [name, setName] = useState("CE-NOVA-001");
+  const [type, setType] = useState("secundaria");
+  const [cap, setCap] = useState(24);
+  return (
+    <div style={{ minWidth: 220 }}>
+      <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>
+        Nova Caixa de Emenda
+      </div>
+      <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 2 }}>
+        Nome
+      </label>
+      <input value={name} onChange={(e) => setName(e.target.value)}
+        data-testid="ce-name-input"
+        style={{ width: "100%", padding: "6px 8px", borderRadius: 6,
+                  border: "1px solid #cbd5e1", fontSize: 12, marginBottom: 6 }} />
+      <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 2 }}>
+        Tipo
+      </label>
+      <select value={type} onChange={(e) => setType(e.target.value)}
+        data-testid="ce-type-input"
+        style={{ width: "100%", padding: "6px 8px", borderRadius: 6,
+                  border: "1px solid #cbd5e1", fontSize: 12, marginBottom: 6 }}>
+        <option value="primaria">Primária</option>
+        <option value="secundaria">Secundária</option>
+        <option value="terciaria">Terciária</option>
+        <option value="emenda_aerea">Emenda aérea</option>
+        <option value="emenda_subterranea">Emenda subterrânea</option>
+      </select>
+      <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 2 }}>
+        Capacidade (FO)
+      </label>
+      <input type="number" value={cap}
+        onChange={(e) => setCap(parseInt(e.target.value, 10) || 24)}
+        data-testid="ce-cap-input"
+        style={{ width: "100%", padding: "6px 8px", borderRadius: 6,
+                  border: "1px solid #cbd5e1", fontSize: 12, marginBottom: 10 }} />
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={onCancel}
+          style={{ flex: 1, padding: "6px", border: "1px solid #cbd5e1",
+                    background: "#fff", borderRadius: 6, fontSize: 11,
+                    cursor: "pointer", fontWeight: 600 }}>
+          Cancelar
+        </button>
+        <button data-testid="ce-confirm-btn"
+          onClick={() => onConfirm(name, type, cap)}
+          style={{ flex: 1, padding: "6px", border: 0,
+                    background: "#2563eb", color: "#fff",
+                    borderRadius: 6, fontSize: 11,
+                    cursor: "pointer", fontWeight: 700 }}>
+          Criar CE
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function LegendItem({ color, label, sq, diamond, line, dashed }) {
   return (

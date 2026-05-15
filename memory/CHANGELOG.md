@@ -1508,3 +1508,23 @@ Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
 
 ### Dependências
 - frontend: `leaflet.heat@0.2.0`
+
+## 2026-05-15 (final 4) — Mapa: criação visual + waypoints arrastáveis
+### Novos modos no toolbar lateral
+1. **📍 Criar CE** — clica no mapa → popup com form de criação (nome/tipo/capacidade) → confirma
+2. **➕ Cabo reto** — clica origem CTO/CE → clica destino → cria cabo em linha reta (já existia)
+3. **✏️ Desenhar cabo** — clica origem → vários cliques no mapa para waypoints intermediários → clica destino → cria cabo com curvas
+4. **✋ Mover/Curvar** (era só Mover) — agora também permite arrastar waypoints intermediários dos cabos existentes
+
+### Interatividade
+- Prévia visual do cabo em desenho (linha tracejada roxa/azul + círculos numerados em cada waypoint)
+- Clique em waypoint da prévia → remove
+- Waypoints dos cabos existentes viram círculos brancos com borda colorida do tipo do cabo (modo Mover ativo) — arrastá-los chama `redeIaCableUpdate` com novos segments
+
+### UI
+- Banner instrutivo colorido no topo do mapa: roxo (cabo reto), azul (desenhar), verde (criar CE)
+- `instructionsBanner()` helper unificado
+- `MapClickHandler` componente isolado para useMapEvents
+
+### Backend reuso
+- Endpoints já existentes: `POST /ces`, `POST /cables`, `PUT /cables/{id}` (atualiza segments)
