@@ -384,50 +384,17 @@ export default function WhatsAppChatLayout() {
     return unread;
   }, [conversations]);
 
-  // === AI Health (Isabela) — diagnóstico do atendimento IA ===
-  const [aiHealth, setAiHealth] = useState(null);
-  const [healthOpen, setHealthOpen] = useState(false);
-  const [toggling, setToggling] = useState(false);
-  const loadHealth = useCallback(async () => {
-    try {
-      const r = await api.waBaileysAiHealth();
-      setAiHealth(r);
-    } catch (e) { /* manter último estado */ }
-  }, []);
-  useEffect(() => {
-    loadHealth();
-    const id = setInterval(loadHealth, 30000);
-    return () => clearInterval(id);
-  }, [loadHealth]);
-
-  async function toggleAutoReply() {
-    if (!aiHealth) return;
-    setToggling(true);
-    try {
-      await api.waBaileysSetAutoReply(!aiHealth.auto_reply_enabled, aiHealth.agent_name || "Jerusa");
-      await loadHealth();
-    } catch (e) {
-      // no-op (chip mostra erro via health)
-    } finally {
-      setToggling(false);
-    }
-  }
-
-  // === Config modal ===
+  // === Config modal (Configurar Robô da Isabella IA) ===
   const [configOpen, setConfigOpen] = useState(false);
   const openConfig = useCallback(() => setConfigOpen(true), []);
-  const closeConfig = useCallback(() => {
-    setConfigOpen(false);
-    loadHealth(); // recarrega health após mudanças no modal
-  }, [loadHealth]);
+  const closeConfig = useCallback(() => setConfigOpen(false), []);
 
-  // Calcula gridTemplateRows: header health (auto) + opcional banner do
-  // attendant filter legacy (auto) + opcional banner do filtro avançado
-  // com resumo (auto) + main (1fr).
+  // Calcula gridTemplateRows: opcional banner do attendant filter legacy
+  // (auto) + opcional banner do filtro avançado com resumo (auto) + main (1fr).
   const hasFilterBanner = !!attendantFilter?.user_id;
   const advCount = countActiveFilters(advFilter);
   const hasAdvBanner = advCount > 0 && !hasFilterBanner;
-  const gridRows = `auto ${hasFilterBanner ? "auto " : ""}${hasAdvBanner ? "auto " : ""}1fr`;
+  const gridRows = `${hasFilterBanner ? "auto " : ""}${hasAdvBanner ? "auto " : ""}1fr`;
 
   return (
     <div data-testid="wa-chat-layout" style={{
@@ -437,15 +404,6 @@ export default function WhatsAppChatLayout() {
       border: "1px solid var(--border-default)", borderRadius: 14,
       overflow: "hidden", background: "var(--bg-surface)",
     }}>
-      <AiHealthBanner
-        health={aiHealth}
-        open={healthOpen}
-        setOpen={setHealthOpen}
-        onToggleAutoReply={toggleAutoReply}
-        toggling={toggling}
-        onReload={loadHealth}
-        onOpenConfig={openConfig}
-      />
       <AgentConfigModal open={configOpen} onClose={closeConfig} />
       {attendantFilter?.user_id && (
         <div data-testid="attendant-filter-banner" style={{
@@ -572,6 +530,7 @@ export default function WhatsAppChatLayout() {
         onWarmContact={warmContact}
         onChange={loadConversations}
         wallpaperUrl={wallpaperUrl}
+        onOpenAgentConfig={openConfig}
       />
       </div>
     </div>
@@ -1103,7 +1062,7 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
 
 /* ============================================================= */
 function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
-                          wallpaperUrl }) {
+                          wallpaperUrl, onOpenAgentConfig }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -1626,6 +1585,15 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
             tooltip="Resetar esta conversa (apaga todas as mensagens — use só em testes)"
             hoverColor="#f59e0b"
           />
+          {onOpenAgentConfig && (
+            <IconBtn
+              data-testid="wa-open-agent-config"
+              onClick={onOpenAgentConfig}
+              icon={<Settings size={14} strokeWidth={2} />}
+              tooltip="Configurar Robô (Isabella IA)"
+              hoverColor="#7c3aed"
+            />
+          )}
         </div>
       </div>
 
@@ -3424,169 +3392,6 @@ function AttendantKpiStrip({ kpi }) {
 }
 
 
-
-/* =============================================================
-   AiHealthBanner — diagnóstico da Isabela IA.
-   Sempre visível: chip compacto + popover com razões + CTA "Ativar".
-============================================================= */
-function AiHealthBanner({ health, open, setOpen, onToggleAutoReply, toggling, onReload, onOpenConfig }) {
-  const status = health?.status || "loading";
-  const isLoading = !health;
-  const meta = useMemo(() => {
-    if (isLoading) return { bg: "var(--bg-surface-2)", fg: "var(--text-muted)", dot: "#94a3b8", label: "Verificando IA…" };
-    if (status === "healthy") return { bg: "rgba(16,185,129,.10)", fg: "#047857", dot: "#10b981", label: "Isabela: Online" };
-    if (status === "degraded") return { bg: "rgba(245,158,11,.12)", fg: "#92400e", dot: "#f59e0b", label: `Isabela: Degradada` };
-    return { bg: "rgba(220,38,38,.10)", fg: "#991b1b", dot: "#dc2626", label: "Isabela: Inativa" };
-  }, [status, isLoading]);
-
-  return (
-    <div data-testid="wa-ai-health-banner" style={{
-      display: "flex", alignItems: "center", gap: 10,
-      padding: "8px 16px",
-      background: meta.bg, color: meta.fg,
-      borderBottom: "1px solid var(--border-default)",
-      fontSize: 12, fontWeight: 600,
-      flexWrap: "wrap",
-    }}>
-      <span style={{
-        width: 8, height: 8, borderRadius: "50%",
-        background: meta.dot, flexShrink: 0,
-        boxShadow: status === "healthy" ? `0 0 0 3px ${meta.dot}33` : "none",
-      }} />
-      <span data-testid="wa-ai-health-label">{meta.label}</span>
-
-      {health && (
-        <>
-          {health.reasons?.length > 0 && (
-            <span data-testid="wa-ai-health-reason" style={{ fontWeight: 500 }}>
-              · {health.reasons[0].message}
-            </span>
-          )}
-          {health.stats_24h && (
-            <span style={{ marginLeft: 8, fontWeight: 500, color: meta.fg, opacity: .85 }}>
-              · {health.stats_24h.sent} resp. OK
-              {health.stats_24h.failed > 0 && (
-                <span data-testid="wa-ai-health-failed-count" style={{ color: "#dc2626", fontWeight: 700 }}>
-                  {" "}· {health.stats_24h.failed} falha(s)/24h
-                </span>
-              )}
-            </span>
-          )}
-          <span style={{ flex: 1 }} />
-          <button
-            data-testid="wa-open-agent-config"
-            onClick={onOpenConfig}
-            style={{
-              padding: "4px 12px", borderRadius: 999, fontSize: 11, fontWeight: 800,
-              border: "1px solid #7c3aed", background: "#7c3aed", color: "white",
-              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4,
-            }}
-          >
-            <Settings size={11} /> Configurar Robô
-          </button>
-          {status !== "healthy" && health.reasons?.some((r) => r.code === "auto_reply_off") && (
-            <button
-              data-testid="wa-ai-enable-btn"
-              onClick={onToggleAutoReply}
-              disabled={toggling}
-              style={{
-                padding: "4px 12px", borderRadius: 999, fontSize: 11, fontWeight: 800,
-                border: "1px solid #16a34a", background: "#16a34a", color: "white",
-                cursor: toggling ? "wait" : "pointer",
-              }}
-            >
-              {toggling ? "..." : "Ativar auto-reply"}
-            </button>
-          )}
-          <button
-            data-testid="wa-ai-health-details"
-            onClick={() => setOpen(!open)}
-            style={{
-              padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700,
-              border: "1px solid currentColor", background: "transparent", color: meta.fg,
-              cursor: "pointer", opacity: .85,
-            }}
-          >{open ? "Fechar" : "Detalhes"}</button>
-          <button
-            data-testid="wa-ai-health-refresh"
-            onClick={onReload}
-            style={{
-              padding: 4, borderRadius: 6,
-              border: "1px solid currentColor", background: "transparent", color: meta.fg,
-              cursor: "pointer", opacity: .65, display: "grid", placeItems: "center",
-            }} title="Recarregar diagnóstico"
-          ><RefreshCw size={12} /></button>
-        </>
-      )}
-
-      {open && health && (
-        <div data-testid="wa-ai-health-detail-panel" style={{
-          flex: "1 0 100%",
-          marginTop: 8, padding: 12,
-          background: "white", color: "#1e293b",
-          borderRadius: 10, border: "1px solid var(--border-default)",
-          fontSize: 12, lineHeight: 1.55, fontWeight: 500,
-        }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))", gap: 10, marginBottom: 10 }}>
-            <DetailCell label="Auto-reply" value={health.auto_reply_enabled ? "ATIVADO" : "DESLIGADO"}
-                        ok={health.auto_reply_enabled} />
-            <DetailCell label="Agente" value={health.agent_name + (health.agent_active ? "" : " (não existe)")}
-                        ok={health.agent_active} />
-            <DetailCell label="Motor IA" value={health.motor_ia_model || "—"} ok={health.motor_ia_configured} />
-            <DetailCell label="WhatsApp sidecar" value={health.sidecar_status}
-                        ok={health.sidecar_status === "connected" || health.sidecar_status === "open"} />
-            <DetailCell label="Respostas OK (24h)" value={String(health.stats_24h?.sent ?? 0)} ok={(health.stats_24h?.sent ?? 0) > 0} />
-            <DetailCell label="Falhas (24h)" value={String(health.stats_24h?.failed ?? 0)}
-                        ok={(health.stats_24h?.failed ?? 0) === 0} />
-          </div>
-          {health.reasons?.length > 0 && (
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 11, color: "#475569", marginBottom: 4, letterSpacing: ".04em" }}>
-                MOTIVOS DETECTADOS
-              </div>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {health.reasons.map((r, i) => (
-                  <li key={i} data-testid={`wa-ai-reason-${r.code}`} style={{
-                    color: r.severity === "high" ? "#dc2626" : "#92400e",
-                    marginBottom: 3,
-                  }}>
-                    <strong>{r.code.replaceAll("_", " ")}</strong> · {r.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {health.last_fail && (
-            <div style={{ marginTop: 8, padding: 8, background: "#fef2f2", borderRadius: 6, color: "#991b1b" }}>
-              Última falha · <strong>{health.last_fail.phone}</strong> · {(health.last_fail.at || "").slice(0,16).replace("T"," ")}
-              <br /><span style={{ fontWeight: 500 }}>{health.last_fail.error || health.last_fail.status}</span>
-            </div>
-          )}
-          {health.last_ok && (
-            <div style={{ marginTop: 6, fontSize: 11, color: "#475569" }}>
-              Última resposta OK: {(health.last_ok.at || "").slice(0,16).replace("T"," ")} · {health.last_ok.phone}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DetailCell({ label, value, ok }) {
-  return (
-    <div style={{ padding: 8, background: "var(--bg-surface-2)", borderRadius: 8 }}>
-      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, letterSpacing: ".04em" }}>
-        {label.toUpperCase()}
-      </div>
-      <div style={{
-        fontWeight: 700, fontSize: 12,
-        color: ok ? "#047857" : "#dc2626",
-        wordBreak: "break-word",
-      }}>{value}</div>
-    </div>
-  );
-}
 
 /* =============================================================
    LidLinkButton — vincula um jid@lid (anônimo) ao telefone real.
