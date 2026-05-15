@@ -66,6 +66,7 @@ from routes import (
     whatsapp_baileys as routes_wa_baileys,
     central_ia as routes_central_ia,
     rede_ia as routes_rede_ia,
+    rede_ia_map as routes_rede_ia_map,
     churn as routes_churn,
     subscribers as routes_subscribers,
     branding as routes_branding,
@@ -390,6 +391,7 @@ app.include_router(routes_voice.router)
 app.include_router(routes_wa_baileys.router)
 app.include_router(routes_central_ia.router)
 app.include_router(routes_rede_ia.router)
+app.include_router(routes_rede_ia_map.router)
 app.include_router(routes_churn.router)
 app.include_router(routes_subscribers.router)
 app.include_router(routes_plans.router)

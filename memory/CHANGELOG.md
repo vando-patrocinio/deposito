@@ -1425,3 +1425,34 @@ Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
 
 ### Dependências
 - backend: `reportlab==4.5.0`
+
+## 2026-05-15 (final) — Mapa interativo FTTH (substitui fluxograma)
+### Backend (`routes/rede_ia_map.py` novo, ~370 linhas)
+- **Coleções**: `network_ces`, `network_cables`, `network_positions`
+- **Endpoints**:
+  - `GET /api/rede-ia/map/data` — agrega CTOs+CEs+cabos com saúde calculada por VLAN
+  - `POST/PUT/DELETE /api/rede-ia/ces` — CRUD CEs (admin/gestor/gestor_rede)
+  - `POST/PUT/DELETE /api/rede-ia/cables` — CRUD cabos (6/12/24/48/96 FO + drop)
+  - `POST /api/rede-ia/map/positions` — salva drag-to-reposition
+  - `POST /api/rede-ia/map/auto-generate-ces?radius_m=200` — rede_IA clusteriza CTOs por proximidade GPS + sigla, cria CE no centroide + cabos 24FO ligando tudo
+- **Health calculator**: agrega ONUs SmartOLT por regex no zone_name, computa score (0-100) com critical/warning + média rx_dbm
+
+### Frontend (`RedeIaMap.js` novo, ~430 linhas)
+- **Leaflet + OpenStreetMap** (PT-BR, gratuito, sem chave)
+- **CTO marker**: divIcon HTML colorido por saúde (verde/amarelo/vermelho) + badge % ocupação + halo de alerta animado
+- **CE marker**: diamante azul rotacionado com label "CE"
+- **Cabos**: polylines coloridas (6FO=amarelo, 12FO=laranja, 24FO=vermelho, 48FO=roxo, 96FO=preto, drop=cinza tracejado)
+- **Filtros**: por VLAN + por saúde + tira clicável de VLANs no topo
+- **Modos**: 👁 Ver / ✋ Mover (drag-to-reposition salvo no backend via `network_positions`)
+- **Popup CTO**: nome, VLAN, saúde+score, ONUs total/warning/critical, avg rx dBm, portas, endereço, links QR e PDF
+- **Popup CE/cabo**: dados técnicos + botão excluir
+- **Auto-fit bounds** ao carregar
+- **Botão "🤖 rede_IA gerar CEs"**: aciona auto-clustering
+- **Legenda flutuante** com toggle
+
+### Substituições
+- Aba "Fluxograma" → "Mapa interativo" no RedeIaPanel
+- `RedeIaFlowchart.js` ainda existe (legado) mas não está mais no menu
+
+### Dependências
+- frontend: `leaflet@1.9.4` + `react-leaflet@5.0.0`

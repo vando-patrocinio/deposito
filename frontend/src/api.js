@@ -829,6 +829,19 @@ export const api = {
     client.post(`/rede-ia/ctos/${cto_id}/regenerate-pdf`).then((r) => r.data),
   redeIaCtoPdfUrl: (cto_id) =>
     `${API}/rede-ia/ctos/${cto_id}/pdf.pdf`,
+
+  // ===== Rede IA Map =====
+  redeIaMapData: () => client.get(`/rede-ia/map/data`).then((r) => r.data),
+  redeIaCeCreate: (data) => client.post(`/rede-ia/ces`, data).then((r) => r.data),
+  redeIaCeUpdate: (id, data) => client.put(`/rede-ia/ces/${id}`, data).then((r) => r.data),
+  redeIaCeDelete: (id) => client.delete(`/rede-ia/ces/${id}`).then((r) => r.data),
+  redeIaCableCreate: (data) => client.post(`/rede-ia/cables`, data).then((r) => r.data),
+  redeIaCableUpdate: (id, data) => client.put(`/rede-ia/cables/${id}`, data).then((r) => r.data),
+  redeIaCableDelete: (id) => client.delete(`/rede-ia/cables/${id}`).then((r) => r.data),
+  redeIaPositionSave: (data) => client.post(`/rede-ia/map/positions`, data).then((r) => r.data),
+  redeIaAutoGenerateCes: (radius_m = 200) =>
+    client.post(`/rede-ia/map/auto-generate-ces`, null,
+                  { params: { radius_m } }).then((r) => r.data),
   redeIaQrScan: (payload) =>
     client.post(`/rede-ia/qrcode/scan`, { payload }).then((r) => r.data),
   redeIaQrBindPort: (data) =>

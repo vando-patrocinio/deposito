@@ -11,13 +11,13 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "@/api";
 import { Card } from "@/ui";
-import RedeIaFlowchart from "@/RedeIaFlowchart";
+import RedeIaMap from "@/RedeIaMap";
 
 const TABS = [
   { id: "overview", label: "Painel" },
   { id: "ctos", label: "CTOs" },
   { id: "pendencies", label: "Pendências" },
-  { id: "flowchart", label: "Fluxograma" },
+  { id: "map", label: "Mapa interativo" },
   { id: "bairros", label: "Bairros / VLAN" },
   { id: "history", label: "Histórico" },
   { id: "diretrizes", label: "Diretrizes" },
@@ -71,7 +71,7 @@ export default function RedeIaPanel() {
       {tab === "overview" && <Overview />}
       {tab === "ctos" && <CTOsList />}
       {tab === "pendencies" && <Pendencies />}
-      {tab === "flowchart" && <RedeIaFlowchart />}
+      {tab === "map" && <RedeIaMap />}
       {tab === "bairros" && <BairrosManager />}
       {tab === "history" && <HistoryList />}
       {tab === "diretrizes" && <DiretrizesEditor />}
