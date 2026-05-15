@@ -207,7 +207,6 @@ def build_budget_pdf(budget: Dict[str, Any], generated_by: str = "",
     # ---- 5. Totais (mostra apenas Base · Mão de obra · TOTAL FINAL) ----
     t = budget.get("totals") or {}
     totals_data = [
-        ["Base (soma dos subtotais)", _money_br(t.get("base", 0))],
         ["Mão de obra", _money_br(t.get("labor_val", 0))],
         ["TOTAL FINAL", _money_br(t.get("final", 0))],
     ]
