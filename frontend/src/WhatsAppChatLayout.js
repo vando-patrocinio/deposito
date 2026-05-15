@@ -641,8 +641,9 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
           const bucketConvs = active ? (convs || []) : [];
           return (
             <div key={b.id} style={{ marginBottom: 4 }}>
-              <button onClick={() => setBucket(b.id)}
+              <button onClick={() => setBucket(active ? "" : b.id)}
                       data-testid={`wa-bucket-${b.id}`}
+                      title={active ? `Fechar ${b.label}` : `Abrir ${b.label}`}
                       style={{
                 width: "100%",
                 display: "flex", alignItems: "center", gap: 10,
