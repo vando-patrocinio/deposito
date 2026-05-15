@@ -1166,19 +1166,57 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
   // Tracking pra detectar primeiro load vs. updates do polling
   const lastConvPhoneRef = useRef(null);
   const lastMsgCountRef = useRef(0);
+  const [showScrollDown, setShowScrollDown] = useState(false);
+  const [newCountWhileAway, setNewCountWhileAway] = useState(0);
+
+  // Listener de scroll para detectar se o usuário rolou pra cima (lendo histórico).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const farFromBottom = distFromBottom > 120;
+      setShowScrollDown(farFromBottom);
+      if (!farFromBottom) setNewCountWhileAway(0);  // chegou no fundo, reseta
+    };
+    el.addEventListener("scroll", onScroll);
+    onScroll();
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [conv]);
 
   useEffect(() => {
     if (!scrollRef.current) return;
+    const el = scrollRef.current;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     const isFirstLoadForConv = lastConvPhoneRef.current !== conv?.phone;
-    const grewByLittle = messages.length - lastMsgCountRef.current <= 3;
-    // Primeiro load de uma conversa: scroll INSTANTÂNEO (sem smooth) pra
-    // garantir que renderize com 361 msgs sem travar.
-    // Updates do polling: smooth (cadência humana).
-    const behavior = isFirstLoadForConv ? "auto" : (grewByLittle ? "smooth" : "auto");
-    scrollRef.current.scrollTo({ top: 1e9, behavior });
+    const wasNearBottom = distFromBottom < 120;
+    const delta = messages.length - lastMsgCountRef.current;
+    const grew = delta > 0;
+    // Primeiro load: scroll INSTANTÂNEO pro fundo.
+    // Polling com 1-3 msgs novas: smooth scroll SE usuário está perto do fundo;
+    //   senão NÃO mexe no scroll (usuário lendo histórico) e contabiliza pro badge.
+    if (isFirstLoadForConv) {
+      el.scrollTo({ top: 1e9, behavior: "auto" });
+      setNewCountWhileAway(0);
+      setShowScrollDown(false);
+    } else if (grew && wasNearBottom) {
+      el.scrollTo({ top: 1e9, behavior: delta <= 3 ? "smooth" : "auto" });
+    } else if (grew && !wasNearBottom) {
+      // Só conta mensagens novas RECEBIDAS (inbound). Outbound = ele mesmo enviou,
+      // já scrollou explicitamente em send().
+      const incomingNew = messages.slice(-delta).filter(
+        (m) => m.direction === "inbound"
+      ).length;
+      if (incomingNew > 0) setNewCountWhileAway((c) => c + incomingNew);
+    }
     lastConvPhoneRef.current = conv?.phone;
     lastMsgCountRef.current = messages.length;
   }, [messages, conv]);
+
+  const scrollToBottom = useCallback(() => {
+    scrollRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
+    setNewCountWhileAway(0);
+  }, []);
 
   const send = async () => {
     if (!conv || !text.trim()) return;
@@ -1550,6 +1588,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
       )}
 
       {/* Mensagens — fundo com doodles estilo WhatsApp */}
+      <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex" }}>
       <div ref={scrollRef}
            data-testid="wa-messages-scroll"
            style={{
@@ -1605,6 +1644,44 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
             </div>
           )}
         </div>
+      </div>
+      {/* Botão flutuante "↓ Ir para o final" + badge de não lidas */}
+      {showScrollDown && (
+        <button onClick={scrollToBottom}
+                data-testid="wa-scroll-to-bottom"
+                title="Ir para a mensagem mais recente"
+                style={{
+                  position: "absolute", right: 18, bottom: 16, zIndex: 5,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 42, height: 42, borderRadius: "50%",
+                  background: "#ffffff",
+                  color: "#54656f", border: "none",
+                  boxShadow: "0 4px 12px rgba(11,20,26,.18)",
+                  cursor: "pointer", transition: "transform .12s, box-shadow .12s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 6px 18px rgba(11,20,26,.25)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(11,20,26,.18)";
+                }}>
+          <ChevronDown size={22} strokeWidth={2.2} />
+          {newCountWhileAway > 0 && (
+            <span data-testid="wa-scroll-newcount" style={{
+              position: "absolute", top: -4, right: -4,
+              minWidth: 20, height: 20, padding: "0 6px",
+              borderRadius: 999, background: "#25d366", color: "#fff",
+              fontSize: 10, fontWeight: 800,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              border: "2px solid #efeae2", lineHeight: 1,
+            }}>
+              {newCountWhileAway > 99 ? "99+" : newCountWhileAway}
+            </span>
+          )}
+        </button>
+      )}
       </div>
 
       {/* Composer */}
