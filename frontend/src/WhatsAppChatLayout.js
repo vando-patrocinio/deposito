@@ -530,40 +530,36 @@ export default function WhatsAppChatLayout() {
       )}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "220px 360px 1fr",
+        gridTemplateColumns: "320px 1fr",
         gap: 0, minHeight: 0,
       }}>
-      {/* COLUNA 1 — Buckets + Filtros */}
+      {/* COLUNA 1 — Buckets em accordion (convs aparecem DENTRO do bucket aberto) */}
       <BucketSidebar bucket={bucket} setBucket={setBucket}
                       counts={buckets} unreadByBucket={bucketMetrics}
                       advFilter={advFilter}
                       onAdvFilterChange={persistAdvFilter}
                       onAdvFilterClear={() => persistAdvFilter(makeBlankFilter())}
-                      authUser={authUser} attendants={attendants} />
+                      authUser={authUser} attendants={attendants}
+                      convs={filteredConvs}
+                      selectedPhone={selectedPhone}
+                      setSelectedPhone={setSelectedPhone}
+                      search={search} setSearch={setSearch}
+                      loading={loading}
+                      contactProfiles={contactProfiles}
+                      onAssignSelf={async (phone) => {
+                        if (!authUser?.id) return;
+                        try {
+                          await api.waBaileysAssignConversation(phone, {
+                            assignee_user_id: authUser.id, assignee_role: "human",
+                          });
+                          setSelectedPhone(phone);
+                          await loadConversations();
+                        } catch (e) {
+                          alert("Erro ao atender: " + (e?.response?.data?.detail || e.message));
+                        }
+                      }} />
 
-      {/* COLUNA 2 — Lista de conversas */}
-      <ConversationList
-        bucket={bucket} convs={filteredConvs} selectedPhone={selectedPhone}
-        setSelectedPhone={setSelectedPhone} search={search} setSearch={setSearch}
-        loading={loading} totalInBucket={buckets[bucket] || 0}
-        contactProfiles={contactProfiles}
-        authUser={authUser}
-        onAssignSelf={async (phone) => {
-          // Atribui a conversa ao próprio usuário logado (1-clique "Atender")
-          if (!authUser?.id) return;
-          try {
-            await api.waBaileysAssignConversation(phone, {
-              assignee_user_id: authUser.id, assignee_role: "human",
-            });
-            setSelectedPhone(phone);
-            await loadConversations();
-          } catch (e) {
-            alert("Erro ao atender: " + (e?.response?.data?.detail || e.message));
-          }
-        }}
-      />
-
-      {/* COLUNA 3 — Thread aberta */}
+      {/* COLUNA 2 — Thread aberta (ocupa o resto da tela) */}
       <ChatThread
         conv={selectedConv} attendants={attendants}
         contactProfile={selectedConv ? contactProfiles[selectedConv.phone] : null}
@@ -576,98 +572,170 @@ export default function WhatsAppChatLayout() {
 }
 
 /* ============================================================= */
+/* BucketSidebar — accordion: clica num bucket → expande as conversas DENTRO.
+   Deixa o menu mais compacto e organizado (1 só coluna no layout). */
 function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
                             advFilter, onAdvFilterChange, onAdvFilterClear,
-                            authUser, attendants }) {
+                            authUser, attendants,
+                            convs, selectedPhone, setSelectedPhone,
+                            search, setSearch, loading,
+                            contactProfiles, onAssignSelf }) {
   return (
     <div data-testid="wa-buckets-sidebar" style={{
       background: "var(--bg-surface)",
       borderRight: "1px solid var(--border-default)",
-      padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2,
+      display: "flex", flexDirection: "column",
+      minHeight: 0,
     }}>
+      {/* Header com busca + filtros */}
       <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "4px 10px 10px",
+        padding: "10px 12px 8px",
+        borderBottom: "1px solid var(--border-default)",
+        display: "flex", flexDirection: "column", gap: 8,
       }}>
         <div style={{
-          fontSize: 10, fontWeight: 700, color: "var(--text-muted)",
-          textTransform: "uppercase", letterSpacing: 0.8,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
-          Atendimentos
-        </div>
-        <WaChatFilterPopover
-          value={advFilter}
-          onChange={onAdvFilterChange}
-          onClear={onAdvFilterClear}
-          authUser={authUser}
-          attendants={attendants}
-          align="left"
-        />
-      </div>
-      {BUCKETS.map((b) => {
-        const Ico = b.icon;
-        const active = bucket === b.id;
-        const n = counts[b.id] || 0;
-        const unread = (unreadByBucket && unreadByBucket[b.id]) || 0;
-        return (
-          <button key={b.id}
-                  onClick={() => setBucket(b.id)}
-                  data-testid={`wa-bucket-${b.id}`}
-                  style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "9px 10px", borderRadius: 6,
-            background: active ? "var(--bg-surface-2)" : "transparent",
-            border: "1px solid transparent",
-            borderLeft: active
-              ? `2px solid ${b.color}`
-              : "2px solid transparent",
-            color: active ? "var(--text-primary)" : "var(--text-secondary)",
-            cursor: "pointer", textAlign: "left", fontSize: 13,
-            fontWeight: active ? 600 : 500,
-            transition: "background .15s",
-          }}
-          onMouseEnter={(e) => {
-            if (!active) e.currentTarget.style.background = "var(--bg-surface-2)";
-          }}
-          onMouseLeave={(e) => {
-            if (!active) e.currentTarget.style.background = "transparent";
+          <div style={{
+            fontSize: 10, fontWeight: 700, color: "var(--text-muted)",
+            textTransform: "uppercase", letterSpacing: 0.8,
           }}>
-            <Ico size={15} strokeWidth={1.75}
-                  style={{ color: active ? b.color : "var(--text-muted)" }} />
-            <span style={{ flex: 1 }}>{b.label}</span>
-            {/* Count pill com badge de não lidas no canto sup. direito */}
-            <span data-testid={`wa-bucket-count-${b.id}`} style={{
-              position: "relative",
-              display: "inline-flex", alignItems: "center", justifyContent: "center",
-              minWidth: 26, height: 20, padding: "0 8px",
-              borderRadius: 6,
-              background: n > 0 ? "var(--text-primary)" : "var(--bg-surface-2)",
-              color: n > 0 ? "var(--bg-surface)" : "var(--text-muted)",
-              fontSize: 11, fontWeight: 700,
-            }}>
-              {n}
-              {unread > 0 && (
-                <span data-testid={`wa-bucket-unread-${b.id}`}
-                      title={`${unread} ${unread === 1 ? "mensagem não lida" : "mensagens não lidas"}`}
+            Atendimentos
+          </div>
+          <WaChatFilterPopover
+            value={advFilter}
+            onChange={onAdvFilterChange}
+            onClear={onAdvFilterClear}
+            authUser={authUser}
+            attendants={attendants}
+            align="left"
+          />
+        </div>
+        {/* Busca global */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6,
+          padding: "6px 10px", borderRadius: 8,
+          background: "var(--bg-surface-2)",
+          border: "1px solid var(--border-default)",
+        }}>
+          <Search size={13} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)}
+                 placeholder="Pesquisar..."
+                 data-testid="wa-search-input"
+                 style={{
+                   flex: 1, border: "none", outline: "none",
+                   background: "transparent",
+                   fontSize: 12.5, color: "var(--text-primary)",
+                 }} />
+        </div>
+      </div>
+
+      {/* Lista de buckets — accordion */}
+      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "8px 6px" }}>
+        {BUCKETS.map((b) => {
+          const Ico = b.icon;
+          const active = bucket === b.id;
+          const n = counts[b.id] || 0;
+          const unread = (unreadByBucket && unreadByBucket[b.id]) || 0;
+          // Convs do bucket atual (apenas quando expandido)
+          const bucketConvs = active ? (convs || []) : [];
+          return (
+            <div key={b.id} style={{ marginBottom: 4 }}>
+              <button onClick={() => setBucket(b.id)}
+                      data-testid={`wa-bucket-${b.id}`}
                       style={{
-                  position: "absolute",
-                  top: -6, right: -6,
-                  minWidth: 16, height: 16, padding: "0 4px",
-                  borderRadius: 999,
-                  background: "#16a34a",
-                  color: "#fff",
-                  fontSize: 9, fontWeight: 800,
+                width: "100%",
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 12px", borderRadius: 8,
+                background: active ? "var(--bg-surface-2)" : "transparent",
+                border: "1px solid transparent",
+                borderLeft: active
+                  ? `3px solid ${b.color}`
+                  : "3px solid transparent",
+                color: active ? "var(--text-primary)" : "var(--text-secondary)",
+                cursor: "pointer", textAlign: "left", fontSize: 13,
+                fontWeight: active ? 700 : 500,
+                transition: "background .15s",
+              }}
+              onMouseEnter={(e) => {
+                if (!active) e.currentTarget.style.background = "var(--bg-surface-2)";
+              }}
+              onMouseLeave={(e) => {
+                if (!active) e.currentTarget.style.background = "transparent";
+              }}>
+                <Ico size={16} strokeWidth={1.85}
+                      style={{ color: active ? b.color : "var(--text-muted)" }} />
+                <span style={{ flex: 1 }}>{b.label}</span>
+                {/* Count + unread badge */}
+                <span data-testid={`wa-bucket-count-${b.id}`} style={{
+                  position: "relative",
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  border: "2px solid var(--bg-surface)",
-                  lineHeight: 1,
+                  minWidth: 28, height: 22, padding: "0 8px",
+                  borderRadius: 6,
+                  background: n > 0 ? "var(--text-primary)" : "var(--bg-surface-2)",
+                  color: n > 0 ? "var(--bg-surface)" : "var(--text-muted)",
+                  fontSize: 11, fontWeight: 800,
                 }}>
-                  {unread > 99 ? "99+" : unread}
+                  {n}
+                  {unread > 0 && (
+                    <span data-testid={`wa-bucket-unread-${b.id}`}
+                          title={`${unread} ${unread === 1 ? "mensagem não lida" : "mensagens não lidas"}`}
+                          style={{
+                      position: "absolute", top: -6, right: -6,
+                      minWidth: 16, height: 16, padding: "0 4px",
+                      borderRadius: 999, background: "#16a34a", color: "#fff",
+                      fontSize: 9, fontWeight: 800,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      border: "2px solid var(--bg-surface)",
+                      lineHeight: 1,
+                    }}>
+                      {unread > 99 ? "99+" : unread}
+                    </span>
+                  )}
                 </span>
+                {/* Seta indicando expansão */}
+                <ChevronDown
+                  size={14}
+                  strokeWidth={2.2}
+                  style={{
+                    color: "var(--text-muted)",
+                    transform: active ? "rotate(0deg)" : "rotate(-90deg)",
+                    transition: "transform .18s",
+                  }} />
+              </button>
+
+              {/* Convs nested DENTRO do bucket aberto */}
+              {active && (
+                <div data-testid={`wa-bucket-content-${b.id}`}
+                     style={{
+                       marginTop: 4, marginLeft: 4, marginRight: 4,
+                       borderLeft: `2px solid ${b.color}33`,
+                       paddingLeft: 4,
+                     }}>
+                  {loading ? (
+                    <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)" }}>
+                      <Loader2 size={16} style={{ animation: "wa-spin 1s linear infinite" }} />
+                      <div style={{ fontSize: 11, marginTop: 4 }}>Carregando...</div>
+                    </div>
+                  ) : bucketConvs.length === 0 ? (
+                    <div style={{ padding: "16px 12px", textAlign: "center",
+                                  color: "var(--text-muted)", fontSize: 11.5 }}>
+                      Sem conversas em "{b.label}"
+                    </div>
+                  ) : bucketConvs.map((c) => (
+                    <ConvRow key={c.phone} conv={c}
+                              selected={selectedPhone === c.phone}
+                              profile={contactProfiles?.[c.phone]}
+                              authUser={authUser}
+                              onAssignSelf={onAssignSelf}
+                              onClick={() => setSelectedPhone(c.phone)} />
+                  ))}
+                </div>
               )}
-            </span>
-          </button>
-        );
-      })}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

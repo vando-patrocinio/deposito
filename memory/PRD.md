@@ -386,6 +386,12 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
   - Wiring em `WhatsAppChatLayout`: `ConversationList` recebe `authUser` + `onAssignSelf`; callback chama `PUT /api/whatsapp-baileys/conversations/{phone}/assign` com `assignee_user_id=authUser.id, assignee_role="human"`, seleciona conv e recarrega.
 - **Validado E2E** (Playwright): renderizou **20 botões "Atender"** em conversas com IA ativa; clique disparou PUT → conversa migrou de "Automático" pro bucket "Manual" e chip "Administrador" apareceu no header da thread. Cleanup via curl devolveu pra IA.
 
+✅ **Sidebar accordion · conversas DENTRO de cada bucket** (15/02/2026 — iter73):
+- **Pedido do usuário** (vídeo Woluy): "OS CLIENTES FICAM DENTRO DE MENUS E QUANDO VC CLICA NO MENU OS CLIENTES APARECEM TORANANDO MUITO MAIS EXUTO O MENU". Migrou de 3 colunas para **2 colunas** (sidebar accordion + thread).
+- **Implementação**: `gridTemplateColumns: "320px 1fr"` (era `220px 360px 1fr`). `ConversationList` removida do JSX (componente preservado como dead code). `BucketSidebar` reescrita com busca global no topo + accordion vertical onde cada bucket, ao estar ativo, renderiza as conversas filtradas nested com border-left tingido na cor do bucket. Chevron rotaciona ⌄ → ⌃ em 180ms. Reutiliza `ConvRow` com todos os recursos (botão Atender, chips, badges).
+- **testids**: `wa-bucket-content-{id}`.
+- **Validado E2E** (Playwright 1920×900): default abre Automático com 20 convs nested; demais fechados; clique em Aguardando recolhe Automático e expande Aguardando com empty state "Sem conversas em Aguardando". Visual idêntico ao vídeo.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
