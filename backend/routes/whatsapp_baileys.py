@@ -1635,6 +1635,55 @@ async def get_instance_settings(user: dict = Depends(require_role("gestor"))):
     }
 
 
+class WallpaperIn(BaseModel):
+    image_data_url: Optional[str] = Field(None, max_length=8_000_000)
+
+
+@router.get("/wallpaper")
+async def get_wallpaper(user: dict = Depends(require_role("gestor"))):
+    """Retorna o papel de parede customizado do chat WhatsApp da empresa.
+
+    Se nenhum estiver setado, retorna `image_data_url=None` e o frontend
+    cai no default estático `/wa-wallpaper-ligo.png`.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await db.aihub_settings.find_one(
+        {"company_id": cid, "key": "wa_chat_wallpaper"}, {"_id": 0}
+    ) or {}
+    return {
+        "image_data_url": cfg.get("image_data_url"),
+        "updated_at": cfg.get("updated_at"),
+        "updated_by": cfg.get("updated_by"),
+    }
+
+
+@router.put("/wallpaper")
+async def set_wallpaper(payload: WallpaperIn,
+                          user: dict = Depends(require_role("gestor"))):
+    """Salva (ou limpa, se `image_data_url=None`) o papel de parede do chat
+    WhatsApp da empresa. Limite: 8 MB em data URL base64."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    url = payload.image_data_url
+    if url and not url.startswith("data:image/"):
+        raise HTTPException(400, "image_data_url deve ser data:image/...")
+    await db.aihub_settings.update_one(
+        {"company_id": cid, "key": "wa_chat_wallpaper"},
+        {"$set": {
+            "company_id": cid,
+            "key": "wa_chat_wallpaper",
+            "image_data_url": url,
+            "updated_at": now_iso(),
+            "updated_by": user.get("email") or user.get("id"),
+        }},
+        upsert=True,
+    )
+    logger.info("[wa-baileys] wallpaper %s por %s",
+                 "removido" if not url else "atualizado",
+                 user.get("email"))
+    return {"ok": True}
+
+
+
 @router.put("/instance")
 async def set_instance_settings(payload: InstanceSettingsIn,
                                   user: dict = Depends(require_role("gestor"))):

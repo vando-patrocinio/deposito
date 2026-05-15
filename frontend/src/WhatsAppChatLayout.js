@@ -80,6 +80,8 @@ export default function WhatsAppChatLayout() {
   const [search, setSearch] = useState("");
   const [attendants, setAttendants] = useState([]);
   const [loading, setLoading] = useState(true);
+  /* Wallpaper customizado da empresa (data URL). Fallback estático Ligo. */
+  const [wallpaperUrl, setWallpaperUrl] = useState(null);
   /* Avatar + presença do cliente vindo do WhatsApp (cache por phone). */
   const [contactProfiles, setContactProfiles] = useState({});
   const warmingRef = useRef(new Set());
@@ -254,6 +256,10 @@ export default function WhatsAppChatLayout() {
     loadConversations();
     loadAttendants();
     requestNotificationPermission();
+    // Carrega o wallpaper customizado uma vez ao abrir a tela
+    api.waBaileysGetWallpaper()
+      .then((r) => setWallpaperUrl(r?.image_data_url || null))
+      .catch(() => { /* silent — usa fallback */ });
     const id = setInterval(loadConversations, 6000);
     return () => clearInterval(id);
   }, [loadConversations, loadAttendants]);
@@ -565,6 +571,7 @@ export default function WhatsAppChatLayout() {
         contactProfile={selectedConv ? contactProfiles[selectedConv.phone] : null}
         onWarmContact={warmContact}
         onChange={loadConversations}
+        wallpaperUrl={wallpaperUrl}
       />
       </div>
     </div>
@@ -1095,7 +1102,8 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
 }
 
 /* ============================================================= */
-function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange }) {
+function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
+                          wallpaperUrl }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -1667,9 +1675,9 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
              flex: 1, minHeight: 0,
              overflowY: "auto", padding: "16px 18px",
              backgroundColor: "#efeae2",
-             backgroundImage: 'url("/wa-wallpaper-ligo.png?v=2")',
+             backgroundImage: `url("${wallpaperUrl || '/wa-wallpaper-ligo.png?v=3'}")`,
              backgroundRepeat: "repeat",
-             backgroundSize: "auto",
+             backgroundSize: wallpaperUrl ? "cover" : "auto",
              backgroundBlendMode: "multiply",
            }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

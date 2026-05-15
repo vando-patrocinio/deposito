@@ -492,6 +492,12 @@ export const api = {
     client.post(`/whatsapp-baileys/send-audio`, {
       phone, audio_b64: audioB64, mimetype, duration_sec: durationSec,
     }, { timeout: 60000 }).then((r) => r.data),
+  waBaileysGetWallpaper: () =>
+    client.get(`/whatsapp-baileys/wallpaper`).then((r) => r.data),
+  waBaileysSetWallpaper: (imageDataUrl) =>
+    client.put(`/whatsapp-baileys/wallpaper`,
+                 { image_data_url: imageDataUrl },
+                 { timeout: 60000 }).then((r) => r.data),
   // Subscribers — busca + by-phone (autocomplete no modal de Agendamento)
   subscribersSearch: (q, limit = 10) =>
     client.get(`/subscribers/search`, { params: { q, limit } }).then((r) => r.data),

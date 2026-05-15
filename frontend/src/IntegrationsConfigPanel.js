@@ -4,6 +4,7 @@ import { api } from "@/api";
 import WhatsAppInstancePanel from "@/WhatsAppInstancePanel";
 import ChatTopologyMap from "@/ChatTopologyMap";
 import InlineAgentEditor from "@/InlineAgentEditor";
+import WallpaperConfigCard from "@/WallpaperConfigCard";
 import {
   CheckCircle2, AlertCircle, RefreshCw, Plug, Wifi, WifiOff,
 } from "lucide-react";
@@ -108,6 +109,9 @@ export default function IntegrationsConfigPanel() {
 
       {/* Editor inline do Agente IA — Personalidade & Modelo */}
       <InlineAgentEditor />
+
+      {/* Papel de parede customizável do chat */}
+      <WallpaperConfigCard />
 
       {/* Painel completo de Instância Baileys (QR, número, auto-reply, etc.) */}
       <WhatsAppInstancePanel />
