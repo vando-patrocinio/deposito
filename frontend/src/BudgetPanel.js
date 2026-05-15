@@ -654,18 +654,12 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
                               textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
                 Resumo
               </div>
-              <TotalRow label="Base" value={fmtMoney(totals.base || 0)} />
-              <TotalRow label={`Ganho (${budget.margin_pct || 0}%)`}
-                          value={fmtMoney(totals.margin_val || 0)} />
-              <TotalRow label={`Mão de obra (${budget.labor_pct || 0}%)`}
+              <TotalRow label="Mão de obra"
                           value={fmtMoney(totals.labor_val || 0)} />
-              <TotalRow label="Subtotal" value={fmtMoney(totals.subtotal || 0)} divider />
-              <TotalRow label={`Imposto (${budget.tax_pct || 0}%)`}
-                          value={fmtMoney(totals.tax_val || 0)} />
               <TotalRow label="TOTAL FINAL"
                           value={fmtMoney(totals.final || 0)}
                           testid="budget-total-final"
-                          bold highlight />
+                          bold highlight divider />
             </div>
           </div>
         )}
