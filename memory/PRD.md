@@ -362,6 +362,18 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Pytest** `/app/backend/tests/test_iter70_ai_reply_split.py`: 8/8 PASS cobrindo parágrafos múltiplos, texto único, bullets, cap de overflow, separador `---`, merge de micro, vazios, newlines simples preservados.
 - **Validado E2E real**: trigger `POST /api/whatsapp-baileys/inbound` com mensagem do cliente "quero saber 3 coisas..." → Isabella gerou resposta em 3 parágrafos `\n\n` → backend quebrou em 3 chunks (`chunk_index 0/3, 1/3, 2/3`) → 3 bolhas separadas no DB com `delivery_status: sent` ✓.
 
+✅ **Wallpaper estilo WhatsApp no Atendimento IA + mascote oval no empty state** (15/02/2026 — iter71):
+- **Pedido do usuário** (com screenshot): "MUDE AS CORES E O PAPEL DE PAREDE PARA OS DA IMAGEM ENVIADA" — fundo bege-creme clássico do WhatsApp Web com doodles (câmera, fone, coração, foguete, balão, presente, bicicleta etc.) e oval branca centralizada com mini-mascote astronauta.
+- **Implementação**:
+  - Novo componente `/app/frontend/src/WaWallpaper.js` (~140 linhas) com tile SVG 300×300 contendo 28 doodles em stroke `#d9d2c8` sobre fundo `#efeae2`, embedado como `data-URL` (zero request HTTP).
+  - Sub-componente `Mascot` desenha um astronauta roxo com visor cyan segurando celular — inline SVG.
+  - Modo `<WaWallpaper empty />` exibe a oval branca centralizada com sombra suave e mascote dentro.
+  - testids: `wa-wallpaper`, `wa-empty-mascot`.
+- **Wiring em `WhatsAppChatLayout.js`** (2 pontos):
+  - Empty state do `ChatThread` (quando não há conversa selecionada): substituído o ícone `MessageSquare` cinza pela `<WaWallpaper empty />`.
+  - Background da área de mensagens (`wa-messages-scroll`): substituído `radial-gradient` cinza por tile SVG inline com mesmos doodles e cor `#efeae2`.
+- **Validado**: screenshot Playwright em 1920×900 confirma wallpaper bege com doodles repetindo + mascote roxo no oval branco ao centro, idêntico à referência do usuário. `data-testid="wa-wallpaper"` presente, `data-testid="wa-empty-mascot"` presente.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
