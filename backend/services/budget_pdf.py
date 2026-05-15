@@ -108,7 +108,6 @@ def build_budget_pdf(budget: Dict[str, Any], generated_by: str = "",
     )
 
     styles = getSampleStyleSheet()
-    body = ParagraphStyle("body", parent=styles["Normal"], fontSize=9, leading=11)
     small = ParagraphStyle("small", parent=styles["Normal"], fontSize=7.5,
                               leading=9, textColor=colors.HexColor("#64748b"))
 
@@ -118,37 +117,73 @@ def build_budget_pdf(budget: Dict[str, Any], generated_by: str = "",
     story.append(_build_header_block(branding, styles))
     story.append(Spacer(1, 0.4 * cm))
 
-    # ---- 2. Título centralizado ----
-    title_text = "ORÇAMENTO DE MATERIAIS"
-    story.append(Paragraph(
-        f"<b>{title_text}</b>",
-        ParagraphStyle("title", parent=styles["Normal"], fontSize=13,
-                          alignment=1, leading=16, spaceAfter=4,
-                          textColor=colors.HexColor("#0b1220")),
-    ))
-    # Subtítulo com nome do orçamento
-    story.append(Paragraph(
-        f"<b>{budget.get('name', '—')}</b>",
-        ParagraphStyle("subtitle", parent=styles["Normal"], fontSize=11,
-                          alignment=1, leading=14, spaceAfter=8,
-                          textColor=colors.HexColor("#475569")),
-    ))
-
-    # ---- 3. Metadados (apenas o essencial: descrição + data) ----
-    meta_data = []
-    if budget.get("description"):
-        meta_data.append(["Descrição", budget["description"]])
-    meta_data.append(["Data de emissão", datetime.now().strftime("%d/%m/%Y %H:%M")])
-    meta_tbl = Table(meta_data, colWidths=[4 * cm, None])
-    meta_tbl.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#475569")),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    # ---- 2. Bloco título + metadata num "card" coeso ----
+    # Linha divisora elegante separando o header da empresa do conteúdo
+    divider = Table([[""]], colWidths=[None], rowHeights=[2])
+    divider.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
     ]))
-    story.append(meta_tbl)
+    story.append(divider)
     story.append(Spacer(1, 0.5 * cm))
+
+    # Título grande à esquerda + Data + Validade à direita (mesma linha)
+    title_par = Paragraph(
+        "<b>ORÇAMENTO DE MATERIAIS</b>",
+        ParagraphStyle("title", parent=styles["Normal"], fontSize=16,
+                          leading=20, textColor=colors.HexColor("#0b1220")),
+    )
+    issue_date = datetime.now().strftime("%d/%m/%Y")
+    meta_right = Paragraph(
+        f"<font color='#64748b' size='8'>EMISSÃO</font><br/>"
+        f"<font size='10'><b>{issue_date}</b></font><br/>"
+        f"<font color='#64748b' size='8'>VALIDADE</font><br/>"
+        f"<font size='10'><b>7 dias</b></font>",
+        ParagraphStyle("meta_right", parent=styles["Normal"], fontSize=9,
+                          leading=13, alignment=2),
+    )
+    title_tbl = Table([[title_par, meta_right]], colWidths=[None, 4.5 * cm])
+    title_tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+    ]))
+    story.append(title_tbl)
+    story.append(Spacer(1, 0.3 * cm))
+
+    # Nome do projeto em destaque (caixa com fundo bege claro)
+    project_name = budget.get("name", "—")
+    project_par = Paragraph(
+        f"<b>Projeto:</b> {project_name}",
+        ParagraphStyle("project", parent=styles["Normal"], fontSize=11,
+                          leading=14, textColor=colors.HexColor("#0b1220")),
+    )
+    project_box = Table([[project_par]], colWidths=[None])
+    project_box.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f1f5f9")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.append(project_box)
+
+    # Descrição (se houver) em parágrafo discreto
+    if budget.get("description"):
+        story.append(Spacer(1, 0.2 * cm))
+        story.append(Paragraph(
+            f"<font color='#475569'>{budget['description']}</font>",
+            ParagraphStyle("desc", parent=styles["Normal"], fontSize=9,
+                              leading=12),
+        ))
+    story.append(Spacer(1, 0.6 * cm))
+
+    # ---- 3. Header da tabela: "Itens do orçamento" ----
+    story.append(Paragraph(
+        "<b>ITENS DO ORÇAMENTO</b>",
+        ParagraphStyle("sec", parent=styles["Normal"], fontSize=9,
+                          leading=12, textColor=colors.HexColor("#64748b"),
+                          spaceAfter=4),
+    ))
 
     # ---- 4. Tabela de itens ----
     items = budget.get("items") or []
@@ -194,35 +229,44 @@ def build_budget_pdf(budget: Dict[str, Any], generated_by: str = "",
     story.append(tbl)
     story.append(Spacer(1, 0.5 * cm))
 
-    # ---- 5. Totais (mostra apenas Base · Mão de obra · TOTAL FINAL) ----
+    # ---- 5. Totais — caixa enxuta à direita, TOTAL FINAL em destaque ----
     t = budget.get("totals") or {}
-    totals_data = [
-        ["Mão de obra", _money_br(t.get("labor_val", 0))],
-        ["TOTAL FINAL", _money_br(t.get("final", 0))],
-    ]
-    totals_tbl = Table(totals_data, colWidths=[90 * mm, 40 * mm], hAlign="RIGHT")
+    labor_val = t.get("labor_val", 0)
+    final_val = t.get("final", 0)
+    totals_rows = []
+    if labor_val:
+        totals_rows.append(["Mão de obra", _money_br(labor_val)])
+    totals_rows.append(["TOTAL FINAL", _money_br(final_val)])
+    totals_tbl = Table(totals_rows, colWidths=[55 * mm, 40 * mm], hAlign="RIGHT")
     totals_tbl.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -2), "Helvetica"),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("FONTSIZE", (0, -1), (-1, -1), 12),
+        ("FONTSIZE", (0, 0), (-1, -2), 10),
+        ("FONTSIZE", (0, -1), (-1, -1), 14),
+        ("TEXTCOLOR", (0, 0), (-1, -2), colors.HexColor("#475569")),
         ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#0f172a")),
         ("TEXTCOLOR", (0, -1), (-1, -1), colors.white),
         ("LINEABOVE", (0, -1), (-1, -1), 0.6, colors.HexColor("#94a3b8")),
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("ALIGN", (0, -1), (0, -1), "LEFT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
     story.append(totals_tbl)
-    story.append(Spacer(1, 0.6 * cm))
-
-    # ---- 6. Rodapé + assinaturas ----
-    story.append(Paragraph(
-        f"Emitido por: <b>{generated_by or budget.get('created_by_name', '')}</b> "
-        f"· Validade: 7 dias a partir da emissão.", body))
     story.append(Spacer(1, 1.0 * cm))
+
+    # ---- 6. Rodapé — info do emissor à esquerda, assinaturas embaixo ----
+    issuer_name = generated_by or budget.get("created_by_name", "")
+    if issuer_name:
+        story.append(Paragraph(
+            f"<font color='#64748b' size='8'>EMITIDO POR</font><br/>"
+            f"<font size='10'><b>{issuer_name}</b></font>",
+            ParagraphStyle("issuer", parent=styles["Normal"], fontSize=9,
+                              leading=13),
+        ))
+    story.append(Spacer(1, 1.4 * cm))
     sign = Table([["__________________________________",
                      "__________________________________"],
                     ["Responsável Técnico", "Cliente"]],
