@@ -14,7 +14,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/api";
 
-// Paleta storyboard
+// Paleta storyboard — branca/limpa com roxo de destaque
 const C_BG = "#f8fafc";
 const C_HEADER_BG = "#5b21b6"; // roxo SmartProv
 const C_PRIMARY = "#7c3aed";
@@ -24,6 +24,7 @@ const C_TEXT = "#0f172a";
 const C_MUTED = "#64748b";
 const C_BORDER = "#e2e8f0";
 const C_DANGER = "#dc2626";
+const C_SUCCESS = "#16a34a";
 
 const headerStyle = {
   background: C_HEADER_BG,
@@ -103,6 +104,39 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
   const [networkType, setNetworkType] = useState(null);
   const [splitter, setSplitter] = useState(null);
   const [clientPort, setClientPort] = useState(null);
+  const [photo, setPhoto] = useState(null); // base64 data url
+  const fileInputRef = React.useRef(null);
+
+  // Foto: aceita captura via input file (mobile abre câmera)
+  const onPhotoChange = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+      setError("Foto muito grande (limite 4MB).");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      // Reduz tamanho usando canvas (max 1280px na maior dimensão)
+      const img = new Image();
+      img.onload = () => {
+        const max = 1280;
+        let { width: w, height: h } = img;
+        if (w > max || h > max) {
+          if (w > h) { h = Math.round(h * max / w); w = max; }
+          else { w = Math.round(w * max / h); h = max; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        setPhoto(canvas.toDataURL("image/jpeg", 0.78));
+        setError("");
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }, []);
 
   // GPS
   const captureGps = useCallback(() => {
@@ -174,6 +208,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
         suggested_name: suggested.name,
         technician_id: collabId,
         technician_name: technician?.name || "",
+        photo_data_url: photo || null,
       });
       onCreated?.(r);
     } catch (e) {
@@ -296,6 +331,47 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
               <span style={{ color: C_MUTED, fontSize: 20 }}>›</span>
             </button>
 
+            <label style={labelStyle}>Foto da CTO (opcional)</label>
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+              onChange={onPhotoChange} style={{ display: "none" }}
+              data-testid="cto-photo-input" />
+            {photo ? (
+              <div style={{
+                position: "relative", borderRadius: 12,
+                overflow: "hidden", border: `1.5px solid ${C_BORDER}`,
+                marginBottom: 6,
+              }}>
+                <img src={photo} alt="Foto CTO" data-testid="cto-photo-preview"
+                  style={{ width: "100%", display: "block",
+                            maxHeight: 220, objectFit: "cover" }} />
+                <button data-testid="cto-photo-remove"
+                  onClick={() => { setPhoto(null);
+                                     if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                  style={{
+                    position: "absolute", top: 8, right: 8,
+                    background: "rgba(0,0,0,0.6)", color: "#fff",
+                    border: 0, borderRadius: "50%", width: 28, height: 28,
+                    fontSize: 14, fontWeight: 800, cursor: "pointer",
+                  }}>×</button>
+              </div>
+            ) : (
+              <button data-testid="cto-photo-btn"
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{
+                        ...inputBase, display: "flex", alignItems: "center",
+                        justifyContent: "space-between", cursor: "pointer",
+                        padding: "16px 14px",
+                      }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 20 }}>📷</span>
+                  <span style={{ color: C_TEXT, fontWeight: 600 }}>
+                    Tirar foto da CTO
+                  </span>
+                </span>
+                <span style={{ color: C_MUTED, fontSize: 20 }}>›</span>
+              </button>
+            )}
+
             <div style={{ marginTop: 28 }}>
               <button data-testid="cto-step2-continue"
                       onClick={() => {
@@ -356,49 +432,32 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
 
             {bairroSelected && (
               <>
-                {/* Bairro card verde */}
-                <div data-testid="auto-card-bairro" style={{
-                  ...cardBase, background: "#ecfdf5", borderColor: "#a7f3d0",
-                  display: "flex", alignItems: "flex-start", gap: 12,
-                }}>
-                  <div style={{
-                    width: 40, height: 40, borderRadius: 10,
-                    background: "#d1fae5", display: "grid", placeItems: "center",
-                    fontSize: 20, flexShrink: 0,
-                  }}>🏠</div>
+                {/* Bairro card */}
+                <div data-testid="auto-card-bairro" style={autoCardStyle}>
+                  <div style={iconBoxStyle("#dcfce7", C_SUCCESS)}>🏠</div>
                   <div>
-                    <div style={{ fontSize: 11, color: "#047857", fontWeight: 700,
-                                     textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    <div style={autoLabelStyle}>
                       Bairro identificado automaticamente
                     </div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: "#065f46",
-                                     marginTop: 2 }}>
+                    <div style={autoValueStyle}>
                       {bairroSelected.bairro}
                     </div>
-                    <div style={{ fontSize: 11, color: "#047857", marginTop: 4 }}>
+                    <div style={autoSubStyle}>
                       Sigla {bairroSelected.sigla} · VLAN {bairroSelected.vlan}
                       {bairroSelected.cidade ? ` · ${bairroSelected.cidade}` : ""}
                     </div>
                   </div>
                 </div>
 
-                {/* GPS card verde */}
-                <div data-testid="auto-card-gps" style={{
-                  ...cardBase, background: "#ecfdf5", borderColor: "#a7f3d0",
-                  display: "flex", alignItems: "flex-start", gap: 12,
-                }}>
-                  <div style={{
-                    width: 40, height: 40, borderRadius: 10,
-                    background: "#d1fae5", display: "grid", placeItems: "center",
-                    fontSize: 20, flexShrink: 0,
-                  }}>📍</div>
+                {/* GPS card */}
+                <div data-testid="auto-card-gps" style={autoCardStyle}>
+                  <div style={iconBoxStyle("#dcfce7", C_SUCCESS)}>📍</div>
                   <div>
-                    <div style={{ fontSize: 11, color: "#047857", fontWeight: 700,
-                                     textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    <div style={autoLabelStyle}>
                       Posição GPS da CTO
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "#065f46",
-                                     marginTop: 2, fontFamily: "monospace" }}>
+                    <div style={{ ...autoValueStyle, fontFamily: "monospace",
+                                     fontSize: 13 }}>
                       {gps.lat
                         ? `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}`
                         : "—  (volte ao passo 2 para capturar)"}
@@ -406,33 +465,27 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                   </div>
                 </div>
 
-                {/* Nomenclatura card roxo */}
-                <div data-testid="auto-card-name" style={{
-                  ...cardBase, background: C_PRIMARY_LIGHT, borderColor: "#c4b5fd",
-                  display: "flex", alignItems: "flex-start", gap: 12,
-                }}>
-                  <div style={{
-                    width: 40, height: 40, borderRadius: 10,
-                    background: "#ddd6fe", display: "grid", placeItems: "center",
-                    fontSize: 20, flexShrink: 0,
-                  }}>🏷</div>
+                {/* Nomenclatura card */}
+                <div data-testid="auto-card-name" style={autoCardStyle}>
+                  <div style={iconBoxStyle(C_PRIMARY_LIGHT, C_PRIMARY)}>🏷</div>
                   <div>
-                    <div style={{ fontSize: 11, color: "#5b21b6", fontWeight: 700,
-                                     textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    <div style={autoLabelStyle}>
                       Nomenclatura da CTO gerada automaticamente
                     </div>
-                    <div style={{ fontSize: 17, fontWeight: 800, color: C_PRIMARY,
-                                     marginTop: 4 }}>
+                    <div style={{ ...autoValueStyle, color: C_PRIMARY,
+                                     fontSize: 17, fontWeight: 800,
+                                     letterSpacing: 0.3 }}>
                       {suggested.name || "—"}
                     </div>
                   </div>
                 </div>
 
                 <div style={{
-                  padding: "10px 14px", marginBottom: 16,
+                  padding: "12px 14px", marginBottom: 16,
                   background: "#f1f5f9", borderRadius: 10,
                   display: "flex", alignItems: "flex-start", gap: 10,
                   fontSize: 12, color: C_MUTED, lineHeight: 1.5,
+                  border: `1px solid ${C_BORDER}`,
                 }}>
                   <span style={{ fontSize: 16 }}>ℹ️</span>
                   <span>Essas informações foram geradas com base no endereço e na
@@ -669,7 +722,21 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                   value={splitter} />
               )}
               <SummaryRow icon="📥" label="Porta do cliente"
-                value={`Porta ${clientPort}`} last />
+                value={`Porta ${clientPort}`} last={!photo} />
+              {photo && (
+                <div style={{ padding: "12px 14px",
+                                 borderTop: `1px solid ${C_BORDER}` }}>
+                  <div style={{ fontSize: 10, color: C_MUTED, fontWeight: 700,
+                                   textTransform: "uppercase", letterSpacing: 0.5,
+                                   marginBottom: 8 }}>
+                    📷 Foto da CTO
+                  </div>
+                  <img src={photo} alt="Foto CTO"
+                    style={{ width: "100%", borderRadius: 10,
+                              border: `1px solid ${C_BORDER}`,
+                              maxHeight: 200, objectFit: "cover" }} />
+                </div>
+              )}
             </div>
 
             <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -736,3 +803,33 @@ function SummaryRow({ icon, label, value, highlight, last }) {
     </div>
   );
 }
+
+/* ===== Estilos padronizados ===== */
+const autoCardStyle = {
+  background: "#fff",
+  border: `1.5px solid ${C_BORDER}`,
+  borderRadius: 14,
+  padding: "14px 14px",
+  marginBottom: 10,
+  display: "flex",
+  alignItems: "flex-start",
+  gap: 12,
+};
+const iconBoxStyle = (bg, fg) => ({
+  width: 40, height: 40, borderRadius: 10,
+  background: bg, color: fg,
+  display: "grid", placeItems: "center",
+  fontSize: 18, flexShrink: 0,
+});
+const autoLabelStyle = {
+  fontSize: 10, color: C_MUTED, fontWeight: 700,
+  textTransform: "uppercase", letterSpacing: 0.5,
+  marginBottom: 4,
+};
+const autoValueStyle = {
+  fontSize: 15, fontWeight: 700, color: C_TEXT,
+  lineHeight: 1.3,
+};
+const autoSubStyle = {
+  fontSize: 11, color: C_MUTED, marginTop: 4,
+};

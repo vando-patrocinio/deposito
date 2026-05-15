@@ -359,6 +359,16 @@ function Pendencies() {
                       </div>
                     </div>
                   )}
+                  {c.photo_data_url && (
+                    <div data-testid={`pendency-photo-${p.id}`} style={{
+                      marginTop: 10, borderRadius: 8, overflow: "hidden",
+                      border: "1px solid var(--border-default)", maxWidth: 240,
+                    }}>
+                      <img src={c.photo_data_url} alt="Foto CTO"
+                        style={{ width: "100%", display: "block",
+                                  maxHeight: 180, objectFit: "cover" }} />
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <button data-testid={`pendency-approve-${p.id}`}

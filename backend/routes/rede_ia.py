@@ -156,6 +156,8 @@ class CTOCreateIn(BaseModel):
     # Técnico
     technician_id: Optional[str] = None
     technician_name: Optional[str] = None
+    # Foto opcional da CTO (data URL base64)
+    photo_data_url: Optional[str] = None
 
 
 class ValidationActionIn(BaseModel):
@@ -379,6 +381,7 @@ async def create_cto(body: CTOCreateIn,
         "updated_at": now_iso(),
         "approved_by": None,
         "approved_at": None,
+        "photo_data_url": body.photo_data_url,
     }
     await db.ctos.insert_one(doc)
 
@@ -831,6 +834,7 @@ async def public_create_cto(collab_id: str, body: CTOCreateIn):
         "created_by_user_id": collab_id,
         "created_at": now_iso(), "updated_at": now_iso(),
         "approved_by": None, "approved_at": None,
+        "photo_data_url": body.photo_data_url,
     }
     await db.ctos.insert_one(doc)
     await db.cto_validations.insert_one({
