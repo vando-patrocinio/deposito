@@ -134,15 +134,11 @@ def build_budget_pdf(budget: Dict[str, Any], generated_by: str = "",
                           textColor=colors.HexColor("#475569")),
     ))
 
-    # ---- 3. Metadados ----
-    meta_data = [
-        ["Nº do orçamento", budget.get("id", "—")],
-        ["Status", budget.get("status", "draft").upper()],
-        ["Criado por", budget.get("created_by_name", "—")],
-        ["Data de emissão", datetime.now().strftime("%d/%m/%Y %H:%M")],
-    ]
+    # ---- 3. Metadados (apenas o essencial: descrição + data) ----
+    meta_data = []
     if budget.get("description"):
-        meta_data.insert(1, ["Descrição", budget["description"]])
+        meta_data.append(["Descrição", budget["description"]])
+    meta_data.append(["Data de emissão", datetime.now().strftime("%d/%m/%Y %H:%M")])
     meta_tbl = Table(meta_data, colWidths=[4 * cm, None])
     meta_tbl.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
