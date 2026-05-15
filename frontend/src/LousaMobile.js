@@ -290,16 +290,16 @@ export default function LousaMobile({ collaboratorId, onBack }) {
         </div>
       )}
 
-      {!state.has_entrada && (
+      {!state.has_entrada && data.clock_in_enabled !== false && (
         <Banner color="#fef3c7" border="#f59e0b" icon="⚠️" text="Bata o ponto de Entrada para liberar a lousa." />
       )}
-      {state.in_intervalo && (
+      {state.in_intervalo && data.clock_in_enabled !== false && (
         <Banner color="#dbeafe" border="#3b82f6" icon="🍽️" text="Você está em intervalo de almoço. A lousa abrirá após Fim intervalo." />
       )}
-      {state.ended_day && (
+      {state.ended_day && data.clock_in_enabled !== false && (
         <Banner color="#e0e7ff" border="#6366f1" icon="🏁" text="Você já bateu Saída. Boa noite!" />
       )}
-      {lastEvent && state.has_entrada && !reorderMode && (
+      {lastEvent && state.has_entrada && !reorderMode && data.clock_in_enabled !== false && (
         <Banner color="#dcfce7" border="#10b981" icon="✓" text={`Último ponto: ${lastEvent.type} às ${lastEvent.time}`} />
       )}
 
