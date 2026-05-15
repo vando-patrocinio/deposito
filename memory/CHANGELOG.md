@@ -1377,3 +1377,22 @@ Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
 ### Dependências
 - backend: `qrcode==8.2`
 - frontend: `jsqr@1.4.0`
+
+## 2026-05-15 (later 2) — QR scan → Vincular cliente + criar OS automática
+### Novo endpoint
+- `POST /api/rede-ia/qrcode/bind-port` — recebe `{cto_id, port_number, subscriber_name, pppoe?, subscriber_phone?, service_type, notes?}`:
+  1. Valida CTO aprovada + porta livre (409 se duplicada)
+  2. Atualiza a porta: status='used', client_name/pppoe/phone, linked_by_*, linked_via_qr=true
+  3. Cria ticket (OS) em `db.tickets` com source='rede_ia_qr', priority correto da Lousa (normal/prioridade), cto_name/cto_port/cto_vlan no client_snapshot, assigned_collaborator_id=user
+  4. Rollback automático: se insert_one(ticket) falhar, reverte port para 'free'
+  5. Audit log em cto_history (action='bind_port')
+
+### Frontend (QrScanner.js — multistep)
+- Step 1: scan QR (câmera) → validação HMAC backend
+- Step 2: CTO identificada → botão "Vincular cliente"
+- Step 3: formulário com seleção visual de porta livre + nome/PPPoE/telefone + tipo serviço (Instalação/Manutenção/Troca porta)
+- Step 4: success screen com ticket_id criado
+
+### Testing
+- testing_agent_v3 (iter77): backend 12/13 passou; frontend renderização do scanner verificada
+- Fix aplicado pós-review: priority `alta`→`prioridade`/`horario`→`normal` (alinhado aos filtros da Lousa) + rollback em caso de erro de OS

@@ -947,6 +947,12 @@ async def bind_port(body: BindPortIn,
         "manutencao": "Manutenção",
         "troca_porta": "Troca de porta",
     }
+    # Usa as prioridades aceitas pela Lousa: normal | horario | prioridade
+    priority_map = {
+        "instalacao": "normal",
+        "manutencao": "prioridade",
+        "troca_porta": "normal",
+    }
     ticket_doc = {
         "id": ticket_id,
         "client_id": body.subscriber_id or str(uuid.uuid4()),
@@ -963,7 +969,7 @@ async def bind_port(body: BindPortIn,
             "test_history": [],
         },
         "type": type_label_map.get(body.service_type, body.service_type),
-        "priority": "alta" if body.service_type == "manutencao" else "horario",
+        "priority": priority_map.get(body.service_type, "normal"),
         "scheduled_time": None,
         "position": next_pos,
         "status": "pendente",
@@ -974,7 +980,16 @@ async def bind_port(body: BindPortIn,
         "source": "rede_ia_qr",
         "cto_id": body.cto_id,
     }
-    await db.tickets.insert_one(ticket_doc)
+    try:
+        await db.tickets.insert_one(ticket_doc)
+    except Exception as e:
+        # Rollback: reverte a porta para 'free' se a OS falhar
+        logger.exception("[rede-ia] insert ticket falhou — revertendo porta")
+        await db.ctos.update_one(
+            {"id": body.cto_id, "company_id": cid},
+            {"$set": {"ports": ports, "updated_at": now_iso()}},
+        )
+        raise HTTPException(500, f"Falha ao criar OS — vínculo revertido: {str(e)[:120]}")
 
     # Audit
     await _audit(
