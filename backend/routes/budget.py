@@ -421,8 +421,14 @@ async def budget_pdf(bid: str,
                                                            "financeiro"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     doc = _hydrate(await _get_budget(cid, bid))
+    # Carrega branding (logo + dados da empresa) — mesmo cabeçalho do romaneio
+    from routes.branding import get_branding
     from services.budget_pdf import build_budget_pdf
-    pdf_bytes = build_budget_pdf(doc, generated_by=user.get("name"))
+    branding_obj = await get_branding(cid)
+    branding_dict = branding_obj.model_dump() if hasattr(branding_obj, "model_dump") \
+                    else dict(branding_obj or {})
+    pdf_bytes = build_budget_pdf(doc, generated_by=user.get("name"),
+                                    branding=branding_dict)
     # Marca como final na primeira vez que gera o PDF
     if doc.get("status") != "final":
         await db.budgets.update_one(
