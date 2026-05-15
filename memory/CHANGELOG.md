@@ -1,6 +1,35 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Feb 15, 2026 — Ligo (Secretária IA) consulta faturas dos assinantes ★
+
+### O que foi implementado
+- 2 novas tools em `/app/backend/services/secretaria_tools.py`:
+  - **`consult_subscriber_invoices(document, subscriber_name, status, limit)`** — busca faturas do assinante por CPF/CNPJ (com/sem máscara) ou nome parcial. Filtros: any/open/paid/overdue. Retorna lista + soma em aberto.
+  - **`next_due_invoice(document, subscriber_name)`** — próxima fatura não paga.
+- Helper `_norm_doc()` remove máscaras de CPF/CNPJ automaticamente.
+- Helper `_resolve_invoices_query()` reutilizável entre tools.
+
+### Resultado E2E
+Sem mexer no prompt da Ligo, ela já invoca as tools automaticamente. Testes:
+- "Quanto eu devo? CPF 123.456.789-01" → consult_subscriber_invoices
+- "Pode me passar a 2a via da fatura do João Silva?" → consult_subscriber_invoices (busca por nome)
+- "Qual a próxima fatura do CPF 12345678901?" → next_due_invoice
+- Resposta inclui valor, vencimento (formato pt-BR), linha digitável para pagamento.
+
+### Como funciona
+Os dados vêm da coleção `subscriber_invoices` populada pela Fase 4 (sync com Atlaz V2). Assim que o usuário sincronizar (Configurações → Recebimentos → "Sincronizar agora"), a Ligo consulta automaticamente sempre que um cliente perguntar sobre cobrança/fatura/2ª via via WhatsApp.
+
+### Impacto esperado
+- Redução estimada de 30-40% nos tickets de cobrança que hoje são respondidos manualmente.
+- Resposta instantânea 24/7 mesmo fora do horário comercial.
+- Cliente recebe linha digitável direto no chat — sem precisar de atendente humano.
+
+---
+
+
+# PontoIA — Changelog
+
 ## Feb 15, 2026 — Financeiro Fase 3+4 + Disparo em Massa WhatsApp ★
 
 ### O que foi implementado

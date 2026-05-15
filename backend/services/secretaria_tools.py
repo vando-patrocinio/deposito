@@ -53,6 +53,40 @@ TOOLS_SPEC_EXTRA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "consult_subscriber_invoices",
+            "description": "Consulta faturas/cobranças de um assinante específico via CPF/CNPJ ou nome. Use para 'qual minha fatura?', 'quanto eu devo?', 'meu pagamento de novembro caiu?', '2ª via', 'segunda via'. Retorna faturas em aberto, pagas e vencidas + linha digitável quando disponível.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "document": {"type": "string",
+                                  "description": "CPF/CNPJ (com ou sem máscara) do cliente"},
+                    "subscriber_name": {"type": "string",
+                                          "description": "Nome parcial do cliente (fallback se não tiver CPF)"},
+                    "status": {"type": "string",
+                                "enum": ["any", "open", "paid", "overdue"],
+                                "default": "any"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 6},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "next_due_invoice",
+            "description": "Próxima fatura a vencer (não paga) de um assinante. Use para 'quando vence minha próxima fatura?'. Retorna 1 fatura com vencimento, valor, linha digitável.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "document": {"type": "string"},
+                    "subscriber_name": {"type": "string"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "list_overdue_subscribers",
             "description": "Lista assinantes inadimplentes/em atraso. Use para 'quem está devendo?', 'clientes em atraso'.",
             "parameters": {
@@ -283,6 +317,92 @@ async def _tool_list_overdue_subscribers(cid: str, args: Dict[str, Any]) -> Dict
             "days_overdue": 1, "city": 1},
     ).limit(limit)
     return {"overdue_count": count, "items": await cur.to_list(limit)}
+
+
+def _norm_doc(s: str) -> str:
+    """Remove tudo que não for dígito (CPF/CNPJ)."""
+    return "".join(ch for ch in (s or "") if ch.isdigit())
+
+
+async def _resolve_invoices_query(cid: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Monta o filtro de subscriber_invoices a partir de document OU nome."""
+    doc = _norm_doc(args.get("document") or "")
+    name = (args.get("subscriber_name") or "").strip()
+    q: Dict[str, Any] = {"company_id": cid}
+    if doc:
+        # Tenta match em formatos possíveis (com/sem máscara armazenado)
+        q["$or"] = [
+            {"subscriber_document": doc},
+            {"subscriber_document": {"$regex": doc, "$options": "i"}},
+        ]
+    elif name:
+        q["subscriber_name"] = {"$regex": name, "$options": "i"}
+    else:
+        return {}
+    return q
+
+
+async def _tool_consult_subscriber_invoices(cid: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Consulta faturas/cobranças do assinante (sync Atlaz Financeiro Fase 4)."""
+    limit = int(args.get("limit") or 6)
+    status = (args.get("status") or "any").lower()
+    q = await _resolve_invoices_query(cid, args)
+    if not q:
+        return {"error": "Forneça document (CPF/CNPJ) ou subscriber_name."}
+    # Filtro de status — heurístico (Atlaz retorna strings variadas)
+    if status == "open":
+        q["status"] = {"$nin": ["paga", "pago", "paid", "quitado", "baixada",
+                                  "cancelada", "cancelled"]}
+        q["paid_date"] = None
+    elif status == "paid":
+        q["$or"] = (q.get("$or") or []) + [
+            {"status": {"$in": ["paga", "pago", "paid", "quitado", "baixada"]}},
+            {"paid_date": {"$ne": None}},
+        ] if q.get("$or") else None
+        # Simplifica
+        q = {**q, "status": {"$in": ["paga", "pago", "paid", "quitado", "baixada"]}}
+    elif status == "overdue":
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        q["paid_date"] = None
+        q["due_date"] = {"$lt": today}
+
+    cur = db.subscriber_invoices.find(
+        q, {"_id": 0, "external_id": 1, "subscriber_name": 1,
+            "subscriber_document": 1, "amount": 1, "amount_paid": 1,
+            "due_date": 1, "paid_date": 1, "status": 1, "barcode": 1},
+    ).sort([("due_date", -1)]).limit(limit)
+    items = await cur.to_list(limit)
+    total = await db.subscriber_invoices.count_documents(q)
+    # Resumo
+    total_open = sum(float(i.get("amount") or 0) for i in items
+                      if not i.get("paid_date"))
+    return {
+        "total_found": total,
+        "shown": len(items),
+        "total_open_amount_brl": round(total_open, 2),
+        "invoices": items,
+        "hint": ("Se nenhum resultado, peça o CPF ao cliente."
+                  if total == 0 else None),
+    }
+
+
+async def _tool_next_due_invoice(cid: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Próxima fatura a vencer (não paga) do assinante."""
+    q = await _resolve_invoices_query(cid, args)
+    if not q:
+        return {"error": "Forneça document (CPF/CNPJ) ou subscriber_name."}
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    q["paid_date"] = None
+    q["due_date"] = {"$gte": today}
+    inv = await db.subscriber_invoices.find_one(
+        q, {"_id": 0, "external_id": 1, "subscriber_name": 1,
+            "amount": 1, "due_date": 1, "status": 1, "barcode": 1},
+        sort=[("due_date", 1)],
+    )
+    if not inv:
+        return {"found": False,
+                 "message": "Nenhuma fatura em aberto futura encontrada."}
+    return {"found": True, "invoice": inv}
 
 
 # ---------- Lousa avançada ----------
@@ -550,6 +670,8 @@ TOOL_FUNCS_EXTRA = {
     "list_open_conversations": _tool_list_open_conversations,
     "revenue_summary": _tool_revenue_summary,
     "list_overdue_subscribers": _tool_list_overdue_subscribers,
+    "consult_subscriber_invoices": _tool_consult_subscriber_invoices,
+    "next_due_invoice": _tool_next_due_invoice,
     "list_tickets_due_today": _tool_list_tickets_due_today,
     "list_overdue_tickets": _tool_list_overdue_tickets,
     "ticket_distribution": _tool_ticket_distribution,
