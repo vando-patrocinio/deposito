@@ -5,7 +5,7 @@ import {
   CheckCircle2, GraduationCap, ChevronDown, ChevronUp, Lightbulb,
   Wifi, WifiOff, Activity, Info, Signal, MapPin, Phone, CreditCard,
   AlertCircle, Sparkles, Lock, AlertTriangle, ClipboardList, RefreshCw,
-  Settings, RotateCcw, Image, CalendarPlus, Mic,
+  Settings, RotateCcw, Image, CalendarPlus, Mic, Play, Pause,
 } from "lucide-react";
 import { api } from "@/api";
 import { useAuth } from "@/AuthContext";
@@ -2247,6 +2247,104 @@ function InternalNoteBubble({ msg }) {
   );
 }
 
+/* =============================================================
+   InlineAudioPlayer — player de áudio compacto dentro do balão.
+   Play/pause + barra de progresso + duração.
+   `outbound` muda as cores pra combinar com o balão verde da atendente.
+============================================================= */
+function InlineAudioPlayer({ src, duration: durationProp, outbound }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [pos, setPos] = useState(0);
+  const [dur, setDur] = useState(Number(durationProp) || 0);
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return undefined;
+    const onTime = () => setPos(el.currentTime || 0);
+    const onLoaded = () => {
+      if (!isNaN(el.duration) && el.duration !== Infinity) setDur(el.duration);
+    };
+    const onEnd = () => { setPlaying(false); setPos(0); };
+    el.addEventListener("timeupdate", onTime);
+    el.addEventListener("loadedmetadata", onLoaded);
+    el.addEventListener("durationchange", onLoaded);
+    el.addEventListener("ended", onEnd);
+    return () => {
+      el.removeEventListener("timeupdate", onTime);
+      el.removeEventListener("loadedmetadata", onLoaded);
+      el.removeEventListener("durationchange", onLoaded);
+      el.removeEventListener("ended", onEnd);
+    };
+  }, []);
+
+  const toggle = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (playing) { el.pause(); setPlaying(false); }
+    else { el.play().then(() => setPlaying(true)).catch(() => setPlaying(false)); }
+  };
+
+  const seek = (e) => {
+    const el = audioRef.current;
+    if (!el || !dur) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    el.currentTime = dur * ratio;
+    setPos(dur * ratio);
+  };
+
+  const fmt = (s) => {
+    if (!s || isNaN(s)) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${String(sec).padStart(2, "0")}`;
+  };
+
+  const pct = dur > 0 ? (pos / dur) * 100 : 0;
+  const accent = outbound ? "#15803d" : "#0369a1";
+  const trackBg = outbound ? "rgba(21,128,61,0.18)" : "rgba(3,105,161,0.18)";
+
+  return (
+    <div data-testid="wa-audio-player"
+         style={{ display: "flex", alignItems: "center", gap: 10,
+                   minWidth: 220, padding: "2px 0" }}>
+      <button onClick={toggle}
+              data-testid="wa-audio-play-btn"
+              aria-label={playing ? "Pausar" : "Reproduzir"}
+              style={{
+                width: 32, height: 32, borderRadius: "50%",
+                background: accent, color: "white",
+                border: "none", cursor: "pointer",
+                display: "grid", placeItems: "center",
+                flexShrink: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+              }}>
+        {playing ? <Pause size={14} strokeWidth={2.5} />
+                  : <Play size={14} strokeWidth={2.5} style={{ marginLeft: 2 }} />}
+      </button>
+      <div style={{ flex: 1, minWidth: 80 }}>
+        <div onClick={seek}
+             data-testid="wa-audio-progress"
+             style={{
+               height: 4, background: trackBg, borderRadius: 999,
+               cursor: dur > 0 ? "pointer" : "default", overflow: "hidden",
+             }}>
+          <div style={{
+            width: pct + "%", height: "100%", background: accent,
+            transition: playing ? "none" : "width 0.2s",
+          }} />
+        </div>
+        <div style={{ fontSize: 10, color: "#64748b",
+                       marginTop: 3, fontFamily: "monospace" }}>
+          {fmt(pos)} / {fmt(dur)}
+        </div>
+      </div>
+      <audio ref={audioRef} src={src} preload="metadata" style={{ display: "none" }} />
+    </div>
+  );
+}
+
+
 function MsgBubble({ msg, onCorrect }) {
   // Nota interna (co-piloto IA — NUNCA enviada ao cliente)
   if (msg.direction === "internal" || msg.is_internal_note) {
@@ -2325,7 +2423,13 @@ function MsgBubble({ msg, onCorrect }) {
           ? <em style={{ color: "#991b1b" }}>
               Cliente mandou mensagem, mas a IA não respondeu — {failureLabel}.
             </em>
-          : msg.text}</div>
+          : msg.media_type === "audio" && msg.media_url
+            ? <InlineAudioPlayer
+                src={`${process.env.REACT_APP_BACKEND_URL || ""}${msg.media_url}?t=${encodeURIComponent(window.localStorage.getItem("ponto_token") || "")}`}
+                duration={msg.media_duration_sec}
+                outbound={out}
+              />
+            : msg.text}</div>
         <div style={{
           fontSize: 9, color: failed ? "#dc2626" : "#64748b", marginTop: 3,
           display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end",

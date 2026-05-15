@@ -15,15 +15,18 @@ Webhook interno (chamado pelo sidecar):
 """
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import re
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone, timedelta
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, EMERGENT_LLM_KEY, now_iso, require_role
@@ -34,6 +37,11 @@ router = APIRouter(prefix="/api/whatsapp-baileys", tags=["whatsapp-baileys"])
 
 SIDECAR_BASE = "http://127.0.0.1:3002"
 WA_INBOUND_TOKEN = os.environ.get("WA_INBOUND_TOKEN", "")
+
+# Diretório onde áudios outbound enviados pela atendente são persistidos
+# (servidos via /api/whatsapp-baileys/audio/{msg_id})
+WA_AUDIO_DIR = Path(os.environ.get("WA_AUDIO_DIR", "/app/backend/uploads/wa_audio"))
+WA_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -206,8 +214,32 @@ async def send_audio(payload: SendAudioIn,
 
     dur_s = int(payload.duration_sec or 0)
     label = f"🎤 Áudio{f' ({dur_s}s)' if dur_s else ''}"
+
+    # Persiste o arquivo no disco para playback inline no chat
+    msg_id = f"wam-{uuid.uuid4().hex[:10]}"
+    audio_url: Optional[str] = None
+    try:
+        # Detecta extensão pelo mimetype (webm/ogg/mp3/m4a/wav)
+        mime = (payload.mimetype or "").lower()
+        if "ogg" in mime:
+            ext = "ogg"
+        elif "mpeg" in mime or "mp3" in mime:
+            ext = "mp3"
+        elif "mp4" in mime or "m4a" in mime:
+            ext = "m4a"
+        elif "wav" in mime:
+            ext = "wav"
+        else:
+            ext = "webm"
+        audio_bytes = base64.b64decode(payload.audio_b64)
+        out_path = WA_AUDIO_DIR / f"{msg_id}.{ext}"
+        out_path.write_bytes(audio_bytes)
+        audio_url = f"/api/whatsapp-baileys/audio/{msg_id}.{ext}"
+    except Exception as e:
+        logger.warning("[wa-baileys] save audio failed: %s", e)
+
     await db.aihub_wa_messages.insert_one({
-        "id": f"wam-{uuid.uuid4().hex[:10]}",
+        "id": msg_id,
         "company_id": cid,
         "direction": "outbound",
         "phone": payload.phone,
@@ -215,6 +247,7 @@ async def send_audio(payload: SendAudioIn,
         "media_type": "audio",
         "media_mimetype": payload.mimetype,
         "media_duration_sec": dur_s,
+        "media_url": audio_url,
         "channel": "baileys",
         "message_id": out.get("message_id"),
         "created_at": now_iso(),
@@ -229,7 +262,50 @@ async def send_audio(payload: SendAudioIn,
             status_code=502,
             detail=f"WhatsApp não enviou o áudio: {send_error or 'erro desconhecido'}",
         )
-    return {"ok": True, "message_id": out.get("message_id")}
+    return {"ok": True, "message_id": out.get("message_id"), "media_url": audio_url}
+
+
+@router.get("/audio/{filename}")
+async def get_audio_file(
+    filename: str,
+    t: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+):
+    """Serve o arquivo de áudio salvo pelo /send-audio para playback inline.
+
+    Aceita token via Authorization Bearer ou via query param `?t=<token>`
+    (necessário pra `<audio src=...>` que não envia headers).
+    """
+    # Sanitiza filename: msg_id.ext
+    if not re.match(r"^wam-[a-f0-9]+\.(webm|ogg|mp3|m4a|wav)$", filename):
+        raise HTTPException(400, "filename inválido")
+
+    # Valida token (Bearer header OU query param)
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    elif t:
+        token = t
+    if not token:
+        raise HTTPException(401, "Token requerido")
+    try:
+        from auth import decode_token
+        decode_token(token)
+    except Exception:
+        raise HTTPException(401, "Token inválido")
+
+    path = WA_AUDIO_DIR / filename
+    if not path.exists():
+        raise HTTPException(404, "Áudio não encontrado")
+    ext = path.suffix.lstrip(".")
+    media_type = {
+        "webm": "audio/webm",
+        "ogg": "audio/ogg",
+        "mp3": "audio/mpeg",
+        "m4a": "audio/mp4",
+        "wav": "audio/wav",
+    }.get(ext, "audio/webm")
+    return FileResponse(path, media_type=media_type)
 
 
 @router.post("/send")
