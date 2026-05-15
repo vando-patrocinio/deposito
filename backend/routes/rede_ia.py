@@ -381,7 +381,78 @@ async def list_pendencies(user: dict = Depends(require_role("administrador", "ge
     items = await db.cto_validations.find(
         {"company_id": cid, "status": "pending"}, {"_id": 0},
     ).sort("created_at", -1).to_list(200)
+    # Enriquece cada pendência com hints do SmartOLT
+    for it in items:
+        snap = it.get("cto_snapshot") or {}
+        it["smartolt_hints"] = await _smartolt_hints_for_cto(cid, snap)
     return {"items": items, "total": len(items)}
+
+
+async def _smartolt_hints_for_cto(company_id: str, cto: Dict[str, Any]) -> Dict[str, Any]:
+    """Procura ONUs no SmartOLT que possam estar associadas a esta CTO.
+
+    Estratégia (sem GPS no SmartOLT):
+    1. Match exato de `zone_name` contendo o número/sigla da CTO
+    2. Aglomera por (olt_id, board, port) para sugerir Slot/PON dominantes
+    3. Conta alertas de sinal
+    """
+    number = cto.get("number")
+    sigla = cto.get("sigla")
+    cto_name = cto.get("name") or ""
+    if not (number and sigla):
+        return {"matched": 0, "candidates": [], "alerts": 0}
+
+    # Padrões de busca em zone_name — bastante flexíveis para casar com
+    # diferentes convenções (CTO 1, CTO-01, CTO_001, CTO - 01...)
+    patterns = [
+        cto_name,
+        f"CTO[\\s\\-_]*0*{number}(?!\\d)" if isinstance(number, int) else None,
+        f"_{sigla}",
+    ]
+    patterns = [p for p in patterns if p]
+    or_filt = [{"zone_name": {"$regex": p, "$options": "i"}} for p in patterns]
+    if not or_filt:
+        return {"matched": 0, "candidates": [], "alerts": 0}
+
+    onus = await db.smartolt_onus.find(
+        {"company_id": company_id, "$or": or_filt},
+        {"_id": 0, "olt_name": 1, "olt_id": 1, "board": 1, "port": 1,
+         "onu": 1, "sn": 1, "name": 1, "signal_text": 1, "zone_name": 1,
+         "status": 1},
+    ).limit(50).to_list(50)
+
+    if not onus:
+        return {"matched": 0, "candidates": [], "alerts": 0}
+
+    # Agrupa por (olt_name, board, port)
+    bucket: Dict[str, Dict[str, Any]] = {}
+    alerts = 0
+    for o in onus:
+        k = f"{o.get('olt_name')}|{o.get('board')}|{o.get('port')}"
+        b = bucket.setdefault(k, {
+            "olt_name": o.get("olt_name"),
+            "olt_id": o.get("olt_id"),
+            "board": o.get("board"),
+            "port": o.get("port"),
+            "count": 0,
+            "samples": [],
+        })
+        b["count"] += 1
+        if len(b["samples"]) < 3:
+            b["samples"].append({
+                "name": o.get("name"), "sn": o.get("sn"),
+                "signal_text": o.get("signal_text"),
+                "zone_name": o.get("zone_name"),
+            })
+        if (o.get("signal_text") or "").lower() in ("warning", "critical", "alarm"):
+            alerts += 1
+
+    candidates = sorted(bucket.values(), key=lambda b: b["count"], reverse=True)[:5]
+    return {
+        "matched": len(onus),
+        "candidates": candidates,
+        "alerts": alerts,
+    }
 
 
 @router.post("/ctos/{cto_id}/validate")

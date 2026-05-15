@@ -263,6 +263,28 @@ function Pendencies() {
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
                     Técnico: {p.technician_name || "—"} · {new Date(p.created_at).toLocaleString("pt-BR")}
                   </div>
+                  {p.smartolt_hints && p.smartolt_hints.matched > 0 && (
+                    <div data-testid={`smartolt-hints-${p.id}`} style={{
+                      marginTop: 10, padding: "8px 10px", borderRadius: 6,
+                      background: "#ecfdf5", border: "1px solid #6ee7b7",
+                      fontSize: 11, color: "#065f46",
+                    }}>
+                      <strong>🛰 SmartOLT detectou {p.smartolt_hints.matched} ONUs</strong>
+                      {p.smartolt_hints.alerts > 0 && (
+                        <span style={{ color: "#b91c1c", marginLeft: 6 }}>
+                          ⚠️ {p.smartolt_hints.alerts} com alerta de sinal
+                        </span>
+                      )}
+                      <div style={{ marginTop: 4 }}>
+                        {(p.smartolt_hints.candidates || []).slice(0, 3).map((cd, i) => (
+                          <div key={i}>
+                            • <strong>{cd.olt_name}</strong> Slot {cd.board}/PON {cd.port}
+                            ({cd.count} ONUs)
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <button data-testid={`pendency-approve-${p.id}`}
