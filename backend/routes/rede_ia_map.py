@@ -23,9 +23,15 @@ Endpoints:
 - POST /map/positions         → grava reposicionamento manual
 - GET  /map/cto-health/{id}   → média de sinal das ONUs daquela CTO/VLAN
 """
+import base64
+import hashlib
+import hmac
+import json
 import logging
 import math
+import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -491,4 +497,154 @@ async def auto_generate_ces(radius_m: float = Query(200.0, ge=50, le=2000),
         "cables_created": len(new_cables),
         "ctos_clustered": len(visited),
         "radius_m": radius_m,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Public shareable map (read-only)  — token HMAC
+# ---------------------------------------------------------------------------
+PUBLIC_SECRET = os.environ.get("REDE_IA_PUBLIC_SECRET") or \
+    os.environ.get("REDE_IA_QR_SECRET") or "smartprov-rede-ia-public-default-secret"
+PUBLIC_PREFIX = "SPMAP"
+PUBLIC_VERSION = "v1"
+
+
+def _public_sign(b64: str) -> str:
+    return hmac.new(PUBLIC_SECRET.encode("utf-8"), b64.encode("utf-8"),
+                      hashlib.sha256).hexdigest()[:32]
+
+
+def _build_public_token(company_id: str, vlan_filter: Optional[int] = None) -> str:
+    payload = {
+        "cid": company_id,
+        "vlan": vlan_filter,
+        "ts": int(datetime.now(timezone.utc).timestamp()),
+        "n": uuid.uuid4().hex[:8],
+    }
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    b64 = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    sig = _public_sign(b64)
+    return f"{PUBLIC_PREFIX}|{PUBLIC_VERSION}|{b64}|{sig}"
+
+
+def _verify_public_token(token: str) -> Optional[Dict[str, Any]]:
+    try:
+        parts = (token or "").split("|")
+        if len(parts) != 4:
+            return None
+        prefix, ver, b64, sig = parts
+        if prefix != PUBLIC_PREFIX or ver != PUBLIC_VERSION:
+            return None
+        if not hmac.compare_digest(_public_sign(b64), sig):
+            return None
+        pad = "=" * (-len(b64) % 4)
+        raw = base64.urlsafe_b64decode(b64 + pad)
+        return json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None
+
+
+class PublicTokenIn(BaseModel):
+    vlan: Optional[int] = None
+
+
+@router.post("/map/public/token")
+async def create_public_token(body: PublicTokenIn,
+                                user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
+    """Gera token público compartilhável para visualização do mapa."""
+    cid = _company(user)
+    token = _build_public_token(cid, body.vlan)
+    return {
+        "token": token,
+        "share_url": f"/rede-publica?t={token}",
+        "company_id": cid,
+        "vlan_filter": body.vlan,
+    }
+
+
+@router.get("/map/public/{token}")
+async def public_map_data(token: str):
+    """Devolve dados sanitizados do mapa para visualização pública.
+
+    NÃO expõe: endereços completos, foto, ONUs detalhadas, técnicos, gestor.
+    EXPÕE: localização aproximada (lat/lng), saúde resumida, capacidade,
+    tipo (CTO/CE), VLAN (bairro).
+    """
+    decoded = _verify_public_token(token)
+    if not decoded:
+        raise HTTPException(403, "Token público inválido ou expirado")
+    cid = decoded.get("cid")
+    vlan_filter = decoded.get("vlan")
+
+    q_cto: Dict[str, Any] = {"company_id": cid, "status": "approved"}
+    if vlan_filter:
+        q_cto["vlan"] = vlan_filter
+
+    ctos_raw = await db.ctos.find(q_cto, {"_id": 0}).to_list(1000)
+    ces = await db.network_ces.find({"company_id": cid}, {"_id": 0}).to_list(500)
+    cables = await db.network_cables.find({"company_id": cid}, {"_id": 0}).to_list(2000)
+
+    overrides = await db.network_positions.find({"company_id": cid}, {"_id": 0}).to_list(2000)
+    pos_map = {f"{o['entity_type']}:{o['entity_id']}": (o["lat"], o["lng"]) for o in overrides}
+
+    # Versão sanitizada das CTOs
+    ctos: List[Dict[str, Any]] = []
+    for c in ctos_raw:
+        gps = c.get("gps") or {}
+        key = f"cto:{c['id']}"
+        if key in pos_map:
+            lat, lng = pos_map[key]
+        else:
+            lat, lng = gps.get("lat"), gps.get("lng")
+        if lat is None or lng is None:
+            continue
+        health = await _cto_health(cid, c)
+        ctos.append({
+            "id": c["id"],
+            "name": c["name"],  # CTO 001_301_COR é OK público (não tem CPF)
+            "lat": lat, "lng": lng,
+            "vlan": c.get("vlan"),
+            "sigla": c.get("sigla"),
+            "capacity": c.get("capacity"),
+            # NÃO expõe used_ports nem endereço completo, só bairro
+            "bairro": (c.get("address") or {}).get("bairro"),
+            "health_status": health.get("status"),
+        })
+
+    # CEs sanitizadas
+    ces_pub: List[Dict[str, Any]] = []
+    for ce in ces:
+        key = f"ce:{ce['id']}"
+        if key in pos_map:
+            ce_lat, ce_lng = pos_map[key]
+        else:
+            ce_lat, ce_lng = ce.get("lat"), ce.get("lng")
+        ces_pub.append({
+            "id": ce["id"], "name": ce.get("name"),
+            "lat": ce_lat, "lng": ce_lng,
+            "type": ce.get("type"),
+        })
+
+    # Cabos sanitizados (sem notes)
+    cables_pub = [{
+        "id": cb["id"], "type": cb["type"], "fo_count": cb.get("fo_count"),
+        "from_id": cb["from_id"], "from_type": cb["from_type"],
+        "to_id": cb["to_id"], "to_type": cb["to_type"],
+        "segments": cb.get("segments") or [],
+    } for cb in cables]
+
+    # Estatísticas agregadas (sem nome de cliente nem CPF)
+    by_bairro: Dict[str, int] = {}
+    for c in ctos:
+        b = c.get("bairro") or "?"
+        by_bairro[b] = by_bairro.get(b, 0) + 1
+
+    return {
+        "ctos": ctos, "ces": ces_pub, "cables": cables_pub,
+        "center": _compute_center(ctos),
+        "ctos_count": len(ctos),
+        "by_bairro": [{"bairro": k, "count": v}
+                       for k, v in sorted(by_bairro.items(), key=lambda x: -x[1])],
+        "vlan_filter": vlan_filter,
+        "public": True,
     }

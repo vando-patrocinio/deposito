@@ -1456,3 +1456,25 @@ Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
 
 ### Dependências
 - frontend: `leaflet@1.9.4` + `react-leaflet@5.0.0`
+
+## 2026-05-15 (final 2) — Mapa público compartilhável
+### Backend (`rede_ia_map.py`)
+- `POST /api/rede-ia/map/public/token` — gera token HMAC-SHA256 assinado (formato `SPMAP|v1|<b64>|<hmac32>`)
+- `GET /api/rede-ia/map/public/{token}` — endpoint público (sem auth) que devolve dados SANITIZADOS:
+  - **EXPÕE**: name CTO, lat/lng, VLAN, sigla, capacidade, bairro, health_status, CEs, cabos
+  - **NÃO EXPÕE**: endereço completo, foto, ONUs detalhadas, técnicos, gestor, used_ports, CPFs, telefones
+- Validação: token alterado → HTTP 403 (compare_digest resistente a timing)
+
+### Frontend
+- `PublicMapPage.js` (novo): página standalone read-only com Leaflet + OSM + header roxo + KPIs + legenda
+- `App.js`: nova rota `/rede-publica?t=TOKEN` que renderiza apenas PublicMapPage (sem AuthProvider, sem sidebar)
+- `RedeIaMap.js`: novo botão verde **"🔗 Compartilhar"** que gera token e copia URL no clipboard
+
+### Variável env
+- `REDE_IA_PUBLIC_SECRET` (gerado random no .env)
+
+### Validação E2E
+- ✅ Token criado: 122 chars, prefixo SPMAP
+- ✅ Endpoint público sem auth retorna dados sanitizados; campos sensíveis ausentes
+- ✅ Token inválido → HTTP 403
+- ✅ Página `/rede-publica` renderiza mapa + legenda + KPIs sem login

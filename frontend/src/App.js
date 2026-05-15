@@ -849,7 +849,22 @@ function AppContent() {
   );
 }
 
+const PublicMapPage = React.lazy(() => import("@/PublicMapPage"));
+
 export default function App() {
+  // Rota pública /rede-publica — sem auth, sem sidebar
+  const isPublicMap = typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/rede-publica");
+  if (isPublicMap) {
+    return (
+      <React.Suspense fallback={<div style={{
+        display: "grid", placeItems: "center", height: "100vh",
+        fontFamily: "system-ui", color: "#64748b",
+      }}>Carregando mapa…</div>}>
+        <PublicMapPage />
+      </React.Suspense>
+    );
+  }
   return (
     <AuthProvider>
       <AppContent />

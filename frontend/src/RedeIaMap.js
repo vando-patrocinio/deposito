@@ -256,6 +256,20 @@ export default function RedeIaMap() {
                 title="rede_IA agrupa CTOs próximas e cria CEs + cabos automaticamente">
           {busy ? "Processando..." : "🤖 rede_IA gerar CEs"}
         </button>
+        <button data-testid="map-share-btn" onClick={async () => {
+          try {
+            const r = await api.redeIaPublicTokenCreate(vlanFilter || null);
+            const url = `${window.location.origin}${r.share_url}`;
+            // copy to clipboard
+            try { await navigator.clipboard.writeText(url); } catch (_) {}
+            window.prompt("Link público (read-only) — copiado:", url);
+          } catch (e) {
+            alert("Erro: " + (e?.response?.data?.detail || e.message));
+          }
+        }} style={tbBtn("#16a34a")}
+            title="Gera link público read-only para compartilhar (sem dados sensíveis)">
+          🔗 Compartilhar
+        </button>
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>
           {filteredCtos.length}/{totalCtos} CTOs ·
           {" "}{data.ces.length} CEs · {data.cables.length} cabos

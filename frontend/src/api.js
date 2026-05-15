@@ -842,6 +842,8 @@ export const api = {
   redeIaAutoGenerateCes: (radius_m = 200) =>
     client.post(`/rede-ia/map/auto-generate-ces`, null,
                   { params: { radius_m } }).then((r) => r.data),
+  redeIaPublicTokenCreate: (vlan = null) =>
+    client.post(`/rede-ia/map/public/token`, { vlan }).then((r) => r.data),
   redeIaQrScan: (payload) =>
     client.post(`/rede-ia/qrcode/scan`, { payload }).then((r) => r.data),
   redeIaQrBindPort: (data) =>
