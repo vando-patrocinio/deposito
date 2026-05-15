@@ -316,7 +316,7 @@ function CreateBudgetModal({ onClose, onCreated }) {
           <button type="button" onClick={onClose} style={btnGhost}>Cancelar</button>
           <button type="submit" disabled={busy} data-testid="budget-create-submit"
                   style={btnPrimary}>
-            {busy ? "Criando..." : "Criar e subir CSV"}
+            {busy ? "Criando..." : "Criar e subir arquivo"}
           </button>
         </div>
       </form>
@@ -437,13 +437,15 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
           padding: "12px 22px", borderBottom: "1px solid var(--border-default)",
           display: "flex", gap: 8, flexWrap: "wrap",
         }}>
-          <input ref={fileRef} type="file" accept=".csv,.txt"
+          <input ref={fileRef} type="file" accept=".csv,.pdf,.docx,.txt"
                  onChange={(e) => handleUpload(e.target.files?.[0])}
                  style={{ display: "none" }} data-testid="budget-csv-input" />
           <button onClick={() => fileRef.current?.click()}
                   data-testid="budget-upload-btn" disabled={busy}
                   style={btnSecondary}>
-            <Upload size={14} /> Subir CSV{itemCount > 0 ? " (substituir)" : ""}
+            <Upload size={14} />
+            {busy ? "Processando..." :
+              `Subir arquivo (CSV/PDF/DOCX)${itemCount > 0 ? " · substituir" : ""}`}
           </button>
           <button onClick={handleAnalyze}
                   disabled={analyzing || itemCount === 0}
@@ -489,10 +491,12 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
             }}>
               <Upload size={36} strokeWidth={1.5} style={{ opacity: 0.4 }} />
               <p style={{ marginTop: 10, fontSize: 13 }}>
-                Sobe um CSV com colunas: <code>item; qtde; unidade; especificacao</code>
+                Sobe um arquivo com a lista de itens — aceita <b>CSV</b>,
+                <b> PDF</b> ou <b>DOCX</b>.
               </p>
               <p style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                Aceita separador `;` ou `,`. Encoding UTF-8 ou Latin-1.
+                CSV: colunas <code>item; qtde; unidade; especificacao</code>.
+                PDF/DOCX: a Orçamento_IA extrai os itens automaticamente.
               </p>
             </div>
           ) : (

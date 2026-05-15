@@ -871,8 +871,9 @@ export const api = {
   budgetUploadCsv: (bid, file) => {
     const fd = new FormData();
     fd.append("file", file);
-    return client.post(`/budget/${bid}/upload-csv`, fd, {
+    return client.post(`/budget/${bid}/upload`, fd, {
       headers: { "Content-Type": "multipart/form-data" },
+      timeout: 90000,  // PDF/DOCX disparam Claude, podem demorar
     }).then((r) => r.data);
   },
   budgetAnalyze: (bid) =>

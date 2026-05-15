@@ -239,26 +239,85 @@ async def upload_csv(bid: str, file: UploadFile = File(...),
                        user: dict = Depends(require_role("administrador",
                                                            "gestor",
                                                            "financeiro"))):
-    """Sobe CSV com colunas: item · qtde · unidade · especificacao.
+    """Compat: endpoint legado redireciona para o parser genérico.
 
-    Aceita ';' ou ',' como separador. UTF-8 ou Latin-1.
+    Aceita CSV / PDF / DOCX — detecção automática pelo content-type/extensão.
+    """
+    return await upload_file(bid, file, user)
+
+
+@router.post("/{bid}/upload")
+async def upload_file(bid: str, file: UploadFile = File(...),
+                        user: dict = Depends(require_role("administrador",
+                                                            "gestor",
+                                                            "financeiro"))):
+    """Sobe arquivo de itens — suporta CSV, PDF ou DOCX.
+
+    Fluxo:
+    - CSV: parser direto (colunas item·qtde·unidade·especificacao).
+    - PDF/DOCX: extrai texto bruto + manda pra Orçamento_IA estruturar em
+      itens JSON (mesma chamada Claude usada no `/analyze`).
+
+    Retorna `{ok, items_count, source}` onde `source` indica de qual parser
+    veio (csv·pdf·docx).
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    await _get_budget(cid, bid)  # 404 se não existir
+    await _get_budget(cid, bid)
     raw = await file.read()
     if not raw:
         raise HTTPException(400, "Arquivo vazio")
     if len(raw) > 5 * 1024 * 1024:
         raise HTTPException(413, "Arquivo > 5MB")
-    text: str
+
+    fname = (file.filename or "").lower()
+    ctype = (file.content_type or "").lower()
+
+    items: List[Dict[str, Any]] = []
+    source = "csv"
+
+    if fname.endswith(".csv") or "csv" in ctype or "text/plain" in ctype:
+        items = _parse_csv_bytes(raw)
+        source = "csv"
+    elif fname.endswith(".pdf") or "pdf" in ctype:
+        text = _extract_pdf_text(raw)
+        items = await _extract_items_via_ai(cid, text, source="pdf")
+        source = "pdf"
+    elif fname.endswith(".docx") or "officedocument.wordprocessingml" in ctype:
+        text = _extract_docx_text(raw)
+        items = await _extract_items_via_ai(cid, text, source="docx")
+        source = "docx"
+    elif fname.endswith(".doc"):
+        raise HTTPException(415, "Formato .doc antigo não suportado — salve como "
+                                  ".docx ou .pdf no Word/LibreOffice e tente novamente.")
+    else:
+        raise HTTPException(415, f"Formato não suportado ({ctype or fname}). "
+                                   "Use CSV, PDF ou DOCX.")
+
+    if not items:
+        raise HTTPException(400, "Nenhum item válido extraído do arquivo.")
+
+    await db.budgets.update_one(
+        {"id": bid, "company_id": cid},
+        {"$set": {"items": items, "status": "draft", "source_file": fname,
+                   "source_type": source, "updated_at": now_iso()}},
+    )
+    return {"ok": True, "items_count": len(items), "source": source}
+
+
+# ---------------------------------------------------------------------------
+# File parsers
+# ---------------------------------------------------------------------------
+
+
+def _parse_csv_bytes(raw: bytes) -> List[Dict[str, Any]]:
+    """Parser de CSV com colunas item;qtde;unidade;especificacao."""
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         try:
             text = raw.decode("latin-1")
         except UnicodeDecodeError:
-            raise HTTPException(400, "Encoding não suportado (use UTF-8)")
-    # Detecta separador
+            raise HTTPException(400, "Encoding não suportado (use UTF-8).")
     sample = text[:1024]
     sep = ";" if sample.count(";") >= sample.count(",") else ","
     reader = csv.DictReader(io.StringIO(text), delimiter=sep)
@@ -266,7 +325,6 @@ async def upload_csv(bid: str, file: UploadFile = File(...),
     for row in reader:
         if not row:
             continue
-        # Aceita variações: item/produto/material — qtde/qty/quantidade — etc.
         keys = {(k or "").strip().lower(): v for k, v in row.items()}
         name = (keys.get("item") or keys.get("produto") or keys.get("material")
                  or keys.get("descricao") or keys.get("descrição") or "").strip()
@@ -284,22 +342,129 @@ async def upload_csv(bid: str, file: UploadFile = File(...),
             qty = 1.0
         items.append({
             "id": _new_id("itm"),
+            "name": name, "qty": qty, "unit": unit, "spec": spec,
+            "prices": [], "avg_price": 0.0, "manual_override": None,
+        })
+    return items
+
+
+def _extract_pdf_text(raw: bytes) -> str:
+    """Extrai texto de PDF usando pdfplumber."""
+    import pdfplumber
+    out_lines: List[str] = []
+    try:
+        with pdfplumber.open(io.BytesIO(raw)) as pdf:
+            for page in pdf.pages:
+                t = page.extract_text() or ""
+                if t:
+                    out_lines.append(t)
+                # Tenta também tabelas (mais preciso pra orçamentos formatados)
+                for tbl in (page.extract_tables() or []):
+                    for row in tbl or []:
+                        line = " | ".join(
+                            (c or "").strip() for c in row if c)
+                        if line.strip():
+                            out_lines.append(line)
+    except Exception as e:
+        logger.warning("[budget] PDF extract falhou: %s", e)
+        raise HTTPException(422, f"Falha ao ler PDF: {e}")
+    text = "\n".join(out_lines).strip()
+    if not text:
+        raise HTTPException(422, "PDF sem texto extraível (talvez seja imagem "
+                                  "escaneada). Tente OCR ou converta para "
+                                  "DOCX/CSV.")
+    return text[:30000]  # cap para não estourar contexto da IA
+
+
+def _extract_docx_text(raw: bytes) -> str:
+    """Extrai texto de DOCX usando python-docx (paragraphs + tables)."""
+    from docx import Document
+    out_lines: List[str] = []
+    try:
+        doc_obj = Document(io.BytesIO(raw))
+        for p in doc_obj.paragraphs:
+            t = (p.text or "").strip()
+            if t:
+                out_lines.append(t)
+        for tbl in doc_obj.tables:
+            for row in tbl.rows:
+                cells = [c.text.strip() for c in row.cells]
+                line = " | ".join(c for c in cells if c)
+                if line.strip():
+                    out_lines.append(line)
+    except Exception as e:
+        logger.warning("[budget] DOCX extract falhou: %s", e)
+        raise HTTPException(422, f"Falha ao ler DOCX: {e}")
+    text = "\n".join(out_lines).strip()
+    if not text:
+        raise HTTPException(422, "DOCX vazio ou sem texto extraível.")
+    return text[:30000]
+
+
+async def _extract_items_via_ai(cid: str, text: str,
+                                  source: str = "pdf") -> List[Dict[str, Any]]:
+    """Usa Claude para extrair lista estruturada de itens a partir de texto
+    bruto (PDF ou DOCX). Retorna lista no MESMO formato do CSV parser."""
+    if not text:
+        return []
+    sys_prompt = (
+        "Você é Orçamento_IA, extrator de itens de orçamentos para "
+        "provedores de internet. Recebe texto extraído de um documento "
+        f"({source.upper()}) e devolve a lista de itens em JSON puro. "
+        "Identifique nome do item, quantidade, unidade (un/m/rolo/cx/kg) "
+        "e especificação técnica. Ignore cabeçalhos, totais, assinaturas e "
+        "comentários. Se quantidade não for explícita, use 1. Se unidade "
+        "não for explícita, use 'un'."
+    )
+    user_prompt = (
+        "Extraia os itens em JSON estrito no formato:\n"
+        '{"items":[{"name":"...","qty":2,"unit":"un","spec":"..."}]}\n\n'
+        f"TEXTO DO DOCUMENTO ({source.upper()}):\n{text}"
+    )
+    try:
+        result = await chat_completion(
+            cid,
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,
+            max_tokens=6000,
+            purpose="general",
+            agent="orcamento_ai",
+        )
+        content = (result.get("content") or "").strip()
+    except Exception as e:
+        logger.exception("[budget] AI extract falhou: %s", e)
+        raise HTTPException(503, f"Orçamento_IA indisponível: {e}")
+
+    m = re.search(r"\{[\s\S]*\}", content)
+    if not m:
+        raise HTTPException(422, f"IA não retornou itens estruturados: "
+                                   f"{content[:200]}")
+    try:
+        parsed = json.loads(m.group(0))
+    except json.JSONDecodeError as e:
+        raise HTTPException(422, f"JSON inválido da IA: {e}")
+
+    items: List[Dict[str, Any]] = []
+    for it in parsed.get("items", []):
+        name = (it.get("name") or "").strip()
+        if not name:
+            continue
+        try:
+            qty = float(it.get("qty") or 1)
+        except (ValueError, TypeError):
+            qty = 1.0
+        items.append({
+            "id": _new_id("itm"),
             "name": name,
             "qty": qty,
-            "unit": unit,
-            "spec": spec,
-            "prices": [],
-            "avg_price": 0.0,
-            "manual_override": None,
+            "unit": (it.get("unit") or "un").strip(),
+            "spec": (it.get("spec") or "").strip(),
+            "prices": [], "avg_price": 0.0, "manual_override": None,
         })
-    if not items:
-        raise HTTPException(400, "Nenhum item válido no CSV. Colunas esperadas: "
-                                  "item; qtde; unidade; especificacao")
-    await db.budgets.update_one(
-        {"id": bid, "company_id": cid},
-        {"$set": {"items": items, "status": "draft", "updated_at": now_iso()}},
-    )
-    return {"ok": True, "items_count": len(items)}
+    return items
 
 
 # ---------------------------------------------------------------------------
