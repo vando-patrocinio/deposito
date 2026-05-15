@@ -102,21 +102,50 @@ def _calc_totals(items: List[Dict[str, Any]], margin_pct: float,
     """Calcula totais. base = soma(qtde * unit). unit obedece a price_choice
     do item (low/mid/high) ou manual_override quando setado. Final = base *
     (1+ganho+labor+imposto).
+
+    Também calcula:
+    - `min_cost`: soma considerando SEMPRE o preço mais baixo de cada item
+      (cenário ideal de compra — usado pra estimar lucro provável).
+    - `expected_profit`: TOTAL FINAL − min_cost (lucro estimado caso
+      consiga comprar pelo preço baixo).
+    - `expected_profit_pct`: percentual de lucro sobre o orçamento.
     """
     base = 0.0
+    min_cost = 0.0
     for it in items or []:
         qty = float(it.get("qty") or 0)
         unit = _resolve_unit_price(it)
         base += qty * unit
+        # Custo mais baixo: usa o menor preço disponível (low → manual → avg)
+        prices = it.get("prices") or []
+        low_val = None
+        for p in prices:
+            if (p.get("label") or "").strip().lower() == "baixo":
+                try:
+                    low_val = float(p.get("value") or 0)
+                except (ValueError, TypeError):
+                    pass
+                break
+        if low_val is None:
+            # Fallback: usa o próprio unit (sem distinção)
+            low_val = unit
+        min_cost += qty * low_val
     base = _money(base)
+    min_cost = _money(min_cost)
     margin_val = _money(base * (margin_pct or 0) / 100.0)
     labor_val = _money(base * (labor_pct or 0) / 100.0)
     subtotal = _money(base + margin_val + labor_val)
     tax_val = _money(subtotal * (tax_pct or 0) / 100.0)
     final = _money(subtotal + tax_val)
+    expected_profit = _money(final - min_cost)
+    expected_profit_pct = _money((expected_profit / final * 100.0)
+                                    if final > 0 else 0.0)
     return {
         "base": base, "margin_val": margin_val, "labor_val": labor_val,
         "subtotal": subtotal, "tax_val": tax_val, "final": final,
+        "min_cost": min_cost,
+        "expected_profit": expected_profit,
+        "expected_profit_pct": expected_profit_pct,
     }
 
 

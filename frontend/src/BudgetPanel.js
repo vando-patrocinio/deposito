@@ -660,6 +660,35 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
                           value={fmtMoney(totals.final || 0)}
                           testid="budget-total-final"
                           bold highlight divider />
+              {/* Lucro provável = Total Final - Custo mais baixo. Só interno,
+                  não vai pro PDF. */}
+              <div data-testid="budget-expected-profit" style={{
+                marginTop: 10, padding: 10, borderRadius: 8,
+                background: "linear-gradient(135deg, rgba(22,163,74,.08), rgba(13,148,136,.08))",
+                border: "1px solid rgba(22,163,74,.25)",
+              }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "#15803d",
+                                textTransform: "uppercase", letterSpacing: 0.5,
+                                marginBottom: 4 }}>
+                  Lucro Provável <span style={{ fontWeight: 500, opacity: .7,
+                                                  textTransform: "none" }}>
+                    (orçamento − custo mais baixo)
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between",
+                                alignItems: "baseline" }}>
+                  <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                    Custo mais baixo: <strong>{fmtMoney(totals.min_cost || 0)}</strong>
+                  </span>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: "#15803d" }}>
+                    {fmtMoney(totals.expected_profit || 0)}
+                    <span style={{ fontSize: 11, fontWeight: 600, marginLeft: 6,
+                                    color: "#0d9488" }}>
+                      ({(totals.expected_profit_pct || 0).toFixed(1)}%)
+                    </span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         )}
