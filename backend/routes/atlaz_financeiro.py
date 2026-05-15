@@ -38,11 +38,14 @@ router = APIRouter(prefix="/api/atlaz-financeiro", tags=["atlaz-financeiro"])
 
 # Endpoints candidatos a testar — em ordem de prioridade
 PROBE_ENDPOINTS = [
-    "listacobrancas",
-    "listaboletos",
-    "listapagamentos",
-    "listaclientes",
-    "listaservicos",
+    # Variações de FATURAS / COBRANÇAS
+    "listacobrancas", "listafaturas", "listaboletos", "listapagamentos",
+    "listarecebimentos", "listafinanceiro", "listafinanceiros",
+    "listamensalidades", "listacobrancasabertas", "listapagamentosrecebidos",
+    "cobrancas", "faturas", "boletos", "pagamentos", "financeiro",
+    "consultafaturas", "buscacobrancas", "getfaturas",
+    # Clientes (referência)
+    "listaclientes", "listaservicos",
 ]
 
 

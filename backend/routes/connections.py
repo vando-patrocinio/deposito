@@ -279,6 +279,27 @@ async def update_connection(integration_id: str, payload: UpdateConnectionPayloa
 
     update_set["updated_at"] = now_iso()
 
+    # Snapshot do valor anterior antes do update (recuperação em caso de
+    # sobrescrita acidental, por exemplo via testing agent).
+    if collection == "settings":
+        prev = await db.settings.find_one(
+            {"company_id": company_id}, {"_id": 0},
+        ) or {}
+    else:
+        prev = await db[collection].find_one(
+            {"company_id": company_id}, {"_id": 0},
+        ) or {}
+    snapshot_values = {k: prev.get(k) for k in update_set.keys()
+                       if k != "updated_at" and prev.get(k) is not None}
+    if snapshot_values:
+        await db.connection_snapshots.insert_one({
+            "company_id": company_id,
+            "integration_id": integration_id,
+            "actor_email": user.get("email"),
+            "snapshot_at": now_iso(),
+            "previous_values": snapshot_values,
+        })
+
     if collection == "settings":
         await db.settings.update_one(
             {"company_id": company_id}, {"$set": update_set}, upsert=True,
@@ -299,3 +320,50 @@ async def update_connection(integration_id: str, payload: UpdateConnectionPayloa
     })
 
     return {"ok": True, "updated": len(update_set) - 1}  # -1 = updated_at
+
+
+@router.get("/{integration_id}/snapshots")
+async def list_snapshots(integration_id: str,
+                          user: dict = Depends(require_role("administrador"))):
+    """Lista os últimos 10 snapshots de credenciais (proteção contra sobrescrita)."""
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    cur = db.connection_snapshots.find(
+        {"company_id": company_id, "integration_id": integration_id},
+        {"_id": 0},
+    ).sort([("snapshot_at", -1)]).limit(10)
+    items = [doc async for doc in cur]
+    # Mascarar valores secretos no retorno (mostrar só prefixo/sufixo)
+    for s in items:
+        for k, v in (s.get("previous_values") or {}).items():
+            if "key" in k.lower() or "token" in k.lower() or "secret" in k.lower():
+                if isinstance(v, str) and len(v) > 10:
+                    s["previous_values"][k] = f"{v[:6]}…{v[-4:]}"
+    return {"snapshots": items}
+
+
+@router.post("/{integration_id}/restore/{snapshot_id}")
+async def restore_snapshot(integration_id: str, snapshot_id: str,
+                            user: dict = Depends(require_role("administrador"))):
+    """Restaura credenciais a partir de um snapshot."""
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    snap = await db.connection_snapshots.find_one(
+        {"company_id": company_id, "integration_id": integration_id,
+         "snapshot_at": snapshot_id}, {"_id": 0},
+    )
+    if not snap:
+        raise HTTPException(404, "Snapshot não encontrado")
+    integ = next((i for i in INTEGRATION_DEFS if i["id"] == integration_id), None)
+    if not integ:
+        raise HTTPException(404, f"Integração desconhecida: {integration_id}")
+    collection = integ["collection"]
+    restore_set = {**snap["previous_values"], "updated_at": now_iso()}
+    if collection == "settings":
+        await db.settings.update_one(
+            {"company_id": company_id}, {"$set": restore_set}, upsert=True,
+        )
+    else:
+        restore_set["company_id"] = company_id
+        await db[collection].update_one(
+            {"company_id": company_id}, {"$set": restore_set}, upsert=True,
+        )
+    return {"ok": True, "restored_at": snap["snapshot_at"]}
