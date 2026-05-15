@@ -1133,6 +1133,11 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
   // Tracking pra detectar primeiro load vs. updates do polling
   const lastConvPhoneRef = useRef(null);
   const lastMsgCountRef = useRef(0);
+  /* pendingScrollToBottom: enquanto TRUE, todo render força scroll pro fundo.
+     Só vira FALSE depois que vimos mensagens da conversa atual + scroll real
+     foi aplicado. Isso lida com a race condition de stale messages + load
+     assíncrono de balões com mídia. */
+  const pendingScrollRef = useRef(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [newCountWhileAway, setNewCountWhileAway] = useState(0);
 
@@ -1151,49 +1156,70 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
     return () => el.removeEventListener("scroll", onScroll);
   }, [conv]);
 
+  // Quando a conversa MUDA: marca pendingScrollToBottom=TRUE.
+  // Esse flag fica ativo até nós conseguirmos efetivamente scrollar pro
+  // fundo da NOVA conversa (não a antiga). Cobre o caso onde messages
+  // ainda contém dados da conversa anterior e o load é assíncrono.
   useEffect(() => {
-    if (!scrollRef.current) return;
+    if (!conv?.phone) return;
+    if (lastConvPhoneRef.current !== conv.phone) {
+      lastConvPhoneRef.current = conv.phone;
+      lastMsgCountRef.current = 0;
+      pendingScrollRef.current = true;
+      setNewCountWhileAway(0);
+      setShowScrollDown(false);
+    }
+  }, [conv?.phone]);
+
+  useEffect(() => {
+    if (!scrollRef.current || !conv?.phone) return;
     const el = scrollRef.current;
+
+    // Modo "pending": acabou de trocar de conversa. Força scroll pro fundo
+    // em VÁRIOS pontos no tempo pra cobrir o caso de balões com mídia
+    // (imagens, áudio, avatar) que aumentam a altura depois do render.
+    if (pendingScrollRef.current && messages.length > 0) {
+      const forceBottom = () => {
+        if (!scrollRef.current) return;
+        scrollRef.current.scrollTo({
+          top: scrollRef.current.scrollHeight + 9999, behavior: "auto",
+        });
+      };
+      forceBottom();
+      const raf = requestAnimationFrame(forceBottom);
+      const timers = [50, 150, 350, 700, 1200, 2000].map(
+        (ms) => setTimeout(forceBottom, ms),
+      );
+      // Encerra modo pending depois de 2.5s — qualquer scroll após isso
+      // é considerado interação genuína do usuário.
+      const closer = setTimeout(() => {
+        pendingScrollRef.current = false;
+        lastMsgCountRef.current = messages.length;
+      }, 2500);
+      return () => {
+        cancelAnimationFrame(raf);
+        timers.forEach(clearTimeout);
+        clearTimeout(closer);
+      };
+    }
+
+    // Modo "live": já estamos visualizando a conversa atual. Detecta
+    // mensagens novas e decide se rola ou exibe badge.
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const isFirstLoadForConv = lastConvPhoneRef.current !== conv?.phone;
     const wasNearBottom = distFromBottom < 120;
     const delta = messages.length - lastMsgCountRef.current;
     const grew = delta > 0;
-    // Primeiro load: scroll INSTANTÂNEO pro fundo + retries via RAF (imagens
-    // dentro dos balões podem chegar depois, fazendo a altura crescer).
-    // Polling com 1-3 msgs novas: smooth scroll SE usuário está perto do fundo;
-    //   senão NÃO mexe no scroll (usuário lendo histórico) e contabiliza pro badge.
-    if (isFirstLoadForConv) {
-      const forceBottom = () => {
-        if (!scrollRef.current) return;
-        scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "auto" });
-      };
-      forceBottom();
-      // Retries: balões com imagens/avatar ainda em load podem aumentar a
-      // altura. Force novamente em 100ms, 300ms e 800ms pra garantir.
-      const t1 = setTimeout(forceBottom, 100);
-      const t2 = setTimeout(forceBottom, 300);
-      const t3 = setTimeout(forceBottom, 800);
-      setNewCountWhileAway(0);
-      setShowScrollDown(false);
-      lastConvPhoneRef.current = conv?.phone;
-      lastMsgCountRef.current = messages.length;
-      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-    }
     if (grew && wasNearBottom) {
       el.scrollTo({ top: 1e9, behavior: delta <= 3 ? "smooth" : "auto" });
     } else if (grew && !wasNearBottom) {
-      // Só conta mensagens novas RECEBIDAS (inbound). Outbound = ele mesmo enviou,
-      // já scrollou explicitamente em send().
       const incomingNew = messages.slice(-delta).filter(
-        (m) => m.direction === "inbound"
+        (m) => m.direction === "inbound",
       ).length;
       if (incomingNew > 0) setNewCountWhileAway((c) => c + incomingNew);
     }
-    lastConvPhoneRef.current = conv?.phone;
     lastMsgCountRef.current = messages.length;
     return undefined;
-  }, [messages, conv]);
+  }, [messages, conv?.phone]);
 
   const scrollToBottom = useCallback(() => {
     scrollRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
