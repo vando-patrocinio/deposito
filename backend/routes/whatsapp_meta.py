@@ -36,6 +36,7 @@ from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, now_iso, require_role
 from database import db
+from services.rate_limit import limiter, get_limit
 
 logger = logging.getLogger("ponto.whatsapp_meta")
 router = APIRouter(prefix="/api/whatsapp-meta", tags=["whatsapp_meta"])
@@ -226,6 +227,7 @@ async def webhook_verify(
 
 
 @router.post("/webhook")
+@limiter.limit(get_limit("webhook_inbound"))
 async def webhook_receive(request: Request):
     """Recebe eventos POST do Meta (mensagens, deliveries, reads).
 

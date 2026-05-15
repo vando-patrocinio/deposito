@@ -1,0 +1,36 @@
+{
+  "summary": "Iter 75 — Validated slowapi @limiter.limit applied to 7 endpoints (secretaria/ask, mass-messaging campaigns POST + start, twilio/meta webhooks, secretaria webhook/chatgpt, secretaria/ask/{token}). Primary bug verified: removing `from __future__ import annotations` from secretaria.py + mass_messaging.py resolved 422 caused by slowapi+Pydantic Body interaction. 14/14 backend tests passed (~211s due to deliberately slow LLM ask calls + 55-attempt auth/login 429 trigger). Smoke confirmed: /api/secretaria/ask returns 200 with real Ligo answer (\"Você tem 2.731 clientes ativos\"). Frontend skipped per request.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter75_secretaria_mass_ratelimit.py",
+    "/app/test_reports/pytest/iter75_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/rate_limit.py uses memory:// storage — per-pod scope; in multi-pod prod, switch to redis:// to share counters across replicas.",
+    "rate_limit.py _is_dev() checks PUBLIC_BACKEND_URL/PUBLIC_FRONTEND_URL strings — make sure PUBLIC_BACKEND_URL is set in prod, otherwise prod will get DEV (10x) limits if the URL contains 'localhost' or 'preview.emergent'.",
+    "whatsapp_twilio.py line 13 still has `from __future__ import annotations` — works because @limiter.limit is applied AFTER router decorator on form-handling endpoint without Pydantic Body. Same for whatsapp_meta.py line 21. The fix was only needed where Pydantic Body+Request coexist with slowapi — be aware if you add new Pydantic Body decorators on those files.",
+    "headers_enabled=False in slowapi Limiter is required to avoid response-mutation conflicts with FastAPI dict returns — keep this if any endpoint returns dict (most do)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter75_secretaria_mass_ratelimit.py"
+  ],
+  "success_rate": {
+    "backend": "100% (14/14 passed)",
+    "frontend": "N/A — skipped per request (backend-only iteration)"
+  },
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Created TEST_iter75_camp_* campaigns (cleaned up via DELETE after assertions).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_iter75_secretaria_mass_ratelimit.py covers all 7 rate-limited endpoints. Runtime ~211s due to (a) 10 sequential LLM /secretaria/ask calls and (b) 55 synthetic-XFF login attempts to trigger 429. If running in CI with tight timeout (<240s), increase or split into 2 pytest invocations. The 422-regression check covers both /ask (Pydantic Body) and /campaigns/{id}/start (Body with default_factory) — these are the patterns that previously broke with __future__ annotations + slowapi.",
+  "rca_of_the_issue": "Root cause: `from __future__ import annotations` defers evaluation of type hints to strings (PEP 563). slowapi's @limiter.limit decorator inspects the wrapped function's signature via inspect.signature() at decoration time to detect the Request parameter. With PEP 563 active, Pydantic v2 + FastAPI's dependency injection cannot fully resolve the deferred annotations when intersected with slowapi's wrapper, producing a 422 'Field required' for Body params on POST /api/secretaria/ask. Removing `from __future__ import annotations` from secretaria.py and mass_messaging.py forces eager annotation resolution and FastAPI/Pydantic correctly bind the AskIn / CampaignStartPayload bodies. Verified by curl returning 200 with valid Ligo answer and 14/14 pytest passing."
+}

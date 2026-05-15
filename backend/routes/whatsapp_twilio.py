@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, now_iso, require_role
 from database import db
+from services.rate_limit import limiter, get_limit
 
 logger = logging.getLogger("ponto.whatsapp_twilio")
 router = APIRouter(prefix="/api/whatsapp-twilio", tags=["whatsapp_twilio"])
@@ -280,6 +281,7 @@ def _validate_twilio_signature(auth_token: str, url: str,
 
 
 @router.post("/webhook")
+@limiter.limit(get_limit("webhook_inbound"))
 async def webhook(request: Request):
     """Webhook chamado pela Twilio quando o número recebe uma mensagem."""
     # Pega tenant da query string

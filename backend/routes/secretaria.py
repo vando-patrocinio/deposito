@@ -7,8 +7,6 @@
 - GET  /api/secretaria/openapi.json      → spec OpenAPI 3.1 para GPT Actions
 - GET  /api/secretaria/logs              → histórico de perguntas
 """
-from __future__ import annotations
-
 import logging
 import os
 import secrets as _secrets
@@ -20,6 +18,7 @@ from pydantic import BaseModel
 from core import DEMO_COMPANY_ID, get_current_user, require_role
 from database import db
 from services.secretaria_ia import ask as secretaria_ask
+from services.rate_limit import limiter, get_limit
 
 logger = logging.getLogger("routes.secretaria")
 router = APIRouter(prefix="/api/secretaria", tags=["secretaria"])
@@ -70,7 +69,9 @@ async def _company_by_token(token: str) -> Optional[str]:
 # Internal (autenticado)
 # ---------------------------------------------------------------------------
 @router.post("/ask")
-async def api_ask(payload: AskIn, user: dict = Depends(get_current_user)):
+@limiter.limit(get_limit("secretaria_ask"))
+async def api_ask(request: Request, payload: AskIn,
+                  user: dict = Depends(get_current_user)):
     """Chat interno — usado pela UI do sistema."""
     cid = user.get("company_id") or DEMO_COMPANY_ID
     return await secretaria_ask(cid, payload.question,
@@ -151,7 +152,9 @@ async def list_logs(user: dict = Depends(require_role("gestor")), limit: int = 5
 # Webhook público (bearer) — usado pelo GPT customizado do ChatGPT
 # ---------------------------------------------------------------------------
 @router.post("/webhook/chatgpt")
+@limiter.limit(get_limit("webhook_inbound"))
 async def webhook_chatgpt(
+    request: Request,
     payload: WebhookAskIn,
     authorization: Optional[str] = Header(None),
     key: Optional[str] = Query(None, description="Token alternativo via query string (fallback)"),
@@ -184,7 +187,9 @@ async def webhook_chatgpt(
 # Endpoint com token EMBUTIDO no path — elimina confirmação no ChatGPT
 # pois o GPT não precisa passar nada além do body com `question`.
 @router.post("/ask/{token}")
-async def webhook_chatgpt_pathauth(token: str, payload: WebhookAskIn):
+@limiter.limit(get_limit("webhook_inbound"))
+async def webhook_chatgpt_pathauth(request: Request, token: str,
+                                     payload: WebhookAskIn):
     """Variante com token na URL — evita o popup de confirmação no ChatGPT GPT.
 
     Como o token vai na URL fixa do schema (não como parâmetro), o GPT não o

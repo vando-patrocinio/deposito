@@ -14,8 +14,6 @@ Coleções:
   • mass_recipients      — destinatários (campaign_id, phone, vars{},
                                           status, message_id, error, sent_at)
 """
-from __future__ import annotations
-
 import asyncio
 import csv
 import io
@@ -25,11 +23,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, now_iso, require_role
 from database import db
+from services.rate_limit import limiter, get_limit
 
 logger = logging.getLogger("ponto.mass_messaging")
 router = APIRouter(prefix="/api/mass-messaging", tags=["mass-messaging"])
@@ -94,7 +93,9 @@ async def list_campaigns(user: dict = Depends(require_role("administrador", "ges
 
 
 @router.post("/campaigns")
-async def create_campaign(payload: CampaignCreate,
+@limiter.limit(get_limit("mass_create"))
+async def create_campaign(request: Request,
+                          payload: CampaignCreate,
                           user: dict = Depends(require_role("administrador", "gestor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     if payload.mode == "template" and not payload.template_name:
@@ -265,8 +266,10 @@ async def list_recipients(cid_id: str,
 # Start / Pause / Cancel
 # ---------------------------------------------------------------------------
 @router.post("/campaigns/{cid_id}/start")
+@limiter.limit(get_limit("mass_start"))
 async def start_campaign(cid_id: str,
-                         payload: CampaignStartPayload = CampaignStartPayload(),
+                         request: Request,
+                         payload: CampaignStartPayload = Body(default_factory=CampaignStartPayload),
                          user: dict = Depends(require_role("administrador", "gestor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     camp = await db.mass_campaigns.find_one(
