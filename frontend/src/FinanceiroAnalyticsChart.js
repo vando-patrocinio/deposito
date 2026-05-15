@@ -44,6 +44,18 @@ const REGULARITY_LABEL = {
   sem_dados: { c: "#94a3b8", l: "Sem dados", icon: Equal },
 };
 
+const preset_btn = {
+  padding: "6px 10px",
+  borderRadius: 8,
+  border: "1px solid #cbd5e1",
+  background: "#f8fafc",
+  color: "#0f172a",
+  fontSize: 12,
+  fontWeight: 500,
+  cursor: "pointer",
+  transition: "background 0.15s ease",
+};
+
 /**
  * Painel comparativo Recebimentos vs Despesas + regularidade.
  * Gráfico de linha com séries sobrepostas + métricas de média e CV.
