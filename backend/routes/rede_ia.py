@@ -643,7 +643,7 @@ async def analyze_rede(body: AnalyzeIn,
             api_key=EMERGENT_LLM_KEY,
             session_id=f"rede-ia-{uuid.uuid4().hex[:8]}",
             system_message=diretrizes,
-        ).with_model("anthropic", "claude-sonnet-4-5-20250929").with_max_tokens(2048)
+        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
         out = await chat.send_message(UserMessage(text=user_prompt))
         report = str(out).strip()
     except HTTPException:

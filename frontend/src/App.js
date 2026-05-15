@@ -630,7 +630,9 @@ function AppContent() {
     const isPreviewHost = host.endsWith(".preview.emergentagent.com");
     const alreadyHasToken = !!window.localStorage.getItem("ponto_token");
     const isRootPath = path === "/" || path === "";
-    if (isPreviewHost && isRootPath && !alreadyHasToken) return "pending";
+    // Se há ?cid= o usuário quer abrir o app do técnico (sem login admin) — pula auto-login.
+    const hasCid = !!new URLSearchParams(window.location.search).get("cid");
+    if (isPreviewHost && isRootPath && !alreadyHasToken && !hasCid) return "pending";
     return "idle";
   });
 

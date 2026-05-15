@@ -128,6 +128,11 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
   // Carrega colaboradores + praças
   useEffect(() => {
+    // Aplica forcedCollabId imediatamente para que o wizard CTO funcione
+    // mesmo se a chamada listCollaborators falhar (link público / sem auth).
+    if (forcedCollabId) {
+      setCollabId(forcedCollabId);
+    }
     api.listCollaborators().then((cs) => {
       setCollabs(cs);
       if (forcedCollabId) {
@@ -138,6 +143,9 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
       // SEM ?cid= no link → não selecionamos automaticamente. Cada técnico tem
       // o seu próprio link único compartilhado pelo gestor (rota /?cid=col-xxx).
       // O componente renderiza tela orientativa quando collabId fica vazio.
+    }).catch(() => {
+      // listCollaborators pode falhar em ambiente público — mantém forcedCollabId
+      if (forcedCollabId) setCollabId(forcedCollabId);
     });
     api.listPracas().then(setPracas).catch(() => setPracas([]));
   }, [forcedCollabId]);

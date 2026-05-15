@@ -1326,3 +1326,36 @@ Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
 ## Feb 10, 2026 — Mapa de Defeitos sincronizado com Lousa + UI Redesign Major
 ## Feb 9, 2026 — Lousa fixed slot heights + Wipe-all + Asset deactivation auto-popup
 ## Feb 8, 2026 — IA Center, EPIs, Tab Permissions, Hardware Detection
+
+## 2026-05-15 — Rede IA (Supervisor FTTH) + bug fixes
+### Novo módulo: Rede IA
+- **Fase 1 — Backend** (`/app/backend/routes/rede_ia.py`):
+  - Coleções: `bairros_vlan_map`, `ctos`, `cto_history`, `cto_validations`, `rede_ia_settings`, `rede_ia_analyses`
+  - CRUD `/api/rede-ia/bairros` (admin/gestor/gestor_rede): cadastro de bairros + sigla + VLAN
+  - CRUD `/api/rede-ia/ctos` (qualquer auth): cria CTO com status `pending_validation`
+  - `/api/rede-ia/ctos/suggest-name`: padrão `CTO {NUM}_{VLAN}_{SIGLA}` com auto-incremento e detecção de duplicidade
+  - Workflow validação: `/api/rede-ia/pendencies` + `/api/rede-ia/ctos/{id}/validate` (apenas admin/gestor/gestor_rede)
+  - `/api/rede-ia/history`: auditoria completa
+  - `/api/rede-ia/flowchart`: nodes+edges para React Flow (OLT → Bairro → CTO → Cliente)
+  - `/api/rede-ia/diretrizes`: system prompt editável da rede_IA
+  - `/api/rede-ia/analyze`: Claude Sonnet 4.5 via Emergent Key — relatório técnico de inconsistências e capacidade
+- **Fase 2 — App Técnico** (`CadastroCTOWizard.js`): 8 passos seguindo storyboard
+  1. Detecção "Cliente não identificado em CTO" → 2. Endereço + GPS → 3. Seleção bairro/VLAN + número CTO → 4. Capacidade (4/8/16) → 5. Tipo rede (balanceada/desbalanceada) → 6. Splitter (1:2/1:4/1:8/Outro) → 7. Porta cliente → 8. Resumo + envio para validação
+- **Fase 3 — Painel Admin** (`RedeIaPanel.js`): 7 sub-abas
+  - Painel (KPIs), CTOs (filtros por status), Pendências (Aprovar/Solicitar correção/Rejeitar), Fluxograma, Bairros/VLAN, Histórico, Diretrizes
+- **Fase 4 — Fluxograma React Flow** (`RedeIaFlowchart.js`): visual interativo com MiniMap + Controls + Background
+- **Fase 5 — IA real**: LLM Claude Sonnet 4.5 lê diretrizes salvas como system prompt e analisa topologia atual
+
+### Novo role
+- `gestor_rede` (seed: `gestorrede@empresa.com` / `123456`) com acesso restrito ao painel Rede IA e workflow de validação.
+
+### Bug fixes desta sessão
+- **FinanceiroAnalyticsChart**: `ReferenceError: preset_btn is not defined` → constante adicionada no escopo do módulo
+- **WhatsAppChatLayout**: badge de canal (Twilio/Meta/Baileys) adicionado ao header da conversa ativa + indicador multi-canal
+- **CollaboratorApp**: auto-login preview agora pula quando `?cid=` está presente, permitindo abertura direta do app técnico via link único
+- **SmartOLT 403**: resolvido (chave restaurada manualmente; último sync 1753 ONUs)
+- **Webhook Meta 403**: causa identificada (App Secret incorreto) — usuário precisa re-salvar em Conexões
+
+### Não corrigido (depende do usuário)
+- Webhook Meta App Secret: precisa ser re-salvo no painel Conexões com o valor correto do Meta Dashboard
+- Banco Inter PIX: integração pausada — usuário escolheu priorizar Rede IA

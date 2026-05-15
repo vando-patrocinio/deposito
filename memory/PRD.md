@@ -7,7 +7,8 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Administrador** — acesso total. Gerencia configurações da empresa.
 - **Gestor** — operação diária: lousa, despacho, conferência de ponto, estoque.
 - **Auditor** — compliance e auditoria (incluindo ação destrutiva `wipe-all` de bolhas).
-- **Colaborador (Técnico)** — fluxo mobile: bate ponto facial, atende serviços, scaneia QR.
+- **Colaborador (Técnico)** — fluxo mobile: bate ponto facial, atende serviços, scaneia QR, cadastra CTOs (Rede IA) em 8 passos.
+- **Gestor de Rede** (NOVO 15/05/2026) — `gestor_rede`: aprova/rejeita/solicita correção de CTOs cadastradas pelos técnicos, gerencia bairros/VLAN, edita diretrizes da rede_IA.
 - **Super Admin (Plataforma)** — multi-tenant: drill-down em empresas e gestão da plataforma.
 
 ## Pilares funcionais
