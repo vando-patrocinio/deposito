@@ -54,7 +54,7 @@ TOOLS_SPEC_EXTRA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "consult_subscriber_invoices",
-            "description": "Consulta faturas/cobranças de um assinante específico via CPF/CNPJ ou nome. Use para 'qual minha fatura?', 'quanto eu devo?', 'meu pagamento de novembro caiu?', '2ª via', 'segunda via'. Retorna faturas em aberto, pagas e vencidas + linha digitável quando disponível.",
+            "description": "Consulta faturas/cobranças de um assinante específico via CPF/CNPJ ou nome. Use para 'qual minha fatura?', 'quanto eu devo?', 'meu pagamento de novembro caiu?', '2ª via', 'segunda via'. Retorna faturas em aberto, pagas e vencidas + linha digitável + LINK DIRETO DO BOLETO (campo `boleto_url`) que VOCÊ DEVE INCLUIR na resposta para facilitar o pagamento.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -74,7 +74,7 @@ TOOLS_SPEC_EXTRA: List[Dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "next_due_invoice",
-            "description": "Próxima fatura a vencer (não paga) de um assinante. Use para 'quando vence minha próxima fatura?'. Retorna 1 fatura com vencimento, valor, linha digitável.",
+            "description": "Próxima fatura a vencer (não paga) de um assinante. Use para 'quando vence minha próxima fatura?'. Retorna 1 fatura com vencimento, valor, linha digitável e LINK DO BOLETO (campo `boleto_url`) — SEMPRE inclua o link na resposta quando estiver presente.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -369,7 +369,8 @@ async def _tool_consult_subscriber_invoices(cid: str, args: Dict[str, Any]) -> D
     cur = db.subscriber_invoices.find(
         q, {"_id": 0, "external_id": 1, "subscriber_name": 1,
             "subscriber_document": 1, "amount": 1, "amount_paid": 1,
-            "due_date": 1, "paid_date": 1, "status": 1, "barcode": 1},
+            "due_date": 1, "paid_date": 1, "status": 1, "barcode": 1,
+            "boleto_url": 1, "subscriber_phone": 1},
     ).sort([("due_date", -1)]).limit(limit)
     items = await cur.to_list(limit)
     total = await db.subscriber_invoices.count_documents(q)
@@ -396,7 +397,8 @@ async def _tool_next_due_invoice(cid: str, args: Dict[str, Any]) -> Dict[str, An
     q["due_date"] = {"$gte": today}
     inv = await db.subscriber_invoices.find_one(
         q, {"_id": 0, "external_id": 1, "subscriber_name": 1,
-            "amount": 1, "due_date": 1, "status": 1, "barcode": 1},
+            "amount": 1, "due_date": 1, "status": 1, "barcode": 1,
+            "boleto_url": 1},
         sort=[("due_date", 1)],
     )
     if not inv:

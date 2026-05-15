@@ -336,6 +336,11 @@ async def _startup() -> None:
     from routes.financeiro_ops import auto_mark_overdue
     scheduler.add_job(auto_mark_overdue, CronTrigger(hour=3, minute=0),
                       id="fin_overdue_daily", replace_existing=True)
+    # Cron: sync Atlaz financeiro — a cada 2 horas
+    from routes.atlaz_financeiro import auto_sync_atlaz_financeiro
+    scheduler.add_job(auto_sync_atlaz_financeiro,
+                      CronTrigger(minute=15, hour="*/2"),
+                      id="atlaz_fin_auto_sync", replace_existing=True)
     asyncio.create_task(routes_plans.adjustment_scheduler_worker())
     from services.drive_backup import daily_backup_worker as drive_daily_worker
     asyncio.create_task(drive_daily_worker())

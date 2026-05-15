@@ -1,32 +1,27 @@
 """Integração financeira com a API Atlaz V2 (Fase 4).
 
-ESCOPO: puxa COBRANÇAS / FATURAS / RECEBIMENTOS dos assinantes (clientes).
+ESCOPO: puxa FATURAS dos assinantes (clientes).
 NÃO confunde com `fin_bills_payable` que são DESPESAS da empresa.
 
-ENDPOINTS DA API ATLAZ V2 (a confirmar com o painel docs):
-  • GET /listacobrancas   — faturas geradas
-  • GET /listaboletos     — boletos emitidos
-  • GET /listapagamentos  — pagamentos recebidos
-  • GET /listaclientes    — clientes/assinantes
+ENDPOINTS DA API ATLAZ V2 (descobertos via /probe):
+  • GET /faturas         — exige data_vencimento_inicial OU data_vencimento_final
+                            OU id_assinante. Retorna {success, cnt_faturas, faturas:[...]}
+                            Schema da fatura: {id, id_assinante, valor, data_vencimento,
+                                                data_pagamento, linha_digitavel, link, descricao,
+                                                desconto_pontualidade, multa, juros, ...}
+  • GET /listaclientes   — retorna {success, total_de_paginas, assinantes: [...]}
 
-Como a documentação oficial não está disponível publicamente, a estratégia é:
-  1. Endpoint GET /api/atlaz-financeiro/probe — testa quais endpoints respondem
-  2. Endpoint POST /api/atlaz-financeiro/sync-now — pull com fallback gracioso
-  3. Coleção local `subscriber_invoices` armazena resultados normalizados
-
-Quando o token Atlaz tiver acesso aos endpoints financeiros, a sincronização
-acontece automaticamente. Caso contrário, o endpoint /probe relata 404/403.
+Estratégia: pull /faturas com janela móvel + bulk_write (1k+ docs eficiente).
 """
-from __future__ import annotations
-
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from pymongo import UpdateOne
 
 from core import DEMO_COMPANY_ID, now_iso, require_role
 from database import db
@@ -58,26 +53,41 @@ async def _http_get(endpoint: str, params: Dict[str, Any], timeout: int = 20) ->
 
 
 def _norm_invoice(raw: Dict[str, Any]) -> Dict[str, Any]:
-    """Normaliza um documento Atlaz para schema interno subscriber_invoices.
+    """Normaliza um documento de fatura Atlaz V2 para o schema interno.
 
-    Como o shape exato dos endpoints é desconhecido até receber resposta real,
-    fazemos uma normalização tolerante: tentamos vários nomes de campos
-    comuns e usamos None como fallback.
+    Schema real da Atlaz: id, id_assinante, valor, data_vencimento,
+      data_pagamento, linha_digitavel, link, descricao, valor_pago, ...
     """
     pick = lambda *keys: next((raw.get(k) for k in keys if raw.get(k) is not None), None)  # noqa: E731
+
+    def _flt(v):
+        try:
+            return float(str(v).replace(",", ".")) if v else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    paid_date = pick("data_pagamento", "data_baixa", "data_recebimento")
+    status_raw = pick("status", "situacao", "estado")
+    if not status_raw:
+        # Status derivado se a API não trouxe explicitamente
+        status_raw = "paid" if paid_date else "open"
+
     return {
-        "external_id": str(pick("id", "id_cobranca", "id_fatura", "id_boleto") or ""),
-        "subscriber_external_id": str(pick("id_cliente", "id_assinante", "cliente_id") or ""),
-        "subscriber_name": pick("cliente_nome", "nome_cliente", "nome"),
-        "subscriber_document": pick("cpf", "cnpj", "documento"),
-        "amount": float(pick("valor", "valor_cobranca", "valor_fatura") or 0),
-        "amount_paid": float(pick("valor_pago", "valor_recebido") or 0),
+        "external_id": str(pick("id", "id_fatura", "id_cobranca") or ""),
+        "subscriber_external_id": str(pick("id_assinante", "id_cliente") or ""),
+        "subscriber_name": pick("nome_assinante", "cliente_nome",
+                                  "nome_cliente", "nome", "razao_social"),
+        "subscriber_document": pick("cpf_cnpj", "cpf", "cnpj", "documento"),
+        "amount": _flt(pick("valor", "valor_fatura", "valor_cobranca")),
+        "amount_paid": _flt(pick("valor_pago", "valor_recebido")),
         "due_date": pick("data_vencimento", "vencimento", "data_venc"),
-        "issue_date": pick("data_emissao", "data_geracao", "emissao"),
-        "paid_date": pick("data_pagamento", "data_baixa", "data_recebimento"),
-        "status": pick("status", "situacao", "estado") or "unknown",
-        "barcode": pick("codigo_barras", "linha_digitavel"),
-        "raw": {k: raw.get(k) for k in raw.keys() if not k.startswith("_")},
+        "issue_date": pick("data_emissao", "data_geracao", "emissao",
+                            "data_cadastro"),
+        "paid_date": paid_date,
+        "status": status_raw,
+        "barcode": pick("linha_digitavel", "codigo_barras"),
+        "boleto_url": pick("link", "url_boleto", "boleto_url"),
+        "description": pick("descricao", "description"),
     }
 
 
@@ -135,77 +145,216 @@ async def probe(user: dict = Depends(require_role("administrador"))):
     return {"probed_at": now_iso(), "endpoints": results}
 
 
-@router.post("/sync-now")
-async def sync_now(user: dict = Depends(require_role("administrador"))):
-    """Pull manual de cobranças/faturas/pagamentos do Atlaz para `subscriber_invoices`.
+async def _load_clients_cache(cid: str, token: str,
+                                timeout: float) -> Dict[str, Dict[str, Any]]:
+    """Carrega mapa id_assinante → {name, document, phone} via /listaclientes.
 
-    Estratégia tolerante: tenta cada endpoint, salva o que conseguiu.
-    Quando nenhum endpoint estiver disponível, retorna 200 com counter zero.
+    Schema real da Atlaz:
+      {success, total_de_paginas, assinantes: {"1": {assinante: {...},
+                                                       pontos_de_acesso: [...]},
+                                                "2": {...}, ...}}
+
+    Cada assinante.id_assinante é a chave de junção com /faturas.id_assinante.
+    Salva no cache local `atlaz_clients_cache` (1 doc por subscriber).
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    page = 1
+    max_pages_safety = 100
+    while page <= max_pages_safety:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.get(
+                f"{ATLAZ_BASE_URL}/listaclientes",
+                params={"token": token, "pagina": str(page)},
+            )
+        if r.status_code >= 400:
+            logger.warning("[atlaz-fin] clientes HTTP %s pg=%s", r.status_code, page)
+            break
+        data = r.json() if r.content else {}
+        if not isinstance(data, dict) or data.get("success") in ("false", False):
+            break
+        assinantes = data.get("assinantes")
+        if not assinantes:
+            break
+        # Iterar — pode vir como dict numerado OU como lista
+        records: List[Dict[str, Any]] = []
+        if isinstance(assinantes, dict):
+            records = list(assinantes.values())
+        elif isinstance(assinantes, list):
+            records = assinantes
+        if not records:
+            break
+        ops = []
+        for rec in records:
+            # Schema: {"assinante": {...}, "pontos_de_acesso": [...]}
+            a = rec.get("assinante") if isinstance(rec, dict) and "assinante" in rec else rec
+            if not isinstance(a, dict):
+                continue
+            sid = str(a.get("id_assinante") or a.get("id") or "")
+            if not sid:
+                continue
+            info = {
+                "name": a.get("nome") or a.get("razao_social") or a.get("nome_completo"),
+                "document": (a.get("cpf_cnpj") or a.get("cpf")
+                              or a.get("cnpj") or a.get("documento")),
+                "phone": (a.get("telefone") or a.get("celular")
+                          or a.get("whatsapp") or a.get("celular1")),
+                "email": a.get("email"),
+            }
+            out[sid] = info
+            ops.append(UpdateOne(
+                {"company_id": cid, "external_id": sid},
+                {"$set": {"company_id": cid, "external_id": sid,
+                           **info, "synced_at": now_iso()}},
+                upsert=True,
+            ))
+        if ops:
+            await db.atlaz_clients_cache.bulk_write(ops, ordered=False)
+        # Paginação — Atlaz retorna total_de_paginas
+        total_pages = data.get("total_de_paginas")
+        try:
+            total_pages = int(total_pages) if total_pages else None
+        except (TypeError, ValueError):
+            total_pages = None
+        if total_pages is None or page >= total_pages:
+            break
+        page += 1
+    return out
+
+
+@router.post("/sync-now")
+async def sync_now(
+    days_back: int = Query(15, ge=1, le=365),
+    days_forward: int = Query(15, ge=0, le=365),
+    enrich_clients: bool = Query(True),
+    user: dict = Depends(require_role("administrador")),
+):
+    """Pull manual de faturas do Atlaz V2 → `subscriber_invoices`.
+
+    Estratégia:
+      • Default 15d back + 15d forward (rápido)
+      • Se enrich_clients=true, faz JOIN com /listaclientes pra trazer
+        nome + CPF do assinante (a /faturas só traz id_assinante).
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
     cfg = await _get_config(cid)
     if not cfg.api_key:
         raise HTTPException(400, "Token Atlaz não configurado")
 
-    base_params = {"token": cfg.api_key}
+    # Timeout interno < ingress (60s); deixa folga pra DB + retorno
+    fat_timeout = 45.0
+
+    today = datetime.now(timezone.utc).date()
+    date_ini = (today - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    date_fim = (today + timedelta(days=days_forward)).strftime("%Y-%m-%d")
+
+    # 1) Cache local de clientes (id_assinante -> {nome, cpf}) — opcional
+    # Se cache existe local, usa ele direto (não busca da API agora)
+    clients_map: Dict[str, Dict[str, Any]] = {}
+    if enrich_clients:
+        cur = db.atlaz_clients_cache.find(
+            {"company_id": cid},
+            {"_id": 0, "external_id": 1, "name": 1, "document": 1, "phone": 1},
+        )
+        async for c in cur:
+            clients_map[c["external_id"]] = c
+        logger.info("[atlaz-fin] cache local clientes: %d", len(clients_map))
+
     inserted = 0
     updated = 0
     errors: List[str] = []
-    endpoints_ok: List[str] = []
+    pages_fetched = 0
 
-    for ep in ("listacobrancas", "listaboletos", "listapagamentos"):
+    page = 1
+    max_pages = 50  # safety cap
+    while page <= max_pages:
+        params = {
+            "token": cfg.api_key,
+            "data_vencimento_inicial": date_ini,
+            "data_vencimento_final": date_fim,
+            "pagina": str(page),
+        }
         try:
-            r = await _http_get(ep, base_params, timeout=cfg.timeout_seconds)
+            async with httpx.AsyncClient(timeout=fat_timeout) as client:
+                r = await client.get(f"{ATLAZ_BASE_URL}/faturas", params=params)
             if r.status_code >= 400:
-                errors.append(f"{ep}: HTTP {r.status_code}")
-                continue
+                errors.append(f"HTTP {r.status_code} pg={page}")
+                break
             data = r.json()
+            if isinstance(data, dict) and data.get("success") in ("false", False):
+                errors.append(f"pg={page}: {data.get('msg')}")
+                break
             items: List[Dict[str, Any]] = []
-            if isinstance(data, list):
-                items = data
-            elif isinstance(data, dict):
-                for k in ("cobrancas", "boletos", "pagamentos", "data", "results"):
+            if isinstance(data, dict):
+                for k in ("faturas", "data", "results", "items"):
                     v = data.get(k)
                     if isinstance(v, list):
                         items = v
                         break
+            elif isinstance(data, list):
+                items = data
             if not items:
-                continue
-            endpoints_ok.append(ep)
+                break
+            pages_fetched += 1
+            # Bulk write: muito mais rápido que update_one em loop
+            ops = []
+            now_str = now_iso()
             for raw in items:
                 norm = _norm_invoice(raw)
                 if not norm["external_id"]:
                     continue
+                # Enriquecer com nome+cpf do cliente (cache)
+                sub_id = norm.get("subscriber_external_id")
+                if sub_id and sub_id in clients_map:
+                    c = clients_map[sub_id]
+                    norm["subscriber_name"] = c.get("name")
+                    norm["subscriber_document"] = c.get("document")
+                    norm["subscriber_phone"] = c.get("phone")
                 norm["company_id"] = cid
-                norm["source"] = ep
-                norm["synced_at"] = now_iso()
-                existing = await db.subscriber_invoices.find_one(
+                norm["source"] = "atlaz_faturas"
+                norm["synced_at"] = now_str
+                ops.append(UpdateOne(
                     {"company_id": cid, "external_id": norm["external_id"]},
-                    {"_id": 0, "id": 1},
-                )
-                if existing:
-                    await db.subscriber_invoices.update_one(
-                        {"id": existing["id"]}, {"$set": norm},
-                    )
-                    updated += 1
-                else:
-                    norm["id"] = f"sinv-{uuid.uuid4().hex[:10]}"
-                    norm["created_at"] = now_iso()
-                    await db.subscriber_invoices.insert_one(norm)
-                    inserted += 1
+                    {"$set": norm,
+                     "$setOnInsert": {
+                         "id": f"sinv-{uuid.uuid4().hex[:10]}",
+                         "created_at": now_str,
+                     }},
+                    upsert=True,
+                ))
+            if ops:
+                result = await db.subscriber_invoices.bulk_write(ops, ordered=False)
+                inserted += result.upserted_count
+                updated += (result.modified_count + result.matched_count
+                             - result.upserted_count)
+            # Paginação
+            total_pages = None
+            if isinstance(data, dict):
+                total_pages = data.get("total_de_paginas")
+                try:
+                    total_pages = int(total_pages) if total_pages else None
+                except (TypeError, ValueError):
+                    total_pages = None
+            if total_pages is None:
+                # Atlaz /faturas retorna tudo em uma "página" se total_de_paginas=None
+                break
+            if page >= total_pages:
+                break
+            page += 1
         except Exception as e:
-            errors.append(f"{ep}: {type(e).__name__} {e}")
+            errors.append(f"pg={page}: {type(e).__name__} {e}")
+            break
 
     await db.atlaz_sync_logs.insert_one({
         "id": f"asf-{uuid.uuid4().hex[:10]}",
         "company_id": cid, "event": "atlaz_financeiro_sync",
-        "status": "ok" if endpoints_ok else "skipped",
-        "details": f"endpoints={endpoints_ok}; inserted={inserted}; updated={updated}",
+        "status": "ok" if pages_fetched > 0 else "skipped",
+        "details": f"date_range={date_ini}..{date_fim}; pages={pages_fetched}; ins={inserted}; upd={updated}",
         "errors": errors[:5],
         "at": now_iso(),
     })
     return {
-        "endpoints_ok": endpoints_ok,
+        "date_range": [date_ini, date_fim],
+        "pages_fetched": pages_fetched,
         "inserted": inserted, "updated": updated,
         "errors": errors,
     }
@@ -231,6 +380,206 @@ async def list_invoices(
     items = [doc async for doc in cur]
     total = await db.subscriber_invoices.count_documents(q)
     return {"items": items, "total": total}
+
+
+@router.post("/sync-clients")
+async def sync_clients(user: dict = Depends(require_role("administrador"))):
+    """Sincroniza clientes Atlaz para o cache local (rodando em background).
+
+    Pode demorar (55+ páginas para Ligo Fibra). Roda fire-and-forget e
+    retorna imediatamente. Consulte /api/atlaz-financeiro/clients-cache
+    pra ver progresso.
+    """
+    import asyncio
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(cid)
+    if not cfg.api_key:
+        raise HTTPException(400, "Token Atlaz não configurado")
+
+    async def _bg():
+        try:
+            n = await _load_clients_cache(cid, cfg.api_key, 45.0)
+            logger.info("[atlaz-fin] sync-clients background: %d clientes carregados", len(n))
+            await db.atlaz_sync_logs.insert_one({
+                "id": f"asc-{uuid.uuid4().hex[:10]}",
+                "company_id": cid, "event": "atlaz_clients_sync",
+                "status": "ok",
+                "details": f"clients_synced={len(n)}",
+                "at": now_iso(),
+            })
+        except Exception as e:
+            logger.exception("[atlaz-fin] sync-clients background falhou: %s", e)
+            await db.atlaz_sync_logs.insert_one({
+                "id": f"asc-{uuid.uuid4().hex[:10]}",
+                "company_id": cid, "event": "atlaz_clients_sync",
+                "status": "error",
+                "details": f"{type(e).__name__}: {e}",
+                "at": now_iso(),
+            })
+
+    asyncio.create_task(_bg())
+    return {"ok": True, "message": "Sync em background iniciado. Acompanhe via /clients-cache."}
+
+
+@router.get("/clients-cache")
+async def clients_cache_stats(user: dict = Depends(require_role("administrador", "financeiro"))):
+    """Estatísticas do cache de clientes (progresso da sync)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    n = await db.atlaz_clients_cache.count_documents({"company_id": cid})
+    last = await db.atlaz_sync_logs.find_one(
+        {"company_id": cid, "event": "atlaz_clients_sync"},
+        {"_id": 0}, sort=[("at", -1)],
+    )
+    return {
+        "total_cached": n,
+        "last_run": last.get("at") if last else None,
+        "last_status": last.get("status") if last else None,
+        "last_details": last.get("details") if last else None,
+    }
+
+
+@router.post("/enrich-invoices")
+async def enrich_existing_invoices(user: dict = Depends(require_role("administrador"))):
+    """Aplica nome/CPF/telefone do cache de clientes às faturas já sincronizadas."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    # Carrega mapa do cache local
+    cur = db.atlaz_clients_cache.find(
+        {"company_id": cid},
+        {"_id": 0, "external_id": 1, "name": 1, "document": 1, "phone": 1},
+    )
+    cmap: Dict[str, Dict[str, Any]] = {}
+    async for c in cur:
+        cmap[c["external_id"]] = c
+    if not cmap:
+        return {"ok": False, "message": "Cache vazio. Execute /sync-clients primeiro."}
+    ops = []
+    cur2 = db.subscriber_invoices.find(
+        {"company_id": cid,
+         "$or": [{"subscriber_name": None}, {"subscriber_document": None}]},
+        {"_id": 0, "id": 1, "subscriber_external_id": 1},
+    )
+    async for inv in cur2:
+        c = cmap.get(inv.get("subscriber_external_id"))
+        if not c:
+            continue
+        ops.append(UpdateOne(
+            {"id": inv["id"]},
+            {"$set": {
+                "subscriber_name": c.get("name"),
+                "subscriber_document": c.get("document"),
+                "subscriber_phone": c.get("phone"),
+                "enriched_at": now_iso(),
+            }},
+        ))
+    if ops:
+        result = await db.subscriber_invoices.bulk_write(ops, ordered=False)
+        return {"ok": True, "enriched": result.modified_count}
+    return {"ok": True, "enriched": 0}
+
+
+@router.post("/cleanup-orphans")
+async def cleanup_orphans(user: dict = Depends(require_role("administrador"))):
+    """Remove registros antigos sem subscriber_external_id (lixo de testes/iter72)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    r = await db.subscriber_invoices.delete_many({
+        "company_id": cid,
+        "$or": [
+            {"subscriber_external_id": ""},
+            {"subscriber_external_id": None},
+            {"status": "unknown"},
+            {"source": {"$nin": ["atlaz_faturas"]}},
+        ],
+    })
+    return {"deleted": r.deleted_count}
+
+
+# ===========================================================================
+# Job scheduled — chamado pelo scheduler central a cada 2h
+# ===========================================================================
+async def auto_sync_atlaz_financeiro() -> Dict[str, Any]:
+    """Sync automática (todas as empresas com token configurado)."""
+    out: Dict[str, Any] = {"companies": 0, "errors": []}
+    async for cfg in db.atlaz_config.find({"api_key": {"$ne": None, "$ne": ""}},
+                                            {"_id": 0, "company_id": 1,
+                                             "api_key": 1}):
+        cid = cfg["company_id"]
+        try:
+            # Sync faturas com janela de 7d back + 30d forward
+            from routes.atlaz import _get_config
+            atc = await _get_config(cid)
+            if not atc.api_key:
+                continue
+            today = datetime.now(timezone.utc).date()
+            date_ini = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+            date_fim = (today + timedelta(days=30)).strftime("%Y-%m-%d")
+            clients_map: Dict[str, Dict[str, Any]] = {}
+            cur = db.atlaz_clients_cache.find(
+                {"company_id": cid},
+                {"_id": 0, "external_id": 1, "name": 1,
+                 "document": 1, "phone": 1},
+            )
+            async for c in cur:
+                clients_map[c["external_id"]] = c
+            page = 1
+            while page <= 50:
+                async with httpx.AsyncClient(timeout=45.0) as client:
+                    r = await client.get(
+                        f"{ATLAZ_BASE_URL}/faturas",
+                        params={"token": atc.api_key,
+                                "data_vencimento_inicial": date_ini,
+                                "data_vencimento_final": date_fim,
+                                "pagina": str(page)},
+                    )
+                if r.status_code >= 400:
+                    break
+                data = r.json()
+                if isinstance(data, dict) and data.get("success") in ("false", False):
+                    break
+                items = (data.get("faturas") if isinstance(data, dict) else
+                          data if isinstance(data, list) else []) or []
+                if not items:
+                    break
+                ops = []
+                now_str = now_iso()
+                for raw in items:
+                    norm = _norm_invoice(raw)
+                    if not norm["external_id"]:
+                        continue
+                    sub_id = norm.get("subscriber_external_id")
+                    if sub_id and sub_id in clients_map:
+                        c = clients_map[sub_id]
+                        norm["subscriber_name"] = c.get("name")
+                        norm["subscriber_document"] = c.get("document")
+                        norm["subscriber_phone"] = c.get("phone")
+                    norm["company_id"] = cid
+                    norm["source"] = "atlaz_faturas"
+                    norm["synced_at"] = now_str
+                    ops.append(UpdateOne(
+                        {"company_id": cid, "external_id": norm["external_id"]},
+                        {"$set": norm,
+                         "$setOnInsert": {
+                             "id": f"sinv-{uuid.uuid4().hex[:10]}",
+                             "created_at": now_str,
+                         }},
+                        upsert=True,
+                    ))
+                if ops:
+                    await db.subscriber_invoices.bulk_write(ops, ordered=False)
+                total_pages = None
+                if isinstance(data, dict):
+                    total_pages = data.get("total_de_paginas")
+                    try:
+                        total_pages = int(total_pages) if total_pages else None
+                    except (TypeError, ValueError):
+                        total_pages = None
+                if total_pages is None or page >= total_pages:
+                    break
+                page += 1
+            out["companies"] += 1
+        except Exception as e:
+            logger.exception("[atlaz-fin] auto_sync %s falhou", cid)
+            out["errors"].append(f"{cid}: {type(e).__name__}: {e}")
+    return out
 
 
 @router.get("/stats")
