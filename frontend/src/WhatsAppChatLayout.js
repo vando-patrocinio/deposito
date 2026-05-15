@@ -1667,7 +1667,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
              flex: 1, minHeight: 0,
              overflowY: "auto", padding: "16px 18px",
              backgroundColor: "#efeae2",
-             backgroundImage: 'url("/wa-wallpaper-ligo.png")',
+             backgroundImage: 'url("/wa-wallpaper-ligo.png?v=2")',
              backgroundRepeat: "repeat",
              backgroundSize: "auto",
              backgroundBlendMode: "multiply",
