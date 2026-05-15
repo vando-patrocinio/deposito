@@ -1,6 +1,42 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Feb 15, 2026 — Rate limit estendido para endpoints sensíveis ★
+
+### O que foi implementado
+Aplicado `@limiter.limit(get_limit(...))` em 7 endpoints sensíveis:
+
+| Endpoint | Limite (prod) | Limite (DEV) | Propósito |
+|---|---|---|---|
+| `POST /api/auth/login` | 5/min | 50/min | Brute force (já existente) |
+| `POST /api/secretaria/ask` | 30/min | 300/min | Custo LLM |
+| `POST /api/mass-messaging/campaigns` | 10/min | 100/min | Anti-spam interno |
+| `POST /api/mass-messaging/campaigns/{id}/start` | 5/min | 50/min | Inicialização |
+| `POST /api/whatsapp-twilio/webhook` | 120/min | 1200/min | Flood Twilio |
+| `POST /api/whatsapp-meta/webhook` | 120/min | 1200/min | Flood Meta |
+| `POST /api/secretaria/webhook/chatgpt` | 120/min | 1200/min | GPT customizado |
+| `POST /api/secretaria/ask/{token}` | 120/min | 1200/min | GPT path-auth |
+
+### Bug fix interno (PEP 563 + slowapi)
+Removido `from __future__ import annotations` de `routes/secretaria.py` e `routes/mass_messaging.py`.
+
+**RCA**: PEP 563 (postponed annotations) torna type hints em strings. slowapi inspeciona `inspect.signature()` no momento da decoração — combinado com Pydantic v2 + FastAPI Body, causa erro `422 Field required` em payloads de POST. Solução: forçar avaliação eager de annotations removendo o import (Python 3.11 não precisa).
+
+### Tests
+- `/app/test_reports/iteration_75.json` — Backend 14/14 PASS
+- Pytest: `/app/backend/tests/test_iter75_secretaria_mass_ratelimit.py`
+- Validado: 422 regression em `/ask` + start campaign com default_factory funcionam corretamente
+
+### Atenção em produção
+- `services/rate_limit.py` usa storage `memory://` (per-pod). Em multi-pod, trocar para `redis://`
+- `_is_dev()` detecta `preview.emergent` ou `localhost` no `PUBLIC_BACKEND_URL`. Garantir que prod tenha essa env var setada corretamente (`https://dual-combine-3.emergent.host`)
+- Pode aplicar `@limiter.limit` em mais endpoints futuramente, MAS evite adicionar `from __future__ import annotations` em routes que usem slowapi + Pydantic Body.
+
+---
+
+
+# PontoIA — Changelog
+
 ## Feb 15, 2026 — Analytics financeiro + Rate Limiting global ★
 
 ### O que foi implementado
