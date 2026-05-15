@@ -2617,10 +2617,13 @@ function MsgBubble({ msg, onCorrect }) {
   const dst = msg.delivery_status || "";
   const failed = out && (dst === "failed" || dst.startsWith("failed_"));
   const sent = out && dst === "sent";
-  // Failed AI sem texto (gerou erro antes de redigir) → render como placeholder
-  const aiSilentFailure = failed && isAi && !msg.text;
+  // Failed AI sem texto (gerou erro antes de redigir) → render como placeholder.
+  // Correções (is_correction) que falharam NÃO são silent failures da IA —
+  // são re-envios manuais do atendente que não chegaram ao WhatsApp.
+  const aiSilentFailure = failed && isAi && !isCorrection && !msg.text;
   const failureLabel = (() => {
     if (!failed) return null;
+    if (isCorrection) return "Correção não enviada (WhatsApp offline)";
     if (dst === "failed_disabled") return "IA desligada — não respondeu";
     if (dst === "failed_no_agent") return "Agente IA não cadastrado";
     if (dst === "failed_llm_error") return "Motor IA falhou";
@@ -2657,11 +2660,17 @@ function MsgBubble({ msg, onCorrect }) {
           <ChannelBadge channel={msg.channel} small />
         )}
         {out && isAi && (
-          <div style={{ fontSize: 9, fontWeight: 800, color: failed ? "#dc2626" : (isCorrection ? "#15803d" : "#0369a1"),
+          <div style={{ fontSize: 9, fontWeight: 800,
+                         color: failed
+                          ? (isCorrection ? "#92400e" : "#dc2626")
+                          : (isCorrection ? "#15803d" : "#0369a1"),
                          marginBottom: 3, textTransform: "uppercase",
                          letterSpacing: 0.5, display: "flex", alignItems: "center", gap: 6 }}>
-            {failed ? "⚠ Isabella IA — falhou"
-              : isCorrection ? "Isabella IA · Corrigida" : "Isabella IA"}
+            {failed
+              ? (isCorrection
+                  ? "⚠ Correção · não enviada"
+                  : "⚠ Isabella IA — falhou")
+              : (isCorrection ? "Isabella IA · Corrigida" : "Isabella IA")}
             {!failed && msg.text && onCorrect && (
               <button
                 onClick={() => onCorrect()}
