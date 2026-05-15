@@ -208,8 +208,7 @@ def build_budget_pdf(budget: Dict[str, Any], generated_by: str = "",
     t = budget.get("totals") or {}
     totals_data = [
         ["Base (soma dos subtotais)", _money_br(t.get("base", 0))],
-        [f"Mão de obra ({budget.get('labor_pct', 0):.1f}%)",
-         _money_br(t.get("labor_val", 0))],
+        ["Mão de obra", _money_br(t.get("labor_val", 0))],
         ["TOTAL FINAL", _money_br(t.get("final", 0))],
     ]
     totals_tbl = Table(totals_data, colWidths=[90 * mm, 40 * mm], hAlign="RIGHT")
