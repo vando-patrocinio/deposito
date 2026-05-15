@@ -320,6 +320,23 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Fix UX defensivo** (`/app/frontend/src/InlineAgentEditor.js`): novo estado `authError`. Quando `/aihub/agents` falha por 401, mostra mensagem clara "Sessão expirada · Seu agente NÃO foi apagado · está seguro no banco" + botão "Fazer login" — em vez do antigo "Nenhum agente cadastrado" + "+ Criar agente" que sugeria que o agente tinha sido deletado.
 - **Validado por testing_agent iter64**: 8/8 backend pytest (`/app/backend/tests/test_iter64_auth_no_single_session.py`) + 2/2 frontend Playwright. 2 tokens consecutivos do mesmo user agora coexistem; reload após login paralelo externo preserva Isabella.
 
+✅ **Sync inversa Rede IA → SmartOLT (Zones) — VALIDADO E2E** (15/02/2026 — iter68):
+- **Objetivo**: ao aprovar uma CTO no painel Rede IA, criar automaticamente a Zone correspondente no SmartOLT (sync bi-direcional — antes era só leitura).
+- **Backend** (`/app/backend/services/smartolt_zones.py`): função `ensure_zone_exists(company_id, zone_name, actor)` idempotente com cache de 60s (`_ZONES_CACHE`), normalização case-insensitive (`_normalize_zone`), audit log em `db.smartolt_zone_audit`. Trata 409/race-condition e erros HTTP/rede sem propagar exceção.
+- **Wire na aprovação** (`/app/backend/routes/rede_ia.py` linha 537): `_sync_cto_zone_to_smartolt` chamado em `validate_cto` action=approve, NÃO bloqueante (erro de SmartOLT não falha a aprovação — devolve `smartolt_zone: {ok:false, error:...}` na resposta).
+- **Endpoint manual** `POST /api/rede-ia/ctos/{cto_id}/sync-smartolt-zone` para reprocessar se SmartOLT estava offline no momento da aprovação.
+- **Endpoints auxiliares**: `GET /smartolt/zones` (lista com cache), `GET /smartolt/zone-audit` (últimas 50 ações).
+- **API SmartOLT é append-only**: não há PUT/DELETE de zones na coleção oficial. `ensure_zone_exists` resolve isso checando antes de adicionar.
+- **Validação E2E** contra SmartOLT real (co-demo já tinha credenciais válidas):
+  - Test 1: list zones → 200, 28 zones (inclui "CTO 001_301_TST" criada na sessão anterior) ✓
+  - Test 2: audit log → entries com action/zone_name/result ✓
+  - Test 3: force-sync CTO inexistente → 404 ✓
+  - Test 4: force-sync CTO pendente → 409 "apenas aprovadas sincronizam zone" ✓
+  - Test 5: **approve CTO pendente E2E** → status=approved + PDF para Drive + zone "CTO 001_3921_PB3" criada no SmartOLT (`created: true`, `smartolt_response.status: true`) ✓
+  - Test 6: re-sync da mesma CTO → idempotente (`created: false`, "já existe") ✓
+  - Test 7: audit cresceu para 5 entries com timestamps corretos ✓
+- **Pytest** `/app/backend/tests/test_iter68_smartolt_zone_sync.py`: 6/6 passou (test_1_list_zones, test_2_zone_audit, test_3_force_sync_unknown_cto_returns_404, test_4_force_sync_pending_cto_returns_409, test_5_force_sync_approved_is_idempotent, test_6_audit_records_force_sync).
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
