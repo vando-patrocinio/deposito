@@ -187,27 +187,149 @@ function Overview() {
   const [ctos, setCtos] = useState([]);
   const [pend, setPend] = useState([]);
   const [bairros, setBairros] = useState([]);
+  const [mapData, setMapData] = useState({ vlans: [], ces: [], cables: [] });
   useEffect(() => {
     api.redeIaCtosList().then((r) => setCtos(r.items || []));
     api.redeIaPendencies().then((r) => setPend(r.items || []));
     api.redeIaBairros().then((r) => setBairros(r.items || []));
+    api.redeIaMapData().then((r) => setMapData(r)).catch(() => {});
   }, []);
   const approved = ctos.filter((c) => c.status === "approved").length;
   const totalPorts = ctos.reduce((acc, c) => acc + (c.capacity || 0), 0);
   const usedPorts = ctos.reduce(
     (acc, c) => acc + ((c.ports || []).filter((p) => p.status === "used").length), 0,
   );
+  // Integração SmartOLT
+  const ctosWithOnu = (mapData.ctos || []).filter((c) => (c.health?.total || 0) > 0).length;
+  const totalCableMeters = (mapData.cables || []).reduce(
+    (s, c) => s + (c.length_m || 0), 0);
+  const cableByType = {};
+  (mapData.cables || []).forEach((c) => {
+    cableByType[c.type] = (cableByType[c.type] || 0) + (c.length_m || 0);
+  });
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))",
-                     gap: 12 }}>
-      <KPI label="CTOs cadastradas" value={ctos.length} />
-      <KPI label="CTOs aprovadas" value={approved} color="#15803d" />
-      <KPI label="Pendências validação" value={pend.length} color="#ca8a04" />
-      <KPI label="Bairros mapeados" value={bairros.length} />
-      <KPI label="Portas ocupadas / total" value={`${usedPorts} / ${totalPorts}`}
-            color="#7c3aed" />
-      <KPI label="Taxa de ocupação"
-            value={totalPorts ? `${Math.round((usedPorts / totalPorts) * 100)}%` : "—"} />
+    <div style={{ display: "grid", gap: 16 }}>
+      <div style={{ display: "grid",
+                       gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))",
+                       gap: 12 }}>
+        <KPI label="CTOs cadastradas" value={ctos.length} />
+        <KPI label="CTOs aprovadas" value={approved} color="#15803d" />
+        <KPI label="Pendências validação" value={pend.length} color="#ca8a04" />
+        <KPI label="Bairros mapeados" value={bairros.length} />
+        <KPI label="Portas ocupadas / total" value={`${usedPorts} / ${totalPorts}`}
+              color="#7c3aed" />
+        <KPI label="Taxa de ocupação"
+              value={totalPorts ? `${Math.round((usedPorts / totalPorts) * 100)}%` : "—"} />
+      </div>
+
+      {/* Integração SmartOLT */}
+      <Card style={{ padding: 16 }}>
+        <h3 style={{ margin: "0 0 12px", fontSize: 15,
+                       display: "flex", alignItems: "center", gap: 8 }}>
+          🛰 Integração SmartOLT IA
+          <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)" }}>
+            (rede_IA cruza CTOs com ONUs reais)
+          </span>
+        </h3>
+        <div style={{ display: "grid",
+                         gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))",
+                         gap: 10 }}>
+          <MiniKpi label="CTOs com ONUs detectadas"
+            value={`${ctosWithOnu} / ${mapData.ctos?.length || 0}`}
+            color="#0ea5e9" />
+          <MiniKpi label="VLANs monitoradas"
+            value={mapData.vlans?.length || 0} color="#7c3aed" />
+          <MiniKpi label="CEs (Caixas Emenda)"
+            value={mapData.ces?.length || 0} color="#1e40af" />
+          <MiniKpi label="Cabos cadastrados"
+            value={`${mapData.cables?.length || 0} (${(totalCableMeters/1000).toFixed(2)} km)`}
+            color="#ea580c" />
+        </div>
+
+        {Object.keys(cableByType).length > 0 && (
+          <div style={{ marginTop: 12, padding: 10,
+                          background: "var(--bg-surface-2)", borderRadius: 8,
+                          fontSize: 12 }}>
+            <strong>Comprimento por tipo:</strong>{" "}
+            {Object.entries(cableByType).map(([type, m]) => (
+              <span key={type} style={{ marginRight: 14 }}>
+                {type.toUpperCase()}: <strong>{(m/1000).toFixed(2)} km</strong>
+              </span>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Saúde por VLAN */}
+      {mapData.vlans && mapData.vlans.length > 0 && (
+        <Card style={{ padding: 16 }}>
+          <h3 style={{ margin: "0 0 12px", fontSize: 15 }}>
+            📡 Média de sinal por VLAN (vinda do SmartOLT)
+          </h3>
+          <div style={{ display: "grid", gap: 8 }}>
+            {mapData.vlans.map((v) => {
+              const status = v.avg_score < 50 ? "critical"
+                : v.avg_score < 75 ? "warning" : "ok";
+              const bg = status === "critical" ? "#fee2e2"
+                : status === "warning" ? "#fef3c7" : "#dcfce7";
+              const fg = status === "critical" ? "#991b1b"
+                : status === "warning" ? "#92400e" : "#166534";
+              return (
+                <div key={v.vlan} style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "10px 14px", borderRadius: 10,
+                  background: bg, border: `1px solid ${fg}33`,
+                }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: fg, minWidth: 130 }}>
+                    VLAN {v.vlan} ({v.sigla})
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      height: 8, borderRadius: 99,
+                      background: "rgba(0,0,0,0.08)",
+                      overflow: "hidden",
+                    }}>
+                      <div style={{
+                        height: "100%", width: `${v.avg_score}%`,
+                        background: fg, transition: "width .3s",
+                      }} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: fg, fontWeight: 700,
+                                  minWidth: 56, textAlign: "right" }}>
+                    {v.avg_score}%
+                  </div>
+                  <div style={{ fontSize: 11, color: fg, minWidth: 120 }}>
+                    {v.cto_count} CTOs · {v.critical || 0}🔴 {v.warning || 0}🟡 {v.ok || 0}🟢
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p style={{ marginTop: 10, fontSize: 11, color: "var(--text-muted)" }}>
+            ℹ️ A rede_IA consulta o SmartOLT em tempo real para calcular a saúde média
+            das CTOs por VLAN. CTOs sem ONUs detectadas pelo SmartOLT são contabilizadas
+            como "sem dados" e não influenciam a média.
+          </p>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function MiniKpi({ label, value, color }) {
+  return (
+    <div style={{
+      padding: "10px 12px", borderRadius: 8,
+      border: "1px solid var(--border-default)",
+      background: "var(--bg-surface-2)",
+    }}>
+      <div style={{ fontSize: 10, color: "var(--text-muted)",
+                       fontWeight: 700, textTransform: "uppercase",
+                       letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4,
+                       color: color || "var(--text-primary)" }}>{value}</div>
     </div>
   );
 }

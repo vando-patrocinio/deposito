@@ -99,9 +99,17 @@ function makeCeIcon(ce) {
 
 // Camada que captura clique no mapa (modos add-ce / draw-cable)
 function MapClickHandler({ enabled, onClick }) {
+  // Refs garantem que o handler do useMapEvents sempre veja valor atual,
+  // sem precisar re-bindar listeners.
+  const enabledRef = useRef(enabled);
+  const onClickRef = useRef(onClick);
+  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
+  useEffect(() => { onClickRef.current = onClick; }, [onClick]);
   useMapEvents({
     click: (e) => {
-      if (enabled) onClick(e.latlng);
+      if (enabledRef.current && onClickRef.current) {
+        onClickRef.current(e.latlng);
+      }
     },
   });
   return null;
@@ -224,18 +232,26 @@ export default function RedeIaMap() {
     }
   }, []);
 
+  // Mantém referência sempre atualizada do cableDraft para os handlers
+  // capturados nos eventHandlers do Leaflet (evita closure stale).
+  const cableDraftRef = useRef(cableDraft);
+  const modeRef = useRef(mode);
+  useEffect(() => { cableDraftRef.current = cableDraft; }, [cableDraft]);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+
   // Handler: clique no mapa (modos add-ce / draw-cable waypoint)
   const handleMapClick = useCallback((latlng) => {
-    if (mode === "add-ce") {
+    const m = modeRef.current;
+    const draft = cableDraftRef.current;
+    if (m === "add-ce") {
       setNewCe({ lat: latlng.lat, lng: latlng.lng });
-    } else if (mode === "draw-cable" && cableDraft.from) {
-      // adiciona waypoint
+    } else if (m === "draw-cable" && draft.from) {
       setCableDraft((d) => ({
         ...d,
         waypoints: [...d.waypoints, { lat: latlng.lat, lng: latlng.lng }],
       }));
     }
-  }, [mode, cableDraft.from]);
+  }, []);
 
   // Confirma criação da CE (modal/prompt)
   const confirmCreateCe = useCallback(async (name, type, capacity) => {
@@ -256,57 +272,57 @@ export default function RedeIaMap() {
 
   // Handler: clique em CTO/CE durante modo add-cable OU draw-cable
   const handleEntityClick = useCallback(async (entity) => {
-    if (mode === "add-cable") {
-      if (!cableDraft.from) {
-        setCableDraft({ ...cableDraft, from: entity });
+    const m = modeRef.current;
+    const draft = cableDraftRef.current;
+    if (m === "add-cable") {
+      if (!draft.from) {
+        setCableDraft((d) => ({ ...d, from: entity }));
         return true;
       }
-      if (cableDraft.from.id === entity.id) {
-        setCableDraft({ ...cableDraft, from: null });
+      if (draft.from.id === entity.id) {
+        setCableDraft((d) => ({ ...d, from: null }));
         return true;
       }
-      // cria cabo reta
       try {
         await api.redeIaCableCreate({
-          type: cableDraft.cableType,
-          from_id: cableDraft.from.id, from_type: cableDraft.from.type,
+          type: draft.cableType,
+          from_id: draft.from.id, from_type: draft.from.type,
           to_id: entity.id, to_type: entity.type,
           segments: [
-            { lat: cableDraft.from.lat, lng: cableDraft.from.lng },
+            { lat: draft.from.lat, lng: draft.from.lng },
             { lat: entity.lat, lng: entity.lng },
           ],
           length_m: null,
           notes: "Criado manualmente via mapa interativo",
         });
-        setCableDraft({ ...cableDraft, from: null });
+        setCableDraft((d) => ({ ...d, from: null }));
         load();
       } catch (e) {
         alert("Erro: " + (e?.response?.data?.detail || e.message));
       }
       return true;
     }
-    if (mode === "draw-cable") {
-      if (!cableDraft.from) {
-        setCableDraft({ ...cableDraft, from: entity, waypoints: [] });
+    if (m === "draw-cable") {
+      if (!draft.from) {
+        setCableDraft((d) => ({ ...d, from: entity, waypoints: [] }));
         return true;
       }
-      if (cableDraft.from.id === entity.id) return true;
-      // finaliza: cria cabo com waypoints intermediários
+      if (draft.from.id === entity.id) return true;
       try {
         const segs = [
-          { lat: cableDraft.from.lat, lng: cableDraft.from.lng },
-          ...cableDraft.waypoints,
+          { lat: draft.from.lat, lng: draft.from.lng },
+          ...draft.waypoints,
           { lat: entity.lat, lng: entity.lng },
         ];
         await api.redeIaCableCreate({
-          type: cableDraft.cableType,
-          from_id: cableDraft.from.id, from_type: cableDraft.from.type,
+          type: draft.cableType,
+          from_id: draft.from.id, from_type: draft.from.type,
           to_id: entity.id, to_type: entity.type,
           segments: segs,
           length_m: null,
-          notes: `Desenhado com ${cableDraft.waypoints.length} pontos intermediários`,
+          notes: `Desenhado com ${draft.waypoints.length} pontos intermediários`,
         });
-        setCableDraft({ ...cableDraft, from: null, waypoints: [] });
+        setCableDraft((d) => ({ ...d, from: null, waypoints: [] }));
         load();
       } catch (e) {
         alert("Erro: " + (e?.response?.data?.detail || e.message));
@@ -314,7 +330,7 @@ export default function RedeIaMap() {
       return true;
     }
     return false;
-  }, [mode, cableDraft, load]);
+  }, [load]);
 
   const autoGenerate = async () => {
     if (!window.confirm("rede_IA vai agrupar CTOs próximas em CEs e criar cabos 24FO automaticamente. Continuar?")) return;
@@ -647,6 +663,14 @@ export default function RedeIaMap() {
               draggable={mode === "drag"}
               eventHandlers={{
                 dragend: (e) => handleDragEnd("ce", ce.id, e.target.getLatLng()),
+                click: (e) => {
+                  if (mode === "add-cable" || mode === "draw-cable") {
+                    e.originalEvent?.stopPropagation();
+                    handleEntityClick({ id: ce.id, type: "ce",
+                                         lat: ce.lat, lng: ce.lng, name: ce.name });
+                    e.target.closePopup();
+                  }
+                },
               }}>
               <Tooltip direction="top" offset={[0, -15]}>
                 <strong>{ce.name}</strong>
@@ -702,10 +726,12 @@ export default function RedeIaMap() {
                   draggable={mode === "drag"}
                   eventHandlers={{
                     dragend: (e) => handleDragEnd("cto", c.id, e.target.getLatLng()),
-                    click: () => {
-                      if (mode === "add-cable") {
+                    click: (e) => {
+                      if (mode === "add-cable" || mode === "draw-cable") {
+                        e.originalEvent?.stopPropagation();
                         handleEntityClick({ id: c.id, type: "cto",
                                              lat: c.lat, lng: c.lng, name: c.name });
+                        e.target.closePopup();
                       }
                     },
                   }}>
