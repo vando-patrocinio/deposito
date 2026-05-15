@@ -7,13 +7,21 @@ Módulo responsável por:
 - Servir diretivas (system prompt) da rede_IA
 - Exportar dados para fluxograma React Flow
 - (Fase 5) chamada LLM para análise de inconsistências
+- QR Code criptografado por CTO (apenas o app SmartProv decodifica)
 """
+import base64
+import hashlib
+import hmac
+import io
+import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, now_iso, require_role, get_current_user
@@ -21,6 +29,56 @@ from database import db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/rede-ia", tags=["rede_ia"])
+
+# ---------------------------------------------------------------------------
+# QR Code crypto
+# ---------------------------------------------------------------------------
+QR_SECRET = os.environ.get("REDE_IA_QR_SECRET") or "smartprov-rede-ia-2026-default-secret-change-me"
+QR_VERSION = "v1"
+QR_PREFIX = "SPCTO"  # SmartProv CTO — identifica origem do QR
+
+
+def _qr_sign(payload_b64: str) -> str:
+    """HMAC-SHA256 sobre o payload base64 + segredo do servidor."""
+    return hmac.new(
+        QR_SECRET.encode("utf-8"),
+        msg=payload_b64.encode("utf-8"),
+        digestmod=hashlib.sha256,
+    ).hexdigest()[:32]
+
+
+def _build_qr_token(cto_id: str, company_id: str, name: str) -> str:
+    """Formato: SPCTO|v1|<b64payload>|<hmac>"""
+    payload = {
+        "cid": company_id,
+        "id": cto_id,
+        "name": name,
+        "ts": int(datetime.now(timezone.utc).timestamp()),
+        "n": uuid.uuid4().hex[:8],
+    }
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    b64 = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    sig = _qr_sign(b64)
+    return f"{QR_PREFIX}|{QR_VERSION}|{b64}|{sig}"
+
+
+def _verify_qr_token(token: str) -> Optional[Dict[str, Any]]:
+    """Valida HMAC e devolve o payload, ou None se inválido."""
+    try:
+        parts = (token or "").split("|")
+        if len(parts) != 4:
+            return None
+        prefix, version, b64, sig = parts
+        if prefix != QR_PREFIX or version != QR_VERSION:
+            return None
+        if not hmac.compare_digest(_qr_sign(b64), sig):
+            return None
+        # restore padding
+        pad = "=" * (-len(b64) % 4)
+        raw = base64.urlsafe_b64decode(b64 + pad)
+        return json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -733,3 +791,80 @@ async def analyze_rede(body: AnalyzeIn,
     })
     return {"report": report, "ctos_count": len(ctos),
             "bairros_count": len(bairros), "focus": body.focus}
+
+# ---------------------------------------------------------------------------
+# QR Code endpoints (Fase 6 — extensão pós Rede IA)
+# ---------------------------------------------------------------------------
+@router.get("/ctos/{cto_id}/qrcode.png")
+async def cto_qrcode_png(cto_id: str, user: dict = Depends(get_current_user)):
+    """Gera PNG do QR Code da CTO. Só funciona para CTOs aprovadas."""
+    import qrcode
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+    if cto.get("status") != "approved":
+        raise HTTPException(409, "Apenas CTOs aprovadas podem gerar QR Code")
+
+    token = _build_qr_token(cto_id, cid, cto.get("name") or "")
+    img = qrcode.make(token, box_size=8, border=2)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return Response(content=buf.getvalue(), media_type="image/png", headers={
+        "Cache-Control": "private, max-age=300",
+        "Content-Disposition": f"inline; filename=\"qr-{cto.get('name','cto')}.png\"",
+    })
+
+
+@router.get("/ctos/{cto_id}/qrcode")
+async def cto_qrcode_info(cto_id: str, user: dict = Depends(get_current_user)):
+    """Retorna metadados do QR sem renderizar imagem (útil para preview/print)."""
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+    if cto.get("status") != "approved":
+        raise HTTPException(409, "Apenas CTOs aprovadas podem gerar QR Code")
+    token = _build_qr_token(cto_id, cid, cto.get("name") or "")
+    return {
+        "token": token,
+        "cto_id": cto_id,
+        "name": cto.get("name"),
+        "png_url": f"/api/rede-ia/ctos/{cto_id}/qrcode.png",
+    }
+
+
+class QrScanIn(BaseModel):
+    payload: str
+
+
+@router.post("/qrcode/scan")
+async def qrcode_scan(body: QrScanIn,
+                       user: dict = Depends(get_current_user)):
+    """Decodifica o token do QR escaneado pelo app do técnico.
+
+    Valida assinatura HMAC, confirma que a CTO pertence à empresa do usuário,
+    e devolve os dados completos da CTO (incluindo portas livres) para que o
+    app preencha o cliente automaticamente.
+    """
+    decoded = _verify_qr_token(body.payload or "")
+    if not decoded:
+        raise HTTPException(400, "QR Code inválido ou assinatura incorreta")
+    cto_id = decoded.get("id")
+    qr_company = decoded.get("cid")
+    cid = _user_company(user)
+    if qr_company != cid:
+        raise HTTPException(403, "QR pertence a outra empresa")
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+    free_ports = [p for p in (cto.get("ports") or []) if p.get("status") == "free"]
+    used_ports = [p for p in (cto.get("ports") or []) if p.get("status") == "used"]
+    return {
+        "cto": cto,
+        "free_ports": [p["number"] for p in free_ports],
+        "used_ports_count": len(used_ports),
+        "scanned_at": now_iso(),
+        "scanned_by": user.get("name"),
+    }

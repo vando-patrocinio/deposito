@@ -1359,3 +1359,21 @@ Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
 ### Não corrigido (depende do usuário)
 - Webhook Meta App Secret: precisa ser re-salvo no painel Conexões com o valor correto do Meta Dashboard
 - Banco Inter PIX: integração pausada — usuário escolheu priorizar Rede IA
+
+## 2026-05-15 (later) — QR Code criptografado para CTOs
+### Novos endpoints backend (`rede_ia.py`)
+- `GET /api/rede-ia/ctos/{id}/qrcode.png` — gera PNG do QR (só CTOs aprovadas)
+- `GET /api/rede-ia/ctos/{id}/qrcode` — devolve token + URL para preview
+- `POST /api/rede-ia/qrcode/scan` — valida HMAC-SHA256 do token escaneado e retorna CTO + portas livres
+- Token formato: `SPCTO|v1|<base64url(json)>|<hmac32>` assinado com `REDE_IA_QR_SECRET` (gerado random no .env)
+- Validações: prefixo `SPCTO|`, version v1, HMAC compare_digest (resistente a timing), company_id deve casar
+- Segurança: token alterado em 1 char → HTTP 400 "assinatura incorreta"
+
+### Frontend
+- `QrScanner.js`: novo componente com `getUserMedia` (câmera traseira) + `jsqr` para decode → POST /scan → exibe CTO identificada com portas livres
+- `RedeIaPanel.js → CTOsList`: nova coluna "QR" com botão por CTO aprovada; abre modal com PNG (fetch + Bearer auth + blob URL), botões Imprimir/Baixar/Fechar
+- `CollaboratorApp.js → KebabMenu`: nova opção "Ler QR Code da CTO" com ícone câmera
+
+### Dependências
+- backend: `qrcode==8.2`
+- frontend: `jsqr@1.4.0`

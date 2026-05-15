@@ -129,6 +129,7 @@ function CTOsList() {
   const [items, setItems] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(false);
+  const [qrModal, setQrModal] = useState(null); // {id, name}
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -166,6 +167,7 @@ function CTOsList() {
               <th style={th}>Ocupadas</th>
               <th style={th}>Status</th>
               <th style={th}>Técnico</th>
+              <th style={th}>QR</th>
             </tr>
           </thead>
           <tbody>
@@ -187,18 +189,90 @@ function CTOsList() {
                     }}>{st.l || c.status}</span>
                   </td>
                   <td style={td}>{c.technician_name || "—"}</td>
+                  <td style={td}>
+                    {c.status === "approved" ? (
+                      <button data-testid={`cto-qr-${c.id}`}
+                              onClick={() => setQrModal({ id: c.id, name: c.name })}
+                              style={btnSm("#7c3aed")}>QR</button>
+                    ) : (
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>
+                    )}
+                  </td>
                 </tr>
               );
             })}
             {items.length === 0 && !loading && (
-              <tr><td colSpan="7" style={{ ...td, textAlign: "center",
+              <tr><td colSpan="8" style={{ ...td, textAlign: "center",
                                               color: "var(--text-muted)", padding: 20 }}>
                 Nenhuma CTO cadastrada.</td></tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {qrModal && (
+        <CTOQrModal cto={qrModal} onClose={() => setQrModal(null)} />
+      )}
     </Card>
+  );
+}
+
+function CTOQrModal({ cto, onClose }) {
+  const [imgSrc, setImgSrc] = useState("");
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let revokeUrl = null;
+    const token = (typeof window !== "undefined") && window.localStorage.getItem("ponto_token");
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/rede-ia/ctos/${cto.id}/qrcode.png`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => r.blob())
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        revokeUrl = url;
+        setImgSrc(url);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+    return () => { if (revokeUrl) URL.revokeObjectURL(revokeUrl); };
+  }, [cto.id]);
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 9999,
+      display: "grid", placeItems: "center",
+    }}>
+      <div onClick={(e) => e.stopPropagation()} data-testid="cto-qr-modal"
+           style={{ background: "#fff", borderRadius: 14, padding: 24,
+                     width: "min(420px, 92vw)", textAlign: "center" }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 18 }}>{cto.name}</h3>
+        <p style={{ margin: "0 0 14px", fontSize: 12, color: "#64748b" }}>
+          Imprima este QR Code e cole na CTO física. Apenas técnicos com
+          o app SmartProv conseguem ler (assinatura HMAC).
+        </p>
+        <div style={{ background: "#fff", padding: 14, border: "1px solid #e2e8f0",
+                        borderRadius: 10, marginBottom: 14, minHeight: 200,
+                        display: "grid", placeItems: "center" }}>
+          {loading ? (
+            <span style={{ color: "#64748b", fontSize: 13 }}>Gerando QR…</span>
+          ) : imgSrc ? (
+            <img src={imgSrc} alt={`QR ${cto.name}`}
+                 style={{ width: "100%", maxWidth: 320, height: "auto" }} />
+          ) : (
+            <span style={{ color: "#dc2626", fontSize: 13 }}>Falha ao gerar QR</span>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          <button data-testid="cto-qr-print" onClick={() => window.print()}
+                  style={btnSm("#0f172a")}>Imprimir</button>
+          {imgSrc && (
+            <a href={imgSrc} download={`qr-${cto.name}.png`}
+               style={{ ...btnSm("#7c3aed"), textDecoration: "none" }}
+               data-testid="cto-qr-download">Baixar PNG</a>
+          )}
+          <button onClick={onClose} style={btnSm("#64748b")}>Fechar</button>
+        </div>
+      </div>
+    </div>
   );
 }
 const th = { textAlign: "left", padding: "8px 10px", fontSize: 11,

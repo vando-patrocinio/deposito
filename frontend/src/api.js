@@ -814,4 +814,10 @@ export const api = {
     client.get(`/rede-ia/flowchart`, { params }).then((r) => r.data),
   redeIaAnalyze: (data = {}) =>
     client.post(`/rede-ia/analyze`, data).then((r) => r.data),
+  redeIaCtoQrPng: (cto_id) =>
+    `${API}/rede-ia/ctos/${cto_id}/qrcode.png`,
+  redeIaCtoQrInfo: (cto_id) =>
+    client.get(`/rede-ia/ctos/${cto_id}/qrcode`).then((r) => r.data),
+  redeIaQrScan: (payload) =>
+    client.post(`/rede-ia/qrcode/scan`, { payload }).then((r) => r.data),
 };

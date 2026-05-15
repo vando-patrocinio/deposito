@@ -3,6 +3,7 @@ import { api } from "@/api";
 import SelfieCamera from "@/SelfieCamera";
 import LousaMobile from "@/LousaMobile";
 import CadastroCTOWizard from "@/CadastroCTOWizard";
+import QrScanner from "@/QrScanner";
 import MyAssetsModal from "@/MyAssetsModal";
 import MyHoleritesModal from "@/MyHoleritesModal";
 import ServerClock from "@/ServerClock";
@@ -521,6 +522,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 onOpenHistory={() => setScreen("history")}
                 onOpenAssets={() => setShowMyAssets(true)}
                 onOpenHolerites={collabId ? () => setShowMyHolerites(true) : null}
+                onOpenQrScanner={() => setScreen("qr-scanner")}
               />
             </div>
           </div>
@@ -842,6 +844,24 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             />
           )}
 
+          {screen === "qr-scanner" && (
+            <QrScanner
+              onClose={() => setScreen("home")}
+              onScan={(r) => {
+                // Mostra resumo + volta para home
+                const name = r?.cto?.name || "CTO";
+                const free = r?.free_ports?.length || 0;
+                setReceipt({
+                  ok: true,
+                  ts: Date.now(),
+                  type: "QR",
+                  message: `${name} identificada · ${free} portas livres`,
+                });
+                setScreen("home");
+              }}
+            />
+          )}
+
           {/* Modal: Saída com bolhas em aberto */}
           {exitConfirm && (
             <div
@@ -969,7 +989,7 @@ function parseDevice(ua) {
 }
 
 
-function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, onOpenHistory, onOpenAssets, onOpenHolerites }) {
+function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, onOpenHistory, onOpenAssets, onOpenHolerites, onOpenQrScanner }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
 
@@ -982,6 +1002,9 @@ function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, 
 
   const items = [];
   items.push({ key: "history", label: "Histórico", icon: "history", onClick: () => { onOpenHistory && onOpenHistory(); setOpen(false); } });
+  if (onOpenQrScanner) {
+    items.push({ key: "qr-scanner", label: "Ler QR Code da CTO", icon: "camera", onClick: () => { onOpenQrScanner(); setOpen(false); } });
+  }
   if (onOpenHolerites) {
     items.push({ key: "holerites", label: "Meus holerites", icon: "receipt", onClick: () => { onOpenHolerites(); setOpen(false); } });
   }
