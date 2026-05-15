@@ -374,6 +374,18 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
   - Background da área de mensagens (`wa-messages-scroll`): substituído `radial-gradient` cinza por tile SVG inline com mesmos doodles e cor `#efeae2`.
 - **Validado**: screenshot Playwright em 1920×900 confirma wallpaper bege com doodles repetindo + mascote roxo no oval branco ao centro, idêntico à referência do usuário. `data-testid="wa-wallpaper"` presente, `data-testid="wa-empty-mascot"` presente.
 
+✅ **Botão "Atender" 1-clique nas conv rows + chips de atendente estilo Woluy/FocusChat** (15/02/2026 — iter72):
+- **Pedido do usuário** (com vídeo): cada card de conversa precisa ter botão azul "Atender" (ou chip com nome do atendente atribuído) no canto inferior — formato idêntico ao mostrado no vídeo Woluy/FocusChat.
+- **Implementação** (`WhatsAppChatLayout.js`):
+  - `ConvRow` ganhou 2 props: `authUser` e `onAssignSelf(phone)`.
+  - 3 estados visuais no canto inferior-esquerdo de cada card:
+    - **Botão azul "Atender"** (gradient `#2f80ed → #1d6cd8`, hover sobe 1px) quando a conversa está com IA ou sem atendente. `data-testid="wa-conv-attender-{phone}"`. `onClick` chama `stopPropagation` + `onAssignSelf`.
+    - **Chip azul com nome do atendente** quando outro humano já assumiu. `data-testid="wa-conv-attendant-{phone}"`.
+    - **Chip verde "Você está atendendo"** quando o usuário logado é o assignee. `data-testid="wa-conv-mine-{phone}"`.
+  - Removida a antiga pílula `assignee_name` que ficava na linha 3 (substituída pelos novos chips abaixo).
+  - Wiring em `WhatsAppChatLayout`: `ConversationList` recebe `authUser` + `onAssignSelf`; callback chama `PUT /api/whatsapp-baileys/conversations/{phone}/assign` com `assignee_user_id=authUser.id, assignee_role="human"`, seleciona conv e recarrega.
+- **Validado E2E** (Playwright): renderizou **20 botões "Atender"** em conversas com IA ativa; clique disparou PUT → conversa migrou de "Automático" pro bucket "Manual" e chip "Administrador" apareceu no header da thread. Cleanup via curl devolveu pra IA.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)

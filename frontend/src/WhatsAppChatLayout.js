@@ -547,6 +547,20 @@ export default function WhatsAppChatLayout() {
         setSelectedPhone={setSelectedPhone} search={search} setSearch={setSearch}
         loading={loading} totalInBucket={buckets[bucket] || 0}
         contactProfiles={contactProfiles}
+        authUser={authUser}
+        onAssignSelf={async (phone) => {
+          // Atribui a conversa ao próprio usuário logado (1-clique "Atender")
+          if (!authUser?.id) return;
+          try {
+            await api.waBaileysAssignConversation(phone, {
+              assignee_user_id: authUser.id, assignee_role: "human",
+            });
+            setSelectedPhone(phone);
+            await loadConversations();
+          } catch (e) {
+            alert("Erro ao atender: " + (e?.response?.data?.detail || e.message));
+          }
+        }}
       />
 
       {/* COLUNA 3 — Thread aberta */}
@@ -661,7 +675,7 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
 /* ============================================================= */
 function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
                               search, setSearch, loading, totalInBucket,
-                              contactProfiles }) {
+                              contactProfiles, authUser, onAssignSelf }) {
   const bucketLabel = BUCKETS.find((b) => b.id === bucket)?.label || bucket;
   return (
     <div data-testid="wa-conversation-list" style={{
@@ -704,6 +718,8 @@ function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
           <ConvRow key={c.phone} conv={c}
                     selected={selectedPhone === c.phone}
                     profile={contactProfiles?.[c.phone]}
+                    authUser={authUser}
+                    onAssignSelf={onAssignSelf}
                     onClick={() => setSelectedPhone(c.phone)} />
         ))}
       </div>
@@ -711,7 +727,7 @@ function ConversationList({ bucket, convs, selectedPhone, setSelectedPhone,
   );
 }
 
-function ConvRow({ conv, selected, onClick, profile }) {
+function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
   /* Card profissional inspirado no FocusChat: avatar grande + WA badge +
      status dot, nome do cliente em destaque, telefone abaixo, tag de filial,
      pílula do atendente e última msg com indicador de direção + unread. */
@@ -835,23 +851,6 @@ function ConvRow({ conv, selected, onClick, profile }) {
               {conv.subscriber_plan}
             </span>
           )}
-          {conv.assignee_name && (
-            <span style={{
-              display: "inline-flex", alignItems: "center", gap: 3,
-              marginLeft: "auto",
-              padding: "3px 10px", borderRadius: 999,
-              background: isAi
-                ? "linear-gradient(135deg, #0d9488, #06b6d4)"
-                : "linear-gradient(135deg, #0ea5e9, #0284c7)",
-              color: "#fff",
-              fontSize: 10, fontWeight: 800, letterSpacing: 0.3,
-              maxWidth: 130,
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            }}>
-              {isAi ? <Bot size={9} strokeWidth={2.8} /> : <User size={9} strokeWidth={2.8} />}
-              {conv.assignee_name}
-            </span>
-          )}
         </div>
 
         {/* Linha 4: última msg + direção + unread badge */}
@@ -940,6 +939,87 @@ function ConvRow({ conv, selected, onClick, profile }) {
             Chat assumido por: <strong>{conv.assignee_name}</strong>
           </div>
         )}
+
+        {/* Botão "Atender" azul OU chip com nome do atendente (estilo Woluy/FocusChat) */}
+        {(() => {
+          const isMine = conv.assignee_user_id && authUser?.id
+                          && conv.assignee_user_id === authUser.id;
+          const hasHumanOther = conv.assignee_role === "human"
+                                  && conv.assignee_user_id
+                                  && !isMine;
+          // Caso 1: humano (outro) já assumiu → chip azul com nome (não clicável,
+          // só informativo — o usuário entra na conv clicando no card todo).
+          if (hasHumanOther) {
+            return (
+              <div style={{ marginTop: 8, display: "flex" }}>
+                <span data-testid={`wa-conv-attendant-${conv.phone}`}
+                      title={`Atribuída a ${conv.assignee_name}`}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        padding: "6px 14px", borderRadius: 8,
+                        background: "linear-gradient(180deg, #2f80ed, #1d6cd8)",
+                        color: "#fff", fontSize: 12, fontWeight: 700,
+                        boxShadow: "0 1px 2px rgba(29,108,216,.35)",
+                        maxWidth: "100%",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>
+                  <User size={11} strokeWidth={2.8} />
+                  {conv.assignee_name}
+                </span>
+              </div>
+            );
+          }
+          // Caso 2: IA ou conversa órfã → mostra botão "Atender" pro humano puxar
+          if ((isAi || !conv.assignee_user_id) && onAssignSelf && authUser?.id) {
+            return (
+              <div style={{ marginTop: 8, display: "flex" }}>
+                <button
+                  type="button"
+                  data-testid={`wa-conv-attender-${conv.phone}`}
+                  onClick={(ev) => { ev.stopPropagation(); onAssignSelf(conv.phone); }}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "6px 16px", borderRadius: 8,
+                    background: "linear-gradient(180deg, #2f80ed, #1d6cd8)",
+                    color: "#fff", fontSize: 12, fontWeight: 700,
+                    border: "none", cursor: "pointer",
+                    boxShadow: "0 1px 2px rgba(29,108,216,.35)",
+                    transition: "transform .12s, box-shadow .12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = "0 2px 6px rgba(29,108,216,.5)";
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = "0 1px 2px rgba(29,108,216,.35)";
+                    e.currentTarget.style.transform = "translateY(0)";
+                  }}>
+                  <UserCheck size={12} strokeWidth={2.6} />
+                  Atender
+                </button>
+              </div>
+            );
+          }
+          // Caso 3: é minha → chip verde "Você está atendendo"
+          if (isMine) {
+            return (
+              <div style={{ marginTop: 8, display: "flex" }}>
+                <span data-testid={`wa-conv-mine-${conv.phone}`}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        padding: "6px 14px", borderRadius: 8,
+                        background: "linear-gradient(180deg, #16a34a, #15803d)",
+                        color: "#fff", fontSize: 12, fontWeight: 700,
+                        boxShadow: "0 1px 2px rgba(22,163,74,.35)",
+                      }}>
+                  <CheckCircle2 size={11} strokeWidth={2.8} />
+                  Você está atendendo
+                </span>
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
     </button>
   );
