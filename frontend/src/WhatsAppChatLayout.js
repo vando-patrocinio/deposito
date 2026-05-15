@@ -1163,9 +1163,22 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
     return () => { cancelled = true; clearInterval(id); };
   }, [conv, onWarmContact]);
 
+  // Tracking pra detectar primeiro load vs. updates do polling
+  const lastConvPhoneRef = useRef(null);
+  const lastMsgCountRef = useRef(0);
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
-  }, [messages]);
+    if (!scrollRef.current) return;
+    const isFirstLoadForConv = lastConvPhoneRef.current !== conv?.phone;
+    const grewByLittle = messages.length - lastMsgCountRef.current <= 3;
+    // Primeiro load de uma conversa: scroll INSTANTÂNEO (sem smooth) pra
+    // garantir que renderize com 361 msgs sem travar.
+    // Updates do polling: smooth (cadência humana).
+    const behavior = isFirstLoadForConv ? "auto" : (grewByLittle ? "smooth" : "auto");
+    scrollRef.current.scrollTo({ top: 1e9, behavior });
+    lastConvPhoneRef.current = conv?.phone;
+    lastMsgCountRef.current = messages.length;
+  }, [messages, conv]);
 
   const send = async () => {
     if (!conv || !text.trim()) return;
@@ -1238,7 +1251,9 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
 
   /* Timeline mesclada: mensagens reais (WhatsApp) + coaching INTERNO (só você vê),
      ordenado por created_at. Mantém este hook ANTES de qualquer early return
-     pra atender a regra dos React Hooks. */
+     pra atender a regra dos React Hooks.
+     Iter75: insere separadores `{_kind:"daydiv"}` entre mensagens de dias
+     diferentes para criar o efeito de "quebra de chat por dia" igual WhatsApp. */
   const timeline = useMemo(() => {
     const items = [
       ...messages.map((m) => ({ _kind: "msg", _ts: m.created_at, ...m })),
@@ -1250,7 +1265,18 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
       const tb = b._ts || "";
       return ta < tb ? -1 : ta > tb ? 1 : 0;
     });
-    return items;
+    // Insere separadores de dia
+    const out = [];
+    let lastDay = "";
+    for (const it of items) {
+      const day = (it._ts || "").substring(0, 10);  // YYYY-MM-DD
+      if (day && day !== lastDay) {
+        out.push({ _kind: "daydiv", _ts: it._ts, day });
+        lastDay = day;
+      }
+      out.push(it);
+    }
+    return out;
   }, [messages, coachings]);
 
   if (!conv) {
@@ -1535,9 +1561,13 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
              backgroundSize: "300px 300px",
            }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {timeline.map((it, idx) => (
-            it._kind === "coaching"
-              ? <InternalCoachingBubble key={`c-${it.id}`} coach={it}
+          {timeline.map((it, idx) => {
+            if (it._kind === "daydiv") {
+              return <DayDivider key={`d-${it.day}`} day={it.day} />;
+            }
+            if (it._kind === "coaching") {
+              return (
+                <InternalCoachingBubble key={`c-${it.id}`} coach={it}
                   onAcknowledge={async () => {
                     try {
                       await api.centralIaCoachingAction(it.id, "acknowledged");
@@ -1558,12 +1588,16 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange 
                         c.id === it.id ? { ...c, read: true } : c));
                     } catch { /* ignore */ }
                   }} />
-              : <MsgBubble key={`m-${it.id}`} msg={it}
-                            onCorrect={() => setCorrectingMsg({
-                              msg: it,
-                              userQuestion: _findPrevUserQuestion(timeline, idx),
-                            })} />
-          ))}
+              );
+            }
+            return (
+              <MsgBubble key={`m-${it.id}`} msg={it}
+                          onCorrect={() => setCorrectingMsg({
+                            msg: it,
+                            userQuestion: _findPrevUserQuestion(timeline, idx),
+                          })} />
+            );
+          })}
           {timeline.length === 0 && (
             <div style={{ textAlign: "center", color: "var(--text-muted)",
                            fontSize: 12, padding: 30 }}>
@@ -1756,6 +1790,55 @@ function IconBtn({ icon, tooltip, onClick, disabled, variant = "default",
     </div>
   );
 }
+
+/* DayDivider — separador "Hoje", "Ontem" ou data formatada exibido entre
+ * mensagens de dias diferentes, igual WhatsApp/Telegram. */
+function DayDivider({ day }) {
+  // day = "YYYY-MM-DD"
+  const label = (() => {
+    if (!day) return "";
+    const [y, m, d] = day.split("-").map(Number);
+    if (!y || !m || !d) return day;
+    const dt = new Date(y, m - 1, d);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const ydt = new Date(today);
+    ydt.setDate(today.getDate() - 1);
+    if (dt.getTime() === today.getTime()) return "Hoje";
+    if (dt.getTime() === ydt.getTime()) return "Ontem";
+    const diff = (today - dt) / 86400000;
+    if (diff > 0 && diff < 7) {
+      // Dia da semana ("Sexta-feira")
+      return dt.toLocaleDateString("pt-BR", { weekday: "long" })
+                .replace(/^./, (c) => c.toUpperCase());
+    }
+    // Data completa em PT-BR
+    return dt.toLocaleDateString("pt-BR", {
+      day: "2-digit", month: "long", year: "numeric",
+    });
+  })();
+  return (
+    <div data-testid={`wa-daydiv-${day}`} style={{
+      display: "flex", justifyContent: "center",
+      margin: "12px 0 8px",
+    }}>
+      <span style={{
+        padding: "4px 12px",
+        borderRadius: 999,
+        background: "rgba(225, 220, 200, 0.95)",
+        color: "#54656f",
+        fontSize: 11.5, fontWeight: 600,
+        boxShadow: "0 1px 1px rgba(11,20,26,.08)",
+        textTransform: "capitalize",
+        letterSpacing: 0.2,
+      }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+
 
 function InternalCoachingBubble({ coach, onRead, onAcknowledge, onDismiss }) {
   const [expanded, setExpanded] = useState(!coach.read);

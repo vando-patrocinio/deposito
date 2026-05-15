@@ -1885,13 +1885,23 @@ async def mark_conversation_seen(phone: str, payload: MarkSeenIn = MarkSeenIn(),
 
 
 @router.get("/conversations/{phone}/messages")
-async def get_conversation_messages(phone: str, limit: int = 100,
+async def get_conversation_messages(phone: str, limit: int = 500,
                                        user: dict = Depends(require_role("gestor"))):
+    """Retorna as últimas N mensagens da conversa em ordem cronológica
+    crescente (mais antigas primeiro → mais recentes embaixo).
+
+    Bug fix iter75: antes usava `sort(+1).limit(N)` que pegava as N MAIS
+    ANTIGAS e travava o chat na primeira página quando havia muitas
+    mensagens. Agora pega as N MAIS RECENTES via `sort(-1).limit(N)` e
+    inverte pro frontend exibir em ordem natural.
+    """
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    capped = max(1, min(limit, 1000))
     docs = await db.aihub_wa_messages.find(
         {"company_id": cid, "phone": phone},
         {"_id": 0},
-    ).sort("created_at", 1).limit(min(limit, 500)).to_list(500)
+    ).sort("created_at", -1).limit(capped).to_list(capped)
+    docs.reverse()
     return {"items": docs, "phone": phone, "count": len(docs)}
 
 
