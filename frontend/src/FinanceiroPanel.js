@@ -3,8 +3,9 @@ import { api } from "@/api";
 import { Button, Card, Field, inputStyle } from "@/ui";
 import {
   TrendingUp, FileText, Wallet, CreditCard, Tag, Truck,
-  Plus, Pencil, Trash2, Search, DollarSign,
+  Plus, Pencil, Trash2, Search, DollarSign, Inbox,
 } from "lucide-react";
+import { BillsTab, CashFlowTab, ReceivablesTab } from "@/FinanceiroPanelExt";
 
 /**
  * Painel Financeiro — Aba principal com 6 sub-abas.
@@ -21,6 +22,7 @@ import {
 const SUBTABS = [
   { id: "fluxo", label: "Fluxo de Caixa", icon: TrendingUp, phase: 3 },
   { id: "pagar", label: "Contas a Pagar", icon: FileText, phase: 3 },
+  { id: "receber", label: "Recebimentos", icon: Inbox, phase: 4 },
   { id: "caixa", label: "Caixa", icon: Wallet, phase: 2 },
   { id: "metodo", label: "Método de Cobrança", icon: CreditCard, phase: 2 },
   { id: "categoria", label: "Categoria", icon: Tag, phase: 2 },
@@ -91,8 +93,9 @@ export default function FinanceiroPanel() {
         })}
       </div>
 
-      {active === "fluxo" && <ComingSoon title="Fluxo de Caixa" />}
-      {active === "pagar" && <ComingSoon title="Contas a Pagar" />}
+      {active === "fluxo" && <CashFlowTab />}
+      {active === "pagar" && <BillsTab />}
+      {active === "receber" && <ReceivablesTab />}
       {active === "caixa" && <CashAccountsTab />}
       {active === "metodo" && <PaymentMethodsTab />}
       {active === "categoria" && <CategoriesTab />}

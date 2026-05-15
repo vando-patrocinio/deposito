@@ -1,0 +1,372 @@
+"""Módulo Financeiro — Fase 3: Contas a Pagar + Lançamentos (Fluxo de Caixa).
+
+Coleções:
+  • fin_bills_payable   — contas a pagar (despesas)
+  • fin_cash_movements  — lançamentos do caixa (entrada/saída)
+
+Comportamento:
+  • Ao "marcar como paga" uma conta, cria automaticamente um cash_movement
+    de saída e atualiza o saldo da conta caixa selecionada.
+  • Job diário (auto-marker) marca como 'overdue' contas vencidas e não pagas.
+"""
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+
+from core import DEMO_COMPANY_ID, now_iso, require_role
+from database import db
+from routes.financeiro import require_finance
+
+logger = logging.getLogger("ponto.financeiro_ops")
+router = APIRouter(prefix="/api/financeiro", tags=["financeiro"])
+
+
+# ---------------------------------------------------------------------------
+# Schemas
+# ---------------------------------------------------------------------------
+class BillIn(BaseModel):
+    description: str = Field(..., min_length=1, max_length=300)
+    amount: float = Field(..., gt=0)
+    due_date: str  # YYYY-MM-DD
+    supplier_id: Optional[str] = None
+    category_id: Optional[str] = None
+    payment_method_id: Optional[str] = None
+    cash_account_id: Optional[str] = None
+    notes: Optional[str] = None
+    document_number: Optional[str] = None
+
+
+class BillUpdate(BaseModel):
+    description: Optional[str] = None
+    amount: Optional[float] = Field(None, gt=0)
+    due_date: Optional[str] = None
+    supplier_id: Optional[str] = None
+    category_id: Optional[str] = None
+    payment_method_id: Optional[str] = None
+    cash_account_id: Optional[str] = None
+    notes: Optional[str] = None
+    document_number: Optional[str] = None
+    status: Optional[str] = Field(None, pattern="^(pending|paid|overdue|cancelled)$")
+
+
+class PayBillPayload(BaseModel):
+    cash_account_id: str
+    payment_method_id: Optional[str] = None
+    paid_amount: Optional[float] = None  # default = amount
+    paid_at: Optional[str] = None  # default = now (ISO)
+    notes: Optional[str] = None
+
+
+class MovementIn(BaseModel):
+    type: str = Field(..., pattern="^(income|expense)$")
+    date: str  # YYYY-MM-DD
+    amount: float = Field(..., gt=0)
+    cash_account_id: str
+    description: str = Field(..., min_length=1, max_length=300)
+    category_id: Optional[str] = None
+    supplier_id: Optional[str] = None
+    payment_method_id: Optional[str] = None
+    reference_id: Optional[str] = None
+    reference_type: Optional[str] = None  # 'bill' | 'invoice' | 'manual'
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _today_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+async def _update_balance(cid: str, cash_account_id: str, delta: float) -> None:
+    """Atualiza current_balance da conta-caixa em delta (+ ou -)."""
+    await db.fin_cash_accounts.update_one(
+        {"id": cash_account_id, "company_id": cid},
+        {"$inc": {"current_balance": delta}, "$set": {"updated_at": now_iso()}},
+    )
+
+
+# ===========================================================================
+# CONTAS A PAGAR — CRUD
+# ===========================================================================
+@router.get("/bills")
+async def list_bills(
+    status: Optional[str] = Query(None),
+    supplier_id: Optional[str] = Query(None),
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
+    user: dict = Depends(require_finance()),
+):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    q: Dict[str, Any] = {"company_id": cid}
+    if status:
+        q["status"] = status
+    if supplier_id:
+        q["supplier_id"] = supplier_id
+    if from_date or to_date:
+        q["due_date"] = {}
+        if from_date:
+            q["due_date"]["$gte"] = from_date
+        if to_date:
+            q["due_date"]["$lte"] = to_date
+    cur = db.fin_bills_payable.find(q, {"_id": 0}).sort([("due_date", 1)])
+    return [doc async for doc in cur]
+
+
+@router.post("/bills")
+async def create_bill(payload: BillIn,
+                      user: dict = Depends(require_finance())):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    data = payload.model_dump()
+    status_ = "overdue" if data["due_date"] < _today_str() else "pending"
+    doc = {
+        **data, "id": f"bill-{uuid.uuid4().hex[:10]}",
+        "company_id": cid, "status": status_,
+        "paid_at": None, "paid_amount": None,
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.fin_bills_payable.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.put("/bills/{bill_id}")
+async def update_bill(bill_id: str, payload: BillUpdate,
+                      user: dict = Depends(require_finance())):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(400, "Nada para atualizar")
+    update["updated_at"] = now_iso()
+    r = await db.fin_bills_payable.update_one(
+        {"id": bill_id, "company_id": cid}, {"$set": update},
+    )
+    if r.matched_count == 0:
+        raise HTTPException(404, "Conta não encontrada")
+    return await db.fin_bills_payable.find_one(
+        {"id": bill_id, "company_id": cid}, {"_id": 0},
+    )
+
+
+@router.delete("/bills/{bill_id}")
+async def delete_bill(bill_id: str,
+                      user: dict = Depends(require_finance())):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    bill = await db.fin_bills_payable.find_one(
+        {"id": bill_id, "company_id": cid}, {"_id": 0},
+    )
+    if not bill:
+        raise HTTPException(404, "Conta não encontrada")
+    # Se paga, reverte movimentação (estorna saldo)
+    if bill.get("status") == "paid" and bill.get("cash_account_id") and bill.get("paid_amount"):
+        await _update_balance(cid, bill["cash_account_id"], float(bill["paid_amount"]))
+        await db.fin_cash_movements.delete_many({
+            "company_id": cid, "reference_type": "bill", "reference_id": bill_id,
+        })
+    await db.fin_bills_payable.delete_one({"id": bill_id, "company_id": cid})
+    return {"ok": True}
+
+
+@router.post("/bills/{bill_id}/pay")
+async def pay_bill(bill_id: str, payload: PayBillPayload,
+                   user: dict = Depends(require_finance())):
+    """Marca uma conta como paga e cria movimentação de saída."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    bill = await db.fin_bills_payable.find_one(
+        {"id": bill_id, "company_id": cid}, {"_id": 0},
+    )
+    if not bill:
+        raise HTTPException(404, "Conta não encontrada")
+    if bill.get("status") == "paid":
+        raise HTTPException(400, "Conta já está paga")
+
+    # Verifica conta caixa
+    cash_acc = await db.fin_cash_accounts.find_one(
+        {"id": payload.cash_account_id, "company_id": cid}, {"_id": 0},
+    )
+    if not cash_acc:
+        raise HTTPException(400, "Conta caixa inválida")
+
+    paid_amount = payload.paid_amount or bill["amount"]
+    paid_at = payload.paid_at or now_iso()
+    paid_date = paid_at[:10]
+
+    # Cria movimentação de saída
+    mov = {
+        "id": f"mov-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "type": "expense",
+        "date": paid_date,
+        "amount": float(paid_amount),
+        "cash_account_id": payload.cash_account_id,
+        "category_id": bill.get("category_id"),
+        "supplier_id": bill.get("supplier_id"),
+        "payment_method_id": payload.payment_method_id or bill.get("payment_method_id"),
+        "description": f"Pagto: {bill['description']}",
+        "reference_id": bill_id,
+        "reference_type": "bill",
+        "created_at": now_iso(),
+    }
+    await db.fin_cash_movements.insert_one(mov)
+    # Atualiza saldo da conta caixa (subtrai)
+    await _update_balance(cid, payload.cash_account_id, -float(paid_amount))
+    # Atualiza bill
+    await db.fin_bills_payable.update_one(
+        {"id": bill_id, "company_id": cid},
+        {"$set": {
+            "status": "paid",
+            "paid_at": paid_at,
+            "paid_amount": float(paid_amount),
+            "cash_account_id": payload.cash_account_id,
+            "payment_method_id": payload.payment_method_id or bill.get("payment_method_id"),
+            "updated_at": now_iso(),
+        }},
+    )
+    mov.pop("_id", None)
+    return {"ok": True, "movement": mov}
+
+
+# ===========================================================================
+# CASH MOVEMENTS (Fluxo de Caixa) — CRUD
+# ===========================================================================
+@router.get("/movements")
+async def list_movements(
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
+    cash_account_id: Optional[str] = Query(None),
+    type: Optional[str] = Query(None),
+    limit: int = Query(500, ge=1, le=5000),
+    user: dict = Depends(require_finance()),
+):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    q: Dict[str, Any] = {"company_id": cid}
+    if type:
+        q["type"] = type
+    if cash_account_id:
+        q["cash_account_id"] = cash_account_id
+    if from_date or to_date:
+        q["date"] = {}
+        if from_date:
+            q["date"]["$gte"] = from_date
+        if to_date:
+            q["date"]["$lte"] = to_date
+    cur = db.fin_cash_movements.find(q, {"_id": 0}).sort([("date", -1), ("created_at", -1)]).limit(limit)
+    return [doc async for doc in cur]
+
+
+@router.post("/movements")
+async def create_movement(payload: MovementIn,
+                          user: dict = Depends(require_finance())):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cash_acc = await db.fin_cash_accounts.find_one(
+        {"id": payload.cash_account_id, "company_id": cid}, {"_id": 0},
+    )
+    if not cash_acc:
+        raise HTTPException(400, "Conta caixa inválida")
+    data = payload.model_dump()
+    data.setdefault("reference_type", "manual")
+    doc = {
+        **data, "id": f"mov-{uuid.uuid4().hex[:10]}",
+        "company_id": cid, "created_at": now_iso(),
+    }
+    await db.fin_cash_movements.insert_one(doc)
+    # Atualiza saldo
+    delta = float(payload.amount) if payload.type == "income" else -float(payload.amount)
+    await _update_balance(cid, payload.cash_account_id, delta)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.delete("/movements/{mov_id}")
+async def delete_movement(mov_id: str,
+                          user: dict = Depends(require_finance())):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    mov = await db.fin_cash_movements.find_one(
+        {"id": mov_id, "company_id": cid}, {"_id": 0},
+    )
+    if not mov:
+        raise HTTPException(404, "Lançamento não encontrado")
+    if mov.get("reference_type") == "bill":
+        raise HTTPException(400, "Não excluir lançamento de pagamento. Estorne pela conta a pagar.")
+    # Reverte saldo
+    if mov.get("cash_account_id") and mov.get("amount"):
+        delta = -float(mov["amount"]) if mov["type"] == "income" else float(mov["amount"])
+        await _update_balance(cid, mov["cash_account_id"], delta)
+    await db.fin_cash_movements.delete_one({"id": mov_id, "company_id": cid})
+    return {"ok": True}
+
+
+# ===========================================================================
+# FLUXO DE CAIXA — Agregado para gráfico
+# ===========================================================================
+@router.get("/cashflow")
+async def cashflow_summary(
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
+    group_by: str = Query("day", pattern="^(day|month)$"),
+    user: dict = Depends(require_finance()),
+):
+    """Agrega entradas/saídas por dia (ou mês). Default: últimos 30d."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    if not to_date:
+        to_date = _today_str()
+    if not from_date:
+        # 30 dias atrás
+        from datetime import timedelta
+        start = datetime.now(timezone.utc) - timedelta(days=30)
+        from_date = start.strftime("%Y-%m-%d")
+
+    q: Dict[str, Any] = {"company_id": cid, "date": {"$gte": from_date, "$lte": to_date}}
+    cur = db.fin_cash_movements.find(q, {"_id": 0, "date": 1, "type": 1, "amount": 1})
+    buckets: Dict[str, Dict[str, float]] = {}
+    totals = {"income": 0.0, "expense": 0.0}
+    async for m in cur:
+        key = m["date"][:7] if group_by == "month" else m["date"]
+        b = buckets.setdefault(key, {"income": 0.0, "expense": 0.0})
+        amt = float(m.get("amount") or 0)
+        b[m["type"]] = b.get(m["type"], 0.0) + amt
+        totals[m["type"]] += amt
+    # Lista ordenada
+    series = []
+    for k in sorted(buckets.keys()):
+        b = buckets[k]
+        series.append({
+            "date": k,
+            "income": round(b["income"], 2),
+            "expense": round(b["expense"], 2),
+            "net": round(b["income"] - b["expense"], 2),
+        })
+    # Saldo total atual (todas contas ativas)
+    cash_accs = [doc async for doc in db.fin_cash_accounts.find(
+        {"company_id": cid, "active": True}, {"_id": 0, "current_balance": 1},
+    )]
+    current_balance = sum(float(a.get("current_balance") or 0) for a in cash_accs)
+    return {
+        "series": series,
+        "totals": {
+            "income": round(totals["income"], 2),
+            "expense": round(totals["expense"], 2),
+            "net": round(totals["income"] - totals["expense"], 2),
+        },
+        "current_balance": round(current_balance, 2),
+        "group_by": group_by,
+        "from_date": from_date,
+        "to_date": to_date,
+    }
+
+
+# ===========================================================================
+# Job interno (chamado pelo scheduler central) — marca contas vencidas
+# ===========================================================================
+async def auto_mark_overdue() -> Dict[str, Any]:
+    today = _today_str()
+    r = await db.fin_bills_payable.update_many(
+        {"status": "pending", "due_date": {"$lt": today}},
+        {"$set": {"status": "overdue", "updated_at": now_iso()}},
+    )
+    return {"updated": r.modified_count}

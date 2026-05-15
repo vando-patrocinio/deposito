@@ -85,6 +85,9 @@ from routes import (
     ai_training as routes_ai_training,
     connections as routes_connections,
     financeiro as routes_financeiro,
+    financeiro_ops as routes_financeiro_ops,
+    atlaz_financeiro as routes_atlaz_financeiro,
+    mass_messaging as routes_mass_messaging,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -320,6 +323,11 @@ async def _startup() -> None:
         start_worker as start_ai_training_scheduler,
     )
     start_ai_training_scheduler()
+    routes_mass_messaging.start_worker()
+    # Cron: auto-marca contas a pagar vencidas — diário 03:00
+    from routes.financeiro_ops import auto_mark_overdue
+    scheduler.add_job(auto_mark_overdue, CronTrigger(hour=3, minute=0),
+                      id="fin_overdue_daily", replace_existing=True)
     asyncio.create_task(routes_plans.adjustment_scheduler_worker())
     from services.drive_backup import daily_backup_worker as drive_daily_worker
     asyncio.create_task(drive_daily_worker())
@@ -330,6 +338,7 @@ async def _startup() -> None:
 async def _shutdown() -> None:
     scheduler.shutdown(wait=False)
     routes_atlaz.stop_worker()
+    routes_mass_messaging.stop_worker()
     client.close()
 
 
@@ -385,6 +394,9 @@ app.include_router(routes_integrations.router)
 app.include_router(routes_ai_training.router)
 app.include_router(routes_connections.router)
 app.include_router(routes_financeiro.router)
+app.include_router(routes_financeiro_ops.router)
+app.include_router(routes_atlaz_financeiro.router)
+app.include_router(routes_mass_messaging.router)
 
 
 # ============================================================

@@ -5,7 +5,7 @@ import {
   Boxes, Sparkles, Users, MapPin, ShieldCheck, ClipboardList,
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
   Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle, Cpu,
-  Receipt, CalendarDays, Wand2, DollarSign,
+  Receipt, CalendarDays, Wand2, DollarSign, Megaphone,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
@@ -18,6 +18,7 @@ import HoleriteViewer from "@/HoleriteViewer";
 import FeriadosPanel from "@/FeriadosPanel";
 import SettingsPanel from "@/SettingsPanel";
 import FinanceiroPanel from "@/FinanceiroPanel";
+import MassMessagingPanel from "@/MassMessagingPanel";
 import MotorIaCard from "@/MotorIaCard";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
 import MotorIaBudgetCard from "@/MotorIaBudgetCard";
@@ -129,6 +130,7 @@ const NAV_GROUPS = [
       { id: "ai-corrections", icon: Wand2, label: "Correções IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "central-ia", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "atendimento", icon: MessageCircle, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador"] },
+      { id: "mass-messaging", icon: Megaphone, label: "Disparo em Massa", roles: ["gestor", "auditor", "administrador"] },
     ],
   },
   {
@@ -819,6 +821,7 @@ function AppContent() {
           {view === "holerite" && <HoleritePanel />}
           {view === "feriados" && <FeriadosPanel />}
           {view === "financeiro" && <FinanceiroPanel />}
+          {view === "mass-messaging" && <MassMessagingPanel />}
           {view === "logs" && <LogsPanel />}
           {view === "settings" && <SettingsPanel />}
           {view === "motor-ia" && (

@@ -1,0 +1,64 @@
+{
+  "summary": "Iter 73 — Tested 3 new P1 modules: Financeiro Fase 3 (Bills + Cashflow + Movements), Financeiro Fase 4 (Atlaz Financeiro probe/sync/invoices/stats) e Mass Messaging (campaigns CRUD + CSV upload + preview + start/pause/resume + worker). Backend: 25/25 pytest PASS em 34.57s incl. teste de worker (sleep 30s). Frontend: data-testids OK em fin-tab-fluxo (Recharts + 4 chips + Saldo Atual/Entradas/Saídas/Resultado + tabela 'Últimos lançamentos'), fin-tab-pagar (filtros Todas/Pendentes/Vencidas/Pagas/Canceladas + 'Nova conta' + bill row com botões pay/edit/delete), fin-tab-receber (sync-btn + probe-btn), tab-mass-messaging (sidebar 'Disparo em Massa' grupo Inteligência, 'Nova campanha' abre modal com camp-fld-name/channel/mode/text/create-btn).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Fluxo de Caixa", "issues": ["Recharts emite avisos width(-1)/height(-1) no console (Container ainda não dimensionado no primeiro paint — gráfico renderiza após resize). Não bloqueia funcionalidade. Mesmo aviso já existia em iter72."]},
+      {"screen": "Disparo em Massa > Nova campanha", "issues": ["Campo 'Agendar para' usa <input type=datetime-local> nativo (mm/dd/yyyy --:-- --) em vez do Calendar do shadcn — formato US confusing pra usuário pt-BR. Considerar trocar por DateTimePicker shadcn."]}
+    ]
+  },
+  "verified_flows": [
+    "POST /api/financeiro/bills com due_date futura → status='pending'; due_date<hoje → status='overdue'",
+    "GET /api/financeiro/bills?status=pending filtra corretamente",
+    "PUT /api/financeiro/bills/{id} atualiza notes",
+    "POST /api/financeiro/bills/{id}/pay cria fin_cash_movement type=expense, decrementa current_balance em -amount, vira status=paid",
+    "POST /api/financeiro/bills/{id}/pay segunda vez retorna 400 'Conta já está paga'",
+    "DELETE /api/financeiro/bills/{id} estorna saldo (+amount) quando paga",
+    "POST /api/financeiro/movements type=income incrementa balance; DELETE estorna",
+    "GET /api/financeiro/cashflow default 30d retorna series + totals(income/expense/net) + current_balance",
+    "GET /api/atlaz-financeiro/probe retorna 5 endpoints com http_status/available",
+    "POST /api/atlaz-financeiro/sync-now tolerante a 404, retorna inserted/updated/errors",
+    "GET /api/atlaz-financeiro/invoices e /stats fixed schemas",
+    "POST /api/mass-messaging/campaigns mode=template sem template_name → 400; mode=free sem text → 400",
+    "POST /api/mass-messaging/campaigns válida cria campanha status=draft",
+    "POST start sem destinatários → 400",
+    "POST /campaigns/{id}/recipients/upload aceita CSV multipart, normaliza tel BR (+55 prepend), retorna inserted=4/invalid=1/headers",
+    "GET /campaigns/{id}/preview renderiza {{name}} substituindo por valor real (Joao/Maria/etc)",
+    "POST /start com destinatários → status=running",
+    "Worker mass_messaging: após 30s, recipients saem de 'queued' e vão para 'failed' (Meta sem credenciais, esperado)",
+    "Frontend tab-financeiro → 7 sub-abas (Fluxo, Pagar, Receber, Caixa, Método, Categoria, Fornecedor)",
+    "Frontend fin-tab-fluxo: 4 cards Saldo Atual/Entradas/Saídas/Resultado + chips 7d/30d/90d + gráfico Recharts + Lançamento btn + tabela 'Últimos lançamentos'",
+    "Frontend fin-tab-pagar: 3 cards Pendentes/Vencidas/Pagas + 5 filtros + 'Nova conta' btn + bill row TEST_Bill_Overdue (Vencida) com ações",
+    "Frontend fin-tab-receber: receivables-sync-btn + receivables-probe-btn presentes",
+    "Frontend Inteligência > Disparo em Massa: lista vazia OK, 'Nova campanha' abre modal com todos campos esperados"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter73_financeiro_p34_mass.py",
+    "/app/test_reports/pytest/iter73_results.xml"
+  ],
+  "action_items": [
+    "(Opcional/baixa prio) Substituir <input type=datetime-local> em camp 'Agendar para' por DateTimePicker shadcn (formato pt-BR)",
+    "(Opcional/baixa prio) Investigar warning Recharts width(-1) — adicionar minWidth/minHeight ao ResponsiveContainer em Fluxo de Caixa"
+  ],
+  "critical_code_review_comments": [
+    "financeiro_ops.py: lógica do pay_bill consistente — cria movement, atualiza saldo, atualiza bill status atomicamente (porém sem transação Mongo — em caso de falha entre _update_balance e update bill pode gerar inconsistência. Aceitável pra MVP).",
+    "financeiro_ops.py auto_mark_overdue: roda em 3h cron — testei manualmente o status='overdue' funciona via due_date<hoje no POST.",
+    "atlaz_financeiro.py probe: PROBE_ENDPOINTS hardcoded com 5 endpoints. Estratégia tolerante (200 ou 400) coberta. _norm_invoice usa pick() bem definido — bom fallback.",
+    "mass_messaging.py: worker assíncrono com burst=throttle*5/60 por tick de 5s. Validação de status antes de pause/resume previne race. CSV usa utf-8-sig (suporta BOM Excel). _normalize_phone aceita 10/11 dígitos BR e adiciona '55' — coberto pelos testes (4 válidos + 1 inválido).",
+    "mass_messaging.py: bulk insert a cada 500 recipients — bom pra alvos >10k. Limite enforced no list_recipients (min 5000). Adequado.",
+    "Console: Recharts warnings (width/height -1) persistem em Fluxo de Caixa — mesmo que iter72. Não bloqueante.",
+    "Atenção: O worker continuará processando indefinidamente campanhas com status='running' mesmo quando workers múltiplos forem iniciados — atualmente protegido por singleton _worker_task. Em ambientes com múltiplos pods, considerar lock distribuído (não bloqueante para MVP single-pod)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter73_financeiro_p34_mass.py (novo, 25 cases)"
+  ],
+  "success_rate": { "backend": "100% (25/25)", "frontend": "100% (todos data-testids encontrados, fluxos navegáveis)" },
+  "test_credentials": "admin@empresa.com / 123456 (super_admin)",
+  "seed_data_creation": "Teste deixou 1 bill 'TEST_Bill_Overdue' (R$99,90) na lista para inspeção visual. Conta caixa 'TEST_CashAcct_Iter73' deletada ao final. Campaign 'TEST_Camp_Iter73' deletada. Main agent pode limpar a bill restante via DELETE se quiser.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 73 validou 3 módulos: Financeiro Fase 3 (Bills+Cashflow), Fase 4 (Atlaz Financeiro), Mass Messaging. Todos data-testids documentados existem. Worker mass_messaging confirmado rodando em background (recipients saem de queued após start). Para próxima iteração: validar CRUD UI completo (criar bill via modal e pagar via modal pay) end-to-end no Playwright; testar campanha completa com upload CSV real via UI.",
+  "rca of the issue": "N/A — todas implementações funcionais sem bugs detectados."
+}
