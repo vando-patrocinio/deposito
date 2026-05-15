@@ -749,4 +749,43 @@ export const api = {
   driveRemoteFiles: () => client.get(`/drive/remote-files`).then((r) => r.data),
   driveRestore: (file_id, mode = "merge", collections = null) =>
     client.post(`/drive/restore`, { file_id, mode, collections }).then((r) => r.data),
+
+  // Conexões (card unificado em Settings)
+  connectionsList: () => client.get(`/connections/`).then((r) => r.data),
+  connectionUpdate: (integration_id, values) =>
+    client.put(`/connections/${integration_id}`, { values }).then((r) => r.data),
+
+  // Financeiro — Cadastros base
+  finSummary: () => client.get(`/financeiro/summary`).then((r) => r.data),
+  finCategoriesList: (only_active = false) =>
+    client.get(`/financeiro/categories`, { params: { only_active } }).then((r) => r.data),
+  finCategoryCreate: (data) => client.post(`/financeiro/categories`, data).then((r) => r.data),
+  finCategoryUpdate: (id, data) =>
+    client.put(`/financeiro/categories/${id}`, data).then((r) => r.data),
+  finCategoryDelete: (id) => client.delete(`/financeiro/categories/${id}`).then((r) => r.data),
+
+  finSuppliersList: (only_active = false) =>
+    client.get(`/financeiro/suppliers`, { params: { only_active } }).then((r) => r.data),
+  finSupplierCreate: (data) => client.post(`/financeiro/suppliers`, data).then((r) => r.data),
+  finSupplierUpdate: (id, data) =>
+    client.put(`/financeiro/suppliers/${id}`, data).then((r) => r.data),
+  finSupplierDelete: (id) => client.delete(`/financeiro/suppliers/${id}`).then((r) => r.data),
+
+  finPaymentMethodsList: (only_active = false) =>
+    client.get(`/financeiro/payment-methods`, { params: { only_active } }).then((r) => r.data),
+  finPaymentMethodCreate: (data) =>
+    client.post(`/financeiro/payment-methods`, data).then((r) => r.data),
+  finPaymentMethodUpdate: (id, data) =>
+    client.put(`/financeiro/payment-methods/${id}`, data).then((r) => r.data),
+  finPaymentMethodDelete: (id) =>
+    client.delete(`/financeiro/payment-methods/${id}`).then((r) => r.data),
+
+  finCashAccountsList: (only_active = false) =>
+    client.get(`/financeiro/cash-accounts`, { params: { only_active } }).then((r) => r.data),
+  finCashAccountCreate: (data) =>
+    client.post(`/financeiro/cash-accounts`, data).then((r) => r.data),
+  finCashAccountUpdate: (id, data) =>
+    client.put(`/financeiro/cash-accounts/${id}`, data).then((r) => r.data),
+  finCashAccountDelete: (id) =>
+    client.delete(`/financeiro/cash-accounts/${id}`).then((r) => r.data),
 };

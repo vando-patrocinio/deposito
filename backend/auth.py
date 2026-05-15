@@ -17,7 +17,7 @@ JWT_ALGORITHM = "HS256"
 # dispositivo (single-session policy).
 ACCESS_TOKEN_TTL_MIN = 60 * 24 * 30  # 30 dias
 
-VALID_ROLES = ("colaborador", "gestor", "administrador", "auditor")
+VALID_ROLES = ("colaborador", "gestor", "financeiro", "administrador", "auditor")
 
 
 def _now_iso() -> str:

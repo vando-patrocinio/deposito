@@ -83,6 +83,8 @@ from routes import (
     appointments as routes_appointments,
     integrations as routes_integrations,
     ai_training as routes_ai_training,
+    connections as routes_connections,
+    financeiro as routes_financeiro,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -381,6 +383,8 @@ app.include_router(routes_ai_corrections.router)
 app.include_router(routes_appointments.router)
 app.include_router(routes_integrations.router)
 app.include_router(routes_ai_training.router)
+app.include_router(routes_connections.router)
+app.include_router(routes_financeiro.router)
 
 
 # ============================================================

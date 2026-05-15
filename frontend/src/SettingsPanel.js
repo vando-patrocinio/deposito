@@ -6,6 +6,7 @@ import SmartoltIntegrationCard from "@/SmartoltIntegrationCard";
 import MagnusBillingIntegrationCard from "@/MagnusBillingIntegrationCard";
 import BrandingCard from "@/BrandingCard";
 import MotorIaCard from "@/MotorIaCard";
+import ConnectionsCard from "@/ConnectionsCard";
 
 export default function SettingsPanel() {
   const [s, setS] = useState(null);
@@ -567,6 +568,7 @@ export default function SettingsPanel() {
 
       <BrandingCard />
       <MotorIaCard />
+      <ConnectionsCard />
       <AtlazIntegrationCard />
       <SmartoltIntegrationCard />
       <MagnusBillingIntegrationCard />
