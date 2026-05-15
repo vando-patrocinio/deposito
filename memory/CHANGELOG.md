@@ -1528,3 +1528,27 @@ Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
 
 ### Backend reuso
 - Endpoints já existentes: `POST /ces`, `POST /cables`, `PUT /cables/{id}` (atualiza segments)
+
+## 2026-05-15 (final 5) — Comprimento auto + Notificações mapa
+### Cálculo automático de comprimento de cabos
+- Função `_calculate_cable_length(segments)`: Haversine acumulado entre waypoints consecutivos
+- `POST /api/rede-ia/cables`: se `length_m` for null/ausente, calcula automaticamente a partir dos segments
+- `PUT /api/rede-ia/cables/{id}`: idem — útil quando arrasta waypoint, recalcula auto
+- Cabo de 3 pontos retornou 302m correto
+
+### Sistema de notificações do mapa
+- Nova coleção `network_notifications`
+- Helper `_notify_managers(company_id, evt)`: cria notificação in-app + dispara WhatsApp opcional
+- Triggers: criação de CE (`POST /ces`), criação de cabo (`POST /cables`)
+- Endpoints:
+  - `GET /api/rede-ia/notifications?unread_only=` — lista (com counter unread)
+  - `POST /api/rede-ia/notifications/mark-read` — marca uma ou todas como lidas
+- **WhatsApp opcional**: gestores com `notify_map_events=true` + `phone` recebem mensagem formatada
+  - Tenta Twilio primeiro, fallback Meta WhatsApp Cloud
+  - Não bloqueia se providers não estiverem configurados (fire-and-forget)
+
+### Frontend
+- Sininho 🔔 no header do RedeIaPanel com badge vermelho de unread
+- Polling a cada 25s
+- Panel dropdown com lista de notificações + botão "Marcar todas"
+- Click em notificação não-lida → marca como lida

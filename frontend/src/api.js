@@ -844,6 +844,11 @@ export const api = {
                   { params: { radius_m } }).then((r) => r.data),
   redeIaPublicTokenCreate: (vlan = null, ttl_days = 30) =>
     client.post(`/rede-ia/map/public/token`, { vlan, ttl_days }).then((r) => r.data),
+  redeIaNotifications: (unread_only = false) =>
+    client.get(`/rede-ia/notifications`, { params: { unread_only } }).then((r) => r.data),
+  redeIaNotifMarkRead: (notification_id = null, mark_all = false) =>
+    client.post(`/rede-ia/notifications/mark-read`,
+                  { notification_id, mark_all }).then((r) => r.data),
   redeIaQrScan: (payload) =>
     client.post(`/rede-ia/qrcode/scan`, { payload }).then((r) => r.data),
   redeIaQrBindPort: (data) =>

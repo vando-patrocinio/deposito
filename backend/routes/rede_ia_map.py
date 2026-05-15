@@ -280,6 +280,14 @@ async def create_ce(body: CEIn,
     }
     await db.network_ces.insert_one(doc)
     doc.pop("_id", None)
+    await _notify_managers(cid, {
+        "event": "ce_created",
+        "title": f"Nova CE criada: {body.name}",
+        "message": (f"{user.get('name','Alguém')} criou a Caixa de Emenda '{body.name}' "
+                     f"({body.type}, {body.capacity_fo} FO) no mapa."),
+        "ref_id": doc["id"], "ref_type": "ce",
+        "actor": user.get("name"),
+    })
     return doc
 
 
@@ -320,6 +328,11 @@ async def create_cable(body: CableIn,
         raise HTTPException(400, f"Tipo inválido. Use: {CABLE_TYPES}")
     cid = _company(user)
     fo_map = {"drop": 1, "6fo": 6, "12fo": 12, "24fo": 24, "48fo": 48, "96fo": 96}
+    segments = [s.model_dump() for s in body.segments]
+    # Calcula comprimento automaticamente se não foi fornecido
+    length_m = body.length_m
+    if length_m is None and len(segments) >= 2:
+        length_m = _calculate_cable_length(segments)
     doc = {
         "id": f"cab-{uuid.uuid4().hex[:10]}",
         "company_id": cid,
@@ -327,8 +340,8 @@ async def create_cable(body: CableIn,
         "fo_count": fo_map.get(body.type, 12),
         "from_id": body.from_id, "from_type": body.from_type,
         "to_id": body.to_id, "to_type": body.to_type,
-        "segments": [s.model_dump() for s in body.segments],
-        "length_m": body.length_m,
+        "segments": segments,
+        "length_m": length_m,
         "notes": body.notes,
         "status": "active",
         "created_at": now_iso(), "updated_at": now_iso(),
@@ -336,7 +349,26 @@ async def create_cable(body: CableIn,
     }
     await db.network_cables.insert_one(doc)
     doc.pop("_id", None)
+    # Notifica gestores de rede
+    await _notify_managers(cid, {
+        "event": "cable_created",
+        "title": f"Novo cabo {body.type.upper()} criado",
+        "message": (f"{user.get('name','Alguém')} criou um cabo {body.type.upper()} de "
+                     f"{round(length_m)}m entre {body.from_type.upper()} {body.from_id[:8]} "
+                     f"e {body.to_type.upper()} {body.to_id[:8]}."),
+        "ref_id": doc["id"], "ref_type": "cable",
+        "actor": user.get("name"),
+    })
     return doc
+
+
+def _calculate_cable_length(segments: List[Dict[str, Any]]) -> float:
+    """Soma Haversine entre todos os segmentos consecutivos."""
+    total = 0.0
+    for i in range(len(segments) - 1):
+        a, b = segments[i], segments[i + 1]
+        total += _haversine_m(a["lat"], a["lng"], b["lat"], b["lng"])
+    return round(total, 1)
 
 
 @router.put("/cables/{cable_id}")
@@ -344,16 +376,21 @@ async def update_cable(cable_id: str, body: CableIn,
                         user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
     cid = _company(user)
     fo_map = {"drop": 1, "6fo": 6, "12fo": 12, "24fo": 24, "48fo": 48, "96fo": 96}
+    segments = [s if isinstance(s, dict) else s.model_dump() for s in body.segments]
+    length_m = body.length_m
+    if length_m is None and len(segments) >= 2:
+        length_m = _calculate_cable_length(segments)
     upd = body.model_dump()
     upd["fo_count"] = fo_map.get(body.type, 12)
-    upd["segments"] = [s if isinstance(s, dict) else s.model_dump() for s in body.segments]
+    upd["segments"] = segments
+    upd["length_m"] = length_m
     upd["updated_at"] = now_iso()
     r = await db.network_cables.update_one(
         {"id": cable_id, "company_id": cid}, {"$set": upd},
     )
     if r.matched_count == 0:
         raise HTTPException(404, "Cabo não encontrado")
-    return {"ok": True}
+    return {"ok": True, "length_m": length_m}
 
 
 @router.delete("/cables/{cable_id}")
@@ -662,3 +699,109 @@ async def public_map_data(token: str):
         "vlan_filter": vlan_filter,
         "public": True,
     }
+
+
+# ---------------------------------------------------------------------------
+# Notifications — gestor de rede recebe ao criar/alterar elementos do mapa
+# ---------------------------------------------------------------------------
+async def _notify_managers(company_id: str, evt: Dict[str, Any]) -> None:
+    """Cria notificação in-app para gestor_rede + dispara WhatsApp se configurado.
+
+    Não bloqueia em caso de erro — é fire-and-forget.
+    """
+    try:
+        doc = {
+            "id": f"notif-{uuid.uuid4().hex[:10]}",
+            "company_id": company_id,
+            "event": evt.get("event"),
+            "title": evt.get("title"),
+            "message": evt.get("message"),
+            "ref_id": evt.get("ref_id"),
+            "ref_type": evt.get("ref_type"),
+            "actor": evt.get("actor"),
+            "read": False,
+            "created_at": now_iso(),
+        }
+        await db.network_notifications.insert_one(doc)
+        # Dispara WhatsApp para gestor_rede com telefone configurado
+        await _whatsapp_notify_managers(company_id, evt)
+    except Exception as e:
+        logger.warning("[map-notif] falha %s", e)
+
+
+async def _whatsapp_notify_managers(company_id: str, evt: Dict[str, Any]) -> None:
+    """Envia WhatsApp para todos os usuários gestor_rede com phone preenchido."""
+    try:
+        # Busca gestores
+        managers = await db.users.find(
+            {"company_id": company_id,
+             "role": {"$in": ["gestor_rede", "gestor", "administrador"]},
+             "notify_map_events": True,
+             "phone": {"$ne": None, "$exists": True}},
+            {"_id": 0, "phone": 1, "name": 1, "role": 1},
+        ).to_list(20)
+        if not managers:
+            return
+        # Tenta usar provider configurado (twilio ou meta)
+        msg = f"🗺 *Rede IA*\n{evt.get('title','')}\n\n{evt.get('message','')}\n\n_Por: {evt.get('actor','?')}_"
+        for m in managers:
+            phone = (m.get("phone") or "").lstrip("+").replace(" ", "")
+            if not phone:
+                continue
+            try:
+                # Tenta Twilio primeiro
+                from services.twilio_whatsapp import send_whatsapp as twilio_send  # type: ignore
+                await twilio_send(company_id, phone, msg)
+            except Exception:
+                try:
+                    from services.whatsapp_meta import send_whatsapp_text as meta_send  # type: ignore
+                    await meta_send(company_id, phone, msg)
+                except Exception as e2:
+                    logger.info("[map-notif wpp] sem provider WhatsApp: %s", e2)
+    except Exception as e:
+        logger.info("[map-notif wpp] %s", e)
+
+
+@router.get("/notifications")
+async def list_notifications(unread_only: bool = Query(False),
+                              limit: int = Query(50, ge=1, le=200),
+                              user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
+    cid = _company(user)
+    q: Dict[str, Any] = {"company_id": cid}
+    if unread_only:
+        q["read"] = False
+    items = await db.network_notifications.find(q, {"_id": 0}).sort(
+        "created_at", -1,
+    ).to_list(limit)
+    unread = await db.network_notifications.count_documents(
+        {"company_id": cid, "read": False},
+    )
+    return {"items": items, "unread": unread, "total": len(items)}
+
+
+class MarkReadIn(BaseModel):
+    notification_id: Optional[str] = None
+    mark_all: bool = False
+
+
+@router.post("/notifications/mark-read")
+async def mark_read(body: MarkReadIn,
+                     user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
+    cid = _company(user)
+    if body.mark_all:
+        r = await db.network_notifications.update_many(
+            {"company_id": cid, "read": False},
+            {"$set": {"read": True, "read_at": now_iso(),
+                       "read_by": user.get("name")}},
+        )
+        return {"ok": True, "modified": r.modified_count}
+    if body.notification_id:
+        r = await db.network_notifications.update_one(
+            {"id": body.notification_id, "company_id": cid},
+            {"$set": {"read": True, "read_at": now_iso(),
+                       "read_by": user.get("name")}},
+        )
+        if r.matched_count == 0:
+            raise HTTPException(404, "Notificação não encontrada")
+        return {"ok": True}
+    raise HTTPException(400, "Forneça notification_id ou mark_all=true")

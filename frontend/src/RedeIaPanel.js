@@ -32,6 +32,32 @@ const STATUS_BADGE = {
 
 export default function RedeIaPanel() {
   const [tab, setTab] = useState("overview");
+  const [notifCount, setNotifCount] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifs, setNotifs] = useState([]);
+
+  const loadNotifs = useCallback(async () => {
+    try {
+      const r = await api.redeIaNotifications(false);
+      setNotifs(r.items || []);
+      setNotifCount(r.unread || 0);
+    } catch (_) {}
+  }, []);
+  useEffect(() => {
+    loadNotifs();
+    const id = setInterval(loadNotifs, 25000);
+    return () => clearInterval(id);
+  }, [loadNotifs]);
+
+  const markAll = async () => {
+    try { await api.redeIaNotifMarkRead(null, true); await loadNotifs(); }
+    catch (e) { alert(e?.response?.data?.detail || "Erro"); }
+  };
+  const markOne = async (id) => {
+    try { await api.redeIaNotifMarkRead(id, false); await loadNotifs(); }
+    catch (_) {}
+  };
+
   return (
     <div data-testid="rede-ia-panel" style={{ display: "grid", gap: 16 }}>
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -45,6 +71,83 @@ export default function RedeIaPanel() {
             Supervisora inteligente da rede FTTH — padroniza CTOs, valida topologia e mantém
             o fluxograma sempre atualizado.
           </p>
+        </div>
+        {/* Bell de notificações */}
+        <div style={{ position: "relative" }}>
+          <button data-testid="rede-ia-notif-bell"
+            onClick={() => setNotifOpen(!notifOpen)}
+            style={{
+              position: "relative", padding: "8px 14px", borderRadius: 10,
+              background: notifCount > 0 ? "#dc2626" : "var(--bg-surface)",
+              color: notifCount > 0 ? "#fff" : "var(--text-primary)",
+              border: "1px solid var(--border-default)",
+              cursor: "pointer", fontSize: 14, fontWeight: 700,
+              display: "inline-flex", alignItems: "center", gap: 8,
+            }}>
+            🔔 Notificações
+            {notifCount > 0 && (
+              <span style={{
+                background: "#fff", color: "#dc2626", borderRadius: 99,
+                padding: "1px 7px", fontSize: 11, fontWeight: 800,
+              }}>{notifCount}</span>
+            )}
+          </button>
+          {notifOpen && (
+            <div data-testid="rede-ia-notif-panel"
+              style={{
+                position: "absolute", right: 0, top: "calc(100% + 6px)",
+                width: 360, maxHeight: 480, overflow: "auto",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-default)",
+                borderRadius: 12, padding: 0, zIndex: 200,
+                boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
+              }}>
+              <div style={{ display: "flex", justifyContent: "space-between",
+                              alignItems: "center", padding: "12px 14px",
+                              borderBottom: "1px solid var(--border-default)" }}>
+                <strong style={{ fontSize: 13 }}>Notificações ({notifCount} novas)</strong>
+                <button onClick={markAll}
+                  style={{ padding: "4px 10px", borderRadius: 6, border: 0,
+                            background: "#0f172a", color: "#fff",
+                            fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                  Marcar todas
+                </button>
+              </div>
+              {notifs.length === 0 && (
+                <div style={{ padding: 20, textAlign: "center",
+                                 color: "var(--text-muted)", fontSize: 12 }}>
+                  Nenhuma notificação ainda.
+                </div>
+              )}
+              {notifs.map((n) => (
+                <div key={n.id} onClick={() => !n.read && markOne(n.id)}
+                  style={{
+                    padding: "10px 14px",
+                    borderBottom: "1px solid var(--border-default)",
+                    cursor: n.read ? "default" : "pointer",
+                    background: n.read ? "transparent" : "#fef3c7",
+                  }}>
+                  <div style={{ display: "flex", justifyContent: "space-between",
+                                  gap: 8, alignItems: "flex-start" }}>
+                    <strong style={{ fontSize: 12, color: "var(--text-primary)",
+                                       lineHeight: 1.3 }}>{n.title}</strong>
+                    {!n.read && <span style={{ width: 8, height: 8,
+                                                  background: "#dc2626",
+                                                  borderRadius: 99, marginTop: 4,
+                                                  flexShrink: 0 }} />}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-secondary)",
+                                  marginTop: 4, lineHeight: 1.4 }}>
+                    {n.message}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)",
+                                  marginTop: 4 }}>
+                    {new Date(n.created_at).toLocaleString("pt-BR")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
