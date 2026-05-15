@@ -219,14 +219,6 @@ def build_budget_pdf(budget: Dict[str, Any], generated_by: str = "",
     story.append(Spacer(1, 0.6 * cm))
 
     # ---- 6. Rodapé + assinaturas ----
-    ai_meta = budget.get("ai_model", "")
-    story.append(Paragraph(
-        f"<font color='#64748b'>Preços estimados pela <b>Orçamento_IA</b> "
-        f"({ai_meta or 'Claude Sonnet 4.5'}) com base em conhecimento de mercado "
-        f"(Mercado Livre · Amazon · Furukawa · FiberHome · Intelbras). Valores "
-        f"sujeitos a confirmação com fornecedor antes do fechamento.</font>",
-        small))
-    story.append(Spacer(1, 0.4 * cm))
     story.append(Paragraph(
         f"Emitido por: <b>{generated_by or budget.get('created_by_name', '')}</b> "
         f"· Validade: 7 dias a partir da emissão.", body))
