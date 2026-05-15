@@ -45,7 +45,7 @@ export default function LousaMobile({ collaboratorId, onBack }) {
 
   // --- Reorder helpers (modo "Reordenar") ---
   function isLockedTicket(t) {
-    return t.locked || t.priority !== "normal" || ["aberta", "aguardando_atendimento", "finalizada"].includes(t.status);
+    return t.reorder_locked || t.locked || t.priority !== "normal" || ["aberta", "aguardando_atendimento", "finalizada"].includes(t.status);
   }
   function moveTicket(ticketId, delta) {
     setOrderedIds((prev) => {

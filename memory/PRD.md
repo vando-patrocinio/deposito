@@ -337,6 +337,21 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
   - Test 7: audit cresceu para 5 entries com timestamps corretos ✓
 - **Pytest** `/app/backend/tests/test_iter68_smartolt_zone_sync.py`: 6/6 passou (test_1_list_zones, test_2_zone_audit, test_3_force_sync_unknown_cto_returns_404, test_4_force_sync_pending_cto_returns_409, test_5_force_sync_approved_is_idempotent, test_6_audit_records_force_sync).
 
+✅ **Fix Bolha 'horario' bloqueada mesmo com lousa liberada** (15/02/2026 — iter69):
+- **Bug reportado pelo usuário** (screenshot WhatsApp 10:48): técnico VANDO PATROCINIO (Atlaz, `clock_in_enabled=false`) tinha apenas 1 bolha `priority="horario"` agendada 17:57. Lousa exibia `🔓 lousa liberada` mas a bolha vinha com cadeado 🔒 e clique desabilitado — técnico não conseguia abrir a nota.
+- **Causa raiz**: `_lousa_for_collaborator()` (linha 790, `routes/lousa.py`) misturava DOIS conceitos no mesmo campo `t["locked"]`:
+  - Lock de reordenação (posicional — `compute_locked_positions` adiciona ao set todas bolhas `horario`/`prioridade` + a anterior a `horario`).
+  - Lock de execução (clock state — não bateu Entrada, em intervalo, dia encerrado).
+  - O frontend (`LousaMobile.js` linha 483) usava `disabled={ticket.locked}` para desabilitar o clique, então qualquer bolha `horario` solo (`i=0`) ficava permanentemente impossível de abrir.
+- **Fix backend** (`/app/backend/routes/lousa.py` linha 790): separou em DOIS campos:
+  - `t["locked"]` = somente `is_blocked_by_clock` (não pode abrir).
+  - `t["reorder_locked"]` = `i in locked_idx` (informacional, usado pela UI de reordenação).
+- **Fix frontend** (`/app/frontend/src/LousaMobile.js` linha 48): `isLockedTicket()` passou a considerar `t.reorder_locked` também, mantendo a UI de reordenação alinhada com a regra do backend.
+- **Validação E2E**: 
+  - Curl `/api/lousa/by-collaborator/col-b4db2145` → bolha `tkt-5a6979e047` agora retorna `locked=False reorder_locked=True` ✓
+  - Screenshot Playwright: bolha sem cadeado, `disabled=None`, clique habilitado ✓
+- **Impacto**: 0 regressão — endpoint `public_open_ticket` não validava `compute_locked_positions`, então a abertura sempre foi permitida no backend. O bug era puramente frontend → backend campo errado.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)

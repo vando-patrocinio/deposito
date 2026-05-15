@@ -787,7 +787,13 @@ async def _lousa_for_collaborator(cid: str) -> dict:
     for i, t in enumerate(active_raw):
         # Para clock_in_enabled=false, in_intervalo e ended_day não aplicam
         is_blocked_by_clock = clock_in_enabled and (state["in_intervalo"] or state["ended_day"])
-        t["locked"] = (i in locked_idx) or is_blocked_by_clock
+        # t["locked"] = NÃO PODE abrir/iniciar a bolha (somente clock state real).
+        # t["reorder_locked"] = NÃO PODE reordenar (posicional — bolhas horario/prioridade
+        # ou a anterior a uma horario). Esse era o motivo do bug do VANDO: bolha solo
+        # com priority="horario" virava locked=True só pela regra de reorder, e o
+        # frontend desabilitava o clique mesmo a lousa estando liberada.
+        t["locked"] = is_blocked_by_clock
+        t["reorder_locked"] = i in locked_idx
         t["admin_resolved"] = False
 
     # Tickets resolvidos PELO TÉCNICO ficam visíveis 24h (histórico do dia).
