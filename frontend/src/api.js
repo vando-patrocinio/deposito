@@ -825,6 +825,10 @@ export const api = {
     `${API}/rede-ia/ctos/${cto_id}/qrcode.png`,
   redeIaCtoQrInfo: (cto_id) =>
     client.get(`/rede-ia/ctos/${cto_id}/qrcode`).then((r) => r.data),
+  redeIaCtoPdfRegenerate: (cto_id) =>
+    client.post(`/rede-ia/ctos/${cto_id}/regenerate-pdf`).then((r) => r.data),
+  redeIaCtoPdfUrl: (cto_id) =>
+    `${API}/rede-ia/ctos/${cto_id}/pdf.pdf`,
   redeIaQrScan: (payload) =>
     client.post(`/rede-ia/qrcode/scan`, { payload }).then((r) => r.data),
   redeIaQrBindPort: (data) =>

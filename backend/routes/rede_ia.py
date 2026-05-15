@@ -566,7 +566,73 @@ async def validate_cto(cto_id: str, body: ValidationActionIn,
                   {k: v for k, v in cto.items() if k != "_id"},
                   {"status": new_cto_status_map[body.action], "comment": body.comment},
                   user, body.comment)
-    return {"ok": True, "action": body.action, "status": new_cto_status_map[body.action]}
+
+    # Auto-gera PDF + sobe pro Drive (apenas quando aprovada)
+    pdf_meta = None
+    if body.action == "approve":
+        try:
+            pdf_meta = await _generate_and_upload_cto_pdf(cid, cto_id, user.get("name"))
+        except Exception as e:
+            logger.exception("[rede-ia] auto-PDF falhou: %s", e)
+            # Não bloqueia a aprovação — apenas registra
+            pdf_meta = {"ok": False, "error": str(e)[:200]}
+
+    return {"ok": True, "action": body.action,
+            "status": new_cto_status_map[body.action],
+            "pdf": pdf_meta}
+
+
+async def _generate_and_upload_cto_pdf(company_id: str, cto_id: str,
+                                          approved_by_name: Optional[str]) -> Dict[str, Any]:
+    """Gera o PDF da CTO e faz upload pro Drive em PontoIA-Backups/Rede-IA/."""
+    from services.cto_pdf import build_cto_pdf
+    from services.drive_backup import upload_file_to_drive
+
+    # Re-busca CTO (já atualizada para approved)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": company_id}, {"_id": 0})
+    if not cto:
+        return {"ok": False, "error": "CTO não encontrada para PDF"}
+
+    qr_token = _build_qr_token(cto_id, company_id, cto.get("name") or "")
+    pdf_bytes = build_cto_pdf(cto, qr_token, approved_by_name)
+
+    safe_name = (cto.get("name") or "cto").replace(" ", "-").replace("/", "-")
+    file_name = f"CTO-{safe_name}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.pdf"
+
+    try:
+        result = await upload_file_to_drive(
+            company_id=company_id,
+            content=pdf_bytes,
+            file_name=file_name,
+            mime_type="application/pdf",
+            subfolder="Rede-IA",
+            description=f"Relatório de aprovação da {cto.get('name')} — "
+                          f"aprovado por {approved_by_name or '?'}",
+        )
+        # Salva referência no doc CTO
+        await db.ctos.update_one(
+            {"id": cto_id, "company_id": company_id},
+            {"$set": {
+                "pdf_drive_file_id": result["file_id"],
+                "pdf_drive_url": result["file_url"],
+                "pdf_generated_at": now_iso(),
+            }},
+        )
+        await db.cto_history.insert_one({
+            "id": _new_id("hist"), "company_id": company_id, "cto_id": cto_id,
+            "action": "pdf_uploaded", "before": None,
+            "after": {"file_url": result["file_url"], "file_id": result["file_id"]},
+            "by_user_id": None, "by_user_name": "rede_IA (automático)",
+            "by_role": "system",
+            "motivo": "PDF gerado e enviado para Google Drive após aprovação",
+            "timestamp": now_iso(),
+        })
+        return {"ok": True, **result, "file_name": file_name}
+    except RuntimeError as e:
+        # Drive não conectado — salva localmente como fallback? Por enquanto só log
+        logger.warning("[rede-ia] Drive não conectado para %s — PDF não enviado: %s",
+                         company_id, e)
+        return {"ok": False, "error": str(e), "drive_connected": False}
 
 
 # ---------------------------------------------------------------------------
@@ -1155,3 +1221,44 @@ async def bind_port(body: BindPortIn,
         "subscriber_name": body.subscriber_name,
         "service_type": body.service_type,
     }
+
+
+@router.post("/ctos/{cto_id}/regenerate-pdf")
+async def regenerate_pdf(cto_id: str,
+                          user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
+    """Regenera PDF e faz upload pro Drive. Funciona apenas para CTOs aprovadas."""
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+    if cto.get("status") != "approved":
+        raise HTTPException(409, "Apenas CTOs aprovadas geram PDF")
+    result = await _generate_and_upload_cto_pdf(
+        cid, cto_id,
+        cto.get("approved_by_name") or user.get("name"),
+    )
+    if not result.get("ok"):
+        if result.get("drive_connected") is False:
+            raise HTTPException(503, "Google Drive não conectado. "
+                                       "Conecte em Configurações → Conexões → Drive.")
+        raise HTTPException(500, result.get("error", "Falha ao gerar PDF"))
+    return result
+
+
+@router.get("/ctos/{cto_id}/pdf.pdf")
+async def download_cto_pdf(cto_id: str, user: dict = Depends(get_current_user)):
+    """Devolve o PDF da CTO diretamente (gera on-the-fly, não usa Drive)."""
+    from services.cto_pdf import build_cto_pdf
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+    if cto.get("status") != "approved":
+        raise HTTPException(409, "Apenas CTOs aprovadas geram PDF")
+    qr_token = _build_qr_token(cto_id, cid, cto.get("name") or "")
+    pdf_bytes = build_cto_pdf(cto, qr_token,
+                                approved_by_name=cto.get("approved_by_name"))
+    safe_name = (cto.get("name") or "cto").replace(" ", "-").replace("/", "-")
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={
+        "Content-Disposition": f"inline; filename=\"CTO-{safe_name}.pdf\"",
+    })

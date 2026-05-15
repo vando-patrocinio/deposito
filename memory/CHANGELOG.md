@@ -1396,3 +1396,32 @@ Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
 ### Testing
 - testing_agent_v3 (iter77): backend 12/13 passou; frontend renderização do scanner verificada
 - Fix aplicado pós-review: priority `alta`→`prioridade`/`horario`→`normal` (alinhado aos filtros da Lousa) + rollback em caso de erro de OS
+
+## 2026-05-15 (later 3) — Auto-PDF + Google Drive backup
+### Nova regra: aprovou CTO → gera PDF → sobe pro Drive
+- **Trigger**: ao chamar `POST /api/rede-ia/ctos/{id}/validate` com `action="approve"`
+- **Background**:
+  1. Re-busca CTO atualizada
+  2. Gera PDF com `services/cto_pdf.py` (reportlab): cabeçalho roxo, tabela técnica, QR Code criptografado, foto da CTO (se houver), validação (técnico/gestor/data)
+  3. Upload para `PontoIA-Backups/Rede-IA/CTO-{nome}-{ts}.pdf` via `services/drive_backup.upload_file_to_drive()`
+  4. Salva `pdf_drive_file_id` + `pdf_drive_url` no doc da CTO
+  5. Registra entrada no `cto_history` com action=`pdf_uploaded`
+- Falha não-bloqueante: se Drive desconectado ou erro, aprovação continua válida, retorno traz `pdf.ok=false`
+
+### Novos endpoints
+- `GET /api/rede-ia/ctos/{id}/pdf.pdf` — download direto on-the-fly (não usa Drive)
+- `POST /api/rede-ia/ctos/{id}/regenerate-pdf` — regenera e re-envia ao Drive (apenas admin/gestor/gestor_rede)
+
+### Frontend
+- Painel admin → CTOs: novos botões por linha aprovada
+  - **QR** (roxo): modal com PNG do QR
+  - **PDF** (vermelho): abre PDF on-the-fly em nova aba
+  - **☁** (azul): abre PDF salvo no Drive (se houver `pdf_drive_url`)
+  - **☁+** (cinza): reenvia PDF ao Drive (se nunca foi feito ou falhou)
+
+### Drive subfolder rule
+- `services/drive_backup.upload_file_to_drive()` + `_ensure_subfolder()`: cria `PontoIA-Backups/Rede-IA/` automaticamente caso não exista
+- Reutiliza folder_id em cache (já em `drive_credentials`)
+
+### Dependências
+- backend: `reportlab==4.5.0`

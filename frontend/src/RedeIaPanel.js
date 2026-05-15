@@ -191,9 +191,29 @@ function CTOsList() {
                   <td style={td}>{c.technician_name || "—"}</td>
                   <td style={td}>
                     {c.status === "approved" ? (
-                      <button data-testid={`cto-qr-${c.id}`}
-                              onClick={() => setQrModal({ id: c.id, name: c.name })}
-                              style={btnSm("#7c3aed")}>QR</button>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button data-testid={`cto-qr-${c.id}`}
+                                onClick={() => setQrModal({ id: c.id, name: c.name })}
+                                style={btnSm("#7c3aed")}>QR</button>
+                        <a href={`${process.env.REACT_APP_BACKEND_URL}/api/rede-ia/ctos/${c.id}/pdf.pdf`}
+                            target="_blank" rel="noreferrer"
+                            data-testid={`cto-pdf-${c.id}`}
+                            style={{ ...btnSm("#dc2626"), textDecoration: "none",
+                                      display: "inline-flex", alignItems: "center" }}>
+                          PDF
+                        </a>
+                        {c.pdf_drive_url ? (
+                          <a href={c.pdf_drive_url} target="_blank" rel="noreferrer"
+                              data-testid={`cto-drive-${c.id}`}
+                              title="Abrir PDF salvo no Drive"
+                              style={{ ...btnSm("#0ea5e9"), textDecoration: "none",
+                                        display: "inline-flex", alignItems: "center" }}>
+                            ☁
+                          </a>
+                        ) : (
+                          <DriveResendBtn ctoId={c.id} onDone={load} />
+                        )}
+                      </div>
                     ) : (
                       <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>
                     )}
@@ -217,8 +237,30 @@ function CTOsList() {
   );
 }
 
-function CTOQrModal({ cto, onClose }) {
-  const [imgSrc, setImgSrc] = useState("");
+
+function DriveResendBtn({ ctoId, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    setBusy(true);
+    try {
+      await api.redeIaCtoPdfRegenerate(ctoId);
+      onDone?.();
+    } catch (e) {
+      const msg = e?.response?.data?.detail || "Falha ao enviar para Drive";
+      alert(msg);
+    } finally { setBusy(false); }
+  };
+  return (
+    <button data-testid={`cto-drive-send-${ctoId}`}
+            onClick={send} disabled={busy}
+            title="Enviar PDF para Google Drive"
+            style={{ ...btnSm("#475569"), opacity: busy ? 0.5 : 1 }}>
+      {busy ? "…" : "☁+"}
+    </button>
+  );
+}
+
+function CTOQrModal({ cto, onClose }) {  const [imgSrc, setImgSrc] = useState("");
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     let revokeUrl = null;

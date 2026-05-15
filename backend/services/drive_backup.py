@@ -298,6 +298,77 @@ async def _log_backup(cid: str, status: str, name: str, size: int,
         pass
 
 
+# ============================================================
+# Generic file upload (Rede IA PDFs, fotos, relatórios)
+# ============================================================
+async def upload_file_to_drive(
+    company_id: str,
+    content: bytes,
+    file_name: str,
+    mime_type: str = "application/pdf",
+    subfolder: str = "Rede-IA",
+    description: str = "",
+) -> Dict[str, Any]:
+    """Upload arbitrário ao Drive em subpasta da PontoIA-Backups.
+
+    Usado por:
+      - Rede IA: PDF de CTOs aprovadas
+      - Outros relatórios
+
+    Retorna {file_id, file_url, size_bytes}. Levanta RuntimeError se Drive
+    não estiver conectado.
+    """
+    cid = company_id or DEMO_COMPANY_ID
+    creds = await _get_credentials(cid)
+    if not creds:
+        raise RuntimeError("Google Drive não conectado para essa empresa.")
+
+    import asyncio
+    loop = asyncio.get_event_loop()
+    service = await loop.run_in_executor(None, _build_service, creds)
+
+    root = await _ensure_root_folder(cid, service)
+
+    # Garante subpasta dentro de PontoIA-Backups
+    subfolder_id = await loop.run_in_executor(None,
+        lambda: _ensure_subfolder(service, root["id"], subfolder))
+
+    media = MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_type, resumable=False)
+    metadata = {
+        "name": file_name,
+        "parents": [subfolder_id],
+        "description": description or f"Rede IA - {file_name}",
+    }
+    result = await loop.run_in_executor(None,
+        lambda: service.files().create(body=metadata, media_body=media,
+                                          fields="id, webViewLink, size").execute())
+    return {
+        "file_id": result.get("id"),
+        "file_url": result.get("webViewLink"),
+        "size_bytes": len(content),
+        "subfolder": subfolder,
+    }
+
+
+def _ensure_subfolder(service, parent_id: str, name: str) -> str:
+    """Cria (ou reusa) subpasta dentro da pasta-raiz do Drive."""
+    q = (f"'{parent_id}' in parents and trashed=false "
+         f"and mimeType='application/vnd.google-apps.folder' and name='{name}'")
+    try:
+        existing = service.files().list(q=q, fields="files(id,name)").execute()
+        files = existing.get("files", [])
+        if files:
+            return files[0]["id"]
+    except HttpError:
+        pass
+    folder = service.files().create(body={
+        "name": name,
+        "mimeType": "application/vnd.google-apps.folder",
+        "parents": [parent_id],
+    }, fields="id").execute()
+    return folder["id"]
+
+
 async def _prune_old_files(cid: str, service, folder_id: str, keep_days: int = 30) -> None:
     """Apaga backups > keep_days dias no Drive. Mantém últimos 7 sempre."""
     import asyncio
