@@ -9,6 +9,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend,
 } from "recharts";
+import AnalyticsChart from "@/FinanceiroAnalyticsChart";
 
 const fmtMoney = (v) =>
   Number(v || 0).toLocaleString("pt-BR", {
@@ -408,6 +409,7 @@ export function CashFlowTab() {
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
+      <AnalyticsChart />
       <Card title="Fluxo de Caixa">
         <div style={{ display: "flex", justifyContent: "space-between",
                       alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>

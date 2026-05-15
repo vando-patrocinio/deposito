@@ -86,6 +86,7 @@ from routes import (
     connections as routes_connections,
     financeiro as routes_financeiro,
     financeiro_ops as routes_financeiro_ops,
+    financeiro_analytics as routes_financeiro_analytics,
     atlaz_financeiro as routes_atlaz_financeiro,
     mass_messaging as routes_mass_messaging,
 )
@@ -275,6 +276,13 @@ async def _seed_demo_tickets() -> None:
 # -------------------------------------------------------------------------
 app = FastAPI(title="Ponto do Colaborador")
 
+# Rate limiting global via slowapi
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+from services.rate_limit import limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 
 @app.on_event("startup")
 async def _startup() -> None:
@@ -395,6 +403,7 @@ app.include_router(routes_ai_training.router)
 app.include_router(routes_connections.router)
 app.include_router(routes_financeiro.router)
 app.include_router(routes_financeiro_ops.router)
+app.include_router(routes_financeiro_analytics.router)
 app.include_router(routes_atlaz_financeiro.router)
 app.include_router(routes_mass_messaging.router)
 

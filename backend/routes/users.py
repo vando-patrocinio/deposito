@@ -4,7 +4,7 @@ import os
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from auth import (
@@ -27,6 +27,7 @@ from core import (
     tenant_filter,
 )
 from database import db
+from services.rate_limit import limiter, get_limit
 
 router = APIRouter(prefix="/api", tags=["auth", "users"])
 
@@ -50,7 +51,8 @@ async def admin_login(payload: AdminLogin):
 
 
 @router.post("/auth/login")
-async def login(payload: LoginIn):
+@limiter.limit(get_limit("auth_login"))
+async def login(request: Request, payload: LoginIn):
     email = payload.email.lower().strip()
     if await is_locked_out(db, email):
         raise HTTPException(429, "Muitas tentativas falhadas. Aguarde 15 minutos.")
