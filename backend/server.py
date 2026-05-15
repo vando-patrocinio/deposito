@@ -91,6 +91,7 @@ from routes import (
     financeiro_ops as routes_financeiro_ops,
     financeiro_analytics as routes_financeiro_analytics,
     atlaz_financeiro as routes_atlaz_financeiro,
+    alvaro as routes_alvaro,
     mass_messaging as routes_mass_messaging,
 )
 
@@ -344,6 +345,20 @@ async def _startup() -> None:
     scheduler.add_job(auto_sync_atlaz_financeiro,
                       CronTrigger(minute=15, hour="*/2"),
                       id="atlaz_fin_auto_sync", replace_existing=True)
+    # Cron: ALVARO IA daily — análise consolidada às 06:00 (próximas 24h)
+    async def _alvaro_daily_all_companies():
+        from services.alvaro_ai import run_daily_analysis
+        async for cdoc in db.companies.find({}, {"_id": 0, "id": 1}):
+            cid = cdoc.get("id")
+            if not cid:
+                continue
+            try:
+                await run_daily_analysis(cid, hours_back=24)
+            except Exception as e:
+                logger.warning("[alvaro] daily run company=%s falhou: %s", cid, e)
+    scheduler.add_job(_alvaro_daily_all_companies,
+                      CronTrigger(hour=6, minute=0),
+                      id="alvaro_ia_daily", replace_existing=True)
     asyncio.create_task(routes_plans.adjustment_scheduler_worker())
     from services.drive_backup import daily_backup_worker as drive_daily_worker
     asyncio.create_task(drive_daily_worker())
@@ -416,6 +431,7 @@ app.include_router(routes_financeiro.router)
 app.include_router(routes_financeiro_ops.router)
 app.include_router(routes_financeiro_analytics.router)
 app.include_router(routes_atlaz_financeiro.router)
+app.include_router(routes_alvaro.router)
 app.include_router(routes_mass_messaging.router)
 
 

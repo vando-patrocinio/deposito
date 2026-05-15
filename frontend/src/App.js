@@ -20,6 +20,7 @@ import SettingsPanel from "@/SettingsPanel";
 import FinanceiroPanel from "@/FinanceiroPanel";
 import BudgetPanel from "@/BudgetPanel";
 import RedeIaPanel from "@/RedeIaPanel";
+import AlvaroPanel from "@/AlvaroPanel";
 import MassMessagingPanel from "@/MassMessagingPanel";
 import MotorIaCard from "@/MotorIaCard";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
@@ -133,6 +134,7 @@ const NAV_GROUPS = [
       { id: "central-ia", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "rede-ia", icon: Brain, label: "Rede IA", roles: ["gestor", "auditor", "administrador", "gestor_rede"] },
       { id: "atendimento", icon: MessageCircle, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador"] },
+      { id: "alvaro-ia", icon: Brain, label: "Alvaro IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "mass-messaging", icon: Megaphone, label: "Disparo em Massa", roles: ["gestor", "auditor", "administrador"] },
     ],
   },
@@ -835,6 +837,7 @@ function AppContent() {
           {view === "financeiro" && <FinanceiroPanel />}
           {view === "budget" && <BudgetPanel />}
           {view === "rede-ia" && <RedeIaPanel />}
+          {view === "alvaro-ia" && <AlvaroPanel />}
           {view === "mass-messaging" && <MassMessagingPanel />}
           {view === "logs" && <LogsPanel />}
           {view === "settings" && <SettingsPanel />}
