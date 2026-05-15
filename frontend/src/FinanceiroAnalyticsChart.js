@@ -176,9 +176,9 @@ export default function AnalyticsChart() {
           </div>
 
           {/* Gráfico */}
-          <div style={{ height: 340, marginTop: 4 }}
+          <div style={{ height: 340, marginTop: 4, minHeight: 200 }}
                 data-testid="analytics-chart">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minHeight={200}>
               {chartType === "area" ? (
                 <AreaChart data={data.series}>
                   <defs>

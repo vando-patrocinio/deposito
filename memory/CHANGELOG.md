@@ -1,6 +1,51 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Feb 15, 2026 — Analytics financeiro + Rate Limiting global ★
+
+### O que foi implementado
+
+**Analytics financeiro (gráfico Recebimentos vs Despesas)**
+- Backend `/app/backend/routes/financeiro_analytics.py`:
+  - Endpoint `GET /api/financeiro/analytics?range=1d|7d|30d|3m|6m|1y|all&period=day|month|year`
+  - Agrega `fin_cash_movements` (income/expense) + `subscriber_invoices` com paid_date (faturas pagas via Atlaz)
+  - Calcula média, desvio padrão e **coeficiente de variação (CV%)** → classifica regularidade: regular (<25%), moderada (25-50%), irregular (>50%)
+  - Buckets contínuos (preenche zeros pra gráfico não pular dias)
+- Frontend `/app/frontend/src/FinanceiroAnalyticsChart.js`:
+  - 7 botões de range, 3 botões de agrupamento (Dia/Mês/Ano)
+  - 4 metric cards: Média Recebimentos, Média Despesas, Resultado, Total Recebimentos
+  - Recharts LineChart com 3 séries (Recebimentos verde, Despesas vermelho, Resultado azul tracejado)
+  - Toggle Linha/Área (AreaChart com gradient)
+  - Badge de regularidade com cor por classificação
+  - Bloco "Como interpretar a regularidade"
+- Plugado em CashFlowTab no topo do painel "Fluxo de Caixa"
+
+**Rate Limiting global via slowapi**
+- Lib instalada: `slowapi==0.1.9` (também `limits==5.8.0`, `Deprecated==1.3.1`, `wrapt==2.1.2`)
+- `/app/backend/services/rate_limit.py`:
+  - Singleton `limiter` com `_key_func()` que prioriza X-Forwarded-For (Kubernetes ingress) sobre IP local
+  - DEV multiplier 10x (detecta `preview.emergent` ou `localhost` em PUBLIC_BACKEND_URL)
+  - Limites preset: auth_login (5/min), auth_register (3/min), mass_create (10/min), mass_start (5/min), secretaria_ask (30/min), webhook_inbound (120/min), default (100/min)
+  - `headers_enabled=False` evita conflito com dict-returns do FastAPI
+  - Storage `memory://` (single-pod). Para multi-pod, trocar para `redis://`
+- Wire em `/app/backend/server.py`: app.state.limiter + RateLimitExceeded handler
+- Aplicado em `/api/auth/login` (proteção brute force) via `@limiter.limit(get_limit("auth_login"))`
+- Testado: 6ª tentativa errada em 1min retorna **HTTP 429** corretamente
+
+### Tests
+- `/app/test_reports/iteration_74.json` — Backend 9/10 PASS (1 skipped por falta de seed)
+- Pytest file: `/app/backend/tests/test_iter74_analytics_rate_limit.py`
+
+### Action items não-bloqueantes (futuras melhorias)
+- Considerar mudar `_range_for()` para boundaries de calendário estritos (atualmente usa days=180 para 6m, gera 7±1 buckets)
+- Em multi-pod prod, trocar storage `memory://` para `redis://` para compartilhar contadores
+- Regularity threshold: considerar exigir N≥3 antes de classificar (atualmente classifica mesmo com 1 ponto)
+
+---
+
+
+# PontoIA — Changelog
+
 ## Feb 15, 2026 — Ligo (Secretária IA) consulta faturas dos assinantes ★
 
 ### O que foi implementado
