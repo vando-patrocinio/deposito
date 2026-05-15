@@ -1,15 +1,21 @@
 /* =============================================================
-   CadastroCTOWizard — Fluxo 8 passos seguindo o storyboard:
-   1. Detecção  → 2. Endereço  → 3. Identificação automática  →
-   4. Capacidade  →  5. Tipo rede  →  6. Splitter (se desbal.)  →
-   7. Porta cliente  →  8. Resumo + Enviar p/ validação
-   Usado pelo CollaboratorApp (PWA do técnico).
+   CadastroCTOWizard — Fluxo 8 passos (storyboard oficial):
+   1. Detecção do problema
+   2. Endereço de referência
+   3. Identificação automática (Bairro/GPS/Nomenclatura)
+   4. Quantidade de portas
+   5. Tipo de rede
+   6. Splitter de balanceamento (se desbalanceada)
+   7. Porta do cliente
+   8. Resumo e confirmação
+   Layout: header roxo, cards com radius grande, botão CTA roxo,
+   "Salvar cadastro" laranja no passo 8.
 ============================================================= */
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/api";
 
-// Paleta inline coerente com o app do colaborador (roxo/laranja do storyboard)
-const C_BG = "#ffffff";
+// Paleta storyboard
+const C_BG = "#f8fafc";
 const C_HEADER_BG = "#5b21b6"; // roxo SmartProv
 const C_PRIMARY = "#7c3aed";
 const C_PRIMARY_LIGHT = "#ede9fe";
@@ -17,58 +23,68 @@ const C_ACCENT = "#f97316";
 const C_TEXT = "#0f172a";
 const C_MUTED = "#64748b";
 const C_BORDER = "#e2e8f0";
-const C_SUCCESS = "#16a34a";
 const C_DANGER = "#dc2626";
 
 const headerStyle = {
   background: C_HEADER_BG,
   color: "#fff",
-  padding: "14px 16px",
+  padding: "16px 14px",
   display: "flex", alignItems: "center", justifyContent: "space-between",
-  fontWeight: 700, fontSize: 15,
+  fontWeight: 700, fontSize: 16,
+  position: "sticky", top: 0, zIndex: 10,
 };
-
 const stepBadge = {
   display: "inline-flex", alignItems: "center", justifyContent: "center",
-  width: 24, height: 24, borderRadius: "50%",
+  width: 26, height: 26, borderRadius: "50%",
   background: "rgba(255,255,255,0.2)", color: "#fff",
-  fontSize: 12, fontWeight: 800, marginRight: 8,
+  fontSize: 13, fontWeight: 800, marginRight: 10,
 };
-
+const cardBase = {
+  background: "#fff",
+  borderRadius: 16,
+  border: `1.5px solid ${C_BORDER}`,
+  padding: "16px 14px",
+  marginBottom: 10,
+};
 const inputBase = {
-  width: "100%", padding: "12px 14px", borderRadius: 12,
+  width: "100%", padding: "13px 14px", borderRadius: 12,
   border: `1.5px solid ${C_BORDER}`, fontSize: 15, color: C_TEXT,
   background: "#fff", outline: "none", boxSizing: "border-box",
   fontFamily: "inherit",
 };
-
 const labelStyle = {
-  fontSize: 12, fontWeight: 600, color: C_TEXT,
-  marginBottom: 6, marginTop: 12, display: "block",
+  fontSize: 13, fontWeight: 600, color: C_TEXT,
+  marginBottom: 6, marginTop: 14, display: "block",
 };
-
 const primaryBtn = {
-  width: "100%", padding: "14px 20px", borderRadius: 12,
+  width: "100%", padding: "15px 20px", borderRadius: 14,
   background: C_HEADER_BG, color: "#fff", border: 0,
   fontWeight: 700, fontSize: 15, cursor: "pointer",
-};
-const secondaryBtn = {
-  ...primaryBtn,
-  background: "#fff", color: C_TEXT,
-  border: `1.5px solid ${C_BORDER}`,
+  boxShadow: "0 4px 12px rgba(91,33,182,0.3)",
 };
 const accentBtn = {
   ...primaryBtn,
   background: C_ACCENT,
+  boxShadow: "0 4px 12px rgba(249,115,22,0.35)",
 };
-
 const optionCard = (selected) => ({
-  padding: "16px 14px", borderRadius: 14,
+  padding: "16px 14px",
+  borderRadius: 14,
   border: `2px solid ${selected ? C_PRIMARY : C_BORDER}`,
   background: selected ? C_PRIMARY_LIGHT : "#fff",
-  cursor: "pointer", textAlign: "left",
+  cursor: "pointer",
+  textAlign: "left",
   display: "flex", alignItems: "center", justifyContent: "space-between",
   fontSize: 14, fontWeight: 600, color: C_TEXT,
+  marginBottom: 10,
+  transition: "background-color .15s, border-color .15s",
+});
+const checkBox = (selected) => ({
+  width: 22, height: 22, borderRadius: 6,
+  border: `2px solid ${selected ? C_PRIMARY : "#cbd5e1"}`,
+  background: selected ? C_PRIMARY : "#fff",
+  color: "#fff", fontSize: 13, fontWeight: 800,
+  display: "grid", placeItems: "center", flexShrink: 0,
 });
 
 export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
@@ -76,21 +92,19 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  // Estado do formulário
   const [address, setAddress] = useState({
-    rua: "", numero: "", bairro: "", cidade: "", estado: "", referencia: "",
+    endereco: "", numero: "", referencia: "",
   });
   const [gps, setGps] = useState({ lat: null, lng: null, accuracy: null });
-  const [bairroSelected, setBairroSelected] = useState(null); // {bairro,sigla,vlan,cidade,estado}
-  const [bairrosOptions, setBairrosOptions] = useState([]);
-  const [ctoNumber, setCtoNumber] = useState(null);
-  const [suggestedName, setSuggestedName] = useState("");
+  const [bairros, setBairros] = useState([]);
+  const [bairroSelected, setBairroSelected] = useState(null);
+  const [suggested, setSuggested] = useState({ name: "", number: null });
   const [capacity, setCapacity] = useState(null);
   const [networkType, setNetworkType] = useState(null);
   const [splitter, setSplitter] = useState(null);
   const [clientPort, setClientPort] = useState(null);
 
-  // ===== Step 2: GPS capture =====
+  // GPS
   const captureGps = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setError("GPS indisponível no dispositivo.");
@@ -108,40 +122,48 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
     );
   }, []);
 
-  // ===== Step 3: load all bairros for selection =====
+  // Helper: usa endpoint público quando temos o ID do técnico (sem JWT)
+  const collabId = technician?.id || null;
+  const useApi = useMemo(() => ({
+    bairros: () => collabId ? api.redeIaBairrosPublic(collabId) : api.redeIaBairros(),
+    suggest: (sigla, vlan, num) => collabId
+      ? api.redeIaSuggestNamePublic(collabId, sigla, vlan, num)
+      : api.redeIaSuggestName(sigla, vlan, num),
+    create: (data) => collabId
+      ? api.redeIaCtoCreatePublic(collabId, data)
+      : api.redeIaCtoCreate(data),
+  }), [collabId]);
+
+  // Carrega bairros ao chegar no passo 3
   useEffect(() => {
     if (step === 3) {
-      api.redeIaBairros().then((r) => {
-        setBairrosOptions(r.items || []);
-      }).catch(() => setBairrosOptions([]));
+      useApi.bairros().then((r) => setBairros(r.items || []))
+        .catch(() => setBairros([]));
     }
-  }, [step]);
+  }, [step, useApi]);
 
-  // ===== Suggest CTO name once bairro + number known =====
-  const refreshSuggestion = useCallback(async (sigla, vlan, number) => {
-    try {
-      const r = await api.redeIaSuggestName(sigla, vlan, number ?? undefined);
-      setSuggestedName(r.suggested_name);
-      if (r.exists) {
-        setCtoNumber(r.suggested_number);
-        setError(`O número ${number} já existe. Sugerido: ${r.suggested_number}.`);
-      } else {
-        setError("");
-        if (number == null) setCtoNumber(r.suggested_number);
-      }
-    } catch (e) {
-      setError("Falha ao consultar nomenclatura");
+  // Sempre que bairro muda no passo 3 → gera nomenclatura automática
+  useEffect(() => {
+    if (bairroSelected) {
+      useApi.suggest(bairroSelected.sigla, bairroSelected.vlan)
+        .then((r) => setSuggested({
+          name: r.suggested_name,
+          number: r.suggested_number,
+        }))
+        .catch(() => setSuggested({ name: "", number: null }));
     }
-  }, []);
+  }, [bairroSelected, useApi]);
 
-  // ===== Submit final =====
+  // Submit
   const submit = async () => {
     setBusy(true); setError("");
     try {
-      const payload = {
-        rua: address.rua, numero: address.numero,
-        bairro: bairroSelected.bairro, cidade: bairroSelected.cidade || address.cidade,
-        estado: bairroSelected.estado || address.estado,
+      const r = await useApi.create({
+        rua: address.endereco,
+        numero: address.numero,
+        bairro: bairroSelected.bairro,
+        cidade: bairroSelected.cidade || "",
+        estado: bairroSelected.estado || "",
         referencia: address.referencia,
         lat: gps.lat, lng: gps.lng,
         capacity, network_type: networkType,
@@ -149,38 +171,29 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
         client_port: clientPort,
         sigla: bairroSelected.sigla,
         vlan: bairroSelected.vlan,
-        suggested_name: suggestedName,
-        technician_id: technician?.id || null,
+        suggested_name: suggested.name,
+        technician_id: collabId,
         technician_name: technician?.name || "",
-      };
-      const r = await api.redeIaCtoCreate(payload);
+      });
       onCreated?.(r);
     } catch (e) {
       const d = e?.response?.data?.detail;
       if (typeof d === "object" && d?.suggested_name) {
         setError(`${d.msg}. Sugerido: ${d.suggested_name}`);
-        setSuggestedName(d.suggested_name);
-        setCtoNumber(d.suggested_number);
-        setStep(3);
+        setSuggested({ name: d.suggested_name, number: d.suggested_number });
       } else {
         setError(typeof d === "string" ? d : "Falha ao criar CTO.");
       }
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
 
-  // ===== UI Steps =====
   const totalSteps = networkType === "desbalanceada" ? 8 : 7;
   const stepLabels = useMemo(() => [
-    "Início",                  // 1
-    "Endereço",                // 2
-    "Identificação",           // 3
-    "Capacidade",              // 4
-    "Tipo de rede",            // 5
-    networkType === "desbalanceada" ? "Splitter" : "Porta", // 6
-    networkType === "desbalanceada" ? "Porta" : "Resumo",   // 7
-    "Resumo",                  // 8
+    "Início", "Endereço", "Identificação",
+    "Capacidade", "Tipo de rede",
+    networkType === "desbalanceada" ? "Splitter" : "Porta",
+    networkType === "desbalanceada" ? "Porta" : "Resumo",
+    "Resumo",
   ], [networkType]);
 
   return (
@@ -188,12 +201,12 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
       position: "fixed", inset: 0, background: C_BG, zIndex: 9999,
       display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
-      {/* HEADER */}
       <div style={headerStyle}>
         <div style={{ display: "flex", alignItems: "center" }}>
-          <button data-testid="cto-back-btn" onClick={() => (step > 1 ? setStep(step - 1) : onClose?.())}
+          <button data-testid="cto-back-btn"
+                  onClick={() => (step > 1 ? setStep(step - 1) : onClose?.())}
                   style={{ background: "transparent", border: 0, color: "#fff",
-                            fontSize: 22, marginRight: 6, cursor: "pointer", padding: 4 }}>
+                            fontSize: 24, marginRight: 4, cursor: "pointer", padding: 4 }}>
             ←
           </button>
           <span style={stepBadge}>{step}</span>
@@ -202,11 +215,8 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
         <span style={{ fontSize: 11, opacity: 0.85 }}>{stepLabels[step - 1]}</span>
       </div>
 
-      {/* CONTENT */}
-      <div style={{
-        flex: 1, overflowY: "auto", padding: 18, fontSize: 14, color: C_TEXT,
-        background: "#f8fafc",
-      }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px",
+                       fontSize: 14, color: C_TEXT }}>
         {error && (
           <div data-testid="cto-error" style={{
             background: "#fef2f2", color: C_DANGER, borderRadius: 10,
@@ -215,392 +225,513 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
           }}>{error}</div>
         )}
 
-        {/* === STEP 1: detecção === */}
+        {/* === STEP 1 === */}
         {step === 1 && (
-          <div style={{ textAlign: "center", padding: "20px 10px" }}>
+          <div style={{ textAlign: "center", padding: "30px 12px 10px" }}>
             <div style={{
-              width: 96, height: 96, margin: "0 auto 16px",
+              width: 120, height: 120, margin: "0 auto 20px",
               borderRadius: "50%", background: "#fed7aa",
-              display: "grid", placeItems: "center", fontSize: 44, color: C_ACCENT,
-            }}>⚠️</div>
-            <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>
-              Cliente não identificado em CTO
+              display: "grid", placeItems: "center",
+            }}>
+              <div style={{
+                fontSize: 56, color: C_ACCENT, lineHeight: 1,
+              }}>⚠</div>
             </div>
-            <p style={{ color: C_MUTED, fontSize: 13, lineHeight: 1.5, marginBottom: 24 }}>
-              Este cliente não está vinculado a nenhuma CTO existente. Cadastre uma nova CTO neste
-              endereço para continuar o atendimento.
+            <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 10,
+                            letterSpacing: -0.3 }}>
+              Cliente não<br />identificado em CTO
+            </div>
+            <p style={{ color: C_MUTED, fontSize: 13, lineHeight: 1.6,
+                          margin: "0 0 30px", padding: "0 10px" }}>
+              Este cliente não está vinculado a nenhuma CTO existente.
             </p>
-            <button data-testid="cto-start-btn" style={accentBtn} onClick={() => setStep(2)}>
+            <button data-testid="cto-start-btn" style={accentBtn}
+                    onClick={() => setStep(2)}>
               Cadastrar CTO
             </button>
           </div>
         )}
 
-        {/* === STEP 2: endereço === */}
+        {/* === STEP 2 === */}
         {step === 2 && (
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>
+            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 14px",
+                          letterSpacing: -0.3, lineHeight: 1.3 }}>
               Informe o endereço em frente à casa onde está a CTO
-            </div>
-            <p style={{ color: C_MUTED, fontSize: 12, marginBottom: 14 }}>
-              Esses dados ajudam a rede_IA a identificar bairro, VLAN e sigla automaticamente.
-            </p>
+            </h2>
 
-            <label style={labelStyle}>Rua</label>
-            <input data-testid="cto-rua" style={inputBase} value={address.rua}
-              onChange={(e) => setAddress({ ...address, rua: e.target.value })}
+            <label style={labelStyle}>Endereço</label>
+            <input data-testid="cto-rua" style={inputBase} value={address.endereco}
+              onChange={(e) => setAddress({ ...address, endereco: e.target.value })}
               placeholder="Rua das Flores" />
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
-                <label style={labelStyle}>Número</label>
-                <input data-testid="cto-numero" style={inputBase} value={address.numero}
-                  onChange={(e) => setAddress({ ...address, numero: e.target.value })}
-                  placeholder="125" />
-              </div>
-              <div>
-                <label style={labelStyle}>UF</label>
-                <input style={inputBase} value={address.estado}
-                  maxLength={2}
-                  onChange={(e) => setAddress({ ...address, estado: e.target.value.toUpperCase() })}
-                  placeholder="RJ" />
-              </div>
-            </div>
+            <label style={labelStyle}>Número</label>
+            <input data-testid="cto-numero" style={inputBase} value={address.numero}
+              onChange={(e) => setAddress({ ...address, numero: e.target.value })}
+              placeholder="125" />
 
             <label style={labelStyle}>Referência</label>
-            <input data-testid="cto-referencia" style={inputBase} value={address.referencia}
+            <input data-testid="cto-referencia" style={inputBase}
+              value={address.referencia}
               onChange={(e) => setAddress({ ...address, referencia: e.target.value })}
               placeholder="Casa azul com portão branco" />
 
-            <label style={labelStyle}>Localização GPS</label>
-            <button data-testid="cto-gps-btn"
-                    onClick={captureGps}
+            <label style={labelStyle}>Localização da CTO</label>
+            <button data-testid="cto-gps-btn" onClick={captureGps}
                     style={{
                       ...inputBase, display: "flex", alignItems: "center",
                       justifyContent: "space-between", cursor: "pointer",
-                      background: gps.lat ? C_PRIMARY_LIGHT : "#fff",
-                      borderColor: gps.lat ? C_PRIMARY : C_BORDER,
+                      background: gps.lat ? "#ecfdf5" : "#fff",
+                      borderColor: gps.lat ? "#10b981" : C_BORDER,
+                      padding: "16px 14px",
                     }}>
-              <span>
-                {gps.lat
-                  ? `📍 ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}`
-                  : "Usar localização atual"}
+              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 20 }}>📍</span>
+                <span style={{ color: gps.lat ? "#065f46" : C_TEXT, fontWeight: 600 }}>
+                  {gps.lat
+                    ? `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}`
+                    : "Usar localização atual (Mapa)"}
+                </span>
               </span>
-              <span style={{ color: C_MUTED }}>›</span>
+              <span style={{ color: C_MUTED, fontSize: 20 }}>›</span>
             </button>
 
-            <button data-testid="cto-step2-continue"
-                    onClick={() => {
-                      if (!address.rua || !address.numero) {
-                        setError("Rua e número são obrigatórios.");
-                        return;
-                      }
-                      setError("");
-                      setStep(3);
-                    }}
-                    style={{ ...primaryBtn, marginTop: 24 }}>
-              Continuar
-            </button>
+            <div style={{ marginTop: 28 }}>
+              <button data-testid="cto-step2-continue"
+                      onClick={() => {
+                        if (!address.endereco || !address.numero) {
+                          setError("Endereço e número são obrigatórios.");
+                          return;
+                        }
+                        setError("");
+                        setStep(3);
+                      }}
+                      style={primaryBtn}>
+                Continuar
+              </button>
+            </div>
           </div>
         )}
 
-        {/* === STEP 3: identificação manual do bairro/VLAN === */}
+        {/* === STEP 3 — Identificação automática === */}
         {step === 3 && (
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>
-              Identifique o bairro da CTO
-            </div>
-            <p style={{ color: C_MUTED, fontSize: 12, marginBottom: 14 }}>
-              Selecione o bairro correspondente. A sigla e a VLAN são preenchidas automaticamente
-              pela rede_IA.
-            </p>
+            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 18px",
+                           letterSpacing: -0.3 }}>
+              Dados identificados automaticamente
+            </h2>
 
-            {bairrosOptions.length === 0 ? (
-              <div style={{
-                padding: 16, border: `1px dashed ${C_BORDER}`, borderRadius: 10,
-                color: C_MUTED, fontSize: 13, textAlign: "center",
-              }}>
-                Nenhum bairro cadastrado. Solicite ao admin que cadastre os bairros e VLANs
-                no painel "Rede IA → Bairros".
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {bairrosOptions.map((b) => (
-                  <button key={b.id} data-testid={`cto-bairro-${b.sigla}`}
-                          onClick={() => {
-                            setBairroSelected(b);
-                            // tenta sugerir nome
-                            refreshSuggestion(b.sigla, b.vlan, null);
-                          }}
-                          style={optionCard(bairroSelected?.id === b.id)}>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>{b.bairro}</div>
-                      <div style={{ fontSize: 11, color: C_MUTED, marginTop: 2 }}>
-                        Sigla {b.sigla} · VLAN {b.vlan}
-                        {b.cidade ? ` · ${b.cidade}` : ""}
-                      </div>
-                    </div>
-                    <span>›</span>
-                  </button>
-                ))}
-              </div>
-            )}
+            <label style={labelStyle}>Selecione o bairro</label>
+            <div style={{ marginBottom: 14 }}>
+              {bairros.length === 0 ? (
+                <div style={{
+                  padding: 14, border: `1px dashed ${C_BORDER}`, borderRadius: 12,
+                  color: C_MUTED, fontSize: 12, textAlign: "center", background: "#fff",
+                }}>
+                  Nenhum bairro cadastrado. Peça ao admin para cadastrar bairros e
+                  VLANs no painel <strong>Rede IA → Bairros</strong>.
+                </div>
+              ) : (
+                <select data-testid="cto-bairro-select"
+                  value={bairroSelected?.id || ""}
+                  onChange={(e) => {
+                    const b = bairros.find((x) => x.id === e.target.value);
+                    setBairroSelected(b || null);
+                  }}
+                  style={{ ...inputBase, appearance: "none",
+                            paddingRight: 34,
+                            backgroundImage: "linear-gradient(45deg,transparent 50%,#64748b 50%),linear-gradient(135deg,#64748b 50%,transparent 50%)",
+                            backgroundPosition: "calc(100% - 18px) center,calc(100% - 12px) center",
+                            backgroundSize: "6px 6px,6px 6px",
+                            backgroundRepeat: "no-repeat" }}>
+                  <option value="">— Escolha um bairro —</option>
+                  {bairros.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.bairro} (sigla {b.sigla} · VLAN {b.vlan})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
 
             {bairroSelected && (
               <>
-                <label style={labelStyle}>Número da CTO</label>
-                <input data-testid="cto-number-input" type="number"
-                  style={inputBase} value={ctoNumber || ""}
-                  onChange={(e) => {
-                    const n = parseInt(e.target.value, 10);
-                    setCtoNumber(Number.isFinite(n) ? n : null);
-                    if (Number.isFinite(n)) {
-                      refreshSuggestion(bairroSelected.sigla, bairroSelected.vlan, n);
-                    }
-                  }}
-                  placeholder="Ex: 1" />
-                <div style={{
-                  marginTop: 14, padding: "12px 14px",
-                  background: C_PRIMARY_LIGHT, borderRadius: 10,
-                  border: `1.5px solid ${C_PRIMARY}`,
-                  fontSize: 13, color: C_TEXT,
+                {/* Bairro card verde */}
+                <div data-testid="auto-card-bairro" style={{
+                  ...cardBase, background: "#ecfdf5", borderColor: "#a7f3d0",
+                  display: "flex", alignItems: "flex-start", gap: 12,
                 }}>
-                  <div style={{ fontSize: 10, color: C_MUTED, marginBottom: 4,
-                                  textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    Nomenclatura gerada
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    background: "#d1fae5", display: "grid", placeItems: "center",
+                    fontSize: 20, flexShrink: 0,
+                  }}>🏠</div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#047857", fontWeight: 700,
+                                     textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      Bairro identificado automaticamente
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#065f46",
+                                     marginTop: 2 }}>
+                      {bairroSelected.bairro}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#047857", marginTop: 4 }}>
+                      Sigla {bairroSelected.sigla} · VLAN {bairroSelected.vlan}
+                      {bairroSelected.cidade ? ` · ${bairroSelected.cidade}` : ""}
+                    </div>
                   </div>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: C_PRIMARY }}>
-                    {suggestedName || "—"}
+                </div>
+
+                {/* GPS card verde */}
+                <div data-testid="auto-card-gps" style={{
+                  ...cardBase, background: "#ecfdf5", borderColor: "#a7f3d0",
+                  display: "flex", alignItems: "flex-start", gap: 12,
+                }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    background: "#d1fae5", display: "grid", placeItems: "center",
+                    fontSize: 20, flexShrink: 0,
+                  }}>📍</div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#047857", fontWeight: 700,
+                                     textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      Posição GPS da CTO
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#065f46",
+                                     marginTop: 2, fontFamily: "monospace" }}>
+                      {gps.lat
+                        ? `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}`
+                        : "—  (volte ao passo 2 para capturar)"}
+                    </div>
                   </div>
+                </div>
+
+                {/* Nomenclatura card roxo */}
+                <div data-testid="auto-card-name" style={{
+                  ...cardBase, background: C_PRIMARY_LIGHT, borderColor: "#c4b5fd",
+                  display: "flex", alignItems: "flex-start", gap: 12,
+                }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 10,
+                    background: "#ddd6fe", display: "grid", placeItems: "center",
+                    fontSize: 20, flexShrink: 0,
+                  }}>🏷</div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#5b21b6", fontWeight: 700,
+                                     textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      Nomenclatura da CTO gerada automaticamente
+                    </div>
+                    <div style={{ fontSize: 17, fontWeight: 800, color: C_PRIMARY,
+                                     marginTop: 4 }}>
+                      {suggested.name || "—"}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  padding: "10px 14px", marginBottom: 16,
+                  background: "#f1f5f9", borderRadius: 10,
+                  display: "flex", alignItems: "flex-start", gap: 10,
+                  fontSize: 12, color: C_MUTED, lineHeight: 1.5,
+                }}>
+                  <span style={{ fontSize: 16 }}>ℹ️</span>
+                  <span>Essas informações foram geradas com base no endereço e na
+                    localização informada.</span>
                 </div>
               </>
             )}
 
             <button data-testid="cto-step3-continue"
-                    disabled={!bairroSelected || !ctoNumber}
-                    onClick={() => { setError(""); setStep(4); }}
-                    style={{
-                      ...primaryBtn, marginTop: 24,
-                      opacity: (!bairroSelected || !ctoNumber) ? 0.5 : 1,
-                    }}>
+                    disabled={!bairroSelected || !suggested.name}
+                    onClick={() => setStep(4)}
+                    style={{ ...primaryBtn,
+                              opacity: (!bairroSelected || !suggested.name) ? 0.5 : 1 }}>
               Continuar
             </button>
           </div>
         )}
 
-        {/* === STEP 4: capacidade === */}
+        {/* === STEP 4 — Quantidade de portas === */}
         {step === 4 && (
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>
+            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 4px",
+                           letterSpacing: -0.3 }}>
               Quantas portas tem essa CTO?
-            </div>
-            <p style={{ color: C_MUTED, fontSize: 12, marginBottom: 18 }}>
+            </h2>
+            <p style={{ color: C_MUTED, fontSize: 13, marginBottom: 22 }}>
               Selecione a capacidade física.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[4, 8, 16].map((cap) => (
-                <button key={cap} data-testid={`cto-cap-${cap}`}
-                        onClick={() => setCapacity(cap)}
-                        style={optionCard(capacity === cap)}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 22 }}>▦</span>
-                    <span>{cap} portas</span>
-                  </div>
-                  {capacity === cap && <span style={{ color: C_PRIMARY }}>✓</span>}
-                </button>
-              ))}
+            {[4, 8, 16].map((cap) => (
+              <button key={cap} data-testid={`cto-cap-${cap}`}
+                      onClick={() => setCapacity(cap)}
+                      style={optionCard(capacity === cap)}>
+                <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <span style={{
+                    width: 36, height: 36, borderRadius: 8,
+                    background: capacity === cap ? "#ddd6fe" : "#f1f5f9",
+                    color: C_PRIMARY, display: "grid", placeItems: "center",
+                    fontSize: 18, fontWeight: 800,
+                  }}>▦</span>
+                  <span style={{ fontSize: 15, fontWeight: 700 }}>{cap} portas</span>
+                </span>
+                <span style={checkBox(capacity === cap)}>
+                  {capacity === cap ? "✓" : ""}
+                </span>
+              </button>
+            ))}
+            <div style={{ marginTop: 18 }}>
+              <button data-testid="cto-step4-continue"
+                      disabled={!capacity}
+                      onClick={() => setStep(5)}
+                      style={{ ...primaryBtn, opacity: !capacity ? 0.5 : 1 }}>
+                Continuar
+              </button>
             </div>
-            <button data-testid="cto-step4-continue"
-                    disabled={!capacity}
-                    onClick={() => setStep(5)}
-                    style={{ ...primaryBtn, marginTop: 24, opacity: !capacity ? 0.5 : 1 }}>
-              Continuar
-            </button>
           </div>
         )}
 
-        {/* === STEP 5: tipo de rede === */}
+        {/* === STEP 5 — Tipo de rede === */}
         {step === 5 && (
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>
+            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 4px",
+                           letterSpacing: -0.3 }}>
               Tipo de rede
-            </div>
-            <p style={{ color: C_MUTED, fontSize: 12, marginBottom: 18 }}>
+            </h2>
+            <p style={{ color: C_MUTED, fontSize: 13, marginBottom: 22 }}>
               Selecione o tipo de rede utilizada nesta CTO.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button data-testid="cto-net-bal"
-                      onClick={() => setNetworkType("balanceada")}
-                      style={{ ...optionCard(networkType === "balanceada"),
-                                flexDirection: "column", alignItems: "flex-start" }}>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>⚖️ Rede balanceada</div>
-                <div style={{ fontSize: 11, color: C_MUTED, marginTop: 4 }}>
-                  Sinal distribuído de forma equilibrada entre as portas.
-                </div>
+
+            {[
+              { v: "balanceada", l: "Rede balanceada",
+                d: "Sinal distribuído de forma equilibrada entre as portas.",
+                icon: "⚖️" },
+              { v: "desbalanceada", l: "Rede desbalanceada",
+                d: "Sinal distribuído de forma desbalanceada entre as portas.",
+                icon: "⚙️" },
+            ].map((opt) => (
+              <button key={opt.v} data-testid={`cto-net-${opt.v.slice(0,3)}`}
+                      onClick={() => setNetworkType(opt.v)}
+                      style={{ ...optionCard(networkType === opt.v),
+                                alignItems: "flex-start" }}>
+                <span style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  <span style={{
+                    width: 38, height: 38, borderRadius: 8,
+                    background: networkType === opt.v ? "#ddd6fe" : "#f1f5f9",
+                    display: "grid", placeItems: "center", fontSize: 18,
+                    flexShrink: 0,
+                  }}>{opt.icon}</span>
+                  <span>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>{opt.l}</div>
+                    <div style={{ fontSize: 11, color: C_MUTED, marginTop: 4,
+                                     lineHeight: 1.4 }}>{opt.d}</div>
+                  </span>
+                </span>
+                <span style={checkBox(networkType === opt.v)}>
+                  {networkType === opt.v ? "✓" : ""}
+                </span>
               </button>
-              <button data-testid="cto-net-desb"
-                      onClick={() => setNetworkType("desbalanceada")}
-                      style={{ ...optionCard(networkType === "desbalanceada"),
-                                flexDirection: "column", alignItems: "flex-start" }}>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>⚙️ Rede desbalanceada</div>
-                <div style={{ fontSize: 11, color: C_MUTED, marginTop: 4 }}>
-                  Sinal distribuído de forma desbalanceada entre as portas.
-                </div>
+            ))}
+            <div style={{ marginTop: 18 }}>
+              <button data-testid="cto-step5-continue"
+                      disabled={!networkType}
+                      onClick={() => setStep(networkType === "desbalanceada" ? 6 : 7)}
+                      style={{ ...primaryBtn, opacity: !networkType ? 0.5 : 1 }}>
+                Continuar
               </button>
             </div>
-            <button data-testid="cto-step5-continue"
-                    disabled={!networkType}
-                    onClick={() => setStep(networkType === "desbalanceada" ? 6 : 7)}
-                    style={{ ...primaryBtn, marginTop: 24, opacity: !networkType ? 0.5 : 1 }}>
-              Continuar
-            </button>
           </div>
         )}
 
-        {/* === STEP 6: splitter (apenas desbalanceada) === */}
+        {/* === STEP 6 — Splitter === */}
         {step === 6 && networkType === "desbalanceada" && (
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>
+            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 4px",
+                           letterSpacing: -0.3 }}>
               Qual é o splitter de balanceamento?
-            </div>
-            <p style={{ color: C_MUTED, fontSize: 12, marginBottom: 18 }}>
+            </h2>
+            <p style={{ color: C_MUTED, fontSize: 13, marginBottom: 22 }}>
               Selecione o splitter utilizado na rede desbalanceada.
             </p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {["1:2", "1:4", "1:8", "Outro"].map((s) => (
-                <button key={s} data-testid={`cto-splitter-${s}`}
-                        onClick={() => setSplitter(s)}
-                        style={{ ...optionCard(splitter === s),
-                                  flexDirection: "column", alignItems: "center", padding: "16px 8px" }}>
-                  <div style={{ fontSize: 22, marginBottom: 4 }}>▣</div>
-                  <div>{s}</div>
-                </button>
-              ))}
+            {["1:2", "1:4", "1:8", "Outro"].map((s) => (
+              <button key={s} data-testid={`cto-splitter-${s}`}
+                      onClick={() => setSplitter(s)}
+                      style={optionCard(splitter === s)}>
+                <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <span style={{
+                    width: 36, height: 36, borderRadius: 8,
+                    background: splitter === s ? "#ddd6fe" : "#f1f5f9",
+                    color: C_PRIMARY, display: "grid", placeItems: "center",
+                    fontSize: 18, fontWeight: 800,
+                  }}>▣</span>
+                  <span style={{ fontSize: 15, fontWeight: 700 }}>{s}</span>
+                </span>
+                <span style={checkBox(splitter === s)}>
+                  {splitter === s ? "✓" : ""}
+                </span>
+              </button>
+            ))}
+            <div style={{ marginTop: 18 }}>
+              <button data-testid="cto-step6-continue"
+                      disabled={!splitter}
+                      onClick={() => setStep(7)}
+                      style={{ ...primaryBtn, opacity: !splitter ? 0.5 : 1 }}>
+                Continuar
+              </button>
             </div>
-            <button data-testid="cto-step6-continue"
-                    disabled={!splitter}
-                    onClick={() => setStep(7)}
-                    style={{ ...primaryBtn, marginTop: 24, opacity: !splitter ? 0.5 : 1 }}>
-              Continuar
-            </button>
           </div>
         )}
 
-        {/* === STEP 7: porta do cliente === */}
+        {/* === STEP 7 — Porta do cliente === */}
         {step === 7 && (
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>
+            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 4px",
+                           letterSpacing: -0.3 }}>
               Selecione a porta usada pelo cliente
-            </div>
-            <p style={{ color: C_MUTED, fontSize: 12, marginBottom: 18 }}>
-              Capacidade da CTO: {capacity} portas
+            </h2>
+            <p style={{ color: C_MUTED, fontSize: 13, marginBottom: 18 }}>
+              Capacidade da CTO: <strong>{capacity} portas</strong>
             </p>
             <div style={{
               display: "grid",
               gridTemplateColumns: "repeat(4, 1fr)",
-              gap: 8,
+              gap: 10, marginBottom: 14,
             }}>
               {Array.from({ length: capacity || 0 }, (_, i) => i + 1).map((p) => (
                 <button key={p} data-testid={`cto-port-${p}`}
                         onClick={() => setClientPort(p)}
                         style={{
-                          padding: "16px 0", borderRadius: 10,
+                          padding: "18px 0", borderRadius: 12,
                           border: `2px solid ${clientPort === p ? C_PRIMARY : C_BORDER}`,
                           background: clientPort === p ? C_PRIMARY : "#fff",
                           color: clientPort === p ? "#fff" : C_TEXT,
-                          fontSize: 16, fontWeight: 700, cursor: "pointer",
+                          fontSize: 18, fontWeight: 700, cursor: "pointer",
+                          position: "relative",
                         }}>
-                  {String(p).padStart(2, "0")}
+                  {p}
+                  {clientPort === p && (
+                    <span style={{
+                      position: "absolute", top: 4, right: 6,
+                      fontSize: 12, fontWeight: 800,
+                    }}>✓</span>
+                  )}
                 </button>
               ))}
             </div>
             {clientPort && (
               <div style={{
-                marginTop: 14, padding: "10px 12px",
-                background: C_PRIMARY_LIGHT, borderRadius: 8,
-                fontSize: 12, color: C_TEXT,
+                padding: "12px 14px",
+                background: C_PRIMARY_LIGHT, borderRadius: 10,
+                fontSize: 13, color: "#5b21b6", fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 10,
+                border: "1px solid #c4b5fd",
               }}>
-                ℹ️ Porta selecionada: <b>{clientPort}</b>
+                <span style={{ fontSize: 14 }}>ℹ️</span>
+                <span>Porta selecionada: <strong>{clientPort}</strong></span>
               </div>
             )}
-            <button data-testid="cto-step7-continue"
-                    disabled={!clientPort}
-                    onClick={() => setStep(8)}
-                    style={{ ...primaryBtn, marginTop: 24, opacity: !clientPort ? 0.5 : 1 }}>
-              Continuar
-            </button>
+            <div style={{ marginTop: 24 }}>
+              <button data-testid="cto-step7-continue"
+                      disabled={!clientPort}
+                      onClick={() => setStep(8)}
+                      style={{ ...primaryBtn, opacity: !clientPort ? 0.5 : 1 }}>
+                Continuar
+              </button>
+            </div>
           </div>
         )}
 
-        {/* === STEP 8: resumo === */}
+        {/* === STEP 8 — Resumo === */}
         {step === 8 && (
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 4 }}>
+            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 4px",
+                           letterSpacing: -0.3, textAlign: "center" }}>
               Resumo do cadastro
-            </div>
-            <p style={{ color: C_MUTED, fontSize: 12, marginBottom: 14 }}>
-              Confira os dados antes de salvar. A rede_IA vai gerar uma prévia do fluxograma
-              e enviar para validação do gestor.
+            </h2>
+            <p style={{ color: C_MUTED, fontSize: 13, marginBottom: 18,
+                          textAlign: "center" }}>
+              Confira os dados antes de salvar
             </p>
 
-            <SummaryRow icon="🏠" label="Endereço de referência"
-              value={`${address.rua}, ${address.numero}${address.referencia ? " · " + address.referencia : ""}`} />
-            <SummaryRow icon="📍" label="Bairro" value={bairroSelected?.bairro} />
-            <SummaryRow icon="🛰" label="GPS"
-              value={gps.lat ? `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}` : "Não capturado"} />
-            <SummaryRow icon="🏷" label="Nomenclatura" value={suggestedName} highlight />
-            <SummaryRow icon="🔢" label="Capacidade" value={`${capacity} portas`} />
-            <SummaryRow icon="🔗" label="Tipo de rede" value={networkType} />
-            {networkType === "desbalanceada" && (
-              <SummaryRow icon="🔀" label="Splitter" value={splitter} />
-            )}
-            <SummaryRow icon="📥" label="Porta do cliente" value={`Porta ${clientPort}`} />
+            <div style={{ ...cardBase, padding: "4px 0" }}>
+              <SummaryRow icon="🏠" label="Endereço de referência"
+                value={`${address.endereco}, ${address.numero}${address.referencia ? "\n" + address.referencia : ""}`} />
+              <SummaryRow icon="🏷" label="Bairro" value={bairroSelected?.bairro} />
+              <SummaryRow icon="📍" label="Posição GPS"
+                value={gps.lat ? `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}` : "—"} />
+              <SummaryRow icon="🏷" label="Nomenclatura da CTO"
+                value={suggested.name} highlight />
+              <SummaryRow icon="▦" label="Quantidade de portas"
+                value={`${capacity} portas`} />
+              <SummaryRow icon="🔗" label="Tipo de rede"
+                value={networkType === "balanceada" ? "Rede balanceada" : "Rede desbalanceada"} />
+              {networkType === "desbalanceada" && (
+                <SummaryRow icon="🔀" label="Splitter de balanceamento"
+                  value={splitter} />
+              )}
+              <SummaryRow icon="📥" label="Porta do cliente"
+                value={`Porta ${clientPort}`} last />
+            </div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
-              <button data-testid="cto-summary-back" style={secondaryBtn}
-                      onClick={() => setStep(7)}>
-                ← Voltar e editar
-              </button>
+            <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
               <button data-testid="cto-summary-submit" style={accentBtn}
                       disabled={busy} onClick={submit}>
-                {busy ? "Enviando..." : "Enviar p/ validação"}
+                {busy ? "Salvando..." : "Salvar cadastro"}
+              </button>
+              <button data-testid="cto-summary-back"
+                      onClick={() => setStep(7)}
+                      style={{
+                        ...primaryBtn,
+                        background: "#fff", color: C_TEXT,
+                        border: `1.5px solid ${C_BORDER}`,
+                        boxShadow: "none",
+                      }}>
+                Voltar e editar
               </button>
             </div>
           </div>
         )}
 
         {/* Progress dots */}
-        <div style={{
-          display: "flex", justifyContent: "center", gap: 6,
-          marginTop: 30,
-        }}>
-          {Array.from({ length: totalSteps }, (_, i) => i + 1).map((n) => (
-            <span key={n} style={{
-              width: 6, height: 6, borderRadius: 999,
-              background: n <= step ? C_PRIMARY : "#cbd5e1",
-            }} />
-          ))}
-        </div>
+        {step >= 2 && (
+          <div style={{
+            display: "flex", justifyContent: "center", gap: 8,
+            marginTop: 30,
+          }}>
+            {Array.from({ length: totalSteps }, (_, i) => i + 1).map((n) => (
+              <span key={n} style={{
+                width: 6, height: 6, borderRadius: 999,
+                background: n <= step ? C_PRIMARY : "#cbd5e1",
+                transition: "background-color .2s",
+              }} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function SummaryRow({ icon, label, value, highlight }) {
+function SummaryRow({ icon, label, value, highlight, last }) {
   return (
     <div style={{
-      display: "flex", gap: 12, padding: "10px 12px",
-      borderBottom: `1px solid ${C_BORDER}`,
+      display: "flex", gap: 12, padding: "12px 14px",
+      borderBottom: last ? "none" : `1px solid ${C_BORDER}`,
       background: highlight ? C_PRIMARY_LIGHT : "transparent",
-      borderRadius: highlight ? 8 : 0,
-      marginBottom: highlight ? 6 : 0,
     }}>
-      <div style={{ fontSize: 16, flexShrink: 0 }}>{icon}</div>
+      <div style={{
+        width: 32, height: 32, borderRadius: 8,
+        background: highlight ? "#ddd6fe" : "#f1f5f9",
+        display: "grid", placeItems: "center", fontSize: 14, flexShrink: 0,
+      }}>{icon}</div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 10, color: C_MUTED, textTransform: "uppercase",
-                       letterSpacing: 0.5, marginBottom: 2 }}>{label}</div>
-        <div style={{ fontSize: 13, fontWeight: highlight ? 800 : 600,
-                       color: highlight ? C_PRIMARY : C_TEXT }}>{value || "—"}</div>
+        <div style={{ fontSize: 10, color: highlight ? "#5b21b6" : C_MUTED,
+                       textTransform: "uppercase", letterSpacing: 0.5,
+                       fontWeight: 700, marginBottom: 3 }}>{label}</div>
+        <div style={{ fontSize: 14, fontWeight: highlight ? 800 : 600,
+                       color: highlight ? C_PRIMARY : C_TEXT,
+                       whiteSpace: "pre-line", lineHeight: 1.4 }}>
+          {value || "—"}
+        </div>
       </div>
     </div>
   );

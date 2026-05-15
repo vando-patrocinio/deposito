@@ -791,6 +791,8 @@ export const api = {
 
   // ===== Rede IA =====
   redeIaBairros: () => client.get(`/rede-ia/bairros`).then((r) => r.data),
+  redeIaBairrosPublic: (collab_id) =>
+    client.get(`/rede-ia/public/bairros/${collab_id}`).then((r) => r.data),
   redeIaBairroCreate: (data) => client.post(`/rede-ia/bairros`, data).then((r) => r.data),
   redeIaBairroUpdate: (id, data) => client.put(`/rede-ia/bairros/${id}`, data).then((r) => r.data),
   redeIaBairroDelete: (id) => client.delete(`/rede-ia/bairros/${id}`).then((r) => r.data),
@@ -798,7 +800,12 @@ export const api = {
     client.get(`/rede-ia/bairros/lookup`, { params: { q } }).then((r) => r.data),
   redeIaSuggestName: (sigla, vlan, number) =>
     client.get(`/rede-ia/ctos/suggest-name`, { params: { sigla, vlan, number } }).then((r) => r.data),
+  redeIaSuggestNamePublic: (collab_id, sigla, vlan, number) =>
+    client.get(`/rede-ia/public/ctos/suggest-name/${collab_id}`,
+                { params: { sigla, vlan, number } }).then((r) => r.data),
   redeIaCtoCreate: (data) => client.post(`/rede-ia/ctos`, data).then((r) => r.data),
+  redeIaCtoCreatePublic: (collab_id, data) =>
+    client.post(`/rede-ia/public/ctos/${collab_id}`, data).then((r) => r.data),
   redeIaCtosList: (params = {}) =>
     client.get(`/rede-ia/ctos`, { params }).then((r) => r.data),
   redeIaCtoGet: (id) => client.get(`/rede-ia/ctos/${id}`).then((r) => r.data),

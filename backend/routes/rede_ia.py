@@ -712,6 +712,148 @@ async def bairros_lookup(q: Optional[str] = Query(None),
 
 
 # ---------------------------------------------------------------------------
+# Public endpoints (técnico mobile via /?cid=) — sem JWT
+# ---------------------------------------------------------------------------
+async def _company_for_collaborator(collab_id: str) -> str:
+    """Resolve company_id a partir de collaborator_id público (mobile PWA)."""
+    coll = await db.collaborators.find_one(
+        {"id": collab_id}, {"_id": 0, "company_id": 1, "name": 1, "id": 1},
+    )
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado")
+    return coll.get("company_id") or DEMO_COMPANY_ID
+
+
+@router.get("/public/bairros/{collab_id}")
+async def public_bairros(collab_id: str):
+    cid = await _company_for_collaborator(collab_id)
+    items = await db.bairros_vlan_map.find(
+        {"company_id": cid}, {"_id": 0},
+    ).sort("bairro", 1).to_list(500)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/public/ctos/suggest-name/{collab_id}")
+async def public_suggest_name(collab_id: str,
+                                sigla: str = Query(...),
+                                vlan: int = Query(...),
+                                number: Optional[int] = Query(None)):
+    cid = await _company_for_collaborator(collab_id)
+    sigla_u = sigla.upper()
+    if number is not None:
+        existing = await db.ctos.find_one({
+            "company_id": cid, "sigla": sigla_u, "vlan": vlan, "number": number,
+        })
+        if existing:
+            nxt = await _next_cto_number(cid, sigla_u, vlan)
+            return {
+                "exists": True,
+                "suggested_number": nxt,
+                "suggested_name": _format_cto_name(nxt, vlan, sigla_u),
+            }
+        return {
+            "exists": False,
+            "suggested_number": number,
+            "suggested_name": _format_cto_name(number, vlan, sigla_u),
+        }
+    nxt = await _next_cto_number(cid, sigla_u, vlan)
+    return {
+        "exists": False,
+        "suggested_number": nxt,
+        "suggested_name": _format_cto_name(nxt, vlan, sigla_u),
+    }
+
+
+@router.post("/public/ctos/{collab_id}")
+async def public_create_cto(collab_id: str, body: CTOCreateIn):
+    """Cria CTO via app público do técnico (sem JWT)."""
+    if body.capacity not in (4, 8, 16):
+        raise HTTPException(400, "Capacidade deve ser 4, 8 ou 16")
+    if body.network_type not in ("balanceada", "desbalanceada"):
+        raise HTTPException(400, "Tipo de rede inválido")
+    if body.network_type == "desbalanceada" and not body.splitter:
+        raise HTTPException(400, "Splitter é obrigatório em rede desbalanceada")
+
+    coll = await db.collaborators.find_one(
+        {"id": collab_id}, {"_id": 0, "company_id": 1, "name": 1, "id": 1},
+    )
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado")
+    cid = coll.get("company_id") or DEMO_COMPANY_ID
+    sigla_u = body.sigla.upper()
+
+    bmap = await db.bairros_vlan_map.find_one(
+        {"company_id": cid, "sigla": sigla_u}, {"_id": 0},
+    )
+    if not bmap:
+        raise HTTPException(400, f"Bairro/sigla '{sigla_u}' não cadastrado")
+
+    try:
+        num_part = body.suggested_name.split(" ")[1].split("_")[0]
+        number = int(num_part)
+    except Exception:
+        number = await _next_cto_number(cid, sigla_u, body.vlan)
+
+    dup = await db.ctos.find_one({
+        "company_id": cid, "sigla": sigla_u, "vlan": body.vlan, "number": number,
+    })
+    if dup:
+        nxt = await _next_cto_number(cid, sigla_u, body.vlan)
+        raise HTTPException(409, {
+            "msg": f"CTO {_format_cto_name(number, body.vlan, sigla_u)} já existe",
+            "suggested_number": nxt,
+            "suggested_name": _format_cto_name(nxt, body.vlan, sigla_u),
+        })
+
+    name = _format_cto_name(number, body.vlan, sigla_u)
+    ports = [{
+        "number": i,
+        "status": "used" if i == body.client_port else "free",
+        "client_subscriber_id": body.client_subscriber_id if i == body.client_port else None,
+        "client_pppoe": body.client_pppoe if i == body.client_port else None,
+    } for i in range(1, body.capacity + 1)]
+
+    cto_id = _new_id("cto")
+    doc = {
+        "id": cto_id, "company_id": cid, "name": name, "number": number,
+        "sigla": sigla_u, "vlan": body.vlan,
+        "address": {
+            "rua": body.rua, "numero": body.numero, "bairro": body.bairro,
+            "cidade": body.cidade, "estado": (body.estado or "").upper(),
+            "referencia": body.referencia,
+        },
+        "gps": {"lat": body.lat, "lng": body.lng} if body.lat is not None else None,
+        "capacity": body.capacity, "network_type": body.network_type,
+        "splitter": body.splitter, "ports": ports,
+        "status": "pending_validation",
+        "technician_id": collab_id,
+        "technician_name": body.technician_name or coll.get("name"),
+        "created_by_user_id": collab_id,
+        "created_at": now_iso(), "updated_at": now_iso(),
+        "approved_by": None, "approved_at": None,
+    }
+    await db.ctos.insert_one(doc)
+    await db.cto_validations.insert_one({
+        "id": _new_id("val"), "company_id": cid, "cto_id": cto_id,
+        "cto_snapshot": {k: v for k, v in doc.items() if k != "_id"},
+        "status": "pending",
+        "technician_id": collab_id, "technician_name": doc["technician_name"],
+        "manager_id": None, "manager_name": None, "comment": "",
+        "created_at": now_iso(), "resolved_at": None,
+    })
+    await db.cto_history.insert_one({
+        "id": _new_id("hist"), "company_id": cid, "cto_id": cto_id,
+        "action": "create", "before": None,
+        "after": {k: v for k, v in doc.items() if k != "_id"},
+        "by_user_id": collab_id, "by_user_name": doc["technician_name"],
+        "by_role": "colaborador", "motivo": "Cadastro via app do técnico (público)",
+        "timestamp": now_iso(),
+    })
+    doc.pop("_id", None)
+    return doc
+
+
+# ---------------------------------------------------------------------------
 # rede_IA Analyzer  (Fase 5) — usa Emergent LLM Key
 # ---------------------------------------------------------------------------
 class AnalyzeIn(BaseModel):
