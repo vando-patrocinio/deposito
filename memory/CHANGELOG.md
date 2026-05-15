@@ -1,6 +1,62 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Feb 15, 2026 — Financeiro Fase 3+4 + Disparo em Massa WhatsApp ★
+
+### O que foi implementado
+
+**Financeiro Fase 3 — Contas a Pagar + Fluxo de Caixa**
+- Backend `/app/backend/routes/financeiro_ops.py`:
+  - `fin_bills_payable`: CRUD completo + `POST /bills/{id}/pay` (cria movimentação E atualiza saldo)
+  - `fin_cash_movements`: CRUD com saldo automático
+  - `GET /financeiro/cashflow` agregado para gráfico (entradas vs saídas por dia/mês)
+  - Cron 03h `auto_mark_overdue` marca contas vencidas como overdue
+- Frontend `/app/frontend/src/FinanceiroPanelExt.js`:
+  - `BillsTab`: filtros por status, modal CRUD, modal "Pagar" com seleção de cash_account
+  - `CashFlowTab`: gráfico Recharts BarChart entradas/saídas + chips Saldo/Entradas/Saídas/Resultado + tabela de movimentações + modal "Novo lançamento"
+
+**Financeiro Fase 4 — Integração Atlaz Financeiro (assinantes)**
+- Backend `/app/backend/routes/atlaz_financeiro.py`:
+  - `GET /atlaz-financeiro/probe` — testa 5 endpoints (listacobrancas, listaboletos, listapagamentos, listaclientes, listaservicos)
+  - `POST /atlaz-financeiro/sync-now` — pull tolerante a 404 com normalização defensiva
+  - `GET /atlaz-financeiro/invoices` + `/stats` para listagem e KPIs
+  - Coleção `subscriber_invoices` com schema normalizado (external_id, subscriber_name/document, amount/amount_paid, due_date/paid_date, status, raw)
+- Frontend `ReceivablesTab` no FinanceiroPanel: sub-aba "Recebimentos" com botão "Sincronizar" + "Testar endpoints" (probe)
+
+**Disparo em Massa WhatsApp**
+- Backend `/app/backend/routes/mass_messaging.py`:
+  - Coleções `mass_campaigns` + `mass_recipients`
+  - Suporta **Meta WhatsApp Cloud** + **Twilio** (canal configurável por campanha)
+  - Suporta **template HSM** + **texto livre** com variáveis `{{nome}}`
+  - Upload CSV com normalização de telefone BR (E.164, +55 auto-prepend), insert em bulk de 500
+  - Endpoint `/preview` retorna 3 samples com vars substituídas
+  - Endpoints `/start`, `/pause`, `/resume`, `/delete`
+  - **Worker assíncrono** em background processa filas com throttle configurável (default 60 msgs/min, max 600)
+  - Agendamento via `schedule_at` (worker promove queued→running quando atingir horário)
+  - Cron de tick = 5s; burst = throttle_per_min * 5 / 60
+- Frontend `/app/frontend/src/MassMessagingPanel.js`:
+  - Lista de campanhas com status badges
+  - View de detalhe com upload CSV, preview, start/pause/resume/delete
+  - Polling de 4s na view de detalhe pra atualizar `sent`/`failed`/`status` em tempo real
+  - Filtro de destinatários por status (queued/sending/sent/failed)
+
+### Pontos importantes
+- `_worker_task` (mass_messaging) é singleton por processo. Em deployments multi-pod, considerar lock distribuído (mongo `findOneAndUpdate`) — não-bloqueante para single-pod.
+- A integração Atlaz Financeiro está pronta para qualquer subconjunto de endpoints respondidos pelo token. Use `/probe` primeiro pra ver quais estão disponíveis.
+
+### Tests
+- `/app/test_reports/iteration_73.json` — 25/25 backend PASS + 100% frontend E2E PASS
+- Pytest file: `/app/backend/tests/test_iter73_financeiro_p34_mass.py`
+
+### Action items não-bloqueantes
+- Trocar `<input type=datetime-local>` por DateTimePicker shadcn em "Agendar para" da campanha (formato pt-BR)
+- Investigar warning Recharts width(-1) (mesmo de iter72, não impacta funcionalidade)
+
+---
+
+
+# PontoIA — Changelog
+
 ## Feb 15, 2026 — Module: Financeiro (Fase 1+2) + Card unificado de Conexões ★
 
 ### O que foi implementado
