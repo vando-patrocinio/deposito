@@ -3,7 +3,7 @@ import { api } from "@/api";
 import { Button, Card, Field, inputStyle } from "@/ui";
 import {
   Plus, Pencil, Trash2, CheckCircle2, AlertCircle, Calendar,
-  ArrowUp, ArrowDown,
+  ArrowUp, ArrowDown, DollarSign, RotateCcw,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -610,6 +610,8 @@ export function ReceivablesTab() {
   const [busy, setBusy] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
   const [probe, setProbe] = useState(null);
+  const [paying, setPaying] = useState(null);  // invoice obj sendo marcado como pago
+  const [filter, setFilter] = useState("all"); // "all" | "open" | "paid"
 
   async function reload() {
     const [s, inv] = await Promise.all([
@@ -711,6 +713,26 @@ export function ReceivablesTab() {
       </Card>
 
       <Card title="Faturas">
+        <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+          {[
+            { v: "all", l: "Todas" },
+            { v: "open", l: "Em aberto" },
+            { v: "paid", l: "Pagas" },
+          ].map((f) => (
+            <button key={f.v}
+                    data-testid={`receivables-filter-${f.v}`}
+                    onClick={() => setFilter(f.v)}
+                    style={{
+                      padding: "6px 12px", borderRadius: 8, fontSize: 12,
+                      fontWeight: 700, cursor: "pointer",
+                      border: "1px solid #e2e8f0",
+                      background: filter === f.v ? "#0f172a" : "white",
+                      color: filter === f.v ? "white" : "#475569",
+                    }}>
+              {f.l}
+            </button>
+          ))}
+        </div>
         {invoices.length === 0 ? (
           <Empty msg="Nenhuma fatura sincronizada ainda." />
         ) : (
@@ -722,19 +744,24 @@ export function ReceivablesTab() {
               <thead>
                 <tr style={{ background: "#f8fafc",
                               position: "sticky", top: 0 }}>
-                  {["Cliente", "Documento", "Venc.", "Valor", "Pago", "Status"]
+                  {["Cliente", "Documento", "Venc.", "Valor", "Pago", "Status", "Ações"]
                   .map((h, i) => (
                     <th key={i} style={{
                       padding: "10px 14px",
-                      textAlign: (i >= 3) ? "right" : "left",
+                      textAlign: (i >= 3 && i <= 5) ? "right" : "left",
                       fontSize: 11, fontWeight: 700, color: "#475569",
                     }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((inv) => (
-                  <tr key={inv.id} style={{ borderTop: "1px solid #f1f5f9" }}>
+                {invoices
+                  .filter((inv) => filter === "all"
+                    || (filter === "paid" && inv.status === "paid")
+                    || (filter === "open" && inv.status !== "paid"))
+                  .map((inv) => (
+                  <tr key={inv.id} style={{ borderTop: "1px solid #f1f5f9" }}
+                      data-testid={`receivables-invoice-row-${inv.id}`}>
                     <td style={{ padding: "8px 14px" }}>
                       {inv.subscriber_name || "—"}
                     </td>
@@ -754,8 +781,38 @@ export function ReceivablesTab() {
                       {inv.amount_paid ? fmtMoney(inv.amount_paid) : "—"}
                     </td>
                     <td style={{ padding: "8px 14px", textAlign: "right",
-                                  fontSize: 11, color: "#64748b" }}>
-                      {inv.status}
+                                  fontSize: 11 }}>
+                      <InvoiceStatusBadge inv={inv} />
+                    </td>
+                    <td style={{ padding: "6px 12px", textAlign: "right" }}>
+                      {inv.status !== "paid" ? (
+                        <button
+                          data-testid={`receivables-mark-paid-${inv.id}`}
+                          onClick={() => setPaying(inv)}
+                          style={{
+                            padding: "4px 10px", borderRadius: 6,
+                            border: "1px solid #16a34a",
+                            background: "#16a34a", color: "white",
+                            fontSize: 11, fontWeight: 700, cursor: "pointer",
+                            display: "inline-flex", alignItems: "center", gap: 4,
+                          }}>
+                          <DollarSign size={11} /> Marcar paga
+                        </button>
+                      ) : (
+                        <button
+                          data-testid={`receivables-unmark-paid-${inv.id}`}
+                          onClick={() => unmarkPaid(inv)}
+                          title="Reverter para 'em aberto' (apenas local — não desfaz no Atlaz)"
+                          style={{
+                            padding: "4px 10px", borderRadius: 6,
+                            border: "1px solid #cbd5e1",
+                            background: "white", color: "#475569",
+                            fontSize: 11, fontWeight: 600, cursor: "pointer",
+                            display: "inline-flex", alignItems: "center", gap: 4,
+                          }}>
+                          <RotateCcw size={11} /> Reverter
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -764,7 +821,193 @@ export function ReceivablesTab() {
           </div>
         )}
       </Card>
+      {paying && (
+        <MarkInvoicePaidModal
+          invoice={paying}
+          onClose={() => setPaying(null)}
+          onSaved={async (msg) => { setPaying(null); setSyncMsg(msg); await reload(); }}
+        />
+      )}
     </div>
+  );
+
+  async function unmarkPaid(inv) {
+    if (!window.confirm("Reverter esta fatura para 'em aberto'? Isso só afeta o registro local — não desfaz a baixa no Atlaz.")) {
+      return;
+    }
+    try {
+      await api._client.post(`/atlaz-financeiro/invoices/${inv.id}/unmark-paid`);
+      setSyncMsg("Fatura revertida para 'em aberto' localmente.");
+      await reload();
+    } catch (e) {
+      setSyncMsg("Erro: " + (e?.response?.data?.detail || e.message));
+    }
+  }
+}
+
+function InvoiceStatusBadge({ inv }) {
+  const map = {
+    paid: { bg: "#dcfce7", fg: "#166534", label: "Paga" },
+    open: { bg: "#fef3c7", fg: "#92400e", label: "Em aberto" },
+    overdue: { bg: "#fee2e2", fg: "#991b1b", label: "Vencida" },
+    cancelled: { bg: "#f1f5f9", fg: "#475569", label: "Cancelada" },
+  };
+  const m = map[inv.status] || { bg: "#f1f5f9", fg: "#475569", label: inv.status || "—" };
+  return (
+    <span style={{
+      padding: "3px 9px", borderRadius: 999,
+      background: m.bg, color: m.fg,
+      fontWeight: 700, fontSize: 10, letterSpacing: 0.3,
+      display: "inline-flex", alignItems: "center", gap: 4,
+    }}>
+      {m.label}
+      {inv.paid_source === "smartprov" && (
+        <span title={`Marcada no SmartProv${inv.paid_by_user_name ? " por " + inv.paid_by_user_name : ""}`}
+              style={{ opacity: 0.7 }}>· SP</span>
+      )}
+      {inv.paid_pushed_to_atlaz === true && (
+        <span title={`Sincronizada com Atlaz via /${inv.paid_atlaz_endpoint}`}
+              style={{ color: "#16a34a" }}>✓</span>
+      )}
+      {inv.paid_pushed_to_atlaz === false && inv.paid_source === "smartprov" && (
+        <span title={`Push pra Atlaz falhou: ${inv.paid_atlaz_last_error || "desconhecido"}`}
+              style={{ color: "#dc2626" }}>!</span>
+      )}
+    </span>
+  );
+}
+
+function MarkInvoicePaidModal({ invoice, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    paid_amount: invoice.amount || 0,
+    paid_date: new Date().toISOString().slice(0, 10),
+    paid_method: "manual",
+    paid_note: "",
+    push_to_atlaz: true,
+  });
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+
+  async function submit() {
+    setBusy(true); setError("");
+    try {
+      const r = await api._client.post(
+        `/atlaz-financeiro/invoices/${invoice.id}/mark-paid`,
+        {
+          ...form,
+          paid_amount: Number(form.paid_amount),
+        },
+      ).then((r) => r.data);
+      setResult(r);
+      // Mensagem de sumário
+      const pushed = r.atlaz_push?.ok;
+      const attempted = r.atlaz_push?.attempted;
+      const summary = pushed
+        ? `Fatura marcada como paga · push pra Atlaz OK via /${r.atlaz_push.endpoint}`
+        : attempted
+          ? "Fatura marcada como paga LOCAL · Atlaz não respondeu (provável endpoint inexistente)"
+          : "Fatura marcada como paga LOCAL (token Atlaz não configurado ou push desativado)";
+      // Espera 1.5s pra usuário ver o feedback no modal antes de fechar
+      setTimeout(() => onSaved(summary), 1800);
+    } catch (e) {
+      setError(e?.response?.data?.detail || e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} title={`Marcar como Paga · ${invoice.subscriber_name || invoice.external_id}`}
+           testId="receivables-mark-paid-modal">
+      <div style={{ display: "grid", gap: 12, padding: 18, minWidth: 480 }}>
+        <div style={{ fontSize: 13, color: "#475569", padding: 10,
+                       background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+          <strong>Fatura Atlaz:</strong> {invoice.external_id}<br />
+          <strong>Vencimento:</strong> {invoice.due_date || "—"}<br />
+          <strong>Valor original:</strong> {fmtMoney(invoice.amount)}
+        </div>
+
+        <Field label="Valor pago (R$)">
+          <input type="number" step="0.01" style={inputStyle}
+                 data-testid="mark-paid-amount"
+                 value={form.paid_amount}
+                 onChange={(e) => setForm({ ...form, paid_amount: e.target.value })} />
+        </Field>
+        <Field label="Data do pagamento">
+          <input type="date" style={inputStyle}
+                 data-testid="mark-paid-date"
+                 value={form.paid_date}
+                 onChange={(e) => setForm({ ...form, paid_date: e.target.value })} />
+        </Field>
+        <Field label="Método (informativo)">
+          <select style={inputStyle}
+                  data-testid="mark-paid-method"
+                  value={form.paid_method}
+                  onChange={(e) => setForm({ ...form, paid_method: e.target.value })}>
+            <option value="manual">Manual (caixa, recibo)</option>
+            <option value="pix">PIX</option>
+            <option value="boleto">Boleto liquidado</option>
+            <option value="cartao">Cartão</option>
+            <option value="transferencia">Transferência</option>
+            <option value="dinheiro">Dinheiro</option>
+          </select>
+        </Field>
+        <Field label="Observação (opcional)">
+          <input type="text" style={inputStyle}
+                 data-testid="mark-paid-note"
+                 placeholder="Ex: recebido em mãos pela técnica X"
+                 value={form.paid_note}
+                 onChange={(e) => setForm({ ...form, paid_note: e.target.value })} />
+        </Field>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8,
+                         padding: 10, background: "#eff6ff", borderRadius: 8,
+                         border: "1px solid #bfdbfe", fontSize: 12, color: "#1e40af" }}>
+          <input type="checkbox"
+                 data-testid="mark-paid-push-atlaz"
+                 checked={form.push_to_atlaz}
+                 onChange={(e) => setForm({ ...form, push_to_atlaz: e.target.checked })} />
+          <span><strong>Tentar dar baixa no Atlaz também</strong> (best-effort — se a API não suportar,
+            a fatura fica como paga apenas localmente)</span>
+        </label>
+
+        {error && (
+          <div style={{ padding: 10, borderRadius: 8, background: "#fee2e2",
+                         color: "#991b1b", fontSize: 12 }}>
+            {error}
+          </div>
+        )}
+        {result && (
+          <div style={{ padding: 10, borderRadius: 8,
+                         background: result.atlaz_push?.ok ? "#dcfce7" : "#fef3c7",
+                         color: result.atlaz_push?.ok ? "#166534" : "#92400e",
+                         fontSize: 12 }}>
+            {result.atlaz_push?.ok ? (
+              <>✓ Pago localmente · <strong>Atlaz atualizado</strong> via
+                <code> /{result.atlaz_push.endpoint}</code></>
+            ) : result.atlaz_push?.attempted ? (
+              <>✓ Pago localmente · Atlaz <strong>não confirmou</strong> a baixa
+                ({result.atlaz_push.total_attempts || 0} endpoints testados,
+                nenhum retornou success=true). A fatura voltará a "open"
+                no próximo sync se o Atlaz não tiver registrado o pagamento.</>
+            ) : (
+              <>✓ Pago localmente (push para Atlaz desativado ou sem token).</>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancelar
+          </Button>
+          <Button onClick={submit} disabled={busy}
+                  data-testid="mark-paid-confirm-btn">
+            <CheckCircle2 size={14} /> {busy ? "Salvando…" : "Confirmar baixa"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

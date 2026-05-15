@@ -382,6 +382,267 @@ async def list_invoices(
     return {"items": items, "total": total}
 
 
+# ===========================================================================
+# Marcar fatura como PAGA — local + best-effort push pra Atlaz V2
+# ===========================================================================
+# Endpoints candidatos da Atlaz V2 para registrar pagamento (a API V2 não
+# documenta isso publicamente; testamos vários nomes possíveis).
+ATLAZ_PAY_ENDPOINTS = [
+    "baixafatura", "baixarfatura", "baixar_fatura",
+    "quitarfatura", "quitar_fatura",
+    "registrarpagamento", "registrar_pagamento",
+    "pagarfatura", "pagar_fatura",
+    "recebimento", "registrarrecebimento",
+    "atualizafatura", "atualizar_fatura",
+]
+
+
+class MarkPaidPayload(BaseModel):
+    paid_amount: Optional[float] = None
+    paid_date: Optional[str] = None  # YYYY-MM-DD
+    paid_method: Optional[str] = "manual"
+    paid_note: Optional[str] = None
+    push_to_atlaz: bool = True
+
+
+async def _try_push_atlaz_payment(
+    token: str,
+    external_id: str,
+    paid_amount: float,
+    paid_date: str,
+    timeout: float = 20.0,
+) -> Dict[str, Any]:
+    """Tenta marcar fatura como paga na API Atlaz V2 testando múltiplos endpoints.
+
+    Retorna {ok, endpoint, http_status, response, error}.
+    Se todos falharem, retorna {ok: False, error: "no_endpoint_responded"}.
+    """
+    attempts: List[Dict[str, Any]] = []
+    params_base = {
+        "token": token,
+        "id_fatura": external_id,
+        "id": external_id,
+        "valor_pago": str(paid_amount),
+        "valor": str(paid_amount),
+        "data_pagamento": paid_date,
+        "data_baixa": paid_date,
+    }
+    for ep in ATLAZ_PAY_ENDPOINTS:
+        for method in ("POST", "GET"):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    if method == "POST":
+                        r = await client.post(
+                            f"{ATLAZ_BASE_URL}/{ep}", params=params_base,
+                        )
+                    else:
+                        r = await client.get(
+                            f"{ATLAZ_BASE_URL}/{ep}", params=params_base,
+                        )
+                body_short = (r.text or "")[:200]
+                # Sucesso: 200 com success=true OU sem erro óbvio
+                ok = False
+                if r.status_code == 200:
+                    try:
+                        data = r.json()
+                        success_flag = data.get("success") if isinstance(data, dict) else None
+                        ok = (success_flag == "true" or success_flag is True
+                              or (success_flag is None and "erro" not in body_short.lower()
+                                  and "not found" not in body_short.lower()))
+                    except Exception:
+                        ok = "erro" not in body_short.lower()
+                attempts.append({
+                    "endpoint": ep, "method": method,
+                    "http_status": r.status_code,
+                    "response": body_short, "ok": ok,
+                })
+                if ok:
+                    return {
+                        "ok": True, "endpoint": ep, "method": method,
+                        "http_status": r.status_code, "response": body_short,
+                        "attempts": len(attempts),
+                    }
+            except Exception as e:
+                attempts.append({
+                    "endpoint": ep, "method": method,
+                    "http_status": 0, "error": str(e)[:120], "ok": False,
+                })
+                continue
+    return {
+        "ok": False,
+        "error": "no_endpoint_responded",
+        "attempts": attempts[:6],  # primeiros 6 pra debug, evita payload gigante
+        "total_attempts": len(attempts),
+    }
+
+
+@router.post("/invoices/{invoice_id}/mark-paid")
+async def mark_invoice_paid(
+    invoice_id: str,
+    payload: MarkPaidPayload,
+    user: dict = Depends(require_role("administrador", "financeiro")),
+):
+    """Marca fatura como paga LOCALMENTE + tenta push pra Atlaz V2 (best-effort).
+
+    Sempre atualiza local (status=paid, paid_*). Se push_to_atlaz=True e o
+    Atlaz tiver token configurado, tenta empurrar a baixa via /baixafatura
+    e similares. Retorna `atlaz_push` com resultado do push.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    inv = await db.subscriber_invoices.find_one(
+        {"company_id": cid, "id": invoice_id}, {"_id": 0},
+    )
+    if not inv:
+        raise HTTPException(404, "Fatura não encontrada")
+
+    paid_amount = payload.paid_amount if payload.paid_amount is not None else inv.get("amount", 0.0)
+    paid_date = payload.paid_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    paid_at = now_iso()
+
+    # --- 1) Atualização LOCAL (sempre roda)
+    update_doc = {
+        "status": "paid",
+        "paid_date": paid_date,
+        "amount_paid": paid_amount,
+        "paid_method": payload.paid_method or "manual",
+        "paid_note": payload.paid_note,
+        "paid_by_user_id": user.get("id"),
+        "paid_by_user_name": user.get("name") or user.get("email"),
+        "paid_at": paid_at,
+        "paid_source": "smartprov",
+    }
+    await db.subscriber_invoices.update_one(
+        {"company_id": cid, "id": invoice_id},
+        {"$set": update_doc},
+    )
+
+    # --- 2) Push pra Atlaz (best-effort)
+    atlaz_push: Dict[str, Any] = {"attempted": False}
+    if payload.push_to_atlaz and inv.get("external_id"):
+        cfg = await _get_config(cid)
+        if cfg.api_key:
+            atlaz_push = {"attempted": True}
+            try:
+                push = await _try_push_atlaz_payment(
+                    token=cfg.api_key,
+                    external_id=str(inv["external_id"]),
+                    paid_amount=float(paid_amount),
+                    paid_date=paid_date,
+                    timeout=cfg.timeout_seconds,
+                )
+                atlaz_push.update(push)
+                if push.get("ok"):
+                    await db.subscriber_invoices.update_one(
+                        {"company_id": cid, "id": invoice_id},
+                        {"$set": {
+                            "paid_pushed_to_atlaz": True,
+                            "paid_atlaz_endpoint": push.get("endpoint"),
+                            "paid_atlaz_at": paid_at,
+                        }},
+                    )
+                else:
+                    await db.subscriber_invoices.update_one(
+                        {"company_id": cid, "id": invoice_id},
+                        {"$set": {
+                            "paid_pushed_to_atlaz": False,
+                            "paid_atlaz_last_error": push.get("error"),
+                        }},
+                    )
+            except Exception as e:
+                logger.exception("[atlaz-fin] push falhou inv=%s", invoice_id)
+                atlaz_push = {
+                    "attempted": True, "ok": False,
+                    "error": f"{type(e).__name__}: {e}",
+                }
+
+    # --- 3) Log de auditoria
+    await db.atlaz_sync_logs.insert_one({
+        "id": f"pay-{uuid.uuid4().hex[:10]}",
+        "company_id": cid, "event": "invoice_mark_paid",
+        "status": "ok",
+        "details": (
+            f"inv={invoice_id} subscriber={inv.get('subscriber_name') or inv.get('subscriber_external_id')}"
+            f" amount={paid_amount} atlaz_push_ok={atlaz_push.get('ok', False)}"
+        ),
+        "at": paid_at,
+    })
+
+    updated = await db.subscriber_invoices.find_one(
+        {"company_id": cid, "id": invoice_id}, {"_id": 0},
+    )
+    return {"ok": True, "invoice": updated, "atlaz_push": atlaz_push}
+
+
+@router.post("/invoices/{invoice_id}/unmark-paid")
+async def unmark_invoice_paid(
+    invoice_id: str,
+    user: dict = Depends(require_role("administrador", "financeiro")),
+):
+    """Reverte a marcação local de paga (volta status=open). Não desfaz no Atlaz."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    inv = await db.subscriber_invoices.find_one(
+        {"company_id": cid, "id": invoice_id}, {"_id": 0},
+    )
+    if not inv:
+        raise HTTPException(404, "Fatura não encontrada")
+    await db.subscriber_invoices.update_one(
+        {"company_id": cid, "id": invoice_id},
+        {
+            "$set": {
+                "status": "open",
+                "amount_paid": 0,
+                "paid_unmarked_by": user.get("id"),
+                "paid_unmarked_at": now_iso(),
+            },
+            "$unset": {
+                "paid_date": "", "paid_method": "", "paid_note": "",
+                "paid_by_user_id": "", "paid_by_user_name": "", "paid_at": "",
+                "paid_source": "", "paid_pushed_to_atlaz": "",
+                "paid_atlaz_endpoint": "", "paid_atlaz_at": "",
+                "paid_atlaz_last_error": "",
+            },
+        },
+    )
+    return {"ok": True}
+
+
+@router.get("/probe-write")
+async def probe_write(
+    user: dict = Depends(require_role("administrador")),
+):
+    """Descobre quais endpoints de ESCRITA (baixa de fatura) existem na Atlaz V2.
+
+    NÃO efetua nenhuma escrita real — apenas faz um GET/HEAD nos endpoints
+    com token sozinho (sem id_fatura) e analisa a resposta de erro pra
+    inferir se o endpoint existe (ex.: "id_fatura obrigatório" indica que o
+    endpoint EXISTE; HTTP 404 indica que não).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(cid)
+    if not cfg.api_key:
+        raise HTTPException(400, "Token Atlaz não configurado")
+    results: List[Dict[str, Any]] = []
+    for ep in ATLAZ_PAY_ENDPOINTS:
+        try:
+            async with httpx.AsyncClient(timeout=cfg.timeout_seconds) as client:
+                r = await client.get(
+                    f"{ATLAZ_BASE_URL}/{ep}",
+                    params={"token": cfg.api_key},
+                )
+            body = (r.text or "")[:200]
+            exists = r.status_code != 404 and "not found" not in body.lower()
+            results.append({
+                "endpoint": ep, "http_status": r.status_code,
+                "likely_exists": exists, "body_sample": body,
+            })
+        except Exception as e:
+            results.append({
+                "endpoint": ep, "http_status": 0,
+                "likely_exists": False, "error": str(e)[:120],
+            })
+    return {"probed_at": now_iso(), "endpoints": results}
+
+
 @router.post("/sync-clients")
 async def sync_clients(user: dict = Depends(require_role("administrador"))):
     """Sincroniza clientes Atlaz para o cache local (rodando em background).
