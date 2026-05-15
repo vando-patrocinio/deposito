@@ -152,22 +152,13 @@ def build_budget_pdf(budget: Dict[str, Any], generated_by: str = "",
 
     # ---- 4. Tabela de itens ----
     items = budget.get("items") or []
-    head = ["#", "Item", "Qtde", "Unid", "Preço unit.", "Subtotal",
-             "Fonte / Confiança"]
+    head = ["#", "Item", "Qtde", "Unid", "Preço unit.", "Subtotal"]
     data = [head]
     for i, it in enumerate(items, start=1):
         unit_price = (float(it.get("manual_override"))
                        if it.get("manual_override") not in (None, "")
                        else float(it.get("avg_price") or 0))
         subtotal = unit_price * float(it.get("qty") or 0)
-        sources = it.get("sources") or []
-        conf = it.get("confidence") or "—"
-        src_text = ", ".join(sources[:2]) if sources else "Estim. IA"
-        if it.get("manual_override") not in (None, ""):
-            src_text = "Manual"
-        src_paragraph = Paragraph(
-            f"{src_text}<br/><font color='#64748b' size='6.5'>"
-            f"confiança: {conf}</font>", small)
         name_paragraph = Paragraph(
             f"<b>{it.get('name', '')}</b>" +
             (f"<br/><font color='#64748b' size='6.5'>{it.get('spec', '')}</font>"
@@ -179,11 +170,10 @@ def build_budget_pdf(budget: Dict[str, Any], generated_by: str = "",
             it.get("unit", "un"),
             _money_br(unit_price),
             _money_br(subtotal),
-            src_paragraph,
         ])
 
-    tbl = Table(data, colWidths=[10 * mm, 60 * mm, 14 * mm, 12 * mm,
-                                   23 * mm, 25 * mm, 36 * mm], repeatRows=1)
+    tbl = Table(data, colWidths=[12 * mm, 80 * mm, 18 * mm, 16 * mm,
+                                   28 * mm, 32 * mm], repeatRows=1)
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
