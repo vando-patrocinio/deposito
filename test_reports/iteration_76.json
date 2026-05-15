@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 76: Tested new Rede IA module (FTTH supervisor) — 5 phases. Backend: 25/25 pytest tests passed including bairros CRUD, CTO suggest-name/create/duplicate/validate flow, role enforcement (colab forbidden, gestor_rede approves), pendencies, history, diretrizes GET/PUT, flowchart (returns nodes+edges), LLM analyze endpoint (real Claude Sonnet 4.5 returned a report). Seed for new role gestor_rede works (login + JWT carries role='gestor_rede'). Frontend (admin desktop): Rede IA nav item appears in sidebar, RedeIaPanel mounts with all 7 sub-tabs (overview/ctos/pendencies/flowchart/bairros/history/diretrizes — testids use English IDs, not Portuguese as spec mentioned), diretrizes textarea editable. FinanceiroAnalyticsChart: NO ReferenceError preset_btn — bug fix verified, chart renders. WhatsApp ChannelBadge: data-testid='wa-thread-channel' correctly wired at WhatsAppChatLayout.js:1240 (manual test could not reach WhatsApp tab — couldn't find nav link from admin sidebar). CadastroCTOWizard at /?cid=col-demo-001: BLOCKED — wizard never renders because CollaboratorApp shows 'Acesso pelo link próprio' screen (collabId never set). RCA: see below.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "CollaboratorApp", "issue": "URL ?cid=col-demo-001 does NOT auto-select the technician — page shows 'Acesso pelo link próprio' screen instead of the technician dashboard, so the 'Cadastrar CTO (Rede IA)' button is never reached. forcedCollabId is only applied inside .then() of api.listCollaborators(), which silently fails for unauthenticated users. Move setCollabId(forcedCollabId) BEFORE the API call or add .catch().", "selector": "[data-testid=screen-no-link]", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "CTO Wizard mobile flow", "issue": "Unable to validate the 8-step wizard end-to-end because the wizard launch button is unreachable (see CollaboratorApp bug above). The wizard component itself has all 8 testids defined (cto-start-btn, cto-rua, cto-numero, cto-bairro-COR, cto-cap-8, cto-net-bal, cto-port-7, cto-summary-submit).", "affected_selectors": ["cto-start-btn"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter76_rede_ia.py", "/app/test_reports/pytest/iter76.xml"],
+  "action_items": [
+    "Fix CollaboratorApp.js (line ~133): move `if (forcedCollabId) setCollabId(forcedCollabId);` BEFORE `api.listCollaborators().then(...)` so the wizard becomes reachable at /?cid=col-demo-001 without auth, OR add a `.catch(() => { if (forcedCollabId) setCollabId(forcedCollabId); })`. Currently silent failure blocks the entire technician PWA flow.",
+    "(Optional) The spec mentions sub-tab IDs in Portuguese (painel/pendencias/fluxograma/historico) but the code uses English (overview/pendencies/flowchart/history). Either is fine, just align docs/specs with implementation."
+  ],
+  "critical_code_review_comments": [
+    "auth.py line 20: VALID_ROLES tuple does NOT include 'gestor_rede', but seed_default_users seeds a user with that role. Login still works (no enforcement on the constant), but creating new users via /api/auth/register with role='gestor_rede' would silently fail validation if that constant is checked elsewhere. Add 'gestor_rede' to VALID_ROLES.",
+    "rede_ia.py /ctos endpoint: there is NO DELETE route for CTOs — test cleanup tried to call DELETE /api/rede-ia/ctos/{id} but it 404s (only bairros have DELETE). Consider adding for completeness.",
+    "rede_ia.py flowchart node positioning uses hash(c['id']) for x — non-deterministic across Python sessions because hash randomization. Consider using a stable hash (e.g., zlib.adler32) for consistent layout.",
+    "rede_ia.py /analyze: synchronous LLM call (await) inside HTTP handler — request can take 20–60s; consider rate limiting and a job queue for large topologies."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter76_rede_ia.py"],
+  "success_rate": {"backend": "100% (25/25)", "frontend": "70% (Rede IA admin panel + bug fixes OK; technician wizard blocked)"},
+  "test_credentials": "admin@empresa.com/123456 ; gestorrede@empresa.com/123456 ; colaborador@empresa.com/123456",
+  "seed_data_creation": "Reused existing bairro 'Cordovil' (sigla COR, VLAN 301) created by previous iteration. Test fixture creates and cleans up TEST_Bairro_Iter76/sigla TST.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend Rede IA fully working. Only frontend gap is CollaboratorApp.js forcedCollabId race condition. After fix, retest mobile flow /?cid=col-demo-001 → Cadastrar CTO (Rede IA) → 8-step wizard → POST /api/rede-ia/ctos → pending in /api/rede-ia/pendencies → approve as gestor_rede. Bairro 'COR' VLAN 301 is already seeded so cto-bairro-COR testid will be present.",
+  "rca of the issue": "CollaboratorApp.js useEffect at line 130: `api.listCollaborators().then((cs) => { setCollabs(cs); if (forcedCollabId) setCollabId(forcedCollabId); })`. If the user isn't authenticated (typical technician PWA flow accessed via shared link without prior login), api.listCollaborators returns 401 and the .then callback never runs, so collabId stays null and the 'Acesso pelo link próprio' empty-state renders. Mitigation: set forcedCollabId synchronously OR add a fallback in .catch. Reproduction: open https://<host>/?cid=col-demo-001 in incognito mobile → see 'Acesso pelo link próprio' instead of technician home."
+}

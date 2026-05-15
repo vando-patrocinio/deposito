@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
 import SelfieCamera from "@/SelfieCamera";
 import LousaMobile from "@/LousaMobile";
+import CadastroCTOWizard from "@/CadastroCTOWizard";
 import MyAssetsModal from "@/MyAssetsModal";
 import MyHoleritesModal from "@/MyHoleritesModal";
 import ServerClock from "@/ServerClock";
@@ -625,6 +626,24 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 <Icon name="clipboard" /> Lousa de Serviços
               </button>
 
+              <button
+                data-testid="open-cto-btn"
+                onClick={() => setScreen("cto-cadastro")}
+                style={{
+                  width: "100%", height: 48, marginTop: 6, marginBottom: 4,
+                  background: "#fff7ed",
+                  border: "1.5px solid #fdba74",
+                  borderRadius: 12,
+                  color: "#9a3412",
+                  fontWeight: 600, fontSize: 14,
+                  cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+                }}
+              >
+                <Icon name="map" /> Cadastrar CTO (Rede IA)
+              </button>
+
+
               {/* Resumo do último serviço — visível antes de bater Saída */}
               {lousaSummary?.last_finished_ticket && (
                 <div data-testid="last-service-summary" style={{
@@ -796,6 +815,23 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
           {screen === "lousa" && (
             <LousaMobile collaboratorId={collabId} onBack={() => setScreen("home")} />
+          )}
+
+          {screen === "cto-cadastro" && (
+            <CadastroCTOWizard
+              technician={collab}
+              onClose={() => setScreen("home")}
+              onCreated={(cto) => {
+                // exibe receipt simples e volta para home
+                setReceipt({
+                  ok: true,
+                  ts: Date.now(),
+                  type: "CTO",
+                  message: `CTO ${cto?.name} enviada para validação.`,
+                });
+                setScreen("home");
+              }}
+            />
           )}
 
           {/* Modal: Saída com bolhas em aberto */}

@@ -788,4 +788,30 @@ export const api = {
     client.put(`/financeiro/cash-accounts/${id}`, data).then((r) => r.data),
   finCashAccountDelete: (id) =>
     client.delete(`/financeiro/cash-accounts/${id}`).then((r) => r.data),
+
+  // ===== Rede IA =====
+  redeIaBairros: () => client.get(`/rede-ia/bairros`).then((r) => r.data),
+  redeIaBairroCreate: (data) => client.post(`/rede-ia/bairros`, data).then((r) => r.data),
+  redeIaBairroUpdate: (id, data) => client.put(`/rede-ia/bairros/${id}`, data).then((r) => r.data),
+  redeIaBairroDelete: (id) => client.delete(`/rede-ia/bairros/${id}`).then((r) => r.data),
+  redeIaBairrosLookup: (q) =>
+    client.get(`/rede-ia/bairros/lookup`, { params: { q } }).then((r) => r.data),
+  redeIaSuggestName: (sigla, vlan, number) =>
+    client.get(`/rede-ia/ctos/suggest-name`, { params: { sigla, vlan, number } }).then((r) => r.data),
+  redeIaCtoCreate: (data) => client.post(`/rede-ia/ctos`, data).then((r) => r.data),
+  redeIaCtosList: (params = {}) =>
+    client.get(`/rede-ia/ctos`, { params }).then((r) => r.data),
+  redeIaCtoGet: (id) => client.get(`/rede-ia/ctos/${id}`).then((r) => r.data),
+  redeIaPendencies: () => client.get(`/rede-ia/pendencies`).then((r) => r.data),
+  redeIaValidate: (id, action, comment = "") =>
+    client.post(`/rede-ia/ctos/${id}/validate`, { action, comment }).then((r) => r.data),
+  redeIaHistory: (cto_id) =>
+    client.get(`/rede-ia/history`, { params: { cto_id } }).then((r) => r.data),
+  redeIaDiretrizes: () => client.get(`/rede-ia/diretrizes`).then((r) => r.data),
+  redeIaDiretrizesUpdate: (text) =>
+    client.put(`/rede-ia/diretrizes`, { text }).then((r) => r.data),
+  redeIaFlowchart: (params = {}) =>
+    client.get(`/rede-ia/flowchart`, { params }).then((r) => r.data),
+  redeIaAnalyze: (data = {}) =>
+    client.post(`/rede-ia/analyze`, data).then((r) => r.data),
 };

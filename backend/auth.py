@@ -119,6 +119,7 @@ async def seed_default_users(db) -> None:
     base = [
         ("admin@empresa.com", "123456", "administrador", "Administrador"),
         ("gestor@empresa.com", "123456", "gestor", "Gestor"),
+        ("gestorrede@empresa.com", "123456", "gestor_rede", "Gestor de Rede"),
         ("colaborador@empresa.com", "123456", "colaborador", "Carlos Almeida"),
         # Compat com smart2 demo
         ("admin@example.com", os.environ.get("ADMIN_PASSWORD", "admin123"), "gestor", "Gestor padrão"),

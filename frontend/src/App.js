@@ -18,6 +18,7 @@ import HoleriteViewer from "@/HoleriteViewer";
 import FeriadosPanel from "@/FeriadosPanel";
 import SettingsPanel from "@/SettingsPanel";
 import FinanceiroPanel from "@/FinanceiroPanel";
+import RedeIaPanel from "@/RedeIaPanel";
 import MassMessagingPanel from "@/MassMessagingPanel";
 import MotorIaCard from "@/MotorIaCard";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
@@ -129,6 +130,7 @@ const NAV_GROUPS = [
       { id: "ai-ranking", icon: Sparkles, label: "Avaliação IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "ai-corrections", icon: Wand2, label: "Correções IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "central-ia", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"] },
+      { id: "rede-ia", icon: Brain, label: "Rede IA", roles: ["gestor", "auditor", "administrador", "gestor_rede"] },
       { id: "atendimento", icon: MessageCircle, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "mass-messaging", icon: Megaphone, label: "Disparo em Massa", roles: ["gestor", "auditor", "administrador"] },
     ],
@@ -821,6 +823,7 @@ function AppContent() {
           {view === "holerite" && <HoleritePanel />}
           {view === "feriados" && <FeriadosPanel />}
           {view === "financeiro" && <FinanceiroPanel />}
+          {view === "rede-ia" && <RedeIaPanel />}
           {view === "mass-messaging" && <MassMessagingPanel />}
           {view === "logs" && <LogsPanel />}
           {view === "settings" && <SettingsPanel />}
