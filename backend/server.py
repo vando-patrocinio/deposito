@@ -92,6 +92,7 @@ from routes import (
     financeiro_analytics as routes_financeiro_analytics,
     atlaz_financeiro as routes_atlaz_financeiro,
     alvaro as routes_alvaro,
+    whatsapp_config as routes_whatsapp_config,
     mass_messaging as routes_mass_messaging,
 )
 
@@ -432,6 +433,7 @@ app.include_router(routes_financeiro_ops.router)
 app.include_router(routes_financeiro_analytics.router)
 app.include_router(routes_atlaz_financeiro.router)
 app.include_router(routes_alvaro.router)
+app.include_router(routes_whatsapp_config.router)
 app.include_router(routes_mass_messaging.router)
 
 

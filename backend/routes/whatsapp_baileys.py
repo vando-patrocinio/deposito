@@ -1797,15 +1797,15 @@ async def list_messages(limit: int = 50,
 # ---------------------------------------------------------------------------
 
 
-def _bucket_for_conversation(conv: dict) -> str:
+async def _bucket_for_conversation(conv: dict, company_id: str = "") -> str:
     """Decide o bucket FocusChat baseado nos atributos da conversa.
 
     Buckets:
     - "grupo": JID termina em @g.us
-    - "automatico": atualmente sendo respondida pela IA (assigned_user_id == ISABELLA ou auto_reply ativo)
+    - "automatico": atualmente sendo respondida pela IA
     - "manual": atribuída a um humano
     - "aguardando": sem resposta humana há mais de 5min (e sem auto-reply)
-    - "fora_de_hora": chegou fora do horário comercial (8h-22h BRT)
+    - "fora_de_hora": chegou fora do horário comercial configurado
     """
     if conv.get("is_group"):
         return "grupo"
@@ -1815,14 +1815,25 @@ def _bucket_for_conversation(conv: dict) -> str:
     last_inbound = conv.get("last_inbound_at")
     if assignee_role == "human" and conv.get("assignee_user_id"):
         return "manual"
-    # Sem atribuição — checa se está esperando
     if last_inbound:
         try:
             t = datetime.fromisoformat(last_inbound.replace("Z", "+00:00"))
             age = (datetime.now(timezone.utc) - t).total_seconds()
-            hour_brt = (datetime.now(timezone.utc) - timedelta(hours=3)).hour
-            if hour_brt < 8 or hour_brt >= 22:
-                return "fora_de_hora"
+            # Tenta usar a configuração de business hours (cache simples)
+            if company_id:
+                try:
+                    from routes.whatsapp_config import is_outside_business_hours
+                    if await is_outside_business_hours(company_id):
+                        return "fora_de_hora"
+                except Exception:
+                    # fallback ao default 8h-22h BRT
+                    hour_brt = (datetime.now(timezone.utc) - timedelta(hours=3)).hour
+                    if hour_brt < 8 or hour_brt >= 22:
+                        return "fora_de_hora"
+            else:
+                hour_brt = (datetime.now(timezone.utc) - timedelta(hours=3)).hour
+                if hour_brt < 8 or hour_brt >= 22:
+                    return "fora_de_hora"
             if age > 300:  # 5min
                 return "aguardando"
         except Exception:
@@ -2048,7 +2059,7 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
             "last_channel": r.get("last_channel") or "baileys",
             "channels_used": [c for c in (r.get("channels_used") or []) if c],
         }
-        bucket = _bucket_for_conversation(conv_view)
+        bucket = await _bucket_for_conversation(conv_view, cid)
         conv_view["bucket"] = bucket
         counts[bucket] = counts.get(bucket, 0) + 1
         items.append(conv_view)

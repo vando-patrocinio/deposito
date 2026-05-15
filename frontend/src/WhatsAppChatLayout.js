@@ -5,7 +5,7 @@ import {
   CheckCircle2, GraduationCap, ChevronDown, ChevronUp, Lightbulb,
   Wifi, WifiOff, Activity, Info, Signal, MapPin, Phone, CreditCard,
   AlertCircle, Sparkles, Lock, AlertTriangle, ClipboardList, RefreshCw,
-  Settings, RotateCcw, Image, CalendarPlus, Mic, Play, Pause,
+  Settings, RotateCcw, Image, ImagePlus, Paperclip, FileDown, CalendarPlus, Mic, Play, Pause,
 } from "lucide-react";
 import { api } from "@/api";
 import { useAuth } from "@/AuthContext";
@@ -1323,6 +1323,9 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
   const [resetting, setResetting] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showQuickImages, setShowQuickImages] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfResult, setPdfResult] = useState(null);
   const resetConversation = async () => {
     if (!window.confirm(
       "Resetar esta conversa?\n\n" +
@@ -1339,6 +1342,30 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
     } catch (e) {
       alert("Erro ao resetar: " + (e?.response?.data?.detail || e.message));
     } finally { setResetting(false); }
+  };
+
+  /* Anexo: gera PDF da conversa completa + vincula ao cadastro do cliente. */
+  const exportConversationPdf = async () => {
+    setExportingPdf(true);
+    setPdfResult(null);
+    try {
+      const r = await api._client.post(
+        `/whatsapp-baileys/conversation/${conv.phone}/export-pdf`,
+      ).then((x) => x.data);
+      const token = window.localStorage.getItem("ponto_token") || "";
+      const dlUrl =
+        `${process.env.REACT_APP_BACKEND_URL || ""}${r.download_url}?t=${encodeURIComponent(token)}`;
+      // Auto-download
+      const a = document.createElement("a");
+      a.href = dlUrl;
+      a.download = r.document?.file_name || "transcricao.pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setPdfResult(r);
+    } catch (e) {
+      alert("Erro ao gerar PDF: " + (e?.response?.data?.detail || e.message));
+    } finally { setExportingPdf(false); }
   };
 
   /* Timeline mesclada: mensagens reais (WhatsApp) + coaching INTERNO (só você vê),
@@ -1577,6 +1604,23 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
             hoverColor="#0ea5e9"
           />
           <IconBtn
+            data-testid="wa-quick-images-btn"
+            onClick={() => setShowQuickImages(true)}
+            disabled={busy}
+            icon={<ImagePlus size={14} strokeWidth={2} />}
+            tooltip="Imagens Rápidas (até 5 imagens pré-cadastradas)"
+            hoverColor="#7c3aed"
+          />
+          <IconBtn
+            data-testid="wa-export-pdf-btn"
+            onClick={exportConversationPdf}
+            disabled={busy || exportingPdf}
+            icon={<Paperclip size={14} strokeWidth={2}
+                              className={exportingPdf ? "spin" : ""} />}
+            tooltip="Anexo (gerar PDF da conversa e vincular ao cadastro do cliente)"
+            hoverColor="#0e7490"
+          />
+          <IconBtn
             data-testid="wa-schedule-btn"
             onClick={() => setShowSchedule(true)}
             disabled={busy}
@@ -1619,6 +1663,20 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
           onClose={() => setShowImagePicker(false)}
           onSent={async () => { setShowImagePicker(false); await loadMessages(); }}
         />
+      )}
+
+      {/* Imagens Rápidas — envia uma das 5 pré-cadastradas */}
+      {showQuickImages && (
+        <QuickImagesPopover
+          phone={conv.phone}
+          onClose={() => setShowQuickImages(false)}
+          onSent={async () => { setShowQuickImages(false); await loadMessages(); }}
+        />
+      )}
+
+      {/* Resultado do PDF gerado (toast) */}
+      {pdfResult && (
+        <PdfResultToast result={pdfResult} onClose={() => setPdfResult(null)} />
       )}
 
       {/* Agendamento — bolha de serviço (data, hora, motivo, cliente) */}
@@ -2343,6 +2401,172 @@ function InlineAudioPlayer({ src, duration: durationProp, outbound }) {
     </div>
   );
 }
+
+/* =============================================================
+   QuickImagesPopover — modal listando as imagens rápidas
+   pré-cadastradas em Configuração. Clica e envia direto.
+============================================================= */
+function QuickImagesPopover({ phone, onClose, onSent }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(null);
+  const [caption, setCaption] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api._client.get("/whatsapp-baileys/quick-images")
+      .then((r) => setItems(r.data.items || []))
+      .catch((e) => setError(e?.response?.data?.detail || e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function send(it) {
+    setSending(it.id);
+    setError("");
+    try {
+      await api._client.post(`/whatsapp-baileys/quick-images/${it.id}/send`, {
+        phone, caption,
+      });
+      onSent();
+    } catch (e) {
+      setError(e?.response?.data?.detail || e.message);
+    } finally { setSending(null); }
+  }
+
+  const token = window.localStorage.getItem("ponto_token") || "";
+  const baseUrl = process.env.REACT_APP_BACKEND_URL || "";
+
+  return (
+    <div onClick={onClose} data-testid="wa-quick-images-modal"
+         style={{ position: "fixed", inset: 0, zIndex: 1000,
+                   background: "rgba(2,6,23,0.6)",
+                   display: "grid", placeItems: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{ background: "white", borderRadius: 14, padding: 20,
+                     maxWidth: 720, width: "100%", maxHeight: "85vh",
+                     overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between",
+                       alignItems: "center", marginBottom: 14 }}>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#0f172a",
+                        display: "flex", alignItems: "center", gap: 8 }}>
+            <ImagePlus size={20} style={{ color: "#7c3aed" }} />
+            Imagens Rápidas
+          </h3>
+          <button onClick={onClose} style={{ border: "none",
+                                                background: "transparent",
+                                                cursor: "pointer", color: "#64748b" }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <input type="text" value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                placeholder="Legenda (opcional, enviada junto da imagem)"
+                data-testid="wa-quick-images-caption"
+                style={{
+                  width: "100%", padding: 10, borderRadius: 8,
+                  border: "1px solid #cbd5e1", fontSize: 13,
+                  fontFamily: "inherit", marginBottom: 14,
+                }} />
+
+        {loading ? (
+          <p style={{ color: "#64748b", textAlign: "center", padding: 24 }}>
+            Carregando...
+          </p>
+        ) : items.length === 0 ? (
+          <div style={{ padding: 30, textAlign: "center",
+                         background: "#f8fafc", borderRadius: 10,
+                         border: "1px dashed #cbd5e1" }}>
+            <ImagePlus size={32} style={{ color: "#94a3b8", marginBottom: 8 }} />
+            <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>
+              Nenhuma imagem rápida cadastrada.<br />
+              Vá em <strong>Configuração → Imagens Rápidas</strong> para adicionar.
+            </p>
+          </div>
+        ) : (
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+            gap: 10,
+          }}>
+            {items.map((it) => (
+              <button key={it.id}
+                       data-testid={`wa-quick-images-send-${it.id}`}
+                       onClick={() => send(it)}
+                       disabled={sending === it.id}
+                       style={{
+                         padding: 0, border: "2px solid transparent",
+                         borderRadius: 10, overflow: "hidden",
+                         cursor: sending === it.id ? "wait" : "pointer",
+                         background: "white",
+                         opacity: sending === it.id ? 0.6 : 1,
+                         transition: "border-color 0.15s, transform 0.15s",
+                       }}
+                       onMouseEnter={(e) => e.currentTarget.style.borderColor = "#7c3aed"}
+                       onMouseLeave={(e) => e.currentTarget.style.borderColor = "transparent"}>
+                <div style={{
+                  aspectRatio: "16/10", background: "#f1f5f9",
+                  backgroundImage: `url("${baseUrl}${it.url}?t=${encodeURIComponent(token)}")`,
+                  backgroundSize: "cover", backgroundPosition: "center",
+                }} />
+                <div style={{ padding: 8, fontSize: 11, fontWeight: 600,
+                               color: "#475569", textAlign: "left",
+                               whiteSpace: "nowrap", overflow: "hidden",
+                               textOverflow: "ellipsis" }}>
+                  {sending === it.id ? "Enviando..." : (it.label || "(sem nome)")}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {error && (
+          <div style={{ marginTop: 12, padding: 10, borderRadius: 8,
+                         background: "#fee2e2", color: "#991b1b", fontSize: 12 }}>
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* =============================================================
+   PdfResultToast — feedback após gerar transcrição PDF.
+============================================================= */
+function PdfResultToast({ result, onClose }) {
+  useEffect(() => {
+    const id = setTimeout(onClose, 8000);
+    return () => clearTimeout(id);
+  }, [onClose]);
+  return (
+    <div data-testid="wa-pdf-result-toast"
+         style={{
+           position: "fixed", bottom: 20, right: 20, zIndex: 999,
+           padding: 14, borderRadius: 10, maxWidth: 380,
+           background: "#dcfce7", color: "#166534",
+           border: "1px solid #86efac", fontSize: 13,
+           boxShadow: "0 6px 16px rgba(0,0,0,0.1)",
+         }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+        <FileDown size={16} /> PDF gerado com sucesso
+      </div>
+      <div style={{ marginTop: 6, fontSize: 12 }}>
+        {result.message_count} mensagens · {Math.round((result.document?.size_bytes || 0) / 1024)} KB
+      </div>
+      {result.subscriber_linked ? (
+        <div style={{ marginTop: 6, fontSize: 11, color: "#166534" }}>
+          ✓ Vinculado ao cadastro do cliente
+        </div>
+      ) : (
+        <div style={{ marginTop: 6, fontSize: 11, color: "#92400e" }}>
+          ⚠ Cliente não cadastrado — PDF salvo, mas sem vínculo
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 
 function MsgBubble({ msg, onCorrect }) {

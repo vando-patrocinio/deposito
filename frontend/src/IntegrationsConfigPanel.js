@@ -5,6 +5,8 @@ import WhatsAppInstancePanel from "@/WhatsAppInstancePanel";
 import ChatTopologyMap from "@/ChatTopologyMap";
 import InlineAgentEditor from "@/InlineAgentEditor";
 import WallpaperConfigCard from "@/WallpaperConfigCard";
+import WaBusinessHoursCard from "@/WaBusinessHoursCard";
+import WaQuickImagesCard from "@/WaQuickImagesCard";
 import {
   CheckCircle2, AlertCircle, RefreshCw, Plug, Wifi, WifiOff,
 } from "lucide-react";
@@ -112,6 +114,12 @@ export default function IntegrationsConfigPanel() {
 
       {/* Papel de parede customizável do chat */}
       <WallpaperConfigCard />
+
+      {/* Horário de atendimento (mensagens fora do horário → "Fora de hora") */}
+      <WaBusinessHoursCard />
+
+      {/* Imagens rápidas — até 5 imagens pra envio rápido pela atendente */}
+      <WaQuickImagesCard />
 
       {/* Painel completo de Instância Baileys (QR, número, auto-reply, etc.) */}
       <WhatsAppInstancePanel />
