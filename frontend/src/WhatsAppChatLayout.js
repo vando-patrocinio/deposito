@@ -1399,7 +1399,31 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
   }, [messages, coachings]);
 
   if (!conv) {
-    return <WaWallpaper empty />;
+    // Empty state — usa o MESMO wallpaper customizado da empresa (igual ao chat).
+    return (
+      <div style={{
+        flex: 1, minHeight: 0, position: "relative",
+        backgroundColor: "#efeae2",
+        backgroundImage: `url("${wallpaperUrl || '/wa-wallpaper-ligo.png?v=4'}")`,
+        backgroundRepeat: wallpaperUrl ? "no-repeat" : "repeat",
+        backgroundSize: wallpaperUrl ? "cover" : "auto",
+        backgroundPosition: "center",
+        display: "grid", placeItems: "center",
+      }} data-testid="wa-empty-state">
+        <div style={{
+          width: 140, height: 140, borderRadius: "50%",
+          background: "rgba(255,255,255,0.92)",
+          backdropFilter: "blur(4px)",
+          display: "grid", placeItems: "center",
+          boxShadow: "0 8px 28px rgba(0,0,0,0.08)",
+        }}>
+          <img src="/ligo-mascote.png"
+                onError={(e) => { e.target.style.display = "none"; }}
+                alt="Ligo"
+                style={{ width: 80, height: 80, objectFit: "contain" }} />
+        </div>
+      </div>
+    );
   }
 
   const name = conv.subscriber_name || conv.push_name || `+${conv.phone}`;
