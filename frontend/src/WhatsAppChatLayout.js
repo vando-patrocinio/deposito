@@ -1159,14 +1159,28 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
     const wasNearBottom = distFromBottom < 120;
     const delta = messages.length - lastMsgCountRef.current;
     const grew = delta > 0;
-    // Primeiro load: scroll INSTANTÂNEO pro fundo.
+    // Primeiro load: scroll INSTANTÂNEO pro fundo + retries via RAF (imagens
+    // dentro dos balões podem chegar depois, fazendo a altura crescer).
     // Polling com 1-3 msgs novas: smooth scroll SE usuário está perto do fundo;
     //   senão NÃO mexe no scroll (usuário lendo histórico) e contabiliza pro badge.
     if (isFirstLoadForConv) {
-      el.scrollTo({ top: 1e9, behavior: "auto" });
+      const forceBottom = () => {
+        if (!scrollRef.current) return;
+        scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "auto" });
+      };
+      forceBottom();
+      // Retries: balões com imagens/avatar ainda em load podem aumentar a
+      // altura. Force novamente em 100ms, 300ms e 800ms pra garantir.
+      const t1 = setTimeout(forceBottom, 100);
+      const t2 = setTimeout(forceBottom, 300);
+      const t3 = setTimeout(forceBottom, 800);
       setNewCountWhileAway(0);
       setShowScrollDown(false);
-    } else if (grew && wasNearBottom) {
+      lastConvPhoneRef.current = conv?.phone;
+      lastMsgCountRef.current = messages.length;
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    }
+    if (grew && wasNearBottom) {
       el.scrollTo({ top: 1e9, behavior: delta <= 3 ? "smooth" : "auto" });
     } else if (grew && !wasNearBottom) {
       // Só conta mensagens novas RECEBIDAS (inbound). Outbound = ele mesmo enviou,
@@ -1178,6 +1192,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
     }
     lastConvPhoneRef.current = conv?.phone;
     lastMsgCountRef.current = messages.length;
+    return undefined;
   }, [messages, conv]);
 
   const scrollToBottom = useCallback(() => {
