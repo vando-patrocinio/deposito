@@ -156,7 +156,7 @@ async def _resend_corrected(cid: str, phone: str, text: str,
     """
     import httpx
     import os
-    sidecar_base = os.environ.get("WA_SIDECAR_URL", "http://localhost:8002")
+    sidecar_base = os.environ.get("WA_SIDECAR_URL", "http://127.0.0.1:3002")
     sent = False
     send_error = None
     out: dict = {}
