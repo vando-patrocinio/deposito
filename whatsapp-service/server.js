@@ -35,6 +35,7 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  downloadMediaMessage,
 } = require("@whiskeysockets/baileys");
 const express = require("express");
 const cors = require("cors");
@@ -304,6 +305,36 @@ async function startSock() {
           }
           // Se for LID e não tem senderPn → mantemos LID como ID, mas marcamos
           const phone = realPhone || (isLid ? rawId : rawId);
+
+          // === Áudio inbound (PTT/voice note) ===
+          // Baixamos o áudio do WhatsApp e mandamos pro backend em base64.
+          // O backend grava no disco e cria a msg com media_type=audio.
+          let audio_b64 = null;
+          let audio_mimetype = null;
+          let audio_duration = null;
+          let audio_is_ptt = false;
+          const audioMsg = msg.audioMessage;
+          if (audioMsg) {
+            try {
+              const buf = await downloadMediaMessage(
+                m, "buffer", {},
+                { logger, reuploadRequest: sock.updateMediaMessage },
+              );
+              if (buf && buf.length > 0 && buf.length <= 8 * 1024 * 1024) {
+                audio_b64 = buf.toString("base64");
+                audio_mimetype = audioMsg.mimetype || "audio/ogg; codecs=opus";
+                audio_duration = audioMsg.seconds || null;
+                audio_is_ptt = !!audioMsg.ptt;
+              } else if (buf && buf.length > 8 * 1024 * 1024) {
+                logger.warn({ phone, size: buf.length },
+                  "inbound audio too large, skipping download");
+              }
+            } catch (e) {
+              logger.warn({ err: e.message, phone },
+                "downloadMediaMessage(audio) falhou");
+            }
+          }
+
           const payload = {
             phone, jid: fromJid, from_me: false, text,
             message_id: m.key.id, timestamp: m.messageTimestamp,
@@ -312,6 +343,11 @@ async function startSock() {
             is_lid: isLid,
             lid: isLid ? rawId : null,
             sender_pn: realPhone,
+            // Áudio (opcional)
+            audio_b64,
+            audio_mimetype,
+            audio_duration_sec: audio_duration,
+            audio_is_ptt,
           };
           const headers = INBOUND_TOKEN ? { "X-WA-Token": INBOUND_TOKEN } : {};
           try {

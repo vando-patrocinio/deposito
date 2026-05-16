@@ -448,6 +448,11 @@ class InboundIn(BaseModel):
     is_lid: bool = False
     lid: Optional[str] = None
     sender_pn: Optional[str] = None
+    # Áudio inbound (PTT/voice note) — opcional, anexado pelo sidecar
+    audio_b64: Optional[str] = None
+    audio_mimetype: Optional[str] = None
+    audio_duration_sec: Optional[int] = None
+    audio_is_ptt: bool = False
 
 
 class SystemEventIn(BaseModel):
@@ -618,7 +623,9 @@ async def inbound_webhook(payload: InboundIn,
         )
     if payload.from_me:
         return {"ok": True, "ignored": "from_me"}
-    if not payload.text.strip():
+    # Tem áudio? trate como mensagem válida mesmo sem texto.
+    has_audio = bool(payload.audio_b64)
+    if not payload.text.strip() and not has_audio:
         return {"ok": True, "ignored": "empty"}
     # Não responde em grupos (jid termina exatamente em @g.us)
     is_group = (payload.jid or "").endswith("@g.us")
@@ -686,13 +693,44 @@ async def inbound_webhook(payload: InboundIn,
     except Exception as e:
         logger.warning("[wa-baileys] auto-link falhou: %s", e)
 
-    await db.aihub_wa_messages.insert_one({
-        "id": f"wam-{uuid.uuid4().hex[:10]}",
+    # Persiste áudio inbound em disco (se veio do sidecar) e gera URL servida.
+    media_type = None
+    media_url = None
+    media_duration_sec = None
+    msg_id = f"wam-{uuid.uuid4().hex[:10]}"
+    if has_audio:
+        try:
+            import base64
+            mime = (payload.audio_mimetype or "audio/ogg").lower()
+            if "webm" in mime:
+                ext = "webm"
+            elif "mp4" in mime or "m4a" in mime:
+                ext = "m4a"
+            elif "mpeg" in mime or "mp3" in mime:
+                ext = "mp3"
+            elif "wav" in mime:
+                ext = "wav"
+            else:
+                ext = "ogg"
+            WA_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+            out_path = WA_AUDIO_DIR / f"{msg_id}.{ext}"
+            out_path.write_bytes(base64.b64decode(payload.audio_b64))
+            media_type = "audio"
+            media_url = f"/api/whatsapp-baileys/audio/{msg_id}.{ext}"
+            media_duration_sec = payload.audio_duration_sec
+        except Exception as e:
+            logger.warning("[wa-baileys] save inbound audio failed: %s", e)
+
+    inbound_doc = {
+        "id": msg_id,
         "company_id": cid,
         "direction": "inbound",
         "phone": effective_phone,
         "jid": payload.jid,
-        "text": payload.text,
+        "text": payload.text or (
+            f"🎤 Áudio ({media_duration_sec}s)" if has_audio and media_duration_sec
+            else ("🎤 Áudio" if has_audio else "")
+        ),
         "channel": "baileys",
         "push_name": payload.push_name,
         "message_id": payload.message_id,
@@ -701,7 +739,14 @@ async def inbound_webhook(payload: InboundIn,
         "phone_is_lid": payload.is_lid and effective_phone == payload.lid,
         "lid": payload.lid,
         "created_at": now_iso(),
-    })
+    }
+    if media_type:
+        inbound_doc["media_type"] = media_type
+        inbound_doc["media_url"] = media_url
+        inbound_doc["media_duration_sec"] = media_duration_sec
+        inbound_doc["media_mimetype"] = payload.audio_mimetype
+        inbound_doc["media_is_ptt"] = payload.audio_is_ptt
+    await db.aihub_wa_messages.insert_one(inbound_doc)
     # Atualiza conv com flag LID quando aplicável
     if payload.is_lid:
         await db.wa_conversations.update_one(
@@ -1298,6 +1343,21 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         if not history_turns or history_turns[-1].get("content") != user_text:
             chat_messages.append({"role": "user", "content": user_text})
 
+        # 🟢 Marca a IA como "digitando..." (TTL de 45s) — frontend exibe
+        # "Isabella digitando..." enquanto este flag estiver no futuro.
+        try:
+            await db.wa_conversations.update_one(
+                {"company_id": cid, "phone": phone},
+                {"$set": {
+                    "ai_typing_until": (datetime.now(timezone.utc)
+                                          + timedelta(seconds=45)).isoformat(),
+                    "ai_typing_agent": agent.get("name") or "Isabella IA",
+                }},
+                upsert=True,
+            )
+        except Exception:
+            pass
+
         result = await chat_completion(
             cid,
             messages=chat_messages,
@@ -1308,6 +1368,14 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         )
         reply_text = (result.get("content") or "").strip()
     except Exception as e:
+        # Limpa flag de digitando em caso de erro
+        try:
+            await db.wa_conversations.update_one(
+                {"company_id": cid, "phone": phone},
+                {"$unset": {"ai_typing_until": "", "ai_typing_agent": ""}},
+            )
+        except Exception:
+            pass
         await _persist_ai_failure(
             cid, phone, subscriber_id, agent=agent,
             reason_code="llm_error",
@@ -1317,6 +1385,14 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         return None
 
     if not reply_text:
+        # Limpa flag de digitando
+        try:
+            await db.wa_conversations.update_one(
+                {"company_id": cid, "phone": phone},
+                {"$unset": {"ai_typing_until": "", "ai_typing_agent": ""}},
+            )
+        except Exception:
+            pass
         await _persist_ai_failure(
             cid, phone, subscriber_id, agent=agent,
             reason_code="empty_reply",
@@ -1415,6 +1491,14 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                 })
         except Exception as e:
             logger.info("[wa-baileys] sidecar event skip: %s", e)
+    # 🔵 Limpa flag de "Isabella digitando..." após o envio (sucesso ou falha).
+    try:
+        await db.wa_conversations.update_one(
+            {"company_id": cid, "phone": phone},
+            {"$unset": {"ai_typing_until": "", "ai_typing_agent": ""}},
+        )
+    except Exception:
+        pass
     return reply_text
 
 
@@ -2071,6 +2155,9 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
             # telefone fala por canais diferentes, o gestor/IA precisa saber
             "last_channel": r.get("last_channel") or "baileys",
             "channels_used": [c for c in (r.get("channels_used") or []) if c],
+            # 🟢 Indicador "Isabella digitando..." (TTL — frontend compara com now)
+            "ai_typing_until": conv.get("ai_typing_until"),
+            "ai_typing_agent": conv.get("ai_typing_agent"),
         }
         bucket = await _bucket_for_conversation(conv_view, cid)
         conv_view["bucket"] = bucket

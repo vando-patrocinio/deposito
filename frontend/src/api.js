@@ -251,6 +251,8 @@ export const api = {
   smartoltSync: () => client.post(`/smartolt/sync-onus`).then((r) => r.data),
   smartoltLookup: (params) => client.get(`/smartolt/onu/lookup`, { params }).then((r) => r.data),
   smartoltOnuSignal: (extId) => client.get(`/smartolt/onu/${extId}/signal`).then((r) => r.data),
+  smartoltOnuActions: (extId, limit = 20) =>
+    client.get(`/smartolt/onu/${extId}/actions`, { params: { limit } }).then((r) => r.data),
   centralIaAiLearning: (days = 30) =>
     client.get(`/central-ia/dashboard/ai-learning`, { params: { days } }).then((r) => r.data),
   centralIaAiLearningExamples: () =>

@@ -459,6 +459,21 @@ async def get_onu_signal_live(external_id: str,
     return {"cached": False, "onu": onu}
 
 
+@router.get("/onu/{external_id}/actions")
+async def get_onu_actions_history(external_id: str, limit: int = 20,
+                                     user: dict = Depends(require_role("gestor"))):
+    """Retorna histórico de ações (reboot, etc.) executadas nesta ONU.
+
+    Útil pra técnico ver na UI quantos reboots já foram feitos no equipamento.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    items = await db.smartolt_actions.find(
+        {"company_id": cid, "external_id": external_id},
+        {"_id": 0, "result_raw": 0},
+    ).sort("created_at", -1).limit(max(1, min(limit, 100))).to_list(limit)
+    return {"count": len(items), "items": items}
+
+
 @router.post("/onu/{external_id}/reboot")
 async def reboot_onu(external_id: str,
                        user: dict = Depends(require_role("gestor"))):

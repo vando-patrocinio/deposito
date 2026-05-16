@@ -788,6 +788,14 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
   // Última msg: direção indica quem falou por último
   const dirIcon = conv.last_direction === "outbound" ? "▲" : "▼";
   const dirColor = conv.last_direction === "outbound" ? "#64748b" : "#0ea5e9";
+  // IA digitando? Sobrescreve a última msg na preview.
+  let aiTypingPreview = false;
+  if (conv.ai_typing_until) {
+    try {
+      aiTypingPreview = new Date(conv.ai_typing_until).getTime() > Date.now();
+    } catch { aiTypingPreview = false; }
+  }
+  const aiTypingAgentName = conv.ai_typing_agent || "Isabella";
 
   return (
     <button onClick={onClick}
@@ -898,12 +906,17 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
           </span>
           <span style={{
             fontSize: 12,
-            color: unread > 0 ? "var(--text-primary)" : "var(--text-secondary)",
-            fontWeight: unread > 0 ? 600 : 400,
+            color: aiTypingPreview
+              ? "#7c3aed"
+              : (unread > 0 ? "var(--text-primary)" : "var(--text-secondary)"),
+            fontWeight: aiTypingPreview || unread > 0 ? 600 : 400,
+            fontStyle: aiTypingPreview ? "italic" : "normal",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             flex: 1, minWidth: 0,
           }}>
-            {conv.last_text}
+            {aiTypingPreview
+              ? `${aiTypingAgentName} digitando…`
+              : conv.last_text}
           </span>
           {/* Canal de origem: só mostra quando NÃO é Baileys (padrão) */}
           {conv.last_channel && conv.last_channel !== "baileys" && (
@@ -1112,6 +1125,21 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
     const id = setInterval(() => { loadMessages(); loadCoachings(); }, 4500);
     return () => clearInterval(id);
   }, [loadMessages, loadCoachings, conv]);
+
+  /* Tick para reavaliar o indicador "Isabella digitando..." conforme o
+     ai_typing_until expira. Re-renderiza a cada 1.5s. */
+  const [, setAiTypingTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setAiTypingTick((t) => t + 1), 1500);
+    return () => clearInterval(id);
+  }, []);
+  const aiTypingUntil = conv?.ai_typing_until;
+  const aiTypingAgent = conv?.ai_typing_agent || "Isabella IA";
+  let aiTyping = false;
+  if (aiTypingUntil) {
+    try { aiTyping = new Date(aiTypingUntil).getTime() > Date.now(); }
+    catch { aiTyping = false; }
+  }
 
   /* Ao abrir uma conversa: assina presença + força refresh do perfil
      (avatar/online) a cada 25s + marca como visualizada (zera unread). */
@@ -1481,7 +1509,11 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
 
   let presenceLabel = "—";
   let presenceColor = "var(--text-muted)";
-  if (typing) { presenceLabel = "digitando…"; presenceColor = "#22c55e"; }
+  if (aiTyping) {
+    presenceLabel = `${aiTypingAgent} digitando…`;
+    presenceColor = "#7c3aed";  // roxo IA
+  }
+  else if (typing) { presenceLabel = "digitando…"; presenceColor = "#22c55e"; }
   else if (online) { presenceLabel = "online"; presenceColor = "#22c55e"; }
   else if (presence === "unavailable") {
     if (lastSeen) {
@@ -1861,6 +1893,39 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       )}
       </div>
 
+      {/* Indicador "Isabella digitando..." — aparece logo acima do composer
+          quando a IA está processando a resposta (ai_typing_until > now). */}
+      {aiTyping && (
+        <div data-testid="wa-ai-typing-bar"
+             style={{
+               padding: "6px 14px",
+               background: "var(--bg-surface)",
+               borderTop: "1px solid var(--border-default)",
+               display: "flex", alignItems: "center", gap: 8,
+               fontSize: 12, color: "#7c3aed", fontWeight: 600,
+               animation: "wa-typing-fade 0.3s ease",
+             }}>
+          <span style={{ display: "inline-flex", gap: 3 }}>
+            <span className="wa-typing-dot" style={{
+              width: 6, height: 6, borderRadius: "50%",
+              background: "#7c3aed",
+              animation: "wa-typing-dot 1.2s ease-in-out infinite",
+            }} />
+            <span className="wa-typing-dot" style={{
+              width: 6, height: 6, borderRadius: "50%",
+              background: "#7c3aed",
+              animation: "wa-typing-dot 1.2s ease-in-out 0.2s infinite",
+            }} />
+            <span className="wa-typing-dot" style={{
+              width: 6, height: 6, borderRadius: "50%",
+              background: "#7c3aed",
+              animation: "wa-typing-dot 1.2s ease-in-out 0.4s infinite",
+            }} />
+          </span>
+          <span>{aiTypingAgent} digitando…</span>
+        </div>
+      )}
+
       {/* Composer */}
       <div style={{
         padding: 12, borderTop: "1px solid var(--border-default)",
@@ -1968,6 +2033,14 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
         @keyframes wa-pulse { 0%,100% { transform:scale(1); opacity:1; }
           50% { transform:scale(1.25); opacity:.7; } }
         @keyframes wa-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+        @keyframes wa-typing-dot {
+          0%,80%,100% { opacity: 0.3; transform: translateY(0); }
+          40% { opacity: 1; transform: translateY(-2px); }
+        }
+        @keyframes wa-typing-fade {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
       `}</style>
 
       {correctingMsg && (

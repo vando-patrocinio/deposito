@@ -795,6 +795,7 @@ function OnusByVlanModal({ vlan, bairro, onClose }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [selectedOnu, setSelectedOnu] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -886,7 +887,16 @@ function OnusByVlanModal({ vlan, bairro, onClose }) {
                 {filtered.map((o) => (
                   <tr key={o.unique_external_id}
                        data-testid={`onu-row-${o.unique_external_id}`}
-                       style={{ borderTop: "1px solid #f1f5f9" }}>
+                       onClick={() => setSelectedOnu(o)}
+                       style={{ borderTop: "1px solid #f1f5f9",
+                                  cursor: "pointer",
+                                  transition: "background 120ms" }}
+                       onMouseEnter={(e) => {
+                         e.currentTarget.style.background = "#f1f5f9";
+                       }}
+                       onMouseLeave={(e) => {
+                         e.currentTarget.style.background = "transparent";
+                       }}>
                     <td style={{ padding: "8px 12px", fontWeight: 600 }}>
                       {o.name || "—"}
                       {o.address && (
@@ -926,6 +936,286 @@ function OnusByVlanModal({ vlan, bairro, onClose }) {
               </tbody>
             </table>
           )}
+        </div>
+      </div>
+
+      {selectedOnu && (
+        <OnuDetailModal
+          onu={selectedOnu}
+          onClose={() => setSelectedOnu(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* =============================================================
+   OnuDetailModal — drill-down de uma ONU específica.
+   Mostra: sinal live (com refresh), status, último sync, histórico
+   das ações (reboots, etc) e botão de Reboot com confirmação visual.
+============================================================= */
+function OnuDetailModal({ onu, onClose }) {
+  const [sigLoading, setSigLoading] = useState(true);
+  const [sigData, setSigData] = useState(null);
+  const [sigError, setSigError] = useState("");
+  const [actions, setActions] = useState([]);
+  const [actionsLoading, setActionsLoading] = useState(true);
+  const [rebooting, setRebooting] = useState(false);
+  const [confirmReboot, setConfirmReboot] = useState(false);
+  const [feedback, setFeedback] = useState(null); // {ok,msg}
+
+  const extId = onu.unique_external_id;
+
+  const loadSignal = useCallback(() => {
+    setSigLoading(true);
+    setSigError("");
+    api.smartoltOnuSignal(extId)
+      .then((r) => setSigData(r))
+      .catch((e) => setSigError(e?.response?.data?.detail || e.message))
+      .finally(() => setSigLoading(false));
+  }, [extId]);
+
+  const loadActions = useCallback(() => {
+    setActionsLoading(true);
+    api.smartoltOnuActions(extId, 20)
+      .then((r) => setActions(r.items || []))
+      .catch(() => setActions([]))
+      .finally(() => setActionsLoading(false));
+  }, [extId]);
+
+  useEffect(() => { loadSignal(); loadActions(); }, [loadSignal, loadActions]);
+
+  const onuLive = sigData?.onu || onu;
+  const rxLabel = onuLive.signal_1490 || onuLive.signal_text || "—";
+
+  const doReboot = async () => {
+    setConfirmReboot(false);
+    setRebooting(true);
+    setFeedback(null);
+    try {
+      await api.smartoltOnuReboot(extId);
+      setFeedback({ ok: true,
+        msg: "Reboot enviado. A conexão volta em ~30s." });
+      // Recarrega ações
+      await loadActions();
+    } catch (e) {
+      setFeedback({ ok: false,
+        msg: e?.response?.data?.detail || e.message });
+    } finally {
+      setRebooting(false);
+    }
+  };
+
+  return (
+    <div onClick={onClose}
+         style={{ position: "fixed", inset: 0, zIndex: 1010,
+                   background: "rgba(2,6,23,0.7)",
+                   display: "grid", placeItems: "center", padding: 20 }}
+         data-testid="onu-detail-modal">
+      <div onClick={(e) => e.stopPropagation()}
+           style={{ background: "white", borderRadius: 14, padding: 20,
+                     maxWidth: 640, width: "100%", maxHeight: "85vh",
+                     overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between",
+                       alignItems: "flex-start", marginBottom: 14 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 17, color: "#0f172a" }}>
+              🔧 {onuLive.name || "ONU"}
+            </h3>
+            <p style={{ margin: "4px 0 0", fontSize: 11, color: "#64748b" }}>
+              SN: <code>{onuLive.sn || "—"}</code> · OLT {onuLive.olt_name || "—"}
+              · B/P/ONU {onuLive.board}/{onuLive.port}/{onuLive.onu}
+            </p>
+          </div>
+          <button onClick={onClose}
+                   style={{ border: "none", background: "transparent",
+                             cursor: "pointer", fontSize: 22, color: "#64748b" }}>
+            ×
+          </button>
+        </div>
+
+        {/* SIGNAL CARD */}
+        <div style={{ border: "1px solid #e2e8f0", borderRadius: 10,
+                       padding: 14, marginBottom: 14, background: "#f8fafc" }}>
+          <div style={{ display: "flex", justifyContent: "space-between",
+                         alignItems: "center", marginBottom: 8 }}>
+            <strong style={{ fontSize: 13, color: "#0f172a" }}>
+              📡 Sinal atual
+            </strong>
+            <button onClick={loadSignal} disabled={sigLoading}
+                     data-testid="onu-signal-refresh"
+                     style={{ padding: "4px 10px", fontSize: 11, borderRadius: 6,
+                               background: "white", border: "1px solid #cbd5e1",
+                               cursor: sigLoading ? "wait" : "pointer",
+                               color: "#475569", fontWeight: 600 }}>
+              {sigLoading ? "Atualizando..." : "↻ Atualizar"}
+            </button>
+          </div>
+          {sigError && (
+            <div style={{ padding: 8, background: "#fee2e2", color: "#991b1b",
+                           borderRadius: 6, fontSize: 12 }}>⚠️ {sigError}</div>
+          )}
+          {!sigError && (
+            <div style={{ display: "grid",
+                           gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              <SigBox label="RX 1490" value={rxLabel} highlight />
+              <SigBox label="TX 1310" value={onuLive.signal_1310 || "—"} />
+              <SigBox label="Status"
+                       value={onuLive.status || "—"}
+                       color={onuLive.status === "Online" ? "#16a34a" : "#dc2626"} />
+            </div>
+          )}
+          <div style={{ marginTop: 8, fontSize: 10, color: "#94a3b8" }}>
+            Última leitura: {onuLive.signal_synced_at
+              ? new Date(onuLive.signal_synced_at).toLocaleString("pt-BR")
+              : "—"}
+            {sigData?.cached === false && (
+              <span style={{ marginLeft: 8, padding: "1px 6px",
+                              background: "#dcfce7", color: "#166534",
+                              borderRadius: 999, fontSize: 9, fontWeight: 700 }}>
+                LIVE
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* ACTIONS */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <button onClick={() => setConfirmReboot(true)}
+                   disabled={rebooting}
+                   data-testid="onu-reboot-btn"
+                   style={{ flex: 1, padding: "10px 14px", borderRadius: 8,
+                             background: "#dc2626", color: "white", border: "none",
+                             fontWeight: 700, fontSize: 13,
+                             cursor: rebooting ? "wait" : "pointer",
+                             opacity: rebooting ? 0.6 : 1 }}>
+            {rebooting ? "Reiniciando..." : "⟳ Reiniciar ONU"}
+          </button>
+        </div>
+
+        {feedback && (
+          <div style={{ padding: 10, borderRadius: 8, fontSize: 12,
+                         background: feedback.ok ? "#dcfce7" : "#fee2e2",
+                         color: feedback.ok ? "#166534" : "#991b1b",
+                         marginBottom: 12 }}
+               data-testid="onu-action-feedback">
+            {feedback.ok ? "✓ " : "⚠️ "}{feedback.msg}
+          </div>
+        )}
+
+        {/* ACTION HISTORY */}
+        <div>
+          <strong style={{ fontSize: 12, color: "#0f172a",
+                            textTransform: "uppercase", letterSpacing: 0.6 }}>
+            🕓 Histórico de ações
+          </strong>
+          <div style={{ marginTop: 8, maxHeight: 200, overflowY: "auto",
+                         border: "1px solid #e2e8f0", borderRadius: 8 }}>
+            {actionsLoading && (
+              <div style={{ padding: 14, textAlign: "center", fontSize: 12,
+                             color: "#94a3b8" }}>Carregando...</div>
+            )}
+            {!actionsLoading && actions.length === 0 && (
+              <div style={{ padding: 14, textAlign: "center", fontSize: 12,
+                             color: "#94a3b8" }}>
+                Nenhuma ação registrada nesta ONU.
+              </div>
+            )}
+            {!actionsLoading && actions.map((a) => (
+              <div key={a.id} style={{ padding: "8px 12px",
+                                          borderTop: "1px solid #f1f5f9",
+                                          fontSize: 12, display: "flex",
+                                          justifyContent: "space-between",
+                                          alignItems: "center" }}>
+                <div>
+                  <strong style={{
+                    color: a.result_ok ? "#166534" : "#991b1b",
+                    textTransform: "uppercase", fontSize: 10,
+                    letterSpacing: 0.5,
+                  }}>
+                    {a.action} {a.result_ok ? "✓" : "✗"}
+                  </strong>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>
+                    {a.actor_user || "—"}
+                  </div>
+                </div>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  {a.created_at
+                    ? new Date(a.created_at).toLocaleString("pt-BR")
+                    : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {confirmReboot && (
+          <ConfirmRebootModal
+            onCancel={() => setConfirmReboot(false)}
+            onConfirm={doReboot}
+            onuName={onuLive.name}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SigBox({ label, value, highlight, color }) {
+  return (
+    <div style={{ padding: 10, borderRadius: 8,
+                   background: highlight ? "#eff6ff" : "white",
+                   border: "1px solid " + (highlight ? "#bfdbfe" : "#e2e8f0"),
+                   textAlign: "center" }}>
+      <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase",
+                     fontWeight: 700, letterSpacing: 0.6 }}>{label}</div>
+      <div style={{ marginTop: 3, fontSize: 13, fontWeight: 700,
+                     fontFamily: "monospace",
+                     color: color || "#0f172a" }}>{value}</div>
+    </div>
+  );
+}
+
+function ConfirmRebootModal({ onCancel, onConfirm, onuName }) {
+  return (
+    <div onClick={onCancel}
+         data-testid="onu-reboot-confirm-modal"
+         style={{ position: "fixed", inset: 0, zIndex: 1020,
+                   background: "rgba(2,6,23,0.7)",
+                   display: "grid", placeItems: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{ background: "white", borderRadius: 14, padding: 22,
+                     maxWidth: 380, width: "100%", textAlign: "center",
+                     boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
+        <div style={{ width: 52, height: 52, borderRadius: "50%",
+                       background: "#dc2626", color: "white",
+                       display: "grid", placeItems: "center",
+                       margin: "0 auto 12px",
+                       fontSize: 24, fontWeight: 700 }}>⟳</div>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
+          Reiniciar ONU?
+        </h3>
+        <p style={{ margin: "8px 0 18px", fontSize: 13, color: "#475569" }}>
+          A ONU <strong>{onuName || "selecionada"}</strong> será reiniciada.
+          O cliente perde a conexão por ~30 segundos.
+        </p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          <button onClick={onCancel}
+                   data-testid="onu-reboot-no"
+                   style={{ padding: "9px 24px", borderRadius: 9, fontSize: 13,
+                             fontWeight: 700, cursor: "pointer",
+                             background: "white", color: "#475569",
+                             border: "1.5px solid #cbd5e1", minWidth: 90 }}>
+            NÃO
+          </button>
+          <button onClick={onConfirm}
+                   data-testid="onu-reboot-yes"
+                   style={{ padding: "9px 24px", borderRadius: 9, fontSize: 13,
+                             fontWeight: 700, cursor: "pointer",
+                             background: "#dc2626", color: "white", border: "none",
+                             minWidth: 90 }}>
+            SIM
+          </button>
         </div>
       </div>
     </div>

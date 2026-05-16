@@ -56,10 +56,32 @@ RESPONDA SEMPRE EM JSON VÁLIDO conforme o schema solicitado. Nunca invente dado
 """
 
 
+def _is_automatic_message(m: Dict[str, Any]) -> bool:
+    """Identifica mensagens geradas automaticamente (IA / bot / sistema).
+
+    Filtramos do prompt do Alvaro para economizar tokens e evitar que insights
+    sejam baseados em respostas automáticas (que não refletem intenção humana).
+    """
+    if m.get("auto_reply") is True:
+        return True
+    # Auto-reply marca a entrega como sent mas o source é o motor IA; também
+    # pegamos quando alguém marcou explicitamente o ator como "ai".
+    actor = (m.get("actor") or "").lower()
+    if actor in ("ai", "bot", "system", "auto"):
+        return True
+    return False
+
+
 def _build_conversation_text(messages: List[Dict[str, Any]]) -> str:
-    """Concatena mensagens da conversa num bloco legível pelo Alvaro."""
+    """Concatena mensagens da conversa num bloco legível pelo Alvaro.
+
+    Ignora mensagens automáticas (auto_reply) para que o Alvaro analise
+    apenas a interação real entre cliente e atendente humano.
+    """
     parts = []
     for m in messages:
+        if _is_automatic_message(m):
+            continue
         direction = m.get("direction", "?")
         speaker = "CLIENTE" if direction == "inbound" else "ATENDIMENTO"
         ts = (m.get("created_at") or "")[:16].replace("T", " ")
@@ -434,6 +456,23 @@ async def run_daily_analysis(company_id: str, hours_back: int = 24) -> Dict[str,
         ).sort("created_at", -1).limit(30).to_list(30)
         msgs.reverse()  # cronológico
         if not msgs:
+            continue
+
+        # FILTRO: descarta conversas que só tiveram interação automática com a IA.
+        # Critério: pelo menos 1 outbound humano (não auto_reply) precisa existir,
+        # OU pelo menos 2 mensagens inbound do cliente (sinaliza tentativa real
+        # de contato mesmo sem atendente). Caso contrário, é só bot conversando
+        # sozinho com cliente — sem insight útil pro Alvaro.
+        human_outbound = sum(
+            1 for m in msgs
+            if m.get("direction") == "outbound" and not _is_automatic_message(m)
+        )
+        inbound_cnt = sum(1 for m in msgs if m.get("direction") == "inbound")
+        if human_outbound == 0 and inbound_cnt < 2:
+            logger.info(
+                "[alvaro] skip phone=%s sem interação humana (ib=%d, ob_humano=%d)",
+                phone, inbound_cnt, human_outbound,
+            )
             continue
 
         # Metadata da conversa

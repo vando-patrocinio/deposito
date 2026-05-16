@@ -1,0 +1,37 @@
+{
+  "summary": "Iter78 — Validated NEW WhatsApp Baileys features: (a) inbound audio ingestion via POST /api/whatsapp-baileys/inbound (audio_b64 + mimetype/duration/is_ptt), (b) GET /api/whatsapp-baileys/audio/{filename}?t={token} streaming with proper Content-Type, (c) ai_typing_until + ai_typing_agent fields exposed in GET /api/whatsapp-baileys/conversations, (d) frontend rendering of InlineAudioPlayer for inbound audio + presence-label and typing-bar 'Isabella digitando…' in purple + italic purple preview in ConvRow. Backend: 11/11 pytest passed (60.77s). Frontend: testids wa-audio-player + wa-audio-play-btn + wa-ai-typing-bar all present and styled correctly (color rgb(124,58,237) == #7c3aed). All P1 acceptance criteria met.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter78_wa_audio_typing.py",
+    "/app/test_reports/pytest/iter78_audio_typing.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "whatsapp_baileys.py is now ~2585 lines — well over the 700-line threshold. Strongly recommend splitting into subrouters: routes/whatsapp_baileys/inbound.py (webhook + audio persistence), routes/whatsapp_baileys/audio.py (file serving), routes/whatsapp_baileys/auto_reply.py (_maybe_auto_reply + typing flag), routes/whatsapp_baileys/conversations.py. Single file is now hard to navigate and review.",
+    "ai_typing_until in inbound_webhook: the cleanup _unset is repeated 3x (lines ~1375, ~1392, ~1498) — extract a helper `_clear_ai_typing(cid, phone)` to avoid drift if the schema changes (e.g., adding ai_typing_started_at).",
+    "Audio playback URL exposes the full JWT as a query parameter (?t=<token>) — works but the token is logged by intermediaries (proxies, CDN access logs, browser history). Consider either: (1) issuing short-lived signed URLs (~60s TTL) just for media, OR (2) reading the JWT from an httpOnly cookie (already done for other auth flows in the codebase). Today the JWT TTL is days, so a leaked URL = full account access until token expiry.",
+    "/audio/{filename}: regex `^wam-[a-f0-9]+\\.(webm|ogg|mp3|m4a|wav)$` allows any-length hex prefix — fine, but consider clamping to exactly 10 hex chars (current msg_id pattern uses `uuid.uuid4().hex[:10]`) to harden against probing. Also, response is not cache-controlled — a CDN could cache an authenticated audio, which is risky; add `Cache-Control: private, max-age=0`.",
+    "Inbound audio loop: out_path.write_bytes(base64.b64decode(payload.audio_b64)) runs synchronously inside an async handler — for large voice notes (>1 MB) this blocks the event loop. Use `await asyncio.to_thread(out_path.write_bytes, ...)` or aiofiles."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter78_wa_audio_typing.py"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11)",
+    "frontend": "100% (all 3 UI testids confirmed: wa-audio-player, wa-audio-play-btn, wa-ai-typing-bar; presence label + ConvRow preview both purple)"
+  },
+  "test_credentials": "admin@empresa.com / 123456 ; WA_INBOUND_TOKEN=JAALRyFdv9z7OaxeHkoSM4ll4AjpPmhFNHUATVr-mNg",
+  "seed_data_creation": "Test creates several wa_conversations + aihub_wa_messages docs with phones like 5511988XXXXX and 5511777XXXX (push_name='TEST_AudioUser'). The async DB test cleans up its own conv after running. The other inbound-based tests intentionally leave the data behind to mirror real traffic — they all use random phones so no collision risk.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Inbound audio path is FULLY functional in production: ogg/webm extension routing works, audio_duration_sec persists into media_duration_sec, text falls back to '🎤 Áudio (Ns)'. Audio endpoint accepts ?t=<jwt> query param OR Authorization Bearer. ai_typing_until is exposed in /conversations and used by ConvRow (italic purple preview) + ChatThread header presence label + typing bar above composer. The typing flag has 45s TTL and clears in finally-like blocks after send loop; for E2E UI testing of the typing indicator, you MUST inject the flag manually in db.wa_conversations because the AI completes within 5-15s. Pre-existing audio sample at /app/backend/uploads/wa_audio/wam-6ac99324cf.ogg is associated with phone 5511999999998 (loaded by main agent). Sidecar 'Bad MAC' log lines are PRE-EXISTING and unrelated.",
+  "rca of the issue": "No issues found. All P1 acceptance criteria met. Implementation is solid and matches the spec."
+}
