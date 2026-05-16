@@ -14,6 +14,10 @@ export default function GestaoMetasPanel() {
   const [cfgBusy, setCfgBusy] = useState(false);
   const [err, setErr] = useState("");
   const [leaderboard, setLeaderboard] = useState(null);
+  const [marketInput, setMarketInput] = useState("");
+  const [swot, setSwot] = useState(null);
+  const [swotBusy, setSwotBusy] = useState(false);
+  const [swotErr, setSwotErr] = useState("");
 
   const loadConfig = useCallback(async () => {
     try {
@@ -35,6 +39,16 @@ export default function GestaoMetasPanel() {
     } catch { /* sem report ainda */ }
   }, []);
 
+  const loadLatestSwot = useCallback(async () => {
+    try {
+      const r = await api._client
+        .get("/gestao-ia/competitive-analysis/latest")
+        .then((x) => x.data);
+      setSwot(r);
+      if (r?.market_input) setMarketInput(r.market_input);
+    } catch { /* sem swot ainda */ }
+  }, []);
+
   const loadLeaderboard = useCallback(async () => {
     try {
       const r = await api._client
@@ -50,7 +64,8 @@ export default function GestaoMetasPanel() {
     loadConfig();
     loadLatestReport();
     loadLeaderboard();
-  }, [loadConfig, loadLatestReport, loadLeaderboard]);
+    loadLatestSwot();
+  }, [loadConfig, loadLatestReport, loadLeaderboard, loadLatestSwot]);
 
   async function runReport() {
     setReportBusy(true);
@@ -64,6 +79,27 @@ export default function GestaoMetasPanel() {
       setErr(e?.response?.data?.detail || e.message || "Falha ao gerar");
     } finally {
       setReportBusy(false);
+    }
+  }
+
+  async function runSwot() {
+    if (!marketInput || marketInput.trim().length < 20) {
+      setSwotErr("Forneça ao menos 20 caracteres de contexto de mercado.");
+      return;
+    }
+    setSwotBusy(true);
+    setSwotErr("");
+    try {
+      const r = await api._client
+        .post("/gestao-ia/competitive-analysis",
+              { market_input: marketInput })
+        .then((x) => x.data);
+      setSwot(r);
+    } catch (e) {
+      setSwotErr(e?.response?.data?.detail || e.message
+                  || "Falha ao gerar análise");
+    } finally {
+      setSwotBusy(false);
     }
   }
 
@@ -339,6 +375,186 @@ export default function GestaoMetasPanel() {
           Ainda não há análise GESTAO_IA. Clique em "Gerar análise" acima.
         </div>
       )}
+
+      {/* MODO CONCORRENTE */}
+      <section data-testid="competitive-section" style={{
+        marginTop: 18, padding: 18, borderRadius: 16,
+        background: "linear-gradient(135deg,#1e1b4b 0%,#312e81 100%)",
+        color: "white",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10,
+                        marginBottom: 12 }}>
+          <span style={{ fontSize: 24 }}>⚔️</span>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1,
+                            color: "#c4b5fd", textTransform: "uppercase" }}>
+              GESTAO_IA · Modo Concorrente
+            </div>
+            <div style={{ fontSize: 13, color: "#e0e7ff" }}>
+              Cole dados do mercado e gere uma análise SWOT competitiva
+            </div>
+          </div>
+        </div>
+        <textarea data-testid="competitive-input"
+                    value={marketInput}
+                    onChange={(e) => setMarketInput(e.target.value)}
+                    rows={5}
+                    placeholder="Ex: Sumicity entrou no Centro com 500MB a R$79. Vivo Fibra expandindo em Vista Alegre. Cliente João reclamou e citou concorrente. Algumas reclamações sobre suporte demorado da TIM…"
+                    style={{
+                      width: "100%", padding: 10, borderRadius: 10,
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      background: "rgba(15,23,42,0.6)", color: "white",
+                      fontSize: 12, fontFamily: "inherit", resize: "vertical",
+                    }} />
+        <div style={{ display: "flex", gap: 10, alignItems: "center",
+                        marginTop: 10, flexWrap: "wrap" }}>
+          <Button onClick={runSwot} disabled={swotBusy}
+                   data-testid="competitive-run-btn"
+                   style={{ background: "#a78bfa", color: "#1c1917",
+                              fontWeight: 800 }}>
+            {swotBusy
+              ? "⚔️ Analisando concorrência..."
+              : "⚔️ Gerar SWOT competitivo"}
+          </Button>
+          {swot?.generated_at && (
+            <span style={{ fontSize: 11, color: "#c4b5fd" }}>
+              Última: {new Date(swot.generated_at).toLocaleString("pt-BR")}
+            </span>
+          )}
+        </div>
+        {swotErr && (
+          <div data-testid="competitive-error" style={{
+            marginTop: 10, padding: 10, background: "rgba(220,38,38,0.2)",
+            borderRadius: 8, fontSize: 12, color: "#fecaca",
+          }}>{swotErr}</div>
+        )}
+
+        {swot?.swot_analysis && (
+          <div data-testid="competitive-result" style={{ marginTop: 14 }}>
+            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5,
+                          color: "#f5f3ff" }}>
+              {swot.swot_analysis.resumo_estrategico}
+            </p>
+
+            {/* SWOT 4 quadrantes */}
+            <div style={{ marginTop: 14, display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
+                            gap: 10 }}>
+              {[
+                ["forcas", "💪 FORÇAS", "#10b981"],
+                ["fraquezas", "⚠️ FRAQUEZAS", "#f59e0b"],
+                ["oportunidades", "🚀 OPORTUNIDADES", "#06b6d4"],
+                ["ameacas", "⚡ AMEAÇAS", "#ef4444"],
+              ].map(([key, label, color]) => (
+                <div key={key} style={{
+                  padding: 12, borderRadius: 10,
+                  background: "rgba(255,255,255,0.06)",
+                  border: `1px solid ${color}55`,
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color,
+                                  textTransform: "uppercase",
+                                  letterSpacing: 1, marginBottom: 8 }}>
+                    {label}
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11,
+                                  color: "#e2e8f0", lineHeight: 1.5 }}>
+                    {(swot.swot_analysis.swot?.[key] || []).map((it, i) => (
+                      <li key={i}>{it}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+
+            {/* Concorrentes identificados */}
+            {swot.swot_analysis.concorrentes_identificados?.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#c4b5fd",
+                                textTransform: "uppercase", marginBottom: 8 }}>
+                  Concorrentes identificados
+                </div>
+                <div style={{ display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))",
+                                gap: 8 }}>
+                  {swot.swot_analysis.concorrentes_identificados.map((c, i) => (
+                    <div key={i} style={{
+                      padding: 10, borderRadius: 8,
+                      background: "rgba(255,255,255,0.06)",
+                      fontSize: 11, lineHeight: 1.5,
+                    }}>
+                      <strong style={{ color: "#fbbf24" }}>{c.nome}</strong>
+                      <span style={{
+                        marginLeft: 6, padding: "1px 6px", borderRadius: 4,
+                        background: c.ameaca_para_nos === "alta" ? "#dc2626"
+                          : c.ameaca_para_nos === "media" ? "#f59e0b"
+                          : "#10b981",
+                        color: "white", fontSize: 9, fontWeight: 700,
+                      }}>{(c.ameaca_para_nos || "").toUpperCase()}</span>
+                      <div style={{ marginTop: 4, color: "#e0e7ff" }}>
+                        ✅ {c.ponto_forte}
+                      </div>
+                      <div style={{ color: "#cbd5e1" }}>
+                        ❌ {c.ponto_fraco}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Bairros a priorizar */}
+            {swot.swot_analysis.bairros_a_priorizar?.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#c4b5fd",
+                                textTransform: "uppercase", marginBottom: 6 }}>
+                  Bairros a priorizar
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12,
+                                color: "#e0e7ff" }}>
+                  {swot.swot_analysis.bairros_a_priorizar.map((b, i) => (
+                    <li key={i}>
+                      <strong>{b.bairro}</strong> ({b.tipo_acao}) — {b.razao}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Ações */}
+            {swot.swot_analysis.acoes_curto_prazo?.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#c4b5fd",
+                                textTransform: "uppercase", marginBottom: 6 }}>
+                  Ações curto prazo (≤30d)
+                </div>
+                {swot.swot_analysis.acoes_curto_prazo.map((a, i) => (
+                  <div key={i} style={{
+                    padding: "6px 10px", marginBottom: 4, borderRadius: 6,
+                    background: "rgba(255,255,255,0.06)",
+                    fontSize: 11, color: "#e2e8f0",
+                  }}>
+                    <strong>[{a.esforco?.toUpperCase()}]</strong> {a.acao}
+                    <span style={{ color: "#94a3b8" }}>
+                      {" "}— {a.responsavel} · {a.impacto_esperado}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Veredicto */}
+            {swot.swot_analysis.verediito_final && (
+              <div style={{
+                marginTop: 14, padding: 12, borderRadius: 10,
+                background: "linear-gradient(135deg,#fbbf24,#f59e0b)",
+                color: "#1c1917", fontWeight: 700, fontSize: 13,
+              }}>
+                🎯 {swot.swot_analysis.verediito_final}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -685,3 +685,13 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 
 **Validado**: 8/8 pytest (`test_iter97_gestao_metas.py`) — pontos, retirador, dashboard config get/post/public, geofence sem chamado, geofence cria alert + dedup, admin optimize 400 sem GPS, GESTAO_IA gera análise real via Claude Sonnet 4.5. Screenshot Playwright: aba renderiza relatório executivo completo com 6 KPIs, 7 ações priorizadas e coaching para DIOGO/VANDO.
 - testids: `gestao-metas-panel`, `dashboard-toggles`, `toggle-{key}`, `gestao-ia-run-btn`, `gestao-ai-report`, `top-techs-section`, `leaderboard-today`, `lousa-subtab-gestao_metas`, `optimize-route-{cid}`.
+
+✅ **Modo Concorrente (SWOT) na GESTAO_IA** (16/05/2026 — iter98):
+- **Backend** `POST /api/gestao-ia/competitive-analysis` (`/app/backend/services/gestao_ai.py`): nova função `generate_competitive_analysis(company_id, market_input)` que coleta snapshot interno enxuto (sem chamar LLM duas vezes — refatorado para evitar latência dupla) + recebe texto livre do gestor com dados de mercado (concorrentes, preços, churn, expansão) e chama **Claude Sonnet 4.5** com prompt especializado em análise SWOT competitiva ISP. Persiste em `gestao_competitive`. `GET /latest` recupera. Validação: input < 20 chars → 400. Parser JSON tolerante a truncamento (recupera até último `}` válido).
+- **Prompt inclui benchmarks ISP**: churn médio 2-4%, NPS bom >50, penetração 25-35%, ARPU R$90-130, CAC R$200-450 — para a IA contextualizar números reais.
+- **Frontend** (`/app/frontend/src/lousa/GestaoMetasPanel.js`): nova section roxa "⚔️ GESTAO_IA · Modo Concorrente" com:
+  - Textarea grande para input de mercado
+  - Botão "⚔️ Gerar SWOT competitivo"
+  - Renderização do schema completo: resumo estratégico · 4 quadrantes SWOT (💪 Forças verde, ⚠️ Fraquezas laranja, 🚀 Oportunidades ciano, ⚡ Ameaças vermelho) · Concorrentes identificados com tag ALTA/MEDIA/BAIXA · Bairros a priorizar · Ações curto prazo · Veredicto final em dourado.
+- **Validado**: 4/4 pytest (`test_iter98_competitive.py`) — 400 curto · 401/403 sem auth · SWOT schema completo · GET latest. Screenshot Playwright: análise real do Claude detectou Sumicity como ameaça ALTA, sugeriu retenção no Centro com upgrade defensivo + campanha de indicação.
+- testids: `competitive-section`, `competitive-input`, `competitive-run-btn`, `competitive-result`, `competitive-error`.

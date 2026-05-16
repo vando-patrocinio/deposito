@@ -257,3 +257,163 @@ Gere análise em JSON com este schema EXATO:
         "bottom_techs": bottom,
         "ai_analysis": analysis,
     }
+
+
+
+COMPETITIVE_SYSTEM_PROMPT = """Você é a GESTAO_IA em MODO CONCORRENTE — uma analista executiva especializada em análise competitiva para provedores de internet (ISPs).
+
+Sua função: receber dados internos (KPIs, snapshot operacional) + dados de mercado fornecidos pelo gestor (concorrentes, preços, expansão, churn) e gerar uma análise SWOT completa com recomendações estratégicas priorizadas.
+
+REGRAS:
+1. Use apenas os dados informados. NUNCA invente números de concorrentes.
+2. Se dados de mercado vierem incompletos, sinalize lacunas no campo `pesquisa_adicional_necessaria`.
+3. Foque em ações operacionais aplicáveis no curto prazo (até 30 dias) e estratégicas (90 dias).
+4. Use linguagem executiva, direta, em português do Brasil.
+5. Inclua benchmarks do setor ISP quando relevantes:
+   - Churn médio mensal ISP regional: 2-4%. >5% é crítico.
+   - NPS bom: >50. Excelente: >70.
+   - Penetração média em bairros maduros: 25-35%.
+   - Receita média por cliente residencial Brasil: R$ 90-130 (FTTH).
+   - Custo de instalação médio: R$ 200-450 (drop + ONT + mão-de-obra).
+6. SEMPRE responda em JSON conforme schema solicitado.
+"""
+
+
+async def generate_competitive_analysis(
+    company_id: str,
+    market_input: str,
+) -> Dict[str, Any]:
+    """Gera análise SWOT competitiva a partir de dados internos + input livre.
+
+    market_input é um texto livre que o gestor cola descrevendo:
+      - Concorrentes nas regiões atendidas
+      - Preços/planos da concorrência
+      - Sinais de churn (clientes saindo para X)
+      - Expansão observada (X está chegando no bairro Y)
+      - Reclamações comuns no mercado
+    """
+    if not market_input or len(market_input.strip()) < 20:
+        raise ValueError(
+            "Forneça pelo menos 20 caracteres de contexto de mercado.",
+        )
+
+    # Snapshot interno simplificado — coletado direto, sem chamar LLM
+    now = datetime.now(timezone.utc)
+    week_start = (now - timedelta(days=7)).isoformat()
+    pipeline = [
+        {"$match": {"company_id": company_id, "status": "finalizada",
+                      "closed_at": {"$gte": week_start}}},
+        {"$group": {
+            "_id": "$assigned_collaborator_id",
+            "closed": {"$sum": 1},
+            "successes": {"$sum": {"$cond": [
+                {"$eq": ["$outcome", "sucesso"]}, 1, 0,
+            ]}},
+            "instalacoes": {"$sum": {"$cond": [
+                {"$eq": ["$type", "instalacao"]}, 1, 0,
+            ]}},
+            "retiradas": {"$sum": {"$cond": [
+                {"$eq": ["$type", "retirada"]}, 1, 0,
+            ]}},
+            "reparos": {"$sum": {"$cond": [
+                {"$in": ["$type", ["reparo", "suporte"]]}, 1, 0,
+            ]}},
+        }},
+    ]
+    rows = await db.tickets.aggregate(pipeline).to_list(length=200)
+    total_closed = sum(r["closed"] for r in rows)
+    total_success = sum(r["successes"] for r in rows)
+    snap = {
+        "total_closed": total_closed,
+        "techs": len(rows),
+        "success_rate": (round((total_success / total_closed) * 100, 1)
+                            if total_closed else 0),
+        "instalacoes": sum(r["instalacoes"] for r in rows),
+        "retiradas": sum(r["retiradas"] for r in rows),
+        "reparos": sum(r["reparos"] for r in rows),
+    }
+    top_techs = sorted(
+        [{"id": r["_id"], "closed": r["closed"],
+          "instalacoes": r["instalacoes"],
+          "retiradas": r["retiradas"], "reparos": r["reparos"]}
+         for r in rows if r["_id"]],
+        key=lambda x: x["closed"], reverse=True,
+    )[:3]
+
+    user_prompt = f"""DADOS INTERNOS (últimos 7 dias):
+{json.dumps(snap, ensure_ascii=False, indent=2)}
+
+TOP TÉCNICOS POR PONTOS (gamificação):
+{json.dumps(top_techs[:3], ensure_ascii=False, indent=2)}
+
+DADOS DE MERCADO INFORMADOS PELO GESTOR:
+\"\"\"
+{market_input.strip()}
+\"\"\"
+
+Gere análise SWOT competitiva em JSON com este schema EXATO:
+{{
+  "resumo_estrategico": "string (3-5 frases sobre nosso posicionamento competitivo)",
+  "swot": {{
+    "forcas": ["string", ...],
+    "fraquezas": ["string", ...],
+    "oportunidades": ["string", ...],
+    "ameacas": ["string", ...]
+  }},
+  "concorrentes_identificados": [
+    {{"nome": "string", "ponto_forte": "string", "ponto_fraco": "string",
+      "ameaca_para_nos": "alta|media|baixa"}}
+  ],
+  "bairros_a_priorizar": [
+    {{"bairro": "string", "razao": "string", "tipo_acao": "expansao|retencao|comercial"}}
+  ],
+  "acoes_curto_prazo": [
+    {{"acao": "string", "impacto_esperado": "string",
+      "responsavel": "Operações|Comercial|Marketing|Financeiro|TI",
+      "esforco": "baixo|medio|alto"}}
+  ],
+  "acoes_estrategicas": [
+    {{"acao": "string", "horizonte": "30d|60d|90d",
+      "kpi_alvo": "string"}}
+  ],
+  "pesquisa_adicional_necessaria": ["string", ...],
+  "verediito_final": "string (recomendação final em 1 frase)"
+}}"""
+
+    try:
+        resp = await chat_completion(
+            company_id=company_id,
+            messages=[
+                {"role": "system", "content": COMPETITIVE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            model=GESTAO_MODEL,
+            temperature=0.4,
+            max_tokens=4500,
+            json_mode=True,
+            agent="gestao_ia",
+        )
+        raw = (resp.get("content") or "").strip()
+        if raw.startswith("```"):
+            raw = raw.split("```", 2)[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        # Tenta parsear até o último } completo (LLM às vezes trunca)
+        try:
+            swot = json.loads(raw)
+        except json.JSONDecodeError:
+            last_brace = raw.rfind("}")
+            if last_brace > 0:
+                swot = json.loads(raw[:last_brace + 1])
+            else:
+                raise
+    except Exception as e:
+        logger.exception("[gestao_ia.competitive] LLM falhou: %s", e)
+        raise
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "market_input": market_input.strip(),
+        "internal_snapshot": snap,
+        "swot_analysis": swot,
+    }
