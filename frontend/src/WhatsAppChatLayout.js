@@ -1336,8 +1336,11 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
     } finally { setBusy(false); }
   };
 
-  const finalize = async () => {
-    if (!window.confirm("Finalizar essa conversa? Vai sair da fila de atendimento.")) return;
+  const [showFinalizeModal, setShowFinalizeModal] = useState(false);
+
+  const finalize = () => setShowFinalizeModal(true);
+  const doFinalize = async () => {
+    setShowFinalizeModal(false);
     setBusy(true);
     try {
       await api.waBaileysFinalizeConversation(conv.phone);
@@ -1717,6 +1720,14 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       {/* Resultado do PDF gerado (toast) */}
       {pdfResult && (
         <PdfResultToast result={pdfResult} onClose={() => setPdfResult(null)} />
+      )}
+
+      {/* Modal de confirmação para finalizar atendimento */}
+      {showFinalizeModal && (
+        <FinalizeAtendimentoModal
+          onCancel={() => setShowFinalizeModal(false)}
+          onConfirm={doFinalize}
+        />
       )}
 
       {/* Agendamento — bolha de serviço (data, hora, motivo, cliente) */}
@@ -2639,6 +2650,72 @@ function QuickImagesPopover({ phone, onClose, onSent }) {
     </div>
   );
 }
+
+/* =============================================================
+   PdfResultToast — feedback após gerar transcrição PDF.
+
+/* FinalizeAtendimentoModal — confirmação visual (não window.confirm) */
+function FinalizeAtendimentoModal({ onCancel, onConfirm }) {
+  return (
+    <div onClick={onCancel}
+         data-testid="wa-finalize-modal"
+         style={{
+           position: "fixed", inset: 0, zIndex: 1100,
+           background: "rgba(2,6,23,0.55)",
+           display: "grid", placeItems: "center", padding: 20,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "white", borderRadius: 16, padding: 24,
+             maxWidth: 380, width: "100%",
+             boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+             textAlign: "center",
+           }}>
+        <div style={{
+          width: 56, height: 56, borderRadius: "50%",
+          background: "#16a34a", color: "white",
+          display: "grid", placeItems: "center",
+          margin: "0 auto 14px",
+          boxShadow: "0 4px 14px rgba(22,163,74,0.3)",
+        }}>
+          <CheckCircle2 size={28} strokeWidth={2.5} />
+        </div>
+        <h3 style={{
+          margin: 0, fontSize: 18, fontWeight: 700, color: "#0f172a",
+        }}>
+          Finalizar Atendimento
+        </h3>
+        <p style={{
+          margin: "10px 0 22px", fontSize: 14, color: "#475569",
+          lineHeight: 1.55,
+        }}>
+          Tem certeza que deseja finalizar o atendimento? A conversa sairá da fila.
+        </p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          <button onClick={onCancel}
+                   data-testid="wa-finalize-no"
+                   style={{
+                     padding: "10px 28px", borderRadius: 10, fontSize: 14,
+                     fontWeight: 700, cursor: "pointer",
+                     background: "white", color: "#475569",
+                     border: "1.5px solid #cbd5e1",
+                     minWidth: 100,
+                   }}>NÃO</button>
+          <button onClick={onConfirm}
+                   data-testid="wa-finalize-yes"
+                   style={{
+                     padding: "10px 28px", borderRadius: 10, fontSize: 14,
+                     fontWeight: 700, cursor: "pointer",
+                     background: "#16a34a", color: "white", border: "none",
+                     boxShadow: "0 2px 6px rgba(22,163,74,0.25)",
+                     minWidth: 100,
+                   }}>SIM</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 /* =============================================================
    PdfResultToast — feedback após gerar transcrição PDF.

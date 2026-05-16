@@ -769,13 +769,26 @@ async def inbound_webhook(payload: InboundIn,
         # --- Co-Pilot IA — dica interna para atendente humano ---
         # Só dispara quando a conversa está com humano (não-IA).
         # A IA de atendimento já tem injeção A2A própria via system_prompt.
+        # NÃO dispara se acabou de ter um handover (< 30s) — geralmente
+        # o cliente ainda não respondeu nada relevante após o "Olá, aqui é
+        # o atendente". Evita gerar insights sobre o "Olá" automático.
         try:
             conv = await db.wa_conversations.find_one(
                 {"company_id": cid, "phone": effective_phone},
-                {"_id": 0, "assignee_role": 1, "status": 1},
+                {"_id": 0, "assignee_role": 1, "status": 1, "handover_msg_at": 1},
             )
+            recent_handover = False
+            if conv and conv.get("handover_msg_at"):
+                try:
+                    t = datetime.fromisoformat(
+                        conv["handover_msg_at"].replace("Z", "+00:00"))
+                    age_s = (datetime.now(timezone.utc) - t).total_seconds()
+                    recent_handover = age_s < 30  # 30 segundos
+                except Exception:
+                    pass
             if (conv and conv.get("assignee_role") == "human"
-                    and conv.get("status") != "closed"):
+                    and conv.get("status") != "closed"
+                    and not recent_handover):
                 from services.copilot_ai import maybe_insert_copilot_hint
                 await maybe_insert_copilot_hint(
                     company_id=cid,
