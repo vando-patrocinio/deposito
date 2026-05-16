@@ -2524,36 +2524,60 @@ function QuickImagesPopover({ phone, onClose, onSent }) {
         ) : (
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-            gap: 10,
+            gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+            gap: 12,
           }}>
             {items.map((it) => (
-              <button key={it.id}
-                       data-testid={`wa-quick-images-send-${it.id}`}
-                       onClick={() => send(it)}
-                       disabled={sending === it.id}
-                       style={{
-                         padding: 0, border: "2px solid transparent",
-                         borderRadius: 10, overflow: "hidden",
-                         cursor: sending === it.id ? "wait" : "pointer",
-                         background: "white",
-                         opacity: sending === it.id ? 0.6 : 1,
-                         transition: "border-color 0.15s, transform 0.15s",
-                       }}
-                       onMouseEnter={(e) => e.currentTarget.style.borderColor = "#7c3aed"}
-                       onMouseLeave={(e) => e.currentTarget.style.borderColor = "transparent"}>
+              <div key={it.id}
+                   data-testid={`wa-quick-images-card-${it.id}`}
+                   style={{
+                     border: "1px solid #e2e8f0",
+                     borderRadius: 10, overflow: "hidden",
+                     background: "white", position: "relative",
+                     transition: "transform 0.15s, box-shadow 0.15s",
+                   }}
+                   onMouseEnter={(e) => {
+                     e.currentTarget.style.boxShadow = "0 6px 16px rgba(124,58,237,0.18)";
+                     e.currentTarget.style.transform = "translateY(-2px)";
+                   }}
+                   onMouseLeave={(e) => {
+                     e.currentTarget.style.boxShadow = "none";
+                     e.currentTarget.style.transform = "translateY(0)";
+                   }}>
                 <div style={{
                   aspectRatio: "16/10", background: "#f1f5f9",
                   backgroundImage: `url("${baseUrl}${it.url}?t=${encodeURIComponent(token)}")`,
                   backgroundSize: "cover", backgroundPosition: "center",
                 }} />
-                <div style={{ padding: 8, fontSize: 11, fontWeight: 600,
-                               color: "#475569", textAlign: "left",
-                               whiteSpace: "nowrap", overflow: "hidden",
-                               textOverflow: "ellipsis" }}>
-                  {sending === it.id ? "Enviando..." : (it.label || "(sem nome)")}
+                <div style={{ padding: 8, display: "flex",
+                                 flexDirection: "column", gap: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "#475569",
+                                  textAlign: "left", whiteSpace: "nowrap",
+                                  overflow: "hidden", textOverflow: "ellipsis" }}
+                        title={it.label || "(sem nome)"}>
+                    {it.label || "(sem nome)"}
+                  </div>
+                  <button
+                    onClick={() => send(it)}
+                    disabled={sending === it.id}
+                    data-testid={`wa-quick-images-send-${it.id}`}
+                    style={{
+                      padding: "8px 12px", borderRadius: 8,
+                      border: "none",
+                      background: sending === it.id
+                        ? "#94a3b8"
+                        : "linear-gradient(135deg, #25d366, #128c7e)",
+                      color: "white", fontSize: 12, fontWeight: 700,
+                      cursor: sending === it.id ? "wait" : "pointer",
+                      display: "flex", alignItems: "center",
+                      justifyContent: "center", gap: 6,
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                    }}>
+                    <Send size={12} strokeWidth={2.5} />
+                    {sending === it.id ? "Enviando..." : "Enviar para o cliente"}
+                  </button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
