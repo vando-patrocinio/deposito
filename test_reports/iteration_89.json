@@ -1,0 +1,51 @@
+{
+  "summary": "Iter 89 — Tested the new 2-step finalize wizard + OCR endpoint. Backend: 7/7 pytest cases PASS on /api/lousa/public/ocr-sn (empty rejection, <100 chars rejection, garbage base64, >4MB rejection, valid contract returns {sn,mac,confidence,raw_text,best}). Public finalize endpoint accepts new completion_data.fotos[] base64 dataUrls (schema parses; 404 on unknown ticket, no 422). Iter88 regression (8/8) still PASS — bad-signal flow + central_ont settings + report + reject + public auth-status endpoints unaffected. Frontend code review: all required data-testids verified in LousaMobile.js (finalize-steps, ocr-sn-btn, ocr-result, equip-photo-section, equip-photo-input, finalize-next-btn, photo-required-modal, photo-required-input, finalize-back-btn, finalize-btn, finalize-obs, FTTH/Rede ConsumableField groups). Live UI walkthrough was blocked: the technician PWA at /?cid=col-demo-001&mode=app gets stuck on 'Carregando lousa...' because col-demo-001 has no open tickets visible (or clock-in is required) — could not enter TicketDetail. Did not test photo-required modal interactively, but the JSX flow is straightforward and code-reviewed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/lousa/public/ocr-sn", "issue": "No size sanity check on data URL prefix before base64 decode — a malicious 'data:...,xxx' with very long mime can slip through. Cap before split. LOW."},
+      {"endpoint": "POST /api/lousa/public/ocr-sn", "issue": "Returns confidence='baixa' even for 200 success when LLM cannot detect anything (sn=null, mac=null). Front shows red 'Nada legível' banner correctly — but consider returning confidence='none' for clarity."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "LousaMobile.js submit()", "issue": "Front sends form.fotos with kind=equipamento + optional kind=sn → max 2 dataUrls. Backend public_finalize_ticket (lousa.py L1180) raises 400 when `t['type']=='instalacao' and len(cd.fotos) < 3`. For instalacao tickets this will hard-fail finalize. Either (a) lower backend requirement to 1 for the new wizard flow, (b) make the wizard require multiple labeled photos (equipamento + comprovante + serial), or (c) auto-bundle the SN photo + equipment photo + a third (e.g., before/after) to satisfy the 3-photo rule.", "selector": "[data-testid=finalize-btn]", "priority": "HIGH"},
+      {"component": "LousaMobile.js step 1 — equip photo section", "issue": "Once a photo is taken, 'Refazer' replaces the same kind:'equipamento' entry — the previous SN photo (kind='sn') is preserved which is good. But there is no way to delete the equip photo after taking it (only refazer/replace). Minor UX nit.", "selector": "[data-testid=equip-photo-section]", "priority": "LOW"},
+      {"component": "LousaMobile.js OCR button", "issue": "ocr-sn-btn does NOT save a photo separately when OCR succeeds — captureSnPhoto adds kind='sn' to form.fotos. Good. But there is no visible thumbnail/preview of the SN photo (only equipamento has preview). UX could be improved.", "selector": "[data-testid=ocr-sn-btn]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Technician PWA load at /?cid=col-demo-001&mode=app → click 'Lousa de Serviços'", "issue": "Page hangs on 'Carregando lousa...' (data-testid=lousa-loading) — likely missing clock-in or no tickets for col-demo-001 in the seed. Could not reach TicketDetail to exercise the 2-step wizard end-to-end interactively. Multiple 401s in console from /api/auth/me (expected — PWA is unauthenticated) and 404s.", "affected_selectors": ["[data-testid=lousa-mobile]", "[data-testid=ticket-detail]"]}
+    ],
+    "design_issues": [
+      {"screen": "Step 2 — Insumos FTTH/Rede sections", "issues": ["Two consumable cards with different border colors (yellow #fde68a for FTTH and blue #bfdbfe for Rede) provide good visual separation. Headers use emoji + uppercase letterSpacing — readable on 390px viewport."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter89_ocr_sn_and_fotos.py",
+    "/app/test_reports/pytest/iter89_results.xml",
+    "/app/backend/tests/test_iter88_central_ont.py"
+  ],
+  "action_items": [
+    "[HIGH] Resolve the instalacao 3-photo rule vs new wizard's 1-2 photo flow. lousa.py:1180 raises 400 if `t['type']=='instalacao' and len(cd.fotos) < 3` — but the new wizard collects only equipamento (+ optional sn). Decide: (a) reduce backend min to 1, (b) extend wizard to capture 3+ photos, or (c) keep rule and document.",
+    "[LOW] LousaMobile.js — keep iter88 hardcoded -27 threshold in mind (issue tracked from iter88; ensure threshold passed in via central-ont/settings fetch).",
+    "[LOW] Consider adding a visible thumbnail preview for the SN photo when captureSnPhoto succeeds (only equip photo currently has preview).",
+    "[OPTIONAL] Add a unit-style success path for OCR by mocking emergentintegrations in tests (currently tests only validate contract; real LLM is hit but tolerated to return nulls)."
+  ],
+  "critical_code_review_comments": [
+    "routes/lousa.py public_ocr_sn (L2105-2195) — clean structure: env check → size validation → base64 decode → LlmChat with Gemini 2.5 Flash via ImageContent → robust JSON parse with code-fence stripping → MAC normalization to 12 hex. Good.",
+    "routes/lousa.py L2174-2178 — `re.search(r'\\{.*\\}', txt, flags=re.S)` greedily grabs first { to last } — works for single JSON object but fragile if LLM emits multiple objects. Consider `json.loads(txt)` first then fallback to regex.",
+    "frontend LousaMobile.js step state — `step` is local to TicketDetail and resets when ticket closes/refreshes. On step 2 if user navigates away and back, returns to step 1 (with form values preserved in form state — actually form is local too). Acceptable.",
+    "frontend LousaMobile.js captureSnPhoto — sets ocrResult AND form.ont from detected SN/MAC. If OCR returns mac in form 'AA:BB:...', the toUpperCase().replace logic in MAC normalization may keep separator. Front's setForm({ ont: detected.toUpperCase() }) is correct.",
+    "frontend LousaMobile.js submit() L869-880 — includes fotos: form.fotos.map(p => p.dataUrl). Note: dataUrls include 'data:image/...;base64,' prefix — backend stores these in completion_data.fotos as-is. The auto_close_service_from_ticket bridge receives the list via completion_data.model_dump() — verified the payload field still parses (test passes 404 not 422)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter89_ocr_sn_and_fotos.py"
+  ],
+  "success_rate": {"backend": "100% (7/7 new + 8/8 iter88 regression)", "frontend": "code-review only — could not reach TicketDetail in live PWA; all testids verified in source"},
+  "test_credentials": "admin@empresa.com / 123456 (web). PWA path: /?cid=col-demo-001&mode=app (no auth needed but needs open tickets + clock-in)",
+  "seed_data_creation": "None — OCR tests use generated base64 PNGs. Finalize regression hits a non-existent ticket id to verify schema parsing.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iter89_ocr_sn_and_fotos.py runs in ~9s. The valid-image OCR test sends a tiny PNG to Gemini and tolerates 200/502/503 (LLM may not detect anything). To exercise the 2-step wizard interactively, you need an OPEN ticket for col-demo-001 (status=aberta, assigned_collaborator_id=col-demo-001) AND the collaborator must be clock-ed in — create one via POST /api/lousa/tickets (admin token) then ensure clock-in. The wizard requires `isInstall || isWithdraw` for the equip-photo section; create a ticket with type='instalacao' to test the full flow. CAUTION: The existing 3-photo backend rule for instalacao tickets WILL block the wizard's finalize (only 1-2 fotos sent). This is the highest-priority finding.",
+  "rca of the issue": "OCR endpoint works as designed. The structural risk identified is the mismatch between (a) lousa.py:1180 requiring >=3 fotos for type='instalacao' and (b) the new wizard collecting at most 2 (equipamento + SN). Reproduction: create instalacao ticket → walk wizard → submit → backend returns 400 'Instalação exige no mínimo 3 fotos'. Mitigation: lower backend min to 1 (the new flow makes equip photo mandatory client-side already), or extend the wizard to capture additional shots (e.g., before/after, splice closure, padrão)."
+}

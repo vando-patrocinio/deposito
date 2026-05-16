@@ -13,7 +13,9 @@ Integração com clock.py:
 """
 from __future__ import annotations
 
+import json
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
@@ -2090,6 +2092,107 @@ async def public_check_auth_status(req_id: str):
     if not req:
         raise HTTPException(404, "Solicitação não encontrada")
     return req
+
+
+# -------------------------------------------------------------------------
+# OCR — lê SN/MAC de uma foto via Gemini Vision (Emergent LLM Key)
+# -------------------------------------------------------------------------
+class OcrSnIn(BaseModel):
+    image_base64: str  # data URL ou raw base64
+    hint: Optional[str] = None  # "SN", "MAC", "ONT" — guia a IA
+
+
+@router.post("/lousa/public/ocr-sn")
+async def public_ocr_sn(payload: OcrSnIn):
+    """Extrai número de série/MAC de uma foto da etiqueta do equipamento.
+
+    Best-effort: usa Gemini 2.5 Flash (Nano Banana) com prompt focado em ler
+    etiquetas de ONT/ONU. Retorna {sn, mac, raw, confidence}. Endpoint público
+    porque o app do colaborador é stateless (token via ?cid=).
+    """
+    import base64
+    import os
+    key = os.environ.get("EMERGENT_LLM_KEY")
+    if not key:
+        raise HTTPException(503,
+                              "EMERGENT_LLM_KEY não configurada — OCR indisponível.")
+    raw = payload.image_base64 or ""
+    if raw.startswith("data:"):
+        try:
+            raw = raw.split(",", 1)[1]
+        except Exception:
+            pass
+    if not raw or len(raw) < 100:
+        raise HTTPException(400, "Imagem inválida ou muito pequena.")
+    # Cap em ~4MB pra não estourar
+    try:
+        decoded = base64.b64decode(raw)
+        if len(decoded) > 4 * 1024 * 1024:
+            raise HTTPException(400, "Imagem maior que 4MB.")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(400, "Falha decodificando base64.") from None
+
+    try:
+        from emergentintegrations.llm.chat import (
+            ImageContent, LlmChat, UserMessage,
+        )
+    except Exception as e:
+        raise HTTPException(503,
+                              f"emergentintegrations indisponível: {e}") from e
+
+    system = (
+        "Você é um leitor de etiquetas de ONT/ONU (fibra óptica). "
+        "Receba uma foto de etiqueta de equipamento e extraia o "
+        "SERIAL NUMBER (SN) e o MAC ADDRESS quando aparecerem. "
+        "Padrões comuns: SN começa com letras do fabricante (FHTT, HWTC, "
+        "TPLG, etc.) seguidos de hex. MAC tem 12 hex separados ou não por ':'. "
+        "Responda APENAS em JSON: {\"sn\":\"...\", \"mac\":\"...\", "
+        "\"confidence\":\"alta|media|baixa\", \"raw_text\":\"...\"}. "
+        "Use null quando não detectar."
+    )
+    chat = LlmChat(
+        api_key=key, session_id=f"ocr-sn-{uuid.uuid4().hex[:8]}",
+        system_message=system,
+    ).with_model("gemini", "gemini-2.5-flash")
+    user_msg = UserMessage(
+        text=("Leia a etiqueta. Hint do usuário: "
+              + (payload.hint or "SN/MAC de ONT")),
+        file_contents=[ImageContent(image_base64=raw)],
+    )
+    try:
+        resp = await chat.send_message(user_msg)
+    except Exception as e:
+        logger.exception("[lousa] ocr-sn LLM falhou: %s", e)
+        raise HTTPException(502, f"OCR falhou: {e}") from e
+
+    txt = (resp or "").strip()
+    if txt.startswith("```"):
+        txt = re.sub(r"^```(?:json)?\s*", "", txt)
+        txt = re.sub(r"\s*```\s*$", "", txt)
+    try:
+        m = re.search(r"\{.*\}", txt, flags=re.S)
+        parsed = json.loads(m.group(0)) if m else {}
+    except Exception:
+        parsed = {}
+    # Limpa SN/MAC (sem espaços, uppercase)
+    sn = (parsed.get("sn") or "").strip().upper().replace(" ", "")
+    mac_raw = (parsed.get("mac") or "").strip().upper().replace(" ", "")
+    # Normaliza MAC removendo separadores extras
+    mac = "".join(c for c in mac_raw if c in "0123456789ABCDEF")
+    if len(mac) == 12:
+        mac = ":".join(mac[i:i+2] for i in range(0, 12, 2))
+    else:
+        mac = mac_raw  # devolve cru se não bateu 12 hex
+
+    return {
+        "sn": sn or None,
+        "mac": mac or None,
+        "confidence": parsed.get("confidence") or "baixa",
+        "raw_text": parsed.get("raw_text") or "",
+        "best": sn or mac or None,
+    }
 
 
 # -------------------------------------------------------------------------

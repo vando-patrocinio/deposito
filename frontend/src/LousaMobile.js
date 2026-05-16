@@ -722,14 +722,19 @@ function ConsumableField({ label, fieldKey, consumableId, step, consMap, form, s
 
 function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                           badSignalThreshold = -27 }) {
+  const [step, setStep] = useState(1); // 1: Sinal+ONT+Fotos · 2: Insumos+Obs
   const [form, setForm] = useState({
     sinal: -25, qtd_drop: 1, esticadores: 1, conectores_fast: 2,
     cabo_rede: 10, conectores_rede: 2, ont: "", observacoes: "",
+    fotos: [],          // [{kind:'equipamento'|'sn', dataUrl}]
   });
   const [stock, setStock] = useState(null);
-  const [macStatus, setMacStatus] = useState(null); // null|loading|ok|warn|error
+  const [macStatus, setMacStatus] = useState(null);
   const [macInfo, setMacInfo] = useState(null);
   const [showQR, setShowQR] = useState(false);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrResult, setOcrResult] = useState(null);
+  const [showPhotoWarn, setShowPhotoWarn] = useState(false);
 
   const cid = ticket.assigned_collaborator_id;
   const isInstall = ticket.type === "instalacao" || ticket.type === "troca_endereco";
@@ -770,16 +775,84 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     return () => clearTimeout(handle);
   }, [form.ont, cid, isInstall, isWithdraw]);
 
-  function submit() {
+  // ============ HELPERS Foto + OCR ============
+  const requireEquipPhoto = isInstall || isWithdraw;
+  const hasEquipPhoto = form.fotos.some((p) => p.kind === "equipamento");
+
+  async function readFileAsDataURL(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = (e) => res(e.target.result);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+  }
+
+  async function addEquipPhoto(file) {
+    try {
+      const dataUrl = await readFileAsDataURL(file);
+      setForm((f) => ({
+        ...f,
+        fotos: [
+          ...f.fotos.filter((p) => p.kind !== "equipamento"),
+          { kind: "equipamento", dataUrl },
+        ],
+      }));
+    } catch (e) {
+      alert("Falha ao ler foto: " + e.message);
+    }
+  }
+
+  async function captureSnPhoto(file) {
+    try {
+      setOcrBusy(true);
+      setOcrResult(null);
+      const dataUrl = await readFileAsDataURL(file);
+      // Salva foto também (kind=sn)
+      setForm((f) => ({
+        ...f,
+        fotos: [...f.fotos.filter((p) => p.kind !== "sn"),
+                 { kind: "sn", dataUrl }],
+      }));
+      const r = await api._client.post(
+        "/lousa/public/ocr-sn",
+        { image_base64: dataUrl, hint: "SN/MAC de ONT" },
+      ).then((x) => x.data);
+      setOcrResult(r);
+      const detected = r.sn || r.mac || r.best;
+      if (detected) {
+        setForm((f) => ({ ...f, ont: detected.toUpperCase() }));
+      }
+    } catch (e) {
+      alert("OCR falhou: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setOcrBusy(false);
+    }
+  }
+
+  function goToStep2() {
+    // Validação básica do step 1
     if (needsMac && !form.ont) {
-      alert(isWithdraw ? "MAC da ONT retirada é obrigatório" : "MAC da ONT é obrigatório para instalação/troca");
+      alert(isWithdraw
+        ? "MAC da ONT retirada é obrigatório."
+        : "MAC/SN da ONT é obrigatório para instalação/troca.");
       return;
     }
+    if (requireEquipPhoto && !hasEquipPhoto) {
+      setShowPhotoWarn(true);
+      return;
+    }
+    setStep(2);
+  }
+
+  function submit() {
     if (needsMac && macStatus === "error") {
-      if (!window.confirm("MAC não encontrado no SmartOLT. Continuar mesmo assim? (Será marcado como erro_estoque para o gestor revisar)")) return;
+      if (!window.confirm("MAC não encontrado no SmartOLT. Continuar mesmo "
+                            + "assim? (Marca erro_estoque pra revisão)")) return;
     }
     // Saldo
-    const consMap = Object.fromEntries((stock?.consumables || []).map((c) => [c.id, c.qty]));
+    const consMap = Object.fromEntries(
+      (stock?.consumables || []).map((c) => [c.id, c.qty]));
     const checks = [
       ["drop", form.qtd_drop], ["esticador", form.esticadores],
       ["conector_fast", form.conectores_fast], ["cabo_rede", form.cabo_rede],
@@ -788,7 +861,8 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     for (const [k, v] of checks) {
       const used = Number(v) || 0;
       if (used > (consMap[k] ?? Infinity)) {
-        if (!window.confirm(`Saldo insuficiente de ${k} (disponível ${consMap[k]}, gastando ${used}). Continuar? Vai ficar erro_estoque pra revisão.`)) return;
+        if (!window.confirm(`Saldo insuficiente de ${k} (disp ${consMap[k]}, `
+                              + `gasto ${used}). Continuar? Vai ficar erro_estoque.`)) return;
         break;
       }
     }
@@ -800,7 +874,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       cabo_rede: Number(form.cabo_rede),
       conectores_rede: Number(form.conectores_rede),
       ont: form.ont || null,
-      fotos: [],
+      fotos: form.fotos.map((p) => p.dataUrl),
       observacoes: form.observacoes || null,
     });
   }
@@ -860,7 +934,25 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
 
       <h3 style={{ marginTop: 18, marginBottom: 10, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>📋 Finalizar serviço</h3>
 
-      {/* SINAL */}
+      {/* Indicador de passos */}
+      <div data-testid="finalize-steps"
+            style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {[1, 2].map((n) => (
+          <div key={n} style={{
+            flex: 1, height: 6, borderRadius: 999,
+            background: step >= n ? "#0ea5e9" : "#e2e8f0",
+            transition: "background 200ms",
+          }} />
+        ))}
+        <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700,
+                       letterSpacing: 0.5, textTransform: "uppercase",
+                       marginLeft: 8, alignSelf: "center" }}>
+          Etapa {step}/2
+        </div>
+      </div>
+
+      {/* SINAL — step 1 */}
+      {step === 1 && (
       <div style={{ marginBottom: 14 }}>
         <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>📶 Sinal medido (dBm)</label>
         <input data-testid="finalize-sinal" type="number" step="0.1" value={form.sinal}
@@ -902,9 +994,10 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
           </div>
         )}
       </div>
+      )}
 
-      {/* MAC ONT */}
-      {needsMac && (
+      {/* MAC ONT — step 1 */}
+      {step === 1 && needsMac && (
         <div style={{ marginBottom: 14 }}>
           <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
             📡 MAC/SN da ONT {isWithdraw ? "(retirada do cliente)" : "(do estoque do técnico)"} *
@@ -921,6 +1014,28 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                 fontFamily: "monospace", textTransform: "uppercase", boxSizing: "border-box",
               }}
             />
+            {/* Câmera OCR — foto da etiqueta preenche o MAC/SN */}
+            <label data-testid="ocr-sn-btn"
+                    title="Tirar foto da etiqueta (preenche o MAC/SN)"
+                    style={{
+                      padding: "10px 14px", border: "none", borderRadius: 10,
+                      background: ocrBusy
+                        ? "linear-gradient(135deg,#94a3b8,#64748b)"
+                        : "linear-gradient(135deg,#10b981,#059669)",
+                      color: "white", fontWeight: 800, fontSize: 16,
+                      cursor: ocrBusy ? "wait" : "pointer", flexShrink: 0,
+                      display: "inline-flex", alignItems: "center", gap: 3,
+                    }}>
+              {ocrBusy ? "⏳" : "📸"}
+              <input type="file" accept="image/*" capture="environment"
+                      style={{ display: "none" }}
+                      disabled={ocrBusy}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) captureSnPhoto(f);
+                        e.target.value = "";
+                      }} />
+            </label>
             <button
               type="button"
               data-testid="qr-open-btn"
@@ -935,6 +1050,19 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
               📷
             </button>
           </div>
+          {ocrResult && (
+            <div data-testid="ocr-result"
+                  style={{
+                    padding: "6px 10px", borderRadius: 8, marginBottom: 6,
+                    background: ocrResult.best ? "#dcfce7" : "#fee2e2",
+                    color: ocrResult.best ? "#166534" : "#991b1b",
+                    fontSize: 11, lineHeight: 1.4, fontWeight: 600,
+                  }}>
+              {ocrResult.best
+                ? `✓ Detectado: ${ocrResult.best} (confiança: ${ocrResult.confidence})`
+                : "⚠ Nada legível na foto. Tente novamente com melhor luz."}
+            </div>
+          )}
           {macStyle && (
             <div data-testid="mac-validation" style={{
               padding: "8px 12px", borderRadius: 10, fontSize: 12,
@@ -957,41 +1085,197 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         </div>
       )}
 
-      {/* INSUMOS */}
-      <div style={{
-        padding: "12px 14px", background: "white", border: "1px solid #e2e8f0",
-        borderRadius: 14, marginBottom: 14,
-      }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 10 }}>
-          🧰 Materiais utilizados
-          {stock && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 500, marginLeft: 6 }}>· estoque: {stock.collaborator_name}</span>}
+      {/* FOTO DO EQUIPAMENTO — step 1, obrigatória em instalação/retirada */}
+      {step === 1 && requireEquipPhoto && (
+        <div data-testid="equip-photo-section" style={{
+          padding: 12, borderRadius: 12,
+          background: hasEquipPhoto ? "#dcfce7" : "#fef9c3",
+          border: "1px solid " + (hasEquipPhoto ? "#16a34a" : "#fde68a"),
+          marginBottom: 14,
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between",
+                          alignItems: "center", marginBottom: 8 }}>
+            <strong style={{ fontSize: 13, color: hasEquipPhoto ? "#166534" : "#78350f" }}>
+              📸 Foto do equipamento {hasEquipPhoto ? "✓" : "*"}
+            </strong>
+            <label style={{
+              padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+              background: hasEquipPhoto ? "white" : "#0ea5e9",
+              color: hasEquipPhoto ? "#0ea5e9" : "white",
+              border: hasEquipPhoto ? "1px solid #0ea5e9" : "none",
+              cursor: "pointer",
+            }}>
+              {hasEquipPhoto ? "Refazer" : "Tirar foto"}
+              <input type="file" accept="image/*" capture="environment"
+                      data-testid="equip-photo-input"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) addEquipPhoto(f);
+                        e.target.value = "";
+                      }} />
+            </label>
+          </div>
+          <p style={{ margin: 0, fontSize: 11,
+                       color: hasEquipPhoto ? "#15803d" : "#92400e",
+                       lineHeight: 1.4 }}>
+            {hasEquipPhoto
+              ? "Foto registrada. Pode refazer se precisar."
+              : (isWithdraw
+                  ? "Tire uma foto do equipamento retirado antes de prosseguir."
+                  : "Tire uma foto do equipamento instalado antes de prosseguir.")}
+          </p>
+          {hasEquipPhoto && (
+            <img alt="Equipamento"
+                  src={form.fotos.find((p) => p.kind === "equipamento")?.dataUrl}
+                  style={{ marginTop: 8, width: 96, height: 96,
+                             objectFit: "cover", borderRadius: 8,
+                             border: "1px solid #16a34a" }} />
+          )}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <ConsumableField label="Drop (m)" fieldKey="qtd_drop" consumableId="drop" consMap={consMap} form={form} setForm={setForm} />
-          <ConsumableField label="Esticador (un)" fieldKey="esticadores" consumableId="esticador" consMap={consMap} form={form} setForm={setForm} />
-          <ConsumableField label="Conector fast (un)" fieldKey="conectores_fast" consumableId="conector_fast" consMap={consMap} form={form} setForm={setForm} />
-          <ConsumableField label="Cabo rede (m)" fieldKey="cabo_rede" consumableId="cabo_rede" step="0.5" consMap={consMap} form={form} setForm={setForm} />
-          <ConsumableField label="Conector rede (un)" fieldKey="conectores_rede" consumableId="conector_rede" consMap={consMap} form={form} setForm={setForm} />
+      )}
+
+      {/* Step 1 → botão Próximo */}
+      {step === 1 && (
+        <Button onClick={goToStep2}
+                 data-testid="finalize-next-btn"
+                 style={{ width: "100%", marginTop: 6, height: 52, fontSize: 15 }}>
+          Próximo: Materiais e Observações →
+        </Button>
+      )}
+
+      {/* ============ STEP 2 ============ */}
+      {step === 2 && (
+        <>
+          {/* INSUMOS FTTH */}
+          <div style={{
+            padding: "12px 14px", background: "white",
+            border: "1px solid #fde68a", borderRadius: 14, marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#ca8a04",
+                            marginBottom: 8, letterSpacing: 0.5,
+                            textTransform: "uppercase" }}>
+              🌐 Insumo FTTH
+              {stock && (
+                <span style={{ fontSize: 10, color: "#64748b",
+                                 fontWeight: 500, marginLeft: 6,
+                                 textTransform: "none", letterSpacing: 0 }}>
+                  · estoque: {stock.collaborator_name}
+                </span>
+              )}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <ConsumableField label="Drop (m)" fieldKey="qtd_drop"
+                                consumableId="drop" consMap={consMap}
+                                form={form} setForm={setForm} />
+              <ConsumableField label="Esticador (un)" fieldKey="esticadores"
+                                consumableId="esticador" consMap={consMap}
+                                form={form} setForm={setForm} />
+              <ConsumableField label="Conector fast (un)" fieldKey="conectores_fast"
+                                consumableId="conector_fast" consMap={consMap}
+                                form={form} setForm={setForm} />
+            </div>
+          </div>
+
+          {/* INSUMOS REDE */}
+          <div style={{
+            padding: "12px 14px", background: "white",
+            border: "1px solid #bfdbfe", borderRadius: 14, marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#1d4ed8",
+                            marginBottom: 8, letterSpacing: 0.5,
+                            textTransform: "uppercase" }}>
+              🖧 Rede
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <ConsumableField label="Cabo rede (m)" fieldKey="cabo_rede"
+                                consumableId="cabo_rede" step="0.5"
+                                consMap={consMap}
+                                form={form} setForm={setForm} />
+              <ConsumableField label="Conector rede (un)" fieldKey="conectores_rede"
+                                consumableId="conector_rede" consMap={consMap}
+                                form={form} setForm={setForm} />
+            </div>
+          </div>
+
+          <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
+            📝 Observações
+          </label>
+          <textarea
+            data-testid="finalize-obs" value={form.observacoes}
+            onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
+            rows={3}
+            placeholder="Detalhes do serviço, materiais especiais, etc."
+            style={{
+              width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1",
+              borderRadius: 10, fontSize: 14, marginTop: 4, marginBottom: 12,
+              resize: "vertical", boxSizing: "border-box", fontFamily: "inherit",
+            }}
+          />
+
+          {err && <Banner color="#fee2e2" border="#dc2626" icon="!" text={err} />}
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button onClick={() => setStep(1)} variant="soft"
+                     data-testid="finalize-back-btn"
+                     style={{ flex: 1, height: 52, fontSize: 14 }}>
+              ← Voltar
+            </Button>
+            <Button onClick={submit} disabled={busy}
+                     data-testid="finalize-btn"
+                     style={{ flex: 2, height: 52, fontSize: 15 }}>
+              <Icon name="check" /> {busy ? "Finalizando..." : "Finalizar nota"}
+            </Button>
+          </div>
+        </>
+      )}
+
+      {/* POPUP — força a tirar foto do equipamento antes de avançar */}
+      {showPhotoWarn && (
+        <div onClick={() => setShowPhotoWarn(false)}
+              data-testid="photo-required-modal"
+              style={{
+                position: "fixed", inset: 0, zIndex: 1400,
+                background: "rgba(2,6,23,0.7)",
+                display: "grid", placeItems: "center", padding: 18,
+              }}>
+          <div onClick={(e) => e.stopPropagation()}
+                style={{
+                  background: "white", borderRadius: 14, padding: 22,
+                  maxWidth: 360, width: "100%", textAlign: "center",
+                  boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+                }}>
+            <div style={{ fontSize: 38, marginBottom: 8 }}>📸</div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700,
+                          color: "#0f172a" }}>
+              Tire uma foto do equipamento
+            </h3>
+            <p style={{ margin: "8px 0 16px", fontSize: 12, color: "#475569",
+                         lineHeight: 1.5 }}>
+              É obrigatório registrar o equipamento antes de continuar.
+              Use a câmera traseira do celular pra capturar.
+            </p>
+            <label style={{
+              display: "inline-block", padding: "12px 22px", borderRadius: 10,
+              background: "#0ea5e9", color: "white", fontWeight: 800,
+              fontSize: 14, cursor: "pointer",
+            }}>
+              📷 Abrir câmera agora
+              <input type="file" accept="image/*" capture="environment"
+                      data-testid="photo-required-input"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          addEquipPhoto(f);
+                          setShowPhotoWarn(false);
+                        }
+                        e.target.value = "";
+                      }} />
+            </label>
+          </div>
         </div>
-      </div>
-
-      <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>📝 Observações</label>
-      <textarea
-        data-testid="finalize-obs" value={form.observacoes}
-        onChange={(e) => setForm({ ...form, observacoes: e.target.value })} rows={3}
-        placeholder="Detalhes do serviço, materiais especiais, etc."
-        style={{
-          width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1",
-          borderRadius: 10, fontSize: 14, marginTop: 4, marginBottom: 12,
-          resize: "vertical", boxSizing: "border-box", fontFamily: "inherit",
-        }}
-      />
-
-      {err && <Banner color="#fee2e2" border="#dc2626" icon="!" text={err} />}
-
-      <Button onClick={submit} disabled={busy} style={{ width: "100%", marginTop: 6, height: 52, fontSize: 15 }} data-testid="finalize-btn">
-        <Icon name="check" /> {busy ? "Finalizando..." : "Finalizar nota"}
-      </Button>
+      )}
 
       {showQR && (
         <QRScannerModal
