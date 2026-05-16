@@ -611,8 +611,16 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
         </div>
       </div>
 
-      {/* Lista de buckets — accordion (estilo cards FocusChat) */}
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "10px 10px" }}>
+      {/* Lista de buckets — accordion (estilo cards FocusChat)
+          Outer flex-column: cada bucket header sempre visível;
+          quando aberto, o conteúdo do bucket ativo rola INTERNAMENTE
+          (não empurra os outros pra fora da tela). */}
+      <div style={{
+        flex: 1, minHeight: 0,
+        display: "flex", flexDirection: "column",
+        overflow: "hidden",
+        padding: "10px 10px 0",
+      }}>
         {BUCKETS.map((b) => {
           const Ico = b.icon;
           const active = bucket === b.id;
@@ -630,6 +638,9 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
                 ? "0 2px 8px rgba(15, 23, 42, .08)"
                 : "0 1px 2px rgba(15, 23, 42, .04)",
               overflow: "hidden",
+              flex: active ? "1 1 auto" : "0 0 auto",
+              minHeight: 0,
+              display: "flex", flexDirection: "column",
             }}>
               <button onClick={() => setBucket(active ? "" : b.id)}
                       data-testid={`wa-bucket-${b.id}`}
@@ -644,6 +655,7 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
                 cursor: "pointer", textAlign: "left",
                 fontSize: 16, fontWeight: 700,
                 transition: "background .15s",
+                flexShrink: 0,
               }}
               onMouseEnter={(e) => {
                 if (!active) e.currentTarget.style.background = "#f8fafc";
@@ -693,11 +705,13 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
                 }}>›</span>
               </button>
 
-              {/* Convs nested DENTRO do bucket aberto */}
+              {/* Convs nested DENTRO do bucket aberto — SCROLL INTERNO */}
               {active && (
                 <div data-testid={`wa-bucket-content-${b.id}`}
                      style={{
                        borderTop: "1px solid #e5e7eb",
+                       flex: 1, minHeight: 0,
+                       overflowY: "auto",
                      }}>
                   {loading ? (
                     <div style={{ padding: 20, textAlign: "center", color: "#64748b" }}>
@@ -986,36 +1000,7 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
           </div>
         </div>
 
-        {/* Linha 3: tag filial + plano */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 6,
-          marginTop: 8, flexWrap: "wrap",
-        }}>
-          {conv.subscriber_branch && (
-            <span style={{
-              display: "inline-flex", alignItems: "center", gap: 4,
-              fontSize: 11.5, fontWeight: 600,
-              color: "#475569", letterSpacing: 0.2,
-            }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M14 9h.01M14 13h.01M14 17h.01"/>
-              </svg>
-              {conv.subscriber_branch}
-            </span>
-          )}
-          {isIdentified && conv.subscriber_plan && (
-            <span style={{
-              padding: "2px 7px", borderRadius: 5,
-              background: "rgba(13,148,136,.12)",
-              color: "#0d9488",
-              fontSize: 10.5, fontWeight: 700,
-            }}>
-              {conv.subscriber_plan}
-            </span>
-          )}
-        </div>
-
-        {/* Linha 4: última msg + direção + unread badge */}
+        {/* Linha 3: ÚLTIMA MENSAGEM em destaque (prioridade) + unread badge */}
         <div style={{
           display: "flex", alignItems: "center", gap: 7, marginTop: 8,
         }}>
@@ -1023,73 +1008,28 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
           <span style={{
             color: "#3b82f6",
             background: "#dbeafe",
-            width: 18, height: 18, borderRadius: 4,
-            fontSize: 11, fontWeight: 800, flexShrink: 0,
+            width: 20, height: 20, borderRadius: 5,
+            fontSize: 12, fontWeight: 800, flexShrink: 0,
             display: "inline-flex", alignItems: "center", justifyContent: "center",
             lineHeight: 1,
           }}>
             {dirIcon}
           </span>
           <span style={{
-            fontSize: 12.5,
+            fontSize: 13.5,
             color: aiTypingPreview
               ? "#7c3aed"
-              : (unread > 0 ? "#0f172a" : "#475569"),
+              : (unread > 0 ? "#0f172a" : "#334155"),
             fontWeight: aiTypingPreview || unread > 0 ? 600 : 500,
             fontStyle: aiTypingPreview ? "italic" : "normal",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             flex: 1, minWidth: 0,
+            lineHeight: 1.3,
           }}>
             {aiTypingPreview
               ? `${aiTypingAgentName} digitando…`
-              : conv.last_text}
+              : (conv.last_text || <em style={{ color: "#94a3b8", fontWeight: 400 }}>sem mensagens</em>)}
           </span>
-          {/* Canal de origem: só mostra quando NÃO é Baileys (padrão) */}
-          {conv.last_channel && conv.last_channel !== "baileys" && (
-            <ChannelBadge channel={conv.last_channel} small />
-          )}
-          {/* Multi-canal: o mesmo contato fala por 2+ canais diferentes */}
-          {(conv.channels_used || []).filter((c) => c).length > 1 && (
-            <span title={`Este contato fala por: ${(conv.channels_used || []).join(", ")}`}
-                   style={{
-                     padding: "1px 5px", borderRadius: 4,
-                     background: "#fef3c7", color: "#92400e",
-                     border: "1px solid #fcd34d",
-                     fontSize: 8.5, fontWeight: 700, flexShrink: 0,
-                   }}>
-              {(conv.channels_used || []).filter((c) => c).length}× canais
-            </span>
-          )}
-          {(conv.last_outbound_status || "").startsWith("failed") && (
-            <span
-              data-testid={`wa-conv-ai-fail-${conv.phone}`}
-              title={conv.last_outbound_error
-                ? `IA falhou: ${conv.last_outbound_error}`
-                : "Última resposta IA falhou"}
-              style={{
-                padding: "1px 7px", borderRadius: 999,
-                background: "#fee2e2", color: "#991b1b",
-                fontSize: 10, fontWeight: 800,
-                display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0,
-                border: "1px solid #fecaca",
-              }}>
-              <AlertTriangle size={10} strokeWidth={2.5} /> Falha IA
-            </span>
-          )}
-          {conv.phone_is_lid && (
-            <span
-              data-testid={`wa-conv-lid-${conv.phone}`}
-              title={`WhatsApp LID anônimo. LID: ${conv.lid || conv.phone}`}
-              style={{
-                padding: "1px 6px", borderRadius: 999,
-                background: "#fef3c7", color: "#92400e",
-                fontSize: 9.5, fontWeight: 800,
-                display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0,
-                border: "1px solid #fde68a",
-              }}>
-              <Lock size={9} strokeWidth={2.5} /> LID
-            </span>
-          )}
           {unread > 0 && (
             <span data-testid={`wa-unread-${conv.phone}`} style={{
               minWidth: 22, height: 22, padding: "0 7px",
@@ -1102,10 +1042,89 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
           )}
         </div>
 
+        {/* Linha 4: tag filial + plano + canal + LID + falha (compacto, abaixo da msg) */}
+        {(conv.subscriber_branch || (isIdentified && conv.subscriber_plan)
+          || (conv.last_channel && conv.last_channel !== "baileys")
+          || (conv.channels_used || []).filter((c) => c).length > 1
+          || (conv.last_outbound_status || "").startsWith("failed")
+          || conv.phone_is_lid) && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            marginTop: 6, flexWrap: "wrap",
+          }}>
+            {conv.subscriber_branch && (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                fontSize: 11, fontWeight: 600,
+                color: "#64748b", letterSpacing: 0.2,
+              }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M14 9h.01M14 13h.01M14 17h.01"/>
+                </svg>
+                {conv.subscriber_branch}
+              </span>
+            )}
+            {isIdentified && conv.subscriber_plan && (
+              <span style={{
+                padding: "2px 7px", borderRadius: 5,
+                background: "rgba(13,148,136,.12)",
+                color: "#0d9488",
+                fontSize: 10.5, fontWeight: 700,
+              }}>
+                {conv.subscriber_plan}
+              </span>
+            )}
+            {conv.last_channel && conv.last_channel !== "baileys" && (
+              <ChannelBadge channel={conv.last_channel} small />
+            )}
+            {(conv.channels_used || []).filter((c) => c).length > 1 && (
+              <span title={`Este contato fala por: ${(conv.channels_used || []).join(", ")}`}
+                     style={{
+                       padding: "1px 5px", borderRadius: 4,
+                       background: "#fef3c7", color: "#92400e",
+                       border: "1px solid #fcd34d",
+                       fontSize: 8.5, fontWeight: 700, flexShrink: 0,
+                     }}>
+                {(conv.channels_used || []).filter((c) => c).length}× canais
+              </span>
+            )}
+            {(conv.last_outbound_status || "").startsWith("failed") && (
+              <span
+                data-testid={`wa-conv-ai-fail-${conv.phone}`}
+                title={conv.last_outbound_error
+                  ? `IA falhou: ${conv.last_outbound_error}`
+                  : "Última resposta IA falhou"}
+                style={{
+                  padding: "1px 7px", borderRadius: 999,
+                  background: "#fee2e2", color: "#991b1b",
+                  fontSize: 10, fontWeight: 800,
+                  display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0,
+                  border: "1px solid #fecaca",
+                }}>
+                <AlertTriangle size={10} strokeWidth={2.5} /> Falha IA
+              </span>
+            )}
+            {conv.phone_is_lid && (
+              <span
+                data-testid={`wa-conv-lid-${conv.phone}`}
+                title={`WhatsApp LID anônimo. LID: ${conv.lid || conv.phone}`}
+                style={{
+                  padding: "1px 6px", borderRadius: 999,
+                  background: "#fef3c7", color: "#92400e",
+                  fontSize: 9.5, fontWeight: 800,
+                  display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0,
+                  border: "1px solid #fde68a",
+                }}>
+                <Lock size={9} strokeWidth={2.5} /> LID
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Indicador "Chat assumido por" — quando humano pegou */}
         {!isAi && conv.assignee_role === "human" && conv.last_direction === "outbound" && (
           <div style={{
-            marginTop: 6, fontSize: 10,
+            marginTop: 5, fontSize: 10,
             color: "#64748b",
             display: "flex", alignItems: "center", gap: 4,
             fontStyle: "italic",
