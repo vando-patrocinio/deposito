@@ -1684,14 +1684,6 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
             tooltip="Finalizar conversa (encerrar atendimento)"
             hoverColor="var(--danger)"
           />
-          <IconBtn
-            data-testid="wa-reset-conv-btn"
-            onClick={resetConversation}
-            disabled={busy || resetting}
-            icon={<RotateCcw size={14} strokeWidth={2} className={resetting ? "spin" : ""} />}
-            tooltip="Resetar esta conversa (apaga todas as mensagens — use só em testes)"
-            hoverColor="#f59e0b"
-          />
           {onOpenAgentConfig && (
             <IconBtn
               data-testid="wa-open-agent-config"
