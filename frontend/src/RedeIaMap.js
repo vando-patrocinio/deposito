@@ -409,6 +409,20 @@ export default function RedeIaMap() {
       load();
     } catch (e) { alert(e?.response?.data?.detail || "Erro"); }
   };
+  const removeCto = async (cto) => {
+    if (!window.confirm(
+      `Apagar a CTO "${cto.name}"?\n\n` +
+      "Vai remover a CTO + todos os cabos ligados a ela. " +
+      "ONUs e clientes vinculados NÃO serão afetados (continuam no SmartOLT). " +
+      "Esta ação não pode ser desfeita."
+    )) return;
+    try {
+      await api._client.delete(`/rede-ia/ctos/${cto.id}`);
+      load();
+    } catch (e) {
+      alert(e?.response?.data?.detail || "Erro ao apagar CTO");
+    }
+  };
 
   // Cabos: monta segments (usa override se segments vazio)
   const buildCablePath = useCallback((cable) => {
@@ -795,13 +809,38 @@ export default function RedeIaMap() {
                           ✋ Posição ajustada manualmente
                         </div>
                       )}
-                      <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                        <a href={`${process.env.REACT_APP_BACKEND_URL}/api/rede-ia/ctos/${c.id}/qrcode.png`}
-                           target="_blank" rel="noreferrer"
-                           style={popBtn("#7c3aed")}>QR</a>
-                        <a href={`${process.env.REACT_APP_BACKEND_URL}/api/rede-ia/ctos/${c.id}/pdf.pdf`}
-                           target="_blank" rel="noreferrer"
-                           style={popBtn("#dc2626")}>PDF</a>
+                      <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                        {(() => {
+                          const tok = window.localStorage.getItem("ponto_token") || "";
+                          const apiBase = process.env.REACT_APP_BACKEND_URL;
+                          return (
+                            <>
+                              <a href={`${apiBase}/api/rede-ia/ctos/${c.id}/qrcode.png?t=${encodeURIComponent(tok)}`}
+                                  target="_blank" rel="noreferrer"
+                                  data-testid={`map-cto-qr-${c.id}`}
+                                  style={popBtn("#7c3aed")}>QR</a>
+                              <a href={`${apiBase}/api/rede-ia/ctos/${c.id}/pdf.pdf?t=${encodeURIComponent(tok)}`}
+                                  target="_blank" rel="noreferrer"
+                                  data-testid={`map-cto-pdf-${c.id}`}
+                                  style={popBtn("#dc2626")}>PDF</a>
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  removeCto(c);
+                                }}
+                                data-testid={`map-cto-delete-${c.id}`}
+                                style={{
+                                  ...popBtn("#475569"),
+                                  background: "#fff",
+                                  color: "#dc2626",
+                                  border: "1px solid #fecaca",
+                                  cursor: "pointer",
+                                }}>
+                                🗑 Apagar
+                              </button>
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   </Popup>

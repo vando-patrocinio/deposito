@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -1007,9 +1007,38 @@ async def analyze_rede(body: AnalyzeIn,
 # ---------------------------------------------------------------------------
 # QR Code endpoints (Fase 6 — extensão pós Rede IA)
 # ---------------------------------------------------------------------------
+async def _resolve_user_from_query_or_header(
+    t: Optional[str], authorization: Optional[str],
+) -> Dict[str, Any]:
+    """Resolve usuário aceitando token via Bearer header OU query `?t=`.
+    Útil pra `<a href="/foo?t=...">` (download direto sem JS)."""
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    elif t:
+        token = t
+    if not token:
+        raise HTTPException(401, "Token requerido")
+    try:
+        from auth import decode_token
+        payload = decode_token(token)
+    except Exception:
+        raise HTTPException(401, "Token inválido")
+    user_id = payload.get("sub")
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    if not user or not user.get("active", True):
+        raise HTTPException(401, "Usuário inativo")
+    return user
+
+
 @router.get("/ctos/{cto_id}/qrcode.png")
-async def cto_qrcode_png(cto_id: str, user: dict = Depends(get_current_user)):
-    """Gera PNG do QR Code da CTO. Só funciona para CTOs aprovadas."""
+async def cto_qrcode_png(
+    cto_id: str,
+    t: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+):
+    """Gera PNG do QR Code da CTO. Aceita auth via Bearer OU `?t=token`."""
+    user = await _resolve_user_from_query_or_header(t, authorization)
     cid = _user_company(user)
     cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
     if not cto:
@@ -1242,9 +1271,14 @@ async def regenerate_pdf(cto_id: str,
 
 
 @router.get("/ctos/{cto_id}/pdf.pdf")
-async def download_cto_pdf(cto_id: str, user: dict = Depends(get_current_user)):
-    """Devolve o PDF da CTO diretamente (gera on-the-fly, não usa Drive)."""
+async def download_cto_pdf(
+    cto_id: str,
+    t: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+):
+    """Devolve o PDF da CTO diretamente. Aceita auth via Bearer OU `?t=token`."""
     from services.cto_pdf import build_cto_pdf
+    user = await _resolve_user_from_query_or_header(t, authorization)
     cid = _user_company(user)
     cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
     if not cto:
@@ -1258,6 +1292,41 @@ async def download_cto_pdf(cto_id: str, user: dict = Depends(get_current_user)):
     return Response(content=pdf_bytes, media_type="application/pdf", headers={
         "Content-Disposition": f"inline; filename=\"CTO-{safe_name}.pdf\"",
     })
+
+
+@router.delete("/ctos/{cto_id}")
+async def delete_cto(
+    cto_id: str,
+    user: dict = Depends(require_role("administrador", "gestor", "gestor_rede")),
+):
+    """Apaga uma CTO + cabos relacionados. Logado em rede_ia_history."""
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+    cables_deleted = await db.rede_cables.delete_many(
+        {"company_id": cid, "$or": [{"from_cto_id": cto_id}, {"to_cto_id": cto_id}]},
+    )
+    await db.ctos.delete_one({"id": cto_id, "company_id": cid})
+    try:
+        await db.rede_ia_history.insert_one({
+            "id": f"hist-{uuid.uuid4().hex[:10]}",
+            "company_id": cid, "event": "cto_deleted",
+            "details": (
+                f"CTO {cto.get('name')} ({cto_id}) apagada · "
+                f"{cables_deleted.deleted_count} cabos removidos"
+            ),
+            "user_id": user.get("id"),
+            "user_name": user.get("name") or user.get("email"),
+            "at": now_iso(),
+        })
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "deleted_cto": cto.get("name"),
+        "cables_deleted": cables_deleted.deleted_count,
+    }
 
 
 @router.post("/ctos/{cto_id}/sync-smartolt-zone")
