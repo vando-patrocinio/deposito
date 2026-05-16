@@ -45,6 +45,42 @@ export default function LousaMobile({ collaboratorId, onBack }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Modo Boss — detecta novos chamados urgentes e alerta com beep + vibração
+  const [seenUrgentIds, setSeenUrgentIds] = useState(() => new Set());
+  useEffect(() => {
+    if (!data?.tickets) return;
+    const urgentes = data.tickets.filter(
+      (t) => t.priority === "urgente"
+              && t.status !== "finalizada" && !t.admin_resolved,
+    );
+    if (urgentes.length === 0) return;
+    const newOnes = urgentes.filter((t) => !seenUrgentIds.has(t.id));
+    if (newOnes.length === 0) return;
+    // 1ª render: marca como já vistas sem alertar (evita spam ao abrir o app)
+    if (seenUrgentIds.size === 0) {
+      setSeenUrgentIds(new Set(urgentes.map((t) => t.id)));
+      return;
+    }
+    // Beep + vibração
+    try {
+      // eslint-disable-next-line no-undef
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = "square"; osc.frequency.value = 880;
+        gain.gain.value = 0.18;
+        osc.start();
+        setTimeout(() => { osc.frequency.value = 660; }, 180);
+        setTimeout(() => { osc.stop(); ctx.close(); }, 420);
+      }
+      if (navigator.vibrate) navigator.vibrate([180, 90, 180, 90, 280]);
+    } catch { /* silent */ }
+    setSeenUrgentIds(new Set(urgentes.map((t) => t.id)));
+  }, [data?.tickets, seenUrgentIds]);
+
   // Performance KPIs do dia
   useEffect(() => {
     if (!collaboratorId) return undefined;
@@ -472,6 +508,11 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
   const isResolved = ticket.admin_resolved || ticket.status === "finalizada";
   const isOpen = ticket.status === "aberta" || ticket.status === "aguardando_atendimento";
   const priorityColors = {
+    urgente: {
+      bg: "linear-gradient(135deg,#fee2e2,#fecaca)",
+      accent: "#dc2626", border: "#dc2626", text: "#7f1d1d",
+      label: "URGENTE · BOSS", icon: "🚨",
+    },
     prioridade: {
       bg: "linear-gradient(135deg,#fff5f5,#ffe4e6)",
       accent: "#e11d48", border: "#fecdd3", text: "#9f1239",
@@ -575,15 +616,19 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
         padding: "12px 14px 12px 16px",
         borderRadius: 18,
         background: isOpen ? "linear-gradient(135deg,#ecfdf5,#d1fae5)" : c.bg,
-        border: `1px solid ${isOpen ? "#10b981" : c.border}`,
+        border: `${ticket.priority === "urgente" ? 2 : 1}px solid ${isOpen ? "#10b981" : c.border}`,
         marginBottom: 10,
         cursor: ticket.locked || isResolved ? "not-allowed" : "pointer",
         opacity, color: c.text, position: "relative",
         boxShadow: isOpen
           ? "0 6px 18px rgba(16,185,129,.20)"
-          : "0 1px 3px rgba(15,23,42,.06), 0 2px 6px rgba(15,23,42,.04)",
+          : (ticket.priority === "urgente"
+              ? "0 0 0 4px rgba(220,38,38,0.18), 0 8px 22px rgba(220,38,38,.30)"
+              : "0 1px 3px rgba(15,23,42,.06), 0 2px 6px rgba(15,23,42,.04)"),
         transition: "transform .15s, box-shadow .2s",
         overflow: "hidden",
+        animation: (ticket.priority === "urgente" && !isResolved)
+          ? "boss-mode-pulse 1.6s ease-in-out infinite" : "none",
       }}
     >
       {/* Faixa lateral colorida */}

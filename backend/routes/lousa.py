@@ -17,6 +17,8 @@ import json
 import logging
 import re
 import uuid
+
+import httpx
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
 
@@ -44,7 +46,7 @@ router = APIRouter(prefix="/api", tags=["lousa"])
 # -------------------------------------------------------------------------
 # Models
 # -------------------------------------------------------------------------
-Priority = Literal["normal", "horario", "prioridade"]
+Priority = Literal["normal", "horario", "prioridade", "urgente"]
 TicketType = Literal["reparo", "instalacao", "retirada", "prioridade", "preventiva", "venda"]
 TicketStatus = Literal[
     "pendente", "aberta", "aguardando_atendimento",
@@ -56,7 +58,7 @@ POINTS_BY_TYPE: Dict[str, float] = {
     "instalacao": 3.0, "retirada": 1.5, "reparo": 1.0,
     "prioridade": 2.5, "preventiva": 1.5, "venda": 2.0,
 }
-PRIORITY_RANK = {"prioridade": 0, "horario": 1, "normal": 2}
+PRIORITY_RANK = {"urgente": -1, "prioridade": 0, "horario": 1, "normal": 2}
 ADMIN_RESOLVED = ("encerrada", "reagendada", "cancelada")
 TECH_RESOLVED = ("finalizada",)
 
@@ -92,6 +94,59 @@ def _ticket_day_iso(ticket: dict) -> str:
         return (d - timedelta(hours=3)).strftime("%Y-%m-%d")
     except (ValueError, TypeError):
         return ""
+
+
+async def _send_boss_mode_whatsapp(ticket: dict, collaborator: dict) -> None:
+    """Modo Boss: ao criar nota URGENTE, dispara mensagem proativa pro cliente.
+
+    Best-effort: se Baileys não estiver disponível ou cliente não tiver telefone
+    válido, apenas loga e segue (não falha o create do ticket).
+    """
+    snapshot = ticket.get("client_snapshot") or {}
+    phone_raw = (snapshot.get("phone") or "").strip()
+    if not phone_raw:
+        logger.info("[lousa.boss] sem telefone do cliente — skip")
+        return
+    # Normaliza telefone BR: só dígitos, prefixo 55 se faltar
+    digits = "".join(c for c in phone_raw if c.isdigit())
+    if not digits:
+        return
+    if not digits.startswith("55"):
+        digits = "55" + digits
+    jid = f"{digits}@s.whatsapp.net"
+    nome = (snapshot.get("name") or "").split(" ")[0] or "Cliente"
+    tech = collaborator.get("name") or "nosso técnico"
+    msg = (
+        f"Olá *{nome}*! 🚨\n"
+        f"Sua solicitação foi marcada como *URGENTE* e já está em andamento.\n\n"
+        f"O técnico *{tech}* foi alocado e está priorizando seu atendimento. "
+        "Em breve entraremos em contato com mais detalhes."
+    )
+    try:
+        # Chama endpoint interno Baileys
+        async with httpx.AsyncClient(timeout=12) as client:
+            r = await client.post(
+                "http://localhost:3002/send",
+                json={"to": jid, "text": msg},
+            )
+            ok = r.status_code in (200, 201)
+            logger.info("[lousa.boss] WhatsApp boss-mode sent=%s status=%s",
+                          ok, r.status_code)
+            # Persiste em aihub_wa_messages pra aparecer no chat
+            await db.aihub_wa_messages.insert_one({
+                "id": str(uuid.uuid4()),
+                "company_id": ticket.get("company_id") or DEMO_COMPANY_ID,
+                "phone": digits, "direction": "outbound",
+                "text": msg, "channel": "baileys",
+                "context": "boss_mode_urgent_ticket",
+                "ticket_id": ticket["id"],
+                "delivery_status": "sent" if ok else "failed",
+                "created_at": now_iso(),
+            })
+    except Exception as e:
+        logger.exception("[lousa.boss] erro enviando whatsapp: %s", e)
+
+
 
 
 class NetworkTest(BaseModel):
@@ -959,6 +1014,12 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
         "created_at": now_iso(),
     }
     await db.tickets.insert_one(doc)
+    # Modo Boss: se urgente, envia notificação automática ao cliente via Baileys
+    if payload.priority == "urgente":
+        try:
+            await _send_boss_mode_whatsapp(doc, coll)
+        except Exception as e:
+            logger.exception("[lousa] boss_mode whatsapp falhou: %s", e)
     await _log_ticket_action(
         ticket_id=doc["id"], action="criada",
         actor_id=user["id"], actor_name=user.get("name", "Gestor"),

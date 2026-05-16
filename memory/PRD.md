@@ -648,3 +648,9 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - **Frontend mural**: PodiumCard exibe até 6 medalhas earned ao lado do nome do top 3 com `+N` para excedentes.
 - **Validado**: 4/4 pytest (`test_iter94_achievements.py`) + screenshot. DIOGO HENRIQUE: 1/10 medalhas (Primeira nota brilha em ouro).
 - testids: `achievements-card`, `achievements-toggle`, `achievements-grid`, `medal-{id}[-earned]`, `mural-medals-{place}`.
+
+✅ **Modo Boss — chamados urgentes com alerta visual + sonoro + WhatsApp proativo** (16/05/2026 — iter95):
+- **Backend** (`/app/backend/routes/lousa.py`): novo valor `urgente` no `Priority` Literal. `PRIORITY_RANK` rebalanceado: `{urgente:-1, prioridade:0, horario:1, normal:2}` — urgentes aparecem PRIMEIRO em todas as queries ordenadas. Ao criar ticket com `priority="urgente"`, função helper `_send_boss_mode_whatsapp` dispara mensagem proativa pro cliente via Baileys (`POST http://localhost:3002/send`) e persiste em `aihub_wa_messages` com `context="boss_mode_urgent_ticket"`. Best-effort: falha do sidecar não derruba o create.
+- **Frontend** (`/app/frontend/src/LousaMobile.js`): bolha urgente renderiza com borda VERMELHA 2px, sombra ampliada vermelha, tag "🚨 URGENTE · BOSS" no topo, e animação CSS keyframe `boss-mode-pulse` (1.6s loop). Detector de novos urgentes dispara **beep duplo (Web Audio API: 880Hz → 660Hz, 420ms)** + **vibração (180·90·180·90·280ms)** quando um urgente novo aparece após o primeiro render (evita spam ao abrir o app).
+- **Validado**: 3/3 pytest (`test_iter95_boss_mode.py`) — create urgente OK · priority inválido 422 · urgente ranqueia ANTES de horario na lista. Screenshot Playwright: ticket "Boss Test" pulsando em vermelho no topo da Lousa de DIOGO.
+- Compatibilidade total com sistema de medalhas, performance e mural existentes (novos rankings respeitam o `PRIORITY_RANK` atualizado).

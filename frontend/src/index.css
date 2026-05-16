@@ -579,3 +579,9 @@ body.aihub-wa-fullscreen [data-testid="wa-chat-layout"] {
     border-left-color: inherit; border-right-color: inherit; border-top-color: inherit; border-bottom-color: inherit;
   }
 }
+
+/* Modo Boss — pulse animation para chamados urgentes (LousaMobile) */
+@keyframes boss-mode-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 4px rgba(220,38,38,0.20), 0 8px 22px rgba(220,38,38,.32); }
+  50% { transform: scale(1.012); box-shadow: 0 0 0 8px rgba(220,38,38,0.10), 0 12px 28px rgba(220,38,38,.45); }
+}
