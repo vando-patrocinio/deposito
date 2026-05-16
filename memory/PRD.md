@@ -415,6 +415,34 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Pytest** `/app/backend/tests/test_iter74_budget.py`: 6/6 PASS — cria draft, CSV parser, percentuais recalculam, override manual recalcula (base = 2×100 + 100×100 = 10200), KPIs, PDF retorna bytes `%PDF-...`. 1 skip (colaborador 403, sem conta de teste no ambiente).
 - **Validado E2E** (Playwright 1920×900): menu "Comercial > Orçamento" aparece; painel renderiza KPIs (1 orçamento · R$ 1.018,18 · 30% · 100% conversão); orçamento "Obra CTO-Centro · Finalizado" aparece com 5 itens; drawer abre com tabela completa mostrando preços IA (Mercado Livre·Furukawa·FiberHome·Intelbras), inputs override, e footer com totais (Base R$ 656,25 → Total Final R$ 1.018,18 com sliders %Ganho 30 · %Mão-de-obra 15 · %Imposto 7).
 
+## Iter88 (16/05/2026) — CENTRAL_ONT · sub-aba completa + bloqueio de fechamento com sinal ruim + autorização do gestor + SN mismatch
+**4 features integradas:**
+
+1) **Sub-aba 🛰️ CENTRAL_ONT no Chamados** (`/app/frontend/src/lousa/CentralOntPanel.js`):
+   - Toggle (data-testid `central-ont-block-toggle`) **"Bloquear fechamento com sinal ruim"** + input do threshold (default -27 dBm).
+   - **4 KPIs**: Total fechado, Sinal ruim, % geral, Limite.
+   - **Sub-abas internas**: "Por técnico" (tabela com Total / Sinal ruim / % + barra colorida verde<10%, amarelo<20%, vermelho≥20%) e "Notas com sinal ruim" (lista com cliente/endereço/ONT/sinal/data, badge "AUTORIZADO" quando bate).
+   - **Solicitações de autorização pendentes** inline (Aprovar/Rejeitar) com poll de 8s.
+
+2) **Backend** (`/app/backend/routes/lousa.py`):
+   - `GET/PUT /api/lousa/central-ont/settings` (admin/gestor) — coleção `central_ont_settings`.
+   - `GET /api/lousa/central-ont/report?days=N` — agregação completa (total, bad, ratio por técnico, items).
+   - `GET/POST /api/lousa/central-ont/auth-requests[/{id}/{approve|reject}]` (admin/gestor) — fluxo de autorização.
+   - `GET /api/lousa/public/bad-signal-auth/{id}` — polling sem auth para o técnico.
+   - `public_finalize_ticket` reforçado:
+     - Se sinal < threshold AND block ON AND sem `bad_signal_auth_id` → **403** `{code: needs_bad_signal_auth, request_id, threshold, sinal}` + cria pending request + notification 'bad_signal_auth_request' (severity=warning).
+     - Se sinal < threshold → notification 'bad_signal_close' criada (sempre, mesmo com block OFF — auditoria passiva).
+     - **SN mismatch**: compara `cd.ont` com `live_signal.sn` (best-effort; case-insensitive, ignora `:`); persiste em `ticket.central_ont.sn_mismatch`.
+   - Coleção `bad_signal_auth_requests`: TTL 30min, status pending/approved/rejected/used/expired.
+
+3) **App do colaborador (LousaMobile)**:
+   - Avisos inline amarelos no formulário de finalização: `finalize-bad-signal-warning` (quando `sinal < threshold` — threshold puxado de `/central-ont/settings`) e `finalize-sn-mismatch-warning` (quando ONT digitado ≠ SN da SmartOLT).
+   - `handleFinalize` intercepta 403 `needs_bad_signal_auth` → abre `BadSignalAuthWaitModal` com spinner pulsante "⏳ Aguardando autorização" e **poll a cada 4s** em `/lousa/public/bad-signal-auth/{id}` — quando vira `approved`, refaz o finalize automaticamente passando `bad_signal_auth_id`.
+
+4) **LousaAdminPanel**: 2 sub-tabs (Quadro / CENTRAL_ONT) — preserva o quadro existente.
+
+**Testes:** `tests/test_iter88_central_ont.py` (**8/8 pass**) — flow E2E completo: block ON → 403 → approve → retry → ticket.central_ont.auth_used setado · block OFF + sinal ruim → 200 + notification passiva · reject → status=rejected, retry bloqueado · public polling sem auth funciona. Frontend UI confirmada via Playwright pelo testing agent.
+
 ## Iter87 (16/05/2026) — App do colaborador: PPPoE click-to-copy + bloco SmartOLT no card da bolha
 **Pedido:** clicar no PPPoE "copia automaticamente" + as informações `PORTA OLT / VLAN / CTO / PORTA CTO / SN` devem ser puxadas da SmartOLT (hoje mostravam "smartolt" como placeholder).
 

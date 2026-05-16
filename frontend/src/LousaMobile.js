@@ -173,6 +173,18 @@ export default function LousaMobile({ collaboratorId, onBack }) {
     setBusy(false);
   }
 
+  // Threshold do bad-signal warning — busca da config CENTRAL_ONT
+  // (admin pode ter mudado pra -25/-30 etc). Best-effort: -27 default.
+  const [badSignalThreshold, setBadSignalThreshold] = useState(-27);
+  useEffect(() => {
+    let alive = true;
+    api._client.get("/lousa/central-ont/settings")
+      .then((r) => alive && setBadSignalThreshold(
+        Number(r.data?.bad_signal_threshold ?? -27)))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   // Estado: aguardando autorização do gestor pra fechar com sinal ruim
   const [badSignalAuth, setBadSignalAuth] = useState(null);
   // Poll: a cada 4s checa status da request
@@ -216,6 +228,7 @@ export default function LousaMobile({ collaboratorId, onBack }) {
         ticket={openTicket}
         onClose={() => setOpenTicket(null)}
         onFinalize={(cd) => handleFinalize(openTicket, cd)}
+        badSignalThreshold={badSignalThreshold}
         onRefresh={async () => {
           try {
             const fresh = await api.lousaTicket(openTicket.id);
@@ -707,7 +720,8 @@ function ConsumableField({ label, fieldKey, consumableId, step, consMap, form, s
   );
 }
 
-function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
+function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
+                          badSignalThreshold = -27 }) {
   const [form, setForm] = useState({
     sinal: -25, qtd_drop: 1, esticadores: 1, conectores_fast: 2,
     cabo_rede: 10, conectores_rede: 2, ont: "", observacoes: "",
@@ -852,7 +866,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
         <input data-testid="finalize-sinal" type="number" step="0.1" value={form.sinal}
           onChange={(e) => setForm({ ...form, sinal: e.target.value })}
           style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: 10, fontSize: 14, marginTop: 4, boxSizing: "border-box" }} />
-        {form.sinal !== "" && Number(form.sinal) < -27 && (
+        {form.sinal !== "" && Number(form.sinal) < badSignalThreshold && (
           <div data-testid="finalize-bad-signal-warning"
                 style={{
                   marginTop: 6, padding: "8px 10px", borderRadius: 8,
@@ -860,8 +874,9 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
                   color: "#78350f", fontSize: 12, lineHeight: 1.4,
                   fontWeight: 600,
                 }}>
-            ⚠ Sinal abaixo de -27 dBm. Se a Central proibir fechamento ruim,
-            o gestor receberá um pedido de autorização ao você finalizar.
+            ⚠ Sinal abaixo de {badSignalThreshold} dBm. Se a Central proibir
+            fechamento ruim, o gestor receberá um pedido de autorização ao você
+            finalizar.
           </div>
         )}
         {ticket.live_signal?.sn && form.ont
