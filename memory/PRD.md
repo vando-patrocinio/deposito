@@ -695,3 +695,23 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
   - Renderização do schema completo: resumo estratégico · 4 quadrantes SWOT (💪 Forças verde, ⚠️ Fraquezas laranja, 🚀 Oportunidades ciano, ⚡ Ameaças vermelho) · Concorrentes identificados com tag ALTA/MEDIA/BAIXA · Bairros a priorizar · Ações curto prazo · Veredicto final em dourado.
 - **Validado**: 4/4 pytest (`test_iter98_competitive.py`) — 400 curto · 401/403 sem auth · SWOT schema completo · GET latest. Screenshot Playwright: análise real do Claude detectou Sumicity como ameaça ALTA, sugeriu retenção no Centro com upgrade defensivo + campanha de indicação.
 - testids: `competitive-section`, `competitive-input`, `competitive-run-btn`, `competitive-result`, `competitive-error`.
+
+✅ **Modo Cliente Cancelando — Playbook de Retenção** (16/05/2026 — iter99):
+**Backend** (`/app/backend/services/gestao_ai.py` + `routes/gestao_ia.py`):
+- `RETENTION_DEFAULTS`: `{enabled, trigger_risk, discount_pct, visit_window_hours, auto_send_whatsapp, create_urgent_ticket, message_template}`. Template suporta placeholders `{nome}`, `{discount_pct}`, `{visit_window_hours}`.
+- `GET/POST /api/gestao-ia/retention/config` (gestor): lê/atualiza com validações: trigger_risk ∈ {alto, critico}, discount_pct ∈ [0, 100], visit_window_hours ∈ [1, 168].
+- `POST /api/gestao-ia/retention/trigger`: dispara manualmente. `fire_retention_playbook` (1) envia WhatsApp via Baileys com template formatado, (2) cria ticket urgente `type="retencao"` sem técnico, (3) registra no `retention_mural`. Idempotência: não duplica se já há entry `open/in_progress` para o phone. Respeita `enabled=false`.
+- `GET /api/gestao-ia/retention/mural` lista últimas 50.
+- `PATCH /api/gestao-ia/retention/mural/{rid}` muda status entre `open|in_progress|won|lost`.
+
+**Frontend** (`/app/frontend/src/lousa/RetentionPlaybookCard.js` — novo):
+- Card vermelho gradient no topo da aba GESTÃO E METAS.
+- Toggle global ativar/desativar.
+- 5 campos editáveis: risco que dispara · desconto % · janela visita h · enviar WhatsApp · criar bolha.
+- Textarea grande do template.
+- Botão "💾 Salvar regras" (verde quando dirty) + "⚡ Disparar manual" + "✕ Descartar".
+- Modal disparo manual com phone/nome/motivo.
+- Mural com lista de casos coloridos por status + chips de ação rápida.
+
+**Validado**: 5/5 pytest (`test_iter99_retention.py`) + screenshot Playwright (edita discount=35, salva, botão muda para "✓ Sem mudanças").
+- testids: `retention-playbook-card`, `retention-toggle-enabled`, `retention-discount`, `retention-save-btn`, `retention-manual-trigger-btn`, `retention-row-{rid}`, `retention-status-{won|lost}-{rid}`, etc.

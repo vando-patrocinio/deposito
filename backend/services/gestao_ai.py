@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
+from core import now_iso
 from database import db
 from services.motor_ia import chat_completion
 
@@ -379,6 +381,134 @@ Gere análise SWOT competitiva em JSON com este schema EXATO:
   "pesquisa_adicional_necessaria": ["string", ...],
   "verediito_final": "string (recomendação final em 1 frase)"
 }}"""
+
+
+
+# -----------------------------------------------------------------------------
+# Modo Cliente Cancelando — Playbook de Retenção
+# -----------------------------------------------------------------------------
+RETENTION_DEFAULTS = {
+    "enabled": True,
+    "trigger_risk": "critico",  # alto | critico
+    "discount_pct": 20,         # % desconto pré-aprovado
+    "visit_window_hours": 24,
+    "auto_send_whatsapp": True,
+    "create_urgent_ticket": True,
+    "message_template": (
+        "Olá *{nome}*! 💚\n\n"
+        "Vi que você está com alguma insatisfação e quero te ajudar pessoalmente.\n"
+        "Como cliente importante, aprovei pra você:\n"
+        "• *{discount_pct}% de desconto* no próximo ciclo\n"
+        "• *Visita técnica de cortesia* em até {visit_window_hours}h\n\n"
+        "Posso agendar isso agora? Me responda 'SIM' e cuidamos de tudo. 🚀"
+    ),
+}
+
+
+async def get_retention_playbook_config(company_id: str) -> Dict[str, Any]:
+    """Lê o playbook de retenção atual; cria com defaults se não existir."""
+    cfg = await db.retention_playbook.find_one(
+        {"company_id": company_id}, {"_id": 0},
+    )
+    if not cfg:
+        return {**RETENTION_DEFAULTS, "company_id": company_id}
+    return {**RETENTION_DEFAULTS, **cfg, "company_id": company_id}
+
+
+async def fire_retention_playbook(
+    company_id: str,
+    phone: str,
+    customer_name: str = None,
+    risk_reason: str = "",
+    source: str = "manual",
+) -> Dict[str, Any]:
+    """Dispara o playbook para um cliente: envia WhatsApp + cria ticket urgente
+    + registra no mural de retenção."""
+    import httpx
+
+    cfg = await get_retention_playbook_config(company_id)
+    if not cfg.get("enabled"):
+        return {"ok": False, "reason": "Playbook desativado pelo gestor"}
+
+    # Idempotência: se já existe ação ativa para esse phone < 24h, não duplica
+    existing = await db.retention_mural.find_one({
+        "company_id": company_id, "phone": phone,
+        "status": {"$in": ["open", "in_progress"]},
+    }, {"_id": 0, "id": 1})
+    if existing:
+        return {"ok": False, "reason": "Já existe retenção ativa",
+                "retention_id": existing["id"]}
+
+    rid = f"ret-{uuid.uuid4().hex[:10]}"
+    nome_first = (customer_name or "Cliente").split(" ")[0]
+    message = cfg["message_template"].format(
+        nome=nome_first,
+        discount_pct=cfg["discount_pct"],
+        visit_window_hours=cfg["visit_window_hours"],
+    )
+
+    whatsapp_status = "skipped"
+    if cfg.get("auto_send_whatsapp") and phone:
+        try:
+            digits = "".join(c for c in phone if c.isdigit())
+            if digits and not digits.startswith("55"):
+                digits = "55" + digits
+            jid = f"{digits}@s.whatsapp.net"
+            async with httpx.AsyncClient(timeout=10) as cl:
+                r = await cl.post("http://localhost:3002/send",
+                                      json={"to": jid, "text": message})
+                whatsapp_status = "sent" if r.status_code in (200, 201) else "failed"
+            await db.aihub_wa_messages.insert_one({
+                "id": str(uuid.uuid4()),
+                "company_id": company_id, "phone": digits,
+                "direction": "outbound", "text": message,
+                "channel": "baileys",
+                "context": "retention_playbook",
+                "retention_id": rid,
+                "delivery_status": whatsapp_status,
+                "created_at": now_iso(),
+            })
+        except Exception as e:
+            logger.exception("[retention] WhatsApp falhou: %s", e)
+            whatsapp_status = "failed"
+
+    ticket_id = None
+    if cfg.get("create_urgent_ticket"):
+        ticket_id = f"tkt-{uuid.uuid4().hex[:10]}"
+        await db.tickets.insert_one({
+            "id": ticket_id, "company_id": company_id,
+            "type": "retencao", "priority": "urgente",
+            "status": "pendente", "assigned_collaborator_id": None,
+            "created_at": now_iso(), "opened_at": now_iso(),
+            "client_snapshot": {
+                "name": f"⚠️ RETENÇÃO: {customer_name or 'Cliente'}",
+                "phone": phone, "address": "—", "neighborhood": "—",
+            },
+            "relato": (
+                f"[RETENÇÃO AUTO] Risco {cfg['trigger_risk'].upper()}. "
+                f"Motivo: {risk_reason or '—'}. Oferta enviada: "
+                f"{cfg['discount_pct']}% off + visita {cfg['visit_window_hours']}h. "
+                f"Aguardando resposta do cliente."
+            ),
+            "position": int(datetime.now(timezone.utc).timestamp() * -1000),
+            "retention_id": rid,
+        })
+
+    mural_doc = {
+        "id": rid, "company_id": company_id,
+        "phone": phone, "customer_name": customer_name,
+        "risk_reason": risk_reason, "source": source,
+        "trigger_risk": cfg["trigger_risk"],
+        "discount_pct": cfg["discount_pct"],
+        "whatsapp_status": whatsapp_status,
+        "ticket_id": ticket_id,
+        "status": "open",  # open | in_progress | won | lost
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    await db.retention_mural.insert_one(mural_doc)
+    return {"ok": True, "retention_id": rid,
+            "whatsapp_status": whatsapp_status, "ticket_id": ticket_id}
 
     try:
         resp = await chat_completion(

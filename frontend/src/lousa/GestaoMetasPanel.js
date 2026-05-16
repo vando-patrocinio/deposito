@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
 import { Button } from "@/ui";
+import RetentionPlaybookCard from "./RetentionPlaybookCard";
 
 /**
  * GestaoMetasPanel — aba executiva com KPIs, GESTAO_IA e toggles dos cards.
@@ -377,6 +378,7 @@ export default function GestaoMetasPanel() {
       )}
 
       {/* MODO CONCORRENTE */}
+      <RetentionPlaybookCard />
       <section data-testid="competitive-section" style={{
         marginTop: 18, padding: 18, borderRadius: 16,
         background: "linear-gradient(135deg,#1e1b4b 0%,#312e81 100%)",
