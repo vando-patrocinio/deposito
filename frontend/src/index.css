@@ -585,3 +585,10 @@ body.aihub-wa-fullscreen [data-testid="wa-chat-layout"] {
   0%, 100% { transform: scale(1); box-shadow: 0 0 0 4px rgba(220,38,38,0.20), 0 8px 22px rgba(220,38,38,.32); }
   50% { transform: scale(1.012); box-shadow: 0 0 0 8px rgba(220,38,38,0.10), 0 12px 28px rgba(220,38,38,.45); }
 }
+
+/* Alerta Geofence — bolha piscando vermelha na grade da Lousa admin */
+@keyframes lousa-alert-blink {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.55), 0 4px 14px rgba(220,38,38,.30); }
+  50% { box-shadow: 0 0 0 8px rgba(220,38,38,0.0), 0 8px 22px rgba(220,38,38,.45); }
+}
+.lousa-alert-blink { animation: lousa-alert-blink 1.4s ease-in-out infinite; }

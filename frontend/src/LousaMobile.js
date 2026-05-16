@@ -23,6 +23,11 @@ export default function LousaMobile({ collaboratorId, onBack }) {
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
   const [perf, setPerf] = useState(null);
+  const [dashCfg, setDashCfg] = useState({
+    show_performance: true, show_achievements: true,
+    show_smart_route: true, show_points: true,
+    enable_geofence_alerts: true,
+  });
 
   const refresh = useCallback(async () => {
     if (!collaboratorId) return;
@@ -94,6 +99,40 @@ export default function LousaMobile({ collaboratorId, onBack }) {
     const t = setInterval(load, 60000); // refresh a cada 1min
     return () => { alive = false; clearInterval(t); };
   }, [collaboratorId]);
+
+  // Dashboard config (toggles do admin)
+  useEffect(() => {
+    if (!collaboratorId) return undefined;
+    let alive = true;
+    api._client.get(`/lousa/public/dashboard-config/${collaboratorId}`)
+      .then((r) => { if (alive) setDashCfg((c) => ({ ...c, ...r.data })); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [collaboratorId]);
+
+  // Geofence ping — envia posição a cada 60s (se admin habilitou)
+  useEffect(() => {
+    if (!collaboratorId) return undefined;
+    if (!dashCfg.enable_geofence_alerts) return undefined;
+    if (!navigator.geolocation) return undefined;
+    let alive = true;
+    const ping = () => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (!alive) return;
+          api._client.post("/lousa/public/geofence-ping", {
+            collaborator_id: collaboratorId,
+            lat: pos.coords.latitude, lng: pos.coords.longitude,
+          }).catch(() => {});
+        },
+        () => {},
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 30000 },
+      );
+    };
+    ping();
+    const t = setInterval(ping, 60000);
+    return () => { alive = false; clearInterval(t); };
+  }, [collaboratorId, dashCfg.enable_geofence_alerts]);
 
   // --- Reorder helpers (modo "Reordenar") ---
   function isLockedTicket(t) {
@@ -382,10 +421,13 @@ export default function LousaMobile({ collaboratorId, onBack }) {
         {reorderMode && <span style={{ marginLeft: 8, color: "#5b21b6", fontWeight: 700 }}>· ↕ modo reordenar</span>}
       </p>
 
-      <PerformanceCard perf={perf} />
-      <AchievementsCard collaboratorId={collaboratorId} compact />
-      <SmartRouteCard collaboratorId={collaboratorId} onApplied={refresh}
-                       enabled={data.tickets.some((t) => t.priority === "normal")} />
+      {dashCfg.show_performance && <PerformanceCard perf={perf}
+                                                          showPoints={dashCfg.show_points} />}
+      {dashCfg.show_achievements && <AchievementsCard collaboratorId={collaboratorId} compact />}
+      {dashCfg.show_smart_route && (
+        <SmartRouteCard collaboratorId={collaboratorId} onApplied={refresh}
+                         enabled={data.tickets.some((t) => t.priority === "normal")} />
+      )}
 
       {reorderMode && (
         <div data-testid="lousa-reorder-bar" style={{
@@ -867,10 +909,11 @@ function SmartRouteCard({ collaboratorId, enabled, onApplied }) {
 }
 
 
-function PerformanceCard({ perf }) {
+function PerformanceCard({ perf, showPoints = true }) {
   if (!perf) return null;
   const {
-    closed_today, success_rate, avg_minutes, rank, total_techs, streak, badge,
+    closed_today, points_today, success_rate,
+    avg_minutes, rank, total_techs, streak, badge,
   } = perf;
 
   // Cor do card por desempenho
@@ -918,6 +961,9 @@ function PerformanceCard({ perf }) {
       </div>
       <div style={{ display: "flex", gap: 4 }}>
         <Stat label="Fechadas" value={closed_today} />
+        {showPoints && (
+          <Stat label="Pontos" value={points_today ?? 0} />
+        )}
         <Stat label="% sucesso" value={`${success_rate}%`} />
         <Stat label="Tempo médio"
                value={avg_minutes ? `${avg_minutes}min` : "—"} />

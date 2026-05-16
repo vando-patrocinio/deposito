@@ -660,3 +660,28 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - **Frontend** novo componente `SmartRouteCard` no LousaMobile (após AchievementsCard): card laranja/ciano com botão "Calcular" → pede `navigator.geolocation` (high accuracy) → mostra preview com lista ordenada (nome · bairro · km · "(próxima)" no 1º). Botão "Aplicar" persiste e refaz a Lousa. Estado disabled quando não há `priority="normal"`. Mostra `reason` quando ok=false.
 - **Validado**: 3/3 pytest (`test_iter96_smart_route.py`) — sem candidatos · ordem Haversine correta (Perto antes de Longe) · apply persiste new positions. Screenshot Playwright (DIOGO): card renderiza tanto disabled quanto enabled.
 - testids: `smart-route-card`, `smart-route-preview-btn`, `smart-route-apply-btn`, `smart-route-list`, `smart-route-error`.
+
+✅ **GESTÃO E METAS + GESTAO_IA + Gamificação + Geofence Alert + Admin Smart Route** (16/05/2026 — iter97):
+**Backend** (`/app/backend/`):
+- `routes/lousa.py`:
+  - `tech-performance/{cid}` agora retorna `points_today` calculado por tipo (reparo=1pt · retirada=1.5pt · instalação=3pt · troca_endereco=3pt).
+  - Medalha **"📦 Retirador"** (10+ retiradas) adicionada ao catálogo (total 11 medalhas).
+  - `POST /api/lousa/public/geofence-ping`: recebe lat/lng do técnico, persiste `last_position` no colaborador, e se ele estiver em chamado aberto + fora do raio de 500m por >5min, cria bolha `type="alerta_geofence"` urgente piscando vermelho na coluna do próprio técnico. Dedup via `geofence_state.alert_fired`.
+  - `POST /api/lousa/admin/optimize-route` (gestor only): reutiliza Smart Route public, mas pega `last_position` do colaborador automaticamente.
+  - `GET/POST /api/lousa/admin/dashboard-config` (gestor): toggles globais `{show_performance, show_achievements, show_smart_route, show_points, enable_geofence_alerts}` com defaults sãos.
+  - `GET /api/lousa/public/dashboard-config/{cid}`: público para o app do técnico ler os toggles.
+- `services/gestao_ai.py` (NOVO): **GESTAO_IA** com `generate_gestao_report` usando **Claude Sonnet 4.5 via Emergent LLM Key**. System prompt com 15+ KPIs ISP (FTR, TMR, TMA, SLA, retorno, taxa sucesso, pontos/técnico, streak, sinal médio, churn). Agrega 7 dias atual vs 7 dias anterior, calcula delta %, top/bottom 3 técnicos por pontos, e gera JSON estruturado com: resumo executivo, tendência, KPIs com status (✅/⚠️/🚨), destaques positivos, alertas, ações priorizadas (com responsável: Operações/Comercial/Estoque/RH/TI) e coaching individual.
+- `routes/gestao_ia.py` (NOVO): `POST /api/gestao-ia/generate` + `GET /api/gestao-ia/latest` (persiste em `gestao_reports`).
+
+**Frontend** (`/app/frontend/src/`):
+- Nova aba **"📊 GESTÃO E METAS"** em `LousaAdminPanel.js` (sub-tab ao lado de Quadro e CENTRAL_ONT) renderizando `lousa/GestaoMetasPanel.js`:
+  - Banner "Cards visíveis no app do técnico" com 5 toggles em cards verde/cinza (admin liga/desliga).
+  - Botão "🤖 Gerar análise com GESTAO_IA" que dispara Claude e renderiza relatório com gradient azul escuro, KPIs em grid (com 🚨/⚠️/✅), ações recomendadas e coaching sugerido.
+  - Tabela TOP técnicos por pontos (gamificação).
+  - Bloco "Hoje · ranking ao vivo" com link para /mural.
+- `LousaMobile.js`: lê config pública e respeita toggles (esconde cards desativados). Faz geofence-ping a cada 60s usando `navigator.geolocation` (apenas se `enable_geofence_alerts=true`). PerformanceCard mostra coluna "Pontos" entre Fechadas e % sucesso (controlado por `show_points`).
+- `LousaAdminPanel.js`: cada coluna de técnico ganha botão **"🗺️ Rota"** (`optimize-route-{cid}`) que dispara `/lousa/admin/optimize-route` usando GPS persistido do técnico.
+- Bolhas com `type="alerta_geofence"` renderizam com borda vermelha 2px + animação CSS `lousa-alert-blink` (keyframe halo pulsante).
+
+**Validado**: 8/8 pytest (`test_iter97_gestao_metas.py`) — pontos, retirador, dashboard config get/post/public, geofence sem chamado, geofence cria alert + dedup, admin optimize 400 sem GPS, GESTAO_IA gera análise real via Claude Sonnet 4.5. Screenshot Playwright: aba renderiza relatório executivo completo com 6 KPIs, 7 ações priorizadas e coaching para DIOGO/VANDO.
+- testids: `gestao-metas-panel`, `dashboard-toggles`, `toggle-{key}`, `gestao-ia-run-btn`, `gestao-ai-report`, `top-techs-section`, `leaderboard-today`, `lousa-subtab-gestao_metas`, `optimize-route-{cid}`.

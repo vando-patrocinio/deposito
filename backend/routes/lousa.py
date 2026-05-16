@@ -2419,9 +2419,21 @@ async def get_tech_performance(cid: str):
             "status": "finalizada",
             "closed_at": {"$gte": day_start_iso, "$lt": next_day_iso},
         },
-        {"_id": 0, "opened_at": 1, "closed_at": 1, "outcome": 1},
+        {"_id": 0, "opened_at": 1, "closed_at": 1, "outcome": 1, "type": 1},
     ).to_list(length=200)
     closed_today = len(my_closed)
+
+    # Gamificação por pontos:
+    #   reparo/suporte = 1pt, retirada = 1.5pt, instalacao = 3pt,
+    #   troca_endereco = 3pt (mesmo esforço que instalação)
+    POINTS = {
+        "instalacao": 3.0, "troca_endereco": 3.0,
+        "retirada": 1.5,
+        "reparo": 1.0, "suporte": 1.0,
+    }
+    points_today = sum(POINTS.get(t.get("type") or "reparo", 1.0)
+                         for t in my_closed)
+    points_today = round(points_today, 1)
 
     # Tempo médio por nota (min)
     durations = []
@@ -2494,6 +2506,7 @@ async def get_tech_performance(cid: str):
 
     return {
         "closed_today": closed_today,
+        "points_today": points_today,
         "success_rate": success_rate,
         "avg_minutes": avg_minutes,
         "rank": rank,
@@ -2572,6 +2585,8 @@ ACHIEVEMENTS_CATALOG = [
       "desc": "10 instalações concluídas"},
     {"id": "instalador_100", "icon": "⚙️", "label": "Instalador Master",
       "desc": "100 instalações concluídas"},
+    {"id": "retirador", "icon": "📦", "label": "Retirador",
+      "desc": "10 retiradas de equipamento concluídas"},
     {"id": "streak_7", "icon": "🔥", "label": "Streak 7",
       "desc": "7 dias consecutivos com fechamento"},
     {"id": "streak_30", "icon": "🌋", "label": "Streak 30",
@@ -2598,6 +2613,7 @@ async def get_achievements(cid: str):
         {"assigned_collaborator_id": cid, "status": "finalizada"},
     )
     instals = await _ach_count_type(db, cid, "instalacao")
+    retiradas = await _ach_count_type(db, cid, "retirada")
     streak_max = await _ach_max_streak(db, cid)
     # Métricas avançadas
     rx_avg = None
@@ -2640,6 +2656,7 @@ async def get_achievements(cid: str):
         "mil_mestres": total >= 1000,
         "instalador_10": instals >= 10,
         "instalador_100": instals >= 100,
+        "retirador": retiradas >= 10,
         "streak_7": streak_max >= 7,
         "streak_30": streak_max >= 30,
         "sinal_ouro": good_sig_count >= 50,
@@ -2659,11 +2676,153 @@ async def get_achievements(cid: str):
         "stats": {
             "total_closed": total,
             "instalacoes": instals,
+            "retiradas": retiradas,
             "max_streak": streak_max,
             "rx_avg": rx_avg,
             "avg_minutes": avg_min,
         },
     }
+
+
+
+# -------------------------------------------------------------------------
+# Geofence Alert — detecta técnico fora da área da bolha aberta
+# -------------------------------------------------------------------------
+class GeofencePingIn(BaseModel):
+    collaborator_id: str
+    lat: float
+    lng: float
+
+
+@router.post("/lousa/public/geofence-ping")
+async def geofence_ping(payload: GeofencePingIn):
+    """Recebe ping de posição do técnico. Se ele estiver em chamado aberto
+    e fora do raio de 500m do endereço do cliente por > 5min, cria uma
+    bolha de alerta tipo `alerta_geofence` piscando vermelha na grade da Lousa.
+    Endpoint público (técnico não tem JWT)."""
+    cid = payload.collaborator_id
+    col = await db.collaborators.find_one({"id": cid},
+                                              {"_id": 0, "name": 1,
+                                                "company_id": 1})
+    if not col:
+        raise HTTPException(404, "Colaborador não encontrado")
+    company_id = col.get("company_id") or DEMO_COMPANY_ID
+
+    # Persiste a última posição do técnico (para Smart Route admin)
+    await db.collaborators.update_one(
+        {"id": cid},
+        {"$set": {"last_position": {
+            "lat": payload.lat, "lng": payload.lng,
+            "updated_at": now_iso(),
+        }}},
+    )
+
+    # Chamados abertos do técnico hoje
+    today = _today_br_iso()
+    open_ticket = await db.tickets.find_one(
+        {
+            "assigned_collaborator_id": cid,
+            "status": {"$in": ["em_andamento", "aceito"]},
+        },
+        {"_id": 0, "id": 1, "client_snapshot": 1, "status": 1,
+          "geofence_state": 1, "type": 1},
+    )
+
+    if not open_ticket:
+        # Limpa qualquer estado pendente
+        return {"ok": True, "alert": False, "reason": "sem chamado aberto"}
+
+    snap = open_ticket.get("client_snapshot") or {}
+    tlat = snap.get("latitude")
+    tlng = snap.get("longitude")
+    if not (isinstance(tlat, (int, float))
+            and isinstance(tlng, (int, float))):
+        return {"ok": True, "alert": False, "reason": "endereço sem coords"}
+
+    distance_m = _haversine_km(payload.lat, payload.lng,
+                                   float(tlat), float(tlng)) * 1000
+    state = open_ticket.get("geofence_state") or {}
+    now = datetime.now(timezone.utc)
+    INSIDE_RADIUS_M = 500
+    THRESHOLD_MIN = 5
+
+    if distance_m <= INSIDE_RADIUS_M:
+        # Volta a estar perto: reseta state
+        if state.get("outside_since"):
+            await db.tickets.update_one(
+                {"id": open_ticket["id"]},
+                {"$set": {"geofence_state.outside_since": None,
+                            "geofence_state.last_distance_m": int(distance_m)}},
+            )
+        return {"ok": True, "alert": False, "distance_m": int(distance_m)}
+
+    # FORA do raio
+    outside_since = state.get("outside_since")
+    if not outside_since:
+        await db.tickets.update_one(
+            {"id": open_ticket["id"]},
+            {"$set": {"geofence_state.outside_since": now.isoformat(),
+                        "geofence_state.last_distance_m": int(distance_m),
+                        "geofence_state.alert_fired": False}},
+        )
+        return {"ok": True, "alert": False, "distance_m": int(distance_m),
+                "outside_since": now.isoformat()}
+
+    # Já estava fora — checa há quanto tempo
+    try:
+        since_dt = datetime.fromisoformat(outside_since)
+        elapsed_min = (now - since_dt).total_seconds() / 60
+    except Exception:
+        elapsed_min = 0
+
+    already_fired = bool(state.get("alert_fired"))
+    if elapsed_min >= THRESHOLD_MIN and not already_fired:
+        # Cria bolha de alerta na lousa
+        alert_id = f"alerta-{uuid.uuid4().hex[:10]}"
+        alert_doc = {
+            "id": alert_id,
+            "company_id": company_id,
+            "type": "alerta_geofence",  # tipo especial
+            "priority": "urgente",
+            "status": "pendente",
+            "assigned_collaborator_id": cid,  # mesmo técnico (visível na coluna dele)
+            "created_at": now.isoformat(),
+            "opened_at": now.isoformat(),
+            "client_snapshot": {
+                "name": f"⚠️ {col['name']}",
+                "address": snap.get("address") or "—",
+                "neighborhood": snap.get("neighborhood") or "—",
+                "phone": "",
+            },
+            "relato": (
+                f"Técnico {col['name']} está há {int(elapsed_min)} min "
+                f"a {int(distance_m)}m do endereço do chamado "
+                f"{open_ticket['id']} ({snap.get('address') or '—'}). "
+                "Sem fechamento ainda — verificar."
+            ),
+            "position": int(now.timestamp() * -1000),  # topo da lista
+            "source_ticket_id": open_ticket["id"],
+            "source_collaborator_id": cid,
+            "geofence_distance_m": int(distance_m),
+            "geofence_elapsed_min": int(elapsed_min),
+        }
+        await db.tickets.insert_one(alert_doc)
+        await db.tickets.update_one(
+            {"id": open_ticket["id"]},
+            {"$set": {"geofence_state.alert_fired": True,
+                        "geofence_state.alert_id": alert_id}},
+        )
+        logger.warning("[lousa.geofence] ALERTA: tech=%s d=%dm t=%dmin "
+                          "→ ticket %s", cid, int(distance_m),
+                          int(elapsed_min), alert_id)
+        return {
+            "ok": True, "alert": True, "alert_id": alert_id,
+            "distance_m": int(distance_m), "elapsed_min": int(elapsed_min),
+        }
+
+    return {"ok": True, "alert": False, "distance_m": int(distance_m),
+            "elapsed_min": int(elapsed_min)}
+
 
 
 
@@ -2783,6 +2942,98 @@ async def optimize_route(payload: RouteOptimizeIn):
 
 
 # -------------------------------------------------------------------------
+
+
+# Endpoint admin: otimiza rota usando última posição conhecida do técnico
+class AdminRouteOptimizeIn(BaseModel):
+    collaborator_id: str
+    apply: bool = True
+
+
+@router.post("/lousa/admin/optimize-route")
+async def admin_optimize_route(payload: AdminRouteOptimizeIn,
+                                  user: dict = Depends(require_role("gestor"))):
+    """Gestor otimiza a rota de um técnico usando a última posição GPS dele."""
+    col = await db.collaborators.find_one(
+        {"id": payload.collaborator_id},
+        {"_id": 0, "id": 1, "name": 1, "last_position": 1},
+    )
+    if not col:
+        raise HTTPException(404, "Técnico não encontrado")
+    last = col.get("last_position") or {}
+    lat = last.get("lat")
+    lng = last.get("lng")
+    if not (isinstance(lat, (int, float)) and isinstance(lng, (int, float))):
+        raise HTTPException(
+            400,
+            "Sem posição GPS do técnico — peça para ele abrir o app primeiro.",
+        )
+    # Reusa a lógica do public endpoint
+    return await optimize_route(RouteOptimizeIn(
+        collaborator_id=payload.collaborator_id,
+        current_lat=float(lat), current_lng=float(lng),
+        apply=payload.apply,
+    ))
+
+
+
+
+# Toggles globais dos cards (ativar/desativar exibição no app do técnico)
+DASHBOARD_CONFIG_DEFAULTS = {
+    "show_performance": True,
+    "show_achievements": True,
+    "show_smart_route": True,
+    "show_points": True,
+    "enable_geofence_alerts": True,
+}
+
+
+@router.get("/lousa/admin/dashboard-config")
+async def get_dashboard_config(user: dict = Depends(get_current_user)):
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await db.lousa_dashboard_config.find_one(
+        {"company_id": company_id}, {"_id": 0},
+    )
+    return {**DASHBOARD_CONFIG_DEFAULTS, **(cfg or {}),
+              "company_id": company_id}
+
+
+@router.post("/lousa/admin/dashboard-config")
+async def set_dashboard_config(payload: Dict[str, Any],
+                                  user: dict = Depends(require_role("gestor"))):
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    updates = {k: bool(v) for k, v in payload.items()
+                if k in DASHBOARD_CONFIG_DEFAULTS}
+    if not updates:
+        raise HTTPException(400, "Nenhum campo válido enviado")
+    await db.lousa_dashboard_config.update_one(
+        {"company_id": company_id},
+        {"$set": {**updates, "company_id": company_id,
+                    "updated_at": now_iso()}},
+        upsert=True,
+    )
+    cfg = await db.lousa_dashboard_config.find_one(
+        {"company_id": company_id}, {"_id": 0},
+    )
+    return {**DASHBOARD_CONFIG_DEFAULTS, **(cfg or {}),
+              "company_id": company_id}
+
+
+# Endpoint público pro app do técnico ler os toggles
+@router.get("/lousa/public/dashboard-config/{cid}")
+async def get_dashboard_config_public(cid: str):
+    col = await db.collaborators.find_one({"id": cid},
+                                              {"_id": 0, "company_id": 1})
+    if not col:
+        raise HTTPException(404, "Colaborador não encontrado")
+    company_id = col.get("company_id") or DEMO_COMPANY_ID
+    cfg = await db.lousa_dashboard_config.find_one(
+        {"company_id": company_id}, {"_id": 0},
+    )
+    return {**DASHBOARD_CONFIG_DEFAULTS, **(cfg or {}),
+              "company_id": company_id}
+
+
 # Mural público — ranking dos técnicos do dia (TV no escritório)
 # -------------------------------------------------------------------------
 @router.get("/lousa/public/leaderboard")

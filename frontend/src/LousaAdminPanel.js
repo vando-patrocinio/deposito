@@ -12,6 +12,7 @@ import { isAlertsEnabled, setAlertsEnabled, maybeFireOverdueAlerts } from "./sla
 import SentinelaLousaCard from "./SentinelaLousaCard";
 import ReleaseStuckBubbleModal from "./lousa/ReleaseStuckBubbleModal";
 import CentralOntPanel from "./lousa/CentralOntPanel";
+import GestaoMetasPanel from "./lousa/GestaoMetasPanel";
 
 const TYPE_LABELS = {
   reparo: "🔧 Reparo",
@@ -20,6 +21,7 @@ const TYPE_LABELS = {
   prioridade: "🚨 Prioridade",
   preventiva: "🛡️ Preventiva",
   venda: "💼 Venda",
+  alerta_geofence: "⚠️ ALERTA GEOFENCE",
 };
 
 const TYPE_ICONS = {
@@ -528,12 +530,13 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         </div>
       )}
 
-      {/* SUB-TABS — Quadro / CENTRAL_ONT */}
+      {/* SUB-TABS — Quadro / CENTRAL_ONT / GESTÃO E METAS */}
       <div style={{ display: "flex", gap: 4,
                       borderBottom: "1px solid #e2e8f0", marginBottom: 14 }}>
         {[
           { id: "board", label: "📋 Quadro" },
           { id: "central_ont", label: "🛰️ CENTRAL_ONT" },
+          { id: "gestao_metas", label: "📊 GESTÃO E METAS" },
         ].map((t) => (
           <button key={t.id} onClick={() => setActiveSubTab(t.id)}
                    data-testid={`lousa-subtab-${t.id}`}
@@ -549,7 +552,9 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         ))}
       </div>
 
-      {activeSubTab === "central_ont" ? <CentralOntPanel /> : <>
+      {activeSubTab === "gestao_metas" ? <GestaoMetasPanel /> :
+        (activeSubTab === "central_ont" ? <CentralOntPanel /> : <></>)}
+      {activeSubTab === "board" && <>
       {/* Grade horizontal — coluna por técnico */}
       <div style={{
         display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16, minHeight: 540,
@@ -668,6 +673,43 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   );
 }
 
+
+function OptimizeRouteButton({ collaboratorId }) {
+  const [busy, setBusy] = React.useState(false);
+  async function go() {
+    if (!window.confirm("Otimizar a rota deste técnico usando a posição GPS dele?\nA ordem das bolhas será reescrita.")) return;
+    setBusy(true);
+    try {
+      const r = await api._client.post("/lousa/admin/optimize-route", {
+        collaborator_id: collaboratorId, apply: true,
+      }).then((x) => x.data);
+      if (!r.ok) {
+        alert("Nada pra otimizar: " + (r.reason || "—"));
+      } else {
+        alert(`✓ Rota otimizada\n${r.stops} paradas · ${r.total_km}km · ${r.estimated_minutes}min`);
+        window.location.reload();
+      }
+    } catch (e) {
+      alert("Falha: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button
+      data-testid={`optimize-route-${collaboratorId}`}
+      onClick={go} disabled={busy} title="Otimizar rota por GPS"
+      style={{
+        background: "linear-gradient(135deg,#06b6d4,#0e7490)",
+        color: "white", border: "none", borderRadius: 8,
+        padding: "4px 8px", fontSize: 10, fontWeight: 700,
+        cursor: busy ? "wait" : "pointer", flexShrink: 0,
+      }}
+    >{busy ? "..." : "🗺️ Rota"}</button>
+  );
+}
+
+
 function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, maxPerSlot, onSlotDrop, selectMode, selectedIds, onToggleSelect }) {
   const c = column.collaborator;
   const state = column.clock_state;
@@ -717,6 +759,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
             {totalTickets} serviço(s) · {c.praca || "—"}
           </div>
         </div>
+        <OptimizeRouteButton collaboratorId={c.id} />
       </div>
 
       <div data-testid={`schedule-${c.id}`} style={{
@@ -979,10 +1022,18 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
       data-testid={`bubble-card-${ticket.id}`}
       data-selected={isSelected ? "true" : "false"}
       title={tooltipText}
-      className={isOverdue && blinkOverdue ? "sla-overdue" : ""}
+      className={
+        (ticket.type === "alerta_geofence" ? "lousa-alert-blink " : "")
+        + (isOverdue && blinkOverdue ? "sla-overdue" : "")
+      }
       style={{
-        background: c.bg,
-        border: `1px solid ${isSelected ? "#3b82f6" : isOverdue ? "#dc2626" : c.border}`,
+        background: ticket.type === "alerta_geofence"
+          ? "linear-gradient(135deg,#fee2e2,#fecaca)"
+          : c.bg,
+        border: `${ticket.type === "alerta_geofence" ? 2 : 1}px solid ${
+          ticket.type === "alerta_geofence" ? "#dc2626"
+          : isSelected ? "#3b82f6"
+          : isOverdue ? "#dc2626" : c.border}`,
         borderRadius: 14, padding: "10px 12px 10px 14px",
         marginBottom: 6, position: "relative",
         cursor: selectMode ? (isSelectable ? "pointer" : "not-allowed") : "grab",
