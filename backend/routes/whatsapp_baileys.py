@@ -369,6 +369,57 @@ class SendImageIn(BaseModel):
     caption: str = Field(default="", max_length=1024)
 
 
+class PolishTextIn(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+@router.post("/polish-text")
+async def polish_text(payload: PolishTextIn,
+                        _user: dict = Depends(require_role("gestor"))):
+    """Recebe um rascunho do atendente e devolve uma versão polida em
+    português (gramática, pontuação, fluência). Mantém o sentido original e
+    o tom; NÃO inventa fatos nem muda intenção. Usado pelo botão azul
+    "Enviar com IA" no composer do WhatsApp.
+    """
+    raw = (payload.text or "").strip()
+    if not raw:
+        raise HTTPException(400, "Texto vazio.")
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(503, "Motor IA indisponível (chave ausente).")
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"polish-{uuid.uuid4().hex[:8]}",
+            system_message=(
+                "Você é um revisor de português brasileiro para mensagens "
+                "de WhatsApp de atendimento ao cliente. Receba um rascunho "
+                "do atendente e devolva APENAS o texto reescrito em "
+                "português correto, claro, cordial e direto. Regras:\n"
+                "1) NÃO mude o sentido nem a intenção da mensagem.\n"
+                "2) NÃO invente informações, datas, valores, nomes ou "
+                "fatos que não estejam no rascunho.\n"
+                "3) Corrija ortografia, pontuação, acentuação e concordância.\n"
+                "4) Mantenha o tom (formal/informal) o mais próximo do original.\n"
+                "5) Pode usar 1-2 emojis sutis se ajudar a deixar acolhedor, "
+                "mas só se o original já for casual.\n"
+                "6) NÃO acrescente saudações ou despedidas que não estejam "
+                "no rascunho.\n"
+                "7) Devolva APENAS a mensagem final, sem prefixos como "
+                "'Versão polida:' nem aspas em volta."
+            ),
+        ).with_model("openai", "gpt-5-mini")
+        out = await chat.send_message(UserMessage(text=raw))
+        polished = str(out).strip().strip('"').strip("'")
+        # Salva-guarda: se a IA devolver vazio ou muito longo, devolve original
+        if not polished or len(polished) > 4000:
+            polished = raw
+    except Exception as e:
+        logger.warning("[wa-baileys] polish-text falhou: %s", e)
+        raise HTTPException(502, f"Falha ao polir texto: {e}")
+    return {"original": raw, "polished": polished}
+
+
 @router.post("/send-image")
 async def send_image(payload: SendImageIn,
                        user: dict = Depends(require_role("gestor"))):

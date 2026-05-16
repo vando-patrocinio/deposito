@@ -1319,6 +1319,26 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
     } finally { setSending(false); }
   };
 
+  // Envio "IA pole e manda" — botão azul. Reescreve o rascunho em
+  // português correto (sem mudar o sentido) e dispara o envio direto.
+  const [polishing, setPolishing] = useState(false);
+  const sendWithIA = async () => {
+    if (!conv || !text.trim() || polishing || sending) return;
+    setPolishing(true);
+    try {
+      const { polished } = await api.waBaileysPolishText(text.trim());
+      const finalText = (polished || "").trim() || text.trim();
+      setSending(true);
+      try {
+        await api.waBaileysSend(conv.phone, finalText);
+        setText("");
+        await loadMessages();
+      } finally { setSending(false); }
+    } catch (e) {
+      alert("Erro IA: " + (e?.response?.data?.detail || e.message));
+    } finally { setPolishing(false); }
+  };
+
   // ---- Áudio (MediaRecorder) ----
   const [recording, setRecording] = useState(false);
   const [recDuration, setRecDuration] = useState(0);
@@ -2070,7 +2090,40 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
             <Mic size={18} strokeWidth={2.2} />
           </button>
         )}
-        <button onClick={send} disabled={sending || !text.trim() || isAi || recording}
+        <button onClick={sendWithIA}
+                disabled={sending || polishing || !text.trim() || isAi || recording}
+                title="Enviar com IA — corrige português e melhora o sentido antes de enviar"
+                data-testid="wa-composer-send-ia"
+                style={{
+                  visibility: text.trim() ? "visible" : "hidden",
+                  width: text.trim() ? "auto" : 0,
+                  padding: text.trim() ? "8px 12px" : 0,
+                  margin: text.trim() ? 0 : 0,
+                  borderRadius: 8,
+                  border: "none",
+                  cursor: (sending || polishing || !text.trim()) ? "default" : "pointer",
+                  background: "linear-gradient(180deg, #3b82f6, #2563eb)",
+                  color: "#fff",
+                  fontSize: 12.5, fontWeight: 700,
+                  display: "inline-flex", alignItems: "center", gap: 5,
+                  boxShadow: "0 1px 3px rgba(37,99,235,.35)",
+                  opacity: (sending || polishing || !text.trim()) ? 0.6 : 1,
+                  transition: "transform .12s, box-shadow .12s",
+                }}
+                onMouseEnter={(e) => {
+                  if (!sending && !polishing && text.trim()) {
+                    e.currentTarget.style.boxShadow = "0 2px 6px rgba(37,99,235,.55)";
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = "0 1px 3px rgba(37,99,235,.35)";
+                  e.currentTarget.style.transform = "translateY(0)";
+                }}>
+          <Sparkles size={13} strokeWidth={2.4} />
+          {polishing ? "Polindo..." : "IA"}
+        </button>
+        <button onClick={send} disabled={sending || polishing || !text.trim() || isAi || recording}
                 className="btn btn-primary btn-sm"
                 data-testid="wa-composer-send"
                 style={{ visibility: text.trim() ? "visible" : "hidden",

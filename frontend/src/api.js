@@ -486,6 +486,9 @@ export const api = {
   waBaileysStatus: () => client.get(`/whatsapp-baileys/status`).then((r) => r.data),
   waBaileysSend: (phone, text) =>
     client.post(`/whatsapp-baileys/send`, { phone, text }).then((r) => r.data),
+  waBaileysPolishText: (text) =>
+    client.post(`/whatsapp-baileys/polish-text`, { text },
+                  { timeout: 25000 }).then((r) => r.data),
   waBaileysSendImage: (phone, imageDataUrl, caption = "") =>
     client.post(`/whatsapp-baileys/send-image`, {
       phone, image_data_url: imageDataUrl, caption,
