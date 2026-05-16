@@ -621,3 +621,10 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
   - Validação: se faltar MAC ou foto do equipamento em instalação/retirada → `photo-required-modal` bloqueia avanço. Form state preserva tudo ao voltar Etapa 2 → Etapa 1.
 - **Validação E2E (testing_agent iter90)**: 7/7 pytest (`test_iter89_ocr_sn_and_fotos.py`) + Playwright 100% no fluxo do wizard (Step1 → Modal photo-required → Upload foto → Step2 → Voltar preserva → Step2). Validação manual curl: ticket `tkt-29199e719f` (instalacao) finalizado com sucesso usando apenas 1 foto base64 após o fix do mínimo.
 
+
+
+✅ **Sugestão de insumos com IA no Wizard de Finalização** (16/05/2026 — iter91):
+- **Backend** novo endpoint `POST /api/lousa/public/suggest-supplies` (`/app/backend/routes/lousa.py` L2202): recebe `{ticket_id?, type, neighborhood?, company_id}` e retorna `{qtd_drop, esticadores, conectores_fast, cabo_rede, conectores_rede, sample_size, source, rationale}` baseado na **mediana das últimas 30 notas finalizadas do mesmo tipo**. Estratégia em cascata: (1) bairro específico → (2) empresa-wide → (3) defaults sãos por tipo (instalacao/troca = 80m drop · suporte = 20m · retirada = 0). Threshold mínimo `sample_size>=3` para usar mediana.
+- **Frontend** novo bloco `suggest-supplies-card` (`/app/frontend/src/LousaMobile.js` L1148): card azul tracejado no topo da Etapa 2 com botão "Sugerir" — chama o endpoint e pré-preenche todos os 5 campos de insumos. Vira verde após aplicar mostrando rationale ("Baseado na mediana de N instalações finalizadas em {bairro}"). Botão "Refazer" permite re-sugerir.
+- **Validação**: 4/4 pytest (`test_iter91_suggest_supplies.py`) — defaults, retirada zerada, caminho da mediana (drop = 82 entre 70/80/85/90), fallback bairro→empresa.
+- testids: `suggest-supplies-card`, `suggest-supplies-btn`.

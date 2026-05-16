@@ -735,6 +735,36 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrResult, setOcrResult] = useState(null);
   const [showPhotoWarn, setShowPhotoWarn] = useState(false);
+  const [suggestBusy, setSuggestBusy] = useState(false);
+  const [suggestResult, setSuggestResult] = useState(null);
+
+  async function suggestSupplies() {
+    try {
+      setSuggestBusy(true);
+      const r = await api._client.post(
+        "/lousa/public/suggest-supplies",
+        {
+          ticket_id: ticket.id,
+          type: ticket.type,
+          neighborhood: ticket.client_snapshot?.neighborhood || null,
+          company_id: ticket.company_id || null,
+        },
+      ).then((x) => x.data);
+      setSuggestResult(r);
+      setForm((f) => ({
+        ...f,
+        qtd_drop: r.qtd_drop,
+        esticadores: r.esticadores,
+        conectores_fast: r.conectores_fast,
+        cabo_rede: r.cabo_rede,
+        conectores_rede: r.conectores_rede,
+      }));
+    } catch (e) {
+      alert("Sugestão falhou: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setSuggestBusy(false);
+    }
+  }
 
   const cid = ticket.assigned_collaborator_id;
   const isInstall = ticket.type === "instalacao" || ticket.type === "troca_endereco";
@@ -1147,6 +1177,35 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       {/* ============ STEP 2 ============ */}
       {step === 2 && (
         <>
+          {/* SUGESTÃO IA — insumos baseados em histórico */}
+          <div data-testid="suggest-supplies-card" style={{
+            padding: "10px 12px", borderRadius: 12, marginBottom: 12,
+            background: suggestResult ? "#ecfdf5" : "#eff6ff",
+            border: "1px dashed " + (suggestResult ? "#10b981" : "#3b82f6"),
+            display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <span style={{ fontSize: 22 }}>📦</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 800,
+                              color: suggestResult ? "#065f46" : "#1e40af" }}>
+                {suggestResult ? "Insumos sugeridos aplicados" : "Sugerir insumos com IA"}
+              </div>
+              <div style={{ fontSize: 10, color: "#475569", marginTop: 2,
+                              lineHeight: 1.3 }}>
+                {suggestResult
+                  ? suggestResult.rationale
+                  : "Pré-preenche baseado em chamados similares do bairro."}
+              </div>
+            </div>
+            <Button onClick={suggestSupplies} disabled={suggestBusy}
+                     data-testid="suggest-supplies-btn"
+                     variant={suggestResult ? "soft" : "primary"}
+                     style={{ padding: "8px 12px", fontSize: 12,
+                                flexShrink: 0 }}>
+              {suggestBusy ? "..." : (suggestResult ? "Refazer" : "Sugerir")}
+            </Button>
+          </div>
+
           {/* INSUMOS FTTH */}
           <div style={{
             padding: "12px 14px", background: "white",

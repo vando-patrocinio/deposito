@@ -2200,6 +2200,138 @@ async def public_ocr_sn(payload: OcrSnIn):
 
 
 # -------------------------------------------------------------------------
+# Sugestão de insumos IA — mediana histórica por tipo+bairro
+# -------------------------------------------------------------------------
+class SuggestSuppliesIn(BaseModel):
+    ticket_id: Optional[str] = None
+    type: Optional[str] = None  # instalacao | retirada | suporte | troca_endereco
+    neighborhood: Optional[str] = None
+    company_id: Optional[str] = None
+
+
+def _median(values: list[float]) -> float:
+    vals = sorted([float(v) for v in values if v is not None])
+    if not vals:
+        return 0.0
+    mid = len(vals) // 2
+    if len(vals) % 2:
+        return vals[mid]
+    return (vals[mid - 1] + vals[mid]) / 2.0
+
+
+@router.post("/lousa/public/suggest-supplies")
+async def suggest_supplies(payload: SuggestSuppliesIn):
+    """Sugere quantidades de insumos baseado em chamados finalizados similares.
+
+    Estratégia: agrega últimas N notas finalizadas do MESMO tipo, prioriza
+    mesmo bairro quando disponível, computa MEDIANA por insumo. Fallback para
+    defaults sãos se histórico < 3.
+    """
+    ttype = payload.type
+    if not ttype and payload.ticket_id:
+        t = await db.tickets.find_one(
+            {"id": payload.ticket_id}, {"_id": 0, "type": 1, "client_snapshot": 1,
+                                          "company_id": 1},
+        )
+        if t:
+            ttype = t.get("type")
+            if not payload.neighborhood:
+                payload.neighborhood = (t.get("client_snapshot") or {}).get("neighborhood")
+            if not payload.company_id:
+                payload.company_id = t.get("company_id")
+
+    company_id = payload.company_id or DEMO_COMPANY_ID
+    ttype = ttype or "instalacao"
+    bairro = (payload.neighborhood or "").strip()
+
+    # Defaults conservadores por tipo
+    DEFAULTS = {
+        "instalacao": {
+            "qtd_drop": 80, "esticadores": 2, "conectores_fast": 2,
+            "cabo_rede": 8, "conectores_rede": 2,
+        },
+        "troca_endereco": {
+            "qtd_drop": 80, "esticadores": 2, "conectores_fast": 2,
+            "cabo_rede": 8, "conectores_rede": 2,
+        },
+        "retirada": {
+            "qtd_drop": 0, "esticadores": 0, "conectores_fast": 0,
+            "cabo_rede": 0, "conectores_rede": 0,
+        },
+        "suporte": {
+            "qtd_drop": 20, "esticadores": 1, "conectores_fast": 1,
+            "cabo_rede": 3, "conectores_rede": 1,
+        },
+    }
+    base = DEFAULTS.get(ttype, DEFAULTS["suporte"])
+
+    # Busca histórico — mesmo bairro primeiro, senão empresa-wide
+    base_query = {
+        "company_id": company_id,
+        "type": ttype,
+        "status": "finalizada",
+        "completion_data": {"$exists": True},
+    }
+    historical = []
+    source = "defaults"
+    if bairro:
+        cursor = db.tickets.find(
+            {**base_query, "client_snapshot.neighborhood": bairro},
+            {"_id": 0, "completion_data": 1, "closed_at": 1},
+        ).sort("closed_at", -1).limit(30)
+        historical = [doc async for doc in cursor]
+        if len(historical) >= 3:
+            source = f"bairro:{bairro}"
+
+    if len(historical) < 3:
+        cursor = db.tickets.find(
+            base_query, {"_id": 0, "completion_data": 1, "closed_at": 1},
+        ).sort("closed_at", -1).limit(30)
+        historical = [doc async for doc in cursor]
+        if len(historical) >= 3:
+            source = "empresa"
+
+    if len(historical) < 3:
+        return {
+            "qtd_drop": base["qtd_drop"],
+            "esticadores": base["esticadores"],
+            "conectores_fast": base["conectores_fast"],
+            "cabo_rede": base["cabo_rede"],
+            "conectores_rede": base["conectores_rede"],
+            "sample_size": len(historical),
+            "source": "defaults",
+            "rationale": (
+                f"Sem histórico suficiente para {ttype}"
+                + (f" em {bairro}" if bairro else "")
+                + " — usando padrão conservador."
+            ),
+        }
+
+    # Computa medianas
+    cd_list = [h.get("completion_data") or {} for h in historical]
+    suggested = {
+        "qtd_drop": round(_median([c.get("qtd_drop", 0) for c in cd_list])),
+        "esticadores": round(_median([c.get("esticadores", 0) for c in cd_list])),
+        "conectores_fast": round(_median([c.get("conectores_fast", 0) for c in cd_list])),
+        "cabo_rede": round(_median([c.get("cabo_rede", 0) for c in cd_list]) * 2) / 2,
+        "conectores_rede": round(_median([c.get("conectores_rede", 0) for c in cd_list])),
+    }
+    label = "bairro" if source.startswith("bairro:") else "empresa"
+    return {
+        **suggested,
+        "sample_size": len(historical),
+        "source": source,
+        "rationale": (
+            f"Baseado na mediana de {len(historical)} {ttype}s "
+            f"finalizadas recentes ({label}"
+            + (f" — {bairro}" if source.startswith("bairro:") else "") + ")."
+        ),
+    }
+
+
+
+
+# -------------------------------------------------------------------------
 # SERVER TIME (sincronização)
 # -------------------------------------------------------------------------
 @router.get("/server-time")
