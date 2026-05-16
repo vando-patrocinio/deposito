@@ -24,11 +24,11 @@ import { WaWallpaper } from "@/WaWallpaper";
 ============================================================= */
 
 const BUCKETS = [
-  { id: "automatico",  label: "Automático",   icon: Bot,       color: "#0d9488" },
-  { id: "aguardando",  label: "Aguardando",   icon: Clock,     color: "#f59e0b" },
-  { id: "fora_de_hora",label: "Fora de hora", icon: MoonStar,  color: "#6366f1" },
-  { id: "manual",      label: "Manual",       icon: Hand,      color: "#0ea5e9" },
-  { id: "grupo",       label: "Grupo",        icon: Users,     color: "#94a3b8" },
+  { id: "automatico",  label: "Isabella",                icon: Bot,       color: "#0d9488" },
+  { id: "aguardando",  label: "Aguardando",              icon: Clock,     color: "#f59e0b" },
+  { id: "fora_de_hora",label: "Fora de hora",            icon: MoonStar,  color: "#6366f1" },
+  { id: "manual",      label: "Atendimento Especializado", icon: Hand,    color: "#0ea5e9" },
+  { id: "grupo",       label: "Grupo",                   icon: Users,     color: "#94a3b8" },
 ];
 
 
