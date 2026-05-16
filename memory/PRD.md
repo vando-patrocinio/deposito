@@ -611,3 +611,13 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 
 **Testes:** `/app/backend/tests/test_iter78_alvaro_smartolt_actions.py` (13/13 pass) · `/app/backend/tests/test_iter78_wa_audio_typing.py` (11/11 pass). Frontend testids confirmados visualmente: `onus-by-vlan-modal`, `onu-detail-modal`, `onu-signal-refresh`, `onu-reboot-btn`, `onu-reboot-confirm-modal`, `wa-finalize-modal`, `wa-audio-player`, `wa-ai-typing-bar`.
 
+
+✅ **Wizard 2-passos no App do Colaborador + OCR de etiqueta ONT** (16/05/2026 — iter89/90):
+- **Backend** (`/app/backend/routes/lousa.py` L2105): novo endpoint `POST /api/lousa/public/ocr-sn` que recebe `{image_base64, hint}` e usa **Gemini 2.5 Flash via Emergent LLM Key** (`emergentintegrations.LlmChat` com `ImageContent`) para extrair SN/MAC da etiqueta. Cap 4MB, base64 validado, JSON parse robusto (strip code fences), normaliza MAC para `AA:BB:CC:DD:EE:FF`. Endpoint público (técnico não tem JWT).
+- **Backend fix** (`/app/backend/routes/lousa.py` L1180 + L1485): regra antiga exigia ≥3 fotos para `type="instalacao"` (bloqueava o novo wizard que coleta 1 foto obrigatória do equipamento + opcional da etiqueta). Reduzido para **≥1 foto** — o wizard já enforça client-side via `photo-required-modal`.
+- **Frontend** (`/app/frontend/src/LousaMobile.js` L723 `TicketDetail`): tela de finalização virou **wizard de 2 passos** com indicador `finalize-steps`:
+  - **Etapa 1** — Sinal medido, MAC ONT (com botão `ocr-sn-btn` que tira foto da etiqueta e auto-preenche via OCR Gemini), **Foto do equipamento OBRIGATÓRIA** (`equip-photo-section` + `equip-photo-input`), warnings de bad signal e SN mismatch contra SmartOLT.
+  - **Etapa 2** — Insumos **FTTH** (drop/esticador/conector_fast) e **Rede** (cabo_rede/conector_rede) **separados visualmente em cards distintos** (amarelo FTTH · azul Rede), textarea Observações, botões Voltar/Finalizar.
+  - Validação: se faltar MAC ou foto do equipamento em instalação/retirada → `photo-required-modal` bloqueia avanço. Form state preserva tudo ao voltar Etapa 2 → Etapa 1.
+- **Validação E2E (testing_agent iter90)**: 7/7 pytest (`test_iter89_ocr_sn_and_fotos.py`) + Playwright 100% no fluxo do wizard (Step1 → Modal photo-required → Upload foto → Step2 → Voltar preserva → Step2). Validação manual curl: ticket `tkt-29199e719f` (instalacao) finalizado com sucesso usando apenas 1 foto base64 após o fix do mínimo.
+

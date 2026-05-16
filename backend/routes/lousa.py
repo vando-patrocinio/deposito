@@ -1177,8 +1177,11 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
     if t["status"] != "aberta":
         raise HTTPException(400, "Somente notas abertas podem ser finalizadas")
     cd = payload.completion_data
-    if t["type"] == "instalacao" and len(cd.fotos) < 3:
-        raise HTTPException(400, "Instalação exige no mínimo 3 fotos")
+    # Wizard 2-passos (iter89+) coleta foto do equipamento (obrigatória) + opcional foto
+    # da etiqueta (OCR SN/MAC). Mínimo passa a ser 1 foto — front já bloqueia avanço sem
+    # ela via photo-required-modal.
+    if t["type"] == "instalacao" and len(cd.fotos) < 1:
+        raise HTTPException(400, "Instalação exige pelo menos 1 foto do equipamento")
     if t["type"] == "instalacao" and not cd.ont:
         raise HTTPException(400, "ONT é obrigatório para instalação")
 
@@ -1482,8 +1485,9 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
         raise HTTPException(400, "Somente notas abertas podem ser finalizadas")
 
     cd = payload.completion_data
-    if t["type"] == "instalacao" and len(cd.fotos) < 3:
-        raise HTTPException(400, "Instalação exige no mínimo 3 fotos")
+    # Mínimo de 1 foto (wizard 2-passos enforça equip photo client-side).
+    if t["type"] == "instalacao" and len(cd.fotos) < 1:
+        raise HTTPException(400, "Instalação exige pelo menos 1 foto do equipamento")
     if t["type"] == "instalacao" and not cd.ont:
         raise HTTPException(400, "ONT é obrigatório para instalação")
 
