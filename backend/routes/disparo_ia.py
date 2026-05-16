@@ -220,7 +220,6 @@ async def approve_suggestion(suggestion_id: str,
     await db.mass_campaigns.insert_one(campaign_doc)
 
     # Insere recipients reais (refaz a query pra pegar a lista completa)
-    from services.disparo_ai import _resolve_audience as _ra  # noqa
     filters = (sug.get("audience") or {}).get("filters") or {}
     # Reaproveita lógica: chama _resolve_audience mas precisamos lista completa.
     # Fazemos a query crua aqui pra eficiência:

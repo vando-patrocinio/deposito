@@ -177,7 +177,7 @@ function KpiDashboard({ kpis }) {
     { label: "Save (churn)", value: kpis.save_signals, color: "#dc2626" },
     { label: "Upsell sinalizado", value: kpis.upsell_signals, color: "#0d9488" },
     { label: "Block rate", value: pct(kpis.block_rate), color: "#ca8a04" },
-    { label: "Cost / conv.", value: "—", color: "#64748b",
+    { label: "Cost / conv.", value: "em breve", color: "#94a3b8",
       hint: "Em breve — depende do channel cost" },
   ];
 
@@ -282,10 +282,11 @@ function SuggestionDetailModal({ suggestion, onClose, onChange }) {
   const isPending = suggestion.status === "pending";
 
   const approve = async () => {
-    if (!window.confirm("Aprovar e criar campanha real?\n\n"
-                          + `${suggestion.audience_preview?.size || 0} destinatário(s) "
-                          + "serão importados.\n`
-                          + "A campanha começa em rascunho — vc dá Start em Disparo em Massa.")) return;
+    const size = suggestion.audience_preview?.size || 0;
+    const msg = "Aprovar e criar campanha real?\n\n"
+              + `${size} destinatário(s) serão importados.\n`
+              + "A campanha começa em rascunho — vc dá Start em Disparo em Massa.";
+    if (!window.confirm(msg)) return;
     setBusy(true);
     try {
       const r = await api._client.post(

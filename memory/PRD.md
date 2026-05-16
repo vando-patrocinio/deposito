@@ -415,6 +415,32 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Pytest** `/app/backend/tests/test_iter74_budget.py`: 6/6 PASS — cria draft, CSV parser, percentuais recalculam, override manual recalcula (base = 2×100 + 100×100 = 10200), KPIs, PDF retorna bytes `%PDF-...`. 1 skip (colaborador 403, sem conta de teste no ambiente).
 - **Validado E2E** (Playwright 1920×900): menu "Comercial > Orçamento" aparece; painel renderiza KPIs (1 orçamento · R$ 1.018,18 · 30% · 100% conversão); orçamento "Obra CTO-Centro · Finalizado" aparece com 5 itens; drawer abre com tabela completa mostrando preços IA (Mercado Livre·Furukawa·FiberHome·Intelbras), inputs override, e footer com totais (Base R$ 656,25 → Total Final R$ 1.018,18 com sliders %Ganho 30 · %Mão-de-obra 15 · %Imposto 7).
 
+## Iter81 (16/05/2026) — Disparo IA · Estrategista comercial autônomo
+**Feature entregue:** Novo módulo "Disparo IA" dentro de Disparo em Massa — IA estrategista que orquestra Alvaro (insights) + Isabella (execução WhatsApp) para gerar campanhas ativas.
+
+**Decisões do usuário:** Claude Sonnet 4.5 · pacote completo de 10 KPIs · todos os 6 tipos de campanha · aprovação humana SEMPRE · reaproveita sistema mass_messaging.
+
+**Backend (`/app/backend/services/disparo_ai.py` + `/app/backend/routes/disparo_ia.py`):**
+- `DISPARO_SYSTEM_PROMPT`: prompt-mãe baseado em best-practices outbound 2026 (Outreach/Apollo/AISensy/Zenvia). KPIs alvo: delivery≥95%, read≥70%, reply 15-35%, positive_reply≥8%, block<1%.
+- `generate_campaign_suggestions(cid)`: lê último relatório Alvaro + base CRM + histórico recente de tipos → Claude responde com até 6 sugestões (1 por tipo). Persiste em `disparo_suggestions`.
+- `_resolve_audience(cid, filters)`: combina filtros do Alvaro (risco_cancelamento, since_days) + filtros estruturais (plan_contains, bairro_in, status) e retorna size + 5 phones preview.
+- `compute_kpis(cid, days)`: agrega métricas reais das `mass_campaigns` com origin=disparo_ia, classifica replies (positive/negative/neutral via regex), conta save_signals/upsell_signals/blocks por tipo.
+- Endpoints (admin/gestor): `GET /api/disparo-ia/types`, `POST /generate-suggestions`, `GET /suggestions[?status=&type=]`, `GET /suggestions/{id}`, `POST /suggestions/{id}/approve` (cria mass_campaign + recipients), `POST /suggestions/{id}/reject`, `GET /kpis?days=30`, `GET /campaigns`.
+- `mass_campaigns` ganhou flags: `origin: "disparo_ia"`, `disparo_type`, `disparo_suggestion_id`, `disparo_run_id`, `isabella_briefing`, `expected_kpis`, `approval_notes`.
+- `motor_ia.AGENT_CATALOG`: registrados `alvaro_ai` e `disparo_ia` para o painel kill-switch.
+
+**Frontend (`/app/frontend/src/DisparoIaPanel.js`):**
+- Painel renderizado como 2ª aba de Disparo em Massa (`mass-tab-disparo_ia`).
+- **KPI Dashboard** (10 cards): Campanhas (30d), Enviadas, Delivery, Read rate, Reply rate, Positive reply, Save (churn), Upsell sinalizado, Block rate, Cost/conv.
+- Botão "Gerar sugestões" roxo (Claude Sonnet 4.5).
+- Filtros: Pendentes / Aprovadas / Rejeitadas / Todas.
+- Lista de sugestões com icon+badge por tipo (Churn/Upsell/Cobrança/NPS/Expansão/Reativação), título, rationale e tamanho da audiência.
+- Modal de detalhe: rationale, audiência preview, mensagem editável, **briefing pra Isabella** editável, KPIs alvo, janela de envio, cadência, parâmetros de envio (canal/throttle/notas), botões **Aprovar** (verde) e **Rejeitar** (vermelho).
+
+**LLM validado em produção:** primeira execução gerou 2 sugestões reais (NPS+Upsell) com rationale baseado em dados reais do Alvaro (run alv-run-3ad22ea0, média 6.88), briefing diferenciado pra Isabella, KPIs alvo e janela de envio justificadas.
+
+**Testes:** `/app/backend/tests/test_iter81_disparo_ia.py` (9/9 pass — types, kpis, ACL, list, generate-validation, approve full e2e com shape de mass_campaigns + recipients, reject, 404 detail). Frontend testids confirmados: `mass-tab-manual`, `mass-tab-disparo_ia`, `disparo-ia-panel`, `disparo-generate-btn`, `disparo-kpi-dashboard`, `disparo-filter-*`, `disparo-sug-{id}`, `disparo-sug-modal`, `disparo-msg-edit`, `disparo-briefing-edit`, `disparo-approve-btn`, `disparo-reject-btn`.
+
 ## Próximas (P2)
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
@@ -427,6 +453,13 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - Banco Inter PIX dinâmico (P1) — pausado por pivots anteriores
 - Refresh tokens curtos para URLs de mídia (`/audio/{file}?t=`) para reduzir exposição de JWT longo (P2)
 - Meta WhatsApp Cloud webhook 403: aguardando App Secret correto do usuário (BLOQUEADO)
+- **Disparo IA — evolução futura:**
+  - Read receipts reais da Meta Cloud API → `read_rate` ≠ `delivery_rate`
+  - Cost-per-conversion (multiplicando channel cost × deliveries)
+  - Agendador automático Disparo IA (worker diário gera sugestões sem ação humana)
+  - A/B testing automático de variações de mensagem (2 grupos disparados, comparados após N dias)
+  - Reply classification mais robusta com LLM (substituir POSITIVE_RE/NEGATIVE_RE por Claude classificando intenção)
+  - Briefing dinâmico injetado automaticamente no system prompt da Isabella quando ela recebe replies de campanhas Disparo IA
 
 ## Iter78 (16/05/2026) — Filtros Alvaro IA + UX confirmações + ONU detail + Áudio inbound + Typing indicator
 **P0 entregue:**
