@@ -397,7 +397,10 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     );
   }
 
-  // App acessado sem ?cid= no link → orienta o técnico a usar o link próprio
+  // App acessado sem ?cid= no link → orienta o técnico a usar o link próprio.
+  // EXCEÇÃO: se o usuário logado é administrador/auditor, mostra seletor de
+  // colaborador (permite acessar o app como qualquer técnico, sem precisar do
+  // link único).
   if (!collabId) {
     return (
       <Wrapper>
@@ -416,6 +419,55 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             Cada técnico tem um <strong style={{ color: "#0f172a" }}>link único</strong> enviado pelo gestor (geralmente por
             WhatsApp). Abra o link que você recebeu para entrar na sua Lousa.
           </p>
+
+          {isAdminTest && (
+            <div data-testid="admin-bypass-section"
+                 style={{
+                    background: "linear-gradient(135deg,#fef2f2,#fee2e2)",
+                    border: "1.5px solid #fca5a5", borderRadius: 12,
+                    padding: 14, marginBottom: 14, textAlign: "left",
+                 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8,
+                              marginBottom: 6 }}>
+                <span style={{ fontSize: 16 }}>🔓</span>
+                <strong style={{ fontSize: 13, color: "#7f1d1d",
+                                   letterSpacing: 0.2 }}>
+                  Modo administrador — acesso sem link
+                </strong>
+              </div>
+              <p style={{ margin: "0 0 10px", fontSize: 11,
+                            color: "#991b1b", lineHeight: 1.5 }}>
+                Você está logado como admin/auditor. Selecione um técnico
+                para abrir a Lousa dele direto, sem usar o link único.
+              </p>
+              <select
+                data-testid="admin-collab-select"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v) setCollabId(v);
+                }}
+                defaultValue=""
+                style={{
+                  width: "100%", padding: "10px 12px", borderRadius: 8,
+                  border: "1.5px solid #dc2626", background: "white",
+                  fontSize: 13, fontWeight: 600, color: "#0f172a",
+                  cursor: "pointer",
+                }}>
+                <option value="" disabled>Selecione um colaborador…</option>
+                {collabs.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} {c.role ? `· ${c.role}` : ""}
+                  </option>
+                ))}
+              </select>
+              <p style={{ margin: "8px 0 0", fontSize: 10,
+                            color: "#7f1d1d", fontStyle: "italic" }}>
+                ⚠ Apenas para suporte/admin. Ações continuam sendo registradas em
+                seu nome de admin no log.
+              </p>
+            </div>
+          )}
+
           <div style={{
             background: "#f8fafc", border: "1px solid #e2e8f0",
             borderRadius: 10, padding: 12, fontSize: 12, color: "#475569", textAlign: "left",

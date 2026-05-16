@@ -415,6 +415,18 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Pytest** `/app/backend/tests/test_iter74_budget.py`: 6/6 PASS — cria draft, CSV parser, percentuais recalculam, override manual recalcula (base = 2×100 + 100×100 = 10200), KPIs, PDF retorna bytes `%PDF-...`. 1 skip (colaborador 403, sem conta de teste no ambiente).
 - **Validado E2E** (Playwright 1920×900): menu "Comercial > Orçamento" aparece; painel renderiza KPIs (1 orçamento · R$ 1.018,18 · 30% · 100% conversão); orçamento "Obra CTO-Centro · Finalizado" aparece com 5 itens; drawer abre com tabela completa mostrando preços IA (Mercado Livre·Furukawa·FiberHome·Intelbras), inputs override, e footer com totais (Base R$ 656,25 → Total Final R$ 1.018,18 com sliders %Ganho 30 · %Mão-de-obra 15 · %Imposto 7).
 
+## Iter85 (16/05/2026) — App do colaborador: bypass admin sem link único
+**Bug fix:** Quando o admin/auditor abria o app do colaborador sem `?cid=` na URL, a tela "Acesso pelo link próprio" bloqueava completamente — obrigando o admin a copiar o link do técnico. O usuário pediu que essa tela ofereça uma forma do admin entrar sem precisar do link.
+
+**Arquivo:** `/app/frontend/src/CollaboratorApp.js` linhas 400-480.
+
+**Mudança:** Na tela "Acesso pelo link próprio", se `isAdminTest === true` (JWT do `ponto_token` com role administrador/auditor), renderiza um painel vermelho **🔓 "Modo administrador — acesso sem link"** com:
+- `<select data-testid="admin-collab-select">` listando todos os colaboradores cadastrados (nome + role).
+- Ao selecionar, faz `setCollabId(value)` e a Lousa do técnico abre imediatamente sem link único.
+- Aviso: "⚠ Apenas para suporte/admin. Ações continuam sendo registradas em seu nome de admin no log."
+
+A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validado em produção: dropdown com 8 colaboradores reais aparece corretamente.
+
 ## Iter84 (16/05/2026) — Botão vermelho "Liberar bolha presa" no Chamados
 **Feature entregue:** botão de emergência no painel Chamados (`LousaAdminPanel`) que permite a admins/gestores **liberarem manualmente uma bolha de serviço presa** quando o técnico não consegue finalizar (app travado, perdeu sinal, etc).
 
