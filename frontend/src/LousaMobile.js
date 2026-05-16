@@ -21,6 +21,7 @@ export default function LousaMobile({ collaboratorId, onBack }) {
   const [orderedIds, setOrderedIds] = useState([]);   // ordem local em modo reorder
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
+  const [perf, setPerf] = useState(null);
 
   const refresh = useCallback(async () => {
     if (!collaboratorId) return;
@@ -42,6 +43,20 @@ export default function LousaMobile({ collaboratorId, onBack }) {
   }, [collaboratorId, reorderMode]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Performance KPIs do dia
+  useEffect(() => {
+    if (!collaboratorId) return undefined;
+    let alive = true;
+    const load = () => {
+      api._client.get(`/lousa/public/tech-performance/${collaboratorId}`)
+        .then((r) => { if (alive) setPerf(r.data); })
+        .catch(() => {});
+    };
+    load();
+    const t = setInterval(load, 60000); // refresh a cada 1min
+    return () => { alive = false; clearInterval(t); };
+  }, [collaboratorId]);
 
   // --- Reorder helpers (modo "Reordenar") ---
   function isLockedTicket(t) {
@@ -329,6 +344,8 @@ export default function LousaMobile({ collaboratorId, onBack }) {
         {data.tickets.length} serviço(s) — {unlocked ? "🔓 lousa liberada" : "🔒 lousa travada"}
         {reorderMode && <span style={{ marginLeft: 8, color: "#5b21b6", fontWeight: 700 }}>· ↕ modo reordenar</span>}
       </p>
+
+      <PerformanceCard perf={perf} />
 
       {reorderMode && (
         <div data-testid="lousa-reorder-bar" style={{
@@ -684,6 +701,79 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
     </button>
   );
 }
+
+function PerformanceCard({ perf }) {
+  if (!perf) return null;
+  const {
+    closed_today, success_rate, avg_minutes, rank, total_techs, streak, badge,
+  } = perf;
+
+  // Cor do card por desempenho
+  let cardBg = "linear-gradient(135deg,#0ea5e9 0%,#0284c7 100%)";
+  if (rank === 1 && total_techs > 1) {
+    cardBg = "linear-gradient(135deg,#f59e0b 0%,#d97706 100%)"; // ouro
+  } else if (closed_today === 0) {
+    cardBg = "linear-gradient(135deg,#64748b 0%,#475569 100%)"; // cinza
+  } else if (success_rate === 100 && closed_today >= 3) {
+    cardBg = "linear-gradient(135deg,#10b981 0%,#059669 100%)"; // verde
+  }
+
+  const Stat = ({ label, value, sub }) => (
+    <div style={{ flex: 1, textAlign: "center", padding: "6px 4px" }}>
+      <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1,
+                      color: "white" }}>{value}</div>
+      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.85)",
+                      textTransform: "uppercase", letterSpacing: 0.6,
+                      fontWeight: 700, marginTop: 4 }}>{label}</div>
+      {sub && (
+        <div style={{ fontSize: 9, color: "rgba(255,255,255,0.65)",
+                        marginTop: 2 }}>{sub}</div>
+      )}
+    </div>
+  );
+
+  return (
+    <div data-testid="tech-performance-card" style={{
+      marginTop: 12, padding: "12px 14px", borderRadius: 14,
+      background: cardBg, color: "white",
+      boxShadow: "0 6px 16px -8px rgba(15,23,42,.35)",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between",
+                      alignItems: "center", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
+                        textTransform: "uppercase",
+                        color: "rgba(255,255,255,0.85)" }}>
+          📊 Seu desempenho hoje
+        </div>
+        <div data-testid="tech-perf-badge" style={{
+          fontSize: 10, fontWeight: 800, padding: "3px 8px",
+          borderRadius: 999, background: "rgba(255,255,255,0.2)",
+          border: "1px solid rgba(255,255,255,0.3)",
+        }}>{badge}</div>
+      </div>
+      <div style={{ display: "flex", gap: 4 }}>
+        <Stat label="Fechadas" value={closed_today} />
+        <Stat label="% sucesso" value={`${success_rate}%`} />
+        <Stat label="Tempo médio"
+               value={avg_minutes ? `${avg_minutes}min` : "—"} />
+        <Stat
+          label="Ranking"
+          value={rank ? `${rank}º` : "—"}
+          sub={total_techs ? `de ${total_techs}` : null}
+        />
+      </div>
+      {streak >= 2 && (
+        <div style={{
+          marginTop: 8, padding: "4px 10px", borderRadius: 999,
+          background: "rgba(255,255,255,0.18)", fontSize: 10,
+          fontWeight: 700, display: "inline-block",
+        }}>🔥 {streak} dia(s) consecutivos com fechamento</div>
+      )}
+    </div>
+  );
+}
+
+
 
 function ConsumableField({ label, fieldKey, consumableId, step, consMap, form, setForm }) {
   const cur = consMap[consumableId];

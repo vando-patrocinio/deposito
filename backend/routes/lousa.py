@@ -2329,6 +2329,121 @@ async def suggest_supplies(payload: SuggestSuppliesIn):
     }
 
 
+# -------------------------------------------------------------------------
+# Performance do técnico — card de gamificação suave no app do colaborador
+# -------------------------------------------------------------------------
+@router.get("/lousa/public/tech-performance/{cid}")
+async def get_tech_performance(cid: str):
+    """KPIs do dia + ranking entre técnicos da mesma empresa.
+
+    Retorna closed_today, success_rate, avg_minutes, rank, total_techs, badge,
+    streak (dias consecutivos com >=1 fechada). Endpoint público — usa cid como
+    chave (mesmo padrão do resto do app do colaborador).
+    """
+    col = await db.collaborators.find_one({"id": cid}, {"_id": 0, "company_id": 1})
+    if not col:
+        raise HTTPException(404, "Colaborador não encontrado")
+    company_id = col.get("company_id") or DEMO_COMPANY_ID
+
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_start_iso = day_start.isoformat()
+    next_day_iso = (day_start + timedelta(days=1)).isoformat()
+
+    # Notas do técnico no dia
+    my_closed = await db.tickets.find(
+        {
+            "assigned_collaborator_id": cid,
+            "status": "finalizada",
+            "closed_at": {"$gte": day_start_iso, "$lt": next_day_iso},
+        },
+        {"_id": 0, "opened_at": 1, "closed_at": 1, "outcome": 1},
+    ).to_list(length=200)
+    closed_today = len(my_closed)
+
+    # Tempo médio por nota (min)
+    durations = []
+    for t in my_closed:
+        try:
+            o = datetime.fromisoformat(t.get("opened_at") or "")
+            c = datetime.fromisoformat(t.get("closed_at") or "")
+            mins = max(1, int((c - o).total_seconds() / 60))
+            if mins < 60 * 24:  # ignora outliers >24h
+                durations.append(mins)
+        except Exception:
+            continue
+    avg_minutes = round(sum(durations) / len(durations)) if durations else 0
+
+    # % sucesso
+    successes = sum(1 for t in my_closed if t.get("outcome") == "sucesso")
+    success_rate = round((successes / closed_today) * 100) if closed_today else 0
+
+    # Ranking — conta por colaborador
+    pipeline = [
+        {"$match": {
+            "company_id": company_id,
+            "status": "finalizada",
+            "closed_at": {"$gte": day_start_iso, "$lt": next_day_iso},
+        }},
+        {"$group": {"_id": "$assigned_collaborator_id", "n": {"$sum": 1}}},
+        {"$sort": {"n": -1}},
+    ]
+    leaderboard = await db.tickets.aggregate(pipeline).to_list(length=100)
+    total_techs = len(leaderboard)
+    rank = next(
+        (i + 1 for i, r in enumerate(leaderboard) if r["_id"] == cid),
+        None,
+    )
+
+    # Streak — quantos dias consecutivos com >=1 nota fechada (até 30)
+    streak = 0
+    for back in range(0, 30):
+        d_start = (day_start - timedelta(days=back)).isoformat()
+        d_end = (day_start - timedelta(days=back - 1)).isoformat()
+        has = await db.tickets.find_one(
+            {
+                "assigned_collaborator_id": cid,
+                "status": "finalizada",
+                "closed_at": {"$gte": d_start, "$lt": d_end},
+            },
+            {"_id": 0, "id": 1},
+        )
+        if has:
+            streak += 1
+        else:
+            if back == 0:
+                # se hoje sem nota, streak começa zerado
+                break
+            break
+
+    # Badge motivacional
+    if closed_today == 0:
+        badge = "Bora começar o dia!"
+    elif rank == 1 and total_techs > 1:
+        badge = "🏆 Líder do dia"
+    elif success_rate == 100 and closed_today >= 3:
+        badge = "💯 100% sucesso"
+    elif streak >= 5:
+        badge = f"🔥 {streak} dias seguidos"
+    elif closed_today >= 5:
+        badge = "⚡ Em ritmo forte"
+    else:
+        badge = "Bom trabalho!"
+
+    return {
+        "closed_today": closed_today,
+        "success_rate": success_rate,
+        "avg_minutes": avg_minutes,
+        "rank": rank,
+        "total_techs": total_techs,
+        "streak": streak,
+        "badge": badge,
+    }
+
+
+
+
 
 
 # -------------------------------------------------------------------------
