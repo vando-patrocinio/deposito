@@ -1078,6 +1078,25 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                      "tudo, use só o que for relevante para a dúvida atual.")
     else:
         # CLIENTE NÃO IDENTIFICADO POR TELEFONE — aciona fluxo CPF
+        # Detecta LID anônimo (telefone começa com 169/197/15+ dígitos sem 55)
+        is_lid_phone = (
+            len(phone) >= 14 and not phone.startswith("55")
+            and (phone.startswith("169") or phone.startswith("197")
+                  or phone.startswith("198"))
+        )
+        if is_lid_phone:
+            extra.append(
+                "=== CLIENTE COM WHATSAPP LID ANÔNIMO ===\n"
+                "Este cliente está usando o WhatsApp com privacidade ativada "
+                "(LID anônimo). NÃO TEMOS o telefone real dele. NÃO repita "
+                "a mesma pergunta várias vezes — se o cliente já mandou "
+                "uma mensagem, peça apenas: 1) NOME COMPLETO, 2) CPF do "
+                "titular. Com isso o gestor consegue vincular manualmente. "
+                "Se ele estiver com problema técnico urgente, transfira "
+                "para atendente humano falando: 'Vou chamar nosso atendente "
+                "para te ajudar pessoalmente, um momento'. Seja gentil e "
+                "objetivo — não fique pedindo bairro/CEP repetidamente."
+            )
         try:
             from services.cpf_identifier import handle_unidentified_inbound
             ident_sub, instruction = await handle_unidentified_inbound(
