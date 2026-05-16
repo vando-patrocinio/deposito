@@ -133,7 +133,7 @@ const NAV_GROUPS = [
       { id: "ai-corrections", icon: Wand2, label: "Correções IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "central-ia", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "rede-ia", icon: Brain, label: "Rede IA", roles: ["gestor", "auditor", "administrador", "gestor_rede"] },
-      { id: "atendimento", icon: MessageCircle, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador"] },
+      { id: "atendimento", icon: MessageCircle, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador", "colaborador"], requires: "can_attend_whatsapp" },
       { id: "alvaro-ia", icon: Brain, label: "Alvaro IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "mass-messaging", icon: Megaphone, label: "Disparo em Massa", roles: ["gestor", "auditor", "administrador"] },
     ],
@@ -577,6 +577,11 @@ function AppShell({ view, setView, children }) {
 
   const tabs = useMemo(() => ALL_TABS.filter((t) => {
     if (t.superAdminOnly && !isSuperAdmin) return false;
+    // Feature flags por usuário (ex.: can_attend_whatsapp).
+    // Admin/auditor bypassam essa restrição.
+    if (t.requires && user && user.role !== "administrador" && user.role !== "auditor") {
+      if (!user[t.requires]) return false;
+    }
     if (tabPerms && user && tabPerms[user.role]) {
       if (user.role === "administrador") return true;
       return tabPerms[user.role].includes(t.id);

@@ -75,6 +75,7 @@ class UserIn(BaseModel):
     name: str
     role: str = "colaborador"
     collaborator_id: Optional[str] = None
+    can_attend_whatsapp: bool = False
 
 
 class LoginIn(BaseModel):
@@ -93,14 +94,21 @@ class ChangeMyPasswordIn(BaseModel):
 
 
 def _user_public(u: dict) -> dict:
+    role = u.get("role")
+    # Admins, gestores e auditores SEMPRE podem atender WhatsApp.
+    # Para outros papéis (colaborador), respeita o flag explícito.
+    can_wa = u.get("can_attend_whatsapp")
+    if can_wa is None:
+        can_wa = role in ("administrador", "gestor", "auditor")
     return {
         "id": u["id"],
         "email": u["email"],
         "name": u.get("name", ""),
-        "role": u["role"],
+        "role": role,
         "collaborator_id": u.get("collaborator_id"),
         "active": u.get("active", True),
         "created_at": u.get("created_at"),
+        "can_attend_whatsapp": bool(can_wa),
     }
 
 
@@ -172,6 +180,12 @@ def make_dependencies(get_db_callable):
         user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
         if not user or not user.get("active", True):
             raise HTTPException(401, "Usuário inativo ou inexistente")
+        # Default can_attend_whatsapp: admin/gestor/auditor true automaticamente;
+        # outros papéis precisam do flag explícito no cadastro do usuário.
+        if user.get("can_attend_whatsapp") is None:
+            user["can_attend_whatsapp"] = user.get("role") in (
+                "administrador", "gestor", "auditor",
+            )
         # NOTA: removida a verificação single-session-per-user (14/05/2026).
         # Antes: se `payload.sid != users.active_session_id`, retornava 401.
         # Isso derrubava o usuário toda vez que ele abria 2 abas, logava em

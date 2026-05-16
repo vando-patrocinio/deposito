@@ -22,7 +22,7 @@ function initials(name) {
   return (p[0][0] + p[p.length - 1][0]).toUpperCase();
 }
 
-const EMPTY = { email: "", password: "", name: "", role: "gestor" };
+const EMPTY = { email: "", password: "", name: "", role: "gestor", can_attend_whatsapp: false };
 
 export default function UsersPanel() {
   const { user: currentUser, impersonate } = useAuth();
@@ -73,7 +73,10 @@ export default function UsersPanel() {
 
   function startNew() { setForm(EMPTY); setEditing("new"); setError(""); }
   function startEdit(u) {
-    setForm({ email: u.email, password: "", name: u.name, role: u.role });
+    setForm({
+      email: u.email, password: "", name: u.name, role: u.role,
+      can_attend_whatsapp: u.can_attend_whatsapp ?? false,
+    });
     setEditing(u.id); setError("");
   }
 
@@ -86,12 +89,14 @@ export default function UsersPanel() {
           password: form.password,
           name: form.name,
           role: form.role,
+          can_attend_whatsapp: !!form.can_attend_whatsapp,
         });
       } else {
         const payload = {
           name: form.name,
           role: form.role,
           email: form.email.trim().toLowerCase(),
+          can_attend_whatsapp: !!form.can_attend_whatsapp,
         };
         if (form.password && form.password.length > 0) {
           if (form.password.length < 6) { setError("Nova senha deve ter no mínimo 6 caracteres."); return; }
@@ -318,6 +323,30 @@ export default function UsersPanel() {
             <select data-testid="u-role" style={inputStyle} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
               {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
+          </Field>
+          <Field label="Permissões adicionais">
+            <label style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "10px 12px", borderRadius: 10,
+              border: "1px solid #e2e8f0", background: "#f8fafc",
+              cursor: "pointer", userSelect: "none",
+            }}>
+              <input
+                type="checkbox"
+                data-testid="u-can-attend-whatsapp"
+                checked={!!form.can_attend_whatsapp}
+                onChange={(e) => setForm({ ...form, can_attend_whatsapp: e.target.checked })}
+                style={{ width: 18, height: 18, cursor: "pointer" }}
+              />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>
+                  💬 Pode abrir o Atendimento WhatsApp
+                </div>
+                <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                  Quando marcado, o menu <strong>"Atendimento IA"</strong> aparece na sidebar deste usuário e ele pode assumir conversas. Administrador, gestor e auditor já têm acesso por padrão.
+                </div>
+              </div>
+            </label>
           </Field>
           <p style={{ color: "#64748b", fontSize: 12, margin: "4px 0 12px" }}>
             ℹ️ Esta tela é apenas para usuários que <strong>acessam o sistema</strong> (gestores e auditores).

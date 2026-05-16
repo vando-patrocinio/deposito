@@ -531,6 +531,7 @@ export default function WhatsAppChatLayout() {
         onChange={loadConversations}
         wallpaperUrl={wallpaperUrl}
         onOpenAgentConfig={openConfig}
+        authUser={authUser}
       />
       </div>
     </div>
@@ -1062,7 +1063,7 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
 
 /* ============================================================= */
 function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
-                          wallpaperUrl, onOpenAgentConfig }) {
+                          wallpaperUrl, onOpenAgentConfig, authUser }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -1617,10 +1618,10 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
           {isAi ? (
             <IconBtn
               data-testid="wa-take-over-btn"
-              onClick={() => setShowAssign(true)}
-              disabled={busy}
+              onClick={() => authUser?.id && assignTo(authUser.id)}
+              disabled={busy || !authUser?.id}
               icon={<Hand size={14} strokeWidth={2} />}
-              tooltip="Assumir conversa (parar resposta automática da IA)"
+              tooltip="Assumir conversa (atribuir a mim)"
               variant="primary"
             />
           ) : (

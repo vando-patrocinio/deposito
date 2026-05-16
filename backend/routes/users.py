@@ -290,6 +290,7 @@ async def create_user(payload: UserIn, user: dict = Depends(require_role("audito
         "email": email, "name": payload.name, "role": payload.role,
         "password_hash": hash_password(payload.password),
         "collaborator_id": payload.collaborator_id, "active": True,
+        "can_attend_whatsapp": bool(payload.can_attend_whatsapp),
         "company_id": cid,
         "created_at": now_iso(), "updated_at": now_iso(),
     }
@@ -317,6 +318,8 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_role
         update["active"] = bool(payload["active"])
     if "collaborator_id" in payload:
         update["collaborator_id"] = payload["collaborator_id"] or None
+    if "can_attend_whatsapp" in payload:
+        update["can_attend_whatsapp"] = bool(payload["can_attend_whatsapp"])
     if "email" in payload and payload["email"]:
         new_email = str(payload["email"]).strip().lower()
         if "@" not in new_email or "." not in new_email:
