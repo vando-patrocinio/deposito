@@ -635,3 +635,8 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - **Frontend** novo componente `PerformanceCard` no topo da Lousa do colaborador (`/app/frontend/src/LousaMobile.js` L704): card colorido por desempenho (azul padrão · ouro pra líder · verde pra 100% · cinza zerado), 4 stats grandes (Fechadas · % sucesso · Tempo médio · Ranking), badge canto direito, pílula 🔥 streak quando ≥2 dias. Auto-refresh a cada 60s.
 - **Validado**: 4/4 pytest (`test_iter92_tech_performance.py`) — 404 desconhecido · shape correto · badge "100% sucesso" com 4 fechadas seed · badge "Bora começar" para técnico zerado. Screenshot Playwright: DIOGO renderiza "1 fechada · 100% sucesso · 4min · 1º de 1" em gradient azul.
 - testids: `tech-performance-card`, `tech-perf-badge`.
+
+✅ **Mural Público de Ranking (TV no escritório)** (16/05/2026 — iter93):
+- **Backend** `GET /api/lousa/public/leaderboard?company_id=co-demo&limit=10`: agrega notas finalizadas do dia agrupadas por técnico, ordenadas por volume desc, hidrata com nome + foto (`avatar_data_url` ou `google_picture`). Retorna `{rank, collaborator_id, name, photo_url, closed_today, success_rate, avg_minutes, badge}` por técnico.
+- **Frontend** novo componente fullscreen `LeaderboardMural.js`: rota pública `/mural` e `/leaderboard` (sem auth — para TV/mural). Layout: header **"RANKING DO DIA"** + relógio JetBrains Mono ao vivo, podium 1º/2º/3º com avatares e gradient colorido por posição (ouro/prata/bronze), lista 4º-10º em cards. Auto-refresh 30s. testids `leaderboard-mural`, `mural-podium-1/2/3`, `mural-row-{cid}`, `mural-clock`.
+- **Validado**: 4/4 pytest + screenshot Playwright (DIOGO HENRIQUE como 1º · Líder com foto real, 1 fechada, 100% sucesso, 5min/nota).

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
+import LeaderboardMural from "@/LeaderboardMural";
 import SubscribersPanel from "@/SubscribersPanel";
 import PlansPanel from "@/PlansPanel";
 import ManagerPanel from "@/ManagerPanel";
@@ -751,11 +752,21 @@ function AppContent() {
   }, [user]);
 
   if (loading || autoLoginState === "pending") {
+    // Mural público funciona sem auth — pula loader
+    if (typeof window !== "undefined") {
+      const p = window.location.pathname;
+      if (p === "/mural" || p === "/leaderboard") return <LeaderboardMural />;
+    }
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--text-secondary)" }} data-testid={autoLoginState === "pending" ? "auto-login-loading" : "auth-loading"}>
         {autoLoginState === "pending" ? "Entrando no modo demo…" : "Carregando…"}
       </div>
     );
+  }
+
+  // Mural público — TV no escritório (sem auth)
+  if (route.path === "/mural" || route.path === "/leaderboard") {
+    return <LeaderboardMural />;
   }
 
   if (mobile) {

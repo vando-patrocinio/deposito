@@ -2442,7 +2442,101 @@ async def get_tech_performance(cid: str):
     }
 
 
+# -------------------------------------------------------------------------
+# Mural público — ranking dos técnicos do dia (TV no escritório)
+# -------------------------------------------------------------------------
+@router.get("/lousa/public/leaderboard")
+async def get_leaderboard(company_id: Optional[str] = None,
+                            limit: int = 10):
+    """Top N técnicos do dia para mural público no escritório.
 
+    Sem autenticação — display em TV. Filtra colaboradores ativos e que
+    bateram ponto OU finalizaram pelo menos 1 nota hoje.
+    """
+    from datetime import datetime, timezone, timedelta
+    cid_filter = company_id or DEMO_COMPANY_ID
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_start_iso = day_start.isoformat()
+    next_day_iso = (day_start + timedelta(days=1)).isoformat()
+
+    # Agrega notas finalizadas hoje
+    pipeline = [
+        {"$match": {
+            "company_id": cid_filter,
+            "status": "finalizada",
+            "closed_at": {"$gte": day_start_iso, "$lt": next_day_iso},
+        }},
+        {"$group": {
+            "_id": "$assigned_collaborator_id",
+            "closed": {"$sum": 1},
+            "successes": {"$sum": {
+                "$cond": [{"$eq": ["$outcome", "sucesso"]}, 1, 0],
+            }},
+            "total_minutes": {"$sum": {"$ifNull": [
+                {"$divide": [
+                    {"$subtract": [
+                        {"$dateFromString": {"dateString": "$closed_at"}},
+                        {"$dateFromString": {"dateString": "$opened_at"}},
+                    ]},
+                    60000,
+                ]},
+                0,
+            ]}},
+        }},
+        {"$sort": {"closed": -1, "successes": -1}},
+        {"$limit": max(1, min(limit, 20))},
+    ]
+    rows = await db.tickets.aggregate(pipeline).to_list(length=20)
+
+    # Hidrata com nome + avatar
+    cids = [r["_id"] for r in rows if r["_id"]]
+    cmap = {}
+    if cids:
+        async for c in db.collaborators.find(
+            {"id": {"$in": cids}},
+            {"_id": 0, "id": 1, "name": 1, "avatar_data_url": 1,
+              "google_picture": 1, "role": 1},
+        ):
+            cmap[c["id"]] = c
+
+    leaderboard = []
+    for idx, r in enumerate(rows):
+        cid = r["_id"]
+        col = cmap.get(cid, {})
+        closed = r.get("closed", 0)
+        successes = r.get("successes", 0)
+        total_minutes = r.get("total_minutes", 0) or 0
+        avg_minutes = round(total_minutes / closed) if closed else 0
+        success_rate = round((successes / closed) * 100) if closed else 0
+        # badge inline
+        if idx == 0 and len(rows) > 1:
+            badge = "🏆 Líder"
+        elif success_rate == 100 and closed >= 3:
+            badge = "💯 Perfeito"
+        elif closed >= 5:
+            badge = "⚡ Forte"
+        else:
+            badge = ""
+
+        leaderboard.append({
+            "rank": idx + 1,
+            "collaborator_id": cid,
+            "name": col.get("name") or "—",
+            "photo_url": col.get("avatar_data_url") or col.get("google_picture"),
+            "role": col.get("role") or "técnico",
+            "closed_today": closed,
+            "success_rate": success_rate,
+            "avg_minutes": avg_minutes,
+            "badge": badge,
+        })
+
+    return {
+        "company_id": cid_filter,
+        "generated_at": now.isoformat(),
+        "total_techs": len(leaderboard),
+        "leaderboard": leaderboard,
+    }
 
 
 
