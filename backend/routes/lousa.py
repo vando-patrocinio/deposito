@@ -2668,6 +2668,121 @@ async def get_achievements(cid: str):
 
 
 # -------------------------------------------------------------------------
+# Smart Route — otimiza ordem das bolhas pelo trajeto via nearest neighbor
+# -------------------------------------------------------------------------
+class RouteOptimizeIn(BaseModel):
+    collaborator_id: str
+    current_lat: float
+    current_lng: float
+    apply: bool = False  # se True, persiste a nova ordem via reorder
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    import math
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
+         * math.sin(dlng / 2) ** 2)
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+@router.post("/lousa/public/optimize-route")
+async def optimize_route(payload: RouteOptimizeIn):
+    """Calcula ordem ótima das bolhas do dia via Nearest-Neighbor TSP greedy.
+
+    Considera apenas tickets pendentes/aguardando do dia com lat/lng válidos
+    E priority="normal" (urgentes/horario têm slot fixo e não podem ser
+    reordenados). Retorna a sequência otimizada + distância total estimada.
+    """
+    today = _today_br_iso()
+    cursor = db.tickets.find(
+        {
+            "assigned_collaborator_id": payload.collaborator_id,
+            "status": {"$in": ["pendente", "aguardando_atendimento"]},
+            "priority": "normal",
+        },
+        {"_id": 0, "id": 1, "client_snapshot": 1, "priority": 1,
+          "scheduled_time": 1, "opened_at": 1, "created_at": 1, "position": 1},
+    )
+    candidates = []
+    async for t in cursor:
+        if _ticket_day_iso(t) != today:
+            continue
+        snap = t.get("client_snapshot") or {}
+        lat = snap.get("latitude")
+        lng = snap.get("longitude")
+        if not (isinstance(lat, (int, float)) and isinstance(lng, (int, float))):
+            continue
+        candidates.append({
+            "id": t["id"], "lat": float(lat), "lng": float(lng),
+            "name": snap.get("name", ""),
+            "address": snap.get("address", ""),
+            "neighborhood": snap.get("neighborhood", ""),
+            "original_position": t.get("position", 0),
+        })
+
+    if len(candidates) < 2:
+        return {
+            "ok": False,
+            "reason": ("Nenhum chamado reordenável (precisa de pelo menos 2 "
+                        "bolhas normais com endereço válido)."),
+            "optimized": [], "total_km": 0.0,
+            "candidates_count": len(candidates),
+        }
+
+    # Nearest neighbor
+    cur_lat, cur_lng = payload.current_lat, payload.current_lng
+    remaining = candidates[:]
+    ordered = []
+    total = 0.0
+    while remaining:
+        nearest = min(
+            remaining,
+            key=lambda c: _haversine_km(cur_lat, cur_lng, c["lat"], c["lng"]),
+        )
+        d = _haversine_km(cur_lat, cur_lng, nearest["lat"], nearest["lng"])
+        total += d
+        nearest["distance_km"] = round(d, 2)
+        ordered.append(nearest)
+        cur_lat, cur_lng = nearest["lat"], nearest["lng"]
+        remaining.remove(nearest)
+
+    # Aplica se solicitado — usa _apply_reorder helper se existir, ou
+    # update_many de position
+    applied = False
+    if payload.apply:
+        # Posições começam após bolhas com prioridade fixa (urgente/horário).
+        # Encontra menor `position` entre as candidatas e usa como base.
+        base = min((c["original_position"] for c in candidates), default=0)
+        for i, c in enumerate(ordered):
+            await db.tickets.update_one(
+                {"id": c["id"]},
+                {"$set": {"position": base + i}},
+            )
+        applied = True
+
+    return {
+        "ok": True,
+        "optimized": [
+            {
+                "id": c["id"], "name": c["name"],
+                "address": c["address"],
+                "neighborhood": c["neighborhood"],
+                "distance_km": c["distance_km"],
+            } for c in ordered
+        ],
+        "total_km": round(total, 2),
+        "stops": len(ordered),
+        "applied": applied,
+        "estimated_minutes": round(total / 30 * 60 + len(ordered) * 25),
+    }
+
+
+
+
+# -------------------------------------------------------------------------
 # Mural público — ranking dos técnicos do dia (TV no escritório)
 # -------------------------------------------------------------------------
 @router.get("/lousa/public/leaderboard")

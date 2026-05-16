@@ -384,6 +384,8 @@ export default function LousaMobile({ collaboratorId, onBack }) {
 
       <PerformanceCard perf={perf} />
       <AchievementsCard collaboratorId={collaboratorId} compact />
+      <SmartRouteCard collaboratorId={collaboratorId} onApplied={refresh}
+                       enabled={data.tickets.some((t) => t.priority === "normal")} />
 
       {reorderMode && (
         <div data-testid="lousa-reorder-bar" style={{
@@ -748,6 +750,122 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
     </button>
   );
 }
+
+
+function SmartRouteCard({ collaboratorId, enabled, onApplied }) {
+  const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [error, setError] = useState("");
+
+  async function fetchOptimized(apply) {
+    if (!enabled || !collaboratorId) return;
+    setError("");
+    setBusy(true);
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("Geolocalização não disponível neste dispositivo."));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (p) => resolve(p),
+          (e) => reject(new Error(e.message || "Permissão negada")),
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+        );
+      });
+      const { latitude, longitude } = pos.coords;
+      const r = await api._client.post(
+        "/lousa/public/optimize-route",
+        {
+          collaborator_id: collaboratorId,
+          current_lat: latitude, current_lng: longitude,
+          apply: !!apply,
+        },
+      ).then((x) => x.data);
+      setPreview(r);
+      if (apply && r.applied && onApplied) onApplied();
+    } catch (e) {
+      setError(e?.response?.data?.detail || e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div data-testid="smart-route-card" style={{
+      marginTop: 12, padding: "10px 12px", borderRadius: 12,
+      background: preview?.ok
+        ? "#ecfeff"
+        : (enabled ? "#fff7ed" : "#f1f5f9"),
+      border: "1px dashed " + (preview?.ok ? "#06b6d4"
+                                : (enabled ? "#fb923c" : "#cbd5e1")),
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 22 }}>🗺️</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 800,
+                          color: preview?.ok ? "#0e7490" : "#9a3412" }}>
+            {preview?.ok
+              ? `Rota otimizada: ${preview.total_km}km · ${preview.stops} paradas`
+              : "Otimizar rota com IA"}
+          </div>
+          <div style={{ fontSize: 10, color: "#475569", marginTop: 2 }}>
+            {preview?.ok
+              ? `≈ ${preview.estimated_minutes}min total · ${preview.applied ? "✓ aplicada" : "pré-visualização"}`
+              : (preview && preview.ok === false
+                  ? preview.reason
+                  : (enabled
+                      ? "Calcula menor trajeto entre suas bolhas normais"
+                      : "Sem bolhas reordenáveis no momento"))}
+          </div>
+        </div>
+        {!preview?.ok && (
+          <Button onClick={() => fetchOptimized(false)}
+                   disabled={busy || !enabled}
+                   data-testid="smart-route-preview-btn"
+                   variant="primary"
+                   style={{ padding: "6px 10px", fontSize: 12,
+                              flexShrink: 0 }}>
+            {busy ? "..." : "Calcular"}
+          </Button>
+        )}
+        {preview?.ok && !preview.applied && (
+          <Button onClick={() => fetchOptimized(true)}
+                   disabled={busy}
+                   data-testid="smart-route-apply-btn"
+                   style={{ padding: "6px 10px", fontSize: 12,
+                              flexShrink: 0,
+                              background: "#06b6d4", color: "white" }}>
+            {busy ? "..." : "Aplicar"}
+          </Button>
+        )}
+      </div>
+      {error && (
+        <div data-testid="smart-route-error"
+              style={{ marginTop: 6, fontSize: 11, color: "#b91c1c" }}>
+          {error}
+        </div>
+      )}
+      {preview?.ok && preview.optimized?.length > 0 && (
+        <ol data-testid="smart-route-list" style={{
+          marginTop: 8, marginBottom: 0, paddingLeft: 22,
+          fontSize: 11, color: "#0f172a", lineHeight: 1.5,
+        }}>
+          {preview.optimized.map((stop, i) => (
+            <li key={stop.id}>
+              <strong>{stop.name || "Sem nome"}</strong>{" "}
+              <span style={{ color: "#64748b" }}>
+                · {stop.neighborhood || "—"} · {stop.distance_km}km
+                {i === 0 ? " (próxima)" : ""}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 
 function PerformanceCard({ perf }) {
   if (!perf) return null;
