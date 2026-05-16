@@ -39,7 +39,7 @@ router = APIRouter(prefix="/api/mass-messaging", tags=["mass-messaging"])
 # ---------------------------------------------------------------------------
 class CampaignCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
-    channel: str = Field(..., pattern="^(meta_cloud|twilio)$")
+    channel: str = Field(..., pattern="^(meta_cloud|twilio|baileys)$")
     mode: str = Field(..., pattern="^(template|free)$")
     text: Optional[str] = None  # Para mode=free; suporta {{1}}, {{2}}, etc.
     template_name: Optional[str] = None  # Para mode=template
@@ -336,11 +336,67 @@ async def _send_one(camp: Dict[str, Any], rec: Dict[str, Any]) -> Dict[str, Any]
             if res.get("ok"):
                 return {"ok": True, "message_id": res.get("message_sid")}
             return {"ok": False, "error": res.get("error") or "twilio_error"}
+        if channel == "baileys":
+            return await _send_baileys(camp, rec, text)
         # meta_cloud
         return await _send_meta_cloud(camp, rec, text)
     except Exception as e:
         logger.exception("[mass] send falhou")
         return {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
+
+
+async def _send_baileys(camp: Dict[str, Any], rec: Dict[str, Any],
+                          text: str) -> Dict[str, Any]:
+    """Envia via sidecar Baileys (WhatsApp Web) — POST sidecar:/send.
+
+    Funciona apenas em modo `free` (texto livre). Templates HSM não se aplicam
+    ao Baileys. Após envio com sucesso, persiste no `aihub_wa_messages` para
+    a mensagem aparecer no histórico da Isabella (mesma collection).
+    """
+    import httpx
+    import uuid as _uuid
+    from routes.whatsapp_baileys import SIDECAR_BASE  # reuse base URL
+    cid = camp["company_id"]
+    phone = rec["phone"]
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as cli:
+            r = await cli.post(
+                f"{SIDECAR_BASE}/send",
+                json={"phone": phone, "text": text[:4096]},
+            )
+            try:
+                payload = r.json()
+            except Exception:
+                payload = {"raw": r.text}
+            if r.status_code >= 400 or not payload.get("ok"):
+                return {"ok": False,
+                        "error": (payload.get("error")
+                                  or f"HTTP {r.status_code}")[:300]}
+            msg_id = payload.get("message_id")
+    except httpx.HTTPError as e:
+        return {"ok": False, "error": f"baileys_sidecar: {e}"[:300]}
+
+    # Persiste no histórico (mesma collection usada pelo chat manual)
+    try:
+        await db.aihub_wa_messages.insert_one({
+            "id": f"wam-{_uuid.uuid4().hex[:10]}",
+            "company_id": cid,
+            "direction": "outbound",
+            "phone": phone,
+            "text": text,
+            "channel": "baileys",
+            "message_id": msg_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "actor_user": "disparo_ia",
+            "auto_reply": False,
+            "delivery_status": "sent",
+            "campaign_id": camp.get("id"),
+            "campaign_origin": camp.get("origin"),
+        })
+    except Exception as e:
+        logger.info("[mass] baileys hist persist skip: %s", e)
+
+    return {"ok": True, "message_id": msg_id}
 
 
 async def _send_meta_cloud(camp: Dict[str, Any], rec: Dict[str, Any],

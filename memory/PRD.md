@@ -415,6 +415,23 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Pytest** `/app/backend/tests/test_iter74_budget.py`: 6/6 PASS — cria draft, CSV parser, percentuais recalculam, override manual recalcula (base = 2×100 + 100×100 = 10200), KPIs, PDF retorna bytes `%PDF-...`. 1 skip (colaborador 403, sem conta de teste no ambiente).
 - **Validado E2E** (Playwright 1920×900): menu "Comercial > Orçamento" aparece; painel renderiza KPIs (1 orçamento · R$ 1.018,18 · 30% · 100% conversão); orçamento "Obra CTO-Centro · Finalizado" aparece com 5 itens; drawer abre com tabela completa mostrando preços IA (Mercado Livre·Furukawa·FiberHome·Intelbras), inputs override, e footer com totais (Base R$ 656,25 → Total Final R$ 1.018,18 com sliders %Ganho 30 · %Mão-de-obra 15 · %Imposto 7).
 
+## Iter83 (16/05/2026) — Canal Baileys no Disparo IA + Scheduler diário + Badge de pendentes
+**Features entregues:**
+
+1) **Canal Baileys (WhatsApp Web) como opção de disparo**:
+   - `routes/mass_messaging.py`: regex aceita `baileys` em `CampaignCreate.channel`. Novo helper `_send_baileys(camp, rec, text)` que faz POST para o sidecar (`http://127.0.0.1:3002/send`) e persiste a outbound em `aihub_wa_messages` (com `channel=baileys`, `actor_user=disparo_ia`, `campaign_id`, `campaign_origin`).
+   - `routes/disparo_ia.py`: `ApproveIn.channel` regex aceita `baileys`.
+   - `DisparoIaPanel.js`: select `disparo-channel-select` agora oferece 3 opções (Baileys = default, Meta Cloud, Twilio).
+
+2) **Scheduler diário automático do Disparo IA**:
+   - `server.py`: novo APScheduler cron `disparo_ia_daily` às **06:30** (30min após o Alvaro fechar o relatório diário às 06:00). Roda `generate_campaign_suggestions(cid)` para cada company da base. Log `[disparo_ia] daily run company=… gerou N sugestões`.
+
+3) **Badge de sugestões pendentes**:
+   - Novo endpoint `GET /api/disparo-ia/pending-count` → `{pending, latest_run_id, latest_created_at}`.
+   - Aba "Disparo IA" em `MassMessagingPanel.js` exibe badge roxo `disparo-pending-badge` com o número de pendentes (poll a cada 30s).
+
+**Testes:** `tests/test_iter83_baileys_scheduler.py` **6/6 pass** — Pydantic accept baileys (ApproveIn + CampaignCreate), `_send_baileys` POST sidecar + persiste histórico (com mock httpx), `_send_baileys` retorna erro em falha do sidecar, pending-count endpoint shape, scheduler job registrado em server.py. Frontend validado via screenshot: badge=5, modal completo com canal Baileys default.
+
 ## Iter82 (16/05/2026) — Disparo IA · briefing injetado na Isabella (ciclo das 3 IAs fechado)
 **Feature entregue:** quando um cliente que recebeu uma campanha Disparo IA responde no WhatsApp, a Isabella IA recebe automaticamente o briefing específico daquela campanha como contexto extra no system_prompt — fechando o ciclo Alvaro → Disparo → Isabella.
 

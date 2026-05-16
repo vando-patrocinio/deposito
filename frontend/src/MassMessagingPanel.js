@@ -15,6 +15,7 @@ export default function MassMessagingPanel() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [disparoPending, setDisparoPending] = useState(0);
 
   async function reload() {
     setLoading(true);
@@ -25,6 +26,20 @@ export default function MassMessagingPanel() {
     } finally { setLoading(false); }
   }
   useEffect(() => { reload(); }, []);
+  // Pending count para o badge da aba Disparo IA
+  useEffect(() => {
+    let cancel = false;
+    const load = async () => {
+      try {
+        const r = await api._client.get("/disparo-ia/pending-count")
+                              .then((x) => x.data);
+        if (!cancel) setDisparoPending(r.pending || 0);
+      } catch { /* silent */ }
+    };
+    load();
+    const t = setInterval(load, 30000);
+    return () => { cancel = true; clearInterval(t); };
+  }, []);
   useEffect(() => {
     if (!selected) return;
     const t = setInterval(async () => {
@@ -79,6 +94,17 @@ export default function MassMessagingPanel() {
                        transition: "color 150ms",
                      }}>
               <Icon size={14} /> {t.label}
+              {t.id === "disparo_ia" && disparoPending > 0 && (
+                <span data-testid="disparo-pending-badge"
+                       style={{
+                         marginLeft: 4, padding: "1px 7px", borderRadius: 999,
+                         background: "#7c3aed", color: "white",
+                         fontSize: 10, fontWeight: 800, minWidth: 18,
+                         textAlign: "center", lineHeight: 1.4,
+                       }}>
+                  {disparoPending}
+                </span>
+              )}
             </button>
           );
         })}

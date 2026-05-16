@@ -276,7 +276,7 @@ function SuggestionDetailModal({ suggestion, onClose, onChange }) {
   const [message, setMessage] = useState(suggestion.message_template || "");
   const [briefing, setBriefing] = useState(suggestion.isabella_briefing || "");
   const [notes, setNotes] = useState("");
-  const [channel, setChannel] = useState("meta_cloud");
+  const [channel, setChannel] = useState("baileys");
   const [throttle, setThrottle] = useState(60);
   const [busy, setBusy] = useState(false);
   const isPending = suggestion.status === "pending";
@@ -461,7 +461,8 @@ function SuggestionDetailModal({ suggestion, onClose, onChange }) {
                            data-testid="disparo-channel-select"
                            style={{ padding: 8, borderRadius: 6,
                                      border: "1px solid #cbd5e1", fontSize: 13 }}>
-                    <option value="meta_cloud">Meta Cloud API</option>
+                    <option value="baileys">Baileys (WhatsApp Web · número próprio)</option>
+                    <option value="meta_cloud">Meta Cloud API (oficial)</option>
                     <option value="twilio">Twilio</option>
                   </select>
                 </label>

@@ -361,6 +361,29 @@ async def _startup() -> None:
     scheduler.add_job(_alvaro_daily_all_companies,
                       CronTrigger(hour=6, minute=0),
                       id="alvaro_ia_daily", replace_existing=True)
+    # Cron: DISPARO IA daily — 06:30 (30min após o Alvaro fechar o relatório)
+    # Gera sugestões de campanhas automaticamente para cada company.
+    async def _disparo_daily_all_companies():
+        from services.disparo_ai import generate_campaign_suggestions
+        async for cdoc in db.companies.find({}, {"_id": 0, "id": 1}):
+            cid = cdoc.get("id")
+            if not cid:
+                continue
+            try:
+                result = await generate_campaign_suggestions(
+                    cid, max_suggestions=6,
+                )
+                logger.info(
+                    "[disparo_ia] daily run company=%s gerou %d sugestões",
+                    cid, result.get("suggestions_created", 0),
+                )
+            except Exception as e:
+                logger.warning(
+                    "[disparo_ia] daily run company=%s falhou: %s", cid, e,
+                )
+    scheduler.add_job(_disparo_daily_all_companies,
+                      CronTrigger(hour=6, minute=30),
+                      id="disparo_ia_daily", replace_existing=True)
     asyncio.create_task(routes_plans.adjustment_scheduler_worker())
     from services.drive_backup import daily_backup_worker as drive_daily_worker
     asyncio.create_task(drive_daily_worker())

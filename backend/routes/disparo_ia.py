@@ -59,7 +59,8 @@ class GenerateIn(BaseModel):
 
 
 class ApproveIn(BaseModel):
-    channel: str = Field(default="meta_cloud", pattern="^(meta_cloud|twilio)$")
+    channel: str = Field(default="meta_cloud",
+                            pattern="^(meta_cloud|twilio|baileys)$")
     schedule_at: Optional[str] = None
     throttle_per_min: int = Field(default=60, ge=1, le=600)
     edited_message: Optional[str] = None
@@ -73,6 +74,27 @@ class ApproveIn(BaseModel):
 @router.get("/types")
 async def list_types(user: dict = Depends(require_role("administrador", "gestor"))):
     return {"items": CAMPAIGN_TYPES}
+
+
+@router.get("/pending-count")
+async def pending_count(
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    """Retorna o número de sugestões pendentes — útil pro badge no menu."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    pending = await db.disparo_suggestions.count_documents(
+        {"company_id": cid, "status": "pending"},
+    )
+    # Última geração (run_id mais recente)
+    latest = await db.disparo_suggestions.find_one(
+        {"company_id": cid}, {"_id": 0, "created_at": 1, "run_id": 1},
+        sort=[("created_at", -1)],
+    )
+    return {
+        "pending": pending,
+        "latest_run_id": (latest or {}).get("run_id"),
+        "latest_created_at": (latest or {}).get("created_at"),
+    }
 
 
 # ---------------------------------------------------------------------------
