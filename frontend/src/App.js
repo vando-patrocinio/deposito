@@ -10,6 +10,7 @@ import {
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
 import LeaderboardMural from "@/LeaderboardMural";
+import TvHub from "@/TvHub";
 import SubscribersPanel from "@/SubscribersPanel";
 import PlansPanel from "@/PlansPanel";
 import ManagerPanel from "@/ManagerPanel";
@@ -756,6 +757,7 @@ function AppContent() {
     if (typeof window !== "undefined") {
       const p = window.location.pathname;
       if (p === "/mural" || p === "/leaderboard") return <LeaderboardMural />;
+      if (p === "/tv" || p === "/quadro" || p.startsWith("/tv/")) return <TvHub />;
     }
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--text-secondary)" }} data-testid={autoLoginState === "pending" ? "auto-login-loading" : "auth-loading"}>
@@ -767,6 +769,11 @@ function AppContent() {
   // Mural público — TV no escritório (sem auth)
   if (route.path === "/mural" || route.path === "/leaderboard") {
     return <LeaderboardMural />;
+  }
+  // TV Hub — Quadro Kanban + KPIs Isabella + Financeiro + Mural (público, sem auth)
+  if (route.path === "/tv" || route.path === "/quadro"
+       || (route.path || "").startsWith("/tv/")) {
+    return <TvHub />;
   }
 
   if (mobile) {

@@ -97,6 +97,7 @@ from routes import (
     disparo_ia as routes_disparo_ia,
     gestao_ia as routes_gestao_ia,
     isabella_kpis as routes_isabella_kpis,
+    tv_dashboards as routes_tv_dashboards,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -464,6 +465,7 @@ app.include_router(routes_mass_messaging.router)
 app.include_router(routes_disparo_ia.router)
 app.include_router(routes_gestao_ia.router)
 app.include_router(routes_isabella_kpis.router)
+app.include_router(routes_tv_dashboards.router)
 
 
 # ============================================================
