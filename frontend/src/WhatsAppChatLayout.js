@@ -1411,8 +1411,18 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       const tb = b._ts || "";
       return ta < tb ? -1 : ta > tb ? 1 : 0;
     });
+    // Identifica quem iniciou o chat (primeira mensagem real) pra renderizar
+    // o badge "Chat iniciado por: CLIENTE (data - hora)" no topo da conversa.
+    const firstMsg = items.find((it) => it._kind === "msg");
     // Insere separadores de dia
     const out = [];
+    if (firstMsg) {
+      out.push({
+        _kind: "chat_start",
+        _ts: firstMsg._ts,
+        started_by: firstMsg.direction === "inbound" ? "CLIENTE" : "ATENDIMENTO",
+      });
+    }
     let lastDay = "";
     for (const it of items) {
       const day = (it._ts || "").substring(0, 10);  // YYYY-MM-DD
@@ -1761,6 +1771,10 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
            }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {timeline.map((it, idx) => {
+            if (it._kind === "chat_start") {
+              return <ChatStartBadge key="chat-start"
+                                       started_by={it.started_by} ts={it._ts} />;
+            }
             if (it._kind === "daydiv") {
               return <DayDivider key={`d-${it.day}`} day={it.day} />;
             }
@@ -2061,6 +2075,47 @@ function IconBtn({ icon, tooltip, onClick, disabled, variant = "default",
     </div>
   );
 }
+
+/* ChatStartBadge — pílula no TOPO do chat mostrando quem iniciou a conversa
+   e quando. Aparece uma única vez (1ª mensagem real). */
+function ChatStartBadge({ started_by, ts }) {
+  if (!ts) return null;
+  const dt = new Date(ts);
+  if (isNaN(dt.getTime())) return null;
+  const dataFmt = dt.toLocaleDateString("pt-BR", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+  });
+  const horaFmt = dt.toLocaleTimeString("pt-BR", {
+    hour: "2-digit", minute: "2-digit",
+  });
+  return (
+    <div data-testid="wa-chat-start-badge"
+         style={{
+           display: "flex", justifyContent: "center",
+           margin: "10px 0 14px",
+         }}>
+      <div style={{
+        padding: "8px 18px", borderRadius: 18,
+        background: "rgba(255,255,255,0.92)",
+        backdropFilter: "blur(6px)",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+        fontSize: 12, fontWeight: 700, color: "#475569",
+        textAlign: "center", lineHeight: 1.45,
+        border: "1px solid rgba(15,23,42,0.06)",
+      }}>
+        <div style={{ letterSpacing: 0.5, textTransform: "uppercase",
+                       fontSize: 11, color: "#334155" }}>
+          Chat iniciado por: <span style={{ color: "#16a34a" }}>{started_by}</span>
+        </div>
+        <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600,
+                       marginTop: 2 }}>
+          ({dataFmt} – {horaFmt})
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 /* DayDivider — separador "Hoje", "Ontem" ou data formatada exibido entre
  * mensagens de dias diferentes, igual WhatsApp/Telegram. */
