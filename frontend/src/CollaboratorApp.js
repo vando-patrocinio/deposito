@@ -27,6 +27,109 @@ function formatGap(min) {
   return formatDur(min);
 }
 
+/* =============================================================
+   usePullToRefresh — gesto nativo do app: arrasta a tela pra
+   baixo no topo → dispara refresh, sem sair da tela.
+   - Bloqueia o pull-to-refresh nativo do browser (overscroll-behavior)
+   - Mostra spinner que cresce com o arraste
+   - Threshold de 70px aciona o refresh
+============================================================= */
+function usePullToRefresh(onRefresh, { enabled = true, threshold = 70 } = {}) {
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const stateRef = React.useRef({ startY: 0, active: false });
+
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined") return undefined;
+
+    const onTouchStart = (e) => {
+      // Só inicia se a página está no TOPO (scrollTop = 0)
+      const sy = window.scrollY || document.documentElement.scrollTop || 0;
+      if (sy > 0) { stateRef.current.active = false; return; }
+      stateRef.current.startY = e.touches[0].clientY;
+      stateRef.current.active = true;
+    };
+
+    const onTouchMove = (e) => {
+      if (!stateRef.current.active || isRefreshing) return;
+      const dy = e.touches[0].clientY - stateRef.current.startY;
+      if (dy > 0) {
+        // arrastando pra baixo
+        const damped = Math.min(dy * 0.5, threshold * 1.5);
+        setPullDistance(damped);
+        // só previne o default se o gesto está realmente pra baixo + no topo
+        if (e.cancelable && dy > 5) e.preventDefault();
+      } else {
+        setPullDistance(0);
+      }
+    };
+
+    const onTouchEnd = async () => {
+      if (!stateRef.current.active) return;
+      stateRef.current.active = false;
+      const dist = pullDistance;
+      setPullDistance(0);
+      if (dist >= threshold && !isRefreshing) {
+        setIsRefreshing(true);
+        try { await onRefresh(); }
+        finally { setIsRefreshing(false); }
+      }
+    };
+
+    // passive:false só no move pra poder preventDefault
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+    window.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [enabled, threshold, isRefreshing, pullDistance, onRefresh]);
+
+  return { pullDistance, isRefreshing, threshold };
+}
+
+function PullIndicator({ pullDistance, isRefreshing, threshold }) {
+  const visible = pullDistance > 0 || isRefreshing;
+  if (!visible) return null;
+  const progress = Math.min(pullDistance / threshold, 1);
+  const rotation = isRefreshing ? null : progress * 360;
+  return (
+    <div data-testid="pull-refresh-indicator"
+         style={{
+           position: "fixed", top: 0, left: 0, right: 0, zIndex: 999,
+           pointerEvents: "none",
+           display: "flex", justifyContent: "center",
+           transform: `translateY(${Math.min(pullDistance - 30, threshold)}px)`,
+           transition: isRefreshing ? "transform 200ms" : "none",
+         }}>
+      <div style={{
+        background: "white", borderRadius: "50%",
+        width: 38, height: 38,
+        boxShadow: "0 4px 14px rgba(15,23,42,0.18)",
+        display: "grid", placeItems: "center",
+        border: "1px solid #e2e8f0",
+      }}>
+        <div style={{
+          width: 18, height: 18,
+          border: "2.5px solid #e2e8f0",
+          borderTopColor: progress >= 1 || isRefreshing ? "#0ea5e9" : "#94a3b8",
+          borderRadius: "50%",
+          animation: isRefreshing ? "ptr-spin 0.8s linear infinite" : "none",
+          transform: isRefreshing ? "none" : `rotate(${rotation}deg)`,
+          transition: isRefreshing ? "none" : "transform 60ms linear",
+        }} />
+      </div>
+      <style>{`
+        @keyframes ptr-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+      `}</style>
+    </div>
+  );
+}
+
 export default function CollaboratorApp({ mobile = false, forcedCollabId = null, onLogout = null }) {
   return <CollaboratorAppInner mobile={mobile} forcedCollabId={forcedCollabId} onLogout={onLogout} />;
 }
@@ -385,6 +488,18 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     } catch {}
   };
 
+  // Pull-to-refresh: gesto nativo no app mobile — arrastar pra baixo atualiza
+  // a tela sem sair da página. Só ativa quando está em modo celular E há collab.
+  const ptr = usePullToRefresh(doRefresh, { enabled: mobile && !!collabId });
+
+  // Bloqueia o pull-to-refresh nativo do browser (que recarrega a tab inteira)
+  useEffect(() => {
+    if (!mobile || typeof document === "undefined") return undefined;
+    const prev = document.body.style.overscrollBehaviorY;
+    document.body.style.overscrollBehaviorY = "contain";
+    return () => { document.body.style.overscrollBehaviorY = prev; };
+  }, [mobile]);
+
   const appCard = { background: "white", border: "1px solid #e5e7eb", borderRadius: 14, padding: 18, boxShadow: "0 1px 2px rgba(15,23,42,.04)", marginBottom: 12 };
   const softCard = { ...appCard, background: "#f8fafc", boxShadow: "none", border: "1px solid #eef2f7" };
   const sectionLabel = { fontSize: 10, fontWeight: 700, color: "#64748b", letterSpacing: 1, textTransform: "uppercase" };
@@ -484,6 +599,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
   return (
     <div style={mobile ? {} : { display: "grid", gridTemplateColumns: "430px 1fr", gap: 22, alignItems: "start" }}>
+      {mobile && <PullIndicator {...ptr} />}
       <Wrapper>
         {mobile && overrideMode && (
           <div data-testid="exit-mobile-bar" style={{

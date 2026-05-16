@@ -415,6 +415,17 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Pytest** `/app/backend/tests/test_iter74_budget.py`: 6/6 PASS — cria draft, CSV parser, percentuais recalculam, override manual recalcula (base = 2×100 + 100×100 = 10200), KPIs, PDF retorna bytes `%PDF-...`. 1 skip (colaborador 403, sem conta de teste no ambiente).
 - **Validado E2E** (Playwright 1920×900): menu "Comercial > Orçamento" aparece; painel renderiza KPIs (1 orçamento · R$ 1.018,18 · 30% · 100% conversão); orçamento "Obra CTO-Centro · Finalizado" aparece com 5 itens; drawer abre com tabela completa mostrando preços IA (Mercado Livre·Furukawa·FiberHome·Intelbras), inputs override, e footer com totais (Base R$ 656,25 → Total Final R$ 1.018,18 com sliders %Ganho 30 · %Mão-de-obra 15 · %Imposto 7).
 
+## Iter86 (16/05/2026) — App do colaborador: pull-to-refresh nativo
+**Feature:** Arrastar a tela pra baixo no topo atualiza os dados do app sem sair da página (UX padrão de PWA).
+
+**Implementação** (`/app/frontend/src/CollaboratorApp.js`):
+- Novo hook `usePullToRefresh(onRefresh, {enabled, threshold=70})` — detecta `touchstart/touchmove/touchend` no `window`, só ativa quando `scrollY === 0`, com damping de 50% no arraste e `preventDefault` no move (passive:false) pra não deixar o browser interceptar.
+- Novo componente `<PullIndicator>` — círculo branco com spinner rotativo (cinza enquanto puxa, azul quando passa do threshold e durante o refresh), `position:fixed` no topo, `pointer-events:none`, com keyframe `ptr-spin`.
+- `document.body.overscroll-behavior-y = "contain"` quando mobile=true — **bloqueia o pull-to-refresh nativo do browser** (causa do "sair da tela" / recarregar a tab inteira).
+- Wire-up: `ptr = usePullToRefresh(doRefresh, { enabled: mobile && !!collabId })` — só ativo no modo celular com técnico já carregado. Renderizado no topo de `<Wrapper>`.
+
+**Validado em produção** (viewport 430×900): `overscroll-behavior-y=contain` aplicado, indicador `pull-refresh-indicator` aparece no arraste, `doRefresh()` dispara ao soltar passando do threshold.
+
 ## Iter85 (16/05/2026) — App do colaborador: bypass admin sem link único
 **Bug fix:** Quando o admin/auditor abria o app do colaborador sem `?cid=` na URL, a tela "Acesso pelo link próprio" bloqueava completamente — obrigando o admin a copiar o link do técnico. O usuário pediu que essa tela ofereça uma forma do admin entrar sem precisar do link.
 
