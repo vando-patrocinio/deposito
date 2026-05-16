@@ -10,6 +10,7 @@ import BulkActionsBar from "./lousa/BulkActionsBar";
 import useEventStream from "@/useEventStream";
 import { isAlertsEnabled, setAlertsEnabled, maybeFireOverdueAlerts } from "./slaAlerts";
 import SentinelaLousaCard from "./SentinelaLousaCard";
+import ReleaseStuckBubbleModal from "./lousa/ReleaseStuckBubbleModal";
 
 const TYPE_LABELS = {
   reparo: "🔧 Reparo",
@@ -81,6 +82,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [reschedTicket, setReschedTicket] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showSentinela, setShowSentinela] = useState(false);
+  const [showReleaseStuck, setShowReleaseStuck] = useState(false);
   const [sentinelaCount, setSentinelaCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
@@ -436,6 +438,18 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           </Button>
           <Button
             variant="soft"
+            onClick={() => setShowReleaseStuck(true)}
+            data-testid="lousa-release-stuck-btn"
+            title="EMERGÊNCIA — libera bolha presa do técnico (ação auditada)"
+            style={{
+              background: "#fee2e2", color: "#991b1b",
+              border: "1.5px solid #dc2626", fontWeight: 800,
+            }}
+          >
+            🚨 Liberar bolha
+          </Button>
+          <Button
+            variant="soft"
             onClick={toggleAlerts}
             data-testid="lousa-sla-alerts-toggle"
             title={alertsOn ? "Alertas sonoros ativos — clique para desligar" : "Ativar alertas sonoros para serviços atrasados"}
@@ -575,6 +589,12 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         />
       )}
       {showHistory && <LousaHistoryModal onClose={() => setShowHistory(false)} />}
+      {showReleaseStuck && (
+        <ReleaseStuckBubbleModal
+          onClose={() => setShowReleaseStuck(false)}
+          onReleased={refresh}
+        />
+      )}
       {showSentinela && (
         <div data-testid="sentinela-drawer"
               onClick={() => setShowSentinela(false)}

@@ -1556,6 +1556,163 @@ async def admin_open_ticket(ticket_id: str, user: dict = Depends(require_role("g
 
 
 # -------------------------------------------------------------------------
+# ADMIN — Liberar bolha presa (botão vermelho de emergência no painel)
+# -------------------------------------------------------------------------
+class ReleaseStuckIn(BaseModel):
+    collaborator_id: str
+    reason: Optional[str] = None
+
+
+@router.get("/lousa/admin/stuck-tickets")
+async def list_stuck_tickets(
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    """Lista colaboradores que TÊM bolha em status 'aberta' AGORA — a UI
+    usa pra alimentar o select do modal 'Liberar bolha'.
+
+    Retorna 1 entrada por colaborador (com a bolha mais antiga aberta).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cur = db.tickets.find(
+        {"company_id": cid, "status": "aberta"},
+        {"_id": 0, "id": 1, "assigned_collaborator_id": 1,
+         "client_snapshot": 1, "opened_at": 1, "scheduled_time": 1,
+         "type": 1, "priority": 1},
+    ).sort("opened_at", 1)
+    items_by_collab: Dict[str, Dict[str, Any]] = {}
+    async for t in cur:
+        col_id = t.get("assigned_collaborator_id")
+        if not col_id:
+            continue
+        # mantém só a mais antiga (1ª iteração devido ao sort)
+        items_by_collab.setdefault(col_id, t)
+
+    if not items_by_collab:
+        return {"items": []}
+
+    coll_docs = await db.collaborators.find(
+        {"id": {"$in": list(items_by_collab.keys())}},
+        {"_id": 0, "id": 1, "name": 1, "phone": 1},
+    ).to_list(500)
+    coll_by_id = {c["id"]: c for c in coll_docs}
+
+    items: List[Dict[str, Any]] = []
+    for col_id, t in items_by_collab.items():
+        c = coll_by_id.get(col_id) or {}
+        opened_at = t.get("opened_at")
+        minutes_stuck = None
+        if opened_at:
+            try:
+                ot = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))
+                minutes_stuck = round(
+                    (datetime.now(timezone.utc) - ot).total_seconds() / 60.0, 1
+                )
+            except Exception:
+                pass
+        items.append({
+            "collaborator_id": col_id,
+            "collaborator_name": c.get("name") or col_id,
+            "ticket_id": t["id"],
+            "client_name": (t.get("client_snapshot") or {}).get("name") or "—",
+            "client_address": (t.get("client_snapshot") or {}).get("address") or "",
+            "opened_at": opened_at,
+            "minutes_stuck": minutes_stuck,
+            "type": t.get("type"),
+            "priority": t.get("priority"),
+        })
+    # Ordena: mais tempo presa primeiro
+    items.sort(key=lambda x: (x.get("minutes_stuck") or 0), reverse=True)
+    return {"items": items}
+
+
+@router.post("/lousa/admin/release-stuck")
+async def release_stuck_ticket(
+    payload: ReleaseStuckIn,
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    """Botão vermelho — libera UMA bolha presa do colaborador.
+
+    Mecânica:
+      • Acha a bolha mais antiga em status 'aberta' do colaborador escolhido
+      • Reseta status → 'pendente', limpa opened_at + whatsapp_status
+      • Loga ação 'liberada_admin' com quem clicou (auditoria)
+      • Cria notification 'bolha_liberada_admin' (severidade critical) pros
+        outros admins/gestores verem a ação
+      • Retorna a bolha liberada
+      • Se houver outras presas, é necessário CLICAR DE NOVO (1 por vez)
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    col_id = payload.collaborator_id
+
+    # 1) Acha a bolha mais antiga 'aberta' do colaborador
+    t = await db.tickets.find_one(
+        {"company_id": cid, "assigned_collaborator_id": col_id,
+         "status": "aberta"},
+        {"_id": 0},
+        sort=[("opened_at", 1)],
+    )
+    if not t:
+        raise HTTPException(
+            404, "Nenhuma bolha presa encontrada para este colaborador.",
+        )
+
+    # 2) Reset status pra pendente + limpa marcas de execução
+    await db.tickets.update_one(
+        {"id": t["id"]},
+        {
+            "$set": {"status": "pendente"},
+            "$unset": {
+                "opened_at": "", "whatsapp_status": "",
+                "whatsapp_last_message": "",
+            },
+        },
+    )
+
+    # 3) Auditoria — quem clicou
+    coll_doc = await db.collaborators.find_one(
+        {"id": col_id}, {"_id": 0, "name": 1},
+    )
+    col_name = (coll_doc or {}).get("name") or col_id
+    actor_name = user.get("name") or user.get("email") or user["id"]
+    client_name = (t.get("client_snapshot") or {}).get("name") or "—"
+
+    await _log_ticket_action(
+        ticket_id=t["id"], action="liberada_admin",
+        actor_id=user["id"], actor_name=actor_name,
+        actor_role=user.get("role", "administrador"),
+        details=(
+            f"Bolha liberada (presa) — técnico: {col_name} · "
+            f"cliente: {client_name}"
+            + (f" · motivo: {payload.reason}" if payload.reason else "")
+        ),
+        company_id=cid,
+    )
+
+    # 4) Notification crítica pros admins
+    await _create_notification(
+        type_="bolha_liberada_admin",
+        title="🚨 Bolha liberada manualmente",
+        message=(
+            f"{actor_name} liberou a bolha de {client_name} do técnico "
+            f"{col_name}. A bolha voltou para 'pendente'."
+            + (f" Motivo: {payload.reason}." if payload.reason else "")
+        ),
+        collaborator_id=col_id,
+        ticket_id=t["id"],
+        company_id=cid,
+        severity="critical",
+    )
+
+    freed = await db.tickets.find_one({"id": t["id"]}, {"_id": 0})
+    return {
+        "ok": True,
+        "freed_ticket": freed,
+        "collaborator_id": col_id,
+        "collaborator_name": col_name,
+    }
+
+
+# -------------------------------------------------------------------------
 # SERVER TIME (sincronização)
 # -------------------------------------------------------------------------
 @router.get("/server-time")

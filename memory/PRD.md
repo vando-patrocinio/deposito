@@ -415,6 +415,32 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Pytest** `/app/backend/tests/test_iter74_budget.py`: 6/6 PASS — cria draft, CSV parser, percentuais recalculam, override manual recalcula (base = 2×100 + 100×100 = 10200), KPIs, PDF retorna bytes `%PDF-...`. 1 skip (colaborador 403, sem conta de teste no ambiente).
 - **Validado E2E** (Playwright 1920×900): menu "Comercial > Orçamento" aparece; painel renderiza KPIs (1 orçamento · R$ 1.018,18 · 30% · 100% conversão); orçamento "Obra CTO-Centro · Finalizado" aparece com 5 itens; drawer abre com tabela completa mostrando preços IA (Mercado Livre·Furukawa·FiberHome·Intelbras), inputs override, e footer com totais (Base R$ 656,25 → Total Final R$ 1.018,18 com sliders %Ganho 30 · %Mão-de-obra 15 · %Imposto 7).
 
+## Iter84 (16/05/2026) — Botão vermelho "Liberar bolha presa" no Chamados
+**Feature entregue:** botão de emergência no painel Chamados (`LousaAdminPanel`) que permite a admins/gestores **liberarem manualmente uma bolha de serviço presa** quando o técnico não consegue finalizar (app travado, perdeu sinal, etc).
+
+**Backend** (`/app/backend/routes/lousa.py`):
+- `GET /api/lousa/admin/stuck-tickets` — lista colaboradores que TÊM bolha em status `aberta` agora. Retorna 1 entrada por colab (a mais antiga aberta), com `minutes_stuck` calculado em tempo real.
+- `POST /api/lousa/admin/release-stuck` — body `{collaborator_id, reason?}`:
+  - Encontra a bolha mais antiga `aberta` do colaborador (sort opened_at:1)
+  - 404 se não houver
+  - Reset → `status="pendente"`, `$unset opened_at, whatsapp_status, whatsapp_last_message`
+  - **Log de auditoria** `action="liberada_admin"` com `actor_id`, `actor_name`, role, detalhes (técnico + cliente + motivo)
+  - **Notification crítica** `type="bolha_liberada_admin"`, severity=`critical`, mensagem com quem fez e contra quem (pra outros admins verem no painel/SSE)
+  - Retorna `{ok, freed_ticket, collaborator_id, collaborator_name}`
+  - **1 bolha por chamada** — se houver outra presa do mesmo colab, é necessário repetir.
+
+**Frontend:**
+- `/app/frontend/src/lousa/ReleaseStuckBubbleModal.js` (NEW) — modal compacto:
+  - Bloco de aviso laranja: "ação registrada nos logs · notificação a todos os admins · libera apenas 1"
+  - Lista de bolhas presas (1 botão-card por colab) com badge de tempo presa (laranja <60min, vermelho ≥60min)
+  - Input "motivo" opcional
+  - Confirmação inline com 2 etapas (botão vermelho → caixa vermelha com SIM/NÃO)
+- `LousaAdminPanel.js` — novo botão vermelho `🚨 Liberar bolha` (data-testid `lousa-release-stuck-btn`) entre Histórico e Alertas.
+
+**Validação em produção:** 2 bolhas presas reais encontradas no demo (`DIOGO` há 3d 7h e `VANDO` há 35min). Screenshot confirma badge vermelho/laranja por tempo presa.
+
+**Testes:** `/app/backend/tests/test_iter84_release_stuck.py` (4/4 pass — flow completo com auditoria + notification, 404 sem bolha, escolhe mais antiga quando múltiplas, listagem). Frontend testids: `lousa-release-stuck-btn`, `release-stuck-modal`, `stuck-coll-{id}`, `stuck-reason-input`, `stuck-trigger-confirm`, `stuck-confirm-btn`, `stuck-cancel-btn`.
+
 ## Iter83 (16/05/2026) — Canal Baileys no Disparo IA + Scheduler diário + Badge de pendentes
 **Features entregues:**
 
