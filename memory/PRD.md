@@ -419,8 +419,38 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - Rate limiting global via `slowapi` (P1)
 - TTL/rotação do token webhook Secretária IA (P2)
 - Botão "Sync Atlaz" na aba Assinantes para puxar clientes ativos (P2)
-- Refatorar `routes/lousa.py` (>2500 linhas) e `WhatsAppChatLayout.js` (>1500 linhas) (P3)
+- Refatorar `routes/lousa.py` (>2500 linhas), `routes/whatsapp_baileys.py` (>2585 linhas) e `WhatsAppChatLayout.js` (>4100 linhas) (P3)
 - Conflict Resolution UI para Assinantes (quando phone bate em múltiplas subs) (P3)
 - Melhorar matching Atlaz↔SmartOLT para chegar próximo de 100%
 - Tema dark: revisar painéis com backgrounds hardcoded
+- Aba "Histórico WhatsApp" no perfil do cliente (P2)
+- Banco Inter PIX dinâmico (P1) — pausado por pivots anteriores
+- Refresh tokens curtos para URLs de mídia (`/audio/{file}?t=`) para reduzir exposição de JWT longo (P2)
+- Meta WhatsApp Cloud webhook 403: aguardando App Secret correto do usuário (BLOQUEADO)
+
+## Iter78 (16/05/2026) — Filtros Alvaro IA + UX confirmações + ONU detail + Áudio inbound + Typing indicator
+**P0 entregue:**
+- **Alvaro IA filtra mensagens automáticas** (`/app/backend/services/alvaro_ai.py`):
+  - Novo helper `_is_automatic_message` detecta `auto_reply=True` ou `actor in ("ai","bot","system","auto")`.
+  - `_build_conversation_text` ignora essas mensagens antes do prompt — economiza tokens.
+  - `run_daily_analysis` agora pula conversas que só tiveram bot↔cliente (sem atendente humano e <2 inbounds) — sem insight útil.
+- **Modal Sim/Não para finalizar conversa** (já existia em `FinalizeAtendimentoModal` linha 2657 do WhatsAppChatLayout.js — verificado, sem `window.confirm`).
+- **ONU detail dentro do modal "ONUs por VLAN"** (`/app/frontend/src/RedeIaPanel.js`):
+  - Linhas da tabela viraram clicáveis (hover/cursor).
+  - Novo `OnuDetailModal` com sinal vivo + refresh, status, levels 1310/1490, botão **Reiniciar ONU** com `ConfirmRebootModal` (Sim/Não), histórico de ações (smartolt_actions).
+  - Novo endpoint `GET /api/smartolt/onu/{external_id}/actions` (em `/app/backend/routes/smartolt.py`).
+  - API client: `smartoltOnuActions(extId, limit)`.
+
+**P1 entregue:**
+- **Player de áudio inbound** (PTT/voice note do cliente):
+  - Sidecar `/app/whatsapp-service/server.js`: importa `downloadMediaMessage` da Baileys, baixa o áudio quando `msg.audioMessage` está presente, envia como base64 ao `/inbound` junto com `audio_mimetype`, `audio_duration_sec`, `audio_is_ptt`.
+  - Backend `inbound_webhook`: aceita os novos campos opcionais, salva em `/app/backend/uploads/wa_audio/{msg_id}.{ext}` e cria a mensagem com `media_type="audio"`, `media_url`, `media_duration_sec`, `media_is_ptt`.
+  - Frontend: o `InlineAudioPlayer` existente já renderiza qualquer mensagem com `media_type=audio` — funcionou de fábrica em inbound também.
+- **"Isabella digitando…" no chat e na lista**:
+  - Backend `_maybe_auto_reply`: seta `wa_conversations.ai_typing_until = now + 45s` + `ai_typing_agent` antes da chamada LLM; limpa após o envio (sucesso/falha/empty/exception).
+  - Backend `/conversations`: expõe `ai_typing_until` e `ai_typing_agent` em cada conv.
+  - Frontend `ChatThread`: tick de 1.5s revalida `aiTyping`; presence label roxo `"{agent} digitando…"` + nova barra animada com 3 bolinhas (testid `wa-ai-typing-bar`) acima do composer; CSS keyframes `wa-typing-dot` + `wa-typing-fade`.
+  - Frontend `ConvRow`: quando IA está digitando, substitui o preview de `last_text` por `"{Agent} digitando…"` em itálico roxo.
+
+**Testes:** `/app/backend/tests/test_iter78_alvaro_smartolt_actions.py` (13/13 pass) · `/app/backend/tests/test_iter78_wa_audio_typing.py` (11/11 pass). Frontend testids confirmados visualmente: `onus-by-vlan-modal`, `onu-detail-modal`, `onu-signal-refresh`, `onu-reboot-btn`, `onu-reboot-confirm-modal`, `wa-finalize-modal`, `wa-audio-player`, `wa-ai-typing-bar`.
 
