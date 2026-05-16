@@ -1313,6 +1313,20 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     except Exception as e:
         logger.info("[wa-baileys] orchestrator skip: %s", e)
 
+    # 3f. Briefing da Disparo IA — se este cliente recebeu campanha ativa
+    # nos últimos 14d, injeta o briefing específico da campanha pra Isabella
+    # seguir o tom/objeções/escalada definidos pela Disparo IA.
+    try:
+        from services.disparo_briefing import fetch_disparo_briefing_for_phone
+        disparo_block = await fetch_disparo_briefing_for_phone(cid, phone)
+        if disparo_block:
+            extra.append(disparo_block)
+            logger.info(
+                "[wa-baileys] disparo_ia briefing injetado p/ phone=%s", phone,
+            )
+    except Exception as e:
+        logger.info("[wa-baileys] disparo briefing skip: %s", e)
+
     sys_prompt += "\n\n" + "\n\n".join(extra)
 
     # 3d. Histórico de conversa (janela 100, truncate por tokens)

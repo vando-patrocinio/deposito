@@ -415,6 +415,21 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Pytest** `/app/backend/tests/test_iter74_budget.py`: 6/6 PASS — cria draft, CSV parser, percentuais recalculam, override manual recalcula (base = 2×100 + 100×100 = 10200), KPIs, PDF retorna bytes `%PDF-...`. 1 skip (colaborador 403, sem conta de teste no ambiente).
 - **Validado E2E** (Playwright 1920×900): menu "Comercial > Orçamento" aparece; painel renderiza KPIs (1 orçamento · R$ 1.018,18 · 30% · 100% conversão); orçamento "Obra CTO-Centro · Finalizado" aparece com 5 itens; drawer abre com tabela completa mostrando preços IA (Mercado Livre·Furukawa·FiberHome·Intelbras), inputs override, e footer com totais (Base R$ 656,25 → Total Final R$ 1.018,18 com sliders %Ganho 30 · %Mão-de-obra 15 · %Imposto 7).
 
+## Iter82 (16/05/2026) — Disparo IA · briefing injetado na Isabella (ciclo das 3 IAs fechado)
+**Feature entregue:** quando um cliente que recebeu uma campanha Disparo IA responde no WhatsApp, a Isabella IA recebe automaticamente o briefing específico daquela campanha como contexto extra no system_prompt — fechando o ciclo Alvaro → Disparo → Isabella.
+
+**Arquivos:**
+- **Novo serviço:** `/app/backend/services/disparo_briefing.py` — `fetch_disparo_briefing_for_phone(cid, phone)` busca a campanha Disparo IA mais recente (janela 14d, status sent/delivered) e formata o bloco com: tipo da campanha, mensagem enviada, briefing literal, instrução de "siga prioritariamente".
+- **Wire-up:** `/app/backend/routes/whatsapp_baileys.py` em `_maybe_auto_reply` (3f, após o orchestrator) — adiciona o bloco ao array `extra` que vai pro system_prompt da Isabella. Best-effort: log "[wa-baileys] disparo_ia briefing injetado p/ phone=…" quando acionado.
+
+**Validação E2E em produção:**
+- Seed: campanha plan_upsell com briefing "🚀 Tom CONSULTIVO. Cliente está no Fibra 300, ofereça 600 e 1Gb. Escale humano se citar concorrente."
+- Inbound real: phone do recipient mandou "oi tudo bem? vi a mensagem do upgrade".
+- Log confirmou injection.
+- Isabella respondeu: *"Oi! Tudo ótimo, obrigada! 😊 Que bom que viu a mensagem! Estou aqui para te ajudar com o upgrade. Para te oferecer as m..."* — tom alinhado ao briefing.
+
+**Testes:** `/app/backend/tests/test_iter82_disparo_briefing.py` (4/4 pass — injeção quando há campanha recente, skip phone desconhecido, skip campanha sem origin=disparo_ia, skip campanha >14d).
+
 ## Iter81 (16/05/2026) — Disparo IA · Estrategista comercial autônomo
 **Feature entregue:** Novo módulo "Disparo IA" dentro de Disparo em Massa — IA estrategista que orquestra Alvaro (insights) + Isabella (execução WhatsApp) para gerar campanhas ativas.
 
