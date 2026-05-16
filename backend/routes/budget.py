@@ -332,8 +332,8 @@ async def upload_file(bid: str, file: UploadFile = File(...),
     raw = await file.read()
     if not raw:
         raise HTTPException(400, "Arquivo vazio")
-    if len(raw) > 5 * 1024 * 1024:
-        raise HTTPException(413, "Arquivo > 5MB")
+    if len(raw) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Arquivo > 10MB")
 
     fname = (file.filename or "").lower()
     ctype = (file.content_type or "").lower()
@@ -352,22 +352,37 @@ async def upload_file(bid: str, file: UploadFile = File(...),
         text = _extract_docx_text(raw)
         items = await _extract_items_via_ai(cid, text, source="docx")
         source = "docx"
+    elif (fname.endswith((".jpg", ".jpeg", ".png", ".webp"))
+            or ctype.startswith("image/")):
+        # Foto/print do orçamento → LLM Vision extrai itens + preços
+        items = await _extract_items_via_vision(cid, raw, mime=ctype)
+        source = "image"
     elif fname.endswith(".doc"):
         raise HTTPException(415, "Formato .doc antigo não suportado — salve como "
                                   ".docx ou .pdf no Word/LibreOffice e tente novamente.")
     else:
         raise HTTPException(415, f"Formato não suportado ({ctype or fname}). "
-                                   "Use CSV, PDF ou DOCX.")
+                                   "Use CSV, PDF, DOCX ou imagem (JPG/PNG/WEBP).")
 
     if not items:
         raise HTTPException(400, "Nenhum item válido extraído do arquivo.")
 
+    # Se mais de 30% dos itens já vieram com preço, considera "Importar pronto"
+    items_with_price = sum(
+        1 for i in items if (i.get("manual_override") or 0) > 0
+    )
+    ready_to_print = (items_with_price / len(items)) >= 0.3
+    new_status = "analyzed" if ready_to_print else "draft"
+
     await db.budgets.update_one(
         {"id": bid, "company_id": cid},
-        {"$set": {"items": items, "status": "draft", "source_file": fname,
-                   "source_type": source, "updated_at": now_iso()}},
+        {"$set": {"items": items, "status": new_status,
+                    "source_file": fname,
+                    "source_type": source, "updated_at": now_iso()}},
     )
-    return {"ok": True, "items_count": len(items), "source": source}
+    return {"ok": True, "items_count": len(items), "source": source,
+              "items_with_price": items_with_price,
+              "ready_to_print": ready_to_print}
 
 
 # ---------------------------------------------------------------------------
@@ -406,10 +421,28 @@ def _parse_csv_bytes(raw: bytes) -> List[Dict[str, Any]]:
             qty = float(re.sub(r"[^\d.,-]", "", qty_raw).replace(",", "."))
         except (ValueError, TypeError):
             qty = 1.0
+        # Preço unitário (opcional) — coluna preco/valor/unitario/preço
+        price_raw = (keys.get("preco") or keys.get("preço")
+                       or keys.get("valor") or keys.get("unitario")
+                       or keys.get("unitário") or keys.get("price")
+                       or keys.get("valor_unitario") or "").strip()
+        unit_price = 0.0
+        if price_raw:
+            try:
+                # Normaliza R$ 1.234,56 → 1234.56
+                clean = re.sub(r"[^\d.,-]", "", price_raw)
+                if "," in clean and "." in clean:
+                    clean = clean.replace(".", "").replace(",", ".")
+                else:
+                    clean = clean.replace(",", ".")
+                unit_price = float(clean)
+            except (ValueError, TypeError):
+                unit_price = 0.0
         items.append({
             "id": _new_id("itm"),
             "name": name, "qty": qty, "unit": unit, "spec": spec,
-            "prices": [], "avg_price": 0.0, "manual_override": None,
+            "prices": [], "avg_price": unit_price,
+            "manual_override": unit_price if unit_price > 0 else None,
         })
     return items
 
@@ -467,24 +500,108 @@ def _extract_docx_text(raw: bytes) -> str:
     return text[:30000]
 
 
+async def _extract_items_via_vision(cid: str, raw: bytes,
+                                       mime: str) -> List[Dict[str, Any]]:
+    """Extrai itens diretamente de uma imagem (JPG/PNG/WEBP) via LLM Vision.
+    Usa o endpoint do EMERGENT_LLM_KEY (via motor_ia.chat_completion com
+    imagem em base64 no message content).
+    """
+    import base64
+    b64 = base64.b64encode(raw).decode("ascii")
+    mime_clean = mime if mime else "image/jpeg"
+    data_url = f"data:{mime_clean};base64,{b64}"
+    sys_prompt = (
+        "Você é Orçamento_IA. Recebe a foto/print de um orçamento (de "
+        "concorrente ou fornecedor) e extrai os itens em JSON puro com "
+        "nome, qty, unit, spec e unit_price (preço unitário em BRL como "
+        "número decimal — se aparecer R$ ou pontuação, normalize). "
+        "Se houver coluna Total e Qtde, calcule unit_price=total/qty. "
+        "Ignore cabeçalhos, totais gerais, observações e logos."
+    )
+    user_content = [
+        {"type": "text", "text": (
+            "Extraia em JSON estrito: "
+            '{"items":[{"name":"","qty":1,"unit":"un","spec":"",'
+            '"unit_price":0}]}'
+        )},
+        {"type": "image_url", "image_url": {"url": data_url}},
+    ]
+    try:
+        result = await chat_completion(
+            cid,
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=0.1,
+            max_tokens=5000,
+            purpose="general",
+            agent="orcamento_ai",
+        )
+        content = (result.get("content") or "").strip()
+    except Exception as e:
+        logger.exception("[budget] Vision extract falhou: %s", e)
+        raise HTTPException(503, f"Orçamento_IA Vision indisponível: {e}")
+
+    m = re.search(r"\{[\s\S]*\}", content)
+    if not m:
+        raise HTTPException(422, f"IA não retornou itens: {content[:200]}")
+    try:
+        parsed = json.loads(m.group(0))
+    except json.JSONDecodeError as e:
+        raise HTTPException(422, f"JSON inválido da IA: {e}")
+
+    items: List[Dict[str, Any]] = []
+    for it in parsed.get("items", []):
+        name = (it.get("name") or "").strip()
+        if not name:
+            continue
+        try:
+            qty = float(it.get("qty") or 1)
+        except (ValueError, TypeError):
+            qty = 1.0
+        unit_price = it.get("unit_price")
+        try:
+            unit_price = float(unit_price) if unit_price else 0.0
+        except (ValueError, TypeError):
+            unit_price = 0.0
+        items.append({
+            "id": _new_id("itm"),
+            "name": name, "qty": qty,
+            "unit": (it.get("unit") or "un").strip(),
+            "spec": (it.get("spec") or "").strip(),
+            "prices": [], "avg_price": unit_price,
+            "manual_override": unit_price if unit_price > 0 else None,
+        })
+    return items
+
+
+
 async def _extract_items_via_ai(cid: str, text: str,
                                   source: str = "pdf") -> List[Dict[str, Any]]:
     """Usa Claude para extrair lista estruturada de itens a partir de texto
-    bruto (PDF ou DOCX). Retorna lista no MESMO formato do CSV parser."""
+    bruto (PDF ou DOCX). Retorna lista no MESMO formato do CSV parser.
+    Se o documento já contém PREÇOS, captura em `unit_price` para popular
+    `manual_override` (modo "Importar pronto")."""
     if not text:
         return []
     sys_prompt = (
         "Você é Orçamento_IA, extrator de itens de orçamentos para "
         "provedores de internet. Recebe texto extraído de um documento "
         f"({source.upper()}) e devolve a lista de itens em JSON puro. "
-        "Identifique nome do item, quantidade, unidade (un/m/rolo/cx/kg) "
-        "e especificação técnica. Ignore cabeçalhos, totais, assinaturas e "
+        "Identifique nome do item, quantidade, unidade (un/m/rolo/cx/kg), "
+        "especificação técnica E o PREÇO UNITÁRIO quando aparecer no "
+        "documento (campo `unit_price` em BRL como número, ex: 12.50). "
+        "Se houver apenas valor total e quantidade, calcule unit_price = "
+        "total / qty. Ignore cabeçalhos, totais gerais, assinaturas e "
         "comentários. Se quantidade não for explícita, use 1. Se unidade "
-        "não for explícita, use 'un'."
+        "não for explícita, use 'un'. Se não encontrar preço no documento, "
+        "deixe unit_price=0."
     )
     user_prompt = (
         "Extraia os itens em JSON estrito no formato:\n"
-        '{"items":[{"name":"...","qty":2,"unit":"un","spec":"..."}]}\n\n'
+        '{"items":[{"name":"...","qty":2,"unit":"un","spec":"...",'
+        '"unit_price":12.5}]}\n\n'
         f"TEXTO DO DOCUMENTO ({source.upper()}):\n{text}"
     )
     try:
@@ -522,13 +639,22 @@ async def _extract_items_via_ai(cid: str, text: str,
             qty = float(it.get("qty") or 1)
         except (ValueError, TypeError):
             qty = 1.0
+        # unit_price extraído do documento original → vira manual_override
+        # para o PDF usar diretamente sem precisar do /analyze.
+        unit_price = it.get("unit_price")
+        try:
+            unit_price = float(unit_price) if unit_price else 0.0
+        except (ValueError, TypeError):
+            unit_price = 0.0
         items.append({
             "id": _new_id("itm"),
             "name": name,
             "qty": qty,
             "unit": (it.get("unit") or "un").strip(),
             "spec": (it.get("spec") or "").strip(),
-            "prices": [], "avg_price": 0.0, "manual_override": None,
+            "prices": [],
+            "avg_price": unit_price,
+            "manual_override": unit_price if unit_price > 0 else None,
         })
     return items
 

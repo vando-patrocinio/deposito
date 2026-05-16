@@ -713,5 +713,18 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - Modal disparo manual com phone/nome/motivo.
 - Mural com lista de casos coloridos por status + chips de ação rápida.
 
+✅ **Orçamento — Importar Pronto (sobe → imprime)** (16/05/2026 — iter100):
+- **Backend** (`/app/backend/routes/budget.py`):
+  - `_extract_items_via_ai` agora pede `unit_price` no JSON; popula `manual_override` e `avg_price` com o preço do documento original.
+  - Parser CSV reconhece colunas `preco/preço/valor/unitario/price/valor_unitario` e normaliza formato BR (`R$ 1.234,56` → `1234.56`).
+  - **Novo** `_extract_items_via_vision` para fotos/prints (.png .jpg .jpeg .webp) via LLM Vision (Emergent LLM Key) — extrai itens + preços de uma imagem.
+  - Upload limit aumentado de 5MB → 10MB.
+  - Response do upload retorna `items_with_price` + `ready_to_print` (true se ≥30% dos itens vieram com preço). Quando `ready_to_print=true`, status do budget vira `analyzed` direto (skip `/analyze`).
+- **Frontend** (`/app/frontend/src/BudgetPanel.js`):
+  - Input file `accept=".csv,.pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,image/*"`.
+  - Botão renomeado para **"📤 Importar pronto (PDF/imagem/CSV)"** com tooltip explicativo.
+  - Após upload, se `ready_to_print=true`, mostra confirm "Abrir PDF para imprimir agora?" → abre `budgetPdfUrl(bid)` em nova aba. Fluxo final: **sobe arquivo → confirma → PDF abre com sua cara, com os preços importados**.
+- **Validado**: 5/5 pytest (`test_iter100_budget_import_pronto.py`) — CSV com preços marca ready=true · formato BR R$1.234,56 · CSV sem preços fica draft · PDF gera com preços importados (18KB válido) · imagem PNG aceita pelo endpoint.
+
 **Validado**: 5/5 pytest (`test_iter99_retention.py`) + screenshot Playwright (edita discount=35, salva, botão muda para "✓ Sem mudanças").
 - testids: `retention-playbook-card`, `retention-toggle-enabled`, `retention-discount`, `retention-save-btn`, `retention-manual-trigger-btn`, `retention-row-{rid}`, `retention-status-{won|lost}-{rid}`, etc.

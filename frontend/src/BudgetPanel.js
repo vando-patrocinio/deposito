@@ -345,8 +345,17 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
     if (!file) return;
     setBusy(true); setErr("");
     try {
-      await api.budgetUploadCsv(budget.id, file);
+      const r = await api.budgetUploadCsv(budget.id, file);
       await refresh();
+      if (r?.ready_to_print) {
+        // Modo "Importar pronto" — orçamento já tem preços, abre PDF direto.
+        const ok = window.confirm(
+          `✓ ${r.items_count} item(ns) extraído(s) — `
+          + `${r.items_with_price} com preço já preenchido.\n\n`
+          + "Abrir o PDF para imprimir agora?",
+        );
+        if (ok) window.open(api.budgetPdfUrl(budget.id), "_blank");
+      }
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
     } finally { setBusy(false); }
@@ -448,15 +457,17 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
           padding: "12px 22px", borderBottom: "1px solid var(--border-default)",
           display: "flex", gap: 8, flexWrap: "wrap",
         }}>
-          <input ref={fileRef} type="file" accept=".csv,.pdf,.docx,.txt"
+          <input ref={fileRef} type="file"
+                 accept=".csv,.pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,image/*"
                  onChange={(e) => handleUpload(e.target.files?.[0])}
                  style={{ display: "none" }} data-testid="budget-csv-input" />
           <button onClick={() => fileRef.current?.click()}
                   data-testid="budget-upload-btn" disabled={busy}
-                  style={btnSecondary}>
+                  style={btnSecondary}
+                  title="Sobe CSV, PDF, DOCX ou foto/print de orçamento — extrai itens E preços automaticamente">
             <Upload size={14} />
             {busy ? "Processando..." :
-              `Subir arquivo (CSV/PDF/DOCX)${itemCount > 0 ? " · substituir" : ""}`}
+              `📤 Importar pronto (PDF/imagem/CSV)${itemCount > 0 ? " · substituir" : ""}`}
           </button>
           <button onClick={handleAnalyze}
                   disabled={analyzing || itemCount === 0}
