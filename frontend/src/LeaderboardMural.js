@@ -173,6 +173,20 @@ function Avatar({ src, name, size = 90, ring }) {
 }
 
 function PodiumCard({ place, tech }) {
+  const [achievements, setAchievements] = useState([]);
+  useEffect(() => {
+    if (!tech?.collaborator_id) return undefined;
+    let alive = true;
+    api._client.get(`/lousa/public/achievements/${tech.collaborator_id}`)
+      .then((r) => {
+        if (alive && r.data?.medals) {
+          setAchievements(r.data.medals.filter((m) => m.earned));
+        }
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [tech?.collaborator_id]);
+
   const config = {
     1: { color: "#f59e0b", h: 280, scale: 1.08, label: "1º · Líder",
           glow: "0 0 40px rgba(245,158,11,0.55)" },
@@ -206,6 +220,26 @@ function PodiumCard({ place, tech }) {
                         color: "white", fontSize: 11, fontWeight: 800,
                         marginBottom: 12 }}>
           {tech.badge}
+        </div>
+      )}
+      {achievements.length > 0 && (
+        <div data-testid={`mural-medals-${place}`} style={{
+          display: "flex", flexWrap: "wrap", justifyContent: "center",
+          gap: 4, marginBottom: 10, minHeight: 26,
+        }}>
+          {achievements.slice(0, 6).map((m) => (
+            <span key={m.id} title={m.label} style={{
+              fontSize: 18, padding: "2px 4px",
+              background: "rgba(255,255,255,0.08)",
+              borderRadius: 8,
+            }}>{m.icon}</span>
+          ))}
+          {achievements.length > 6 && (
+            <span style={{ fontSize: 10, color: "#cbd5e1",
+                              alignSelf: "center", marginLeft: 4 }}>
+              +{achievements.length - 6}
+            </span>
+          )}
         </div>
       )}
       <div style={{

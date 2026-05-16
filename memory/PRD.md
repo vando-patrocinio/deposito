@@ -640,3 +640,11 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - **Backend** `GET /api/lousa/public/leaderboard?company_id=co-demo&limit=10`: agrega notas finalizadas do dia agrupadas por técnico, ordenadas por volume desc, hidrata com nome + foto (`avatar_data_url` ou `google_picture`). Retorna `{rank, collaborator_id, name, photo_url, closed_today, success_rate, avg_minutes, badge}` por técnico.
 - **Frontend** novo componente fullscreen `LeaderboardMural.js`: rota pública `/mural` e `/leaderboard` (sem auth — para TV/mural). Layout: header **"RANKING DO DIA"** + relógio JetBrains Mono ao vivo, podium 1º/2º/3º com avatares e gradient colorido por posição (ouro/prata/bronze), lista 4º-10º em cards. Auto-refresh 30s. testids `leaderboard-mural`, `mural-podium-1/2/3`, `mural-row-{cid}`, `mural-clock`.
 - **Validado**: 4/4 pytest + screenshot Playwright (DIOGO HENRIQUE como 1º · Líder com foto real, 1 fechada, 100% sucesso, 5min/nota).
+
+✅ **Sistema de Conquistas/Medalhas persistentes** (16/05/2026 — iter94):
+- **Backend** `GET /api/lousa/public/achievements/{cid}`: catálogo de 10 medalhas calculadas on-the-fly via agregação MongoDB sobre o histórico completo do técnico. Retorna `{medals[], earned_count, total_count, stats}`.
+- **Catálogo (10 medalhas)**: 🌱 Primeira nota · 🔟 Dezena · 💯 Centena · 🏅 Mil Mestre · 🔧 Instalador (10) · ⚙️ Instalador Master (100) · 🔥 Streak 7 · 🌋 Streak 30 · 📡 Sinal de Ouro (RX>-22 em 50+ instalações) · ⚡ Veloz (<30min médio em 50+ notas).
+- **Frontend** novo `AchievementsCard.js` no LousaMobile (após PerformanceCard): card roxo gradient com barra de progresso dourada e grid expansível de 10 medalhas (earned em gold com glow · bloqueadas em cinza tracejado). Toggle "Recolher/Ver todas".
+- **Frontend mural**: PodiumCard exibe até 6 medalhas earned ao lado do nome do top 3 com `+N` para excedentes.
+- **Validado**: 4/4 pytest (`test_iter94_achievements.py`) + screenshot. DIOGO HENRIQUE: 1/10 medalhas (Primeira nota brilha em ouro).
+- testids: `achievements-card`, `achievements-toggle`, `achievements-grid`, `medal-{id}[-earned]`, `mural-medals-{place}`.

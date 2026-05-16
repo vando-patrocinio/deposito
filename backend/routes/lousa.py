@@ -2442,6 +2442,170 @@ async def get_tech_performance(cid: str):
     }
 
 
+
+# -------------------------------------------------------------------------
+# Conquistas/medalhas do técnico — persistente, calculadas on-the-fly
+# -------------------------------------------------------------------------
+
+# Catálogo de medalhas. Cada uma é avaliada via uma function async (db, cid).
+async def _ach_first_note(db, cid: str) -> bool:
+    return bool(await db.tickets.find_one(
+        {"assigned_collaborator_id": cid, "status": "finalizada"},
+        {"_id": 0, "id": 1},
+    ))
+
+
+async def _ach_count_total(db, cid: str, threshold: int) -> int:
+    """Retorna quantas finalizadas — para badges com tiers."""
+    return await db.tickets.count_documents(
+        {"assigned_collaborator_id": cid, "status": "finalizada"},
+    )
+
+
+async def _ach_count_type(db, cid: str, ttype: str) -> int:
+    return await db.tickets.count_documents(
+        {"assigned_collaborator_id": cid, "status": "finalizada",
+          "type": ttype},
+    )
+
+
+async def _ach_max_streak(db, cid: str) -> int:
+    """Maior streak histórico (até 365 dias atrás)."""
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    days_set = set()
+    cursor = db.tickets.find(
+        {"assigned_collaborator_id": cid, "status": "finalizada"},
+        {"_id": 0, "closed_at": 1},
+    )
+    async for t in cursor:
+        try:
+            d = datetime.fromisoformat(t["closed_at"]).date()
+            days_set.add(d)
+        except Exception:
+            continue
+    if not days_set:
+        return 0
+    sorted_days = sorted(days_set)
+    best, cur = 1, 1
+    for i in range(1, len(sorted_days)):
+        if (sorted_days[i] - sorted_days[i - 1]).days == 1:
+            cur += 1
+            best = max(best, cur)
+        else:
+            cur = 1
+    return best
+
+
+# Catálogo: (id, icon, label, description, tier)
+ACHIEVEMENTS_CATALOG = [
+    {"id": "primeira_nota", "icon": "🌱", "label": "Primeira nota",
+      "desc": "Fechou seu primeiro chamado"},
+    {"id": "dezena", "icon": "🔟", "label": "Dezena", "desc": "10 notas fechadas"},
+    {"id": "centena", "icon": "💯", "label": "Centena",
+      "desc": "100 notas fechadas"},
+    {"id": "mil_mestres", "icon": "🏅", "label": "Mil mestre",
+      "desc": "1000 notas fechadas"},
+    {"id": "instalador_10", "icon": "🔧", "label": "Instalador",
+      "desc": "10 instalações concluídas"},
+    {"id": "instalador_100", "icon": "⚙️", "label": "Instalador Master",
+      "desc": "100 instalações concluídas"},
+    {"id": "streak_7", "icon": "🔥", "label": "Streak 7",
+      "desc": "7 dias consecutivos com fechamento"},
+    {"id": "streak_30", "icon": "🌋", "label": "Streak 30",
+      "desc": "30 dias consecutivos com fechamento"},
+    {"id": "sinal_ouro", "icon": "📡", "label": "Sinal de Ouro",
+      "desc": "Média RX melhor que -22 dBm em 50+ instalações"},
+    {"id": "veloz", "icon": "⚡", "label": "Veloz",
+      "desc": "Tempo médio < 30min em 50+ notas"},
+]
+
+
+@router.get("/lousa/public/achievements/{cid}")
+async def get_achievements(cid: str):
+    """Lista todas as medalhas + flag earned para o técnico."""
+    col = await db.collaborators.find_one(
+        {"id": cid}, {"_id": 0, "id": 1, "name": 1},
+    )
+    if not col:
+        raise HTTPException(404, "Colaborador não encontrado")
+
+    earned = []
+    # Contadores
+    total = await db.tickets.count_documents(
+        {"assigned_collaborator_id": cid, "status": "finalizada"},
+    )
+    instals = await _ach_count_type(db, cid, "instalacao")
+    streak_max = await _ach_max_streak(db, cid)
+    # Métricas avançadas
+    rx_avg = None
+    avg_min = None
+    fast_count = 0
+    good_sig_count = 0
+    cursor = db.tickets.find(
+        {"assigned_collaborator_id": cid, "status": "finalizada"},
+        {"_id": 0, "completion_data": 1, "opened_at": 1, "closed_at": 1,
+          "type": 1},
+    )
+    rxs, mins = [], []
+    async for t in cursor:
+        cd = t.get("completion_data") or {}
+        sn = cd.get("sinal")
+        if isinstance(sn, (int, float)):
+            rxs.append(float(sn))
+            if t.get("type") == "instalacao" and sn > -22:
+                good_sig_count += 1
+        try:
+            from datetime import datetime
+            o = datetime.fromisoformat(t["opened_at"])
+            c = datetime.fromisoformat(t["closed_at"])
+            m = max(1, int((c - o).total_seconds() / 60))
+            if m < 60 * 24:
+                mins.append(m)
+                if m < 30:
+                    fast_count += 1
+        except Exception:
+            continue
+    if rxs:
+        rx_avg = round(sum(rxs) / len(rxs), 1)
+    if mins:
+        avg_min = round(sum(mins) / len(mins))
+
+    rules = {
+        "primeira_nota": total >= 1,
+        "dezena": total >= 10,
+        "centena": total >= 100,
+        "mil_mestres": total >= 1000,
+        "instalador_10": instals >= 10,
+        "instalador_100": instals >= 100,
+        "streak_7": streak_max >= 7,
+        "streak_30": streak_max >= 30,
+        "sinal_ouro": good_sig_count >= 50,
+        "veloz": fast_count >= 50,
+    }
+    medals = []
+    for entry in ACHIEVEMENTS_CATALOG:
+        medals.append({**entry, "earned": rules.get(entry["id"], False)})
+        if rules.get(entry["id"]):
+            earned.append(entry["id"])
+    return {
+        "collaborator_id": cid,
+        "name": col["name"],
+        "medals": medals,
+        "earned_count": len(earned),
+        "total_count": len(ACHIEVEMENTS_CATALOG),
+        "stats": {
+            "total_closed": total,
+            "instalacoes": instals,
+            "max_streak": streak_max,
+            "rx_avg": rx_avg,
+            "avg_minutes": avg_min,
+        },
+    }
+
+
+
 # -------------------------------------------------------------------------
 # Mural público — ranking dos técnicos do dia (TV no escritório)
 # -------------------------------------------------------------------------

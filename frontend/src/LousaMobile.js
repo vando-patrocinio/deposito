@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
 import { Button, Icon } from "@/ui";
 import QRScannerModal from "@/QRScannerModal";
+import AchievementsCard from "@/AchievementsCard";
 
 /**
  * LousaMobile — vista da Lousa (bolhas) no app do colaborador.
@@ -346,6 +347,7 @@ export default function LousaMobile({ collaboratorId, onBack }) {
       </p>
 
       <PerformanceCard perf={perf} />
+      <AchievementsCard collaboratorId={collaboratorId} compact />
 
       {reorderMode && (
         <div data-testid="lousa-reorder-bar" style={{
