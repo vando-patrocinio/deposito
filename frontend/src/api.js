@@ -484,8 +484,17 @@ export const api = {
   waBaileysQR: () => client.get(`/whatsapp-baileys/qr`).then((r) => r.data),
   waBaileysRefreshQR: () => client.post(`/whatsapp-baileys/qr/refresh`).then((r) => r.data),
   waBaileysStatus: () => client.get(`/whatsapp-baileys/status`).then((r) => r.data),
-  waBaileysSend: (phone, text) =>
-    client.post(`/whatsapp-baileys/send`, { phone, text }).then((r) => r.data),
+  waBaileysSend: (phone, text, polishedByAi = false) =>
+    client.post(`/whatsapp-baileys/send`,
+                  { phone, text, polished_by_ai: polishedByAi }).then((r) => r.data),
+  // Isabella KPIs (sub-aba do Central IA)
+  isabellaKpis: (days = 7) =>
+    client.get(`/central-ia/isabella`, { params: { days } }).then((r) => r.data),
+  isabellaConfigGet: () =>
+    client.get(`/central-ia/isabella/config`).then((r) => r.data),
+  isabellaConfigSet: (polishEnabled) =>
+    client.put(`/central-ia/isabella/config`,
+                  { polish_button_enabled: !!polishEnabled }).then((r) => r.data),
   waBaileysPolishText: (text) =>
     client.post(`/whatsapp-baileys/polish-text`, { text },
                   { timeout: 25000 }).then((r) => r.data),

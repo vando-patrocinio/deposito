@@ -169,6 +169,7 @@ async def get_status(user: dict = Depends(require_role("gestor"))):
 class SendIn(BaseModel):
     phone: str = Field(..., min_length=8, max_length=25)
     text: str = Field(..., min_length=1, max_length=4096)
+    polished_by_ai: bool = Field(default=False)
 
 
 class SendAudioIn(BaseModel):
@@ -351,6 +352,7 @@ async def send_message(payload: SendIn,
         "actor_user": user.get("email") or user.get("id"),
         "sent_by_user_id": user.get("id"),
         "auto_reply": False,
+        "polished_by_ai": bool(payload.polished_by_ai),
         "delivery_status": "sent" if send_ok else "failed",
         "delivery_error": send_error,
     })

@@ -11,6 +11,7 @@ import ChurnDashboardPanel from "@/ChurnDashboardPanel";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
 import AtlazSubPanel from "@/AtlazSubPanel";
 import AiTrainingPanel from "@/AiTrainingPanel";
+import IsabellaSubPanel from "@/IsabellaSubPanel";
 import { DollarSign, Coins, ChevronDown, ChevronUp } from "lucide-react";
 
 /* =============================================================
@@ -109,6 +110,8 @@ export default function CentralIaDashboard() {
       }}>
         <SubTabBtn active={section === "kpis"} onClick={() => setSection("kpis")}
                     icon={Brain} label="Dashboard IA" testId="subtab-kpis" />
+        <SubTabBtn active={section === "isabella"} onClick={() => setSection("isabella")}
+                    icon={Bot} label="Isabella" testId="subtab-isabella" />
         <SubTabBtn active={section === "smartolt"} onClick={() => setSection("smartolt")}
                     icon={Radio} label="SmartOLT AI" testId="subtab-smartolt" />
         <SubTabBtn active={section === "churn"} onClick={() => setSection("churn")}
@@ -117,7 +120,8 @@ export default function CentralIaDashboard() {
                     icon={Database} label="Atlaz" testId="subtab-atlaz" />
       </div>
 
-      {section === "smartolt" ? <SmartOltAiPanel /> :
+      {section === "isabella" ? <IsabellaSubPanel /> :
+       section === "smartolt" ? <SmartOltAiPanel /> :
        section === "churn" ? <ChurnDashboardPanel /> :
        section === "atlaz" ? <AtlazSubPanel /> : (
       <>

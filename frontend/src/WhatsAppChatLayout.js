@@ -1143,7 +1143,17 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
   const [attendantKpis, setAttendantKpis] = useState([]);
   /* Edit & Teach — modal de correção da resposta da Isabella */
   const [correctingMsg, setCorrectingMsg] = useState(null);
+  /* Toggle global do botão "Enviar com IA" (configurado no Central IA → Isabella) */
+  const [polishEnabled, setPolishEnabled] = useState(true);
   const scrollRef = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.isabellaConfigGet().then((r) => {
+      if (alive) setPolishEnabled(!!r?.polish_button_enabled);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -1330,7 +1340,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       const finalText = (polished || "").trim() || text.trim();
       setSending(true);
       try {
-        await api.waBaileysSend(conv.phone, finalText);
+        await api.waBaileysSend(conv.phone, finalText, true);
         setText("");
         await loadMessages();
       } finally { setSending(false); }
@@ -2090,6 +2100,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
             <Mic size={18} strokeWidth={2.2} />
           </button>
         )}
+        {polishEnabled && (
         <button onClick={sendWithIA}
                 disabled={sending || polishing || !text.trim() || isAi || recording}
                 title="Enviar com IA — corrige português e melhora o sentido antes de enviar"
@@ -2123,6 +2134,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
           <Sparkles size={13} strokeWidth={2.4} />
           {polishing ? "Polindo..." : "IA"}
         </button>
+        )}
         <button onClick={send} disabled={sending || polishing || !text.trim() || isAi || recording}
                 className="btn btn-primary btn-sm"
                 data-testid="wa-composer-send"
