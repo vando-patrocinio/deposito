@@ -415,6 +415,21 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Pytest** `/app/backend/tests/test_iter74_budget.py`: 6/6 PASS — cria draft, CSV parser, percentuais recalculam, override manual recalcula (base = 2×100 + 100×100 = 10200), KPIs, PDF retorna bytes `%PDF-...`. 1 skip (colaborador 403, sem conta de teste no ambiente).
 - **Validado E2E** (Playwright 1920×900): menu "Comercial > Orçamento" aparece; painel renderiza KPIs (1 orçamento · R$ 1.018,18 · 30% · 100% conversão); orçamento "Obra CTO-Centro · Finalizado" aparece com 5 itens; drawer abre com tabela completa mostrando preços IA (Mercado Livre·Furukawa·FiberHome·Intelbras), inputs override, e footer com totais (Base R$ 656,25 → Total Final R$ 1.018,18 com sliders %Ganho 30 · %Mão-de-obra 15 · %Imposto 7).
 
+## Iter87 (16/05/2026) — App do colaborador: PPPoE click-to-copy + bloco SmartOLT no card da bolha
+**Pedido:** clicar no PPPoE "copia automaticamente" + as informações `PORTA OLT / VLAN / CTO / PORTA CTO / SN` devem ser puxadas da SmartOLT (hoje mostravam "smartolt" como placeholder).
+
+**Backend** (`/app/backend/routes/smartolt.py`):
+- `_live_signal_summary()` agora retorna `olt_port` ("board/port"), `board`, `port`, `onu`, `sn`, `cto_box` (parseado de `zone_name` — primeiros N-1 segmentos), `cto_port` (último segmento), e `vlan` (busca em `service_ports[*].vlan/cvlan/svlan`).
+- `_do_sync()` agora persiste `service_ports` no documento de cada ONU em `smartolt_onus` (antes só salvava signal/board/port). Aplicado retroativamente: 1753/1754 ONUs já com `service_ports` na próxima sync agendada (ou via `POST /api/smartolt/sync-onus`).
+- Validação real: ROSANE → `olt_port=1/5, vlan=1005, cto_box=CTO, cto_port=01, sn=FHTTC07CE30B, rx=-24.09 dBm`.
+
+**Frontend** (`/app/frontend/src/LousaMobile.js`):
+- Novo componente `<PppoeChip>` — botão arredondado, clique copia o PPPoE pro clipboard (fallback `execCommand` em http) com **flash verde "✓ Copiado!" por 1.4s**. Testid `lousa-pppoe-copy`.
+- Novo componente `<SmartOltDetailBlock>` — grid responsivo (cards de 85px) em background azul-claro com 5 chips: PORTA OLT (+ ONU #), VLAN, CTO, PORTA CTO, SN (mono). Só renderiza items com valor (omite os vazios). Testid `lousa-smartolt-block`.
+- Card da bolha agora exibe o bloco SmartOLT logo abaixo do pill de sinal/dBm.
+
+**Testes:** `tests/test_iter87_live_signal_extended.py` (5/5 pass — parse de olt_port/cto/vlan, campos ausentes não quebram, zone_name com 1 segmento, prioridade vlan>cvlan>svlan, thresholds de qualidade good/warn/bad).
+
 ## Iter86 (16/05/2026) — App do colaborador: pull-to-refresh nativo
 **Feature:** Arrastar a tela pra baixo no topo atualiza os dados do app sem sair da página (UX padrão de PWA).
 

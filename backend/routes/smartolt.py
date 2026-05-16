@@ -206,6 +206,7 @@ async def _do_sync(company_id: str, cfg: SmartoltConfig) -> dict:
             "last_status_change": o.get("last_status_change"),
             "administrative_status": o.get("administrative_status"),
             "authorization_date": o.get("authorization_date"),
+            "service_ports": o.get("service_ports") or [],
             "synced_at": bulk_ts,
         }
         res = await db.smartolt_onus.update_one(
@@ -564,6 +565,31 @@ def _live_signal_summary(onu: dict) -> dict:
             quality = "warn"
         else:
             quality = "bad"
+    # Parse CTO + CTO-port a partir do `zone_name` (formato típico
+    # "CTO - 1 - 10 - 01" → CTO_BOX = "CTO 1 10" + CTO_PORT = "01")
+    cto_box = None
+    cto_port = None
+    zone = (onu.get("zone_name") or "").strip()
+    if zone:
+        parts = [p.strip() for p in zone.replace("-", "·").split("·") if p.strip()]
+        if len(parts) >= 2:
+            cto_box = " ".join(parts[:-1])
+            cto_port = parts[-1]
+        else:
+            cto_box = zone
+    # PORTA OLT = board/port (e.g. "1/10")
+    board = onu.get("board") or ""
+    port = onu.get("port") or ""
+    onu_id = onu.get("onu") or ""
+    olt_port = "/".join([s for s in [board, port] if s]) or None
+    # VLAN: tenta service_ports[*].vlan (se a sync salvou)
+    vlan = None
+    for sp in (onu.get("service_ports") or []):
+        if isinstance(sp, dict):
+            v = sp.get("vlan") or sp.get("cvlan") or sp.get("svlan")
+            if v:
+                vlan = str(v)
+                break
     return {
         "external_id": onu.get("unique_external_id"),
         "name": onu.get("name"),
@@ -572,6 +598,12 @@ def _live_signal_summary(onu: dict) -> dict:
         "status": onu.get("status"),
         "quality": quality,
         "olt_name": onu.get("olt_name"),
+        "olt_port": olt_port,         # "1/10"
+        "board": board, "port": port, "onu": onu_id,
+        "sn": onu.get("sn"),
+        "cto_box": cto_box,            # "CTO 1 10"
+        "cto_port": cto_port,          # "01"
+        "vlan": vlan,
         "synced_at": onu.get("synced_at"),
     }
 

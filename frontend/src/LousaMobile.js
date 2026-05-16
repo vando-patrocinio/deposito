@@ -769,14 +769,16 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
           📍 {ticket.client_snapshot.address}{ticket.client_snapshot.neighborhood ? ` · ${ticket.client_snapshot.neighborhood}` : ""}
         </div>
         {ticket.client_snapshot.pppoe_user && (
-          <div style={{ fontSize: 11, fontFamily: "monospace", color: "#a5b4fc", marginBottom: 4 }}>
-            🔑 {ticket.client_snapshot.pppoe_user}
-          </div>
+          <PppoeChip pppoe={ticket.client_snapshot.pppoe_user} />
         )}
         {ticket.live_signal && (
-          <div style={{ marginTop: 8, padding: "6px 10px", background: "rgba(255,255,255,0.06)", borderRadius: 8, fontSize: 12 }}>
-            📶 <strong>{ticket.live_signal.rx_dbm?.toFixed(1)} dBm</strong> · {ticket.live_signal.status} · {ticket.live_signal.olt_name}
-          </div>
+          <>
+            <div style={{ marginTop: 8, padding: "6px 10px", background: "rgba(255,255,255,0.06)", borderRadius: 8, fontSize: 12 }}>
+              📶 <strong>{ticket.live_signal.rx_dbm?.toFixed(1)} dBm</strong> · {ticket.live_signal.status} · {ticket.live_signal.olt_name}
+            </div>
+            {/* Bloco SmartOLT — porta OLT, VLAN, CTO, SN (pulled from SmartOLT) */}
+            <SmartOltDetailBlock ls={ticket.live_signal} />
+          </>
         )}
       </div>
 
@@ -912,4 +914,81 @@ function reorderBtnStyle(disabled) {
     display: "grid", placeItems: "center",
     boxShadow: "0 1px 2px rgba(15,23,42,.05)",
   };
+}
+
+/* PPPoE chip — clique copia pro clipboard com flash verde "✓ copiado" */
+function PppoeChip({ pppoe }) {
+  const [copied, setCopied] = React.useState(false);
+  const onClick = async () => {
+    try {
+      await navigator.clipboard.writeText(pppoe);
+    } catch {
+      // fallback: createElement textarea + execCommand (já obsoleto mas funciona em http)
+      const ta = document.createElement("textarea");
+      ta.value = pppoe; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand("copy"); } catch {}
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1400);
+  };
+  return (
+    <button onClick={onClick} data-testid="lousa-pppoe-copy"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              border: "none", cursor: "pointer", padding: "4px 10px",
+              borderRadius: 999, fontSize: 11, fontFamily: "monospace",
+              fontWeight: 700, marginBottom: 4,
+              background: copied ? "#16a34a" : "rgba(165,180,252,0.15)",
+              color: copied ? "white" : "#a5b4fc",
+              transition: "background 180ms, color 180ms",
+            }}
+            title="Toque pra copiar">
+      {copied ? "✓ Copiado!" : <>🔑 {pppoe}</>}
+    </button>
+  );
+}
+
+/* Bloco com dados puxados da SmartOLT — Porta OLT, VLAN, CTO, SN.
+   Cada item só renderiza se houver dado. Cor azul-acinzentada pra
+   diferenciar das infos do cliente (azul-índigo do PPPoE). */
+function SmartOltDetailBlock({ ls }) {
+  if (!ls) return null;
+  const items = [
+    { label: "PORTA OLT", value: ls.olt_port, hint: `ONU #${ls.onu || "?"}` },
+    { label: "VLAN", value: ls.vlan },
+    { label: "CTO", value: ls.cto_box },
+    { label: "PORTA CTO", value: ls.cto_port },
+    { label: "SN", value: ls.sn, mono: true },
+  ].filter((i) => i.value);
+  if (items.length === 0) return null;
+  return (
+    <div data-testid="lousa-smartolt-block"
+          style={{
+            marginTop: 8, padding: "8px 10px", borderRadius: 8,
+            background: "rgba(14,165,233,0.08)",
+            border: "1px solid rgba(14,165,233,0.18)",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(85px, 1fr))",
+            gap: 6,
+          }}>
+      {items.map((i) => (
+        <div key={i.label}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: "#67e8f9",
+                         textTransform: "uppercase", letterSpacing: 0.5 }}>
+            {i.label}
+          </div>
+          <div style={{
+            fontSize: 11.5, color: "#e0f2fe", fontWeight: 600,
+            fontFamily: i.mono ? "monospace" : "inherit",
+            wordBreak: "break-all",
+          }}>{i.value}</div>
+          {i.hint && (
+            <div style={{ fontSize: 9, color: "#7dd3fc",
+                           opacity: 0.7 }}>{i.hint}</div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
