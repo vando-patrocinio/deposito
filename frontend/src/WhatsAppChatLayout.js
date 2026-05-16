@@ -547,58 +547,72 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
                             convs, selectedPhone, setSelectedPhone,
                             search, setSearch, loading,
                             contactProfiles, onAssignSelf }) {
+  const [bannerDismissed, setBannerDismissed] = React.useState(() => {
+    try { return localStorage.getItem("wa_ready_banner_dismissed") === "1"; }
+    catch { return false; }
+  });
+  const dismissBanner = () => {
+    setBannerDismissed(true);
+    try { localStorage.setItem("wa_ready_banner_dismissed", "1"); } catch { /* ignore */ }
+  };
+  const totalUnread = Object.values(unreadByBucket || {}).reduce((a, b) => a + (b || 0), 0);
   return (
     <div data-testid="wa-buckets-sidebar" style={{
-      background: "var(--bg-surface)",
+      background: "#f4f6fb",
       borderRight: "1px solid var(--border-default)",
       display: "flex", flexDirection: "column",
       minHeight: 0,
     }}>
-      {/* Header com busca + filtros */}
+      {/* Header com busca + filtros (estilo FocusChat) */}
       <div style={{
-        padding: "10px 12px 8px",
-        borderBottom: "1px solid var(--border-default)",
-        display: "flex", flexDirection: "column", gap: 8,
+        padding: "12px 14px 10px",
+        background: "#ffffff",
+        borderBottom: "1px solid #e5e7eb",
+        display: "flex", flexDirection: "column", gap: 10,
       }}>
+        {/* Busca global com ícones de filtro/histórico à direita */}
         <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "8px 12px", borderRadius: 10,
+          background: "#ffffff",
+          border: "1.5px solid #1f2937",
         }}>
-          <div style={{
-            fontSize: 10, fontWeight: 700, color: "var(--text-muted)",
-            textTransform: "uppercase", letterSpacing: 0.8,
-          }}>
-            Atendimentos
-          </div>
-          <WaChatFilterPopover
-            value={advFilter}
-            onChange={onAdvFilterChange}
-            onClear={onAdvFilterClear}
-            authUser={authUser}
-            attendants={attendants}
-            align="left"
-          />
-        </div>
-        {/* Busca global */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 6,
-          padding: "6px 10px", borderRadius: 8,
-          background: "var(--bg-surface-2)",
-          border: "1px solid var(--border-default)",
-        }}>
-          <Search size={13} strokeWidth={2} style={{ color: "var(--text-muted)" }} />
+          <Search size={15} strokeWidth={2.2} style={{ color: "#1f2937" }} />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-                 placeholder="Pesquisar..."
+                 placeholder="Pesquisar"
                  data-testid="wa-search-input"
                  style={{
                    flex: 1, border: "none", outline: "none",
                    background: "transparent",
-                   fontSize: 12.5, color: "var(--text-primary)",
+                   fontSize: 13, color: "#0f172a",
                  }} />
+          {/* Indicador de filtros (badge verde) */}
+          <div style={{ position: "relative", display: "inline-flex" }}>
+            <WaChatFilterPopover
+              value={advFilter}
+              onChange={onAdvFilterChange}
+              onClear={onAdvFilterClear}
+              authUser={authUser}
+              attendants={attendants}
+              align="left"
+            />
+            {totalUnread > 0 && (
+              <span style={{
+                position: "absolute", top: -4, right: -4,
+                minWidth: 16, height: 16, padding: "0 4px",
+                borderRadius: 999, background: "#16a34a", color: "#fff",
+                fontSize: 9, fontWeight: 800,
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                border: "2px solid #fff",
+                pointerEvents: "none",
+              }}>{totalUnread > 99 ? "99+" : totalUnread}</span>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Lista de buckets — accordion */}
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "8px 6px" }}>
+      {/* Lista de buckets — accordion (estilo cards FocusChat) */}
+      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "10px 10px" }}>
         {BUCKETS.map((b) => {
           const Ico = b.icon;
           const active = bucket === b.id;
@@ -607,87 +621,92 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
           // Convs do bucket atual (apenas quando expandido)
           const bucketConvs = active ? (convs || []) : [];
           return (
-            <div key={b.id} style={{ marginBottom: 4 }}>
+            <div key={b.id} style={{
+              marginBottom: 10,
+              background: "#ffffff",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
+              boxShadow: active
+                ? "0 2px 8px rgba(15, 23, 42, .08)"
+                : "0 1px 2px rgba(15, 23, 42, .04)",
+              overflow: "hidden",
+            }}>
               <button onClick={() => setBucket(active ? "" : b.id)}
                       data-testid={`wa-bucket-${b.id}`}
                       title={active ? `Fechar ${b.label}` : `Abrir ${b.label}`}
                       style={{
                 width: "100%",
-                display: "flex", alignItems: "center", gap: 10,
-                padding: "10px 12px", borderRadius: 8,
-                background: active ? "var(--bg-surface-2)" : "transparent",
-                border: "1px solid transparent",
-                borderLeft: active
-                  ? `3px solid ${b.color}`
-                  : "3px solid transparent",
-                color: active ? "var(--text-primary)" : "var(--text-secondary)",
-                cursor: "pointer", textAlign: "left", fontSize: 13,
-                fontWeight: active ? 700 : 500,
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "14px 16px",
+                background: "transparent",
+                border: "none",
+                color: "#0f172a",
+                cursor: "pointer", textAlign: "left",
+                fontSize: 16, fontWeight: 700,
                 transition: "background .15s",
               }}
               onMouseEnter={(e) => {
-                if (!active) e.currentTarget.style.background = "var(--bg-surface-2)";
+                if (!active) e.currentTarget.style.background = "#f8fafc";
               }}
               onMouseLeave={(e) => {
                 if (!active) e.currentTarget.style.background = "transparent";
               }}>
-                <Ico size={16} strokeWidth={1.85}
-                      style={{ color: active ? b.color : "var(--text-muted)" }} />
-                <span style={{ flex: 1 }}>{b.label}</span>
-                {/* Count + unread badge */}
+                <Ico size={22} strokeWidth={2}
+                      style={{ color: "#0f172a", flexShrink: 0 }} />
+                <span style={{ flex: 1, color: "#0f172a", letterSpacing: -0.2 }}>
+                  {b.label}
+                </span>
+                {/* Pílula preta com count + badge verde sobreposto */}
                 <span data-testid={`wa-bucket-count-${b.id}`} style={{
                   position: "relative",
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  minWidth: 28, height: 22, padding: "0 8px",
-                  borderRadius: 6,
-                  background: n > 0 ? "var(--text-primary)" : "var(--bg-surface-2)",
-                  color: n > 0 ? "var(--bg-surface)" : "var(--text-muted)",
-                  fontSize: 11, fontWeight: 800,
+                  minWidth: 38, height: 26, padding: "0 12px",
+                  borderRadius: 999,
+                  background: "#0f172a",
+                  color: "#ffffff",
+                  fontSize: 13, fontWeight: 800,
                 }}>
                   {n}
                   {unread > 0 && (
                     <span data-testid={`wa-bucket-unread-${b.id}`}
-                          title={`${unread} ${unread === 1 ? "mensagem não lida" : "mensagens não lidas"}`}
+                          title={`${unread} não lida${unread === 1 ? "" : "s"}`}
                           style={{
-                      position: "absolute", top: -6, right: -6,
-                      minWidth: 16, height: 16, padding: "0 4px",
+                      position: "absolute", top: -7, right: -7,
+                      minWidth: 18, height: 18, padding: "0 5px",
                       borderRadius: 999, background: "#16a34a", color: "#fff",
-                      fontSize: 9, fontWeight: 800,
+                      fontSize: 10, fontWeight: 800,
                       display: "inline-flex", alignItems: "center", justifyContent: "center",
-                      border: "2px solid var(--bg-surface)",
+                      border: "2px solid #ffffff",
                       lineHeight: 1,
                     }}>
                       {unread > 99 ? "99+" : unread}
                     </span>
                   )}
                 </span>
-                {/* Seta indicando expansão */}
-                <ChevronDown
-                  size={14}
-                  strokeWidth={2.2}
-                  style={{
-                    color: "var(--text-muted)",
-                    transform: active ? "rotate(0deg)" : "rotate(-90deg)",
-                    transition: "transform .18s",
-                  }} />
+                {/* Chevron ">" */}
+                <span style={{
+                  color: "#94a3b8", fontSize: 18, fontWeight: 400,
+                  transform: active ? "rotate(90deg)" : "rotate(0deg)",
+                  transition: "transform .18s",
+                  display: "inline-block", lineHeight: 1, flexShrink: 0,
+                  marginLeft: 2,
+                }}>›</span>
               </button>
 
               {/* Convs nested DENTRO do bucket aberto */}
               {active && (
                 <div data-testid={`wa-bucket-content-${b.id}`}
                      style={{
-                       marginTop: 4, marginLeft: 4, marginRight: 4,
-                       borderLeft: `2px solid ${b.color}33`,
-                       paddingLeft: 4,
+                       borderTop: "1px solid #e5e7eb",
                      }}>
                   {loading ? (
-                    <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)" }}>
+                    <div style={{ padding: 20, textAlign: "center", color: "#64748b" }}>
                       <Loader2 size={16} style={{ animation: "wa-spin 1s linear infinite" }} />
                       <div style={{ fontSize: 11, marginTop: 4 }}>Carregando...</div>
                     </div>
                   ) : bucketConvs.length === 0 ? (
                     <div style={{ padding: "16px 12px", textAlign: "center",
-                                  color: "var(--text-muted)", fontSize: 11.5 }}>
+                                  color: "#64748b", fontSize: 12 }}>
                       Sem conversas em "{b.label}"
                     </div>
                   ) : bucketConvs.map((c) => (
@@ -704,6 +723,36 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
           );
         })}
       </div>
+
+      {/* Banner inferior "Tudo pronto, canal ativo e configurado" */}
+      {!bannerDismissed && (
+        <div data-testid="wa-ready-banner" style={{
+          margin: "0 10px 10px",
+          padding: "12px 16px",
+          borderRadius: 10,
+          background: "linear-gradient(135deg, #93c5fd, #60a5fa)",
+          color: "#0f172a",
+          display: "flex", alignItems: "center", gap: 10,
+          fontSize: 13, fontWeight: 600,
+          boxShadow: "0 2px 6px rgba(59,130,246,.25)",
+        }}>
+          <span style={{ fontSize: 14 }}>🎉</span>
+          <span style={{ flex: 1 }}>
+            Tudo <strong>pronto</strong>, canal ativo e configurado.
+          </span>
+          <button onClick={dismissBanner}
+                  data-testid="wa-ready-banner-close"
+                  title="Dispensar"
+                  style={{
+                    background: "transparent", border: "none",
+                    color: "#0f172a", cursor: "pointer",
+                    padding: 4, display: "inline-flex",
+                    borderRadius: 4,
+                  }}>
+            <X size={16} strokeWidth={2.4} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -780,8 +829,8 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
   const online = presence === "available" || presence === "composing";
   const unread = conv.unread || 0;
   // Status do contato (dot bottom-right do avatar):
-  // verde se online · laranja se aguardando atendente · azul se há unread · cinza default
-  let statusColor = null;
+  // verde se online · laranja se aguardando · azul se há unread · laranja default (estilo screenshot)
+  let statusColor = "#f59e0b";
   if (online) statusColor = "#22c55e";
   else if (conv.bucket === "aguardando") statusColor = "#f59e0b";
   else if (unread > 0) statusColor = "#0ea5e9";
@@ -801,27 +850,27 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
     <button onClick={onClick}
             data-testid={`wa-conv-${conv.phone}`}
             style={{
-              width: "100%", padding: "12px 14px",
-              border: "none", borderBottom: "1px solid var(--border-default)",
-              background: selected ? "var(--accent-soft)" : "transparent",
-              borderLeft: selected ? "3px solid var(--accent)" : "3px solid transparent",
+              width: "100%", padding: "14px 14px",
+              border: "none", borderBottom: "1px solid #f1f5f9",
+              background: selected ? "#eff6ff" : "transparent",
+              borderLeft: selected ? "3px solid #2563eb" : "3px solid transparent",
               cursor: "pointer", textAlign: "left",
               display: "flex", gap: 12, alignItems: "flex-start",
               transition: "background .15s",
             }}>
       {/* Avatar com WA badge bottom-left + status dot bottom-right */}
-      <div style={{ position: "relative", flexShrink: 0, width: 46, height: 46 }}>
-        <Avatar name={displayName} src={avatarSrc} isAi={false} size={46} />
+      <div style={{ position: "relative", flexShrink: 0, width: 56, height: 56 }}>
+        <Avatar name={displayName} src={avatarSrc} isAi={false} size={56} />
         {/* WhatsApp badge */}
         <span title="WhatsApp" style={{
-          position: "absolute", bottom: -1, left: -2,
-          width: 16, height: 16, borderRadius: "50%",
+          position: "absolute", bottom: -2, left: -2,
+          width: 22, height: 22, borderRadius: "50%",
           background: "#22c55e", color: "#fff",
           display: "grid", placeItems: "center",
-          border: "2px solid var(--bg-surface)",
-          boxShadow: "0 1px 2px rgba(0,0,0,.2)",
+          border: "2.5px solid #ffffff",
+          boxShadow: "0 1px 3px rgba(0,0,0,.18)",
         }}>
-          <svg width="9" height="9" viewBox="0 0 32 32" fill="currentColor">
+          <svg width="12" height="12" viewBox="0 0 32 32" fill="currentColor">
             <path d="M16.001 0C7.165 0 .001 7.164.001 16c0 2.823.737 5.587 2.137 8.018L0 32l8.182-2.146A15.92 15.92 0 0 0 16 32c8.836 0 16-7.164 16-16S24.837 0 16.001 0Zm0 29.333c-2.45 0-4.84-.654-6.937-1.892l-.498-.295-5.151 1.35 1.376-5.016-.323-.515A13.282 13.282 0 0 1 2.668 16c0-7.353 5.98-13.333 13.333-13.333S29.334 8.647 29.334 16 23.354 29.333 16.001 29.333Zm7.292-9.984c-.4-.2-2.366-1.166-2.733-1.3-.367-.133-.633-.2-.9.2s-1.033 1.3-1.267 1.567c-.233.266-.466.3-.866.1-.4-.2-1.689-.622-3.217-1.984-1.189-1.06-1.992-2.368-2.225-2.768-.233-.4-.024-.617.176-.816.18-.18.4-.467.6-.7.2-.234.267-.4.4-.667.133-.266.067-.5-.033-.7-.1-.2-.9-2.167-1.233-2.967-.325-.778-.655-.672-.9-.685-.233-.011-.5-.013-.766-.013-.267 0-.7.1-1.067.5s-1.4 1.367-1.4 3.334 1.434 3.866 1.633 4.134c.2.267 2.817 4.3 6.834 6.034.955.412 1.7.659 2.281.844.958.305 1.83.262 2.52.158.769-.114 2.367-.967 2.7-1.9.333-.934.333-1.734.233-1.9-.1-.167-.367-.267-.767-.467Z"/>
           </svg>
         </span>
@@ -829,58 +878,127 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
         {statusColor && (
           <span title={online ? "Online" : conv.bucket === "aguardando" ? "Aguardando" : "Não lidas"}
                 style={{
-                  position: "absolute", bottom: -1, right: -1,
-                  width: 13, height: 13, borderRadius: "50%",
+                  position: "absolute", bottom: -2, right: -2,
+                  width: 16, height: 16, borderRadius: "50%",
                   background: statusColor,
-                  border: "2px solid var(--bg-surface)",
+                  border: "2.5px solid #ffffff",
                 }} />
         )}
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Linha 1: nome + timestamp */}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          <strong style={{
-            fontSize: 13.5, color: "var(--text-primary)",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            flex: 1, minWidth: 0,
-            fontWeight: unread > 0 ? 800 : 700,
-          }}>{displayName}</strong>
-          <span style={{ fontSize: 10, color: "var(--text-muted)",
-                          flexShrink: 0, fontWeight: unread > 0 ? 700 : 400 }}>
-            {time}
-          </span>
-        </div>
-
-        {/* Linha 2: telefone (sempre) */}
-        <div style={{ fontSize: 11, color: "var(--text-muted)",
-                       marginTop: 1, fontFamily: "ui-monospace, monospace" }}>
-          +{conv.phone}
-          {conv.subscriber_external_code && (
-            <span style={{ marginLeft: 6, color: "var(--text-muted)" }}>
-              · cód <strong style={{ color: "var(--text-secondary)" }}>
-                {conv.subscriber_external_code}
-              </strong>
+        {/* Linha 1: nome + timestamp + Atender */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <strong style={{
+              fontSize: 14.5, color: "#0f172a",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              display: "block",
+              fontWeight: unread > 0 ? 800 : 700,
+              letterSpacing: -0.2,
+            }}>{displayName}</strong>
+            {/* Linha 2: telefone (sempre) */}
+            <div style={{ fontSize: 12, color: "#64748b",
+                           marginTop: 2, fontFamily: "ui-monospace, monospace",
+                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              +{conv.phone}
+              {conv.subscriber_external_code && (
+                <span style={{ marginLeft: 6, color: "#64748b" }}>
+                  · cód <strong style={{ color: "#475569" }}>
+                    {conv.subscriber_external_code}
+                  </strong>
+                </span>
+              )}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+            <span style={{ fontSize: 11, color: "#64748b",
+                            fontWeight: unread > 0 ? 700 : 500 }}>
+              {time}
             </span>
-          )}
+            {/* Botão "Atender" laranja inline (estilo screenshot) */}
+            {(() => {
+              const isMine = conv.assignee_user_id && authUser?.id
+                              && conv.assignee_user_id === authUser.id;
+              const hasHumanOther = conv.assignee_role === "human"
+                                      && conv.assignee_user_id
+                                      && !isMine;
+              if (hasHumanOther) {
+                return (
+                  <span data-testid={`wa-conv-attendant-${conv.phone}`}
+                        title={`Atribuída a ${conv.assignee_name}`}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          padding: "5px 12px", borderRadius: 6,
+                          background: "linear-gradient(180deg, #2f80ed, #1d6cd8)",
+                          color: "#fff", fontSize: 11.5, fontWeight: 700,
+                          maxWidth: 100,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                    <User size={10} strokeWidth={2.8} />
+                    {conv.assignee_name}
+                  </span>
+                );
+              }
+              if ((isAi || !conv.assignee_user_id) && onAssignSelf && authUser?.id) {
+                return (
+                  <button
+                    type="button"
+                    data-testid={`wa-conv-attender-${conv.phone}`}
+                    onClick={(ev) => { ev.stopPropagation(); onAssignSelf(conv.phone); }}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      padding: "5px 14px", borderRadius: 6,
+                      background: "linear-gradient(180deg, #fb923c, #f97316)",
+                      color: "#fff", fontSize: 11.5, fontWeight: 700,
+                      border: "none", cursor: "pointer",
+                      boxShadow: "0 1px 2px rgba(249,115,22,.4)",
+                      transition: "transform .12s, box-shadow .12s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = "0 2px 6px rgba(249,115,22,.55)";
+                      e.currentTarget.style.transform = "translateY(-1px)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = "0 1px 2px rgba(249,115,22,.4)";
+                      e.currentTarget.style.transform = "translateY(0)";
+                    }}>
+                    Atender
+                  </button>
+                );
+              }
+              if (isMine) {
+                return (
+                  <span data-testid={`wa-conv-mine-${conv.phone}`}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          padding: "5px 10px", borderRadius: 6,
+                          background: "linear-gradient(180deg, #16a34a, #15803d)",
+                          color: "#fff", fontSize: 11, fontWeight: 700,
+                        }}>
+                    <CheckCircle2 size={10} strokeWidth={2.8} />
+                    Atendendo
+                  </span>
+                );
+              }
+              return null;
+            })()}
+          </div>
         </div>
 
-        {/* Linha 3: tag filial + assignee */}
+        {/* Linha 3: tag filial + plano */}
         <div style={{
           display: "flex", alignItems: "center", gap: 6,
-          marginTop: 6, flexWrap: "wrap",
+          marginTop: 8, flexWrap: "wrap",
         }}>
           {conv.subscriber_branch && (
             <span style={{
-              display: "inline-flex", alignItems: "center", gap: 3,
-              padding: "2px 7px", borderRadius: 5,
-              background: "rgba(100,116,139,.15)",
-              color: "var(--text-secondary)",
-              fontSize: 10, fontWeight: 700, letterSpacing: 0.3,
-              textTransform: "uppercase",
+              display: "inline-flex", alignItems: "center", gap: 4,
+              fontSize: 11.5, fontWeight: 600,
+              color: "#475569", letterSpacing: 0.2,
             }}>
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M3 22V8l9-6 9 6v14h-6v-7h-6v7H3Z"/>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M14 9h.01M14 13h.01M14 17h.01"/>
               </svg>
               {conv.subscriber_branch}
             </span>
@@ -888,9 +1006,9 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
           {isIdentified && conv.subscriber_plan && (
             <span style={{
               padding: "2px 7px", borderRadius: 5,
-              background: "rgba(13,148,136,.15)",
+              background: "rgba(13,148,136,.12)",
               color: "#0d9488",
-              fontSize: 10, fontWeight: 700,
+              fontSize: 10.5, fontWeight: 700,
             }}>
               {conv.subscriber_plan}
             </span>
@@ -899,17 +1017,25 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
 
         {/* Linha 4: última msg + direção + unread badge */}
         <div style={{
-          display: "flex", alignItems: "center", gap: 6, marginTop: 5,
+          display: "flex", alignItems: "center", gap: 7, marginTop: 8,
         }}>
-          <span style={{ color: dirColor, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+          {/* Setinha azul direção (▲ outbound, ▼ inbound) */}
+          <span style={{
+            color: "#3b82f6",
+            background: "#dbeafe",
+            width: 18, height: 18, borderRadius: 4,
+            fontSize: 11, fontWeight: 800, flexShrink: 0,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            lineHeight: 1,
+          }}>
             {dirIcon}
           </span>
           <span style={{
-            fontSize: 12,
+            fontSize: 12.5,
             color: aiTypingPreview
               ? "#7c3aed"
-              : (unread > 0 ? "var(--text-primary)" : "var(--text-secondary)"),
-            fontWeight: aiTypingPreview || unread > 0 ? 600 : 400,
+              : (unread > 0 ? "#0f172a" : "#475569"),
+            fontWeight: aiTypingPreview || unread > 0 ? 600 : 500,
             fontStyle: aiTypingPreview ? "italic" : "normal",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             flex: 1, minWidth: 0,
@@ -953,25 +1079,25 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
           {conv.phone_is_lid && (
             <span
               data-testid={`wa-conv-lid-${conv.phone}`}
-              title={`WhatsApp LID anônimo — número real oculto pela privacidade. Clique na conversa para vincular ao telefone correto. LID: ${conv.lid || conv.phone}`}
+              title={`WhatsApp LID anônimo. LID: ${conv.lid || conv.phone}`}
               style={{
-                padding: "1px 7px", borderRadius: 999,
+                padding: "1px 6px", borderRadius: 999,
                 background: "#fef3c7", color: "#92400e",
-                fontSize: 10, fontWeight: 800,
+                fontSize: 9.5, fontWeight: 800,
                 display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0,
                 border: "1px solid #fde68a",
               }}>
-              <Lock size={10} strokeWidth={2.5} /> LID anônimo
+              <Lock size={9} strokeWidth={2.5} /> LID
             </span>
           )}
           {unread > 0 && (
             <span data-testid={`wa-unread-${conv.phone}`} style={{
-              minWidth: 20, height: 20, padding: "0 6px",
-              borderRadius: 999, background: "#22c55e",
-              color: "#fff", fontSize: 10, fontWeight: 800,
+              minWidth: 22, height: 22, padding: "0 7px",
+              borderRadius: 999, background: "#16a34a",
+              color: "#fff", fontSize: 11, fontWeight: 800,
               display: "inline-flex", alignItems: "center", justifyContent: "center",
               flexShrink: 0,
-              boxShadow: "0 1px 3px rgba(34,197,94,.5)",
+              boxShadow: "0 1px 3px rgba(22,163,74,.45)",
             }}>{unread > 99 ? "99+" : unread}</span>
           )}
         </div>
@@ -980,95 +1106,14 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
         {!isAi && conv.assignee_role === "human" && conv.last_direction === "outbound" && (
           <div style={{
             marginTop: 6, fontSize: 10,
-            color: "var(--text-muted)",
+            color: "#64748b",
             display: "flex", alignItems: "center", gap: 4,
             fontStyle: "italic",
           }}>
             <span style={{ color: "#f59e0b" }}>🔔</span>
-            Chat assumido por: <strong>{conv.assignee_name}</strong>
+            Atendido por: <strong>{conv.assignee_name}</strong>
           </div>
         )}
-
-        {/* Botão "Atender" azul OU chip com nome do atendente (estilo Woluy/FocusChat) */}
-        {(() => {
-          const isMine = conv.assignee_user_id && authUser?.id
-                          && conv.assignee_user_id === authUser.id;
-          const hasHumanOther = conv.assignee_role === "human"
-                                  && conv.assignee_user_id
-                                  && !isMine;
-          // Caso 1: humano (outro) já assumiu → chip azul com nome (não clicável,
-          // só informativo — o usuário entra na conv clicando no card todo).
-          if (hasHumanOther) {
-            return (
-              <div style={{ marginTop: 8, display: "flex" }}>
-                <span data-testid={`wa-conv-attendant-${conv.phone}`}
-                      title={`Atribuída a ${conv.assignee_name}`}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 5,
-                        padding: "6px 14px", borderRadius: 8,
-                        background: "linear-gradient(180deg, #2f80ed, #1d6cd8)",
-                        color: "#fff", fontSize: 12, fontWeight: 700,
-                        boxShadow: "0 1px 2px rgba(29,108,216,.35)",
-                        maxWidth: "100%",
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>
-                  <User size={11} strokeWidth={2.8} />
-                  {conv.assignee_name}
-                </span>
-              </div>
-            );
-          }
-          // Caso 2: IA ou conversa órfã → mostra botão "Atender" pro humano puxar
-          if ((isAi || !conv.assignee_user_id) && onAssignSelf && authUser?.id) {
-            return (
-              <div style={{ marginTop: 8, display: "flex" }}>
-                <button
-                  type="button"
-                  data-testid={`wa-conv-attender-${conv.phone}`}
-                  onClick={(ev) => { ev.stopPropagation(); onAssignSelf(conv.phone); }}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    padding: "6px 16px", borderRadius: 8,
-                    background: "linear-gradient(180deg, #2f80ed, #1d6cd8)",
-                    color: "#fff", fontSize: 12, fontWeight: 700,
-                    border: "none", cursor: "pointer",
-                    boxShadow: "0 1px 2px rgba(29,108,216,.35)",
-                    transition: "transform .12s, box-shadow .12s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = "0 2px 6px rgba(29,108,216,.5)";
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = "0 1px 2px rgba(29,108,216,.35)";
-                    e.currentTarget.style.transform = "translateY(0)";
-                  }}>
-                  <UserCheck size={12} strokeWidth={2.6} />
-                  Atender
-                </button>
-              </div>
-            );
-          }
-          // Caso 3: é minha → chip verde "Você está atendendo"
-          if (isMine) {
-            return (
-              <div style={{ marginTop: 8, display: "flex" }}>
-                <span data-testid={`wa-conv-mine-${conv.phone}`}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 5,
-                        padding: "6px 14px", borderRadius: 8,
-                        background: "linear-gradient(180deg, #16a34a, #15803d)",
-                        color: "#fff", fontSize: 12, fontWeight: 700,
-                        boxShadow: "0 1px 2px rgba(22,163,74,.35)",
-                      }}>
-                  <CheckCircle2 size={11} strokeWidth={2.8} />
-                  Você está atendendo
-                </span>
-              </div>
-            );
-          }
-          return null;
-        })()}
       </div>
     </button>
   );
