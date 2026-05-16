@@ -3,12 +3,14 @@ import { api } from "@/api";
 import { Button, Card, Field, inputStyle } from "@/ui";
 import {
   Megaphone, Plus, Upload, Play, Pause, Trash2, Eye,
-  Users, CheckCircle2, XCircle, Clock,
+  Users, CheckCircle2, XCircle, Clock, Zap,
 } from "lucide-react";
+import DisparoIaPanel from "@/DisparoIaPanel";
 
 const fmtDate = (s) => s ? new Date(s).toLocaleString("pt-BR") : "—";
 
 export default function MassMessagingPanel() {
+  const [tab, setTab] = useState("manual"); // manual | disparo_ia
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -47,12 +49,42 @@ export default function MassMessagingPanel() {
                      display: "flex", alignItems: "center", gap: 10 }}>
           <Megaphone size={22} /> Disparo em Massa
         </h1>
-        <Button onClick={() => setCreating(true)}
-                data-testid="camp-new-btn">
-          <Plus size={14} /> Nova campanha
-        </Button>
+        {tab === "manual" && (
+          <Button onClick={() => setCreating(true)}
+                  data-testid="camp-new-btn">
+            <Plus size={14} /> Nova campanha
+          </Button>
+        )}
       </div>
 
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid #e2e8f0" }}>
+        {[
+          { id: "manual", label: "Campanhas manuais", icon: Megaphone },
+          { id: "disparo_ia", label: "Disparo IA", icon: Zap },
+        ].map((t) => {
+          const Icon = t.icon;
+          const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)}
+                     data-testid={`mass-tab-${t.id}`}
+                     style={{
+                       padding: "10px 18px", border: "none",
+                       background: "transparent", cursor: "pointer",
+                       fontSize: 13, fontWeight: active ? 700 : 500,
+                       color: active ? "#7c3aed" : "#64748b",
+                       borderBottom: "2px solid " + (active ? "#7c3aed" : "transparent"),
+                       marginBottom: -1,
+                       display: "inline-flex", alignItems: "center", gap: 6,
+                       transition: "color 150ms",
+                     }}>
+              <Icon size={14} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "disparo_ia" ? <DisparoIaPanel /> : (
       <Card title="Campanhas">
         {loading ? (
           <div style={{ color: "#94a3b8" }}>Carregando…</div>
@@ -121,6 +153,7 @@ export default function MassMessagingPanel() {
           </div>
         )}
       </Card>
+      )}
 
       {creating && (
         <CampaignCreateModal

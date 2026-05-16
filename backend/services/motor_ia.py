@@ -86,6 +86,12 @@ AGENT_CATALOG: List[Dict[str, str]] = [
     {"id": "secretaria_ia",       "label": "Secretária IA (Ligo)",
      "group": "Assistente Executivo",
      "description": "Assistente executiva. Responde perguntas do gestor sobre dados do sistema, integrada ao WhatsApp e GPT customizado."},
+    {"id": "alvaro_ai",           "label": "Alvaro IA · Analista",
+     "group": "Insights & Analytics",
+     "description": "Analisa conversas WhatsApp das últimas 24h e gera relatório consolidado (Deepseek)."},
+    {"id": "disparo_ia",          "label": "Disparo IA · Estrategista",
+     "group": "Comunicação ativa",
+     "description": "Estrategista que orquestra Alvaro (insights) + Isabella (execução) para criar campanhas WhatsApp ativas (Claude Sonnet 4.5)."},
 ]
 AGENT_IDS = {a["id"] for a in AGENT_CATALOG}
 

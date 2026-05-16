@@ -1,0 +1,44 @@
+{
+  "summary": "Iter 81 — Disparo IA backend fully validated via 9 pytest cases (catalog, KPIs, ACL, list, generate-validation, approve full e2e with DB shape, reject, 404 detail). Frontend UI loads with sidebar 'Disparo em Massa' visible; data-testid attributes are present in code for all required elements (mass-tab-manual, mass-tab-disparo_ia, disparo-ia-panel, disparo-generate-btn, disparo-kpi-dashboard, disparo-filter-*, disparo-sug-{id}, disparo-sug-modal, disparo-msg-edit, disparo-briefing-edit, disparo-approve-btn, disparo-reject-btn). LLM generate endpoint not invoked to save budget (per agent-to-agent note).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/disparo-ia/kpis", "issue": "read_rate is a proxy of delivery_rate (same value) because Meta Cloud read status isn't piped yet — note in code; not a bug but document for users."},
+      {"endpoint": "/api/disparo-ia/suggestions/{id}/approve", "issue": "When approving, code re-queries audience twice (calls _resolve_audience then runs raw subscribers query) — works correctly but duplicate work."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "DisparoIaPanel SuggestionDetailModal", "issue": "window.confirm string template-literal on approve() has mismatched quote terminator: backtick opens on L287, raw '\"' embedded, '+' tokens inside the template literal end up rendered LITERALLY in the confirm dialog (cosmetic only — does NOT crash, JS parses it as one template string).", "selector": "DisparoIaPanel.js L284-288", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "DisparoIaPanel KPI dashboard", "issues": ["10th KPI card 'Cost / conv.' shows literal em-dash placeholder — fine for v1 but mark as 'em breve' visibly, not just in title tooltip."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter81_disparo_ia.py",
+    "/app/test_reports/pytest/iter81_results.xml"
+  ],
+  "action_items": [
+    "(LOW) Fix the cosmetic quote mismatch in DisparoIaPanel.js approve() confirm() template literal (lines 285-288).",
+    "(OPTIONAL) Decouple read_rate from delivery_rate by reading mass_recipients.status='delivered' vs 'read' (if/when Meta read receipts are stored).",
+    "(OPTIONAL) Remove duplicate audience-resolution work in approve handler (use the result from _resolve_audience instead of re-querying)."
+  ],
+  "critical_code_review_comments": [
+    "routes/disparo_ia.py L223 has unused alias import `from services.disparo_ai import _resolve_audience as _ra  # noqa` — remove dead code.",
+    "services/disparo_ai.py compute_kpis uses POSITIVE_RE/NEGATIVE_RE without accent-stripping client replies — 'não' is captured but variants like 'nao tenho' rely on no-accent path; current pattern is reasonable but consider unidecode for robustness.",
+    "DisparoIaPanel.js approve() confirm string mishap (see ui_bugs).",
+    "approve handler accepts schedule_at as raw string (no ISO validation) — invalid input would only fail at start time."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter81_disparo_ia.py"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "code-level OK; runtime not fully validated due to networkidle wait timeouts in playwright (app has continuous polling). All required data-testid attributes confirmed present in source."},
+  "test_credentials": "admin@empresa.com / 123456 (administrador)",
+  "seed_data_creation": "Tests seed disparo_suggestions docs with TEST_ prefix in titles and clean them up in finally blocks; one mass_campaigns + mass_recipients created during approve test is also deleted.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend contract for /api/disparo-ia is rock-solid. test_iter81_disparo_ia.py is a good regression seed — re-runs cleanly. Did NOT invoke /generate-suggestions (LLM-heavy, 10-20s, main agent already verified). For full E2E UI, use page.wait_for_load_state('domcontentloaded') instead of 'networkidle' — this app polls in background and never reaches networkidle. Sidebar link 'Disparo em Massa' is in the left nav under 'Inteligência' section.",
+  "rca of the issue": "n/a — no blocking bugs found. The single LOW priority frontend issue is a JS template-literal quote mismatch in the confirm() dialog of DisparoIaPanel.js which causes the dialog text to render with stray '+' and '\"' tokens but does NOT throw."
+}

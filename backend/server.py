@@ -94,6 +94,7 @@ from routes import (
     alvaro as routes_alvaro,
     whatsapp_config as routes_whatsapp_config,
     mass_messaging as routes_mass_messaging,
+    disparo_ia as routes_disparo_ia,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -435,6 +436,7 @@ app.include_router(routes_atlaz_financeiro.router)
 app.include_router(routes_alvaro.router)
 app.include_router(routes_whatsapp_config.router)
 app.include_router(routes_mass_messaging.router)
+app.include_router(routes_disparo_ia.router)
 
 
 # ============================================================
