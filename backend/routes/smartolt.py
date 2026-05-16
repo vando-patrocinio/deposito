@@ -308,6 +308,69 @@ async def public_validate_mac(mac_or_sn: str, collaborator_id: Optional[str] = N
 # ---------------------------------------------------------------------------
 # Lookup + signal
 # ---------------------------------------------------------------------------
+@router.get("/onus/by-vlan/{vlan}")
+async def list_onus_by_vlan(
+    vlan: int,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Lista ONUs/ONTs cuja VLAN dos service_ports == {vlan}.
+
+    A SmartOLT API NÃO tem endpoint nativo `get_by_vlan`. Estratégia:
+      1. Chama /onu/get_all_onus_details (mesmo endpoint usado no sync).
+      2. Filtra ONUs cujo service_ports[*].vlan == vlan (em string ou int).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(cid)
+    if not cfg.enabled or not cfg.subdomain or not cfg.api_key:
+        raise HTTPException(400, "SmartOLT desabilitado ou não configurado.")
+    try:
+        data = await _http_get(cfg, "/onu/get_all_onus_details")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(502, f"SmartOLT HTTP {e.response.status_code}")
+    except Exception as e:
+        raise HTTPException(502, f"SmartOLT erro: {type(e).__name__}: {e}")
+
+    onus_raw = data.get("onus") or []
+    target = str(vlan)
+    onus_norm = []
+    for o in onus_raw:
+        sps = o.get("service_ports") or []
+        # Match se QUALQUER service_port estiver na VLAN procurada
+        # (vlan/cvlan/svlan — formatos diferentes por instalação)
+        matched_vlan = None
+        for sp in sps:
+            v = str(sp.get("vlan") or "")
+            cv = str(sp.get("cvlan") or "")
+            sv = str(sp.get("svlan") or "")
+            if v == target or cv == target or sv == target:
+                matched_vlan = v or cv or sv
+                break
+        if not matched_vlan:
+            continue
+        onus_norm.append({
+            "unique_external_id": str(o.get("unique_external_id") or ""),
+            "name": o.get("name") or "",
+            "sn": o.get("sn") or "",
+            "olt_name": o.get("olt_name") or "",
+            "board": str(o.get("board") or ""),
+            "port": str(o.get("port") or ""),
+            "onu": str(o.get("onu") or ""),
+            "zone_name": o.get("zone_name") or "",
+            "address": o.get("address") or "",
+            "status": o.get("status") or "",
+            "signal_text": o.get("signal") or "",
+            "vlan": matched_vlan,
+        })
+    return {
+        "vlan": vlan,
+        "count": len(onus_norm),
+        "total_scanned": len(onus_raw),
+        "source": "smartolt_live",
+        "onus": onus_norm,
+    }
+
+
+
 @router.get("/onu/lookup")
 async def lookup_onu(
     pppoe: Optional[str] = Query(default=None),

@@ -699,6 +699,7 @@ function BairrosManager() {
   const [form, setForm] = useState({ bairro: "", sigla: "", vlan: "",
                                           cidade: "", estado: "", regiao: "" });
   const [err, setErr] = useState("");
+  const [onusModal, setOnusModal] = useState(null); // {vlan, bairro}
   const load = useCallback(async () => {
     const r = await api.redeIaBairros();
     setItems(r.items || []);
@@ -761,6 +762,13 @@ function BairrosManager() {
               <td style={td}>{b.vlan}</td>
               <td style={td}>{b.cidade}{b.estado ? `/${b.estado}` : ""}</td>
               <td style={td}>
+                <button onClick={() => setOnusModal({ vlan: b.vlan, bairro: b.bairro })}
+                        style={{ ...btnSm("#0ea5e9"), padding: "4px 10px",
+                                  fontSize: 11, marginRight: 6 }}
+                        data-testid={`bairro-list-onus-${b.id}`}
+                        title={`Buscar ONUs na SmartOLT pela VLAN ${b.vlan}`}>
+                  📡 ONUs
+                </button>
                 <button onClick={() => del(b.id)}
                         style={{ ...btnSm("#dc2626"), padding: "4px 8px", fontSize: 11 }}
                         data-testid={`bairro-del-${b.id}`}>×</button>
@@ -775,7 +783,152 @@ function BairrosManager() {
           )}
         </tbody>
       </table>
+      {onusModal && (
+        <OnusByVlanModal {...onusModal} onClose={() => setOnusModal(null)} />
+      )}
     </Card>
+  );
+}
+
+function OnusByVlanModal({ vlan, bairro, onClose }) {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    api._client.get(`/smartolt/onus/by-vlan/${vlan}`)
+      .then((r) => setData(r.data))
+      .catch((e) => setError(e?.response?.data?.detail || e.message))
+      .finally(() => setLoading(false));
+  }, [vlan]);
+
+  const filtered = (data?.onus || []).filter((o) => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return (o.name || "").toLowerCase().includes(s)
+        || (o.sn || "").toLowerCase().includes(s)
+        || (o.address || "").toLowerCase().includes(s)
+        || (o.zone_name || "").toLowerCase().includes(s);
+  });
+
+  return (
+    <div onClick={onClose}
+         style={{ position: "fixed", inset: 0, zIndex: 1000,
+                   background: "rgba(2,6,23,0.65)",
+                   display: "grid", placeItems: "center", padding: 20 }}
+         data-testid="onus-by-vlan-modal">
+      <div onClick={(e) => e.stopPropagation()}
+           style={{ background: "white", borderRadius: 14, padding: 20,
+                     maxWidth: 1100, width: "100%", maxHeight: "85vh",
+                     overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", justifyContent: "space-between",
+                       alignItems: "flex-start", marginBottom: 14 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>
+              📡 ONUs autorizadas — VLAN {vlan}
+            </h3>
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#64748b" }}>
+              Bairro: <strong>{bairro}</strong>
+              {data && (
+                <> · {data.count} ONUs encontradas na SmartOLT
+                  <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 6px",
+                                  background: "#dcfce7", color: "#166534",
+                                  borderRadius: 999, fontWeight: 700 }}>
+                    LIVE
+                  </span>
+                </>
+              )}
+            </p>
+          </div>
+          <button onClick={onClose}
+                   style={{ border: "none", background: "transparent",
+                             cursor: "pointer", fontSize: 22, color: "#64748b" }}>×</button>
+        </div>
+
+        <input type="text" value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="🔎 Filtrar por nome, SN, endereço ou zona..."
+                data-testid="onus-by-vlan-search"
+                style={{ padding: "8px 12px", borderRadius: 8,
+                          border: "1px solid #cbd5e1", fontSize: 13,
+                          marginBottom: 12 }} />
+
+        <div style={{ flex: 1, overflowY: "auto",
+                       border: "1px solid #e2e8f0", borderRadius: 8 }}>
+          {loading && (
+            <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
+              ⏳ Buscando ONUs na SmartOLT...
+            </div>
+          )}
+          {error && (
+            <div style={{ padding: 20, background: "#fee2e2", color: "#991b1b",
+                           fontSize: 13, borderRadius: 8, margin: 10 }}>
+              ⚠️ {error}
+            </div>
+          )}
+          {!loading && !error && data && (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#f8fafc", position: "sticky", top: 0 }}>
+                  {["Nome / PPPoE", "SN", "OLT", "B/P/ONU", "Zona", "Status", "Sinal"]
+                  .map((h, i) => (
+                    <th key={i} style={{ padding: "10px 12px", textAlign: "left",
+                                          fontSize: 11, fontWeight: 700, color: "#475569",
+                                          letterSpacing: 0.5, textTransform: "uppercase" }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((o) => (
+                  <tr key={o.unique_external_id}
+                       data-testid={`onu-row-${o.unique_external_id}`}
+                       style={{ borderTop: "1px solid #f1f5f9" }}>
+                    <td style={{ padding: "8px 12px", fontWeight: 600 }}>
+                      {o.name || "—"}
+                      {o.address && (
+                        <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                          {o.address}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: "8px 12px", fontFamily: "monospace",
+                                  fontSize: 11, color: "#64748b" }}>{o.sn || "—"}</td>
+                    <td style={{ padding: "8px 12px" }}>{o.olt_name || "—"}</td>
+                    <td style={{ padding: "8px 12px", fontFamily: "monospace",
+                                  fontSize: 11 }}>
+                      {o.board}/{o.port}/{o.onu}
+                    </td>
+                    <td style={{ padding: "8px 12px" }}>{o.zone_name || "—"}</td>
+                    <td style={{ padding: "8px 12px" }}>
+                      <span style={{
+                        padding: "2px 8px", borderRadius: 999, fontSize: 10,
+                        fontWeight: 700,
+                        background: o.status === "Online" ? "#dcfce7" : "#fee2e2",
+                        color: o.status === "Online" ? "#166534" : "#991b1b",
+                      }}>{o.status || "—"}</span>
+                    </td>
+                    <td style={{ padding: "8px 12px",
+                                  fontFamily: "monospace", fontSize: 11 }}>
+                      {o.signal_text || "—"}
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={7} style={{ padding: 30, textAlign: "center",
+                                                  color: "#94a3b8" }}>
+                    {search ? "Nenhuma ONU corresponde ao filtro." : "Nenhuma ONU encontrada nesta VLAN."}
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 function Field({ l, v, on, tid, type = "text" }) {
