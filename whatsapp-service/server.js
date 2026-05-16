@@ -303,6 +303,22 @@ async function startSock() {
               realPhone = cleanPn;
             }
           }
+          // Baileys 7.x: resolve LID → PN via lidMapping local
+          if (!realPhone && isLid && sock.signalRepository?.lidMapping?.getPNForLID) {
+            try {
+              const pnJid = await sock.signalRepository.lidMapping.getPNForLID(fromJid);
+              if (pnJid) {
+                const cleanPn = String(pnJid).split("@")[0].split(":")[0].replace(/\D/g, "");
+                if (cleanPn && cleanPn.length >= 10 && cleanPn.length <= 15) {
+                  realPhone = cleanPn;
+                  logger.info({ lid: rawId, phone: cleanPn },
+                    "LID resolvido via lidMapping.getPNForLID");
+                }
+              }
+            } catch (e) {
+              logger.debug({ err: e.message }, "getPNForLID falhou (skip)");
+            }
+          }
           // Se for LID e não tem senderPn → mantemos LID como ID, mas marcamos
           const phone = realPhone || (isLid ? rawId : rawId);
 

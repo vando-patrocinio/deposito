@@ -728,3 +728,10 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 
 **Validado**: 5/5 pytest (`test_iter99_retention.py`) + screenshot Playwright (edita discount=35, salva, botão muda para "✓ Sem mudanças").
 - testids: `retention-playbook-card`, `retention-toggle-enabled`, `retention-discount`, `retention-save-btn`, `retention-manual-trigger-btn`, `retention-row-{rid}`, `retention-status-{won|lost}-{rid}`, etc.
+
+✅ **Upgrade Baileys 6.7.16 → 7.0.0-rc11 (LID resolution nativa)** (16/05/2026 — iter102):
+- **Package** `/app/whatsapp-service/package.json`: bump `@whiskeysockets/baileys` para `^7.0.0-rc11` (`package.json.bak.iter102` mantido como backup).
+- **Server** `/app/whatsapp-service/server.js`: ao receber mensagem inbound de LID, tenta resolver via `sock.signalRepository.lidMapping.getPNForLID(fromJid)` antes de cair no LID anônimo. Quando resolve, loga `"LID resolvido via lidMapping.getPNForLID"` e usa o telefone real direto — gestor não precisa mais clicar em "Vincular telefone".
+- **Verificado**: Sidecar reiniciou, conectou ao WhatsApp como `5521965680949` ("Patrocínio 🇧🇷") e criou a **"Own LID session"** (suporte nativo agora ativo). Status `connected: true`. Erros "Bad MAC" iniciais são apenas sessões legacy do 6.7.16 que precisam ser refeitas — clientes reconectam automaticamente.
+- **Compat**: API CommonJS mantida (`require("@whiskeysockets/baileys")` ainda exporta `makeWASocket`, `useMultiFileAuthState`, `jidNormalizedUser`, `isLidUser`, `DisconnectReason`). Nenhuma alteração no backend Python.
+- **Rollback**: `cp /app/whatsapp-service/package.json.bak.iter102 /app/whatsapp-service/package.json && cd /app/whatsapp-service && npm install --silent && sudo supervisorctl restart whatsapp-service`.
