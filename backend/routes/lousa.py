@@ -1101,6 +1101,9 @@ class PublicFinalizeIn(BaseModel):
     latitude: float
     longitude: float
     outcome: Outcome = "sucesso"
+    # Token de autorização emitido pelo gestor quando block_bad_signal está ON
+    # e o técnico precisa fechar com sinal abaixo do threshold.
+    bad_signal_auth_id: Optional[str] = None
 
 
 @router.post("/lousa/public/tickets/{ticket_id}/open")
@@ -1176,6 +1179,110 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
         raise HTTPException(400, "Instalação exige no mínimo 3 fotos")
     if t["type"] == "instalacao" and not cd.ont:
         raise HTTPException(400, "ONT é obrigatório para instalação")
+
+    company_id = t.get("company_id") or DEMO_COMPANY_ID
+
+    # === CENTRAL_ONT: validação de sinal ruim + autorização ===
+    cfg = await db.central_ont_settings.find_one(
+        {"company_id": company_id}, {"_id": 0},
+    ) or {}
+    threshold = float(cfg.get("bad_signal_threshold", -27.0))
+    block_enabled = bool(cfg.get("block_bad_signal_close", False))
+    is_bad_signal = cd.sinal is not None and cd.sinal < threshold
+
+    auth_used = None
+    if is_bad_signal and block_enabled:
+        if not payload.bad_signal_auth_id:
+            # Cria uma request pending automaticamente
+            req_id = f"bsa-{uuid.uuid4().hex[:10]}"
+            await db.bad_signal_auth_requests.insert_one({
+                "id": req_id,
+                "company_id": company_id,
+                "ticket_id": ticket_id,
+                "collaborator_id": cid,
+                "sinal": cd.sinal,
+                "threshold": threshold,
+                "status": "pending",
+                "requested_at": now_iso(),
+                "decided_at": None, "decided_by": None,
+                "expires_at": (datetime.now(timezone.utc)
+                                 + timedelta(minutes=30)).isoformat(),
+            })
+            coll = await db.collaborators.find_one(
+                {"id": cid}, {"_id": 0, "name": 1})
+            await _create_notification(
+                type_="bad_signal_auth_request",
+                title="🟡 Pedido de autorização — sinal ruim",
+                message=(
+                    f"{(coll or {}).get('name','Técnico')} pediu autorização "
+                    f"para fechar {t['client_snapshot'].get('name','—')} "
+                    f"com sinal {cd.sinal:.1f} dBm (limite {threshold})."
+                ),
+                collaborator_id=cid, ticket_id=ticket_id,
+                company_id=company_id, severity="warning",
+            )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "needs_bad_signal_auth",
+                    "message": (
+                        f"Sinal de {cd.sinal:.1f} dBm abaixo do limite "
+                        f"({threshold} dBm). Autorização do gestor foi solicitada."
+                    ),
+                    "request_id": req_id,
+                    "threshold": threshold,
+                    "sinal": cd.sinal,
+                },
+            )
+        # Valida o token de autorização
+        auth = await db.bad_signal_auth_requests.find_one(
+            {"id": payload.bad_signal_auth_id, "company_id": company_id,
+             "ticket_id": ticket_id, "collaborator_id": cid}, {"_id": 0},
+        )
+        if not auth:
+            raise HTTPException(400,
+                                  "Autorização inválida — peça uma nova ao gestor.")
+        if auth.get("status") != "approved":
+            raise HTTPException(
+                400,
+                f"Autorização ainda não aprovada (status={auth.get('status')}).",
+            )
+        try:
+            exp = datetime.fromisoformat(
+                (auth.get("expires_at") or "").replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > exp:
+                await db.bad_signal_auth_requests.update_one(
+                    {"id": auth["id"]}, {"$set": {"status": "expired"}})
+                raise HTTPException(400, "Autorização expirada — peça uma nova.")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+        auth_used = auth["id"]
+        # marca como consumido
+        await db.bad_signal_auth_requests.update_one(
+            {"id": auth["id"]},
+            {"$set": {"status": "used", "used_at": now_iso()}},
+        )
+
+    # === SN mismatch (somente warning, não bloqueia) ===
+    sn_mismatch = None
+    if cd.ont and t.get("live_signal", {}).get("sn"):
+        # live_signal pode não ter sido enriquecido — re-enriquece on-demand
+        pass
+    # Buscar SN da SmartOLT pelo PPPoE
+    try:
+        from routes.smartolt import enrich_tickets_with_live_signal
+        t_for_sn = dict(t)
+        await enrich_tickets_with_live_signal([t_for_sn], company_id)
+        smartolt_sn = (t_for_sn.get("live_signal") or {}).get("sn")
+        if (cd.ont and smartolt_sn
+                and cd.ont.upper().replace(":", "")
+                != smartolt_sn.upper().replace(":", "")):
+            sn_mismatch = {"smartolt_sn": smartolt_sn, "typed_sn": cd.ont}
+    except Exception:
+        pass
+
     await db.tickets.update_one(
         {"id": ticket_id},
         {"$set": {
@@ -1183,30 +1290,62 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
             "closed_at": now_iso(), "closed_by": cid,
             "close_location": {"latitude": payload.latitude, "longitude": payload.longitude},
             "completion_data": cd.model_dump(),
+            "central_ont": {
+                "sinal": cd.sinal,
+                "is_bad_signal": is_bad_signal,
+                "threshold": threshold,
+                "auth_used": auth_used,
+                "sn_mismatch": sn_mismatch,
+            },
         }},
     )
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1})
+    coll_name = (coll or {}).get("name", "Técnico")
     await _log_ticket_action(
         ticket_id=ticket_id, action="finalizada",
-        actor_id=cid, actor_name=(coll or {}).get("name", "Técnico"),
+        actor_id=cid, actor_name=coll_name,
         actor_role="colaborador",
         details=f"ONT={cd.ont or '-'} · sinal={cd.sinal} dBm · fotos={len(cd.fotos)}",
-        company_id=t.get("company_id") or DEMO_COMPANY_ID,
+        company_id=company_id,
     )
+    # Notification de sinal ruim (sempre que o sinal for abaixo do threshold,
+    # mesmo quando o block está desligado — pra o gestor monitorar)
+    if is_bad_signal:
+        await _create_notification(
+            type_="bad_signal_close",
+            title="📡 Bolha fechada com sinal alto/ruim",
+            message=(
+                f"{coll_name} fechou {t['client_snapshot'].get('name','—')} "
+                f"com {cd.sinal:.1f} dBm (limite {threshold}). "
+                + ("Autorização do gestor foi usada." if auth_used
+                    else "Block desligado — fechamento permitido.")
+            ),
+            collaborator_id=cid, ticket_id=ticket_id,
+            company_id=company_id, severity="warning",
+        )
     # Bridge Estoque ↔ Lousa: AUTO-BAIXA do estoque a partir do completion_data
     try:
         from routes.stok import auto_close_service_from_ticket
-        coll_doc = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1, "company_id": 1})
         await auto_close_service_from_ticket(
             ticket_id=ticket_id,
-            company_id=t.get("company_id") or DEMO_COMPANY_ID,
+            company_id=company_id,
             completion_data=cd.model_dump(),
             technician_id=cid,
-            technician_name=(coll_doc or {}).get("name", "Técnico"),
+            technician_name=coll_name,
         )
     except Exception as e:
         logger.warning("[lousa] auto_close_service_from_ticket falhou: %s", e)
-    return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+
+    result = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    # Anexa warnings pra exibir no app
+    result["_warnings"] = {
+        "sn_mismatch": sn_mismatch,
+        "bad_signal": {
+            "active": is_bad_signal, "threshold": threshold,
+            "sinal": cd.sinal,
+        } if is_bad_signal else None,
+    }
+    return result
 
 
 @router.post("/lousa/public/exit-resolve")
@@ -1710,6 +1849,247 @@ async def release_stuck_ticket(
         "collaborator_id": col_id,
         "collaborator_name": col_name,
     }
+
+
+# -------------------------------------------------------------------------
+# CENTRAL_ONT — controle de fechamento com sinal ruim + relatórios
+# -------------------------------------------------------------------------
+class CentralOntSettingsIn(BaseModel):
+    block_bad_signal_close: bool = False
+    bad_signal_threshold: float = -27.0
+
+
+@router.get("/lousa/central-ont/settings")
+async def get_central_ont_settings(
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.central_ont_settings.find_one(
+        {"company_id": cid}, {"_id": 0},
+    ) or {}
+    return {
+        "block_bad_signal_close": bool(doc.get("block_bad_signal_close", False)),
+        "bad_signal_threshold": float(doc.get("bad_signal_threshold", -27.0)),
+        "updated_at": doc.get("updated_at"),
+        "updated_by": doc.get("updated_by"),
+    }
+
+
+@router.put("/lousa/central-ont/settings")
+async def put_central_ont_settings(
+    payload: CentralOntSettingsIn,
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    await db.central_ont_settings.update_one(
+        {"company_id": cid},
+        {"$set": {
+            "company_id": cid,
+            "block_bad_signal_close": payload.block_bad_signal_close,
+            "bad_signal_threshold": payload.bad_signal_threshold,
+            "updated_by": user.get("email") or user.get("id"),
+            "updated_at": now_iso(),
+        }},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+@router.get("/lousa/central-ont/report")
+async def central_ont_report(
+    days: int = Query(default=30, ge=1, le=365),
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    """Relatório de notas finalizadas com sinal ruim nos últimos N dias.
+
+    Retorna:
+      - total_closes              → total geral de finalizações no período
+      - bad_signal_closes         → total com sinal abaixo do threshold
+      - per_collaborator          → lista (técnico → total, bad, ratio)
+      - items                     → lista de notas com sinal ruim (até 200)
+      - settings                  → settings atuais (threshold + block)
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    cfg_doc = await db.central_ont_settings.find_one(
+        {"company_id": cid}, {"_id": 0},
+    ) or {}
+    threshold = float(cfg_doc.get("bad_signal_threshold", -27.0))
+    block_enabled = bool(cfg_doc.get("block_bad_signal_close", False))
+
+    # Buscar todas as finalizações
+    cur = db.tickets.find(
+        {"company_id": cid, "status": "finalizada",
+         "closed_at": {"$gte": cutoff}},
+        {"_id": 0, "id": 1, "closed_at": 1, "closed_by": 1,
+         "assigned_collaborator_id": 1, "client_snapshot": 1,
+         "completion_data": 1, "central_ont": 1, "type": 1,
+         "outcome": 1},
+    )
+    total = 0
+    bad_items: List[Dict[str, Any]] = []
+    per_col: Dict[str, Dict[str, Any]] = {}
+    async for t in cur:
+        total += 1
+        col_id = t.get("closed_by") or t.get("assigned_collaborator_id") or "?"
+        per_col.setdefault(col_id, {"total": 0, "bad": 0})
+        per_col[col_id]["total"] += 1
+        sinal = ((t.get("central_ont") or {}).get("sinal")
+                  or (t.get("completion_data") or {}).get("sinal"))
+        if sinal is not None:
+            try:
+                sf = float(sinal)
+                if sf < threshold:
+                    per_col[col_id]["bad"] += 1
+                    bad_items.append({
+                        "ticket_id": t["id"],
+                        "client_name": (t.get("client_snapshot") or {}).get("name"),
+                        "address": (t.get("client_snapshot") or {}).get("address"),
+                        "closed_at": t.get("closed_at"),
+                        "collaborator_id": col_id,
+                        "sinal": sf,
+                        "outcome": t.get("outcome"),
+                        "type": t.get("type"),
+                        "ont": (t.get("completion_data") or {}).get("ont"),
+                        "auth_used": (t.get("central_ont")
+                                       or {}).get("auth_used"),
+                    })
+            except (TypeError, ValueError):
+                pass
+
+    # Resolve nomes dos colabs
+    if per_col or bad_items:
+        ids = list({*per_col.keys(),
+                    *(b["collaborator_id"] for b in bad_items)})
+        coll_docs = await db.collaborators.find(
+            {"id": {"$in": ids}}, {"_id": 0, "id": 1, "name": 1},
+        ).to_list(500)
+        name_by_id = {c["id"]: c.get("name", c["id"]) for c in coll_docs}
+    else:
+        name_by_id = {}
+
+    per_col_list = []
+    for col_id, agg in per_col.items():
+        total_c = agg["total"]
+        bad_c = agg["bad"]
+        per_col_list.append({
+            "collaborator_id": col_id,
+            "collaborator_name": name_by_id.get(col_id, col_id),
+            "total_closes": total_c,
+            "bad_signal_closes": bad_c,
+            "ratio": round(bad_c / total_c, 4) if total_c else 0.0,
+            "ratio_pct": round((bad_c / total_c) * 100, 1) if total_c else 0.0,
+        })
+    per_col_list.sort(key=lambda x: x["bad_signal_closes"], reverse=True)
+
+    # Decora bad_items com nome
+    for b in bad_items:
+        b["collaborator_name"] = name_by_id.get(b["collaborator_id"],
+                                                 b["collaborator_id"])
+    bad_items.sort(key=lambda b: (b.get("closed_at") or ""), reverse=True)
+
+    total_bad = sum(c["bad_signal_closes"] for c in per_col_list)
+
+    return {
+        "period_days": days,
+        "threshold": threshold,
+        "block_enabled": block_enabled,
+        "total_closes": total,
+        "bad_signal_closes": total_bad,
+        "overall_ratio_pct": round((total_bad / total) * 100, 1) if total else 0.0,
+        "per_collaborator": per_col_list,
+        "items": bad_items[:200],
+    }
+
+
+# Autorizações pendentes (gestor decide)
+@router.get("/lousa/central-ont/auth-requests")
+async def list_auth_requests(
+    status: Optional[str] = Query(default=None),
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    q: Dict[str, Any] = {"company_id": cid}
+    if status:
+        q["status"] = status
+    cur = db.bad_signal_auth_requests.find(q, {"_id": 0}) \
+        .sort("requested_at", -1).limit(100)
+    items = [d async for d in cur]
+    if items:
+        coll_ids = list({i["collaborator_id"] for i in items
+                          if i.get("collaborator_id")})
+        coll_docs = await db.collaborators.find(
+            {"id": {"$in": coll_ids}}, {"_id": 0, "id": 1, "name": 1},
+        ).to_list(500)
+        name_by_id = {c["id"]: c.get("name", c["id"]) for c in coll_docs}
+        for i in items:
+            i["collaborator_name"] = name_by_id.get(
+                i.get("collaborator_id"), i.get("collaborator_id") or "—")
+            # adiciona client name
+            t = await db.tickets.find_one(
+                {"id": i.get("ticket_id")},
+                {"_id": 0, "client_snapshot": 1},
+            )
+            i["client_name"] = ((t or {}).get("client_snapshot") or
+                                  {}).get("name") or "—"
+    return {"items": items}
+
+
+@router.post("/lousa/central-ont/auth-requests/{req_id}/approve")
+async def approve_auth_request(
+    req_id: str,
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    req = await db.bad_signal_auth_requests.find_one(
+        {"id": req_id, "company_id": cid}, {"_id": 0},
+    )
+    if not req:
+        raise HTTPException(404, "Solicitação não encontrada")
+    if req["status"] != "pending":
+        raise HTTPException(400, f"Status atual: {req['status']}")
+    await db.bad_signal_auth_requests.update_one(
+        {"id": req_id},
+        {"$set": {
+            "status": "approved",
+            "decided_at": now_iso(),
+            "decided_by": user.get("email") or user.get("id"),
+        }},
+    )
+    return {"ok": True, "status": "approved"}
+
+
+@router.post("/lousa/central-ont/auth-requests/{req_id}/reject")
+async def reject_auth_request(
+    req_id: str,
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    res = await db.bad_signal_auth_requests.update_one(
+        {"id": req_id, "company_id": cid, "status": "pending"},
+        {"$set": {
+            "status": "rejected",
+            "decided_at": now_iso(),
+            "decided_by": user.get("email") or user.get("id"),
+        }},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Solicitação não encontrada ou já decidida")
+    return {"ok": True, "status": "rejected"}
+
+
+# Polling endpoint público (técnico checa o status sem JWT)
+@router.get("/lousa/public/bad-signal-auth/{req_id}")
+async def public_check_auth_status(req_id: str):
+    req = await db.bad_signal_auth_requests.find_one(
+        {"id": req_id}, {"_id": 0, "id": 1, "status": 1,
+                          "decided_at": 1, "expires_at": 1, "sinal": 1,
+                          "threshold": 1},
+    )
+    if not req:
+        raise HTTPException(404, "Solicitação não encontrada")
+    return req
 
 
 # -------------------------------------------------------------------------

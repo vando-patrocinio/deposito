@@ -131,7 +131,7 @@ export default function LousaMobile({ collaboratorId, onBack }) {
     setBusy(false);
   }
 
-  async function handleFinalize(ticket, completionData) {
+  async function handleFinalize(ticket, completionData, opts = {}) {
     setBusy(true); setErr("");
     try {
       const lat = await new Promise((res) => navigator.geolocation
@@ -145,14 +145,61 @@ export default function LousaMobile({ collaboratorId, onBack }) {
         completion_data: completionData,
         latitude: lat.lat, longitude: lat.lng,
         outcome: "sucesso",
+        bad_signal_auth_id: opts.bad_signal_auth_id || null,
       });
       setOpenTicket(null);
+      setBadSignalAuth(null);
       await refresh();
     } catch (e) {
-      setErr(e?.response?.data?.detail || e.message);
+      // Backend 403 com needs_bad_signal_auth → abre modal de espera
+      const detail = e?.response?.data?.detail;
+      if (e?.response?.status === 403
+            && detail?.code === "needs_bad_signal_auth") {
+        setBadSignalAuth({
+          request_id: detail.request_id,
+          threshold: detail.threshold,
+          sinal: detail.sinal,
+          ticket,
+          completionData,
+          status: "pending",
+        });
+        setErr("");
+      } else {
+        setErr(typeof detail === "string"
+                ? detail
+                : (detail?.message || e.message));
+      }
     }
     setBusy(false);
   }
+
+  // Estado: aguardando autorização do gestor pra fechar com sinal ruim
+  const [badSignalAuth, setBadSignalAuth] = useState(null);
+  // Poll: a cada 4s checa status da request
+  useEffect(() => {
+    if (!badSignalAuth?.request_id) return undefined;
+    const t = setInterval(async () => {
+      try {
+        const r = await api._client.get(
+          `/lousa/public/bad-signal-auth/${badSignalAuth.request_id}`,
+        ).then((x) => x.data);
+        if (r.status === "approved") {
+          clearInterval(t);
+          // Re-tenta o finalize com o auth id
+          await handleFinalize(
+            badSignalAuth.ticket,
+            badSignalAuth.completionData,
+            { bad_signal_auth_id: badSignalAuth.request_id },
+          );
+        } else if (r.status === "rejected" || r.status === "expired") {
+          clearInterval(t);
+          setBadSignalAuth((b) => b ? { ...b, status: r.status } : b);
+        }
+      } catch { /* silent */ }
+    }, 4000);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [badSignalAuth?.request_id]);
 
   if (!data) {
     return (
@@ -164,6 +211,7 @@ export default function LousaMobile({ collaboratorId, onBack }) {
 
   if (openTicket) {
     return (
+      <>
       <TicketDetail
         ticket={openTicket}
         onClose={() => setOpenTicket(null)}
@@ -178,6 +226,13 @@ export default function LousaMobile({ collaboratorId, onBack }) {
         busy={busy}
         err={err}
       />
+      {badSignalAuth && (
+        <BadSignalAuthWaitModal
+          state={badSignalAuth}
+          onClose={() => setBadSignalAuth(null)}
+        />
+      )}
+      </>
     );
   }
 
@@ -797,6 +852,40 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh }) {
         <input data-testid="finalize-sinal" type="number" step="0.1" value={form.sinal}
           onChange={(e) => setForm({ ...form, sinal: e.target.value })}
           style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: 10, fontSize: 14, marginTop: 4, boxSizing: "border-box" }} />
+        {form.sinal !== "" && Number(form.sinal) < -27 && (
+          <div data-testid="finalize-bad-signal-warning"
+                style={{
+                  marginTop: 6, padding: "8px 10px", borderRadius: 8,
+                  background: "#fef3c7", border: "1px solid #fde68a",
+                  color: "#78350f", fontSize: 12, lineHeight: 1.4,
+                  fontWeight: 600,
+                }}>
+            ⚠ Sinal abaixo de -27 dBm. Se a Central proibir fechamento ruim,
+            o gestor receberá um pedido de autorização ao você finalizar.
+          </div>
+        )}
+        {ticket.live_signal?.sn && form.ont
+            && form.ont.toUpperCase().replace(/:/g, "")
+              !== ticket.live_signal.sn.toUpperCase().replace(/:/g, "") && (
+          <div data-testid="finalize-sn-mismatch-warning"
+                style={{
+                  marginTop: 6, padding: "8px 10px", borderRadius: 8,
+                  background: "#fef3c7", border: "1px solid #fde68a",
+                  color: "#78350f", fontSize: 12, lineHeight: 1.4,
+                  fontWeight: 600,
+                }}>
+            ⚠ O SN/MAC registrado na SmartOLT é
+            <code style={{ background: "white", padding: "1px 4px",
+                            borderRadius: 4, marginLeft: 4 }}>
+              {ticket.live_signal.sn}
+            </code>
+            <br/>
+            Você digitou <code style={{ background: "white",
+                                            padding: "1px 4px",
+                                            borderRadius: 4 }}>{form.ont}</code>.
+            Confirma que trocou a ONT?
+          </div>
+        )}
       </div>
 
       {/* MAC ONT */}
@@ -914,6 +1003,76 @@ function reorderBtnStyle(disabled) {
     display: "grid", placeItems: "center",
     boxShadow: "0 1px 2px rgba(15,23,42,.05)",
   };
+}
+
+/* Modal: técnico aguardando autorização do gestor pra fechar com sinal ruim */
+function BadSignalAuthWaitModal({ state, onClose }) {
+  const isPending = state.status === "pending";
+  const isRejected = state.status === "rejected";
+  const isExpired = state.status === "expired";
+  return (
+    <div data-testid="bad-signal-auth-wait-modal"
+          style={{
+            position: "fixed", inset: 0, zIndex: 1500,
+            background: "rgba(2,6,23,0.85)",
+            display: "grid", placeItems: "center", padding: 18,
+          }}>
+      <div style={{
+        background: "white", borderRadius: 14, padding: 22,
+        maxWidth: 380, width: "100%", textAlign: "center",
+        boxShadow: "0 25px 60px rgba(0,0,0,0.4)",
+      }}>
+        <div style={{
+          width: 64, height: 64, borderRadius: "50%", margin: "0 auto 14px",
+          background: isPending ? "#fef9c3" : isRejected ? "#fee2e2" : "#fef3c7",
+          color: isPending ? "#ca8a04" : isRejected ? "#dc2626" : "#92400e",
+          display: "grid", placeItems: "center",
+          fontSize: 30,
+          animation: isPending ? "wa-pulse 2s ease infinite" : "none",
+        }}>
+          {isPending ? "⏳" : isRejected ? "✗" : "⌛"}
+        </div>
+        <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700,
+                      color: "#0f172a" }}>
+          {isPending && "Aguardando autorização"}
+          {isRejected && "Pedido rejeitado"}
+          {isExpired && "Pedido expirou"}
+        </h3>
+        <p style={{ margin: "8px 0 16px", fontSize: 13, color: "#475569",
+                     lineHeight: 1.5 }}>
+          {isPending && (
+            <>Você está fechando com <strong style={{ color: "#dc2626" }}>
+              {state.sinal?.toFixed(1)} dBm</strong> (limite {state.threshold}).
+              <br/>O gestor foi notificado — aguarde a aprovação.</>
+          )}
+          {isRejected && (
+            <>O gestor negou o fechamento com este sinal.<br/>
+            Melhore o sinal e tente novamente.</>
+          )}
+          {isExpired && (
+            <>O pedido passou de 30 minutos sem decisão.<br/>
+            Faça uma nova tentativa.</>
+          )}
+        </p>
+        <button onClick={onClose}
+                 data-testid="bad-signal-auth-close-btn"
+                 style={{
+                   padding: "10px 24px", borderRadius: 8,
+                   border: "1.5px solid #cbd5e1", background: "white",
+                   color: "#475569", fontWeight: 700, fontSize: 13,
+                   cursor: "pointer",
+                 }}>
+          Fechar
+        </button>
+      </div>
+      <style>{`
+        @keyframes wa-pulse {
+          0%,100% { transform: scale(1); }
+          50% { transform: scale(1.08); }
+        }
+      `}</style>
+    </div>
+  );
 }
 
 /* PPPoE chip — clique copia pro clipboard com flash verde "✓ copiado" */

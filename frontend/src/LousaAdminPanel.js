@@ -11,6 +11,7 @@ import useEventStream from "@/useEventStream";
 import { isAlertsEnabled, setAlertsEnabled, maybeFireOverdueAlerts } from "./slaAlerts";
 import SentinelaLousaCard from "./SentinelaLousaCard";
 import ReleaseStuckBubbleModal from "./lousa/ReleaseStuckBubbleModal";
+import CentralOntPanel from "./lousa/CentralOntPanel";
 
 const TYPE_LABELS = {
   reparo: "🔧 Reparo",
@@ -83,6 +84,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [showHistory, setShowHistory] = useState(false);
   const [showSentinela, setShowSentinela] = useState(false);
   const [showReleaseStuck, setShowReleaseStuck] = useState(false);
+  const [activeSubTab, setActiveSubTab] = useState("board"); // board | central_ont
   const [sentinelaCount, setSentinelaCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
@@ -526,6 +528,28 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         </div>
       )}
 
+      {/* SUB-TABS — Quadro / CENTRAL_ONT */}
+      <div style={{ display: "flex", gap: 4,
+                      borderBottom: "1px solid #e2e8f0", marginBottom: 14 }}>
+        {[
+          { id: "board", label: "📋 Quadro" },
+          { id: "central_ont", label: "🛰️ CENTRAL_ONT" },
+        ].map((t) => (
+          <button key={t.id} onClick={() => setActiveSubTab(t.id)}
+                   data-testid={`lousa-subtab-${t.id}`}
+                   style={{
+                     padding: "10px 16px", border: "none",
+                     background: "transparent", cursor: "pointer",
+                     fontSize: 13, fontWeight: activeSubTab === t.id ? 700 : 500,
+                     color: activeSubTab === t.id ? "#0ea5e9" : "#64748b",
+                     borderBottom: "2px solid "
+                        + (activeSubTab === t.id ? "#0ea5e9" : "transparent"),
+                     marginBottom: -1, transition: "color 150ms",
+                   }}>{t.label}</button>
+        ))}
+      </div>
+
+      {activeSubTab === "central_ont" ? <CentralOntPanel /> : <>
       {/* Grade horizontal — coluna por técnico */}
       <div style={{
         display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16, minHeight: 540,
@@ -564,6 +588,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
 
       {/* Logs de auditoria */}
       <LogsPanel logs={logs} collabs={collabs} />
+      </>}
 
       {showCreate && (
         <CreateTicketModal

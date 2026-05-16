@@ -1,0 +1,46 @@
+{
+  "summary": "Iter 88 — CENTRAL_ONT module fully validated. 8/8 pytest cases PASS covering: (1) GET/PUT /api/lousa/central-ont/settings with admin/gestor role-gate, (2) full E2E bad-signal flow: block ON → finalize sinal=-30 returns 403 needs_bad_signal_auth + creates pending bad_signal_auth_requests doc + notification → admin /approve → retry finalize with bad_signal_auth_id returns 200 with central_ont.auth_used set AND request status='used', (3) GET /report?days=30 schema (period_days, threshold, block_enabled, total_closes, bad_signal_closes, overall_ratio_pct, per_collaborator[], items[]), (4) block OFF + bad signal → finalize 200 + central_ont.is_bad_signal=true (passive monitoring), (5) /auth-requests?status=pending list with collaborator_name+client_name decoration, (6) /auth-requests/{id}/reject sets status=rejected, double-reject returns 404, retry finalize with rejected token → 400, (7) /public/bad-signal-auth/{id} returns status without auth (404 for unknown). Frontend UI validated via Playwright: LousaAdminPanel → Chamados → sub-tab CENTRAL_ONT renders panel correctly with toggle, threshold input (-27 default), 4 KPI cards (Notas/Sinal ruim/% / Limite), per-technician table (VANDO PATROCINIO row), and 'Notas com sinal ruim' sub-tab. No JS errors. All required data-testids confirmed in code: lousa-subtab-board, lousa-subtab-central_ont, central-ont-panel, central-ont-block-toggle, central-ont-threshold, central-ont-row-{id}, auth-req-{id}, auth-req-{id}-approve, auth-req-{id}-reject, finalize-bad-signal-warning, finalize-sn-mismatch-warning, bad-signal-auth-wait-modal.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/lousa/public/tickets/{id}/finalize", "issue": "SN mismatch detection re-runs enrich_tickets_with_live_signal on EVERY finalize (HTTP call to SmartOLT). Adds latency to the technician's close action. Consider only running it when cd.ont differs from already-stored live_signal.sn."},
+      {"endpoint": "GET /api/lousa/central-ont/report", "issue": "Uses 'closed_by' first then falls back to 'assigned_collaborator_id' for grouping — works but if a gestor admin-closed a ticket the bad-signal would be attributed to the admin user (not a technician). Document or filter by role."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "LousaMobile finalize warning", "issue": "Threshold hardcoded as < -27 in JSX (line 855) instead of using the company's configured bad_signal_threshold from /central-ont/settings. If admin sets threshold to e.g. -25 or -30, the technician's yellow warning will still trigger only at -27. Backend block uses configured threshold correctly — this is a UI-only inconsistency.", "selector": "[data-testid=finalize-bad-signal-warning]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "SN mismatch warning on technician finalize", "issue": "Frontend SN-mismatch check at line 867 reads ticket.live_signal?.sn — this requires the technician's ticket-fetch endpoint to pre-enrich live_signal. Confirm the public/mobile ticket endpoints call enrich_tickets_with_live_signal before returning; otherwise the inline warning will never fire (backend will still detect mismatch at finalize time and store sn_mismatch on the ticket).", "affected_selectors": ["[data-testid=finalize-sn-mismatch-warning]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter88_central_ont.py",
+    "/app/test_reports/pytest/iter88_results.xml"
+  ],
+  "action_items": [
+    "(LOW) LousaMobile.js L855 — replace hardcoded `< -27` with the configured threshold from /api/lousa/central-ont/settings (or pass threshold via a context/prop). Fetch on form mount.",
+    "(OPTIONAL) Verify that the technician's ticket-list/open endpoints pre-enrich live_signal.sn so the frontend SN-mismatch warning can actually render.",
+    "(OPTIONAL) Avoid re-running enrich_tickets_with_live_signal on every finalize — cache or use already-enriched ticket.live_signal.sn if present."
+  ],
+  "critical_code_review_comments": [
+    "routes/lousa.py public_finalize_ticket — clean separation of (a) bad-signal validation, (b) SN-mismatch detection, (c) ticket update, (d) notifications. No issues.",
+    "routes/lousa.py L1186-1190 — central_ont_settings lookup with default fallback is correct; threshold -27.0 default matches PRD.",
+    "routes/lousa.py L1268-1284 — SN-mismatch try/except swallows ALL exceptions silently; recommend logging at debug level to avoid silent failures during SmartOLT outages.",
+    "routes/lousa.py L1198-1210 — auth request doc uses uuid.uuid4().hex[:10] for id (bsa-xxxxxxxxxx). 10 hex chars = 40 bits which is fine for low-volume but consider full uuid for uniqueness if blast-radius grows.",
+    "frontend/src/lousa/CentralOntPanel.js — well-structured component (~430 lines). Auth-request approval/reject inline in the same panel is great UX.",
+    "frontend/src/LousaMobile.js — BadSignalAuthWaitModal with 4s polling is a sensible default; consider exponential backoff if approval takes >2 min."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter88_central_ont.py"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% — panel renders, all sub-tabs/toggles/inputs/tables/testids present, no JS errors"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Tests POST a TEST_iter88_* collaborator (clock_in_enabled=False) and create tickets via /api/lousa/tickets. Each test cleans up its ticket via DELETE; collaborator is cleaned up in module teardown. central_ont_settings is restored to block=False at module end.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iter88_central_ont.py is a clean regression suite — re-runs in ~5s. The 'block_bad_signal_close' setting is per-company (co-demo) — be aware that turning it ON during testing may temporarily affect other tickets in flight. The fixture autouse teardown restores block=False. For the frontend, when navigating to Chamados → CENTRAL_ONT, ensure the user is logged in as admin@empresa.com (gestor/admin role required for /settings and /report endpoints).",
+  "rca of the issue": "N/A — no blocking issues. The two LOW-priority items are: (1) UI threshold hardcoded at -27 in LousaMobile.js (cosmetic; backend uses configured threshold correctly), (2) live_signal.sn must be pre-enriched on the technician's ticket payload for the inline SN-mismatch warning to render — backend still detects/stores the mismatch at finalize time regardless."
+}
