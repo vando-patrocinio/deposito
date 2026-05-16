@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: smartprov-whatsapp
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter         # USD$7/mo — necessário p/ disk persistente
+    region: oregon         # ou frankfurt / virginia / etc.
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: wa-auth-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "3002"
+      - key: WA_HOST
+        value: "0.0.0.0"
+      - key: WA_AUTH_DIR
+        value: "/data/auth_info"
+      - key: WA_WEBHOOK_BASE
+        sync: false        # você cola a URL do backend FastAPI aqui
+      - key: WA_INBOUND_TOKEN
+        generateValue: true
+      - key: WA_SIDECAR_TOKEN
+        generateValue: true
+      - key: NODE_ENV
+        value: production

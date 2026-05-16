@@ -156,12 +156,15 @@ async def _resend_corrected(cid: str, phone: str, text: str,
     """
     import httpx
     import os
-    sidecar_base = os.environ.get("WA_SIDECAR_URL", "http://127.0.0.1:3002")
+    sidecar_base = os.environ.get("WA_SIDECAR_URL", "http://127.0.0.1:3002").rstrip("/")
+    sidecar_token = os.environ.get("WA_SIDECAR_TOKEN", "")
+    sidecar_headers = ({"Authorization": f"Bearer {sidecar_token}"}
+                          if sidecar_token else {})
     sent = False
     send_error = None
     out: dict = {}
     try:
-        async with httpx.AsyncClient(timeout=20.0) as cli:
+        async with httpx.AsyncClient(headers=sidecar_headers, timeout=20.0) as cli:
             r = await cli.post(f"{sidecar_base}/send",
                                 json={"phone": phone, "text": text})
             try:

@@ -46,10 +46,14 @@ const fs = require("fs");
 const path = require("path");
 
 /* ---------------- Config ---------------- */
-const PORT = parseInt(process.env.WA_PORT || "3002", 10);
+const PORT = parseInt(process.env.PORT || process.env.WA_PORT || "3002", 10);
+const HOST = process.env.WA_HOST || "127.0.0.1";  // use "0.0.0.0" em deploy externo
 const WEBHOOK_BASE = process.env.WA_WEBHOOK_BASE || "http://localhost:8001/api";
 const INBOUND_TOKEN = process.env.WA_INBOUND_TOKEN || "";
-const AUTH_DIR = path.join(__dirname, "auth_info");
+// Bearer token que o backend FastAPI deve enviar para acessar este sidecar
+// quando exposto publicamente. Vazio = sem proteção (apenas localhost).
+const SIDECAR_TOKEN = process.env.WA_SIDECAR_TOKEN || "";
+const AUTH_DIR = process.env.WA_AUTH_DIR || path.join(__dirname, "auth_info");
 const BROWSER_FP = (process.env.WA_BROWSER_FP || "Chrome (Linux),Chrome,120.0.0").split(",");
 
 // Reconexão (exponential backoff)
@@ -395,6 +399,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
+// Healthcheck público (sem auth) — necessário pra Railway/Render verificarem o status
 app.get("/health", (_req, res) => res.json({
   ok: true,
   state: connState,
@@ -403,6 +408,18 @@ app.get("/health", (_req, res) => res.json({
   last_send_at: lastSendAt ? new Date(lastSendAt).toISOString() : null,
   last_success_at: lastSuccessAt ? new Date(lastSuccessAt).toISOString() : null,
 }));
+
+// Auth middleware — protege todos endpoints quando WA_SIDECAR_TOKEN estiver
+// configurado. O backend FastAPI envia "Authorization: Bearer <token>".
+app.use((req, res, next) => {
+  if (!SIDECAR_TOKEN) return next();          // sem token = modo dev/local
+  if (req.path === "/health") return next();   // health sempre liberado
+  const auth = req.headers.authorization || "";
+  if (!auth.startsWith("Bearer ") || auth.slice(7) !== SIDECAR_TOKEN) {
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
+  next();
+});
 
 app.get("/qr", (_req, res) => res.json({
   qr: currentQr, status: connState, me,
@@ -615,7 +632,7 @@ process.on("unhandledRejection", (reason) => {
 });
 
 /* ---------------- Boot HTTP ---------------- */
-app.listen(PORT, "127.0.0.1", () => {
-  logger.info({ port: PORT }, "sidecar ouvindo");
+app.listen(PORT, HOST, () => {
+  logger.info({ port: PORT, host: HOST }, "sidecar ouvindo");
   startSock();
 });

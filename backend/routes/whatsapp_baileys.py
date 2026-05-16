@@ -35,8 +35,13 @@ from database import db
 logger = logging.getLogger("ponto.wa_baileys")
 router = APIRouter(prefix="/api/whatsapp-baileys", tags=["whatsapp-baileys"])
 
-SIDECAR_BASE = "http://127.0.0.1:3002"
+SIDECAR_BASE = os.environ.get("WA_SIDECAR_URL", "http://127.0.0.1:3002").rstrip("/")
+SIDECAR_TOKEN = os.environ.get("WA_SIDECAR_TOKEN", "")
 WA_INBOUND_TOKEN = os.environ.get("WA_INBOUND_TOKEN", "")
+
+# Headers padrão para chamadas ao sidecar — adiciona Bearer quando configurado
+def _sidecar_headers() -> dict:
+    return {"Authorization": f"Bearer {SIDECAR_TOKEN}"} if SIDECAR_TOKEN else {}
 
 # Diretório onde áudios outbound enviados pela atendente são persistidos
 # (servidos via /api/whatsapp-baileys/audio/{msg_id})
@@ -99,7 +104,7 @@ def _split_ai_reply(text: str, max_chunks: int = 6,
 
 async def _sidecar_get(path: str) -> Dict[str, Any]:
     try:
-        async with httpx.AsyncClient(timeout=8.0) as cli:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=8.0) as cli:
             r = await cli.get(f"{SIDECAR_BASE}{path}")
             r.raise_for_status()
             return r.json()
@@ -111,7 +116,7 @@ async def _sidecar_get(path: str) -> Dict[str, Any]:
 
 async def _sidecar_post(path: str, payload: Optional[dict] = None) -> Dict[str, Any]:
     try:
-        async with httpx.AsyncClient(timeout=15.0) as cli:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=15.0) as cli:
             r = await cli.post(f"{SIDECAR_BASE}{path}", json=payload or {})
             try:
                 body = r.json()
@@ -143,7 +148,7 @@ async def refresh_qr(user: dict = Depends(require_role("gestor"))):
     """
     # 1) Tenta endpoint específico no sidecar (Baileys >= 6.7)
     try:
-        async with httpx.AsyncClient(timeout=15) as cli:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=15) as cli:
             r = await cli.post(f"{SIDECAR_BASE}/qr/refresh")
             if r.status_code < 400:
                 return await _sidecar_get("/qr")
@@ -192,7 +197,7 @@ async def send_audio(payload: SendAudioIn,
     send_error: Optional[str] = None
     out: Dict[str, Any] = {}
     try:
-        async with httpx.AsyncClient(timeout=45.0) as cli:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=45.0) as cli:
             r = await cli.post(
                 f"{SIDECAR_BASE}/send-audio",
                 json={
@@ -324,7 +329,7 @@ async def send_message(payload: SendIn,
     send_error: Optional[str] = None
     out: Dict[str, Any] = {}
     try:
-        async with httpx.AsyncClient(timeout=20.0) as cli:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=20.0) as cli:
             r = await cli.post(f"{SIDECAR_BASE}/send",
                                 json={"phone": payload.phone, "text": payload.text})
             try:
@@ -436,7 +441,7 @@ async def send_image(payload: SendImageIn,
     send_error: Optional[str] = None
     out: Dict[str, Any] = {}
     try:
-        async with httpx.AsyncClient(timeout=30.0) as cli:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=30.0) as cli:
             r = await cli.post(f"{SIDECAR_BASE}/send-image",
                                 json={"phone": payload.phone,
                                       "image_data_url": payload.image_data_url,
@@ -826,7 +831,7 @@ async def inbound_webhook(payload: InboundIn,
             if mgr_reply:
                 # Envia resposta de volta via sidecar (usa JID original)
                 try:
-                    async with httpx.AsyncClient(timeout=12.0) as cli:
+                    async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=12.0) as cli:
                         await cli.post(
                             f"{SIDECAR_BASE}/send",
                             json={"phone": payload.jid or effective_phone,
@@ -1504,7 +1509,7 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         send_error: Optional[str] = None
         send_body: Dict[str, Any] = {}
         try:
-            async with httpx.AsyncClient(timeout=15.0) as cli:
+            async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=15.0) as cli:
                 send_r = await cli.post(f"{SIDECAR_BASE}/send",
                                          json={"phone": phone, "text": chunk})
                 try:
@@ -1731,7 +1736,7 @@ async def ai_health(user: dict = Depends(require_role("gestor"))):
     sidecar_status = "unknown"
     sidecar_error: Optional[str] = None
     try:
-        async with httpx.AsyncClient(timeout=4.0) as cli:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=4.0) as cli:
             r = await cli.get(f"{SIDECAR_BASE}/status")
             if r.status_code < 400:
                 body = r.json()
@@ -2206,7 +2211,7 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
     try:
         non_group_phones = [r["_id"] for r in rows if not (r.get("jid") or "").endswith("@g.us")]
         if non_group_phones:
-            async with httpx.AsyncClient(timeout=5.0) as cli:
+            async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=5.0) as cli:
                 br = await cli.post(f"{SIDECAR_BASE}/contacts-bulk",
                                      json={"phones": non_group_phones})
                 if br.status_code == 200:
@@ -2455,7 +2460,7 @@ async def assign_conversation(phone: str, payload: AssignIn,
             f"Pode me contar o que está acontecendo?"
         )
         try:
-            async with httpx.AsyncClient(timeout=15.0) as cli:
+            async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=15.0) as cli:
                 send_r = await cli.post(f"{SIDECAR_BASE}/send",
                                           json={"phone": phone, "text": handover_text})
                 send_body: Dict[str, Any] = {}
@@ -2599,7 +2604,7 @@ async def get_contact(phone: str,
                         user: dict = Depends(require_role("gestor"))):
     """Avatar WhatsApp + presença online/offline do contato."""
     try:
-        async with httpx.AsyncClient(timeout=10.0) as cli:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=10.0) as cli:
             r = await cli.get(f"{SIDECAR_BASE}/contact-profile",
                               params={"phone": phone})
             return r.json()
@@ -2612,7 +2617,7 @@ async def subscribe_presence(phone: str,
                               user: dict = Depends(require_role("gestor"))):
     """Pede ao Baileys pra começar a receber updates de presença desse contato."""
     try:
-        async with httpx.AsyncClient(timeout=8.0) as cli:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=8.0) as cli:
             r = await cli.post(f"{SIDECAR_BASE}/presence-subscribe",
                                 json={"phone": phone})
             return r.json()
@@ -2637,7 +2642,7 @@ async def customer_profile(phone: str,
     # 1. WhatsApp profile
     wa = {"avatar": None, "presence": "unknown"}
     try:
-        async with httpx.AsyncClient(timeout=8.0) as cli:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=8.0) as cli:
             r = await cli.get(f"{SIDECAR_BASE}/contact-profile",
                               params={"phone": phone})
             if r.status_code == 200:
