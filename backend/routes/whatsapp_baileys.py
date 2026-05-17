@@ -885,7 +885,8 @@ async def health_overview(
     # 4. Alertas — counts de eventos críticos + lista
     alert_events = {"duplicate_session_suspected", "los_cluster_alert",
                     "logged_out", "connection_replaced",
-                    "possibly_banned", "max_retries_exceeded"}
+                    "possibly_banned", "max_retries_exceeded",
+                    "circuit_breaker_open"}
     pipeline = [
         {"$match": {"company_id": cid, "created_at": {"$gte": since},
                     "event": {"$in": list(alert_events)}}},

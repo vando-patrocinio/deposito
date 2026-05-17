@@ -69,6 +69,21 @@ export default function WaHealthDashboard() {
   const alerts = data?.alerts || { counts: {}, recent: [] };
   const sidecarOk = !!sidecar.ok && sidecar.state === "connected";
 
+  // Detecta cenário crítico: 3+ logged_out em 10min OU duplicate_session_suspected
+  // ativo nas últimas 30min → mostra banner com instruções acionáveis.
+  const recentLoggedOut = (alerts.recent || []).filter((e) =>
+    e.event === "logged_out"
+    && (Date.now() - new Date(e.created_at).getTime()) < 10 * 60 * 1000,
+  );
+  const recentDuplicate = (alerts.recent || []).find((e) =>
+    e.event === "duplicate_session_suspected"
+    && (Date.now() - new Date(e.created_at).getTime()) < 30 * 60 * 1000,
+  );
+  const criticalSession = recentLoggedOut.length >= 3 || !!recentDuplicate;
+  // Pega o "reason" mais recente de logged_out pra contar a verdade pro usuário
+  const lastReason = (alerts.recent || [])
+    .find((e) => e.event === "logged_out" && e.reason)?.reason;
+
   return (
     <div data-testid="wa-health-dashboard" style={{ display: "grid", gap: 12 }}>
       {/* Header */}
@@ -130,6 +145,79 @@ export default function WaHealthDashboard() {
           </div>
         </div>
       </Card>
+
+      {/* 🚨 BANNER CRÍTICO — quando detecta cenário de desconexão repetida */}
+      {criticalSession && (
+        <Card
+          data-testid="wa-health-critical-banner"
+          style={{
+            padding: 16,
+            background: "linear-gradient(135deg, #fef2f2, #fff7ed)",
+            border: "2px solid #dc2626",
+            borderRadius: 10,
+          }}
+        >
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 10,
+              background: "#dc2626", display: "grid", placeItems: "center",
+              flexShrink: 0,
+            }}>
+              <AlertTriangle size={20} color="white" strokeWidth={2.5} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontWeight: 800, fontSize: 14, color: "#991b1b",
+                marginBottom: 4,
+              }}>
+                Atenção: sessão WhatsApp sendo encerrada repetidamente
+              </div>
+              <div style={{ fontSize: 12, color: "#7f1d1d", lineHeight: 1.5 }}>
+                Detectamos <b>{recentLoggedOut.length}+ desconexões em 10min</b>.
+                {lastReason ? (
+                  <>
+                    {" "}Motivo reportado pelo WhatsApp:{" "}
+                    <code style={{
+                      background: "#fee2e2", padding: "1px 5px",
+                      borderRadius: 3, fontSize: 11,
+                    }}>{lastReason}</code>.
+                  </>
+                ) : null}
+                {" "}Esse padrão acontece quando <b>alguém está clicando
+                "Desconectar dispositivo" no celular</b> ou quando o
+                <b> número está logado em outro WhatsApp Web/Desktop</b>.
+              </div>
+              <div style={{
+                marginTop: 10, padding: 10, background: "#fff",
+                border: "1px solid #fecaca", borderRadius: 6,
+                fontSize: 12, color: "#7f1d1d", lineHeight: 1.6,
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                  Como resolver (faça no celular do Ligo):
+                </div>
+                <ol style={{ margin: 0, paddingLeft: 18 }}>
+                  <li>
+                    Abra o WhatsApp do celular → menu <b>⋮</b> →
+                    <b> Aparelhos conectados</b>
+                  </li>
+                  <li>
+                    Toque em cada dispositivo conectado e
+                    <b> Desconectar</b> — exceto este painel SmartProv
+                  </li>
+                  <li>
+                    Verifique se ninguém mais tem acesso ao celular
+                    desconectando manualmente
+                  </li>
+                  <li>
+                    Volte aqui em ~1min — o sidecar tenta reconectar
+                    automaticamente
+                  </li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Grid de KPIs */}
       <div style={{
@@ -340,6 +428,7 @@ function AlertRow({ ev }) {
     los_cluster_alert: { bg: "#fef2f2", color: "#dc2626", label: "LOS cluster" },
     possibly_banned: { bg: "#fef2f2", color: "#dc2626", label: "Possivelmente banido" },
     max_retries_exceeded: { bg: "#fef2f2", color: "#dc2626", label: "Max retries" },
+    circuit_breaker_open: { bg: "#fef2f2", color: "#dc2626", label: "Circuit breaker" },
     logged_out: { bg: "#fef3c7", color: "#92400e", label: "Logged out" },
     connection_replaced: { bg: "#fef3c7", color: "#92400e", label: "Sessão substituída" },
   };

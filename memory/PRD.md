@@ -874,3 +874,16 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - Frontend: novo componente `LatencySeriesChart` no `WaHealthDashboard.js` usando Recharts (já no `package.json`). Linhas p50 (verde) / p95 (laranja) / p99 (vermelho) com tooltip, eixos formatados em segundos. Subtítulo orienta a interpretação (picos p95/p99 = DeepSeek lento ou prompt >40kB).
 
 **Validação:** 40 buckets retornando OK em 7d (samples=326). Screenshot exibiu gráfico com picos visíveis em 14/05 06:00, 16/05 11:00 e 16/05 19:00 (p99 atingiu ~260s — lentidão pontual do DeepSeek/OpenRouter). Sidecar também voltou a `CONNECTED` (26m uptime estável).
+
+## 🚨 [17/Fev/2026] Circuit Breaker + Banner Crítico (Conexão WhatsApp)
+
+**Reincidência confirmada:** Usuário reportou que a conexão caiu de novo. Diagnóstico revelou `reason: "Intentional Logout"` no `last_disconnect` — significa que **alguém está clicando "Desconectar dispositivo" no celular** ativamente, não é problema técnico.
+
+**Implementação:**
+- **Sidecar** (`whatsapp-service/server.js`): novo **Circuit Breaker** — quando vê 3+ `loggedOut` em janela de 10min, pausa automaticamente as tentativas de reconexão por 10min e emite `circuit_breaker_open` pra o painel. Evita gerar QR codes queimados em loop. Variável global `loggedOutHistory` rastreia timestamps. ⚠ Aguardando `Save to GitHub` pra Railway redeployar.
+- **Backend** (`routes/whatsapp_baileys.py`): adicionado `circuit_breaker_open` ao `alert_events` no `/health-overview`. Já aceitava `reason` no `SystemEventIn` — agora persiste o motivo real reportado pelo WhatsApp.
+- **Frontend** (`WaHealthDashboard.js`): novo **banner crítico vermelho** exibido quando 3+ `logged_out` em 10min OU `duplicate_session_suspected` recente. Mostra:
+  - Quantas desconexões em 10min
+  - O `reason` REAL do WhatsApp em `<code>` (ex: "Intentional Logout")
+  - Checklist com 4 passos acionáveis no celular do Ligo
+- Lint OK em backend e frontend. Screenshot validou o banner.

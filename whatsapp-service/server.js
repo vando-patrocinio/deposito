@@ -97,6 +97,9 @@ let inboundEventCount = 0;       // contador acumulado de eventos messages.upser
 let watchdogTimer = null;
 const WATCHDOG_INTERVAL_MS = 60 * 1000;        // checa a cada 60s
 const WATCHDOG_STUCK_THRESHOLD_MS = 8 * 60 * 1000;  // 8min sem evento = zumbi
+// Circuit breaker: histórico de loggedOuts pra detectar quando alguém está
+// desconectando o número manualmente do celular ("Intentional Logout").
+let loggedOutHistory = [];
 
 // Caches
 const profileCache = new Map();   // jid -> { avatar, name, business, cached_at }
@@ -284,38 +287,72 @@ async function startSock() {
         connState = "disconnected";
         const code = ld?.error?.output?.statusCode;
         const name = disconnectName(code);
-        lastDisconnect = { code, name, reason: String(ld?.error?.message || "") };
-        logger.warn({ code, name }, "desconectado");
+        const reasonMsg = String(ld?.error?.message || "");
+        lastDisconnect = { code, name, reason: reasonMsg };
+        logger.warn({ code, name, reason: reasonMsg }, "desconectado");
 
         // Tratamento por taxonomia
         if (code === DisconnectReason.loggedOut) {
-          // Sessão revogada — não reconectar; admin precisa scanear novo QR
-          logger.warn("loggedOut — não reconectar, aguardando QR novo");
-          // Limpa credenciais inválidas para permitir QR fresh no próximo
-          // /logout ou restart do sidecar (sem precisar comando manual)
+          // --- CIRCUIT BREAKER ---
+          // Se vemos 3+ loggedOut em janela <10min, é cenário de "alguém
+          // está desconectando o número manualmente do celular" (reason
+          // "Intentional Logout") OU "outro dispositivo conectado com mesma
+          // sessão". Reiniciar automaticamente só gera novos QR codes
+          // queimados e não resolve nada — pausa por 10min antes de tentar
+          // de novo, e avisa o painel.
+          const now = Date.now();
+          loggedOutHistory.push(now);
+          loggedOutHistory = loggedOutHistory.filter(
+            (t) => now - t <= 10 * 60 * 1000,
+          );
+          const breakerActive = loggedOutHistory.length >= 3;
+
+          logger.warn(
+            { count: loggedOutHistory.length, breakerActive, reason: reasonMsg },
+            "loggedOut detectado",
+          );
           try {
             fs.rmSync(AUTH_DIR, { recursive: true, force: true });
             logger.info("AUTH_DIR limpo após loggedOut — pronto pra QR novo");
           } catch (e) {
             logger.warn({ err: e.message }, "falha ao limpar AUTH_DIR pós-loggedOut");
           }
-          await notifyAdmin("logged_out", { code, name });
-          // Reinicia para gerar QR novo automaticamente
+          await notifyAdmin("logged_out", { code, name, reason: reasonMsg });
+
+          if (breakerActive) {
+            connState = "circuit_open";
+            logger.error(
+              { count: loggedOutHistory.length },
+              "CIRCUIT BREAKER ATIVO — 3+ loggedOut em 10min. " +
+              "Pausando reconexão por 10min. Provável que alguém esteja " +
+              "desconectando o número manualmente no celular.",
+            );
+            await notifyAdmin("circuit_breaker_open", {
+              count: loggedOutHistory.length,
+              reason: reasonMsg,
+              pause_minutes: 10,
+            });
+            setTimeout(() => {
+              logger.info("CIRCUIT BREAKER fechado — tentando reconectar");
+              loggedOutHistory = [];
+              startSock().catch(() => {});
+            }, 10 * 60 * 1000);
+            return;
+          }
+
           setTimeout(() => { startSock().catch(() => {}); }, 1500);
           return;
         }
         if (code === DisconnectReason.connectionReplaced) {
           logger.warn("connectionReplaced — outra sessão tomou — aguardando");
-          await notifyAdmin("connection_replaced", { code, name });
+          await notifyAdmin("connection_replaced", { code, name, reason: reasonMsg });
           return;
         }
         if (code === 401 || code === DisconnectReason.forbidden) {
-          // Provável ban temporário ou bloqueio
           connState = "banned";
-          await notifyAdmin("possibly_banned", { code, name });
+          await notifyAdmin("possibly_banned", { code, name, reason: reasonMsg });
           return;
         }
-        // restartRequired / connectionLost / timedOut / badSession → reconectar
         scheduleReconnect(name);
       }
     });
