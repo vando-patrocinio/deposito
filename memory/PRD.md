@@ -780,3 +780,26 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - Dashboard global de health-check
 - Auto-recovery de sessões caídas
 - Billing automático por uso
+
+
+---
+
+## 🎨 [17/Maio/2026] Restauração do Wallpaper Customizado Ligo no WhatsApp Chat
+
+**Contexto:** Após "Re-deploy changes" sincronizando Preview → Produção, o usuário relatou que o wallpaper customizado (KAUE/MAYAR/LIGO + ícones WiFi) havia sumido da tela WhatsApp Chat.
+
+**Diagnóstico realizado:**
+- ✅ Arquivo fallback estático `/app/frontend/public/wa-wallpaper-ligo.png` (1.5 MB, 15/Mai) **CONTINHA** a arte customizada correta (LIGO, KAUE, MAYAR, WiFi)
+- ❌ DB `aihub_settings.wa_chat_wallpaper` (co-demo) tinha um wallpaper **GENÉRICO** salvo via `PUT /api/whatsapp-baileys/wallpaper` (180 KB, padrão WhatsApp emojis/ícones) que sobrescrevia o fallback no chat
+- ✅ Código de `WhatsAppChatLayout.js` (linhas 84/259-262/1558/1884) e `WaWallpaper.js` corretos: carregam DB primeiro com fallback para o arquivo estático
+
+**Fix aplicado:**
+- Re-encodado o arquivo estático em base64 (~2 MB data URL, dentro do limite de 8 MB) e enviado via `PUT /api/whatsapp-baileys/wallpaper` para sobrescrever o DB com o conteúdo correto.
+- DB agora reflete a arte customizada do Ligo. Validado visualmente no painel "Configuração → Papel de parede do chat WhatsApp" (mock messages + pattern Ligo visível).
+
+**Próximas tarefas em fila (pós-fix):**
+- 🟡 Reconectar Baileys/Railway: sidecar gerando QR válido (~56s), aguardando usuário escanear no Atendimento IA → Configuração → "Conectar WhatsApp por QR Code"
+- WhatsApp History Tab no Perfil do Cliente (P2)
+- Vincular cliente manualmente para números desconhecidos no Chat (P2)
+- Banco Inter PIX Dinâmico (P1)
+- Multi-tenant WhatsApp SaaS (P1, postponed para Junho/2026)
