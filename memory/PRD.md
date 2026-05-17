@@ -735,3 +735,48 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - **Verificado**: Sidecar reiniciou, conectou ao WhatsApp como `5521965680949` ("Patrocínio 🇧🇷") e criou a **"Own LID session"** (suporte nativo agora ativo). Status `connected: true`. Erros "Bad MAC" iniciais são apenas sessões legacy do 6.7.16 que precisam ser refeitas — clientes reconectam automaticamente.
 - **Compat**: API CommonJS mantida (`require("@whiskeysockets/baileys")` ainda exporta `makeWASocket`, `useMultiFileAuthState`, `jidNormalizedUser`, `isLidUser`, `DisconnectReason`). Nenhuma alteração no backend Python.
 - **Rollback**: `cp /app/whatsapp-service/package.json.bak.iter102 /app/whatsapp-service/package.json && cd /app/whatsapp-service && npm install --silent && sudo supervisorctl restart whatsapp-service`.
+✅ **WhatsApp Railway + Boleto Automático + Disparo Manual** (17/05/2026 — sessão fork):
+- **Railway Sidecar** (`https://whatsapp-sidecar-production-6336.up.railway.app`):
+  - Dockerfile sem `apk add python3/make/g++` (build leve, evita OOM no plano free)
+  - Volume persistente 5GB em `/data/auth_info`
+  - Bearer auth removida (modo aberto — sidecar isolado por URL obscura)
+  - `WA_WEBHOOK_BASE = https://dual-combine-3.emergent.host/api` (produção)
+  - Filtro `status@broadcast` / `@newsletter` no `messages.upsert`
+- **Boleto Automático via Isabella** (`/app/backend/services/boleto_flow.py`):
+  - Detecta intenção: boleto, 2ª via, pix, fatura, vencimento, atraso, débito (regex multi-padrão)
+  - Busca cliente em `subscriber_phones` (com `normalized_number`) + fallback `atlaz_clients_cache.phone`
+  - Cross com `subscriber_invoices.subscriber_external_id` (strip de prefixo `ATLAZ-`)
+  - Lista TODAS faturas em aberto · monta mensagem com link/PIX/linha digitável/vencimento
+  - Estado persistente em `boleto_flow_state` (pede CPF se não localiza)
+- **Disparo Manual de Boletos** (`/app/backend/routes/disparo_boleto.py` + `/app/frontend/src/DisparoBoletoCard.js`):
+  - `POST /api/disparo-ia/boletos/preview` — filtros days_min/max/only_overdue
+  - `POST /api/disparo-ia/boletos/send` — async task em background com throttle (default 2s)
+  - `dry_run=true` simula sem enviar · `custom_intro` prefixa mensagem
+  - `GET /runs/{id}` polling de progresso · `GET /history` listagem
+  - Card no DisparoIaPanel logo após KPIs · modal de confirmação · histórico expansível
+  - Atualmente 228 candidatos (R$ 23.112,46) elegíveis no banco
+- **Rede IA — Ranking Gamificado** (`/app/backend/routes/rede_ia.py`):
+  - `GET /api/rede-ia/stats/by-technician?period=all|month|week`
+  - Snapshot da praça/filial do técnico no momento do cadastro
+  - Frontend: tag colorida primeiro_nome + medalhas 🥇🥈🥉 top3 + coluna Filial
+- **Tempo "ONLINE HÁ" SmartOLT** (`/app/backend/routes/smartolt.py`):
+  - Calcula uptime a partir de `last_status_change` quando ONU está Online
+  - Formatos: `2d 14h`, `5h 32m`, `12m`
+- **Webhook token sync**: `WA_INBOUND_TOKEN = JAALRyFdv9z7…` realinhado entre Railway e backend
+- **Banco limpeza**: 730 msgs `+status` removidas + 1 conversa órfã
+- **Isabella reativada**: `wa_autoreply_config` reinserida com `enabled=True` (estava None)
+
+### 📌 Roadmap WhatsApp Multi-Tenant SaaS (postponed para Junho/2026):
+**Plano A (MVP, ~30min):**
+- Coleção `wa_tenant_config` `{company_id, sidecar_url, sidecar_token, inbound_token, status}`
+- Refatorar `_sidecar_post()` lendo URL por tenant
+- Tela admin "Configurações WhatsApp por Empresa" (URL/Token/Test/Status)
+**Plano B (médio prazo):**
+- Botão "Provisionar Railway" via API
+- Self-service QR Code por tenant no painel próprio
+- Métricas por tenant (msgs enviadas, custo)
+**Plano C (escala 20+ clientes):**
+- Multi-tenant em 1 container (MultiBaileys)
+- Dashboard global de health-check
+- Auto-recovery de sessões caídas
+- Billing automático por uso
