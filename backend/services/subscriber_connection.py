@@ -168,6 +168,32 @@ async def check_connection_for_phone(
     except Exception:
         minutes_since = None
 
+    # --- Persistência do SN no cadastro do cliente (estoque-cliente) ---
+    onu_sn = onu.get("sn") or onu.get("serial_number") or onu.get("serial")
+    onu_id_val = onu.get("unique_external_id")
+    onu_model = onu.get("model") or onu.get("onu_model")
+    try:
+        equipment_snapshot = {
+            "sn": onu_sn,
+            "model": onu_model,
+            "onu_id": onu_id_val,
+            "onu_name": onu.get("name"),
+            "olt_name": onu.get("olt_name"),
+            "board": onu.get("board"),
+            "port": onu.get("port"),
+            "last_seen_at": now_iso(),
+            "last_status": status_raw,
+        }
+        # Remove keys None pra não sobrescrever com vazio
+        equipment_snapshot = {k: v for k, v in equipment_snapshot.items() if v is not None}
+        if equipment_snapshot:
+            await db.subscribers.update_one(
+                {"company_id": company_id, "id": sub.get("id")},
+                {"$set": {"equipment": equipment_snapshot}},
+            )
+    except Exception as e:
+        logger.info("[subscriber_connection] save equipment falhou: %s", e)
+
     return {
         "found": True,
         "subscriber_name": sub.get("name"),
@@ -185,7 +211,9 @@ async def check_connection_for_phone(
         "last_status_change": last_change,
         "minutes_since_change": minutes_since,
         "onu_name": onu.get("name"),
-        "onu_id": onu.get("unique_external_id"),
+        "onu_id": onu_id_val,
+        "onu_sn": onu_sn,
+        "onu_model": onu_model,
     }
 
 
@@ -221,6 +249,8 @@ def format_for_prompt(info: Dict[str, Any]) -> str:
     olt = info.get("olt_name") or "—"
     port = info.get("port") or "—"
     minutes = info.get("minutes_since_change")
+    sn = info.get("onu_sn") or "—"
+    model = info.get("onu_model") or "—"
 
     if info.get("connected"):
         emoji = "🟢"
@@ -262,23 +292,27 @@ def format_for_prompt(info: Dict[str, Any]) -> str:
     last_info = ""
     if minutes is not None:
         if minutes < 60:
-            last_info = f"Mudança de status há ~{minutes}min."
+            last_info = f"ONLINE HÁ ~{minutes}min."
         elif minutes < 60 * 24:
-            last_info = f"Mudança de status há ~{minutes // 60}h."
+            last_info = f"ONLINE HÁ ~{minutes // 60}h."
         else:
-            last_info = f"Mudança de status há ~{minutes // (60 * 24)}d."
+            last_info = f"ONLINE HÁ ~{minutes // (60 * 24)}d."
+        # Se desconectado, é o tempo desde a queda
+        if status.lower() != "online":
+            last_info = last_info.replace("ONLINE HÁ", "Caiu há")
 
     return (
         "=== VERIFICAÇÃO DA CONEXÃO DO CLIENTE (Motor IA · SmartOLT) ===\n"
         f"Cliente: {sub_name} · Plano: {plan} · Filial: {branch}\n"
         f"Equipamento: {emoji} **{status}** · Sinal: {signal}\n"
+        f"SN: {sn} · Modelo: {model}\n"
         f"OLT: {olt} · Porta: {port}\n"
         f"{last_info}\n\n"
         f"{action}\n"
         "IMPORTANTE: NÃO recite estes dados técnicos crus pro cliente. "
         "Use linguagem leiga (ex: 'verifiquei aqui no sistema e seu equipamento "
-        "está online com sinal bom'). Apenas mencione 'OLT', 'porta', 'LOS', "
-        "'sinal -28dBm' se o cliente perguntar especificamente."
+        "está online há 3 dias, com sinal bom'). Apenas mencione 'OLT', 'porta', "
+        "'LOS', 'sinal -28dBm', 'SN' se o cliente perguntar especificamente."
     )
 
 
