@@ -91,6 +91,12 @@ let startedAt = Date.now();
 let lastSendAt = 0;
 let lastSuccessAt = null;
 let shuttingDown = false;
+// Watchdog: detecta socket zumbi (conectado mas não recebe mais nada)
+let lastInboundEventAt = 0;     // timestamp da última msg recebida do WhatsApp
+let inboundEventCount = 0;       // contador acumulado de eventos messages.upsert
+let watchdogTimer = null;
+const WATCHDOG_INTERVAL_MS = 60 * 1000;        // checa a cada 60s
+const WATCHDOG_STUCK_THRESHOLD_MS = 8 * 60 * 1000;  // 8min sem evento = zumbi
 
 // Caches
 const profileCache = new Map();   // jid -> { avatar, name, business, cached_at }
@@ -177,6 +183,44 @@ function forceReconnect(reason) {
   scheduleReconnect(reason);
 }
 
+/**
+ * Watchdog: a cada 60s verifica se o sidecar está "conectado mas zumbi"
+ * (state=connected porém messages.upsert parou de disparar).
+ *
+ * Sintoma: você manda WhatsApp do celular real, ele entrega ao Ligo (✓✓),
+ * mas o sidecar nunca recebe o evento → Isabella nunca responde.
+ *
+ * Causa raiz típica: stream errored 515 sem trigger correto do `close`.
+ *
+ * Ação: se passou WATCHDOG_STUCK_THRESHOLD_MS desde o último evento
+ * inbound E estamos `connected`, força um reconnect limpo.
+ */
+function startWatchdog() {
+  if (watchdogTimer) clearInterval(watchdogTimer);
+  watchdogTimer = setInterval(() => {
+    if (shuttingDown) return;
+    if (connState !== "connected") return;
+    if (lastInboundEventAt === 0) {
+      // Ainda não recebeu nenhum evento desde o boot —
+      // tolerância de 10min antes de forçar reconnect
+      const sinceBoot = Date.now() - startedAt;
+      if (sinceBoot > 10 * 60 * 1000) {
+        logger.warn({ sinceBoot }, "watchdog: 10min sem qualquer inbound — forçando reconnect");
+        forceReconnect("watchdog-no-inbound-since-boot");
+      }
+      return;
+    }
+    const sinceLast = Date.now() - lastInboundEventAt;
+    if (sinceLast > WATCHDOG_STUCK_THRESHOLD_MS) {
+      logger.warn(
+        { sinceLast, inboundEventCount },
+        "watchdog: socket zumbi detectado — forçando reconnect",
+      );
+      forceReconnect("watchdog-stuck");
+    }
+  }, WATCHDOG_INTERVAL_MS);
+}
+
 /* ---------------- Boot Baileys ---------------- */
 async function startSock() {
   clearReconnectTimer();
@@ -231,6 +275,9 @@ async function startSock() {
         connState = "connected";
         me = sock.user || null;
         retryCount = 0;   // resetar backoff ao conectar
+        lastInboundEventAt = 0;  // reset contador (vai começar agora)
+        inboundEventCount = 0;
+        startWatchdog();  // ativa monitor de socket zumbi
         logger.info({ me: me?.id }, "CONECTADO");
       }
       if (connection === "close") {
@@ -283,6 +330,8 @@ async function startSock() {
     sock.ev.on("messages.upsert", async (ev) => {
       try {
         if (ev.type !== "notify") return;
+        lastInboundEventAt = Date.now();
+        inboundEventCount += 1;
         for (const m of ev.messages || []) {
           if (m.key.fromMe) continue;
           // Ignora atualizações de Status/Broadcast (não são conversas reais)
@@ -417,6 +466,8 @@ app.get("/health", (_req, res) => res.json({
   retry_count: retryCount,
   last_send_at: lastSendAt ? new Date(lastSendAt).toISOString() : null,
   last_success_at: lastSuccessAt ? new Date(lastSuccessAt).toISOString() : null,
+  last_inbound_event_at: lastInboundEventAt ? new Date(lastInboundEventAt).toISOString() : null,
+  inbound_event_count: inboundEventCount,
 }));
 
 // Auth middleware — protege todos endpoints quando WA_SIDECAR_TOKEN estiver
