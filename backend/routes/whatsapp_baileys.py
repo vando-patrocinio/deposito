@@ -681,6 +681,16 @@ async def inbound_webhook(payload: InboundIn,
         )
     if payload.from_me:
         return {"ok": True, "ignored": "from_me"}
+    # Ignora Status/Broadcast/Newsletters do WhatsApp — não são conversas reais
+    # e o WhatsApp bloqueia respostas para esses JIDs (causa "FALHOU" na UI).
+    jid_norm = (payload.jid or "").lower()
+    if (
+        jid_norm == "status@broadcast"
+        or jid_norm.endswith("@broadcast")
+        or jid_norm.endswith("@newsletter")
+        or (payload.phone or "").lower() == "status"
+    ):
+        return {"ok": True, "ignored": "broadcast_or_status"}
     # Tem áudio? trate como mensagem válida mesmo sem texto.
     has_audio = bool(payload.audio_b64)
     if not payload.text.strip() and not has_audio:

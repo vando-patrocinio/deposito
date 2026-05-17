@@ -285,6 +285,16 @@ async function startSock() {
         if (ev.type !== "notify") return;
         for (const m of ev.messages || []) {
           if (m.key.fromMe) continue;
+          // Ignora atualizações de Status/Broadcast (não são conversas reais)
+          // e o WhatsApp bloqueia envio para esses JIDs.
+          const remoteJid = m.key.remoteJid || "";
+          if (
+            remoteJid === "status@broadcast" ||
+            remoteJid.endsWith("@broadcast") ||
+            remoteJid.endsWith("@newsletter")
+          ) {
+            continue;
+          }
           const msg = m.message;
           if (!msg) continue;
           const text =
