@@ -96,6 +96,7 @@ from routes import (
     mass_messaging as routes_mass_messaging,
     disparo_ia as routes_disparo_ia,
     disparo_boleto as routes_disparo_boleto,
+    isabella_prompt as routes_isabella_prompt,
     gestao_ia as routes_gestao_ia,
     isabella_kpis as routes_isabella_kpis,
     tv_dashboards as routes_tv_dashboards,
@@ -439,6 +440,7 @@ app.include_router(routes_sentinela_lousa.router)
 app.include_router(routes_lousa_ai.router)
 app.include_router(routes_voice.router)
 app.include_router(routes_wa_baileys.router)
+app.include_router(routes_isabella_prompt.router)
 app.include_router(routes_central_ia.router)
 app.include_router(routes_rede_ia.router)
 app.include_router(routes_rede_ia_map.router)

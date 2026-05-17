@@ -906,4 +906,18 @@ export const api = {
   budgetAnalyze: (bid) =>
     client.post(`/budget/${bid}/analyze`, null, { timeout: 90000 }).then((r) => r.data),
   budgetPdfUrl: (bid) => `${API}/budget/${bid}/pdf`,
+
+  // --- Isabella Prompt Management (sub-aba "Gestão") ---
+  isabellaPromptGet: () =>
+    client.get("/whatsapp-baileys/isabella/prompt").then((r) => r.data),
+  isabellaPromptUpdate: (system_prompt) =>
+    client.put("/whatsapp-baileys/isabella/prompt", { system_prompt }).then((r) => r.data),
+  isabellaFragmentsList: () =>
+    client.get("/whatsapp-baileys/isabella/fragments").then((r) => r.data),
+  isabellaFragmentCreate: (data) =>
+    client.post("/whatsapp-baileys/isabella/fragments", data).then((r) => r.data),
+  isabellaFragmentPatch: (id, data) =>
+    client.patch(`/whatsapp-baileys/isabella/fragments/${id}`, data).then((r) => r.data),
+  isabellaFragmentDelete: (id) =>
+    client.delete(`/whatsapp-baileys/isabella/fragments/${id}`).then((r) => r.data),
 };

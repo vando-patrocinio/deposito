@@ -7,6 +7,8 @@ import InlineAgentEditor from "@/InlineAgentEditor";
 import WallpaperConfigCard from "@/WallpaperConfigCard";
 import WaBusinessHoursCard from "@/WaBusinessHoursCard";
 import WaQuickImagesCard from "@/WaQuickImagesCard";
+import IsabellaGestaoTab from "@/IsabellaGestaoTab";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   CheckCircle2, AlertCircle, RefreshCw, Plug, Wifi, WifiOff,
 } from "lucide-react";
@@ -54,75 +56,96 @@ export default function IntegrationsConfigPanel() {
 
   return (
     <div data-testid="integrations-config" style={{ display: "grid", gap: 14 }}>
-      <Card style={{ padding: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 11,
-            background: "linear-gradient(135deg,#0f172a,#1e293b)",
-            color: "white", display: "grid", placeItems: "center",
-          }}>
-            <Plug size={20} strokeWidth={1.75} />
+      <Tabs defaultValue="integracoes">
+        <TabsList>
+          <TabsTrigger value="integracoes" data-testid="config-tab-integracoes">
+            Integrações
+          </TabsTrigger>
+          <TabsTrigger value="gestao" data-testid="config-tab-gestao">
+            Gestão da Isabella
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="integracoes">
+          <div style={{ display: "grid", gap: 14, marginTop: 10 }}>
+            <Card style={{ padding: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 11,
+                  background: "linear-gradient(135deg,#0f172a,#1e293b)",
+                  color: "white", display: "grid", placeItems: "center",
+                }}>
+                  <Plug size={20} strokeWidth={1.75} />
+                </div>
+                <div style={{ flex: 1, minWidth: 240 }}>
+                  <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>
+                    Saúde dos canais
+                  </h2>
+                  <p style={{ margin: "2px 0 0", color: "var(--text-secondary)", fontSize: 12 }}>
+                    Status em tempo real dos canais de mensageria. Canais mortos são religados automaticamente ao clicar abaixo.
+                  </p>
+                </div>
+                <button
+                  data-testid="integrations-reconnect-btn"
+                  onClick={autoReconnect}
+                  disabled={busy}
+                  style={{
+                    padding: "9px 16px", borderRadius: 10, border: 0,
+                    background: busy ? "#94a3b8" : "#0f172a",
+                    color: "white", fontSize: 13, fontWeight: 700,
+                    cursor: busy ? "not-allowed" : "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 8,
+                  }}
+                >
+                  <RefreshCw size={13} className={busy ? "spin" : ""} />
+                  {busy ? "Verificando…" : "Verificar e reconectar"}
+                </button>
+              </div>
+
+              {/* Channel cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 14 }}>
+                {loading ? <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Carregando...</div> :
+                  (health?.channels || []).map((c) => <ChannelTile key={c.channel} c={c} />)}
+              </div>
+
+              {lastAction && lastAction.actions && (
+                <div style={{ marginTop: 12, padding: 12, background: "rgba(16,185,129,.06)", border: "1px solid rgba(16,185,129,.25)", borderRadius: 8, fontSize: 11.5, color: "#15803d" }}>
+                  ✓ Ações executadas: {lastAction.actions.map((a) => `${a.channel} (${a.result})`).join(" · ")}
+                </div>
+              )}
+              {lastAction?.error && (
+                <div style={{ marginTop: 12, padding: 12, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.25)", borderRadius: 8, fontSize: 11.5, color: "#b91c1c" }}>
+                  Erro: {lastAction.error}
+                </div>
+              )}
+            </Card>
+
+            {/* Topologia em tempo real */}
+            <ChatTopologyMap />
+
+            {/* Editor inline do Agente IA — Personalidade & Modelo */}
+            <InlineAgentEditor />
+
+            {/* Papel de parede customizável do chat */}
+            <WallpaperConfigCard />
+
+            {/* Horário de atendimento (mensagens fora do horário → "Fora de hora") */}
+            <WaBusinessHoursCard />
+
+            {/* Imagens rápidas — até 5 imagens pra envio rápido pela atendente */}
+            <WaQuickImagesCard />
+
+            {/* Painel completo de Instância Baileys (QR, número, auto-reply, etc.) */}
+            <WhatsAppInstancePanel />
           </div>
-          <div style={{ flex: 1, minWidth: 240 }}>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>
-              Saúde dos canais
-            </h2>
-            <p style={{ margin: "2px 0 0", color: "var(--text-secondary)", fontSize: 12 }}>
-              Status em tempo real dos canais de mensageria. Canais mortos são religados automaticamente ao clicar abaixo.
-            </p>
+        </TabsContent>
+
+        <TabsContent value="gestao">
+          <div style={{ marginTop: 10 }}>
+            <IsabellaGestaoTab />
           </div>
-          <button
-            data-testid="integrations-reconnect-btn"
-            onClick={autoReconnect}
-            disabled={busy}
-            style={{
-              padding: "9px 16px", borderRadius: 10, border: 0,
-              background: busy ? "#94a3b8" : "#0f172a",
-              color: "white", fontSize: 13, fontWeight: 700,
-              cursor: busy ? "not-allowed" : "pointer",
-              display: "inline-flex", alignItems: "center", gap: 8,
-            }}
-          >
-            <RefreshCw size={13} className={busy ? "spin" : ""} />
-            {busy ? "Verificando…" : "Verificar e reconectar"}
-          </button>
-        </div>
-
-        {/* Channel cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 14 }}>
-          {loading ? <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Carregando...</div> :
-            (health?.channels || []).map((c) => <ChannelTile key={c.channel} c={c} />)}
-        </div>
-
-        {lastAction && lastAction.actions && (
-          <div style={{ marginTop: 12, padding: 12, background: "rgba(16,185,129,.06)", border: "1px solid rgba(16,185,129,.25)", borderRadius: 8, fontSize: 11.5, color: "#15803d" }}>
-            ✓ Ações executadas: {lastAction.actions.map((a) => `${a.channel} (${a.result})`).join(" · ")}
-          </div>
-        )}
-        {lastAction?.error && (
-          <div style={{ marginTop: 12, padding: 12, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.25)", borderRadius: 8, fontSize: 11.5, color: "#b91c1c" }}>
-            Erro: {lastAction.error}
-          </div>
-        )}
-      </Card>
-
-      {/* Topologia em tempo real */}
-      <ChatTopologyMap />
-
-      {/* Editor inline do Agente IA — Personalidade & Modelo */}
-      <InlineAgentEditor />
-
-      {/* Papel de parede customizável do chat */}
-      <WallpaperConfigCard />
-
-      {/* Horário de atendimento (mensagens fora do horário → "Fora de hora") */}
-      <WaBusinessHoursCard />
-
-      {/* Imagens rápidas — até 5 imagens pra envio rápido pela atendente */}
-      <WaQuickImagesCard />
-
-      {/* Painel completo de Instância Baileys (QR, número, auto-reply, etc.) */}
-      <WhatsAppInstancePanel />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

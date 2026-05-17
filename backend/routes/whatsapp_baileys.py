@@ -1554,6 +1554,17 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     except Exception as e:
         logger.info("[wa-baileys] lousa availability skip: %s", e)
 
+    # 3h. Fragments ativos da Isabella — módulos categorizados (vendas /
+    # promoção / upgrade / novidade) gerenciados pelo gestor na sub-aba
+    # "Gestão" do Atendimento IA. Cada módulo ligado é injetado aqui.
+    try:
+        from routes.isabella_prompt import compose_active_fragments_block
+        frag_block = await compose_active_fragments_block(cid)
+        if frag_block:
+            extra.append(frag_block)
+    except Exception as e:
+        logger.info("[wa-baileys] fragments skip: %s", e)
+
     sys_prompt += "\n\n" + "\n\n".join(extra)
 
     # 3d. Histórico de conversa (janela 100, truncate por tokens)
