@@ -390,17 +390,31 @@ async def get_cto(cto_id: str, user: dict = Depends(get_current_user)):
 
 @router.get("/stats/by-technician")
 async def stats_ctos_by_technician(
+    period: str = Query("all", regex="^(all|month|week)$"),
     user: dict = Depends(require_role("administrador", "gestor", "gestor_rede", "auditor")),
 ):
     """Contagem de CTOs registradas por técnico e por filial.
+
+    Query params:
+    - period: 'all' (default), 'month' (mês corrente), 'week' (últimos 7 dias)
 
     Retorna 2 listagens:
     - by_technician: [{tech_id, tech_name, first_name, total, approved, pending}]
     - by_branch: [{praca_id, praca_name, city, total}]
     """
     cid = _user_company(user)
+    q: Dict[str, Any] = {"company_id": cid}
+    if period in ("month", "week"):
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        if period == "month":
+            since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:  # week
+            since = now - timedelta(days=7)
+        q["created_at"] = {"$gte": since.isoformat()}
+
     docs = await db.ctos.find(
-        {"company_id": cid},
+        q,
         {"_id": 0, "technician_id": 1, "technician_name": 1,
          "technician_first_name": 1, "technician_praca_id": 1,
          "technician_praca_name": 1, "technician_praca_city": 1,

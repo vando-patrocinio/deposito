@@ -833,8 +833,9 @@ export const api = {
   redeIaCtosList: (params = {}) =>
     client.get(`/rede-ia/ctos`, { params }).then((r) => r.data),
   redeIaCtoGet: (id) => client.get(`/rede-ia/ctos/${id}`).then((r) => r.data),
-  redeIaStatsByTechnician: () =>
-    client.get(`/rede-ia/stats/by-technician`).then((r) => r.data),
+  redeIaStatsByTechnician: (period = "all") =>
+    client.get(`/rede-ia/stats/by-technician`, { params: { period } })
+      .then((r) => r.data),
   redeIaPendencies: () => client.get(`/rede-ia/pendencies`).then((r) => r.data),
   redeIaValidate: (id, action, comment = "") =>
     client.post(`/rede-ia/ctos/${id}/validate`, { action, comment }).then((r) => r.data),

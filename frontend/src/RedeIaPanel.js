@@ -189,13 +189,16 @@ function Overview() {
   const [bairros, setBairros] = useState([]);
   const [mapData, setMapData] = useState({ vlans: [], ces: [], cables: [] });
   const [techStats, setTechStats] = useState({ by_technician: [], by_branch: [] });
+  const [statsPeriod, setStatsPeriod] = useState("all");
   useEffect(() => {
     api.redeIaCtosList().then((r) => setCtos(r.items || []));
     api.redeIaPendencies().then((r) => setPend(r.items || []));
     api.redeIaBairros().then((r) => setBairros(r.items || []));
     api.redeIaMapData().then((r) => setMapData(r)).catch(() => {});
-    api.redeIaStatsByTechnician().then(setTechStats).catch(() => {});
   }, []);
+  useEffect(() => {
+    api.redeIaStatsByTechnician(statsPeriod).then(setTechStats).catch(() => {});
+  }, [statsPeriod]);
   const approved = ctos.filter((c) => c.status === "approved").length;
   const totalPorts = ctos.reduce((acc, c) => acc + (c.capacity || 0), 0);
   const usedPorts = ctos.reduce(
@@ -264,7 +267,9 @@ function Overview() {
       </Card>
 
       {/* CTOs por Técnico + Filial */}
-      <CtoStatsBlock stats={techStats} />
+      <CtoStatsBlock stats={techStats}
+                      period={statsPeriod}
+                      onChangePeriod={setStatsPeriod} />
 
       {/* Saúde por VLAN */}
       {mapData.vlans && mapData.vlans.length > 0 && (
@@ -324,22 +329,50 @@ function Overview() {
 }
 
 /* ------------- CTO Stats (por técnico + filial) ------------- */
-function CtoStatsBlock({ stats }) {
+function CtoStatsBlock({ stats, period, onChangePeriod }) {
   const byTech = stats?.by_technician || [];
   const byBranch = stats?.by_branch || [];
   if (byTech.length === 0 && byBranch.length === 0) return null;
   const techMax = Math.max(1, ...byTech.map((t) => t.total));
   const branchMax = Math.max(1, ...byBranch.map((b) => b.total));
+  const periodLabel = { all: "Geral", month: "Este mês", week: "Últimos 7 dias" };
   return (
     <Card style={{ padding: 16 }} data-testid="cto-stats-by-technician">
-      <h3 style={{ margin: "0 0 12px", fontSize: 15,
-                     display: "flex", alignItems: "center", gap: 8 }}>
-        📊 CTOs por técnico e filial
-        <span style={{ fontSize: 11, fontWeight: 500,
-                         color: "var(--text-muted)" }}>
-          ({stats.total_ctos || 0} no total)
-        </span>
-      </h3>
+      <div style={{ display: "flex", justifyContent: "space-between",
+                       alignItems: "center", marginBottom: 12, flexWrap: "wrap",
+                       gap: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 15,
+                       display: "flex", alignItems: "center", gap: 8 }}>
+          🏆 Ranking de CTOs · {periodLabel[period] || "Geral"}
+          <span style={{ fontSize: 11, fontWeight: 500,
+                           color: "var(--text-muted)" }}>
+            ({stats.total_ctos || 0} no período)
+          </span>
+        </h3>
+        <div style={{ display: "flex", gap: 4 }}>
+          {[
+            { id: "month", label: "Mês" },
+            { id: "week", label: "7 dias" },
+            { id: "all", label: "Geral" },
+          ].map((opt) => (
+            <button key={opt.id}
+                    data-testid={`stats-period-${opt.id}`}
+                    onClick={() => onChangePeriod && onChangePeriod(opt.id)}
+                    style={{
+                      padding: "4px 10px", borderRadius: 999, fontSize: 11,
+                      fontWeight: 700, cursor: "pointer",
+                      border: "1px solid var(--border-default)",
+                      background: period === opt.id
+                        ? "linear-gradient(135deg,#0ea5e9,#6366f1)"
+                        : "var(--bg-surface-2)",
+                      color: period === opt.id ? "white" : "var(--text-secondary)",
+                      transition: "all .15s",
+                    }}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div style={{ display: "grid",
                        gridTemplateColumns: "repeat(auto-fit, minmax(320px,1fr))",
                        gap: 16 }}>
@@ -356,12 +389,36 @@ function CtoStatsBlock({ stats }) {
             </div>
           )}
           <div style={{ display: "grid", gap: 6 }}>
-            {byTech.map((t) => (
+            {byTech.map((t, idx) => {
+              const medals = ["🥇", "🥈", "🥉"];
+              const medalBg = ["linear-gradient(135deg,#fbbf24,#f59e0b)",
+                                "linear-gradient(135deg,#cbd5e1,#94a3b8)",
+                                "linear-gradient(135deg,#f97316,#c2410c)"];
+              const isTop = idx < 3;
+              return (
               <div key={t.tech_id}
                     data-testid={`stat-tech-${t.tech_id}`}
                     style={{ display: "grid",
-                              gridTemplateColumns: "110px 1fr 50px",
+                              gridTemplateColumns: "32px 110px 1fr 50px",
                               alignItems: "center", gap: 8, fontSize: 12 }}>
+                {isTop ? (
+                  <span data-testid={`tech-medal-${idx + 1}`}
+                         title={`Top ${idx + 1} do ranking`}
+                         style={{
+                           width: 26, height: 26, borderRadius: "50%",
+                           background: medalBg[idx],
+                           display: "flex", alignItems: "center",
+                           justifyContent: "center", fontSize: 14,
+                           boxShadow: "0 2px 4px rgba(0,0,0,0.18)",
+                         }}>
+                    {medals[idx]}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)",
+                                  textAlign: "center", fontWeight: 700 }}>
+                    {idx + 1}º
+                  </span>
+                )}
                 <span title={t.tech_name}
                        style={{
                          padding: "2px 8px", borderRadius: 999,
@@ -399,7 +456,8 @@ function CtoStatsBlock({ stats }) {
                   {t.total}
                 </strong>
               </div>
-            ))}
+              );
+            })}
           </div>
           {byTech.length > 0 && (
             <div style={{ marginTop: 10, fontSize: 10,
