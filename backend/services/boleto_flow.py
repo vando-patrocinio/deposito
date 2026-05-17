@@ -110,49 +110,147 @@ def _format_due(due_iso: Optional[str]) -> str:
 
 
 async def _find_subscriber_by_phone(cid: str, phone: str) -> Optional[Dict[str, Any]]:
-    """Procura assinante pelo telefone (qualquer um dos campos cadastrados)."""
+    """Procura assinante pelo telefone.
+
+    Schema multi-coleção:
+      1. `subscriber_phones` (preferência — tem `subscriber_id` direto e `normalized_number`)
+      2. `atlaz_clients_cache` (fallback — tem `phone` mas só `external_id`)
+
+    Retorna doc do `subscribers` ou um doc sintético com `external_code` setado
+    para que `_list_open_invoices` consiga buscar as faturas.
+    """
     digits = re.sub(r"\D", "", phone or "")
     if not digits:
         return None
-    # Tenta variações: número completo, sem DDI 55, com/sem 9 no celular
+
+    # Variações: com/sem DDI 55, com/sem 9 no celular brasileiro
     variants = {digits}
     if digits.startswith("55") and len(digits) >= 12:
-        variants.add(digits[2:])
+        variants.add(digits[2:])  # remove 55
     if len(digits) == 11 and digits[2] == "9":
         variants.add(digits[:2] + digits[3:])  # remove 9
-    elif len(digits) == 10:
+    if len(digits) == 10:
         variants.add(digits[:2] + "9" + digits[2:])  # adiciona 9
+    if not digits.startswith("55") and len(digits) >= 10:
+        variants.add("55" + digits)  # adiciona DDI
 
-    q = {
-        "company_id": cid,
-        "$or": [
-            {"phone": {"$in": list(variants)}},
-            {"whatsapp": {"$in": list(variants)}},
-            {"phones": {"$elemMatch": {"$in": list(variants)}}},
-        ],
-    }
-    return await db.subscribers.find_one(q, {"_id": 0})
+    variants_list = list(variants)
+
+    # 1. Tenta subscriber_phones (rede principal — vínculo direto)
+    sp = await db.subscriber_phones.find_one(
+        {
+            "company_id": cid,
+            "$or": [
+                {"normalized_number": {"$in": variants_list}},
+                {"raw_number": {"$in": variants_list}},
+                {"phone": {"$in": variants_list}},
+            ],
+        },
+        {"_id": 0},
+    )
+    if sp and sp.get("subscriber_id"):
+        sub = await db.subscribers.find_one(
+            {"id": sp["subscriber_id"]}, {"_id": 0}
+        )
+        if sub:
+            # Completa o external_code se faltar — busca em atlaz_clients_cache
+            # pelo document (CPF) ou pelo telefone.
+            if not sub.get("external_code"):
+                doc = sub.get("document") or sub.get("cpf")
+                acc = None
+                if doc:
+                    acc = await db.atlaz_clients_cache.find_one(
+                        {"company_id": cid, "document": doc}, {"_id": 0}
+                    )
+                if not acc:
+                    acc = await db.atlaz_clients_cache.find_one(
+                        {"company_id": cid, "phone": {"$in": variants_list}},
+                        {"_id": 0},
+                    )
+                if acc and acc.get("external_id"):
+                    sub["external_code"] = str(acc["external_id"])
+            return sub
+
+    # 2. Fallback: atlaz_clients_cache (tem só external_id, mas serve pra buscar faturas)
+    acc = await db.atlaz_clients_cache.find_one(
+        {"company_id": cid, "phone": {"$in": variants_list}}, {"_id": 0},
+    )
+    if acc and acc.get("external_id"):
+        ext = str(acc["external_id"])
+        # Tenta achar subscriber pelo external_code
+        sub = await db.subscribers.find_one(
+            {"company_id": cid, "external_code": ext}, {"_id": 0}
+        )
+        if sub:
+            return sub
+        # Doc sintético — boleto_flow funciona com external_code mesmo sem subscriber salvo
+        return {
+            "id": None,
+            "external_code": ext,
+            "name": acc.get("name"),
+            "email": acc.get("email"),
+            "document": acc.get("document"),
+            "_from_cache": True,
+        }
+    return None
 
 
 async def _find_subscriber_by_cpf(cid: str, cpf: str) -> Optional[Dict[str, Any]]:
     digits = re.sub(r"\D", "", cpf or "")
     if len(digits) != 11:
         return None
-    return await db.subscribers.find_one(
-        {"company_id": cid, "cpf": {"$in": [digits,
-                                              f"{digits[:3]}.{digits[3:6]}.{digits[6:9]}-{digits[9:]}"]}},
+    masked = f"{digits[:3]}.{digits[3:6]}.{digits[6:9]}-{digits[9:]}"
+
+    # 1. Tenta subscribers (campo document/cpf)
+    sub = await db.subscribers.find_one(
+        {"company_id": cid,
+         "$or": [
+             {"document": {"$in": [digits, masked]}},
+             {"cpf": {"$in": [digits, masked]}},
+         ]},
         {"_id": 0},
     )
+    if sub:
+        return sub
+    # 2. Fallback Atlaz
+    acc = await db.atlaz_clients_cache.find_one(
+        {"company_id": cid, "document": {"$in": [digits, masked]}}, {"_id": 0},
+    )
+    if acc and acc.get("external_id"):
+        ext = str(acc["external_id"])
+        sub = await db.subscribers.find_one(
+            {"company_id": cid, "external_code": ext}, {"_id": 0}
+        )
+        if sub:
+            return sub
+        return {
+            "id": None, "external_code": ext,
+            "name": acc.get("name"), "email": acc.get("email"),
+            "document": acc.get("document"), "_from_cache": True,
+        }
+    return None
 
 
 async def _list_open_invoices(cid: str,
-                                subscriber_id: str) -> List[Dict[str, Any]]:
-    """Faturas com status em aberto/vencida/pendente."""
+                                subscriber: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Lista faturas em aberto cruzando por `subscriber_external_id`."""
+    # Junção: subscriber.external_code <-> subscriber_invoices.subscriber_external_id
+    ext_id = subscriber.get("external_code") or subscriber.get("id_assinante")
+    if not ext_id:
+        return []
+    ext_id_str = str(ext_id).strip()
+    # Remove prefixos comuns: "ATLAZ-1234" → "1234"
+    if "-" in ext_id_str:
+        tail = ext_id_str.rsplit("-", 1)[-1]
+        if tail.isdigit():
+            ext_id_str = tail
+    # Tenta tanto string quanto sem prefixo
     OPEN_STATUSES = ["open", "pending", "overdue", "aberto", "pendente",
-                       "atrasado", "vencido", "em_aberto", None]
+                       "atrasado", "vencido", "em_aberto", "PENDENTE",
+                       "ABERTO", "ATRASADO", None]
     q = {
         "company_id": cid,
-        "subscriber_id": subscriber_id,
+        "subscriber_external_id": ext_id_str,
         "$or": [
             {"status": {"$in": OPEN_STATUSES}},
             {"paid": {"$ne": True}},
@@ -160,12 +258,14 @@ async def _list_open_invoices(cid: str,
     }
     docs = await db.subscriber_invoices.find(q, {"_id": 0}) \
         .sort("due_date", 1).to_list(50)
-    # Filtra os realmente em aberto (não pagos)
     result = []
     for d in docs:
         paid = d.get("paid") or (d.get("status") or "").lower() in (
             "paid", "pago", "quitado", "settled", "cancelled", "cancelado"
         )
+        # Se tem paid_date preenchido, considera pago
+        if d.get("paid_date"):
+            paid = True
         if not paid:
             result.append(d)
     return result
@@ -197,7 +297,7 @@ def format_invoices_message(subscriber: Dict[str, Any],
         link = inv.get("boleto_url") or inv.get("link")
         pix = inv.get("pix_copia_cola") or inv.get("pix_payload") or inv.get("pix")
         bar = inv.get("digitable_line") or inv.get("linha_digitavel") \
-              or inv.get("codigo_barras")
+              or inv.get("codigo_barras") or inv.get("barcode")
 
         block = [
             f"\n━━━━━━━━━━━━━━━━━━━━",
@@ -288,5 +388,5 @@ async def handle_boleto_flow(cid: str, phone: str, text: str,
     # 5. Cliente localizado — limpa estado e busca faturas
     await db.boleto_flow_state.delete_one({"company_id": cid, "phone": phone})
 
-    invoices = await _list_open_invoices(cid, subscriber.get("id"))
+    invoices = await _list_open_invoices(cid, subscriber)
     return format_invoices_message(subscriber, invoices)
