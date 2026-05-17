@@ -58,20 +58,55 @@ def _split_ai_reply(text: str, max_chunks: int = 6,
     WhatsApp.
 
     Regras:
-    1. Separa por linhas em branco (`\\n\\n`) ou marcador explícito `---`.
-    2. Junta chunks micro (< min_chunk_chars) no chunk seguinte para
+    1. PRIORIDADE: se a resposta vier como múltiplas strings entre aspas
+       (padrão Isabella V6 — cada bolha em uma linha entre `"..."`), cada
+       string vira uma bolha. Strings vazias `""` são marcadores de quebra
+       e descartadas. Isso permite a IA controlar onde quebrar com precisão
+       (regra do gestor: "" separa bolha).
+    2. Caso contrário, separa por linhas em branco (`\\n\\n`) ou marcador
+       explícito `---`.
+    3. Junta chunks micro (< min_chunk_chars) no chunk seguinte para
        evitar bolhas de 1-2 palavras.
-    3. Cap em `max_chunks`: o excedente é concatenado no último chunk
+    4. Cap em `max_chunks`: o excedente é concatenado no último chunk
        (assim a IA não consegue 'flood' o cliente).
-    4. Quebras de linha simples (`\\n`) DENTRO de um chunk são preservadas
+    5. Quebras de linha simples (`\\n`) DENTRO de um chunk são preservadas
        (ex.: lista de bullets).
-    5. Se a resposta for curta ou inteira numa linha só, devolve [text].
+    6. Se a resposta for curta ou inteira numa linha só, devolve [text].
     """
     if not text:
         return []
     raw = text.replace("\r\n", "\n").strip()
+
+    # Detecta padrão "bolhas-aspas Isabella": linhas que começam e terminam
+    # com aspas (ou são `""` vazio). Se a maioria das linhas não-vazias
+    # seguir esse padrão, tratamos cada uma como bolha individual.
+    lines = [ln.strip() for ln in raw.split("\n") if ln.strip()]
+    quoted_lines = [
+        ln for ln in lines
+        if (ln.startswith('"') and ln.endswith('"')
+            and len(ln) >= 2)
+    ]
+    if lines and len(quoted_lines) >= max(2, int(len(lines) * 0.6)):
+        # Modo bolhas-aspas: cada string entre aspas é uma bolha.
+        # `""` (vazio) é separador puro e some.
+        bubbles: List[str] = []
+        for ln in quoted_lines:
+            inner = ln[1:-1].strip()
+            if inner:
+                bubbles.append(inner)
+        if bubbles:
+            # Cap igual ao caminho normal
+            if len(bubbles) > max_chunks:
+                head = bubbles[: max_chunks - 1]
+                tail = "\n\n".join(bubbles[max_chunks - 1:])
+                bubbles = head + [tail]
+            return bubbles
+
+    # --- caminho clássico (parágrafos por linha em branco) ---
     # Separador explícito `---` em linha sozinha vira "\n\n" pra unificar
     raw = re.sub(r"\n\s*---+\s*\n", "\n\n", raw)
+    # Linha contendo só "" também serve como separador explícito
+    raw = re.sub(r'\n\s*""\s*\n', "\n\n", raw)
     parts = re.split(r"\n{2,}", raw)
     # Limpa e remove vazios
     parts = [p.strip() for p in parts if p.strip()]
@@ -1500,6 +1535,24 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             )
     except Exception as e:
         logger.info("[wa-baileys] disparo briefing skip: %s", e)
+
+    # 3g. Disponibilidade da LOUSA — quando cliente pede agendamento/visita,
+    # injetamos a grade de horários atual pra Isabella só oferecer slots
+    # com vagas. Implementa a regra: "nunca oferecer data que já tem
+    # agendamento na lousa".
+    try:
+        from services.lousa_availability import (
+            detects_scheduling_intent, get_availability_for_prompt,
+        )
+        if detects_scheduling_intent(user_text):
+            lousa_block = await get_availability_for_prompt(cid, days=7)
+            if lousa_block:
+                extra.append(lousa_block)
+                logger.info(
+                    "[wa-baileys] lousa availability injetada p/ phone=%s", phone,
+                )
+    except Exception as e:
+        logger.info("[wa-baileys] lousa availability skip: %s", e)
 
     sys_prompt += "\n\n" + "\n\n".join(extra)
 
