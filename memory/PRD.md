@@ -904,3 +904,32 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
    - **Análise**: histórico de 100 turns está sendo enviado ao LLM corretamente. O problema é o LLM (DeepSeek) sendo conservador. Sugestão futura: instrução no fragment Comportamento V6.50 que diga "se cliente responder '?' ou monossílabo, RECONHEÇA-O e ofereça outra opção em vez de repetir".
 
 **Validação:** sandbox com "Parou novamente" agora retorna *"Deixa eu consultar seu equipamento aqui em tempo real, só um instante… 🛰️"* — comportamento correto do V6.70. 33/33 pytest passando.
+
+## 📋 [17/Fev/2026] Enriquecimento de Contexto — Isabella NÃO Pergunta Mais o Que Já Sabe
+
+**Reclamação do usuário:** "se ela sabe quem sou e tem meu cadastro disponível, por que pergunta algo que ela já sabe (ex: meu bairro já está no cadastro)?"
+
+**Diagnóstico:** O `format_for_prompt` injetava só nome/plano/filial. Endereço, bairro, cidade, CPF, vencimento e forma de pagamento existiam no `client_snapshot` dos tickets (importados do Atlaz) mas NÃO eram passados pro contexto da Isabella.
+
+**Fix em `services/subscriber_connection.py`:**
+
+1. **`check_connection_for_phone`** agora retorna 14 campos adicionais: `subscriber_nickname`, `plan_speed`, `plan_price`, `document` (CPF/CNPJ), `billing_method`, `due_day`, `neighborhood`, `city`, `address`, `cep`. Endereço é buscado no ticket mais recente do cliente (via `client_id` ou fallback por nome).
+2. **`format_for_prompt`** reorganizado com bloco explícito:
+   ```
+   📋 DADOS QUE VOCÊ JÁ TEM SOBRE ESTE CLIENTE (NÃO PEÇA NOVAMENTE):
+     Nome: ...
+     Apelido/Tratamento: ...
+     Plano: Fibra 500 Mega
+     Filial: LIGO RIO
+     Bairro: Cordovil
+     Cidade: Rio de Janeiro
+     Endereço: ...
+     CPF/CNPJ: ...
+     Vencimento: dia 15
+     Forma de pagamento: pix
+   ```
+3. **Regra de Ouro** adicionada explicitamente: *"Os dados acima já estão no SISTEMA. NUNCA pergunte ao cliente algo que você JÁ TEM aqui. Se precisar confirmar, mencione naturalmente."*
+
+**Validação:** testado com `Vando Patrocinio` (sub-c1a6d684e0) — bloco injetado retorna corretamente Nome, Plano, Filial. Quando subscribers tiver endereço (importação Atlaz futura), aparecerá automaticamente.
+
+**Pendente:** ampliar import Atlaz pra preencher `subscribers.neighborhood/city/address` direto (em vez de só ticket snapshots). Backlog P1.

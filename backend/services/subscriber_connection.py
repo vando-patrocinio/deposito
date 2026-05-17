@@ -153,6 +153,37 @@ async def check_connection_for_phone(
                        "vinculado no cache SmartOLT"),
         }
 
+    # --- Enriquecimento: busca endereço/bairro/cidade do ticket mais recente
+    # do mesmo cliente. Os subscribers não armazenam endereço, mas os tickets
+    # importados do Atlaz têm `client_snapshot.neighborhood` e `city`.
+    address_info: Dict[str, Any] = {}
+    try:
+        recent_tk = await db.tickets.find_one(
+            {"company_id": company_id, "client_id": sub.get("id")},
+            {"_id": 0, "client_snapshot": 1},
+            sort=[("created_at", -1)],
+        )
+        if not recent_tk:
+            # Fallback: busca por nome se client_id não bater
+            recent_tk = await db.tickets.find_one(
+                {"company_id": company_id,
+                 "client_snapshot.name": sub.get("name")},
+                {"_id": 0, "client_snapshot": 1},
+                sort=[("created_at", -1)],
+            )
+        if recent_tk:
+            cs = recent_tk.get("client_snapshot") or {}
+            address_info = {
+                "neighborhood": cs.get("neighborhood") or cs.get("bairro"),
+                "city": cs.get("city") or cs.get("cidade"),
+                "address": cs.get("address") or cs.get("endereco"),
+                "complement": cs.get("complement"),
+                "cep": cs.get("cep"),
+            }
+            address_info = {k: v for k, v in address_info.items() if v}
+    except Exception as e:
+        logger.info("[subscriber_connection] enrich address skip: %s", e)
+
     status_raw = (onu.get("status") or "").strip()
     # Normaliza:
     #   "Online" → connected=True (conexão saudável)
@@ -200,9 +231,19 @@ async def check_connection_for_phone(
     return {
         "found": True,
         "subscriber_name": sub.get("name"),
+        "subscriber_nickname": sub.get("nickname"),
         "plan_name": sub.get("plan_name"),
+        "plan_speed": sub.get("plan_speed"),
+        "plan_price": sub.get("plan_price"),
         "branch": sub.get("branch"),
         "external_code": sub.get("external_code"),
+        "document": sub.get("document"),
+        "billing_method": sub.get("billing_method"),
+        "due_day": sub.get("due_day"),
+        "neighborhood": address_info.get("neighborhood"),
+        "city": address_info.get("city"),
+        "address": address_info.get("address"),
+        "cep": address_info.get("cep"),
         "connected": connected,
         "status": status_raw or "desconhecido",
         "signal_text": onu.get("signal_text"),
@@ -245,8 +286,16 @@ def format_for_prompt(info: Dict[str, Any]) -> str:
         )
 
     sub_name = info.get("subscriber_name", "Cliente")
+    nick = info.get("subscriber_nickname") or ""
     plan = info.get("plan_name") or "—"
     branch = info.get("branch") or "—"
+    document = info.get("document") or ""
+    neighborhood = info.get("neighborhood") or ""
+    city = info.get("city") or ""
+    address = info.get("address") or ""
+    cep = info.get("cep") or ""
+    due_day = info.get("due_day")
+    billing = info.get("billing_method") or ""
     status = info.get("status", "desconhecido")
     signal = info.get("signal_text") or "—"
     olt = info.get("olt_name") or "—"
@@ -254,6 +303,29 @@ def format_for_prompt(info: Dict[str, Any]) -> str:
     minutes = info.get("minutes_since_change")
     sn = info.get("onu_sn") or "—"
     model = info.get("onu_model") or "—"
+
+    # Bloco com TODOS os dados que a Isabella JÁ TEM e NÃO deve pedir
+    known_data_lines = [f"Nome: {sub_name}"]
+    if nick:
+        known_data_lines.append(f"Apelido/Tratamento: {nick}")
+    known_data_lines.append(f"Plano: {plan}")
+    if branch != "—":
+        known_data_lines.append(f"Filial: {branch}")
+    if neighborhood:
+        known_data_lines.append(f"Bairro: {neighborhood}")
+    if city:
+        known_data_lines.append(f"Cidade: {city}")
+    if address:
+        known_data_lines.append(f"Endereço: {address}")
+    if cep:
+        known_data_lines.append(f"CEP: {cep}")
+    if document:
+        known_data_lines.append(f"CPF/CNPJ: {document}")
+    if due_day:
+        known_data_lines.append(f"Vencimento: dia {due_day}")
+    if billing:
+        known_data_lines.append(f"Forma de pagamento: {billing}")
+    known_data_block = "\n  ".join(known_data_lines)
 
     if info.get("connected"):
         emoji = "🟢"
@@ -314,12 +386,20 @@ def format_for_prompt(info: Dict[str, Any]) -> str:
 
     return (
         "=== VERIFICAÇÃO DA CONEXÃO DO CLIENTE (Motor IA · SmartOLT) ===\n"
-        f"Cliente: {sub_name} · Plano: {plan} · Filial: {branch}\n"
-        f"Equipamento: {emoji} **{status}** · Sinal: {signal}\n"
-        f"SN: {sn} · Modelo: {model}\n"
-        f"OLT: {olt} · Porta: {port}\n"
-        f"{last_info}\n\n"
+        "📋 DADOS QUE VOCÊ JÁ TEM SOBRE ESTE CLIENTE (NÃO PEÇA NOVAMENTE):\n"
+        f"  {known_data_block}\n\n"
+        f"🔌 SITUAÇÃO TÉCNICA AGORA:\n"
+        f"  Equipamento: {emoji} **{status}** · Sinal: {signal}\n"
+        f"  SN: {sn} · Modelo: {model}\n"
+        f"  OLT: {olt} · Porta: {port}\n"
+        f"  {last_info}\n\n"
         f"{action}\n"
+        "⚠️ REGRA DE OURO: Os dados acima já estão no SISTEMA. NUNCA pergunte "
+        "ao cliente algo que você JÁ TEM aqui (nome, plano, bairro, cidade, "
+        "endereço, CPF, dia de vencimento, forma de pagamento). Se precisar "
+        "confirmar, apenas mencione naturalmente (\"Vi aqui que seu plano é "
+        f"{plan} e você está em {neighborhood or city or branch}, correto?\"). "
+        "Mas use os dados pra DAR contexto à conversa, não pra pedir info.\n\n"
         "IMPORTANTE: NÃO recite estes dados técnicos crus pro cliente. "
         "Use linguagem leiga (ex: 'verifiquei aqui no sistema e seu equipamento "
         "está online há 3 dias, com sinal bom'). Apenas mencione 'OLT', 'porta', "
