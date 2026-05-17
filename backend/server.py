@@ -95,6 +95,7 @@ from routes import (
     whatsapp_config as routes_whatsapp_config,
     mass_messaging as routes_mass_messaging,
     disparo_ia as routes_disparo_ia,
+    disparo_boleto as routes_disparo_boleto,
     gestao_ia as routes_gestao_ia,
     isabella_kpis as routes_isabella_kpis,
     tv_dashboards as routes_tv_dashboards,
@@ -463,6 +464,7 @@ app.include_router(routes_alvaro.router)
 app.include_router(routes_whatsapp_config.router)
 app.include_router(routes_mass_messaging.router)
 app.include_router(routes_disparo_ia.router)
+app.include_router(routes_disparo_boleto.router)
 app.include_router(routes_gestao_ia.router)
 app.include_router(routes_isabella_kpis.router)
 app.include_router(routes_tv_dashboards.router)

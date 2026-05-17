@@ -9,6 +9,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
 import { Card } from "@/ui";
+import DisparoBoletoCard from "@/DisparoBoletoCard";
 import {
   Sparkles, Zap, Send, AlertTriangle, Eye, Check, X,
   RefreshCw, Target, TrendingUp, MessageCircle, ShieldAlert,
@@ -107,6 +108,9 @@ export default function DisparoIaPanel() {
 
       {/* KPIs DASHBOARD */}
       <KpiDashboard kpis={kpis} />
+
+      {/* Disparo Manual de Boletos */}
+      <DisparoBoletoCard />
 
       {/* FILTROS + LISTA */}
       <Card>
