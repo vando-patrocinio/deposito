@@ -653,6 +653,61 @@ async def ensure_repair_ticket(
         "client=%s phone=%s",
         ticket_id, priority, status, sub_name, phone,
     )
+
+    # --- ALERTA: rompimento de rota troncal (LOS cluster) ---
+    # Se 3+ tickets LOS na mesma OLT em <30min, é provável que houve
+    # rompimento físico de fibra troncal afetando toda a porção da rede.
+    # Emite um evento `los_cluster_alert` em `whatsapp_system_events` pra
+    # UI exibir banner pro gestor / despachante.
+    try:
+        if status == "los":
+            olt_name = (conn_info.get("olt_name") or "").strip()
+            if olt_name:
+                cutoff_30 = (datetime.now(timezone.utc) - timedelta(minutes=30)
+                              ).isoformat()
+                same_olt_count = await db.tickets.count_documents({
+                    "company_id": company_id,
+                    "created_by": "isabella_ai",
+                    "type": "reparo",
+                    "ai_diagnosis.status": {"$regex": "^los$", "$options": "i"},
+                    "ai_diagnosis.olt_name": olt_name,
+                    "created_at": {"$gte": cutoff_30},
+                })
+                if same_olt_count >= 3:
+                    # Dedupe: só emite o alerta 1x por OLT em janela de 30min
+                    already = await db.whatsapp_system_events.find_one({
+                        "company_id": company_id,
+                        "event": "los_cluster_alert",
+                        "reason": {"$regex": re.escape(olt_name), "$options": "i"},
+                        "created_at": {"$gte": cutoff_30},
+                    }, {"_id": 0, "id": 1})
+                    if not already:
+                        await db.whatsapp_system_events.insert_one({
+                            "id": f"wae-{uuid.uuid4().hex[:10]}",
+                            "company_id": company_id,
+                            "event": "los_cluster_alert",
+                            "code": None,
+                            "name": "los_cluster_alert",
+                            "retry_count": None,
+                            "reason": (
+                                f"OLT {olt_name}: {same_olt_count} clientes em "
+                                f"LOS em 30min — provável rompimento de fibra "
+                                f"troncal."
+                            ),
+                            "olt_name": olt_name,
+                            "tickets_count": int(same_olt_count),
+                            "created_at": now_iso(),
+                            "acknowledged": False,
+                        })
+                        logger.error(
+                            "[subscriber_connection][ALERTA] LOS CLUSTER %s: "
+                            "%s clientes em LOS na mesma OLT em 30min — "
+                            "verificar rota troncal.",
+                            olt_name, same_olt_count,
+                        )
+    except Exception as e:
+        logger.info("[subscriber_connection] los-cluster detect skip: %s", e)
+
     return {"id": ticket_id, "status": "pendente", "priority": priority,
              "created_at": ticket["created_at"], "isNew": True}
 

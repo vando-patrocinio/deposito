@@ -838,3 +838,15 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - Backend: `GET /api/central-ia/isabella/tickets-summary?days=N` (em `routes/isabella_kpis.py`) — retorna total hoje, janela, breakdown por status/prioridade, série diária pra sparkline e top 10 tickets recentes (com `client_name`, `phone`, `smartolt_status`, `olt_name`).
 - Frontend: novo componente `IsabellaTicketsKpi` em `IsabellaGestaoTab.js` — card fixo no topo do painel com toggles Hoje/7d/30d, sparkline diário e accordion "Últimas N bolhas". Botão "Lousa" emite `smartprov:navigate-tab` pra abrir a aba (com fallback `#lousa`).
 - Lint OK, screenshot validou render no painel "Atendimento IA → Configuração → Gestão da Isabella".
+
+## 🛡️ [17/Fev/2026] Robustez WhatsApp + Alerta LOS Cluster
+
+**Bug crítico encontrado:** Conexão WhatsApp Baileys caía a cada ~2min (21 eventos `logged_out` code 401 em 14 dias, cluster denso de 8 em 10min hoje). Causa raiz: **DOIS sidecars Baileys rodando com a mesma credencial** — um local em `/etc/supervisor/conf.d/supervisord_whatsapp.conf` (porta 3002) e o de produção em Railway (`whatsapp-sidecar-production-6336.up.railway.app` configurado em `WA_SIDECAR_URL`). WhatsApp detecta múltiplos dispositivos com mesma session e revoga uma a cada poucos minutos.
+
+**Fix aplicado:**
+- ✅ Parado `whatsapp-service` no supervisor + movido conf pra `.disabled` (não reinicia mais no boot)
+- ✅ Confirmado via logs: 0 eventos `logged_out` reais após desligamento (último real 22:52, sidecar parado 22:55+)
+- ✅ **Detector de duplicate session** adicionado em `routes/whatsapp_baileys.py` (`/system-event`): quando vê 3+ `logged_out`/`connection_replaced` em janela de 10min, emite evento `duplicate_session_suspected` com dedupe — pra que o problema seja DIAGNOSTICÁVEL no painel no futuro caso recorra
+- ✅ **Alerta LOS Cluster** em `services/subscriber_connection.py` (`ensure_repair_ticket`): quando 3+ tickets LOS na MESMA OLT em <30min, emite `los_cluster_alert` com `olt_name` e `tickets_count` — sinal claro de rompimento de rota troncal pra o despachante priorizar
+
+**Validação:** 1/1 pytest em `tests/test_wa_robustness_alerts.py` (envia 3 logged_out via `/system-event` e verifica que `duplicate_session_suspected` foi emitido).

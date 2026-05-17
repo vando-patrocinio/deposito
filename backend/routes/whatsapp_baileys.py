@@ -684,6 +684,11 @@ async def system_event(payload: SystemEventIn,
 
     Persiste em `whatsapp_system_events` para a aba de Status mostrar,
     e gera notificação interna pra admin.
+
+    Detecção de DUPLICATE SESSION: quando vemos 3+ logged_out (code 401) em
+    janela de 10min, marcamos a empresa como `wa_duplicate_session_suspect`
+    e emitimos um evento `duplicate_session_suspected` (consumido pela UI).
+    Esse padrão é o sintoma típico de 2 sidecars usando a mesma credencial.
     """
     if WA_INBOUND_TOKEN and x_wa_token != WA_INBOUND_TOKEN:
         raise HTTPException(401, "X-WA-Token inválido")
@@ -704,6 +709,52 @@ async def system_event(payload: SystemEventIn,
         "[wa-baileys][SYSTEM-EVENT] %s code=%s reason=%s",
         payload.event, payload.code, payload.reason,
     )
+
+    # --- Detecção de sessão duplicada ---
+    # Pattern: 3+ logged_out (ou connection_replaced) em janela curta = outra
+    # instância está fighting pelo mesmo número. Avisa a UI/admin.
+    if payload.event in {"logged_out", "connection_replaced"}:
+        try:
+            from datetime import datetime, timedelta, timezone
+            window_start = (
+                datetime.now(timezone.utc) - timedelta(minutes=10)
+            ).isoformat()
+            recent = await db.whatsapp_system_events.count_documents({
+                "company_id": DEMO_COMPANY_ID,
+                "event": {"$in": ["logged_out", "connection_replaced"]},
+                "created_at": {"$gte": window_start},
+            })
+            if recent >= 3:
+                # Verifica se já emitimos esse alerta na janela atual
+                already = await db.whatsapp_system_events.find_one({
+                    "company_id": DEMO_COMPANY_ID,
+                    "event": "duplicate_session_suspected",
+                    "created_at": {"$gte": window_start},
+                }, {"_id": 0, "id": 1})
+                if not already:
+                    await db.whatsapp_system_events.insert_one({
+                        "id": f"wae-{uuid.uuid4().hex[:10]}",
+                        "company_id": DEMO_COMPANY_ID,
+                        "event": "duplicate_session_suspected",
+                        "code": None,
+                        "name": "duplicate_session_suspected",
+                        "retry_count": None,
+                        "reason": (
+                            f"{recent} eventos de logged_out/connection_replaced "
+                            "em janela de 10min — provável conflito de sessão "
+                            "(2+ sidecars usando o mesmo número)."
+                        ),
+                        "created_at": now_iso(),
+                        "acknowledged": False,
+                    })
+                    logger.error(
+                        "[wa-baileys][ALERTA] Sessão WhatsApp duplicada suspeita: "
+                        "%s eventos em 10min — verificar se há mais de um sidecar "
+                        "rodando com a mesma credencial.", recent
+                    )
+        except Exception as e:
+            logger.warning("[wa-baileys] dup-session detect skip: %s", e)
+
     return {"ok": True, "id": doc["id"]}
 
 
