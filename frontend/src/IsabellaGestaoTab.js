@@ -7,6 +7,7 @@ import {
   Save, Plus, Trash2, ChevronDown, ChevronRight,
   ShoppingCart, Tag, TrendingUp, Sparkles, Wrench,
   Loader2, CheckCircle2, AlertCircle, Bot, Send, Sparkle, Zap,
+  Ticket, ExternalLink,
 } from "lucide-react";
 
 /**
@@ -46,6 +47,8 @@ export default function IsabellaGestaoTab() {
           </div>
         </div>
       </div>
+
+      <IsabellaTicketsKpi />
 
       <Tabs defaultValue="modules">
         <TabsList>
@@ -701,3 +704,267 @@ function TestResult({ result }) {
     </div>
   );
 }
+
+
+// ============================================================================
+// KPI: Bolhas criadas automaticamente pela Isabella IA na Lousa
+// ============================================================================
+function IsabellaTicketsKpi() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(7);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const r = await api.isabellaTicketsSummary(days);
+        if (!cancelled) setData(r);
+      } catch (e) {
+        if (!cancelled) setData(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [days]);
+
+  const totalToday = data?.total_today ?? 0;
+  const totalWindow = data?.total_window ?? 0;
+  const series = data?.series || [];
+  const maxCount = Math.max(1, ...series.map((s) => s.count));
+  const byStatus = data?.by_status || {};
+  const byPriority = data?.by_priority || {};
+  const recent = data?.recent || [];
+
+  const openLousa = () => {
+    // Tenta navegação interna; fallback pra deep-link.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("smartprov:navigate-tab",
+        { detail: { tab: "lousa" } }));
+      // fallback: scroll/anchor — abre nova rota se houver
+      setTimeout(() => {
+        if (!document.querySelector("[data-testid='lousa-kanban']")) {
+          window.location.hash = "#lousa";
+        }
+      }, 200);
+    }
+  };
+
+  return (
+    <div
+      data-testid="isabella-tickets-kpi-card"
+      style={{
+        padding: 12,
+        marginBottom: 12,
+        background: "linear-gradient(135deg, rgba(15,118,110,0.06), rgba(168,85,247,0.04))",
+        border: "1px solid var(--border-default)",
+        borderRadius: 10,
+      }}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        marginBottom: 10, gap: 8, flexWrap: "wrap",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Ticket size={16} color="#0f766e" strokeWidth={2} />
+          <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-primary)" }}>
+            Bolhas criadas pela Isabella (SmartOLT autônomo)
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {[1, 7, 30].map((d) => (
+            <button
+              key={d}
+              data-testid={`isabella-kpi-range-${d}d`}
+              onClick={() => setDays(d)}
+              style={{
+                padding: "4px 10px",
+                border: "1px solid var(--border-default)",
+                background: days === d ? "#0f766e" : "transparent",
+                color: days === d ? "#fff" : "var(--text-secondary)",
+                fontSize: 11, fontWeight: 600, borderRadius: 6,
+                cursor: "pointer",
+              }}
+            >{d === 1 ? "Hoje" : `${d}d`}</button>
+          ))}
+          <button
+            onClick={openLousa}
+            data-testid="isabella-kpi-open-lousa"
+            title="Abrir Lousa"
+            style={{
+              padding: "4px 10px",
+              border: "1px solid #0f766e",
+              background: "transparent",
+              color: "#0f766e",
+              fontSize: 11, fontWeight: 600, borderRadius: 6,
+              cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+            }}
+          >
+            <ExternalLink size={11} /> Lousa
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)" }}>
+          <Loader2 size={16} className="animate-spin" /> carregando…
+        </div>
+      ) : (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: 10,
+        }}>
+          {/* Totais */}
+          <div style={kpiBoxStyle}>
+            <div style={kpiLabelStyle}>Hoje</div>
+            <div data-testid="isabella-kpi-today" style={kpiBigStyle}>{totalToday}</div>
+            <div style={kpiSubStyle}>bolhas criadas</div>
+          </div>
+          <div style={kpiBoxStyle}>
+            <div style={kpiLabelStyle}>Janela ({days}d)</div>
+            <div data-testid="isabella-kpi-window" style={kpiBigStyle}>{totalWindow}</div>
+            <div style={kpiSubStyle}>total no período</div>
+          </div>
+
+          {/* Sparkline */}
+          <div style={{ ...kpiBoxStyle, gridColumn: "span 2", minHeight: 86 }}>
+            <div style={kpiLabelStyle}>Diário</div>
+            <div style={{
+              display: "flex", alignItems: "flex-end", gap: 3, height: 48,
+              marginTop: 6,
+            }}>
+              {series.map((s) => {
+                const h = (s.count / maxCount) * 100;
+                return (
+                  <div key={s.day} title={`${s.day}: ${s.count}`}
+                    style={{
+                      flex: 1,
+                      height: `${Math.max(4, h)}%`,
+                      background: s.count
+                        ? "linear-gradient(180deg, #0f766e, #14b8a6)"
+                        : "var(--border-default)",
+                      borderRadius: 2,
+                      transition: "height .25s",
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Status breakdown */}
+          {Object.keys(byStatus).length > 0 && (
+            <div style={kpiBoxStyle}>
+              <div style={kpiLabelStyle}>Por status</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 4 }}>
+                {Object.entries(byStatus).map(([st, n]) => (
+                  <div key={st} style={{
+                    display: "flex", justifyContent: "space-between",
+                    fontSize: 11, color: "var(--text-secondary)",
+                  }}>
+                    <span style={{ textTransform: "capitalize" }}>{st}</span>
+                    <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{n}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Priority breakdown */}
+          {Object.keys(byPriority).length > 0 && (
+            <div style={kpiBoxStyle}>
+              <div style={kpiLabelStyle}>Prioridade</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 4 }}>
+                {Object.entries(byPriority).map(([p, n]) => (
+                  <div key={p} style={{
+                    display: "flex", justifyContent: "space-between",
+                    fontSize: 11, color: "var(--text-secondary)",
+                  }}>
+                    <span style={{ textTransform: "capitalize" }}>
+                      {p === "prioridade" ? "Prioritário" : p}
+                    </span>
+                    <span style={{
+                      fontWeight: 700,
+                      color: p === "prioridade" ? "#dc2626" : "var(--text-primary)",
+                    }}>{n}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Lista dos últimos 5 */}
+      {!loading && recent.length > 0 && (
+        <details style={{ marginTop: 10 }} data-testid="isabella-kpi-recent">
+          <summary style={{
+            cursor: "pointer", fontSize: 11, color: "var(--text-muted)",
+            padding: 4, userSelect: "none",
+          }}>
+            Últimas {Math.min(5, recent.length)} bolhas →
+          </summary>
+          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+            {recent.slice(0, 5).map((t) => (
+              <div key={t.id} style={{
+                padding: "6px 8px",
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--border-default)",
+                borderRadius: 6,
+                display: "flex", justifyContent: "space-between", gap: 8,
+                fontSize: 11, alignItems: "center",
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontWeight: 600, color: "var(--text-primary)",
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  }}>{t.client_name || "—"}</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: 10 }}>
+                    {t.smartolt_status} · {t.olt_name || "—"} · #{(t.id || "").slice(4, 10)}
+                  </div>
+                </div>
+                <span style={{
+                  padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+                  background: t.priority === "prioridade" ? "#fee2e2" : "var(--bg-base)",
+                  color: t.priority === "prioridade" ? "#dc2626" : "var(--text-secondary)",
+                }}>
+                  {t.priority === "prioridade" ? "PRIORITÁRIO" : "padrão"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+const kpiBoxStyle = {
+  padding: 10,
+  background: "var(--bg-card)",
+  border: "1px solid var(--border-default)",
+  borderRadius: 8,
+};
+const kpiLabelStyle = {
+  fontSize: 10,
+  color: "var(--text-muted)",
+  textTransform: "uppercase",
+  letterSpacing: 0.5,
+  fontWeight: 600,
+};
+const kpiBigStyle = {
+  fontSize: 26,
+  fontWeight: 800,
+  color: "#0f766e",
+  fontFamily: "var(--font-mono, ui-monospace)",
+  lineHeight: 1.1,
+  marginTop: 2,
+};
+const kpiSubStyle = {
+  fontSize: 10,
+  color: "var(--text-muted)",
+  marginTop: 1,
+};

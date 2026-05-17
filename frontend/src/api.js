@@ -490,6 +490,9 @@ export const api = {
   // Isabella KPIs (sub-aba do Central IA)
   isabellaKpis: (days = 7) =>
     client.get(`/central-ia/isabella`, { params: { days } }).then((r) => r.data),
+  isabellaTicketsSummary: (days = 7) =>
+    client.get(`/central-ia/isabella/tickets-summary`,
+                  { params: { days } }).then((r) => r.data),
   isabellaConfigGet: () =>
     client.get(`/central-ia/isabella/config`).then((r) => r.data),
   isabellaConfigSet: (polishEnabled) =>

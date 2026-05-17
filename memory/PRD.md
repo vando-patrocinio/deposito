@@ -829,3 +829,12 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - ✅ Sandbox (cenário Offline): "...aparece como desconectado... Vou transferir você agora pro nosso Atendimento Especializado..." (frase gatilho exata, prompt 39kB ~4.2s no DeepSeek)
 
 **Status:** Funcional. Pronto pra produção.
+
+## 📊 [17/Fev/2026] KPI "Bolhas criadas pela Isabella" — Gestão da Isabella
+
+**Contexto:** Após Isabella V6.70 começar a abrir bolhas automaticamente em LOS, ficou necessário um KPI visível pra gestor acompanhar quantas bolhas são autônomas.
+
+**Implementação:**
+- Backend: `GET /api/central-ia/isabella/tickets-summary?days=N` (em `routes/isabella_kpis.py`) — retorna total hoje, janela, breakdown por status/prioridade, série diária pra sparkline e top 10 tickets recentes (com `client_name`, `phone`, `smartolt_status`, `olt_name`).
+- Frontend: novo componente `IsabellaTicketsKpi` em `IsabellaGestaoTab.js` — card fixo no topo do painel com toggles Hoje/7d/30d, sparkline diário e accordion "Últimas N bolhas". Botão "Lousa" emite `smartprov:navigate-tab` pra abrir a aba (com fallback `#lousa`).
+- Lint OK, screenshot validou render no painel "Atendimento IA → Configuração → Gestão da Isabella".

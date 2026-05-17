@@ -243,3 +243,105 @@ async def put_config(payload: IsabellaConfigIn,
         upsert=True,
     )
     return {"polish_button_enabled": bool(payload.polish_button_enabled)}
+
+
+@router.get("/tickets-summary")
+async def tickets_created_by_isabella(
+    days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(require_role("gestor")),
+):
+    """Resumo de bolhas criadas automaticamente pela Isabella IA na Lousa.
+
+    Conta tickets com `created_by = "isabella_ai"` agregando por dia e por
+    status. Inclui breakdown hoje (UTC) + janela `days` (default 7d) +
+    quebra por status atual (pendente/aceito/em_andamento/finalizado).
+
+    Retorna também os 10 tickets mais recentes pra exibir num "feed" no card.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days)
+    since_iso = since.isoformat()
+    today_iso = now.strftime("%Y-%m-%d")
+
+    base = {"company_id": cid, "created_by": "isabella_ai"}
+
+    total_window = await db.tickets.count_documents(
+        {**base, "created_at": {"$gte": since_iso}}
+    )
+    total_today = await db.tickets.count_documents(
+        {**base, "created_at": {"$gte": today_iso}}
+    )
+
+    # Breakdown por status atual (na janela)
+    pipeline_status = [
+        {"$match": {**base, "created_at": {"$gte": since_iso}}},
+        {"$group": {"_id": "$status", "count": {"$sum": 1}}},
+    ]
+    by_status_raw = await db.tickets.aggregate(pipeline_status).to_list(20)
+    by_status = {s["_id"] or "—": int(s["count"]) for s in by_status_raw}
+
+    # Breakdown por priority + diagnóstico LOS / Power fail
+    pipeline_priority = [
+        {"$match": {**base, "created_at": {"$gte": since_iso}}},
+        {"$group": {"_id": "$priority", "count": {"$sum": 1}}},
+    ]
+    by_priority_raw = await db.tickets.aggregate(pipeline_priority).to_list(20)
+    by_priority = {p["_id"] or "—": int(p["count"]) for p in by_priority_raw}
+
+    # Top 10 tickets recentes
+    recent_docs = await db.tickets.find(
+        {**base, "created_at": {"$gte": since_iso}},
+        {
+            "_id": 0,
+            "id": 1,
+            "status": 1,
+            "priority": 1,
+            "type": 1,
+            "created_at": 1,
+            "client_snapshot.name": 1,
+            "client_snapshot.phone": 1,
+            "ai_diagnosis.status": 1,
+            "ai_diagnosis.olt_name": 1,
+        },
+    ).sort([("created_at", -1)]).limit(10).to_list(10)
+    recent = []
+    for d in recent_docs:
+        cs = d.get("client_snapshot") or {}
+        ad = d.get("ai_diagnosis") or {}
+        recent.append({
+            "id": d.get("id"),
+            "status": d.get("status"),
+            "priority": d.get("priority"),
+            "type": d.get("type"),
+            "created_at": d.get("created_at"),
+            "client_name": cs.get("name"),
+            "phone": cs.get("phone"),
+            "smartolt_status": ad.get("status"),
+            "olt_name": ad.get("olt_name"),
+        })
+
+    # Série diária pra mini-gráfico (sparkline)
+    pipeline_series = [
+        {"$match": {**base, "created_at": {"$gte": since_iso}}},
+        {"$addFields": {"day": {"$substr": ["$created_at", 0, 10]}}},
+        {"$group": {"_id": "$day", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}},
+    ]
+    series_raw = await db.tickets.aggregate(pipeline_series).to_list(200)
+    series_map = {s["_id"]: int(s["count"]) for s in series_raw if s.get("_id")}
+    series = []
+    for i in range(days):
+        day = (since + timedelta(days=i)).strftime("%Y-%m-%d")
+        series.append({"day": day, "count": series_map.get(day, 0)})
+
+    return {
+        "days": days,
+        "since": since_iso,
+        "total_window": total_window,
+        "total_today": total_today,
+        "by_status": by_status,
+        "by_priority": by_priority,
+        "recent": recent,
+        "series": series,
+    }
