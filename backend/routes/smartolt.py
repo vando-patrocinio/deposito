@@ -590,6 +590,37 @@ def _live_signal_summary(onu: dict) -> dict:
             if v:
                 vlan = str(v)
                 break
+    # Uptime online — calcula tempo desde last_status_change (quando ONU
+    # ficou Online). Formatos comuns SmartOLT: ISO-8601 ou "YYYY-MM-DD HH:MM:SS".
+    uptime_human = None
+    uptime_seconds = None
+    last_change = onu.get("last_status_change")
+    status_str = (onu.get("status") or "").lower()
+    if last_change and status_str == "online":
+        try:
+            from datetime import datetime, timezone
+            ts = str(last_change).strip().replace("Z", "+00:00")
+            # Normaliza "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SS"
+            if " " in ts and "T" not in ts:
+                ts = ts.replace(" ", "T", 1)
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            delta = datetime.now(timezone.utc) - dt
+            secs = int(delta.total_seconds())
+            if secs >= 0:
+                uptime_seconds = secs
+                d, rem = divmod(secs, 86400)
+                h, rem = divmod(rem, 3600)
+                m, _ = divmod(rem, 60)
+                if d > 0:
+                    uptime_human = f"{d}d {h}h"
+                elif h > 0:
+                    uptime_human = f"{h}h {m}m"
+                else:
+                    uptime_human = f"{m}m"
+        except (ValueError, TypeError):
+            pass
     return {
         "external_id": onu.get("unique_external_id"),
         "name": onu.get("name"),
@@ -604,6 +635,9 @@ def _live_signal_summary(onu: dict) -> dict:
         "cto_box": cto_box,            # "CTO 1 10"
         "cto_port": cto_port,          # "01"
         "vlan": vlan,
+        "uptime_human": uptime_human,  # "2d 14h" / "5h 32m" / "12m"
+        "uptime_seconds": uptime_seconds,
+        "last_status_change": last_change,
         "synced_at": onu.get("synced_at"),
     }
 

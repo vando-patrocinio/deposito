@@ -1777,6 +1777,7 @@ function SmartOltDetailBlock({ ls }) {
     { label: "VLAN", value: ls.vlan },
     { label: "CTO", value: ls.cto_box },
     { label: "PORTA CTO", value: ls.cto_port },
+    { label: "ONLINE HÁ", value: ls.uptime_human, mono: false },
     { label: "SN", value: ls.sn, mono: true },
   ].filter((i) => i.value);
   if (items.length === 0) return null;
