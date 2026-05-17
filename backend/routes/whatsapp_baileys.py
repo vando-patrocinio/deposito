@@ -1097,6 +1097,32 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         )
         return None
 
+    # 1b. FAST PATH — Fluxo de boleto/2ª via.
+    # Detecta intenção e responde DIRETO com dados do Atlaz (sem LLM)
+    # para entregar boleto/PIX/linha digitável em segundos.
+    try:
+        from services.boleto_flow import handle_boleto_flow
+        boleto_reply = await handle_boleto_flow(
+            cid, phone, user_text, subscriber_id=subscriber_id
+        )
+        if boleto_reply:
+            sent = await _sidecar_post(
+                "/send", {"phone": phone, "text": boleto_reply}
+            )
+            await db.aihub_wa_messages.insert_one({
+                "company_id": cid, "phone": phone, "jid": f"{phone}@s.whatsapp.net",
+                "direction": "outbound", "text": boleto_reply,
+                "subscriber_id": subscriber_id,
+                "auto_reply": True, "agent": "boleto_flow",
+                "delivery_status": "sent" if sent.get("ok") else "failed_send",
+                "external_id": (sent or {}).get("message_id"),
+                "created_at": now_iso(),
+            })
+            logger.info("[wa-baileys] boleto_flow resposta enviada p/ %s", phone)
+            return boleto_reply
+    except Exception as e:
+        logger.warning("[wa-baileys] boleto_flow falhou (segue p/ LLM): %s", e)
+
     # 2. Carrega o agente (Jerusa por padrão, ou outro definido em cfg)
     agent_name = cfg.get("agent_name") or "Jerusa"
     default_agent = await db.aihub_agents.find_one(
