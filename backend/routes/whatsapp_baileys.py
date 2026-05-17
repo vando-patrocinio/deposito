@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone, timedelta
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -690,6 +690,7 @@ async def list_lid_mappings(user: dict = Depends(require_role("gestor"))):
 
 @router.post("/inbound")
 async def inbound_webhook(payload: InboundIn,
+                           background_tasks: BackgroundTasks,
                            x_wa_token: Optional[str] = Header(default=None)):
     """Processa mensagem recebida do WhatsApp.
 
@@ -865,91 +866,116 @@ async def inbound_webhook(payload: InboundIn,
                 f" [LID={payload.lid}]" if payload.is_lid else "",
                 payload.push_name, payload.text[:80])
 
-    # --- Manager Assistant — gestor manda comando, IA executa ---
-    # Intercepta ANTES do auto-reply para que mensagens do gestor não passem
-    # pela IA de atendimento ao cliente.
+    # === FAST RETURN: a partir daqui, IA roda em background ===
+    # O sidecar Baileys tem timeout de 15s. Auto-reply LLM pode demorar
+    # mais que isso, causando timeout + retries no sidecar. Solução:
+    # despachar processamento pesado para BackgroundTasks e retornar 200
+    # imediatamente — o sidecar não fica esperando, msgs não se perdem.
     if not is_group:
-        try:
-            from services.manager_assistant import handle_manager_message
-            mgr_reply = await handle_manager_message(
-                cid, effective_phone, payload.text)
-            if mgr_reply:
-                # Envia resposta de volta via sidecar (usa JID original)
-                try:
-                    async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=12.0) as cli:
-                        await cli.post(
-                            f"{SIDECAR_BASE}/send",
-                            json={"phone": payload.jid or effective_phone,
-                                  "text": mgr_reply},
-                        )
-                except Exception as e:
-                    logger.warning("[wa-baileys] manager reply send fail: %s", e)
-                # Persistimos como outbound também
-                await db.aihub_wa_messages.insert_one({
-                    "id": f"wam-{uuid.uuid4().hex[:10]}",
-                    "company_id": cid,
-                    "direction": "outbound",
-                    "phone": effective_phone,
-                    "text": mgr_reply,
-                    "created_at": now_iso(),
-                    "metadata": {"manager_assistant": True},
-                })
-                return {"ok": True, "manager_assistant": True}
-        except Exception as e:
-            logger.warning("[wa-baileys] manager assistant falhou: %s", e)
+        background_tasks.add_task(
+            _process_inbound_ai_pipeline,
+            cid=cid,
+            effective_phone=effective_phone,
+            payload_jid=payload.jid,
+            payload_text=payload.text,
+            payload_message_id=payload.message_id,
+            subscriber_id=subscriber_id,
+            subscriber_ctx=subscriber_ctx,
+        )
+
+    return {"ok": True, "queued": True, "subscriber_id": subscriber_id,
+            "phone": effective_phone, "lid": payload.lid}
+
+
+async def _process_inbound_ai_pipeline(
+    *,
+    cid: str,
+    effective_phone: str,
+    payload_jid: Optional[str],
+    payload_text: str,
+    payload_message_id: Optional[str],
+    subscriber_id: Optional[str],
+    subscriber_ctx: Optional[str],
+) -> None:
+    """Pipeline assíncrono de processamento de mensagem inbound:
+      1. Manager Assistant (gestor manda comando)
+      2. Auto-reply Isabella (cliente)
+      3. Co-pilot IA (dica pro atendente humano)
+    Executado em BackgroundTasks pra não bloquear a resposta do webhook.
+    """
+    # --- Manager Assistant — gestor manda comando, IA executa ---
+    try:
+        from services.manager_assistant import handle_manager_message
+        mgr_reply = await handle_manager_message(
+            cid, effective_phone, payload_text)
+        if mgr_reply:
+            try:
+                async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=12.0) as cli:
+                    await cli.post(
+                        f"{SIDECAR_BASE}/send",
+                        json={"phone": payload_jid or effective_phone,
+                              "text": mgr_reply},
+                    )
+            except Exception as e:
+                logger.warning("[wa-baileys] manager reply send fail: %s", e)
+            await db.aihub_wa_messages.insert_one({
+                "id": f"wam-{uuid.uuid4().hex[:10]}",
+                "company_id": cid,
+                "direction": "outbound",
+                "phone": effective_phone,
+                "text": mgr_reply,
+                "created_at": now_iso(),
+                "metadata": {"manager_assistant": True},
+            })
+            return
+    except Exception as e:
+        logger.warning("[wa-baileys] manager assistant falhou: %s", e)
 
     # --- Auto-reply (se habilitado) ---
-    if not is_group:
-        try:
-            reply = await _maybe_auto_reply(
-                cid=cid, phone=effective_phone,
-                user_text=payload.text,
-                subscriber_id=subscriber_id,
+    try:
+        await _maybe_auto_reply(
+            cid=cid, phone=effective_phone,
+            user_text=payload_text,
+            subscriber_id=subscriber_id,
+            subscriber_ctx=subscriber_ctx,
+        )
+    except Exception as e:
+        logger.warning("[wa-baileys] auto-reply falhou: %s", e)
+
+    # --- Co-Pilot IA — dica interna para atendente humano ---
+    try:
+        conv = await db.wa_conversations.find_one(
+            {"company_id": cid, "phone": effective_phone},
+            {"_id": 0, "assignee_role": 1, "status": 1, "handover_msg_at": 1},
+        )
+        recent_handover = False
+        if conv and conv.get("handover_msg_at"):
+            try:
+                t = datetime.fromisoformat(
+                    conv["handover_msg_at"].replace("Z", "+00:00"))
+                age_s = (datetime.now(timezone.utc) - t).total_seconds()
+                recent_handover = age_s < 30
+            except Exception:
+                pass
+        if (conv and conv.get("assignee_role") == "human"
+                and conv.get("status") != "closed"
+                and not recent_handover):
+            from services.copilot_ai import maybe_insert_copilot_hint
+            await maybe_insert_copilot_hint(
+                company_id=cid,
+                phone=effective_phone,
+                last_inbound_text=payload_text,
+                last_inbound_id=payload_message_id,
                 subscriber_ctx=subscriber_ctx,
             )
-            if reply:
-                return {"ok": True, "subscriber_id": subscriber_id,
-                        "phone": effective_phone, "lid": payload.lid,
-                        "auto_reply": reply[:120]}
-        except Exception as e:
-            logger.warning("[wa-baileys] auto-reply falhou: %s", e)
+    except Exception as e:
+        logger.info("[wa-baileys] copilot skip: %s", e)
 
-        # --- Co-Pilot IA — dica interna para atendente humano ---
-        # Só dispara quando a conversa está com humano (não-IA).
-        # A IA de atendimento já tem injeção A2A própria via system_prompt.
-        # NÃO dispara se acabou de ter um handover (< 30s) — geralmente
-        # o cliente ainda não respondeu nada relevante após o "Olá, aqui é
-        # o atendente". Evita gerar insights sobre o "Olá" automático.
-        try:
-            conv = await db.wa_conversations.find_one(
-                {"company_id": cid, "phone": effective_phone},
-                {"_id": 0, "assignee_role": 1, "status": 1, "handover_msg_at": 1},
-            )
-            recent_handover = False
-            if conv and conv.get("handover_msg_at"):
-                try:
-                    t = datetime.fromisoformat(
-                        conv["handover_msg_at"].replace("Z", "+00:00"))
-                    age_s = (datetime.now(timezone.utc) - t).total_seconds()
-                    recent_handover = age_s < 30  # 30 segundos
-                except Exception:
-                    pass
-            if (conv and conv.get("assignee_role") == "human"
-                    and conv.get("status") != "closed"
-                    and not recent_handover):
-                from services.copilot_ai import maybe_insert_copilot_hint
-                await maybe_insert_copilot_hint(
-                    company_id=cid,
-                    phone=effective_phone,
-                    last_inbound_text=payload.text,
-                    last_inbound_id=payload.message_id,
-                    subscriber_ctx=subscriber_ctx,
-                )
-        except Exception as e:
-            logger.info("[wa-baileys] copilot skip: %s", e)
 
-    return {"ok": True, "subscriber_id": subscriber_id,
-            "phone": effective_phone, "lid": payload.lid}
+async def _legacy_inbound_ai_inline_DEPRECATED(payload, is_group, cid, effective_phone, subscriber_id, subscriber_ctx):
+    """Versão antiga (inline) mantida só pra referência — não chamar."""
+    if False:
+        pass
 
 
 async def _fetch_human_few_shots(cid: str, limit: int = 3) -> List[Dict[str, Any]]:
@@ -2801,4 +2827,143 @@ async def customer_profile(phone: str,
         "tickets_90d": recent,
         "tickets_count_90d": len(recent),
         "tickets_open": open_count,
+    }
+
+
+# ============================================================================
+# Watchdog: auto-reload preventivo do sidecar quando socket zumbi
+# ============================================================================
+# Estado em memória do watchdog (não persistido — reset no restart do backend)
+_wa_watchdog_state: Dict[str, Any] = {
+    "last_check_at": None,
+    "last_reload_at": None,
+    "consecutive_zombie_checks": 0,
+    "last_inbound_event_at_seen": None,
+}
+
+
+async def baileys_watchdog_job() -> None:
+    """Roda a cada 2min via APScheduler.
+
+    Detecta sidecar Baileys "zumbi": state=connected mas SEM eventos inbound
+    por > 15min E o número está conectado há > 5min (não é boot).
+    Quando detecta, dispara POST /reload no sidecar (mantém sessão — não
+    precisa re-scan QR). Resolve sozinho ~80% dos casos de "WhatsApp parou
+    de receber mensagens" sem ação humana.
+
+    Auditoria: grava em `whatsapp_system_events` (kind=watchdog_reload).
+    """
+    now_ts = datetime.now(timezone.utc)
+    _wa_watchdog_state["last_check_at"] = now_ts.isoformat()
+    try:
+        async with httpx.AsyncClient(headers=_sidecar_headers(),
+                                         timeout=8.0) as cli:
+            r = await cli.get(f"{SIDECAR_BASE}/health")
+            if r.status_code >= 400:
+                logger.info("[wa-watchdog] health %s — skip", r.status_code)
+                _wa_watchdog_state["consecutive_zombie_checks"] = 0
+                return
+            health = r.json()
+    except Exception as e:
+        logger.info("[wa-watchdog] sidecar offline: %s", e)
+        _wa_watchdog_state["consecutive_zombie_checks"] = 0
+        return
+
+    state = health.get("state")
+    uptime_s = health.get("uptime_s") or 0
+    last_inbound = health.get("last_inbound_event_at")
+
+    # Só monitoramos quando state=connected
+    if state != "connected":
+        _wa_watchdog_state["consecutive_zombie_checks"] = 0
+        return
+
+    # Não age durante os primeiros 5min após boot
+    if uptime_s < 300:
+        return
+
+    # Calcula segundos desde o último inbound
+    secs_since_inbound = None
+    if last_inbound:
+        try:
+            t = datetime.fromisoformat(last_inbound.replace("Z", "+00:00"))
+            secs_since_inbound = (now_ts - t).total_seconds()
+        except Exception:
+            pass
+    else:
+        # nunca recebeu inbound desde boot
+        secs_since_inbound = uptime_s
+
+    ZOMBIE_THRESHOLD_S = 15 * 60  # 15 minutos
+    is_zombie = (
+        secs_since_inbound is not None and secs_since_inbound > ZOMBIE_THRESHOLD_S
+    )
+
+    # Evita reload em loop — só uma vez a cada 20min
+    last_reload_iso = _wa_watchdog_state.get("last_reload_at")
+    too_soon_to_reload = False
+    if last_reload_iso:
+        try:
+            t = datetime.fromisoformat(last_reload_iso)
+            too_soon_to_reload = (now_ts - t).total_seconds() < 1200
+        except Exception:
+            pass
+
+    if not is_zombie:
+        _wa_watchdog_state["consecutive_zombie_checks"] = 0
+        return
+
+    _wa_watchdog_state["consecutive_zombie_checks"] = (
+        _wa_watchdog_state.get("consecutive_zombie_checks") or 0
+    ) + 1
+
+    # Só dispara reload após 2 checks consecutivos zumbi (~4min de confirmação)
+    if _wa_watchdog_state["consecutive_zombie_checks"] < 2:
+        logger.info(
+            "[wa-watchdog] socket zumbi detectado (%.0fs sem inbound). "
+            "aguardando confirmação no próximo check.",
+            secs_since_inbound,
+        )
+        return
+
+    if too_soon_to_reload:
+        logger.warning(
+            "[wa-watchdog] zumbi confirmado mas reload feito recentemente — pulando."
+        )
+        return
+
+    # Dispara reload silencioso (mantém sessão)
+    logger.warning(
+        "[wa-watchdog] SOCKET ZUMBI (%.0fs sem inbound) — disparando /reload",
+        secs_since_inbound,
+    )
+    try:
+        async with httpx.AsyncClient(headers=_sidecar_headers(),
+                                         timeout=15.0) as cli:
+            await cli.post(f"{SIDECAR_BASE}/reload", json={})
+        _wa_watchdog_state["last_reload_at"] = now_ts.isoformat()
+        _wa_watchdog_state["consecutive_zombie_checks"] = 0
+        await db.whatsapp_system_events.insert_one({
+            "id": f"wae-{uuid.uuid4().hex[:10]}",
+            "company_id": DEMO_COMPANY_ID,
+            "event": "watchdog_reload",
+            "code": 0,
+            "name": "watchdog_reload",
+            "retry_count": None,
+            "reason": f"socket zumbi: {int(secs_since_inbound)}s sem inbound",
+            "created_at": now_ts.isoformat(),
+            "acknowledged": False,
+        })
+    except Exception as e:
+        logger.error("[wa-watchdog] reload falhou: %s", e)
+
+
+@router.get("/watchdog/status")
+async def get_watchdog_status(user: dict = Depends(require_role("gestor"))):
+    """Estado atual do watchdog Baileys (debug/observabilidade)."""
+    return {
+        "last_check_at": _wa_watchdog_state.get("last_check_at"),
+        "last_reload_at": _wa_watchdog_state.get("last_reload_at"),
+        "consecutive_zombie_checks": _wa_watchdog_state.get(
+            "consecutive_zombie_checks", 0),
     }

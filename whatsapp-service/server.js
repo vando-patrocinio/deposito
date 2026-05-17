@@ -291,7 +291,17 @@ async function startSock() {
         if (code === DisconnectReason.loggedOut) {
           // Sessão revogada — não reconectar; admin precisa scanear novo QR
           logger.warn("loggedOut — não reconectar, aguardando QR novo");
+          // Limpa credenciais inválidas para permitir QR fresh no próximo
+          // /logout ou restart do sidecar (sem precisar comando manual)
+          try {
+            fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+            logger.info("AUTH_DIR limpo após loggedOut — pronto pra QR novo");
+          } catch (e) {
+            logger.warn({ err: e.message }, "falha ao limpar AUTH_DIR pós-loggedOut");
+          }
           await notifyAdmin("logged_out", { code, name });
+          // Reinicia para gerar QR novo automaticamente
+          setTimeout(() => { startSock().catch(() => {}); }, 1500);
           return;
         }
         if (code === DisconnectReason.connectionReplaced) {
@@ -469,6 +479,39 @@ app.get("/health", (_req, res) => res.json({
   last_inbound_event_at: lastInboundEventAt ? new Date(lastInboundEventAt).toISOString() : null,
   inbound_event_count: inboundEventCount,
 }));
+
+// Diagnostics — confirma se AUTH_DIR é persistente (volume Railway montado)
+// Conta arquivos e devolve mtimes; útil pra debug "perdi a sessão no redeploy".
+app.get("/diagnostics", (_req, res) => {
+  let auth_files = 0;
+  let auth_files_list = [];
+  let auth_exists = false;
+  try {
+    auth_exists = fs.existsSync(AUTH_DIR);
+    if (auth_exists) {
+      const files = fs.readdirSync(AUTH_DIR);
+      auth_files = files.length;
+      auth_files_list = files.slice(0, 10).map((name) => {
+        try {
+          const stat = fs.statSync(path.join(AUTH_DIR, name));
+          return { name, size: stat.size, mtime: stat.mtime.toISOString() };
+        } catch { return { name, error: true }; }
+      });
+    }
+  } catch (e) { /* ignore */ }
+  res.json({
+    auth_dir: AUTH_DIR,
+    auth_dir_exists: auth_exists,
+    auth_files_count: auth_files,
+    auth_files_preview: auth_files_list,
+    webhook_base_configured: !!WEBHOOK_BASE && WEBHOOK_BASE !== "http://localhost:8001/api",
+    webhook_base: WEBHOOK_BASE,
+    inbound_token_configured: !!INBOUND_TOKEN,
+    inbound_token_length: INBOUND_TOKEN.length,
+    sidecar_token_configured: !!SIDECAR_TOKEN,
+    node_version: process.version,
+  });
+});
 
 // Auth middleware — protege todos endpoints quando WA_SIDECAR_TOKEN estiver
 // configurado. O backend FastAPI envia "Authorization: Bearer <token>".
