@@ -13,6 +13,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Send, AlertCircle, CheckCircle2, Clock, FileText } from "lucide-react";
 import { api } from "@/api";
+import BoletoPdfPreviewCard from "@/BoletoPdfPreviewCard";
 
 const Card = ({ children, style = {}, ...rest }) => (
   <div
@@ -130,7 +131,9 @@ export default function DisparoBoletoCard() {
     : 0;
 
   return (
-    <Card data-testid="disparo-boleto-card" style={{ padding: 18 }}>
+    <div style={{ display: "grid", gap: 14 }}>
+      <BoletoPdfPreviewCard />
+      <Card data-testid="disparo-boleto-card" style={{ padding: 18 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10,
                        marginBottom: 14 }}>
         <FileText size={18} color="#0ea5e9" />
@@ -386,6 +389,7 @@ export default function DisparoBoletoCard() {
         </div>
       )}
     </Card>
+    </div>
   );
 }
 

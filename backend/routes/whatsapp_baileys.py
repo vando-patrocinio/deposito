@@ -217,12 +217,15 @@ async def _deliver_boleto_with_pdf(cid: str, phone: str,
         return
 
     # Envia 1 PDF por fatura (limite de 3 pra não floodar)
-    from services.boleto_pdf import build_boleto_pdf
+    from services.boleto_pdf import build_boleto_pdf, _resolve_logo
     import base64
     cust_name = subscriber.get("name") or subscriber.get("customer_name")
+    logo_bytes = await _resolve_logo(cid)
     for inv in invoices[:3]:
         try:
-            pdf_bytes = build_boleto_pdf(inv, customer_name=cust_name)
+            pdf_bytes = build_boleto_pdf(
+                inv, customer_name=cust_name, logo_bytes=logo_bytes,
+            )
             b64 = base64.b64encode(pdf_bytes).decode("ascii")
             due = inv.get("due_date") or "fatura"
             due_short = str(due)[:10]

@@ -922,4 +922,19 @@ export const api = {
     client.delete(`/whatsapp-baileys/isabella/fragments/${id}`).then((r) => r.data),
   isabellaTest: (text) =>
     client.post("/whatsapp-baileys/isabella/test", { text }).then((r) => r.data),
+
+  // --- Boleto PDF preview & logo custom ---
+  boletoPreviewUrl: () =>
+    `${API}/boleto/preview?ts=${Date.now()}&t=${encodeURIComponent(localStorage.getItem("token") || "")}`,
+  boletoPreviewPngBlob: () =>
+    client.get("/boleto/preview.png", { responseType: "blob" }).then((r) => r.data),
+  boletoPreviewBlob: () =>
+    client.get("/boleto/preview", { responseType: "blob" }).then((r) => r.data),
+  boletoPreviewClientBlob: (sid) =>
+    client.get(`/boleto/preview/${sid}`, { responseType: "blob" }).then((r) => r.data),
+  boletoLogoGet: () => client.get("/boleto/logo").then((r) => r.data),
+  boletoLogoSet: (image_data_url) =>
+    client.put("/boleto/logo", { image_data_url }).then((r) => r.data),
+  boletoLogoDelete: () =>
+    client.delete("/boleto/logo").then((r) => r.data),
 };

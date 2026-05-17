@@ -24,6 +24,34 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 LOGO_PATH = BASE_DIR / "static" / "logo-ligo.png"
 
 
+async def _resolve_logo(company_id: Optional[str] = None) -> Optional[bytes]:
+    """Devolve bytes do logo a usar — DB tem prioridade (custom upload do
+    gestor), depois cai no logo padrão `/static/logo-ligo.png`.
+
+    Retorna None se nenhuma das duas fontes tiver imagem válida.
+    """
+    if company_id:
+        try:
+            from database import db as _db
+            doc = await _db.aihub_settings.find_one(
+                {"company_id": company_id, "key": "boleto_pdf_logo"},
+                {"_id": 0, "image_data_url": 1},
+            )
+            if doc and doc.get("image_data_url"):
+                import base64
+                url = doc["image_data_url"]
+                if "," in url:
+                    return base64.b64decode(url.split(",", 1)[1])
+        except Exception as e:
+            logger.info("[boleto_pdf] custom logo skip: %s", e)
+    if LOGO_PATH.exists():
+        try:
+            return LOGO_PATH.read_bytes()
+        except Exception:
+            pass
+    return None
+
+
 def _format_brl(v: Any) -> str:
     try:
         n = float(v)
@@ -95,7 +123,8 @@ def _barcode_image(line: str) -> Optional[bytes]:
 
 
 def build_boleto_pdf(invoice: Dict[str, Any], *,
-                       customer_name: Optional[str] = None) -> bytes:
+                       customer_name: Optional[str] = None,
+                       logo_bytes: Optional[bytes] = None) -> bytes:
     """Gera PDF do boleto com branding Ligo Fibra.
 
     invoice dict pode conter:
@@ -127,10 +156,16 @@ def build_boleto_pdf(invoice: Dict[str, Any], *,
     c.drawPath(p, fill=1, stroke=0)
 
     # Logo (canto superior direito)
-    if LOGO_PATH.exists():
+    logo_data = logo_bytes
+    if logo_data is None and LOGO_PATH.exists():
+        try:
+            logo_data = LOGO_PATH.read_bytes()
+        except Exception:
+            logo_data = None
+    if logo_data:
         try:
             c.drawImage(
-                ImageReader(str(LOGO_PATH)),
+                ImageReader(io.BytesIO(logo_data)),
                 W - 60 * mm, H - 28 * mm,
                 width=50 * mm, height=18 * mm,
                 preserveAspectRatio=True, mask="auto",
