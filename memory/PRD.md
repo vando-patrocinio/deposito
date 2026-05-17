@@ -850,3 +850,19 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - ✅ **Alerta LOS Cluster** em `services/subscriber_connection.py` (`ensure_repair_ticket`): quando 3+ tickets LOS na MESMA OLT em <30min, emite `los_cluster_alert` com `olt_name` e `tickets_count` — sinal claro de rompimento de rota troncal pra o despachante priorizar
 
 **Validação:** 1/1 pytest em `tests/test_wa_robustness_alerts.py` (envia 3 logged_out via `/system-event` e verifica que `duplicate_session_suspected` foi emitido).
+
+## 💚 [17/Fev/2026] Painel "Saúde do WhatsApp"
+
+**Contexto:** Com o bug das múltiplas sessões resolvido e os detectores no ar, faltava uma visualização clara pra gestor diagnosticar problemas similares no futuro.
+
+**Implementação:**
+- Backend: `GET /api/whatsapp-baileys/health-overview?days=N` em `routes/whatsapp_baileys.py` — agrega 4 vistas:
+  1. **Sidecar Railway** (chama `/health` do sidecar): state, uptime_s, retry_count, queue_size, last_send_at
+  2. **Delivery**: outbound_total / delivered / failed / pending / delivery_pct
+  3. **Latência Isabella**: avg/p50/p95/p99 calculados como diff entre inbound mais recente e a resposta auto_reply (janela 5min, até 2k amostras)
+  4. **Alertas**: counts agrupados por tipo (`duplicate_session_suspected`, `los_cluster_alert`, `logged_out`, `connection_replaced`, `possibly_banned`, `max_retries_exceeded`) + 20 eventos recentes
+- Frontend: novo arquivo `WaHealthDashboard.js` registrado como aba "Saúde do WhatsApp" em `IntegrationsConfigPanel.js`. Auto-refresh 20s, toggles Hoje/7d/30d, cards coloridos por severidade.
+
+**Validação visual:** screenshot exibiu CONNECTING (uptime 20m), 100% delivery (357 entregues), p50=5.49s, p99=184.44s (326 amostras), 32 alertas total (1 Sessão duplicada · 28 logged_out · 3 connection_replaced).
+
+**Insight do painel após fix:** Mesmo depois de desligar o sidecar local, NOVOS `logged_out` continuaram (5 em 4min) — confirma que **algum dispositivo externo do usuário (provavelmente WhatsApp Web/Desktop em outro navegador/PC) ainda está logado com o mesmo número**, causando revogações da sessão Railway. Próximo passo do usuário: WhatsApp do celular → Aparelhos conectados → Desconectar TUDO, depois reescanear o QR do Railway apenas uma vez.

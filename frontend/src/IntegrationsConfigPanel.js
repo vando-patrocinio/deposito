@@ -8,6 +8,7 @@ import WallpaperConfigCard from "@/WallpaperConfigCard";
 import WaBusinessHoursCard from "@/WaBusinessHoursCard";
 import WaQuickImagesCard from "@/WaQuickImagesCard";
 import IsabellaGestaoTab from "@/IsabellaGestaoTab";
+import WaHealthDashboard from "@/WaHealthDashboard";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   CheckCircle2, AlertCircle, RefreshCw, Plug, Wifi, WifiOff,
@@ -60,6 +61,9 @@ export default function IntegrationsConfigPanel() {
         <TabsList>
           <TabsTrigger value="integracoes" data-testid="config-tab-integracoes">
             Integrações
+          </TabsTrigger>
+          <TabsTrigger value="saude" data-testid="config-tab-saude">
+            Saúde do WhatsApp
           </TabsTrigger>
           <TabsTrigger value="gestao" data-testid="config-tab-gestao">
             Gestão da Isabella
@@ -137,6 +141,12 @@ export default function IntegrationsConfigPanel() {
 
             {/* Painel completo de Instância Baileys (QR, número, auto-reply, etc.) */}
             <WhatsAppInstancePanel />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="saude">
+          <div style={{ marginTop: 10 }}>
+            <WaHealthDashboard />
           </div>
         </TabsContent>
 

@@ -768,6 +768,140 @@ async def list_system_events(user: dict = Depends(require_role("gestor"))):
     return {"events": docs}
 
 
+@router.get("/health-overview")
+async def health_overview(
+    days: int = 7, user: dict = Depends(require_role("gestor")),
+):
+    """Painel "Saúde do WhatsApp" — agrega sidecar + delivery + latência IA + alertas.
+
+    Retorna:
+      - sidecar: { ok, state, uptime_s, retry_count, queue_size, last_send_at }
+      - delivery: { outbound_total, delivered, failed, pending, delivery_pct }
+      - isabella_latency: { samples, p50_s, p95_s, p99_s, avg_s }
+      - alerts: { duplicate_session, los_cluster, logged_out, connection_replaced }
+        + lista dos 20 eventos relevantes recentes
+    """
+    from datetime import datetime, timedelta, timezone
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    days = max(1, min(int(days or 7), 90))
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    # 1. Sidecar /health (real-time)
+    sidecar_info: Dict[str, Any] = {"ok": False, "error": None}
+    try:
+        sidecar_info = await _sidecar_get("/health")
+        sidecar_info["ok"] = bool(sidecar_info.get("ok", True))
+    except Exception as e:
+        sidecar_info = {"ok": False, "error": str(e)[:200]}
+
+    # 2. Delivery — outbound stats da janela
+    base = {"company_id": cid, "direction": "outbound",
+            "created_at": {"$gte": since}}
+    out_total = await db.aihub_wa_messages.count_documents(base)
+    # delivered: sent_ok != False (default True quando salvo)
+    delivered = await db.aihub_wa_messages.count_documents({
+        **base,
+        "$or": [{"sent_ok": True}, {"sent_ok": {"$exists": False}}],
+    })
+    failed = await db.aihub_wa_messages.count_documents({
+        **base, "sent_ok": False,
+    })
+    pending = max(0, out_total - delivered - failed)
+    delivery_pct = round(100.0 * delivered / out_total, 1) if out_total else 0.0
+
+    # 3. Latência da Isabella — diff entre inbound mais recente e a resposta
+    # auto_reply correspondente para o mesmo phone (janela 5min)
+    # Usamos aggregation pipeline: para cada outbound auto_reply, achar o
+    # último inbound desse phone com created_at < outbound (até 5min antes)
+    latencies_s: list = []
+    try:
+        ai_outs = db.aihub_wa_messages.find(
+            {**base, "auto_reply": True},
+            {"_id": 0, "phone": 1, "created_at": 1},
+        ).sort([("created_at", -1)]).limit(2000)
+        async for o in ai_outs:
+            phone = o.get("phone")
+            out_ts = o.get("created_at")
+            if not phone or not out_ts:
+                continue
+            try:
+                out_dt = datetime.fromisoformat(out_ts.replace("Z", "+00:00"))
+            except Exception:
+                continue
+            # Inbound mais recente antes de out, na mesma conversa
+            five_min_before = (out_dt - timedelta(minutes=5)).isoformat()
+            inb = await db.aihub_wa_messages.find_one({
+                "company_id": cid, "phone": phone, "direction": "inbound",
+                "created_at": {"$lt": out_ts, "$gte": five_min_before},
+            }, {"_id": 0, "created_at": 1}, sort=[("created_at", -1)])
+            if not inb:
+                continue
+            try:
+                in_dt = datetime.fromisoformat(
+                    inb["created_at"].replace("Z", "+00:00"))
+                diff = (out_dt - in_dt).total_seconds()
+                if 0 < diff <= 300:
+                    latencies_s.append(diff)
+            except Exception:
+                continue
+    except Exception as e:
+        logger.info("[wa-baileys] latency calc skip: %s", e)
+
+    def _pct(arr: list, p: float) -> float:
+        if not arr:
+            return 0.0
+        s = sorted(arr)
+        idx = max(0, min(len(s) - 1, int(round((p / 100.0) * (len(s) - 1)))))
+        return round(s[idx], 2)
+
+    samples = len(latencies_s)
+    latency = {
+        "samples": samples,
+        "avg_s": round(sum(latencies_s) / samples, 2) if samples else 0.0,
+        "p50_s": _pct(latencies_s, 50),
+        "p95_s": _pct(latencies_s, 95),
+        "p99_s": _pct(latencies_s, 99),
+    }
+
+    # 4. Alertas — counts de eventos críticos + lista
+    alert_events = {"duplicate_session_suspected", "los_cluster_alert",
+                    "logged_out", "connection_replaced",
+                    "possibly_banned", "max_retries_exceeded"}
+    pipeline = [
+        {"$match": {"company_id": cid, "created_at": {"$gte": since},
+                    "event": {"$in": list(alert_events)}}},
+        {"$group": {"_id": "$event", "count": {"$sum": 1}}},
+    ]
+    grouped = await db.whatsapp_system_events.aggregate(pipeline).to_list(20)
+    alerts_count = {a: 0 for a in alert_events}
+    for g in grouped:
+        alerts_count[g["_id"]] = int(g.get("count", 0))
+
+    recent_events = await db.whatsapp_system_events.find(
+        {"company_id": cid, "created_at": {"$gte": since},
+         "event": {"$in": list(alert_events)}},
+        {"_id": 0},
+    ).sort([("created_at", -1)]).limit(20).to_list(20)
+
+    return {
+        "days": days,
+        "since": since,
+        "sidecar": sidecar_info,
+        "delivery": {
+            "outbound_total": out_total,
+            "delivered": delivered,
+            "failed": failed,
+            "pending": pending,
+            "delivery_pct": delivery_pct,
+        },
+        "isabella_latency": latency,
+        "alerts": {
+            "counts": alerts_count,
+            "recent": recent_events,
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # LID manual link — WhatsApp privacidade (jid@lid → telefone real)
 # ---------------------------------------------------------------------------

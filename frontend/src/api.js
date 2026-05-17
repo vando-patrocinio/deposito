@@ -493,6 +493,9 @@ export const api = {
   isabellaTicketsSummary: (days = 7) =>
     client.get(`/central-ia/isabella/tickets-summary`,
                   { params: { days } }).then((r) => r.data),
+  waHealthOverview: (days = 7) =>
+    client.get(`/whatsapp-baileys/health-overview`,
+                  { params: { days }, timeout: 30000 }).then((r) => r.data),
   isabellaConfigGet: () =>
     client.get(`/central-ia/isabella/config`).then((r) => r.data),
   isabellaConfigSet: (polishEnabled) =>
