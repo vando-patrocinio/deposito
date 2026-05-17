@@ -3,8 +3,12 @@ import { Card } from "@/ui";
 import { api } from "@/api";
 import {
   Heart, Wifi, WifiOff, AlertTriangle, Activity, Send, CheckCircle2,
-  XCircle, Clock, RefreshCw, Loader2,
+  XCircle, Clock, RefreshCw, Loader2, TrendingUp,
 } from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, Legend,
+} from "recharts";
 
 /**
  * Painel "Saúde do WhatsApp"
@@ -138,6 +142,9 @@ export default function WaHealthDashboard() {
         <LatencyCard latency={latency} />
         <AlertsSummaryCard alerts={alerts.counts || {}} />
       </div>
+
+      {/* Gráfico de latência ao longo do tempo */}
+      <LatencySeriesChart series={latency.series || []} />
 
       {/* Lista de alertas */}
       <Card style={{ padding: 12 }} data-testid="wa-health-recent-alerts">
@@ -365,6 +372,95 @@ function AlertRow({ ev }) {
         {fmtRel(ev.created_at)}
       </span>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Gráfico de latência ao longo do tempo (p50 / p95 / p99 por hora)
+// ---------------------------------------------------------------------------
+
+function LatencySeriesChart({ series }) {
+  if (!series || series.length === 0) {
+    return null;
+  }
+  // Formata hora pra eixo X (HH:00 do dia atual; senão DD/MM HH:00)
+  const today = new Date().toISOString().slice(0, 10);
+  const data = series.map((s) => ({
+    ...s,
+    label: s.hour.startsWith(today)
+      ? s.hour.slice(11, 16)
+      : s.hour.slice(5, 10).replace("-", "/") + " " + s.hour.slice(11, 16),
+  }));
+  return (
+    <Card style={{ padding: 12 }} data-testid="wa-health-latency-chart">
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        marginBottom: 8, flexWrap: "wrap", gap: 8,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <TrendingUp size={14} color="#3b82f6" />
+          <div style={{ fontWeight: 700, fontSize: 13 }}>
+            Latência da Isabella ao longo do tempo
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          {series.length} buckets · linhas: p50, p95, p99 (s)
+        </div>
+      </div>
+      <div style={{ width: "100%", height: 220 }}>
+        <ResponsiveContainer>
+          <LineChart
+            data={data}
+            margin={{ top: 8, right: 12, bottom: 0, left: -12 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 10, fill: "var(--text-muted)" }}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              tick={{ fontSize: 10, fill: "var(--text-muted)" }}
+              tickFormatter={(v) => `${v}s`}
+              width={50}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--border-default)",
+                fontSize: 11,
+                borderRadius: 6,
+              }}
+              formatter={(v, name) => [`${v}s`, name]}
+              labelStyle={{ color: "var(--text-primary)", fontWeight: 700 }}
+            />
+            <Legend
+              wrapperStyle={{ fontSize: 11 }}
+              iconSize={8}
+            />
+            <Line
+              type="monotone" dataKey="p50_s" name="p50" stroke="#16a34a"
+              strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }}
+            />
+            <Line
+              type="monotone" dataKey="p95_s" name="p95" stroke="#f59e0b"
+              strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }}
+            />
+            <Line
+              type="monotone" dataKey="p99_s" name="p99" stroke="#dc2626"
+              strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div style={{
+        marginTop: 6, fontSize: 10, color: "var(--text-muted)",
+        textAlign: "center",
+      }}>
+        Picos consistentes em p95/p99 podem indicar lentidão do DeepSeek/OpenRouter
+        ou prompt grande demais (&gt;40kB).
+      </div>
+    </Card>
   );
 }
 

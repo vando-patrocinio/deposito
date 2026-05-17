@@ -866,3 +866,11 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 **Validação visual:** screenshot exibiu CONNECTING (uptime 20m), 100% delivery (357 entregues), p50=5.49s, p99=184.44s (326 amostras), 32 alertas total (1 Sessão duplicada · 28 logged_out · 3 connection_replaced).
 
 **Insight do painel após fix:** Mesmo depois de desligar o sidecar local, NOVOS `logged_out` continuaram (5 em 4min) — confirma que **algum dispositivo externo do usuário (provavelmente WhatsApp Web/Desktop em outro navegador/PC) ainda está logado com o mesmo número**, causando revogações da sessão Railway. Próximo passo do usuário: WhatsApp do celular → Aparelhos conectados → Desconectar TUDO, depois reescanear o QR do Railway apenas uma vez.
+
+## 📈 [17/Fev/2026] Gráfico de Latência ao Longo do Tempo
+
+**Implementação:**
+- Backend: estendido `/health-overview` adicionando campo `isabella_latency.series` (lista de buckets por hora UTC com `{hour, count, p50_s, p95_s, p99_s}`). Single-pass sobre as 2k mensagens auto-reply mais recentes — calcula percentis por hora.
+- Frontend: novo componente `LatencySeriesChart` no `WaHealthDashboard.js` usando Recharts (já no `package.json`). Linhas p50 (verde) / p95 (laranja) / p99 (vermelho) com tooltip, eixos formatados em segundos. Subtítulo orienta a interpretação (picos p95/p99 = DeepSeek lento ou prompt >40kB).
+
+**Validação:** 40 buckets retornando OK em 7d (samples=326). Screenshot exibiu gráfico com picos visíveis em 14/05 06:00, 16/05 11:00 e 16/05 19:00 (p99 atingiu ~260s — lentidão pontual do DeepSeek/OpenRouter). Sidecar também voltou a `CONNECTED` (26m uptime estável).

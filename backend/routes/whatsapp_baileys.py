@@ -810,10 +810,10 @@ async def health_overview(
     delivery_pct = round(100.0 * delivered / out_total, 1) if out_total else 0.0
 
     # 3. Latência da Isabella — diff entre inbound mais recente e a resposta
-    # auto_reply correspondente para o mesmo phone (janela 5min)
-    # Usamos aggregation pipeline: para cada outbound auto_reply, achar o
-    # último inbound desse phone com created_at < outbound (até 5min antes)
-    latencies_s: list = []
+    # auto_reply correspondente para o mesmo phone (janela 5min).
+    # Single pass: coleta (timestamp_out, diff_s) e calcula percentis +
+    # bucketiza por hora UTC pra série temporal.
+    samples_raw: list = []  # lista de (out_dt, diff_s)
     try:
         ai_outs = db.aihub_wa_messages.find(
             {**base, "auto_reply": True},
@@ -828,7 +828,6 @@ async def health_overview(
                 out_dt = datetime.fromisoformat(out_ts.replace("Z", "+00:00"))
             except Exception:
                 continue
-            # Inbound mais recente antes de out, na mesma conversa
             five_min_before = (out_dt - timedelta(minutes=5)).isoformat()
             inb = await db.aihub_wa_messages.find_one({
                 "company_id": cid, "phone": phone, "direction": "inbound",
@@ -841,11 +840,13 @@ async def health_overview(
                     inb["created_at"].replace("Z", "+00:00"))
                 diff = (out_dt - in_dt).total_seconds()
                 if 0 < diff <= 300:
-                    latencies_s.append(diff)
+                    samples_raw.append((out_dt, diff))
             except Exception:
                 continue
     except Exception as e:
         logger.info("[wa-baileys] latency calc skip: %s", e)
+
+    latencies_s = [d for (_, d) in samples_raw]
 
     def _pct(arr: list, p: float) -> float:
         if not arr:
@@ -862,6 +863,24 @@ async def health_overview(
         "p95_s": _pct(latencies_s, 95),
         "p99_s": _pct(latencies_s, 99),
     }
+
+    # 3b. Série temporal de latência — bucketiza por hora UTC (single-pass)
+    bucket: Dict[str, list] = {}
+    for out_dt, diff in samples_raw:
+        hour_key = out_dt.strftime("%Y-%m-%dT%H:00")
+        bucket.setdefault(hour_key, []).append(diff)
+
+    latency_series = []
+    for hour in sorted(bucket.keys()):
+        arr = bucket[hour]
+        latency_series.append({
+            "hour": hour,
+            "count": len(arr),
+            "p50_s": _pct(arr, 50),
+            "p95_s": _pct(arr, 95),
+            "p99_s": _pct(arr, 99),
+        })
+    latency["series"] = latency_series
 
     # 4. Alertas — counts de eventos críticos + lista
     alert_events = {"duplicate_session_suspected", "los_cluster_alert",
