@@ -673,7 +673,16 @@ async def inbound_webhook(payload: InboundIn,
     """
     if WA_INBOUND_TOKEN:
         if not x_wa_token or x_wa_token != WA_INBOUND_TOKEN:
-            logger.warning("[wa-baileys] inbound rejeitado: token inválido")
+            recv = (x_wa_token or "")
+            recv_prefix = recv[:12] + "…" + recv[-4:] if len(recv) > 16 else recv
+            expected_prefix = (
+                WA_INBOUND_TOKEN[:12] + "…" + WA_INBOUND_TOKEN[-4:]
+                if len(WA_INBOUND_TOKEN) > 16 else WA_INBOUND_TOKEN
+            )
+            logger.warning(
+                "[wa-baileys] inbound rejeitado — recebido='%s' esperado='%s'",
+                recv_prefix, expected_prefix,
+            )
             raise HTTPException(401, "X-WA-Token inválido")
     else:
         logger.warning(
