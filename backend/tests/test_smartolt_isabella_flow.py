@@ -60,6 +60,11 @@ def test_reboot_first_statuses_is_empty():
     "não funciona o wi-fi",
     "luz vermelha no modem",
     "Defeito na conexão",
+    "Parou novamente",
+    "morreu a internet",
+    "sumiu o sinal",
+    "acabou a net",
+    "voltou a cair",
 ])
 def test_is_problem_intent_detects(text):
     assert sc.is_problem_intent(text) is True

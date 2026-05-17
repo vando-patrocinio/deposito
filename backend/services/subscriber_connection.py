@@ -36,8 +36,11 @@ logger = logging.getLogger("subscriber_connection")
 PROBLEM_INTENT_REGEX = re.compile(
     r"\b("
     r"caiu|caindo|caída|cair|"
+    r"parou|paro|morreu|morreu|sumiu|sumiram|"
+    r"acabou\s+(a\s+)?(internet|net|wi-?fi|sinal)|"
+    r"voltou\s+a\s+(cair|parar)|"
     r"sem\s+(internet|sinal|conex|wi-?fi)|"
-    r"n(ã|a)o\s+(funciona|tem|liga|conect|carreg)|"
+    r"n(ã|a)o\s+(funciona|tem|liga|conect|carreg|t(á|a))|"
     r"defeito|problema|panic|panou|panhei|"
     r"lent[oa]|len(ti|tí)ssim[oa]|trav(a|an|am|ar|ou|ando)|"
     r"oscila|instab|intermitente|"

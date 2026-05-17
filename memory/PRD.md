@@ -887,3 +887,20 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
   - O `reason` REAL do WhatsApp em `<code>` (ex: "Intentional Logout")
   - Checklist com 4 passos acionáveis no celular do Ligo
 - Lint OK em backend e frontend. Screenshot validou o banner.
+
+## 🐛 [17/Fev/2026] Diagnóstico de Bug Real — Isabella Ignorando V6.70
+
+**Print enviado pelo usuário**: Cliente "Vando Patrocinio" disse "Estou sem internet" → Isabella pediu **"bairro pra checar incidente"** e depois **"desligue a ONT"** (em vez de consultar SmartOLT como o V6.70 manda). Mais tarde, "Parou novamente" → Isabella **REINICIOU a saudação do zero** ("Oi, Vando! Sou a Isabella. Entendi...").
+
+**3 bugs identificados:**
+
+1. 🔴 **Conflito de prompts** — O `system_prompt` principal da Isabella ainda tinha a "Triagem Rápida" antiga: *"Por favor, desligue a ONT e o roteador por 30 segundos"* e referências a "incidente na sua região / informe seu bairro". O V6.70 estava nos fragments, mas a triagem antiga estava no system_prompt principal e venceu.
+   - **Fix**: `migrations/remove_old_triagem_v670.py` — substituiu o bloco "Triagem Rápida" antigo (853 chars) por bloco novo redirecionando explicitamente ao V6.70 (1133 chars) com regras 🚨 "NUNCA peça reset", "NUNCA invente incidente na região", "consulte SmartOLT primeiro".
+
+2. 🟡 **`is_problem_intent` incompleto** — Regex não detectava "Parou novamente", "morreu a internet", "sumiu o sinal", "acabou a net", "voltou a cair". Sem detecção → SmartOLT NÃO era consultado → Isabella alucinava o caminho.
+   - **Fix**: ampliado o regex em `services/subscriber_connection.py` com `parou|paro|morreu|sumiu|sumiram|acabou\s+(a\s+)?(internet|...)|voltou\s+a\s+(cair|parar)`. Pytest 6 novos casos.
+
+3. 🟡 **Resposta robotizada duplicada** — Cliente mandou "?" e Isabella repetiu "Pode me enviar o print sim, vou analisar aqui." literalmente.
+   - **Análise**: histórico de 100 turns está sendo enviado ao LLM corretamente. O problema é o LLM (DeepSeek) sendo conservador. Sugestão futura: instrução no fragment Comportamento V6.50 que diga "se cliente responder '?' ou monossílabo, RECONHEÇA-O e ofereça outra opção em vez de repetir".
+
+**Validação:** sandbox com "Parou novamente" agora retorna *"Deixa eu consultar seu equipamento aqui em tempo real, só um instante… 🛰️"* — comportamento correto do V6.70. 33/33 pytest passando.
