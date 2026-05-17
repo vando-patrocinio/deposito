@@ -388,6 +388,73 @@ async def get_cto(cto_id: str, user: dict = Depends(get_current_user)):
     return cto
 
 
+@router.get("/stats/by-technician")
+async def stats_ctos_by_technician(
+    user: dict = Depends(require_role("administrador", "gestor", "gestor_rede", "auditor")),
+):
+    """Contagem de CTOs registradas por técnico e por filial.
+
+    Retorna 2 listagens:
+    - by_technician: [{tech_id, tech_name, first_name, total, approved, pending}]
+    - by_branch: [{praca_id, praca_name, city, total}]
+    """
+    cid = _user_company(user)
+    docs = await db.ctos.find(
+        {"company_id": cid},
+        {"_id": 0, "technician_id": 1, "technician_name": 1,
+         "technician_first_name": 1, "technician_praca_id": 1,
+         "technician_praca_name": 1, "technician_praca_city": 1,
+         "address": 1, "status": 1},
+    ).to_list(5000)
+
+    techs: Dict[str, Dict[str, Any]] = {}
+    branches: Dict[str, Dict[str, Any]] = {}
+
+    for d in docs:
+        # --- por técnico ---
+        tid = d.get("technician_id") or "unknown"
+        full = (d.get("technician_name") or "").strip()
+        first = (d.get("technician_first_name")
+                 or (full.split() or [""])[0]).upper()
+        bucket = techs.setdefault(tid, {
+            "tech_id": tid,
+            "tech_name": full or "—",
+            "first_name": first or "—",
+            "total": 0, "approved": 0, "pending": 0, "rejected": 0,
+        })
+        bucket["total"] += 1
+        st = d.get("status")
+        if st == "approved":
+            bucket["approved"] += 1
+        elif st == "rejected":
+            bucket["rejected"] += 1
+        else:
+            bucket["pending"] += 1
+
+        # --- por filial (praça) ---
+        # Fallback p/ docs antigos sem snapshot: usa cidade do endereço
+        bid = d.get("technician_praca_id") or (
+            f"city:{(d.get('address') or {}).get('cidade') or 'sem-filial'}"
+        )
+        bname = (d.get("technician_praca_name")
+                 or (d.get("address") or {}).get("cidade")
+                 or "Sem filial")
+        bcity = (d.get("technician_praca_city")
+                 or (d.get("address") or {}).get("cidade") or "")
+        bbk = branches.setdefault(bid, {
+            "praca_id": bid, "praca_name": bname, "city": bcity, "total": 0,
+        })
+        bbk["total"] += 1
+
+    by_tech = sorted(techs.values(), key=lambda x: x["total"], reverse=True)
+    by_branch = sorted(branches.values(), key=lambda x: x["total"], reverse=True)
+    return {
+        "total_ctos": len(docs),
+        "by_technician": by_tech,
+        "by_branch": by_branch,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Validation workflow (Fase 1)
 # ---------------------------------------------------------------------------
@@ -844,7 +911,8 @@ async def public_create_cto(collab_id: str, body: CTOCreateIn):
         raise HTTPException(400, "Splitter é obrigatório em rede desbalanceada")
 
     coll = await db.collaborators.find_one(
-        {"id": collab_id}, {"_id": 0, "company_id": 1, "name": 1, "id": 1},
+        {"id": collab_id},
+        {"_id": 0, "company_id": 1, "name": 1, "id": 1, "praca_id": 1},
     )
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado")
@@ -856,6 +924,19 @@ async def public_create_cto(collab_id: str, body: CTOCreateIn):
     )
     if not bmap:
         raise HTTPException(400, f"Bairro/sigla '{sigla_u}' não cadastrado")
+
+    # Snapshot da filial (praça) do técnico no momento do cadastro
+    praca_id = coll.get("praca_id")
+    praca_name = None
+    praca_city = None
+    if praca_id:
+        praca = await db.pracas.find_one(
+            {"id": praca_id, "company_id": cid},
+            {"_id": 0, "name": 1, "city": 1},
+        )
+        if praca:
+            praca_name = praca.get("name")
+            praca_city = praca.get("city")
 
     try:
         num_part = body.suggested_name.split(" ")[1].split("_")[0]
@@ -882,6 +963,9 @@ async def public_create_cto(collab_id: str, body: CTOCreateIn):
         "client_pppoe": body.client_pppoe if i == body.client_port else None,
     } for i in range(1, body.capacity + 1)]
 
+    full_tech_name = body.technician_name or coll.get("name") or ""
+    first_name = (full_tech_name.strip().split() or [""])[0].upper()
+
     cto_id = _new_id("cto")
     doc = {
         "id": cto_id, "company_id": cid, "name": name, "number": number,
@@ -896,7 +980,11 @@ async def public_create_cto(collab_id: str, body: CTOCreateIn):
         "splitter": body.splitter, "ports": ports,
         "status": "pending_validation",
         "technician_id": collab_id,
-        "technician_name": body.technician_name or coll.get("name"),
+        "technician_name": full_tech_name,
+        "technician_first_name": first_name,
+        "technician_praca_id": praca_id,
+        "technician_praca_name": praca_name,
+        "technician_praca_city": praca_city,
         "created_by_user_id": collab_id,
         "created_at": now_iso(), "updated_at": now_iso(),
         "approved_by": None, "approved_at": None,

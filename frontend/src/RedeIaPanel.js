@@ -188,11 +188,13 @@ function Overview() {
   const [pend, setPend] = useState([]);
   const [bairros, setBairros] = useState([]);
   const [mapData, setMapData] = useState({ vlans: [], ces: [], cables: [] });
+  const [techStats, setTechStats] = useState({ by_technician: [], by_branch: [] });
   useEffect(() => {
     api.redeIaCtosList().then((r) => setCtos(r.items || []));
     api.redeIaPendencies().then((r) => setPend(r.items || []));
     api.redeIaBairros().then((r) => setBairros(r.items || []));
     api.redeIaMapData().then((r) => setMapData(r)).catch(() => {});
+    api.redeIaStatsByTechnician().then(setTechStats).catch(() => {});
   }, []);
   const approved = ctos.filter((c) => c.status === "approved").length;
   const totalPorts = ctos.reduce((acc, c) => acc + (c.capacity || 0), 0);
@@ -261,6 +263,9 @@ function Overview() {
         )}
       </Card>
 
+      {/* CTOs por Técnico + Filial */}
+      <CtoStatsBlock stats={techStats} />
+
       {/* Saúde por VLAN */}
       {mapData.vlans && mapData.vlans.length > 0 && (
         <Card style={{ padding: 16 }}>
@@ -317,6 +322,160 @@ function Overview() {
     </div>
   );
 }
+
+/* ------------- CTO Stats (por técnico + filial) ------------- */
+function CtoStatsBlock({ stats }) {
+  const byTech = stats?.by_technician || [];
+  const byBranch = stats?.by_branch || [];
+  if (byTech.length === 0 && byBranch.length === 0) return null;
+  const techMax = Math.max(1, ...byTech.map((t) => t.total));
+  const branchMax = Math.max(1, ...byBranch.map((b) => b.total));
+  return (
+    <Card style={{ padding: 16 }} data-testid="cto-stats-by-technician">
+      <h3 style={{ margin: "0 0 12px", fontSize: 15,
+                     display: "flex", alignItems: "center", gap: 8 }}>
+        📊 CTOs por técnico e filial
+        <span style={{ fontSize: 11, fontWeight: 500,
+                         color: "var(--text-muted)" }}>
+          ({stats.total_ctos || 0} no total)
+        </span>
+      </h3>
+      <div style={{ display: "grid",
+                       gridTemplateColumns: "repeat(auto-fit, minmax(320px,1fr))",
+                       gap: 16 }}>
+        {/* Por técnico */}
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700,
+                          color: "var(--text-muted)", marginBottom: 8,
+                          textTransform: "uppercase", letterSpacing: 0.5 }}>
+            👷 Por técnico
+          </div>
+          {byTech.length === 0 && (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Nenhum dado ainda.
+            </div>
+          )}
+          <div style={{ display: "grid", gap: 6 }}>
+            {byTech.map((t) => (
+              <div key={t.tech_id}
+                    data-testid={`stat-tech-${t.tech_id}`}
+                    style={{ display: "grid",
+                              gridTemplateColumns: "110px 1fr 50px",
+                              alignItems: "center", gap: 8, fontSize: 12 }}>
+                <span title={t.tech_name}
+                       style={{
+                         padding: "2px 8px", borderRadius: 999,
+                         fontSize: 11, fontWeight: 800,
+                         background: "linear-gradient(135deg,#0ea5e9,#6366f1)",
+                         color: "white", textAlign: "center",
+                         overflow: "hidden", textOverflow: "ellipsis",
+                         whiteSpace: "nowrap",
+                       }}>
+                  {t.first_name}
+                </span>
+                <div style={{
+                  height: 16, borderRadius: 4,
+                  background: "rgba(99,102,241,0.12)",
+                  overflow: "hidden", position: "relative",
+                }}>
+                  <div style={{
+                    width: `${(t.total / techMax) * 100}%`,
+                    height: "100%",
+                    background: "linear-gradient(90deg,#0ea5e9,#6366f1)",
+                    transition: "width .35s",
+                  }} />
+                  {t.approved > 0 && (
+                    <div title={`${t.approved} aprovadas`}
+                         style={{
+                           position: "absolute", top: 0, left: 0, height: "100%",
+                           width: `${(t.approved / techMax) * 100}%`,
+                           background: "linear-gradient(90deg,#15803d,#22c55e)",
+                           opacity: 0.9,
+                         }} />
+                  )}
+                </div>
+                <strong style={{ textAlign: "right",
+                                  color: "var(--text-primary)" }}>
+                  {t.total}
+                </strong>
+              </div>
+            ))}
+          </div>
+          {byTech.length > 0 && (
+            <div style={{ marginTop: 10, fontSize: 10,
+                            color: "var(--text-muted)",
+                            display: "flex", gap: 12 }}>
+              <span><span style={{ display: "inline-block", width: 10,
+                height: 10, background: "#22c55e", borderRadius: 2,
+                marginRight: 4, verticalAlign: "middle" }} />
+                Aprovadas
+              </span>
+              <span><span style={{ display: "inline-block", width: 10,
+                height: 10, background: "#6366f1", borderRadius: 2,
+                marginRight: 4, verticalAlign: "middle" }} />
+                Total (inclui pendentes)
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Por filial */}
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700,
+                          color: "var(--text-muted)", marginBottom: 8,
+                          textTransform: "uppercase", letterSpacing: 0.5 }}>
+            🏢 Por filial
+          </div>
+          {byBranch.length === 0 && (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Nenhum dado ainda.
+            </div>
+          )}
+          <div style={{ display: "grid", gap: 6 }}>
+            {byBranch.map((b) => (
+              <div key={b.praca_id}
+                    data-testid={`stat-branch-${b.praca_id}`}
+                    style={{ display: "grid",
+                              gridTemplateColumns: "1fr 50px",
+                              alignItems: "center", gap: 8, fontSize: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 12,
+                                  color: "var(--text-primary)",
+                                  marginBottom: 3 }}>
+                    {b.praca_name}
+                    {b.city && (
+                      <span style={{ fontWeight: 400, color: "var(--text-muted)",
+                                      marginLeft: 6, fontSize: 11 }}>
+                        · {b.city}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{
+                    height: 12, borderRadius: 4,
+                    background: "rgba(234,88,12,0.12)",
+                    overflow: "hidden",
+                  }}>
+                    <div style={{
+                      width: `${(b.total / branchMax) * 100}%`,
+                      height: "100%",
+                      background: "linear-gradient(90deg,#ea580c,#f59e0b)",
+                      transition: "width .35s",
+                    }} />
+                  </div>
+                </div>
+                <strong style={{ textAlign: "right",
+                                  color: "var(--text-primary)" }}>
+                  {b.total}
+                </strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 
 function MiniKpi({ label, value, color }) {
   return (
@@ -392,6 +551,7 @@ function CTOsList() {
               <th style={th}>Ocupadas</th>
               <th style={th}>Status</th>
               <th style={th}>Técnico</th>
+              <th style={th}>Filial</th>
               <th style={th}>QR</th>
             </tr>
           </thead>
@@ -413,7 +573,31 @@ function CTOsList() {
                       color: st.c, background: st.bg,
                     }}>{st.l || c.status}</span>
                   </td>
-                  <td style={td}>{c.technician_name || "—"}</td>
+                  <td style={td}>
+                    {c.technician_first_name || c.technician_name ? (
+                      <span data-testid={`cto-tech-tag-${c.id}`}
+                            style={{
+                              padding: "3px 9px", borderRadius: 999,
+                              fontSize: 11, fontWeight: 800,
+                              background: "linear-gradient(135deg,#0ea5e9,#6366f1)",
+                              color: "white", letterSpacing: 0.4,
+                              boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                            }}
+                            title={c.technician_name || ""}>
+                        {(c.technician_first_name
+                          || (c.technician_name || "").split(" ")[0]
+                          || "—").toUpperCase()}
+                      </span>
+                    ) : "—"}
+                  </td>
+                  <td style={td}
+                       title={c.technician_praca_name || ""}>
+                    <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                      {c.technician_praca_name
+                        || c.address?.cidade
+                        || "—"}
+                    </span>
+                  </td>
                   <td style={td}>
                     {c.status === "approved" ? (
                       <div style={{ display: "flex", gap: 4 }}>
