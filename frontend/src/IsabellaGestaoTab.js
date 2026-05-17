@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   Save, Plus, Trash2, ChevronDown, ChevronRight,
   ShoppingCart, Tag, TrendingUp, Sparkles, Wrench,
-  Loader2, CheckCircle2, AlertCircle, Bot,
+  Loader2, CheckCircle2, AlertCircle, Bot, Send, Sparkle, Zap,
 } from "lucide-react";
 
 /**
@@ -55,6 +55,9 @@ export default function IsabellaGestaoTab() {
           <TabsTrigger value="prompt" data-testid="isabella-tab-prompt">
             Prompt Principal
           </TabsTrigger>
+          <TabsTrigger value="test" data-testid="isabella-tab-test">
+            Testar Resposta
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="modules">
@@ -63,6 +66,10 @@ export default function IsabellaGestaoTab() {
 
         <TabsContent value="prompt">
           <PromptEditor />
+        </TabsContent>
+
+        <TabsContent value="test">
+          <TestSandbox />
         </TabsContent>
       </Tabs>
     </Card>
@@ -490,6 +497,207 @@ function FragmentForm({ initial, onSave, onCancel, inline = false }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+// ============================================================================
+// Sandbox de Teste — simula resposta da Isabella sem mandar pelo WhatsApp
+// ============================================================================
+const PRESET_PROMPTS = [
+  { label: "Vendas — cliente novo", text: "oi, quero contratar internet, somos 3 pessoas em casa, moro no bairro Penha no Rio de Janeiro" },
+  { label: "Vendas — bairro sem cobertura", text: "tem internet em Copacabana?" },
+  { label: "Manutenção — sem internet", text: "minha internet caiu, já reiniciei e nada" },
+  { label: "Financeiro — 2ª via", text: "preciso da segunda via do meu boleto" },
+  { label: "Agendamento — visita técnica", text: "quero agendar uma visita técnica para amanhã" },
+  { label: "Cancelamento — retenção", text: "estou pensando em cancelar a internet" },
+  { label: "Plano sem fidelidade", text: "vocês têm algum plano sem fidelidade?" },
+];
+
+function TestSandbox() {
+  const [text, setText] = useState("");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const run = async (msg) => {
+    const t = (msg ?? text).trim();
+    if (!t) return;
+    setLoading(true);
+    setErr(null);
+    setResult(null);
+    try {
+      const r = await api.isabellaTest(t);
+      setResult(r);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Erro ao testar");
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 12, marginTop: 10 }}>
+      <div style={{
+        padding: 12, borderRadius: 10,
+        background: "linear-gradient(135deg, rgba(168,85,247,.05), rgba(236,72,153,.05))",
+        border: "1px solid rgba(168,85,247,.2)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <Zap size={14} color="#a855f7" />
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)" }}>
+            Sandbox de Teste — Resposta da Isabella
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10 }}>
+          Digite uma mensagem como se fosse o cliente. A Isabella vai responder usando o prompt principal + módulos ativos + agenda da lousa (quando aplicável).
+          Nada é persistido nem enviado pelo WhatsApp — só simulação.
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+          {PRESET_PROMPTS.map((p) => (
+            <button
+              key={p.label}
+              onClick={() => { setText(p.text); run(p.text); }}
+              disabled={loading}
+              data-testid={`isabella-preset-${p.label.replace(/\s/g, "-")}`}
+              style={{
+                padding: "5px 10px", borderRadius: 16,
+                border: "1px solid var(--border-default)",
+                background: "var(--bg-surface)",
+                color: "var(--text-primary)",
+                fontSize: 10.5, fontWeight: 600,
+                cursor: loading ? "default" : "pointer",
+                opacity: loading ? 0.5 : 1,
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Digite uma mensagem teste do cliente..."
+            rows={2}
+            data-testid="isabella-test-input"
+            style={{
+              flex: 1, padding: 10,
+              border: "1px solid var(--border-default)",
+              borderRadius: 8,
+              background: "var(--bg-surface)",
+              color: "var(--text-primary)",
+              fontSize: 12,
+              resize: "vertical",
+              minHeight: 50,
+            }}
+          />
+          <button
+            onClick={() => run()}
+            disabled={loading || !text.trim()}
+            data-testid="isabella-test-run-btn"
+            style={{
+              padding: "10px 18px", border: 0, borderRadius: 8,
+              background: loading || !text.trim() ? "var(--bg-elevated)" : "linear-gradient(135deg,#a855f7,#ec4899)",
+              color: loading || !text.trim() ? "var(--text-muted)" : "white",
+              fontSize: 12, fontWeight: 700,
+              cursor: loading || !text.trim() ? "default" : "pointer",
+              display: "flex", alignItems: "center", gap: 6,
+              alignSelf: "stretch",
+            }}
+          >
+            {loading ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
+            {loading ? "Pensando…" : "Testar"}
+          </button>
+        </div>
+      </div>
+
+      {err && (
+        <div style={{
+          padding: "8px 12px", borderRadius: 8,
+          background: "rgba(220,38,38,.12)", color: "#b91c1c",
+          fontSize: 12, display: "flex", alignItems: "center", gap: 6,
+        }}>
+          <AlertCircle size={14} /> {err}
+        </div>
+      )}
+
+      {result && <TestResult result={result} />}
+    </div>
+  );
+}
+
+function TestResult({ result }) {
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={{
+        display: "flex", gap: 12, alignItems: "center",
+        fontSize: 11, color: "var(--text-muted)",
+        flexWrap: "wrap",
+      }}>
+        <span><b style={{ color: "var(--text-primary)" }}>{result.bubbles?.length || 0}</b> bolhas</span>
+        <span>·</span>
+        <span><b style={{ color: "var(--text-primary)" }}>{result.elapsed_ms}</b> ms</span>
+        <span>·</span>
+        <span>modelo <b>{result.model}</b></span>
+        <span>·</span>
+        <span>prompt <b>{result.prompt_size?.toLocaleString()}</b> chars</span>
+        <span>·</span>
+        <span><b style={{ color: "#a855f7" }}>{result.fragments_injected}</b> bloco(s) extra(s) injetado(s)</span>
+      </div>
+
+      {/* Bolhas estilo WhatsApp */}
+      <div style={{
+        padding: 14, borderRadius: 12,
+        background: "linear-gradient(135deg, #075E54 0%, #128C7E 100%)",
+        boxShadow: "inset 0 0 40px rgba(0,0,0,0.15)",
+      }}>
+        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginBottom: 8, textAlign: "center" }}>
+          Pré-visualização — como o cliente verá
+        </div>
+        <div style={{ display: "grid", gap: 6 }}>
+          {(result.bubbles || []).map((b, i) => (
+            <div
+              key={i}
+              data-testid={`isabella-test-bubble-${i}`}
+              style={{
+                maxWidth: "78%",
+                padding: "8px 11px",
+                borderRadius: "10px 10px 10px 2px",
+                background: "white",
+                color: "#111",
+                fontSize: 13,
+                lineHeight: 1.4,
+                whiteSpace: "pre-wrap",
+                boxShadow: "0 1px 1px rgba(0,0,0,0.13)",
+                position: "relative",
+              }}
+            >
+              {b}
+              <div style={{ fontSize: 9, color: "#999", textAlign: "right", marginTop: 2 }}>
+                {new Date(Date.now() + i * 1500).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} ✓✓
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <details style={{ fontSize: 11 }}>
+        <summary style={{ cursor: "pointer", color: "var(--text-muted)" }}>
+          Ver resposta crua do LLM (antes do _split_ai_reply)
+        </summary>
+        <pre style={{
+          marginTop: 6, padding: 10,
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-default)",
+          borderRadius: 8,
+          color: "var(--text-secondary)",
+          fontSize: 11, lineHeight: 1.45,
+          whiteSpace: "pre-wrap", wordBreak: "break-word",
+          maxHeight: 250, overflow: "auto",
+        }}>{result.raw}</pre>
+      </details>
     </div>
   );
 }

@@ -920,4 +920,6 @@ export const api = {
     client.patch(`/whatsapp-baileys/isabella/fragments/${id}`, data).then((r) => r.data),
   isabellaFragmentDelete: (id) =>
     client.delete(`/whatsapp-baileys/isabella/fragments/${id}`).then((r) => r.data),
+  isabellaTest: (text) =>
+    client.post("/whatsapp-baileys/isabella/test", { text }).then((r) => r.data),
 };

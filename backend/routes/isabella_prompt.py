@@ -202,6 +202,113 @@ async def delete_fragment(fragment_id: str,
 
 
 # ---------------------------------------------------------------------------
+# TESTE DE RESPOSTA — usado pelo botão "Testar resposta" da sub-aba Gestão
+# ---------------------------------------------------------------------------
+class IsabellaTestIn(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+@router.post("/isabella/test")
+async def isabella_test(payload: IsabellaTestIn,
+                          user: dict = Depends(require_role("gestor"))):
+    """Simula a resposta da Isabella SEM persistir nem enviar.
+
+    Monta o mesmo system_prompt usado pelo `_maybe_auto_reply` (prompt
+    principal + fragments ativos + lousa availability se intenção de
+    agendamento) e chama o LLM via motor_ia (mesma rota do fluxo real,
+    DeepSeek via OpenRouter). Retorna:
+      - bubbles: lista de bolhas (após _split_ai_reply)
+      - raw: resposta crua do LLM
+      - prompt_size: tamanho do prompt final injetado
+      - elapsed_ms: tempo total
+    """
+    import time
+    cid = _cid(user)
+    user_text = payload.text.strip()
+    if not user_text:
+        raise HTTPException(400, "Texto vazio.")
+
+    # 1. Busca o agente Isabella e seus parâmetros
+    agent = await db.aihub_agents.find_one(
+        {"company_id": cid, "name": "Isabella"}, {"_id": 0}
+    )
+    if not agent:
+        raise HTTPException(404, "Agente Isabella não cadastrado.")
+    sys_prompt = agent.get("system_prompt") or ""
+    model_name = agent.get("model_name") or "deepseek-chat"
+
+    # 2. Monta os blocos extras (mesma ordem do fluxo real)
+    extras: list = []
+    try:
+        from services.lousa_availability import (
+            detects_scheduling_intent, get_availability_for_prompt,
+        )
+        if detects_scheduling_intent(user_text):
+            blk = await get_availability_for_prompt(cid, days=7)
+            if blk:
+                extras.append(blk)
+    except Exception as e:
+        logger.info("[isabella-test] lousa skip: %s", e)
+    try:
+        frag_block = await compose_active_fragments_block(cid)
+        if frag_block:
+            extras.append(frag_block)
+    except Exception as e:
+        logger.info("[isabella-test] fragments skip: %s", e)
+
+    full_prompt = sys_prompt + ("\n\n" + "\n\n".join(extras) if extras else "")
+    # Sufixo de teste pra Isabella saber que é simulação (não conta histórico)
+    full_prompt += (
+        "\n\n# ⚙️ MODO TESTE\n"
+        "Esta é uma simulação solicitada pelo gestor. Não há histórico de "
+        "conversa anterior, não há cadastro de cliente. Responda como se "
+        "fosse a primeira mensagem do cliente, seguindo todas as regras do "
+        "prompt e dos módulos ativos."
+    )
+
+    # 3. Chama o LLM via motor_ia.chat_completion (mesma rota do fluxo real)
+    started = time.monotonic()
+    try:
+        from services.motor_ia import chat_completion
+        result = await chat_completion(
+            company_id=cid,
+            messages=[
+                {"role": "system", "content": full_prompt},
+                {"role": "user", "content": user_text},
+            ],
+            temperature=agent.get("temperature") or 0.4,
+            max_tokens=min(agent.get("max_tokens") or 1500, 1500),
+            purpose="atendimento",
+            agent="isabella_whatsapp",
+        )
+        raw = (result.get("content") or "").strip()
+        used_model = result.get("model") or model_name
+    except Exception as e:
+        logger.warning("[isabella-test] LLM falhou: %s", e)
+        raise HTTPException(502, f"Falha ao chamar IA: {e}")
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+
+    # 4. Aplica _split_ai_reply
+    try:
+        from routes.whatsapp_baileys import _split_ai_reply
+        bubbles = _split_ai_reply(raw, max_chunks=10)
+    except Exception:
+        bubbles = [raw]
+
+    # 5. Stats de injeção (pra debug)
+    return {
+        "ok": True,
+        "user_text": user_text,
+        "bubbles": bubbles,
+        "raw": raw,
+        "elapsed_ms": elapsed_ms,
+        "prompt_size": len(full_prompt),
+        "model": used_model,
+        "fragments_injected": len(extras),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Helper usado pelo _maybe_auto_reply
 # ---------------------------------------------------------------------------
 CATEGORY_HEADERS = {
