@@ -481,6 +481,18 @@ app.post("/send", async (req, res) => {
   await applyRateLimit();
   const jid = phone.includes("@") ? phone : `${phone}@s.whatsapp.net`;
   try {
+    // Indicador "digitando..." — humaniza a resposta.
+    // Calcula tempo de digitação proporcional ao tamanho do texto:
+    //   - 30 chars/segundo de "digitação" (parecido com humano)
+    //   - mínimo 1.2s, máximo 6s (não trava o fluxo)
+    try {
+      const txtLen = String(text).length;
+      const typingMs = Math.min(6000, Math.max(1200, Math.floor(txtLen * 33)));
+      await sock.presenceSubscribe(jid).catch(() => {});
+      await sock.sendPresenceUpdate("composing", jid).catch(() => {});
+      await new Promise((r) => setTimeout(r, typingMs));
+      await sock.sendPresenceUpdate("paused", jid).catch(() => {});
+    } catch { /* não bloqueia envio se presença falhar */ }
     const r = await withTimeout(
       sock.sendMessage(jid, { text: String(text) }),
       15000, "sendMessage",
