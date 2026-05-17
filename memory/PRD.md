@@ -933,3 +933,23 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 **Validação:** testado com `Vando Patrocinio` (sub-c1a6d684e0) — bloco injetado retorna corretamente Nome, Plano, Filial. Quando subscribers tiver endereço (importação Atlaz futura), aparecerá automaticamente.
 
 **Pendente:** ampliar import Atlaz pra preencher `subscribers.neighborhood/city/address` direto (em vez de só ticket snapshots). Backlog P1.
+
+## 🗣️ [17/Fev/2026] V6.51 — Saudação Personalizada + Tratamento de Monossílabos
+
+**Novo fragmento `🗣️ Comportamento Conversacional — Refinamentos (V6.51)`** (`migrations/isabella_comportamento_v651.py`) — complementa o V6.50 com 3 regras críticas:
+
+**REGRA 8 — Saudação personalizada inteligente**
+Quando o bloco "VERIFICAÇÃO DA CONEXÃO" estiver presente, NUNCA usar saudação genérica. Em vez disso:
+- Usar **apelido** (subscriber.nickname) quando disponível, senão primeiro nome
+- Mencionar plano + bairro/cidade pra demonstrar reconhecimento
+- Combinar com o motivo da mensagem (problema técnico → vai direto pro "consultar equipamento")
+
+Exemplo: ❌ "Oi! 😊 Sou a Isabella. Me informe seu bairro." ✅ "Oi Vando! 🛰️ Sua Fibra 500 lá em Cordovil tá com problema? Deixa eu consultar agora…"
+
+**REGRA 9 — Monossílabos e "?" NUNCA repetir literal**
+Bug real do Vando (17/05 23:31): Isabella repetiu "Pode me enviar o print sim, vou analisar aqui." literalmente quando cliente respondeu "?". Agora regra explícita: reconhecer ("Aguardando…"), reformular o pedido anterior com palavras diferentes, oferecer alternativa.
+
+**REGRA 10 — Kill-switch para agradecimentos puros**
+"obrigado" / "valeu" / "tmj" / "❤️" → silêncio. Não responder pra evitar loop infinito.
+
+**Validação:** sandbox "obrigado" retornou string vazia (`""`) — kill-switch ativo. As regras 8 e 9 só aplicam totalmente em conversas reais com cliente identificado e histórico (no sandbox isolado o LLM cai na saudação default por falta de contexto).
