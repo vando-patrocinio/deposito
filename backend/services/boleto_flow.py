@@ -273,7 +273,11 @@ async def _list_open_invoices(cid: str,
 
 def format_invoices_message(subscriber: Dict[str, Any],
                               invoices: List[Dict[str, Any]]) -> str:
-    """Monta a mensagem WhatsApp com todas as faturas em aberto."""
+    """Monta a mensagem WhatsApp ENXUTA com todas as faturas em aberto.
+
+    Como agora enviamos o PDF anexo branded, o texto é curto:
+    só anuncia que o boleto está vindo + resumo de cada fatura.
+    """
     name = (subscriber.get("name") or "").split()[0] or "cliente"
     if not invoices:
         return (
@@ -283,44 +287,27 @@ def format_invoices_message(subscriber: Dict[str, Any],
             "Se precisar de algo mais, é só me chamar! 💙"
         )
 
-    total = sum(float(i.get("amount") or 0) for i in invoices)
     qty = len(invoices)
-    header = (
-        f"Olá, {name}! 👋\n\n"
-        f"Encontrei *{qty} {'fatura' if qty == 1 else 'faturas'}* "
-        f"em aberto no seu cadastro. Aqui vão os dados pra pagamento:\n"
-    )
-    parts = [header]
+    total = sum(float(i.get("amount") or 0) for i in invoices)
+    qty_label = "fatura" if qty == 1 else "faturas"
+
+    parts = [
+        f"Aqui está sua fatura 💚",
+        "",
+        f"Olá, {name}! Encontrei *{qty} {qty_label}* em aberto no seu cadastro.",
+        f"Estou enviando o(s) boleto(s) em PDF logo abaixo — é só abrir e pagar pelo PIX ou código de barras. 📎",
+        "",
+    ]
     for idx, inv in enumerate(invoices, 1):
         valor = _format_brl(inv.get("amount"))
         venc = _format_due(inv.get("due_date"))
-        link = inv.get("boleto_url") or inv.get("link")
-        pix = inv.get("pix_copia_cola") or inv.get("pix_payload") or inv.get("pix")
-        bar = inv.get("digitable_line") or inv.get("linha_digitavel") \
-              or inv.get("codigo_barras") or inv.get("barcode")
-
-        block = [
-            f"\n━━━━━━━━━━━━━━━━━━━━",
-            f"📄 *Fatura {idx} de {qty}*",
-            f"💰 Valor: *{valor}*",
-            f"📅 Vencimento: {venc}",
-        ]
-        if link:
-            block.append(f"🔗 Boleto/PDF:\n{link}")
-        if pix:
-            block.append(f"\n📲 *PIX Copia e Cola:*\n```{pix}```")
-        if bar:
-            block.append(f"\n💳 *Linha digitável:*\n`{bar}`")
-        parts.append("\n".join(block))
-
+        prefix = f"📄 Fatura {idx}/{qty} · " if qty > 1 else "📄 "
+        parts.append(f"{prefix}{valor} · venc. {venc}")
     if qty > 1:
-        parts.append(
-            f"\n━━━━━━━━━━━━━━━━━━━━\n💵 *Total em aberto: {_format_brl(total)}*"
-        )
-    parts.append(
-        "\n\nQualquer dúvida, é só me chamar! Se preferir falar com um "
-        "atendente humano, posso transferir agora mesmo. 💙"
-    )
+        parts.append("")
+        parts.append(f"💵 *Total em aberto: {_format_brl(total)}*")
+    parts.append("")
+    parts.append("Qualquer dúvida é só me chamar! 💙")
     return "\n".join(parts)
 
 
@@ -390,3 +377,64 @@ async def handle_boleto_flow(cid: str, phone: str, text: str,
 
     invoices = await _list_open_invoices(cid, subscriber)
     return format_invoices_message(subscriber, invoices)
+
+
+async def handle_boleto_flow_full(cid: str, phone: str, text: str,
+                                    subscriber_id: Optional[str] = None
+                                    ) -> Optional[Dict[str, Any]]:
+    """Versão "full" — retorna dict com texto + invoices + subscriber pra
+    que o caller possa enviar tanto o texto quanto os PDFs anexos.
+
+    Retorna `None` se não há intenção de boleto OU se precisamos pedir CPF
+    (nesse caso, o texto de pedido de CPF vai em `{"text": "...", "is_request": True}`).
+    """
+    state = await db.boleto_flow_state.find_one(
+        {"company_id": cid, "phone": phone}, {"_id": 0}
+    )
+    awaiting_cpf = bool(state and state.get("awaiting_cpf"))
+    cpf_detected = extract_cpf(text) if awaiting_cpf else None
+    has_intent = detect_boleto_intent(text)
+
+    if not has_intent and not awaiting_cpf:
+        return None
+
+    subscriber = None
+    if subscriber_id:
+        subscriber = await db.subscribers.find_one(
+            {"company_id": cid, "id": subscriber_id}, {"_id": 0}
+        )
+    if not subscriber:
+        subscriber = await _find_subscriber_by_phone(cid, phone)
+    if not subscriber and cpf_detected:
+        subscriber = await _find_subscriber_by_cpf(cid, cpf_detected)
+
+    if not subscriber:
+        if awaiting_cpf and not cpf_detected:
+            return {"text": (
+                "Hmm, não consegui identificar seu CPF nessa mensagem 🤔\n\n"
+                "Pode me enviar apenas os 11 dígitos do CPF, por favor?\n"
+                "_Exemplo:_ `12345678900`\n\n"
+                "Se preferir, vou transferir você para um atendente humano. 💙"
+            ), "invoices": [], "subscriber": None, "is_request": True}
+        await db.boleto_flow_state.update_one(
+            {"company_id": cid, "phone": phone},
+            {"$set": {
+                "awaiting_cpf": True,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+        return {"text": (
+            "Oi! 👋 Pra eu localizar seu cadastro e te enviar o boleto, "
+            "pode me informar seu *CPF*, por favor?\n\n"
+            "_Pode mandar só os 11 dígitos (sem pontos ou traços)._"
+        ), "invoices": [], "subscriber": None, "is_request": True}
+
+    await db.boleto_flow_state.delete_one({"company_id": cid, "phone": phone})
+    invoices = await _list_open_invoices(cid, subscriber)
+    return {
+        "text": format_invoices_message(subscriber, invoices),
+        "invoices": invoices,
+        "subscriber": subscriber,
+        "is_request": False,
+    }

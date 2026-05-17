@@ -635,6 +635,41 @@ app.post("/send-audio", async (req, res) => {
   }
 });
 
+app.post("/send-document", async (req, res) => {
+  if (connState !== "connected" || !sock) {
+    return res.status(503).json({ ok: false, error: "WhatsApp não conectado." });
+  }
+  let { phone, document_b64, filename, mimetype, caption } = req.body || {};
+  if (!phone || !document_b64) {
+    return res.status(400).json({ ok: false, error: "phone e document_b64 obrigatórios" });
+  }
+  phone = String(phone).replace(/\D/g, "");
+  const jid = `${phone}@s.whatsapp.net`;
+  await applyRateLimit();
+  try {
+    const buffer = Buffer.from(String(document_b64), "base64");
+    const r = await withTimeout(
+      sock.sendMessage(jid, {
+        document: buffer,
+        mimetype: mimetype || "application/pdf",
+        fileName: filename || "documento.pdf",
+        ...(caption ? { caption: String(caption) } : {}),
+      }),
+      45000, "sendDocument",
+    );
+    lastSuccessAt = Date.now();
+    return res.json({ ok: true, message_id: r.key?.id, jid });
+  } catch (e) {
+    const msg = String(e?.message || "");
+    logger.error({ err: msg, phone, filename }, "send-document err");
+    if (/timeout|closed|terminat|connection|stale|stream/i.test(msg)) {
+      forceReconnect(`send-document:${msg}`);
+    }
+    return res.status(502).json({ ok: false, error: msg || "erro desconhecido" });
+  }
+});
+
+
 
 app.post("/logout", async (_req, res) => {
   try {

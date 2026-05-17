@@ -167,6 +167,93 @@ async def _sidecar_post(path: str, payload: Optional[dict] = None) -> Dict[str, 
                             f"WhatsApp sidecar indisponível: {e}") from e
 
 
+async def _sidecar_post_silent(path: str, payload: dict, timeout: float = 50.0
+                                ) -> Dict[str, Any]:
+    """Como _sidecar_post mas não levanta HTTPException — devolve dict com
+    `ok=False` em caso de erro. Útil pra envios em background (boleto PDF)
+    onde queremos persistir falha mas seguir a vida.
+    """
+    try:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=timeout) as cli:
+            r = await cli.post(f"{SIDECAR_BASE}{path}", json=payload)
+            try:
+                body = r.json()
+            except Exception:
+                body = {"raw": r.text}
+            if r.status_code >= 400:
+                return {"ok": False,
+                        "error": body.get("error") or f"HTTP {r.status_code}"}
+            return body
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _deliver_boleto_with_pdf(cid: str, phone: str,
+                                      subscriber_id: Optional[str],
+                                      boleto_full: Dict[str, Any]) -> None:
+    """Envia o texto resumido + 1 PDF anexo por fatura aberta.
+
+    Se é apenas pedido de CPF (`is_request=True`) ou se não há faturas,
+    envia só o texto.
+    """
+    text = boleto_full.get("text") or ""
+    invoices = boleto_full.get("invoices") or []
+    subscriber = boleto_full.get("subscriber") or {}
+    is_request = bool(boleto_full.get("is_request"))
+
+    # Sempre envia o texto primeiro
+    sent_text = await _sidecar_post_silent("/send", {"phone": phone, "text": text})
+    await db.aihub_wa_messages.insert_one({
+        "company_id": cid, "phone": phone, "jid": f"{phone}@s.whatsapp.net",
+        "direction": "outbound", "text": text,
+        "subscriber_id": subscriber_id,
+        "auto_reply": True, "agent": "boleto_flow",
+        "delivery_status": "sent" if sent_text.get("ok") else "failed_send",
+        "external_id": (sent_text or {}).get("message_id"),
+        "created_at": now_iso(),
+    })
+
+    if is_request or not invoices:
+        return
+
+    # Envia 1 PDF por fatura (limite de 3 pra não floodar)
+    from services.boleto_pdf import build_boleto_pdf
+    import base64
+    cust_name = subscriber.get("name") or subscriber.get("customer_name")
+    for inv in invoices[:3]:
+        try:
+            pdf_bytes = build_boleto_pdf(inv, customer_name=cust_name)
+            b64 = base64.b64encode(pdf_bytes).decode("ascii")
+            due = inv.get("due_date") or "fatura"
+            due_short = str(due)[:10]
+            fname = f"Boleto Ligo Fibra {due_short}.pdf"
+            sent_doc = await _sidecar_post_silent("/send-document", {
+                "phone": phone,
+                "document_b64": b64,
+                "filename": fname,
+                "mimetype": "application/pdf",
+            })
+            await db.aihub_wa_messages.insert_one({
+                "company_id": cid, "phone": phone,
+                "jid": f"{phone}@s.whatsapp.net",
+                "direction": "outbound",
+                "text": f"📎 {fname}",
+                "subscriber_id": subscriber_id,
+                "auto_reply": True, "agent": "boleto_flow",
+                "metadata": {"type": "document", "filename": fname,
+                              "size_bytes": len(pdf_bytes)},
+                "delivery_status": "sent" if sent_doc.get("ok") else "failed_send",
+                "delivery_error": (sent_doc or {}).get("error"),
+                "external_id": (sent_doc or {}).get("message_id"),
+                "created_at": now_iso(),
+            })
+            if not sent_doc.get("ok"):
+                logger.warning("[wa-baileys] boleto pdf falhou: %s",
+                               sent_doc.get("error"))
+        except Exception as e:
+            logger.warning("[wa-baileys] gerar/enviar PDF do boleto falhou: %s", e)
+
+
 # ---------------------------------------------------------------------------
 # Endpoints públicos (auth: gestor)
 # ---------------------------------------------------------------------------
@@ -1185,28 +1272,18 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         return None
 
     # 1b. FAST PATH — Fluxo de boleto/2ª via.
-    # Detecta intenção e responde DIRETO com dados do Atlaz (sem LLM)
-    # para entregar boleto/PIX/linha digitável em segundos.
+    # Detecta intenção e responde DIRETO com dados do Atlaz (sem LLM).
+    # Envia texto curto + PDF anexo branded por cada fatura aberta.
     try:
-        from services.boleto_flow import handle_boleto_flow
-        boleto_reply = await handle_boleto_flow(
+        from services.boleto_flow import handle_boleto_flow_full
+        boleto_full = await handle_boleto_flow_full(
             cid, phone, user_text, subscriber_id=subscriber_id
         )
-        if boleto_reply:
-            sent = await _sidecar_post(
-                "/send", {"phone": phone, "text": boleto_reply}
+        if boleto_full:
+            await _deliver_boleto_with_pdf(
+                cid, phone, subscriber_id, boleto_full,
             )
-            await db.aihub_wa_messages.insert_one({
-                "company_id": cid, "phone": phone, "jid": f"{phone}@s.whatsapp.net",
-                "direction": "outbound", "text": boleto_reply,
-                "subscriber_id": subscriber_id,
-                "auto_reply": True, "agent": "boleto_flow",
-                "delivery_status": "sent" if sent.get("ok") else "failed_send",
-                "external_id": (sent or {}).get("message_id"),
-                "created_at": now_iso(),
-            })
-            logger.info("[wa-baileys] boleto_flow resposta enviada p/ %s", phone)
-            return boleto_reply
+            return boleto_full.get("text")
     except Exception as e:
         logger.warning("[wa-baileys] boleto_flow falhou (segue p/ LLM): %s", e)
 
