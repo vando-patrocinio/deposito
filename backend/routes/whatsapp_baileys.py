@@ -171,6 +171,32 @@ async def get_status(user: dict = Depends(require_role("gestor"))):
     return await _sidecar_get("/status")
 
 
+@router.post("/reload")
+async def reload_sidecar(user: dict = Depends(require_role("gestor"))):
+    """Força o sidecar a reiniciar o socket Baileys SEM perder a sessão.
+
+    Útil quando o socket trava: `state=connected` mas para de receber/enviar
+    mensagens. NÃO requer novo QR Code.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    try:
+        async with httpx.AsyncClient(headers=_sidecar_headers(),
+                                         timeout=10.0) as cli:
+            r = await cli.post(f"{SIDECAR_BASE}/reload", json={})
+            out = r.json() if r.status_code == 200 else {"raw": r.text}
+        await db.wa_system_events.insert_one({
+            "company_id": cid,
+            "type": "reload_manual",
+            "triggered_by": user.get("email"),
+            "result": out,
+            "created_at": now_iso(),
+        })
+        return {"ok": True, "sidecar_response": out}
+    except Exception as e:
+        logger.exception("[wa-baileys] reload failed")
+        raise HTTPException(500, f"Falha ao reload: {e}")
+
+
 class SendIn(BaseModel):
     phone: str = Field(..., min_length=8, max_length=25)
     text: str = Field(..., min_length=1, max_length=4096)

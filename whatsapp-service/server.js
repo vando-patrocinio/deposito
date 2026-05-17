@@ -558,6 +558,35 @@ app.post("/logout", async (_req, res) => {
   }
 });
 
+/**
+ * POST /reload
+ * Reinicia o socket Baileys sem perder a sessão (mantém auth_info).
+ * Útil quando o socket "trava" — fica connected mas para de receber/enviar.
+ * NÃO força novo QR Code.
+ */
+app.post("/reload", async (_req, res) => {
+  try {
+    const wasConnected = connState === "connected";
+    if (sock) {
+      try { sock.ev.removeAllListeners(); } catch (e) { /* ignore */ }
+      try { await sock.end(undefined); } catch (e) { /* ignore */ }
+      sock = null;
+    }
+    connState = "reloading";
+    currentQr = null;
+    retryCount = 0;
+    setTimeout(() => { startSock().catch(() => {}); }, 500);
+    console.log(`[reload] forçando reconexão (was=${wasConnected})`);
+    return res.json({
+      ok: true,
+      msg: "Reload iniciado. Estado volta a 'connected' em ~3-5s.",
+      was_connected: wasConnected,
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 /* ---------- Perfis / Presença ---------- */
 app.get("/contact-profile", async (req, res) => {
   if (!sock || connState !== "connected") {
