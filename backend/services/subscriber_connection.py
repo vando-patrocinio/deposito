@@ -268,8 +268,11 @@ def format_for_prompt(info: Dict[str, Any]) -> str:
             "AÇÃO: o equipamento está em LOS (Loss of Signal — fibra rompida "
             "ou desconectada). Diga ao cliente que você verificou e identificou "
             "uma INTERRUPÇÃO no sinal de fibra. NÃO peça reset do modem — não "
-            "resolve LOS. Abra chamado técnico imediato e informe SLA (24h úteis "
-            "residencial)."
+            "resolve LOS. O sistema JÁ ABRIU automaticamente uma bolha de "
+            "reparo prioritária na Lousa (db.tickets) — use o ticket_id do "
+            "bloco 'CHAMADO TÉCNICO ABERTO' que virá em seguida. AGENDE a "
+            "visita usando a janela da Lousa (consulte agenda antes de "
+            "prometer horário). SLA 24h úteis (residencial)."
         )
     elif status.lower() == "power fail":
         emoji = "🟡"
@@ -283,10 +286,15 @@ def format_for_prompt(info: Dict[str, Any]) -> str:
     else:  # Offline
         emoji = "🔴"
         action = (
-            "AÇÃO: o equipamento está OFFLINE. Pergunte se houve queda de "
-            "energia, oriente a verificar as luzes do modem (PON deve estar "
-            "verde fixo). Se as luzes estão OK e mesmo assim offline, abra "
-            "chamado técnico imediato."
+            "AÇÃO: o equipamento está OFFLINE (sumiu da OLT). Isso geralmente "
+            "indica problema do lado do cliente: queda de energia local, modem "
+            "desligado da tomada ou cabo solto. Como NÃO conseguimos diagnosticar "
+            "remotamente com certeza, o protocolo é TRANSFERIR pro Atendimento "
+            "Especializado pra um humano acompanhar — NÃO abra chamado técnico "
+            "automaticamente (pode ser só tomada). Reconheça o problema com "
+            "empatia, diga que está transferindo, e finalize a conversa "
+            "naturalmente. O sistema vai injetar o bloco 'TRANSFERIR PARA "
+            "ATENDIMENTO ESPECIALIZADO' em seguida — siga aquelas instruções."
         )
 
     last_info = ""
@@ -318,11 +326,20 @@ def format_for_prompt(info: Dict[str, Any]) -> str:
 
 
 # Status técnicos que justificam abrir ticket de reparo automaticamente.
-TICKET_TRIGGER_STATUSES = {"los", "offline", "power fail", "powerfail"}
+# - LOS: SEMPRE gera bolha de reparo na Lousa (fibra rompida — só técnico resolve).
+# - Power fail: gera bolha (cliente sem energia local, mas registra pro atendente
+#   acompanhar/agendar visita preventiva).
+# - Offline: NÃO gera ticket — fluxo agora transfere direto pra humano (decisão
+#   do gestor em 02/2026; Isabella não tem como diagnosticar a causa real).
+TICKET_TRIGGER_STATUSES = {"los", "power fail", "powerfail"}
 
-# Status que primeiro tentam reboot remoto antes de abrir ticket (somente
-# quando faz sentido — Power fail por exemplo NÃO adianta rebootar).
-REBOOT_FIRST_STATUSES = {"los", "offline"}
+# Status que primeiro tentam reboot remoto antes de abrir ticket.
+# Por decisão do gestor (02/2026), Isabella NÃO reinicia automaticamente em
+# LOS (não adianta — sinal cortado) nem em Offline (provável problema do lado
+# do cliente — energia/cabo solto). Conjunto vazio = nenhum reboot automático.
+# A função `try_reboot_onu()` permanece disponível pra futuro acionamento manual
+# via UI ou tool-call específica.
+REBOOT_FIRST_STATUSES: set = set()
 
 # Janela de dedupe — não cria ticket novo se já tem um aberto pro mesmo cliente.
 TICKET_DEDUPE_HOURS = 6
@@ -453,6 +470,49 @@ def format_reboot_for_prompt(reboot_info: Dict[str, Any]) -> str:
             "(seria confuso)."
         )
     return ""  # erro técnico — não polui o prompt; ticket vai abrir mesmo
+
+
+def format_offline_transfer_for_prompt() -> str:
+    """Pra status Offline, Isabella transfere direto pro humano (sem ticket).
+
+    O backend marca a conversa pra `aguardando` (handoff) após enviar a resposta.
+    """
+    return (
+        "=== TRANSFERIR PARA ATENDIMENTO ESPECIALIZADO ===\n"
+        "O equipamento do cliente está OFFLINE (sumiu da OLT). NÃO é possível "
+        "diagnosticar remotamente se é tomada / cabo / energia / hardware "
+        "queimado — protocolo do gestor é TRANSFERIR direto pra um humano "
+        "acompanhar.\n\n"
+        "AÇÃO (use 2 bolhas curtas, separadas por \"\"):\n"
+        "1. Reconheça o problema com empatia e diga que verificou o sistema "
+        "   e o equipamento está realmente desconectado.\n"
+        "   Ex: 'Verifiquei aqui e seu equipamento aparece como desconectado "
+        "   no nosso sistema. 🔴'\n"
+        "2. Avise que vai transferir pro Atendimento Especializado e "
+        "   despedir-se de forma natural. Frase OBRIGATÓRIA (gatilho de "
+        "   handoff): 'Vou transferir você agora pro nosso Atendimento "
+        "   Especializado, em instantes alguém da equipe vai te chamar por "
+        "   aqui mesmo. 🤝'\n\n"
+        "❌ NÃO ofereça reset / reboot — já foi descartado pela equipe técnica.\n"
+        "❌ NÃO peça pra cliente verificar tomada — humano vai conduzir isso.\n"
+        "❌ NÃO abra chamado — humano decide se abre depois de conversar.\n"
+        "✅ Tom: acolhedor, sem alarmar, profissional."
+    )
+
+
+# Marcador no texto da resposta que indica que Isabella concluiu o handoff de
+# diagnóstico Offline. Usado pelo router pra mover a conversa pra 'aguardando'.
+OFFLINE_HANDOFF_MARKER_REGEX = re.compile(
+    r"transferir\s+.{0,60}?atendimento\s+especializado",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def is_offline_handoff_message(text: str) -> bool:
+    """Detecta se a resposta da Isabella encerra com handoff de Offline."""
+    if not text:
+        return False
+    return bool(OFFLINE_HANDOFF_MARKER_REGEX.search(text))
 
 
 def format_power_fail_offer_for_prompt() -> str:

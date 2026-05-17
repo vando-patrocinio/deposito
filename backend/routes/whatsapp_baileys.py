@@ -1480,42 +1480,35 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             extra.append(format_for_prompt(conn_info))
             conn_info["subscriber_id"] = subscriber_id
 
-            # AÇÃO REAL — estratégia diferenciada por status:
-            #   - LOS / Offline: TENTAR REBOOT REMOTO PRIMEIRO. Se OK, peça
-            #     pro cliente aguardar 2min. Só abre ticket se NÃO conseguiu
-            #     rebootar (problema físico) ou se já foi reiniciado
-            #     recentemente.
+            # AÇÃO REAL — estratégia diferenciada por status (decisão 02/2026):
+            #   - LOS: NÃO reinicia (não resolve fibra rompida). Cria bolha de
+            #     reparo prioritária na Lousa AUTOMATICAMENTE. Isabella agenda
+            #     a janela com o cliente usando a agenda da Lousa.
+            #   - Offline: NÃO reinicia, NÃO abre chamado. Provável problema do
+            #     lado do cliente (energia/tomada/cabo) — Isabella TRANSFERE
+            #     direto pro Atendimento Especializado (handoff humano).
             #   - Power fail: NÃO é problema nosso (queda de luz no cliente).
             #     Ofereça agendamento de visita técnica.
             status_l = (conn_info.get("status") or "").strip().lower()
             try:
                 from services.subscriber_connection import (
-                    REBOOT_FIRST_STATUSES, try_reboot_onu, ensure_repair_ticket,
-                    format_ticket_for_prompt, format_reboot_for_prompt,
+                    ensure_repair_ticket,
+                    format_ticket_for_prompt,
                     format_power_fail_offer_for_prompt,
+                    format_offline_transfer_for_prompt,
                 )
-                if conn_info.get("found") and status_l in REBOOT_FIRST_STATUSES:
-                    # Tenta reboot remoto. Se OK e é a primeira vez agora,
-                    # NÃO abre ticket — espera o cliente confirmar se voltou.
-                    reboot_info = await try_reboot_onu(cid, conn_info, phone)
-                    if reboot_info.get("action") == "rebooted":
-                        # Reset bem-sucedido — instrui IA a aguardar feedback
-                        extra.append(format_reboot_for_prompt(reboot_info))
-                    elif reboot_info.get("action") == "skipped_recent":
-                        # Já tentou recentemente — abre ticket
-                        extra.append(format_reboot_for_prompt(reboot_info))
-                        ticket_info = await ensure_repair_ticket(
-                            cid, conn_info, phone, user_text
-                        )
-                        if ticket_info:
-                            extra.append(format_ticket_for_prompt(ticket_info))
-                    else:
-                        # Reboot falhou (SmartOLT desabilitado/erro) — abre ticket
-                        ticket_info = await ensure_repair_ticket(
-                            cid, conn_info, phone, user_text
-                        )
-                        if ticket_info:
-                            extra.append(format_ticket_for_prompt(ticket_info))
+                if conn_info.get("found") and status_l == "los":
+                    # LOS → cria bolha de reparo na Lousa AUTOMATICAMENTE.
+                    ticket_info = await ensure_repair_ticket(
+                        cid, conn_info, phone, user_text
+                    )
+                    if ticket_info:
+                        extra.append(format_ticket_for_prompt(ticket_info))
+                elif conn_info.get("found") and status_l == "offline":
+                    # Offline → transfere pra humano. Sem ticket, sem reboot.
+                    # O handoff de fato é executado APÓS o envio (detectado
+                    # pelo marcador no texto da resposta).
+                    extra.append(format_offline_transfer_for_prompt())
                 elif conn_info.get("found") and status_l in {"power fail", "powerfail"}:
                     # Cliente sem energia — instrui IA a oferecer agendamento
                     # E cria ticket com priority=padrao (não é prioridade pq
@@ -1854,6 +1847,31 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             )
         except Exception as e:
             logger.warning("[wa-baileys] falha ao mover para aguardando: %s", e)
+
+    # 🔴 Auto-handover de DIAGNÓSTICO OFFLINE: quando a Isabella conclui que o
+    # equipamento está Offline e diz "vou transferir pro Atendimento
+    # Especializado", o backend move a conversa pra `aguardando` e marca a
+    # razão pra auditoria. Atendente humano assume manualmente em seguida.
+    if send_ok:
+        try:
+            from services.subscriber_connection import is_offline_handoff_message
+            if is_offline_handoff_message(reply_text):
+                await db.wa_conversations.update_one(
+                    {"company_id": cid, "phone": phone},
+                    {"$set": {
+                        "assignee_role": None,
+                        "assignee_user_id": None,
+                        "handoff_at": now_iso(),
+                        "handoff_reason": "isabella_offline_diagnosis",
+                        "updated_at": now_iso(),
+                    }},
+                )
+                logger.info(
+                    "[wa-baileys] handoff Offline pela Isabella — "
+                    "%s movido para 'aguardando'", phone
+                )
+        except Exception as e:
+            logger.warning("[wa-baileys] falha ao mover handoff offline: %s", e)
     return reply_text
 
 

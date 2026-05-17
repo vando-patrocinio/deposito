@@ -803,3 +803,29 @@ A tela para técnicos não-admin permanece IDÊNTICA (não vaza acesso). Validad
 - Vincular cliente manualmente para números desconhecidos no Chat (P2)
 - Banco Inter PIX Dinâmico (P1)
 - Multi-tenant WhatsApp SaaS (P1, postponed para Junho/2026)
+
+
+---
+
+## 🔧 [17/Fev/2026] Isabella V6.70 — Diagnóstico SmartOLT Refinado (LOS→Lousa, Offline→Humano)
+
+**Contexto:** Refinamento do fluxo de manutenção automática da Isabella. Decisão do gestor: LOS deve gerar bolha de reparo automaticamente na Lousa (sem tentar reboot — não resolve fibra rompida); Offline deve transferir direto pro Atendimento Especializado (sem reboot, sem ticket — diagnóstico remoto incerto). Power Fail mantém oferta de agendamento.
+
+**Mudanças aplicadas:**
+- `services/subscriber_connection.py`:
+  - `REBOOT_FIRST_STATUSES = set()` — nenhum reboot automático nas inbounds (função `try_reboot_onu` permanece disponível pra acionamento manual futuro)
+  - `TICKET_TRIGGER_STATUSES = {"los", "power fail"}` — removido `offline` (vira handoff humano)
+  - Novo `format_offline_transfer_for_prompt()` — bloco instruindo Isabella a transferir com frase exata
+  - Novo `is_offline_handoff_message(text)` — regex detecta a frase gatilho na resposta da Isabella
+  - `format_for_prompt` atualizado: LOS menciona Lousa explicitamente, Offline aponta protocolo de transferência
+- `routes/whatsapp_baileys.py`:
+  - Orquestração simplificada na inbound: LOS → `ensure_repair_ticket` direto; Offline → `format_offline_transfer_for_prompt`; Power Fail mantido
+  - Novo bloco pós-envio: se `is_offline_handoff_message(reply)`, move `wa_conversations` pra `aguardando` com `handoff_reason: "isabella_offline_diagnosis"`
+- `migrations/isabella_diagnostico_v670.py` — fragmento V6.70 criado e ativado, V6.60 desativado
+
+**Validação:**
+- ✅ 28/28 pytest em `tests/test_smartolt_isabella_flow.py` (regras, formatters, helpers, regex de handoff, dedupe de tickets, filtro Offline)
+- ✅ Sandbox `/api/whatsapp-baileys/isabella/test` (cenário LOS): "Identifiquei... interrupção... NÃO peço reset... Já abri chamado #... Posso agendar pra HOJE 13-18 ou amanhã 09-12?"
+- ✅ Sandbox (cenário Offline): "...aparece como desconectado... Vou transferir você agora pro nosso Atendimento Especializado..." (frase gatilho exata, prompt 39kB ~4.2s no DeepSeek)
+
+**Status:** Funcional. Pronto pra produção.
