@@ -201,11 +201,14 @@ def _build_summary(classification: str, stats: Dict[str, Any]) -> str:
     if classification == "persistente":
         parts.append(
             f"Esse cliente abriu **{t30} chamados técnicos no último mês**. "
-            "Histórico recorrente — reconheça o transtorno COM EMPATIA: "
-            "\"Vando, vi aqui que você teve {t30} ocorrências esse mês — "
-            "lamento muito pelo desconforto.\" Considere oferecer compensação "
-            "(crédito na próxima fatura), trocar a ONT (se 3+ LOS) ou "
-            "escalar pra Supervisor."
+            "Histórico recorrente — reconheça o transtorno COM EMPATIA usando o "
+            "PRIMEIRO NOME REAL do cliente (extraia do bloco VERIFICAÇÃO DA CONEXÃO, "
+            "campo 'Nome' ou 'Apelido'). Modelo de frase: "
+            "\"[PrimeiroNome], vi aqui que você teve várias ocorrências esse mês — "
+            "lamento muito pelo desconforto.\" "
+            "⚠️ NUNCA invente nome — se não houver bloco com dados reais, use saudação neutra. "
+            "Considere oferecer compensação (crédito na próxima fatura), "
+            "trocar a ONT (se 3+ LOS) ou escalar pra Supervisor."
         )
     elif classification == "recorrente":
         parts.append(

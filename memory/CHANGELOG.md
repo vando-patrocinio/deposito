@@ -1,6 +1,62 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Sidecar Railway isolado p/ Preview + Fix Webhook Produção + V6.71 Anti-Alucinação ★★★
+
+### Contexto
+Bugs críticos reportados pelo usuário em produção:
+1. **WhatsApp da produção caía toda vez que a preview hibernava** (mesmo sidecar Baileys servindo 2 ambientes)
+2. **Isabella não respondia mensagens em produção** apesar de chegarem ao sidecar
+3. **Isabella chamava clientes novos de "Vando"** e inventava plano "Fibra 500 Mega" (alucinação de identidade)
+
+### O que foi implementado
+
+#### 1. Sidecar Railway dedicado para Preview ✅
+- Criado novo serviço Railway: `whatsapp-sidecar-preview`
+- URL: `https://whatsapp-sidecar-preview-production.up.railway.app`
+- Repo: `vando-patrocinio/smartprov-ligo2` · Root: `whatsapp-service` · Branch: `main`
+- Webhook aponta para preview: `https://dual-combine-3.preview.emergentagent.com/api`
+- WA_INBOUND_TOKEN: `ZBHBG3GWRmXDhUCj48x-Ma25rpcg6y89Nm84UK1x2EE`
+- Pod preview atualizado com novos valores
+- Produção continua isolada no sidecar antigo `whatsapp-sidecar-production-6336`
+
+#### 2. Fix webhook produção (RCA) ✅
+**Causa raiz:** sidecar de produção (`whatsapp-sidecar-production-6336`) tinha `WA_WEBHOOK_BASE` apontando para o backend de PREVIEW. Resultado: mensagens chegavam ao sidecar mas eram entregues no backend errado, Isabella nunca processava.
+**Fix:** alterada env var no Railway para `https://dual-combine-3.emergent.host/api`.
+
+#### 3. Migration V6.71 — Anti-Alucinação de Identidade ✅
+**Causa raiz:** o prompt fragment V6.51 tinha exemplos com nomes/planos literais (`Vando`, `Fibra 500 Mega`, `Cordovil`). Sem dados reais do cliente, o LLM copiava o exemplo do prompt (few-shot leakage).
+
+**Fixes:**
+- `services/customer_history.py` L201-212: removido "Vando" hardcoded, substituído por instrução para extrair do bloco real
+- Criado `migrations/isabella_anti_hallucination_v671.py` que:
+  - Desativa o V6.51 antigo
+  - Substitui exemplos `Vando/Fibra 500/Cordovil` por placeholders `[APELIDO_REAL]/[PLANO_REAL]/[BAIRRO_REAL]`
+  - Adiciona **Regra 11** (Proibido inventar dados — saudação neutra se não houver bloco real)
+  - Adiciona **Regra 12** (Lead novo tem prioridade sobre cadastro antigo — ignora subscriber_ctx duplicado)
+  - Adiciona **Regra 13** (Continuidade de flow — não reinicia após "Ok"/"Sim"/"blz")
+
+### Tests
+- Pytest existente: 18/18 passing (`test_customer_history_and_linker.py`)
+- Migration aplicada no preview: `frg-07350eb19c` (6386 chars)
+- Lint Python: ✅ OK em ambos arquivos
+
+### ⚠️ Pendências do usuário
+1. **Persistir env vars no painel Emergent (preview)** — atualmente o `.env` está OK mas pode ser sobrescrito em redeploy
+2. **Redeploy de produção** (Save to GitHub → deploy) para subir o V6.71 e o fix do customer_history
+3. **Limpar `subscriber_phones` em produção** — número `21998176526` pode estar vinculado erroneamente a subscriber "Vando" (verificar via UI ou DB query)
+4. **Criar Volume persistente** no sidecar preview Railway (mount `/app/auth_info`)
+5. **Excluir serviço sobrando `whatsapp-sidecar-2`** no Railway
+
+### Critério de sucesso da correção
+Após redeploy de produção, próxima mensagem "Quero instalar" + "Cordovil" + "Ok" deve resultar em:
+- ✅ Isabella NÃO chama o cliente de "Vando"
+- ✅ NÃO menciona "Fibra 500 Mega"
+- ✅ NÃO inventa "vi que você relatou lentidão"
+- ✅ NÃO reinicia o flow após "Quero" — confirma agendamento com data/hora
+
+
+
 ## Feb 15, 2026 — Rate limit estendido para endpoints sensíveis ★
 
 ### O que foi implementado
