@@ -335,7 +335,10 @@ function SidebarNav({ activeTabs, view, setView, brand, isSuperAdmin, onOpenModa
       )}
       <aside className={`app-sidebar ${isOpen ? "is-open" : ""}`} aria-label="Navegação principal">
         <div className="app-sidebar__brand">
-          <div className="app-sidebar__brand-logo" aria-hidden="true">S</div>
+          <img src="/smartprov_icon.png" alt="SmartProv"
+                className="app-sidebar__brand-logo"
+                style={{ width: 32, height: 32, objectFit: "contain",
+                          background: "transparent" }} />
           <div style={{ minWidth: 0, flex: 1 }}>
             <div className="app-sidebar__brand-name">SmartProv</div>
             <div className="app-sidebar__brand-tag">{brand || "Operações ISP"}</div>

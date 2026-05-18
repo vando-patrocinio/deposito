@@ -59,13 +59,8 @@ export default function LoginPage({ onBack }) {
           )}
 
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: "#020617",
-              display: "grid", placeItems: "center", color: "#fff",
-              fontSize: 16, fontWeight: 700, letterSpacing: "-0.04em",
-              fontFamily: "'Space Grotesk', 'Inter', sans-serif",
-            }}>S</div>
+            <img src="/smartprov_icon.png" alt="SmartProv"
+                  style={{ width: 36, height: 36, objectFit: "contain" }} />
             <div>
               <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text-primary)" }}>SmartProv</div>
               <div style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.04em", textTransform: "uppercase", fontWeight: 600 }}>Operações ISP</div>

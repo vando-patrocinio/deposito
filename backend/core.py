@@ -83,7 +83,7 @@ class Settings(BaseModel):
     id: str = "global"
     resend_api_key: Optional[str] = None
     sender_email: Optional[str] = None
-    sender_name: Optional[str] = "Ponto do Colaborador"
+    sender_name: Optional[str] = "SmartProv"
     openai_api_key: Optional[str] = None
     monthly_email_enabled: bool = True
     auto_audit: bool = True
@@ -127,7 +127,7 @@ class Company(BaseModel):
     name: str
     slug: str
     owner_email: str
-    plan: str = "monthly_99"  # PontoIA Pro
+    plan: str = "monthly_99"  # SmartProv Pro
     status: str = "trialing"  # trialing | active | past_due | cancelled
     trial_ends_at: Optional[str] = None
     paid_until: Optional[str] = None
@@ -298,7 +298,7 @@ class _OpenRouterChat:
             base_url="https://openrouter.ai/api/v1",
             default_headers={
                 "HTTP-Referer": os.environ.get("PUBLIC_BASE_URL", "https://app.local"),
-                "X-Title": "PontoIA Lousa",
+                "X-Title": "SmartProv Lousa",
             },
         )
         self._model = model

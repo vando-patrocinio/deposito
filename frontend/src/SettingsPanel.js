@@ -12,7 +12,7 @@ import PublicAccessPanel from "@/PublicAccessPanel";
 export default function SettingsPanel() {
   const [s, setS] = useState(null);
   const [form, setForm] = useState({
-    resend_api_key: "", sender_email: "", sender_name: "Ponto do Colaborador",
+    resend_api_key: "", sender_email: "", sender_name: "SmartProv",
     openai_api_key: "", monthly_email_enabled: true, location_ping_interval_sec: 15,
     he_monthly_budget_brl: 0, he_alert_threshold_pct: 30,
     sla_reparo_minutes: 60, sla_instalacao_minutes: 120, sla_retirada_minutes: 30,
@@ -37,7 +37,7 @@ export default function SettingsPanel() {
     setForm({
       resend_api_key: "",
       sender_email: cur.sender_email || "",
-      sender_name: cur.sender_name || "Ponto do Colaborador",
+      sender_name: cur.sender_name || "SmartProv",
       openai_api_key: "",
       monthly_email_enabled: cur.monthly_email_enabled,
       location_ping_interval_sec: cur.location_ping_interval_sec || 15,
@@ -99,7 +99,7 @@ export default function SettingsPanel() {
   async function sendTestEmail() {
     setTestBusy(true); setTestMsg("");
     try {
-      const res = await api.testEmail(testEmailTo, "Teste de envio — Ponto do Colaborador");
+      const res = await api.testEmail(testEmailTo, "Teste de envio — SmartProv");
       setTestMsg(`✅ Enviado para ${res.to} (id: ${res.id})`);
     } catch (e) {
       setTestMsg("❌ " + (e?.response?.data?.detail || e.message));

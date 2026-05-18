@@ -1,27 +1,27 @@
 {
-  "name": "Ponto do Colaborador",
-  "short_name": "Ponto",
-  "description": "Registro de ponto com selfie automática, cerca virtual e IP público.",
+  "name": "SmartProv",
+  "short_name": "SmartProv",
+  "description": "Plataforma inteligente de provedores de internet — IA, atendimento, financeiro e mapa de rede.",
   "start_url": "/?mode=app",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#020617",
-  "theme_color": "#0f172a",
+  "background_color": "#0a1530",
+  "theme_color": "#0a1530",
   "categories": ["business", "productivity"],
   "lang": "pt-BR",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "/smartprov_icon.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "/smartprov_icon.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

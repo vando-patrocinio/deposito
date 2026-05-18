@@ -34,8 +34,8 @@ logger = logging.getLogger("ponto")
 router = APIRouter(prefix="/api/saas", tags=["saas"])
 
 PLAN_PRICE_BRL = 99.0
-PLAN_NAME = "PontoIA Pro"
-PLAN_FREE_NAME = "PontoIA Free"
+PLAN_NAME = "SmartProv Pro"
+PLAN_FREE_NAME = "SmartProv Free"
 TRIAL_DAYS = 14
 MAX_COLLABORATORS_DEFAULT = 25
 MAX_COLLABORATORS_FREE = 3
@@ -192,7 +192,7 @@ async def _send_welcome_email(company: dict, user: dict) -> None:
     try:
         api_key = (os.environ.get("RESEND_API_KEY") or "").strip() or None
         sender_email = os.environ.get("SENDER_EMAIL") or "onboarding@resend.dev"
-        sender_name = "PontoIA"
+        sender_name = "SmartProv"
         if not api_key:
             # Fallback: settings da Empresa Demo (super admin pode configurar lá)
             demo_settings = await get_settings(DEMO_COMPANY_ID)
@@ -214,7 +214,7 @@ async def _send_welcome_email(company: dict, user: dict) -> None:
           <div style="max-width:560px;margin:0 auto;background:white;border-radius:16px;padding:32px;box-shadow:0 4px 24px rgba(15,23,42,.08);">
             <div style="text-align:center;margin-bottom:24px;">
               <div style="display:inline-block;width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#10b981,#059669);color:white;font-size:24px;line-height:48px;text-align:center;margin-bottom:12px;">📍</div>
-              <h1 style="margin:0;color:#0f172a;font-size:24px;font-weight:800;letter-spacing:-0.02em;">Bem-vindo ao PontoIA!</h1>
+              <h1 style="margin:0;color:#0f172a;font-size:24px;font-weight:800;letter-spacing:-0.02em;">Bem-vindo à SmartProv!</h1>
             </div>
             <p style="font-size:15px;line-height:1.6;color:#334155;">Olá, <strong>{admin_name}</strong>,</p>
             <p style="font-size:15px;line-height:1.6;color:#334155;">Sua empresa <strong>{company_name}</strong> está cadastrada e seu trial de <strong>{trial_days} dias</strong> começou agora. Sem cartão. Sem pegadinha.</p>
@@ -231,14 +231,14 @@ async def _send_welcome_email(company: dict, user: dict) -> None:
             </div>
             <p style="font-size:13px;color:#64748b;line-height:1.6;">Se precisar de ajuda, é só responder a este email. Estamos aqui para fazer dar certo.</p>
             <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
-            <p style="font-size:11px;color:#94a3b8;text-align:center;line-height:1.5;">Você está recebendo este email porque cadastrou {company_name} no PontoIA. Trial: {trial_days} dias · Plano: PontoIA Pro · R$ 99/mês após o trial · Cancele quando quiser.</p>
+            <p style="font-size:11px;color:#94a3b8;text-align:center;line-height:1.5;">Você está recebendo este email porque cadastrou {company_name} na SmartProv. Trial: {trial_days} dias · Plano: SmartProv Pro · R$ 99/mês após o trial · Cancele quando quiser.</p>
           </div>
         </div>
         """
         params = {
             "from": f"{sender_name} <{sender_email}>",
             "to": [user.get("email")],
-            "subject": f"🎉 Bem-vindo ao PontoIA, {admin_name}!",
+            "subject": f"🎉 Bem-vindo à SmartProv, {admin_name}!",
             "html": html,
         }
         result = await asyncio.to_thread(resend.Emails.send, params)
@@ -252,7 +252,7 @@ async def _send_payment_confirmation_email(company: dict, amount_brl: float = 99
     try:
         api_key = (os.environ.get("RESEND_API_KEY") or "").strip() or None
         sender_email = os.environ.get("SENDER_EMAIL") or "onboarding@resend.dev"
-        sender_name = "PontoIA"
+        sender_name = "SmartProv"
         if not api_key:
             demo_settings = await get_settings(DEMO_COMPANY_ID)
             api_key = demo_settings.resend_api_key or None
@@ -281,11 +281,11 @@ async def _send_payment_confirmation_email(company: dict, amount_brl: float = 99
               <div style="display:inline-block;width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#10b981,#059669);color:white;font-size:24px;line-height:48px;text-align:center;margin-bottom:12px;">✓</div>
               <h1 style="margin:0;color:#0f172a;font-size:22px;font-weight:800;letter-spacing:-0.02em;">Pagamento confirmado</h1>
             </div>
-            <p style="font-size:15px;line-height:1.6;color:#334155;">Recebemos seu pagamento. <strong>{company_name}</strong> está ativa no <strong>PontoIA Pro</strong>.</p>
+            <p style="font-size:15px;line-height:1.6;color:#334155;">Recebemos seu pagamento. <strong>{company_name}</strong> está ativa no <strong>SmartProv Pro</strong>.</p>
             <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:18px 20px;margin:24px 0;">
               <table style="width:100%;border-collapse:collapse;font-size:14px;color:#065f46;">
                 <tr><td style="padding:4px 0;">Valor</td><td style="padding:4px 0;text-align:right;font-weight:800;">{amount_str}</td></tr>
-                <tr><td style="padding:4px 0;">Plano</td><td style="padding:4px 0;text-align:right;font-weight:600;">PontoIA Pro · 25 colaboradores</td></tr>
+                <tr><td style="padding:4px 0;">Plano</td><td style="padding:4px 0;text-align:right;font-weight:600;">SmartProv Pro · 25 colaboradores</td></tr>
                 <tr><td style="padding:4px 0;">Próxima cobrança</td><td style="padding:4px 0;text-align:right;font-weight:600;">{paid_until_str}</td></tr>
               </table>
             </div>
@@ -294,14 +294,14 @@ async def _send_payment_confirmation_email(company: dict, amount_brl: float = 99
             </div>
             <p style="font-size:13px;color:#64748b;line-height:1.6;">Este email serve como recibo. Para cancelar, responda este email ou acesse Configurações → Assinatura.</p>
             <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
-            <p style="font-size:11px;color:#94a3b8;text-align:center;line-height:1.5;">PontoIA · Cobrança automática mensal · Cancele quando quiser.</p>
+            <p style="font-size:11px;color:#94a3b8;text-align:center;line-height:1.5;">SmartProv · Cobrança automática mensal · Cancele quando quiser.</p>
           </div>
         </div>
         """
         params = {
             "from": f"{sender_name} <{sender_email}>",
             "to": [owner_email],
-            "subject": f"✓ Pagamento confirmado — {company_name} no PontoIA Pro",
+            "subject": f"✓ Pagamento confirmado — {company_name} no SmartProv Pro",
             "html": html,
         }
         result = await asyncio.to_thread(resend.Emails.send, params)
@@ -336,7 +336,7 @@ async def my_company(user: dict = Depends(get_current_user)):
     is_free = plan_key == "free"
     is_enterprise = plan_key == "enterprise"
     if is_enterprise:
-        co["plan_name"] = "PontoIA Enterprise"
+        co["plan_name"] = "SmartProv Enterprise"
     elif is_free:
         co["plan_name"] = PLAN_FREE_NAME
     else:

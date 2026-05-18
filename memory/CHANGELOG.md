@@ -1,6 +1,40 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — Rebrand completo "SmartProv" (iter99)
+**Objetivo do usuário**: atualizar a marca de "Ponto do Colaborador" / "PontoIA" para **SmartProv** com o novo logo e ícone (azul + roxo, hexágono).
+
+### Assets adicionados
+- `/app/frontend/public/smartprov_logo.png` (logo horizontal com texto, 347 KB) — usado no og:image dos cards de WhatsApp/social.
+- `/app/frontend/public/smartprov_icon.png` (ícone hexagonal só, 121 KB) — favicon, apple-touch-icon, sidebar e login.
+
+### Frontend
+- **`/app/frontend/public/index.html`**:
+  - Novo `<title>SmartProv</title>`
+  - Meta tags Open Graph completas (og:title, og:description, og:image, og:type)
+  - Twitter Card (`summary_large_image`)
+  - `theme-color` mudou pra `#0a1530` (azul escuro do logo).
+  - Favicon e apple-touch-icon agora apontam pro `smartprov_icon.png`.
+  - `apple-mobile-web-app-title` = "SmartProv".
+- **`/app/frontend/public/manifest.json`**: name/short_name/description/theme_color atualizados; ícones 192/512 apontam pro `smartprov_icon.png`.
+- **`App.js` (sidebar brand)**: o "S" placeholder substituído por `<img src="/smartprov_icon.png">` 32×32.
+- **`LoginPage.js`**: mesmo replace do "S" pelo ícone real.
+- **`SettingsPanel.js`**: sender_name dos emails padronizado para "SmartProv".
+
+### Backend
+- **`core.py`**: `sender_name` default = "SmartProv", `X-Title` LLM = "SmartProv Lousa", plan comment = "SmartProv Pro".
+- **`routes/saas.py`**: rebrand em massa (sed) — emails de "Bem-vindo", "Pagamento confirmado", labels de planos: PontoIA → SmartProv. 0 ocorrências residuais.
+
+### Validação
+- `curl -I` confirma servir `/smartprov_icon.png` e `/smartprov_logo.png` com `200 OK` no preview.
+- Meta tags og:image apontam corretamente para `/smartprov_logo.png`.
+- Lint OK (Python + JS).
+
+### Para produção
+- Necessário **Save to GitHub + Redeploy** pra que `https://dual-combine-3.emergent.host` atualize. O preview já está com a nova identidade.
+
+
+
 ## Fev 18, 2026 — Migração permissão "Atendimento WhatsApp" para Cadastro (iter98)
 **Objetivo do usuário**: tirar a checkbox 'Pode abrir o Atendimento WhatsApp' da Gestão de Usuários e colocar no Cadastro de Colaboradores, com gate por role: **somente AUDITOR pode editar**.
 
