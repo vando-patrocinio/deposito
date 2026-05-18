@@ -10,6 +10,7 @@ import {
   Tooltip, Legend, ComposedChart, Line,
 } from "recharts";
 import AnalyticsChart from "@/FinanceiroAnalyticsChart";
+import { KpiCard, AlertCard, Legend as MiniLegend } from "@/components/Dashboard2026";
 
 const fmtMoney = (v) =>
   Number(v || 0).toLocaleString("pt-BR", {
@@ -579,6 +580,7 @@ function PayBillForm({ bill, refs, onClose, onSaved }) {
 export function CashFlowTab() {
   const [period, setPeriod] = useState(30);
   const [data, setData] = useState(null);
+  const [prevData, setPrevData] = useState(null);
   const [moves, setMoves] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -591,14 +593,22 @@ export function CashFlowTab() {
     const from = new Date(now); from.setDate(from.getDate() - period);
     const fromStr = from.toISOString().slice(0, 10);
     const toStr = now.toISOString().slice(0, 10);
+    // Período anterior para comparativo (mesma janela imediatamente antes)
+    const prevTo = new Date(from); prevTo.setDate(prevTo.getDate() - 1);
+    const prevFrom = new Date(prevTo);
+    prevFrom.setDate(prevFrom.getDate() - period);
+    const prevFromStr = prevFrom.toISOString().slice(0, 10);
+    const prevToStr = prevTo.toISOString().slice(0, 10);
     try {
-      const [cf, ms] = await Promise.all([
+      const [cf, ms, prev] = await Promise.all([
         api._client.get(`/financeiro/cashflow?from_date=${fromStr}&to_date=${toStr}`)
                   .then((r) => r.data),
         api._client.get(`/financeiro/movements?from_date=${fromStr}&to_date=${toStr}&limit=100`)
                   .then((r) => r.data),
+        api._client.get(`/financeiro/cashflow?from_date=${prevFromStr}&to_date=${prevToStr}`)
+                  .then((r) => r.data).catch(() => null),
       ]);
-      setData(cf); setMoves(ms);
+      setData(cf); setMoves(ms); setPrevData(prev);
     } finally { setLoading(false); }
   }
   useEffect(() => { reload(); }, [period]); // eslint-disable-line
@@ -645,72 +655,164 @@ export function CashFlowTab() {
             <Plus size={14} /> Lançamento
           </Button>
         </div>
-        {loading || !data ? <Loading /> : (
-          <>
-            <div style={{ display: "grid",
-                          gridTemplateColumns: "repeat(4,1fr)",
-                          gap: 10, marginBottom: 14 }}>
-              <Chip label="Saldo atual"
-                    value={fmtMoney(data.current_balance)}
-                    color="#0f172a" highlight />
-              <Chip label="Entradas" value={fmtMoney(data.totals.income)}
-                    color="#16a34a" icon={ArrowUp} />
-              <Chip label="Saídas" value={fmtMoney(data.totals.expense)}
-                    color="#dc2626" icon={ArrowDown} />
-              <Chip label="Resultado" value={fmtMoney(data.totals.net)}
-                    color={data.totals.net >= 0 ? "#16a34a" : "#dc2626"} />
-              <Chip label="Média/dia entradas"
-                    value={fmtMoney((data.totals.income || 0)
-                      / Math.max(1, data.series?.length || 1))}
-                    color="#10b981" />
-              <Chip label="Média/dia saídas"
-                    value={fmtMoney((data.totals.expense || 0)
-                      / Math.max(1, data.series?.length || 1))}
-                    color="#ef4444" />
-            </div>
-            <div style={{ height: 320, marginTop: 6 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={(() => {
-                  const series = data.series || [];
-                  const n = series.length || 1;
-                  const avgIncome = series.reduce((s, x) =>
-                    s + (Number(x.income) || 0), 0) / n;
-                  const avgExpense = series.reduce((s, x) =>
-                    s + (Number(x.expense) || 0), 0) / n;
-                  return series.map((x) => ({
+        {loading || !data ? <Loading /> : (() => {
+          const series = data.series || [];
+          const n = Math.max(1, series.length);
+          const avgIncome = (data.totals.income || 0) / n;
+          const avgExpense = (data.totals.expense || 0) / n;
+          const prevIncome = prevData?.totals?.income || 0;
+          const prevExpense = prevData?.totals?.expense || 0;
+          const dIncome = prevIncome > 0
+            ? Math.round(((data.totals.income - prevIncome)
+                / prevIncome) * 100) : null;
+          const dExpense = prevExpense > 0
+            ? Math.round(((data.totals.expense - prevExpense)
+                / prevExpense) * 100) : null;
+          // Runway: saldo / consumo médio diário (entradas pesam menos)
+          const dailyBurn = Math.max(0, avgExpense - avgIncome);
+          const runwayDays = dailyBurn > 0
+            ? Math.round((data.current_balance || 0) / dailyBurn) : null;
+          // Sparklines
+          const sparkIn = series.map((x) => Number(x.income) || 0);
+          const sparkOut = series.map((x) => Number(x.expense) || 0);
+          // Alertas
+          const negativeBalance = (data.current_balance || 0) < 0;
+          const negativeResult = (data.totals.net || 0) < 0;
+          const expenseSpike = dExpense != null && dExpense >= 25;
+          const lowRunway = runwayDays != null && runwayDays < 15;
+          return (
+            <>
+              {/* Strip de alertas */}
+              {(negativeBalance || negativeResult || expenseSpike || lowRunway) && (
+                <div data-testid="cashflow-alerts-strip" style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))",
+                  gap: 10, marginBottom: 12,
+                }}>
+                  {negativeBalance && (
+                    <AlertCard tone="bad" icon="⛔"
+                      testId="cashflow-alert-negative-balance"
+                      title="Saldo negativo no caixa"
+                      detail={`Saldo atual: ${fmtMoney(data.current_balance)}`} />
+                  )}
+                  {!negativeBalance && lowRunway && (
+                    <AlertCard tone="warn" icon="⏳"
+                      testId="cashflow-alert-low-runway"
+                      title={`Apenas ${runwayDays} dia${runwayDays !== 1 ? "s" : ""} de cobertura`}
+                      detail="O saldo atual cobre menos de 15 dias no ritmo atual." />
+                  )}
+                  {negativeResult && (
+                    <AlertCard tone="warn" icon="⚠"
+                      testId="cashflow-alert-negative-result"
+                      title="Resultado negativo no período"
+                      detail={`Saídas superaram entradas em ${fmtMoney(Math.abs(data.totals.net))}.`} />
+                  )}
+                  {expenseSpike && (
+                    <AlertCard tone="warn" icon="📈"
+                      testId="cashflow-alert-expense-spike"
+                      title={`Saídas subiram ${dExpense}% vs período anterior`}
+                      detail="Revise as despesas maiores do período." />
+                  )}
+                </div>
+              )}
+
+              {/* Row 1: KPI cards contextuais 2026 */}
+              <div style={{ display: "grid",
+                              gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))",
+                              gap: 12, marginBottom: 14 }}>
+                <KpiCard
+                  testId="cashflow-kpi-balance"
+                  label="Saldo atual"
+                  value={fmtMoney(data.current_balance)}
+                  tone={negativeBalance ? "bad"
+                       : (data.current_balance || 0) < 1000 ? "warn" : "good"}
+                  hint={`Em ${refs.cash_accounts.length} caixa(s)`} />
+                <KpiCard
+                  testId="cashflow-kpi-income"
+                  label={`Entradas · ${period}d`}
+                  value={fmtMoney(data.totals.income)}
+                  tone="good"
+                  delta={dIncome}
+                  sparkline={sparkIn}
+                  sparkColor="#10b981"
+                  hint={`Média ${fmtMoney(avgIncome)}/dia`} />
+                <KpiCard
+                  testId="cashflow-kpi-expense"
+                  label={`Saídas · ${period}d`}
+                  value={fmtMoney(data.totals.expense)}
+                  tone="bad"
+                  delta={dExpense != null ? -Math.abs(dExpense)
+                    * (data.totals.expense >= prevExpense ? 1 : -1) : null}
+                  sparkline={sparkOut}
+                  sparkColor="#dc2626"
+                  hint={`Média ${fmtMoney(avgExpense)}/dia`} />
+                <KpiCard
+                  testId="cashflow-kpi-net"
+                  label="Resultado"
+                  value={fmtMoney(data.totals.net)}
+                  tone={(data.totals.net || 0) >= 0 ? "good" : "bad"}
+                  hint={(data.totals.net || 0) >= 0
+                    ? "Operação no positivo"
+                    : "Atenção: saídas > entradas"} />
+                <KpiCard
+                  testId="cashflow-kpi-runway"
+                  label="Cobertura (runway)"
+                  value={runwayDays == null ? "∞" : runwayDays}
+                  unit={runwayDays == null ? "" : "dias"}
+                  tone={runwayDays == null ? "good"
+                       : runwayDays >= 30 ? "good"
+                       : runwayDays >= 15 ? "warn" : "bad"}
+                  hint={runwayDays == null
+                    ? "Entradas cobrem o ritmo de saídas"
+                    : `Burn rate: ${fmtMoney(dailyBurn)}/dia`} />
+              </div>
+
+              {/* Gráfico com legenda inline */}
+              <div style={{ display: "flex", gap: 14, marginBottom: 8,
+                              flexWrap: "wrap", fontSize: 12 }}>
+                <MiniLegend color="#16a34a" label="Entradas"
+                  value={fmtMoney(data.totals.income)} />
+                <MiniLegend color="#dc2626" label="Saídas"
+                  value={fmtMoney(data.totals.expense)} />
+                <MiniLegend color="#94a3b8"
+                  label={`Média (linha tracejada)`} value="" />
+              </div>
+              <div style={{ height: 320, marginTop: 6 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={series.map((x) => ({
                     ...x,
                     avg_income: avgIncome,
                     avg_expense: avgExpense,
-                  }));
-                })()}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }}
-                          tickFormatter={(v) => `R$${v}`} />
-                  <Tooltip formatter={(v, name) => {
-                    if (name?.toString().includes("Média")) {
-                      return [fmtMoney(v), name];
-                    }
-                    return fmtMoney(v);
-                  }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="income" name="Entradas" fill="#16a34a"
-                          radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="expense" name="Saídas" fill="#dc2626"
-                          radius={[4, 4, 0, 0]} />
-                  <Line type="monotone" dataKey="avg_income"
-                          name="Média Entradas" stroke="#10b981"
-                          strokeWidth={2} strokeDasharray="6 3"
-                          dot={false} activeDot={false} />
-                  <Line type="monotone" dataKey="avg_expense"
-                          name="Média Saídas" stroke="#ef4444"
-                          strokeWidth={2} strokeDasharray="6 3"
-                          dot={false} activeDot={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </>
-        )}
+                  }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }}
+                            tickFormatter={(v) => `R$${v}`} />
+                    <Tooltip formatter={(v, name) => {
+                      if (name?.toString().includes("Média")) {
+                        return [fmtMoney(v), name];
+                      }
+                      return fmtMoney(v);
+                    }} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="income" name="Entradas" fill="#16a34a"
+                            radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="expense" name="Saídas" fill="#dc2626"
+                            radius={[4, 4, 0, 0]} />
+                    <Line type="monotone" dataKey="avg_income"
+                            name="Média Entradas" stroke="#10b981"
+                            strokeWidth={2} strokeDasharray="6 3"
+                            dot={false} activeDot={false} />
+                    <Line type="monotone" dataKey="avg_expense"
+                            name="Média Saídas" stroke="#ef4444"
+                            strokeWidth={2} strokeDasharray="6 3"
+                            dot={false} activeDot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          );
+        })()}
       </Card>
 
       <Card title="Últimos lançamentos">

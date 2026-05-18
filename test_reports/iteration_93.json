@@ -1,0 +1,48 @@
+{
+  "summary": "Frontend-only validation of Dashboard 2026 blueprint extended to (a) Financeiro > Fluxo de Caixa (CashFlowTab) and (b) Rede IA > Painel (Overview). All 5 cashflow KPIs (balance/income/expense/net/runway) + 6 rede-ia KPIs (ctos-total/ctos-approved/pendencies/bairros/ports/cables) render correctly. Period switch 7/30/90 updates labels and refetches /financeiro/cashflow with from_date/to_date. Recharts ComposedChart still renders (9 SVG surfaces detected). Rede IA alerts strip renders 2 alerts (critical-vlans + pendencies) from seeded data. Progress bars (ctos-approved, ports) render. Adjacent sub-tabs (Contas a Pagar / CTOs / Pendências) navigate without regression. Dashboard2026.js shared components (KpiCard, AlertCard, Sparkline, Legend, StatRow) are imported and rendered correctly in both screens.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Financeiro > Fluxo de Caixa",
+        "issues": [
+          "Sparklines em cashflow-kpi-income e cashflow-kpi-expense ficam ocultos porque series do /financeiro/cashflow retorna apenas zeros para o período (não há movements no DB de teste). Comportamento esperado dado o guard sparkline.some(v>0) — porém o cashflow-kpi-balance mostra R$ 0,00 enquanto o AnalyticsChart superior reporta R$ 167.581,47 de recebimentos no período, dando uma incoerência visual entre os dois blocos do mesmo painel. Não é regressão da iteração 93, mas vale flag para o main agent revisar se /financeiro/cashflow está consolidando todas as fontes (movements + faturas).",
+          "cashflow-alerts-strip não aparece (sem condições disparadas) — saldo R$ 0,00 cai na faixa tone=warn do KPI balance mas não dispara alert porque a regra é negative balance (<0), não baixo. Aceitável, mas considere alertar quando saldo == 0 e há despesas a pagar."
+        ]
+      },
+      {
+        "screen": "Rede IA > Painel",
+        "issues": [
+          "rede-ia-kpi-ctos-approved mostra tone='warn' (50% do total) — visual correto. Threshold de 70% para mudar para 'good' está documentado no código."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Opcional) Investigar incoerência cashflow-kpi-balance (R$ 0,00) vs AnalyticsChart > Total Recebimentos (R$ 167.581,47) — possível desalinhamento entre endpoint /financeiro/cashflow e a fonte do AnalyticsChart. Não é regressão da iter 93 e não bloqueia merge."
+  ],
+  "critical_code_review_comments": [
+    "FinanceiroPanelExt.js está em 1446 linhas — recomenda-se extrair CashFlowTab + MovementForm para arquivo próprio (FinanceiroCashFlow.js) já que o padrão Dashboard 2026 deve crescer.",
+    "CashFlowTab faz 3 chamadas paralelas (cashflow atual + movements + cashflow prev). O prev cashflow é trocado em todo period change. Considerar cache via SWR/react-query (já com endpoints idempotentes) para evitar refetch.",
+    "Cálculo de runway usa dailyBurn = max(0, avgExpense - avgIncome); quando avgIncome > avgExpense → runwayDays = null → exibe '∞ Entradas cobrem o ritmo de saídas' (tone=good). OK, mas a lógica não reflete que mesmo com saldo zero o '∞' aparece — vide screenshot atual (Saldo R$ 0,00 + Runway ∞). Considerar exibir '—' ou 'Sem caixa' quando current_balance == 0 e dailyBurn == 0 para evitar mensagem otimista enganosa.",
+    "Em RedeIaPanel.js Overview, ctos.reduce sobre ports e capacity é O(n*m). Para muitas CTOs/portas, considerar precomputar no backend (endpoint /rede-ia/overview-stats).",
+    "Ambos os painéis duplicam o padrão 'grid auto-fit minmax(200px,1fr) gap 12' para o row de KPIs. Poderia extrair `<KpiRow>` em Dashboard2026.js para DRY."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend-only)",
+    "frontend": "100% — 5/5 cashflow KPIs + 6/6 rede-ia KPIs + 3/3 period selectors + 2/2 alert strips condicionais + 2/2 progress bars + Recharts + sub-tabs sem regressão"
+  },
+  "test_credentials": "admin@empresa.com / 123456 (auto-login no preview)",
+  "seed_data_creation": "Nenhum seed criado. Dados existentes — 4 CTOs (2 aprovadas, 2 pendentes), 2 VLANs críticas (301, 3921 em 0%), 2 bairros, 28 portas (6 ocupadas, 21% util), 0.30 km de cabo, 0 movimentos no /financeiro/cashflow do período.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Dashboard 2026 está aplicado e funcional em 3 telas: Movimento/Estoque (EstoquePanel), Financeiro > Fluxo de Caixa (FinanceiroPanelExt.CashFlowTab) e Rede IA > Painel (RedeIaPanel.Overview). Testids estáveis: cashflow-kpi-{balance|income|expense|net|runway}, cashflow-period-{7|30|90}, cashflow-alerts-strip + cashflow-alert-{negative-balance|low-runway|negative-result|expense-spike}; rede-ia-kpi-{ctos-total|ctos-approved|pendencies|bairros|ports|cables}, rede-ia-alerts-strip + rede-ia-alert-{no-ctos|critical-vlans|warning-vlans|pendencies|high-occupancy}. Auto-login segue funcionando em preview. Sparklines do cashflow só renderizam se series tiver algum valor > 0 (guard intencional). Os erros 500 no console vêm de endpoints não relacionados às telas testadas (já presentes desde iter 92).",
+  "rca_of_the_issue": "N/A — feature works as specified."
+}

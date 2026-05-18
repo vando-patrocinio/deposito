@@ -12,6 +12,7 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "@/api";
 import { Card } from "@/ui";
 import RedeIaMap from "@/RedeIaMap";
+import { KpiCard, AlertCard } from "@/components/Dashboard2026";
 
 const TABS = [
   { id: "overview", label: "Painel" },
@@ -204,6 +205,8 @@ function Overview() {
   const usedPorts = ctos.reduce(
     (acc, c) => acc + ((c.ports || []).filter((p) => p.status === "used").length), 0,
   );
+  const occupancyRate = totalPorts
+    ? Math.round((usedPorts / totalPorts) * 100) : 0;
   // Integração SmartOLT
   const ctosWithOnu = (mapData.ctos || []).filter((c) => (c.health?.total || 0) > 0).length;
   const totalCableMeters = (mapData.cables || []).reduce(
@@ -212,20 +215,106 @@ function Overview() {
   (mapData.cables || []).forEach((c) => {
     cableByType[c.type] = (cableByType[c.type] || 0) + (c.length_m || 0);
   });
+  // Alertas
+  const criticalVlans = (mapData.vlans || []).filter((v) => v.avg_score < 50);
+  const warningVlans = (mapData.vlans || []).filter((v) => v.avg_score >= 50 && v.avg_score < 75);
+  const highOccupancy = occupancyRate >= 80;
+  const noCtos = ctos.length === 0;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      {/* Strip de alertas */}
+      {(criticalVlans.length > 0 || pend.length > 0 || highOccupancy || noCtos) && (
+        <div data-testid="rede-ia-alerts-strip" style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))",
+          gap: 10,
+        }}>
+          {noCtos && (
+            <AlertCard tone="info" icon="📭"
+              testId="rede-ia-alert-no-ctos"
+              title="Nenhuma CTO cadastrada"
+              detail="Use o app do técnico para cadastrar as primeiras CTOs." />
+          )}
+          {criticalVlans.length > 0 && (
+            <AlertCard tone="bad" icon="🔴"
+              testId="rede-ia-alert-critical-vlans"
+              title={`${criticalVlans.length} VLAN${criticalVlans.length !== 1 ? "s" : ""} em estado crítico`}
+              detail={criticalVlans.slice(0, 3).map((v) =>
+                `VLAN ${v.vlan} (${v.avg_score}%)`).join(" · ")} />
+          )}
+          {warningVlans.length > 0 && criticalVlans.length === 0 && (
+            <AlertCard tone="warn" icon="🟡"
+              testId="rede-ia-alert-warning-vlans"
+              title={`${warningVlans.length} VLAN${warningVlans.length !== 1 ? "s" : ""} em atenção`}
+              detail="Sinal médio entre 50% e 75% — vale fiscalizar." />
+          )}
+          {pend.length > 0 && (
+            <AlertCard tone="warn" icon="⏳"
+              testId="rede-ia-alert-pendencies"
+              title={`${pend.length} CTO${pend.length !== 1 ? "s" : ""} aguardando validação`}
+              detail="Gestor de Rede deve aprovar para sincronizar com SmartOLT." />
+          )}
+          {highOccupancy && (
+            <AlertCard tone="warn" icon="📶"
+              testId="rede-ia-alert-high-occupancy"
+              title={`Taxa de ocupação ${occupancyRate}% — alta`}
+              detail="Considere planejar expansão (mais portas / CTOs)." />
+          )}
+        </div>
+      )}
+
+      {/* KPIs contextuais 2026 */}
       <div style={{ display: "grid",
                        gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))",
                        gap: 12 }}>
-        <KPI label="CTOs cadastradas" value={ctos.length} />
-        <KPI label="CTOs aprovadas" value={approved} color="#15803d" />
-        <KPI label="Pendências validação" value={pend.length} color="#ca8a04" />
-        <KPI label="Bairros mapeados" value={bairros.length} />
-        <KPI label="Portas ocupadas / total" value={`${usedPorts} / ${totalPorts}`}
-              color="#7c3aed" />
-        <KPI label="Taxa de ocupação"
-              value={totalPorts ? `${Math.round((usedPorts / totalPorts) * 100)}%` : "—"} />
+        <KpiCard
+          testId="rede-ia-kpi-ctos-total"
+          label="CTOs cadastradas"
+          value={ctos.length}
+          tone="info"
+          hint={`${approved} aprovadas · ${pend.length} pendentes`} />
+        <KpiCard
+          testId="rede-ia-kpi-ctos-approved"
+          label="CTOs aprovadas"
+          value={approved}
+          tone={ctos.length > 0 && approved === ctos.length ? "good"
+               : ctos.length > 0 && approved / ctos.length > 0.7 ? "good"
+               : "warn"}
+          progress={ctos.length > 0 ? (approved / ctos.length) * 100 : 0}
+          hint={ctos.length > 0
+            ? `${Math.round((approved / ctos.length) * 100)}% do total`
+            : "Sem CTOs ainda"} />
+        <KpiCard
+          testId="rede-ia-kpi-pendencies"
+          label="Pendências de validação"
+          value={pend.length}
+          tone={pend.length === 0 ? "good"
+               : pend.length < 5 ? "warn" : "bad"}
+          hint={pend.length === 0
+            ? "Tudo em dia"
+            : "Aguardando ação do gestor"} />
+        <KpiCard
+          testId="rede-ia-kpi-bairros"
+          label="Bairros mapeados"
+          value={bairros.length}
+          tone="info"
+          hint={`${mapData.vlans?.length || 0} VLAN(s) monitoradas`} />
+        <KpiCard
+          testId="rede-ia-kpi-ports"
+          label="Portas ocupadas"
+          value={`${usedPorts} / ${totalPorts}`}
+          tone={occupancyRate >= 80 ? "bad"
+               : occupancyRate >= 60 ? "warn" : "good"}
+          progress={occupancyRate}
+          hint={`${occupancyRate}% utilizadas`} />
+        <KpiCard
+          testId="rede-ia-kpi-cables"
+          label="Cabo óptico total"
+          value={(totalCableMeters / 1000).toFixed(2)}
+          unit="km"
+          tone="info"
+          hint={`${mapData.cables?.length || 0} cabo(s) cadastrado(s)`} />
       </div>
 
       {/* Integração SmartOLT */}
