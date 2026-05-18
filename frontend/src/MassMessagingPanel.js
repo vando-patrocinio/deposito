@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import DisparoIaPanel from "@/DisparoIaPanel";
 import DisparoPromoPanel from "@/DisparoPromoPanel";
+import ErrorBoundary from "@/ErrorBoundary";
 
 const fmtDate = (s) => s ? new Date(s).toLocaleString("pt-BR") : "—";
 
@@ -112,7 +113,16 @@ export default function MassMessagingPanel() {
         })}
       </div>
 
-      {tab === "disparo_ia" ? <DisparoIaPanel /> : tab === "promo" ? <DisparoPromoPanel /> : (
+      {tab === "disparo_ia" ? (
+        <ErrorBoundary name="disparo-ia"
+                         fallbackText="O painel de Disparo IA encontrou um erro. Recarregue para tentar de novo — os outros recursos seguem ativos.">
+          <DisparoIaPanel />
+        </ErrorBoundary>
+      ) : tab === "promo" ? (
+        <ErrorBoundary name="disparo-promo">
+          <DisparoPromoPanel />
+        </ErrorBoundary>
+      ) : (
       <Card title="Campanhas">
         {loading ? (
           <div style={{ color: "#94a3b8" }}>Carregando…</div>

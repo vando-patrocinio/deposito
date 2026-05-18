@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Send, AlertCircle, CheckCircle2, Clock, FileText } from "lucide-react";
 import { api } from "@/api";
 import BoletoPdfPreviewCard from "@/BoletoPdfPreviewCard";
+import ErrorBoundary from "@/ErrorBoundary";
 
 const Card = ({ children, style = {}, ...rest }) => (
   <div
@@ -163,7 +164,10 @@ export default function DisparoBoletoCard() {
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
-      <BoletoPdfPreviewCard />
+      <ErrorBoundary name="boleto-pdf-preview"
+                       fallbackText="A pré-visualização do boleto encontrou um erro. O restante do disparo segue funcionando.">
+        <BoletoPdfPreviewCard />
+      </ErrorBoundary>
       <Card data-testid="disparo-boleto-card" style={{ padding: 18 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10,
                        marginBottom: 14 }}>

@@ -184,6 +184,13 @@ export default function BoletoPdfPreviewCard() {
                 data-testid="boleto-preview-img"
                 src={previewUrl}
                 alt="Pré-visualização do boleto PDF"
+                onError={(ev) => {
+                  // Evita "Script error." cross-origin no overlay do CRA
+                  ev.currentTarget.onerror = null;
+                  ev.currentTarget.style.display = "none";
+                  setMsg({ kind: "err",
+                            text: "Não foi possível carregar a imagem de pré-visualização." });
+                }}
                 style={{
                   maxWidth: "100%",
                   maxHeight: 720,

@@ -169,17 +169,18 @@ export default function DisparoIaPanel() {
 /* ============================================================= */
 function KpiDashboard({ kpis }) {
   if (!kpis) return null;
-  const pct = (v) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
+  const pct = (v) => (v == null ? "—" : `${(Number(v) * 100).toFixed(1)}%`);
+  const n = (v) => Number(v ?? 0).toLocaleString("pt-BR");
 
   const items = [
-    { label: "Campanhas (30d)", value: kpis.campaigns_count, color: "#0f172a" },
-    { label: "Enviadas", value: kpis.sent.toLocaleString("pt-BR"), color: "#0f172a" },
+    { label: "Campanhas (30d)", value: n(kpis.campaigns_count), color: "#0f172a" },
+    { label: "Enviadas", value: n(kpis.sent), color: "#0f172a" },
     { label: "Delivery", value: pct(kpis.delivery_rate), color: "#16a34a" },
     { label: "Read rate", value: pct(kpis.read_rate), color: "#16a34a" },
     { label: "Reply rate", value: pct(kpis.reply_rate), color: "#0ea5e9" },
     { label: "Positive reply", value: pct(kpis.positive_reply_rate), color: "#0ea5e9" },
-    { label: "Save (churn)", value: kpis.save_signals, color: "#dc2626" },
-    { label: "Upsell sinalizado", value: kpis.upsell_signals, color: "#0d9488" },
+    { label: "Save (churn)", value: n(kpis.save_signals), color: "#dc2626" },
+    { label: "Upsell sinalizado", value: n(kpis.upsell_signals), color: "#0d9488" },
     { label: "Block rate", value: pct(kpis.block_rate), color: "#ca8a04" },
     { label: "Cost / conv.", value: "em breve", color: "#94a3b8",
       hint: "Em breve — depende do channel cost" },
