@@ -1011,9 +1011,42 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
         "whatsapp_status": "nao_enviado", "whatsapp_last_message": None,
         "completion_data": None, "admin_action": None, "admin_notes": None,
         "ai_triage_pending": True,
+        # Quality notes — snapshot do sinal SmartOLT na abertura.
+        # Preenchido best-effort (cliente pode não ter SmartOLT mapeado).
+        "signal_at_open": None,
+        "signal_at_open_at": None,
+        "signal_at_close": None,
+        "signal_at_close_at": None,
         "created_at": now_iso(),
     }
     await db.tickets.insert_one(doc)
+    # Captura snapshot do sinal NO MOMENTO DA ABERTURA (async, não bloqueia)
+    try:
+        from routes.smartolt import resolve_signal_for_ticket, get_onu_signal_live
+        onu = await resolve_signal_for_ticket(doc)
+        if onu and onu.get("sn"):
+            live = await get_onu_signal_live(onu.get("sn"),
+                                                doc.get("company_id"))
+            if live and live.get("rx_dbm") is not None:
+                await db.tickets.update_one(
+                    {"id": doc["id"]},
+                    {"$set": {
+                        "signal_at_open": {
+                            "rx_dbm": float(live["rx_dbm"]),
+                            "status": live.get("status"),
+                            "sn": onu.get("sn"),
+                        },
+                        "signal_at_open_at": now_iso(),
+                    }},
+                )
+                doc["signal_at_open"] = {
+                    "rx_dbm": float(live["rx_dbm"]),
+                    "status": live.get("status"),
+                    "sn": onu.get("sn"),
+                }
+                doc["signal_at_open_at"] = now_iso()
+    except Exception as e:
+        logger.info("[lousa.quality] snapshot abertura falhou: %s", e)
     # Modo Boss: se urgente, envia notificação automática ao cliente via Baileys
     if payload.priority == "urgente":
         try:
@@ -1029,6 +1062,118 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
     )
     doc.pop("_id", None)
     return doc
+
+
+@router.get("/lousa/quality-notes/config")
+async def quality_notes_get_config(user: dict = Depends(require_role("gestor"))):
+    """Lê config da feature 'Notas de Qualidade' (toggle on/off + threshold)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.lousa_quality_config.find_one({"company_id": cid}, {"_id": 0})
+    if not doc:
+        doc = {
+            "company_id": cid,
+            "enabled": True,
+            "degradation_threshold_db": 3.0,
+            "los_threshold_dbm": -28.0,
+        }
+    return doc
+
+
+class QualityConfigIn(BaseModel):
+    enabled: Optional[bool] = None
+    degradation_threshold_db: Optional[float] = Field(default=None, ge=0.5, le=20)
+    los_threshold_dbm: Optional[float] = Field(default=None, ge=-40, le=-15)
+
+
+@router.put("/lousa/quality-notes/config")
+async def quality_notes_set_config(body: QualityConfigIn,
+                                       user: dict = Depends(require_role("administrador"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    upd = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not upd:
+        raise HTTPException(400, "Nada para atualizar")
+    upd["updated_at"] = now_iso()
+    upd["updated_by"] = user.get("email")
+    await db.lousa_quality_config.update_one(
+        {"company_id": cid}, {"$set": upd, "$setOnInsert": {"company_id": cid}},
+        upsert=True,
+    )
+    return await quality_notes_get_config(user)
+
+
+@router.get("/lousa/quality-notes")
+async def quality_notes_list(
+    days: int = 30, limit: int = 100,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Lista tickets finalizados com snapshot de sinal antes/depois +
+    classificação automática:
+
+    - **bom**: sinal melhorou (Δ ≥ 0)
+    - **regular**: piorou pouco (Δ < 3 dB)
+    - **ruim**: piorou >= 3 dB ou foi pra LOS pós-reparo
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await quality_notes_get_config(user)
+    deg_thr = float(cfg.get("degradation_threshold_db") or 3.0)
+    los_thr = float(cfg.get("los_threshold_dbm") or -28.0)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    rows = await db.tickets.find(
+        {
+            "company_id": cid,
+            "status": "finalizada",
+            "closed_at": {"$gte": cutoff},
+            "signal_at_open": {"$ne": None},
+            "signal_at_close": {"$ne": None},
+        },
+        {"_id": 0, "id": 1, "client_snapshot": 1, "type": 1,
+         "assigned_collaborator_id": 1, "closed_at": 1, "closed_by": 1,
+         "signal_at_open": 1, "signal_at_close": 1,
+         "signal_at_open_at": 1, "signal_at_close_at": 1, "outcome": 1},
+    ).sort("closed_at", -1).limit(min(limit, 500)).to_list(500)
+
+    # Enriquece com nome do técnico
+    coll_ids = list({r["closed_by"] for r in rows if r.get("closed_by")})
+    coll_map = {}
+    if coll_ids:
+        for c in await db.collaborators.find(
+                {"id": {"$in": coll_ids}}, {"_id": 0, "id": 1, "name": 1},
+        ).to_list(len(coll_ids)):
+            coll_map[c["id"]] = c.get("name")
+
+    summary = {"bom": 0, "regular": 0, "ruim": 0}
+    for r in rows:
+        before = float(r["signal_at_open"]["rx_dbm"])
+        after = float(r["signal_at_close"]["rx_dbm"])
+        delta = round(after - before, 2)
+        # Em dBm, valores mais próximos de 0 são melhores. -23 > -27.
+        # "delta positivo" = melhorou (saiu de -27 pra -23 = +4dB)
+        is_los_after = after <= los_thr
+        if is_los_after:
+            grade = "ruim"
+            reason = f"Pós-reparo em LOS ({after} ≤ {los_thr} dBm)"
+        elif delta < -deg_thr:
+            grade = "ruim"
+            reason = f"Piorou {abs(delta):.1f} dB (≥ {deg_thr})"
+        elif delta < 0:
+            grade = "regular"
+            reason = f"Piorou {abs(delta):.1f} dB (tolerável)"
+        else:
+            grade = "bom"
+            reason = f"Estável ou melhorou ({'+' if delta >= 0 else ''}{delta:.1f} dB)"
+        r["quality_delta_db"] = delta
+        r["quality_grade"] = grade
+        r["quality_reason"] = reason
+        r["closed_by_name"] = coll_map.get(r.get("closed_by"))
+        summary[grade] += 1
+
+    return {
+        "items": rows,
+        "total": len(rows),
+        "summary": summary,
+        "config": cfg,
+    }
 
 
 @router.delete("/lousa/tickets/{ticket_id}")
@@ -1365,6 +1510,27 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
             },
         }},
     )
+    # Quality notes — snapshot do sinal NO FECHAMENTO (SmartOLT live)
+    try:
+        from routes.smartolt import resolve_signal_for_ticket, get_onu_signal_live
+        ticket_doc = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+        onu = await resolve_signal_for_ticket(ticket_doc)
+        if onu and onu.get("sn"):
+            live = await get_onu_signal_live(onu.get("sn"), company_id)
+            if live and live.get("rx_dbm") is not None:
+                await db.tickets.update_one(
+                    {"id": ticket_id},
+                    {"$set": {
+                        "signal_at_close": {
+                            "rx_dbm": float(live["rx_dbm"]),
+                            "status": live.get("status"),
+                            "sn": onu.get("sn"),
+                        },
+                        "signal_at_close_at": now_iso(),
+                    }},
+                )
+    except Exception as e:
+        logger.info("[lousa.quality] snapshot fechamento falhou: %s", e)
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1})
     coll_name = (coll or {}).get("name", "Técnico")
     await _log_ticket_action(

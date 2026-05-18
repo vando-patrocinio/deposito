@@ -286,6 +286,14 @@ export const api = {
     client.post(`/rede-ia/ctos/${ctoId}/provision`, payload).then((r) => r.data),
   redeIaCtoLocationUpdate: (ctoId, payload) =>
     client.put(`/rede-ia/ctos/${ctoId}/location`, payload).then((r) => r.data),
+
+  // ========= Lousa — Notas de Qualidade =========
+  lousaQualityConfig: () =>
+    client.get(`/lousa/quality-notes/config`).then((r) => r.data),
+  lousaQualitySaveConfig: (payload) =>
+    client.put(`/lousa/quality-notes/config`, payload).then((r) => r.data),
+  lousaQualityList: (days = 30) =>
+    client.get(`/lousa/quality-notes?days=${days}`).then((r) => r.data),
   motorIaAgentsList: () => client.get(`/motor-ia/agents`).then((r) => r.data),
   motorIaAgentToggle: (agentId, enabled) =>
     client.put(`/motor-ia/agents/${agentId}`, { enabled }).then((r) => r.data),
