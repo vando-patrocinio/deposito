@@ -1,6 +1,34 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — Dashboard 2026 da aba Movimento (estoque) (iter92)
+**Objetivo do usuário**: redesenhar a aba "Movimento" pra melhorar entendimento + garantir que todas as páginas estão em full-width.
+
+### Pesquisa aplicada (web search)
+Blueprint "Summary First → Movement → Detail" — `Alerts strip → KPI cards contextuais → Movement chart → Stock by SKU → Activity feed → Tech ranking`. Sparklines embutidas, semáforo de cor, tendências (delta vs período anterior), responsive cards.
+
+### Frontend (`/app/frontend/src/EstoquePanel.js`)
+- **DashboardSection** completamente reescrito (5 KPI cards básicos + 2 listas → blueprint 2026 com 6 seções).
+- Novos sub-componentes: `AlertCard`, `KpiCard`, `Sparkline` (SVG inline), `MovementChart` (SVG inline com 2 polylines), `LocationBars` (stacked bar + linhas), `Legend`.
+- **Strip de alertas** condicional: ONTs zerado/baixo + insumos zerados/baixos com tone vermelho/amarelo.
+- **Row KPIs** (5 cards): ONTs no estoque, Instalações 7d (com Δ% vs semana anterior + sparkline + hint 30d), OS ativas, Dias de cobertura (calculado: estoque ÷ consumo médio), Eficiência retirada (com progress bar). Cada card tem `borderTop` colorido + tone semafórico + hint.
+- **Row Movimento + Distribuição**: gráfico SVG de movimento 14 dias (instalações vs total) com grid pontilhado + legenda de instalações/retiradas/devoluções 30d. Cards "Onde estão as ONTs" com stacked bar horizontal + breakdown empresa/técnicos/instaladas + percentual.
+- **Row Stock SKU + Activity**: barras horizontais por insumo (empresa vs c/ técnico) com tone por threshold + activity feed das últimas 8 movimentações com ícone direcional (↗ inst · ↘ retirada · ↩ devolução).
+- **Row Ranking técnicos**: cards mini com ONTs em destaque colorido, breakdown instalações/retiradas, chips de cada insumo com quantidade colorida por threshold.
+
+### Cosméticos aplicados pós-testing (iter92-fix)
+- Badge delta oculto quando installs7=0 e prevWeekInstalls=0 (evita "↓ 100%" enganoso).
+- Sparkline some quando todos os 14 dias são zero (evita linha reta desnecessária).
+
+### Full-width audit
+- `.app-content` confirmado `width:100%` sem `max-width` (já estava). Todas as páginas SaaS herdam.
+
+### Validação (testing_agent_v3_fork iter92)
+- 100% frontend: 10/10 testids obrigatórios (`stock-alerts-strip`, `kpi-onts-stock`, `kpi-installations`, `kpi-active-services`, `kpi-days-of-supply`, `kpi-withdrawal-rate`, `movement-trend-card`, `location-distribution-card`, `empresa-stock-card`, `activity-feed-card`, `tech-rows-card`) + 5/5 condicionais (`location-stacked-bar`, `loc-row-empresa`, `loc-row-tecnicos`, `loc-row-instaladas`).
+- Sub-tabs ONTs/Insumos/Clientes/Ordens/Histórico sem regressão.
+
+
+
 ## Fev 18, 2026 — Ranking de técnicos por qualidade de reparo (iter91-b)
 - Novo endpoint `GET /api/lousa/quality-notes/technicians-ranking?days=X` agrega tickets finalizados com `signal_at_open` + `signal_at_close` por colaborador e calcula:
   - `total_reparos`, `bom/regular/ruim`, `pct_bom`, `pct_ruim`, `avg_delta_db`.

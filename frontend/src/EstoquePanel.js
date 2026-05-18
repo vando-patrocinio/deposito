@@ -218,8 +218,8 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
           value={installs7}
           unit=""
           tone={velocityDelta >= 0 ? "good" : velocityDelta > -20 ? "warn" : "bad"}
-          delta={velocityDelta}
-          sparkline={sparkInstalls}
+          delta={installs7 === 0 && prevWeekInstalls === 0 ? null : velocityDelta}
+          sparkline={sparkInstalls.some((v) => v > 0) ? sparkInstalls : null}
           sparkColor="#10b981"
           hint={`${installs30} nos últimos 30d`} />
         <KpiCard
@@ -568,7 +568,8 @@ function KpiCard({ testId, label, value, unit, tone = "info", delta,
 }
 
 function Sparkline({ values = [], color = "#0ea5e9", height = 30 }) {
-  if (!values.length) return null;
+  if (!values || !values.length) return null;
+  if (!values.some((v) => v > 0)) return null;
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);
   const range = Math.max(1, max - min);
