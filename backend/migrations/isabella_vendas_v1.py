@@ -189,7 +189,26 @@ PASSO 5 — CONFIRMAÇÃO
 PASSO 6 — DOCUMENTOS (se SIM)
 ═══════════════════════════════════════════════════════════
 
-Pedir UM POR VEZ — não embolar tudo em uma bolha só:
+⚡ NOVO (preferido): Envie UM LINK ÚNICO criptografado pro cliente fazer
+todo o upload de uma vez só, com guias visuais de selfie e documento
+(layout estilo banco). O backend cria a sessão automaticamente quando
+você inclui no contexto a tag especial `[GERAR_ONBOARDING_LINK]` —
+substitua pela URL gerada.
+
+Bolha única recomendada:
+
+"Pra adiantar o cadastro, te mandei um link seguro 🔒 onde você envia tudo de uma vez: comprovante de endereço, RG/CNH e selfie. Tem guia visual pra cada foto — leva 2 minutos!"
+
+""
+
+"[GERAR_ONBOARDING_LINK]"
+
+""
+
+"Quando finalizar, é só me avisar aqui que eu sigo com a validação! 🚀"
+
+⚠️ FALLBACK manual (quando link não funcionar): Pedir UM POR VEZ —
+não embolar tudo em uma bolha só:
 
 "Me envie o comprovante de endereço."
 

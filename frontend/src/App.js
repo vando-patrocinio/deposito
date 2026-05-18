@@ -758,6 +758,11 @@ function AppContent() {
       const p = window.location.pathname;
       if (p === "/mural" || p === "/leaderboard") return <LeaderboardMural />;
       if (p === "/tv" || p === "/quadro" || p.startsWith("/tv/")) return <TvHub />;
+      if (p.startsWith("/onboarding/")) {
+        const token = p.replace("/onboarding/", "");
+        const OnboardingPage = require("@/OnboardingPage").default;
+        return <OnboardingPage token={token} />;
+      }
     }
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--text-secondary)" }} data-testid={autoLoginState === "pending" ? "auto-login-loading" : "auth-loading"}>
@@ -769,6 +774,12 @@ function AppContent() {
   // Mural público — TV no escritório (sem auth)
   if (route.path === "/mural" || route.path === "/leaderboard") {
     return <LeaderboardMural />;
+  }
+  // Onboarding público — cliente captura documentos pós-venda (sem auth)
+  if ((route.path || "").startsWith("/onboarding/")) {
+    const token = route.path.replace("/onboarding/", "");
+    const OnboardingPage = require("@/OnboardingPage").default;
+    return <OnboardingPage token={token} />;
   }
   // TV Hub — Quadro Kanban + KPIs Isabella + Financeiro + Mural (público, sem auth)
   if (route.path === "/tv" || route.path === "/quadro"

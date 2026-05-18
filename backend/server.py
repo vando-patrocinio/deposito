@@ -78,6 +78,7 @@ from routes import (
     holerite as routes_holerite,
     feriados as routes_feriados,
     stok as routes_stok,
+    onboarding as routes_onboarding,
     users as routes_users,
     secretaria as routes_secretaria,
     drive as routes_drive,
@@ -476,6 +477,7 @@ app.include_router(routes_disparo_boleto.router)
 app.include_router(routes_boleto_template.router)
 app.include_router(routes_gestao_ia.router)
 app.include_router(routes_isabella_kpis.router)
+app.include_router(routes_onboarding.router)
 app.include_router(routes_tv_dashboards.router)
 
 

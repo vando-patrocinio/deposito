@@ -1984,6 +1984,34 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             agent="isabella_whatsapp",
         )
         reply_text = (result.get("content") or "").strip()
+
+        # Interceptor: se IA incluiu o marcador [GERAR_ONBOARDING_LINK],
+        # cria a sessão de onboarding e substitui pela URL real.
+        if reply_text and "[GERAR_ONBOARDING_LINK]" in reply_text:
+            try:
+                from services.onboarding import create_session
+                # Tenta extrair plano da última mensagem da Isabella
+                plan_match = re.search(
+                    r"(\d{2,4}\s*M[EeÉé][Gg][Aa][^\n\.\,]*)", reply_text
+                )
+                plan_name = plan_match.group(1).strip() if plan_match else None
+                obs = await create_session(
+                    company_id=cid,
+                    phone=phone,
+                    plan_name=plan_name,
+                    suggested_name=(subscriber_ctx or {}).get("name"),
+                )
+                reply_text = reply_text.replace(
+                    "[GERAR_ONBOARDING_LINK]", obs["url"]
+                )
+                logger.info(
+                    "[wa-baileys] onboarding link gerado phone=%s url=%s",
+                    phone, obs["url"][:60],
+                )
+            except Exception as e:
+                logger.warning("[wa-baileys] onboarding link skip: %s", e)
+                # Remove o marcador mesmo se falhar, evitando vazar pra cliente
+                reply_text = reply_text.replace("[GERAR_ONBOARDING_LINK]", "")
     except Exception as e:
         # Limpa flag de digitando em caso de erro
         try:
