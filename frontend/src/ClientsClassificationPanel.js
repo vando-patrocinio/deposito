@@ -157,6 +157,16 @@ export default function ClientsClassificationPanel() {
           onClick={() => setFilter(null)}
           testid="summary-total"
         />
+        <SummaryCard
+          label="Reincidência crítica"
+          count={summary.critical_reincidencia || 0}
+          desc="mesmo téc 3+× sem resolver"
+          color="#7f1d1d"
+          bg="#fef2f2"
+          active={false}
+          onClick={() => {}}
+          testid="summary-reincidencia"
+        />
       </div>
 
       {/* Tabela */}
@@ -206,11 +216,12 @@ export default function ClientsClassificationPanel() {
                 <Th align="center">90d</Th>
                 <Th>Último chamado</Th>
                 <Th>Técnico</Th>
+                <Th>Reincidência</Th>
               </tr>
             </thead>
             <tbody>
               {filteredItems.length === 0 && (
-                <tr><td colSpan={8} style={{
+                <tr><td colSpan={9} style={{
                   padding: 30, textAlign: "center", color: "var(--text-muted)",
                   fontSize: 12,
                 }}>
@@ -423,7 +434,80 @@ function ClientRow({ c }) {
           </div>
         )}
       </Td>
+      <Td>
+        <TechReincidenciaCell c={c} />
+      </Td>
     </tr>
+  );
+}
+
+function TechReincidenciaCell({ c }) {
+  const breakdown = c.tech_breakdown || [];
+  const critical = c.critical_reincidencia;
+
+  if (breakdown.length === 0) {
+    return <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>;
+  }
+
+  // Identifica técnico com 3+ visitas E pendências não resolvidas
+  const problematic = breakdown.find(
+    (t) => t.count >= 3 && t.unresolved_count >= 1,
+  );
+
+  return (
+    <div style={{ minWidth: 130 }}>
+      {critical && problematic ? (
+        <div
+          title={
+            `⚠ ${problematic.name} foi ${problematic.count}x neste cliente ` +
+            `com ${problematic.unresolved_count} caso(s) não resolvido(s). ` +
+            `Possível problema estrutural — considere reescalar.`
+          }
+          style={{
+            padding: "4px 7px", borderRadius: 4,
+            background: "#fef2f2", border: "1px solid #fecaca",
+            color: "#991b1b", fontSize: 10, fontWeight: 700,
+            display: "inline-flex", alignItems: "center", gap: 3,
+            marginBottom: 4,
+          }}
+        >
+          ⚠ {problematic.name.split(" ")[0]} ×{problematic.count}
+        </div>
+      ) : null}
+      <div style={{ fontSize: 10, color: "var(--text-secondary)",
+                     lineHeight: 1.6 }}>
+        {breakdown.slice(0, 3).map((t) => (
+          <div key={t.tech_id} style={{
+            display: "flex", justifyContent: "space-between", gap: 6,
+          }}>
+            <span style={{
+              whiteSpace: "nowrap", overflow: "hidden",
+              textOverflow: "ellipsis", maxWidth: 90,
+              color: t.count >= 3 ? "#dc2626"
+                : t.count >= 2 ? "#ea580c" : "var(--text-secondary)",
+              fontWeight: t.count >= 2 ? 700 : 500,
+            }}>{t.name}</span>
+            <span style={{
+              fontFamily: "var(--font-mono, ui-monospace)",
+              fontWeight: 700,
+              color: t.count >= 3 ? "#dc2626" : "var(--text-primary)",
+            }}>
+              {t.count}×
+              {t.unresolved_count > 0 && (
+                <span style={{ color: "#ea580c", marginLeft: 2 }}>
+                  ({t.unresolved_count})
+                </span>
+              )}
+            </span>
+          </div>
+        ))}
+        {breakdown.length > 3 && (
+          <div style={{ color: "var(--text-muted)", fontSize: 9, marginTop: 2 }}>
+            +{breakdown.length - 3} outro(s)
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

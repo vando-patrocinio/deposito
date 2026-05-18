@@ -1004,3 +1004,22 @@ Bug real do Vando (17/05 23:31): Isabella repetiu "Pode me enviar o print sim, v
 - Tabela com 8 colunas: Cliente (nome+nickname+phone+cód), Plano/Filial, Classificação (badge colorido + diagnóstico predominante), 30d/60d/90d coloridos por severidade, Último chamado (idade + status pill + prioridade), Técnico (avatar+nome+role + contagem de outros técnicos que já atenderam)
 
 **Validado:** screenshot exibiu 93 clientes esporádicos com técnicos reais (DIOGO HENRIQUE, JEFFERSON, Hudson). Lint OK em backend e frontend.
+
+## 🔁 [17/Fev/2026] Coluna "Reincidência por Técnico"
+
+**Adicionado:** detecção de "reincidência crítica" — mesmo técnico foi 3+ vezes no mesmo cliente E pelo menos 1 caso permanece não-finalizado/cancelado. Sinal de problema estrutural.
+
+**Backend** (`routes/isabella_kpis.py`):
+- Aggregation agora coleta `ticket_techs: [{tech_id, status, created_at}, ...]` (lista bruta)
+- Por cliente, calcula `tech_breakdown: [{tech_id, name, role, count, unresolved_count}, ...]` ordenado por contagem
+- Identifica `top_technician` (mais frequente) e flag `critical_reincidencia` quando algum técnico ≥3 visitas com ≥1 sem resolver
+- Summary inclui `critical_reincidencia` total
+
+**Frontend** (`ClientsClassificationPanel.js`):
+- 5º summary card **"Reincidência crítica"** (vermelho) com total no período
+- Nova coluna **"Reincidência"** na tabela mostrando:
+  - Banner vermelho "⚠ {nome} ×N" quando crítica (tooltip explica o porquê)
+  - Lista top 3 técnicos por contagem com cores graduadas (cinza < 2, laranja 2, vermelho 3+) e indicador `(unresolved)`
+  - "+N outro(s)" pra quem tem mais
+
+**Validado:** screenshot exibiu DIOGO HENRIQUE ×1, JEFFERSON ×1, Hudson ×1 (todos com 1 não-resolvido — pendentes). Lint OK.

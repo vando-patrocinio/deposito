@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -394,6 +394,12 @@ async def clients_classification(
             "last_ticket": {"$first": "$$ROOT"},
             "diagnoses": {"$addToSet": "$ai_diagnosis.status"},
             "technicians": {"$addToSet": "$assigned_collaborator_id"},
+            # Mantém lista bruta com técnico+status pra contar reincidência
+            "ticket_techs": {"$push": {
+                "tech_id": "$assigned_collaborator_id",
+                "status": "$status",
+                "created_at": "$created_at",
+            }},
         }},
         {"$sort": {"tickets_total_90d": -1, "last_ticket.created_at": -1}},
         {"$limit": limit},
@@ -464,6 +470,52 @@ async def clients_classification(
             techs_map.get(t) for t in (r.get("technicians") or []) if t
         ]
         all_techs = [t for t in all_techs if t]
+
+        # --- Análise de REINCIDÊNCIA por técnico ---
+        # Conta quantas vezes cada técnico foi neste cliente E quantas
+        # ficaram não-resolvidas (status != finalizado/cancelado).
+        # Reincidência crítica = mesmo técnico 3+ vezes E pelo menos um
+        # NÃO foi finalizado → sinal de problema estrutural não resolvido.
+        tech_counts: Dict[str, Dict[str, Any]] = {}
+        for tt in (r.get("ticket_techs") or []):
+            tid = tt.get("tech_id")
+            if not tid:
+                continue
+            entry = tech_counts.setdefault(tid, {
+                "tech_id": tid,
+                "count": 0,
+                "unresolved_count": 0,
+            })
+            entry["count"] += 1
+            if tt.get("status") not in {"finalizado", "cancelado"}:
+                entry["unresolved_count"] += 1
+
+        # Top tech (que foi mais vezes) e flag de reincidência crítica
+        top_tech_id = None
+        top_tech_count = 0
+        critical_reincidencia = False
+        for tid, info in tech_counts.items():
+            if info["count"] > top_tech_count:
+                top_tech_count = info["count"]
+                top_tech_id = tid
+            if info["count"] >= 3 and info["unresolved_count"] >= 1:
+                critical_reincidencia = True
+        top_tech = techs_map.get(top_tech_id) if top_tech_id else None
+
+        tech_breakdown = []
+        for tid, info in sorted(
+            tech_counts.items(), key=lambda x: -x[1]["count"]
+        ):
+            t = techs_map.get(tid)
+            if not t:
+                continue
+            tech_breakdown.append({
+                "tech_id": tid,
+                "name": t.get("name"),
+                "role": t.get("role"),
+                "count": info["count"],
+                "unresolved_count": info["unresolved_count"],
+            })
         items.append({
             "client_id": r["_id"],
             "client_name": sub.get("name") or "—",
@@ -494,10 +546,22 @@ async def clients_classification(
                 "name": t.get("name"),
                 "role": t.get("role"),
             } for t in all_techs],
+            "top_technician": ({
+                "id": top_tech["id"],
+                "name": top_tech.get("name"),
+                "role": top_tech.get("role"),
+                "avatar_url": top_tech.get("avatar_url"),
+                "count": top_tech_count,
+            } if top_tech else None),
+            "tech_breakdown": tech_breakdown,
+            "critical_reincidencia": critical_reincidencia,
         })
 
     summary = {
         "total": len(items),
+        "critical_reincidencia": sum(
+            1 for i in items if i.get("critical_reincidencia")
+        ),
         "by_classification": {
             "persistente": sum(1 for i in items if i["classification"] == "persistente"),
             "recorrente": sum(1 for i in items if i["classification"] == "recorrente"),
