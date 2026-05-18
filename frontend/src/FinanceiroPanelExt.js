@@ -10,6 +10,7 @@ import {
   Tooltip, Legend, ComposedChart, Line,
 } from "recharts";
 import AnalyticsChart from "@/FinanceiroAnalyticsChart";
+import ReconciliationCard from "@/ReconciliationCard";
 import { KpiCard, AlertCard, Legend as MiniLegend } from "@/components/Dashboard2026";
 
 const fmtMoney = (v) =>
@@ -634,6 +635,7 @@ export function CashFlowTab() {
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <AnalyticsChart />
+      <ReconciliationCard period={period} />
       <Card title="Fluxo de Caixa">
         <div style={{ display: "flex", justifyContent: "space-between",
                       alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>

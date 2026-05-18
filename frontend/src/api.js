@@ -314,6 +314,9 @@ export const api = {
       .then((r) => r.data),
   bankImportAtlazSummary: () =>
     client.get(`/financeiro/bank-import/atlaz-summary`).then((r) => r.data),
+  bankImportReconciliation: (from_date, to_date) =>
+    client.get(`/financeiro/bank-import/reconciliation`,
+                  { params: { from_date, to_date } }).then((r) => r.data),
   bankImportConfirm: (payload) =>
     client.post(`/financeiro/bank-import/confirm`, payload).then((r) => r.data),
   bankImportHistory: (limit = 30) =>

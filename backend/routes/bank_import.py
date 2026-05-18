@@ -646,7 +646,6 @@ async def atlaz_summary(user: dict = Depends(require_finance())):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     paid = await db.subscriber_invoices.count_documents(
         {"company_id": cid, "status": "paid"})
-    # Primeira e última data paga
     last = await db.subscriber_invoices.find(
         {"company_id": cid, "status": "paid"},
         {"_id": 0, "paid_date": 1},
@@ -659,6 +658,61 @@ async def atlaz_summary(user: dict = Depends(require_finance())):
         "paid_invoices": paid,
         "first_paid_date": first[0].get("paid_date") if first else None,
         "last_paid_date": last[0].get("paid_date") if last else None,
+    }
+
+
+@router.get("/reconciliation")
+async def reconciliation(from_date: str, to_date: str,
+                              user: dict = Depends(require_finance())):
+    """Compara total bancário (Sicoob/outros) × total Atlaz no período.
+
+    Útil pra identificar discrepâncias: ex. uma fatura paga na Atlaz que
+    não apareceu no extrato bancário, ou um PIX recebido que não tem
+    fatura Atlaz correspondente.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    base = {
+        "company_id": cid, "type": "income",
+        "date": {"$gte": from_date, "$lte": to_date},
+    }
+    pipeline = [
+        {"$match": base},
+        {"$group": {
+            "_id": "$source",
+            "total": {"$sum": "$amount"},
+            "count": {"$sum": 1},
+        }},
+    ]
+    rows = [r async for r in db.fin_cash_movements.aggregate(pipeline)]
+    by_source: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        src = r["_id"] or "manual"
+        by_source[src] = {"total": float(r["total"]), "count": int(r["count"])}
+
+    sicoob_total = by_source.get("bank_import_sicoob", {"total": 0, "count": 0})
+    outros_total = by_source.get("bank_import_outros", {"total": 0, "count": 0})
+    atlaz_total = by_source.get("bank_import_atlaz", {"total": 0, "count": 0})
+    manual_total = by_source.get("manual", by_source.get(None, {"total": 0, "count": 0}))
+    bank_total = sicoob_total["total"] + outros_total["total"]
+    bank_count = sicoob_total["count"] + outros_total["count"]
+
+    return {
+        "from_date": from_date, "to_date": to_date,
+        "bank": {
+            "total": round(bank_total, 2),
+            "count": bank_count,
+            "sicoob": sicoob_total, "outros": outros_total,
+        },
+        "atlaz": {
+            "total": round(atlaz_total["total"], 2),
+            "count": atlaz_total["count"],
+        },
+        "manual": {
+            "total": round(manual_total["total"], 2),
+            "count": manual_total["count"],
+        },
+        "diff": round(bank_total - atlaz_total["total"], 2),
+        "by_source": by_source,
     }
 
 

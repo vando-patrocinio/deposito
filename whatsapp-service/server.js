@@ -859,6 +859,43 @@ app.post("/reload", async (_req, res) => {
 });
 
 /* ---------- Perfis / Presença ---------- */
+/**
+ * Wrapper robusto pra profilePictureUrl que resolve o bug do Baileys RC11.
+ *
+ * Bug: profilePictureUrl lança erros não-tratáveis quando:
+ *  - usuário tem privacidade "Ninguém" no avatar
+ *  - número não tem WhatsApp
+ *  - servidor da Meta devolve 401/403/404
+ * O .catch() do Promise às vezes não captura por race condition no Baileys.
+ *
+ * Estratégia: tenta "preview" (mais leve) → fallback "image" → null silencioso.
+ * Cacheia AMBOS sucesso e falha (TTL menor pra falhas).
+ */
+const negativeAvatarCache = new Map(); // jid -> ts (recently failed)
+const NEG_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min
+
+async function safeProfilePictureUrl(jid) {
+  if (!sock) return null;
+  const negTs = negativeAvatarCache.get(jid);
+  if (negTs && Date.now() - negTs < NEG_CACHE_TTL_MS) return null;
+  // Tenta "preview" primeiro (mais leve, falha menos)
+  for (const type of ["preview", "image"]) {
+    try {
+      const url = await Promise.race([
+        sock.profilePictureUrl(jid, type).catch(() => null),
+        new Promise((resolve) => setTimeout(() => resolve(null), 4000)),
+      ]);
+      if (url && typeof url === "string" && url.startsWith("http")) {
+        return url;
+      }
+    } catch (e) {
+      // Promise reject não capturado pelo .catch — engole
+    }
+  }
+  negativeAvatarCache.set(jid, Date.now());
+  return null;
+}
+
 app.get("/contact-profile", async (req, res) => {
   if (!sock || connState !== "connected") {
     return res.status(503).json({ ok: false, error: "WhatsApp não conectado." });
@@ -870,9 +907,8 @@ app.get("/contact-profile", async (req, res) => {
   if (cached && (Date.now() - cached.cached_at) < 10 * 60 * 1000) {
     return res.json({ ok: true, ...cached, cached: true });
   }
-  let avatar = null;
+  const avatar = await safeProfilePictureUrl(jid);
   let businessProfile = null;
-  try { avatar = await sock.profilePictureUrl(jid, "image").catch(() => null); } catch (e) { /* */ }
   try { businessProfile = await sock.getBusinessProfile(jid).catch(() => null); } catch (e) { /* */ }
   const presence = presenceCache.get(jid);
   const payload = {
@@ -915,16 +951,12 @@ app.post("/contacts-bulk", async (req, res) => {
       avatars[phone] = cached.avatar || null;
       return;
     }
-    try {
-      const url = await sock.profilePictureUrl(jid, "image").catch(() => null);
-      profileCache.set(jid, {
-        ok: true, jid, phone, avatar: url, business: null,
-        presence: "unknown", last_seen: null, cached_at: Date.now(),
-      });
-      avatars[phone] = url || null;
-    } catch (e) {
-      avatars[phone] = null;
-    }
+    const url = await safeProfilePictureUrl(jid);
+    profileCache.set(jid, {
+      ok: true, jid, phone, avatar: url, business: null,
+      presence: "unknown", last_seen: null, cached_at: Date.now(),
+    });
+    avatars[phone] = url || null;
   }));
   return res.json({ ok: true, avatars, count: unique.length });
 });
