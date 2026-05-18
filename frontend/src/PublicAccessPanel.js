@@ -15,7 +15,7 @@ function fmtDate(iso) {
 
 function buildPublicLink(token) {
   if (typeof window === "undefined") return "";
-  return `${window.location.origin}/?ptoken=${token}`;
+  return `${window.location.origin}/${token}`;
 }
 
 export default function PublicAccessPanel() {

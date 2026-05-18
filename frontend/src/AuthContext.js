@@ -41,15 +41,29 @@ export function AuthProvider({ children }) {
     if (typeof window === "undefined") return null;
     try {
       const url = new URLSearchParams(window.location.search);
-      const fromUrl = url.get("ptoken");
+      let fromUrl = url.get("ptoken");
+
+      // Captura também token no path: /<token-de-22+-chars-ou-uuid>
+      // Útil pra URLs limpas tipo `https://app/c5705a3d-9506-...`
+      if (!fromUrl) {
+        const path = (window.location.pathname || "").replace(/^\/+|\/+$/g, "");
+        // Rotas conhecidas que NÃO devem ser tratadas como token
+        const KNOWN_PREFIXES = [
+          "app", "login", "signup", "preview", "demo",
+          "tv", "quadro", "billing", "holerite", "onboarding",
+        ];
+        const isKnown = !path || KNOWN_PREFIXES.some(
+          (p) => path === p || path.startsWith(p + "/"),
+        );
+        if (!isKnown && /^[A-Za-z0-9_-]{16,}$/.test(path)) {
+          fromUrl = path;
+        }
+      }
+
       if (fromUrl) {
         window.localStorage.setItem("smartprov_public_token", fromUrl);
-        // Remove ?ptoken da URL pra não vazar em screenshots/compartilhamento
-        url.delete("ptoken");
-        const qs = url.toString();
-        const newUrl = window.location.pathname + (qs ? "?" + qs : "")
-          + window.location.hash;
-        window.history.replaceState({}, "", newUrl);
+        // Limpa a URL pra "/" pra não vazar em screenshots/share
+        window.history.replaceState({}, "", "/");
         return fromUrl;
       }
       return window.localStorage.getItem("smartprov_public_token");
