@@ -278,6 +278,12 @@ export const api = {
     client.post(`/public-access/tokens`, payload).then((r) => r.data),
   publicAccessRevoke: (tokenId) =>
     client.delete(`/public-access/tokens/${tokenId}`).then((r) => r.data),
+
+  // ========= Rede IA — Provisionamento via CTO no Mapa =========
+  redeIaCtoClients: (ctoId) =>
+    client.get(`/rede-ia/ctos/${ctoId}/clients`).then((r) => r.data),
+  redeIaCtoProvision: (ctoId, payload) =>
+    client.post(`/rede-ia/ctos/${ctoId}/provision`, payload).then((r) => r.data),
   motorIaAgentsList: () => client.get(`/motor-ia/agents`).then((r) => r.data),
   motorIaAgentToggle: (agentId, enabled) =>
     client.put(`/motor-ia/agents/${agentId}`, { enabled }).then((r) => r.data),

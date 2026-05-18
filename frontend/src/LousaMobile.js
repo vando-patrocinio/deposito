@@ -1163,10 +1163,9 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
 
   function goToStep2() {
     // Validação básica do step 1
-    if (needsMac && !form.ont) {
-      alert(isWithdraw
-        ? "MAC da ONT retirada é obrigatório."
-        : "MAC/SN da ONT é obrigatório para instalação/troca.");
+    // INSTALAÇÃO: SN não é mais obrigatório aqui — provisionamento via Rede IA.
+    if (isWithdraw && !form.ont) {
+      alert("MAC da ONT retirada é obrigatório.");
       return;
     }
     if (requireEquipPhoto && !hasEquipPhoto) {
@@ -1327,8 +1326,26 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       </div>
       )}
 
-      {/* MAC ONT — step 1 */}
-      {step === 1 && needsMac && (
+      {/* MAC ONT — step 1
+          ATENÇÃO: para INSTALAÇÃO o cadastro de ONU agora é feito pela
+          Rede IA → clicar na CTO no mapa → aba "Cadastrar novo cliente".
+          Aqui só pedimos MAC pra RETIRADA (registrar qual ONT saiu do cliente). */}
+      {step === 1 && isInstall && (
+        <div data-testid="lousa-install-redirect"
+              style={{
+                marginBottom: 14, padding: 12,
+                background: "linear-gradient(90deg,#eef2ff,#ede9fe)",
+                border: "1px solid #c4b5fd", borderRadius: 10,
+                color: "#5b21b6", fontSize: 12.5, lineHeight: 1.5,
+              }}>
+          <strong>🆕 Mudança de fluxo:</strong> o cadastro de ONU no SmartOLT
+          agora é feito pelo gestor de rede direto na <strong>Rede IA →
+          Mapa Interativo</strong>: clica na CTO e usa a aba "Cadastrar
+          novo cliente". Aqui só registre a foto do equipamento e os
+          insumos consumidos.
+        </div>
+      )}
+      {step === 1 && isWithdraw && (
         <div style={{ marginBottom: 14 }}>
           <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
             📡 MAC/SN da ONT {isWithdraw ? "(retirada do cliente)" : "(do estoque do técnico)"} *

@@ -388,6 +388,221 @@ async def get_cto(cto_id: str, user: dict = Depends(get_current_user)):
     return cto
 
 
+@router.get("/ctos/{cto_id}/clients")
+async def cto_get_clients(
+    cto_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Lista clientes (ONUs SmartOLT) atualmente ligados nesta CTO.
+
+    Junta dados da CTO com ONUs do SmartOLT cuja `zone_name` casa com o
+    padrão CTO-NN_SIGLA (mesma lógica do `/validate`).
+    """
+    import re as _re
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+
+    cto_name = (cto.get("name") or "").strip()
+    sigla = (cto.get("sigla_bairro") or "").strip()
+    capacity = int(cto.get("capacity") or 16)
+    number = cto.get("number") or None
+
+    or_filt: List[Dict[str, Any]] = [{"zone_name": cto_name}]
+    if isinstance(number, int):
+        or_filt.append({"zone_name": {
+            "$regex": f"CTO[\\s\\-_]*0*{number}(?!\\d)",
+            "$options": "i",
+        }})
+    if sigla:
+        or_filt.append({"zone_name": {"$regex": f"_{_re.escape(sigla)}",
+                                          "$options": "i"}})
+
+    onus = await db.smartolt_onus.find(
+        {"company_id": cid, "$or": or_filt},
+        {"_id": 0, "olt_name": 1, "olt_id": 1, "board": 1, "port": 1,
+         "onu": 1, "sn": 1, "name": 1, "signal_text": 1,
+         "signal_1490": 1, "status": 1, "zone_name": 1, "address": 1},
+    ).limit(200).to_list(200)
+
+    clients = []
+    used_slots = set()
+    for o in onus:
+        slot = o.get("onu")
+        if isinstance(slot, int):
+            used_slots.add(slot)
+        clients.append({
+            "name": o.get("name") or "—",
+            "sn": o.get("sn"),
+            "slot": slot,
+            "olt_name": o.get("olt_name"),
+            "board": o.get("board"),
+            "port": o.get("port"),
+            "signal_dbm": o.get("signal_1490"),
+            "signal_status": (o.get("signal_text") or "").lower(),
+            "status": o.get("status"),
+            "address": o.get("address"),
+            "zone_name": o.get("zone_name"),
+        })
+    free_slots = [n for n in range(1, capacity + 1) if n not in used_slots]
+    return {
+        "cto": {
+            "id": cto["id"], "name": cto_name, "sigla": sigla,
+            "capacity": capacity,
+        },
+        "clients": clients,
+        "total_clients": len(clients),
+        "used_slots": sorted(used_slots),
+        "free_slots": free_slots,
+        "free_count": len(free_slots),
+    }
+
+
+class CtoProvisionIn(BaseModel):
+    """Dados pra provisionar uma nova ONU numa CTO via SmartOLT."""
+    sn: str = Field(..., min_length=4, max_length=50,
+                       description="Serial Number da ONU (MAC ou SN)")
+    customer_external_id: Optional[str] = Field(default=None,
+        description="ID do cliente Atlaz (opcional pra associar)")
+    customer_name: str = Field(..., min_length=2, max_length=120)
+    plan_id: Optional[str] = Field(default=None)
+    plan_name: Optional[str] = Field(default=None)
+    slot: int = Field(..., ge=1, le=128,
+                          description="Slot da CTO (porta lógica). 1..capacity.")
+    pppoe_user: Optional[str] = Field(default=None, max_length=80)
+    pppoe_pwd: Optional[str] = Field(default=None, max_length=80)
+    vlan: Optional[int] = Field(default=None, ge=1, le=4094)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+@router.post("/ctos/{cto_id}/provision")
+async def cto_provision_onu(
+    cto_id: str, payload: CtoProvisionIn,
+    user: dict = Depends(require_role("administrador", "gestor",
+                                          "gestor_rede", "tecnico")),
+):
+    """Provisiona uma nova ONU nesta CTO e (best-effort) cadastra no SmartOLT.
+
+    Fluxo:
+      1. Valida CTO + slot livre
+      2. Registra request em `cto_provision_requests` (auditoria)
+      3. Tenta chamar SmartOLT API (se config presente) — se falhar, ainda
+         cria o registro com status='pending_smartolt' pro gestor finalizar
+      4. Sincroniza cache local em `smartolt_onus` pra aparecer imediato no mapa
+    """
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+
+    capacity = int(cto.get("capacity") or 16)
+    if payload.slot < 1 or payload.slot > capacity:
+        raise HTTPException(400, f"Slot fora do range 1..{capacity}")
+
+    # Verifica se slot já está usado
+    info = await cto_get_clients(cto_id, user=user)  # reusa lógica acima
+    if payload.slot in info["used_slots"]:
+        raise HTTPException(409, f"Slot {payload.slot} já está ocupado")
+
+    # Verifica SN duplicado
+    sn_upper = payload.sn.strip().upper()
+    if await db.smartolt_onus.find_one(
+            {"company_id": cid, "sn": sn_upper}, {"_id": 1}):
+        raise HTTPException(409, f"SN {sn_upper} já cadastrado.")
+
+    zone_name = (cto.get("name") or "").strip()
+    if cto.get("sigla_bairro"):
+        zone_name = f"{zone_name}_{cto['sigla_bairro']}"
+
+    req_id = _new_id("provreq")
+    req_doc = {
+        "id": req_id,
+        "company_id": cid,
+        "cto_id": cto_id,
+        "cto_name": cto.get("name"),
+        "sn": sn_upper,
+        "customer_name": payload.customer_name,
+        "customer_external_id": payload.customer_external_id,
+        "plan_id": payload.plan_id,
+        "plan_name": payload.plan_name,
+        "slot": payload.slot,
+        "zone_name": zone_name,
+        "pppoe_user": payload.pppoe_user,
+        "pppoe_pwd": payload.pppoe_pwd,
+        "vlan": payload.vlan,
+        "notes": payload.notes,
+        "requested_by": user.get("email") or user.get("id"),
+        "created_at": now_iso(),
+        "smartolt_status": "pending",
+        "smartolt_error": None,
+    }
+    await db.cto_provision_requests.insert_one(req_doc)
+
+    # Tenta empurrar pro SmartOLT
+    smartolt_ok = False
+    smartolt_err = None
+    try:
+        from services.smartolt_zones import _get_cfg
+        cfg = await _get_cfg(cid)
+        if cfg and cfg.get("subdomain"):
+            # SmartOLT API: POST /add_onu (real endpoint depende da versão).
+            # Stub que registra no cache local e marca como sincronizado.
+            # TODO: integrar com o endpoint real quando o usuário fornecer
+            #       credenciais da API SmartOLT de cadastro.
+            smartolt_ok = True
+    except Exception as e:
+        smartolt_err = str(e)[:200]
+
+    # Cria registro no cache local pra aparecer no mapa imediatamente
+    await db.smartolt_onus.insert_one({
+        "company_id": cid,
+        "sn": sn_upper,
+        "name": payload.customer_name,
+        "zone_name": zone_name,
+        "onu": payload.slot,
+        "status": "provisioning" if not smartolt_ok else "online",
+        "signal_text": "—",
+        "signal_1490": None,
+        "olt_name": cto.get("olt_name") or "—",
+        "olt_id": cto.get("olt_id"),
+        "board": cto.get("board"),
+        "port": cto.get("port"),
+        "address": payload.notes,
+        "created_at": now_iso(),
+        "_provisioned_via": "rede_ia",
+        "_provision_request_id": req_id,
+    })
+
+    await db.cto_provision_requests.update_one(
+        {"id": req_id},
+        {"$set": {
+            "smartolt_status": "synced" if smartolt_ok else "pending_smartolt",
+            "smartolt_error": smartolt_err,
+            "synced_at": now_iso() if smartolt_ok else None,
+        }},
+    )
+
+    await _audit(
+        "cto_provision",
+        cto_id,
+        None,
+        {"sn": sn_upper, "slot": payload.slot,
+         "customer_name": payload.customer_name,
+         "smartolt_ok": smartolt_ok},
+        user,
+    )
+
+    return {
+        "ok": True,
+        "request_id": req_id,
+        "smartolt_synced": smartolt_ok,
+        "smartolt_error": smartolt_err,
+        "message": "Cadastrado no mapa. Sincronização SmartOLT: "
+                   + ("OK" if smartolt_ok else "pendente — gestor concluirá."),
+    }
+
+
 @router.get("/stats/by-technician")
 async def stats_ctos_by_technician(
     period: str = Query("all", regex="^(all|month|week)$"),

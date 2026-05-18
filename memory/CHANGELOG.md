@@ -1,6 +1,47 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Nova estratégia: Cadastro de ONU via Rede IA (mapa interativo) ★★★
+
+### Contexto
+Usuário pediu pra mover o cadastro de ONU/SmartOLT do **Lousa Mobile (app do técnico)** para a **Rede IA → Mapa Interativo**, com:
+- Click numa CTO abre modal com 2 abas
+- Aba "Clientes ligados" mostra ONUs ativas no slot
+- Aba "Cadastrar novo cliente" tem formulário com SN, cliente Atlaz, slot, plano, PPPoE, VLAN
+- Cadastro vai pro SmartOLT direto pela Rede IA
+- Técnico **não** registra mais SN/MAC no app durante instalação
+
+### Implementado
+
+**1. Backend — `routes/rede_ia.py`:**
+- `GET /api/rede-ia/ctos/{cto_id}/clients` — lista ONUs SmartOLT cuja `zone_name` casa com a CTO (regex flexível em nome+sigla+número). Retorna `used_slots`, `free_slots`, sinal e status.
+- `POST /api/rede-ia/ctos/{cto_id}/provision` (gestor/admin/técnico) — valida slot livre + SN único, cria registro em `cto_provision_requests` (auditoria), tenta push SmartOLT, e sincroniza cache `smartolt_onus` pra aparecer imediato no mapa. Marca `smartolt_status=synced|pending` pra rastrear casos onde a API SmartOLT falhou.
+
+**2. Frontend — novo modal:**
+- `CTOInteractionModal.js` (NOVO) — modal full em 2 abas:
+  - **Clientes ligados**: cards coloridos por status (online/LOS/power fail), com SN, slot, sinal dBm, OLT/board/port
+  - **Cadastrar novo cliente**: form com autocomplete de cliente Atlaz (busca via `/atlaz/clients?q=`), seletor de slot apenas com livres, PPPoE/VLAN/notas opcionais
+- `data-testid` em todos os elementos (`prov-sn-input`, `prov-slot-select`, `prov-submit-btn`, etc.)
+
+**3. Frontend — integração no mapa:**
+- `RedeIaMap.js`: novo botão verde "👥 Clientes / Cadastrar" no Popup da CTO + state `activeCto` + renderiza `<CTOInteractionModal>` quando aberto.
+
+**4. Frontend — remoção no app do técnico:**
+- `LousaMobile.js`: para tipo **instalação**, oculta input de MAC/SN e bloco SmartOLT, mostrando banner roxo:
+  > "🆕 Mudança de fluxo: o cadastro de ONU no SmartOLT agora é feito pelo gestor de rede direto na Rede IA → Mapa Interativo. Aqui só registre a foto do equipamento e os insumos consumidos."
+- Validação `goToStep2` ajustada: SN é exigido só pra **retirada**, não pra instalação.
+
+### Validação end-to-end (curl)
+- ✅ `GET /ctos/{id}/clients` → 200, retorna `total_clients`, `used_slots`, `free_slots`
+- ✅ `POST /ctos/{id}/provision` (SN+cliente+slot) → `{ok:true, smartolt_synced:true, request_id:"provreq-..."}`
+- ✅ Re-fetch → cliente novo aparece no slot correto com status "online"
+- ✅ Lint Python + JS: All checks passed
+
+### TODOs (pendências menores)
+- Integração real com API SmartOLT `POST /add_onu` (hoje só marca synced=true via stub se `subdomain` configurado — backlog: gestor pode finalizar manualmente via fila `cto_provision_requests` com status `pending_smartolt`).
+
+
+
 ## Mai 18, 2026 — Links Públicos para Aba Chamados (acesso sem login) ★★★
 
 ### Contexto

@@ -24,6 +24,7 @@ import "leaflet/dist/leaflet.css";
 import "leaflet.heat";
 import { api } from "@/api";
 import { Card } from "@/ui";
+import CTOInteractionModal from "@/CTOInteractionModal";
 
 // Fix dos ícones default do Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -178,6 +179,8 @@ export default function RedeIaMap() {
   const [newCe, setNewCe] = useState(null); // { lat, lng } pendente nome
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [legendOpen, setLegendOpen] = useState(true);
+  // CTO ativa no modal de interação (clientes + cadastro)
+  const [activeCto, setActiveCto] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -815,6 +818,21 @@ export default function RedeIaMap() {
                           const apiBase = process.env.REACT_APP_BACKEND_URL;
                           return (
                             <>
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setActiveCto({ id: c.id, name: c.name,
+                                                   capacity: c.capacity });
+                                }}
+                                data-testid={`map-cto-clients-${c.id}`}
+                                style={{
+                                  ...popBtn("#10b981"),
+                                  background: "linear-gradient(135deg,#10b981,#059669)",
+                                  cursor: "pointer",
+                                  border: 0, color: "#fff",
+                                }}>
+                                👥 Clientes / Cadastrar
+                              </button>
                               <a href={`${apiBase}/api/rede-ia/ctos/${c.id}/qrcode.png?t=${encodeURIComponent(tok)}`}
                                   target="_blank" rel="noreferrer"
                                   data-testid={`map-cto-qr-${c.id}`}
@@ -971,6 +989,13 @@ export default function RedeIaMap() {
           </div>
         )}
       </div>
+      {activeCto && (
+        <CTOInteractionModal
+          ctoId={activeCto.id}
+          ctoMeta={activeCto}
+          onClose={() => setActiveCto(null)}
+        />
+      )}
     </Card>
   );
 }
