@@ -1,6 +1,43 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — Ranking de técnicos por qualidade de reparo (iter91-b)
+- Novo endpoint `GET /api/lousa/quality-notes/technicians-ranking?days=X` agrega tickets finalizados com `signal_at_open` + `signal_at_close` por colaborador e calcula:
+  - `total_reparos`, `bom/regular/ruim`, `pct_bom`, `pct_ruim`, `avg_delta_db`.
+  - **`quality_score` 0-100** = % bom (peso 70) + Δ médio de melhoria (peso 30, cap em +3 dB).
+- Frontend `TechniciansRankingCard` no `LousaQualityNotesPanel`: seletor 7/30/90/180 dias, medalhas 🥇🥈🥉 nos top-3, score circular colorido (≥70 verde · ≥50 amarelo · <50 vermelho), breakdown 🟢🟡🔴 por técnico, Δ médio em monospace.
+- Validado curl: DIOGO (3 reparos +5/+3/+1 dB) → score 100, JEFFERSON (2 reparos -5/-2 dB) → score 0.
+- data-testids: `quality-ranking-card`, `quality-ranking-period-{7|30|90|180}`, `quality-ranking-row-{id}`, `quality-ranking-score-{id}`, `quality-ranking-pct-{id}`, `quality-ranking-empty`.
+
+## Fev 18, 2026 — Nota Técnica · Sinal SmartOLT antes × depois (iter91) ★★★
+**Objetivo**: técnico avaliar a qualidade do reparo comparando o sinal do cliente na abertura vs no fechamento da nota.
+
+### Backend (`/app/backend/routes/lousa.py`)
+- Helpers centralizados:
+  - `_quality_capture_enabled(company_id)` — lê toggle global de `lousa_quality_config` (default ON).
+  - `_capture_signal_snapshot(ticket_id, company_id, moment)` — captura `rx_dbm/status/sn` via SmartOLT live e grava em `signal_at_open` / `signal_at_close`. Honra o toggle. Best-effort (não derruba o fluxo se SmartOLT estiver offline).
+- Captura automática agora rola em 3 pontos:
+  - `POST /lousa/tickets` (criação) → `signal_at_open`.
+  - `POST /lousa/tickets/{id}/finalize` (autenticado) → `signal_at_close`. **NOVO** (antes só rolava na rota pública).
+  - `POST /lousa/public/tickets/{id}/finalize` → `signal_at_close` (refatorado pra usar o helper).
+- Novo endpoint manual: `POST /api/lousa/tickets/{id}/capture-signal` com body `{moment:"open"|"close"}`. Permissões: técnico só recaptura o próprio chamado, gestor/admin sempre. Retorna 400 quando o toggle está OFF, 422 quando não há ONU mapeada.
+
+### Frontend
+- **LousaMobile.js** — Novo componente `NotaTecnicaCard` renderizado no detalhe do chamado:
+  - 2 cards lado-a-lado (📥 Na abertura / 📤 No fechamento ou Agora-live) com `rx_dbm` grande em monospace, tone semafórico (verde/amarelo/vermelho conforme threshold ≤-28 LOS · ≤-27 RUIM · ≤-25 MÉDIO · BOM), data/hora do snapshot, status Online/Offline.
+  - Verdito de delta colorido (🟢 melhorou · 🟡 caiu tolerável · 🔴 piorou ≥3dB ou pós-reparo em LOS).
+  - Botão "📡 Ler sinal agora" (técnico recaptura close on-demand) + "Recapturar abertura" (quando ainda não tem snapshot).
+  - data-testids: `nota-tecnica-card-{id}`, `nota-tecnica-open`, `nota-tecnica-close`, `nota-tecnica-capture-close`, `nota-tecnica-capture-open`, `nota-tecnica-verdict`, `nota-tecnica-ok`, `nota-tecnica-err`.
+- **LousaAdminPanel.js** — Nova sub-aba "📶 NOTAS DE QUALIDADE" (`lousa-subtab-quality_notes`) que monta o `LousaQualityNotesPanel` já existente (toggle ON/OFF iOS-style + dashboard de classificação por chamado).
+- **api.js** — novo helper `api.lousaCaptureSignal(ticketId, moment)`.
+
+### Validação E2E (testing_agent_v3_fork iter91)
+- Backend: 14/15 pytest passou (1 skip por FK em assigned_collaborator_id inexistente — não relacionado).
+- Frontend: code-level OK; 5/5 data-testids presentes; sub-tab integrada.
+- Smoke test manual: config GET/PUT, list, capture-signal todos retornaram códigos/mensagens corretos.
+
+
+
 ## Mai 18, 2026 — Push ONU + Integração SmartOLT real (provisionamento + reboot) ★★★
 
 ### Contexto

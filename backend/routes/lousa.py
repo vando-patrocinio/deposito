@@ -1224,6 +1224,126 @@ async def delete_ticket(ticket_id: str, user: dict = Depends(require_role("gesto
     return {"ok": True}
 
 
+@router.get("/lousa/quality-notes/technicians-ranking")
+async def quality_technicians_ranking(
+    days: int = Query(7, ge=1, le=365),
+    user: dict = Depends(require_role("gestor")),
+):
+    """Ranking de técnicos por % de reparos com sinal melhorado.
+
+    Agrega tickets finalizados com `signal_at_open` E `signal_at_close` por
+    técnico nos últimos `days` dias e classifica cada um em:
+      - **bom**: sinal estável/melhorou (Δ ≥ 0)
+      - **regular**: piorou < `degradation_threshold_db`
+      - **ruim**: piorou ≥ threshold OU ficou em LOS no fechamento
+    Retorna lista ordenada por `quality_score` (% de bons + ponderação).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await quality_notes_get_config(user)
+    deg_thr = float(cfg.get("degradation_threshold_db") or 3.0)
+    los_thr = float(cfg.get("los_threshold_dbm") or -28.0)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    rows = await db.tickets.find(
+        {
+            "company_id": cid,
+            "status": "finalizada",
+            "closed_at": {"$gte": cutoff},
+            "signal_at_open": {"$ne": None},
+            "signal_at_close": {"$ne": None},
+            "closed_by": {"$ne": None},
+        },
+        {"_id": 0, "closed_by": 1, "assigned_collaborator_id": 1,
+         "signal_at_open": 1, "signal_at_close": 1},
+    ).to_list(5000)
+
+    # Resolve user_id -> collaborator_id quando necessário (closed_by pode ser user.id)
+    user_ids = list({r["closed_by"] for r in rows if r.get("closed_by")})
+    user_to_coll: Dict[str, str] = {}
+    if user_ids:
+        async for u in db.users.find(
+            {"id": {"$in": user_ids}}, {"_id": 0, "id": 1, "collaborator_id": 1},
+        ):
+            if u.get("collaborator_id"):
+                user_to_coll[u["id"]] = u["collaborator_id"]
+
+    # Agrega por colaborador
+    agg: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        # Usa assigned_collaborator_id primeiro (mais confiável), depois mapeia closed_by
+        cid_t = (r.get("assigned_collaborator_id")
+                 or user_to_coll.get(r.get("closed_by"))
+                 or r.get("closed_by"))
+        if not cid_t:
+            continue
+        before = float(r["signal_at_open"]["rx_dbm"])
+        after = float(r["signal_at_close"]["rx_dbm"])
+        delta = after - before
+        is_los = after <= los_thr
+        if is_los:
+            grade = "ruim"
+        elif delta < -deg_thr:
+            grade = "ruim"
+        elif delta < 0:
+            grade = "regular"
+        else:
+            grade = "bom"
+        bucket = agg.setdefault(cid_t, {
+            "collaborator_id": cid_t,
+            "name": None,
+            "total": 0, "bom": 0, "regular": 0, "ruim": 0,
+            "sum_delta": 0.0, "deltas": [],
+        })
+        bucket["total"] += 1
+        bucket[grade] += 1
+        bucket["sum_delta"] += delta
+        bucket["deltas"].append(delta)
+
+    # Enriquece com nome do técnico
+    coll_ids = list(agg.keys())
+    if coll_ids:
+        async for c in db.collaborators.find(
+            {"id": {"$in": coll_ids}}, {"_id": 0, "id": 1, "name": 1},
+        ):
+            if c["id"] in agg:
+                agg[c["id"]]["name"] = c.get("name")
+
+    # Score: % bom (peso 70) + % melhoria média (peso 30 — normalizado por delta médio até +3dB)
+    items = []
+    for cid_t, b in agg.items():
+        total = b["total"]
+        pct_bom = (b["bom"] / total * 100.0) if total else 0.0
+        pct_ruim = (b["ruim"] / total * 100.0) if total else 0.0
+        avg_delta = (b["sum_delta"] / total) if total else 0.0
+        # delta_component: 0..30 conforme média de delta (cap em +3dB de melhoria)
+        delta_comp = max(0.0, min(30.0, ((avg_delta + 3.0) / 6.0) * 30.0))
+        score = round(pct_bom * 0.7 + delta_comp, 1)
+        items.append({
+            "collaborator_id": cid_t,
+            "name": b["name"] or "Sem nome",
+            "total_reparos": total,
+            "bom": b["bom"],
+            "regular": b["regular"],
+            "ruim": b["ruim"],
+            "pct_bom": round(pct_bom, 1),
+            "pct_ruim": round(pct_ruim, 1),
+            "avg_delta_db": round(avg_delta, 2),
+            "quality_score": score,
+        })
+
+    items.sort(key=lambda x: (-x["quality_score"], -x["total_reparos"]))
+    return {
+        "days": days,
+        "total_reparos": sum(i["total_reparos"] for i in items),
+        "technicians_count": len(items),
+        "items": items,
+        "config": {
+            "degradation_threshold_db": deg_thr,
+            "los_threshold_dbm": los_thr,
+        },
+    }
+
+
 # -------------------------------------------------------------------------
 # DESTRUTIVO — apaga TODAS as bolhas da empresa.
 # Restrito a auditor (papel responsável por compliance/limpeza geral).

@@ -13,7 +13,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "@/api";
 import { Card } from "@/ui";
 import {
-  Activity, AlertTriangle, CheckCircle2, Clock,
+  Activity, AlertTriangle, CheckCircle2, Clock, Trophy,
   Settings as SettingsIcon, Loader2,
 } from "lucide-react";
 
@@ -217,6 +217,9 @@ export default function LousaQualityNotesPanel() {
         <Loader2 size={14} className="animate-spin" /> Carregando…
       </div>}
 
+      {/* Ranking de técnicos por qualidade de reparo */}
+      {isEnabled && <TechniciansRankingCard />}
+
       {!loading && items.length === 0 && (
         <div style={{ padding: 24, textAlign: "center", fontSize: 13,
                         color: "#64748b" }}>
@@ -315,3 +318,179 @@ const lblStyle = {
 const hintStyle = {
   fontSize: 10, color: "#94a3b8", marginTop: 3, fontWeight: 400,
 };
+
+
+/* ------------------------------------------------------------------ */
+/* TechniciansRankingCard                                              */
+/* Ranking de técnicos por % de reparos com sinal melhorado.           */
+/* Seletor de período 7 / 30 / 90 / 180 dias.                          */
+/* ------------------------------------------------------------------ */
+function TechniciansRankingCard() {
+  const [days, setDays] = useState(7);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true); setErr("");
+    api.lousaQualityRanking(days)
+      .then((r) => { if (alive) setData(r); })
+      .catch((e) => {
+        if (alive) setErr(e?.response?.data?.detail || e.message);
+      })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [days]);
+
+  const items = data?.items || [];
+  const periods = [
+    { v: 7,   label: "7 dias" },
+    { v: 30,  label: "30 dias" },
+    { v: 90,  label: "90 dias" },
+    { v: 180, label: "180 dias" },
+  ];
+
+  return (
+    <div data-testid="quality-ranking-card"
+          style={{
+            marginBottom: 14, padding: 14, borderRadius: 12,
+            background: "linear-gradient(135deg,#fef3c7 0%,#fde68a 30%,#fff 100%)",
+            border: "1px solid #fcd34d",
+          }}>
+      <div style={{ display: "flex", justifyContent: "space-between",
+                       alignItems: "center", marginBottom: 10, gap: 8,
+                       flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a",
+                          display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <Trophy size={16} style={{ color: "#d97706" }} />
+            Ranking de qualidade — Técnicos
+          </div>
+          <div style={{ fontSize: 11, color: "#78350f", marginTop: 2 }}>
+            % de reparos com sinal melhorado (sinal_at_close ≥ sinal_at_open)
+          </div>
+        </div>
+        <div style={{ display: "inline-flex", gap: 4, background: "#fff",
+                          padding: 4, borderRadius: 8,
+                          border: "1px solid #fcd34d" }}>
+          {periods.map((p) => (
+            <button key={p.v}
+                      onClick={() => setDays(p.v)}
+                      data-testid={`quality-ranking-period-${p.v}`}
+                      style={{
+                        padding: "4px 10px", border: "none",
+                        background: days === p.v ? "#d97706" : "transparent",
+                        color: days === p.v ? "#fff" : "#78350f",
+                        fontWeight: days === p.v ? 800 : 600,
+                        fontSize: 11, borderRadius: 6, cursor: "pointer",
+                      }}>{p.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {loading && (
+        <div style={{ padding: 12, fontSize: 12, color: "#78350f" }}>
+          <Loader2 size={12} className="animate-spin" /> Calculando ranking…
+        </div>
+      )}
+      {err && (
+        <div style={{ padding: 10, background: "#fee2e2", color: "#991b1b",
+                        borderRadius: 8, fontSize: 12 }}>
+          {typeof err === "string" ? err : "Erro ao carregar ranking"}
+        </div>
+      )}
+      {!loading && !err && items.length === 0 && (
+        <div data-testid="quality-ranking-empty"
+              style={{ padding: 14, fontSize: 12, color: "#78350f",
+                        textAlign: "center" }}>
+          Nenhum reparo finalizado com sinal capturado nos últimos {days} dias.
+        </div>
+      )}
+
+      {!loading && items.length > 0 && (
+        <div data-testid="quality-ranking-list"
+              style={{ display: "grid", gap: 6 }}>
+          {items.map((it, idx) => {
+            const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈"
+                            : idx === 2 ? "🥉" : `${idx + 1}.`;
+            const scoreColor = it.quality_score >= 70 ? "#16a34a"
+                              : it.quality_score >= 50 ? "#ca8a04" : "#dc2626";
+            return (
+              <div key={it.collaborator_id}
+                    data-testid={`quality-ranking-row-${it.collaborator_id}`}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "30px 1fr auto auto",
+                      gap: 10, alignItems: "center",
+                      padding: 10, borderRadius: 8, background: "#fff",
+                      border: `1px solid ${scoreColor}22`,
+                      borderLeft: `4px solid ${scoreColor}`,
+                    }}>
+                <div style={{ fontSize: 18, textAlign: "center" }}>{medal}</div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                    {it.name}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "#64748b",
+                                  marginTop: 2 }}>
+                    {it.total_reparos} reparo{it.total_reparos !== 1 ? "s" : ""}
+                    {" · "}
+                    <span style={{ color: "#16a34a", fontWeight: 700 }}>
+                      🟢 {it.bom}
+                    </span>{" · "}
+                    <span style={{ color: "#ca8a04", fontWeight: 700 }}>
+                      🟡 {it.regular}
+                    </span>{" · "}
+                    <span style={{ color: "#dc2626", fontWeight: 700 }}>
+                      🔴 {it.ruim}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2,
+                                  fontFamily: "monospace" }}>
+                    Δ médio: {it.avg_delta_db >= 0 ? "+" : ""}
+                    {it.avg_delta_db} dB
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div data-testid={`quality-ranking-pct-${it.collaborator_id}`}
+                        style={{ fontSize: 18, fontWeight: 800,
+                                  color: "#16a34a",
+                                  fontVariantNumeric: "tabular-nums" }}>
+                    {it.pct_bom.toFixed(0)}%
+                  </div>
+                  <div style={{ fontSize: 9, color: "#64748b", fontWeight: 600,
+                                  textTransform: "uppercase",
+                                  letterSpacing: 0.3 }}>
+                    bom
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", paddingLeft: 6,
+                                borderLeft: "1px dashed #e2e8f0", paddingRight: 4 }}>
+                  <div data-testid={`quality-ranking-score-${it.collaborator_id}`}
+                        style={{ fontSize: 16, fontWeight: 800,
+                                  color: scoreColor,
+                                  fontVariantNumeric: "tabular-nums" }}>
+                    {it.quality_score}
+                  </div>
+                  <div style={{ fontSize: 9, color: "#64748b", fontWeight: 600,
+                                  textTransform: "uppercase",
+                                  letterSpacing: 0.3 }}>
+                    score
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {!loading && items.length > 0 && (
+        <div style={{ marginTop: 8, fontSize: 10, color: "#78350f",
+                        opacity: 0.85, textAlign: "center" }}>
+          Score = % BOM (peso 70) + Δ médio de melhoria (peso 30, cap +3 dB)
+        </div>
+      )}
+    </div>
+  );
+}
