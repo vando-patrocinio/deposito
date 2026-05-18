@@ -34,6 +34,8 @@ const SOURCE_BADGE = {
               label: "IA Claude" },
   memory:  { bg: "#dbeafe", color: "#1e40af", icon: Database,
               label: "Aprendido" },
+  atlaz:   { bg: "#dcfce7", color: "#166534", icon: Database,
+              label: "Atlaz" },
   manual:  { bg: "#f1f5f9", color: "#475569", icon: AlertCircle,
               label: "Manual" },
 };
@@ -117,7 +119,7 @@ export default function BankImportTab() {
     setErr(""); setOk(""); setUploading(true);
     try {
       const r = await api.bankImportAtlazFetch({
-        from_date: atlazFrom, to_date: atlazTo, limit: 500,
+        from_date: atlazFrom, to_date: atlazTo, limit: 200,
       });
       setStaging(r);
       setItems((r.items || []).map((it) => ({ ...it, _skip: it.duplicate })));

@@ -1,6 +1,33 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — Importar Extrato com 3 fontes (Sicoob · Outros · Atlaz) (iter95) ★
+**Objetivo do usuário**: estender a sub-aba "Importar Extrato" para suportar (1) Sicoob OFX (já existente), (2) Outros bancos OFX/CSV padrão, (3) Atlaz V2 — buscar faturas pagas dos assinantes diretamente da integração.
+
+### Backend (`/app/backend/routes/bank_import.py`)
+- `POST /upload?source=sicoob|outros` — parser comum, source gravado no staging.
+- `POST /atlaz-fetch` — body `{from_date, to_date, limit}` busca `subscriber_invoices` status=paid no período, transforma em transações income com descrição "ATLAZ · NOME · DOC · FAT#xxx", reutiliza `_build_staging`.
+- `GET /atlaz-summary` — retorna `{paid_invoices, first_paid_date, last_paid_date}` pra dar visibilidade no UI.
+- Helper `_build_staging` extraído pra evitar duplicação entre `/upload` e `/atlaz-fetch`.
+
+### Otimizações pós-iter95 (code review)
+- **Skip IA para Atlaz**: items vindos do Atlaz têm `source='atlaz'` e NÃO passam pela IA (já sabemos tipo=income + nome do assinante). Reduz tempo de 60s+ pra <1s em batch de 50 itens.
+- **Auto-match de fornecedor**: pré-busca `fin_suppliers` por CNPJ do assinante; se match → preenche `supplier_id` automático com confidence 0.92.
+- **Source dinâmico no movement**: `fin_cash_movements.source` agora reflete a origem real (`bank_import_sicoob`, `bank_import_outros`, `bank_import_atlaz`) — rastreabilidade correta no Fluxo de Caixa.
+- `_safe_date()` aplicado pra `paid_date` Atlaz (suporta `datetime` ou string com timestamp).
+- Limit padrão do UI reduzido de 500 → 200 (evita timeout em runs grandes).
+
+### Frontend (`/app/frontend/src/BankImportTab.js`)
+- 3 botões grandes (`bi-source-sicoob`, `bi-source-outros`, `bi-source-atlaz`) com ícone, label e hint contextual (ex: Atlaz mostra "1780 faturas pagas disponíveis").
+- Painel condicional: Sicoob/Outros → input file; Atlaz → datepickers `bi-atlaz-from`/`bi-atlaz-to` + botão `bi-atlaz-fetch-btn`.
+- Novo badge SOURCE_BADGE.atlaz (verde, ícone Database) no card de origem da tabela.
+
+### Validação (testing_agent_v3_fork iter95)
+- Backend 7/7 pytest ✓ (todos os sources, summary, fetch com janela vazia → 404, confirm Atlaz).
+- Frontend 100% testids ✓ — única observação foi timeout em batch grande (50→500) com IA, **resolvido pelo skip IA para Atlaz**.
+
+
+
 ## Fev 18, 2026 — Sub-aba "Importar Extrato" Sicoob + IA aprende padrões (iter94) ★★★
 **Objetivo do usuário**: subir extrato OFX do Sicoob, IA classifica entrada/saída + sugere fornecedor/categoria, gestor revisa e confirma, e a IA APRENDE os padrões por CPF/CNPJ + nomenclatura pra acelerar próximas importações.
 

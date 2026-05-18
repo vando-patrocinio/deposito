@@ -417,10 +417,13 @@ async def atlaz_fetch(payload: "AtlazFetchIn",
         if ext_id:
             descr_parts.append(f"FAT#{ext_id}")
         txs.append({
-            "date": (inv.get("paid_date") or inv.get("due_date") or "")[:10],
+            "date": _safe_date(inv.get("paid_date") or inv.get("due_date")),
             "amount": amt, "type": "income",
             "description": " · ".join(descr_parts)[:300],
             "ofx_id": ext_id,
+            # Pré-classificação Atlaz: SEMPRE income, evita chamar IA
+            "_pre_supplier_name": name,
+            "_pre_supplier_doc": doc_norm,
         })
     if not txs:
         raise HTTPException(404, "Nenhuma fatura válida com valor > 0")
@@ -453,6 +456,19 @@ async def _build_staging(cid: str, txs: List[Dict[str, Any]],
         {"_id": 0, "import_hash": 1}).to_list(len(hashes))
     existing_set = {e["import_hash"] for e in existing}
 
+    # Pré-busca de fornecedores por CPF/CNPJ (acelera Atlaz)
+    sup_by_doc: Dict[str, str] = {}
+    docs_in_txs = {_extract_doc(t["description"]) for t in txs}
+    docs_in_txs.discard(None)
+    if docs_in_txs:
+        async for s in db.fin_suppliers.find(
+            {"company_id": cid,
+             "cnpj": {"$in": [d for d in docs_in_txs if d and len(d) == 14]}},
+            {"_id": 0, "id": 1, "cnpj": 1},
+        ):
+            if s.get("cnpj"):
+                sup_by_doc[s["cnpj"]] = s["id"]
+
     # Memória + IA
     items: List[Dict[str, Any]] = []
     to_ai: List[int] = []
@@ -479,6 +495,21 @@ async def _build_staging(cid: str, txs: List[Dict[str, Any]],
             base["reason"] = (
                 f"Padrão aprendido ({mem.get('hit_count', 1)} vez(es))")
             base["source"] = "memory"
+            items.append(base); continue
+        # Atlaz: já sabemos tipo=income + nome do assinante → não chama IA
+        if source == "atlaz":
+            base["type"] = "income"
+            # Tenta match exato com fornecedor existente
+            if doc and doc in sup_by_doc:
+                base["supplier_id"] = sup_by_doc[doc]
+                base["reason"] = "Match automático por CNPJ/CPF do assinante"
+                base["confidence"] = 0.92
+            else:
+                base["reason"] = (
+                    "Pagamento de assinante Atlaz — selecione fornecedor "
+                    "se quiser vincular")
+                base["confidence"] = 0.85
+            base["source"] = "atlaz"
             items.append(base); continue
         to_ai.append(i)
         items.append(base)
@@ -537,7 +568,8 @@ async def confirm_import(payload: ConfirmIn,
         raise HTTPException(404, "Staging não encontrado")
     if s.get("status") == "confirmed":
         raise HTTPException(409, "Importação já confirmada")
-    # Mapeia idx→tx original (precisamos do hash + doc + key)
+    # Source dinâmico para rastreabilidade no fluxo de caixa
+    src_tag = f"bank_import_{s.get('source') or 'sicoob'}"
     orig_by_idx = {it["idx"]: it for it in (s.get("items") or [])}
     created = 0
     skipped = 0
@@ -565,7 +597,7 @@ async def confirm_import(payload: ConfirmIn,
             "cash_account_id": it.cash_account_id,
             "reference_type": "bank_import",
             "reference_id": payload.staging_id,
-            "source": "bank_import_sicoob",
+            "source": src_tag,
             "import_hash": orig.get("hash"),
             "created_at": now_iso(),
         }
