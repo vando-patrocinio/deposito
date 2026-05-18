@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -40,6 +40,14 @@ class BillIn(BaseModel):
     cash_account_id: Optional[str] = None
     notes: Optional[str] = None
     document_number: Optional[str] = None
+    # Parcelamento — se installments_count > 1, cria N parcelas a partir de
+    # due_date com intervalo de `installments_period_days` dias (default 30).
+    # O valor `amount` é considerado o TOTAL e será dividido em N parcelas.
+    installments_count: Optional[int] = Field(default=None, ge=1, le=120)
+    installments_period_days: Optional[int] = Field(default=30, ge=1, le=365)
+    # Se True, cada parcela recebe o valor `amount` (recorrência), em vez
+    # de dividir o total. Ex.: aluguel mensal de R$ 1500 por 12 meses.
+    installments_recurrent: bool = Field(default=False)
 
 
 class BillUpdate(BaseModel):
@@ -121,18 +129,83 @@ async def list_bills(
 @router.post("/bills")
 async def create_bill(payload: BillIn,
                       user: dict = Depends(require_finance())):
+    """Cria 1 ou N contas a pagar.
+
+    Se `installments_count > 1`, cria N parcelas a partir de `due_date` com
+    intervalo de `installments_period_days` dias. Cada parcela é uma conta
+    independente em `fin_bills_payable`, agrupadas por `installment_group_id`
+    pra facilitar relatórios/desfazer.
+
+    Modos:
+      - `installments_recurrent=False` (padrão): valor total é dividido em N
+        (ex.: R$ 1000 em 5x = 5 × R$ 200)
+      - `installments_recurrent=True`: cada parcela tem o `amount` cheio
+        (ex.: aluguel de R$ 1500 por 12 meses = 12 × R$ 1500)
+    """
     cid = user.get("company_id") or DEMO_COMPANY_ID
     data = payload.model_dump()
-    status_ = "overdue" if data["due_date"] < _today_str() else "pending"
-    doc = {
-        **data, "id": f"bill-{uuid.uuid4().hex[:10]}",
-        "company_id": cid, "status": status_,
-        "paid_at": None, "paid_amount": None,
-        "created_at": now_iso(), "updated_at": now_iso(),
+    n = int(data.pop("installments_count") or 1)
+    period_days = int(data.pop("installments_period_days") or 30)
+    recurrent = bool(data.pop("installments_recurrent"))
+
+    total = float(data["amount"])
+    base_date = datetime.strptime(data["due_date"], "%Y-%m-%d").date()
+
+    group_id: Optional[str] = (f"installments-{uuid.uuid4().hex[:10]}"
+                                  if n > 1 else None)
+
+    docs: List[Dict[str, Any]] = []
+    parcel_value = total if recurrent else round(total / n, 2)
+    # Ajuste pra última parcela absorver o residual de centavos
+    residual = round(total - parcel_value * n, 2) if not recurrent else 0.0
+
+    for i in range(n):
+        due = base_date + timedelta(days=period_days * i)
+        due_iso = due.isoformat()
+        amount_i = parcel_value
+        if not recurrent and i == n - 1 and abs(residual) > 0.005:
+            amount_i = round(parcel_value + residual, 2)
+
+        status_ = "overdue" if due_iso < _today_str() else "pending"
+
+        descr = data["description"]
+        if n > 1:
+            descr = f"{descr} ({i + 1}/{n})"
+
+        doc = {
+            **data,
+            "id": f"bill-{uuid.uuid4().hex[:10]}",
+            "company_id": cid,
+            "description": descr,
+            "amount": amount_i,
+            "due_date": due_iso,
+            "status": status_,
+            "paid_at": None, "paid_amount": None,
+            "installment_group_id": group_id,
+            "installment_index": (i + 1) if n > 1 else None,
+            "installment_total": n if n > 1 else None,
+            "installment_recurrent": recurrent if n > 1 else None,
+            "created_at": now_iso(), "updated_at": now_iso(),
+        }
+        docs.append(doc)
+
+    if len(docs) == 1:
+        await db.fin_bills_payable.insert_one(docs[0])
+    else:
+        await db.fin_bills_payable.insert_many(docs)
+
+    for d in docs:
+        d.pop("_id", None)
+    if len(docs) == 1:
+        return docs[0]
+    return {
+        "ok": True,
+        "installment_group_id": group_id,
+        "count": n,
+        "total_amount": round(parcel_value * n + (residual if not recurrent else 0), 2)
+                       if not recurrent else parcel_value * n,
+        "bills": docs,
     }
-    await db.fin_bills_payable.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
 
 
 @router.put("/bills/{bill_id}")

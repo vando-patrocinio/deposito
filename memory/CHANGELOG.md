@@ -1,6 +1,62 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Contas a Pagar parceladas + criação inline + médias no Fluxo de Caixa ★★★
+
+### Contexto
+Pediu (1) parcelamento de conta a pagar (ex.: 18/05 → 18/10/26, 5×), (2) criar fornecedor e categoria sem sair do modal de nova conta e (3) linha de média no gráfico de Fluxo de Caixa.
+
+### Implementado
+
+**1. Backend — `routes/financeiro_ops.py`:**
+- `BillIn` ganhou 3 campos opcionais:
+  - `installments_count` (1-120)
+  - `installments_period_days` (1-365, default 30)
+  - `installments_recurrent` (bool, default False)
+- `POST /financeiro/bills` agora cria 1..N parcelas a partir de `due_date`:
+  - **Modo divisão (default)**: valor total dividido em N parcelas. Última parcela absorve residual de centavos.
+  - **Modo recorrência** (`recurrent=True`): cada parcela tem o `amount` cheio (ex.: aluguel mensal).
+- Cada parcela é uma conta independente em `fin_bills_payable` agrupada por `installment_group_id` (UUID).
+- Campos extras na parcela: `installment_index`, `installment_total`, `installment_recurrent`.
+- Retorno: `{ok:true, installment_group_id, count, total_amount, bills:[...]}` (ou 1 doc puro quando N=1).
+- Descrição auto-formatada como `"<desc> (i/N)"`.
+
+**2. Frontend — `FinanceiroPanelExt.js`:**
+- **`BillForm`** ganhou seção colapsável de parcelamento (badge roxa) com inputs:
+  - Parcelas (1-60)
+  - Intervalo (dias)
+  - Toggle "Mesmo valor cada (recorrência)"
+- **Resumo dinâmico**: `5× de R$ 1.000,00 — total R$ 5.000,00 · última: 15/09/2026`
+- **Criação inline** via botão `+` ao lado do dropdown:
+  - Fornecedor: nome + CNPJ/CPF + telefone + email + notas
+  - Categoria: nome + tipo (despesa/receita/ambos) + cor
+- **Novo componente `InlineCreate`** reutilizável (Modal com fields config + POST).
+- Após criação, recarrega `refs` e seleciona automaticamente o item recém-criado.
+
+**3. Frontend — `CashFlowTab`:**
+- `BarChart` substituído por `ComposedChart` com 2 `Line` dashed:
+  - Verde tracejada = **Média de Entradas** (constante ao longo do período)
+  - Vermelha tracejada = **Média de Saídas**
+- 2 novos chips no header: "Média/dia entradas" + "Média/dia saídas" (em R$).
+- Altura do chart aumentada de 280 → 320 px pra acomodar a legenda extra.
+- Barras com `radius={[4,4,0,0]}` (cantos arredondados — boa prática 2026).
+
+### Validação (curl)
+- ✅ Conta simples 1× → `installment_total: None`
+- ✅ Conta parcelada 5× R$ 5000 → 5 parcelas de R$ 1000, vencimentos 18/05, 17/06, 17/07, 16/08, 15/09
+- ✅ Recorrente 12× R$ 1500 (aluguel) → `count:12 total:18000`
+- ✅ Criar fornecedor inline → retornou doc com `id:"fsup-..."`
+- ✅ Lint Python + JS: All checks passed
+
+### Boas práticas aplicadas (pesquisa)
+- Modo "divisão" como padrão (cenário mais comum: financiamento)
+- Modo "recorrência" pra contas fixas (aluguel, internet)
+- Residual de centavos absorvido pela última parcela (boa prática contábil)
+- Agrupamento via `installment_group_id` permite filtros/relatórios/desfazer
+- Inline create reduz fricção: usuário não perde contexto da conta sendo criada
+
+
+
 ## Mai 18, 2026 — Mapa da Rede no Mobile (técnico vê tudo cadastrado) ★★★
 
 ### Contexto

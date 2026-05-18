@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend,
+  Tooltip, Legend, ComposedChart, Line,
 } from "recharts";
 import AnalyticsChart from "@/FinanceiroAnalyticsChart";
 
@@ -119,7 +119,8 @@ export function BillsTab() {
       {editing !== null && (
         <BillForm initial={editing} refs={refs}
                   onClose={() => setEditing(null)}
-                  onSaved={() => { setEditing(null); reload(); }} />
+                  onSaved={() => { setEditing(null); reload(); }}
+                  onRefsChanged={loadRefs} />
       )}
       {paying !== null && (
         <PayBillForm bill={paying} refs={refs}
@@ -210,7 +211,7 @@ function BillStatusBadge({ status }) {
   );
 }
 
-function BillForm({ initial, refs, onClose, onSaved }) {
+function BillForm({ initial, refs, onClose, onSaved, onRefsChanged }) {
   const isEdit = !!initial?.id;
   const [form, setForm] = useState({
     description: initial?.description || "",
@@ -225,11 +226,33 @@ function BillForm({ initial, refs, onClose, onSaved }) {
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // Parcelamento (só pra nova conta)
+  const [installments, setInstallments] = useState(1);
+  const [periodDays, setPeriodDays] = useState(30);
+  const [recurrent, setRecurrent] = useState(false);
+  // Inline create modals
+  const [creatingSupplier, setCreatingSupplier] = useState(false);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  const totalAmount = Number(form.amount) || 0;
+  const parcelValue = recurrent ? totalAmount
+    : (installments > 1 ? totalAmount / installments : totalAmount);
+  const lastDate = (() => {
+    if (!form.due_date || installments <= 1) return null;
+    const d = new Date(form.due_date + "T12:00:00");
+    d.setDate(d.getDate() + periodDays * (installments - 1));
+    return d.toLocaleDateString("pt-BR");
+  })();
 
   async function save() {
     setBusy(true); setErr("");
     try {
       const payload = { ...form, amount: Number(form.amount) };
+      if (!isEdit && installments > 1) {
+        payload.installments_count = installments;
+        payload.installments_period_days = periodDays;
+        payload.installments_recurrent = recurrent;
+      }
       Object.keys(payload).forEach((k) => {
         if (payload[k] === "") delete payload[k];
       });
@@ -259,31 +282,115 @@ function BillForm({ initial, refs, onClose, onSaved }) {
                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
                  data-testid="bill-fld-amount" />
         </Field>
-        <Field label="Vencimento *">
+        <Field label={installments > 1 ? "1º Vencimento *" : "Vencimento *"}>
           <input style={inputStyle} type="date" value={form.due_date}
                  onChange={(e) => setForm({ ...form, due_date: e.target.value })}
                  data-testid="bill-fld-due-date" />
         </Field>
       </div>
+
+      {/* Parcelamento — só pra nova conta */}
+      {!isEdit && (
+        <div data-testid="bill-installments-box"
+              style={{
+                marginTop: 4, padding: 10, borderRadius: 8,
+                background: "rgba(99,102,241,0.06)",
+                border: "1px solid rgba(99,102,241,0.25)",
+              }}>
+          <div style={{ display: "grid",
+                          gridTemplateColumns: "auto 1fr 1fr",
+                          gap: 10, alignItems: "end" }}>
+            <Field label="Parcelas">
+              <input style={{ ...inputStyle, width: 80 }} type="number"
+                       min="1" max="60" value={installments}
+                       onChange={(e) => setInstallments(Math.max(1, Number(e.target.value) || 1))}
+                       data-testid="bill-fld-installments" />
+            </Field>
+            <Field label="Intervalo (dias)">
+              <input style={inputStyle} type="number" min="1" max="365"
+                       value={periodDays}
+                       disabled={installments <= 1}
+                       onChange={(e) => setPeriodDays(Math.max(1, Number(e.target.value) || 30))}
+                       data-testid="bill-fld-period-days" />
+            </Field>
+            <Field label=" ">
+              <label style={{
+                display: "flex", gap: 6, alignItems: "center",
+                fontSize: 12, color: "#475569", padding: "8px 0",
+              }}>
+                <input type="checkbox" checked={recurrent}
+                         disabled={installments <= 1}
+                         onChange={(e) => setRecurrent(e.target.checked)}
+                         data-testid="bill-fld-recurrent" />
+                Mesmo valor cada (recorrência)
+              </label>
+            </Field>
+          </div>
+          {installments > 1 && (
+            <div style={{ marginTop: 8, padding: 8,
+                            background: "#fff", borderRadius: 6,
+                            fontSize: 11.5, color: "#475569",
+                            border: "1px solid #e2e8f0" }}
+                  data-testid="bill-installments-summary">
+              <strong>
+                {installments}× de R${" "}
+                {parcelValue.toLocaleString("pt-BR", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </strong>
+              {!recurrent && (
+                <> — total R$ {totalAmount.toLocaleString("pt-BR",
+                  { minimumFractionDigits: 2 })}</>
+              )}
+              {recurrent && (
+                <> — total R$ {(parcelValue * installments).toLocaleString("pt-BR",
+                  { minimumFractionDigits: 2 })} ({installments} cobranças)</>
+              )}
+              {lastDate && (
+                <span style={{ marginLeft: 8, color: "#64748b" }}>
+                  · última: {lastDate}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <Field label="Fornecedor">
-        <select style={inputStyle} value={form.supplier_id}
-                onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
-                data-testid="bill-fld-supplier">
-          <option value="">— Nenhum —</option>
-          {refs.suppliers.map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
+        <div style={{ display: "flex", gap: 6 }}>
+          <select style={{ ...inputStyle, flex: 1 }} value={form.supplier_id}
+                  onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
+                  data-testid="bill-fld-supplier">
+            <option value="">— Nenhum —</option>
+            {refs.suppliers.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <button type="button"
+                    onClick={() => setCreatingSupplier(true)}
+                    data-testid="bill-supplier-new-btn"
+                    style={inlineCreateBtnStyle}
+                    title="Criar fornecedor">+</button>
+        </div>
       </Field>
       <Field label="Categoria">
-        <select style={inputStyle} value={form.category_id}
-                onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
-          <option value="">— Nenhuma —</option>
-          {refs.categories.filter((c) => c.kind !== "income")
-                          .map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
+        <div style={{ display: "flex", gap: 6 }}>
+          <select style={{ ...inputStyle, flex: 1 }} value={form.category_id}
+                  onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+                  data-testid="bill-fld-category">
+            <option value="">— Nenhuma —</option>
+            {refs.categories.filter((c) => c.kind !== "income")
+                            .map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <button type="button"
+                    onClick={() => setCreatingCategory(true)}
+                    data-testid="bill-category-new-btn"
+                    style={inlineCreateBtnStyle}
+                    title="Criar categoria">+</button>
+        </div>
       </Field>
       <Field label="Nº Documento">
         <input style={inputStyle} value={form.document_number}
@@ -297,6 +404,113 @@ function BillForm({ initial, refs, onClose, onSaved }) {
       {err && <ErrBox msg={err} />}
       <ModalActions onClose={onClose} onSave={save} busy={busy}
                     testId="bill-save-btn" />
+      {creatingSupplier && (
+        <InlineCreate
+          title="Novo fornecedor"
+          fields={[
+            { key: "name", label: "Nome *", required: true },
+            { key: "tax_id", label: "CNPJ/CPF" },
+            { key: "phone", label: "Telefone" },
+            { key: "email", label: "Email" },
+            { key: "notes", label: "Notas", multiline: true },
+          ]}
+          onClose={() => setCreatingSupplier(false)}
+          onCreated={async (created) => {
+            await onRefsChanged?.();
+            setForm((s) => ({ ...s, supplier_id: created.id }));
+            setCreatingSupplier(false);
+          }}
+          endpoint="/financeiro/suppliers"
+        />
+      )}
+      {creatingCategory && (
+        <InlineCreate
+          title="Nova categoria"
+          fields={[
+            { key: "name", label: "Nome *", required: true },
+            { key: "kind", label: "Tipo *",
+              options: [
+                { value: "expense", label: "Despesa" },
+                { value: "income", label: "Receita" },
+                { value: "both", label: "Ambos" },
+              ], defaultValue: "expense", required: true },
+            { key: "color", label: "Cor (hex)", placeholder: "#6366f1" },
+          ]}
+          onClose={() => setCreatingCategory(false)}
+          onCreated={async (created) => {
+            await onRefsChanged?.();
+            setForm((s) => ({ ...s, category_id: created.id }));
+            setCreatingCategory(false);
+          }}
+          endpoint="/financeiro/categories"
+        />
+      )}
+    </Modal>
+  );
+}
+
+const inlineCreateBtnStyle = {
+  width: 34, height: 34, border: "1px solid #cbd5e1",
+  background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+  color: "#fff", borderRadius: 6, cursor: "pointer",
+  fontSize: 18, fontWeight: 700, flexShrink: 0,
+};
+
+function InlineCreate({ title, fields, onClose, onCreated, endpoint }) {
+  const [form, setForm] = useState(() => {
+    const init = {};
+    fields.forEach((f) => { init[f.key] = f.defaultValue || ""; });
+    return init;
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const canSave = fields.filter((f) => f.required)
+    .every((f) => String(form[f.key] || "").trim().length > 0);
+
+  async function save() {
+    setBusy(true); setErr("");
+    try {
+      const payload = {};
+      fields.forEach((f) => {
+        if (form[f.key]) payload[f.key] = form[f.key];
+      });
+      const r = await api._client.post(endpoint, payload).then((x) => x.data);
+      onCreated(r);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal onClose={onClose} title={title} testId="inline-create-modal">
+      {fields.map((f) => (
+        <Field key={f.key} label={f.label}>
+          {f.options ? (
+            <select style={inputStyle} value={form[f.key]}
+                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      data-testid={`inline-fld-${f.key}`}>
+              <option value="">—</option>
+              {f.options.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          ) : f.multiline ? (
+            <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
+                        value={form[f.key]}
+                        onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                        data-testid={`inline-fld-${f.key}`} />
+          ) : (
+            <input style={inputStyle} value={form[f.key]}
+                     placeholder={f.placeholder || ""}
+                     onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                     data-testid={`inline-fld-${f.key}`} />
+          )}
+        </Field>
+      ))}
+      {err && <ErrBox msg={err} />}
+      <ModalActions onClose={onClose} onSave={save} busy={busy || !canSave}
+                    testId="inline-save-btn" />
     </Modal>
   );
 }
@@ -445,19 +659,54 @@ export function CashFlowTab() {
                     color="#dc2626" icon={ArrowDown} />
               <Chip label="Resultado" value={fmtMoney(data.totals.net)}
                     color={data.totals.net >= 0 ? "#16a34a" : "#dc2626"} />
+              <Chip label="Média/dia entradas"
+                    value={fmtMoney((data.totals.income || 0)
+                      / Math.max(1, data.series?.length || 1))}
+                    color="#10b981" />
+              <Chip label="Média/dia saídas"
+                    value={fmtMoney((data.totals.expense || 0)
+                      / Math.max(1, data.series?.length || 1))}
+                    color="#ef4444" />
             </div>
-            <div style={{ height: 280, marginTop: 6 }}>
+            <div style={{ height: 320, marginTop: 6 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.series}>
+                <ComposedChart data={(() => {
+                  const series = data.series || [];
+                  const n = series.length || 1;
+                  const avgIncome = series.reduce((s, x) =>
+                    s + (Number(x.income) || 0), 0) / n;
+                  const avgExpense = series.reduce((s, x) =>
+                    s + (Number(x.expense) || 0), 0) / n;
+                  return series.map((x) => ({
+                    ...x,
+                    avg_income: avgIncome,
+                    avg_expense: avgExpense,
+                  }));
+                })()}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }}
                           tickFormatter={(v) => `R$${v}`} />
-                  <Tooltip formatter={(v) => fmtMoney(v)} />
+                  <Tooltip formatter={(v, name) => {
+                    if (name?.toString().includes("Média")) {
+                      return [fmtMoney(v), name];
+                    }
+                    return fmtMoney(v);
+                  }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="income" name="Entradas" fill="#16a34a" />
-                  <Bar dataKey="expense" name="Saídas" fill="#dc2626" />
-                </BarChart>
+                  <Bar dataKey="income" name="Entradas" fill="#16a34a"
+                          radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="expense" name="Saídas" fill="#dc2626"
+                          radius={[4, 4, 0, 0]} />
+                  <Line type="monotone" dataKey="avg_income"
+                          name="Média Entradas" stroke="#10b981"
+                          strokeWidth={2} strokeDasharray="6 3"
+                          dot={false} activeDot={false} />
+                  <Line type="monotone" dataKey="avg_expense"
+                          name="Média Saídas" stroke="#ef4444"
+                          strokeWidth={2} strokeDasharray="6 3"
+                          dot={false} activeDot={false} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </>
