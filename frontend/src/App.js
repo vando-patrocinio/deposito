@@ -554,7 +554,7 @@ function TopBar({ user, companyName, isSuperAdmin, allCompanies, activeCo, onCha
 }
 
 function AppShell({ view, setView, children }) {
-  const { user, logout } = useAuth();
+  const { user, logout, isPublicAccess } = useAuth();
   const [companyName, setCompanyName] = useState(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [allCompanies, setAllCompanies] = useState([]);
@@ -621,6 +621,10 @@ function AppShell({ view, setView, children }) {
   }
 
   const tabs = useMemo(() => ALL_TABS.filter((t) => {
+    // Modo público (link sem login) só vê a aba autorizada no escopo do token.
+    // Hoje o único escopo é "lousa" (Chamados) — quando expandir suportar
+    // outros, basta ler `user._public_token_scope` e filtrar aqui.
+    if (isPublicAccess) return t.id === "lousa";
     if (t.superAdminOnly && !isSuperAdmin) return false;
     // Feature flags por usuário (ex.: can_attend_whatsapp).
     // Admin/auditor bypassam essa restrição.
@@ -633,7 +637,7 @@ function AppShell({ view, setView, children }) {
     }
     if (!hasRole(user, ...t.roles)) return false;
     return true;
-  }), [user, tabPerms, isSuperAdmin]);
+  }), [user, tabPerms, isSuperAdmin, isPublicAccess]);
 
   // Drawer state (mobile sidebar)
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -732,9 +736,27 @@ function AppContent() {
     return saved || "dashboard";
   });
   const setView = (v) => {
+    // Em modo público, ignora tentativa de trocar pra aba fora do escopo.
+    if (typeof window !== "undefined"
+        && window.localStorage.getItem("smartprov_public_token")
+        && !window.localStorage.getItem("ponto_token")
+        && v !== "lousa") {
+      return;
+    }
     setViewState(v);
     if (typeof window !== "undefined") window.localStorage.setItem("ponto_active_tab", v);
   };
+
+  // Reforça view=lousa quando entra em modo público (caso o localStorage tenha
+  // resíduo de uma sessão anterior).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hasPtoken = !!window.localStorage.getItem("smartprov_public_token");
+    const hasJWT = !!window.localStorage.getItem("ponto_token");
+    if (hasPtoken && !hasJWT && view !== "lousa") {
+      setViewState("lousa");
+    }
+  }, [view]);
 
   // Deep-link: ao clicar num atendente humano no Central IA, navegar para Atendimento IA com filtro
   useEffect(() => {
