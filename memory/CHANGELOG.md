@@ -1,6 +1,31 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — Chaves de IA Multi-Tenant (P0 finalizado · iter98-fork)
+
+### Contexto
+Continuação do trabalho da iter97: o `EMERGENT_LLM_KEY` global ficou sem créditos várias vezes (Isabella Vision muda). A solução era permitir que cada empresa cole suas próprias chaves Anthropic/OpenAI/Gemini em `Configurações → Integrações de IA`. Frontend (`SettingsPanel.js`) já tinha os 3 inputs, backend (`admin.py`) já aceitava o payload e `services/ai_keys.py` já resolvia. Faltavam 2 bugs que invalidavam todo o esforço:
+
+### Bugs corrigidos
+1. **`services/media_analysis.py:78-80`** — `analyze_image()` retornava `None` quando `EMERGENT_LLM_KEY` estava vazia, **antes mesmo de consultar a chave própria do tenant**. Removido o hard-gate; agora vai direto pro `resolve_keys()` que faz a cascata correta (DB tenant → env global → EMERGENT fallback).
+2. **`services/media_analysis.py:176`** (`analyze_pdf`) — Usava `api_key=EMERGENT_KEY` diretamente em vez de chamar `resolve_keys(company_id)`. Substituído por `resolve_keys` com fallback (gemini → openai → anthropic) para respeitar a chave do tenant também em PDFs.
+
+### Polimento Frontend
+- **`SettingsPanel.js`**: incluídos `anthropic_api_key: ""` e `gemini_api_key: ""` no estado inicial e no `reload()` (evita warning React controlled↔uncontrolled).
+- Payload do save agora descarta strings vazias para `anthropic_api_key` e `gemini_api_key` (não apaga acidentalmente uma key existente ao salvar outras opções).
+
+### Comportamento garantido
+- `EMERGENT_LLM_KEY` **continua** como fallback (decisão do usuário) — mas só é usada quando o tenant não tem chave própria nem env global. Se a Universal Key estourar de novo, basta o cliente colar sua chave Gemini gratuita (2M tokens/dia free no AI Studio) que tudo volta automaticamente.
+- Cache do `ai_keys.py` é invalidado automaticamente quando PUT `/api/settings` recebe qualquer key (`anthropic_api_key`, `openai_api_key`, `gemini_api_key`).
+
+### Validado E2E
+- `curl PUT /api/settings` com `gemini_api_key=AIzaSyTEST...` → GET retorna `gemini_api_key_set=true` mascarado como `AIza...***cdef`.
+- `python3 -c "resolve_keys(...)"` com/sem key no DB → cascata correta (custom > env > EMERGENT).
+- `analyze_image(PNG 1x1)` em `co-demo` (sem key própria) → retornou descrição via fallback EMERGENT. Função não quebra em nenhum cenário.
+- Lint `ruff` em `media_analysis.py`: All checks passed.
+
+
+
 ## Fev 18, 2026 — RCA: Isabella muda em imagens/PDFs = Budget esgotado + Rebrand (iter99)
 
 ### 🔍 Root Cause encontrado

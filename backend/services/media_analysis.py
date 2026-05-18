@@ -75,9 +75,6 @@ async def analyze_image(image_b64: str, mime_type: str = "image/jpeg",
     Returns:
         String descritiva pra injetar no prompt da Isabella, ou None em erro.
     """
-    if not EMERGENT_KEY:
-        logger.info("[vision] EMERGENT_LLM_KEY não configurada")
-        return None
     if not image_b64:
         return None
 
@@ -87,10 +84,11 @@ async def analyze_image(image_b64: str, mime_type: str = "image/jpeg",
         )
         from services.ai_keys import resolve_keys
         keys = await resolve_keys(company_id or "")
-        # Vision: prioridade Gemini (preferido por preço/qualidade no Nano Banana)
+        # Vision: prioridade Gemini (preferido por preço/qualidade no Nano Banana).
+        # resolve_keys já faz fallback p/ EMERGENT_LLM_KEY se tenant não tem chave própria.
         vision_key = keys.get("gemini") or keys.get("openai") or keys.get("anthropic")
         if not vision_key:
-            logger.warning("[vision] sem nenhuma key configurada — pulando")
+            logger.warning("[vision] nenhuma key disponível (nem própria, nem Emergent) — pulando")
             return None
         session_id = f"vision-{base64.b32encode(os.urandom(6)).decode().lower()}"
         chat = LlmChat(
@@ -171,9 +169,15 @@ async def analyze_pdf(pdf_b64: str,
         # Texto extraído bom → análise via Gemini só do texto (mais barato)
         if len(text) >= 50:
             from emergentintegrations.llm.chat import LlmChat, UserMessage
+            from services.ai_keys import resolve_keys
+            keys = await resolve_keys(company_id or "")
+            pdf_key = keys.get("gemini") or keys.get("openai") or keys.get("anthropic")
+            if not pdf_key:
+                logger.warning("[vision-pdf] nenhuma key disponível — pulando")
+                return None
             session_id = f"pdf-{base64.b32encode(os.urandom(6)).decode().lower()}"
             chat = LlmChat(
-                api_key=EMERGENT_KEY, session_id=session_id,
+                api_key=pdf_key, session_id=session_id,
                 system_message=SYSTEM_PROMPT_VISION,
             ).with_model(DEFAULT_PROVIDER, DEFAULT_MODEL)
             msg = UserMessage(text=(
