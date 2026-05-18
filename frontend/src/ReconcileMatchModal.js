@@ -48,10 +48,13 @@ export default function ReconcileMatchModal({ from_date, to_date, onClose,
       const r = await api.bankImportReconcilePayments(
         from_date, to_date, true);
       setData(r);
-      // Pré-marca todos pending pra revisão rápida (gestor pode desmarcar)
+      // Pré-marca apenas matches de alta confiança (score >= 95)
+      // Score 90 (data diff > 7d) fica desmarcado pra revisão cuidadosa.
       const presel = {};
       (r.pending || []).forEach((m) => {
-        presel[m.movement.id] = m.invoice.id;
+        if ((m.score || 0) >= 95) {
+          presel[m.movement.id] = m.invoice.id;
+        }
       });
       setSelected(presel);
     } finally { setLoading(false); }

@@ -1,6 +1,37 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — Conciliação Ativa (PIX × Atlaz com baixa automática) (iter97) ★★★
+**Objetivo do usuário**: cruzar PIX bancário do Sicoob com boletos abertos do Atlaz e dar BAIXA AUTOMÁTICA nas faturas quando há match (CPF/CNPJ + valor + data próxima).
+
+### Backend (`/app/backend/routes/bank_import.py`)
+- `POST /reconcile-payments?from_date=&to_date=&auto_mark=true` — algoritmo:
+  1. Busca `fin_cash_movements` income source=sicoob/outros no período (exclui já conciliados via `reconciled_invoice_id`).
+  2. Busca `subscriber_invoices` status=open com vencimento até 30d após `to_date`.
+  3. Resolve CPF/CNPJ da fatura via `subscribers.external_code` quando vazio.
+  4. Index `(doc, valor_arredondado)` → busca match com data mais próxima.
+  5. **Score 100** (CPF + valor + ≤1d) → marca automática local (`status=paid`, `paid_method='auto_reconciliation'`, `reconciled_movement_id`).
+  6. **Score 95** (≤7d) → marca automática se `auto_mark=true`.
+  7. **Score 90** (>7d) → pendente revisão.
+- `POST /reconcile-confirm` — aprova batch de matches manuais.
+- Retorna `{auto_marked, pending, pix_orphans, invoices_orphans, stats}`.
+
+### Frontend
+- `ReconciliationCard.js` — novo botão **"🔍 Ver discrepâncias & auto-baixar"** no header.
+- `ReconcileMatchModal.js` — NOVO modal com 4 abas:
+  - ✅ **Auto-baixados** (score 100, já marcados).
+  - 🔍 **Revisar** (score 90-95, com checkbox + botão "Aprovar selecionados").
+  - 💰 **PIX sem fatura** (cliente pagou mas não tem boleto correspondente — investigar).
+  - 📄 **Faturas sem PIX** (boleto vencido, cliente não pagou ainda).
+- Cards de match mostram lado a lado: PIX bancário ← → Fatura Atlaz com score colorido (verde 100% / amarelo 95% / laranja 90%) e dias de diferença.
+- Pré-seleção inteligente: matches score≥95 vêm marcados; score=90 desmarcado por padrão (segurança).
+
+### Validação (testing_agent_v3_fork iter97)
+- Backend 6/6 pytest ✓ (match score 100, idempotência, resolução external_code, batch manual, orphans cap).
+- Frontend E2E ✓ — modal completo com seeds, 4 abas com contadores, score badge, checkbox, footer.
+
+
+
 ## Fev 18, 2026 — P1 WhatsApp avatar fix + Dashboard de conciliação (iter96)
 
 ### P1 Fix · WhatsApp Baileys RC11 avatar (Não-bloqueante)
