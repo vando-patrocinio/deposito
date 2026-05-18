@@ -85,9 +85,16 @@ async def analyze_image(image_b64: str, mime_type: str = "image/jpeg",
         from emergentintegrations.llm.chat import (
             LlmChat, UserMessage, ImageContent,
         )
+        from services.ai_keys import resolve_keys
+        keys = await resolve_keys(company_id or "")
+        # Vision: prioridade Gemini (preferido por preço/qualidade no Nano Banana)
+        vision_key = keys.get("gemini") or keys.get("openai") or keys.get("anthropic")
+        if not vision_key:
+            logger.warning("[vision] sem nenhuma key configurada — pulando")
+            return None
         session_id = f"vision-{base64.b32encode(os.urandom(6)).decode().lower()}"
         chat = LlmChat(
-            api_key=EMERGENT_KEY, session_id=session_id,
+            api_key=vision_key, session_id=session_id,
             system_message=SYSTEM_PROMPT_VISION,
         ).with_model(DEFAULT_PROVIDER, DEFAULT_MODEL)
 
@@ -114,17 +121,21 @@ async def analyze_image(image_b64: str, mime_type: str = "image/jpeg",
         # Detecta budget esgotado pra logar de forma escalável (não como WARN
         # ruidoso a cada mensagem) — gera ALERT-LEVEL que o dashboard
         # de Saúde IA já capta. Persiste flag pra UI mostrar banner.
-        if "Budget has been exceeded" in msg or "Max budget" in msg:
+        if "Budget has been exceeded" in msg or "Max budget" in msg \
+                or "rate_limit" in msg.lower() \
+                or "insufficient" in msg.lower() \
+                or "invalid_api_key" in msg.lower() \
+                or "authentication" in msg.lower():
             logger.error(
-                "[vision] 💸 Budget Emergent LLM Key ESGOTADO — Isabella "
-                "não consegue analisar imagens. Adicione saldo em "
-                "Profile→Universal Key→Add Balance. detalhe=%s", msg,
+                "[vision] 💸 Provedor de IA com problema — Isabella não "
+                "consegue analisar imagens. Verifique saldo/key em "
+                "Configurações → AI Keys. detalhe=%s", msg,
             )
             try:
                 from database import db as _db
                 from core import now_iso as _now
                 await _db.aihub_settings.update_one(
-                    {"company_id": company_id or "", "key": "emergent_llm_budget_exceeded"},
+                    {"company_id": company_id or "", "key": "vision_provider_error"},
                     {"$set": {"value": True, "detail": msg[:300], "updated_at": _now()}},
                     upsert=True,
                 )

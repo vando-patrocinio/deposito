@@ -85,6 +85,8 @@ class Settings(BaseModel):
     sender_email: Optional[str] = None
     sender_name: Optional[str] = "SmartProv"
     openai_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None  # Claude (Sonnet, Haiku) — texto Isabella
+    gemini_api_key: Optional[str] = None  # Gemini Vision — análise de imagens/PDFs
     monthly_email_enabled: bool = True
     auto_audit: bool = True
     location_ping_interval_sec: int = 15

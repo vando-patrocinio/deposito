@@ -222,12 +222,20 @@ async def chat_completion(company_id: str,
             raise AgentDisabledError(agent_id)
 
     if not cfg.get("enabled") or not api_key:
-        # Fallback de segurança: se admin não configurou ainda, cai pra
-        # EMERGENT_LLM_KEY (compat com setup antigo). Loga warning.
-        if EMERGENT_LLM_KEY:
-            logger.warning("[motor-ia] cfg ausente — usando EMERGENT_LLM_KEY fallback")
-            return await _emergent_chat_fallback(messages, model, temperature, max_tokens)
-        raise RuntimeError("Motor IA não configurado. Configure em Sistemas → Motor IA.")
+        # Fallback: se OpenRouter não está configurado, usa keys próprias
+        # (Anthropic/OpenAI/Gemini) da empresa via _emergent_chat_fallback.
+        try:
+            return await _emergent_chat_fallback(
+                messages, model, temperature, max_tokens, company_id=cid,
+            )
+        except Exception as e:
+            logger.warning("[motor-ia] fallback chat falhou: %s", e)
+            if EMERGENT_LLM_KEY:
+                logger.warning("[motor-ia] última cartada — Emergent Key")
+                return await _emergent_chat_fallback(
+                    messages, model, temperature, max_tokens, company_id="",
+                )
+            raise RuntimeError("Motor IA não configurado. Configure em Configurações → AI Keys.")
 
     # REGRA DE NEGÓCIO: agentes de atendimento usam APENAS DeepSeek.
     # Ignora `model` recebido do caller e força configuração de atendimento.
@@ -563,20 +571,55 @@ async def _check_budget_alert(company_id: str):
             f"${spent:.4f} / ${limit:.2f} ({used_pct:.1f}%) — threshold {threshold_pct}%")
 
 
-async def _emergent_chat_fallback(messages, model, temperature, max_tokens):
-    """Fallback temporário usando emergentintegrations (sai depois)."""
+async def _emergent_chat_fallback(messages, model, temperature, max_tokens,
+                                       company_id: str = ""):
+    """Fallback chat usando emergentintegrations + keys da empresa."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from services.ai_keys import resolve_keys
     import uuid
+    keys = await resolve_keys(company_id or "")
     session_id = f"motoria-{uuid.uuid4().hex[:8]}"
     sys_prompt = next((m["content"] for m in messages if m["role"] == "system"), "")
     user_msg = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=session_id,
-        system_message=sys_prompt,
-    ).with_model("openai", "gpt-5-mini").with_max_tokens(max_tokens)
-    out = await chat.send_message(UserMessage(text=user_msg))
-    return {"content": str(out).strip(), "model": "gpt-5-mini (emergent)", "provider": "emergent"}
+    # Prioridade: Anthropic (Claude) → OpenAI → Gemini (cascata de fallback)
+    anthropic_key = keys.get("anthropic")
+    openai_key = keys.get("openai")
+    gemini_key = keys.get("gemini")
+    # Tenta Claude Sonnet primeiro
+    if anthropic_key:
+        try:
+            chat = LlmChat(
+                api_key=anthropic_key, session_id=session_id,
+                system_message=sys_prompt,
+            ).with_model("anthropic", "claude-sonnet-4-5")
+            out = await chat.send_message(UserMessage(text=user_msg))
+            return {"content": str(out).strip(),
+                    "model": "claude-sonnet-4-5", "provider": "anthropic"}
+        except Exception as e:
+            logger.warning("[motor-ia] Claude falhou (%s) — tentando OpenAI", e)
+    if openai_key:
+        try:
+            chat = LlmChat(
+                api_key=openai_key, session_id=session_id,
+                system_message=sys_prompt,
+            ).with_model("openai", "gpt-5-mini").with_max_tokens(max_tokens)
+            out = await chat.send_message(UserMessage(text=user_msg))
+            return {"content": str(out).strip(),
+                    "model": "gpt-5-mini", "provider": "openai"}
+        except Exception as e:
+            logger.warning("[motor-ia] OpenAI falhou (%s) — tentando Gemini", e)
+    if gemini_key:
+        chat = LlmChat(
+            api_key=gemini_key, session_id=session_id,
+            system_message=sys_prompt,
+        ).with_model("gemini", "gemini-2.5-flash")
+        out = await chat.send_message(UserMessage(text=user_msg))
+        return {"content": str(out).strip(),
+                "model": "gemini-2.5-flash", "provider": "gemini"}
+    raise RuntimeError(
+        "Nenhuma key de IA configurada. "
+        "Configure em Configurações → AI Keys.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -593,16 +636,14 @@ async def transcribe_audio(company_id: str, audio_bytes: bytes,
     except Exception:
         duration_sec = 1
     if not key:
-        # Compat: usa EMERGENT_LLM_KEY como fallback se admin não configurou ainda
-        if EMERGENT_LLM_KEY:
-            from emergentintegrations.llm.openai import OpenAISpeechToText
-            stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
-            text = await stt.transcribe(audio_bytes, filename=filename)
-            await log_usage_units(company_id, "isabella_stt", "whisper-1",
-                                  "stt", duration_sec, unit_type="second",
-                                  provider="openai")
-            return text
-        raise RuntimeError("OpenAI audio key não configurada. Configure em Sistemas → Motor IA.")
+        # Fallback: usa openai key da empresa (Settings → AI Keys)
+        from services.ai_keys import resolve_keys
+        keys = await resolve_keys(company_id or "")
+        key = keys.get("openai") or ""
+    if not key:
+        raise RuntimeError(
+            "OpenAI key não configurada. Configure em Configurações → AI Keys.",
+        )
     # OpenAI direto via SDK
     from openai import AsyncOpenAI
     import io
@@ -624,15 +665,14 @@ async def text_to_speech(company_id: str, text: str,
     v = voice or cfg.get("tts_voice") or DEFAULT_TTS_VOICE
     chars = len((text or "").strip())
     if not key:
-        if EMERGENT_LLM_KEY:
-            from emergentintegrations.llm.openai import OpenAITextToSpeech
-            tts = OpenAITextToSpeech(api_key=EMERGENT_LLM_KEY)
-            audio = await tts.synthesize(text, voice=v)
-            await log_usage_units(company_id, "isabella_tts", "tts-1",
-                                  "tts", chars, unit_type="char",
-                                  provider="openai")
-            return audio
-        raise RuntimeError("OpenAI audio key não configurada. Configure em Sistemas → Motor IA.")
+        # Fallback: usa openai key da empresa (Settings → AI Keys)
+        from services.ai_keys import resolve_keys
+        keys = await resolve_keys(company_id or "")
+        key = keys.get("openai") or ""
+    if not key:
+        raise RuntimeError(
+            "OpenAI key não configurada. Configure em Configurações → AI Keys.",
+        )
     from openai import AsyncOpenAI
     client = AsyncOpenAI(api_key=key)
     resp = await client.audio.speech.create(model="tts-1", voice=v, input=text)

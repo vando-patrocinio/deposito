@@ -232,10 +232,13 @@ async def _ai_classify_batch(cid: str, txs: List[Dict[str, Any]],
     """
     if not txs:
         return {}
-    if not EMERGENT_LLM_KEY:
-        return {}
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from services.ai_keys import resolve_keys
+        keys = await resolve_keys(cid)
+        ai_key = keys.get("anthropic") or keys.get("openai") or keys.get("gemini")
+        if not ai_key:
+            return {}
         suppliers_str = "\n".join(
             f"- {s['id']}: {s['name']}"
             + (f" ({s.get('cnpj','')})" if s.get("cnpj") else "")
@@ -273,7 +276,7 @@ async def _ai_classify_batch(cid: str, txs: List[Dict[str, Any]],
             "\"confidence\": 0.85, \"reason\": \"...\"}]}"
         )
         chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
+            api_key=ai_key,
             session_id=f"bank-import-{cid}-{uuid.uuid4().hex[:6]}",
             system_message="Você responde APENAS em JSON válido.",
         ).with_model("anthropic", "claude-sonnet-4-5")

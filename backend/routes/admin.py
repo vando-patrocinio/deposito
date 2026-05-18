@@ -43,9 +43,13 @@ async def get_settings_endpoint(user: dict = Depends(get_current_user)):
     out = s.model_dump()
     out["resend_api_key_set"] = bool(s.resend_api_key)
     out["openai_api_key_set"] = bool(s.openai_api_key)
+    out["anthropic_api_key_set"] = bool(s.anthropic_api_key)
+    out["gemini_api_key_set"] = bool(s.gemini_api_key)
     out["openrouter_api_key_set"] = bool(s.openrouter_api_key)
     out["resend_api_key"] = (s.resend_api_key[:6] + "...") if s.resend_api_key else ""
     out["openai_api_key"] = (s.openai_api_key[:6] + "...") if s.openai_api_key else ""
+    out["anthropic_api_key"] = ("sk-ant-...***" + s.anthropic_api_key[-4:]) if s.anthropic_api_key else ""
+    out["gemini_api_key"] = ("AIza...***" + s.gemini_api_key[-4:]) if s.gemini_api_key else ""
     out["openrouter_api_key"] = ("sk-or-v1***" + s.openrouter_api_key[-4:]) if s.openrouter_api_key else ""
     out["emergent_key_available"] = bool(EMERGENT_LLM_KEY)
     return out
@@ -56,6 +60,8 @@ class SettingsUpdate(BaseModel):
     sender_email: Optional[str] = None
     sender_name: Optional[str] = None
     openai_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = None
     monthly_email_enabled: Optional[bool] = None
     auto_audit: Optional[bool] = None
     location_ping_interval_sec: Optional[int] = None
@@ -90,6 +96,13 @@ class SettingsUpdate(BaseModel):
 async def update_settings_endpoint(payload: SettingsUpdate, user: dict = Depends(require_role("auditor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    # Invalida cache de keys quando troca de provedor
+    if any(k in data for k in ("anthropic_api_key", "openai_api_key", "gemini_api_key")):
+        try:
+            from services.ai_keys import invalidate_cache
+            invalidate_cache(cid)
+        except Exception:
+            pass
     return (await save_settings(data, cid)).model_dump()
 
 
