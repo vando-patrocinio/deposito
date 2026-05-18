@@ -582,6 +582,8 @@ export const api = {
     client.get(`/financeiro/reajuste/history/${encodeURIComponent(subscriberId)}`).then((r) => r.data),
   reajusteCohort: () =>
     client.get(`/financeiro/reajuste/cohort`).then((r) => r.data),
+  reajusteRetentionCurve: () =>
+    client.get(`/financeiro/reajuste/retention-curve`).then((r) => r.data),
   waBaileysAttendants: () =>
     client.get(`/whatsapp-baileys/attendants`).then((r) => r.data),
   // Configurações da instância (nome de exibição)

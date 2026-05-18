@@ -139,7 +139,7 @@ async def tenure_cohort(
     Usa `installation_date` pra calcular tenure. Agrupa em buckets de 1 ano.
     Identifica também quantos já aniversariaram este mês (gatilho de reajuste).
     """
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timezone
     cid = user.get("company_id") or "co-demo"
     now = datetime.now(timezone.utc)
 
@@ -185,4 +185,72 @@ async def tenure_cohort(
         "cohort": list(cohort.values()),
         "untracked": untracked,
         "total_tracked": sum(c["total"] for c in cohort.values()),
+    }
+
+
+@router.get("/retention-curve")
+async def retention_curve(
+    user: dict = Depends(require_role("gestor")),
+):
+    """📉 Curva de Retenção — % de clientes ativos por anos de casa.
+
+    Mostra onde os clientes mais cancelam (ponto de virada do churn).
+    Inclui base ATIVO + INATIVO/CANCELADO para calcular % corretamente.
+    """
+    from datetime import datetime, timezone
+    cid = user.get("company_id") or "co-demo"
+    now = datetime.now(timezone.utc)
+
+    # Total instalados em cada ano (anos de casa) e quantos seguem ativos
+    by_year = {y: {"installed": 0, "active": 0, "active_value": 0.0}
+               for y in range(0, 21)}
+
+    async for sub in db.subscribers.find(
+        {"company_id": cid,
+         "installation_date": {"$exists": True, "$ne": None}},
+        {"_id": 0, "installation_date": 1, "status": 1, "plan_price": 1},
+    ):
+        inst = sub.get("installation_date")
+        try:
+            d = datetime.fromisoformat(inst.replace("Z", "+00:00")) if isinstance(inst, str) else inst
+            if not d.tzinfo:
+                d = d.replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+        years = min((now - d).days // 365, 20)
+        is_active = (sub.get("status") or "").lower() in ("ativo", "active")
+        # Counting: o assinante atravessou cada ano de 0 até `years`
+        for y in range(0, years + 1):
+            by_year[y]["installed"] += 1
+            if is_active and y <= years:
+                by_year[y]["active"] += 1
+                if y == years:
+                    by_year[y]["active_value"] += float(sub.get("plan_price") or 0)
+
+    base = by_year[0]["installed"] or 1
+    curve = []
+    for y in range(0, 21):
+        installed = by_year[y]["installed"]
+        active = by_year[y]["active"]
+        # Retenção relativa à base (ano 0)
+        retention_pct = round((active / base) * 100, 2) if base else 0
+        # Churn marginal (perda do ano anterior pra este)
+        if y == 0:
+            churn_pct = 0
+        else:
+            prev_active = by_year[y - 1]["active"]
+            churn_pct = round(((prev_active - active) / prev_active) * 100, 2) \
+                if prev_active > 0 else 0
+        curve.append({
+            "year": y,
+            "active": active,
+            "installed_at_some_point": installed,
+            "retention_pct": retention_pct,
+            "churn_pct_from_prev": churn_pct,
+        })
+
+    return {
+        "as_of": now.isoformat(),
+        "base_year_0": base,
+        "curve": curve,
     }

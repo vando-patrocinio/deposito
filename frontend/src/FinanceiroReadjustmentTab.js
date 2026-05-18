@@ -3,8 +3,12 @@ import { api } from "@/api";
 import { Card } from "@/ui";
 import {
   TrendingUp, RefreshCw, CheckCircle2, AlertCircle, Calendar,
-  ArrowUpRight, Users, Cake,
+  ArrowUpRight, Users, Cake, TrendingDown,
 } from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, Area, AreaChart, ReferenceLine,
+} from "recharts";
 
 /**
  * Reajuste Anual — subaba do Financeiro.
@@ -42,6 +46,7 @@ export default function ReadjustmentTab() {
   const [batchBusy, setBatchBusy] = useState(false);
   const [refreshingIdx, setRefreshingIdx] = useState(null);
   const [cohort, setCohort] = useState(null);
+  const [retention, setRetention] = useState(null);
 
   const loadIndices = async () => {
     try {
@@ -69,7 +74,14 @@ export default function ReadjustmentTab() {
     } catch (_e) { /* ignore */ }
   };
 
-  useEffect(() => { loadIndices(); loadCohort(); }, []);
+  const loadRetention = async () => {
+    try {
+      const r = await api.reajusteRetentionCurve();
+      setRetention(r);
+    } catch (_e) { /* ignore */ }
+  };
+
+  useEffect(() => { loadIndices(); loadCohort(); loadRetention(); }, []);
   useEffect(() => { loadDue(); }, [horizon]);
 
   const refreshIndex = async (name) => {
@@ -230,6 +242,89 @@ export default function ReadjustmentTab() {
           )}
         </Card>
       )}
+
+      {/* Curva de Retenção — % de clientes ainda ativos por ano */}
+      {retention && retention.base_year_0 > 0 && (() => {
+        // Encontra ano de maior churn (ponto de virada)
+        const points = retention.curve || [];
+        const churnPeak = points.slice(1).reduce(
+          (max, p) => p.churn_pct_from_prev > (max?.churn_pct_from_prev || 0) ? p : max,
+          null,
+        );
+        return (
+          <Card title={
+            <div style={{ display: "flex", justifyContent: "space-between",
+                           alignItems: "center", width: "100%" }}>
+              <span>
+                <TrendingDown size={14} style={{
+                  display: "inline", marginRight: 6, color: "#0ea5e9" }} />
+                📉 Curva de Retenção · base {retention.base_year_0} cliente(s)
+              </span>
+              {churnPeak && churnPeak.churn_pct_from_prev > 0 && (
+                <span style={{
+                  fontSize: 11, padding: "3px 8px", borderRadius: 4,
+                  background: "#fef3c7", color: "#92400e", fontWeight: 600,
+                }}>
+                  Pico de churn: ano {churnPeak.year} (−{churnPeak.churn_pct_from_prev.toFixed(1)}%)
+                </span>
+              )}
+            </div>
+          }>
+            <div style={{ width: "100%", height: 280 }}>
+              <ResponsiveContainer>
+                <AreaChart data={points}
+                  margin={{ top: 10, right: 30, left: 0, bottom: 10 }}>
+                  <defs>
+                    <linearGradient id="retentionFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.03} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="year"
+                    label={{ value: "Anos de casa", position: "insideBottom",
+                              offset: -5, fontSize: 11 }}
+                    tick={{ fontSize: 11 }} />
+                  <YAxis domain={[0, 100]}
+                    tickFormatter={(v) => `${v}%`}
+                    tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    formatter={(v, name) => {
+                      if (name === "Retenção") return [`${v}%`, name];
+                      if (name === "Churn") return [`${v}%`, name];
+                      return [v, name];
+                    }}
+                    labelFormatter={(y) => `Ano ${y}`}
+                    contentStyle={{ borderRadius: 6, fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <ReferenceLine y={80} stroke="#16a34a" strokeDasharray="3 3"
+                    label={{ value: "Meta 80%", fontSize: 10, fill: "#16a34a" }} />
+                  <Area type="monotone" dataKey="retention_pct" name="Retenção"
+                    stroke="#0ea5e9" strokeWidth={2.5}
+                    fill="url(#retentionFill)" />
+                  <Line type="monotone" dataKey="churn_pct_from_prev"
+                    name="Churn" stroke="#dc2626" strokeWidth={1.5}
+                    strokeDasharray="4 4" dot={{ r: 2 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{
+              marginTop: 8, padding: "8px 12px", background: "#f8fafc",
+              borderRadius: 6, fontSize: 11, color: "#64748b",
+              lineHeight: 1.5,
+            }}>
+              <strong style={{ color: "#0f172a" }}>Como interpretar:</strong>{" "}
+              A linha azul é o % de clientes ainda ativos relativo ao ano 0.
+              A pontilhada vermelha é o % que cancelou de um ano pro outro.
+              Meta de retenção saudável: ≥80% no ano 1.{" "}
+              {churnPeak && churnPeak.year > 0 && (
+                <>O ano <strong>{churnPeak.year}</strong> é seu ponto crítico —
+                considere campanha preventiva 2 meses antes.</>
+              )}
+            </div>
+          </Card>
+        );
+      })()}
 
       {/* Reajustes vencidos */}
       <Card title={
