@@ -1,6 +1,36 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Otimização de custos da Central IA (94% economia) ★★★
+
+### Contexto
+Card de Custo do Motor IA revelou que `central_ia_eval` consumia $9,74 + `central_ia_coach` $2,35/mês (~70% do gasto total). Usuário pediu otimização agressiva mantendo qualidade.
+
+### Implementado (combinação a + c + e)
+
+**1. Modelo trocado de Sonnet → Haiku 4.5** em `routes/central_ia.py`:
+- `_llm_evaluate`: `model="anthropic/claude-haiku-4.5"` ($0.80/M in vs $3/M — 5x mais barato)
+- `_llm_coach`: mesmo modelo
+
+**2. Worker menos agressivo:**
+- `_WORKER_INTERVAL_SEC`: 300s → 900s (5min → 15min)
+- Re-eval threshold: 600s → 1800s (10min → 30min)
+- Transcript truncado: 6000 chars → 2500 chars (eval) e 4500 → 2500 (coach)
+
+**3. Auto-coach mais seletivo:**
+- Trigger CSAT < 7 → CSAT < 5 (só casos críticos)
+
+**4. Pricing fix em `services/motor_ia.py`:**
+- Adicionado alias `anthropic/claude-4.5-haiku` (modelo retorna esse formato em vez de `claude-haiku-4.5`)
+
+### Validação
+- Custo por call: **$0,001669** (Haiku) vs $0,006258 (Sonnet) — 73% mais barato por call.
+- Combinado com 3x menos calls + transcript menor: economia projetada **94%** ($14,69 → $0,95/mês).
+- Backend reiniciou OK, worker confirmado rodando a cada 900s nos logs.
+- Lint Python: ✅
+
+
+
 ## Mai 18, 2026 — Alertas Diários por Serviço (Vision/TTS/STT/Texto) ★★★
 
 ### Contexto

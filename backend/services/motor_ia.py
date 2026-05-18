@@ -373,6 +373,7 @@ MODEL_PRICING: Dict[str, Dict[str, float]] = {
     "anthropic/claude-4.5-sonnet":      {"in": 3.0,  "out": 15.0},
     "anthropic/claude-opus-4.5":        {"in": 15.0, "out": 75.0},
     "anthropic/claude-haiku-4.5":       {"in": 0.8,  "out": 4.0},
+    "anthropic/claude-4.5-haiku":       {"in": 0.8,  "out": 4.0},
     "anthropic/claude-3.5-sonnet":      {"in": 3.0,  "out": 15.0},
     "anthropic/claude-3-haiku":         {"in": 0.25, "out": 1.25},
     # OpenAI

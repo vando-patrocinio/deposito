@@ -101,8 +101,9 @@ async def _llm_evaluate(transcript: str, company_id: str = "") -> Optional[Dict[
             company_id or DEMO_COMPANY_ID,
             messages=[
                 {"role": "system", "content": EVAL_SYSTEM},
-                {"role": "user", "content": transcript[:6000]},
+                {"role": "user", "content": transcript[:2500]},
             ],
+            model="anthropic/claude-haiku-4.5",
             temperature=0.2,
             max_tokens=400,
             json_mode=True,
@@ -193,10 +194,11 @@ async def _evaluate_conversation(cid: str, phone: str,
         upsert=True,
     )
 
-    # Auto-coaching: se atendente HUMANO + CSAT < 7, gera coaching
+    # Auto-coaching: se atendente HUMANO + CSAT < 5, gera coaching
+    # (era CSAT<7, mas reduziu pra cortar custos — só casos críticos)
     if (not skip_auto_coach
             and eval_doc.get("assignee_user_id") and not eval_doc["is_ai_only"]
-            and eval_doc["csat_score"] < 7):
+            and eval_doc["csat_score"] < 5):
         try:
             await _generate_coaching(cid, phone, transcript, eval_doc)
         except Exception as e:
@@ -215,7 +217,7 @@ async def _llm_coach(transcript: str, eval_doc: dict,
         f"sentimento={eval_doc.get('sentiment')}, "
         f"FRT={eval_doc.get('frt_seconds')}s, "
         f"FCR={'sim' if eval_doc.get('fcr') else 'não'}.\n\n"
-        f"Transcript:\n---\n{transcript[:4500]}\n---\n\n"
+        f"Transcript:\n---\n{transcript[:2500]}\n---\n\n"
         "Gere o coaching JSON conforme instruído."
     )
     try:
@@ -225,6 +227,7 @@ async def _llm_coach(transcript: str, eval_doc: dict,
                 {"role": "system", "content": COACHING_SYSTEM},
                 {"role": "user", "content": user_text},
             ],
+            model="anthropic/claude-haiku-4.5",
             temperature=0.3, max_tokens=450, json_mode=True,
             agent="central_ia_coach",
         )
@@ -275,7 +278,7 @@ async def _generate_coaching(cid: str, phone: str, transcript: str,
 # ---------------------------------------------------------------------------
 _WORKER_TASK: Optional[asyncio.Task] = None
 _WORKER_RUN = True
-_WORKER_INTERVAL_SEC = 300  # 5min
+_WORKER_INTERVAL_SEC = 900  # 15min (otimização de custo, era 5min)
 
 
 async def _worker_tick() -> None:
@@ -308,7 +311,8 @@ async def _worker_tick() -> None:
             )
             if existing:
                 t = _parse_iso(existing.get("evaluated_at"))
-                if t and (datetime.now(timezone.utc) - t).total_seconds() < 600:
+                if t and (datetime.now(timezone.utc) - t).total_seconds() < 1800:
+                    # Pula se eval recente (<30min) — era 10min
                     continue
                 # Pula se contagem não cresceu
                 if existing.get("msg_count") == r.get("msg_count"):
