@@ -22,6 +22,8 @@ LIGO_DARK = "#1A1A2E"
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 LOGO_PATH = BASE_DIR / "static" / "logo-ligo.png"
+HEADER_PATH = BASE_DIR / "assets" / "boleto_header.jpg"
+FOOTER_PATH = BASE_DIR / "assets" / "boleto_footer.jpg"
 
 
 async def _resolve_logo(company_id: Optional[str] = None) -> Optional[bytes]:
@@ -142,48 +144,60 @@ def build_boleto_pdf(invoice: Dict[str, Any], *,
     c = canvas.Canvas(buf, pagesize=A4)
     W, H = A4
 
-    # ---------- HEADER: barra roxa com onda + logo ----------
-    c.setFillColorRGB(0x6A / 255, 0x1B / 255, 0x9A / 255)  # roxo Ligo
-    c.rect(0, H - 35 * mm, W, 35 * mm, fill=1, stroke=0)
-    # Onda decorativa verde-teal sobreposta (curvas Bezier suaves)
-    p = c.beginPath()
-    p.moveTo(0, H - 33 * mm)
-    p.curveTo(W * 0.3, H - 20 * mm, W * 0.7, H - 50 * mm, W, H - 30 * mm)
-    p.lineTo(W, H - 35 * mm)
-    p.lineTo(0, H - 35 * mm)
-    p.close()
-    c.setFillColorRGB(0x00 / 255, 0xBF / 255, 0x9E / 255)  # teal Ligo
-    c.drawPath(p, fill=1, stroke=0)
-
-    # Logo (canto superior direito)
-    logo_data = logo_bytes
-    if logo_data is None and LOGO_PATH.exists():
-        try:
-            logo_data = LOGO_PATH.read_bytes()
-        except Exception:
-            logo_data = None
-    if logo_data:
+    # ---------- HEADER: imagem oficial Ligo Fibra (testeira) ----------
+    # A imagem `assets/boleto_header.jpg` substitui o desenho com onda+logo.
+    # Se não existir, faz fallback pra desenho antigo.
+    header_drew = False
+    if HEADER_PATH.exists():
         try:
             c.drawImage(
-                ImageReader(io.BytesIO(logo_data)),
-                W - 60 * mm, H - 28 * mm,
-                width=50 * mm, height=18 * mm,
-                preserveAspectRatio=True, mask="auto",
+                ImageReader(str(HEADER_PATH)),
+                0, H - 35 * mm,
+                width=W, height=35 * mm,
+                preserveAspectRatio=False, mask="auto",
             )
+            header_drew = True
         except Exception as e:
-            logger.info("[boleto_pdf] logo skip: %s", e)
-    else:
-        # Fallback texto se logo não disponível
-        c.setFillColorRGB(1, 1, 1)
-        c.setFont("Helvetica-Bold", 22)
-        c.drawRightString(W - 15 * mm, H - 22 * mm, "Ligo Fibra")
+            logger.info("[boleto_pdf] header img skip: %s", e)
 
-    # Título à esquerda no header
-    c.setFillColorRGB(1, 1, 1)
-    c.setFont("Helvetica", 9)
-    c.drawString(15 * mm, H - 14 * mm, "www.ligofibra.com.br")
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(15 * mm, H - 25 * mm, "FATURA / BOLETO")
+    if not header_drew:
+        # Fallback: desenho original com onda + logo
+        c.setFillColorRGB(0x6A / 255, 0x1B / 255, 0x9A / 255)
+        c.rect(0, H - 35 * mm, W, 35 * mm, fill=1, stroke=0)
+        p = c.beginPath()
+        p.moveTo(0, H - 33 * mm)
+        p.curveTo(W * 0.3, H - 20 * mm, W * 0.7, H - 50 * mm, W, H - 30 * mm)
+        p.lineTo(W, H - 35 * mm)
+        p.lineTo(0, H - 35 * mm)
+        p.close()
+        c.setFillColorRGB(0x00 / 255, 0xBF / 255, 0x9E / 255)
+        c.drawPath(p, fill=1, stroke=0)
+        # Logo (canto superior direito)
+        logo_data = logo_bytes
+        if logo_data is None and LOGO_PATH.exists():
+            try:
+                logo_data = LOGO_PATH.read_bytes()
+            except Exception:
+                logo_data = None
+        if logo_data:
+            try:
+                c.drawImage(
+                    ImageReader(io.BytesIO(logo_data)),
+                    W - 60 * mm, H - 28 * mm,
+                    width=50 * mm, height=18 * mm,
+                    preserveAspectRatio=True, mask="auto",
+                )
+            except Exception as e:
+                logger.info("[boleto_pdf] logo skip: %s", e)
+        else:
+            c.setFillColorRGB(1, 1, 1)
+            c.setFont("Helvetica-Bold", 22)
+            c.drawRightString(W - 15 * mm, H - 22 * mm, "Ligo Fibra")
+        c.setFillColorRGB(1, 1, 1)
+        c.setFont("Helvetica", 9)
+        c.drawString(15 * mm, H - 14 * mm, "www.ligofibra.com.br")
+        c.setFont("Helvetica-Bold", 18)
+        c.drawString(15 * mm, H - 25 * mm, "FATURA / BOLETO")
 
     # ---------- CORPO ----------
     y = H - 50 * mm
@@ -318,46 +332,54 @@ def build_boleto_pdf(invoice: Dict[str, Any], *,
         c.drawCentredString(W / 2, y - 4 * mm, str(bar_line))
         y -= 10 * mm
 
-    # ---------- FOOTER ----------
-    # Onda inferior
-    c.setFillColorRGB(0x6A / 255, 0x1B / 255, 0x9A / 255)
-    fp = c.beginPath()
-    fp.moveTo(0, 0)
-    fp.lineTo(0, 25 * mm)
-    fp.curveTo(W * 0.3, 35 * mm, W * 0.7, 15 * mm, W, 25 * mm)
-    fp.lineTo(W, 0)
-    fp.close()
-    c.drawPath(fp, fill=1, stroke=0)
-    # Onda verde menor sobreposta
-    c.setFillColorRGB(0x00 / 255, 0xBF / 255, 0x9E / 255)
-    fp2 = c.beginPath()
-    fp2.moveTo(0, 0)
-    fp2.lineTo(0, 10 * mm)
-    fp2.curveTo(W * 0.4, 18 * mm, W * 0.6, 6 * mm, W, 12 * mm)
-    fp2.lineTo(W, 0)
-    fp2.close()
-    c.drawPath(fp2, fill=1, stroke=0)
+    # ---------- FOOTER: imagem oficial Ligo Fibra (rodapé) ----------
+    footer_drew = False
+    if FOOTER_PATH.exists():
+        try:
+            c.drawImage(
+                ImageReader(str(FOOTER_PATH)),
+                0, 0,
+                width=W, height=30 * mm,
+                preserveAspectRatio=False, mask="auto",
+            )
+            footer_drew = True
+        except Exception as e:
+            logger.info("[boleto_pdf] footer img skip: %s", e)
 
-    # Texto do footer (sobre o roxo)
-    c.setFillColorRGB(1, 1, 1)
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(15 * mm, 21 * mm,
-                 "Ligo Fibra · A Internet que te faz feliz")
-    c.setFont("Helvetica", 7.5)
-    c.drawString(15 * mm, 17 * mm,
-                 "V S DO PATROCINIO PROVEDOR DE INTERNET ME · "
-                 "CNPJ 13.302.883/0001-36")
-    c.drawString(15 * mm, 13.5 * mm,
-                 "ANATEL Fistel 50418215421 · SEI 53500.025630/2019-3")
-    c.drawString(15 * mm, 18 * mm + 18,  # subtle adjust if needed
-                 "")
-
-    # Contatos
-    c.setFont("Helvetica-Bold", 8)
-    c.drawRightString(W - 15 * mm, 21 * mm, "Central do Assinante:")
-    c.setFont("Helvetica", 8)
-    c.drawRightString(W - 15 * mm, 17 * mm, "www.ligofibra.com.br/central")
-    c.drawRightString(W - 15 * mm, 13.5 * mm, "0800 021 21 11")
+    if not footer_drew:
+        # Fallback: ondas + texto desenhado
+        c.setFillColorRGB(0x6A / 255, 0x1B / 255, 0x9A / 255)
+        fp = c.beginPath()
+        fp.moveTo(0, 0)
+        fp.lineTo(0, 25 * mm)
+        fp.curveTo(W * 0.3, 35 * mm, W * 0.7, 15 * mm, W, 25 * mm)
+        fp.lineTo(W, 0)
+        fp.close()
+        c.drawPath(fp, fill=1, stroke=0)
+        c.setFillColorRGB(0x00 / 255, 0xBF / 255, 0x9E / 255)
+        fp2 = c.beginPath()
+        fp2.moveTo(0, 0)
+        fp2.lineTo(0, 10 * mm)
+        fp2.curveTo(W * 0.4, 18 * mm, W * 0.6, 6 * mm, W, 12 * mm)
+        fp2.lineTo(W, 0)
+        fp2.close()
+        c.drawPath(fp2, fill=1, stroke=0)
+        c.setFillColorRGB(1, 1, 1)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(15 * mm, 21 * mm,
+                     "Ligo Fibra · A Internet que te faz feliz")
+        c.setFont("Helvetica", 7.5)
+        c.drawString(15 * mm, 17 * mm,
+                     "V S DO PATROCINIO PROVEDOR DE INTERNET ME · "
+                     "CNPJ 13.302.883/0001-36")
+        c.drawString(15 * mm, 13.5 * mm,
+                     "ANATEL Fistel 50418215421 · SEI 53500.025630/2019-3")
+        c.setFont("Helvetica-Bold", 8)
+        c.drawRightString(W - 15 * mm, 21 * mm, "Central do Assinante:")
+        c.setFont("Helvetica", 8)
+        c.drawRightString(W - 15 * mm, 17 * mm,
+                            "www.ligofibra.com.br/central")
+        c.drawRightString(W - 15 * mm, 13.5 * mm, "0800 021 21 11")
 
     c.showPage()
     c.save()

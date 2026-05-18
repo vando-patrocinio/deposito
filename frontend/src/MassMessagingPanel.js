@@ -6,6 +6,7 @@ import {
   Users, CheckCircle2, XCircle, Clock, Zap,
 } from "lucide-react";
 import DisparoIaPanel from "@/DisparoIaPanel";
+import DisparoPromoPanel from "@/DisparoPromoPanel";
 
 const fmtDate = (s) => s ? new Date(s).toLocaleString("pt-BR") : "—";
 
@@ -76,6 +77,7 @@ export default function MassMessagingPanel() {
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid #e2e8f0" }}>
         {[
           { id: "manual", label: "Campanhas manuais", icon: Megaphone },
+          { id: "promo", label: "Promoção / Aviso", icon: Megaphone },
           { id: "disparo_ia", label: "Disparo IA", icon: Zap },
         ].map((t) => {
           const Icon = t.icon;
@@ -110,7 +112,7 @@ export default function MassMessagingPanel() {
         })}
       </div>
 
-      {tab === "disparo_ia" ? <DisparoIaPanel /> : (
+      {tab === "disparo_ia" ? <DisparoIaPanel /> : tab === "promo" ? <DisparoPromoPanel /> : (
       <Card title="Campanhas">
         {loading ? (
           <div style={{ color: "#94a3b8" }}>Carregando…</div>
