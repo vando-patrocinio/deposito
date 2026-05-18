@@ -67,7 +67,9 @@ NUNCA use mais de 200 caracteres na descrição.
 """
 
 
-async def analyze_image(image_b64: str, mime_type: str = "image/jpeg") -> Optional[str]:
+async def analyze_image(image_b64: str, mime_type: str = "image/jpeg",
+                          company_id: Optional[str] = None,
+                          agent: str = "isabella_vision") -> Optional[str]:
     """Analisa imagem (base64) e retorna descrição curta.
 
     Returns:
@@ -98,13 +100,23 @@ async def analyze_image(image_b64: str, mime_type: str = "image/jpeg") -> Option
         if len(result) > 260:
             result = result[:257] + "..."
         logger.info("[vision] analisado · %s chars", len(result))
+        # Loga 1 imagem no Motor IA Usage
+        try:
+            from services.motor_ia import log_usage_units
+            await log_usage_units(company_id or "", agent, DEFAULT_MODEL,
+                                  "vision", 1, unit_type="image",
+                                  provider="gemini")
+        except Exception as e:
+            logger.debug("[vision] usage log falhou: %s", e)
         return result or None
     except Exception as e:
         logger.warning("[vision] análise falhou: %s", e)
         return None
 
 
-async def analyze_pdf(pdf_b64: str) -> Optional[str]:
+async def analyze_pdf(pdf_b64: str,
+                       company_id: Optional[str] = None,
+                       agent: str = "isabella_vision") -> Optional[str]:
     """Analisa PDF (base64) e retorna descrição/extração de dados-chave.
 
     Estratégia: extrai texto primeiro via pypdf (rápido); se vier vazio
@@ -140,6 +152,13 @@ async def analyze_pdf(pdf_b64: str) -> Optional[str]:
             result = (response or "").strip()
             if len(result) > 260:
                 result = result[:257] + "..."
+            try:
+                from services.motor_ia import log_usage_units
+                await log_usage_units(company_id or "", agent, DEFAULT_MODEL,
+                                      "vision", 1, unit_type="image",
+                                      provider="gemini")
+            except Exception as e:
+                logger.debug("[vision-pdf] usage log falhou: %s", e)
             return result or None
     except Exception as e:
         logger.warning("[vision-pdf] extração de texto falhou: %s", e)
@@ -149,15 +168,19 @@ async def analyze_pdf(pdf_b64: str) -> Optional[str]:
 
 
 async def analyze_media(media_b64: str, mime_type: str,
-                          kind: str) -> Optional[str]:
+                          kind: str,
+                          company_id: Optional[str] = None,
+                          agent: str = "isabella_vision") -> Optional[str]:
     """Despacha para função certa baseado em tipo."""
     if not media_b64:
         return None
     if kind == "image":
-        return await analyze_image(media_b64, mime_type=mime_type)
+        return await analyze_image(media_b64, mime_type=mime_type,
+                                    company_id=company_id, agent=agent)
     if kind == "document":
         if "pdf" in (mime_type or "").lower():
-            return await analyze_pdf(media_b64)
+            return await analyze_pdf(media_b64, company_id=company_id,
+                                      agent=agent)
         # Outros docs (.docx, .xlsx) — não suportado por ora
         return None
     # video / sticker → não analisamos

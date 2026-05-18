@@ -389,6 +389,98 @@ MODEL_PRICING: Dict[str, Dict[str, float]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Tabela de preços por UNIDADE — serviços que não cobram por token (visão por
+# imagem, áudio por segundo, TTS por caractere). Valores em USD por unidade,
+# baseados nas tabelas oficiais OpenAI / Google AI (jan/2026).
+# ---------------------------------------------------------------------------
+UNIT_PRICING: Dict[str, Dict[str, float]] = {
+    # --- Visão (Gemini via Emergent LLM Key) ---
+    # Gemini 2.5 Flash: imagens contam como ~258 tokens cada; com input em
+    # $0.075/M tokens fica ~$0.0000194/imagem. Arredondamos pra um valor
+    # conservador que já cobre o overhead do prompt do sistema.
+    "gemini-2.5-flash":      {"unit": "image",  "price": 0.00030},
+    "gemini-2.0-flash":      {"unit": "image",  "price": 0.00025},
+    "gemini-1.5-flash":      {"unit": "image",  "price": 0.00020},
+    "gpt-4o-vision":         {"unit": "image",  "price": 0.00150},
+    # --- Áudio: Speech-to-Text (Whisper) ---
+    # OpenAI cobra $0.006/min = $0.0001/segundo
+    "whisper-1":             {"unit": "second", "price": 0.0001},
+    # --- Áudio: Text-to-Speech (OpenAI) ---
+    # gpt-4o-mini-tts $0.015/1k chars = $0.000015/char
+    "gpt-4o-mini-tts":       {"unit": "char",   "price": 0.000015},
+    "tts-1":                 {"unit": "char",   "price": 0.000015},
+    # tts-1-hd $0.030/1k chars
+    "tts-1-hd":              {"unit": "char",   "price": 0.000030},
+}
+
+
+def _estimate_unit_cost_usd(model: str, units: int) -> float:
+    """Estima custo (USD) para serviços por unidade (imagem/segundo/caractere)."""
+    if not model or units <= 0:
+        return 0.0
+    m = model.lower()
+    p = UNIT_PRICING.get(m)
+    if not p:
+        # tenta por prefixo
+        for k, v in UNIT_PRICING.items():
+            if m.startswith(k):
+                p = v
+                break
+    if not p:
+        return 0.0
+    return round(units * float(p["price"]), 6)
+
+
+async def log_usage_units(company_id: str, agent: str, model: str,
+                            service: str, units: int,
+                            unit_type: Optional[str] = None,
+                            provider: Optional[str] = None) -> None:
+    """Loga uso de serviço por unidade (não por token) em `motor_ia_usage`.
+
+    Args:
+        company_id: Tenant.
+        agent: Nome do agente (ex. `isabella_vision`, `isabella_tts`).
+        model: Modelo usado (ex. `gemini-2.5-flash`, `whisper-1`).
+        service: Categoria — `vision`, `stt` ou `tts`.
+        units: Quantidade de unidades consumidas (imagens, segundos, chars).
+        unit_type: `image`, `second`, `char`. Se None, busca em UNIT_PRICING.
+        provider: Override de provider (`openai`, `gemini`). Auto se None.
+    """
+    if not units or units <= 0:
+        return
+    try:
+        if not unit_type:
+            p = UNIT_PRICING.get((model or "").lower(), {})
+            unit_type = p.get("unit") or "unit"
+        cost = _estimate_unit_cost_usd(model, units)
+        prov = provider or ("openai" if (model or "").startswith(("whisper",
+                                                                    "tts",
+                                                                    "gpt-"))
+                            else "gemini" if (model or "").startswith("gemini")
+                            else "unknown")
+        await db.motor_ia_usage.insert_one({
+            "company_id": company_id or DEMO_COMPANY_ID,
+            "agent": agent or "general",
+            "model": model,
+            "provider": prov,
+            "service": service,                # vision | stt | tts | text
+            "units": int(units),
+            "unit_type": unit_type,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "estimated_cost_usd": cost,
+            "created_at": now_iso(),
+        })
+        try:
+            await _check_budget_alert(company_id or DEMO_COMPANY_ID)
+        except Exception as e:
+            logger.debug(f"[motor-ia] budget check falhou: {e}")
+    except Exception as e:
+        logger.warning("[motor-ia] log_usage_units falhou: %s", e)
+
+
 def _estimate_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     """Estima custo em USD baseado na tabela acima. Faz match case-insensitive
     e tenta também por prefixo (ex.: 'anthropic/claude-4.5-sonnet-20250929'
@@ -423,6 +515,7 @@ async def _log_usage(company_id: str, agent: str, model: str,
         "agent": agent or "general",
         "model": model,
         "provider": provider,
+        "service": "text",
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
@@ -493,12 +586,21 @@ async def transcribe_audio(company_id: str, audio_bytes: bytes,
     """Transcreve áudio usando Whisper. Requer openai_audio_key configurada."""
     cfg = await get_motor_config(company_id or DEMO_COMPANY_ID)
     key = cfg.get("openai_audio_key") or ""
+    # Estima duração em segundos pra logar custo (opus ~24kbps).
+    try:
+        duration_sec = max(1, int(round((len(audio_bytes) * 8) / 24000)))
+    except Exception:
+        duration_sec = 1
     if not key:
         # Compat: usa EMERGENT_LLM_KEY como fallback se admin não configurou ainda
         if EMERGENT_LLM_KEY:
             from emergentintegrations.llm.openai import OpenAISpeechToText
             stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
-            return await stt.transcribe(audio_bytes, filename=filename)
+            text = await stt.transcribe(audio_bytes, filename=filename)
+            await log_usage_units(company_id, "isabella_stt", "whisper-1",
+                                  "stt", duration_sec, unit_type="second",
+                                  provider="openai")
+            return text
         raise RuntimeError("OpenAI audio key não configurada. Configure em Sistemas → Motor IA.")
     # OpenAI direto via SDK
     from openai import AsyncOpenAI
@@ -507,6 +609,9 @@ async def transcribe_audio(company_id: str, audio_bytes: bytes,
     f = io.BytesIO(audio_bytes)
     f.name = filename
     resp = await client.audio.transcriptions.create(model="whisper-1", file=f)
+    await log_usage_units(company_id, "isabella_stt", "whisper-1",
+                          "stt", duration_sec, unit_type="second",
+                          provider="openai")
     return resp.text
 
 
@@ -516,15 +621,23 @@ async def text_to_speech(company_id: str, text: str,
     cfg = await get_motor_config(company_id or DEMO_COMPANY_ID)
     key = cfg.get("openai_audio_key") or ""
     v = voice or cfg.get("tts_voice") or DEFAULT_TTS_VOICE
+    chars = len((text or "").strip())
     if not key:
         if EMERGENT_LLM_KEY:
             from emergentintegrations.llm.openai import OpenAITextToSpeech
             tts = OpenAITextToSpeech(api_key=EMERGENT_LLM_KEY)
-            return await tts.synthesize(text, voice=v)
+            audio = await tts.synthesize(text, voice=v)
+            await log_usage_units(company_id, "isabella_tts", "tts-1",
+                                  "tts", chars, unit_type="char",
+                                  provider="openai")
+            return audio
         raise RuntimeError("OpenAI audio key não configurada. Configure em Sistemas → Motor IA.")
     from openai import AsyncOpenAI
     client = AsyncOpenAI(api_key=key)
     resp = await client.audio.speech.create(model="tts-1", voice=v, input=text)
+    await log_usage_units(company_id, "isabella_tts", "tts-1",
+                          "tts", chars, unit_type="char",
+                          provider="openai")
     return resp.content
 
 

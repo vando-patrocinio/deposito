@@ -109,6 +109,9 @@ AGENT_LABELS: Dict[str, str] = {
     "lousa_triagem":      "Lousa Triagem",
     "copilot_ai":         "Co-Pilot IA",
     "isabella_whatsapp":  "Isabella (WhatsApp)",
+    "isabella_vision":    "Isabella · Visão (imagens)",
+    "isabella_tts":       "Isabella · TTS (voz)",
+    "isabella_stt":       "Isabella · STT (Whisper)",
     "aihub_chat":         "AI Hub · Chat",
     "aihub_textgen":      "AI Hub · TextGen",
     "central_ia_eval":    "Central IA · Avaliação",
@@ -119,6 +122,15 @@ AGENT_LABELS: Dict[str, str] = {
     "proactive_outage_context": "Contexto de Pane (proativo)",
     "general":            "Outros (geral)",
     "atendimento":        "Atendimento (legado)",
+}
+
+
+# Rótulos amigáveis por serviço (text / vision / stt / tts).
+SERVICE_LABELS: Dict[str, str] = {
+    "text":   "Texto (LLM)",
+    "vision": "Visão (Gemini)",
+    "stt":    "Áudio → Texto (Whisper)",
+    "tts":    "Texto → Voz (TTS)",
 }
 
 
@@ -160,6 +172,9 @@ async def usage_dashboard(
             "prompt_tokens": {"$sum": "$prompt_tokens"},
             "completion_tokens": {"$sum": "$completion_tokens"},
             "total_tokens": {"$sum": "$total_tokens"},
+            "units": {"$sum": {"$ifNull": ["$units", 0]}},
+            "service": {"$first": {"$ifNull": ["$service", "text"]}},
+            "unit_type": {"$first": {"$ifNull": ["$unit_type", "token"]}},
             "cost_usd": {"$sum": "$estimated_cost_usd"},
             "calls": {"$sum": 1},
         }},
@@ -172,6 +187,9 @@ async def usage_dashboard(
         by_agent.append({
             "agent": aid,
             "label": AGENT_LABELS.get(aid, aid),
+            "service": r.get("service") or "text",
+            "unit_type": r.get("unit_type") or "token",
+            "units": int(r.get("units") or 0),
             "prompt_tokens": int(r.get("prompt_tokens") or 0),
             "completion_tokens": int(r.get("completion_tokens") or 0),
             "total_tokens": int(r.get("total_tokens") or 0),
@@ -198,6 +216,43 @@ async def usage_dashboard(
          "calls": int(r.get("calls") or 0)}
         for r in models_raw
     ]
+
+    # Por serviço (text / vision / stt / tts) — chamadas legacy sem `service`
+    # ficam agrupadas como "text" via $ifNull.
+    pipe_services = [
+        {"$match": match},
+        {"$group": {
+            "_id": {"$ifNull": ["$service", "text"]},
+            "cost_usd": {"$sum": "$estimated_cost_usd"},
+            "calls": {"$sum": 1},
+            "total_tokens": {"$sum": "$total_tokens"},
+            "units": {"$sum": {"$ifNull": ["$units", 0]}},
+        }},
+        {"$sort": {"cost_usd": -1}},
+    ]
+    services_raw = await db.motor_ia_usage.aggregate(pipe_services).to_list(20)
+    by_service = []
+    for r in services_raw:
+        sid = r.get("_id") or "text"
+        # Define unidade exibida por serviço
+        if sid == "vision":
+            unit_type, unit_label = "image", "imagens"
+        elif sid == "stt":
+            unit_type, unit_label = "second", "seg"
+        elif sid == "tts":
+            unit_type, unit_label = "char", "chars"
+        else:
+            unit_type, unit_label = "token", "tokens"
+        by_service.append({
+            "service": sid,
+            "label": SERVICE_LABELS.get(sid, sid),
+            "cost_usd": round(float(r.get("cost_usd") or 0), 4),
+            "calls": int(r.get("calls") or 0),
+            "total_tokens": int(r.get("total_tokens") or 0),
+            "units": int(r.get("units") or 0),
+            "unit_type": unit_type,
+            "unit_label": unit_label,
+        })
 
     # Série diária
     pipe_daily = [
@@ -228,6 +283,7 @@ async def usage_dashboard(
         },
         "by_agent": by_agent,
         "by_model": by_model,
+        "by_service": by_service,
         "daily": daily,
     }
 
@@ -236,10 +292,20 @@ async def usage_dashboard(
 # Orçamento mensal — alertas de gasto
 # ---------------------------------------------------------------------------
 
+class ServiceLimits(BaseModel):
+    vision: Optional[float] = Field(None, ge=0, le=1000)
+    stt:    Optional[float] = Field(None, ge=0, le=1000)
+    tts:    Optional[float] = Field(None, ge=0, le=1000)
+    text:   Optional[float] = Field(None, ge=0, le=1000)
+
+
 class BudgetIn(BaseModel):
     monthly_limit_usd: Optional[float] = Field(None, ge=0, le=10000)
     warn_threshold_pct: Optional[int] = Field(None, ge=1, le=100)
     enabled: Optional[bool] = None
+    # Limites diários (USD). Se 0 ou None, desativado para aquele serviço.
+    daily_limit_usd: Optional[float] = Field(None, ge=0, le=1000)
+    daily_service_limits: Optional[ServiceLimits] = None
 
 
 async def _get_budget(cid: str) -> Dict[str, Any]:
@@ -250,7 +316,15 @@ async def _get_budget(cid: str) -> Dict[str, Any]:
             "monthly_limit_usd": 50.0,
             "warn_threshold_pct": 80,
             "enabled": False,
+            "daily_limit_usd": 0.0,
+            "daily_service_limits": {
+                "vision": 0.0, "stt": 0.0, "tts": 0.0, "text": 0.0,
+            },
         }
+    # Garantia de campos novos em registros antigos
+    doc.setdefault("daily_limit_usd", 0.0)
+    doc.setdefault("daily_service_limits",
+                    {"vision": 0.0, "stt": 0.0, "tts": 0.0, "text": 0.0})
     return doc
 
 
@@ -341,6 +415,100 @@ async def budget_status(user: dict = Depends(require_role("gestor"))):
         "used_pct": used_pct,
         "projected_month_usd": projected,
         "status": status,
+    }
+
+
+@router.get("/budget/status/today")
+async def budget_status_today(user: dict = Depends(require_role("gestor"))):
+    """Retorna gasto do dia corrente quebrado por serviço + status de alerta
+    contra os limites diários configurados.
+
+    Alertas por serviço:
+      - "ok"        → gasto < threshold (80% do limite)
+      - "warn"      → gasto >= 80% e < 100%
+      - "exceeded"  → gasto >= 100% do limite
+      - "disabled"  → limite não configurado (0)
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    budget = await _get_budget(cid)
+    threshold_pct = int(budget.get("warn_threshold_pct") or 80)
+    daily_total_limit = float(budget.get("daily_limit_usd") or 0)
+    service_limits = budget.get("daily_service_limits") or {}
+
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0,
+                              microsecond=0).isoformat()
+
+    pipe = [
+        {"$match": {"company_id": cid, "created_at": {"$gte": day_start}}},
+        {"$group": {
+            "_id": {"$ifNull": ["$service", "text"]},
+            "cost_usd": {"$sum": "$estimated_cost_usd"},
+            "calls": {"$sum": 1},
+        }},
+    ]
+    rows = await db.motor_ia_usage.aggregate(pipe).to_list(20)
+    by_service: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        sid = r.get("_id") or "text"
+        by_service[sid] = {
+            "spent_usd": round(float(r.get("cost_usd") or 0), 4),
+            "calls": int(r.get("calls") or 0),
+        }
+
+    def _classify(spent: float, limit: float) -> str:
+        if limit <= 0:
+            return "disabled"
+        used = (spent / limit) * 100
+        if used >= 100:
+            return "exceeded"
+        if used >= threshold_pct:
+            return "warn"
+        return "ok"
+
+    services_payload = []
+    total_spent = 0.0
+    alerts = []
+    for sid in ("text", "vision", "stt", "tts"):
+        spent = by_service.get(sid, {}).get("spent_usd", 0.0)
+        calls = by_service.get(sid, {}).get("calls", 0)
+        limit = float(service_limits.get(sid) or 0)
+        st = _classify(spent, limit)
+        total_spent += spent
+        services_payload.append({
+            "service": sid,
+            "limit_usd": limit,
+            "spent_usd": round(spent, 4),
+            "calls": calls,
+            "used_pct": round((spent / limit) * 100, 2) if limit > 0 else 0,
+            "status": st,
+        })
+        if st in ("warn", "exceeded"):
+            alerts.append({
+                "service": sid,
+                "status": st,
+                "spent_usd": round(spent, 4),
+                "limit_usd": limit,
+            })
+
+    total_status = _classify(total_spent, daily_total_limit)
+    if total_status in ("warn", "exceeded"):
+        alerts.append({
+            "service": "total",
+            "status": total_status,
+            "spent_usd": round(total_spent, 4),
+            "limit_usd": daily_total_limit,
+        })
+
+    return {
+        "day_start": day_start,
+        "daily_limit_usd": daily_total_limit,
+        "warn_threshold_pct": threshold_pct,
+        "total_spent_usd": round(total_spent, 4),
+        "total_status": total_status,
+        "services": services_payload,
+        "alerts": alerts,
+        "has_alerts": bool(alerts),
     }
 
 

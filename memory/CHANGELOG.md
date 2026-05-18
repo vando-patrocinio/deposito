@@ -1,6 +1,86 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Alertas Diários por Serviço (Vision/TTS/STT/Texto) ★★★
+
+### Contexto
+Após adicionar Vision/TTS/STT no card de custos, ficou o risco de um bot mandar 1000 imagens e estourar custo silenciosamente. Implementado sistema de **alerta visual em tempo real** quando gasto diário ultrapassar limite configurável por serviço.
+
+### Implementado
+
+**1. Backend — `routes/motor_ia.py`:**
+- `BudgetIn` ganhou campos `daily_limit_usd` e `daily_service_limits` (ServiceLimits com vision/stt/tts/text).
+- `_get_budget()` retorna defaults `0.0` para campos novos (compat com registros antigos).
+- Novo endpoint `GET /api/motor-ia/budget/status/today` que retorna:
+  - `total_spent_usd` e `total_status` (ok/warn/exceeded/disabled)
+  - `services[]` por serviço com `spent_usd`, `limit_usd`, `used_pct`, `status`
+  - `alerts[]` somente entradas warn/exceeded
+  - `has_alerts` (bool)
+- Classificação: `warn` ≥ 80% do limite, `exceeded` ≥ 100%, `disabled` se limite=0.
+
+**2. UI — `MotorIaUsageCard.js`:**
+- Banner colorido no topo (vermelho se exceeded, amarelo se warn) listando quais serviços estouraram.
+- Mini-resumo "Hoje: $X de $Y (Z%)" quando há gasto mas sem alerta.
+- Painel colapsável "Ajustar limites" com inputs para Total + 4 serviços (Texto/Visão/STT/TTS).
+- Botão `Salvar limites` chama `PUT /budget` e re-fetch do status.
+
+### Como testar
+1. Configure limites baixos via `PUT /api/motor-ia/budget`:
+   `{"daily_limit_usd": 0.1, "daily_service_limits": {"vision": 0.001, ...}}`
+2. Abra o card Motor IA — banner vermelho 🚨 aparece com detalhes.
+3. Clique "Ajustar limites" → ajuste valores → "Salvar limites".
+
+### Validação
+- Endpoint testado via curl: cenário sem limites → `disabled`; limites altos → `ok`; limites baixos → `exceeded` em todos os serviços. ✅
+- Lint backend + frontend: ✅
+
+
+
+## Mai 18, 2026 — Card "Custo do Motor IA" agora rastreia Vision + TTS + Whisper ★★★
+
+### Contexto
+O dashboard `MotorIaUsageCard` só registrava custos de **texto** (OpenRouter). Vision (Gemini Nano Banana), TTS (OpenAI) e Whisper (STT) eram invisíveis nas métricas. Usuário pediu para juntar esses gastos junto dos outros.
+
+### Implementado
+
+**1. Backend — `services/motor_ia.py`:**
+- Nova tabela `UNIT_PRICING` com preços por unidade:
+  - `gemini-2.5-flash` Vision: $0.00030 / imagem
+  - `whisper-1` STT: $0.0001 / segundo ($0.006/min)
+  - `gpt-4o-mini-tts` / `tts-1`: $0.000015 / char ($0.015/1k)
+  - `tts-1-hd`: $0.000030 / char
+- Nova função `log_usage_units(company_id, agent, model, service, units, unit_type)` que loga no mesmo collection `motor_ia_usage` com campo `service` (`text|vision|stt|tts`) e `units`.
+- `_log_usage` (texto) marcado com `service="text"`.
+
+**2. Hooks de logging:**
+- `services/media_analysis.py` — `analyze_image`/`analyze_pdf`/`analyze_media` agora aceitam `company_id` + `agent` e logam 1 imagem por análise (Gemini Vision).
+- `services/tts.py:synthesize_speech` — loga `len(text)` chars como `tts`.
+- `services/motor_ia.py:transcribe_audio` — estima duração via bitrate opus (24kbps) e loga segundos como `stt`.
+- `services/motor_ia.py:text_to_speech` — loga chars como `tts`.
+- Caller `routes/whatsapp_baileys.py` passa `company_id=cid` no `analyze_media`.
+
+**3. Endpoint — `/api/motor-ia/usage`:**
+- Novo array `by_service` com label, custo, calls, units, unit_label por serviço (Texto/Visão/Whisper/TTS).
+- `by_agent` agora inclui `service`, `unit_type` e `units` para diferenciar texto x mídia.
+- `AGENT_LABELS` ganhou `isabella_vision`, `isabella_tts`, `isabella_stt`.
+
+**4. UI — `MotorIaUsageCard.js`:**
+- Nova seção **"Custo por Serviço"** com 4 cards (Texto / Vision / STT / TTS) — cada um com cor própria (gradiente), ícone e métrica de unidades.
+- Linha "Custo por Agente" agora mostra ícone do serviço e formata unidades corretamente (`X img` / `X seg` / `X chars` / `X tok`).
+- Footer atualizado explicando como cada serviço é precificado.
+
+### Como testar
+1. Abra o painel **Sistemas → Motor IA → Custo do Motor IA**
+2. Confira a seção "Custo por Serviço" com 4 cards
+3. Total agora inclui Vision/TTS/STT além de texto
+
+### Validação técnica
+- `GET /api/motor-ia/usage?days=30` retorna `by_service` com 4 entries
+- Após seed manual: Vision (5 imgs = $0.0015), STT (30s = $0.003), TTS (1500 chars = $0.0225)
+- Lint backend + frontend: ✅ All checks passed
+
+
+
 ## Mai 18, 2026 — Auto-rejeição de Chamadas + Voice Notes Inteligentes ★★★★
 
 ### Contexto

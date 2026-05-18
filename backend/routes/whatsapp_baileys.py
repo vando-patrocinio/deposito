@@ -1385,6 +1385,8 @@ async def inbound_webhook(payload: InboundIn,
                 payload.media_b64,
                 payload.media_mimetype or "image/jpeg",
                 payload.media_kind,
+                company_id=cid,
+                agent="isabella_vision",
             )
             if vision_summary:
                 logger.info("[wa-baileys] 👁️ visão: %s",

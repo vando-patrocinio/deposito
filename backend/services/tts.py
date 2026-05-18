@@ -69,6 +69,14 @@ async def synthesize_speech(
                 logger.warning("[tts] HTTP %s · %s",
                                 r.status_code, r.text[:200])
                 return None
+            # Loga uso (chars) no Motor IA Usage
+            try:
+                from services.motor_ia import log_usage_units
+                await log_usage_units(company_id, "isabella_tts", model,
+                                      "tts", len(text), unit_type="char",
+                                      provider="openai")
+            except Exception as e:
+                logger.debug("[tts] usage log falhou: %s", e)
             return r.content
     except Exception as e:
         logger.warning("[tts] erro %s", e)
