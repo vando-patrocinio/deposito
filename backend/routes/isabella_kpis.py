@@ -345,3 +345,169 @@ async def tickets_created_by_isabella(
         "recent": recent,
         "series": series,
     }
+
+
+
+@router.get("/clients-classification")
+async def clients_classification(
+    classification: Optional[str] = Query(
+        None,
+        description=(
+            "Filtrar por classificação específica "
+            "(persistente|recorrente|esporádico|eventual)."
+        ),
+    ),
+    limit: int = Query(100, ge=1, le=500),
+    user: dict = Depends(require_role("gestor")),
+):
+    """Classificação histórica de clientes com tickets de reparo nos
+    últimos 90 dias + qual técnico foi/está designado.
+
+    Útil pra gestor identificar:
+      - Quais clientes estão com problema PERSISTENTE (3+ tickets em 30d)
+      - Quem é o técnico mais frequente em cada cliente
+      - Telefone, plano, filial pra contato proativo
+
+    Ordenado por número de tickets DESC, depois por last_at DESC.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    now = datetime.now(timezone.utc)
+    since_30 = (now - timedelta(days=30)).isoformat()
+    since_60 = (now - timedelta(days=60)).isoformat()
+    since_90 = (now - timedelta(days=90)).isoformat()
+
+    pipeline = [
+        {"$match": {
+            "company_id": cid,
+            "type": "reparo",
+            "created_at": {"$gte": since_90},
+            "client_id": {"$ne": None},
+        }},
+        {"$sort": {"created_at": -1}},
+        {"$group": {
+            "_id": "$client_id",
+            "tickets_total_90d": {"$sum": 1},
+            "tickets_30d": {"$sum": {"$cond": [
+                {"$gte": ["$created_at", since_30]}, 1, 0]}},
+            "tickets_60d": {"$sum": {"$cond": [
+                {"$gte": ["$created_at", since_60]}, 1, 0]}},
+            "last_ticket": {"$first": "$$ROOT"},
+            "diagnoses": {"$addToSet": "$ai_diagnosis.status"},
+            "technicians": {"$addToSet": "$assigned_collaborator_id"},
+        }},
+        {"$sort": {"tickets_total_90d": -1, "last_ticket.created_at": -1}},
+        {"$limit": limit},
+    ]
+    rows = await db.tickets.aggregate(pipeline).to_list(limit)
+
+    sub_ids = [r["_id"] for r in rows if r.get("_id")]
+    tech_ids = list({
+        t for r in rows for t in (r.get("technicians") or []) if t
+    })
+    last_tech_ids = list({
+        (r.get("last_ticket") or {}).get("assigned_collaborator_id")
+        for r in rows
+    })
+    last_tech_ids = [t for t in last_tech_ids if t]
+    all_tech_ids = list(set(tech_ids + last_tech_ids))
+
+    subs_map: dict = {}
+    if sub_ids:
+        async for sub in db.subscribers.find(
+            {"id": {"$in": sub_ids}, "company_id": cid},
+            {"_id": 0, "id": 1, "name": 1, "nickname": 1, "plan_name": 1,
+             "branch": 1, "external_code": 1, "status": 1, "document": 1},
+        ):
+            subs_map[sub["id"]] = sub
+
+    techs_map: dict = {}
+    if all_tech_ids:
+        async for tech in db.collaborators.find(
+            {"id": {"$in": all_tech_ids}, "company_id": cid},
+            {"_id": 0, "id": 1, "name": 1, "role": 1, "avatar_url": 1},
+        ):
+            techs_map[tech["id"]] = tech
+
+    phones_map: dict = {}
+    if sub_ids:
+        async for ph in db.subscriber_phones.find(
+            {"subscriber_id": {"$in": sub_ids}, "company_id": cid,
+             "is_primary": True},
+            {"_id": 0, "subscriber_id": 1, "normalized_number": 1},
+        ):
+            phones_map[ph["subscriber_id"]] = ph.get("normalized_number")
+
+    def classify(t30: int, t60: int, t90: int) -> str:
+        if t30 >= 3:
+            return "persistente"
+        if t60 >= 2:
+            return "recorrente"
+        if t90 >= 1:
+            return "esporádico"
+        return "eventual"
+
+    items = []
+    for r in rows:
+        sub = subs_map.get(r["_id"]) or {}
+        last_t = r.get("last_ticket") or {}
+        last_diag = (last_t.get("ai_diagnosis") or {}).get("status")
+        cls = classify(
+            int(r.get("tickets_30d", 0)),
+            int(r.get("tickets_60d", 0)),
+            int(r.get("tickets_total_90d", 0)),
+        )
+        if classification and cls != classification.lower():
+            continue
+        last_tech_id = last_t.get("assigned_collaborator_id")
+        last_tech = techs_map.get(last_tech_id) if last_tech_id else None
+        all_techs = [
+            techs_map.get(t) for t in (r.get("technicians") or []) if t
+        ]
+        all_techs = [t for t in all_techs if t]
+        items.append({
+            "client_id": r["_id"],
+            "client_name": sub.get("name") or "—",
+            "client_nickname": sub.get("nickname"),
+            "phone": phones_map.get(r["_id"]),
+            "plan_name": sub.get("plan_name"),
+            "branch": sub.get("branch"),
+            "external_code": sub.get("external_code"),
+            "subscriber_status": sub.get("status"),
+            "classification": cls,
+            "tickets_30d": int(r.get("tickets_30d", 0)),
+            "tickets_60d": int(r.get("tickets_60d", 0)),
+            "tickets_90d": int(r.get("tickets_total_90d", 0)),
+            "last_ticket_id": last_t.get("id"),
+            "last_ticket_at": last_t.get("created_at"),
+            "last_ticket_status": last_t.get("status"),
+            "last_ticket_priority": last_t.get("priority"),
+            "last_diagnosis": last_diag,
+            "diagnoses": [d for d in (r.get("diagnoses") or []) if d],
+            "last_technician": ({
+                "id": last_tech["id"],
+                "name": last_tech.get("name"),
+                "role": last_tech.get("role"),
+                "avatar_url": last_tech.get("avatar_url"),
+            } if last_tech else None),
+            "all_technicians": [{
+                "id": t["id"],
+                "name": t.get("name"),
+                "role": t.get("role"),
+            } for t in all_techs],
+        })
+
+    summary = {
+        "total": len(items),
+        "by_classification": {
+            "persistente": sum(1 for i in items if i["classification"] == "persistente"),
+            "recorrente": sum(1 for i in items if i["classification"] == "recorrente"),
+            "esporádico": sum(1 for i in items if i["classification"] == "esporádico"),
+            "eventual": sum(1 for i in items if i["classification"] == "eventual"),
+        },
+    }
+
+    return {
+        "since_90d": since_90,
+        "summary": summary,
+        "items": items,
+    }

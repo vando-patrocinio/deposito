@@ -9,6 +9,7 @@ import WaBusinessHoursCard from "@/WaBusinessHoursCard";
 import WaQuickImagesCard from "@/WaQuickImagesCard";
 import IsabellaGestaoTab from "@/IsabellaGestaoTab";
 import WaHealthDashboard from "@/WaHealthDashboard";
+import ClientsClassificationPanel from "@/ClientsClassificationPanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   CheckCircle2, AlertCircle, RefreshCw, Plug, Wifi, WifiOff,
@@ -64,6 +65,9 @@ export default function IntegrationsConfigPanel() {
           </TabsTrigger>
           <TabsTrigger value="saude" data-testid="config-tab-saude">
             Saúde do WhatsApp
+          </TabsTrigger>
+          <TabsTrigger value="clientes" data-testid="config-tab-clientes">
+            Classificação de Clientes
           </TabsTrigger>
           <TabsTrigger value="gestao" data-testid="config-tab-gestao">
             Gestão da Isabella
@@ -147,6 +151,12 @@ export default function IntegrationsConfigPanel() {
         <TabsContent value="saude">
           <div style={{ marginTop: 10 }}>
             <WaHealthDashboard />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="clientes">
+          <div style={{ marginTop: 10 }}>
+            <ClientsClassificationPanel />
           </div>
         </TabsContent>
 

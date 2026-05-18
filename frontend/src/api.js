@@ -499,6 +499,10 @@ export const api = {
   waResetContext: (phone) =>
     client.post(`/whatsapp-baileys/conversation/${encodeURIComponent(phone)}/reset-context`)
       .then((r) => r.data),
+  clientsClassification: (params = {}) =>
+    client.get(`/central-ia/isabella/clients-classification`, {
+      params, timeout: 30000,
+    }).then((r) => r.data),
   isabellaConfigGet: () =>
     client.get(`/central-ia/isabella/config`).then((r) => r.data),
   isabellaConfigSet: (polishEnabled) =>

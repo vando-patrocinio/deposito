@@ -992,3 +992,15 @@ Bug real do Vando (17/05 23:31): Isabella repetiu "Pode me enviar o print sim, v
 **Integração** (`routes/whatsapp_baileys.py`): inbound flow agora resolve subscriber → injeta histórico se identificado, ou tag+auto-link se desconhecido.
 
 **Validação:** 18/18 testes unitários (`tests/test_customer_history_and_linker.py`) passando. Lint OK. CLI test mostrou Vando classificado como `eventual` (7 dias de casa, 287 msgs em 90d, 0 tickets de reparo com seu client_id atual).
+
+## 📊 [17/Fev/2026] Painel "Classificação de Clientes & Técnicos"
+
+**Pedido:** *"monte a classificação de clientes e quem é o técnico que está indo nesses clientes"*
+
+**Backend** (`routes/isabella_kpis.py`): novo `GET /api/central-ia/isabella/clients-classification?classification=...&limit=N`. Aggregation pipeline agrupa tickets por client_id (últimos 90d, type=reparo), conta tickets em 30/60/90d, captura último ticket + último técnico. Lookup em lote de subscribers, collaborators e subscriber_phones primary.
+
+**Frontend** (`ClientsClassificationPanel.js`): nova aba **"Classificação de Clientes"** em `IntegrationsConfigPanel`. Auto-refresh 60s. Inclui:
+- 4 summary cards clicáveis (Persistente/Recorrente/Esporádico/Total) como filtros visuais
+- Tabela com 8 colunas: Cliente (nome+nickname+phone+cód), Plano/Filial, Classificação (badge colorido + diagnóstico predominante), 30d/60d/90d coloridos por severidade, Último chamado (idade + status pill + prioridade), Técnico (avatar+nome+role + contagem de outros técnicos que já atenderam)
+
+**Validado:** screenshot exibiu 93 clientes esporádicos com técnicos reais (DIOGO HENRIQUE, JEFFERSON, Hudson). Lint OK em backend e frontend.
