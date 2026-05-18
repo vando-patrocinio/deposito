@@ -3452,3 +3452,261 @@ async def get_watchdog_status(user: dict = Depends(require_role("gestor"))):
         "consecutive_zombie_checks": _wa_watchdog_state.get(
             "consecutive_zombie_checks", 0),
     }
+
+
+@router.get("/conversation/{phone}/inspect")
+async def inspect_conversation_context(
+    phone: str,
+    user: dict = Depends(require_role("administrador")),
+):
+    """🔍 DEBUG: Mostra exatamente o que a Isabella "vê" da conversa.
+
+    Apenas administradores podem usar. Retorna:
+      - subscriber_ctx: bloco "VERIFICAÇÃO DA CONEXÃO" que vai pro prompt
+      - history_block: bloco "HISTÓRICO DO CLIENTE" (90 dias)
+      - history_turns: últimas N mensagens em formato ChatML (user/assistant)
+      - subscriber_link: subscriber_id resolvido + nome + plano (se houver)
+      - active_fragments: lista de fragmentos de prompt habilitados
+
+    Útil pra debugar alucinações: se a Isabella inventa nome/plano, o
+    `subscriber_ctx` aqui revela se o problema é:
+      a) Vínculo errado em `subscriber_phones` (subscriber_ctx tem dados de
+         outro cliente)
+      b) Prompt fragment com exemplo literal (history_turns está vazio mas
+         a Isabella ainda chuta dados — checar active_fragments)
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    # 1. Resolver subscriber_link
+    subscriber_link = {"matched": False, "subscriber_id": None}
+    subscriber_ctx_text = None
+    try:
+        from phone_normalizer import link_phone_to_subscriber
+        link = await link_phone_to_subscriber(phone, cid)
+        if link and link.get("subscriber_id"):
+            sid = link["subscriber_id"]
+            sub = await db.subscribers.find_one(
+                {"id": sid, "company_id": cid},
+                {"_id": 0, "name": 1, "external_code": 1, "plan_name": 1,
+                 "status": 1, "branch": 1, "address": 1},
+            )
+            subscriber_link = {
+                "matched": True,
+                "subscriber_id": sid,
+                "subscriber_name": (sub or {}).get("name"),
+                "subscriber_plan": (sub or {}).get("plan_name"),
+                "subscriber_status": (sub or {}).get("status"),
+                "matched_by": link.get("matched_by") or "phone_lookup",
+            }
+            if sub:
+                parts = [f"Nome: {sub.get('name')}"]
+                if sub.get("plan_name"):
+                    parts.append(f"Plano: {sub['plan_name']}")
+                if sub.get("status"):
+                    parts.append(f"Status: {sub['status']}")
+                if sub.get("branch"):
+                    parts.append(f"Filial: {sub['branch']}")
+                if sub.get("address"):
+                    parts.append(f"Endereço: {sub['address']}")
+                if sub.get("external_code"):
+                    parts.append(f"Cód: {sub['external_code']}")
+                subscriber_ctx_text = " · ".join(parts)
+    except Exception as e:
+        subscriber_link["error"] = str(e)
+
+    # 2. Bloco de histórico (90 dias)
+    history_block = None
+    history_classification = None
+    try:
+        from services.customer_history import (
+            analyze_customer_history, format_history_for_prompt,
+        )
+        analysis = await analyze_customer_history(
+            company_id=cid,
+            subscriber_id=subscriber_link.get("subscriber_id"),
+            current_phone=phone,
+        )
+        history_block = format_history_for_prompt(analysis)
+        history_classification = analysis.get("classification")
+    except Exception as e:
+        history_block = f"(erro: {e})"
+
+    # 3. Últimas N turns (formato ChatML que vai pro LLM)
+    history_turns: List[dict] = []
+    try:
+        from services.ai_history import fetch_history_turns
+        history_turns = await fetch_history_turns(cid, phone, limit=50,
+                                                       token_budget=5000)
+    except Exception as e:
+        logger.warning("[inspect] history_turns falhou: %s", e)
+
+    # 4. Fragmentos de prompt ativos da Isabella
+    active_fragments: List[dict] = []
+    try:
+        async for f in db.isabella_prompt_fragments.find(
+            {"company_id": cid, "enabled": True},
+            {"_id": 0, "id": 1, "title": 1, "category": 1,
+             "updated_at": 1, "updated_by": 1},
+        ).sort("category", 1):
+            active_fragments.append(f)
+    except Exception as e:
+        logger.warning("[inspect] active_fragments falhou: %s", e)
+
+    # 5. Estado da conversa (reset_at, subscriber_id linkado na conversa)
+    conv_state = await db.wa_conversations.find_one(
+        {"company_id": cid, "phone": phone},
+        {"_id": 0, "subscriber_id": 1, "context_reset_at": 1,
+         "customer_name": 1, "updated_at": 1},
+    )
+
+    return {
+        "phone": phone,
+        "subscriber_link": subscriber_link,
+        "subscriber_ctx_text": subscriber_ctx_text,
+        "history_classification": history_classification,
+        "history_block": history_block,
+        "history_turns_count": len(history_turns),
+        "history_turns_preview": [
+            {"role": t.get("role"), "content": (t.get("content") or "")[:200]}
+            for t in history_turns[-10:]
+        ],
+        "active_fragments_count": len(active_fragments),
+        "active_fragments": active_fragments,
+        "conversation_state": conv_state,
+    }
+
+
+
+@router.delete("/conversation/{phone}/unlink-subscriber")
+async def unlink_phone_from_subscriber(
+    phone: str,
+    subscriber_id: Optional[str] = None,
+    user: dict = Depends(require_role("administrador")),
+):
+    """🛠️ ADMIN: Remove vínculo entre telefone e subscriber.
+
+    Útil quando:
+      - Cliente reportou comportamento estranho da Isabella (chamou de outro
+        nome, mencionou plano errado)
+      - `/conversation/{phone}/inspect` mostra subscriber errado/duplicado
+
+    Params:
+      - subscriber_id (query, opcional): se fornecido, remove APENAS o vínculo
+        com esse subscriber. Se omitido, remove TODOS os vínculos do phone.
+
+    O telefone permanece nas conversas (wa_conversations), mas a Isabella
+    passa a tratar como número desconhecido na próxima mensagem.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    # Aceita formato 21998176526, 5521998176526, +5521998176526 etc
+    from routes.subscribers import normalize_brazilian_phone, get_phone_lookup_variants
+    variants = get_phone_lookup_variants(phone)
+    normalized = normalize_brazilian_phone(phone)
+
+    # Filtro: phone exato OU normalized_number ∈ variants
+    base_filter: Dict[str, Any] = {
+        "company_id": cid,
+        "$or": [
+            {"phone": {"$in": list(variants)}},
+            {"normalized_number": {"$in": list(variants)}},
+        ],
+    }
+    if subscriber_id:
+        base_filter["subscriber_id"] = subscriber_id
+
+    # Lista antes de apagar (pra retornar ao admin)
+    before = await db.subscriber_phones.find(
+        base_filter, {"_id": 0}
+    ).to_list(20)
+
+    if not before:
+        return {
+            "ok": True,
+            "removed_count": 0,
+            "message": "Nenhum vínculo encontrado pra remover.",
+            "phone_normalized": normalized,
+            "variants_tested": list(variants),
+        }
+
+    result = await db.subscriber_phones.delete_many(base_filter)
+
+    # Auditoria
+    await db.wa_system_events.insert_one({
+        "company_id": cid,
+        "type": "phone_unlinked_admin",
+        "phone": phone,
+        "normalized": normalized,
+        "subscriber_id": subscriber_id,
+        "removed_count": result.deleted_count,
+        "removed_records": before,
+        "actor": user.get("email"),
+        "created_at": now_iso(),
+    })
+
+    return {
+        "ok": True,
+        "removed_count": result.deleted_count,
+        "removed_records": before,
+        "phone_normalized": normalized,
+        "actor": user.get("email"),
+    }
+
+
+@router.get("/phone-conflicts")
+async def list_phone_conflicts(
+    user: dict = Depends(require_role("administrador")),
+):
+    """🛠️ ADMIN: Lista telefones com múltiplos subscribers vinculados.
+
+    Esse cenário (1 phone → N subscribers) confunde a Isabella porque o
+    `find_subscriber_by_phone` retorna o primeiro match arbitrário, podendo
+    ser um cadastro desativado ou homônimo.
+
+    Retorna lista pra UI de admin resolver via /unlink-subscriber.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    pipeline = [
+        {"$match": {"company_id": cid}},
+        {"$group": {
+            "_id": {
+                "$ifNull": ["$normalized_number", "$phone"],
+            },
+            "count": {"$sum": 1},
+            "subscriber_ids": {"$addToSet": "$subscriber_id"},
+            "records": {"$push": {
+                "subscriber_id": "$subscriber_id",
+                "phone": "$phone",
+                "normalized": "$normalized_number",
+                "label": "$label",
+                "is_primary": "$is_primary",
+            }},
+        }},
+        {"$match": {"count": {"$gte": 2}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 100},
+    ]
+
+    conflicts = []
+    async for row in db.subscriber_phones.aggregate(pipeline):
+        sids = row.get("subscriber_ids") or []
+        # Enriquece com nomes dos subscribers
+        subs = await db.subscribers.find(
+            {"company_id": cid, "id": {"$in": sids}},
+            {"_id": 0, "id": 1, "name": 1, "plan_name": 1, "status": 1},
+        ).to_list(20)
+        subs_map = {s["id"]: s for s in subs}
+        records = row.get("records") or []
+        for r in records:
+            sid = r.get("subscriber_id")
+            r["subscriber_name"] = (subs_map.get(sid) or {}).get("name")
+            r["subscriber_plan"] = (subs_map.get(sid) or {}).get("plan_name")
+            r["subscriber_status"] = (subs_map.get(sid) or {}).get("status")
+        conflicts.append({
+            "phone_key": row["_id"],
+            "subscribers_count": row["count"],
+            "records": records,
+        })
+
+    return {"total_conflicts": len(conflicts), "conflicts": conflicts}
