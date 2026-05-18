@@ -324,33 +324,17 @@ export default function UsersPanel() {
               {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </Field>
-          <Field label="Permissões adicionais">
-            <label style={{
-              display: "flex", alignItems: "center", gap: 10,
-              padding: "10px 12px", borderRadius: 10,
-              border: "1px solid #e2e8f0", background: "#f8fafc",
-              cursor: "pointer", userSelect: "none",
-            }}>
-              <input
-                type="checkbox"
-                data-testid="u-can-attend-whatsapp"
-                checked={!!form.can_attend_whatsapp}
-                onChange={(e) => setForm({ ...form, can_attend_whatsapp: e.target.checked })}
-                style={{ width: 18, height: 18, cursor: "pointer" }}
-              />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>
-                  💬 Pode abrir o Atendimento WhatsApp
-                </div>
-                <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                  Quando marcado, o menu <strong>"Atendimento IA"</strong> aparece na sidebar deste usuário e ele pode assumir conversas. Administrador, gestor e auditor já têm acesso por padrão.
-                </div>
-              </div>
-            </label>
-          </Field>
-          <p style={{ color: "#64748b", fontSize: 12, margin: "4px 0 12px" }}>
+          <p style={{ color: "#64748b", fontSize: 12, margin: "4px 0 12px",
+                       background: "#eff6ff", padding: 10, borderRadius: 8,
+                       border: "1px solid #bfdbfe" }}>
             ℹ️ Esta tela é apenas para usuários que <strong>acessam o sistema</strong> (gestores e auditores).
             Colaboradores que batem ponto são cadastrados na aba <strong>Cadastro</strong>.
+            <br/>
+            <span style={{ fontSize: 11.5 }}>
+              💬 Para liberar acesso ao <strong>Atendimento WhatsApp</strong> de um colaborador,
+              vá em <strong>Cadastro → Colaboradores</strong>. Apenas <strong>auditor</strong>
+              pode liberar esse acesso.
+            </span>
           </p>
           <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
             <Button onClick={save} data-testid="save-user-btn">Salvar</Button>

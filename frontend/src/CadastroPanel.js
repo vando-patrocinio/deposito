@@ -7,6 +7,7 @@ import useEventStream from "@/useEventStream";
 import AssetsSection from "@/AssetsSection";
 import DeactivationAssetsModal from "@/DeactivationAssetsModal";
 import VehicleChecklistModal from "@/VehicleChecklistModal";
+import { useAuth } from "@/AuthContext";
 
 // Paleta de chips sóbria — usada nos cards de colaborador
 const CHIP_PALETTE = {
@@ -40,11 +41,16 @@ const EMPTY = {
   schedule: { entrada: "08:00", inicio_intervalo: "12:00", fim_intervalo: "13:00", saida: "17:00" },
   overtime_policy: { mode: "banco", hourly_rate_brl: 0, weekday_multiplier: 1.5, sunday_multiplier: 2.0 },
   is_test_mode: false,
-  clock_in_enabled: true,  // CLT bate ponto. False = freelancer/MEI: app vai direto pra Lousa
-  active: true,  // false = colaborador desligado/inativo
+  clock_in_enabled: true,
+  active: true,
+  can_attend_whatsapp: false,  // só auditor libera (UI condicional)
 };
 
 export default function CadastroPanel() {
+  const { user: currentUser } = useAuth();
+  const isAuditor = currentUser?.role === "auditor"
+                       || currentUser?.role === "admin"
+                       || currentUser?.role === "administrador";
   const [list, setList] = useState([]);
   const [pracas, setPracas] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -82,7 +88,12 @@ export default function CadastroPanel() {
         role: c.role, company: c.company,
         schedule: c.schedule, overtime_policy: c.overtime_policy,
         city: c.city ?? null, state: c.state ?? null, praca_id: c.praca_id ?? null,
+        praca_ids_extra: c.praca_ids_extra || [],
+        pis: c.pis || "", admitted_at: c.admitted_at || "",
+        matricula: c.matricula || "",
         is_test_mode: !!c.is_test_mode,
+        active: c.active !== false,
+        can_attend_whatsapp: !!c.can_attend_whatsapp,  // preserva flag de Atendimento WhatsApp
         clock_in_enabled: next,
       });
       setFlash(`✅ ${c.name} agora ${next ? "BATE PONTO" : "NÃO BATE PONTO"}.`);
@@ -149,6 +160,7 @@ export default function CadastroPanel() {
       is_test_mode: !!c.is_test_mode,
       clock_in_enabled: c.clock_in_enabled !== false,  // default true (legado)
       active: c.active !== false,  // default true
+      can_attend_whatsapp: !!c.can_attend_whatsapp,
       avatar_data_url: c.avatar_data_url || c.foto_id || "",
       foto_id: c.foto_id || c.avatar_data_url || "",
     });
@@ -736,6 +748,65 @@ export default function CadastroPanel() {
               </div>
             </label>
           </div>
+
+          {/* Permissão Atendimento WhatsApp — SOMENTE AUDITOR pode editar */}
+          {isAuditor ? (
+            <div data-testid="whatsapp-perm-block" style={{
+              background: form.can_attend_whatsapp ? "#eff6ff" : "#f8fafc",
+              border: `2px solid ${form.can_attend_whatsapp ? "#3b82f6" : "#cbd5e1"}`,
+              borderRadius: 14, padding: 12, marginTop: 10, marginBottom: 6,
+              transition: "all .2s",
+            }}>
+              <label style={{ display: "flex", gap: 10, alignItems: "flex-start",
+                                 cursor: "pointer" }}>
+                <input
+                  data-testid="inp-can-attend-whatsapp"
+                  type="checkbox"
+                  checked={!!form.can_attend_whatsapp}
+                  onChange={(e) => setForm({ ...form,
+                                              can_attend_whatsapp: e.target.checked })}
+                  style={{ marginTop: 3, transform: "scale(1.4)" }}
+                />
+                <div>
+                  <strong style={{ color: form.can_attend_whatsapp
+                                       ? "#1e3a8a" : "#475569",
+                                       display: "inline-flex",
+                                       alignItems: "center", gap: 6 }}>
+                    💬 Pode abrir o Atendimento WhatsApp
+                    <span style={{
+                      background: "#fef3c7", color: "#92400e",
+                      fontSize: 9.5, fontWeight: 800,
+                      padding: "1px 6px", borderRadius: 999,
+                      marginLeft: 4,
+                    }}>🔒 AUDITOR</span>
+                  </strong>
+                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 4,
+                                  lineHeight: 1.4 }}>
+                    Quando marcado, o menu <strong>"Atendimento IA"</strong> aparece
+                    na sidebar deste colaborador e ele pode assumir conversas que
+                    a Isabella escalou. Esse acesso é uma decisão de
+                    <strong> conformidade/auditoria</strong> — por isso só o
+                    auditor pode liberar.
+                  </div>
+                </div>
+              </label>
+            </div>
+          ) : (
+            // Mostra apenas como informação somente-leitura para gestores
+            form.can_attend_whatsapp && (
+              <div data-testid="whatsapp-perm-readonly" style={{
+                background: "#eff6ff",
+                border: "1px solid #bfdbfe",
+                borderRadius: 10, padding: 10, marginTop: 10, marginBottom: 6,
+                fontSize: 12, color: "#1e3a8a",
+              }}>
+                💬 Este colaborador <strong>tem acesso ao Atendimento WhatsApp</strong>.
+                {" "}<span style={{ color: "#64748b" }}>
+                  Apenas auditor pode revogar.
+                </span>
+              </div>
+            )
+          )}
 
           <h4 style={{ margin: "16px 0 6px" }}>Horário de trabalho</h4>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>

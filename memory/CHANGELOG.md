@@ -1,6 +1,37 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — Migração permissão "Atendimento WhatsApp" para Cadastro (iter98)
+**Objetivo do usuário**: tirar a checkbox 'Pode abrir o Atendimento WhatsApp' da Gestão de Usuários e colocar no Cadastro de Colaboradores, com gate por role: **somente AUDITOR pode editar**.
+
+### Backend (`/app/backend/routes/clock.py`)
+- Novo campo `can_attend_whatsapp: bool = False` em `CollaboratorIn`.
+- `POST /collaborators`: se quem cria é gestor e envia `true`, o campo é silenciosamente forçado pra `false` (só auditor/admin libera).
+- `PUT /collaborators/{id}`: se quem edita não é auditor/admin, **preserva o valor anterior** do flag — gestor nunca consegue ligar nem desligar.
+- **Sincronização**: ao salvar collaborator, faz `update_many` em `users` com `collaborator_id=cid` setando o mesmo `can_attend_whatsapp` → menu "Atendimento IA" aparece/some na sidebar imediatamente.
+
+### Frontend
+- **UsersPanel.js**: removida a checkbox antiga `u-can-attend-whatsapp`. Texto explicativo agora orienta a ir em "Cadastro → Colaboradores" e que apenas auditor pode liberar.
+- **CadastroPanel.js**:
+  - `EMPTY` incluindo `can_attend_whatsapp: false`.
+  - `useAuth()` + `isAuditor` derivado de `role === 'auditor' | 'admin' | 'administrador'`.
+  - **Auditor**: vê bloco `whatsapp-perm-block` com checkbox `inp-can-attend-whatsapp` + badge "🔒 AUDITOR" + texto explicando que é decisão de conformidade.
+  - **Gestor**: vê apenas aviso somente-leitura `whatsapp-perm-readonly` quando o flag já está ligado (transparência sem possibilidade de mexer). Quando false, não vê nada.
+  - Fix corner case: `toggleClockInEnabled` agora envia o objeto completo (incluindo `can_attend_whatsapp`) pra evitar reset acidental ao alternar "bate ponto".
+
+### Verificação Isabella (resposta direta ao usuário)
+- ✅ **WhatsApp conectado** (`state: connected`, número Patrocínio 🇧🇷).
+- ✅ **Isabella ativa**: 293 amostras de latência nos últimos dias.
+- ✅ p50=6.7s · p95=48s · p99=184s (outliers raros, <5%).
+- Última desconexão foi um watchdog reboot normal (não bloqueia).
+
+### Validação (testing_agent_v3_fork iter98)
+- Backend 5/5 pytest passou (gestor bloqueado no create+update, auditor libera, sync com user vinculado).
+- Frontend: code review aprovou; ajuste do `toggleClockInEnabled` aplicado.
+- Arquivo de teste: `/app/backend/tests/test_whatsapp_perm.py`.
+
+
+
 ## Fev 18, 2026 — Conciliação Ativa (PIX × Atlaz com baixa automática) (iter97) ★★★
 **Objetivo do usuário**: cruzar PIX bancário do Sicoob com boletos abertos do Atlaz e dar BAIXA AUTOMÁTICA nas faturas quando há match (CPF/CNPJ + valor + data próxima).
 

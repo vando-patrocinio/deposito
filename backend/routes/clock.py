@@ -90,6 +90,7 @@ class CollaboratorIn(BaseModel):
     is_test_mode: bool = False  # ADMIN: marca colaborador como TESTE — bypassa cerca/selfie
     clock_in_enabled: bool = True  # CLT bate ponto. False = freelancer/MEI/3rd party — Lousa direta sem ponto.
     active: bool = True  # False = colaborador inativo (desligado, em férias longas, etc)
+    can_attend_whatsapp: bool = False  # AUDITOR: libera o menu "Atendimento IA" para o colaborador acessar conversas WhatsApp
 
 
 class Collaborator(CollaboratorIn):
@@ -288,6 +289,10 @@ async def create_collaborator(payload: CollaboratorIn, user: dict = Depends(requ
         max_c = int(co.get("max_collaborators", 25))
         if cur >= max_c:
             raise HTTPException(402, f"Limite do plano atingido ({max_c} colaboradores). Faça upgrade do plano.")
+    # Regra de negócio: só AUDITOR pode liberar acesso ao Atendimento WhatsApp.
+    # Gestor cria o colaborador, mas o flag só pode ser ligado por auditor.
+    if payload.can_attend_whatsapp and user.get("role") not in ("auditor", "admin"):
+        payload.can_attend_whatsapp = False
     cid = f"col-{uuid.uuid4().hex[:8]}"
     now = now_iso()
     coll = Collaborator(id=cid, **payload.model_dump(), created_at=now, updated_at=now)
@@ -311,15 +316,35 @@ async def update_collaborator(cid: str, payload: CollaboratorIn, user: dict = De
             raise HTTPException(404, "Colaborador não encontrado")
     prev = await db.collaborators.find_one({"id": cid},
                                            {"_id": 0, "active": 1, "name": 1,
-                                            "company_id": 1})
+                                            "company_id": 1,
+                                            "can_attend_whatsapp": 1})
     data = payload.model_dump()
     data["updated_at"] = now_iso()
     # Marca quando foi desativado (para o KPI de perdas pendentes)
     if data.get("active") is False and (prev or {}).get("active") is not False:
         data["deactivated_at"] = now_iso()
+    # Permissão: SÓ auditor pode mexer no flag can_attend_whatsapp.
+    # Se gestor tentar mudar, mantemos o valor anterior (silenciosamente).
+    if user.get("role") not in ("auditor", "admin"):
+        prev_flag = bool((prev or {}).get("can_attend_whatsapp"))
+        data["can_attend_whatsapp"] = prev_flag
     res = await db.collaborators.update_one({"id": cid}, {"$set": data})
     if res.matched_count == 0:
         raise HTTPException(404, "Colaborador não encontrado")
+    # Sincroniza permissão com User vinculado (se houver) — assim a sidebar
+    # do colaborador vê o menu "Atendimento IA" imediatamente após salvar.
+    try:
+        company_id = (prev or {}).get("company_id") or user.get("company_id") \
+                          or DEMO_COMPANY_ID
+        await db.users.update_many(
+            {"company_id": company_id, "collaborator_id": cid},
+            {"$set": {
+                "can_attend_whatsapp": bool(data.get("can_attend_whatsapp")),
+                "updated_at": now_iso(),
+            }},
+        )
+    except Exception as _e:
+        logger.warning("[collab] sync can_attend_whatsapp falhou: %s", _e)
     # Notifica gestor se desativou e há pertences ativos pendentes de devolução
     if data.get("active") is False and (prev or {}).get("active") is not False:
         try:
