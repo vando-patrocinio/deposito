@@ -1374,6 +1374,24 @@ async def inbound_webhook(payload: InboundIn,
         except Exception as e:
             logger.warning("[wa-baileys] save inbound media failed: %s", e)
 
+    # 👁️ ANÁLISE VISUAL AUTOMÁTICA (Gemini Vision) — se for imagem/PDF
+    # e não tiver texto/caption do cliente, Isabella "vê" o conteúdo.
+    vision_summary = None
+    if (has_media_file and not (payload.text or "").strip()
+            and payload.media_kind in ("image", "document")):
+        try:
+            from services.media_analysis import analyze_media
+            vision_summary = await analyze_media(
+                payload.media_b64,
+                payload.media_mimetype or "image/jpeg",
+                payload.media_kind,
+            )
+            if vision_summary:
+                logger.info("[wa-baileys] 👁️ visão: %s",
+                            vision_summary[:150])
+        except Exception as e:
+            logger.warning("[wa-baileys] vision falhou: %s", e)
+
     # 🎤 TRANSCRIÇÃO AUTOMÁTICA: se inbound for áudio sem texto, transcreve
     # via Whisper antes do LLM ver a mensagem. Isabella passa a "entender"
     # voice notes em vez de ver só "🎤 Áudio (5s)".
@@ -1398,7 +1416,7 @@ async def inbound_webhook(payload: InboundIn,
         "direction": "inbound",
         "phone": effective_phone,
         "jid": payload.jid,
-        "text": payload.text or transcript or (
+        "text": payload.text or transcript or vision_summary or (
             f"🎤 Áudio ({media_duration_sec}s)" if has_audio and media_duration_sec
             else "🎤 Áudio" if has_audio
             else f"📎 {payload.media_kind.title()}: {payload.media_filename}"
@@ -1426,6 +1444,9 @@ async def inbound_webhook(payload: InboundIn,
         if has_media_file:
             inbound_doc["media_filename"] = payload.media_filename
             inbound_doc["media_size_bytes"] = payload.media_size_bytes
+        if vision_summary:
+            inbound_doc["vision_summary"] = vision_summary
+            inbound_doc["vision_engine"] = "gemini-2.5-flash"
     await db.aihub_wa_messages.insert_one(inbound_doc)
     # Atualiza conv com flag LID quando aplicável
     if payload.is_lid:
@@ -1448,12 +1469,21 @@ async def inbound_webhook(payload: InboundIn,
     # despachar processamento pesado para BackgroundTasks e retornar 200
     # imediatamente — o sidecar não fica esperando, msgs não se perdem.
     if not is_group:
+        # Determinar o texto que a Isabella vai "ler":
+        # 1. Texto do cliente (caption ou mensagem direta)
+        # 2. OU transcrição de voice note
+        # 3. OU análise visual com prefixo [VISÃO_AUTO: ...]
+        ai_input = (payload.text or "").strip()
+        if not ai_input and transcript:
+            ai_input = transcript
+        if not ai_input and vision_summary:
+            ai_input = f"[VISÃO_AUTO: {vision_summary}]"
         background_tasks.add_task(
             _process_inbound_ai_pipeline,
             cid=cid,
             effective_phone=effective_phone,
             payload_jid=payload.jid,
-            payload_text=payload.text or transcript or "",
+            payload_text=ai_input,
             payload_message_id=payload.message_id,
             subscriber_id=subscriber_id,
             subscriber_ctx=subscriber_ctx,
