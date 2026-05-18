@@ -1,6 +1,48 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — V7.0 Reescrita Unificada do Prompt da Isabella ★★★★★
+
+### Contexto
+Após análise completa dos 10 fragments de prompt ativos (~37k chars), foram identificados **7 problemas estruturais**:
+
+1. **Conflito de preços**: Vendas V1.0 dizia "200 MEGA · R$ 99,90", catálogo oficial dizia "400 MEGA · R$ 109,90" — Isabella confundia
+2. **Conflito de base de recomendação**: V6.51 dizia "1-2 pessoas → 400/500", Vendas V1.0 dizia "1-2 → 200"
+3. **Exemplos hardcoded "Vando"** em múltiplos lugares (V6.51 + Vendas V1.0)
+4. **Regras redundantes/conflitantes** entre V6.50, V6.52, V6.70, V6.71
+5. **Flow morria após "ok"** do cliente (sem regra clara de continuidade)
+6. **Sem distinção firme** entre LEAD NOVO e CLIENTE EXISTENTE
+7. **Sem orientação** sobre como tratar cliente com phone vinculado errado
+
+### Solução: V7.0 Unified (4 fragments consolidados, ~24k chars)
+
+| Fragment | Tamanho | Responsabilidade |
+|---|---|---|
+| 📋 **Identidade & Regras Oficiais** | 4.1k | Empresa, lojas, canais, instalação, fidelidade, cobertura |
+| 💎 **Catálogo de Planos** | 3.0k | Fonte autoritativa de planos + lógica recomendação |
+| 🤖 **Manual da Isabella** | 11.4k | 11 seções: tom, anti-alucinação, lead vs existente, saudação, encadeamento, continuidade, diagnóstico técnico, boleto, agendamento, kill-switch, anti-padrões |
+| 🛒 **Playbook de Vendas** | 5.6k | 7 passos com placeholders [PLACEHOLDER] em vez de "Vando" |
+
+### Implementação
+- `migrations/isabella_unified_v7_0.py` — desativa 7 fragments legados + cria 4 V7.0
+- Aplicada no preview: 7 desativados, 4 criados, total 7 ativos (4 custom + 3 triggers situacionais)
+- Smoke test: ✅ frontend OK, 51/51 testes passando
+
+### Melhorias arquiteturais
+- **Anti-alucinação reforçada** (§2 do Manual): regra clara sobre quais blocos contam como dados reais vs exemplos do prompt
+- **Decisão LEAD vs EXISTENTE** (§3): protocolo explícito quando bloco "CLIENTE IDENTIFICADO" pode estar errado
+- **Continuidade de flow** (§6): proibição explícita de reiniciar após "Ok"/"Sim"/"?"
+- **Kill-switch** (§10): silêncio em "obrigado", limite de 1 follow-up de engajamento
+- **Anti-padrões** (§11): 9 comportamentos proibidos listados explicitamente
+- **Playbook de Vendas refeito**: substitui "[Nome do Vando]" por `[NOME_REAL]`/`[BAIRRO_REAL]`; preços alinhados ao Catálogo
+
+### Próximos passos do usuário
+1. **Save to GitHub → Redeploy produção** pra subir migration V7.0
+2. **Rodar migration em produção**: `python migrations/isabella_unified_v7_0.py`
+3. **Testar conversa real**: pedir instalação como cliente novo → verificar que Isabella não inventa nome/plano
+
+
+
 ## Mai 18, 2026 — Sidecar Railway isolado p/ Preview + Fix Webhook Produção + V6.71 Anti-Alucinação ★★★
 
 ### Contexto
