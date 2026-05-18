@@ -35,8 +35,25 @@ async def fetch_history_turns(company_id: str, phone: str,
                                  exclude_msg_id: str | None = None) -> List[dict]:
     """Retorna histórico no formato [{role: 'user'|'assistant', content: '...'}, ...]
     do mais antigo pro mais recente, truncado pelo orçamento de tokens.
+
+    Respeita `wa_conversations.context_reset_at` — quando o gestor zera
+    o contexto pra teste, msgs anteriores ao reset NÃO entram no histórico
+    enviado pro LLM (mas continuam no banco pra auditoria).
     """
     q: dict = {"company_id": company_id, "phone": phone}
+
+    # Aplica filtro de reset de contexto, se houver
+    try:
+        conv = await db.wa_conversations.find_one(
+            {"company_id": company_id, "phone": phone},
+            {"_id": 0, "context_reset_at": 1},
+        )
+        reset_at = (conv or {}).get("context_reset_at")
+        if reset_at:
+            q["created_at"] = {"$gt": reset_at}
+    except Exception as e:
+        logger.info("[ai_history] reset_at lookup skip: %s", e)
+
     docs = await db.aihub_wa_messages.find(
         q,
         {"_id": 0, "id": 1, "direction": 1, "text": 1, "auto_reply": 1,

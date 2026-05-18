@@ -8,6 +8,7 @@ import {
   Settings, RotateCcw, Image, ImagePlus, Paperclip, FileDown, CalendarPlus, Mic, Play, Pause,
 } from "lucide-react";
 import { api } from "@/api";
+import { toast } from "sonner";
 import { useAuth } from "@/AuthContext";
 import AgentConfigModal from "@/AgentConfigModal";
 import WaChatFilterPopover, {
@@ -1800,6 +1801,28 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
             icon={<CheckCircle2 size={14} strokeWidth={2} />}
             tooltip="Finalizar conversa (encerrar atendimento)"
             hoverColor="var(--danger)"
+          />
+          <IconBtn
+            data-testid="wa-reset-context-btn"
+            onClick={async () => {
+              if (!window.confirm(
+                "Resetar o CONTEXTO da Isabella IA pra este número?\n\n" +
+                "Mensagens NÃO são apagadas (auditoria preservada), mas " +
+                "a Isabella passa a ver a conversa como se fosse o início " +
+                "— ideal pra testar saudação personalizada, kill-switch e " +
+                "fluxos V6.70.\n\nContinuar?"
+              )) return;
+              try {
+                await api.waResetContext(conv.phone);
+                toast.success("Contexto da Isabella zerado para " + conv.phone);
+              } catch (e) {
+                toast.error("Falha ao resetar: " + (e?.response?.data?.detail || e.message));
+              }
+            }}
+            disabled={busy}
+            icon={<RotateCcw size={14} strokeWidth={2} />}
+            tooltip="Resetar contexto da Isabella IA (teste — não apaga histórico)"
+            hoverColor="#f59e0b"
           />
           {onOpenAgentConfig && (
             <IconBtn

@@ -768,6 +768,54 @@ async def list_system_events(user: dict = Depends(require_role("gestor"))):
     return {"events": docs}
 
 
+@router.post("/conversation/{phone}/reset-context")
+async def reset_conversation_context(
+    phone: str,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Zera o contexto da Isabella IA para esta conversa.
+
+    Não apaga mensagens do banco (preserva auditoria). Apenas marca
+    `context_reset_at = now` em `wa_conversations` — o `fetch_history_turns`
+    passa a filtrar `created_at > context_reset_at`, fazendo a IA enxergar
+    a conversa como se fosse o início.
+
+    Também limpa flags de estado: `assignee_role`, `sales_completed_at`,
+    `handoff_at` — pra que o roteamento volte ao default (Isabella IA).
+
+    Uso: testar saudação personalizada V6.51, kill-switch, fluxos V6.70
+    sem precisar criar phones de teste novos.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    now = now_iso()
+    res = await db.wa_conversations.update_one(
+        {"company_id": cid, "phone": phone},
+        {"$set": {
+            "context_reset_at": now,
+            "context_reset_by": user.get("email") or user.get("id"),
+            "assignee_role": None,
+            "assignee_user_id": None,
+            "sales_completed_at": None,
+            "sales_completion_reason": None,
+            "handoff_at": None,
+            "handoff_reason": None,
+            "updated_at": now,
+        }},
+        upsert=True,
+    )
+    logger.info(
+        "[wa-baileys] context reset: company=%s phone=%s by=%s",
+        cid, phone, user.get("email"),
+    )
+    return {
+        "ok": True,
+        "phone": phone,
+        "context_reset_at": now,
+        "matched": int(res.matched_count),
+        "modified": int(res.modified_count),
+    }
+
+
 @router.get("/health-overview")
 async def health_overview(
     days: int = 7, user: dict = Depends(require_role("gestor")),

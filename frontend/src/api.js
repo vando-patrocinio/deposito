@@ -496,6 +496,9 @@ export const api = {
   waHealthOverview: (days = 7) =>
     client.get(`/whatsapp-baileys/health-overview`,
                   { params: { days }, timeout: 30000 }).then((r) => r.data),
+  waResetContext: (phone) =>
+    client.post(`/whatsapp-baileys/conversation/${encodeURIComponent(phone)}/reset-context`)
+      .then((r) => r.data),
   isabellaConfigGet: () =>
     client.get(`/central-ia/isabella/config`).then((r) => r.data),
   isabellaConfigSet: (polishEnabled) =>

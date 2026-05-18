@@ -953,3 +953,14 @@ Bug real do Vando (17/05 23:31): Isabella repetiu "Pode me enviar o print sim, v
 "obrigado" / "valeu" / "tmj" / "❤️" → silêncio. Não responder pra evitar loop infinito.
 
 **Validação:** sandbox "obrigado" retornou string vazia (`""`) — kill-switch ativo. As regras 8 e 9 só aplicam totalmente em conversas reais com cliente identificado e histórico (no sandbox isolado o LLM cai na saudação default por falta de contexto).
+
+## 🔄 [17/Fev/2026] /reset — Resetar Contexto da Conversa (Pra Testes)
+
+**Pedido:** "CRIE O RESETAR CONTEXTO, /reset, zera toda conversa com o chat, justamente para fazermos o teste".
+
+**Implementação:**
+- **Backend** (`routes/whatsapp_baileys.py`): novo `POST /api/whatsapp-baileys/conversation/{phone}/reset-context` (gestor). Marca `wa_conversations.context_reset_at = now_iso()` + limpa `assignee_role`, `sales_completed_at`, `handoff_at`. **NÃO apaga mensagens** (auditoria preservada).
+- **Filtro de histórico** (`services/ai_history.py`): `fetch_history_turns` agora consulta `context_reset_at` e filtra `created_at > context_reset_at` antes de mandar pro LLM. Isabella enxerga a conversa como se fosse o início.
+- **Frontend** (`WhatsAppChatLayout.js`): novo `IconBtn` 🔄 RotateCcw `data-testid="wa-reset-context-btn"` no toolbar do chat (ao lado de Finalizar). Confirm dialog antes de executar, toast de sucesso/erro.
+
+**Validado:** curl reset retornou `{ok:true, context_reset_at, matched:1, modified:1}`. Screenshot confirmou botão visível com tooltip correto. Importação de `toast` (sonner) adicionada ao arquivo.
