@@ -13,6 +13,8 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from database import db
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/utils", tags=["utils"])
 
@@ -101,34 +103,69 @@ class CepResponse(BaseModel):
 
 @router.get("/cep/{cep}", response_model=CepResponse)
 async def lookup_cep(cep: str):
-    """Consulta ViaCEP e retorna endereço estruturado.
+    """Consulta CEP com fallback automático: cache → ViaCEP → BrasilAPI → OpenCEP.
 
     - Aceita CEP com ou sem hífen
-    - Retorna 404 se CEP não existe
+    - Retorna 404 se nenhuma fonte encontrar
+    - Cacheia resultado em MongoDB pra próximas consultas serem instantâneas
     """
     digits = _digits_only(cep)
     if len(digits) != 8:
         raise HTTPException(400, "CEP precisa ter 8 dígitos")
 
-    url = f"https://viacep.com.br/ws/{digits}/json/"
+    # 1. Cache local
+    cached = await db.cep_cache.find_one({"cep": digits}, {"_id": 0})
+    if cached:
+        return CepResponse(**{k: v for k, v in cached.items()
+                              if k in CepResponse.model_fields})
+
+    # 2. ViaCEP → 3. BrasilAPI → 4. OpenCEP
+    sources = [
+        ("viacep", f"https://viacep.com.br/ws/{digits}/json/"),
+        ("brasilapi", f"https://brasilapi.com.br/api/cep/v2/{digits}"),
+        ("opencep", f"https://opencep.com/v1/{digits}"),
+    ]
+    result: Optional[CepResponse] = None
+    for source_name, url in sources:
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as cli:
+                r = await cli.get(url)
+                if r.status_code != 200:
+                    continue
+                data = r.json()
+            if data.get("erro"):
+                continue
+            # Normalizar campos entre fontes
+            result = CepResponse(
+                cep=digits,
+                logradouro=(data.get("logradouro") or data.get("street")
+                            or "").strip(),
+                bairro=(data.get("bairro") or data.get("neighborhood")
+                        or "").strip(),
+                cidade=(data.get("localidade") or data.get("city")
+                        or "").strip(),
+                uf=(data.get("uf") or data.get("state") or "").strip(),
+                ddd=(data.get("ddd") or "").strip(),
+                ibge=(data.get("ibge") or "").strip(),
+            )
+            # Aceita só se tem ao menos cidade ou bairro
+            if result.cidade or result.bairro:
+                logger.info("[cep] %s → fonte=%s", digits, source_name)
+                break
+            result = None
+        except (httpx.HTTPError, ValueError) as e:
+            logger.debug("[cep] %s falhou: %s", source_name, e)
+            continue
+
+    if not result:
+        raise HTTPException(404, "CEP não encontrado em nenhuma fonte")
+
+    # Salva no cache (ignora erro de unique)
     try:
-        async with httpx.AsyncClient(timeout=8.0) as cli:
-            r = await cli.get(url)
-            r.raise_for_status()
-            data = r.json()
-    except httpx.HTTPError as e:
-        logger.warning("[cep] erro %s", e)
-        raise HTTPException(502, f"Erro consultando ViaCEP: {e}")
-
-    if data.get("erro"):
-        raise HTTPException(404, "CEP não encontrado")
-
-    return CepResponse(
-        cep=digits,
-        logradouro=data.get("logradouro", "") or "",
-        bairro=data.get("bairro", "") or "",
-        cidade=data.get("localidade", "") or "",
-        uf=data.get("uf", "") or "",
-        ddd=data.get("ddd", "") or "",
-        ibge=data.get("ibge", "") or "",
-    )
+        await db.cep_cache.update_one(
+            {"cep": digits},
+            {"$set": result.model_dump()}, upsert=True,
+        )
+    except Exception:
+        pass
+    return result

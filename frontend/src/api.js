@@ -562,6 +562,24 @@ export const api = {
     client.get(`/utils/validate-document`, { params: { value } }).then((r) => r.data),
   utilsLookupCep: (cep) =>
     client.get(`/utils/cep/${encodeURIComponent(cep)}`).then((r) => r.data),
+
+  // Reajuste anual
+  reajusteIndices: () =>
+    client.get(`/financeiro/reajuste/indices`).then((r) => r.data),
+  reajusteRefreshIndex: (name) =>
+    client.post(`/financeiro/reajuste/indices/${encodeURIComponent(name)}/refresh`).then((r) => r.data),
+  reajusteDue: (horizonDays = 30) =>
+    client.get(`/financeiro/reajuste/due`, { params: { horizon_days: horizonDays } }).then((r) => r.data),
+  reajustePreview: (subscriberId, indexName) =>
+    client.get(`/financeiro/reajuste/preview/${encodeURIComponent(subscriberId)}`,
+      { params: indexName ? { index_name: indexName } : {} }).then((r) => r.data),
+  reajusteApply: (subscriberId, force = false) =>
+    client.post(`/financeiro/reajuste/apply/${encodeURIComponent(subscriberId)}`,
+      null, { params: force ? { force: true } : {} }).then((r) => r.data),
+  reajusteApplyAllDue: () =>
+    client.post(`/financeiro/reajuste/apply-all-due`).then((r) => r.data),
+  reajusteHistory: (subscriberId) =>
+    client.get(`/financeiro/reajuste/history/${encodeURIComponent(subscriberId)}`).then((r) => r.data),
   waBaileysAttendants: () =>
     client.get(`/whatsapp-baileys/attendants`).then((r) => r.data),
   // Configurações da instância (nome de exibição)

@@ -1,6 +1,55 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Sistema de Reajuste Anual + CEP Fallback ★★★★★
+
+### Reajuste Anual Automático (Anatel/SCM Compliant)
+
+Pesquisada regulação Anatel para internet fibra (SCM): índice padrão **IST** (telecom), mas IPCA é também aceito quando previsto em contrato. Periodicidade mínima 12 meses.
+
+**Backend implementado:**
+- `services/inflation.py` — Busca **API SGS Banco Central** (gratuita, sem auth) dos índices IPCA (433), IGP-M (189), IST (7833). Calcula acumulado 12 meses. Cache em MongoDB `inflation_indices`.
+- `services/readjustment.py` — Lógica: `next_date = max(installation_date, last_readjustment_at) + 365d`. Aplica `new_price = current_price × (1 + acc_pct/100)`. Log de auditoria em `subscriber_readjustments`.
+- `routes/financeiro_reajuste.py` — 7 endpoints: `/indices`, `/indices/{name}/refresh`, `/due`, `/preview/{id}`, `/apply/{id}`, `/apply-all-due`, `/history/{id}`.
+- **Worker diário 04:00** em `server.py`: atualiza índices + aplica reajustes pendentes em todas empresas.
+
+**Frontend implementado:**
+- `FinanceiroReadjustmentTab.js` — Nova subaba "Reajuste" no Financeiro com:
+  - 4 cards com índices oficiais (IPCA, IPCA_12M, IGP-M, IST) com botão refresh
+  - Tabela "Vencidos" + botão "Aplicar todos vencidos" (ação em lote)
+  - Tabela "Próximos N dias" (filtro 30/60/90/180/365 dias)
+  - Aplicar individual via botão por linha
+- `SubscribersPanel.js` — Seção financeira do cadastro de cliente:
+  - Campo "Data de instalação" (date input)
+  - Select "Índice de reajuste" (IPCA/IST/IGP-M, padrão IPCA)
+  - Display "Próximo reajuste: DD/MM/AAAA" com badge VENCIDO se já passou
+  - Mostra "Último: +X.XX%" se já houve reajuste
+
+**Validado:**
+- API SGS BCB retornando IPCA real: **+4.39% acumulado 12 meses** (2026-04)
+- Endpoints funcionais: `/indices`, `/refresh`, `/due`
+- Lint Python ✅ · Lint JS ✅ · 51/51 testes passing
+
+### CEP com Fallback Inteligente
+- `utils.py /cep/{cep}` agora consulta em cascata: cache MongoDB → ViaCEP → BrasilAPI → OpenCEP
+- Timeout de 4s por fonte (rápido fallback se uma cair)
+- Resultado cacheado em `cep_cache` (consultas seguintes são instantâneas)
+- Resolve dependência única em ViaCEP que historicamente cai algumas vezes/mês
+
+### Schema novos campos `subscribers`
+- `installation_date` (ISO datetime) — define data-base do reajuste
+- `readjustment_index` (string, default "IPCA")
+- `last_readjustment_at` (ISO datetime)
+- `last_readjustment_pct` (float)
+- `last_readjustment_value` (float)
+
+### Schema novas collections
+- `inflation_indices` — cache de índices do BCB
+- `cep_cache` — cache de CEPs já consultados
+- `subscriber_readjustments` — log de auditoria de reajustes aplicados
+
+
+
 ## Mai 18, 2026 — V7.0 Reescrita Unificada do Prompt da Isabella ★★★★★
 
 ### Contexto

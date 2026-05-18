@@ -698,6 +698,69 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
         </Field>
       </div>
 
+      {/* Reajuste anual — campos financeiros */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <Field label="Data de instalação (define data-base do reajuste)">
+          <input className="input" type="date"
+            data-testid="sub-installation-date"
+            value={(data.installation_date || "").slice(0, 10)}
+            onChange={(e) => {
+              const v = e.target.value;
+              set("installation_date", v ? new Date(v).toISOString() : null);
+            }} />
+        </Field>
+        <Field label="Índice de reajuste">
+          <select className="input"
+            data-testid="sub-readjustment-index"
+            value={data.readjustment_index || "IPCA"}
+            onChange={(e) => set("readjustment_index", e.target.value)}>
+            <option value="IPCA">IPCA — Inflação oficial (IBGE)</option>
+            <option value="IST">IST — Índice de Telecom (BCB)</option>
+            <option value="IGP-M">IGP-M — FGV</option>
+          </select>
+        </Field>
+        <Field label="Próximo reajuste">
+          {data.installation_date ? (
+            <div style={{
+              padding: "6px 10px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              borderRadius: 6,
+              fontSize: 12,
+              color: "#0f172a",
+            }}>
+              {(() => {
+                const base = data.last_readjustment_at || data.installation_date;
+                const d = new Date(base);
+                d.setFullYear(d.getFullYear() + 1);
+                const isDue = d <= new Date();
+                return (
+                  <span data-testid="sub-next-readjustment">
+                    {d.toLocaleDateString("pt-BR")}
+                    {isDue && (
+                      <span style={{
+                        marginLeft: 6, padding: "1px 6px", borderRadius: 4,
+                        background: "#fef2f2", color: "#dc2626",
+                        fontSize: 10, fontWeight: 700,
+                      }}>VENCIDO</span>
+                    )}
+                  </span>
+                );
+              })()}
+              {data.last_readjustment_pct != null && (
+                <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
+                  Último: +{data.last_readjustment_pct.toFixed(2)}%
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              Defina a data de instalação primeiro
+            </div>
+          )}
+        </Field>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
         <Field label="Método de cobrança">
           <select className="input" value={data.billing_method || ""}

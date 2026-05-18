@@ -103,6 +103,7 @@ from routes import (
     isabella_kpis as routes_isabella_kpis,
     tv_dashboards as routes_tv_dashboards,
     utils as routes_utils,
+    financeiro_reajuste as routes_financeiro_reajuste,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -360,6 +361,30 @@ async def _startup() -> None:
     scheduler.add_job(auto_sync_atlaz_financeiro,
                       CronTrigger(minute=15, hour="*/2"),
                       id="atlaz_fin_auto_sync", replace_existing=True)
+    # Cron: REAJUSTE ANUAL automático — diário 04:00, aplica reajustes vencidos
+    async def _readjustment_daily_all_companies():
+        from services.inflation import refresh_index_cache, SGS_CODES
+        from services.readjustment import apply_all_due
+        # 1) atualiza índices de inflação
+        for name in SGS_CODES.keys():
+            try:
+                await refresh_index_cache(name)
+            except Exception as e:
+                logger.warning("[readjustment-cron] refresh %s falhou: %s",
+                               name, e)
+        # 2) aplica reajustes pendentes em cada empresa
+        async for c in db.companies.find({}, {"_id": 0, "id": 1}):
+            try:
+                r = await apply_all_due(c["id"], actor="cron")
+                if r.get("applied"):
+                    logger.info("[readjustment-cron] %s: %s aplicados (+R$ %.2f)",
+                                c["id"], r["applied"], r["total_revenue_increase"])
+            except Exception as e:
+                logger.warning("[readjustment-cron] empresa %s falhou: %s",
+                               c.get("id"), e)
+    scheduler.add_job(_readjustment_daily_all_companies,
+                      CronTrigger(hour=4, minute=0),
+                      id="readjustment_daily", replace_existing=True)
     # Cron: ALVARO IA daily — análise consolidada às 06:00 (próximas 24h)
     async def _alvaro_daily_all_companies():
         from services.alvaro_ai import run_daily_analysis
@@ -481,6 +506,7 @@ app.include_router(routes_isabella_kpis.router)
 app.include_router(routes_onboarding.router)
 app.include_router(routes_tv_dashboards.router)
 app.include_router(routes_utils.router)
+app.include_router(routes_financeiro_reajuste.router)
 
 
 # ============================================================
