@@ -106,6 +106,7 @@ from routes import (
     financeiro_reajuste as routes_financeiro_reajuste,
     public_access as routes_public_access,
     disparo_promo as routes_disparo_promo,
+    bank_import as routes_bank_import,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -528,6 +529,7 @@ app.include_router(routes_utils.router)
 app.include_router(routes_financeiro_reajuste.router)
 app.include_router(routes_public_access.router)
 app.include_router(routes_disparo_promo.router)
+app.include_router(routes_bank_import.router)
 
 
 # ============================================================

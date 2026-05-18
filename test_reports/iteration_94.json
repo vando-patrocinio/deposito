@@ -1,0 +1,44 @@
+{
+  "summary": "Iter 94 — Sub-aba 'Importar Extrato' do Financeiro (OFX Sicoob + IA Claude Sonnet 4.5 + memória aprendida). Backend e Frontend testados de ponta a ponta. 9/9 backend pytest passaram (upload OFX, classificação IA, dedup por hash, confirm gerando movements + atualizando saldo, idempotência 409, history, memory ordenada por hit_count desc, aprendizado aplicado na 2ª upload com source='memory', delete memory, rejeição de arquivo vazio/extensão inválida). Frontend E2E: login admin → Financeiro → Importar Extrato → upload /tmp/test_sicoob.ofx → 5 KPIs renderizados (Novas/Entradas/Saídas/IA), tabela bi-items-table com 5 linhas (3 duplicatas em amarelo + 2 novas com badges 'IA Claude 95%' e 'IA Claude 90%'), CPF/CNPJ extraídos abaixo da descrição, 'Conta caixa: Sicoob CC' pré-selecionada, botão Confirmar habilitado, card 'Padrões aprendidos pela IA (5)' expansível mostrando 5 padrões aprendidos (CNPJ OI FIBRA → Internet/Telecom, etc.), card Histórico de importações renderizado.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Importar Extrato — KPI 'Classificadas por IA'",
+        "issues": [
+          "O hint do KpiCard 'X via memória aprendida' aparece colado ao valor no DOM (ex: '20 via memória aprendida' parece '20' mas é valor=2 + hint='0 via memória aprendida'). Renderização visual está correta (separação por estilo), apenas o text_content concatena — não é bug funcional, apenas observação para futuros testes."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter94_bank_import.py",
+    "/app/test_reports/pytest/iter94_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "bank_import.py linha 235-301: _ai_classify_batch faz fallback silencioso para {} se EMERGENT_LLM_KEY estiver vazia OU se IA falhar; nessas situações os itens permanecem com source='manual' e supplier/category None, mas a UI exibe 'Manual' como se o usuário tivesse decidido — considere expor uma flag/erro para alertar o usuário que a IA falhou (ex: AlertCard 'IA indisponível, classifique manualmente').",
+    "bank_import.py linha 188-201: _lookup_memory busca por CPF/CNPJ exato OU por key normalizada com doc=None; ATENÇÃO: quando uma memória foi salva com doc=cnpj1 e a nova tx tem mesma key mas SEM doc (ex: descrição truncada), o lookup por (doc=None, key=X) NÃO encontra o padrão salvo com doc=cnpj1. Comportamento atual é conservador (evita falso positivo), mas pode reduzir hit-rate quando OFX da Sicoob omite o CPF/CNPJ em algumas linhas — registrar para iteração futura.",
+    "bank_import.py linha 502-506: $inc current_balance no fin_cash_accounts é feito após cada inserção de fin_cash_movements; se uma das inserções falhar no meio do loop, o saldo fica inconsistente. Considere usar transação Mongo (replica set) ou rollback manual.",
+    "BankImportTab.js linha 78: useEffect com array vazio carrega refs/history/memory apenas no mount; após confirm, loadHistory+loadMemory são chamados, mas se o usuário trocar de aba e voltar, dados podem estar stale. Aceitável para MVP.",
+    "BankImportTab.js usa setStaging(null); setItems([]) após confirm — bom, mas se o backend criar 0 movements (todos skipped) o staging fica marcado como 'confirmed' e usuário não consegue re-confirmar (409). Considere abrir um novo staging ou permitir re-upload."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter94_bank_import.py (NOVO)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 pytest)",
+    "frontend": "100% — todos testids presentes, 5 KPIs, 5 rows, badges IA Claude visíveis, cash account preselect, memory table com 5 padrões, history card renderiza"
+  },
+  "test_credentials": "admin@empresa.com / 123456 (auto-login funcional)",
+  "seed_data_creation": "Cash account 'Sicoob CC' (fca-9089fabdc4) já existente. /tmp/test_sicoob.ofx com 5 transações já existente. Teste pytest cria padrões temporários em bank_import_memory taggeados com RUN_TAG=uuid hex e limpa o seu próprio na fase delete. Movements criados ficam em fin_cash_movements (não apagados — usar dedup hash em runs futuros para evitar acumulação).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Sub-aba 'Importar Extrato' aprovada. Backend: /api/financeiro/bank-import/{upload,confirm,history,memory,memory/{id},staging/{id}}. Frontend testids: fin-tab-import, bank-import-upload-card, bank-import-file-input, bank-import-uploading, bank-import-err, bank-import-ok, bi-kpi-{new|income|expense|ai}, bi-alert-duplicates, bi-cash-account-select, bi-confirm-btn, bi-items-table, bi-row-{idx}, bi-check-{idx}, bi-type-{idx}, bi-supplier-{idx}, bi-category-{idx}, bi-memory-table, bi-memory-row-{id}, bi-memory-del-{id}, bi-history-table, bi-history-row-{id}. Em pytest, exportar REACT_APP_BACKEND_URL do frontend/.env antes de rodar (ou usar `export $(grep -v '^#' frontend/.env | xargs)`).",
+  "rca_of_the_issue": "N/A — feature funciona conforme especificado pelo main agent. Aprendizado IA confirmado: 2ª upload com mesmo CPF/CNPJ traz source='memory' como esperado, hit_count incrementa corretamente."
+}

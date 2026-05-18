@@ -300,6 +300,24 @@ export const api = {
   lousaQualityRanking: (days = 7) =>
     client.get(`/lousa/quality-notes/technicians-ranking`, { params: { days } })
       .then((r) => r.data),
+  // ========= Bank Import (Sicoob OFX) =========
+  bankImportUpload: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return client.post(`/financeiro/bank-import/upload`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+  bankImportConfirm: (payload) =>
+    client.post(`/financeiro/bank-import/confirm`, payload).then((r) => r.data),
+  bankImportHistory: (limit = 30) =>
+    client.get(`/financeiro/bank-import/history`,
+                  { params: { limit } }).then((r) => r.data),
+  bankImportMemory: (limit = 200) =>
+    client.get(`/financeiro/bank-import/memory`,
+                  { params: { limit } }).then((r) => r.data),
+  bankImportMemoryDelete: (memId) =>
+    client.delete(`/financeiro/bank-import/memory/${memId}`).then((r) => r.data),
   motorIaAgentsList: () => client.get(`/motor-ia/agents`).then((r) => r.data),
   motorIaAgentToggle: (agentId, enabled) =>
     client.put(`/motor-ia/agents/${agentId}`, { enabled }).then((r) => r.data),

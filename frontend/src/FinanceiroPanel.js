@@ -4,9 +4,11 @@ import { Button, Card, Field, inputStyle } from "@/ui";
 import {
   TrendingUp, FileText, Wallet, CreditCard, Tag, Truck,
   Plus, Pencil, Trash2, Search, DollarSign, Inbox, RefreshCw,
+  Upload,
 } from "lucide-react";
 import { BillsTab, CashFlowTab, ReceivablesTab } from "@/FinanceiroPanelExt";
 import ReadjustmentTab from "@/FinanceiroReadjustmentTab";
+import BankImportTab from "@/BankImportTab";
 
 /**
  * Painel Financeiro — Aba principal com 6 sub-abas.
@@ -24,6 +26,7 @@ const SUBTABS = [
   { id: "fluxo", label: "Fluxo de Caixa", icon: TrendingUp, phase: 3 },
   { id: "pagar", label: "Contas a Pagar", icon: FileText, phase: 3 },
   { id: "receber", label: "Recebimentos", icon: Inbox, phase: 4 },
+  { id: "import", label: "Importar Extrato", icon: Upload, phase: 3 },
   { id: "reajuste", label: "Reajuste", icon: RefreshCw, phase: 2 },
   { id: "caixa", label: "Caixa", icon: Wallet, phase: 2 },
   { id: "metodo", label: "Método de Cobrança", icon: CreditCard, phase: 2 },
@@ -98,6 +101,7 @@ export default function FinanceiroPanel() {
       {active === "fluxo" && <CashFlowTab />}
       {active === "pagar" && <BillsTab />}
       {active === "receber" && <ReceivablesTab />}
+      {active === "import" && <BankImportTab />}
       {active === "reajuste" && <ReadjustmentTab />}
       {active === "caixa" && <CashAccountsTab />}
       {active === "metodo" && <PaymentMethodsTab />}
