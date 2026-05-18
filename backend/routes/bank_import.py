@@ -716,6 +716,232 @@ async def reconciliation(from_date: str, to_date: str,
     }
 
 
+# ---------------------------------------------------------------------------
+# Conciliação ativa — match PIX bancário ↔ fatura Atlaz com baixa automática
+# ---------------------------------------------------------------------------
+class ReconcileMatchIn(BaseModel):
+    movement_id: str
+    invoice_id: str
+
+
+class ReconcileMatchesIn(BaseModel):
+    matches: List[ReconcileMatchIn]
+
+
+def _normalize_doc(s: Any) -> str:
+    if not s:
+        return ""
+    return re.sub(r"\D", "", str(s))
+
+
+@router.post("/reconcile-payments")
+async def reconcile_payments(from_date: str, to_date: str,
+                                  auto_mark: bool = True,
+                                  user: dict = Depends(require_finance())):
+    """Cruza PIX bancário (Sicoob/Outros) ↔ fatura Atlaz aberta.
+
+    Algoritmo estrito:
+      • Match key: CPF/CNPJ normalizado + valor exato.
+      • Score 100: CPF+valor+≤1 dia → marca local automaticamente.
+      • Score 90-95: pendente revisão.
+    """
+    from datetime import timedelta as _td
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    bank_movs = await db.fin_cash_movements.find(
+        {
+            "company_id": cid, "type": "income",
+            "source": {"$in": ["bank_import_sicoob", "bank_import_outros"]},
+            "date": {"$gte": from_date, "$lte": to_date},
+            "reconciled_invoice_id": {"$exists": False},
+        },
+        {"_id": 0},
+    ).to_list(2000)
+
+    inv_to_lt = (datetime.strptime(to_date, "%Y-%m-%d")
+                       + _td(days=30)).strftime("%Y-%m-%d")
+    inv_open = await db.subscriber_invoices.find(
+        {"company_id": cid, "status": "open",
+         "due_date": {"$lte": inv_to_lt}}, {"_id": 0},
+    ).to_list(5000)
+
+    sub_ext_to_doc: Dict[str, str] = {}
+    sub_ext_to_name: Dict[str, str] = {}
+    async for s in db.subscribers.find(
+        {"company_id": cid, "document": {"$nin": [None, ""]}},
+        {"_id": 0, "external_code": 1, "document": 1, "name": 1},
+    ):
+        ext = (s.get("external_code") or "").strip().replace("ATLAZ-", "")
+        doc = _normalize_doc(s.get("document"))
+        if ext and doc:
+            sub_ext_to_doc[ext] = doc
+            if s.get("name"):
+                sub_ext_to_name[ext] = s["name"]
+
+    inv_index: Dict[str, List[Dict[str, Any]]] = {}
+    for inv in inv_open:
+        doc = _normalize_doc(inv.get("subscriber_document"))
+        if not doc:
+            sub_ext = str(inv.get("subscriber_external_id") or "")
+            doc = sub_ext_to_doc.get(sub_ext, "")
+            if doc:
+                inv["subscriber_document"] = doc
+                if not inv.get("subscriber_name"):
+                    inv["subscriber_name"] = sub_ext_to_name.get(sub_ext)
+        if not doc:
+            continue
+        amt = round(float(inv.get("amount") or 0), 2)
+        inv_index.setdefault(f"{doc}|{amt}", []).append(inv)
+
+    auto_marked: List[Dict[str, Any]] = []
+    pending: List[Dict[str, Any]] = []
+    matched_inv_ids: set = set()
+    matched_mov_ids: set = set()
+
+    for mov in bank_movs:
+        mov_doc = _extract_doc(mov.get("description") or "")
+        if not mov_doc:
+            continue
+        mov_amt = round(float(mov.get("amount") or 0), 2)
+        candidates = inv_index.get(f"{mov_doc}|{mov_amt}", [])
+        try:
+            mov_date = datetime.strptime(mov.get("date", "")[:10], "%Y-%m-%d")
+        except ValueError:
+            continue
+        chosen: Optional[Dict[str, Any]] = None
+        chosen_days: Optional[int] = None
+        for c in candidates:
+            if c["id"] in matched_inv_ids:
+                continue
+            try:
+                due = datetime.strptime(c["due_date"][:10], "%Y-%m-%d")
+            except (ValueError, KeyError, TypeError):
+                continue
+            days = abs((mov_date - due).days)
+            if chosen is None or (chosen_days is not None and days < chosen_days):
+                chosen, chosen_days = c, days
+        if not chosen:
+            continue
+        if chosen_days is not None and chosen_days <= 1:
+            score = 100
+        elif chosen_days is not None and chosen_days <= 7:
+            score = 95
+        else:
+            score = 90
+        match_obj = {
+            "movement": {
+                "id": mov["id"], "date": mov["date"], "amount": mov["amount"],
+                "description": mov.get("description"), "doc": mov_doc,
+            },
+            "invoice": {
+                "id": chosen["id"],
+                "external_id": chosen.get("external_id"),
+                "subscriber_name": chosen.get("subscriber_name"),
+                "subscriber_document": chosen.get("subscriber_document"),
+                "amount": chosen.get("amount"),
+                "due_date": chosen.get("due_date"),
+                "description": chosen.get("description"),
+            },
+            "days_diff": chosen_days, "score": score,
+        }
+        matched_mov_ids.add(mov["id"])
+        matched_inv_ids.add(chosen["id"])
+        if auto_mark and score >= 95:
+            await db.subscriber_invoices.update_one(
+                {"company_id": cid, "id": chosen["id"]},
+                {"$set": {
+                    "status": "paid", "paid_date": mov["date"],
+                    "amount_paid": mov["amount"],
+                    "paid_method": "auto_reconciliation",
+                    "paid_note": f"Conciliado com PIX {mov['id']} "
+                                  f"(score {score}, ±{chosen_days}d)",
+                    "paid_by_user_id": user.get("id"),
+                    "paid_by_user_name":
+                        user.get("name") or user.get("email"),
+                    "paid_at": now_iso(),
+                    "paid_source": "auto_reconciliation",
+                    "reconciled_movement_id": mov["id"],
+                }},
+            )
+            await db.fin_cash_movements.update_one(
+                {"company_id": cid, "id": mov["id"]},
+                {"$set": {"reconciled_invoice_id": chosen["id"],
+                            "reconciled_at": now_iso()}},
+            )
+            match_obj["status"] = "auto_marked"
+            auto_marked.append(match_obj)
+        else:
+            match_obj["status"] = "pending"
+            pending.append(match_obj)
+
+    pix_orphans = [
+        {"id": m["id"], "date": m["date"], "amount": m["amount"],
+         "description": m.get("description"),
+         "doc": _extract_doc(m.get("description") or "")}
+        for m in bank_movs if m["id"] not in matched_mov_ids
+    ][:200]
+    invoices_orphans = [
+        {"id": i["id"], "external_id": i.get("external_id"),
+         "subscriber_name": i.get("subscriber_name"),
+         "subscriber_document": i.get("subscriber_document"),
+         "amount": i.get("amount"), "due_date": i.get("due_date"),
+         "description": i.get("description")}
+        for i in inv_open if i["id"] not in matched_inv_ids
+    ][:300]
+
+    return {
+        "from_date": from_date, "to_date": to_date,
+        "auto_marked": auto_marked, "pending": pending,
+        "pix_orphans": pix_orphans,
+        "invoices_orphans": invoices_orphans,
+        "stats": {
+            "bank_movements_in_period": len(bank_movs),
+            "open_invoices_considered": len(inv_open),
+            "auto_marked_count": len(auto_marked),
+            "pending_count": len(pending),
+            "pix_orphans_count": len(pix_orphans),
+            "invoices_orphans_count": len(invoices_orphans),
+        },
+    }
+
+
+@router.post("/reconcile-confirm")
+async def reconcile_confirm(payload: ReconcileMatchesIn,
+                                  user: dict = Depends(require_finance())):
+    """Aprova batch de matches manuais — só marca LOCAL."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    approved = 0
+    for m in payload.matches:
+        inv = await db.subscriber_invoices.find_one(
+            {"company_id": cid, "id": m.invoice_id}, {"_id": 0})
+        mov = await db.fin_cash_movements.find_one(
+            {"company_id": cid, "id": m.movement_id}, {"_id": 0})
+        if not inv or not mov:
+            continue
+        await db.subscriber_invoices.update_one(
+            {"company_id": cid, "id": m.invoice_id},
+            {"$set": {
+                "status": "paid", "paid_date": mov["date"],
+                "amount_paid": mov["amount"],
+                "paid_method": "manual_reconciliation",
+                "paid_note": f"Conciliado manual com PIX {mov['id']}",
+                "paid_by_user_id": user.get("id"),
+                "paid_by_user_name": user.get("name") or user.get("email"),
+                "paid_at": now_iso(), "paid_source": "manual_reconciliation",
+                "reconciled_movement_id": mov["id"],
+            }},
+        )
+        await db.fin_cash_movements.update_one(
+            {"company_id": cid, "id": m.movement_id},
+            {"$set": {"reconciled_invoice_id": m.invoice_id,
+                        "reconciled_at": now_iso()}},
+        )
+        approved += 1
+    return {"ok": True, "approved": approved}
+
+
+
+
 @router.get("/memory")
 async def list_memory(limit: int = 200,
                             user: dict = Depends(require_finance())):

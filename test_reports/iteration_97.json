@@ -1,0 +1,25 @@
+{
+  "summary": "iter97 — Conciliação Ativa (PIX bancário Sicoob ↔ Boletos Atlaz). Backend: 6/6 pytest passed (smoke, match score 100, idempotency, external_code resolution, manual reconcile-confirm, orphans cap). Frontend: modal fully validated end-to-end com seed real — 4 abas com contadores corretos (auto=0, revisar=1, pix-órfãos=20, fat-órfãos=300), score badge 90% confiança em laranja, checkbox pré-marcado, footer com 'Aprovar selecionados', botão close funciona, sem regressão no card de conciliação ou Fluxo de Caixa.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter97_reconcile_payments.py",
+    "/app/test_reports/pytest/iter97_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routes/bank_import.py:821 — bug latente: ao escolher o melhor candidato, a condição 'chosen is None or (chosen_days is not None and days < chosen_days)' sempre executa para chosen=None (curto-circuita), mas a 2ª parte testa 'chosen_days is not None' o que é redundante (chosen_days só é None quando chosen é None). Não afeta resultado, mas é confuso. Sugestão: 'if chosen is None or days < chosen_days'.",
+    "/app/backend/routes/bank_import.py:849 — auto_mark=True E score>=95 grava em DB, mas pending também adicionado quando score>=95 não auto-marcado (auto_mark=false). OK pela spec, mas confirmar com producto.",
+    "ReconcileMatchModal pre-seleciona TODOS os matches pendentes ao carregar (linha 52-56). Para um gestor cuidadoso pode causar baixa indevida se clicar 'Aprovar' sem revisar. Considerar pre-seleção apenas para score=95 (deixar 90 desmarcado por padrão)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter97_reconcile_payments.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456",
+  "seed_data_creation": "Tests inserem PIX (source=bank_import_sicoob) + invoice em status=open com CPF/valor casados; teardown remove ambos e reverte invoice (caso tenha sido auto-marcada como paid). UI test seedou 2 pares (1 score 100 + 1 score 90 com diff 10d) e limpou ao final. Nenhum dado seed deixado no DB.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Endpoint reconcile-payments/reconcile-confirm sob /api/financeiro/bank-import/. Algoritmo: match por CPF normalizado (apenas dígitos) + amount rounded 2 casas; score 100 (≤1d), 95 (≤7d), 90 (>7d); auto-marca quando score>=95 e auto_mark=true. Idempotência via reconciled_invoice_id $exists=false no filtro. Resolução CPF via subscriber.external_code (strip 'ATLAZ-' prefix) quando invoice.subscriber_document vazio. Orphans capados em 200/300. Modal frontend faz auto_mark=true em toda chamada — segura por idempotência. Sub TEST_UI já limpo do DB demo.",
+  "rca of the issue": "N/A — nenhum bug detectado."
+}

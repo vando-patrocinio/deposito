@@ -13,7 +13,8 @@ Mostra lado a lado:
 import React, { useEffect, useState } from "react";
 import { api } from "@/api";
 import { Card } from "@/ui";
-import { GitCompareArrows, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { GitCompareArrows, AlertTriangle, CheckCircle2, Search } from "lucide-react";
+import ReconcileMatchModal from "@/ReconcileMatchModal";
 
 const fmtMoney = (v) =>
   Number(v || 0).toLocaleString("pt-BR",
@@ -22,6 +23,8 @@ const fmtMoney = (v) =>
 export default function ReconciliationCard({ period = 30 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [periodRange, setPeriodRange] = useState({ from: "", to: "" });
 
   useEffect(() => {
     const now = new Date();
@@ -29,6 +32,7 @@ export default function ReconciliationCard({ period = 30 }) {
     from.setDate(from.getDate() - period);
     const fromStr = from.toISOString().slice(0, 10);
     const toStr = now.toISOString().slice(0, 10);
+    setPeriodRange({ from: fromStr, to: toStr });
     setLoading(true);
     api.bankImportReconciliation(fromStr, toStr)
       .then(setData)
@@ -65,6 +69,18 @@ export default function ReconciliationCard({ period = 30 }) {
         <GitCompareArrows size={16} />
         Conciliação · Banco × Atlaz ({period} dias)
       </span>
+    )} action={(
+      <button onClick={() => setShowModal(true)}
+                data-testid="reconcile-open-modal"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  padding: "6px 12px", borderRadius: 8,
+                  background: "#0ea5e9", color: "#fff",
+                  border: "none", cursor: "pointer", fontWeight: 700,
+                  fontSize: 12,
+                }}>
+        <Search size={13} /> Ver discrepâncias & auto-baixar
+      </button>
     )} data-testid="reconciliation-card">
       <div style={{
         background: tone.bg, border: `1px solid ${tone.border}`,
@@ -111,6 +127,16 @@ export default function ReconciliationCard({ period = 30 }) {
           highlight isDiff
           testId="recon-diff" />
       </div>
+      {showModal && (
+        <ReconcileMatchModal
+          from_date={periodRange.from} to_date={periodRange.to}
+          onClose={() => setShowModal(false)}
+          onMutated={() => {
+            // Reload contadores principais
+            api.bankImportReconciliation(periodRange.from, periodRange.to)
+              .then(setData).catch(() => null);
+          }} />
+      )}
     </Card>
   );
 }

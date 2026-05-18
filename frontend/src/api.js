@@ -317,6 +317,13 @@ export const api = {
   bankImportReconciliation: (from_date, to_date) =>
     client.get(`/financeiro/bank-import/reconciliation`,
                   { params: { from_date, to_date } }).then((r) => r.data),
+  bankImportReconcilePayments: (from_date, to_date, auto_mark = true) =>
+    client.post(`/financeiro/bank-import/reconcile-payments`, null,
+                    { params: { from_date, to_date, auto_mark } })
+      .then((r) => r.data),
+  bankImportReconcileConfirm: (matches) =>
+    client.post(`/financeiro/bank-import/reconcile-confirm`, { matches })
+      .then((r) => r.data),
   bankImportConfirm: (payload) =>
     client.post(`/financeiro/bank-import/confirm`, payload).then((r) => r.data),
   bankImportHistory: (limit = 30) =>
