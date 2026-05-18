@@ -231,6 +231,144 @@ async def save_upload(
     }
 
 
+async def liveness_check(
+    token: str,
+    frames: list,  # lista de tuples (label, bytes) — 3 frames
+) -> Dict[str, Any]:
+    """Validação de vivacidade — 3 frames de poses diferentes.
+
+    Recebe `frames = [('left', bytes), ('right', bytes), ('smile', bytes)]`.
+    Manda pro LLM com vision pra confirmar:
+      - É a MESMA pessoa nos 3 frames?
+      - As poses correspondem à pedida (esquerda/direita/sorriso)?
+      - Não é foto-de-foto (sem reflexo de tela, sem moldura)?
+
+    Retorna `{is_live, confidence, reason}`. Se passar, salva frames como
+    `selfie_left.jpg`, `selfie_right.jpg`, `selfie_smile.jpg` e marca
+    `uploaded.selfie = True`.
+    """
+    payload = verify_token(token)
+    if not payload:
+        raise ValueError("Token inválido ou expirado")
+    if len(frames) != 3:
+        raise ValueError("Esperados 3 frames (esquerda, direita, sorriso)")
+    for label, fb in frames:
+        if not fb or len(fb) > 10 * 1024 * 1024:
+            raise ValueError(f"Frame '{label}' inválido ou muito grande")
+        if len(fb) < 512:
+            raise ValueError(f"Frame '{label}' muito pequeno")
+
+    sid = payload["sid"]
+    cid = payload["cid"]
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Salva os 3 frames
+    saved_paths = {}
+    for label, fb in frames:
+        p = UPLOAD_BASE / sid / f"selfie_{label}.jpg"
+        p.write_bytes(fb)
+        saved_paths[label] = str(p)
+
+    # Roda LLM vision
+    result = await _run_liveness_llm(frames)
+
+    final_status = {
+        "is_live": bool(result.get("is_live")),
+        "confidence": float(result.get("confidence", 0) or 0),
+        "reason": str(result.get("reason", "") or ""),
+        "checked_at": now,
+        "saved_paths": saved_paths,
+    }
+
+    update = {
+        "liveness": final_status,
+        "updated_at": now,
+    }
+    if final_status["is_live"]:
+        update["uploaded.selfie"] = True
+        update["files.selfie"] = {
+            "filename": "selfie_liveness.jpg",
+            "path": saved_paths.get("smile") or saved_paths.get("right"),
+            "size": sum(len(b) for _, b in frames),
+            "content_type": "image/jpeg",
+            "uploaded_at": now,
+            "liveness_validated": True,
+        }
+        update["status"] = "partial"
+
+    await db.onboarding_sessions.update_one(
+        {"id": sid, "company_id": cid}, {"$set": update}
+    )
+    return final_status
+
+
+async def _run_liveness_llm(frames: list) -> Dict[str, Any]:
+    """Manda 3 frames pro LLM vision e pede análise de vivacidade."""
+    from core import EMERGENT_LLM_KEY
+    if not EMERGENT_LLM_KEY:
+        logger.warning("[onboarding] EMERGENT_LLM_KEY ausente — liveness MOCK")
+        # Sem LLM, aceita como live por default pra não travar fluxo (dev)
+        return {"is_live": True, "confidence": 0.5,
+                "reason": "LLM key ausente — aprovação default"}
+
+    from emergentintegrations.llm.chat import (
+        LlmChat, UserMessage, ImageContent,
+    )
+
+    prompt = (
+        "Você é um sistema de verificação de vivacidade (liveness check) "
+        "antifraude pra onboarding bancário/telecom. Recebeu 3 frames "
+        "sequenciais de uma selfie SUPOSTAMENTE ao vivo:\n\n"
+        "Frame 1: cliente olhando pra ESQUERDA (cabeça virada)\n"
+        "Frame 2: cliente olhando pra DIREITA (cabeça virada)\n"
+        "Frame 3: cliente SORRINDO de frente\n\n"
+        "Analise se são FRAMES REAIS de uma pessoa AO VIVO ou uma TENTATIVA "
+        "DE FRAUDE (foto de foto, vídeo gravado, máscara, deep fake óbvio).\n\n"
+        "Critérios pra `is_live=true`:\n"
+        "- É a mesma pessoa nos 3 frames (não foto trocada)\n"
+        "- As poses combinam com o pedido (esquerda/direita/sorriso)\n"
+        "- Sem moldura visível / reflexo de tela / bordas pretas suspeitas\n"
+        "- Iluminação consistente e natural\n"
+        "- Olhos e textura da pele naturais\n\n"
+        "Responda APENAS em JSON, sem markdown:\n"
+        "{\n"
+        '  "is_live": true|false,\n'
+        '  "confidence": 0.0-1.0,\n'
+        '  "reason": "explicação curta em pt-BR (máx 150 chars)"\n'
+        "}"
+    )
+
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"liveness-{uuid.uuid4().hex[:8]}",
+        system_message=(
+            "Você é especialista em verificação antifraude. Responda APENAS "
+            "o JSON pedido, sem texto extra, sem markdown."
+        ),
+    ).with_model("openai", "gpt-5-mini").with_max_tokens(500)
+
+    image_contents = [
+        ImageContent(image_base64=base64.b64encode(fb).decode())
+        for _, fb in frames
+    ]
+    msg = UserMessage(text=prompt, file_contents=image_contents)
+    raw = str(await chat.send_message(msg)).strip()
+    if raw.startswith("```"):
+        raw = raw.split("```", 2)[1] if "```" in raw[3:] else raw[3:]
+        if raw.lower().startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip().rstrip("`").strip()
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return data
+    except Exception as e:
+        logger.warning("[onboarding] liveness JSON parse: %s | raw=%s",
+                        e, raw[:200])
+    return {"is_live": False, "confidence": 0,
+             "reason": "Falha ao processar análise"}
+
+
 async def _run_ocr(
     file_bytes: bytes, file_kind: str, content_type: str,
 ) -> Optional[Dict[str, Any]]:

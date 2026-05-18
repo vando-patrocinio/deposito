@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, require_role
 from services.onboarding import (
-    create_session, get_session_for_token, save_upload, submit_form,
+    create_session, get_session_for_token, liveness_check, save_upload,
+    submit_form,
 )
 
 logger = logging.getLogger("ponto.onboarding_routes")
@@ -103,6 +104,34 @@ async def public_upload(
     except Exception as e:
         logger.exception("[onboarding] upload error: %s", e)
         raise HTTPException(500, "Falha no upload")
+
+
+# ---------------------------------------------------------------------------
+# Público — liveness check (3 frames: esquerda, direita, sorriso)
+# ---------------------------------------------------------------------------
+
+@router.post("/public/{token}/liveness")
+async def public_liveness(
+    token: str,
+    frame_left: UploadFile = File(...),
+    frame_right: UploadFile = File(...),
+    frame_smile: UploadFile = File(...),
+):
+    try:
+        left_bytes = await frame_left.read()
+        right_bytes = await frame_right.read()
+        smile_bytes = await frame_smile.read()
+        result = await liveness_check(token=token, frames=[
+            ("left", left_bytes),
+            ("right", right_bytes),
+            ("smile", smile_bytes),
+        ])
+        return result
+    except ValueError as ve:
+        raise HTTPException(400, str(ve))
+    except Exception as e:
+        logger.exception("[onboarding] liveness error: %s", e)
+        raise HTTPException(500, "Falha na verificação de vivacidade")
 
 
 # ---------------------------------------------------------------------------
