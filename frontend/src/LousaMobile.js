@@ -1025,11 +1025,32 @@ function ConsumableField({ label, fieldKey, consumableId, step, consMap, form, s
 function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                           badSignalThreshold = -27 }) {
   const [step, setStep] = useState(1); // 1: Sinal+ONT+Fotos · 2: Insumos+Obs
+  // Default do sinal: pega do SmartOLT (live_signal.rx_dbm) se disponível,
+  // senão usa -25 dBm (média típica de instalação saudável)
+  const initialSinal = ticket?.live_signal?.rx_dbm != null
+    ? Number(ticket.live_signal.rx_dbm.toFixed(1))
+    : -25;
   const [form, setForm] = useState({
-    sinal: -25, qtd_drop: 1, esticadores: 1, conectores_fast: 2,
+    sinal: initialSinal, qtd_drop: 1, esticadores: 1, conectores_fast: 2,
     cabo_rede: 10, conectores_rede: 2, ont: "", observacoes: "",
     fotos: [],          // [{kind:'equipamento'|'sn', dataUrl}]
   });
+  // Marca se o valor atual ainda é o auto-preenchido do SmartOLT (mostra badge
+  // "do SmartOLT"). Quando o usuário edita o input, vira false.
+  const [sinalFromOlt, setSinalFromOlt] = useState(
+    ticket?.live_signal?.rx_dbm != null,
+  );
+
+  // Sincroniza se o ticket atualizar (poll) e o usuário ainda não digitou
+  React.useEffect(() => {
+    if (sinalFromOlt && ticket?.live_signal?.rx_dbm != null) {
+      setForm((f) => ({
+        ...f,
+        sinal: Number(ticket.live_signal.rx_dbm.toFixed(1)),
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket?.live_signal?.rx_dbm]);
   const [stock, setStock] = useState(null);
   const [macStatus, setMacStatus] = useState(null);
   const [macInfo, setMacInfo] = useState(null);
@@ -1285,10 +1306,45 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       {/* SINAL — step 1 */}
       {step === 1 && (
       <div style={{ marginBottom: 14 }}>
-        <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>📶 Sinal medido (dBm)</label>
-        <input data-testid="finalize-sinal" type="number" step="0.1" value={form.sinal}
-          onChange={(e) => setForm({ ...form, sinal: e.target.value })}
-          style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: 10, fontSize: 14, marginTop: 4, boxSizing: "border-box" }} />
+        <label style={{ fontSize: 12, color: "#475569", fontWeight: 700,
+                         display: "flex", alignItems: "center", gap: 6 }}>
+          📶 Sinal medido (dBm)
+          {sinalFromOlt && (
+            <span data-testid="finalize-sinal-from-olt"
+                   style={{
+                     padding: "1px 7px", borderRadius: 999,
+                     background: "linear-gradient(90deg,#0ea5e9,#06b6d4)",
+                     color: "#fff", fontSize: 9, fontWeight: 700,
+                     textTransform: "uppercase", letterSpacing: 0.4,
+                   }}>SmartOLT</span>
+          )}
+        </label>
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <input data-testid="finalize-sinal" type="number" step="0.1" value={form.sinal}
+            onChange={(e) => {
+              setForm({ ...form, sinal: e.target.value });
+              if (sinalFromOlt) setSinalFromOlt(false);
+            }}
+            style={{ flex: 1, padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: 10, fontSize: 14, boxSizing: "border-box" }} />
+          {ticket?.live_signal?.rx_dbm != null && !sinalFromOlt && (
+            <button type="button"
+                      onClick={() => {
+                        setForm({ ...form,
+                          sinal: Number(ticket.live_signal.rx_dbm.toFixed(1)) });
+                        setSinalFromOlt(true);
+                      }}
+                      data-testid="finalize-sinal-refresh"
+                      title="Usar sinal atual do SmartOLT"
+                      style={{
+                        padding: "10px 12px", border: "1px solid #06b6d4",
+                        background: "#ecfeff", color: "#0e7490",
+                        borderRadius: 10, fontSize: 11, fontWeight: 700,
+                        cursor: "pointer", whiteSpace: "nowrap",
+                      }}>
+              ⟳ OLT
+            </button>
+          )}
+        </div>
         {form.sinal !== "" && Number(form.sinal) < badSignalThreshold && (
           <div data-testid="finalize-bad-signal-warning"
                 style={{
