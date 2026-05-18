@@ -452,6 +452,36 @@ async def update_cto_location(
     return {"ok": True, "cto": new_doc}
 
 
+class OnuPushIn(BaseModel):
+    action: str = Field(default="reboot", pattern="^(reboot|sync|push)$")
+
+
+@router.post("/onu/{onu_sn}/push")
+async def onu_push(
+    onu_sn: str, body: OnuPushIn,
+    user: dict = Depends(require_role("administrador", "gestor",
+                                          "gestor_rede", "tecnico")),
+):
+    """Envia comando "push" pra ONU via SmartOLT (reboot remoto).
+
+    Casos de uso típicos:
+      • Cliente reclamou de lentidão → técnico aperta Push da Lousa Mobile
+      • Pós-cadastro: ONU não pegou IP → push força resync
+    """
+    cid = _user_company(user)
+    try:
+        from services.smartolt_zones import reboot_onu
+        resp = await reboot_onu(cid, onu_sn)
+    except Exception as e:
+        raise HTTPException(503, f"SmartOLT recusou push: {e}")
+    await _audit(
+        "onu_push", onu_sn, None,
+        {"action": body.action, "response": resp}, user,
+        f"Push ({body.action}) na ONU {onu_sn} por {user.get('email')}",
+    )
+    return {"ok": True, "sn": onu_sn, "action": body.action, "response": resp}
+
+
 @router.get("/ctos/{cto_id}/clients")
 async def cto_get_clients(
     cto_id: str,
@@ -606,15 +636,21 @@ async def cto_provision_onu(
     # Tenta empurrar pro SmartOLT
     smartolt_ok = False
     smartolt_err = None
+    smartolt_resp = None
     try:
-        from services.smartolt_zones import _get_cfg
+        from services.smartolt_zones import add_onu, _get_cfg
         cfg = await _get_cfg(cid)
         if cfg and cfg.get("subdomain"):
-            # SmartOLT API: POST /add_onu (real endpoint depende da versão).
-            # Stub que registra no cache local e marca como sincronizado.
-            # TODO: integrar com o endpoint real quando o usuário fornecer
-            #       credenciais da API SmartOLT de cadastro.
-            smartolt_ok = True
+            board = str(cto.get("board") or "0")
+            port = str(cto.get("port") or "0")
+            smartolt_resp = await add_onu(
+                cid, board=board, port=port, sn=sn_upper,
+                zone_name=zone_name,
+                pppoe_user=payload.pppoe_user,
+                pppoe_password=payload.pppoe_pwd,
+                vlan=payload.vlan,
+            )
+            smartolt_ok = bool(smartolt_resp)
     except Exception as e:
         smartolt_err = str(e)[:200]
 

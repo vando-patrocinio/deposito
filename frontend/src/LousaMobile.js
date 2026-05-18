@@ -1792,6 +1792,7 @@ function SmartOltDetailBlock({ ls }) {
   const [showGpsPicker, setShowGpsPicker] = React.useState(false);
   const [savingGps, setSavingGps] = React.useState(false);
   const [gpsMsg, setGpsMsg] = React.useState(null);
+  const [pushBusy, setPushBusy] = React.useState(false);
 
   if (!ls) return null;
   const items = [
@@ -1879,19 +1880,53 @@ function SmartOltDetailBlock({ ls }) {
         ))}
       </div>
       {ctoBox && (
-        <button
-          onClick={() => setShowGpsPicker(true)}
-          disabled={savingGps}
-          data-testid="lousa-cto-gps-btn"
-          style={{
-            marginTop: 8, padding: "7px 10px", border: 0, width: "100%",
-            background: "linear-gradient(135deg,#8b5cf6,#6366f1)",
-            color: "#fff", borderRadius: 8, fontSize: 11.5, fontWeight: 600,
-            cursor: savingGps ? "wait" : "pointer",
-            display: "inline-flex", justifyContent: "center", alignItems: "center", gap: 6,
-          }}>
-          📍 {savingGps ? "Salvando..." : "Ajustar localização GPS da CTO"}
-        </button>
+        <div style={{
+          marginTop: 8, display: "grid",
+          gridTemplateColumns: "1fr 1fr", gap: 6,
+        }}>
+          <button
+            onClick={() => setShowGpsPicker(true)}
+            disabled={savingGps}
+            data-testid="lousa-cto-gps-btn"
+            style={{
+              padding: "7px 8px", border: 0,
+              background: "linear-gradient(135deg,#8b5cf6,#6366f1)",
+              color: "#fff", borderRadius: 8, fontSize: 11, fontWeight: 600,
+              cursor: savingGps ? "wait" : "pointer",
+              display: "inline-flex", justifyContent: "center", alignItems: "center", gap: 4,
+            }}>
+            📍 {savingGps ? "Salvando..." : "GPS"}
+          </button>
+          <button
+            onClick={async () => {
+              if (!ls?.sn) return alert("ONU sem SN cadastrado");
+              if (!confirm(`Enviar PUSH (reiniciar ONU ${ls.sn})?\n\nO cliente vai ficar offline por ~30s.`)) return;
+              setPushBusy(true); setGpsMsg(null);
+              try {
+                await api._client.post(`/rede-ia/onu/${encodeURIComponent(ls.sn)}/push`,
+                  { action: "reboot" });
+                setGpsMsg({ kind: "ok", text: "Push enviado! Aguarde ~30s." });
+              } catch (e) {
+                setGpsMsg({
+                  kind: "err",
+                  text: e?.response?.data?.detail || e.message,
+                });
+              } finally { setPushBusy(false); }
+            }}
+            disabled={pushBusy || !ls?.sn}
+            data-testid="lousa-cto-push-btn"
+            style={{
+              padding: "7px 8px", border: 0,
+              background: pushBusy
+                ? "#94a3b8"
+                : "linear-gradient(135deg,#f43f5e,#ec4899)",
+              color: "#fff", borderRadius: 8, fontSize: 11, fontWeight: 600,
+              cursor: pushBusy ? "wait" : "pointer",
+              display: "inline-flex", justifyContent: "center", alignItems: "center", gap: 4,
+            }}>
+            ⚡ {pushBusy ? "Enviando..." : "Push ONU"}
+          </button>
+        </div>
       )}
       {gpsMsg && (
         <div data-testid={`lousa-cto-gps-${gpsMsg.kind}`}

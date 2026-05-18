@@ -65,6 +65,74 @@ async def list_zones(company_id: str, force_refresh: bool = False) -> List[Dict[
     return items
 
 
+async def reboot_onu(company_id: str, onu_sn: str) -> Dict[str, Any]:
+    """Reinicia uma ONU via SmartOLT API (`POST /onu/reboot/{sn}`).
+
+    Esse é o endpoint oficial da SmartOLT v2 — corresponde ao "Push" usado
+    pelos técnicos de campo pra resolver lentidão sem precisar ir presencial.
+    """
+    cfg = await _get_cfg(company_id)
+    if not cfg or not cfg.get("api_key") or not cfg.get("subdomain"):
+        raise RuntimeError("SmartOLT não configurado")
+    url = f"{_base_url(cfg)}/onu/reboot/{onu_sn}"
+    timeout = cfg.get("timeout_seconds", 20)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.post(url, headers={"X-Token": cfg["api_key"]})
+        r.raise_for_status()
+        return r.json()
+
+
+async def add_onu(company_id: str, *, board: str, port: str, sn: str,
+                   zone_name: str, onu_type_id: Optional[str] = None,
+                   pppoe_user: Optional[str] = None,
+                   pppoe_password: Optional[str] = None,
+                   vlan: Optional[int] = None) -> Dict[str, Any]:
+    """Provisiona ONU nova no SmartOLT (`POST /onu/add_onu`).
+
+    Campos obrigatórios SmartOLT v2:
+      • board, port (da OLT) · sn (serial) · zone (= CTO)
+      • onu_type_id (modelo — usa default "1" se não informado)
+    """
+    cfg = await _get_cfg(company_id)
+    if not cfg or not cfg.get("api_key") or not cfg.get("subdomain"):
+        raise RuntimeError("SmartOLT não configurado")
+    payload: Dict[str, Any] = {
+        "board": str(board),
+        "port": str(port),
+        "sn": sn,
+        "zone": zone_name,
+        "onu_type_id": str(onu_type_id or "1"),
+    }
+    if pppoe_user:
+        payload["pppoe_user"] = pppoe_user
+        payload["pppoe_password"] = pppoe_password or ""
+    if vlan:
+        payload["vlan"] = str(vlan)
+    url = f"{_base_url(cfg)}/onu/add_onu"
+    timeout = cfg.get("timeout_seconds", 20)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.post(
+            url, headers={"X-Token": cfg["api_key"]}, data=payload,
+        )
+        r.raise_for_status()
+        return r.json()
+
+
+async def list_onu_types(company_id: str) -> List[Dict[str, Any]]:
+    """GET /system/get_onu_types — usado pra autocomplete no form de cadastro."""
+    cfg = await _get_cfg(company_id)
+    if not cfg or not cfg.get("api_key") or not cfg.get("subdomain"):
+        raise RuntimeError("SmartOLT não configurado")
+    url = f"{_base_url(cfg)}/system/get_onu_types"
+    timeout = cfg.get("timeout_seconds", 20)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.get(url, headers={"X-Token": cfg["api_key"]})
+        r.raise_for_status()
+        data = r.json()
+    items = data.get("response") or data.get("data") or data.get("types") or []
+    return items if isinstance(items, list) else []
+
+
 async def add_zone(company_id: str, zone_name: str) -> Dict[str, Any]:
     """POST /system/add_zone (multipart/form-data)."""
     cfg = await _get_cfg(company_id)

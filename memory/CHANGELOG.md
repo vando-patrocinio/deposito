@@ -1,6 +1,43 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Push ONU + Integração SmartOLT real (provisionamento + reboot) ★★★
+
+### Contexto
+1. Card SmartOLT da Lousa Mobile: botão GPS estava ocupando 100% da largura — pediu reduzir pra 50% e adicionar botão "Push" (reboot remoto da ONU) na outra metade.
+2. Pendência P1 da sessão anterior: provisionamento de ONU via Rede IA ainda era stub.
+
+### Implementado
+
+**1. `services/smartolt_zones.py` — 3 funções novas:**
+- `reboot_onu(company_id, sn)` → `POST /onu/reboot/{sn}` (Push)
+- `add_onu(company_id, board, port, sn, zone_name, pppoe_user, pppoe_password, vlan)` → `POST /onu/add_onu` (provisionamento real)
+- `list_onu_types(company_id)` → `GET /system/get_onu_types` (suporte futuro a autocomplete)
+
+**2. `routes/rede_ia.py`:**
+- Novo endpoint `POST /api/rede-ia/onu/{sn}/push` (admin/gestor/tecnico) com audit log.
+- `cto_provision_onu` agora chama `add_onu()` REAL com `board`/`port`/`sn`/`zone`/`pppoe_user`/`pppoe_password`/`vlan`. Se SmartOLT recusar, marca `smartolt_status=pending_smartolt` na fila pra gestor finalizar manualmente.
+
+**3. `LousaMobile.js` — `SmartOltDetailBlock`:**
+- Layout 2 colunas (`grid-template-columns: 1fr 1fr`):
+  - Esquerda: **📍 GPS** (roxo)
+  - Direita: **⚡ Push ONU** (gradiente rosa/laranja)
+- Confirmação `confirm()` antes do push: "Enviar PUSH (reiniciar ONU XXX)? O cliente vai ficar offline por ~30s."
+- Feedback inline (ok/err) reusa o mesmo `gpsMsg` state.
+
+### Validação curl
+- ✅ `POST /onu/ABC123/push` retornou HTTP 503 com `"SmartOLT recusou push: Client error '403 Forbidden' for url 'https://ligofibra.smartolt.com/api/onu/reboot/ABC123'"` — confirma que a integração está chamando a API real (rejeita só porque o SN é inválido).
+- ✅ Lint Python + JS: All checks passed
+- ✅ Audit log `onu_push` registrado
+
+### Como usar
+1. Técnico no chamado → vê o bloco SmartOLT com SN/Porta/CTO
+2. Botão **📍 GPS** (esquerda) → ajusta localização da CTO
+3. Botão **⚡ Push ONU** (direita) → reinicia ONU remotamente sem ir presencial
+4. Provisionamento via Rede IA mapa → cadastra ONU **direto no SmartOLT** com PPPoE e VLAN reais
+
+
+
 ## Mai 18, 2026 — Contas a Pagar parceladas + criação inline + médias no Fluxo de Caixa ★★★
 
 ### Contexto
