@@ -1,6 +1,48 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Auto-rejeição de Chamadas + Voice Notes Inteligentes ★★★★
+
+### Contexto
+Usuário perguntou se a Isabella pode atender chamadas de voz/vídeo do WhatsApp. **Limitação técnica:** nem Baileys nem a Cloud API oficial permitem atender (chamadas usam canal criptografado isolado). Implementada a melhor alternativa viável.
+
+### Implementado
+
+**1. Sidecar Baileys — `whatsapp-service/server.js`:**
+- Novo handler `sock.ev.on("call", ...)` detecta `call.status === "offer"`
+- Auto-rejeita via `sock.rejectCall(call.id, call.from)`
+- Notifica backend via webhook `/inbound-call` com phone + tipo (voz/vídeo)
+- Reutiliza axios + WEBHOOK_BASE + INBOUND_TOKEN já existentes
+
+**2. Backend — `routes/whatsapp_baileys.py`:**
+- Endpoint `POST /api/whatsapp-baileys/inbound-call` (protegido por X-WA-Token)
+- Registra tentativa de chamada em `aihub_wa_messages` com `media_type=call`
+  (aparece pro atendente humano também)
+- Dispara resposta automática amigável:
+  *"Oi! 😊 Aqui eu não consigo atender chamada, mas se você me mandar um áudio 🎤 ou texto, eu respondo na hora!"*
+
+**3. Transcrição automática de voice notes:**
+- Antes: áudio inbound virava `"🎤 Áudio (5s)"` — Isabella ficava perdida
+- Agora: chama `transcribe_audio()` (Whisper via Emergent LLM Key) antes do LLM ver a mensagem
+- Salva campo `transcript` no doc + `transcript_engine: whisper-1`
+- Isabella passa a **entender** o que o cliente falou no áudio
+
+### Como funciona o fluxo completo
+1. Cliente liga pra Isabella → sidecar auto-rejeita
+2. Webhook `/inbound-call` registra + envia mensagem padrão
+3. Cliente grava áudio respondendo
+4. Sidecar baixa o áudio (até 8MB), manda ao backend em base64
+5. Backend grava o arquivo, **transcreve via Whisper**
+6. Mensagem chega ao LLM como texto → Isabella responde como sempre
+
+### Validado
+- Endpoint `/inbound-call` retorna 401 sem token (proteção OK)
+- 51/51 pytest passing
+- Lint Python ✅
+- Transcrição usa Emergent LLM Key (sem custo extra de chave OpenAI)
+
+
+
 ## Mai 18, 2026 — Trilha de Aniversário + Notificação WhatsApp + Boleto Discriminado ★★★★
 
 ### 🎂 Trilha de Clientes por Aniversário

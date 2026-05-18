@@ -374,6 +374,61 @@ async function startSock() {
       } catch (e) { /* ignore */ }
     });
 
+    // ═══════════════════════════════════════════════════════════
+    // CALL HANDLER — Auto-rejeita chamadas e notifica backend
+    // ═══════════════════════════════════════════════════════════
+    // WhatsApp não permite atender chamada de voz/vídeo via Baileys.
+    // Estratégia: rejeitar automaticamente e pedir ao cliente pra mandar
+    // áudio (voice note) ou texto, que a IA processa em segundos.
+    sock.ev.on("call", async (calls) => {
+      for (const call of calls || []) {
+        try {
+          if (call.status !== "offer") continue; // só processar oferta inicial
+          logger.info({
+            from: call.from,
+            isVideo: call.isVideo,
+            isGroup: call.isGroup,
+          }, "📞 chamada recebida — rejeitando");
+
+          // Rejeita imediatamente
+          await sock.rejectCall(call.id, call.from);
+
+          // Avisa o backend pra mandar mensagem padrão pro cliente
+          const phone = String(call.from || "").split("@")[0];
+          if (phone && WEBHOOK_BASE) {
+            try {
+              await axios.post(
+                `${WEBHOOK_BASE}/whatsapp-baileys/inbound-call`,
+                {
+                  phone,
+                  jid: call.from,
+                  call_id: call.id,
+                  is_video: !!call.isVideo,
+                  is_group: !!call.isGroup,
+                  timestamp: call.date
+                    ? new Date(call.date * 1000).toISOString()
+                    : new Date().toISOString(),
+                },
+                {
+                  headers: INBOUND_TOKEN
+                    ? { Authorization: `Bearer ${INBOUND_TOKEN}` }
+                    : {},
+                  timeout: 8000,
+                },
+              );
+            } catch (e) {
+              logger.warn({ err: e.message }, "webhook /inbound-call falhou");
+            }
+          }
+        } catch (e) {
+          logger.warn({ err: e.message, callId: call.id },
+                       "rejectCall/notify falhou");
+        }
+      }
+    });
+
+
+
     sock.ev.on("messages.upsert", async (ev) => {
       try {
         if (ev.type !== "notify") return;

@@ -768,6 +768,78 @@ async def list_system_events(user: dict = Depends(require_role("gestor"))):
     return {"events": docs}
 
 
+class InboundCallIn(BaseModel):
+    phone: str
+    jid: Optional[str] = None
+    call_id: Optional[str] = None
+    is_video: bool = False
+    is_group: bool = False
+    timestamp: Optional[str] = None
+
+
+@router.post("/inbound-call")
+async def inbound_call(payload: InboundCallIn,
+                        x_wa_token: Optional[str] = Header(default=None)):
+    """📞 Webhook do sidecar quando alguém LIGA pra Isabella (voz/vídeo).
+
+    Sidecar já rejeitou a chamada. Aqui:
+      1. Registramos em wa_messages (aparece como "📞 Tentativa de chamada")
+      2. Disparamos resposta amigável pro cliente mandar áudio/texto
+    """
+    if WA_INBOUND_TOKEN and x_wa_token != WA_INBOUND_TOKEN:
+        raise HTTPException(401, "X-WA-Token inválido")
+
+    cid = DEMO_COMPANY_ID
+    phone = (payload.phone or "").replace("+", "").replace(" ", "")
+    call_type = "vídeo" if payload.is_video else "voz"
+
+    msg_id = f"call-{uuid.uuid4().hex[:10]}"
+    await db.aihub_wa_messages.insert_one({
+        "id": msg_id,
+        "company_id": cid,
+        "direction": "inbound",
+        "phone": phone,
+        "jid": payload.jid,
+        "text": f"📞 Tentativa de chamada de {call_type} (rejeitada)",
+        "channel": "baileys",
+        "media_type": "call",
+        "call_meta": {
+            "is_video": payload.is_video,
+            "is_group": payload.is_group,
+            "call_id": payload.call_id,
+        },
+        "wa_timestamp": payload.timestamp,
+        "created_at": now_iso(),
+    })
+
+    response_text = (
+        "Oi! 😊 Aqui eu não consigo atender chamada, mas se você me "
+        "mandar um *áudio* 🎤 ou *texto*, eu respondo na hora!\n\n"
+        "Pode me contar o que está precisando? 💙"
+    )
+    try:
+        await _sidecar_post("/send", {"phone": phone, "text": response_text})
+        await db.aihub_wa_messages.insert_one({
+            "id": f"auto-call-reply-{uuid.uuid4().hex[:8]}",
+            "company_id": cid,
+            "direction": "outbound",
+            "phone": phone,
+            "text": response_text,
+            "channel": "baileys",
+            "auto_generated": True,
+            "auto_reason": "call_rejected_auto_response",
+            "created_at": now_iso(),
+        })
+    except Exception as e:
+        logger.warning("[inbound-call] envio de resposta falhou: %s", e)
+
+    logger.info("[inbound-call] %s ligação de %s rejeitada · resposta enviada",
+                phone, call_type)
+    return {"ok": True, "id": msg_id}
+
+
+
+
 @router.post("/conversation/{phone}/reset-context")
 async def reset_conversation_context(
     phone: str,
@@ -1225,13 +1297,31 @@ async def inbound_webhook(payload: InboundIn,
         except Exception as e:
             logger.warning("[wa-baileys] save inbound audio failed: %s", e)
 
+    # 🎤 TRANSCRIÇÃO AUTOMÁTICA: se inbound for áudio sem texto, transcreve
+    # via Whisper antes do LLM ver a mensagem. Isabella passa a "entender"
+    # voice notes em vez de ver só "🎤 Áudio (5s)".
+    transcript = None
+    if has_audio and not (payload.text or "").strip() and payload.audio_b64:
+        try:
+            from services.motor_ia import transcribe_audio
+            audio_bytes = base64.b64decode(payload.audio_b64)
+            transcript = await transcribe_audio(cid, audio_bytes,
+                                                  filename=f"audio.{ext}")
+            transcript = (transcript or "").strip()
+            if transcript:
+                logger.info("[wa-baileys] 🎤 transcrito (%ss): %s",
+                            media_duration_sec, transcript[:120])
+        except Exception as e:
+            logger.warning("[wa-baileys] transcribe falhou: %s", e)
+            transcript = None
+
     inbound_doc = {
         "id": msg_id,
         "company_id": cid,
         "direction": "inbound",
         "phone": effective_phone,
         "jid": payload.jid,
-        "text": payload.text or (
+        "text": payload.text or transcript or (
             f"🎤 Áudio ({media_duration_sec}s)" if has_audio and media_duration_sec
             else ("🎤 Áudio" if has_audio else "")
         ),
@@ -1250,6 +1340,9 @@ async def inbound_webhook(payload: InboundIn,
         inbound_doc["media_duration_sec"] = media_duration_sec
         inbound_doc["media_mimetype"] = payload.audio_mimetype
         inbound_doc["media_is_ptt"] = payload.audio_is_ptt
+        if transcript:
+            inbound_doc["transcript"] = transcript
+            inbound_doc["transcript_engine"] = "whisper-1"
     await db.aihub_wa_messages.insert_one(inbound_doc)
     # Atualiza conv com flag LID quando aplicável
     if payload.is_lid:
