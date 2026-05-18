@@ -39,6 +39,14 @@ const SOURCE_BADGE = {
 };
 
 export default function BankImportTab() {
+  const [source, setSource] = useState("sicoob");
+  const [atlazFrom, setAtlazFrom] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [atlazTo, setAtlazTo] = useState(() =>
+    new Date().toISOString().slice(0, 10));
+  const [atlazSummary, setAtlazSummary] = useState(null);
   const [staging, setStaging] = useState(null);
   const [items, setItems] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -75,15 +83,22 @@ export default function BankImportTab() {
       setMemory(m.items || []);
     } catch (e) { /* silent */ }
   }
-  useEffect(() => { loadRefs(); loadHistory(); loadMemory(); }, []);
+  async function loadAtlazSummary() {
+    try {
+      const s = await api.bankImportAtlazSummary();
+      setAtlazSummary(s);
+    } catch (e) { /* silent */ }
+  }
+  useEffect(() => {
+    loadRefs(); loadHistory(); loadMemory(); loadAtlazSummary();
+  }, []);
 
   async function onUpload(file) {
     setErr(""); setOk(""); setUploading(true);
     try {
-      const r = await api.bankImportUpload(file);
+      const r = await api.bankImportUpload(file, source);
       setStaging(r);
       setItems((r.items || []).map((it) => ({ ...it, _skip: it.duplicate })));
-      // Alerta amigável quando IA falhou (todas as não-duplicadas/não-memória ficaram 'manual')
       const nonDup = (r.items || []).filter((it) => !it.duplicate);
       const aiOrMem = nonDup.filter((it) =>
         it.source === "ai" || it.source === "memory");
@@ -93,6 +108,19 @@ export default function BankImportTab() {
           + "instabilidade). Você ainda pode classificar manualmente abaixo.",
         );
       }
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    } finally { setUploading(false); }
+  }
+
+  async function onAtlazFetch() {
+    setErr(""); setOk(""); setUploading(true);
+    try {
+      const r = await api.bankImportAtlazFetch({
+        from_date: atlazFrom, to_date: atlazTo, limit: 500,
+      });
+      setStaging(r);
+      setItems((r.items || []).map((it) => ({ ...it, _skip: it.duplicate })));
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
     } finally { setUploading(false); }
@@ -143,38 +171,152 @@ export default function BankImportTab() {
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
-      {/* Header / upload */}
+      {/* Header / seletor de fonte */}
       <Card title={(
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Upload size={16} /> Importar Extrato Bancário (Sicoob)
+          <Upload size={16} /> Importar Movimentações Financeiras
         </span>
       )}
         data-testid="bank-import-upload-card">
+        {/* Seletor de fonte (3 botões grandes) */}
         <div style={{ display: "grid",
-                        gridTemplateColumns: "1fr auto", gap: 12,
-                        alignItems: "center", flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
-              Envie o arquivo <strong>OFX</strong> ou <strong>CSV</strong>
-              {" "}exportado do Sicoob. A IA Claude Sonnet 4.5 classifica cada
-              transação como entrada/saída e sugere fornecedor + categoria.
-              Padrões aprendidos por CPF/CNPJ aceleram as próximas importações.
-            </div>
-            <div style={{ marginTop: 6, fontSize: 11.5, color: "#64748b" }}>
-              💡 Sicoob → Internet Banking → Extrato → Exportar OFX
-            </div>
-          </div>
-          <div>
-            <input ref={fileRef} type="file" accept=".ofx,.OFX,.csv,.CSV"
-                    data-testid="bank-import-file-input"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) onUpload(f);
-                    }}
-                    disabled={uploading}
-                    style={{ fontSize: 12 }} />
-          </div>
+                        gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
+                        gap: 10, marginBottom: 14 }}>
+          {[
+            { id: "sicoob", label: "Sicoob", icon: "🏦",
+              hint: "Extrato OFX/CSV oficial do Sicoob" },
+            { id: "outros", label: "Outros bancos", icon: "🏛️",
+              hint: "Qualquer banco com exportação OFX padrão" },
+            { id: "atlaz", label: "Atlaz", icon: "🔌",
+              hint: atlazSummary
+                ? `${atlazSummary.paid_invoices} faturas pagas disponíveis`
+                : "Recebimentos sincronizados da Atlaz V2" },
+          ].map((s) => (
+            <button key={s.id}
+                      data-testid={`bi-source-${s.id}`}
+                      onClick={() => { setSource(s.id); setStaging(null); }}
+                      style={{
+                        textAlign: "left", padding: 12, borderRadius: 10,
+                        border: source === s.id
+                          ? "2px solid #0ea5e9"
+                          : "1px solid #e2e8f0",
+                        background: source === s.id ? "#eff6ff" : "#fff",
+                        cursor: "pointer",
+                        boxShadow: source === s.id
+                          ? "0 2px 6px rgba(14,165,233,0.15)" : "none",
+                      }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 22 }}>{s.icon}</span>
+                <span style={{ fontSize: 14, fontWeight: 800,
+                                  color: source === s.id ? "#0c4a6e" : "#0f172a" }}>
+                  {s.label}
+                </span>
+                {source === s.id && (
+                  <CheckCircle2 size={14} style={{ marginLeft: "auto",
+                                                       color: "#0ea5e9" }} />
+                )}
+              </div>
+              <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 4,
+                              lineHeight: 1.3 }}>
+                {s.hint}
+              </div>
+            </button>
+          ))}
         </div>
+
+        {/* Painel da fonte selecionada */}
+        {source !== "atlaz" ? (
+          <div style={{ display: "grid",
+                          gridTemplateColumns: "1fr auto", gap: 12,
+                          alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
+                Envie o arquivo <strong>OFX</strong> ou <strong>CSV</strong>
+                {" "}exportado do
+                {" "}{source === "sicoob" ? "Sicoob" : "seu banco"}.
+                A IA Claude Sonnet 4.5 classifica cada
+                transação como entrada/saída e sugere fornecedor + categoria.
+              </div>
+              <div style={{ marginTop: 6, fontSize: 11.5, color: "#64748b" }}>
+                💡 {source === "sicoob"
+                  ? "Sicoob → Internet Banking → Extrato → Exportar OFX"
+                  : "Procure no internet banking: \"Exportar OFX\" "
+                  + "ou \"Extrato em arquivo\""}
+              </div>
+            </div>
+            <div>
+              <input ref={fileRef} type="file" accept=".ofx,.OFX,.csv,.CSV"
+                      data-testid="bank-import-file-input"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) onUpload(f);
+                      }}
+                      disabled={uploading}
+                      style={{ fontSize: 12 }} />
+            </div>
+          </div>
+        ) : (
+          // Painel ATLAZ
+          <div data-testid="bi-atlaz-panel"
+                style={{ display: "grid",
+                          gridTemplateColumns: "1fr auto auto auto", gap: 10,
+                          alignItems: "end", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
+                Importa as <strong>faturas pagas</strong> dos seus assinantes
+                já sincronizadas da Atlaz V2. Cada fatura vira uma entrada no
+                seu fluxo de caixa.
+              </div>
+              {atlazSummary && (
+                <div style={{ marginTop: 6, fontSize: 11.5,
+                                  color: "#64748b" }}>
+                  <strong style={{ color: "#0ea5e9" }}>
+                    {atlazSummary.paid_invoices}
+                  </strong> faturas pagas disponíveis
+                  {atlazSummary.first_paid_date && (
+                    <> · período: {atlazSummary.first_paid_date.slice(0, 10)}
+                    {" → "}{atlazSummary.last_paid_date?.slice(0, 10)}</>
+                  )}
+                </div>
+              )}
+            </div>
+            <div>
+              <label style={{ fontSize: 10.5, color: "#64748b",
+                                 fontWeight: 700, display: "block",
+                                 textTransform: "uppercase",
+                                 letterSpacing: 0.4 }}>
+                De
+              </label>
+              <input type="date" value={atlazFrom}
+                      data-testid="bi-atlaz-from"
+                      onChange={(e) => setAtlazFrom(e.target.value)}
+                      style={{ padding: "6px 8px",
+                                border: "1px solid #cbd5e1",
+                                borderRadius: 6, fontSize: 12 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 10.5, color: "#64748b",
+                                 fontWeight: 700, display: "block",
+                                 textTransform: "uppercase",
+                                 letterSpacing: 0.4 }}>
+                Até
+              </label>
+              <input type="date" value={atlazTo}
+                      data-testid="bi-atlaz-to"
+                      onChange={(e) => setAtlazTo(e.target.value)}
+                      style={{ padding: "6px 8px",
+                                border: "1px solid #cbd5e1",
+                                borderRadius: 6, fontSize: 12 }} />
+            </div>
+            <Button onClick={onAtlazFetch}
+                     data-testid="bi-atlaz-fetch-btn"
+                     disabled={uploading}>
+              {uploading ? (<><Loader2 size={14}
+                className="animate-spin" /> Buscando…</>)
+                : (<><Database size={14} /> Buscar Atlaz</>)}
+            </Button>
+          </div>
+        )}
         {uploading && (
           <div data-testid="bank-import-uploading"
                 style={{ marginTop: 10, padding: 10,
@@ -182,7 +324,7 @@ export default function BankImportTab() {
                           fontSize: 12, color: "#1e40af",
                           display: "inline-flex", alignItems: "center", gap: 8 }}>
             <Loader2 size={14} className="animate-spin" />
-            Processando arquivo · IA classificando transações…
+            Processando · IA classificando transações…
           </div>
         )}
         {err && (

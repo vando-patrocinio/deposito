@@ -352,9 +352,16 @@ class ConfirmIn(BaseModel):
 # ---------------------------------------------------------------------------
 @router.post("/upload", response_model=StagingResponse)
 async def upload_extract(file: UploadFile = File(...),
+                              source: str = "sicoob",
                               user: dict = Depends(require_finance())):
-    """Recebe arquivo OFX/CSV do Sicoob, parseia, classifica e devolve staging."""
+    """Recebe arquivo OFX/CSV (Sicoob ou outros bancos), parseia e devolve staging.
+
+    O parâmetro `source` é gravado no histórico (sicoob/outros) e usado pra
+    rastreabilidade. O parser é o mesmo (OFX padrão).
+    """
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    if source not in ("sicoob", "outros"):
+        source = "sicoob"
     raw = await file.read()
     if not raw:
         raise HTTPException(400, "Arquivo vazio")
@@ -369,7 +376,73 @@ async def upload_extract(file: UploadFile = File(...),
         raise HTTPException(415, "Suporte só para OFX e CSV por enquanto")
     if not txs:
         raise HTTPException(400, "Nenhuma transação encontrada no arquivo")
+    return await _build_staging(cid, txs, file.filename or "extrato",
+                                     source, user)
 
+
+@router.post("/atlaz-fetch", response_model=StagingResponse)
+async def atlaz_fetch(payload: "AtlazFetchIn",
+                          user: dict = Depends(require_finance())):
+    """Busca faturas PAGAS da Atlaz no período e devolve staging.
+
+    Cada fatura paga vira uma transação tipo `income` com descrição
+    "ATLAZ <nome do assinante> · <cpf/cnpj>". O hash de dedupe usa o
+    `external_id` do Atlaz como key estável.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    q = {"company_id": cid, "status": "paid"}
+    if payload.from_date:
+        q.setdefault("paid_date", {})["$gte"] = payload.from_date
+    if payload.to_date:
+        q.setdefault("paid_date", {})["$lte"] = payload.to_date
+    cur = db.subscriber_invoices.find(q, {"_id": 0}).sort(
+        [("paid_date", -1)],
+    ).limit(min(payload.limit or 200, 1000))
+    rows = [doc async for doc in cur]
+    if not rows:
+        raise HTTPException(404, "Nenhuma fatura paga encontrada no período")
+    txs: List[Dict[str, Any]] = []
+    for inv in rows:
+        amt = float(inv.get("amount_paid") or inv.get("amount") or 0)
+        if amt <= 0:
+            continue
+        doc_norm = (inv.get("subscriber_document") or "").strip()
+        name = (inv.get("subscriber_name") or "").strip()
+        descr_parts = ["ATLAZ"]
+        if name:
+            descr_parts.append(name.upper())
+        if doc_norm:
+            descr_parts.append(doc_norm)
+        ext_id = inv.get("external_id") or ""
+        if ext_id:
+            descr_parts.append(f"FAT#{ext_id}")
+        txs.append({
+            "date": (inv.get("paid_date") or inv.get("due_date") or "")[:10],
+            "amount": amt, "type": "income",
+            "description": " · ".join(descr_parts)[:300],
+            "ofx_id": ext_id,
+        })
+    if not txs:
+        raise HTTPException(404, "Nenhuma fatura válida com valor > 0")
+    return await _build_staging(
+        cid, txs, f"atlaz-{payload.from_date or 'inicio'}-a-"
+                       f"{payload.to_date or 'hoje'}.atlaz", "atlaz", user,
+    )
+
+
+class AtlazFetchIn(BaseModel):
+    from_date: Optional[str] = None  # YYYY-MM-DD
+    to_date: Optional[str] = None
+    limit: int = 200
+
+
+async def _build_staging(cid: str, txs: List[Dict[str, Any]],
+                              file_name: str, source: str,
+                              user: dict) -> Dict[str, Any]:
+    """Lógica comum: dedupe + memória + IA + persiste staging.
+
+    Usada tanto pelo /upload (Sicoob/Outros) quanto pelo /atlaz-fetch.
+    """
     # Carrega refs (fornecedores + categorias)
     refs = await _load_refs(cid)
 
@@ -380,9 +453,9 @@ async def upload_extract(file: UploadFile = File(...),
         {"_id": 0, "import_hash": 1}).to_list(len(hashes))
     existing_set = {e["import_hash"] for e in existing}
 
-    # Memória + IA: primeiro tenta memória, depois manda lote pra IA
+    # Memória + IA
     items: List[Dict[str, Any]] = []
-    to_ai: List[int] = []  # indices que precisam IA
+    to_ai: List[int] = []
     for i, t in enumerate(txs):
         doc = _extract_doc(t["description"])
         key = _norm_text(t["description"])
@@ -410,7 +483,6 @@ async def upload_extract(file: UploadFile = File(...),
         to_ai.append(i)
         items.append(base)
 
-    # Lote pra IA (somente não-duplicadas sem memória)
     if to_ai:
         ai_txs = [txs[i] for i in to_ai]
         ai_results = await _ai_classify_batch(cid, ai_txs, refs)
@@ -429,14 +501,15 @@ async def upload_extract(file: UploadFile = File(...),
     new_count = sum(1 for x in items if not x["duplicate"])
     dup_count = sum(1 for x in items if x["duplicate"])
     await db.bank_import_staging.insert_one({
-        "id": staging_id, "company_id": cid, "file_name": file.filename,
+        "id": staging_id, "company_id": cid, "file_name": file_name,
+        "source": source,
         "created_at": now_iso(), "created_by": user.get("id"),
         "total": len(items), "new_count": new_count,
         "duplicate_count": dup_count, "items": items,
         "status": "preview",
     })
     return {
-        "staging_id": staging_id, "file_name": file.filename or "extrato",
+        "staging_id": staging_id, "file_name": file_name,
         "total": len(items), "new_count": new_count,
         "duplicate_count": dup_count, "items": items,
     }
@@ -533,6 +606,28 @@ async def list_history(limit: int = 30,
         {"company_id": cid}, {"_id": 0},
     ).sort("created_at", -1).limit(min(limit, 100)).to_list(limit)
     return {"items": items}
+
+
+@router.get("/atlaz-summary")
+async def atlaz_summary(user: dict = Depends(require_finance())):
+    """Resumo das faturas Atlaz disponíveis para importação."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    paid = await db.subscriber_invoices.count_documents(
+        {"company_id": cid, "status": "paid"})
+    # Primeira e última data paga
+    last = await db.subscriber_invoices.find(
+        {"company_id": cid, "status": "paid"},
+        {"_id": 0, "paid_date": 1},
+    ).sort("paid_date", -1).limit(1).to_list(1)
+    first = await db.subscriber_invoices.find(
+        {"company_id": cid, "status": "paid"},
+        {"_id": 0, "paid_date": 1},
+    ).sort("paid_date", 1).limit(1).to_list(1)
+    return {
+        "paid_invoices": paid,
+        "first_paid_date": first[0].get("paid_date") if first else None,
+        "last_paid_date": last[0].get("paid_date") if last else None,
+    }
 
 
 @router.get("/memory")

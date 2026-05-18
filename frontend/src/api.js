@@ -301,13 +301,19 @@ export const api = {
     client.get(`/lousa/quality-notes/technicians-ranking`, { params: { days } })
       .then((r) => r.data),
   // ========= Bank Import (Sicoob OFX) =========
-  bankImportUpload: (file) => {
+  bankImportUpload: (file, source = "sicoob") => {
     const fd = new FormData();
     fd.append("file", file);
     return client.post(`/financeiro/bank-import/upload`, fd, {
+      params: { source },
       headers: { "Content-Type": "multipart/form-data" },
     }).then((r) => r.data);
   },
+  bankImportAtlazFetch: (payload) =>
+    client.post(`/financeiro/bank-import/atlaz-fetch`, payload)
+      .then((r) => r.data),
+  bankImportAtlazSummary: () =>
+    client.get(`/financeiro/bank-import/atlaz-summary`).then((r) => r.data),
   bankImportConfirm: (payload) =>
     client.post(`/financeiro/bank-import/confirm`, payload).then((r) => r.data),
   bankImportHistory: (limit = 30) =>
