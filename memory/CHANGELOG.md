@@ -1,6 +1,50 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Mapa da Rede no Mobile (técnico vê tudo cadastrado) ★★★
+
+### Contexto
+Usuário pediu que o **app do colaborador** (Lousa Mobile) tenha acesso ao mesmo mapa interativo da Rede IA, mostrando tudo que está cadastrado (CTOs, CEs, cabos). Usou como referência visual o app "Salva-Locais": mapa fullscreen, pins coloridos, chips de filtro, FAB GPS.
+
+### Implementado
+
+**1. Novo componente — `RedeIaMapMobile.js` (NOVO, ~370 linhas):**
+- Tela fullscreen com Leaflet + tile OSM
+- Pin custom (divIcon SVG) numerado roxo/verde/amarelo conforme status
+- CEs como quadrados azuis, cabos como Polyline com cor + tooltip
+- Marker pulsante azul mostrando a posição do técnico (watch contínuo via `navigator.geolocation.watchPosition`)
+- **FAB GPS** flutuante recentraliza no técnico (estilo Uber/Salva-Locais)
+- **FAB Camadas** alterna visibilidade de CEs + cabos
+- **Chips horizontais** filtram por bairro (auto-extraído de `address.bairro`)
+- **Busca** expansível por nome de CTO
+- **Rodapé de stats**: Total / OK / Pendentes / Sem GPS
+- **Tap em CTO** abre `CTOInteractionModal` (clientes ligados + cadastrar)
+
+**2. Integração — `CollaboratorApp.js`:**
+- Novo item no `KebabMenu` (⋮ → "🗺️ Mapa da Rede")
+- Nova `screen === "rede-map"` renderiza `<RedeIaMapMobile onBack={...}>`
+- Import + prop drilling `onOpenRedeMap` adicionados
+
+**3. Compat com endpoint:**
+- `/api/rede-ia/map/data` retorna `cables`, `ces`, `ctos` com lat/lng achatados — componente lê de ambos formatos (`c.lat` ou `c.gps.lat`) pra robustez.
+
+### Como usar
+1. Técnico abre o app (Lousa Mobile)
+2. Toca no ícone ⋮ (kebab menu) no canto superior direito
+3. Seleciona "🗺️ Mapa da Rede"
+4. Vê mapa fullscreen com todas as CTOs cadastradas, posição própria em azul pulsante
+5. Toca numa CTO → modal com clientes ligados + opção de cadastrar novo
+6. Usa FAB roxo Crosshair pra centralizar no GPS atual
+7. Usa chips de bairro pra filtrar
+8. Toca em Layers pra alternar cabos/CEs
+
+### Validação
+- ✅ Lint JS: All checks passed
+- ✅ Endpoint `/api/rede-ia/map/data` testado via curl — retorna `{ctos, ces, cables, center, vlans}`
+- ✅ Filtros e contadores funcionam mesmo quando alguns campos não estão preenchidos (defensive coding)
+
+
+
 ## Mai 18, 2026 — Picker GPS estilo Uber para localização de CTO (Lousa Mobile) ★★★
 
 ### Contexto

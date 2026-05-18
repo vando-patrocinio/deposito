@@ -4,6 +4,7 @@ import SelfieCamera from "@/SelfieCamera";
 import LousaMobile from "@/LousaMobile";
 import CadastroCTOWizard from "@/CadastroCTOWizard";
 import QrScanner from "@/QrScanner";
+import RedeIaMapMobile from "@/RedeIaMapMobile";
 import MyAssetsModal from "@/MyAssetsModal";
 import MyHoleritesModal from "@/MyHoleritesModal";
 import ServerClock from "@/ServerClock";
@@ -691,6 +692,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 onOpenAssets={() => setShowMyAssets(true)}
                 onOpenHolerites={collabId ? () => setShowMyHolerites(true) : null}
                 onOpenQrScanner={() => setScreen("qr-scanner")}
+                onOpenRedeMap={() => setScreen("rede-map")}
               />
             </div>
           </div>
@@ -1047,6 +1049,10 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             />
           )}
 
+          {screen === "rede-map" && (
+            <RedeIaMapMobile onBack={() => setScreen("home")} />
+          )}
+
           {/* Modal: Saída com bolhas em aberto */}
           {exitConfirm && (
             <div
@@ -1174,7 +1180,7 @@ function parseDevice(ua) {
 }
 
 
-function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, onOpenHistory, onOpenAssets, onOpenHolerites, onOpenQrScanner }) {
+function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, onOpenHistory, onOpenAssets, onOpenHolerites, onOpenQrScanner, onOpenRedeMap }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
 
@@ -1187,6 +1193,9 @@ function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, 
 
   const items = [];
   items.push({ key: "history", label: "Histórico", icon: "history", onClick: () => { onOpenHistory && onOpenHistory(); setOpen(false); } });
+  if (onOpenRedeMap) {
+    items.push({ key: "rede-map", label: "Mapa da Rede", icon: "map", onClick: () => { onOpenRedeMap(); setOpen(false); } });
+  }
   if (onOpenQrScanner) {
     items.push({ key: "qr-scanner", label: "Ler QR Code da CTO", icon: "camera", onClick: () => { onOpenQrScanner(); setOpen(false); } });
   }
