@@ -925,6 +925,23 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
                 </span>
               )}
             </div>
+            {/* Badge "Identificação pendente" — phone desconhecido */}
+            {conv.lead_tag && !isIdentified && (
+              <div
+                data-testid={`wa-lead-tag-${conv.phone}`}
+                title="Phone não está vinculado a nenhum cliente. Quando o cliente enviar CPF/CNPJ, o sistema vincula automaticamente."
+                style={{
+                  marginTop: 3, display: "inline-flex", alignItems: "center",
+                  gap: 4, padding: "2px 7px", borderRadius: 4,
+                  background: "#fef3c7", color: "#92400e",
+                  fontSize: 10, fontWeight: 700,
+                  border: "1px solid #fde68a",
+                  width: "fit-content",
+                }}
+              >
+                {conv.lead_tag}
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
             <span style={{ fontSize: 10.5, color: "#64748b",

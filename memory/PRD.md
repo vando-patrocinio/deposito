@@ -964,3 +964,31 @@ Bug real do Vando (17/05 23:31): Isabella repetiu "Pode me enviar o print sim, v
 - **Frontend** (`WhatsAppChatLayout.js`): novo `IconBtn` 🔄 RotateCcw `data-testid="wa-reset-context-btn"` no toolbar do chat (ao lado de Finalizar). Confirm dialog antes de executar, toast de sucesso/erro.
 
 **Validado:** curl reset retornou `{ok:true, context_reset_at, matched:1, modified:1}`. Screenshot confirmou botão visível com tooltip correto. Importação de `toast` (sonner) adicionada ao arquivo.
+
+## 🧠 [17/Fev/2026] Análise de Histórico do Cliente + Auto-Link de Phone
+
+**Pedido:** *"a Isabella tem que ler o histórico do cliente atendido e analisar se o problema é persistente, esporádico ou eventual. Se o telefone não tiver no cadastro, coloque uma tag de identificação. Quando o cliente se identificar na conversa, atualize o telefone no cadastro acrescentando o novo número."*
+
+**3 funcionalidades implementadas:**
+
+### 1. Análise de histórico (`services/customer_history.py`)
+- `analyze_customer_history()` examina últimos 30/60/90 dias: tickets de reparo, último ticket, telefones, msgs inbound.
+- Classifica em 4 categorias:
+  - 🔴 **PERSISTENTE** — 3+ tickets reparo em 30d → Isabella oferece **compensação proativa** e considera **troca de equipamento**
+  - 🟠 **RECORRENTE** — 2 tickets em 60d → mencionar "vi que isso já aconteceu antes"
+  - 🟡 **ESPORÁDICO** — 1 ticket em 90d → tratamento padrão com cuidado extra
+  - 🟢 **EVENTUAL** — sem histórico → fluxo normal V6.70
+- `format_history_for_prompt()` injeta bloco `=== HISTÓRICO DO CLIENTE ===` com regra: *"adapte o tom, NÃO recite números crus, persistente merece tratamento DIFERENCIADO."*
+
+### 2. Auto-Link de phone desconhecido (`services/subscriber_phone_linker.py`)
+- `extract_identifiers()` detecta CPF/CNPJ/nome completo no texto via regex.
+- `try_auto_link_phone()`: se phone não está vinculado E cliente mandou CPF/CNPJ/nome, procura subscriber e insere `subscriber_phones` com `label="auto-linkado via chat"` + atualiza `wa_conversations.subscriber_id`.
+
+### 3. Tag "Identificação pendente"
+- `tag_unknown_phone()` marca `wa_conversations.lead_tag = "🔍 Identificação pendente"` quando phone não tem subscriber.
+- Backend `/conversations` retorna `lead_tag` e `is_unknown_lead`.
+- Frontend exibe **badge amarelo** abaixo do telefone na listagem.
+
+**Integração** (`routes/whatsapp_baileys.py`): inbound flow agora resolve subscriber → injeta histórico se identificado, ou tag+auto-link se desconhecido.
+
+**Validação:** 18/18 testes unitários (`tests/test_customer_history_and_linker.py`) passando. Lint OK. CLI test mostrou Vando classificado como `eventual` (7 dias de casa, 287 msgs em 90d, 0 tickets de reparo com seu client_id atual).

@@ -1154,6 +1154,28 @@ async def inbound_webhook(payload: InboundIn,
         link = await link_phone_to_subscriber(effective_phone, cid)
         if link and link.get("subscriber_id"):
             subscriber_id = link["subscriber_id"]
+
+        # 🆕 Phone DESCONHECIDO — tag + tenta auto-link via CPF/CNPJ no texto
+        if not subscriber_id:
+            try:
+                from services.subscriber_phone_linker import (
+                    tag_unknown_phone, try_auto_link_phone,
+                )
+                # 1. Marca como "Identificação pendente" pra UI exibir badge
+                await tag_unknown_phone(cid, effective_phone)
+                # 2. Tenta auto-link se cliente mandou CPF/CNPJ/nome agora
+                linked = await try_auto_link_phone(cid, effective_phone, payload.text)
+                if linked:
+                    subscriber_id = linked["subscriber_id"]
+                    logger.info(
+                        "[wa-baileys] auto-linked phone=%s → subscriber=%s via %s",
+                        effective_phone, subscriber_id,
+                        linked.get("matched_by"),
+                    )
+            except Exception as e:
+                logger.warning("[wa-baileys] auto-link skip: %s", e)
+
+        if subscriber_id:
             sub = await db.subscribers.find_one(
                 {"id": subscriber_id, "company_id": cid},
                 {"_id": 0, "name": 1, "external_code": 1, "plan_name": 1,
@@ -1732,6 +1754,23 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             )
             extra.append(format_for_prompt(conn_info))
             conn_info["subscriber_id"] = subscriber_id
+
+            # Análise de HISTÓRICO do cliente — classifica problema como
+            # persistente/recorrente/esporádico/eventual e injeta no prompt.
+            # Isabella adapta o tom: persistente => empatia REAL, compensação.
+            try:
+                from services.customer_history import (
+                    analyze_customer_history, format_history_for_prompt,
+                )
+                history = await analyze_customer_history(
+                    cid, subscriber_id, current_phone=phone,
+                )
+                hist_block = format_history_for_prompt(history)
+                if hist_block:
+                    extra.append(hist_block)
+                conn_info["history_classification"] = history.get("classification")
+            except Exception as e:
+                logger.info("[wa-baileys] history analysis skip: %s", e)
 
             # AÇÃO REAL — estratégia diferenciada por status (decisão 02/2026):
             #   - LOS: NÃO reinicia (não resolve fibra rompida). Cria bolha de
@@ -2819,6 +2858,9 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
             # 🟢 Indicador "Isabella digitando..." (TTL — frontend compara com now)
             "ai_typing_until": conv.get("ai_typing_until"),
             "ai_typing_agent": conv.get("ai_typing_agent"),
+            # Lead tag — phone desconhecido aguardando identificação
+            "lead_tag": conv.get("lead_tag"),
+            "is_unknown_lead": conv.get("is_unknown_lead", False),
         }
         bucket = await _bucket_for_conversation(conv_view, cid)
         conv_view["bucket"] = bucket
