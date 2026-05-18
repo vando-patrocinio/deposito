@@ -83,6 +83,16 @@ export default function BankImportTab() {
       const r = await api.bankImportUpload(file);
       setStaging(r);
       setItems((r.items || []).map((it) => ({ ...it, _skip: it.duplicate })));
+      // Alerta amigável quando IA falhou (todas as não-duplicadas/não-memória ficaram 'manual')
+      const nonDup = (r.items || []).filter((it) => !it.duplicate);
+      const aiOrMem = nonDup.filter((it) =>
+        it.source === "ai" || it.source === "memory");
+      if (nonDup.length > 0 && aiOrMem.length === 0) {
+        setErr(
+          "A IA não conseguiu classificar (provavelmente sem créditos ou "
+          + "instabilidade). Você ainda pode classificar manualmente abaixo.",
+        );
+      }
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
     } finally { setUploading(false); }

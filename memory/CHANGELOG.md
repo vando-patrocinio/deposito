@@ -1,6 +1,46 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — Sub-aba "Importar Extrato" Sicoob + IA aprende padrões (iter94) ★★★
+**Objetivo do usuário**: subir extrato OFX do Sicoob, IA classifica entrada/saída + sugere fornecedor/categoria, gestor revisa e confirma, e a IA APRENDE os padrões por CPF/CNPJ + nomenclatura pra acelerar próximas importações.
+
+### Backend (`/app/backend/routes/bank_import.py` — NOVO)
+- 6 endpoints sob `/api/financeiro/bank-import/`:
+  - `POST /upload` — multipart OFX ou CSV. Parser usa `ofxparse==0.21` (instalado). Detecta duplicatas por `import_hash` (sha1 de data+valor+desc). Para cada tx: (1) extrai CPF/CNPJ via regex, (2) normaliza chave (lowercase, sem acento, sem números, sem pontuação, 60 chars), (3) consulta `bank_import_memory` por exact CPF/CNPJ → fallback por key normalizada, (4) o que sobra vai pra IA em lote único.
+  - `POST /confirm` — gera `fin_cash_movements` (`source="bank_import_sicoob"`), atualiza `current_balance`, persiste padrão em `bank_import_memory` (`hit_count` incremental). 409 se já confirmado.
+  - `GET /history` — importações concluídas (ordenadas por data desc).
+  - `GET /memory` — padrões aprendidos (ordenados por `hit_count` desc).
+  - `DELETE /memory/{id}` — remove padrão específico.
+  - `GET /staging/{id}` — recupera staging por ID.
+- **IA**: Claude Sonnet 4.5 via `emergentintegrations.LlmChat.with_model("anthropic", "claude-sonnet-4-5")`. Prompt envia lista de fornecedores+categorias cadastrados e pede JSON com `{type, supplier_id, category_id, confidence, reason}`. Lote único minimiza chamadas.
+- **Coleções novas**: `bank_import_staging`, `bank_import_memory`, `bank_import_history`.
+
+### Frontend (`/app/frontend/src/BankImportTab.js` — NOVO ~440 linhas)
+- Card de upload com input file `.ofx/.csv` + dica "Sicoob → Internet Banking → Extrato → Exportar OFX".
+- 4 KPI cards (reutiliza `KpiCard` do `Dashboard2026.js`): Novas tx · Entradas · Saídas · Classificadas por IA.
+- AlertCard quando há duplicatas detectadas.
+- Tabela editável com colunas Data / Descrição (mostra CPF/CNPJ extraído em mono + reason da IA em itálico) / Tipo (select entrada/saída) / Valor (mono colorido) / Fornecedor (select) / Categoria (select filtrado por tipo) / Origem (badge IA Claude · Aprendido · Manual com % confiança).
+- Linhas duplicadas em fundo amarelo + checkbox desmarcado por default.
+- Botão "Confirmar X lançamentos" gera movements e atualiza saldo.
+- Card "Padrões aprendidos pela IA" expansível, lista CPF/CNPJ → fornecedor/categoria com `hit_count` e botão deletar.
+- Card "Histórico de importações" com data, arquivo, total, importados, ignorados.
+- **Fallback**: se IA falhar (sem créditos / timeout), mostra AlertCard "Classifique manualmente".
+
+### Validação (testing_agent_v3_fork iter94)
+- Backend 9/9 pytest passou (upload OFX, IA, dedup, confirm, idempotência 409, history, memory ordenada, aprendizado na 2ª upload com source='memory', delete memory, rejeição arquivo inválido).
+- Frontend E2E: 5 KPIs + 5 rows tabela + badges IA Claude 90-95% + CPF/CNPJ visível + 5 padrões aprendidos no card de memória + histórico renderizado.
+- Testes registrados em `/app/backend/tests/test_iter94_bank_import.py`.
+
+### Code review aplicado
+- Adicionado AlertCard amigável quando IA falha em todos os items (`source === "ai" || "memory"` count = 0).
+
+### Itens conhecidos (não-bloqueantes — para iteração futura)
+- Saldo do caixa atualizado por linha (não em transação Mongo) — se uma inserção falhar no meio, saldo pode ficar inconsistente.
+- Lookup por (doc=None, key=X) é conservador — não casa com memória salva com `doc=cnpj` quando o OFX omite o CPF/CNPJ.
+- Após confirm com 0 movements (todos skipped) o staging fica "confirmed" e usuário precisa re-upload (não bloqueante).
+
+
+
 ## Fev 18, 2026 — Dashboard 2026 estendido a Financeiro + Rede IA (iter93)
 **Objetivo do usuário**: aplicar o mesmo blueprint 2026 nos dashboards do Financeiro e Rede IA pra manter consistência visual com o redesign da aba Movimento.
 
