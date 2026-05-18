@@ -3577,6 +3577,48 @@ async def inspect_conversation_context(
 
 
 
+@router.get("/conversation/{phone}/link-status")
+async def conversation_link_status(
+    phone: str,
+    user: dict = Depends(require_role("gestor")),
+):
+    """⚡ Endpoint leve: retorna se o telefone tem MAIS DE UM subscriber vinculado.
+
+    Usado pelo frontend pra mostrar banner ⚠️ "Atenção: este número está
+    vinculado a N clientes" no header da conversa. Acessível a gestor (não
+    exige admin) — é só leitura informativa.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    from routes.subscribers import get_phone_lookup_variants
+    variants = list(get_phone_lookup_variants(phone))
+
+    rows = await db.subscriber_phones.find(
+        {"company_id": cid, "$or": [
+            {"phone": {"$in": variants}},
+            {"normalized_number": {"$in": variants}},
+        ]},
+        {"_id": 0, "subscriber_id": 1, "label": 1, "is_primary": 1},
+    ).to_list(20)
+
+    sids = list({r["subscriber_id"] for r in rows if r.get("subscriber_id")})
+    if not sids:
+        return {"phone": phone, "linked_count": 0, "has_conflict": False,
+                "subscribers": []}
+
+    subs = await db.subscribers.find(
+        {"company_id": cid, "id": {"$in": sids}},
+        {"_id": 0, "id": 1, "name": 1, "plan_name": 1, "status": 1},
+    ).to_list(20)
+
+    return {
+        "phone": phone,
+        "linked_count": len(sids),
+        "has_conflict": len(sids) >= 2,
+        "subscribers": subs,
+    }
+
+
+
 @router.delete("/conversation/{phone}/unlink-subscriber")
 async def unlink_phone_from_subscriber(
     phone: str,

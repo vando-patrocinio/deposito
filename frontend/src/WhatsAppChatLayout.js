@@ -1163,6 +1163,9 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
   const [correctingMsg, setCorrectingMsg] = useState(null);
   /* Toggle global do botão "Enviar com IA" (configurado no Central IA → Isabella) */
   const [polishEnabled, setPolishEnabled] = useState(true);
+  /* ⚠️ Status de vínculo: detecta phone vinculado a 2+ subscribers
+     (cenário em que a Isabella usa dados errados de cliente homônimo) */
+  const [linkStatus, setLinkStatus] = useState(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -1196,6 +1199,17 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       setCoachings(r.items || []);
     } catch { /* ignore */ }
   }, [conv]);
+
+  /* Ao abrir conversa: checa se phone tem mais de 1 subscriber vinculado.
+     Se tiver, mostra banner ⚠️ no header pra atendente ficar atento. */
+  useEffect(() => {
+    if (!conv?.phone) { setLinkStatus(null); return; }
+    let alive = true;
+    api.waBaileysConversationLinkStatus(conv.phone)
+      .then((r) => { if (alive) setLinkStatus(r); })
+      .catch(() => { if (alive) setLinkStatus(null); });
+    return () => { alive = false; };
+  }, [conv?.phone]);
 
   useEffect(() => {
     loadMessages();
@@ -1911,6 +1925,63 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
           profile={contactProfile}
           onClose={() => setShowCustomer(false)}
         />
+      )}
+
+      {/* ⚠️ Banner de conflito de vínculo: phone vinculado a 2+ subscribers.
+         Causa de "Isabella chamou cliente de nome errado" / dados misturados. */}
+      {linkStatus?.has_conflict && (
+        <div data-testid="wa-link-conflict-banner" style={{
+          padding: "10px 18px",
+          background: "rgba(245, 158, 11, 0.10)",
+          borderBottom: "1px solid rgba(245, 158, 11, 0.30)",
+          display: "flex", alignItems: "flex-start", gap: 10,
+          fontSize: 12, color: "#92400e",
+        }}>
+          <span style={{ fontSize: 16, lineHeight: 1, marginTop: 1 }}>⚠️</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>
+              Este número está vinculado a {linkStatus.linked_count} clientes
+            </div>
+            <div style={{ opacity: 0.85, lineHeight: 1.4 }}>
+              A IA pode usar dados do cadastro errado. Clientes vinculados:{" "}
+              {linkStatus.subscribers.map((s, i) => (
+                <span key={s.id} style={{ fontWeight: 500 }}>
+                  {i > 0 && " · "}
+                  {s.name}{s.plan_name ? ` (${s.plan_name})` : ""}
+                </span>
+              ))}
+            </div>
+            <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {linkStatus.subscribers.map((s) => (
+                <button key={s.id}
+                  data-testid={`wa-unlink-${s.id}`}
+                  onClick={async () => {
+                    if (!window.confirm(
+                      `Desvincular telefone ${conv.phone} do cliente "${s.name}"?\n\n` +
+                      "Após confirmar, a Isabella deixará de usar os dados desse cadastro nessa conversa."
+                    )) return;
+                    try {
+                      await api.waBaileysUnlinkSubscriber(conv.phone, s.id);
+                      const fresh = await api.waBaileysConversationLinkStatus(conv.phone);
+                      setLinkStatus(fresh);
+                    } catch (e) {
+                      // eslint-disable-next-line no-alert
+                      window.alert("Erro ao desvincular: " + (e?.message || e));
+                    }
+                  }}
+                  style={{
+                    padding: "3px 10px", borderRadius: 4,
+                    background: "white",
+                    border: "1px solid rgba(245, 158, 11, 0.5)",
+                    color: "#92400e", fontSize: 11, fontWeight: 600,
+                    cursor: "pointer",
+                  }}>
+                  Desvincular "{s.name}"
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Mensagens — papel de parede customizado Ligo */}
