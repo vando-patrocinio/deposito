@@ -1,0 +1,43 @@
+{
+  "summary": "Frontend-only validation of the redesigned 'Movimento' (estoque) Dashboard 2026 in EstoquePanel.js + full-width audit of .app-content. All 10 mandatory data-testids render, all 5 conditional ones (stock-alerts-strip + 3 loc-rows + location-stacked-bar) render with seeded data, sparkline (kpi-installations) + progress bar (kpi-withdrawal-rate) + movement chart SVG all work, and all 5 sub-tabs (ONTs/Insumos/Clientes/Ordens/Histórico) remain clickable without regression. .app-content confirmed width:100% / maxWidth:none.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Movimento > Dashboard",
+        "issues": [
+          "KPI 'Instalações · 7 dias' mostra '↓ 100%' como badge vermelho quando o valor da semana atual é 0 e a semana anterior tem dados. Visualmente correto, mas talvez convenha esconder o delta quando installs7 = 0 e prevWeekInstalls > 0 (atualmente sinaliza queda extrema que pode confundir).",
+          "Sparkline da kpi-installations fica praticamente reta (todos zeros nos últimos 14 dias da seed atual). Esperado, mas pode ficar mais elegante ocultar sparkline quando sum(values)==0.",
+          "kpi-withdrawal-rate aparece com tone 'bad' (0%) e progress vazio — visualmente OK mas reforça percepção de problema; considere texto explicativo quando expected_withdrawals = 1 e effective = 0."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Opcional / cosmético) Ocultar badge delta quando installs7 = 0 para evitar '↓ 100%' enganoso.",
+    "(Opcional) Esconder sparkline quando todos os 14 dias forem zero."
+  ],
+  "critical_code_review_comments": [
+    "DashboardSection ficou com ~395 linhas + 6 helpers no mesmo arquivo (EstoquePanel.js já está >1300 linhas). Recomenda-se extrair os helpers (KpiCard, Sparkline, MovementChart, LocationBars, AlertCard, Legend) para /app/frontend/src/EstoqueDashboard/ ou pelo menos um arquivo EstoquePanel.dashboard.js.",
+    "prevWeekInstalls usa divisão por 3.3 ('média semanal dos 23 dias anteriores') — número mágico. Extrair como constante WEEKS_IN_PREV_PERIOD = 23/7 ou usar count/(daysInPrev) * 7 para clareza.",
+    "MovementChart recebe install/all mas só plota 'install' e 'all' (não plota retiradas/devoluções separadamente apesar de a legenda mostrar 3 séries). Visualmente confunde — ou plote 3 polylines ou ajuste a legenda para refletir 'instalações vs. movimento total'.",
+    "history.filter() é executado 6+ vezes para diferentes janelas. Para datasets maiores, pré-calcular by-day/by-type uma vez via useMemo evitaria O(n*janelas) — não-bloqueante mas vale fazer."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend-only)",
+    "frontend": "100% (10/10 testids obrigatórios + 5/5 condicionais + sparkline/progress/SVG + sub-tabs sem regressão)"
+  },
+  "test_credentials": "admin@empresa.com / 123456 (auto-login via preview)",
+  "seed_data_creation": "Nenhum seed criado. Usei dados existentes (57 ONTs, 19 estoque, 30 instalações em 30d, 15 devoluções, 8 técnicos, 31 OS ativas, 2 insumos zerados acionando stock-alerts-strip).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Dashboard 2026 do EstoquePanel está totalmente integrado e renderizando com /api/stok/dashboard sem mudanças backend. Auto-login funciona em preview (.preview.emergentagent.com → admin@empresa.com automaticamente). Para revalidar: navegar para sidebar 'Movimento' (item id='estoque', ícone Boxes) → sub-tab 'Dashboard' (default). Console mostra alguns warnings de recharts width(-1)/height(-1) e 500s em endpoints NÃO relacionados ao Movimento (apareceram durante navegação inicial); EstoquePanel usa SVG puro, sem recharts.",
+  "rca_of_the_issue": "N/A — feature works as specified."
+}

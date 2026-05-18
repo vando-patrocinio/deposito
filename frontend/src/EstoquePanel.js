@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { api } from "@/api";
-import { Card, Metric } from "@/ui";
+import { Card } from "@/ui";
 
 // ============================================================
 // Helpers visuais
@@ -86,62 +86,604 @@ const btnDanger = { ...btnPrimary, background: "#dc2626" };
 const btnGhost = { padding: "6px 12px", background: "transparent", color: "#0f172a", border: "1px solid #e2e8f0", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 12 };
 
 // ============================================================
-// Dashboard
+// Dashboard 2026 — Summary First → Movement → Detail
+// Blueprint: alerts top-strip, contextual KPI cards with sparkline,
+// stock-by-location distribution, SKU stock with progress, activity feed.
 // ============================================================
-function DashboardSection({ dashboard, consumables }) {
+function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
   if (!dashboard) return <Card>Carregando dashboard…</Card>;
+
+  // ---- Métricas derivadas ----
+  const totalOnts = dashboard.total_onts || 0;
+  const companyOnts = dashboard.company_onts || 0;
+  const techOnts = dashboard.tech_rows.reduce((s, t) => s + (t.tech_onts || 0), 0);
+  const installedOnts = totalOnts - companyOnts - techOnts;
+
+  // last 30d e last 7d trends
+  const now = Date.now();
+  const d30 = now - 30 * 86400 * 1000;
+  const d7 = now - 7 * 86400 * 1000;
+  const histInRange = history.filter((h) => {
+    const t = new Date(h.date).getTime();
+    return !isNaN(t) && t >= d30;
+  });
+  const installs30 = histInRange.filter((h) => h.type === "instalacao").length;
+  const withdrawals30 = histInRange.filter((h) => h.type === "retirada").length;
+  const returns30 = histInRange.filter((h) => h.type === "devolucao").length;
+  const installs7 = history.filter((h) => h.type === "instalacao"
+    && new Date(h.date).getTime() >= d7).length;
+  const prevWeekInstalls = history.filter((h) => h.type === "instalacao"
+    && new Date(h.date).getTime() >= d30
+    && new Date(h.date).getTime() < d7).length / 3.3; // média semanal dos 23 dias anteriores
+  const velocityDelta = prevWeekInstalls > 0
+    ? Math.round(((installs7 - prevWeekInstalls) / prevWeekInstalls) * 100) : 0;
+
+  // Days of supply: estoque atual / consumo médio diário (últimos 30d)
+  const dailyConsumption = installs30 / 30.0;
+  const daysOfSupply = dailyConsumption > 0
+    ? Math.round(companyOnts / dailyConsumption) : null;
+
+  // Low stock / stockout — para insumos
+  const lowStockItems = consumables.filter((c) =>
+    (dashboard.empresa_stock?.[c.id] || 0) > 0
+    && (dashboard.empresa_stock?.[c.id] || 0) < 10);
+  const stockoutItems = consumables.filter((c) =>
+    (dashboard.empresa_stock?.[c.id] || 0) === 0);
+  const hasOntStockout = companyOnts === 0;
+  const lowOntStock = companyOnts > 0 && companyOnts < 5;
+
+  // Sparkline data: instalações por dia nos últimos 14 dias
+  const sparkInstalls = Array.from({ length: 14 }, (_, i) => {
+    const day = now - (13 - i) * 86400 * 1000;
+    const next = day + 86400 * 1000;
+    return history.filter((h) => h.type === "instalacao"
+      && new Date(h.date).getTime() >= day
+      && new Date(h.date).getTime() < next).length;
+  });
+
+  const sparkAll = Array.from({ length: 14 }, (_, i) => {
+    const day = now - (13 - i) * 86400 * 1000;
+    const next = day + 86400 * 1000;
+    return history.filter((h) => new Date(h.date).getTime() >= day
+      && new Date(h.date).getTime() < next).length;
+  });
+
+  // Threshold da withdrawal_rate
+  const rate = dashboard.withdrawal_rate || 0;
+  const rateTone = rate >= 80 ? "good" : rate >= 60 ? "warn" : "bad";
+
+  // Localização (donut alternativo - barras empilhadas horizontais)
+  const locDist = [
+    { key: "empresa", label: "Estoque", count: companyOnts, color: "#0ea5e9" },
+    { key: "tecnicos", label: "Com técnicos", count: techOnts, color: "#8b5cf6" },
+    { key: "instaladas", label: "Instaladas", count: installedOnts, color: "#10b981" },
+  ];
+
+  // Activity feed: últimas 8 movimentações
+  const recentActivity = history
+    .slice() // não-mutar
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 8);
+
   return (
-    <div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 18 }}>
-        <Metric label="ONTs no estoque" value={dashboard.company_onts} data-testid="stat-company-onts" />
-        <Metric label="Total ONTs" value={dashboard.total_onts} />
-        <Metric label="Técnicos com estoque" value={dashboard.technicians_count} />
-        <Metric label="OS ativas" value={dashboard.active_services_count} />
-        <Metric label="Eficiência retirada" value={`${dashboard.withdrawal_rate}%`} />
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* === Strip de alertas (só quando aplicável) === */}
+      {(hasOntStockout || lowOntStock || stockoutItems.length > 0 || lowStockItems.length > 0) && (
+        <div data-testid="stock-alerts-strip" style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+          gap: 10,
+        }}>
+          {hasOntStockout && (
+            <AlertCard tone="bad" icon="⛔"
+              title="Estoque de ONTs zerado"
+              detail="Nenhuma ONT disponível no estoque da empresa." />
+          )}
+          {!hasOntStockout && lowOntStock && (
+            <AlertCard tone="warn" icon="⚠"
+              title={`Apenas ${companyOnts} ONT${companyOnts !== 1 ? "s" : ""} em estoque`}
+              detail="Considere comprar mais para evitar atrasos nas instalações." />
+          )}
+          {stockoutItems.length > 0 && (
+            <AlertCard tone="bad" icon="⛔"
+              title={`${stockoutItems.length} insumo${stockoutItems.length !== 1 ? "s" : ""} zerado${stockoutItems.length !== 1 ? "s" : ""}`}
+              detail={stockoutItems.slice(0, 3).map((c) => c.name).join(", ")
+                + (stockoutItems.length > 3 ? "…" : "")} />
+          )}
+          {lowStockItems.length > 0 && (
+            <AlertCard tone="warn" icon="⚠"
+              title={`${lowStockItems.length} insumo${lowStockItems.length !== 1 ? "s" : ""} com estoque baixo`}
+              detail={lowStockItems.slice(0, 3).map((c) =>
+                `${c.name} (${dashboard.empresa_stock?.[c.id] || 0})`).join(", ")} />
+          )}
+        </div>
+      )}
+
+      {/* === Row 1: KPI cards contextuais === */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+        gap: 14,
+      }}>
+        <KpiCard
+          testId="kpi-onts-stock"
+          label="ONTs no estoque"
+          value={companyOnts}
+          unit="un"
+          tone={companyOnts === 0 ? "bad" : companyOnts < 5 ? "warn" : "good"}
+          hint={`${totalOnts} totais · ${techOnts} com técnicos`} />
+        <KpiCard
+          testId="kpi-installations"
+          label="Instalações · 7 dias"
+          value={installs7}
+          unit=""
+          tone={velocityDelta >= 0 ? "good" : velocityDelta > -20 ? "warn" : "bad"}
+          delta={velocityDelta}
+          sparkline={sparkInstalls}
+          sparkColor="#10b981"
+          hint={`${installs30} nos últimos 30d`} />
+        <KpiCard
+          testId="kpi-active-services"
+          label="OS ativas"
+          value={dashboard.active_services_count || 0}
+          unit=""
+          tone="info"
+          hint={`${dashboard.technicians_count} técnicos`} />
+        <KpiCard
+          testId="kpi-days-of-supply"
+          label="Dias de cobertura"
+          value={daysOfSupply == null ? "—" : daysOfSupply}
+          unit={daysOfSupply == null ? "" : "dias"}
+          tone={daysOfSupply == null ? "info"
+              : daysOfSupply >= 14 ? "good"
+              : daysOfSupply >= 7 ? "warn" : "bad"}
+          hint={daysOfSupply == null
+            ? "Sem consumo recente para estimar"
+            : `Baseado em ${dailyConsumption.toFixed(1)} ONT/dia`} />
+        <KpiCard
+          testId="kpi-withdrawal-rate"
+          label="Eficiência retirada"
+          value={`${rate}%`}
+          unit=""
+          tone={rateTone}
+          progress={rate}
+          hint={`${dashboard.effective_withdrawals || 0} / ${dashboard.expected_withdrawals || 0}`} />
       </div>
 
-      <Card title="Estoque da Empresa" data-testid="empresa-stock-card">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
-          {consumables.map((c) => (
-            <div key={c.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12 }}>
-              <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", fontWeight: 700, letterSpacing: 0.4 }}>{c.name}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a", marginTop: 4 }}>
-                {dashboard.empresa_stock?.[c.id] || 0}
-                <span style={{ fontSize: 12, color: "#64748b", fontWeight: 500, marginLeft: 4 }}>{c.unit}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
+      {/* === Row 2: Movimento + Distribuição === */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr)",
+        gap: 14,
+      }}>
+        {/* Movimento últimos 14 dias */}
+        <Card title={(
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            📊 Movimento · 14 dias
+          </span>
+        )} data-testid="movement-trend-card">
+          <MovementChart
+            install={sparkInstalls}
+            all={sparkAll}
+          />
+          <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap",
+                          fontSize: 12, color: "#475569" }}>
+            <Legend color="#10b981" label="Instalações" value={installs30} />
+            <Legend color="#0ea5e9" label="Retiradas" value={withdrawals30} />
+            <Legend color="#8b5cf6" label="Devoluções" value={returns30} />
+          </div>
+        </Card>
 
-      <Card title="Estoque por Técnico" data-testid="tech-rows-card">
-        {dashboard.tech_rows.length === 0 ? (
-          <div style={{ color: "#64748b" }}>Nenhum técnico ativo.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {dashboard.tech_rows.map((t) => (
-              <div key={t.id} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12 }} data-testid={`tech-row-${t.id}`}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        {/* Distribuição por localização */}
+        <Card title="📍 Onde estão as ONTs" data-testid="location-distribution-card">
+          <LocationBars items={locDist} total={totalOnts} />
+        </Card>
+      </div>
+
+      {/* === Row 3: Stock por SKU + Activity feed === */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0,1.6fr) minmax(0,1fr)",
+        gap: 14,
+      }}>
+        <Card title="📦 Estoque da Empresa · por insumo" data-testid="empresa-stock-card">
+          <div style={{ display: "grid", gap: 10 }}>
+            {consumables.map((c) => {
+              const empVal = dashboard.empresa_stock?.[c.id] || 0;
+              const techVal = dashboard.tech_rows.reduce(
+                (s, t) => s + (t.stock?.[c.id] || 0), 0);
+              const total = empVal + techVal;
+              const empPct = total > 0 ? (empVal / total) * 100 : 0;
+              const tone = empVal === 0 ? "bad" : empVal < 10 ? "warn" : "good";
+              const toneColor = tone === "bad" ? "#dc2626"
+                              : tone === "warn" ? "#d97706" : "#16a34a";
+              return (
+                <div key={c.id} style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto",
+                  alignItems: "center", gap: 10,
+                }}>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>{t.name}</div>
-                    <div style={{ fontSize: 12, color: "#64748b" }}>
-                      {t.tech_onts} ONTs · Instalações: {t.installed_month} · Retiradas: {t.withdrawals}
+                    <div style={{ display: "flex", justifyContent: "space-between",
+                                    alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
+                        {c.name}
+                      </span>
+                      <span style={{ fontSize: 11, color: "#64748b" }}>
+                        {techVal} c/ téc.
+                      </span>
+                    </div>
+                    <div style={{ height: 8, background: "#f1f5f9",
+                                    borderRadius: 999, overflow: "hidden",
+                                    display: "flex" }}>
+                      <div style={{ width: `${empPct}%`,
+                                      background: toneColor,
+                                      transition: "width .35s ease" }} />
+                      <div style={{ width: `${100 - empPct}%`,
+                                      background: "#cbd5e1" }} />
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", minWidth: 84 }}>
+                    <div style={{ fontSize: 18, fontWeight: 800,
+                                    color: toneColor,
+                                    fontVariantNumeric: "tabular-nums",
+                                    lineHeight: 1 }}>
+                      {empVal}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#64748b",
+                                    textTransform: "uppercase",
+                                    fontWeight: 700, letterSpacing: 0.3 }}>
+                      {c.unit} · estoque
                     </div>
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 6 }}>
-                  {consumables.map((c) => (
-                    <div key={c.id} style={{ background: "#f8fafc", padding: "6px 10px", borderRadius: 8, fontSize: 12 }}>
-                      <span style={{ color: "#64748b" }}>{c.name}: </span>
-                      <strong>{t.stock?.[c.id] || 0} {c.unit}</strong>
+              );
+            })}
+          </div>
+        </Card>
+
+        <Card title="🔄 Movimentações recentes" data-testid="activity-feed-card">
+          {recentActivity.length === 0 ? (
+            <div style={{ padding: 14, fontSize: 12, color: "#64748b",
+                            textAlign: "center" }}>
+              Nenhuma movimentação registrada.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {recentActivity.map((h, i) => {
+                const tone = h.type === "instalacao" ? { bg: "#dcfce7", color: "#166534", ic: "↗" }
+                  : h.type === "retirada" ? { bg: "#dbeafe", color: "#1e40af", ic: "↘" }
+                  : h.type === "devolucao" ? { bg: "#fef3c7", color: "#92400e", ic: "↩" }
+                  : { bg: "#f1f5f9", color: "#475569", ic: "•" };
+                return (
+                  <div key={i} data-testid={`activity-row-${i}`}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "auto 1fr auto",
+                          alignItems: "center", gap: 8,
+                          padding: "6px 8px", borderRadius: 8,
+                          background: i % 2 === 0 ? "transparent" : "#f8fafc",
+                        }}>
+                    <span style={{
+                      width: 22, height: 22, borderRadius: "50%",
+                      background: tone.bg, color: tone.color,
+                      display: "grid", placeItems: "center",
+                      fontSize: 12, fontWeight: 800,
+                    }}>{tone.ic}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: "#0f172a",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap" }}>
+                        {h.description}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                        {h.user || "Sistema"} · {fmtDate(h.date)}
+                      </div>
                     </div>
-                  ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* === Row 4: Ranking técnicos === */}
+      <Card title={(
+        <span>👷 Estoque por técnico</span>
+      )} data-testid="tech-rows-card">
+        {dashboard.tech_rows.length === 0 ? (
+          <div style={{ color: "#64748b" }}>Nenhum técnico ativo.</div>
+        ) : (
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))",
+            gap: 10,
+          }}>
+            {dashboard.tech_rows.map((t) => {
+              const ontTone = t.tech_onts === 0 ? "#94a3b8"
+                : t.tech_onts >= 3 ? "#10b981" : "#d97706";
+              return (
+                <div key={t.id} data-testid={`tech-row-${t.id}`}
+                      style={{
+                        background: "#fff",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 12, padding: 12,
+                        borderLeft: `4px solid ${ontTone}`,
+                      }}>
+                  <div style={{ display: "flex", justifyContent: "space-between",
+                                    alignItems: "center", marginBottom: 8, gap: 6 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 800,
+                                      color: "#0f172a",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap" }}>
+                        {t.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                        ↗ {t.installed_month}{" "}
+                        <span style={{ opacity: 0.6 }}>inst.</span>
+                        {" · ↘ "}{t.withdrawals}{" "}
+                        <span style={{ opacity: 0.6 }}>retir.</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 22, fontWeight: 800,
+                                      color: ontTone, lineHeight: 1,
+                                      fontVariantNumeric: "tabular-nums" }}>
+                        {t.tech_onts}
+                      </div>
+                      <div style={{ fontSize: 9, color: "#64748b",
+                                      textTransform: "uppercase",
+                                      fontWeight: 700, letterSpacing: 0.3 }}>
+                        ONTs
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit,minmax(82px,1fr))",
+                    gap: 4,
+                  }}>
+                    {consumables.map((c) => {
+                      const qty = t.stock?.[c.id] || 0;
+                      const lc = qty === 0 ? "#94a3b8"
+                              : qty < 3 ? "#d97706" : "#16a34a";
+                      return (
+                        <div key={c.id} style={{
+                          background: "#f8fafc", padding: "4px 6px",
+                          borderRadius: 6, fontSize: 10, color: "#64748b",
+                          display: "flex", justifyContent: "space-between",
+                          alignItems: "center",
+                        }} title={c.name}>
+                          <span style={{ overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
+                                          maxWidth: 60 }}>{c.name}</span>
+                          <strong style={{ color: lc,
+                                              fontVariantNumeric: "tabular-nums" }}>
+                            {qty}
+                          </strong>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+// --- helpers visuais do Dashboard ---
+function AlertCard({ tone, icon, title, detail }) {
+  const tones = {
+    bad: { bg: "#fef2f2", border: "#fca5a5", color: "#991b1b" },
+    warn: { bg: "#fffbeb", border: "#fcd34d", color: "#92400e" },
+    info: { bg: "#eff6ff", border: "#93c5fd", color: "#1e3a8a" },
+  };
+  const t = tones[tone] || tones.info;
+  return (
+    <div style={{
+      padding: 12, borderRadius: 10, background: t.bg,
+      border: `1px solid ${t.border}`, color: t.color,
+      display: "flex", gap: 10, alignItems: "flex-start",
+    }}>
+      <div style={{ fontSize: 18, lineHeight: 1 }}>{icon}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800 }}>{title}</div>
+        <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2,
+                        lineHeight: 1.4 }}>{detail}</div>
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({ testId, label, value, unit, tone = "info", delta,
+                     sparkline, sparkColor, progress, hint }) {
+  const tones = {
+    good: { bar: "#10b981", text: "#0f172a", chip: "#dcfce7", chipC: "#15803d" },
+    warn: { bar: "#d97706", text: "#0f172a", chip: "#fef3c7", chipC: "#a16207" },
+    bad:  { bar: "#dc2626", text: "#0f172a", chip: "#fee2e2", chipC: "#b91c1c" },
+    info: { bar: "#0ea5e9", text: "#0f172a", chip: "#dbeafe", chipC: "#1e40af" },
+  };
+  const t = tones[tone] || tones.info;
+  return (
+    <div data-testid={testId} style={{
+      background: "#fff", borderRadius: 14, padding: 14,
+      border: "1px solid #e2e8f0",
+      boxShadow: "0 1px 2px rgba(15,23,42,.04)",
+      borderTop: `3px solid ${t.bar}`,
+      display: "flex", flexDirection: "column", gap: 6,
+      minHeight: 110,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between",
+                       alignItems: "flex-start", gap: 8 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, color: "#64748b",
+                          textTransform: "uppercase", letterSpacing: 0.4 }}>
+          {label}
+        </div>
+        {delta != null && (
+          <span style={{
+            background: delta >= 0 ? "#dcfce7" : "#fee2e2",
+            color: delta >= 0 ? "#15803d" : "#b91c1c",
+            fontSize: 10.5, fontWeight: 800,
+            padding: "2px 6px", borderRadius: 999,
+            fontVariantNumeric: "tabular-nums",
+          }}>
+            {delta >= 0 ? "↑" : "↓"} {Math.abs(delta)}%
+          </span>
+        )}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline",
+                      gap: 4, marginTop: 2 }}>
+        <span style={{ fontSize: 28, fontWeight: 800, color: t.text,
+                          fontVariantNumeric: "tabular-nums",
+                          lineHeight: 1 }}>{value}</span>
+        {unit && <span style={{ fontSize: 12, color: "#94a3b8",
+                                    fontWeight: 600 }}>{unit}</span>}
+      </div>
+      {sparkline && (
+        <Sparkline values={sparkline} color={sparkColor || t.bar} />
+      )}
+      {progress != null && (
+        <div style={{ height: 6, background: "#f1f5f9", borderRadius: 999,
+                          overflow: "hidden", marginTop: 4 }}>
+          <div style={{ width: `${Math.min(100, progress)}%`,
+                          height: "100%", background: t.bar,
+                          transition: "width .35s ease" }} />
+        </div>
+      )}
+      {hint && (
+        <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: "auto",
+                          lineHeight: 1.3 }}>{hint}</div>
+      )}
+    </div>
+  );
+}
+
+function Sparkline({ values = [], color = "#0ea5e9", height = 30 }) {
+  if (!values.length) return null;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = Math.max(1, max - min);
+  const w = 100, h = height;
+  const step = w / Math.max(1, values.length - 1);
+  const points = values.map((v, i) => {
+    const x = i * step;
+    const y = h - ((v - min) / range) * (h - 4) - 2;
+    return `${x},${y}`;
+  }).join(" ");
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none"
+         style={{ width: "100%", height, marginTop: 4 }}>
+      <polyline points={points} fill="none" stroke={color}
+                strokeWidth="1.6" strokeLinejoin="round"
+                strokeLinecap="round" />
+      <polyline
+        points={`0,${h} ${points} ${w},${h}`}
+        fill={color} fillOpacity="0.08" stroke="none" />
+    </svg>
+  );
+}
+
+function MovementChart({ install = [], all = [] }) {
+  const maxV = Math.max(...install, ...all, 1);
+  const w = 100, h = 100;
+  const step = w / Math.max(1, install.length - 1);
+  const lineFor = (arr) => arr.map((v, i) =>
+    `${i * step},${h - (v / maxV) * (h - 6) - 3}`).join(" ");
+  return (
+    <div style={{ width: "100%" }}>
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none"
+           style={{ width: "100%", height: 130 }}>
+        {/* grid */}
+        {[0.25, 0.5, 0.75].map((p) => (
+          <line key={p} x1={0} y1={h * p} x2={w} y2={h * p}
+                stroke="#e2e8f0" strokeWidth="0.3"
+                strokeDasharray="1 1.5" />
+        ))}
+        {/* all (background area) */}
+        <polyline
+          points={`0,${h} ${lineFor(all)} ${w},${h}`}
+          fill="#0ea5e9" fillOpacity="0.08" stroke="none" />
+        <polyline points={lineFor(all)} fill="none" stroke="#0ea5e9"
+                  strokeWidth="0.7" strokeLinejoin="round" />
+        {/* installs (foreground bold) */}
+        <polyline points={lineFor(install)} fill="none" stroke="#10b981"
+                  strokeWidth="1.4" strokeLinejoin="round"
+                  strokeLinecap="round" />
+      </svg>
+      <div style={{ display: "flex", justifyContent: "space-between",
+                       fontSize: 9.5, color: "#94a3b8", marginTop: 2 }}>
+        <span>14d atrás</span><span>hoje</span>
+      </div>
+    </div>
+  );
+}
+
+function Legend({ color, label, value }) {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <span style={{ width: 10, height: 10, borderRadius: 3,
+                        background: color, display: "inline-block" }} />
+      <span style={{ fontWeight: 700, color: "#0f172a" }}>{value}</span>
+      <span style={{ opacity: 0.7 }}>{label}</span>
+    </div>
+  );
+}
+
+function LocationBars({ items, total }) {
+  if (total === 0) {
+    return (
+      <div style={{ padding: 16, textAlign: "center",
+                       fontSize: 12, color: "#64748b" }}>
+        Nenhuma ONT cadastrada.
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", height: 14, borderRadius: 6,
+                       overflow: "hidden",
+                       border: "1px solid #f1f5f9" }}
+           data-testid="location-stacked-bar">
+        {items.map((i) => (
+          <div key={i.key} style={{
+            width: `${total > 0 ? (i.count / total) * 100 : 0}%`,
+            background: i.color,
+            transition: "width .35s ease",
+          }} title={`${i.label}: ${i.count}`} />
+        ))}
+      </div>
+      {items.map((i) => {
+        const pct = total > 0 ? Math.round((i.count / total) * 100) : 0;
+        return (
+          <div key={i.key} data-testid={`loc-row-${i.key}`}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr auto",
+                  alignItems: "center", gap: 8,
+                }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3,
+                              background: i.color }} />
+            <span style={{ fontSize: 12, color: "#0f172a" }}>
+              {i.label}
+            </span>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a",
+                              fontVariantNumeric: "tabular-nums" }}>
+              {i.count}
+              <span style={{ opacity: 0.5, marginLeft: 4,
+                                fontWeight: 500 }}>· {pct}%</span>
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -924,7 +1466,7 @@ export default function EstoquePanel() {
 
       {err && <Card><div style={{ color: "#dc2626" }}>Erro: {err}</div></Card>}
 
-      {tab === "dashboard" && <DashboardSection dashboard={data.dashboard} consumables={data.consumables} />}
+      {tab === "dashboard" && <DashboardSection dashboard={data.dashboard} consumables={data.consumables} history={data.history || []} onts={data.onts || []} />}
       {tab === "onts" && <OntsSection onts={data.onts} technicians={data.technicians} reload={reload} />}
       {tab === "insumos" && <InsumosSection consumables={data.consumables} technicians={data.technicians} stock={data.stock} reload={reload} />}
       {tab === "clientes" && <ClientesSection />}
