@@ -1,0 +1,36 @@
+{
+  "summary": "Testes da feature 'Notas de Qualidade' (sinal SmartOLT abertura vs fechamento) — Iteração 91. Backend: 14/15 testes passaram (1 skip por validação de FK em assigned_collaborator_id). Frontend: validação de UI no LousaMobile bloqueada pelo gate de 'Bater Ponto' do CollaboratorApp PWA, então fizemos verificação code-level confirmando que NotaTecnicaCard e todos os 5 data-testids estão integrados corretamente em TicketDetail + sub-tab quality_notes no LousaAdminPanel.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter91_lousa_quality_notes.py",
+    "/app/test_reports/pytest/iter91_quality_notes.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "lousa.py tem 4334 linhas — começa a ficar grande, recomenda-se split em sub-módulos (quality_notes/, tickets/, central_ont/) na próxima iteração para manutenção.",
+    "_capture_signal_snapshot captura exceções silenciosamente com logger.info — bom para não derrubar create/finalize, mas considere métrica/contador para monitorar quantos snapshots falham por sessão.",
+    "manual_capture_signal não tem rate-limit; tecnico poderia spammar SmartOLT. Considere debounce (1 captura a cada 10s por ticket).",
+    "Frontend NotaTecnicaCard depende de onRefresh callback para atualizar UI após captura — verifique se TicketDetail repassa um refetch real do ticket (não só re-render local)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter91_lousa_quality_notes.py"
+  ],
+  "success_rate": {
+    "backend": "100% (14 passed, 1 skipped por validação 404 ao criar ticket com collaborator_id inexistente)",
+    "frontend": "code-level OK; UI runtime não testada (gate de Bater Ponto no PWA)"
+  },
+  "test_credentials": "admin@empresa.com/123456, gestor@empresa.com/123456, colaborador@empresa.com/123456. Colaborator real id: col-30aafc3c (Diogo). 'col-demo-001' citado nas instruções NÃO existe na collection collaborators.",
+  "seed_data_creation": "Tickets de teste criados com prefixo 'TEST_QualityNotes_*' no LousaMobile board. Limpeza não foi feita automaticamente.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend feature 100% funcional: (1) GET/PUT config respeitam roles (admin-only PUT, gestor/admin GET); (2) toggle enabled=false bloqueia capture-signal com HTTP 400 + msg 'Captura de sinal está desligada'; (3) ticket sem ONU mapeada → 422 com msg clara; (4) colaborador→403 em ticket de outro técnico; (5) Pydantic Literal['open','close'] rejeita 'middle' com 422; (6) create_ticket NÃO quebra quando snapshot falha (signal_at_open ausente é OK). Frontend code-level: data-testids 'nota-tecnica-card-{id}', 'nota-tecnica-open', 'nota-tecnica-close', 'nota-tecnica-capture-close', 'nota-tecnica-capture-open' todos presentes em LousaMobile.js linhas 2100-2212. Sub-tab quality_notes em LousaAdminPanel.js linha 541. Para testar UI mobile: precisa bater ponto primeiro OU testar via página LousaMobile direta (não via PWA) se houver rota acessível.",
+  "rca_of_the_issue": "N/A — todas as features funcionam como esperado. Único ajuste: documentação no playbook menciona col-demo-001 mas o seed gerou col-30aafc3c. Atualizar /app/memory/test_credentials.md."
+}

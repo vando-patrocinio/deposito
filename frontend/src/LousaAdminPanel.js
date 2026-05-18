@@ -13,6 +13,7 @@ import SentinelaLousaCard from "./SentinelaLousaCard";
 import ReleaseStuckBubbleModal from "./lousa/ReleaseStuckBubbleModal";
 import CentralOntPanel from "./lousa/CentralOntPanel";
 import GestaoMetasPanel from "./lousa/GestaoMetasPanel";
+import LousaQualityNotesPanel from "./LousaQualityNotesPanel";
 
 const TYPE_LABELS = {
   reparo: "🔧 Reparo",
@@ -537,6 +538,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           { id: "board", label: "📋 Quadro" },
           { id: "central_ont", label: "🛰️ CENTRAL_ONT" },
           { id: "gestao_metas", label: "📊 GESTÃO E METAS" },
+          { id: "quality_notes", label: "📶 NOTAS DE QUALIDADE" },
         ].map((t) => (
           <button key={t.id} onClick={() => setActiveSubTab(t.id)}
                    data-testid={`lousa-subtab-${t.id}`}
@@ -553,7 +555,8 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       </div>
 
       {activeSubTab === "gestao_metas" ? <GestaoMetasPanel /> :
-        (activeSubTab === "central_ont" ? <CentralOntPanel /> : <></>)}
+        (activeSubTab === "central_ont" ? <CentralOntPanel /> :
+        (activeSubTab === "quality_notes" ? <LousaQualityNotesPanel /> : <></>))}
       {activeSubTab === "board" && <>
       {/* Grade horizontal — coluna por técnico */}
       <div style={{

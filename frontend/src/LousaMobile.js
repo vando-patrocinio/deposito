@@ -1284,6 +1284,9 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         <strong>📝 Relato:</strong> {ticket.client_snapshot.relato}
       </div>
 
+      {/* Aba Nota Técnica — comparativo de sinal antes/depois */}
+      <NotaTecnicaCard ticket={ticket} onRefresh={onRefresh} />
+
       <h3 style={{ marginTop: 18, marginBottom: 10, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>📋 Finalizar serviço</h3>
 
       {/* Indicador de passos */}
@@ -2002,6 +2005,237 @@ function SmartOltDetailBlock({ ls }) {
           onClose={() => setShowGpsPicker(false)}
           onConfirm={saveLocation}
         />
+      )}
+    </div>
+  );
+}
+
+
+/* ------------------------------------------------------------------ */
+/* NotaTecnicaCard                                                     */
+/* Card que mostra o "antes vs depois" do sinal SmartOLT pra cada      */
+/* chamado. O sinal de abertura é gravado automaticamente na criação   */
+/* do chamado (se a captura estiver ligada). O sinal de fechamento     */
+/* só aparece depois que o técnico finalizar. Antes disso, o técnico   */
+/* pode clicar em "Ler sinal agora" pra fazer um snapshot ao vivo do   */
+/* SmartOLT e ver onde está o sinal antes de fechar.                   */
+/* ------------------------------------------------------------------ */
+function NotaTecnicaCard({ ticket, onRefresh }) {
+  const [busyOpen, setBusyOpen] = React.useState(false);
+  const [busyClose, setBusyClose] = React.useState(false);
+  const [errMsg, setErrMsg] = React.useState("");
+  const [okMsg, setOkMsg] = React.useState("");
+
+  const open = ticket?.signal_at_open;
+  const close = ticket?.signal_at_close;
+  const openAt = ticket?.signal_at_open_at;
+  const closeAt = ticket?.signal_at_close_at;
+  const isFinalized = ticket?.status === "finalizada"
+                       || ticket?.status === "encerrada";
+
+  const fmtDbm = (v) => (v == null ? "—" : `${Number(v).toFixed(1)} dBm`);
+  const fmtTime = (iso) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString("pt-BR",
+        { dateStyle: "short", timeStyle: "short" });
+    } catch { return ""; }
+  };
+  const dbmTone = (v) => {
+    if (v == null) return { bg: "#f1f5f9", color: "#475569", label: "—" };
+    if (v <= -28) return { bg: "#fee2e2", color: "#b91c1c", label: "LOS" };
+    if (v <= -27) return { bg: "#fee2e2", color: "#b91c1c", label: "RUIM" };
+    if (v <= -25) return { bg: "#fef3c7", color: "#a16207", label: "MÉDIO" };
+    return { bg: "#dcfce7", color: "#15803d", label: "BOM" };
+  };
+
+  let delta = null;
+  let deltaTone = null;
+  if (open?.rx_dbm != null && close?.rx_dbm != null) {
+    delta = Number((close.rx_dbm - open.rx_dbm).toFixed(2));
+    // mais próximo de 0 = melhor (ex: -23 > -27). delta>0 = melhorou
+    if (close.rx_dbm <= -28) {
+      deltaTone = { bg: "#fee2e2", color: "#b91c1c",
+        verdict: "🔴 PÓS-REPARO EM LOS" };
+    } else if (delta < -3) {
+      deltaTone = { bg: "#fee2e2", color: "#b91c1c",
+        verdict: `🔴 PIOROU ${Math.abs(delta).toFixed(1)} dB` };
+    } else if (delta < 0) {
+      deltaTone = { bg: "#fef3c7", color: "#a16207",
+        verdict: `🟡 Caiu ${Math.abs(delta).toFixed(1)} dB (tolerável)` };
+    } else {
+      deltaTone = { bg: "#dcfce7", color: "#15803d",
+        verdict: `🟢 ${delta >= 0 ? "+" : ""}${delta.toFixed(1)} dB` };
+    }
+  }
+
+  async function capture(moment) {
+    setErrMsg(""); setOkMsg("");
+    const setBusy = moment === "open" ? setBusyOpen : setBusyClose;
+    setBusy(true);
+    try {
+      const r = await api.lousaCaptureSignal(ticket.id, moment);
+      setOkMsg(
+        `Sinal ${moment === "open" ? "de abertura" : "de fechamento"} `
+        + `atualizado: ${r.snapshot.rx_dbm.toFixed(1)} dBm`,
+      );
+      if (onRefresh) await onRefresh();
+      setTimeout(() => setOkMsg(""), 3000);
+    } catch (e) {
+      const d = e?.response?.data?.detail;
+      const msg = typeof d === "string" ? d
+        : (e?.response?.status === 400
+            ? "Captura de sinal está desligada no painel admin."
+            : e.message);
+      setErrMsg(msg);
+      setTimeout(() => setErrMsg(""), 4500);
+    } finally { setBusy(false); }
+  }
+
+  const openTone = dbmTone(open?.rx_dbm);
+  const closeTone = dbmTone(close?.rx_dbm);
+
+  return (
+    <div
+      data-testid={`nota-tecnica-card-${ticket.id}`}
+      style={{
+        marginTop: 14, padding: 14, borderRadius: 14,
+        background: "linear-gradient(135deg,#ffffff 0%,#f8fafc 100%)",
+        border: "1px solid #e2e8f0",
+        boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+      }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                       marginBottom: 10, gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a",
+                          display: "inline-flex", alignItems: "center", gap: 6 }}>
+            📶 Nota Técnica — Sinal antes × depois
+          </div>
+          <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 2 }}>
+            Comparativo automático do SmartOLT pra avaliar a qualidade do reparo
+          </div>
+        </div>
+      </div>
+
+      {/* Banner sem mapeamento SmartOLT */}
+      {!open && !close && (
+        <div data-testid="nota-tecnica-empty" style={{
+          padding: 10, background: "#f1f5f9", borderRadius: 10,
+          fontSize: 11.5, color: "#475569", lineHeight: 1.5,
+        }}>
+          Sem mapeamento SmartOLT para este cliente, ou a captura automática está
+          desligada no painel admin.
+          <br/>Você ainda pode tentar uma leitura manual abaixo.
+        </div>
+      )}
+
+      {(open || close) && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {/* ANTES */}
+          <div data-testid="nota-tecnica-open" style={{
+            padding: 10, borderRadius: 10, border: "1px dashed #cbd5e1",
+            background: openTone.bg + "55",
+          }}>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: "#64748b",
+                            textTransform: "uppercase", letterSpacing: 0.5 }}>
+              📥 Na abertura
+            </div>
+            <div data-testid="nota-tecnica-open-dbm"
+                  style={{ fontSize: 22, fontWeight: 800,
+                            color: openTone.color, fontFamily: "monospace",
+                            marginTop: 4 }}>
+              {fmtDbm(open?.rx_dbm)}
+            </div>
+            <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
+              {openAt ? fmtTime(openAt) : "Sem snapshot"}
+              {open?.status ? ` · ${open.status}` : ""}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 10, fontWeight: 700,
+                            color: openTone.color }}>{openTone.label}</div>
+          </div>
+
+          {/* DEPOIS */}
+          <div data-testid="nota-tecnica-close" style={{
+            padding: 10, borderRadius: 10, border: "1px solid #cbd5e1",
+            background: closeTone.bg + "55",
+          }}>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: "#64748b",
+                            textTransform: "uppercase", letterSpacing: 0.5 }}>
+              📤 {isFinalized ? "No fechamento" : "Agora (live)"}
+            </div>
+            <div data-testid="nota-tecnica-close-dbm"
+                  style={{ fontSize: 22, fontWeight: 800,
+                            color: closeTone.color, fontFamily: "monospace",
+                            marginTop: 4 }}>
+              {fmtDbm(close?.rx_dbm)}
+            </div>
+            <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
+              {closeAt ? fmtTime(closeAt) : "Sem snapshot"}
+              {close?.status ? ` · ${close.status}` : ""}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 10, fontWeight: 700,
+                            color: closeTone.color }}>{closeTone.label}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Verdito (delta) */}
+      {deltaTone && (
+        <div data-testid="nota-tecnica-verdict"
+              style={{
+                marginTop: 10, padding: "8px 10px", borderRadius: 8,
+                background: deltaTone.bg, color: deltaTone.color,
+                fontSize: 12, fontWeight: 800, textAlign: "center",
+              }}>
+          {deltaTone.verdict}
+        </div>
+      )}
+
+      {/* Botões de captura manual */}
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        {!isFinalized && (
+          <button
+            data-testid="nota-tecnica-capture-close"
+            onClick={() => capture("close")}
+            disabled={busyClose}
+            style={{
+              flex: 1, padding: "8px 10px", borderRadius: 8, fontSize: 12,
+              fontWeight: 700, border: "1px solid #0ea5e9",
+              background: busyClose ? "#bae6fd" : "#0ea5e9",
+              color: "#fff", cursor: busyClose ? "wait" : "pointer",
+            }}>
+            📡 {busyClose ? "Lendo SmartOLT…" : "Ler sinal agora"}
+          </button>
+        )}
+        {!open && (
+          <button
+            data-testid="nota-tecnica-capture-open"
+            onClick={() => capture("open")}
+            disabled={busyOpen}
+            style={{
+              flex: 1, padding: "8px 10px", borderRadius: 8, fontSize: 12,
+              fontWeight: 700, border: "1px dashed #94a3b8",
+              background: "#fff", color: "#334155",
+              cursor: busyOpen ? "wait" : "pointer",
+            }}>
+            {busyOpen ? "Lendo…" : "Recapturar abertura"}
+          </button>
+        )}
+      </div>
+
+      {errMsg && (
+        <div data-testid="nota-tecnica-err"
+              style={{ marginTop: 8, padding: 8, borderRadius: 8,
+                        fontSize: 11, background: "#fee2e2", color: "#991b1b" }}>
+          ⚠ {errMsg}
+        </div>
+      )}
+      {okMsg && (
+        <div data-testid="nota-tecnica-ok"
+              style={{ marginTop: 8, padding: 8, borderRadius: 8,
+                        fontSize: 11, background: "#dcfce7", color: "#15803d" }}>
+          ✓ {okMsg}
+        </div>
       )}
     </div>
   );

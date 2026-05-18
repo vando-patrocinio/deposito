@@ -294,6 +294,9 @@ export const api = {
     client.put(`/lousa/quality-notes/config`, payload).then((r) => r.data),
   lousaQualityList: (days = 30) =>
     client.get(`/lousa/quality-notes?days=${days}`).then((r) => r.data),
+  lousaCaptureSignal: (ticketId, moment = "close") =>
+    client.post(`/lousa/tickets/${ticketId}/capture-signal`, { moment })
+      .then((r) => r.data),
   motorIaAgentsList: () => client.get(`/motor-ia/agents`).then((r) => r.data),
   motorIaAgentToggle: (agentId, enabled) =>
     client.put(`/motor-ia/agents/${agentId}`, { enabled }).then((r) => r.data),

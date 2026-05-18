@@ -1020,31 +1020,12 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
         "created_at": now_iso(),
     }
     await db.tickets.insert_one(doc)
-    # Captura snapshot do sinal NO MOMENTO DA ABERTURA (async, não bloqueia)
+    # Captura snapshot do sinal NO MOMENTO DA ABERTURA (best-effort, async)
     try:
-        from routes.smartolt import resolve_signal_for_ticket, get_onu_signal_live
-        onu = await resolve_signal_for_ticket(doc)
-        if onu and onu.get("sn"):
-            live = await get_onu_signal_live(onu.get("sn"),
-                                                doc.get("company_id"))
-            if live and live.get("rx_dbm") is not None:
-                await db.tickets.update_one(
-                    {"id": doc["id"]},
-                    {"$set": {
-                        "signal_at_open": {
-                            "rx_dbm": float(live["rx_dbm"]),
-                            "status": live.get("status"),
-                            "sn": onu.get("sn"),
-                        },
-                        "signal_at_open_at": now_iso(),
-                    }},
-                )
-                doc["signal_at_open"] = {
-                    "rx_dbm": float(live["rx_dbm"]),
-                    "status": live.get("status"),
-                    "sn": onu.get("sn"),
-                }
-                doc["signal_at_open_at"] = now_iso()
+        snap = await _capture_signal_snapshot(doc["id"], doc["company_id"], "open")
+        if snap:
+            doc["signal_at_open"] = snap
+            doc["signal_at_open_at"] = now_iso()
     except Exception as e:
         logger.info("[lousa.quality] snapshot abertura falhou: %s", e)
     # Modo Boss: se urgente, envia notificação automática ao cliente via Baileys
@@ -1062,6 +1043,60 @@ async def create_ticket(payload: TicketIn, user: dict = Depends(require_role("ge
     )
     doc.pop("_id", None)
     return doc
+
+
+async def _quality_capture_enabled(company_id: str) -> bool:
+    """Retorna True se a captura automática de sinal está ligada para a empresa.
+    Default = True (compatibilidade retroativa)."""
+    try:
+        doc = await db.lousa_quality_config.find_one(
+            {"company_id": company_id}, {"_id": 0, "enabled": 1},
+        )
+        if doc is None:
+            return True
+        return doc.get("enabled") is not False
+    except Exception:
+        return True
+
+
+async def _capture_signal_snapshot(ticket_id: str, company_id: str,
+                                       moment: str) -> Optional[dict]:
+    """Captura snapshot do sinal SmartOLT no chamado e grava em
+    `signal_at_open` ou `signal_at_close`. Honra o toggle global.
+
+    Retorna o snapshot gravado ou None se não foi possível.
+    moment: 'open' | 'close'
+    """
+    if moment not in ("open", "close"):
+        return None
+    try:
+        if not await _quality_capture_enabled(company_id):
+            return None
+        t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+        if not t:
+            return None
+        from routes.smartolt import resolve_signal_for_ticket, get_onu_signal_live
+        onu = await resolve_signal_for_ticket(t)
+        if not onu or not onu.get("sn"):
+            return None
+        live = await get_onu_signal_live(onu.get("sn"), company_id)
+        if not live or live.get("rx_dbm") is None:
+            return None
+        snap = {
+            "rx_dbm": float(live["rx_dbm"]),
+            "status": live.get("status"),
+            "sn": onu.get("sn"),
+        }
+        key = f"signal_at_{moment}"
+        key_at = f"signal_at_{moment}_at"
+        await db.tickets.update_one(
+            {"id": ticket_id},
+            {"$set": {key: snap, key_at: now_iso()}},
+        )
+        return snap
+    except Exception as e:
+        logger.info("[lousa.quality] snapshot %s falhou: %s", moment, e)
+        return None
 
 
 @router.get("/lousa/quality-notes/config")
@@ -1510,27 +1545,8 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
             },
         }},
     )
-    # Quality notes — snapshot do sinal NO FECHAMENTO (SmartOLT live)
-    try:
-        from routes.smartolt import resolve_signal_for_ticket, get_onu_signal_live
-        ticket_doc = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
-        onu = await resolve_signal_for_ticket(ticket_doc)
-        if onu and onu.get("sn"):
-            live = await get_onu_signal_live(onu.get("sn"), company_id)
-            if live and live.get("rx_dbm") is not None:
-                await db.tickets.update_one(
-                    {"id": ticket_id},
-                    {"$set": {
-                        "signal_at_close": {
-                            "rx_dbm": float(live["rx_dbm"]),
-                            "status": live.get("status"),
-                            "sn": onu.get("sn"),
-                        },
-                        "signal_at_close_at": now_iso(),
-                    }},
-                )
-    except Exception as e:
-        logger.info("[lousa.quality] snapshot fechamento falhou: %s", e)
+    # Quality notes — snapshot do sinal NO FECHAMENTO (SmartOLT live, honra toggle)
+    await _capture_signal_snapshot(ticket_id, company_id, "close")
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1})
     coll_name = (coll or {}).get("name", "Técnico")
     await _log_ticket_action(
@@ -1729,7 +1745,52 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
             "completion_data": cd.model_dump(),
         }},
     )
+    # Quality notes — snapshot do sinal NO FECHAMENTO (SmartOLT live, honra toggle)
+    company_id = t.get("company_id") or DEMO_COMPANY_ID
+    await _capture_signal_snapshot(ticket_id, company_id, "close")
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+
+
+class CaptureSignalIn(BaseModel):
+    moment: Literal["open", "close"] = "close"
+
+
+@router.post("/lousa/tickets/{ticket_id}/capture-signal")
+async def manual_capture_signal(ticket_id: str, payload: CaptureSignalIn,
+                                     user: dict = Depends(get_current_user)):
+    """Recaptura o sinal SmartOLT sob demanda (técnico ou gestor).
+
+    Útil quando o técnico quer ver o sinal atual antes de fechar o chamado, ou
+    quando a captura automática falhou no momento da abertura/fechamento.
+    """
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    # Permissões: técnico só captura seu próprio chamado; gestor/admin sempre
+    role = user.get("role")
+    if role == "colaborador":
+        cid = await _user_collaborator_id(user)
+        if t.get("assigned_collaborator_id") != cid:
+            raise HTTPException(403, "Chamado não é seu")
+    company_id = t.get("company_id") or DEMO_COMPANY_ID
+    if not await _quality_capture_enabled(company_id):
+        raise HTTPException(
+            400,
+            "Captura de sinal está desligada. Peça ao administrador para ligar.",
+        )
+    snap = await _capture_signal_snapshot(ticket_id, company_id, payload.moment)
+    if not snap:
+        raise HTTPException(
+            422,
+            "Não foi possível ler o sinal no SmartOLT agora. "
+            "Verifique se a ONU está cadastrada e online.",
+        )
+    return {
+        "ok": True,
+        "moment": payload.moment,
+        "snapshot": snap,
+        "captured_at": now_iso(),
+    }
 
 
 @router.post("/lousa/tickets/{ticket_id}/notify-backoffice")
