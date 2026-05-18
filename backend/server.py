@@ -104,6 +104,7 @@ from routes import (
     tv_dashboards as routes_tv_dashboards,
     utils as routes_utils,
     financeiro_reajuste as routes_financeiro_reajuste,
+    public_access as routes_public_access,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -524,6 +525,7 @@ app.include_router(routes_onboarding.router)
 app.include_router(routes_tv_dashboards.router)
 app.include_router(routes_utils.router)
 app.include_router(routes_financeiro_reajuste.router)
+app.include_router(routes_public_access.router)
 
 
 # ============================================================

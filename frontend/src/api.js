@@ -7,12 +7,15 @@ const client = axios.create({ baseURL: API, timeout: 60000 });
 
 // Interceptor: injeta o token JWT salvo em localStorage (escrito pelo AuthContext)
 // e o header X-Active-Company (drill-down do super admin)
+// Também injeta X-Public-Token quando há link público ativo (?ptoken=xxx)
 client.interceptors.request.use((cfg) => {
   if (typeof window !== "undefined") {
     const t = window.localStorage.getItem("ponto_token");
     if (t) cfg.headers.Authorization = `Bearer ${t}`;
     const active = window.localStorage.getItem("ponto_active_company");
     if (active) cfg.headers["X-Active-Company"] = active;
+    const ptoken = window.localStorage.getItem("smartprov_public_token");
+    if (ptoken && !t) cfg.headers["X-Public-Token"] = ptoken;
   }
   return cfg;
 });
@@ -268,6 +271,13 @@ export const api = {
   motorIaBudgetSave: (payload) => client.put(`/motor-ia/budget`, payload).then((r) => r.data),
   motorIaBudgetStatus: () => client.get(`/motor-ia/budget/status`).then((r) => r.data),
   motorIaBudgetStatusToday: () => client.get(`/motor-ia/budget/status/today`).then((r) => r.data),
+
+  // ========= Public Access Tokens (links públicos sem login) =========
+  publicAccessList: () => client.get(`/public-access/tokens`).then((r) => r.data),
+  publicAccessCreate: (payload) =>
+    client.post(`/public-access/tokens`, payload).then((r) => r.data),
+  publicAccessRevoke: (tokenId) =>
+    client.delete(`/public-access/tokens/${tokenId}`).then((r) => r.data),
   motorIaAgentsList: () => client.get(`/motor-ia/agents`).then((r) => r.data),
   motorIaAgentToggle: (agentId, enabled) =>
     client.put(`/motor-ia/agents/${agentId}`, { enabled }).then((r) => r.data),

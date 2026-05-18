@@ -35,6 +35,28 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => (typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) : null));
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Public token mode: link público (?ptoken=xxx) que dá acesso admin sem login.
+  // Persistido em localStorage; o interceptor de api.js injeta o header X-Public-Token.
+  const [publicToken, setPublicToken] = useState(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const url = new URLSearchParams(window.location.search);
+      const fromUrl = url.get("ptoken");
+      if (fromUrl) {
+        window.localStorage.setItem("smartprov_public_token", fromUrl);
+        // Remove ?ptoken da URL pra não vazar em screenshots/compartilhamento
+        url.delete("ptoken");
+        const qs = url.toString();
+        const newUrl = window.location.pathname + (qs ? "?" + qs : "")
+          + window.location.hash;
+        window.history.replaceState({}, "", newUrl);
+        return fromUrl;
+      }
+      return window.localStorage.getItem("smartprov_public_token");
+    } catch {
+      return null;
+    }
+  });
 
   // Persist token in localStorage (read by axios interceptor in api.js)
   useEffect(() => {
@@ -43,11 +65,11 @@ export function AuthProvider({ children }) {
     else window.localStorage.removeItem(TOKEN_KEY);
   }, [token]);
 
-  // Load /me whenever token changes
+  // Load /me whenever token (JWT) OR publicToken changes
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!token) { setUser(null); setLoading(false); return; }
+      if (!token && !publicToken) { setUser(null); setLoading(false); return; }
       try {
         const me = await api.me();
         if (!cancelled) setUser(me);
@@ -59,6 +81,13 @@ export function AuthProvider({ children }) {
           if (status === 401 || status === 403) {
             setToken(null);
             setUser(null);
+            // Public token inválido: também remove
+            if (publicToken) {
+              try {
+                window.localStorage.removeItem("smartprov_public_token");
+              } catch { /* ignore */ }
+              setPublicToken(null);
+            }
             purgeUserState();
           } else {
             // Erro de rede: manter token, mostrar usuário como "carregando"
@@ -73,7 +102,7 @@ export function AuthProvider({ children }) {
     setLoading(true);
     load();
     return () => { cancelled = true; };
-  }, [token]);
+  }, [token, publicToken]);
 
   // Escuta evento global de sessão expirada (disparado pelo interceptor 401
   // em api.js). Quando dispara: limpa o token (que vai cair em /login) sem
@@ -162,6 +191,9 @@ export function AuthProvider({ children }) {
       user, token, loading, login, loginWithGoogle, logout, impersonate, endImpersonation,
       isAuthed: !!user,
       isImpersonating: !!user?.impersonator,
+      // Public token mode (link público sem login)
+      isPublicAccess: !!publicToken && !token,
+      publicToken,
     }}>
       {children}
     </AuthCtx.Provider>

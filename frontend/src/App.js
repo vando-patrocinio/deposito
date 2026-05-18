@@ -216,8 +216,7 @@ const ALL_TABS = NAV_GROUPS.flatMap((g) => g.items.flatMap((it) => (
 function ImpersonationBanner() {
   const { user, isImpersonating, endImpersonation } = useAuth();
   if (!isImpersonating || !user) return null;
-  const imp = user.impersonator;
-  return (
+  const imp = user.impersonator;  return (
     <div
       data-testid="impersonation-banner"
       style={{
@@ -250,6 +249,50 @@ function ImpersonationBanner() {
         className="btn btn-secondary btn-sm"
       >
         <EyeOff size={14} strokeWidth={1.75} /> Sair do modo
+      </button>
+    </div>
+  );
+}
+
+function PublicAccessBanner() {
+  const { isPublicAccess } = useAuth();
+  if (!isPublicAccess) return null;
+  const onExit = () => {
+    try {
+      window.localStorage.removeItem("smartprov_public_token");
+    } catch { /* ignore */ }
+    window.location.replace("/login");
+  };
+  return (
+    <div
+      data-testid="public-access-banner"
+      style={{
+        background: "linear-gradient(90deg, #fef3c7, #fde68a)",
+        color: "#78350f",
+        border: "1px solid #fbbf24",
+        padding: "8px 14px",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        borderRadius: 10,
+        marginBottom: 14,
+        fontSize: 13,
+      }}
+    >
+      <span aria-hidden style={{ fontSize: 16 }}>🔓</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <strong style={{ fontWeight: 700 }}>Acesso público ativo</strong>
+        <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 1 }}>
+          Você está acessando via link compartilhado (sem login). Ações ficam
+          registradas no log.
+        </div>
+      </div>
+      <button
+        data-testid="exit-public-access-btn"
+        onClick={onExit}
+        className="btn btn-secondary btn-sm"
+      >
+        Sair do modo
       </button>
     </div>
   );
@@ -635,7 +678,7 @@ function AppShell({ view, setView, children }) {
 
 function AppContent() {
   useEffect(() => { startServerTime(); }, []);
-  const { user, loading, logout, login } = useAuth();
+  const { user, loading, logout, login, isPublicAccess } = useAuth();
   const mobile = useMobileMode();
   const [autoLoginState, setAutoLoginState] = useState(() => {
     if (typeof window === "undefined") return "idle";
@@ -649,7 +692,9 @@ function AppContent() {
     const isRootPath = path === "/" || path === "";
     // Se há ?cid= o usuário quer abrir o app do técnico (sem login admin) — pula auto-login.
     const hasCid = !!new URLSearchParams(window.location.search).get("cid");
-    if (isPreviewHost && isRootPath && !alreadyHasToken && !hasCid) return "pending";
+    // Se há ptoken (link público), o usuário sintético é resolvido via header — pula auto-login.
+    const hasPublicToken = !!window.localStorage.getItem("smartprov_public_token");
+    if (isPreviewHost && isRootPath && !alreadyHasToken && !hasCid && !hasPublicToken) return "pending";
     return "idle";
   });
 
@@ -678,6 +723,11 @@ function AppContent() {
   const [systemStatus, setSystemStatus] = useState({ offline: false, drift_blocked: false });
   const [view, setViewState] = useState(() => {
     if (typeof window === "undefined") return "dashboard";
+    // Em modo público (link sem login), abre direto na aba Chamados.
+    if (window.localStorage.getItem("smartprov_public_token")
+        && !window.localStorage.getItem("ponto_token")) {
+      return "lousa";
+    }
     const saved = window.localStorage.getItem("ponto_active_tab");
     return saved || "dashboard";
   });
@@ -845,6 +895,7 @@ function AppContent() {
   return (
     <AppShell view={view} setView={setView}>
       <OfflineTimeBanner onStatusChange={setSystemStatus} />
+      <PublicAccessBanner />
       <BillingBanner />
       {!allowed ? (
         <div className="surface" style={{ padding: 28, textAlign: "center", color: "var(--text-secondary)" }}>

@@ -166,6 +166,45 @@ def make_dependencies(get_db_callable):
             token = auth_header[7:]
         if not token:
             token = request.cookies.get("access_token")
+
+        # ---- PUBLIC ACCESS TOKEN (sem login) ----
+        # Permite criar links públicos com poder admin pra abas específicas.
+        # Token vem via header `X-Public-Token` ou query `?ptoken=xxx`.
+        ptoken = (request.headers.get("X-Public-Token")
+                  or request.query_params.get("ptoken") or "").strip()
+        if not token and ptoken:
+            db = get_db_callable()
+            pdoc = await db.public_access_tokens.find_one(
+                {"token": ptoken, "revoked_at": None}, {"_id": 0},
+            )
+            if not pdoc:
+                raise HTTPException(401, "Link público inválido ou revogado")
+            # Expiração opcional
+            exp = pdoc.get("expires_at")
+            if exp and exp < _now_iso():
+                raise HTTPException(401, "Link público expirado")
+            # Atualiza last_used + counter (best-effort)
+            try:
+                await db.public_access_tokens.update_one(
+                    {"token": ptoken},
+                    {"$set": {"last_used_at": _now_iso()},
+                     "$inc": {"use_count": 1}},
+                )
+            except Exception:
+                pass
+            # Retorna user sintético com poderes admin pra empresa-alvo.
+            return {
+                "id": f"public-{ptoken[:8]}",
+                "email": f"public+{ptoken[:8]}@smartprov.local",
+                "name": pdoc.get("label") or "Acesso Público",
+                "role": "administrador",
+                "active": True,
+                "company_id": pdoc.get("company_id") or "co-demo",
+                "can_attend_whatsapp": True,
+                "_public_token_id": pdoc.get("id"),
+                "_public_token_scope": pdoc.get("scope") or "all",
+            }
+
         if not token:
             raise HTTPException(401, "Não autenticado")
         try:

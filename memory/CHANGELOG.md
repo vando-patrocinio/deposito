@@ -1,6 +1,60 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Links Públicos para Aba Chamados (acesso sem login) ★★★
+
+### Contexto
+Usuário pediu um link compartilhável da aba **Chamados** que funcionasse sem login/senha, com poder admin completo (criar/atribuir/fechar chamados). Útil pra monitor TV em sala técnica ou compartilhar acesso temporário.
+
+### Implementado
+
+**1. Backend — auth + novo router:**
+- `auth.py:get_current_user` agora aceita token público via header `X-Public-Token` ou query `?ptoken=xxx`. Resolve para usuário sintético com `role=administrador` no `company_id` da empresa que criou o token. Valida expiração + revogação.
+- `routes/public_access.py` (NOVO) — CRUD admin:
+  - `POST /api/public-access/tokens` cria token (24 bytes URL-safe, 192 bits)
+  - `GET /api/public-access/tokens` lista da empresa (ordenado: ativos primeiro)
+  - `DELETE /api/public-access/tokens/{id}` revoga (sem apagar)
+- Auditoria: `last_used_at` + `use_count` atualizados a cada uso.
+- Collection: `public_access_tokens` com `{id, token, company_id, label, scope, created_by, created_at, expires_at, revoked_at, last_used_at, use_count}`.
+
+**2. Frontend — modo público:**
+- `AuthContext.js` detecta `?ptoken=xxx` no boot, salva em `localStorage.smartprov_public_token`, limpa da URL (pra não vazar em screenshot/share). Chama `/auth/me` que retorna usuário sintético admin.
+- `api.js` interceptor injeta header `X-Public-Token` quando não há JWT.
+- `App.js`:
+  - Em modo público abre direto na aba **Chamados** (skip do dashboard padrão).
+  - Pula auto-login do preview quando há `ptoken`.
+  - Novo banner amarelo "🔓 Acesso público ativo" com botão "Sair do modo".
+- `PublicAccessPanel.js` (NOVO) — listado em **Configurações**:
+  - Botão "Novo link" com inputs (label, escopo, expira em N dias)
+  - Lista de links com badge Ativo/Expirado/Revogado, contadores de uso, botões Copiar e Revogar
+  - Aviso visual sobre risco do link vazar
+- `data-testid` em todos os elementos críticos (`public-access-panel`, `public-access-create-btn`, etc).
+
+### Como usar
+1. Em **Configurações → Links Públicos**, clique "Novo link"
+2. Escolha rótulo (ex: "Quadro Chamados TV"), escopo (Chamados ou Acesso total) e expiração opcional
+3. Copie o link gerado (`https://app/?ptoken=xxx`) e abra em outro navegador/aba
+4. O link já cai direto na aba Chamados, banner amarelo confirma modo público
+5. Para revogar: clique no ícone 🗑️ — quem estiver usando perde acesso na hora
+
+### Validação técnica (curl)
+- ✅ Criar token → retorna id+token+metadata
+- ✅ Listar → 1 token ativo
+- ✅ `/auth/me` com X-Public-Token → retorna `{role: administrador, company_id, _public_token_scope}`
+- ✅ Endpoint da Lousa (`/api/lousa/all`) acessível via header → retorna tickets
+- ✅ Revogar → `{revoked: true}`
+- ✅ Token revogado → 401
+- ✅ Lint Python + JS: All checks passed
+
+### Segurança
+- Token de 192 bits (random_urlsafe(24)) — impossível forçar.
+- Multi-tenant: token criado em `co-demo` não acessa dados de outra empresa.
+- Auditoria completa: `created_by`, `last_used_at`, `use_count`.
+- Expiração opcional + revogação imediata.
+- ⚠️ Banner avisa que o link vazado = acesso admin. UI exibe alerta na criação.
+
+
+
 ## Mai 18, 2026 — Otimização de custos da Central IA (94% economia) ★★★
 
 ### Contexto
