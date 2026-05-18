@@ -58,6 +58,16 @@ class SendIn(PreviewIn):
         description="Se True, não envia de verdade — só simula")
 
 
+class SendSingleIn(BaseModel):
+    """Envio livre para um número específico (não usa filtros de boleto)."""
+    phone: str = Field(..., min_length=8, max_length=20,
+                          description="Número WhatsApp (com ou sem DDI 55)")
+    text: str = Field(..., min_length=1, max_length=4000,
+                          description="Mensagem livre a enviar")
+    include_boletos: bool = Field(default=False,
+        description="Se True, ANEXA boletos em aberto do cliente cadastrado")
+
+
 def _normalize_phone(p: str) -> Optional[str]:
     if not p:
         return None
@@ -299,6 +309,84 @@ async def _process_dispatch(cid: str, run_id: str,
         "[disparo_boleto] run=%s finalizado: sent=%d failed=%d",
         run_id, sent, failed,
     )
+
+
+@router.post("/send-single")
+async def send_single_message(
+    body: SendSingleIn,
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    """Envia uma mensagem livre para um único número WhatsApp.
+
+    Quando `include_boletos=True`, busca o cliente no cache Atlaz pelo
+    telefone e ANEXA o resumo dos boletos em aberto (mesmo formato do
+    disparo em massa).
+    """
+    from routes.whatsapp_baileys import _sidecar_post
+
+    cid = _user_company(user)
+    phone = _normalize_phone(body.phone)
+    if not phone:
+        raise HTTPException(400, "Telefone inválido. Use DDD+número (10-11 dígitos) "
+                              "ou formato internacional (55+11 dígitos).")
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(400, "Mensagem vazia.")
+
+    # Opcional: anexa boletos em aberto do cliente
+    if body.include_boletos:
+        try:
+            acc = await db.atlaz_clients_cache.find_one(
+                {"company_id": cid, "phone": {"$regex": phone[-9:]}},
+                {"_id": 0},
+            )
+            if acc:
+                ext = str(acc.get("external_id") or "")
+                invs = await db.subscriber_invoices.find({
+                    "company_id": cid,
+                    "subscriber_external_id": ext,
+                    "status": {"$in": ["open", "pending", "overdue",
+                                          "aberto", "pendente", "atrasado"]},
+                    "paid_date": None,
+                    "boleto_url": {"$ne": None, "$exists": True},
+                }, {"_id": 0}).to_list(20)
+                if invs:
+                    boletos_msg = format_invoices_message(
+                        {"name": acc.get("name") or "Cliente",
+                          "external_code": ext},
+                        invs,
+                    )
+                    text = f"{text}\n\n{boletos_msg}"
+        except Exception as e:
+            logger.warning("[send-single] anexar boletos falhou: %s", e)
+
+    try:
+        resp = await _sidecar_post("/send", {"phone": phone, "text": text})
+    except Exception as e:
+        raise HTTPException(503, f"Erro ao enviar via WhatsApp: {e}")
+
+    if not resp.get("ok"):
+        raise HTTPException(502, f"Sidecar recusou envio: "
+                              f"{resp.get('error', 'unknown')}")
+
+    msg_id = resp.get("message_id")
+    # Persiste no histórico de conversa (igual ao bulk)
+    await db.aihub_wa_messages.insert_one({
+        "company_id": cid, "phone": phone,
+        "jid": f"{phone}@s.whatsapp.net",
+        "direction": "outbound", "text": text,
+        "agent": "disparo_single",
+        "delivery_status": "sent",
+        "external_id": msg_id,
+        "sent_by": user.get("email"),
+        "created_at": now_iso(),
+    })
+    return {
+        "ok": True,
+        "phone": phone,
+        "message_id": msg_id,
+        "chars_sent": len(text),
+    }
 
 
 @router.get("/runs/{run_id}")

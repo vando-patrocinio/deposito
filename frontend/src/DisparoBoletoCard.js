@@ -51,6 +51,13 @@ export default function DisparoBoletoCard() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [dryRun, setDryRun] = useState(false);
 
+  // Envio avulso (mensagem para um número específico)
+  const [singlePhone, setSinglePhone] = useState("");
+  const [singleText, setSingleText] = useState("");
+  const [singleIncludeBoletos, setSingleIncludeBoletos] = useState(false);
+  const [singleSending, setSingleSending] = useState(false);
+  const [singleResult, setSingleResult] = useState(null);
+
   const buildFilters = useCallback(() => ({
     days_until_due_min: Number(daysMin),
     days_until_due_max: Number(daysMax),
@@ -120,6 +127,30 @@ export default function DisparoBoletoCard() {
       alert("Falha ao disparar: " + (e?.response?.data?.detail || e.message));
     } finally {
       setSending(false);
+    }
+  };
+
+  const doSendSingle = async () => {
+    setSingleSending(true);
+    setSingleResult(null);
+    try {
+      const r = await api._client.post(
+        "/disparo-ia/boletos/send-single",
+        {
+          phone: singlePhone.trim(),
+          text: singleText.trim(),
+          include_boletos: singleIncludeBoletos,
+        },
+      ).then((x) => x.data);
+      setSingleResult({ ok: true, ...r });
+      setSingleText("");
+    } catch (e) {
+      setSingleResult({
+        ok: false,
+        error: e?.response?.data?.detail || e.message,
+      });
+    } finally {
+      setSingleSending(false);
     }
   };
 
@@ -303,6 +334,88 @@ export default function DisparoBoletoCard() {
           </div>
         </div>
       )}
+
+      {/* Envio para um número específico (avulso) */}
+      <div data-testid="dispboleto-single-section"
+            style={{ marginTop: 18, padding: 14, borderRadius: 10,
+                      background: "rgba(16,185,129,0.06)",
+                      border: "1px dashed #10b981" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8,
+                        marginBottom: 10 }}>
+          <Send size={15} color="#059669" />
+          <strong style={{ fontSize: 13, color: "#065f46" }}>
+            Enviar mensagem para um número específico
+          </strong>
+          <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600,
+                          color: "#65a30d", textTransform: "uppercase" }}>
+            avulso
+          </span>
+        </div>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "200px 1fr",
+          gap: 10, marginBottom: 10,
+        }}>
+          <Field label="Número (com DDD)">
+            <input type="tel"
+                     value={singlePhone}
+                     onChange={(e) => setSinglePhone(e.target.value)}
+                     data-testid="dispboleto-single-phone"
+                     placeholder="11988887777"
+                     style={inputStyle} />
+          </Field>
+          <Field label="Mensagem">
+            <textarea value={singleText}
+                        onChange={(e) => setSingleText(e.target.value)}
+                        data-testid="dispboleto-single-text"
+                        placeholder="Oi! Tudo bem? ..."
+                        rows={3}
+                        style={{ ...inputStyle, fontFamily: "inherit",
+                                  resize: "vertical" }} />
+          </Field>
+        </div>
+        <label style={{
+          display: "flex", alignItems: "center", gap: 6,
+          fontSize: 11.5, color: "#475569", marginBottom: 10,
+          cursor: "pointer",
+        }}>
+          <input type="checkbox"
+                   checked={singleIncludeBoletos}
+                   onChange={(e) => setSingleIncludeBoletos(e.target.checked)}
+                   data-testid="dispboleto-single-include-boletos" />
+          Anexar boletos em aberto do cliente (se cadastrado)
+        </label>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={doSendSingle}
+                   disabled={singleSending || !singlePhone.trim() || !singleText.trim()}
+                   data-testid="dispboleto-single-send-btn"
+                   style={{
+                     ...btnPrimary,
+                     background: "linear-gradient(135deg,#10b981,#059669)",
+                     opacity: (singleSending || !singlePhone.trim() || !singleText.trim()) ? 0.6 : 1,
+                   }}>
+            <Send size={14} />
+            {singleSending ? "Enviando..." : "Enviar agora"}
+          </button>
+          {singleResult && (
+            singleResult.ok ? (
+              <span data-testid="dispboleto-single-success"
+                     style={{ fontSize: 12, color: "#15803d",
+                              display: "inline-flex", alignItems: "center",
+                              gap: 4 }}>
+                <CheckCircle2 size={14} /> Enviado para {singleResult.phone}
+              </span>
+            ) : (
+              <span data-testid="dispboleto-single-error"
+                     style={{ fontSize: 12, color: "#be123c",
+                              display: "inline-flex", alignItems: "center",
+                              gap: 4 }}>
+                <AlertCircle size={14} /> {singleResult.error}
+              </span>
+            )
+          )}
+        </div>
+      </div>
 
       {/* Histórico */}
       {history.length > 0 && (
