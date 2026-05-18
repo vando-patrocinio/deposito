@@ -1,6 +1,26 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — RCA: Isabella muda em imagens/PDFs = Budget esgotado + Rebrand (iter99)
+
+### 🔍 Root Cause encontrado
+- Reproduzido localmente: `analyze_image()` retornava `None` em todas as chamadas. Stack trace mostrou: **`litellm.BadRequestError: OpenAIException - Budget has been exceeded! Current cost: 1.61, Max budget: 1.0`**.
+- A Emergent Universal Key estourou o orçamento (R$1.00 cap configurado). Sem créditos → Gemini Vision falha silenciosamente → `vision_summary=None`, `ai_input` ficava vazio → Isabella não tinha nada pra responder → cliente vê silêncio total.
+
+### Correções aplicadas
+- **`services/media_analysis.py`**:
+  - Detecta `"Budget has been exceeded"` no erro e loga em nível **ERROR** (não WARN ruidoso) com instrução clara pro gestor (`Profile → Universal Key → Add Balance`).
+  - Persiste flag `emergent_llm_budget_exceeded=true` em `aihub_settings` pra UI mostrar banner.
+- **`routes/whatsapp_baileys.py`**: novo fallback no `ai_input` — quando vision falha E o cliente mandou só foto/PDF sem caption, em vez de Isabella ficar muda, ela recebe um marcador `[CLIENTE_ENVIOU_IMAGE_SEM_DESCRICAO: ...]` orientando a pedir descrição em texto **sem inventar conteúdo**. Cliente ao menos recebe resposta amigável.
+
+### Ação do usuário
+- ⚠️ **Recarregar saldo da Universal Key** em **Profile → Universal Key → Add Balance** (ou ativar **Auto Top-up**) — sem isso, a IA Vision não volta. As correções acima são proteção/graceful fallback, mas Vision só volta a funcionar com saldo.
+
+## Fev 18, 2026 — Rebrand completo "SmartProv" (iter99)
+**Objetivo do usuário**: atualizar a marca de "Ponto do Colaborador" / "PontoIA" para **SmartProv** com o novo logo e ícone (azul + roxo, hexágono).
+
+
+
 ## Fev 18, 2026 — Rebrand completo "SmartProv" (iter99)
 **Objetivo do usuário**: atualizar a marca de "Ponto do Colaborador" / "PontoIA" para **SmartProv** com o novo logo e ícone (azul + roxo, hexágono).
 

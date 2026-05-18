@@ -1475,11 +1475,23 @@ async def inbound_webhook(payload: InboundIn,
         # 1. Texto do cliente (caption ou mensagem direta)
         # 2. OU transcrição de voice note
         # 3. OU análise visual com prefixo [VISÃO_AUTO: ...]
+        # 4. Fallback: se cliente mandou mídia sem caption/voz E o Vision
+        #    falhou (budget, timeout etc), enviamos uma "pista" pra Isabella
+        #    pedir descrição em vez de ficar muda.
         ai_input = (payload.text or "").strip()
         if not ai_input and transcript:
             ai_input = transcript
         if not ai_input and vision_summary:
             ai_input = f"[VISÃO_AUTO: {vision_summary}]"
+        if not ai_input and has_media_file and payload.media_kind in (
+            "image", "document",
+        ):
+            ai_input = (
+                f"[CLIENTE_ENVIOU_{payload.media_kind.upper()}_SEM_DESCRICAO: "
+                "não consegui analisar o conteúdo automaticamente — peça "
+                "gentilmente ao cliente que descreva o que é a foto/arquivo "
+                "ou diga o problema em texto. Não invente o conteúdo da imagem.]"
+            )
         background_tasks.add_task(
             _process_inbound_ai_pipeline,
             cid=cid,

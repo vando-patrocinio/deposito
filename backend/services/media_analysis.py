@@ -110,7 +110,28 @@ async def analyze_image(image_b64: str, mime_type: str = "image/jpeg",
             logger.debug("[vision] usage log falhou: %s", e)
         return result or None
     except Exception as e:
-        logger.warning("[vision] análise falhou: %s", e)
+        msg = str(e)
+        # Detecta budget esgotado pra logar de forma escalável (não como WARN
+        # ruidoso a cada mensagem) — gera ALERT-LEVEL que o dashboard
+        # de Saúde IA já capta. Persiste flag pra UI mostrar banner.
+        if "Budget has been exceeded" in msg or "Max budget" in msg:
+            logger.error(
+                "[vision] 💸 Budget Emergent LLM Key ESGOTADO — Isabella "
+                "não consegue analisar imagens. Adicione saldo em "
+                "Profile→Universal Key→Add Balance. detalhe=%s", msg,
+            )
+            try:
+                from database import db as _db
+                from core import now_iso as _now
+                await _db.aihub_settings.update_one(
+                    {"company_id": company_id or "", "key": "emergent_llm_budget_exceeded"},
+                    {"$set": {"value": True, "detail": msg[:300], "updated_at": _now()}},
+                    upsert=True,
+                )
+            except Exception:
+                pass
+        else:
+            logger.warning("[vision] análise falhou: %s", e)
         return None
 
 
