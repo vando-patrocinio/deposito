@@ -692,7 +692,7 @@ async def reconciliation(from_date: str, to_date: str,
     sicoob_total = by_source.get("bank_import_sicoob", {"total": 0, "count": 0})
     outros_total = by_source.get("bank_import_outros", {"total": 0, "count": 0})
     atlaz_total = by_source.get("bank_import_atlaz", {"total": 0, "count": 0})
-    manual_total = by_source.get("manual", by_source.get(None, {"total": 0, "count": 0}))
+    manual_total = by_source.get("manual", {"total": 0, "count": 0})
     bank_total = sicoob_total["total"] + outros_total["total"]
     bank_count = sicoob_total["count"] + outros_total["count"]
 

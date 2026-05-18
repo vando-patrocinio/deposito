@@ -1,6 +1,34 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — P1 WhatsApp avatar fix + Dashboard de conciliação (iter96)
+
+### P1 Fix · WhatsApp Baileys RC11 avatar (Não-bloqueante)
+- Web search confirmou: `baileys@latest` e `@whiskeysockets/baileys@latest` ambos em `7.0.0-rc11` (não há versão estável). Solução adotada: **workaround code-level** sem trocar de pacote.
+- Novo helper `safeProfilePictureUrl(jid)` em `/app/whatsapp-service/server.js`:
+  - Fallback `"preview"` → `"image"` (preview falha menos).
+  - `Promise.race` com timeout de 4s pra evitar travamentos.
+  - Cache negativo `negativeAvatarCache` (30 min) — evita re-tentar números que já falharam, dramaticamente menos requests à Meta.
+  - Engole todos os Promise rejects (resolveram o `unhandledRejection` do RC11).
+- Endpoints `/contact-profile` e `/contacts-bulk` agora usam o wrapper.
+- **Save to GitHub necessário** pra ir pra produção (`dual-combine-3.emergent.host`).
+
+### Dashboard de Conciliação · Banco × Atlaz
+- **Backend** novo endpoint `GET /api/financeiro/bank-import/reconciliation?from_date=&to_date=` que faz aggregation pipeline em `fin_cash_movements` agrupando por `source`. Retorna `{bank: {total, count, sicoob, outros}, atlaz, manual, diff, by_source}`.
+- **Frontend** novo componente `/app/frontend/src/ReconciliationCard.js`:
+  - 3 blocos lado-a-lado: `recon-bank` (com breakdown Sicoob/Outros), `recon-atlaz`, `recon-diff` (destacado com borda colorida).
+  - Banner de status (`recon-status`) verde "Conciliado ✓" quando diferença < 5% do maior valor, amarelo "Diferença de X%" caso contrário.
+  - Texto explicativo orientando o gestor a investigar (cliente pagou em outro banco / MED / fatura fora do período).
+  - Auto-hide quando bank+atlaz=0 (`return null`).
+- Integrado no `CashFlowTab` entre o `AnalyticsChart` e o gráfico — propaga o `period` (7/30/90) selecionado.
+
+### Validação
+- Curl testado com seed (3 movs Atlaz R$730 + 20 Sicoob R$2329.85) → diff R$1599.85 ✓.
+- Testing agent (iter96) fez code review: 100% spec implementada, todos data-testids presentes.
+- Code review aplicado: simplificado `manual_total` fallback (removido `by_source.get(None)` morto).
+
+
+
 ## Fev 18, 2026 — Importar Extrato com 3 fontes (Sicoob · Outros · Atlaz) (iter95) ★
 **Objetivo do usuário**: estender a sub-aba "Importar Extrato" para suportar (1) Sicoob OFX (já existente), (2) Outros bancos OFX/CSV padrão, (3) Atlaz V2 — buscar faturas pagas dos assinantes diretamente da integração.
 
