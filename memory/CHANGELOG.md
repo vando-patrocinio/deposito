@@ -1,6 +1,31 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — Dashboard 2026 estendido a Financeiro + Rede IA (iter93)
+**Objetivo do usuário**: aplicar o mesmo blueprint 2026 nos dashboards do Financeiro e Rede IA pra manter consistência visual com o redesign da aba Movimento.
+
+### Refactor compartilhado
+- Novo arquivo `/app/frontend/src/components/Dashboard2026.js` exporta `KpiCard`, `AlertCard`, `Sparkline`, `Legend`, `StatRow`. Tone semafórico (good/warn/bad/info), suporte a sparkline SVG, delta %, progress bar e hint contextual.
+
+### Financeiro · Fluxo de Caixa (`CashFlowTab` em `FinanceiroPanelExt.js`)
+- 6 Chips antigos → **5 KpiCards 2026** com tone, sparkline e delta vs período anterior (`/financeiro/cashflow` é chamado 2x — atual + anterior).
+- **Alert strip condicional** (4 cenários): saldo negativo, resultado negativo, expense spike ≥25%, runway <15 dias.
+- Novo card **Runway** com cálculo `saldo ÷ burn_rate` (capa cosmética "—" quando saldo=0 e burn=0).
+- Gráfico Recharts ComposedChart mantido + legendas inline.
+- Testids: `cashflow-kpi-{balance,income,expense,net,runway}`, `cashflow-alerts-strip`, `cashflow-alert-{negative-balance,low-runway,negative-result,expense-spike}`.
+
+### Rede IA · Painel (`Overview` em `RedeIaPanel.js`)
+- 6 KPIs antigos → **6 KpiCards 2026** com progress bars (CTOs aprovadas %, taxa de ocupação) e hints.
+- **Alert strip condicional** (5 cenários): nenhuma CTO, VLANs críticas (<50%), VLANs em atenção (50-75%), pendências de validação, ocupação ≥80%.
+- Mantém bloco SmartOLT + CtoStatsBlock + lista de VLANs sem regressão.
+- Testids: `rede-ia-kpi-{ctos-total,ctos-approved,pendencies,bairros,ports,cables}`, `rede-ia-alerts-strip`, `rede-ia-alert-{no-ctos,critical-vlans,warning-vlans,pendencies,high-occupancy}`.
+
+### Validação (testing_agent_v3_fork iter93)
+- 100% frontend: 5/5 cashflow KPIs + 6/6 rede-ia KPIs + 3/3 period selectors + 2/2 alert strips + 2/2 progress bars + Recharts intacto + sub-tabs adjacentes sem regressão.
+- Observação aberta (não-bloqueante): incoerência entre `/financeiro/cashflow` (R$ 0,00 saldo) e `AnalyticsChart` (R$ 167K recebimentos no mesmo período) — possível desalinhamento de fontes que merece RCA futura.
+
+
+
 ## Fev 18, 2026 — Dashboard 2026 da aba Movimento (estoque) (iter92)
 **Objetivo do usuário**: redesenhar a aba "Movimento" pra melhorar entendimento + garantir que todas as páginas estão em full-width.
 

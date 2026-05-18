@@ -757,12 +757,17 @@ export function CashFlowTab() {
                 <KpiCard
                   testId="cashflow-kpi-runway"
                   label="Cobertura (runway)"
-                  value={runwayDays == null ? "∞" : runwayDays}
-                  unit={runwayDays == null ? "" : "dias"}
-                  tone={runwayDays == null ? "good"
+                  value={(data.current_balance || 0) <= 0 && dailyBurn <= 0 ? "—"
+                       : runwayDays == null ? "∞" : runwayDays}
+                  unit={(data.current_balance || 0) <= 0 && dailyBurn <= 0 ? ""
+                       : runwayDays == null ? "" : "dias"}
+                  tone={(data.current_balance || 0) <= 0 ? "bad"
+                       : runwayDays == null ? "good"
                        : runwayDays >= 30 ? "good"
                        : runwayDays >= 15 ? "warn" : "bad"}
-                  hint={runwayDays == null
+                  hint={(data.current_balance || 0) <= 0 && dailyBurn <= 0
+                    ? "Sem caixa e sem movimento — confira lançamentos"
+                    : runwayDays == null
                     ? "Entradas cobrem o ritmo de saídas"
                     : `Burn rate: ${fmtMoney(dailyBurn)}/dia`} />
               </div>
