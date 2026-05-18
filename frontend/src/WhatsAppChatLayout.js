@@ -2799,6 +2799,101 @@ function InlineAudioPlayer({ src, duration: durationProp, outbound }) {
   );
 }
 
+
+/* =============================================================
+   InlineImage / InlineVideo / InlineDocument — renderização de mídia inbound
+============================================================= */
+function InlineImage({ url, caption }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div data-testid="wa-inline-image">
+      <img src={url} alt="" loading="lazy"
+        onClick={() => setOpen(true)}
+        style={{
+          maxWidth: 280, maxHeight: 280, borderRadius: 8,
+          cursor: "zoom-in", display: "block",
+          objectFit: "cover",
+        }} />
+      {caption && (
+        <div style={{ marginTop: 4, fontSize: 13, whiteSpace: "pre-wrap" }}>
+          {caption}
+        </div>
+      )}
+      {open && (
+        <div onClick={() => setOpen(false)}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 9999, cursor: "zoom-out",
+          }}>
+          <img src={url} alt=""
+            style={{ maxWidth: "92vw", maxHeight: "92vh", borderRadius: 6 }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InlineVideo({ url, caption }) {
+  return (
+    <div data-testid="wa-inline-video">
+      <video controls preload="metadata"
+        style={{ maxWidth: 320, maxHeight: 320, borderRadius: 8,
+                  display: "block", background: "#000" }}>
+        <source src={url} />
+      </video>
+      {caption && (
+        <div style={{ marginTop: 4, fontSize: 13, whiteSpace: "pre-wrap" }}>
+          {caption}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InlineDocument({ url, filename, sizeBytes, mime, caption }) {
+  const fmtSize = (b) => {
+    if (!b) return "";
+    if (b < 1024) return `${b} B`;
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+    return `${(b / 1024 / 1024).toFixed(2)} MB`;
+  };
+  const ext = (filename || "").split(".").pop()?.toUpperCase() || "FILE";
+  return (
+    <div data-testid="wa-inline-document">
+      <a href={url} target="_blank" rel="noreferrer" download={filename}
+        style={{
+          display: "flex", alignItems: "center", gap: 10,
+          padding: "8px 12px", background: "rgba(255,255,255,0.08)",
+          border: "1px solid rgba(0,0,0,0.08)", borderRadius: 8,
+          textDecoration: "none", color: "inherit", minWidth: 220,
+        }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 6,
+          background: "linear-gradient(135deg,#7c3aed,#9333ea)",
+          color: "#fff", display: "flex", alignItems: "center",
+          justifyContent: "center", fontSize: 10, fontWeight: 700,
+        }}>{ext.slice(0, 4)}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontSize: 13, fontWeight: 600, overflow: "hidden",
+            textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>{filename || "Documento"}</div>
+          <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
+            {fmtSize(sizeBytes)}{mime ? ` · ${mime.split("/")[1] || mime}` : ""}
+          </div>
+        </div>
+      </a>
+      {caption && (
+        <div style={{ marginTop: 6, fontSize: 13, whiteSpace: "pre-wrap" }}>
+          {caption}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 /* =============================================================
    QuickImagesPopover — modal listando as imagens rápidas
    pré-cadastradas em Configuração. Clica e envia direto.
@@ -3149,7 +3244,17 @@ function MsgBubble({ msg, onCorrect }) {
                 duration={msg.media_duration_sec}
                 outbound={out}
               />
-            : msg.text}</div>
+            : msg.media_type === "image" && msg.media_url
+              ? <InlineImage url={`${process.env.REACT_APP_BACKEND_URL || ""}${msg.media_url}?t=${encodeURIComponent(window.localStorage.getItem("ponto_token") || "")}`} caption={msg.text} />
+              : msg.media_type === "video" && msg.media_url
+                ? <InlineVideo url={`${process.env.REACT_APP_BACKEND_URL || ""}${msg.media_url}?t=${encodeURIComponent(window.localStorage.getItem("ponto_token") || "")}`} caption={msg.text} />
+                : (msg.media_type === "document" || msg.media_type === "sticker") && msg.media_url
+                  ? <InlineDocument url={`${process.env.REACT_APP_BACKEND_URL || ""}${msg.media_url}?t=${encodeURIComponent(window.localStorage.getItem("ponto_token") || "")}`}
+                                     filename={msg.media_filename}
+                                     sizeBytes={msg.media_size_bytes}
+                                     mime={msg.media_mimetype}
+                                     caption={msg.text} />
+                  : msg.text}</div>
         <div style={{
           fontSize: 9, color: failed ? "#dc2626" : "#64748b", marginTop: 3,
           display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end",

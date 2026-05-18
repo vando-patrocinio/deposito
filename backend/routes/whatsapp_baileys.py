@@ -465,6 +465,54 @@ async def get_audio_file(
     return FileResponse(path, media_type=media_type)
 
 
+
+WA_MEDIA_ROOT = Path("/app/storage/wa_media")
+
+MIME_BY_EXT = {
+    "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+    "gif": "image/gif", "webp": "image/webp",
+    "mp4": "video/mp4", "mov": "video/quicktime", "webm": "video/webm",
+    "3gp": "video/3gpp",
+    "pdf": "application/pdf",
+    "doc": "application/msword",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xls": "application/vnd.ms-excel",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "txt": "text/plain", "csv": "text/csv",
+}
+
+
+@router.get("/media/{kind}/{filename}")
+async def get_inbound_media(kind: str, filename: str,
+                              authorization: Optional[str] = Header(default=None),
+                              t: Optional[str] = None):
+    """Serve arquivos de mídia inbound (imagem, vídeo, documento, sticker)."""
+    if kind not in ("image", "video", "document", "sticker"):
+        raise HTTPException(404, "Tipo inválido")
+    # Mesmo schema de auth do endpoint /audio
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    elif t:
+        token = t
+    if not token:
+        raise HTTPException(401, "Token requerido")
+    try:
+        from auth import decode_token
+        decode_token(token)
+    except Exception:
+        raise HTTPException(401, "Token inválido")
+
+    safe_name = filename.replace("..", "").replace("/", "")
+    path = WA_MEDIA_ROOT / kind / safe_name
+    if not path.exists():
+        raise HTTPException(404, "Arquivo não encontrado")
+    ext = path.suffix.lstrip(".").lower()
+    mime = MIME_BY_EXT.get(ext, "application/octet-stream")
+    return FileResponse(path, media_type=mime, filename=safe_name)
+
+
+
 @router.post("/send")
 async def send_message(payload: SendIn,
                         user: dict = Depends(require_role("gestor"))):
@@ -662,6 +710,12 @@ class InboundIn(BaseModel):
     audio_mimetype: Optional[str] = None
     audio_duration_sec: Optional[int] = None
     audio_is_ptt: bool = False
+    # Mídia geral inbound (imagem/vídeo/documento/sticker)
+    media_b64: Optional[str] = None
+    media_mimetype: Optional[str] = None
+    media_filename: Optional[str] = None
+    media_kind: Optional[str] = None       # "image" | "video" | "document" | "sticker"
+    media_size_bytes: Optional[int] = None
 
 
 class SystemEventIn(BaseModel):
@@ -1297,6 +1351,29 @@ async def inbound_webhook(payload: InboundIn,
         except Exception as e:
             logger.warning("[wa-baileys] save inbound audio failed: %s", e)
 
+    # === Mídia inbound: imagem / vídeo / documento / sticker ===
+    has_media_file = bool(payload.media_b64 and payload.media_kind)
+    if has_media_file and not media_type:
+        try:
+            from pathlib import Path as _Path
+            kind = payload.media_kind
+            # Diretórios separados por tipo
+            base_dir = _Path("/app/storage/wa_media") / kind
+            base_dir.mkdir(parents=True, exist_ok=True)
+            # Extensão: usa filename do sidecar (preserva ".pdf", ".docx" etc.)
+            orig = payload.media_filename or f"{kind}-{msg_id}"
+            ext = orig.rsplit(".", 1)[-1].lower() if "." in orig else ""
+            # Sanitização leve
+            safe_name = f"{msg_id}.{ext}" if ext else msg_id
+            out_path = base_dir / safe_name
+            out_path.write_bytes(base64.b64decode(payload.media_b64))
+            media_type = kind
+            media_url = f"/api/whatsapp-baileys/media/{kind}/{safe_name}"
+            logger.info("[wa-baileys] 📎 %s recebido: %s (%s bytes)",
+                        kind, orig, payload.media_size_bytes)
+        except Exception as e:
+            logger.warning("[wa-baileys] save inbound media failed: %s", e)
+
     # 🎤 TRANSCRIÇÃO AUTOMÁTICA: se inbound for áudio sem texto, transcreve
     # via Whisper antes do LLM ver a mensagem. Isabella passa a "entender"
     # voice notes em vez de ver só "🎤 Áudio (5s)".
@@ -1323,7 +1400,10 @@ async def inbound_webhook(payload: InboundIn,
         "jid": payload.jid,
         "text": payload.text or transcript or (
             f"🎤 Áudio ({media_duration_sec}s)" if has_audio and media_duration_sec
-            else ("🎤 Áudio" if has_audio else "")
+            else "🎤 Áudio" if has_audio
+            else f"📎 {payload.media_kind.title()}: {payload.media_filename}"
+                 if has_media_file and payload.media_kind
+            else ""
         ),
         "channel": "baileys",
         "push_name": payload.push_name,
@@ -1338,11 +1418,14 @@ async def inbound_webhook(payload: InboundIn,
         inbound_doc["media_type"] = media_type
         inbound_doc["media_url"] = media_url
         inbound_doc["media_duration_sec"] = media_duration_sec
-        inbound_doc["media_mimetype"] = payload.audio_mimetype
+        inbound_doc["media_mimetype"] = payload.audio_mimetype or payload.media_mimetype
         inbound_doc["media_is_ptt"] = payload.audio_is_ptt
         if transcript:
             inbound_doc["transcript"] = transcript
             inbound_doc["transcript_engine"] = "whisper-1"
+        if has_media_file:
+            inbound_doc["media_filename"] = payload.media_filename
+            inbound_doc["media_size_bytes"] = payload.media_size_bytes
     await db.aihub_wa_messages.insert_one(inbound_doc)
     # Atualiza conv com flag LID quando aplicável
     if payload.is_lid:
@@ -1370,10 +1453,11 @@ async def inbound_webhook(payload: InboundIn,
             cid=cid,
             effective_phone=effective_phone,
             payload_jid=payload.jid,
-            payload_text=payload.text,
+            payload_text=payload.text or transcript or "",
             payload_message_id=payload.message_id,
             subscriber_id=subscriber_id,
             subscriber_ctx=subscriber_ctx,
+            inbound_was_voice=bool(transcript),
         )
 
     return {"ok": True, "queued": True, "subscriber_id": subscriber_id,
@@ -1389,6 +1473,7 @@ async def _process_inbound_ai_pipeline(
     payload_message_id: Optional[str],
     subscriber_id: Optional[str],
     subscriber_ctx: Optional[str],
+    inbound_was_voice: bool = False,
 ) -> None:
     """Pipeline assíncrono de processamento de mensagem inbound:
       1. Manager Assistant (gestor manda comando)
@@ -1425,12 +1510,15 @@ async def _process_inbound_ai_pipeline(
         logger.warning("[wa-baileys] manager assistant falhou: %s", e)
 
     # --- Auto-reply (se habilitado) ---
+    # Se o cliente mandou voice note (foi transcrito), retorna áudio TTS
+    # na 1ª bolha pra UX "conversação falada"
     try:
         await _maybe_auto_reply(
             cid=cid, phone=effective_phone,
             user_text=payload_text,
             subscriber_id=subscriber_id,
             subscriber_ctx=subscriber_ctx,
+            inbound_was_voice=inbound_was_voice,
         )
     except Exception as e:
         logger.warning("[wa-baileys] auto-reply falhou: %s", e)
@@ -1567,7 +1655,8 @@ async def _persist_ai_failure(cid: str, phone: str, subscriber_id: Optional[str]
 
 async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                               subscriber_id: Optional[str],
-                              subscriber_ctx: Optional[str]) -> Optional[str]:
+                              subscriber_ctx: Optional[str],
+                              inbound_was_voice: bool = False) -> Optional[str]:
     """Se auto-reply estiver habilitado, gera resposta com a Jerusa
     e envia via sidecar. Retorna o texto enviado (ou None se desligado).
 
@@ -2147,6 +2236,23 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     # 1 último chunk com o restante.
     chunks = _split_ai_reply(reply_text, max_chunks=6)
 
+    # 5b. Se cliente mandou voice note, gera TTS do texto completo e envia
+    # como áudio APÓS as bolhas de texto (UX "conversa falada").
+    tts_audio_b64: Optional[str] = None
+    if inbound_was_voice and chunks:
+        try:
+            from services.tts import synthesize_speech
+            # Junta as bolhas em texto contínuo pro TTS, mas remove emojis
+            # excessivos que ficam estranhos quando falados
+            full_text = " ".join(chunks)
+            audio_bytes = await synthesize_speech(cid, full_text)
+            if audio_bytes:
+                tts_audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+                logger.info("[wa-baileys] 🔊 TTS gerado · %s bytes",
+                            len(audio_bytes))
+        except Exception as e:
+            logger.warning("[wa-baileys] TTS falhou: %s", e)
+
     # 6. Envia cada chunk via sidecar (sequencial, pequeno delay entre eles).
     import asyncio as _asyncio
     any_sent = False
@@ -2200,6 +2306,41 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         # gerar uma cadência mais "humana".
         if idx < len(chunks) - 1 and send_ok:
             await _asyncio.sleep(0.6)
+
+    # 6b. Após bolhas de texto, manda TTS se cliente mandou voice note
+    if tts_audio_b64 and any_sent:
+        try:
+            await _asyncio.sleep(0.4)
+            async with httpx.AsyncClient(headers=_sidecar_headers(),
+                                           timeout=30.0) as cli:
+                tts_r = await cli.post(f"{SIDECAR_BASE}/send-audio", json={
+                    "phone": phone,
+                    "audio_b64": tts_audio_b64,
+                    "mimetype": "audio/ogg; codecs=opus",
+                    "ptt": True,
+                })
+                tts_body = tts_r.json() if tts_r.status_code < 400 else {}
+            await db.aihub_wa_messages.insert_one({
+                "id": f"wam-tts-{uuid.uuid4().hex[:10]}",
+                "company_id": cid,
+                "direction": "outbound",
+                "phone": phone,
+                "text": "🔊 Resposta em áudio",
+                "channel": "baileys",
+                "media_type": "audio",
+                "media_is_ptt": True,
+                "auto_generated": True,
+                "auto_reason": "tts_response_to_voice_note",
+                "message_id": tts_body.get("message_id"),
+                "subscriber_id": subscriber_id,
+                "session_id": f"wa-{phone}",
+                "auto_reply": True,
+                "delivery_status": "sent" if tts_body.get("ok")
+                                    else "failed_sidecar",
+                "created_at": now_iso(),
+            })
+        except Exception as e:
+            logger.warning("[wa-baileys] envio TTS falhou: %s", e)
 
     send_ok = any_sent
     send_error = last_send_error

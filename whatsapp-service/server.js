@@ -516,6 +516,50 @@ async function startSock() {
             }
           }
 
+          // === Imagem / Vídeo / Documento / Sticker inbound ===
+          // Limite 16MB pra não estourar payload do webhook (Baileys aceita até ~64MB)
+          const MEDIA_MAX = 16 * 1024 * 1024;
+          let media_b64 = null;
+          let media_mimetype = null;
+          let media_filename = null;
+          let media_kind = null;        // image | video | document | sticker
+          let media_size_bytes = null;
+
+          const imageMsg = msg.imageMessage;
+          const videoMsg = msg.videoMessage;
+          const docMsg = msg.documentMessage
+                       || msg.documentWithCaptionMessage?.message?.documentMessage;
+          const stickerMsg = msg.stickerMessage;
+          const target = imageMsg || videoMsg || docMsg || stickerMsg;
+          if (target) {
+            try {
+              const buf = await downloadMediaMessage(
+                m, "buffer", {},
+                { logger, reuploadRequest: sock.updateMediaMessage },
+              );
+              if (buf && buf.length > 0 && buf.length <= MEDIA_MAX) {
+                media_b64 = buf.toString("base64");
+                media_mimetype = target.mimetype || null;
+                media_size_bytes = buf.length;
+                media_kind = imageMsg ? "image"
+                            : videoMsg ? "video"
+                            : docMsg ? "document"
+                            : "sticker";
+                media_filename = docMsg?.fileName
+                              || (imageMsg ? `image-${m.key.id}.jpg`
+                                  : videoMsg ? `video-${m.key.id}.mp4`
+                                  : stickerMsg ? `sticker-${m.key.id}.webp`
+                                  : `file-${m.key.id}`);
+              } else if (buf && buf.length > MEDIA_MAX) {
+                logger.warn({ phone, size: buf.length, kind: media_kind },
+                  "inbound media too large, skipping download");
+              }
+            } catch (e) {
+              logger.warn({ err: e.message, phone },
+                "downloadMediaMessage(media) falhou");
+            }
+          }
+
           const payload = {
             phone, jid: fromJid, from_me: false, text,
             message_id: m.key.id, timestamp: m.messageTimestamp,
@@ -529,6 +573,12 @@ async function startSock() {
             audio_mimetype,
             audio_duration_sec: audio_duration,
             audio_is_ptt,
+            // Mídia geral (imagem/vídeo/documento/sticker)
+            media_b64,
+            media_mimetype,
+            media_filename,
+            media_kind,
+            media_size_bytes,
           };
           const headers = INBOUND_TOKEN ? { "X-WA-Token": INBOUND_TOKEN } : {};
           try {
