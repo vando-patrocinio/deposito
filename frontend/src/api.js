@@ -556,6 +556,12 @@ export const api = {
   waBaileysUnlinkSubscriber: (phone, subscriberId) =>
     client.delete(`/whatsapp-baileys/conversation/${encodeURIComponent(phone)}/unlink-subscriber`,
       { params: subscriberId ? { subscriber_id: subscriberId } : {} }).then((r) => r.data),
+
+  // Utilitários: CEP e validação de CPF/CNPJ
+  utilsValidateDocument: (value) =>
+    client.get(`/utils/validate-document`, { params: { value } }).then((r) => r.data),
+  utilsLookupCep: (cep) =>
+    client.get(`/utils/cep/${encodeURIComponent(cep)}`).then((r) => r.data),
   waBaileysAttendants: () =>
     client.get(`/whatsapp-baileys/attendants`).then((r) => r.data),
   // Configurações da instância (nome de exibição)

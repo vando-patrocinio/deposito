@@ -440,7 +440,28 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
   const [busy, setBusy] = useState(false);
   const [nicknameEditable, setNicknameEditable] = useState(false);
   const [plansList, setPlansList] = useState([]);
+  /* Validação CPF/CNPJ: tag "Válido"/"Inválido" abaixo do campo */
+  const [docValidation, setDocValidation] = useState(null);
+  /* Lookup CEP: auto-preenche rua/bairro/cidade/UF */
+  const [cepBusy, setCepBusy] = useState(false);
+  const [cepError, setCepError] = useState(null);
   const set = (k, v) => setData((p) => ({ ...p, [k]: v }));
+
+  /* Debounce de validação de documento (CPF/CNPJ) — 400ms após o usuário parar */
+  useEffect(() => {
+    const raw = (data.document || "").trim();
+    if (!raw) { setDocValidation(null); return; }
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length !== 11 && digits.length !== 14) {
+      setDocValidation(null); return;
+    }
+    const t = setTimeout(() => {
+      api.utilsValidateDocument(digits)
+        .then(setDocValidation)
+        .catch(() => setDocValidation(null));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [data.document]);
 
   /* REGRA: apelido auto-preenche com primeiro nome.
      Só fica editável depois de DUPLO-CLIQUE no campo. */
@@ -509,6 +530,29 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
   const updAddr = (k, v) => set("addresses", [{ ...(data.addresses?.[0] || {}), [k]: v, is_primary: true }]);
   const addr = (data.addresses?.[0]) || {};
 
+  /* Lookup ViaCEP: ao digitar 8 dígitos, busca e preenche os campos. */
+  const lookupCep = async (rawCep) => {
+    const digits = (rawCep || "").replace(/\D/g, "");
+    if (digits.length !== 8) return;
+    setCepBusy(true); setCepError(null);
+    try {
+      const r = await api.utilsLookupCep(digits);
+      set("addresses", [{
+        ...(data.addresses?.[0] || {}),
+        zip_code: digits,
+        street: r.logradouro || (data.addresses?.[0]?.street || ""),
+        district: r.bairro || (data.addresses?.[0]?.district || ""),
+        city: r.cidade || (data.addresses?.[0]?.city || ""),
+        state: r.uf || (data.addresses?.[0]?.state || ""),
+        is_primary: true,
+      }]);
+    } catch (e) {
+      setCepError(e?.response?.data?.detail || "CEP não encontrado");
+    } finally {
+      setCepBusy(false);
+    }
+  };
+
   return (
     <div data-testid="sub-editor" className="surface" style={{ padding: 22, borderRadius: 14 }}>
       <h3 style={{ margin: "0 0 16px", fontSize: 17, fontWeight: 700 }}>
@@ -570,6 +614,25 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
         <Field label="CPF/CNPJ">
           <input className="input" value={data.document || ""}
             onChange={(e) => set("document", e.target.value)} data-testid="sub-document" />
+          {docValidation && (
+            <div data-testid="sub-document-validation"
+              style={{
+                marginTop: 4, fontSize: 11, fontWeight: 600,
+                display: "inline-flex", alignItems: "center", gap: 4,
+                padding: "2px 8px", borderRadius: 999,
+                background: docValidation.valid
+                  ? "rgba(34, 197, 94, 0.12)" : "rgba(239, 68, 68, 0.12)",
+                color: docValidation.valid ? "#16a34a" : "#dc2626",
+                border: `1px solid ${docValidation.valid
+                  ? "rgba(34, 197, 94, 0.30)" : "rgba(239, 68, 68, 0.30)"}`,
+              }}>
+              <span>{docValidation.valid ? "✓" : "✗"}</span>
+              <span>{docValidation.type.toUpperCase()} {docValidation.valid ? "Válido" : "Inválido"}</span>
+              {docValidation.valid && docValidation.formatted && (
+                <span style={{ opacity: 0.75, fontWeight: 400 }}>· {docValidation.formatted}</span>
+              )}
+            </div>
+          )}
         </Field>
         <Field label="RG/IE">
           <input className="input" value={data.rg_ie || ""}
@@ -723,8 +786,28 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
           <input className="input" placeholder="UF" maxLength={2}
             value={addr.state || ""} onChange={(e) => updAddr("state", e.target.value.toUpperCase())} />
           <input className="input" placeholder="CEP"
-            value={addr.zip_code || ""} onChange={(e) => updAddr("zip_code", e.target.value)} />
+            data-testid="sub-address-cep"
+            value={addr.zip_code || ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              updAddr("zip_code", v);
+              // Auto-lookup quando completa 8 dígitos
+              if (v.replace(/\D/g, "").length === 8) lookupCep(v);
+            }}
+            onBlur={(e) => lookupCep(e.target.value)}
+            disabled={cepBusy} />
         </div>
+        {cepBusy && (
+          <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
+            Consultando CEP…
+          </div>
+        )}
+        {cepError && (
+          <div data-testid="sub-cep-error"
+            style={{ marginTop: 4, fontSize: 11, color: "#dc2626" }}>
+            ⚠ {cepError}
+          </div>
+        )}
       </Field>
 
       <Field label="Observações internas">

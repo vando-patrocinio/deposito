@@ -102,6 +102,7 @@ from routes import (
     gestao_ia as routes_gestao_ia,
     isabella_kpis as routes_isabella_kpis,
     tv_dashboards as routes_tv_dashboards,
+    utils as routes_utils,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -479,6 +480,7 @@ app.include_router(routes_gestao_ia.router)
 app.include_router(routes_isabella_kpis.router)
 app.include_router(routes_onboarding.router)
 app.include_router(routes_tv_dashboards.router)
+app.include_router(routes_utils.router)
 
 
 # ============================================================
