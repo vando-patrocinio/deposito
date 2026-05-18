@@ -385,6 +385,23 @@ async def _startup() -> None:
     scheduler.add_job(_readjustment_daily_all_companies,
                       CronTrigger(hour=4, minute=0),
                       id="readjustment_daily", replace_existing=True)
+    # Cron: NOTIFICAÇÃO WhatsApp 30d antes do reajuste — diário 09:00
+    async def _readjustment_notify_all_companies():
+        from services.readjustment_notifications import (
+            notify_upcoming_readjustments,
+        )
+        async for c in db.companies.find({}, {"_id": 0, "id": 1}):
+            try:
+                r = await notify_upcoming_readjustments(c["id"], days_ahead=30)
+                if r.get("sent"):
+                    logger.info("[readjustment-notify-cron] %s: %s WhatsApps "
+                                "enviados", c["id"], r["sent"])
+            except Exception as e:
+                logger.warning("[readjustment-notify-cron] %s falhou: %s",
+                               c.get("id"), e)
+    scheduler.add_job(_readjustment_notify_all_companies,
+                      CronTrigger(hour=9, minute=0),
+                      id="readjustment_notify_daily", replace_existing=True)
     # Cron: ALVARO IA daily — análise consolidada às 06:00 (próximas 24h)
     async def _alvaro_daily_all_companies():
         from services.alvaro_ai import run_daily_analysis

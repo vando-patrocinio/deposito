@@ -216,6 +216,38 @@ def build_boleto_pdf(invoice: Dict[str, Any], *,
                  _format_due(invoice.get("due_date")))
     y -= 36 * mm
 
+    # ---------- DISCRIMINATIVO: mensalidade + reajuste + serviços ----------
+    line_items = invoice.get("line_items") or []
+    if line_items:
+        c.setFillColorRGB(0.97, 0.97, 1.0)
+        # Calcula altura do bloco baseada em quantidade de linhas + cabeçalho
+        block_h = max(20, 6 + len(line_items) * 5 + 6)
+        c.roundRect(15 * mm, y - block_h * mm, W - 30 * mm, block_h * mm,
+                    3 * mm, fill=1, stroke=0)
+        # Cabeçalho
+        c.setFillColorRGB(0x6A / 255, 0x1B / 255, 0x9A / 255)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(20 * mm, y - 5 * mm, "DISCRIMINATIVO DA FATURA")
+        # Linhas
+        c.setFillColorRGB(0.10, 0.10, 0.18)
+        c.setFont("Helvetica", 9)
+        row_y = y - 10 * mm
+        for li in line_items:
+            label = (li.get("label") or "Item")[:50]
+            val = _format_brl(li.get("amount") or 0)
+            c.drawString(22 * mm, row_y, label)
+            c.drawRightString(W - 22 * mm, row_y, val)
+            row_y -= 5 * mm
+        # Linha separadora + total
+        c.setStrokeColorRGB(0.7, 0.7, 0.8)
+        c.line(22 * mm, row_y + 1 * mm, W - 22 * mm, row_y + 1 * mm)
+        c.setFillColorRGB(0x6A / 255, 0x1B / 255, 0x9A / 255)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(22 * mm, row_y - 4 * mm, "TOTAL")
+        c.drawRightString(W - 22 * mm, row_y - 4 * mm,
+                          _format_brl(invoice.get("amount")))
+        y -= (block_h + 4) * mm
+
     # ---------- PIX ----------
     pix = (invoice.get("pix_copia_cola") or invoice.get("pix_payload")
            or invoice.get("pix"))

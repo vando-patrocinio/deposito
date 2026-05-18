@@ -1,6 +1,50 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Trilha de Aniversário + Notificação WhatsApp + Boleto Discriminado ★★★★
+
+### 🎂 Trilha de Clientes por Aniversário
+- **Endpoint:** `GET /api/financeiro/reajuste/cohort` — agrupa clientes ativos em buckets de 1–20 anos baseado em `installation_date`
+- **Frontend:** card visual com grid de cards (1 ano, 2 anos, ... 20+) na subaba Reajuste mostrando:
+  - Quantidade de clientes por bucket
+  - Receita mensal agregada
+  - Badge "🔔 aniv." se algum cliente faz aniversário nos próximos 30 dias
+  - Intensidade visual (gradiente roxo) proporcional ao tamanho do bucket
+  - Tooltip com nomes (primeiros 8) ao passar o mouse
+- **Validado:** 19 clientes de teste distribuídos em 5 buckets (1/2/3/5/10 anos)
+
+### 🔔 Notificação WhatsApp 30d antes do Reajuste (compliance Anatel)
+- **Service:** `services/readjustment_notifications.py` — envia WhatsApp via sidecar Baileys
+- **Idempotente:** coleção `subscriber_readjustment_notifications` previne duplicatas (chave = `subscriber_id + YYYY-MM` do reajuste)
+- **Mensagem natural** com tom da Isabella, mostra valor atual, novo valor, % e índice
+- **Worker diário 09h** em `server.py`: roda para todas as empresas
+- **Compliance:** atende exigência da Anatel/SCM de "notificação prévia ao consumidor"
+
+### 📄 Boleto Discriminado (mensalidade + serviços = total)
+- **`services/boleto_pdf.py`:** novo bloco "DISCRIMINATIVO DA FATURA" antes do PIX
+- **Estrutura:** lista cada `line_item` (label + amount) e total ao final
+- **invoice dict** agora aceita: `line_items: [{label, amount}, ...]`
+- Exemplos:
+  - "Mensalidade plano 700 Mega — R$ 109,90"
+  - "Reajuste IPCA (+4.39%) — R$ 4,82"
+  - "Ponto Wi-Fi adicional — R$ 19,90"
+  - "**TOTAL — R$ 134,62**"
+
+### Como funciona o ciclo completo
+1. Cliente é cadastrado com `installation_date`
+2. Sistema calcula `next_readjustment_at = installation_date + 365d`
+3. **30 dias antes:** worker 09h envia WhatsApp avisando o cliente
+4. **Na data:** worker 04h aplica reajuste automaticamente
+5. Próximo boleto sai com discriminativo: mensalidade nova + reajuste destacado + serviços adicionais = total
+
+### Validado
+- Pytest: 51/51 ✅
+- Lint Python: ✅ (boleto_pdf, financeiro_reajuste, readjustment_notifications)
+- Lint JS: ✅ (FinanceiroReadjustmentTab)
+- API cohort retornando dados reais ✅
+
+
+
 ## Mai 18, 2026 — Sistema de Reajuste Anual + CEP Fallback ★★★★★
 
 ### Reajuste Anual Automático (Anatel/SCM Compliant)

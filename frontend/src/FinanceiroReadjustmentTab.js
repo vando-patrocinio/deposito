@@ -3,7 +3,7 @@ import { api } from "@/api";
 import { Card } from "@/ui";
 import {
   TrendingUp, RefreshCw, CheckCircle2, AlertCircle, Calendar,
-  ArrowUpRight,
+  ArrowUpRight, Users, Cake,
 } from "lucide-react";
 
 /**
@@ -41,6 +41,7 @@ export default function ReadjustmentTab() {
   const [busy, setBusy] = useState(false);
   const [batchBusy, setBatchBusy] = useState(false);
   const [refreshingIdx, setRefreshingIdx] = useState(null);
+  const [cohort, setCohort] = useState(null);
 
   const loadIndices = async () => {
     try {
@@ -61,7 +62,14 @@ export default function ReadjustmentTab() {
     }
   };
 
-  useEffect(() => { loadIndices(); }, []);
+  const loadCohort = async () => {
+    try {
+      const r = await api.reajusteCohort();
+      setCohort(r);
+    } catch (_e) { /* ignore */ }
+  };
+
+  useEffect(() => { loadIndices(); loadCohort(); }, []);
   useEffect(() => { loadDue(); }, [horizon]);
 
   const refreshIndex = async (name) => {
@@ -149,6 +157,79 @@ export default function ReadjustmentTab() {
           ))}
         </div>
       </Card>
+
+      {/* Trilha de Clientes por Anos de Casa */}
+      {cohort && cohort.total_tracked > 0 && (
+        <Card title={
+          <span>
+            <Cake size={14} style={{
+              display: "inline", marginRight: 6, color: "#a855f7" }} />
+            🎂 Trilha de Aniversário — {cohort.total_tracked} clientes ativos
+          </span>
+        }>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))",
+            gap: 8,
+          }}>
+            {cohort.cohort.filter((c) => c.total > 0).map((c) => {
+              const intensity = Math.min(c.total / 10, 1);
+              return (
+                <div key={c.year}
+                  data-testid={`cohort-year-${c.year}`}
+                  title={c.names.join(" · ")}
+                  style={{
+                    padding: 10, borderRadius: 8,
+                    background: `rgba(168, 85, 247, ${0.05 + intensity * 0.20})`,
+                    border: `1px solid rgba(168, 85, 247, ${0.20 + intensity * 0.30})`,
+                    textAlign: "center",
+                    cursor: "default",
+                  }}>
+                  <div style={{ fontSize: 18, fontWeight: 700,
+                                 color: "#7e22ce" }}>
+                    {c.year}{c.year === 20 ? "+" : ""}
+                  </div>
+                  <div style={{ fontSize: 9, color: "#a855f7",
+                                 textTransform: "uppercase", fontWeight: 600,
+                                 letterSpacing: 0.3 }}>
+                    {c.year === 1 ? "ano" : "anos"}
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 14, fontWeight: 700,
+                                 color: "#0f172a" }}>
+                    {c.total}
+                  </div>
+                  <div style={{ fontSize: 9, color: "#64748b" }}>
+                    clientes
+                  </div>
+                  {c.due_this_month > 0 && (
+                    <div style={{
+                      marginTop: 4, padding: "1px 6px", borderRadius: 4,
+                      background: "#fef3c7", color: "#92400e",
+                      fontSize: 9, fontWeight: 700,
+                    }}>
+                      🔔 {c.due_this_month} aniv.
+                    </div>
+                  )}
+                  <div style={{ fontSize: 10, color: "#16a34a",
+                                 fontWeight: 600, marginTop: 2 }}>
+                    {fmtMoney(c.active_value)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {(cohort.untracked.no_install_date > 0 ||
+             cohort.untracked.less_than_1_year > 0) && (
+            <div style={{ marginTop: 12, padding: "8px 12px",
+                           background: "#f8fafc", borderRadius: 6,
+                           fontSize: 11, color: "#64748b" }}>
+              <Users size={11} style={{ display: "inline", marginRight: 4 }} />
+              Não exibidos: {cohort.untracked.less_than_1_year} cliente(s) com menos de 1 ano · {" "}
+              {cohort.untracked.no_install_date} sem data de instalação cadastrada
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Reajustes vencidos */}
       <Card title={

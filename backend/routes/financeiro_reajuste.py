@@ -128,3 +128,61 @@ async def history(
         {"_id": 0},
     ).sort("applied_at", -1).to_list(50)
     return {"items": items}
+
+
+@router.get("/cohort")
+async def tenure_cohort(
+    user: dict = Depends(require_role("gestor")),
+):
+    """🎯 Trilha de Clientes por Aniversário — quantos clientes completaram 1..20 anos.
+
+    Usa `installation_date` pra calcular tenure. Agrupa em buckets de 1 ano.
+    Identifica também quantos já aniversariaram este mês (gatilho de reajuste).
+    """
+    from datetime import datetime, timezone, timedelta
+    cid = user.get("company_id") or "co-demo"
+    now = datetime.now(timezone.utc)
+
+    # Buckets: 1 a 20 anos
+    cohort = {y: {"year": y, "total": 0, "due_this_month": 0,
+                   "active_value": 0.0, "names": []}
+              for y in range(1, 21)}
+    untracked = {"no_install_date": 0, "less_than_1_year": 0}
+
+    async for sub in db.subscribers.find(
+        {"company_id": cid, "status": {"$in": ["ATIVO", "ativo"]}},
+        {"_id": 0, "id": 1, "name": 1, "installation_date": 1,
+         "plan_price": 1, "plan_name": 1},
+    ):
+        inst = sub.get("installation_date")
+        if not inst:
+            untracked["no_install_date"] += 1
+            continue
+        try:
+            d = datetime.fromisoformat(inst.replace("Z", "+00:00")) if isinstance(inst, str) else inst
+            if not d.tzinfo:
+                d = d.replace(tzinfo=timezone.utc)
+        except Exception:
+            untracked["no_install_date"] += 1
+            continue
+        years = (now - d).days // 365
+        if years < 1:
+            untracked["less_than_1_year"] += 1
+            continue
+        if years > 20:
+            years = 20
+        cohort[years]["total"] += 1
+        cohort[years]["active_value"] += float(sub.get("plan_price") or 0)
+        if len(cohort[years]["names"]) < 8:
+            cohort[years]["names"].append(sub.get("name"))
+        # Aniversariou neste mês (mesmo dia/mês da instalação no mês atual)
+        next_anniv = d.replace(year=d.year + years + 1) if years < 20 else None
+        if next_anniv and (next_anniv - now).days <= 30 and (next_anniv - now).days >= 0:
+            cohort[years]["due_this_month"] += 1
+
+    return {
+        "as_of": now.isoformat(),
+        "cohort": list(cohort.values()),
+        "untracked": untracked,
+        "total_tracked": sum(c["total"] for c in cohort.values()),
+    }
