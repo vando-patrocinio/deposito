@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
 import { Button, Icon } from "@/ui";
 import QRScannerModal from "@/QRScannerModal";
+import UberGpsPicker from "@/UberGpsPicker";
 import AchievementsCard from "@/AchievementsCard";
 
 /**
@@ -1788,6 +1789,10 @@ function PppoeChip({ pppoe }) {
    Cada item só renderiza se houver dado. Cor azul-acinzentada pra
    diferenciar das infos do cliente (azul-índigo do PPPoE). */
 function SmartOltDetailBlock({ ls }) {
+  const [showGpsPicker, setShowGpsPicker] = React.useState(false);
+  const [savingGps, setSavingGps] = React.useState(false);
+  const [gpsMsg, setGpsMsg] = React.useState(null);
+
   if (!ls) return null;
   const items = [
     { label: "PORTA OLT", value: ls.olt_port, hint: `ONU #${ls.onu || "?"}` },
@@ -1798,33 +1803,115 @@ function SmartOltDetailBlock({ ls }) {
     { label: "SN", value: ls.sn, mono: true },
   ].filter((i) => i.value);
   if (items.length === 0) return null;
+
+  // Tenta achar o `cto_id` via ls.cto_id ou ls.cto_box (alguns sidecars
+  // só retornam o nome). Se vier só nome, busca lazy no clique.
+  const ctoId = ls.cto_id;
+  const ctoBox = ls.cto_box;
+  const initialGps = ls.cto_gps || ls.gps || null;
+
+  const saveLocation = async ({ lat, lng, address }) => {
+    setSavingGps(true); setGpsMsg(null);
+    try {
+      let resolvedId = ctoId;
+      if (!resolvedId && ctoBox) {
+        // Resolve por nome
+        try {
+          const r = await api._client.get(
+            `/rede-ia/ctos?bairro=&q=${encodeURIComponent(ctoBox)}`,
+          ).then((x) => x.data);
+          const items = r.items || [];
+          const hit = items.find((c) => c.name === ctoBox)
+            || items[0];
+          resolvedId = hit?.id;
+        } catch { /* ignore */ }
+      }
+      if (!resolvedId) {
+        setGpsMsg({ kind: "err", text: "CTO não encontrada no cadastro." });
+        return;
+      }
+      const addrPayload = address ? {
+        rua: address.rua, numero: address.numero,
+        bairro: address.bairro, cidade: address.cidade,
+        estado: address.estado, cep: address.cep,
+      } : null;
+      await api.redeIaCtoLocationUpdate(resolvedId, {
+        lat, lng, address: addrPayload,
+      });
+      setGpsMsg({ kind: "ok", text: "Localização atualizada!" });
+      setShowGpsPicker(false);
+    } catch (e) {
+      setGpsMsg({
+        kind: "err",
+        text: e?.response?.data?.detail || e.message,
+      });
+    } finally { setSavingGps(false); }
+  };
+
   return (
     <div data-testid="lousa-smartolt-block"
           style={{
             marginTop: 8, padding: "8px 10px", borderRadius: 8,
             background: "rgba(14,165,233,0.08)",
             border: "1px solid rgba(14,165,233,0.18)",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(85px, 1fr))",
-            gap: 6,
           }}>
-      {items.map((i) => (
-        <div key={i.label}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: "#67e8f9",
-                         textTransform: "uppercase", letterSpacing: 0.5 }}>
-            {i.label}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(85px, 1fr))",
+        gap: 6,
+      }}>
+        {items.map((i) => (
+          <div key={i.label}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: "#67e8f9",
+                            textTransform: "uppercase", letterSpacing: 0.5 }}>
+              {i.label}
+            </div>
+            <div style={{
+              fontSize: 11.5, color: "#e0f2fe", fontWeight: 600,
+              fontFamily: i.mono ? "monospace" : "inherit",
+              wordBreak: "break-all",
+            }}>{i.value}</div>
+            {i.hint && (
+              <div style={{ fontSize: 9, color: "#7dd3fc",
+                              opacity: 0.7 }}>{i.hint}</div>
+            )}
           </div>
-          <div style={{
-            fontSize: 11.5, color: "#e0f2fe", fontWeight: 600,
-            fontFamily: i.mono ? "monospace" : "inherit",
-            wordBreak: "break-all",
-          }}>{i.value}</div>
-          {i.hint && (
-            <div style={{ fontSize: 9, color: "#7dd3fc",
-                           opacity: 0.7 }}>{i.hint}</div>
-          )}
+        ))}
+      </div>
+      {ctoBox && (
+        <button
+          onClick={() => setShowGpsPicker(true)}
+          disabled={savingGps}
+          data-testid="lousa-cto-gps-btn"
+          style={{
+            marginTop: 8, padding: "7px 10px", border: 0, width: "100%",
+            background: "linear-gradient(135deg,#8b5cf6,#6366f1)",
+            color: "#fff", borderRadius: 8, fontSize: 11.5, fontWeight: 600,
+            cursor: savingGps ? "wait" : "pointer",
+            display: "inline-flex", justifyContent: "center", alignItems: "center", gap: 6,
+          }}>
+          📍 {savingGps ? "Salvando..." : "Ajustar localização GPS da CTO"}
+        </button>
+      )}
+      {gpsMsg && (
+        <div data-testid={`lousa-cto-gps-${gpsMsg.kind}`}
+              style={{
+                marginTop: 6, padding: 7, borderRadius: 6, fontSize: 11,
+                background: gpsMsg.kind === "ok" ? "#dcfce7" : "#fee2e2",
+                color: gpsMsg.kind === "ok" ? "#166534" : "#991b1b",
+              }}>
+          {gpsMsg.text}
         </div>
-      ))}
+      )}
+      {showGpsPicker && (
+        <UberGpsPicker
+          title={`CTO ${ctoBox} — Ajustar GPS`}
+          initialLat={initialGps?.lat}
+          initialLng={initialGps?.lng}
+          onClose={() => setShowGpsPicker(false)}
+          onConfirm={saveLocation}
+        />
+      )}
     </div>
   );
 }

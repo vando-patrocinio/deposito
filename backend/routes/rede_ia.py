@@ -388,6 +388,70 @@ async def get_cto(cto_id: str, user: dict = Depends(get_current_user)):
     return cto
 
 
+class CtoLocationUpdateIn(BaseModel):
+    """Atualiza coordenadas GPS + endereço da CTO (técnico em campo)."""
+    lat: float = Field(..., ge=-90, le=90)
+    lng: float = Field(..., ge=-180, le=180)
+    address: Optional[Dict[str, Any]] = Field(default=None,
+        description="Campos parciais: rua, numero, bairro, cidade, estado")
+
+
+@router.put("/ctos/{cto_id}/location")
+async def update_cto_location(
+    cto_id: str,
+    body: CtoLocationUpdateIn,
+    user: dict = Depends(require_role("administrador", "gestor",
+                                          "gestor_rede", "tecnico")),
+):
+    """Atualiza posição GPS da CTO (e opcionalmente endereço por reverse geo).
+
+    Disparada pelo técnico em campo via picker tipo Uber. Mantém histórico
+    do antigo `gps` em `gps_history` pra auditoria.
+    """
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+
+    new_gps = {"lat": float(body.lat), "lng": float(body.lng)}
+
+    upd: Dict[str, Any] = {
+        "gps": new_gps,
+        "gps_updated_at": now_iso(),
+        "gps_updated_by": user.get("email") or user.get("id"),
+    }
+    if body.address:
+        # Mescla endereço (não sobrescreve campos vazios novos)
+        cur_addr = dict(cto.get("address") or {})
+        for k, v in body.address.items():
+            if v:
+                cur_addr[k] = v
+        upd["address"] = cur_addr
+
+    push_history = {
+        "gps_history": {
+            "lat": cto.get("gps", {}).get("lat") if cto.get("gps") else None,
+            "lng": cto.get("gps", {}).get("lng") if cto.get("gps") else None,
+            "at": cto.get("gps_updated_at") or cto.get("created_at"),
+        },
+    } if cto.get("gps") else None
+
+    update_op: Dict[str, Any] = {"$set": upd}
+    if push_history:
+        update_op["$push"] = push_history
+
+    await db.ctos.update_one({"id": cto_id, "company_id": cid}, update_op)
+
+    await _audit(
+        "cto_location_update", cto_id,
+        cto.get("gps"), new_gps, user,
+        f"GPS atualizado por {user.get('email')}",
+    )
+
+    new_doc = await db.ctos.find_one({"id": cto_id}, {"_id": 0})
+    return {"ok": True, "cto": new_doc}
+
+
 @router.get("/ctos/{cto_id}/clients")
 async def cto_get_clients(
     cto_id: str,

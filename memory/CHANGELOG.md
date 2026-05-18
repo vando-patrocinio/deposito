@@ -1,6 +1,50 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Mai 18, 2026 — Picker GPS estilo Uber para localização de CTO (Lousa Mobile) ★★★
+
+### Contexto
+Técnico em campo precisa ajustar a localização GPS exata da CTO (que muitas vezes está imprecisa no cadastro). Pediram experiência tipo Uber/iFood: pin fixo no centro, usuário arrasta o mapa, reverse geocode preenche endereço automaticamente.
+
+### Implementado
+
+**1. Backend — `routes/rede_ia.py`:**
+- `PUT /api/rede-ia/ctos/{cto_id}/location` (admin/gestor/tecnico) — atualiza `gps + address` da CTO.
+- Mescla endereço (só sobrescreve campos novos não-vazios).
+- Empilha em `gps_history[]` o GPS antigo + timestamp pra auditoria.
+- Loga em `_audit` quem fez a mudança.
+
+**2. Frontend — `UberGpsPicker.js` (NOVO):**
+- Modal full-screen com Leaflet (reusa stack do RedeIaMap).
+- Pin SVG roxo fixo no centro do mapa (estilo Uber).
+- Mapa pan-able — `moveend` dispara reverse geocode via Nominatim (OSM, grátis, sem chave) com debounce 600ms.
+- Botão flutuante "🎯 Crosshair" usa `navigator.geolocation` pra centralizar na posição do técnico (high accuracy).
+- Bottom-sheet mostra `rua, número, bairro, cidade, estado, CEP` + coordenadas, atualiza em tempo real.
+- Botão "✅ Confirmar localização" só habilita após reverse geocode bem-sucedido.
+
+**3. Integração — `LousaMobile.js`:**
+- `SmartOltDetailBlock` ganhou state local + botão roxo "📍 Ajustar localização GPS da CTO".
+- Resolve `cto_id` lazy via nome (`ls.cto_box`) se sidecar não enviar o id.
+- Ao confirmar, chama `api.redeIaCtoLocationUpdate` e mostra feedback (ok/erro).
+
+### Validação (curl)
+- ✅ `PUT /ctos/{id}/location` com `{lat, lng, address:{bairro,rua,numero}}` retorna `ok:true`
+- ✅ GPS atualizado: `{lat:-22.83456, lng:-43.32102}`
+- ✅ Bairro preservado: `"Parada de Lucas"`
+- ✅ Histórico criado: 2 entradas em `gps_history`
+- ✅ Audit log: `gps_updated_by:"admin@empresa.com"`
+- ✅ Lint Python + JS passou
+
+### Como usar
+1. Técnico abre ticket na Lousa Mobile
+2. No bloco azul SmartOLT, clica no botão roxo "📍 Ajustar localização GPS"
+3. Mapa abre com pin no centro
+4. Arrasta o mapa pra alinhar o pino com a CTO real (ou toca no Crosshair pra pegar GPS do celular)
+5. Endereço (rua/número/bairro/cidade/estado) aparece auto-preenchido na barra inferior
+6. Confirmar → CTO atualizada no banco e visível no mapa Rede IA
+
+
+
 ## Mai 18, 2026 — Nova estratégia: Cadastro de ONU via Rede IA (mapa interativo) ★★★
 
 ### Contexto

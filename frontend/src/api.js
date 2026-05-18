@@ -284,6 +284,8 @@ export const api = {
     client.get(`/rede-ia/ctos/${ctoId}/clients`).then((r) => r.data),
   redeIaCtoProvision: (ctoId, payload) =>
     client.post(`/rede-ia/ctos/${ctoId}/provision`, payload).then((r) => r.data),
+  redeIaCtoLocationUpdate: (ctoId, payload) =>
+    client.put(`/rede-ia/ctos/${ctoId}/location`, payload).then((r) => r.data),
   motorIaAgentsList: () => client.get(`/motor-ia/agents`).then((r) => r.data),
   motorIaAgentToggle: (agentId, enabled) =>
     client.put(`/motor-ia/agents/${agentId}`, { enabled }).then((r) => r.data),
