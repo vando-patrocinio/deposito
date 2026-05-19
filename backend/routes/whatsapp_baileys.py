@@ -36,13 +36,15 @@ from database import db
 logger = logging.getLogger("ponto.wa_baileys")
 router = APIRouter(prefix="/api/whatsapp-baileys", tags=["whatsapp-baileys"])
 
-SIDECAR_BASE = os.environ.get("WA_SIDECAR_URL", "http://127.0.0.1:3002").rstrip("/")
-SIDECAR_TOKEN = os.environ.get("WA_SIDECAR_TOKEN", "")
-WA_INBOUND_TOKEN = os.environ.get("WA_INBOUND_TOKEN", "")
-
-# Headers padrão para chamadas ao sidecar — adiciona Bearer quando configurado
-def _sidecar_headers() -> dict:
-    return {"Authorization": f"Bearer {SIDECAR_TOKEN}"} if SIDECAR_TOKEN else {}
+# Helpers do sidecar Baileys (Node.js) — extraídos para services/wa/sidecar.py
+# em iter106. Re-exportados aqui pra compatibilidade com imports externos
+# (routes/disparo_boleto.py, routes/disparo_promo.py, routes/plans.py,
+#  routes/mass_messaging.py, routes/whatsapp_twilio.py).
+from services.wa.sidecar import (  # noqa: E402
+    SIDECAR_BASE, SIDECAR_TOKEN, WA_INBOUND_TOKEN,
+    _sidecar_headers, _sidecar_get, _sidecar_post, _sidecar_post_silent,
+)
+from services.wa.text_utils import _split_ai_reply  # noqa: E402
 
 # Diretório onde áudios outbound enviados pela atendente são persistidos
 # (servidos via /api/whatsapp-baileys/audio/{msg_id})
@@ -51,142 +53,9 @@ WA_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
-# Helper: quebra a resposta da IA em múltiplas bolhas
+# Helpers do sidecar e processamento de texto agora vivem em services/wa/
+# Re-exports estão no topo do arquivo pra manter backward compat.
 # ---------------------------------------------------------------------------
-def _split_ai_reply(text: str, max_chunks: int = 6,
-                     min_chunk_chars: int = 12) -> List[str]:
-    """Quebra a resposta da IA em chunks que viram bolhas separadas no
-    WhatsApp.
-
-    Regras:
-    1. PRIORIDADE: se a resposta vier como múltiplas strings entre aspas
-       (padrão Isabella V6 — cada bolha em uma linha entre `"..."`), cada
-       string vira uma bolha. Strings vazias `""` são marcadores de quebra
-       e descartadas. Isso permite a IA controlar onde quebrar com precisão
-       (regra do gestor: "" separa bolha).
-    2. Caso contrário, separa por linhas em branco (`\\n\\n`) ou marcador
-       explícito `---`.
-    3. Junta chunks micro (< min_chunk_chars) no chunk seguinte para
-       evitar bolhas de 1-2 palavras.
-    4. Cap em `max_chunks`: o excedente é concatenado no último chunk
-       (assim a IA não consegue 'flood' o cliente).
-    5. Quebras de linha simples (`\\n`) DENTRO de um chunk são preservadas
-       (ex.: lista de bullets).
-    6. Se a resposta for curta ou inteira numa linha só, devolve [text].
-    """
-    if not text:
-        return []
-    raw = text.replace("\r\n", "\n").strip()
-
-    # Detecta padrão "bolhas-aspas Isabella": linhas que começam e terminam
-    # com aspas (ou são `""` vazio). Se a maioria das linhas não-vazias
-    # seguir esse padrão, tratamos cada uma como bolha individual.
-    lines = [ln.strip() for ln in raw.split("\n") if ln.strip()]
-    quoted_lines = [
-        ln for ln in lines
-        if (ln.startswith('"') and ln.endswith('"')
-            and len(ln) >= 2)
-    ]
-    if lines and len(quoted_lines) >= max(2, int(len(lines) * 0.6)):
-        # Modo bolhas-aspas: cada string entre aspas é uma bolha.
-        # `""` (vazio) é separador puro e some.
-        bubbles: List[str] = []
-        for ln in quoted_lines:
-            inner = ln[1:-1].strip()
-            if inner:
-                bubbles.append(inner)
-        if bubbles:
-            # Cap igual ao caminho normal
-            if len(bubbles) > max_chunks:
-                head = bubbles[: max_chunks - 1]
-                tail = "\n\n".join(bubbles[max_chunks - 1:])
-                bubbles = head + [tail]
-            return bubbles
-
-    # --- caminho clássico (parágrafos por linha em branco) ---
-    # Separador explícito `---` em linha sozinha vira "\n\n" pra unificar
-    raw = re.sub(r"\n\s*---+\s*\n", "\n\n", raw)
-    # Linha contendo só "" também serve como separador explícito
-    raw = re.sub(r'\n\s*""\s*\n', "\n\n", raw)
-    parts = re.split(r"\n{2,}", raw)
-    # Limpa e remove vazios
-    parts = [p.strip() for p in parts if p.strip()]
-    if not parts:
-        return []
-    # Junta micros (< min_chunk_chars) com o próximo
-    merged: List[str] = []
-    buf = ""
-    for p in parts:
-        if len(p) < min_chunk_chars and not buf:
-            buf = p
-            continue
-        if buf:
-            merged.append((buf + "\n\n" + p).strip())
-            buf = ""
-        else:
-            merged.append(p)
-    if buf:
-        if merged:
-            merged[-1] = (merged[-1] + "\n\n" + buf).strip()
-        else:
-            merged.append(buf)
-    # Cap em max_chunks (overflow junta no último)
-    if len(merged) > max_chunks:
-        head = merged[: max_chunks - 1]
-        tail = "\n\n".join(merged[max_chunks - 1:])
-        merged = head + [tail]
-    return merged
-
-
-async def _sidecar_get(path: str) -> Dict[str, Any]:
-    try:
-        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=8.0) as cli:
-            r = await cli.get(f"{SIDECAR_BASE}{path}")
-            r.raise_for_status()
-            return r.json()
-    except httpx.HTTPError as e:
-        logger.warning("[wa-baileys] sidecar GET %s falhou: %s", path, e)
-        raise HTTPException(503,
-                            f"WhatsApp sidecar indisponível: {e}") from e
-
-
-async def _sidecar_post(path: str, payload: Optional[dict] = None) -> Dict[str, Any]:
-    try:
-        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=15.0) as cli:
-            r = await cli.post(f"{SIDECAR_BASE}{path}", json=payload or {})
-            try:
-                body = r.json()
-            except Exception:
-                body = {"raw": r.text}
-            if r.status_code >= 400:
-                detail = body.get("error") or body.get("raw") or f"HTTP {r.status_code}"
-                raise HTTPException(r.status_code, detail)
-            return body
-    except httpx.HTTPError as e:
-        logger.warning("[wa-baileys] sidecar POST %s falhou: %s", path, e)
-        raise HTTPException(503,
-                            f"WhatsApp sidecar indisponível: {e}") from e
-
-
-async def _sidecar_post_silent(path: str, payload: dict, timeout: float = 50.0
-                                ) -> Dict[str, Any]:
-    """Como _sidecar_post mas não levanta HTTPException — devolve dict com
-    `ok=False` em caso de erro. Útil pra envios em background (boleto PDF)
-    onde queremos persistir falha mas seguir a vida.
-    """
-    try:
-        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=timeout) as cli:
-            r = await cli.post(f"{SIDECAR_BASE}{path}", json=payload)
-            try:
-                body = r.json()
-            except Exception:
-                body = {"raw": r.text}
-            if r.status_code >= 400:
-                return {"ok": False,
-                        "error": body.get("error") or f"HTTP {r.status_code}"}
-            return body
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
 
 
 async def _deliver_boleto_with_pdf(cid: str, phone: str,
@@ -1604,98 +1473,15 @@ async def _legacy_inbound_ai_inline_DEPRECATED(payload, is_group, cid, effective
         pass
 
 
-async def _fetch_human_few_shots(cid: str, limit: int = 3) -> List[Dict[str, Any]]:
-    """Busca pares (cliente perguntou → atendente humano respondeu) das conversas
-    avaliadas com CSAT alto (>=8). Usado como few-shot examples no system_prompt
-    da IA pra ela aprender padrões que conquistaram clientes.
-    """
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    top_evals = await db.aihub_evaluations.find(
-        {"company_id": cid, "csat_score": {"$gte": 8},
-         "evaluated_at": {"$gte": cutoff}},
-        {"_id": 0, "phone": 1, "csat_score": 1, "evaluated_at": 1},
-    ).sort("evaluated_at", -1).limit(20).to_list(20)
-    examples: List[Dict[str, Any]] = []
-    seen_phones = set()
-    for ev in top_evals:
-        ph = ev.get("phone")
-        if not ph or ph in seen_phones:
-            continue
-        msgs = await db.aihub_wa_messages.find(
-            {"company_id": cid, "phone": ph,
-             "$or": [{"direction": "inbound"},
-                       {"direction": "outbound", "auto_reply": {"$ne": True},
-                        "sent_by_user_id": {"$nin": [None, ""]}}]},
-            {"_id": 0, "direction": 1, "text": 1, "created_at": 1,
-             "auto_reply": 1},
-        ).sort("created_at", 1).to_list(60)
-        # Pega o primeiro par inbound→outbound(human) coerente
-        for i, m in enumerate(msgs[:-1]):
-            if m.get("direction") == "inbound":
-                nxt = msgs[i + 1]
-                if nxt.get("direction") == "outbound" and not nxt.get("auto_reply"):
-                    q = (m.get("text") or "").strip()
-                    a = (nxt.get("text") or "").strip()
-                    if 5 <= len(q) <= 280 and 5 <= len(a) <= 600:
-                        examples.append({"q": q, "a": a,
-                                            "csat": ev.get("csat_score")})
-                        seen_phones.add(ph)
-                        break
-        if len(examples) >= limit:
-            break
-    return examples
-
-
-async def _persist_ai_failure(cid: str, phone: str, subscriber_id: Optional[str],
-                                reason_code: str, reason_msg: str,
-                                user_text: str = "",
-                                agent: Optional[dict] = None) -> None:
-    """Persiste uma falha do auto-reply IA. Substitui o antigo `return None`
-    silencioso. Cada falha vira um registro outbound com `delivery_status`
-    iniciado por 'failed_' para que o frontend possa destacar."""
-    doc = {
-        "id": f"wam-{uuid.uuid4().hex[:10]}",
-        "company_id": cid,
-        "direction": "outbound",
-        "phone": phone,
-        "text": "",  # nada foi enviado
-        "channel": "baileys",
-        "subscriber_id": subscriber_id,
-        "session_id": f"wa-{phone}",
-        "auto_reply": True,
-        "delivery_status": f"failed_{reason_code}",
-        "delivery_error": reason_msg[:300],
-        "user_text_snapshot": (user_text or "")[:240],
-        "created_at": now_iso(),
-    }
-    if agent:
-        doc["agent_id"] = agent.get("id")
-        doc["agent_name"] = agent.get("name")
-    try:
-        await db.aihub_wa_messages.insert_one(doc)
-    except Exception as e:
-        logger.warning("[wa-baileys] falha ao persistir failure: %s", e)
-    # Dispara system_event se acumular ≥3 falhas em 24h (recurso já existente)
-    try:
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-        n = await db.aihub_wa_messages.count_documents({
-            "company_id": cid, "direction": "outbound",
-            "auto_reply": True,
-            "delivery_status": {"$regex": "^failed_"},
-            "created_at": {"$gte": cutoff},
-        })
-        if n >= 3:
-            await db.wa_system_events.insert_one({
-                "id": f"sys-{uuid.uuid4().hex[:10]}",
-                "company_id": cid,
-                "kind": "ai_attendant_unhealthy",
-                "text": f"IA com {n} falha(s) nas últimas 24h · {reason_code}",
-                "data": {"reason_code": reason_code, "failures_24h": n,
-                         "last_reason": reason_msg[:120]},
-                "created_at": now_iso(),
-            })
-    except Exception as e:
-        logger.info("[wa-baileys] system_event ai_unhealthy skip: %s", e)
+# ---------------------------------------------------------------------------
+# Helpers extraídos para services/wa/ai_helpers.py em iter106.
+# Re-export pra compat com central_ia (que importa _fetch_human_few_shots
+# direto deste módulo) e outras chamadas internas.
+# ---------------------------------------------------------------------------
+from services.wa.ai_helpers import (  # noqa: E402
+    fetch_human_few_shots as _fetch_human_few_shots,
+    persist_ai_failure as _persist_ai_failure,
+)
 
 
 async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
@@ -2577,38 +2363,13 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
 
 
 # ---------------------------------------------------------------------------
-# Detecção de conclusão de venda (handoff Isabella → humano)
+# Detecção de conclusão de venda — extraída para services/wa/sales_detection.py
+# Re-export pra compat com código que importa direto deste módulo.
 # ---------------------------------------------------------------------------
-import re as _re_sales
-
-_SALES_DONE_PATTERNS = [
-    # frases típicas que a Isabella usa ao fechar uma venda
-    r"vou\s+conduzir\s+(?:a|o)\s+valida",
-    r"vou\s+conduzir\s+(?:a|o)\s+restante",
-    r"obrigad[oa]\s+por\s+escolher",
-    r"agradeço\s+(?:a\s+)?(?:sua\s+)?confianç",
-    r"ficamos\s+(?:muito\s+)?felizes\s+(?:por|em)",
-    r"sua\s+(?:contratação|instalação)\s+(?:foi\s+)?(?:registrada|confirmada|agendada)",
-    r"protocolo\s+de\s+contrataç",
-    r"contrataç[ãa]o\s+(?:foi\s+)?(?:concluída|finalizada|registrada)",
-    r"(?:proposta|pedido)\s+(?:foi\s+)?(?:registrad[oa]|enviad[oa])",
-    # combinação: "concluído" perto de palavras de venda
-    r"conclu[íi]d[oa]\s*[!.,]?.*(?:valida|atend|equipe|t[ée]cnico)",
-]
-_SALES_DONE_RE = _re_sales.compile(
-    "|".join(f"(?:{p})" for p in _SALES_DONE_PATTERNS),
-    _re_sales.IGNORECASE,
+from services.wa.sales_detection import (  # noqa: E402
+    _SALES_DONE_PATTERNS, _SALES_DONE_RE,
+    is_sales_completion as _is_sales_completion,
 )
-
-
-def _is_sales_completion(text: str) -> bool:
-    """Detecta se o texto da Isabella encerra uma venda. Conservador: só
-    retorna True quando o padrão é claro de handoff/finalização — evita
-    falsos positivos como "obrigada pela mensagem" no meio da conversa.
-    """
-    if not text or len(text) < 15:
-        return False
-    return bool(_SALES_DONE_RE.search(text))
 
 
 # ---------------------------------------------------------------------------

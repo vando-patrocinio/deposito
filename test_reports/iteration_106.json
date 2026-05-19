@@ -1,0 +1,26 @@
+{
+  "summary": "iter106 — Refactor WhatsAppChatLayout.js + whatsapp_baileys.py (extração de helpers para services/wa/* e components/wa/atoms). Backend testado: 23/23 pytest passed. Verificado: (a) endpoints WhatsApp Baileys (ai-health, auto-reply GET/PUT, status, conversations, qr) respondendo OK; (b) imports backward-compat de SIDECAR_BASE, _sidecar_post, _sidecar_headers, _sidecar_get, _sidecar_post_silent, _split_ai_reply, _is_sales_completion, _fetch_human_few_shots, _persist_ai_failure, _maybe_auto_reply funcionando via routes.whatsapp_baileys; (c) os aliases legados são literalmente a mesma callable do novo módulo (identity check com 'is'); (d) services.wa.sales_detection._SALES_DONE_PATTERNS/_SALES_DONE_RE expostos; (e) _is_sales_completion('contratação foi concluída pela equipe') retorna True; (f) _split_ai_reply quebra texto em paragrafos e detecta padrão Isabella V6 (bolhas entre aspas); (g) /api/ai-config retorna chain/providers/primary e PUT /chain idempotente; (h) /api/central-ia/dashboard/handoffs e /sentiment com days=7 OK; (i) /api/motor-ia/usage?days=1 expõe cache_hit_rate_pct e cache_savings_usd dentro de body.totals (corrigi assertion inicial); (j) services.routing.pick_agent_for_message importável e _keyword_matches pontua vendas/suporte/fibra/mega corretamente. Refatoração 100% compatível.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter106_wa_refactor.py",
+    "/app/test_reports/pytest/iter106_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routes/whatsapp_baileys.py — 3896 linhas ainda. Ainda é grande mas a meta de extração foi atingida (sidecar/text_utils/sales_detection/ai_helpers separados). Próximas refatorações: extrair pipeline de áudio/TTS (_send_audio, _transcribe_audio) e o webhook /inbound handler.",
+    "/app/frontend/src/WhatsAppChatLayout.js — 4206 linhas. Atoms já saíram para components/wa/atoms.js. Próxima extração natural: ConversationList, MessageBubble, ChatComposer e BucketSidebar em arquivos próprios (cada um >300 linhas hoje dentro do mesmo arquivo).",
+    "/app/backend/routes/whatsapp_baileys.py:44-46 — bom: re-exports explícitos com noqa:E402 documentam o motivo. Documentação interna (iter106 refactor) clara.",
+    "Aliases _is_sales_completion / _fetch_human_few_shots / _persist_ai_failure são identidade da função nova (verified com 'is'), não wrapper — zero overhead, zero risco de divergência futura."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter106_wa_refactor.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "skipped"},
+  "test_credentials": "admin@empresa.com / 123456 (company_id co-demo)",
+  "seed_data_creation": "Nenhuma — todos endpoints testados são read-only ou idempotentes (auto-reply PUT toggle + restore).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter106 valida que a refatoração de WhatsAppChatLayout/whatsapp_baileys NÃO quebrou nada. Re-exports estão em routes/whatsapp_baileys.py linhas 43-47 (sidecar+text_utils) e 1481-1484 (ai_helpers); _is_sales_completion alias em ~linha 2371. Para o próximo dev: estender extracts para pipeline de áudio (TTS/STT) e webhook /inbound do whatsapp_baileys, e quebrar WhatsAppChatLayout.js em ConversationList/MessageBubble/ChatComposer/BucketSidebar. Sidecar Baileys pode estar offline (status=down OK no teste). cache_hit_rate_pct e cache_savings_usd ficam em body.totals em /api/motor-ia/usage, não no body raiz.",
+  "rca of the issue": "N/A — nenhum bug detectado, apenas test assertion inicial que olhava no body raiz em vez de body.totals para os campos de cache (corrigido no test file)."
+}
