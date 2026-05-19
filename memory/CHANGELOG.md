@@ -1,5 +1,27 @@
 # PontoIA — Changelog
 
+## Fev 2026 — Lousa Focus Mode: Timeline View horizontal
+
+### Feature
+Adicionei segunda visualização ao Focus Mode da Lousa (visão de 1 técnico). Toggle "Grade | Timeline" aparece na toolbar somente quando há técnico focado, e a escolha persiste em `localStorage` (`lousa_focus_view`).
+
+**TechTimeline** novo componente:
+- Header limpo com avatar grande, nome, contagem e badges de ponto (Entrada/Intervalo/Saída) inline
+- Faixa horizontal de slots (160px cada, scrollable em X) — uma coluna por horário
+- Cada slot mostra: hora, contador `n/maxPerSlot`, tickets empilhados verticalmente
+- Slot da hora atual ganha borda verde + indicador `●` (estilo "agora")
+- Drag/drop entre slots funciona (reusa `onSlotDrop` do server)
+- Coluna especial **"Sem horário"** sticky no fim (amarelo) para bolhas não agendadas — também é drop target
+- Rodapé compacto com "Encerrados (24h)" em chips horizontais
+
+Reuso de componentes existentes: `BubbleCard`, `OptimizeRouteButton`, mesmas APIs do TechColumn.
+
+### Verificação
+- `yarn build` ✅ limpo
+- Screenshot validado: timeline horizontal do Eddy com 14:00 ocupado + slot atual destacado
+
+
+
 ## Fev 2026 — Lousa: Toolbar compacta + Filtro de técnico único
 
 ### Toolbar refatorada (estilo Notion/Linear)

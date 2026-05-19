@@ -106,6 +106,16 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   });
   const [techMenuOpen, setTechMenuOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  // Visualização dentro do focus mode: "grid" (coluna vertical clássica)
+  // ou "timeline" (slots horizontais estilo Google Calendar / Asana).
+  const [focusView, setFocusView] = useState(() => {
+    if (typeof window === "undefined") return "grid";
+    return window.localStorage.getItem("lousa_focus_view") || "grid";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("lousa_focus_view", focusView);
+  }, [focusView]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (focusTechId) window.localStorage.setItem("lousa_focus_tech", focusTechId);
@@ -464,6 +474,42 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 />
               )}
             </div>
+            {focusTechId && (
+              <div data-testid="lousa-focus-view-toggle" style={{
+                display: "inline-flex", padding: 2, gap: 2,
+                background: "white", borderRadius: 8,
+                border: "1px solid #e2e8f0",
+              }}>
+                <button
+                  onClick={() => setFocusView("grid")}
+                  data-testid="lousa-focus-view-grid"
+                  title="Visão em grade vertical (clássica)"
+                  style={{
+                    padding: "5px 9px", borderRadius: 6, border: "none",
+                    background: focusView === "grid" ? "#0f172a" : "transparent",
+                    color: focusView === "grid" ? "white" : "#64748b",
+                    fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                  }}
+                >
+                  <span style={{ fontSize: 12 }}>▦</span> Grade
+                </button>
+                <button
+                  onClick={() => setFocusView("timeline")}
+                  data-testid="lousa-focus-view-timeline"
+                  title="Visão timeline horizontal (estilo Google Calendar)"
+                  style={{
+                    padding: "5px 9px", borderRadius: 6, border: "none",
+                    background: focusView === "timeline" ? "#0f172a" : "transparent",
+                    color: focusView === "timeline" ? "white" : "#64748b",
+                    fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                  }}
+                >
+                  <span style={{ fontSize: 12 }}>⟷</span> Timeline
+                </button>
+              </div>
+            )}
             <ToolbarBtn
               onClick={toggleSelectMode}
               data-testid="lousa-select-mode-toggle"
@@ -683,6 +729,27 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           ? grid.columns.filter((c) => c.collaborator.id === focusTechId)
           : grid.columns
         ).map((col) => (
+          focusTechId && focusView === "timeline" ? (
+            <TechTimeline
+              key={col.collaborator.id + tick}
+              column={col}
+              isDropTarget={dragOverCol === col.collaborator.id}
+              blinkOverdue={grid.sla_blink_when_overdue}
+              maxPerSlot={grid.grid?.max_per_slot || 2}
+              onSlotDrop={handleSlotDrop}
+              onDragStart={(tid) => setDraggingId(tid)}
+              onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
+              draggingId={draggingId}
+              onAdminClose={handleAdminClose}
+              onAdminOpen={handleAdminOpen}
+              onEdit={(t) => setEditingTicket(t)}
+              onReschedule={(t) => setReschedTicket(t)}
+              busy={busy}
+              selectMode={selectMode}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleTicketSelected}
+            />
+          ) : (
           <TechColumn
             key={col.collaborator.id + tick}
             column={col}
@@ -706,6 +773,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             onToggleSelect={toggleTicketSelected}
             wide={!!focusTechId}
           />
+          )
         ))}
       </div>
 
@@ -2405,4 +2473,256 @@ function overflowItemStyle(color) {
     borderRadius: 7, cursor: "pointer", textAlign: "left",
     color: color || "#0f172a",
   };
+}
+
+
+// ============================================================
+// TechTimeline — visão horizontal estilo Google Calendar
+// Exibida quando o gestor entra no "focus mode" (1 técnico) e
+// escolhe a aba Timeline. Cada slot vira coluna no eixo X.
+// ============================================================
+
+function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId,
+  onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, onReschedule,
+  busy, selectMode, selectedIds, onToggleSelect }) {
+  const c = column.collaborator;
+  const state = column.clock_state;
+  const slots = column.slots || [];
+  const unscheduled = column.unscheduled || [];
+  const recentResolved = column.recent_resolved || [];
+  const totalTickets = column.tickets?.length || 0;
+  const isOnline = state.is_online === true || (state.is_online === undefined && state.has_entrada && !state.ended_day && !state.in_intervalo);
+
+  // Hora atual pra desenhar a linha "agora" no timeline
+  const now = new Date();
+  const nowLabel = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+  return (
+    <div data-testid={`tech-timeline-${c.id}`} style={{
+      flex: "1 1 auto", minWidth: 800,
+      background: "var(--bg-surface)",
+      border: "1px solid var(--border-default)",
+      borderRadius: 12, padding: 14,
+      boxShadow: "var(--shadow-xs)",
+    }}>
+      {/* Header — mesma identidade do TechColumn */}
+      <div style={{ display: "flex", gap: 12, alignItems: "center",
+                       paddingBottom: 12, borderBottom: "1px solid var(--border-default)" }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: "50%",
+          background: c.avatar ? `url(${c.avatar}) center/cover` : "linear-gradient(135deg,#0d9488,#0f766e)",
+          display: "grid", placeItems: "center", color: "white", fontWeight: 700, fontSize: 16,
+          border: `2px solid ${isOnline ? "#16a34a" : "#d97706"}`,
+          position: "relative", flexShrink: 0,
+        }}>
+          {!c.avatar && (c.name?.[0] || "?").toUpperCase()}
+          <span style={{
+            position: "absolute", bottom: -2, right: -2,
+            width: 14, height: 14, borderRadius: "50%",
+            background: isOnline ? "#10b981" : "#f59e0b",
+            border: "2px solid white",
+          }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
+            {c.name}
+          </div>
+          <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
+            Timeline · {totalTickets} serviço(s) · {c.praca || "—"}
+            {state.records?.length > 0 && (
+              <span style={{ marginLeft: 8 }}>
+                {state.records.map((r, i) => (
+                  <span key={i} style={{
+                    marginLeft: 4, padding: "1px 6px", borderRadius: 6, fontWeight: 700,
+                    fontSize: 10,
+                    background: r.type === "Entrada" ? "#dcfce7" : r.type === "Saída" ? "#fee2e2" : "#fef3c7",
+                    color: r.type === "Entrada" ? "#166534" : r.type === "Saída" ? "#7f1d1d" : "#78350f",
+                  }}>
+                    {r.type === "Entrada" ? "🚪" : r.type === "Início intervalo" ? "🍽️" : r.type === "Fim intervalo" ? "🔄" : "🏁"} {r.time}
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
+        </div>
+        <OptimizeRouteButton collaboratorId={c.id} />
+      </div>
+
+      {/* Faixa horizontal de slots */}
+      <div style={{ marginTop: 12, overflowX: "auto", paddingBottom: 6 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "stretch", minHeight: 220 }}>
+          {slots.map((s) => (
+            <TimelineSlot
+              key={s.slot}
+              slot={s}
+              isCurrentHour={nowLabel.slice(0, 2) === s.slot.slice(0, 2)}
+              techId={c.id}
+              maxPerSlot={maxPerSlot}
+              onSlotDrop={onSlotDrop}
+              draggingId={draggingId}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              blinkOverdue={blinkOverdue}
+              onAdminClose={onAdminClose}
+              onAdminOpen={onAdminOpen}
+              onEdit={onEdit}
+              onReschedule={onReschedule}
+              busy={busy}
+              selectMode={selectMode}
+              selectedIds={selectedIds}
+              onToggleSelect={onToggleSelect}
+            />
+          ))}
+
+          {/* Coluna "Sem horário" sticky no fim — drop target especial */}
+          {unscheduled.length > 0 && (
+            <div data-testid={`timeline-unscheduled-${c.id}`} style={{
+              flex: "0 0 200px",
+              background: "#fef3c7",
+              border: "1.5px dashed #f59e0b",
+              borderRadius: 10, padding: 8,
+              alignSelf: "stretch",
+            }}>
+              <div style={{ fontSize: 10.5, fontWeight: 800, color: "#92400e",
+                              marginBottom: 6, textAlign: "center",
+                              textTransform: "uppercase", letterSpacing: ".05em" }}>
+                📋 Sem horário ({unscheduled.length})
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {unscheduled.map((t) => (
+                  <BubbleCard
+                    key={t.id}
+                    ticket={t}
+                    blinkOverdue={blinkOverdue}
+                    isDragging={draggingId === t.id}
+                    onDragStart={() => onDragStart(t.id)}
+                    onDragEnd={onDragEnd}
+                    onAdminClose={onAdminClose}
+                    onAdminOpen={onAdminOpen}
+                    onEdit={onEdit}
+                    onReschedule={onReschedule}
+                    busy={busy}
+                    selectMode={selectMode}
+                    isSelected={selectedIds?.includes(t.id)}
+                    onToggleSelect={onToggleSelect}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Encerrados nas últimas 24h — rodapé compacto */}
+      {recentResolved.length > 0 && (
+        <div data-testid={`timeline-recent-${c.id}`} style={{
+          marginTop: 12, padding: "8px 10px",
+          background: "#f8fafc", border: "1px dashed #cbd5e1",
+          borderRadius: 8, fontSize: 10.5, color: "#475569",
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 4, color: "#0f172a" }}>
+            📒 Encerrados (24h)
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {recentResolved.map((t) => (
+              <div key={t.id} style={{
+                padding: "4px 8px", background: "white",
+                border: "1px solid #e2e8f0", borderRadius: 6,
+                fontSize: 10.5,
+              }}>
+                <strong>{TYPE_LABELS[t.type] || t.type}</strong>
+                {" · "}{t.client_snapshot?.name}
+                {t.duration_minutes != null && (
+                  <span style={{ marginLeft: 5, color: "#0f172a", fontWeight: 700 }}>
+                    · 🕐 {fmtDuration(t.duration_minutes)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TimelineSlot({ slot, isCurrentHour, techId, maxPerSlot, onSlotDrop, draggingId,
+  onDragStart, onDragEnd, blinkOverdue, onAdminClose, onAdminOpen, onEdit, onReschedule,
+  busy, selectMode, selectedIds, onToggleSelect }) {
+  const [over, setOver] = useState(false);
+  const isFull = slot.full;
+  const tickets = slot.tickets || [];
+  const isEmpty = tickets.length === 0;
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!isFull) setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault(); e.stopPropagation();
+        setOver(false);
+        if (!isFull) onSlotDrop(techId, slot.slot);
+      }}
+      data-testid={`timeline-slot-${techId}-${slot.slot}`}
+      style={{
+        flex: "0 0 160px",
+        background: over ? "#bfdbfe" : isFull ? "#fef3c7" : isEmpty ? "#fafbfc" : "#f8fafc",
+        border: over ? "2px dashed #3b82f6"
+              : isCurrentHour ? "2px solid #22c55e"
+              : "1px solid #e2e8f0",
+        borderRadius: 10, padding: 6,
+        position: "relative",
+        transition: "background-color .15s, border-color .15s",
+        display: "flex", flexDirection: "column", gap: 4,
+      }}
+    >
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "2px 4px 4px", borderBottom: "1px solid #e2e8f0",
+      }}>
+        <span style={{
+          fontSize: 11.5, fontWeight: 800,
+          color: isCurrentHour ? "#15803d" : isFull ? "#92400e" : "#0f172a",
+          letterSpacing: ".02em",
+        }}>
+          {slot.slot}{isCurrentHour && " ●"}
+        </span>
+        <span style={{
+          fontSize: 9.5, fontWeight: 600,
+          color: isFull ? "#92400e" : "#94a3b8",
+        }}>
+          {tickets.length}/{maxPerSlot}{isFull && " 🔒"}
+        </span>
+      </div>
+      {isEmpty ? (
+        <div style={{
+          fontSize: 10, color: "#cbd5e1", textAlign: "center",
+          padding: "12px 4px", fontStyle: "italic",
+        }}>
+          {over ? "↓ Solte aqui ↓" : "vazio"}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {tickets.map((t) => (
+            <BubbleCard
+              key={t.id}
+              ticket={t}
+              blinkOverdue={blinkOverdue}
+              isDragging={draggingId === t.id}
+              onDragStart={() => onDragStart(t.id)}
+              onDragEnd={onDragEnd}
+              onAdminClose={onAdminClose}
+              onAdminOpen={onAdminOpen}
+              onEdit={onEdit}
+              onReschedule={onReschedule}
+              busy={busy}
+              selectMode={selectMode}
+              isSelected={selectedIds?.includes(t.id)}
+              onToggleSelect={onToggleSelect}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
