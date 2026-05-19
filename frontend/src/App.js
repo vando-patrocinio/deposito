@@ -22,6 +22,7 @@ import SettingsPanel from "@/SettingsPanel";
 import FinanceiroPanel from "@/FinanceiroPanel";
 import BudgetPanel from "@/BudgetPanel";
 import RedeIaPanel from "@/RedeIaPanel";
+import { DEFAULT_TAB_PERMISSIONS as _DEFAULT_TAB_PERMS } from "@/TabPermissionsCard";
 import AlvaroPanel from "@/AlvaroPanel";
 import MassMessagingPanel from "@/MassMessagingPanel";
 import MotorIaCard from "@/MotorIaCard";
@@ -562,7 +563,7 @@ function AppShell({ view, setView, children }) {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [allCompanies, setAllCompanies] = useState([]);
   const [showAIPanel, setShowAIPanel] = useState(false);
-  const [tabPerms, setTabPerms] = useState(null);
+  const [tabPerms, setTabPerms] = useState(_DEFAULT_TAB_PERMS);
   const [activeCo, setActiveCo] = useState(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem("ponto_active_company") || "";
@@ -597,11 +598,14 @@ function AppShell({ view, setView, children }) {
     ]).then(([api, perms]) => {
       api.brandingGet().then((cfg) => {
         if (!alive) return;
-        if (!cfg?.tab_permissions) return;
+        // Se a empresa ainda não tem `tab_permissions` salva, mantemos
+        // o DEFAULT_TAB_PERMISSIONS já aplicado no estado inicial — assim
+        // o filtro nunca cai num fallback permissivo que libera tudo pro gestor.
+        const base = cfg?.tab_permissions || perms.DEFAULT_TAB_PERMISSIONS;
+        const merged = { ...base };
         // Migration soft: para cada role, se uma aba do default está liberada
         // mas ainda não consta na config salva (porque a config foi gravada
         // ANTES da aba ser criada), adiciona automaticamente.
-        const merged = { ...cfg.tab_permissions };
         for (const role of Object.keys(perms.DEFAULT_TAB_PERMISSIONS)) {
           const saved = merged[role] || [];
           const defaults = perms.DEFAULT_TAB_PERMISSIONS[role] || [];
@@ -637,6 +641,14 @@ function AppShell({ view, setView, children }) {
     if (tabPerms && user && tabPerms[user.role]) {
       if (user.role === "administrador") return true;
       return tabPerms[user.role].includes(t.id);
+    }
+    // Administrador sempre vê tudo (super-role).
+    if (user && user.role === "administrador") return true;
+    // Pra QUALQUER outro role, se `tabPerms` ainda não carregou ou não tem
+    // entrada pro role do usuário, NÃO caímos no fallback `hasRole`
+    // (que liberava abas demais pro gestor). Aplicamos o DEFAULT direto.
+    if (user && _DEFAULT_TAB_PERMS[user.role]) {
+      return _DEFAULT_TAB_PERMS[user.role].includes(t.id);
     }
     if (!hasRole(user, ...t.roles)) return false;
     return true;
