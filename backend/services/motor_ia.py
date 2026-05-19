@@ -689,8 +689,9 @@ async def _emergent_chat_fallback(messages, model, temperature, max_tokens,
                 api_key=api_key, session_id=session_id,
                 system_message=sys_prompt,
             ).with_model(prov_name, model_name)
-            if prov_name == "openai":
-                chat = chat.with_max_tokens(max_tokens)
+            # NOTA: emergentintegrations 0.x não expõe with_max_tokens; o
+            # default do SDK é suficiente. Anthropic com prompt grande precisa
+            # do caminho dedicado (_anthropic_with_cache) que usa o SDK direto.
             out = await chat.send_message(UserMessage(text=user_msg))
             return {"content": str(out).strip(),
                     "model": model_name, "provider": prov_name}
@@ -728,19 +729,29 @@ async def _anthropic_with_cache(api_key: str, model: str,
         "text": system_prompt,
         "cache_control": {"type": "ephemeral"},
     }]
-    resp = await client.messages.create(
+    # Anthropic requer streaming quando estimated_duration > 10min.
+    # Pra prompts grandes (>15k tokens) ou max_tokens alto, isso vira True.
+    # Solução simples: sempre usar streaming. Mais robusto + transparente.
+    content_chunks = []
+    cache_read = 0
+    cache_write = 0
+    normal_input = 0
+    output = 0
+    async with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
         temperature=temperature,
         system=system_blocks,
         messages=[{"role": "user", "content": user_msg}],
-    )
-    # Extrai usage
-    usage = resp.usage
-    cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
-    cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
-    normal_input = getattr(usage, "input_tokens", 0) or 0
-    output = getattr(usage, "output_tokens", 0) or 0
+    ) as stream:
+        async for text_chunk in stream.text_stream:
+            content_chunks.append(text_chunk)
+        final = await stream.get_final_message()
+        usage = final.usage
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        normal_input = getattr(usage, "input_tokens", 0) or 0
+        output = getattr(usage, "output_tokens", 0) or 0
     if cache_read > 0:
         logger.info(
             "[motor-ia][cache] HIT — read=%d, write=%d, input=%d, output=%d "
@@ -753,9 +764,7 @@ async def _anthropic_with_cache(api_key: str, model: str,
             "[motor-ia][cache] WRITE — criando cache de %d tokens",
             cache_write,
         )
-    content = ""
-    if resp.content and len(resp.content) > 0:
-        content = resp.content[0].text.strip()
+    content = "".join(content_chunks).strip()
     return {
         "content": content,
         "input_tokens": normal_input,
