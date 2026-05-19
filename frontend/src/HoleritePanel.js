@@ -220,7 +220,7 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
 
   async function notify() {
     if (!h.employee_phone) {
-      window.alert("Este colaborador não tem WhatsApp cadastrado.");
+      await window.alert("Este colaborador não tem WhatsApp cadastrado.");
       return;
     }
     setBusy(true);
@@ -231,47 +231,47 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
       } else {
         // mesmo se WhatsApp falhar, mostra link pra envio manual
         setLastLink(r.secure_link);
-        window.alert("Link gerado, mas WhatsApp falhou:\n" + (r.error || "—") +
+        await window.alert("Link gerado, mas WhatsApp falhou:\n" + (r.error || "—") +
                          "\n\nVocê pode enviar manualmente.");
       }
       await onReload();
     } catch (e) {
-      window.alert(extractErr(e));
+      await window.alert(extractErr(e));
     } finally { setBusy(false); }
   }
 
   async function revoke() {
-    if (!window.confirm("Revogar este holerite? Links ativos ficarão inválidos.")) return;
+    if (!await window.confirm("Revogar este holerite? Links ativos ficarão inválidos.")) return;
     setBusy(true);
     try {
       await api.holeriteRevoke(h.id);
       await onReload();
     } catch (e) {
-      window.alert(extractErr(e));
+      await window.alert(extractErr(e));
     } finally { setBusy(false); }
   }
 
   async function deletePermanent() {
-    if (!window.confirm(
+    if (!await window.confirm(
       "⚠️ APAGAR PERMANENTEMENTE este lançamento?\n\n" +
       "Esta ação não pode ser desfeita. O arquivo PDF original e qualquer " +
       "versão assinada serão removidos do servidor.\n\n" +
       "Use apenas quando o lançamento foi feito por engano."
     )) return;
-    if (!window.confirm("Tem CERTEZA? Esta ação é IRREVERSÍVEL.")) return;
+    if (!await window.confirm("Tem CERTEZA? Esta ação é IRREVERSÍVEL.")) return;
     setBusy(true);
     try {
       await api.holeriteDeletePermanent(h.id);
       await onReload();
     } catch (e) {
-      window.alert(extractErr(e));
+      await window.alert(extractErr(e));
     } finally { setBusy(false); }
   }
 
   function copyLink() {
     if (lastLink) {
       navigator.clipboard?.writeText(lastLink);
-      window.alert("✅ Link copiado.");
+      await window.alert("✅ Link copiado.");
     }
   }
 
@@ -383,34 +383,34 @@ function AnomaliesModal({ h, onClose, onReload }) {
   const isLocked = h.status === "pending_review";
 
   async function approve() {
-    if (!window.confirm(
+    if (!await window.confirm(
       "Aprovar este holerite e liberar para o colaborador?\n\n" +
       "Você confirma que verificou as anomalias com o contador/RH e os valores estão corretos."
     )) return;
     setBusy(true);
     try {
       await api.holeriteApprove(h.id, note);
-      window.alert("✅ Holerite aprovado e liberado.");
+      await window.alert("✅ Holerite aprovado e liberado.");
       onReload?.();
       onClose();
     } catch (e) {
-      window.alert(extractErr(e));
+      await window.alert(extractErr(e));
     } finally { setBusy(false); }
   }
 
   async function reject() {
-    if (!window.confirm(
+    if (!await window.confirm(
       "Rejeitar este holerite e marcar como REVOGADO?\n\n" +
       "Use quando o contador precisa corrigir o arquivo. Esta ação não pode ser desfeita por aqui."
     )) return;
     setBusy(true);
     try {
       await api.holeriteReject(h.id, note);
-      window.alert("Holerite rejeitado e revogado.");
+      await window.alert("Holerite rejeitado e revogado.");
       onReload?.();
       onClose();
     } catch (e) {
-      window.alert(extractErr(e));
+      await window.alert(extractErr(e));
     } finally { setBusy(false); }
   }
 

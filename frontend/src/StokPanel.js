@@ -129,14 +129,14 @@ function OntsTab() {
   }
 
   async function transfer(mac) {
-    const tid = window.prompt("ID do técnico (cole de Painel → coluna):");
+    const tid = await window.prompt("ID do técnico (cole de Painel → coluna):");
     if (!tid) return;
     try { await api.stokOntTransfer(mac, tid); await reload(); }
     catch (e) { setErr(e?.response?.data?.detail || e.message); }
   }
 
   async function ret(mac) {
-    if (!window.confirm(`Retornar ${mac} ao estoque da empresa?`)) return;
+    if (!await window.confirm(`Retornar ${mac} ao estoque da empresa?`)) return;
     try { await api.stokOntReturn(mac); await reload(); }
     catch (e) { setErr(e?.response?.data?.detail || e.message); }
   }
@@ -302,7 +302,7 @@ function ServicosTab() {
 
   async function close(s) {
     const ont_mac = s.type === "instalacao" || s.type === "troca" || s.type === "retirada"
-      ? window.prompt(`MAC da ONT (${s.type === "retirada" ? "que está com o cliente" : "do estoque do técnico"}):`) : null;
+      ? await window.prompt(`MAC da ONT (${s.type === "retirada" ? "que está com o cliente" : "do estoque do técnico"}):`) : null;
     if ((s.type === "instalacao" || s.type === "troca" || s.type === "retirada") && !ont_mac) return;
     try {
       await api.stokServiceClose(s.id, { ont_mac, used_items: [], tag: s.type });

@@ -51,7 +51,7 @@ export function BillsTab() {
   useEffect(() => { loadRefs(); }, []);
 
   async function onDelete(b) {
-    if (!window.confirm(`Excluir "${b.description}"? Estorna a movimentação se já paga.`))
+    if (!await window.confirm(`Excluir "${b.description}"? Estorna a movimentação se já paga.`))
       return;
     await api._client.delete(`/financeiro/bills/${b.id}`);
     reload();
@@ -624,10 +624,10 @@ export function CashFlowTab() {
 
   async function onDelete(m) {
     if (m.reference_type === "bill") {
-      window.alert("Estorne pela conta a pagar.");
+      await window.alert("Estorne pela conta a pagar.");
       return;
     }
-    if (!window.confirm("Excluir lançamento? Saldo é estornado.")) return;
+    if (!await window.confirm("Excluir lançamento? Saldo é estornado.")) return;
     await api._client.delete(`/financeiro/movements/${m.id}`);
     reload();
   }
@@ -1190,7 +1190,7 @@ export function ReceivablesTab() {
   );
 
   async function unmarkPaid(inv) {
-    if (!window.confirm("Reverter esta fatura para 'em aberto'? Isso só afeta o registro local — não desfaz a baixa no Atlaz.")) {
+    if (!await window.confirm("Reverter esta fatura para 'em aberto'? Isso só afeta o registro local — não desfaz a baixa no Atlaz.")) {
       return;
     }
     try {

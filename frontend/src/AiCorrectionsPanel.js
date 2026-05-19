@@ -62,12 +62,12 @@ export default function AiCorrectionsPanel() {
   }, [items]);
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Apagar esta correção? A IA pode voltar a cometer este erro.")) return;
+    if (!await window.confirm("Apagar esta correção? A IA pode voltar a cometer este erro.")) return;
     try {
       await api.aiCorrectionDelete(id);
       setItems((arr) => arr.filter((c) => c.id !== id));
     } catch (e) {
-      alert("Falha ao apagar: " + e.message);
+      await window.alert("Falha ao apagar: " + e.message);
     }
   };
 

@@ -201,7 +201,7 @@ function SignaturePad({ collaboratorId, assetIds, onClose, onSigned }) {
   };
 
   const submit = async () => {
-    if (!hasInk) { alert("Assine no quadro antes de confirmar."); return; }
+    if (!hasInk) { await window.alert("Assine no quadro antes de confirmar."); return; }
     setBusy(true);
     try {
       const dataUrl = canvasRef.current.toDataURL("image/png");
@@ -212,7 +212,7 @@ function SignaturePad({ collaboratorId, assetIds, onClose, onSigned }) {
       });
       onSigned();
     } catch (e) {
-      alert(e?.response?.data?.detail || e.message);
+      await window.alert(e?.response?.data?.detail || e.message);
     } finally { setBusy(false); }
   };
 

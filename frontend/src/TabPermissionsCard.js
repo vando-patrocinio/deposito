@@ -108,7 +108,7 @@ export default function TabPermissionsCard({ data, setData }) {
   };
 
   const reset = () => {
-    if (!window.confirm("Restaurar permissões padrão?")) return;
+    if (!await window.confirm("Restaurar permissões padrão?")) return;
     setData({ ...data, tab_permissions: DEFAULT_TAB_PERMISSIONS });
   };
 

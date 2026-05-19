@@ -249,7 +249,7 @@ function MessageChannelCard({ name, subtitle, description, status, testId }) {
                     margin: 0, lineHeight: 1.5 }}>{description}</p>
       <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
         <button data-testid={`${testId}-configure`}
-                onClick={() => alert("Integração Google Business Messages — em breve.\n\nPara habilitar, sua empresa precisa estar verificada no Google Business Profile e ter um agente aprovado pelo Google.")}
+                onClick={async () => await window.alert("Integração Google Business Messages — em breve.\n\nPara habilitar, sua empresa precisa estar verificada no Google Business Profile e ter um agente aprovado pelo Google.")}
                 style={{
                   padding: "6px 12px", borderRadius: 6,
                   border: "1px solid var(--border-default)",
@@ -291,10 +291,10 @@ export function AgentsTab() {
 
   const save = async () => {
     if (!editing.name || editing.name.length < 2) {
-      alert("Informe um nome com pelo menos 2 caracteres."); return;
+      await window.alert("Informe um nome com pelo menos 2 caracteres."); return;
     }
     if (!editing.system_prompt || editing.system_prompt.length < 10) {
-      alert("System prompt precisa ter pelo menos 10 caracteres."); return;
+      await window.alert("System prompt precisa ter pelo menos 10 caracteres."); return;
     }
     setBusy(true);
     try {
@@ -306,18 +306,18 @@ export function AgentsTab() {
       setEditing(null);
       await load();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
 
   const del = async (id) => {
-    if (!window.confirm("Excluir este agente? Conversas e histórico serão removidos também.")) return;
+    if (!await window.confirm("Excluir este agente? Conversas e histórico serão removidos também.")) return;
     setBusy(true);
     try {
       await api.aihubAgentDelete(id);
       await load();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
 
@@ -581,13 +581,13 @@ function PersonalityExpertiseSection({ agent, setAgent, set }) {
       });
       set(field, r.text);
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setBusyField(null); setBusyMode(null); }
   };
 
   const generateAll = async () => {
     if (!genAllContext.trim() || genAllContext.length < 20) {
-      alert("Descreva o negócio com pelo menos 20 caracteres."); return;
+      await window.alert("Descreva o negócio com pelo menos 20 caracteres."); return;
     }
     setGenAllBusy(true);
     try {
@@ -604,15 +604,15 @@ function PersonalityExpertiseSection({ agent, setAgent, set }) {
       });
       setAgent(next);
       if (failed.length === 4) {
-        alert("Nenhum campo foi gerado — todos falharam. Tente novamente.");
+        await window.alert("Nenhum campo foi gerado — todos falharam. Tente novamente.");
       } else if (failed.length > 0) {
-        alert(`${4 - failed.length} de 4 campos gerados. Falharam: ${failed.join(", ")}. Use "Gerar Novo" individual para tentar de novo.`);
+        await window.alert(`${4 - failed.length} de 4 campos gerados. Falharam: ${failed.join(", ")}. Use "Gerar Novo" individual para tentar de novo.`);
         setShowGenAll(false); setGenAllContext("");
       } else {
         setShowGenAll(false); setGenAllContext("");
       }
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setGenAllBusy(false); }
   };
 
@@ -1176,7 +1176,7 @@ function IntegrationCard({ type, title, description, fields, testApi, extraSecti
   };
 
   const remove = async () => {
-    if (!window.confirm("Remover configuração?")) return;
+    if (!await window.confirm("Remover configuração?")) return;
     await api.aihubIntegrationDelete(type);
     setConfig({}); setMeta(null); setTestResult(null);
   };

@@ -166,7 +166,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       setTimeout(() => setRefreshFlash(false), 1200);
     } catch (e) {
       console.error("Erro lousa", e);
-      alert("Erro ao atualizar: " + (e?.message || e));
+      await window.alert("Erro ao atualizar: " + (e?.message || e));
     } finally {
       setRefreshing(false);
     }
@@ -231,7 +231,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       await api.lousaTransferTicket(draggingId, { new_collaborator_id: targetCollabId });
       await refresh();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
     setBusy(false);
     setDraggingId(null);
@@ -248,7 +248,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       });
       await refresh();
     } catch (e) {
-      alert(e?.response?.data?.detail || e.message);
+      await window.alert(e?.response?.data?.detail || e.message);
     }
     setBusy(false);
     setDraggingId(null);
@@ -256,39 +256,39 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   }
 
   async function handleAdminClose(ticketId, action, notes) {
-    if (isLocked) { alert("Sistema bloqueado: dispositivo offline ou horário dessincronizado."); return; }
+    if (isLocked) { await window.alert("Sistema bloqueado: dispositivo offline ou horário dessincronizado."); return; }
     setBusy(true);
     try {
       await api.lousaAdminClose(ticketId, { action, notes: notes || "" });
       await refresh();
     } catch (e) {
-      alert(e?.response?.data?.detail || e.message);
+      await window.alert(e?.response?.data?.detail || e.message);
     }
     setBusy(false);
   }
 
   async function handleAdminOpen(ticketId) {
-    if (isLocked) { alert("Sistema bloqueado: dispositivo offline ou horário dessincronizado."); return; }
-    if (!window.confirm("Abrir esta nota em nome do colaborador?")) return;
+    if (isLocked) { await window.alert("Sistema bloqueado: dispositivo offline ou horário dessincronizado."); return; }
+    if (!await window.confirm("Abrir esta nota em nome do colaborador?")) return;
     setBusy(true);
     try {
       await api.lousaAdminOpen(ticketId);
       await refresh();
     } catch (e) {
-      alert(e?.response?.data?.detail || e.message);
+      await window.alert(e?.response?.data?.detail || e.message);
     }
     setBusy(false);
   }
 
   async function handleEditTicket(ticketId, payload) {
-    if (isLocked) { alert("Sistema bloqueado."); return; }
+    if (isLocked) { await window.alert("Sistema bloqueado."); return; }
     setBusy(true);
     try {
       await api.lousaEditTicket(ticketId, payload);
       await refresh();
       setEditingTicket(null);
     } catch (e) {
-      alert(e?.response?.data?.detail || e.message);
+      await window.alert(e?.response?.data?.detail || e.message);
     }
     setBusy(false);
   }
@@ -303,7 +303,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       setReschedTicket(null);
       await refresh();
     } catch (e) {
-      alert(e?.response?.data?.detail || e.message);
+      await window.alert(e?.response?.data?.detail || e.message);
     }
     setBusy(false);
   }
@@ -382,17 +382,17 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             <Button
               variant="soft"
               onClick={async () => {
-                const phrase = window.prompt(
+                const phrase = await window.prompt(
                   "⚠ ATENÇÃO: isto APAGA TODAS as bolhas da empresa, incluindo as em execução.\n" +
                   "Ação irreversível e auditada (logs).\n\n" +
                   "Digite APAGAR TUDO para confirmar:");
                 if (phrase !== "APAGAR TUDO") return;
                 try {
                   const res = await api.lousaWipeAll();
-                  alert(`✓ ${res.deleted_count} bolha(s) apagadas.`);
+                  await window.alert(`✓ ${res.deleted_count} bolha(s) apagadas.`);
                   refresh();
                 } catch (e) {
-                  alert("Falha: " + (e?.response?.data?.detail || e.message));
+                  await window.alert("Falha: " + (e?.response?.data?.detail || e.message));
                 }
               }}
               data-testid="lousa-wipe-all-btn"
@@ -684,20 +684,20 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
 function OptimizeRouteButton({ collaboratorId }) {
   const [busy, setBusy] = React.useState(false);
   async function go() {
-    if (!window.confirm("Otimizar a rota deste técnico usando a posição GPS dele?\nA ordem das bolhas será reescrita.")) return;
+    if (!await window.confirm("Otimizar a rota deste técnico usando a posição GPS dele?\nA ordem das bolhas será reescrita.")) return;
     setBusy(true);
     try {
       const r = await api._client.post("/lousa/admin/optimize-route", {
         collaborator_id: collaboratorId, apply: true,
       }).then((x) => x.data);
       if (!r.ok) {
-        alert("Nada pra otimizar: " + (r.reason || "—"));
+        await window.alert("Nada pra otimizar: " + (r.reason || "—"));
       } else {
-        alert(`✓ Rota otimizada\n${r.stops} paradas · ${r.total_km}km · ${r.estimated_minutes}min`);
+        await window.alert(`✓ Rota otimizada\n${r.stops} paradas · ${r.total_km}km · ${r.estimated_minutes}min`);
         window.location.reload();
       }
     } catch (e) {
-      alert("Falha: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha: " + (e?.response?.data?.detail || e.message));
     } finally {
       setBusy(false);
     }
@@ -975,7 +975,7 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
       setAiDetail(r);
       setAiOpen(true);
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
     setAiBusy(false);
   }
@@ -1238,11 +1238,11 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
           <button data-testid={`ai-evaluate-${ticket.id}`} disabled={aiBusy}
             onClick={runAiAnalysis} style={btnSm("#0d9488")}>IA {aiBusy ? "..." : ""}</button>
           <button data-testid={`admin-close-${ticket.id}`} disabled={busy}
-            onClick={() => { const n = window.prompt("Notas:"); if (n !== null) onAdminClose(ticket.id, "encerrar", n); }} style={btnSm("#64748b")}>✓ Encerrar</button>
+            onClick={() => { const n = await window.prompt("Notas:"); if (n !== null) onAdminClose(ticket.id, "encerrar", n); }} style={btnSm("#64748b")}>✓ Encerrar</button>
           <button data-testid={`admin-reschedule-${ticket.id}`} disabled={busy}
             onClick={(e) => { e.stopPropagation(); if (onReschedule) onReschedule(ticket); }} style={btnSm("#3b82f6")}>📅 Reagendar</button>
           <button disabled={busy}
-            onClick={() => { const n = window.prompt("Motivo do cancelamento:"); if (n) onAdminClose(ticket.id, "cancelar", n); }} style={btnSm("#dc2626")}>✗ Cancelar</button>
+            onClick={() => { const n = await window.prompt("Motivo do cancelamento:"); if (n) onAdminClose(ticket.id, "cancelar", n); }} style={btnSm("#dc2626")}>✗ Cancelar</button>
         </div>
       )}
       {aiOpen && aiDetail && (
@@ -1775,7 +1775,7 @@ function CoachingConfigCard() {
         threshold: r.threshold || 3,
       });
     } catch (e) {
-      alert("Falha ao salvar: " + (e?.message || e));
+      await window.alert("Falha ao salvar: " + (e?.message || e));
     } finally { setSaving(false); }
   };
 
@@ -1910,12 +1910,12 @@ function ClosureQualityCard() {
       const r = await api.lousaClosureQualityAnalyze({ daysBack: days, limit: 25 });
       await reload();
       if (r.processed === 0) {
-        alert(r.remaining_pending > 0
+        await window.alert(r.remaining_pending > 0
           ? `Nada novo processado (${r.remaining_pending} pendentes — tente outro período).`
           : "Todos os fechamentos do período já foram analisados.");
       }
     } catch (e) {
-      alert("Falha na análise IA: " + (e?.message || e));
+      await window.alert("Falha na análise IA: " + (e?.message || e));
     } finally { setAnalyzing(false); }
   };
 

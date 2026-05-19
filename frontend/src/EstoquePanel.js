@@ -45,7 +45,7 @@ function asyncCall(fn, onDone, errMsgPrefix = "Erro") {
     try { await fn(...args); if (onDone) onDone(); }
     catch (e) {
       const detail = e?.response?.data?.detail || e?.message || "Erro desconhecido";
-      alert(`${errMsgPrefix}: ${detail}`);
+      await window.alert(`${errMsgPrefix}: ${detail}`);
     }
   };
 }
@@ -710,13 +710,13 @@ function OntsSection({ onts, technicians, reload }) {
   const techMap = useMemo(() => Object.fromEntries(technicians.map((t) => [t.id, t.name])), [technicians]);
 
   const editModel = asyncCall(async (mac, current) => {
-    const novo = window.prompt("Novo modelo:", current);
+    const novo = await window.prompt("Novo modelo:", current);
     if (!novo || novo === current) return;
     await api.stokOntEdit(mac, novo);
   }, reload, "Erro ao editar");
 
   const returnToCompany = asyncCall(async (mac) => {
-    if (!window.confirm(`Devolver ONT ${mac} para a empresa?`)) return;
+    if (!await window.confirm(`Devolver ONT ${mac} para a empresa?`)) return;
     await api.stokOntReturn(mac);
   }, reload, "Erro ao devolver");
 
@@ -796,8 +796,8 @@ function AddOntsDialog({ open, onClose, onDone }) {
   const [macs, setMacs] = useState("");
   const submit = asyncCall(async () => {
     const list = macs.split(/[\s,;\n]+/).map((s) => s.trim()).filter(Boolean);
-    if (!model.trim()) return alert("Informe o modelo.");
-    if (list.length === 0) return alert("Informe pelo menos 1 MAC.");
+    if (!model.trim()) return await window.alert("Informe o modelo.");
+    if (list.length === 0) return await window.alert("Informe pelo menos 1 MAC.");
     await api.stokOntsBulk(model.trim(), list);
     setModel(""); setMacs(""); onClose();
   }, onDone, "Erro ao cadastrar ONTs");
@@ -824,7 +824,7 @@ function TransferOntDialog({ open, onClose, onDone, technicians }) {
   const [mac, setMac] = useState("");
   const [techId, setTechId] = useState("");
   const submit = asyncCall(async () => {
-    if (!mac.trim() || !techId) return alert("MAC e técnico são obrigatórios.");
+    if (!mac.trim() || !techId) return await window.alert("MAC e técnico são obrigatórios.");
     await api.stokOntTransfer(mac.trim(), techId);
     setMac(""); setTechId(""); onClose();
   }, onDone, "Erro ao transferir");
@@ -910,7 +910,7 @@ function ConsumablePurchaseDialog({ open, onClose, onDone, consumables }) {
   const item = consumables.find((c) => c.id === cid);
   const total = item ? qty * item.pack_qty : 0;
   const submit = asyncCall(async () => {
-    if (!cid || qty <= 0) return alert("Selecione insumo e informe quantidade.");
+    if (!cid || qty <= 0) return await window.alert("Selecione insumo e informe quantidade.");
     await api.stokConsumablePurchase(cid, parseInt(qty, 10));
     setCid(""); setQty(1); onClose();
   }, onDone, "Erro na compra");
@@ -944,7 +944,7 @@ function ConsumableTransferDialog({ open, onClose, onDone, consumables, technici
   const [qty, setQty] = useState(0);
   const [techId, setTechId] = useState("");
   const submit = asyncCall(async () => {
-    if (!cid || qty <= 0 || !techId) return alert("Preencha todos os campos.");
+    if (!cid || qty <= 0 || !techId) return await window.alert("Preencha todos os campos.");
     await api.stokConsumableTransfer(cid, parseInt(qty, 10), techId);
     setCid(""); setQty(0); setTechId(""); onClose();
   }, onDone, "Erro na transferência");
@@ -1046,7 +1046,7 @@ function ServicosSection({ services, technicians, consumables, reload }) {
 function CreateServiceDialog({ open, onClose, onDone, technicians }) {
   const [data, setData] = useState({ type: "instalacao", client_id: "", client_name: "", technician_id: "", reason: "" });
   const submit = asyncCall(async () => {
-    if (!data.client_id || !data.client_name || !data.technician_id) return alert("Preencha cliente, ID e técnico.");
+    if (!data.client_id || !data.client_name || !data.technician_id) return await window.alert("Preencha cliente, ID e técnico.");
     await api.stokServiceCreate(data);
     setData({ type: "instalacao", client_id: "", client_name: "", technician_id: "", reason: "" });
     onClose();
@@ -1099,7 +1099,7 @@ function CloseServiceDialog({ service, onClose, onDone, consumables }) {
 
   const submit = asyncCall(async () => {
     const used_items = Object.entries(items).filter(([, q]) => +q > 0).map(([consumable_id, q]) => ({ consumable_id, quantity: parseInt(q, 10) }));
-    if (needsMac && !mac.trim()) return alert("Informe o MAC da ONT.");
+    if (needsMac && !mac.trim()) return await window.alert("Informe o MAC da ONT.");
     await api.stokServiceClose(service.id, { ont_mac: mac.trim() || null, used_items, tag: tag || service.type });
     onClose();
   }, onDone, "Erro ao fechar OS");
@@ -1170,7 +1170,7 @@ function HistoricoSection({ history, reload }) {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) {
         const err = await res.text();
-        alert(`Erro ao exportar: ${err}`);
+        await window.alert(`Erro ao exportar: ${err}`);
         return;
       }
       const blob = await res.blob();
@@ -1182,7 +1182,7 @@ function HistoricoSection({ history, reload }) {
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(objectUrl);
     } catch (e) {
-      alert(`Erro ao exportar: ${e.message}`);
+      await window.alert(`Erro ao exportar: ${e.message}`);
     }
   };
 
@@ -1265,14 +1265,14 @@ function ClientesSection() {
   }, []);
 
   const identifyAll = async () => {
-    if (!confirm("Forçar descoberta de fabricantes via IA para TODAS as ONUs ainda desconhecidas?\n\nA IA Gemini será chamada para cada prefixo de SN não cacheado. Pode demorar 1-3 minutos dependendo do volume.")) return;
+    if (!await window.confirm("Forçar descoberta de fabricantes via IA para TODAS as ONUs ainda desconhecidas?\n\nA IA Gemini será chamada para cada prefixo de SN não cacheado. Pode demorar 1-3 minutos dependendo do volume.")) return;
     setIdentifying(true);
     try {
       const r = await api.stokClientesIdentifyAll(false);
-      alert(`Descoberta concluída:\n\n• ${r.new_manufacturers_found} novos fabricantes encontrados\n• ${r.prefixes_tested} prefixos testados via IA\n• ${r.total_prefixes_unknown_before} eram desconhecidos antes`);
+      await window.alert(`Descoberta concluída:\n\n• ${r.new_manufacturers_found} novos fabricantes encontrados\n• ${r.prefixes_tested} prefixos testados via IA\n• ${r.total_prefixes_unknown_before} eram desconhecidos antes`);
       await reload();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally {
       setIdentifying(false);
     }

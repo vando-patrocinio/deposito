@@ -63,27 +63,27 @@ export default function FeriadosPanel() {
   }, [filtered]);
 
   async function seedBr() {
-    if (!window.confirm(`Importar feriados nacionais brasileiros de ${year}? ` +
+    if (!await window.confirm(`Importar feriados nacionais brasileiros de ${year}? ` +
                               `Não duplica os que já existem.`)) return;
     setSeedBusy(true);
     try {
       const r = await api.feriadosSeedBr(year);
       await reload();
-      window.alert(`✅ Importação concluída.\n\n` +
+      await window.alert(`✅ Importação concluída.\n\n` +
                        `Inseridos: ${r.inserted}\n` +
                        `Já existiam: ${r.skipped}`);
     } catch (e) {
-      window.alert(extractErr(e));
+      await window.alert(extractErr(e));
     } finally { setSeedBusy(false); }
   }
 
   async function remove(it) {
-    if (!window.confirm(`Excluir "${it.nome}" (${fmtDate(it.data)})?`)) return;
+    if (!await window.confirm(`Excluir "${it.nome}" (${fmtDate(it.data)})?`)) return;
     try {
       await api.feriadoDelete(it.id);
       await reload();
     } catch (e) {
-      window.alert(extractErr(e));
+      await window.alert(extractErr(e));
     }
   }
 

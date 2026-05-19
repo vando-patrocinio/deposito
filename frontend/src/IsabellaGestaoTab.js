@@ -235,7 +235,7 @@ function FragmentsManager() {
   };
 
   const deleteFragment = async (id) => {
-    if (!window.confirm("Excluir este módulo? Essa ação não pode ser desfeita.")) return;
+    if (!await window.confirm("Excluir este módulo? Essa ação não pode ser desfeita.")) return;
     try {
       await api.isabellaFragmentDelete(id);
       setItems((prev) => prev.filter((x) => x.id !== id));

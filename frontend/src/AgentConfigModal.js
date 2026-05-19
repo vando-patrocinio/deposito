@@ -228,7 +228,7 @@ export default function AgentConfigModal({ open, onClose, initialAgentId }) {
 
   async function remove() {
     if (!selectedId) return;
-    if (!window.confirm(`Excluir agente "${draft.name}"? Esta ação não pode ser desfeita.`)) return;
+    if (!await window.confirm(`Excluir agente "${draft.name}"? Esta ação não pode ser desfeita.`)) return;
     setBusy(true);
     try {
       await api.aihubAgentDelete(selectedId);
@@ -648,7 +648,7 @@ function WhatsAppSection({ autoReply, reload }) {
   }, [fetchState, status]);
 
   async function logout() {
-    if (!window.confirm("Desconectar este número do WhatsApp?")) return;
+    if (!await window.confirm("Desconectar este número do WhatsApp?")) return;
     setBusy(true);
     try { await api.waBaileysLogout(); await fetchState(); }
     catch (e) { setErr(extractErrorMessage(e)); }
@@ -1138,7 +1138,7 @@ function MetaCloudSection() {
   }
 
   async function rotateVerifyToken() {
-    if (!window.confirm("Rotacionar o Verify Token invalidará o webhook atual no Meta. Confirma?")) return;
+    if (!await window.confirm("Rotacionar o Verify Token invalidará o webhook atual no Meta. Confirma?")) return;
     setBusy(true);
     try {
       await api.metaRotateVerifyToken();

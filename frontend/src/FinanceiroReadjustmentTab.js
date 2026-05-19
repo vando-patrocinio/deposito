@@ -95,17 +95,17 @@ export default function ReadjustmentTab() {
   };
 
   const applyOne = async (id, name) => {
-    if (!window.confirm(`Aplicar reajuste em "${name}"?`)) return;
+    if (!await window.confirm(`Aplicar reajuste em "${name}"?`)) return;
     try {
       await api.reajusteApply(id);
       await loadDue();
     } catch (e) {
-      window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   };
 
   const applyAllDue = async () => {
-    if (!window.confirm(
+    if (!await window.confirm(
       `Aplicar reajuste em TODOS os ${dueData.due_now.length} ` +
       "clientes vencidos? Esta ação não pode ser desfeita."
     )) return;
@@ -113,12 +113,12 @@ export default function ReadjustmentTab() {
     try {
       const r = await api.reajusteApplyAllDue();
       await loadDue();
-      window.alert(
+      await window.alert(
         `✅ Aplicado em ${r.applied} cliente(s)\n` +
         `💰 Aumento total mensal: ${fmtMoney(r.total_revenue_increase)}`
       );
     } catch (e) {
-      window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally {
       setBatchBusy(false);
     }

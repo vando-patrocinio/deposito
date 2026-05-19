@@ -62,7 +62,7 @@ export default function WallpaperConfigCard() {
   }
 
   async function handleRemove() {
-    if (!confirm("Remover o papel de parede customizado e voltar ao padrão Ligo?")) return;
+    if (!await window.confirm("Remover o papel de parede customizado e voltar ao padrão Ligo?")) return;
     setBusy(true); setErr("");
     try {
       await api.waBaileysSetWallpaper(null);

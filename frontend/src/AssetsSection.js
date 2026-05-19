@@ -84,19 +84,19 @@ export default function AssetsSection({ collaborator, onClose }) {
 
   const setStatus = async (a, status) => {
     if (a.status === status) return;
-    if (!window.confirm(`Marcar "${a.item}" como ${status}?`)) return;
+    if (!await window.confirm(`Marcar "${a.item}" como ${status}?`)) return;
     try {
       await api.assetUpdate(a.id, { status });
       reload();
     } catch (e) {
-      alert(e?.response?.data?.detail || e.message);
+      await window.alert(e?.response?.data?.detail || e.message);
     }
   };
 
   const remove = async (a) => {
-    if (!window.confirm(`Remover "${a.item}" do cadastro?`)) return;
+    if (!await window.confirm(`Remover "${a.item}" do cadastro?`)) return;
     try { await api.assetDelete(a.id); reload(); }
-    catch (e) { alert(e?.response?.data?.detail || e.message); }
+    catch (e) { await window.alert(e?.response?.data?.detail || e.message); }
   };
 
   const openRomaneio = (onlyActive = false) => {
@@ -121,9 +121,9 @@ export default function AssetsSection({ collaborator, onClose }) {
           onlyActive,
         });
       })
-      .catch((e) => {
+      .catch(async (e) => {
         setRomaneioPdf(null);
-        alert("Falha ao gerar romaneio: " + (e?.message || e));
+        await window.alert("Falha ao gerar romaneio: " + (e?.message || e));
       });
   };
 
@@ -364,14 +364,14 @@ function RomaneioPdfModal({ pdf, onClose, onDownload }) {
                           data-testid="romaneio-download-btn">
                   ↓ Baixar
                 </Button>
-                <Button variant="soft" onClick={() => {
+                <Button variant="soft" onClick={async () => {
                   // Imprime usando a janela do iframe
                   const iframe = document.querySelector("[data-testid='romaneio-iframe']");
                   try {
                     iframe.contentWindow.focus();
                     iframe.contentWindow.print();
                   } catch (e) {
-                    alert("Use Ctrl+P para imprimir");
+                    await window.alert("Use Ctrl+P para imprimir");
                   }
                 }} data-testid="romaneio-print-btn">
                   🖨 Imprimir

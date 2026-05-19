@@ -111,14 +111,14 @@ export default function LiveMap() {
       }
       await refreshPushState();
     } catch (e) {
-      alert(`Falha ao ${pushState.subscribed ? "desativar" : "ativar"} notificações: ${e.message || e}`);
+      await window.alert(`Falha ao ${pushState.subscribed ? "desativar" : "ativar"} notificações: ${e.message || e}`);
     }
   }
   async function testPush() {
     try {
       const r = await sendTestPush();
-      alert(`Teste enviado. ${r.sent || 0} entregue(s), ${r.failed || 0} falha(s).`);
-    } catch (e) { alert("Falha ao enviar teste: " + (e.message || e)); }
+      await window.alert(`Teste enviado. ${r.sent || 0} entregue(s), ${r.failed || 0} falha(s).`);
+    } catch (e) { await window.alert("Falha ao enviar teste: " + (e.message || e)); }
   }
 
   useEffect(() => { api.listCollaborators().then(setCollabs); }, []);

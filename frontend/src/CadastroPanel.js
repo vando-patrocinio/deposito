@@ -79,7 +79,7 @@ export default function CadastroPanel() {
     const msg = next
       ? `Ativar batimento de ponto para ${c.name}?\n\nApós ativar, ele(a) verá a tela de bater ponto no app e a Lousa só vai liberar após bater Entrada.`
       : `Desativar batimento de ponto para ${c.name}?\n\nApós desativar, ele(a) NÃO vê mais a tela de ponto — o app abre direto na Lousa de Serviços.`;
-    if (!window.confirm(msg)) return;
+    if (!await window.confirm(msg)) return;
     setTogglingId(c.id);
     try {
       // PUT exige payload completo do CollaboratorIn — preserva todos os campos atuais
@@ -1351,7 +1351,7 @@ function CollabShareLink({ collaborator }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2200);
     } catch (e) {
-      window.prompt("Copie o link manualmente:", url);
+      await window.prompt("Copie o link manualmente:", url);
     }
   }
 
@@ -1782,7 +1782,7 @@ function GrantMobileAccessButton({ collaborator }) {
     const msg = has
       ? `Resetar a senha do acesso mobile de ${collaborator?.name || "este técnico"}? A senha anterior deixará de funcionar.`
       : `Criar acesso mobile (email + senha) para ${collaborator?.name || "este técnico"}?`;
-    if (!window.confirm(msg)) return;
+    if (!await window.confirm(msg)) return;
     setBusy(true); setErr(null);
     try {
       const r = await api.collabGrantMobileAccess(collaborator.id);

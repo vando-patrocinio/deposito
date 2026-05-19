@@ -36,7 +36,7 @@ export default function AiTrainingPanel() {
   useEffect(() => { load(); }, [load]);
 
   async function handleReload() {
-    if (!window.confirm(
+    if (!await window.confirm(
       "Tem certeza? Isso vai sobrescrever os system_prompts dos 10 agentes " +
       "com a versão mais recente do treinamento (regras + matriz + " +
       "scoring + papel específico)."

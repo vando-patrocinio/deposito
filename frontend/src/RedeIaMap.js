@@ -231,7 +231,7 @@ export default function RedeIaMap() {
         return upd;
       });
     } catch (e) {
-      alert("Falha ao salvar posição: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha ao salvar posição: " + (e?.response?.data?.detail || e.message));
     }
   }, []);
 
@@ -269,7 +269,7 @@ export default function RedeIaMap() {
       setNewCe(null);
       load();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   }, [newCe, load]);
 
@@ -301,7 +301,7 @@ export default function RedeIaMap() {
         setCableDraft((d) => ({ ...d, from: null }));
         load();
       } catch (e) {
-        alert("Erro: " + (e?.response?.data?.detail || e.message));
+        await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
       }
       return true;
     }
@@ -328,7 +328,7 @@ export default function RedeIaMap() {
         setCableDraft((d) => ({ ...d, from: null, waypoints: [] }));
         load();
       } catch (e) {
-        alert("Erro: " + (e?.response?.data?.detail || e.message));
+        await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
       }
       return true;
     }
@@ -336,14 +336,14 @@ export default function RedeIaMap() {
   }, [load]);
 
   const autoGenerate = async () => {
-    if (!window.confirm("rede_IA vai agrupar CTOs próximas em CEs e criar cabos 24FO automaticamente. Continuar?")) return;
+    if (!await window.confirm("rede_IA vai agrupar CTOs próximas em CEs e criar cabos 24FO automaticamente. Continuar?")) return;
     setBusy(true);
     try {
       const r = await api.redeIaAutoGenerateCes(200);
       await load();
-      alert(`✓ ${r.ces_created} CEs criadas · ${r.cables_created} cabos · ${r.ctos_clustered} CTOs agrupadas`);
+      await window.alert(`✓ ${r.ces_created} CEs criadas · ${r.cables_created} cabos · ${r.ctos_clustered} CTOs agrupadas`);
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
 
@@ -369,7 +369,7 @@ export default function RedeIaMap() {
           c.id === cableId ? { ...c, segments: newSegs } : c),
       }));
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   }, [data.cables]);
 
@@ -394,26 +394,26 @@ export default function RedeIaMap() {
           c.id === cableId ? { ...c, segments: segs } : c),
       }));
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   }, [data.cables]);
 
   const removeCable = async (id) => {
-    if (!window.confirm("Excluir este cabo?")) return;
+    if (!await window.confirm("Excluir este cabo?")) return;
     try {
       await api.redeIaCableDelete(id);
       load();
-    } catch (e) { alert(e?.response?.data?.detail || "Erro"); }
+    } catch (e) { await window.alert(e?.response?.data?.detail || "Erro"); }
   };
   const removeCe = async (id) => {
-    if (!window.confirm("Excluir esta CE? Os cabos ligados também serão removidos.")) return;
+    if (!await window.confirm("Excluir esta CE? Os cabos ligados também serão removidos.")) return;
     try {
       await api.redeIaCeDelete(id);
       load();
-    } catch (e) { alert(e?.response?.data?.detail || "Erro"); }
+    } catch (e) { await window.alert(e?.response?.data?.detail || "Erro"); }
   };
   const removeCto = async (cto) => {
-    if (!window.confirm(
+    if (!await window.confirm(
       `Apagar a CTO "${cto.name}"?\n\n` +
       "Vai remover a CTO + todos os cabos ligados a ela. " +
       "ONUs e clientes vinculados NÃO serão afetados (continuam no SmartOLT). " +
@@ -423,7 +423,7 @@ export default function RedeIaMap() {
       await api._client.delete(`/rede-ia/ctos/${cto.id}`);
       load();
     } catch (e) {
-      alert(e?.response?.data?.detail || "Erro ao apagar CTO");
+      await window.alert(e?.response?.data?.detail || "Erro ao apagar CTO");
     }
   };
 
@@ -486,7 +486,7 @@ export default function RedeIaMap() {
           {busy ? "Processando..." : "🤖 rede_IA gerar CEs"}
         </button>
         <button data-testid="map-share-btn" onClick={async () => {
-          const ttlInput = window.prompt("Validade do link (dias, 1-365):", "30");
+          const ttlInput = await window.prompt("Validade do link (dias, 1-365):", "30");
           const ttl = parseInt(ttlInput, 10);
           if (!ttl || ttl < 1 || ttl > 365) return;
           try {
@@ -494,12 +494,12 @@ export default function RedeIaMap() {
             const url = `${window.location.origin}${r.share_url}`;
             try { await navigator.clipboard.writeText(url); } catch (_) {}
             const exp = new Date(r.expires_at).toLocaleString("pt-BR");
-            window.prompt(
+            await window.prompt(
               `Link público (read-only) — copiado!\nExpira em ${exp} (${ttl} dias):`,
               url,
             );
           } catch (e) {
-            alert("Erro: " + (e?.response?.data?.detail || e.message));
+            await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
           }
         }} style={tbBtn("#16a34a")}
             title="Gera link público read-only com TTL configurável">

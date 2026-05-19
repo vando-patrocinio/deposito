@@ -54,7 +54,7 @@ export default function WaQuickImagesCard() {
   }
 
   async function remove(id) {
-    if (!window.confirm("Remover esta imagem rápida?")) return;
+    if (!await window.confirm("Remover esta imagem rápida?")) return;
     try {
       await api._client.delete(`/whatsapp-baileys/quick-images/${id}`);
       await reload();

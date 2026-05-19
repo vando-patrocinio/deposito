@@ -31,7 +31,7 @@ export default function ManagerPanel() {
   const collabName = (cid) => collabs.find((c) => c.id === cid)?.name || cid;
 
   async function enableClockIn(col) {
-    if (!window.confirm(`Ativar batimento de ponto para ${col.name}?\n\nA partir de agora as cercas dele(a) serão aplicadas e ele(a) verá a tela de Entrada/Intervalo/Saída no app.`)) return;
+    if (!await window.confirm(`Ativar batimento de ponto para ${col.name}?\n\nA partir de agora as cercas dele(a) serão aplicadas e ele(a) verá a tela de Entrada/Intervalo/Saída no app.`)) return;
     setOrphanBusy(col.id);
     try {
       await api.updateCollaborator(col.id, {
@@ -53,7 +53,7 @@ export default function ManagerPanel() {
   }
 
   async function removeOrphan(fenceId, colName) {
-    if (!window.confirm(`Remover esta cerca de ${colName}?\n\nEla está inativa porque o colaborador não bate ponto. Esta ação não pode ser desfeita.`)) return;
+    if (!await window.confirm(`Remover esta cerca de ${colName}?\n\nEla está inativa porque o colaborador não bate ponto. Esta ação não pode ser desfeita.`)) return;
     setOrphanBusy(fenceId);
     try {
       await api.deleteGeofence(fenceId);

@@ -61,11 +61,11 @@ export default function DisparoIaPanel() {
         "/disparo-ia/generate-suggestions",
         { max_suggestions: 6 },
       ).then((x) => x.data);
-      alert(`✓ Disparo IA gerou ${r.suggestions_created} sugestões.`);
+      await window.alert(`✓ Disparo IA gerou ${r.suggestions_created} sugestões.`);
       setFilter("pending");
       await loadAll();
     } catch (e) {
-      alert("Falha: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha: " + (e?.response?.data?.detail || e.message));
     } finally {
       setGenerating(false);
     }
@@ -291,7 +291,7 @@ function SuggestionDetailModal({ suggestion, onClose, onChange }) {
     const msg = "Aprovar e criar campanha real?\n\n"
               + `${size} destinatário(s) serão importados.\n`
               + "A campanha começa em rascunho — vc dá Start em Disparo em Massa.";
-    if (!window.confirm(msg)) return;
+    if (!await window.confirm(msg)) return;
     setBusy(true);
     try {
       const r = await api._client.post(
@@ -302,21 +302,21 @@ function SuggestionDetailModal({ suggestion, onClose, onChange }) {
           notes: notes || null,
         },
       ).then((x) => x.data);
-      alert(`✓ Campanha criada: ${r.recipients_inserted} destinatário(s) inseridos.`);
+      await window.alert(`✓ Campanha criada: ${r.recipients_inserted} destinatário(s) inseridos.`);
       onChange?.();
     } catch (e) {
-      alert("Falha: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
 
   const reject = async () => {
-    if (!window.confirm("Rejeitar esta sugestão? Ação não pode ser desfeita.")) return;
+    if (!await window.confirm("Rejeitar esta sugestão? Ação não pode ser desfeita.")) return;
     setBusy(true);
     try {
       await api._client.post(`/disparo-ia/suggestions/${suggestion.id}/reject`);
       onChange?.();
     } catch (e) {
-      alert("Falha: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
 

@@ -377,7 +377,7 @@ function CampaignDetail({ camp, onBack }) {
     window.location.reload();
   }
   async function remove() {
-    if (!window.confirm("Excluir campanha e todos os destinatários?")) return;
+    if (!await window.confirm("Excluir campanha e todos os destinatários?")) return;
     await api._client.delete(`/mass-messaging/campaigns/${camp.id}`);
     onBack();
   }

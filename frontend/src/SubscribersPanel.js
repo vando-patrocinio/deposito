@@ -89,8 +89,8 @@ export default function SubscribersPanel() {
   };
 
   const runBulk = () => {
-    if (!bulkAction) { alert("Selecione uma ação."); return; }
-    if (selected.size === 0) { alert("Selecione ao menos um assinante."); return; }
+    if (!bulkAction) { await window.alert("Selecione uma ação."); return; }
+    if (selected.size === 0) { await window.alert("Selecione ao menos um assinante."); return; }
     if (bulkAction === "export") {
       const ids = Array.from(selected);
       const rows = items.filter((s) => ids.includes(s.id));
@@ -488,7 +488,7 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
 
   const save = async () => {
     if (!data.name || data.name.length < 2) {
-      alert("Nome obrigatório."); return;
+      await window.alert("Nome obrigatório."); return;
     }
     setBusy(true);
     try {
@@ -501,15 +501,15 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
       else await api.subscribersCreate(cleaned);
       onSaved();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
 
   const del = async () => {
-    if (!data.id || !window.confirm(`Excluir assinante ${data.name}?`)) return;
+    if (!data.id || !await window.confirm(`Excluir assinante ${data.name}?`)) return;
     setBusy(true);
     try { await api.subscribersDelete(data.id); onSaved(); }
-    catch (e) { alert("Erro: " + (e?.response?.data?.detail || e.message)); }
+    catch (e) { await window.alert("Erro: " + (e?.response?.data?.detail || e.message)); }
     finally { setBusy(false); }
   };
 

@@ -46,12 +46,12 @@ export default function AIPreventivePanel({ onClose, embedded = false }) {
 
   const accept = async (sid) => {
     try { await api.aiPrevAccept(sid); loadAll(); }
-    catch (e) { alert(`Erro: ${e?.response?.data?.detail || e.message}`); }
+    catch (e) { await window.alert(`Erro: ${e?.response?.data?.detail || e.message}`); }
   };
   const reject = async (sid) => {
-    if (!window.confirm("Recusar esta sugestão?")) return;
+    if (!await window.confirm("Recusar esta sugestão?")) return;
     try { await api.aiPrevReject(sid); loadAll(); }
-    catch (e) { alert(`Erro: ${e?.response?.data?.detail || e.message}`); }
+    catch (e) { await window.alert(`Erro: ${e?.response?.data?.detail || e.message}`); }
   };
 
   const Inner = (

@@ -177,7 +177,7 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
   }, [items]);
 
   async function submit() {
-    if (!plate.trim()) { alert("Informe a placa do veículo."); return; }
+    if (!plate.trim()) { await window.alert("Informe a placa do veículo."); return; }
     setBusy(true);
     try {
       const created = await api.vehicleChecklistCreate({
@@ -202,7 +202,7 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
       setPlate(""); setBrand(""); setModel(""); setYear(""); setKmI(""); setRoute(""); setNotes("");
       setMarks([]); setAttachments([]); setPendingMark(null);
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally {
       setBusy(false);
     }
@@ -232,11 +232,11 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      alert("Apenas imagens são aceitas.");
+      await window.alert("Apenas imagens são aceitas.");
       return;
     }
     if (file.size > 8 * 1024 * 1024) {
-      alert("Arquivo muito grande (máximo 8MB).");
+      await window.alert("Arquivo muito grande (máximo 8MB).");
       return;
     }
     const reader = new FileReader();
@@ -257,7 +257,7 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
   };
 
   async function removeChecklist(id) {
-    if (!confirm("Remover este checklist permanentemente?")) return;
+    if (!await window.confirm("Remover este checklist permanentemente?")) return;
     await api.vehicleChecklistDelete(id);
     loadHistory();
   }

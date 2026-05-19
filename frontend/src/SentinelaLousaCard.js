@@ -62,11 +62,11 @@ export default function SentinelaLousaCard() {
 
   const ack = async (id) => {
     try { await api.sentinelaAcknowledge(id); await reload(); }
-    catch (e) { alert(e?.response?.data?.detail || e.message); }
+    catch (e) { await window.alert(e?.response?.data?.detail || e.message); }
   };
   const dismiss = async (id) => {
     try { await api.sentinelaDismiss(id); await reload(); }
-    catch (e) { alert(e?.response?.data?.detail || e.message); }
+    catch (e) { await window.alert(e?.response?.data?.detail || e.message); }
   };
 
   const cfg = summary?.config || {};

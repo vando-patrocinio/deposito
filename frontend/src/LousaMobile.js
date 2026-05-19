@@ -1085,7 +1085,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         conectores_rede: r.conectores_rede,
       }));
     } catch (e) {
-      alert("Sugestão falhou: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Sugestão falhou: " + (e?.response?.data?.detail || e.message));
     } finally {
       setSuggestBusy(false);
     }
@@ -1154,7 +1154,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         ],
       }));
     } catch (e) {
-      alert("Falha ao ler foto: " + e.message);
+      await window.alert("Falha ao ler foto: " + e.message);
     }
   }
 
@@ -1179,7 +1179,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         setForm((f) => ({ ...f, ont: detected.toUpperCase() }));
       }
     } catch (e) {
-      alert("OCR falhou: " + (e?.response?.data?.detail || e.message));
+      await window.alert("OCR falhou: " + (e?.response?.data?.detail || e.message));
     } finally {
       setOcrBusy(false);
     }
@@ -1189,7 +1189,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     // Validação básica do step 1
     // INSTALAÇÃO: SN não é mais obrigatório aqui — provisionamento via Rede IA.
     if (isWithdraw && !form.ont) {
-      alert("MAC da ONT retirada é obrigatório.");
+      await window.alert("MAC da ONT retirada é obrigatório.");
       return;
     }
     if (requireEquipPhoto && !hasEquipPhoto) {
@@ -1201,7 +1201,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
 
   function submit() {
     if (needsMac && macStatus === "error") {
-      if (!window.confirm("MAC não encontrado no SmartOLT. Continuar mesmo "
+      if (!await window.confirm("MAC não encontrado no SmartOLT. Continuar mesmo "
                             + "assim? (Marca erro_estoque pra revisão)")) return;
     }
     // Saldo
@@ -1215,7 +1215,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     for (const [k, v] of checks) {
       const used = Number(v) || 0;
       if (used > (consMap[k] ?? Infinity)) {
-        if (!window.confirm(`Saldo insuficiente de ${k} (disp ${consMap[k]}, `
+        if (!await window.confirm(`Saldo insuficiente de ${k} (disp ${consMap[k]}, `
                               + `gasto ${used}). Continuar? Vai ficar erro_estoque.`)) return;
         break;
       }
@@ -1986,8 +1986,8 @@ function SmartOltDetailBlock({ ls }) {
           </button>
           <button
             onClick={async () => {
-              if (!ls?.sn) return alert("ONU sem SN cadastrado");
-              if (!confirm(`Enviar PUSH (reiniciar ONU ${ls.sn})?\n\nO cliente vai ficar offline por ~30s.`)) return;
+              if (!ls?.sn) return await window.alert("ONU sem SN cadastrado");
+              if (!await window.confirm(`Enviar PUSH (reiniciar ONU ${ls.sn})?\n\nO cliente vai ficar offline por ~30s.`)) return;
               setPushBusy(true); setGpsMsg(null);
               try {
                 await api._client.post(`/rede-ia/onu/${encodeURIComponent(ls.sn)}/push`,

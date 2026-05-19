@@ -285,13 +285,13 @@ function SignatureStep({ collaborator, allItems, checkedKeys, busy, setBusy, onB
 
   const submit = async () => {
     if (!receiverName.trim() || receiverName.trim().length < 2) {
-      alert("Informe o nome do recebedor."); return;
+      await window.alert("Informe o nome do recebedor."); return;
     }
-    if (!hasInk) { alert("Assine no quadro antes de confirmar."); return; }
+    if (!hasInk) { await window.alert("Assine no quadro antes de confirmar."); return; }
     // Abre janela ANTES do await pra evitar popup blocker
     const win = window.open("about:blank", "_blank");
     if (!win) {
-      alert("Popup bloqueado. Permita popups deste site nas configurações do navegador.");
+      await window.alert("Popup bloqueado. Permita popups deste site nas configurações do navegador.");
       return;
     }
     win.document.write(
@@ -312,7 +312,7 @@ function SignatureStep({ collaborator, allItems, checkedKeys, busy, setBusy, onB
       onClose();
     } catch (e) {
       try { win.close(); } catch {}
-      alert("Falha: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
 

@@ -68,17 +68,17 @@ export default function PlansPanel() {
       setEditing(null);
       await load();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   };
 
   const onDelete = async (plan) => {
-    if (!window.confirm(`Excluir o plano "${plan.name}"? Essa ação é irreversível.`)) return;
+    if (!await window.confirm(`Excluir o plano "${plan.name}"? Essa ação é irreversível.`)) return;
     try {
       await api.planDelete(plan.id);
       await load();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   };
 
@@ -87,7 +87,7 @@ export default function PlansPanel() {
       await api.planUpdate(plan.id, { active: !plan.active });
       await load();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   };
 
@@ -417,7 +417,7 @@ function AdjustmentModal({ plan, onClose, onApplied }) {
       const r = await api.planAdjustmentPreview(plan.id, body);
       setPreview(r);
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setLoading(false); }
   }, [plan.id, pctOverride, onlyActive]);
 
@@ -446,7 +446,7 @@ function AdjustmentModal({ plan, onClose, onApplied }) {
       }
       onApplied();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
       setApplying(false);
     }
   };
@@ -815,30 +815,30 @@ function ScheduledAdjustmentsCard({ items, onChange }) {
   const fmt = (v) => new Intl.NumberFormat("pt-BR",
         { style: "currency", currency: "BRL" }).format(v || 0);
   const cancel = async (id) => {
-    if (!window.confirm("Cancelar este reajuste agendado?")) return;
+    if (!await window.confirm("Cancelar este reajuste agendado?")) return;
     try {
       await api.planScheduledCancel(id);
       onChange();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   };
   const notify = async (item) => {
-    if (item.notified_at && !window.confirm(
+    if (item.notified_at && !await window.confirm(
         `Já foi notificado em ${new Date(item.notified_at).toLocaleString("pt-BR")} ` +
         `(${item.notified_count || 0} envios). Enviar novamente?`)) return;
-    if (!item.notified_at && !window.confirm(
+    if (!item.notified_at && !await window.confirm(
         `Enviar aviso prévio via WhatsApp para TODOS os assinantes ativos do plano "${item.plan_name}"?\n\n` +
         `O sistema vai usar o template padrão (você pode customizar via API) e gravar tudo na Lousa de Chat.`)) return;
     try {
       const r = await api.planScheduledNotify(item.id);
-      alert(`✓ Notificação enviada!\n\n` +
+      await window.alert(`✓ Notificação enviada!\n\n` +
             `${r.sent} mensagens enviadas\n` +
             `${r.failed} falhas\n` +
             `${r.skipped_no_phone} sem telefone cadastrado`);
       onChange();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   };
   return (

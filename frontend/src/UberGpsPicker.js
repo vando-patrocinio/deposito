@@ -94,7 +94,7 @@ export default function UberGpsPicker({
 
   const useMyLocation = () => {
     if (!navigator.geolocation) {
-      alert("Seu navegador não suporta geolocalização.");
+      await window.alert("Seu navegador não suporta geolocalização.");
       return;
     }
     setUsingGps(true);
@@ -108,7 +108,7 @@ export default function UberGpsPicker({
       },
       (err) => {
         setUsingGps(false);
-        alert("Não foi possível obter sua localização: " + err.message);
+        await window.alert("Não foi possível obter sua localização: " + err.message);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );

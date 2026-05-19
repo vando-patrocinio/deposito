@@ -68,7 +68,7 @@ export default function PlatformAdminPanel() {
     if (!ids.length) return;
     const blocked = ids.filter((id) => id === "co-demo");
     if (blocked.length) {
-      window.alert("A empresa de demonstração (co-demo) não pode ser apagada. Desmarque-a.");
+      await window.alert("A empresa de demonstração (co-demo) não pode ser apagada. Desmarque-a.");
       return;
     }
     setConfirmDelete({ ids });
@@ -84,11 +84,11 @@ export default function PlatformAdminPanel() {
       if (fail.length) {
         msg += `\n\nFalhas (${fail.length}):\n` + fail.map((f) => `• ${f.id}: ${f.error}`).join("\n");
       }
-      window.alert(msg);
+      await window.alert(msg);
       setConfirmDelete(null);
       await reload();
     } catch (e) {
-      window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally {
       setDeleting(false);
     }

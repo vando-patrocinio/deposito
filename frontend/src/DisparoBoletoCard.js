@@ -73,7 +73,7 @@ export default function DisparoBoletoCard() {
       ).then((x) => x.data);
       setPreview(r);
     } catch (e) {
-      alert("Falha no preview: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha no preview: " + (e?.response?.data?.detail || e.message));
     } finally {
       setLoadingPreview(false);
     }
@@ -125,7 +125,7 @@ export default function DisparoBoletoCard() {
       setActiveRun({ ...r, status: "running", sent: 0, failed: 0,
                        total_candidates: r.total_candidates });
     } catch (e) {
-      alert("Falha ao disparar: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha ao disparar: " + (e?.response?.data?.detail || e.message));
     } finally {
       setSending(false);
     }

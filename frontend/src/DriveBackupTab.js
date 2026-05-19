@@ -89,7 +89,7 @@ export default function DriveBackupTab() {
   }
 
   async function disconnect() {
-    if (!window.confirm("Desconectar Google Drive? Os arquivos não serão apagados, mas backups param de rodar.")) return;
+    if (!await window.confirm("Desconectar Google Drive? Os arquivos não serão apagados, mas backups param de rodar.")) return;
     try {
       await api.driveDisconnect();
       refresh();
@@ -105,7 +105,7 @@ export default function DriveBackupTab() {
       const r = await api.driveBackupNow(false);
       // Refresh imediato pra mostrar o novo
       await refresh();
-      alert(`Backup criado: ${r.file_name} (${(r.size_bytes / 1024).toFixed(1)} KB)`);
+      await window.alert(`Backup criado: ${r.file_name} (${(r.size_bytes / 1024).toFixed(1)} KB)`);
     } catch (e) {
       setError(e?.response?.data?.detail || e.message);
     } finally {
@@ -116,7 +116,7 @@ export default function DriveBackupTab() {
   async function doRestore(mode) {
     if (!restoreModal) return;
     if (mode === "replace") {
-      const sure = window.prompt(
+      const sure = await window.prompt(
         `Modo REPLACE apaga todos os dados das coleções antes de restaurar. ` +
         `Digite "RESTAURAR" para confirmar.`
       );
@@ -127,7 +127,7 @@ export default function DriveBackupTab() {
     try {
       const r = await api.driveRestore(restoreModal.id, mode);
       const total = Object.values(r.restored || {}).reduce((a, b) => a + b, 0);
-      alert(`Restaurado: ${total} documentos em ${Object.keys(r.restored).length} coleções.${r.secrets_redacted_in_source ? "\n\nObs: secrets ficaram preservados (estavam mascarados no snapshot)." : ""}`);
+      await window.alert(`Restaurado: ${total} documentos em ${Object.keys(r.restored).length} coleções.${r.secrets_redacted_in_source ? "\n\nObs: secrets ficaram preservados (estavam mascarados no snapshot)." : ""}`);
       setRestoreModal(null);
     } catch (e) {
       setError(e?.response?.data?.detail || e.message);

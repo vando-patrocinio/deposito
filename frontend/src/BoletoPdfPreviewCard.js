@@ -109,7 +109,7 @@ export default function BoletoPdfPreviewCard() {
   };
 
   const handleRevert = async () => {
-    if (!window.confirm("Voltar para o logo padrão Ligo Fibra?")) return;
+    if (!await window.confirm("Voltar para o logo padrão Ligo Fibra?")) return;
     try {
       await api.boletoLogoDelete();
       setMsg({ kind: "ok", text: "Logo padrão restaurado." });

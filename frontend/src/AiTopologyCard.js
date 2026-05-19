@@ -92,8 +92,8 @@ export default function AiTopologyCard() {
     try { localStorage.setItem(POSITIONS_KEY, JSON.stringify(next)); } catch {}
   }, []);
 
-  const resetPositions = useCallback(() => {
-    if (!window.confirm("Restaurar posições padrão de todos os cards?")) return;
+  const resetPositions = useCallback(async () => {
+    if (!await window.confirm("Restaurar posições padrão de todos os cards?")) return;
     persistOverrides({});
   }, [persistOverrides]);
 

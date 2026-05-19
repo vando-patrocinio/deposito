@@ -114,7 +114,7 @@ export default function UsersPanel() {
   }
 
   async function remove(uid) {
-    if (!window.confirm("Excluir este usuário? A ação não pode ser desfeita.")) return;
+    if (!await window.confirm("Excluir este usuário? A ação não pode ser desfeita.")) return;
     try {
       await api.deleteUser(uid);
       await reload();

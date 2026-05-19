@@ -298,7 +298,7 @@ export default function PracasPanel() {
                       if (!file) return;
                       const MAX = 1.5 * 1024 * 1024;
                       if (file.size > MAX) {
-                        alert(`Imagem maior que 1.5 MB (atual: ${(file.size / 1024 / 1024).toFixed(2)} MB).`);
+                        await window.alert(`Imagem maior que 1.5 MB (atual: ${(file.size / 1024 / 1024).toFixed(2)} MB).`);
                         e.target.value = "";
                         return;
                       }

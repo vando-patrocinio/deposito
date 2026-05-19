@@ -216,28 +216,28 @@ function DraftsSection({ drafts, reload }) {
   const sendOne = async (id) => {
     setSendingId(id);
     try { await api.smartoltAiDraftSend(id); await reload(); }
-    catch (e) { alert(e?.response?.data?.detail || e.message); }
+    catch (e) { await window.alert(e?.response?.data?.detail || e.message); }
     finally { setSendingId(null); }
   };
   const discardOne = async (id) => {
     setSendingId(id);
     try { await api.smartoltAiDraftDiscard(id); await reload(); }
-    catch (e) { alert(e?.response?.data?.detail || e.message); }
+    catch (e) { await window.alert(e?.response?.data?.detail || e.message); }
     finally { setSendingId(null); }
   };
   const sendAll = async (outage_id, kind) => {
-    if (!window.confirm("Aprovar e enviar TODOS os rascunhos deste outage?")) return;
+    if (!await window.confirm("Aprovar e enviar TODOS os rascunhos deste outage?")) return;
     setBulkBusy(true);
     try {
       const res = await api.smartoltAiDraftsSendBulk({ outage_id, kind });
       await reload();
-      alert(`Enviadas: ${res.sent} · Falhas: ${res.failed} · Total: ${res.total}`);
-    } catch (e) { alert(e?.response?.data?.detail || e.message); }
+      await window.alert(`Enviadas: ${res.sent} · Falhas: ${res.failed} · Total: ${res.total}`);
+    } catch (e) { await window.alert(e?.response?.data?.detail || e.message); }
     finally { setBulkBusy(false); }
   };
   const saveEdit = async (id) => {
     try { await api.smartoltAiDraftEdit(id, editText); }
-    catch (e) { alert(e?.response?.data?.detail || e.message); return; }
+    catch (e) { await window.alert(e?.response?.data?.detail || e.message); return; }
     setEditingId(null); setEditText(""); await reload();
   };
 
@@ -432,7 +432,7 @@ function TemplatesEditor({ onClose }) {
         internal_resolved: cfg.templates.internal_resolved,
       });
       onClose();
-    } catch (e) { alert(e?.response?.data?.detail || e.message); }
+    } catch (e) { await window.alert(e?.response?.data?.detail || e.message); }
     finally { setSaving(false); }
   };
 

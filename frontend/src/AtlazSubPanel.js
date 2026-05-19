@@ -39,7 +39,7 @@ export default function AtlazSubPanel() {
   }, []);
 
   const runSync = async () => {
-    if (!window.confirm(
+    if (!await window.confirm(
       "Iniciar sincronização de assinantes do Atlaz?\n\n" +
       "Pode levar 1-3 minutos para bases grandes (~2.800 clientes).\n" +
       "Não bloqueia o painel — você pode continuar usando."

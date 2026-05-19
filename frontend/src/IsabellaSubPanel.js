@@ -45,7 +45,7 @@ export default function IsabellaSubPanel() {
       await api.isabellaConfigSet(next);
       setData((d) => ({ ...d, polish_button_enabled: next }));
     } catch (e) {
-      alert("Erro ao salvar: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro ao salvar: " + (e?.response?.data?.detail || e.message));
     } finally { setSavingToggle(false); }
   };
 

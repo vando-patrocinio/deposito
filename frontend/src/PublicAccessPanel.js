@@ -63,12 +63,12 @@ export default function PublicAccessPanel() {
   };
 
   const revoke = async (id) => {
-    if (!window.confirm("Revogar este link? Quem estiver usando perderá acesso na hora.")) return;
+    if (!await window.confirm("Revogar este link? Quem estiver usando perderá acesso na hora.")) return;
     try {
       await api.publicAccessRevoke(id);
       await load();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   };
 
@@ -79,7 +79,7 @@ export default function PublicAccessPanel() {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 1500);
     } catch {
-      window.prompt("Copie o link manualmente:", link);
+      await window.prompt("Copie o link manualmente:", link);
     }
   };
 

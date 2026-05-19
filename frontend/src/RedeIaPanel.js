@@ -52,7 +52,7 @@ export default function RedeIaPanel() {
 
   const markAll = async () => {
     try { await api.redeIaNotifMarkRead(null, true); await loadNotifs(); }
-    catch (e) { alert(e?.response?.data?.detail || "Erro"); }
+    catch (e) { await window.alert(e?.response?.data?.detail || "Erro"); }
   };
   const markOne = async (id) => {
     try { await api.redeIaNotifMarkRead(id, false); await loadNotifs(); }
@@ -803,7 +803,7 @@ function DriveResendBtn({ ctoId, onDone }) {
       onDone?.();
     } catch (e) {
       const msg = e?.response?.data?.detail || "Falha ao enviar para Drive";
-      alert(msg);
+      await window.alert(msg);
     } finally { setBusy(false); }
   };
   return (
@@ -896,7 +896,7 @@ function Pendencies() {
       setModal(null); setComment("");
       load();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     }
   };
   return (
@@ -1050,7 +1050,7 @@ function BairrosManager() {
     }
   };
   const del = async (id) => {
-    if (!window.confirm("Remover bairro?")) return;
+    if (!await window.confirm("Remover bairro?")) return;
     await api.redeIaBairroDelete(id);
     load();
   };
@@ -1619,7 +1619,7 @@ function DiretrizesEditor() {
       const r = await api.redeIaDiretrizesUpdate(text);
       setMeta({ updated_at: r.updated_at, updated_by: r.updated_by });
     } catch (e) {
-      alert("Erro ao salvar: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro ao salvar: " + (e?.response?.data?.detail || e.message));
     } finally { setSaving(false); }
   };
   const analyze = async () => {
@@ -1628,7 +1628,7 @@ function DiretrizesEditor() {
       const r = await api.redeIaAnalyze({});
       setAiReport(r);
     } catch (e) {
-      alert("Erro IA: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro IA: " + (e?.response?.data?.detail || e.message));
     } finally { setAnalyzing(false); }
   };
   return (

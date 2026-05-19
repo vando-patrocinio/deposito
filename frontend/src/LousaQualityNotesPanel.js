@@ -68,7 +68,7 @@ export default function LousaQualityNotesPanel() {
         await load();
       }
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setSavingCfg(false); }
   };
 

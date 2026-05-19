@@ -216,12 +216,12 @@ function BudgetRow({ budget, onOpen, onChanged, token }) {
   const totals = budget.totals || {};
   async function handleDelete(e) {
     e.stopPropagation();
-    if (!confirm(`Excluir "${budget.name}"?`)) return;
+    if (!await window.confirm(`Excluir "${budget.name}"?`)) return;
     try {
       await api.budgetDelete(budget.id);
       onChanged();
     } catch (err) {
-      alert(err?.response?.data?.detail || err.message);
+      await window.alert(err?.response?.data?.detail || err.message);
     }
   }
   return (
@@ -349,7 +349,7 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
       await refresh();
       if (r?.ready_to_print) {
         // Modo "Importar pronto" — orçamento já tem preços, abre PDF direto.
-        const ok = window.confirm(
+        const ok = await window.confirm(
           `✓ ${r.items_count} item(ns) extraído(s) — `
           + `${r.items_with_price} com preço já preenchido.\n\n`
           + "Abrir o PDF para imprimir agora?",
@@ -362,7 +362,7 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
   }
 
   async function handleAnalyze() {
-    if (!confirm("A Orçamento_IA vai analisar os itens e estimar 3 preços por item. Pode levar até 30s. Continuar?")) return;
+    if (!await window.confirm("A Orçamento_IA vai analisar os itens e estimar 3 preços por item. Pode levar até 30s. Continuar?")) return;
     setAnalyzing(true); setErr("");
     try {
       await api.budgetAnalyze(budget.id);

@@ -449,12 +449,12 @@ function TestsTab() {
       setDetailRun(r.run);
       await load();
     } catch (e) {
-      alert("Erro ao executar teste: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro ao executar teste: " + (e?.response?.data?.detail || e.message));
     } finally { setRunning(null); }
   }
 
   async function runAll() {
-    if (!window.confirm("Executar TODOS os 20 testes? Isso vai consumir tokens LLM.")) return;
+    if (!await window.confirm("Executar TODOS os 20 testes? Isso vai consumir tokens LLM.")) return;
     setRunningAll(true);
     setBatchResult(null);
     try {
@@ -462,7 +462,7 @@ function TestsTab() {
       setBatchResult(r);
       await load();
     } catch (e) {
-      alert("Erro batch: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro batch: " + (e?.response?.data?.detail || e.message));
     } finally { setRunningAll(false); }
   }
 
@@ -1069,7 +1069,7 @@ function ScheduleTab() {
       setFlash("Configuração salva com sucesso ✓");
       setTimeout(() => setFlash(""), 3000);
     } catch (e) {
-      alert("Erro ao salvar: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro ao salvar: " + (e?.response?.data?.detail || e.message));
     } finally { setSaving(false); }
   }
 

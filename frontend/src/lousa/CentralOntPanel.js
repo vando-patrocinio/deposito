@@ -65,7 +65,7 @@ export default function CentralOntPanel() {
       });
       setSettings(next);
     } catch (e) {
-      alert("Falha ao salvar: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha ao salvar: " + (e?.response?.data?.detail || e.message));
     } finally {
       setSavingSettings(false);
     }
@@ -77,7 +77,7 @@ export default function CentralOntPanel() {
         `/lousa/central-ont/auth-requests/${id}/${action}`);
       await load();
     } catch (e) {
-      alert("Falha: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha: " + (e?.response?.data?.detail || e.message));
     }
   };
 

@@ -36,6 +36,7 @@ import PracasPanel from "@/PracasPanel";
 import LogsPanel from "@/LogsPanel";
 import PlatformAdminPanel from "@/PlatformAdminPanel";
 import BlockedPage from "@/BlockedPage";
+import DialogHost from "@/dialog";
 import LousaAdminPanel from "@/LousaAdminPanel";
 import EstoquePanel from "@/EstoquePanel";
 import AICenterPanel from "@/AICenterPanel";
@@ -246,7 +247,7 @@ function ImpersonationBanner() {
         data-testid="end-impersonation-btn"
         onClick={async () => {
           try { await endImpersonation(); }
-          catch (e) { alert("Erro: " + (e?.response?.data?.detail || e.message)); }
+          catch (e) { await window.alert("Erro: " + (e?.response?.data?.detail || e.message)); }
         }}
         className="btn btn-secondary btn-sm"
       >
@@ -1004,6 +1005,7 @@ export default function App() {
   return (
     <AuthProvider>
       <AppContent />
+      <DialogHost />
     </AuthProvider>
   );
 }

@@ -69,7 +69,7 @@ export default function ReconcileMatchModal({ from_date, to_date, onClose,
     setConfirming(true);
     try {
       const r = await api.bankImportReconcileConfirm(matches);
-      alert(`${r.approved} fatura(s) marcada(s) como paga(s).`);
+      await window.alert(`${r.approved} fatura(s) marcada(s) como paga(s).`);
       setSelected({});
       if (onMutated) onMutated();
       await load();

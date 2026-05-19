@@ -618,7 +618,7 @@ export default function BankImportTab() {
                           <button
                             data-testid={`bi-memory-del-${m.id}`}
                             onClick={async () => {
-                              if (!window.confirm("Apagar este padrão?")) return;
+                              if (!await window.confirm("Apagar este padrão?")) return;
                               await api.bankImportMemoryDelete(m.id);
                               loadMemory();
                             }}

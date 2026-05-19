@@ -174,7 +174,7 @@ function CrudTab({ title, columns, fields, listApi, createApi, updateApi,
   }, [items, search]);
 
   async function onDelete(item) {
-    if (!window.confirm(`Excluir "${item.name}"?`)) return;
+    if (!await window.confirm(`Excluir "${item.name}"?`)) return;
     await deleteApi(item.id);
     reload();
   }

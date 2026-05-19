@@ -491,7 +491,7 @@ export default function WhatsAppChatLayout() {
                           setSelectedPhone(phone);
                           await loadConversations();
                         } catch (e) {
-                          alert("Erro ao atender: " + (e?.response?.data?.detail || e.message));
+                          await window.alert("Erro ao atender: " + (e?.response?.data?.detail || e.message));
                         }
                       }} />
 
@@ -1328,7 +1328,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       setText("");
       await loadMessages();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setSending(false); }
   };
 
@@ -1348,7 +1348,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
         await loadMessages();
       } finally { setSending(false); }
     } catch (e) {
-      alert("Erro IA: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro IA: " + (e?.response?.data?.detail || e.message));
     } finally { setPolishing(false); }
   };
 
@@ -1377,7 +1377,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(recChunksRef.current, { type: mime });
         if (blob.size < 1000) {
-          alert("Áudio muito curto, segure por mais tempo.");
+          await window.alert("Áudio muito curto, segure por mais tempo.");
           return;
         }
         const reader = new FileReader();
@@ -1389,7 +1389,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
             await api.waBaileysSendAudio(conv.phone, b64, mime, recDuration);
             await loadMessages();
           } catch (e) {
-            alert("Erro ao enviar áudio: " + (e?.response?.data?.detail || e.message));
+            await window.alert("Erro ao enviar áudio: " + (e?.response?.data?.detail || e.message));
           } finally {
             setSending(false);
             setRecDuration(0);
@@ -1404,7 +1404,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       recTimerRef.current = setInterval(
         () => setRecDuration((d) => d + 1), 1000);
     } catch (e) {
-      alert("Não foi possível acessar o microfone: " + e.message);
+      await window.alert("Não foi possível acessar o microfone: " + e.message);
     }
   };
 
@@ -1433,7 +1433,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       setShowAssign(false);
       onChange();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
 
@@ -1445,7 +1445,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       });
       onChange();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
 
@@ -1459,7 +1459,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       await api.waBaileysFinalizeConversation(conv.phone);
       onChange();
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setBusy(false); }
   };
 
@@ -1470,7 +1470,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfResult, setPdfResult] = useState(null);
   const resetConversation = async () => {
-    if (!window.confirm(
+    if (!await window.confirm(
       "Resetar esta conversa?\n\n" +
       "Vai APAGAR TODAS as mensagens (cliente + IA + coaching) " +
       "para começar do zero — útil pra testes da IA.\n\n" +
@@ -1479,11 +1479,11 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
     setResetting(true);
     try {
       const r = await api.waBaileysResetConversation(conv.phone);
-      alert(`Conversa resetada (${r.messages_deleted} mensagens apagadas).`);
+      await window.alert(`Conversa resetada (${r.messages_deleted} mensagens apagadas).`);
       await loadMessages();
       onChange();
     } catch (e) {
-      alert("Erro ao resetar: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro ao resetar: " + (e?.response?.data?.detail || e.message));
     } finally { setResetting(false); }
   };
 
@@ -1507,7 +1507,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       document.body.removeChild(a);
       setPdfResult(r);
     } catch (e) {
-      alert("Erro ao gerar PDF: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro ao gerar PDF: " + (e?.response?.data?.detail || e.message));
     } finally { setExportingPdf(false); }
   };
 
@@ -1807,7 +1807,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
           <IconBtn
             data-testid="wa-reset-context-btn"
             onClick={async () => {
-              if (!window.confirm(
+              if (!await window.confirm(
                 "Resetar o CONTEXTO da Isabella IA pra este número?\n\n" +
                 "Mensagens NÃO são apagadas (auditoria preservada), mas " +
                 "a Isabella passa a ver a conversa como se fosse o início " +
@@ -1927,7 +1927,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
                 <button key={s.id}
                   data-testid={`wa-unlink-${s.id}`}
                   onClick={async () => {
-                    if (!window.confirm(
+                    if (!await window.confirm(
                       `Desvincular telefone ${conv.phone} do cliente "${s.name}"?\n\n` +
                       "Após confirmar, a Isabella deixará de usar os dados desse cadastro nessa conversa."
                     )) return;
@@ -1937,7 +1937,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
                       setLinkStatus(fresh);
                     } catch (e) {
                       // eslint-disable-next-line no-alert
-                      window.alert("Erro ao desvincular: " + (e?.message || e));
+                      await window.alert("Erro ao desvincular: " + (e?.message || e));
                     }
                   }}
                   style={{
@@ -2106,7 +2106,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
             const unread = coachings.find((c) => !c.read);
             const target = unread || coachings[coachings.length - 1];
             if (!target) {
-              alert("Sem coaching ativo. Conversas com CSAT baixo geram dicas privadas automaticamente.");
+              await window.alert("Sem coaching ativo. Conversas com CSAT baixo geram dicas privadas automaticamente.");
               return;
             }
             const el = document.querySelector(`[data-coaching-id="${target.id}"]`);
@@ -3745,15 +3745,15 @@ function CustomerProfileModal({ phone, profile, onClose }) {
 
   const onRebootOnt = async () => {
     if (!ontExtId) return;
-    if (!window.confirm(
+    if (!await window.confirm(
       "Reiniciar a ONT do cliente?\n\nA conexão vai cair por ~30s e voltar automaticamente.",
     )) return;
     setRebootingOnt(true);
     try {
       await api.smartoltOnuReboot(ontExtId);
-      alert("ONT reiniciada. A conexão volta em ~30 segundos.");
+      await window.alert("ONT reiniciada. A conexão volta em ~30 segundos.");
     } catch (e) {
-      alert("Falha ao reiniciar: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha ao reiniciar: " + (e?.response?.data?.detail || e.message));
     } finally {
       setRebootingOnt(false);
     }
@@ -3761,7 +3761,7 @@ function CustomerProfileModal({ phone, profile, onClose }) {
 
   const onCreateTicket = async () => {
     if (!sub) {
-      alert("Vincule este cliente a um cadastro antes de criar chamado.");
+      await window.alert("Vincule este cliente a um cadastro antes de criar chamado.");
       return;
     }
     setCreatingTicket(true);
@@ -3771,18 +3771,18 @@ function CustomerProfileModal({ phone, profile, onClose }) {
       const techs = (cols.items || cols || [])
         .filter((c) => c.active !== false && !c.atlaz_inbox);
       if (!techs.length) {
-        alert("Nenhum técnico ativo disponível.");
+        await window.alert("Nenhum técnico ativo disponível.");
         return;
       }
       const opts = techs.map((t, i) => `${i + 1}. ${t.name}`).join("\n");
-      const pick = window.prompt(
+      const pick = await window.prompt(
         `Atribuir chamado a:\n\n${opts}\n\nDigite o número:`,
         "1",
       );
       const idx = parseInt(pick, 10) - 1;
       if (isNaN(idx) || idx < 0 || idx >= techs.length) return;
       const tech = techs[idx];
-      const relato = window.prompt(
+      const relato = await window.prompt(
         "Descreva o problema (opcional):",
         `Cliente ${sub.name} via WhatsApp — solicitação de visita técnica.`,
       );
@@ -3799,9 +3799,9 @@ function CustomerProfileModal({ phone, profile, onClose }) {
         assigned_collaborator_id: tech.id,
       };
       const t = await api.lousaCreateTicket(payload);
-      alert(`Chamado criado: ${t.id?.slice(-8) || ""} → ${tech.name}`);
+      await window.alert(`Chamado criado: ${t.id?.slice(-8) || ""} → ${tech.name}`);
     } catch (e) {
-      alert("Erro ao criar chamado: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro ao criar chamado: " + (e?.response?.data?.detail || e.message));
     } finally {
       setCreatingTicket(false);
     }

@@ -198,7 +198,7 @@ function GptSetupTab() {
   }, [load]);
 
   async function regenerate() {
-    if (!window.confirm("Gerar novo token? O GPT atual deixará de funcionar até você atualizar a Action.")) return;
+    if (!await window.confirm("Gerar novo token? O GPT atual deixará de funcionar até você atualizar a Action.")) return;
     setBusy(true);
     try {
       const r = await api.secretariaRegenerateToken();

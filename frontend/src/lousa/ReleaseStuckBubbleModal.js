@@ -47,7 +47,7 @@ export default function ReleaseStuckBubbleModal({ onClose, onReleased }) {
           reason: reason.trim() || null,
         },
       ).then((x) => x.data);
-      alert(`✓ Bolha de ${r.collaborator_name} foi liberada.\n\n`
+      await window.alert(`✓ Bolha de ${r.collaborator_name} foi liberada.\n\n`
             + "Ela voltou ao status 'pendente'. Todos os admins serão notificados.\n\n"
             + (stuck.length > 1
                 ? "Há outras bolhas presas — clique no botão novamente."
@@ -55,7 +55,7 @@ export default function ReleaseStuckBubbleModal({ onClose, onReleased }) {
       onReleased?.();
       onClose();
     } catch (e) {
-      alert("Falha: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Falha: " + (e?.response?.data?.detail || e.message));
     } finally {
       setBusy(false);
     }

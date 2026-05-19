@@ -53,7 +53,7 @@ export default function MotorIaAgentsModal({ onClose }) {
     // Se TODOS ativos → pausar todos; senão → ativar todos
     const allOn = currentItems.every((x) => x.enabled);
     const target = !allOn;
-    if (!window.confirm(
+    if (!await window.confirm(
       `${target ? "Reativar" : "Pausar"} ${currentItems.length} agente(s) do grupo "${groupName}"?`
     )) return;
     setPendingGroup(groupName); setErr("");

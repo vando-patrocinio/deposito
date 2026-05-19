@@ -17,7 +17,7 @@ export default function RescheduleModal({ ticket, onClose, onConfirm, busy }) {
   function submit(e) {
     e?.preventDefault();
     if (!date || !time || !reason.trim()) {
-      alert("Preencha data, horário e motivo do reagendamento.");
+      await window.alert("Preencha data, horário e motivo do reagendamento.");
       return;
     }
     onConfirm({ new_date: date, new_time: time, notes: reason.trim() });

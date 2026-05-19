@@ -21,7 +21,7 @@ export default function CreateTicketModal({ collabs, onClose, onCreated }) {
       await api.lousaCreateTicket(payload);
       onCreated();
     } catch (err) {
-      alert("Erro: " + (err?.response?.data?.detail || err.message));
+      await window.alert("Erro: " + (err?.response?.data?.detail || err.message));
     }
     setSaving(false);
   }

@@ -501,7 +501,7 @@ function ServiceStatsSection() {
       const b = await api.lousaBriefing(true);
       setBriefing(b);
     } catch (e) {
-      alert("Erro ao gerar briefing: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro ao gerar briefing: " + (e?.response?.data?.detail || e.message));
     }
     setBriefingBusy(false);
   }
@@ -716,7 +716,7 @@ function ManagementKpisSection() {
       const r = await api.lousaManagementInsights(days);
       setInsights(r);
     } catch (e) {
-      alert("Erro insights: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro insights: " + (e?.response?.data?.detail || e.message));
     }
     setInsightsBusy(false);
   }

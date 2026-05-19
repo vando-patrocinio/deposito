@@ -101,7 +101,7 @@ export default function AtlazIntegrationCard() {
   }
 
   async function runReassign() {
-    if (!window.confirm("Re-resolver técnico de TODAS as bolhas Atlaz pendentes? Bolhas sem técnico no Atlaz serão movidas para a coluna '📥 Sem técnico (Atlaz)' na Lousa, onde você pode arrastar para o técnico real.")) return;
+    if (!await window.confirm("Re-resolver técnico de TODAS as bolhas Atlaz pendentes? Bolhas sem técnico no Atlaz serão movidas para a coluna '📥 Sem técnico (Atlaz)' na Lousa, onde você pode arrastar para o técnico real.")) return;
     setBusy(true); setMsg("");
     try {
       const r = await api.atlazReassignExisting();

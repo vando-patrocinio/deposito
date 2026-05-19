@@ -66,16 +66,15 @@ export default function DisparoPromoPanel() {
 
   const loadPreview = async () => {
     if (!template.trim()) {
-      alert("Digite o texto da mensagem primeiro.");
+      await window.alert("Digite o texto da mensagem primeiro.");
       return;
     }
-    setLoadingPreview(true);
     try {
       const r = await api._client.post("/disparo-promo/preview", buildBody())
                                   .then((x) => x.data);
       setPreview(r);
     } catch (e) {
-      alert("Erro: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
     } finally { setLoadingPreview(false); }
   };
 
@@ -112,7 +111,7 @@ export default function DisparoPromoPanel() {
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 4 * 1024 * 1024) {
-      alert("Imagem muito grande (>4MB)");
+      await window.alert("Imagem muito grande (>4MB)");
       return;
     }
     const reader = new FileReader();
@@ -140,7 +139,7 @@ export default function DisparoPromoPanel() {
                                   .then((x) => x.data);
       setActiveRun({ ...r, status: "running", sent: 0, failed: 0 });
     } catch (e) {
-      alert("Erro ao disparar: " + (e?.response?.data?.detail || e.message));
+      await window.alert("Erro ao disparar: " + (e?.response?.data?.detail || e.message));
     } finally { setSending(false); }
   };
 

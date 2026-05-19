@@ -61,7 +61,7 @@ export default function WhatsAppInstancePanel() {
   }, [fetchState, status]);
 
   const logout = async () => {
-    if (!window.confirm("Desconectar este número do WhatsApp?")) return;
+    if (!await window.confirm("Desconectar este número do WhatsApp?")) return;
     setBusy(true);
     try {
       await api.waBaileysLogout();

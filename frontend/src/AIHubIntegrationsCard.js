@@ -121,7 +121,7 @@ function IntegrationBlock({ type, title, description, fields, testApi, extra }) 
   };
 
   const remove = async () => {
-    if (!window.confirm("Remover credenciais salvas?")) return;
+    if (!await window.confirm("Remover credenciais salvas?")) return;
     await api.aihubIntegrationDelete(type);
     setConfig({}); setMeta(null); setResult(null);
   };
