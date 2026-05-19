@@ -1044,6 +1044,17 @@ export const api = {
     client.get(`/lousa/returned-notes?days_back=${daysBack}`).then((r) => r.data),
   lousaPingQualityReport: (daysBack = 7) =>
     client.get(`/lousa/ping-quality-report?days_back=${daysBack}`).then((r) => r.data),
+  lousaCoachingConfigGet: () =>
+    client.get(`/lousa/coaching-config`).then((r) => r.data),
+  lousaCoachingConfigSave: (payload) =>
+    client.put(`/lousa/coaching-config`, payload).then((r) => r.data),
+  lousaCoachingAlerts: (daysBack = 30) =>
+    client.get(`/lousa/coaching-alerts?days_back=${daysBack}`).then((r) => r.data),
+  lousaClosureQualityReport: (daysBack = 7) =>
+    client.get(`/lousa/reports/closure-quality?days_back=${daysBack}`).then((r) => r.data),
+  lousaClosureQualityAnalyze: ({ daysBack = 7, limit = 20 } = {}) =>
+    client.post(`/lousa/reports/closure-quality/analyze`,
+      { days_back: daysBack, limit }).then((r) => r.data),
   collabGrantMobileAccess: (cid) =>
     client.post(`/collaborators/${cid}/grant-mobile-access`).then((r) => r.data),
   networkPing: ({ host, count = 4, port = 80, ticketId = null }) => {

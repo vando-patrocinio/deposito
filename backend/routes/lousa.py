@@ -1103,6 +1103,237 @@ async def lousa_ping_quality_report(
     }
 
 
+# ===========================================================================
+# Coaching automático — config + histórico de alertas
+# ===========================================================================
+class CoachingCfgIn(BaseModel):
+    enabled: bool = False
+    manager_phone: str = Field("", max_length=32)
+    threshold: int = Field(3, ge=2, le=10)
+
+
+@router.get("/lousa/coaching-config")
+async def get_coaching_cfg(user: dict = Depends(require_role("gestor"))):
+    from services.lousa_coaching import get_coaching_config
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    return await get_coaching_config(cid)
+
+
+@router.put("/lousa/coaching-config")
+async def save_coaching_cfg(payload: CoachingCfgIn,
+                              user: dict = Depends(require_role("gestor"))):
+    from services.lousa_coaching import save_coaching_config
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    return await save_coaching_config(
+        cid, payload.enabled, payload.manager_phone, payload.threshold,
+    )
+
+
+@router.get("/lousa/coaching-alerts")
+async def list_coaching_alerts(days_back: int = 30,
+                                  user: dict = Depends(require_role("gestor"))):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    since = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
+    docs = await db.lousa_coaching_alerts.find(
+        {"company_id": cid, "created_at": {"$gte": since}},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(200).to_list(200)
+    return {"items": docs, "count": len(docs), "days_back": days_back}
+
+
+# ===========================================================================
+# Closure Quality — IA correlaciona reclamação x solução e dá nota
+# ===========================================================================
+class ClosureQualityAnalyzeIn(BaseModel):
+    days_back: int = Field(7, ge=1, le=60)
+    limit: int = Field(20, ge=1, le=100)
+
+
+async def _analyze_ticket_quality_with_ai(ticket: dict) -> dict:
+    """Usa LLM pra correlacionar reclamação do cliente x solução do técnico.
+
+    Retorna { score: 0-100, verdict: str, reasoning: str }.
+    Score alto → solução provavelmente resolve o problema.
+    Score baixo → solução incoerente ou paliativo.
+    """
+    cd = ticket.get("completion_data") or {}
+    client = (ticket.get("client_snapshot") or {}).get("name") or "—"
+    complaint = (ticket.get("title")
+                 or ticket.get("description")
+                 or ticket.get("category")
+                 or "")
+    outcome = ticket.get("outcome") or "—"
+    observations = (cd.get("observations") or cd.get("laudo") or "")
+    ping_summary = cd.get("ping_summary") or ""
+    sinal = cd.get("sinal")
+
+    prompt = (
+        "Você é um auditor técnico de provedores de internet. "
+        "Compare a RECLAMAÇÃO do cliente com a SOLUÇÃO que o técnico aplicou e "
+        "responda em JSON estrito.\n\n"
+        f"CLIENTE: {client}\n"
+        f"RECLAMAÇÃO/CATEGORIA: {complaint}\n"
+        f"DESFECHO: {outcome}\n"
+        f"SINAL ÓTICO (dBm): {sinal}\n"
+        f"PING NA ONU: {ping_summary[:300]}\n"
+        f"OBSERVAÇÕES DO TÉCNICO: {observations[:600]}\n\n"
+        "Regras:\n"
+        "- score: inteiro 0-100. 80+ se a solução resolve a reclamação. "
+        "30- se é paliativa, incoerente ou se faltou diagnóstico (ex.: "
+        "fechou sem ping numa reclamação de internet lenta).\n"
+        "- verdict: uma de [\"resolve\",\"paliativo\",\"incoerente\","
+        "\"sem_diagnostico\"].\n"
+        "- reasoning: no máximo 220 caracteres em Português, direto ao ponto.\n\n"
+        "Responda APENAS o JSON, sem markdown."
+    )
+    try:
+        from emergentintegrations.llm.chat import UserMessage
+        chat = await llm_chat(
+            session_id=f"lousa-quality-{ticket.get('id')}",
+            system="Auditor técnico. Responda apenas JSON.",
+        )
+        resp = await chat.send_message(UserMessage(text=prompt))
+        raw = str(resp).strip()
+        # Remove fences caso o modelo tenha forçado ```json
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL)
+        data = json.loads(raw)
+        score = int(data.get("score", 0))
+        score = max(0, min(score, 100))
+        return {
+            "score": score,
+            "verdict": str(data.get("verdict", "incoerente"))[:32],
+            "reasoning": str(data.get("reasoning", ""))[:240],
+        }
+    except Exception as e:
+        logger.warning("[closure-quality] ia falhou ticket=%s: %s",
+                       ticket.get("id"), e)
+        return {"score": 0, "verdict": "ia_falhou", "reasoning": str(e)[:200]}
+
+
+@router.get("/lousa/reports/closure-quality")
+async def closure_quality_report(days_back: int = 7,
+                                    user: dict = Depends(require_role("gestor"))):
+    """Card "Qualidade dos Fechamentos": top motivos + estatística da
+    análise IA cacheada.
+
+    Lê de `lousa_closure_analysis` (preenchida via POST /analyze).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    since = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
+    q = {"company_id": cid, "status": "finalizada",
+         "closed_at": {"$gte": since}}
+    tickets = await db.tickets.find(
+        q,
+        {"_id": 0, "id": 1, "title": 1, "category": 1, "outcome": 1,
+         "closed_at": 1, "assigned_collaborator_id": 1,
+         "client_snapshot": 1, "completion_data.observations": 1,
+         "completion_data.ping_summary": 1, "completion_data.sinal": 1},
+    ).sort("closed_at", -1).limit(2000).to_list(2000)
+    total = len(tickets)
+
+    # Top motivos: agrupa por category||outcome||title (primeiros 40 chars)
+    reasons: dict = {}
+    for t in tickets:
+        key = (t.get("category") or t.get("outcome")
+               or (t.get("title") or "—"))
+        key = str(key).strip()[:60] or "—"
+        reasons[key] = reasons.get(key, 0) + 1
+    top_reasons = sorted(
+        [{"reason": k, "count": v,
+          "pct": round(100.0 * v / total, 1) if total else 0.0}
+         for k, v in reasons.items()],
+        key=lambda x: -x["count"],
+    )[:10]
+
+    # Carrega análises já feitas (cache)
+    tids = [t["id"] for t in tickets]
+    analyses = await db.lousa_closure_analysis.find(
+        {"ticket_id": {"$in": tids}},
+        {"_id": 0},
+    ).to_list(len(tids) or 1)
+
+    analyzed = [a for a in analyses if isinstance(a.get("score"), int)]
+    if analyzed:
+        avg_score = round(sum(a["score"] for a in analyzed) / len(analyzed), 1)
+    else:
+        avg_score = None
+    low_score = sorted(
+        [a for a in analyzed if a["score"] < 50],
+        key=lambda a: a["score"],
+    )[:8]
+
+    # Anexa client + title nas low_score para UI
+    for a in low_score:
+        t = next((x for x in tickets if x["id"] == a["ticket_id"]), None)
+        if t:
+            a["client_name"] = (t.get("client_snapshot") or {}).get("name") or "—"
+            a["title"] = t.get("title") or t.get("category") or "—"
+            a["closed_at"] = t.get("closed_at")
+
+    return {
+        "days_back": days_back,
+        "totals": {
+            "finalized": total,
+            "analyzed": len(analyzed),
+            "pending": total - len(analyzed),
+            "avg_score": avg_score,
+            "low_score_count": len([a for a in analyzed if a["score"] < 50]),
+        },
+        "top_reasons": top_reasons,
+        "low_score_tickets": low_score,
+    }
+
+
+@router.post("/lousa/reports/closure-quality/analyze")
+async def closure_quality_analyze(payload: ClosureQualityAnalyzeIn,
+                                     user: dict = Depends(require_role("gestor"))):
+    """Roda IA nos tickets fechados ainda não analisados (limit configurável).
+
+    Persiste em `lousa_closure_analysis` (ticket_id é chave única).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    since = (datetime.now(timezone.utc)
+              - timedelta(days=payload.days_back)).isoformat()
+    tickets = await db.tickets.find(
+        {"company_id": cid, "status": "finalizada",
+         "closed_at": {"$gte": since}},
+        {"_id": 0},
+    ).sort("closed_at", -1).limit(2000).to_list(2000)
+    tids = [t["id"] for t in tickets]
+    already = await db.lousa_closure_analysis.find(
+        {"ticket_id": {"$in": tids}},
+        {"_id": 0, "ticket_id": 1},
+    ).to_list(len(tids) or 1)
+    done = {a["ticket_id"] for a in already}
+    pending = [t for t in tickets if t["id"] not in done][:payload.limit]
+
+    processed = 0
+    for t in pending:
+        result = await _analyze_ticket_quality_with_ai(t)
+        doc = {
+            "ticket_id": t["id"],
+            "company_id": cid,
+            "collaborator_id": t.get("assigned_collaborator_id"),
+            "score": result["score"],
+            "verdict": result["verdict"],
+            "reasoning": result["reasoning"],
+            "analyzed_at": now_iso(),
+        }
+        try:
+            await db.lousa_closure_analysis.update_one(
+                {"ticket_id": t["id"]},
+                {"$set": doc},
+                upsert=True,
+            )
+            processed += 1
+        except Exception as e:
+            logger.warning("[closure-quality] persist falhou ticket=%s: %s",
+                           t["id"], e)
+
+    return {"processed": processed, "remaining_pending":
+                max(0, len([t for t in tickets if t["id"] not in done]) - processed)}
+
+
 
 @router.get("/lousa/tickets/{ticket_id}")
 async def get_ticket(ticket_id: str, user: dict = Depends(get_current_user)):
@@ -1882,6 +2113,13 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
     except Exception as e:
         logger.warning("[lousa] auto_close_service_from_ticket falhou: %s", e)
 
+    # Coaching automático — alerta quando técnico fecha N bolhas seguidas sem ping
+    try:
+        from services.lousa_coaching import check_ping_skip_streak
+        await check_ping_skip_streak(company_id, cid, ticket_id)
+    except Exception as e:
+        logger.warning("[lousa] coaching check falhou: %s", e)
+
     result = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
     # Anexa warnings pra exibir no app
     result["_warnings"] = {
@@ -2063,6 +2301,12 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
     # Quality notes — snapshot do sinal NO FECHAMENTO (SmartOLT live, honra toggle)
     company_id = t.get("company_id") or DEMO_COMPANY_ID
     await _capture_signal_snapshot(ticket_id, company_id, "close")
+    # Coaching automático — mesmo gatilho do endpoint público
+    try:
+        from services.lousa_coaching import check_ping_skip_streak
+        await check_ping_skip_streak(company_id, cid, ticket_id)
+    except Exception as e:
+        logger.warning("[lousa] coaching check (auth) falhou: %s", e)
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 

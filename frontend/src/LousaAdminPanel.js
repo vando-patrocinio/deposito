@@ -560,6 +560,8 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       {activeSubTab === "board" && <>
       <ReturnedNotesCard onJump={(t) => setEditingTicket(t)} />
       <PingQualityCard />
+      <CoachingConfigCard />
+      <ClosureQualityCard />
       {/* Grade horizontal — coluna por técnico */}
       <div style={{
         display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16, minHeight: 540,
@@ -1730,3 +1732,315 @@ function PingQualityCard() {
   );
 }
 
+
+
+// ============================================================================
+// CoachingConfigCard — alerta WhatsApp quando técnico fecha N bolhas seguidas
+// sem teste de ping. Mensagem vai pro WhatsApp da Isabella (gestor configura
+// o número que recebe).
+// ============================================================================
+function CoachingConfigCard() {
+  const [cfg, setCfg] = useState({ enabled: false, manager_phone: "", threshold: 3 });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [alerts, setAlerts] = useState([]);
+  const [expanded, setExpanded] = useState(false);
+
+  const reload = useCallback(async () => {
+    try {
+      const [c, a] = await Promise.all([
+        api.lousaCoachingConfigGet(),
+        api.lousaCoachingAlerts(30),
+      ]);
+      setCfg({
+        enabled: !!c.enabled,
+        manager_phone: c.manager_phone || "",
+        threshold: c.threshold || 3,
+      });
+      setAlerts(a.items || []);
+    } catch (e) {
+      console.warn("coaching cfg load:", e?.message);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const r = await api.lousaCoachingConfigSave(cfg);
+      setCfg({
+        enabled: !!r.enabled,
+        manager_phone: r.manager_phone || "",
+        threshold: r.threshold || 3,
+      });
+    } catch (e) {
+      alert("Falha ao salvar: " + (e?.message || e));
+    } finally { setSaving(false); }
+  };
+
+  if (loading) return null;
+
+  return (
+    <div data-testid="coaching-config-card" style={{
+      marginBottom: 14, padding: 14, borderRadius: 12,
+      background: "linear-gradient(135deg, #fef3c7, #fde68a)",
+      border: "1.5px solid #f59e0b",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between",
+                     alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 13, color: "#78350f",
+                         letterSpacing: "-.01em" }}>
+            🎯 Coaching automático — Ping skip
+          </div>
+          <div style={{ fontSize: 11, color: "#92400e", marginTop: 2 }}>
+            Avisa no WhatsApp da Isabella quando alguém fecha {cfg.threshold} bolhas
+            seguidas sem teste de ping.
+          </div>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8,
+                          cursor: "pointer" }}>
+          <input type="checkbox" checked={cfg.enabled}
+                 data-testid="coaching-enabled"
+                 onChange={(e) => setCfg((c) => ({ ...c, enabled: e.target.checked }))} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#78350f" }}>
+            {cfg.enabled ? "Ativo" : "Desligado"}
+          </span>
+        </label>
+      </div>
+
+      <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap",
+                      alignItems: "flex-end" }}>
+        <label style={{ flex: "1 1 220px", fontSize: 11, color: "#78350f",
+                          fontWeight: 700 }}>
+          WhatsApp do gestor (com DDI)
+          <input type="text" placeholder="+55 21 99817-6526"
+                 value={cfg.manager_phone}
+                 data-testid="coaching-manager-phone"
+                 onChange={(e) => setCfg((c) => ({ ...c, manager_phone: e.target.value }))}
+                 style={{ width: "100%", marginTop: 4, padding: "8px 10px",
+                            borderRadius: 8, border: "1px solid #f59e0b",
+                            fontSize: 13, background: "white" }} />
+        </label>
+        <label style={{ width: 110, fontSize: 11, color: "#78350f",
+                          fontWeight: 700 }}>
+          Disparo em
+          <select value={cfg.threshold}
+                  data-testid="coaching-threshold"
+                  onChange={(e) => setCfg((c) => ({ ...c, threshold: parseInt(e.target.value, 10) }))}
+                  style={{ width: "100%", marginTop: 4, padding: "8px 10px",
+                             borderRadius: 8, border: "1px solid #f59e0b",
+                             fontSize: 13, background: "white", fontWeight: 700 }}>
+            {[2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>{n} bolhas</option>
+            ))}
+          </select>
+        </label>
+        <Button onClick={save} disabled={saving}
+                data-testid="coaching-save"
+                style={{ height: 38 }}>
+          {saving ? "Salvando..." : "💾 Salvar"}
+        </Button>
+        <Button onClick={() => setExpanded((e) => !e)}
+                data-testid="coaching-history-toggle"
+                style={{ height: 38, background: "white",
+                           color: "#78350f", border: "1px solid #f59e0b" }}>
+          {expanded ? "Esconder" : `Histórico (${alerts.length})`}
+        </Button>
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 12, background: "white", borderRadius: 8,
+                        padding: 10, maxHeight: 240, overflowY: "auto" }}>
+          {alerts.length === 0 ? (
+            <div style={{ fontSize: 12, color: "#78350f", textAlign: "center" }}>
+              Nenhum alerta nos últimos 30 dias 🎉
+            </div>
+          ) : alerts.map((a) => (
+            <div key={a.id} style={{ padding: "6px 0",
+                                         borderBottom: "1px solid #fde68a",
+                                         fontSize: 11 }}>
+              <div style={{ fontWeight: 700, color: "#78350f" }}>
+                {a.collaborator_name}
+                <span style={{ marginLeft: 6, fontWeight: 500, color: "#92400e" }}>
+                  {a.delivery_status === "sent" ? "✓ enviado" : "✗ falhou"}
+                </span>
+              </div>
+              <div style={{ color: "#78350f" }}>
+                {a.threshold} bolhas sem ping ·
+                {" "}{new Date(a.created_at).toLocaleString("pt-BR")}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ============================================================================
+// ClosureQualityCard — IA correlaciona reclamação x solução do técnico e dá
+// uma nota 0-100. Mostra os top motivos e os fechamentos suspeitos.
+// ============================================================================
+function ClosureQualityCard() {
+  const [data, setData] = useState(null);
+  const [days, setDays] = useState(7);
+  const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  const reload = useCallback(async () => {
+    try {
+      const r = await api.lousaClosureQualityReport(days);
+      setData(r);
+    } catch (e) {
+      console.warn("closure-quality fetch:", e?.message);
+    } finally { setLoading(false); }
+  }, [days]);
+
+  useEffect(() => {
+    setLoading(true);
+    reload();
+  }, [reload]);
+
+  const runAnalysis = async () => {
+    setAnalyzing(true);
+    try {
+      const r = await api.lousaClosureQualityAnalyze({ daysBack: days, limit: 25 });
+      await reload();
+      if (r.processed === 0) {
+        alert(r.remaining_pending > 0
+          ? `Nada novo processado (${r.remaining_pending} pendentes — tente outro período).`
+          : "Todos os fechamentos do período já foram analisados.");
+      }
+    } catch (e) {
+      alert("Falha na análise IA: " + (e?.message || e));
+    } finally { setAnalyzing(false); }
+  };
+
+  if (loading || !data) return null;
+  const total = data.totals?.finalized || 0;
+  if (total === 0) return null;
+
+  const avg = data.totals?.avg_score;
+  const accent = avg === null || avg === undefined ? "#64748b"
+                 : avg >= 75 ? "#16a34a"
+                 : avg >= 50 ? "#f59e0b" : "#dc2626";
+
+  return (
+    <div data-testid="closure-quality-card" style={{
+      marginBottom: 14, padding: 14, borderRadius: 12,
+      background: "linear-gradient(135deg, #ede9fe, #ddd6fe)",
+      border: "1.5px solid #a78bfa",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between",
+                      alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: 12, background: accent,
+            display: "grid", placeItems: "center", color: "white",
+            fontWeight: 800, fontSize: 16,
+          }} data-testid="closure-quality-score">
+            {avg !== null && avg !== undefined ? Math.round(avg) : "—"}
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 13, color: "#4c1d95",
+                            letterSpacing: "-.01em" }}>
+              🧠 Qualidade dos fechamentos — IA
+            </div>
+            <div style={{ fontSize: 11, color: "#5b21b6", marginTop: 2 }}>
+              {data.totals.analyzed}/{total} fechamentos analisados ·
+              {" "}{data.totals.low_score_count} suspeitos
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select value={days}
+                  data-testid="closure-quality-days"
+                  onChange={(e) => setDays(parseInt(e.target.value, 10))}
+                  style={{ padding: "8px 12px", borderRadius: 8,
+                             background: "white", border: "1px solid #a78bfa",
+                             color: "#4c1d95", fontSize: 12, fontWeight: 700,
+                             cursor: "pointer" }}>
+            <option value="1">Hoje</option>
+            <option value="7">7 dias</option>
+            <option value="30">30 dias</option>
+          </select>
+          <Button onClick={runAnalysis} disabled={analyzing}
+                  data-testid="closure-quality-analyze"
+                  style={{ height: 36 }}>
+            {analyzing ? "Analisando..." : `🧪 Analisar (${data.totals.pending})`}
+          </Button>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12, display: "grid",
+                      gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {/* Top motivos */}
+        <div style={{ background: "white", borderRadius: 8, padding: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#4c1d95",
+                          marginBottom: 8, textTransform: "uppercase",
+                          letterSpacing: ".05em" }}>
+            Top motivos de fechamento
+          </div>
+          {data.top_reasons?.length === 0 && (
+            <div style={{ fontSize: 12, color: "#64748b" }}>—</div>
+          )}
+          {(data.top_reasons || []).map((r) => (
+            <div key={r.reason} style={{ display: "flex",
+                                              justifyContent: "space-between",
+                                              padding: "4px 0",
+                                              borderBottom: "1px solid #f1f5f9",
+                                              fontSize: 12 }}
+                 data-testid="closure-reason-row">
+              <span style={{ color: "#4c1d95", flex: 1, overflow: "hidden",
+                               textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.reason}
+              </span>
+              <span style={{ color: "#7c3aed", fontWeight: 700, marginLeft: 8 }}>
+                {r.count} ({r.pct}%)
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Fechamentos suspeitos */}
+        <div style={{ background: "white", borderRadius: 8, padding: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#4c1d95",
+                          marginBottom: 8, textTransform: "uppercase",
+                          letterSpacing: ".05em" }}>
+            🚩 Fechamentos suspeitos (score &lt; 50)
+          </div>
+          {(!data.low_score_tickets || data.low_score_tickets.length === 0) && (
+            <div style={{ fontSize: 12, color: "#64748b" }}>
+              Nada suspeito. Clique em "Analisar" se houver pendentes.
+            </div>
+          )}
+          {(data.low_score_tickets || []).map((t) => (
+            <div key={t.ticket_id} style={{ padding: "6px 0",
+                                                borderBottom: "1px solid #f1f5f9" }}
+                 data-testid="closure-low-score-row">
+              <div style={{ display: "flex", justifyContent: "space-between",
+                              alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#4c1d95",
+                                 flex: 1, overflow: "hidden",
+                                 textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {t.client_name} — {t.title}
+                </span>
+                <span style={{ background: t.score < 25 ? "#dc2626" : "#f59e0b",
+                                 color: "white", padding: "2px 6px",
+                                 borderRadius: 6, fontSize: 11, fontWeight: 800 }}>
+                  {t.score}
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: "#7c3aed", marginTop: 2 }}>
+                <b>{t.verdict}</b> · {t.reasoning}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

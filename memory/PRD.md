@@ -1023,3 +1023,39 @@ Bug real do Vando (17/05 23:31): Isabella repetiu "Pode me enviar o print sim, v
   - "+N outro(s)" pra quem tem mais
 
 **Validado:** screenshot exibiu DIOGO HENRIQUE ×1, JEFFERSON ×1, Hudson ×1 (todos com 1 não-resolvido — pendentes). Lint OK.
+
+
+## 🎯 [19/Mai/2026] Coaching automático + Qualidade dos Fechamentos (IA)
+
+**Feature 1 — Coaching automático no WhatsApp da Isabella:**
+Quando técnico fecha N bolhas seguidas sem teste de ping, sistema envia mensagem
+automática no WhatsApp do gestor configurado: `@Tecnico você fechou X bolhas
+sem teste — me manda o ping da próxima ou abre chamado de qualidade`.
+
+- Backend: `services/lousa_coaching.py` (check_ping_skip_streak com cooldown 2h).
+  Endpoints: `GET/PUT /api/lousa/coaching-config`,
+  `GET /api/lousa/coaching-alerts?days_back=N`.
+- Plug nos endpoints públicos e autenticados de fechamento (`public/finalize`,
+  `/finalize` autenticado) — silencioso (não derruba fechamento se falhar).
+- Sidecar Baileys (`/send`) usado pra entrega; histórico em
+  `lousa_coaching_alerts`.
+- Frontend: `CoachingConfigCard` em LousaAdminPanel (toggle, número, threshold,
+  histórico). Disparo configurável 2-10 bolhas (default 3).
+
+**Feature 2 — Card "Qualidade dos Fechamentos" com IA:**
+Auditor IA correlaciona reclamação do cliente x solução do técnico e gera nota
+0-100 + verdict (`resolve` / `paliativo` / `incoerente` / `sem_diagnostico`) +
+raciocínio em texto curto.
+
+- Backend: `GET /api/lousa/reports/closure-quality?days_back=N` (estatísticas +
+  top motivos + tickets com score <50, lê cache `lousa_closure_analysis`),
+  `POST /api/lousa/reports/closure-quality/analyze` (roda IA via `core.llm_chat`
+  em lotes até `limit`, cacheia por ticket_id).
+- Prompt usa: reclamação/categoria, desfecho, sinal ótico, ping na ONU,
+  observações. Score baixo automático quando técnico fecha sem diagnóstico.
+- Frontend: `ClosureQualityCard` em LousaAdminPanel — score médio, contagem
+  analisada/pendente, top motivos agregados, lista de fechamentos suspeitos com
+  badge de cor (vermelho<25, laranja<50). Botão "Analisar" roda IA on-demand.
+
+**Validado via curl:** 4 endpoints OK + IA real analisou 2 tickets reais (score
+30 cada com verdict `sem_diagnostico` e raciocínio coerente).
