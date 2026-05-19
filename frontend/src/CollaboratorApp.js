@@ -8,6 +8,7 @@ import RedeIaMapMobile from "@/RedeIaMapMobile";
 import MyAssetsModal from "@/MyAssetsModal";
 import MyHoleritesModal from "@/MyHoleritesModal";
 import PWAInstallPrompt from "@/PWAInstallPrompt";
+import PingTestModal from "@/PingTestModal";
 import ServerClock from "@/ServerClock";
 import { serverNow } from "@/serverTime";
 import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Row, StatusBadge } from "@/ui";
@@ -159,6 +160,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   const [pendingCount, setPendingCount] = useState(() => offlineCount());  // batidas offline aguardando reenvio
   const [flushingOffline, setFlushingOffline] = useState(false);
   const [showMyAssets, setShowMyAssets] = useState(false);
+  const [showPingTest, setShowPingTest] = useState(false);
   const [showMyHolerites, setShowMyHolerites] = useState(false);
   const [avatarJustUpdated, setAvatarJustUpdated] = useState(false);
 
@@ -688,6 +690,23 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                     <Icon name="map" /> Cadastrar CTO (Rede IA)
                   </button>
 
+                  <button
+                    onClick={() => setShowPingTest(true)}
+                    data-testid="open-ping-test-btn"
+                    style={{
+                      padding: "14px 16px",
+                      background: "linear-gradient(135deg, #ecfeff, #cffafe)",
+                      border: "1.5px solid #67e8f9",
+                      borderRadius: 12,
+                      color: "#0e7490",
+                      fontWeight: 700, fontSize: 14,
+                      cursor: "pointer",
+                      display: "inline-flex", alignItems: "center",
+                      justifyContent: "center", gap: 8,
+                    }}>
+                    🛰 Teste de Ping (ONU)
+                  </button>
+
                   {/* Resumo do último serviço */}
                   {lousaSummary?.last_finished_ticket && (
                     <div data-testid="last-service-summary" style={{
@@ -776,6 +795,24 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 }}
               >
                 <Icon name="map" /> Cadastrar CTO (Rede IA)
+              </button>
+
+              <button
+                data-testid="open-ping-test-btn"
+                onClick={() => setShowPingTest(true)}
+                style={{
+                  width: "100%", height: 48, marginTop: 6, marginBottom: 4,
+                  background: "#ecfeff",
+                  border: "1.5px solid #67e8f9",
+                  borderRadius: 12,
+                  color: "#0e7490",
+                  fontWeight: 600, fontSize: 14,
+                  cursor: "pointer",
+                  display: "inline-flex", alignItems: "center",
+                  justifyContent: "center", gap: 8,
+                }}
+              >
+                🛰 Teste de Ping (ONU)
               </button>
 
 
@@ -1083,6 +1120,8 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
       {showMyHolerites && (
         <MyHoleritesModal collaboratorId={collabId} onClose={() => setShowMyHolerites(false)} />
       )}
+
+      <PingTestModal open={showPingTest} onClose={() => setShowPingTest(false)} />
     </div>
   );
 }

@@ -1044,6 +1044,21 @@ export const api = {
     client.get(`/lousa/returned-notes?days_back=${daysBack}`).then((r) => r.data),
   collabGrantMobileAccess: (cid) =>
     client.post(`/collaborators/${cid}/grant-mobile-access`).then((r) => r.data),
+  networkPing: ({ host, count = 4, port = 80 }) => {
+    const cid = new URLSearchParams(window.location.search).get("cid");
+    const qs = cid ? `?cid=${encodeURIComponent(cid)}` : "";
+    return client.post(`/network/ping${qs}`, { host, count, port }).then((r) => r.data);
+  },
+  networkResolve: ({ host }) => {
+    const cid = new URLSearchParams(window.location.search).get("cid");
+    const qs = cid ? `?cid=${encodeURIComponent(cid)}` : "";
+    return client.post(`/network/resolve${qs}`, { host }).then((r) => r.data);
+  },
+  networkPingHistory: (limit = 20) => {
+    const cid = new URLSearchParams(window.location.search).get("cid");
+    const cidQs = cid ? `&cid=${encodeURIComponent(cid)}` : "";
+    return client.get(`/network/ping/history?limit=${limit}${cidQs}`).then((r) => r.data);
+  },
 
   // --- Boleto PDF preview & logo custom ---
   boletoPreviewUrl: () =>
