@@ -7,6 +7,7 @@ import QrScanner from "@/QrScanner";
 import RedeIaMapMobile from "@/RedeIaMapMobile";
 import MyAssetsModal from "@/MyAssetsModal";
 import MyHoleritesModal from "@/MyHoleritesModal";
+import PWAInstallPrompt from "@/PWAInstallPrompt";
 import ServerClock from "@/ServerClock";
 import { serverNow } from "@/serverTime";
 import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Row, StatusBadge } from "@/ui";
@@ -519,21 +520,25 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   // ADMIN tem fluxo separado (seleção manual abaixo).
   if (!collabId) {
     return (
-      <Wrapper>
-        <CollabLoginScreen
-          onSuccess={(cid) => { setCollabId(cid); }}
-          isAdminTest={isAdminTest}
-          collabs={collabs}
-          setCollabId={setCollabId}
-          appCard={appCard}
-        />
-      </Wrapper>
+      <>
+        {mobile && <PWAInstallPrompt />}
+        <Wrapper>
+          <CollabLoginScreen
+            onSuccess={(cid) => { setCollabId(cid); }}
+            isAdminTest={isAdminTest}
+            collabs={collabs}
+            setCollabId={setCollabId}
+            appCard={appCard}
+          />
+        </Wrapper>
+      </>
     );
   }
 
   return (
     <div style={mobile ? {} : { display: "grid", gridTemplateColumns: "430px 1fr", gap: 22, alignItems: "start" }}>
       {mobile && <PullIndicator {...ptr} />}
+      {mobile && <PWAInstallPrompt />}
       <Wrapper>
         {mobile && overrideMode && (
           <div data-testid="exit-mobile-bar" style={{

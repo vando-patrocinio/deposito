@@ -592,3 +592,10 @@ body.aihub-wa-fullscreen [data-testid="wa-chat-layout"] {
   50% { box-shadow: 0 0 0 8px rgba(220,38,38,0.0), 0 8px 22px rgba(220,38,38,.45); }
 }
 .lousa-alert-blink { animation: lousa-alert-blink 1.4s ease-in-out infinite; }
+
+
+/* PWA install prompt — slide up animation */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
