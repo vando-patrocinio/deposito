@@ -13,6 +13,10 @@
  *
  * Também monkey-patcha window.confirm/alert/prompt para que código legado
  * que ainda chama o nativo passe a ver a versão customizada (precisa await).
+ *
+ * HISTÓRICO: cada modal exibido fica registrado em buffer circular (últimos
+ * 100) acessível via `useDialogHistory()` ou `getDialogHistory()`. Usado
+ * pelo `DialogHistoryPanel` (botão flutuante ↘ admin) pra auditoria de ações.
  */
 import React, { useEffect, useState } from "react";
 import { ShieldAlert, AlertCircle, Info, MessageCircle, X, Check } from "lucide-react";
@@ -26,6 +30,33 @@ const _queue = [];
 function _emit(payload) {
   if (_dispatch) _dispatch(payload);
   else _queue.push(payload);
+}
+
+// ------------------------------------------------------------
+// Histórico de diálogos (buffer circular, in-memory)
+// ------------------------------------------------------------
+const HISTORY_MAX = 100;
+const _history = [];
+const _historySubs = new Set();
+
+function _pushHistory(entry) {
+  _history.unshift(entry); // mais recente no topo
+  if (_history.length > HISTORY_MAX) _history.length = HISTORY_MAX;
+  _historySubs.forEach((cb) => { try { cb([..._history]); } catch { /* ignore */ } });
+}
+
+export function getDialogHistory() { return [..._history]; }
+export function clearDialogHistory() {
+  _history.length = 0;
+  _historySubs.forEach((cb) => { try { cb([]); } catch { /* ignore */ } });
+}
+export function useDialogHistory() {
+  const [items, setItems] = useState(() => [..._history]);
+  useEffect(() => {
+    _historySubs.add(setItems);
+    return () => { _historySubs.delete(setItems); };
+  }, []);
+  return items;
 }
 
 // ------------------------------------------------------------
@@ -120,6 +151,20 @@ export function DialogHost() {
   if (!current) return null;
 
   const finish = (value) => {
+    // Registra no histórico antes de resolver
+    let response;
+    if (current.kind === "alert") response = "ok";
+    else if (current.kind === "confirm") response = value ? "ok" : "cancel";
+    else response = value == null ? "cancel" : value; // prompt: texto ou cancel
+    _pushHistory({
+      id: Math.random().toString(36).slice(2) + Date.now().toString(36),
+      ts: Date.now(),
+      kind: current.kind,
+      title: current.title,
+      message: current.message,
+      tone: current.tone,
+      response,
+    });
     current.resolve(value);
     setStack((s) => s.slice(1));
     setInput("");

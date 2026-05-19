@@ -1,5 +1,28 @@
 # PontoIA — Changelog
 
+## Fev 2026 — Histórico de Ações (Dialog History Panel) + Hotfix `tabs is not defined`
+
+### Feature: Painel de auditoria de modais
+Estendi o `dialog.js` para que CADA modal (`alert`/`confirm`/`prompt`) seja registrado num buffer circular in-memory (últimos 100). Criei `DialogHistoryPanel.js` com:
+- Botão flutuante "Ações" (bottom-right, posicionado acima do badge Emergent) com badge de contagem
+- Drawer slide-in da direita com header, busca, 4 filtros por tipo (Todas/Confirmações/Avisos/Entradas), lista cronológica e botão Limpar
+- Cada entrada mostra: ícone do tipo, título, mensagem (clamp 3 linhas), timestamp e pílula de resposta ("✓ Confirmou" verde / "✕ Cancelou" cinza / "✎ "texto"" para prompt)
+- Visível **apenas** para roles `administrador` e `auditor` (gate por `useAuth`)
+
+Helpers exportados em `dialog.js`: `getDialogHistory()`, `clearDialogHistory()`, `useDialogHistory()`.
+
+### Bug fix: `ReferenceError: tabs is not defined` após login
+A introdução da `BlockedPage` em fork anterior referenciou a variável `tabs` no `AppContent`, mas ela era definida apenas em `AppShell` (escopo diferente). Resultado: assim que o usuário logava, o React quebrava com referência indefinida.
+
+**Correção**: lifted a lógica de filtro de abas (state `tabPerms`, `isSuperAdmin`, useEffect que lê `brandingGet` + `saasMe`, e useMemo do `tabs`) para dentro do `AppContent`. Agora a checagem `allowed` na linha 943 funciona corretamente. O AppShell mantém seu próprio filtro idêntico, garantindo que sidebar e roteador convergem.
+
+### Verificação
+- `yarn build` passa limpo
+- Login → dashboard renderiza normalmente
+- Botão flutuante "Ações" aparece para admin e o drawer abre com empty state corretamente
+
+
+
 ## Fev 2026 — Hotfix: Frontend build quebrado (tela branca em produção)
 
 ### Problema

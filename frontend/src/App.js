@@ -37,6 +37,7 @@ import LogsPanel from "@/LogsPanel";
 import PlatformAdminPanel from "@/PlatformAdminPanel";
 import BlockedPage from "@/BlockedPage";
 import DialogHost from "@/dialog";
+import DialogHistoryPanel from "@/DialogHistoryPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
 import EstoquePanel from "@/EstoquePanel";
 import AICenterPanel from "@/AICenterPanel";
@@ -701,6 +702,55 @@ function AppContent() {
   useEffect(() => { startServerTime(); }, []);
   const { user, loading, logout, login, isPublicAccess } = useAuth();
   const mobile = useMobileMode();
+
+  // Lógica de tabs centralizada aqui para que tanto o sidebar (AppShell)
+  // quanto o roteador (BlockedPage check) usem a MESMA fonte de verdade.
+  // Antes, `tabs` era computado dentro de AppShell e referenciado por engano
+  // em AppContent, causando `ReferenceError: tabs is not defined` após login.
+  const [tabPerms, setTabPerms] = useState(_DEFAULT_TAB_PERMS);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (!user || user.role === "colaborador") return undefined;
+    (async () => {
+      try {
+        const { api } = await import("@/api");
+        const me = await api.saasMe().catch(() => null);
+        if (alive && me?.is_super_admin) setIsSuperAdmin(true);
+        const cfg = await api.brandingGet().catch(() => null);
+        if (!alive) return;
+        const base = cfg?.tab_permissions || _DEFAULT_TAB_PERMS;
+        const merged = { ...base };
+        for (const role of Object.keys(_DEFAULT_TAB_PERMS)) {
+          const saved = merged[role] || [];
+          const defaults = _DEFAULT_TAB_PERMS[role] || [];
+          const missing = defaults.filter((id) => !saved.includes(id));
+          if (missing.length) merged[role] = [...saved, ...missing];
+        }
+        setTabPerms(merged);
+      } catch { /* ignore */ }
+    })();
+    return () => { alive = false; };
+  }, [user]);
+
+  const tabs = useMemo(() => ALL_TABS.filter((t) => {
+    if (isPublicAccess) return t.id === "lousa";
+    if (t.superAdminOnly && !isSuperAdmin) return false;
+    if (t.requires && user && user.role !== "administrador" && user.role !== "auditor") {
+      if (!user[t.requires]) return false;
+    }
+    if (tabPerms && user && tabPerms[user.role]) {
+      if (user.role === "administrador") return true;
+      return tabPerms[user.role].includes(t.id);
+    }
+    if (user && user.role === "administrador") return true;
+    if (user && _DEFAULT_TAB_PERMS[user.role]) {
+      return _DEFAULT_TAB_PERMS[user.role].includes(t.id);
+    }
+    if (!hasRole(user, ...t.roles)) return false;
+    return true;
+  }), [user, tabPerms, isSuperAdmin, isPublicAccess]);
+
   const [autoLoginState, setAutoLoginState] = useState(() => {
     if (typeof window === "undefined") return "idle";
     const path = window.location.pathname || "";
@@ -1006,6 +1056,13 @@ export default function App() {
     <AuthProvider>
       <AppContent />
       <DialogHost />
+      <DialogHistoryGate />
     </AuthProvider>
   );
+}
+
+function DialogHistoryGate() {
+  const { user } = useAuth();
+  const canView = !!user && (user.role === "administrador" || user.role === "auditor");
+  return <DialogHistoryPanel canView={canView} />;
 }
