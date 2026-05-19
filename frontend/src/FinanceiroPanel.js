@@ -170,6 +170,12 @@ function CrudTab({ title, columns, fields, listApi, createApi, updateApi,
     finally { setLoading(false); }
   }
   useEffect(() => { reload(); }, []);
+  // Permite refresh externo via evento — ex: após sincronizar filiais do Atlaz
+  useEffect(() => {
+    const handler = () => reload();
+    window.addEventListener("fin-filiais-synced", handler);
+    return () => window.removeEventListener("fin-filiais-synced", handler);
+  }, []);
 
   const filtered = useMemo(() => {
     if (!search) return items;
@@ -650,11 +656,34 @@ function FiliaisTab() {
 
 function MappingSummaryCard({ collabName }) {
   const [filiais, setFiliais] = useState([]);
-  useEffect(() => {
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+
+  async function load() {
     api.finFiliaisList(true).then(setFiliais).catch(() => setFiliais([]));
-  }, []);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function syncFromAtlaz() {
+    if (syncing) return;
+    if (!await window.confirm(
+      "Importar filiais do mapeamento Atlaz (Configurações → Atlaz)?\n\n" +
+      "• Filiais com mesmo nome NÃO serão duplicadas\n" +
+      "• O técnico padrão será atualizado se mudou\n" +
+      "• Filiais locais que não existem no Atlaz são mantidas")) return;
+    setSyncing(true);
+    try {
+      const r = await api.finFiliaisSyncAtlaz();
+      setSyncResult(r);
+      await load();
+      // Refresh page state so the CrudTab list refetches
+      window.dispatchEvent(new CustomEvent("fin-filiais-synced"));
+    } catch (e) {
+      await window.alert("Falha ao importar: " + (e?.response?.data?.detail || e.message));
+    } finally { setSyncing(false); }
+  }
+
   const mapped = filiais.filter((f) => f.default_collaborator_id);
-  if (!filiais.length) return null;
   return (
     <div data-testid="fin-fil-mapping-summary" style={{
       padding: "12px 14px", marginBottom: 12,
@@ -663,18 +692,64 @@ function MappingSummaryCard({ collabName }) {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7,
                        fontSize: 12.5, fontWeight: 700, color: "#047857",
-                       marginBottom: mapped.length ? 8 : 0 }}>
-        <Building2 size={14} />
-        <span>Mapeamento Filial → Técnico padrão</span>
-        <span style={{ fontSize: 10.5, color: "#10b981",
-                          fontWeight: 600, fontFamily: "ui-monospace, monospace" }}>
-          · {mapped.length}/{filiais.length} configurada{filiais.length === 1 ? "" : "s"}
-        </span>
+                       marginBottom: filiais.length ? 8 : 0,
+                       justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <Building2 size={14} />
+          <span>Mapeamento Filial → Técnico padrão</span>
+          <span style={{ fontSize: 10.5, color: "#10b981",
+                            fontWeight: 600, fontFamily: "ui-monospace, monospace" }}>
+            · {mapped.length}/{filiais.length} configurada{filiais.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <button
+          onClick={syncFromAtlaz}
+          disabled={syncing}
+          data-testid="fin-fil-sync-atlaz-btn"
+          title="Importa as filiais cadastradas em Configurações → Atlaz → Mapeamento"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            padding: "5px 11px", borderRadius: 7,
+            background: "white", color: "#047857",
+            border: "1px solid #6ee7b7",
+            fontSize: 11, fontWeight: 700,
+            cursor: syncing ? "wait" : "pointer",
+            opacity: syncing ? 0.6 : 1,
+          }}
+        >
+          <RefreshCw size={11} style={{
+            animation: syncing ? "dlgSpin 1s linear infinite" : "none",
+          }} />
+          {syncing ? "Importando..." : "Importar do Atlaz"}
+        </button>
       </div>
-      {mapped.length === 0 ? (
+      <style>{`
+        @keyframes dlgSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+      {syncResult && (
+        <div data-testid="fin-fil-sync-result" style={{
+          padding: "6px 10px", borderRadius: 6,
+          background: "white", border: "1px dashed #bbf7d0",
+          color: "#047857", fontSize: 11, fontWeight: 600,
+          marginBottom: 8,
+        }}>
+          {syncResult.created > 0 && <span>✓ {syncResult.created} criada(s) </span>}
+          {syncResult.updated > 0 && <span>· {syncResult.updated} atualizada(s) </span>}
+          {syncResult.skipped > 0 && <span>· {syncResult.skipped} já existente(s)</span>}
+          {syncResult.message && <span>{syncResult.message}</span>}
+        </div>
+      )}
+      {filiais.length === 0 ? (
         <div style={{ fontSize: 11.5, color: "#15803d", fontStyle: "italic" }}>
-          Nenhum mapeamento ainda. Edite uma filial e selecione o técnico padrão —
-          ele será copiado automaticamente em novas contas vinculadas à filial.
+          Nenhuma filial cadastrada. Clique em "Importar do Atlaz" pra trazer todas
+          as filiais já configuradas em Sistema → Configurações → Atlaz.
+        </div>
+      ) : mapped.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: "#15803d", fontStyle: "italic" }}>
+          Nenhum mapeamento ainda. Edite uma filial e selecione o técnico padrão.
         </div>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>

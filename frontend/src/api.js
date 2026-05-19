@@ -945,6 +945,9 @@ export const api = {
   finReportsKpis: (params = {}) =>
     client.get(`/financeiro/reports/kpis`, { params }).then((r) => r.data),
 
+  finFiliaisSyncAtlaz: () =>
+    client.post(`/financeiro/filiais/sync-from-atlaz`).then((r) => r.data),
+
   // ===== Rede IA =====
   redeIaBairros: () => client.get(`/rede-ia/bairros`).then((r) => r.data),
   redeIaBairrosPublic: (collab_id) =>

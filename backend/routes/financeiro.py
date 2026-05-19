@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -271,21 +272,21 @@ async def delete_cash_account(doc_id: str,
 async def list_filiais(only_active: bool = False,
                        user: dict = Depends(require_finance())):
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    return await _list("filiais", cid, only_active)
+    return await _list("fin_filiais", cid, only_active)
 
 
 @router.post("/filiais")
 async def create_filial(payload: FilialIn,
                         user: dict = Depends(require_finance())):
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    return await _create("filiais", cid, "fil", payload.model_dump())
+    return await _create("fin_filiais", cid, "fil", payload.model_dump())
 
 
 @router.put("/filiais/{doc_id}")
 async def update_filial(doc_id: str, payload: FilialIn,
                         user: dict = Depends(require_finance())):
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    return await _update("filiais", cid, doc_id, payload.model_dump())
+    return await _update("fin_filiais", cid, doc_id, payload.model_dump())
 
 
 @router.delete("/filiais/{doc_id}")
@@ -297,7 +298,81 @@ async def delete_filial(doc_id: str,
         {"company_id": cid, "filial_id": doc_id},
         {"$unset": {"filial_id": ""}},
     )
-    return await _delete("filiais", cid, doc_id)
+    return await _delete("fin_filiais", cid, doc_id)
+
+
+@router.post("/filiais/sync-from-atlaz")
+async def sync_filiais_from_atlaz(user: dict = Depends(require_finance())):
+    """Sincroniza Filiais do mapeamento Atlaz (Configurações → Atlaz →
+    Mapeamento Filial → Técnico padrão) para a coleção `fin_filiais`.
+
+    - Idempotente: filiais com mesmo `name` (case-insensitive) NÃO são duplicadas
+    - Cria as ausentes e atualiza o `default_collaborator_id` com base no
+      `filial_to_collaborator` salvo no Atlaz
+    - Não remove filiais locais que não existem mais no Atlaz (proteção)
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    # Lê config Atlaz (mesma coleção usada por /api/atlaz/settings)
+    atlaz_cfg = await db.atlaz_config.find_one(
+        {"company_id": cid}, {"_id": 0, "filiais": 1, "filial_to_collaborator": 1},
+    )
+    if not atlaz_cfg:
+        return {"created": 0, "updated": 0, "skipped": 0,
+                "message": "Configuração Atlaz não encontrada. "
+                            "Configure em Sistema → Configurações → Atlaz."}
+    atlaz_filiais: List[str] = [f.strip() for f in (atlaz_cfg.get("filiais") or [])
+                                  if f and f.strip()]
+    mapping: Dict[str, str] = atlaz_cfg.get("filial_to_collaborator") or {}
+
+    # Lê filiais financeiras existentes (case-insensitive lookup)
+    existing: Dict[str, Dict[str, Any]] = {}
+    async for row in db.fin_filiais.find({"company_id": cid}, {"_id": 0}):
+        existing[(row.get("name") or "").strip().lower()] = row
+
+    now = datetime.now(timezone.utc)
+    created = updated = skipped = 0
+    for name in atlaz_filiais:
+        key = name.lower()
+        # Resolução case-insensitive do colaborador padrão.
+        # No Atlaz, mapping pode estar em qualquer caixa.
+        default_col = None
+        for k, v in mapping.items():
+            if (k or "").strip().lower() == key:
+                default_col = v
+                break
+        cur = existing.get(key)
+        if cur:
+            # Atualiza apenas se houver mudança no default
+            if (cur.get("default_collaborator_id") or None) != (default_col or None):
+                await db.fin_filiais.update_one(
+                    {"company_id": cid, "id": cur["id"]},
+                    {"$set": {"default_collaborator_id": default_col,
+                              "updated_at": now}},
+                )
+                updated += 1
+            else:
+                skipped += 1
+        else:
+            doc = {
+                "id": f"fil-{uuid.uuid4().hex[:10]}",
+                "company_id": cid,
+                "name": name,
+                "active": True,
+                "default_collaborator_id": default_col,
+                "created_at": now,
+                "updated_at": now,
+            }
+            await db.fin_filiais.insert_one(doc)
+            created += 1
+
+    return {
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "total_atlaz_filiais": len(atlaz_filiais),
+        "mapping_entries": len(mapping),
+    }
+
 
 
 

@@ -1,5 +1,33 @@
 # PontoIA — Changelog
 
+## Fev 2026 — Filiais: Sync com Atlaz (fonte da verdade)
+
+### Problema identificado
+O usuário já tinha 8 filiais reais (LIGO CACHOEIRAS, LIGO CPX, LIGO EMPRESAS, LIGO GUARATINGUETA, LIGO MAGÉ, LIGO OSASCO, LIGO PENHA, LIGO RIO) configuradas em **Sistema → Configurações → Atlaz → Mapeamento Filial → Técnico padrão** com seus respectivos técnicos. Mas o módulo Financeiro ainda mostrava só 2 (Filial Norte e Matriz Centro) criadas manualmente. **Duplicação de cadastro** = fonte de inconsistência.
+
+### 2 Fixes
+**1. Bug `_list("filiais")` → `_list("fin_filiais")`**:
+Os 4 endpoints CRUD usavam `db.filiais` (sem prefixo), inconsistente com o resto do módulo. Migração ad-hoc rodada: `db.filiais` → `db.fin_filiais` (2 docs migrados). Coleção `db.filiais` esvaziada.
+
+**2. Endpoint de sincronização**:
+- `POST /api/financeiro/filiais/sync-from-atlaz`
+- Lê `db.atlaz_config.{filiais, filial_to_collaborator}`
+- Cria filiais ausentes em `fin_filiais` (idempotente, lookup case-insensitive por nome)
+- Atualiza `default_collaborator_id` quando o mapping mudou
+- **NÃO remove** filiais locais que sumiram do Atlaz (proteção contra delete acidental)
+- Retorna `{created, updated, skipped, total_atlaz_filiais, mapping_entries}`
+
+### Frontend
+- Botão **"🔄 Importar do Atlaz"** no header do card de Mapeamento
+- Confirmação explicativa, ícone girando durante sync, banner de resultado mostrando contadores
+- Listener de evento `fin-filiais-synced` no `CrudTab` faz refresh da tabela após sync
+
+### Verificação
+- Curl: sync importou 8 filiais com 6 mappings (LIGO EMPRESAS e MAGÉ ficaram sem técnico — igual ao Atlaz)
+- Screenshot: card "7/10 configuradas" com pílulas + tabela completa de 10 filiais incluindo Filial Norte e Matriz Centro preservadas
+
+
+
 ## Fev 2026 — Financeiro: Aba "Relatórios" + KPIs (DRE, Aging, Top)
 
 ### Feature
