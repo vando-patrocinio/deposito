@@ -1442,8 +1442,12 @@ async def _process_inbound_ai_pipeline(
     # --- Auto-reply (se habilitado) ---
     # Se o cliente mandou voice note (foi transcrito), retorna áudio TTS
     # na 1ª bolha pra UX "conversação falada"
+    # DEBOUNCE: aguarda 2s antes de processar pra coalescer múltiplas msgs
+    # rápidas do mesmo cliente (ex: "4" + "Estudo" no mesmo segundo).
+    # Se outra msg chegar antes desse delay, cancela este timer e o próximo
+    # processa tudo de uma vez (lendo o histórico completo).
     try:
-        await _maybe_auto_reply(
+        await _schedule_debounced_auto_reply(
             cid=cid, phone=effective_phone,
             user_text=payload_text,
             subscriber_id=subscriber_id,
@@ -1498,6 +1502,76 @@ from services.wa.ai_helpers import (  # noqa: E402
     fetch_human_few_shots as _fetch_human_few_shots,
     persist_ai_failure as _persist_ai_failure,
 )
+
+
+# ---------------------------------------------------------------------------
+# Debounce + Lock por phone — evita 2 respostas concorrentes quando o
+# cliente envia mensagens rapidamente em sequência (ex: "4" + "Estudo").
+#
+# Estratégia:
+#   1. _pending_tasks[phone] guarda o Task atualmente agendado pra um phone.
+#   2. Quando nova msg chega, cancela o task anterior (se existir) e agenda
+#      novo com sleep(DEBOUNCE_S). O LAST msg ganha — _maybe_auto_reply lê
+#      o histórico completo do banco e responde com contexto unificado.
+#   3. _phone_locks[phone] garante que duas execuções não se sobreponham
+#      caso o debounce falhe (race condition em alto volume).
+# ---------------------------------------------------------------------------
+DEBOUNCE_SECONDS = 2.0
+_pending_tasks: Dict[str, asyncio.Task] = {}
+_phone_locks: Dict[str, asyncio.Lock] = {}
+
+
+def _get_phone_lock(phone: str) -> asyncio.Lock:
+    lock = _phone_locks.get(phone)
+    if lock is None:
+        lock = asyncio.Lock()
+        _phone_locks[phone] = lock
+    return lock
+
+
+async def _schedule_debounced_auto_reply(
+    cid: str, phone: str, user_text: str,
+    subscriber_id: Optional[str],
+    subscriber_ctx: Optional[str],
+    inbound_was_voice: bool = False,
+) -> None:
+    """Agenda o auto-reply com debounce. Múltiplas chamadas em sequência
+    rápida resultam em UMA execução (a última)."""
+    # Cancela qualquer task pendente desse phone
+    prev = _pending_tasks.get(phone)
+    if prev and not prev.done():
+        prev.cancel()
+        logger.info("[wa-debounce] cancelando reply pendente phone=%s "
+                    "(nova msg chegou)", phone)
+
+    async def _run_after_debounce():
+        try:
+            await asyncio.sleep(DEBOUNCE_SECONDS)
+        except asyncio.CancelledError:
+            return
+        lock = _get_phone_lock(phone)
+        # Se outro lock está em uso, espera (mas não cancela — se já tá
+        # processando algo pra esse phone, deixa terminar primeiro).
+        async with lock:
+            try:
+                await _maybe_auto_reply(
+                    cid=cid, phone=phone, user_text=user_text,
+                    subscriber_id=subscriber_id,
+                    subscriber_ctx=subscriber_ctx,
+                    inbound_was_voice=inbound_was_voice,
+                )
+            except Exception as e:
+                logger.warning(
+                    "[wa-debounce] _maybe_auto_reply falhou phone=%s: %s",
+                    phone, e,
+                )
+            finally:
+                # Limpa entry se ainda for o task atual
+                if _pending_tasks.get(phone) is task:
+                    _pending_tasks.pop(phone, None)
+
+    task = asyncio.create_task(_run_after_debounce())
+    _pending_tasks[phone] = task
 
 
 async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
@@ -2247,10 +2321,34 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             logger.warning("[wa-baileys] TTS falhou: %s", e)
 
     # 6. Envia cada chunk via sidecar (sequencial, pequeno delay entre eles).
+    # ANTI-DUPLICAÇÃO: antes de enviar, busca as últimas 6 bolhas outbound
+    # nos últimos 60s. Se a chunk atual já foi enviada (texto idêntico após
+    # strip+lower), PULA — evita duplicar saudação ou bolha em race condition.
     import asyncio as _asyncio
+    try:
+        cutoff_dup = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+        recent_out = await db.aihub_wa_messages.find(
+            {"company_id": cid, "phone": phone, "direction": "outbound",
+             "created_at": {"$gt": cutoff_dup}},
+            {"_id": 0, "text": 1}, sort=[("created_at", -1)], limit=6,
+        ).to_list(6)
+        recent_texts = {(m.get("text") or "").strip().lower()
+                        for m in recent_out if m.get("text")}
+    except Exception as e:
+        logger.info("[wa-baileys] dedup lookup skip: %s", e)
+        recent_texts = set()
+
     any_sent = False
     last_send_error: Optional[str] = None
     for idx, chunk in enumerate(chunks):
+        chunk_norm = (chunk or "").strip().lower()
+        if chunk_norm and chunk_norm in recent_texts:
+            logger.warning(
+                "[wa-baileys] DUPLICATE chunk evitado phone=%s text=%.80s",
+                phone, chunk,
+            )
+            continue
+        recent_texts.add(chunk_norm)
         send_ok = False
         send_error: Optional[str] = None
         send_body: Dict[str, Any] = {}
