@@ -634,6 +634,22 @@ async def system_event(payload: SystemEventIn,
         payload.event, payload.code, payload.reason,
     )
 
+    # --- Notifica admins se o evento for crítico ---
+    CRITICAL_EVENTS = {"logged_out", "connection_replaced", "banned",
+                       "qr_required", "auth_failure"}
+    if payload.event in CRITICAL_EVENTS:
+        try:
+            reason_msg = {
+                "logged_out": "WhatsApp deslogou (sessão expirou ou outro dispositivo conectou). Re-pareie o QR Code.",
+                "connection_replaced": "Outro dispositivo assumiu a sessão. Verifique se há outra instância rodando.",
+                "banned": "🚫 Conta bloqueada pelo WhatsApp. Use outro número.",
+                "qr_required": "QR Code necessário — vá em Atendimento IA → Configuração para escanear.",
+                "auth_failure": "Falha de autenticação. Re-pareie o QR Code.",
+            }.get(payload.event, payload.reason or payload.event)
+            await _notify_admins_baileys_down(DEMO_COMPANY_ID, reason_msg)
+        except Exception as e:
+            logger.info("[wa-baileys] notify admins skip: %s", e)
+
     # --- Detecção de sessão duplicada ---
     # Pattern: 3+ logged_out (ou connection_replaced) em janela curta = outra
     # instância está fighting pelo mesmo número. Avisa a UI/admin.
@@ -3667,8 +3683,20 @@ async def baileys_watchdog_job() -> None:
             "created_at": now_ts.isoformat(),
             "acknowledged": False,
         })
+        # Notifica admins: watchdog detectou e auto-corrigiu
+        await _notify_admins_baileys_down(
+            DEMO_COMPANY_ID,
+            f"Sidecar travou ({int(secs_since_inbound // 60)}min sem mensagens). "
+            f"Reconectado automaticamente — verifique se voltou a responder.",
+        )
     except Exception as e:
         logger.error("[wa-watchdog] reload falhou: %s", e)
+        # Falhou até o reload — alerta urgente
+        await _notify_admins_baileys_down(
+            DEMO_COMPANY_ID,
+            f"Sidecar travou há {int(secs_since_inbound // 60)}min e tentativa "
+            f"de reconexão automática FALHOU. Re-pareie o QR Code manualmente.",
+        )
 
 
 @router.get("/watchdog/status")
@@ -3680,6 +3708,172 @@ async def get_watchdog_status(user: dict = Depends(require_role("gestor"))):
         "consecutive_zombie_checks": _wa_watchdog_state.get(
             "consecutive_zombie_checks", 0),
     }
+
+
+@router.get("/health-summary")
+async def get_health_summary(user: dict = Depends(require_role("gestor"))):
+    """Resumo unificado de saúde do WhatsApp (sidecar + watchdog + last events).
+
+    Usado pelo HealthCard no painel Atendimento IA. Retorna:
+      - sidecar: { state, uptime_s, last_inbound_event_at, me, online_age_s }
+      - watchdog: estado do watchdog do backend
+      - recent_events: últimos 5 system_events (loggedOut, watchdog_reload, etc)
+      - status: 'green' | 'yellow' | 'red'
+      - message: descrição textual amigável
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    now_ts = datetime.now(timezone.utc)
+
+    # 1. Sidecar health (com timeout curto)
+    sidecar: dict = {}
+    sidecar_ok = False
+    try:
+        async with httpx.AsyncClient(headers=_sidecar_headers(),
+                                       timeout=4.0) as cli:
+            r = await cli.get(f"{SIDECAR_BASE}/health")
+            if r.status_code < 400:
+                sidecar = r.json() or {}
+                sidecar_ok = True
+    except Exception as e:
+        sidecar = {"error": str(e)[:120]}
+
+    state = (sidecar.get("state") or "unknown") if sidecar_ok else "offline"
+
+    # 2. Calcula segundos desde último inbound
+    secs_since_inbound = None
+    last_inbound = sidecar.get("last_inbound_event_at")
+    if last_inbound:
+        try:
+            t = datetime.fromisoformat(last_inbound.replace("Z", "+00:00"))
+            secs_since_inbound = int((now_ts - t).total_seconds())
+        except Exception:
+            pass
+
+    # 3. Últimos system_events da empresa
+    recent_events = await db.whatsapp_system_events.find(
+        {"company_id": cid},
+        {"_id": 0, "id": 1, "event": 1, "name": 1, "reason": 1,
+         "created_at": 1, "code": 1},
+    ).sort("created_at", -1).limit(5).to_list(5)
+
+    # 4. Status agregado
+    if not sidecar_ok or state == "offline":
+        status = "red"
+        message = "Sidecar offline — Isabella não recebe nem envia mensagens."
+    elif state == "banned":
+        status = "red"
+        message = "Conta bloqueada pelo WhatsApp. Re-pareie com outro número."
+    elif state == "circuit_open":
+        status = "red"
+        message = ("Conexão em circuit-breaker (muitos logouts em sequência). "
+                   "Re-pareie o QR Code para sair desse estado.")
+    elif state == "disconnected":
+        status = "red"
+        message = "WhatsApp desconectado. Re-pareie o QR Code."
+    elif state == "connecting":
+        status = "yellow"
+        message = "Conectando ao WhatsApp..."
+    elif state == "connected":
+        if secs_since_inbound is not None and secs_since_inbound > 900:
+            status = "yellow"
+            message = (f"Conectado, mas sem mensagens há "
+                       f"{secs_since_inbound // 60}min. Watchdog monitorando.")
+        else:
+            status = "green"
+            message = "Tudo online ✓"
+    else:
+        status = "yellow"
+        message = f"Estado desconhecido: {state}"
+
+    return {
+        "status": status,
+        "message": message,
+        "sidecar": {
+            "state": state,
+            "uptime_s": sidecar.get("uptime_s"),
+            "me": sidecar.get("me"),
+            "last_inbound_event_at": last_inbound,
+            "secs_since_inbound": secs_since_inbound,
+            "online": sidecar_ok,
+        },
+        "watchdog": {
+            "last_check_at": _wa_watchdog_state.get("last_check_at"),
+            "last_reload_at": _wa_watchdog_state.get("last_reload_at"),
+            "consecutive_zombie_checks": _wa_watchdog_state.get(
+                "consecutive_zombie_checks", 0),
+        },
+        "recent_events": recent_events,
+        "checked_at": now_ts.isoformat(),
+    }
+
+
+async def baileys_nightly_restart_job() -> None:
+    """Restart preventivo diário do sidecar Baileys (04:00 horário Sampa).
+
+    Mesmo sem detectar problema, força um /reload uma vez por dia pra:
+      - Evitar memory leak (Node.js fica meses no ar)
+      - Reaplicar configurações em caso de mudança de versão
+      - Limpar caches antigos do socket
+
+    /reload é silencioso (mantém auth_info, não pede QR). Apenas log e
+    persistência em whatsapp_system_events.
+    """
+    now_ts = datetime.now(timezone.utc)
+    try:
+        async with httpx.AsyncClient(headers=_sidecar_headers(),
+                                       timeout=15.0) as cli:
+            r = await cli.post(f"{SIDECAR_BASE}/reload", json={})
+        ok = r.status_code < 400
+        logger.info("[wa-nightly-restart] %s (HTTP %s)",
+                    "✓" if ok else "✗", r.status_code)
+        await db.whatsapp_system_events.insert_one({
+            "id": f"wae-{uuid.uuid4().hex[:10]}",
+            "company_id": DEMO_COMPANY_ID,
+            "event": "nightly_restart",
+            "code": 0 if ok else r.status_code,
+            "name": "nightly_restart",
+            "retry_count": None,
+            "reason": "restart preventivo programado (04:00)",
+            "created_at": now_ts.isoformat(),
+            "acknowledged": True,
+        })
+    except Exception as e:
+        logger.warning("[wa-nightly-restart] falhou: %s", e)
+
+
+async def _notify_admins_baileys_down(company_id: str, reason: str) -> None:
+    """Cria notificação in-app pros administradores quando o Baileys cai.
+
+    Inserido em `notifications` (collection existente que o frontend já
+    consome). Idempotente por janela: só cria 1 alerta a cada 30min pro
+    mesmo motivo.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    recent = await db.notifications.find_one({
+        "company_id": company_id,
+        "kind": "wa_down",
+        "created_at": {"$gte": cutoff},
+    })
+    if recent:
+        return
+    try:
+        await db.notifications.insert_one({
+            "id": f"ntf-{uuid.uuid4().hex[:10]}",
+            "company_id": company_id,
+            "kind": "wa_down",
+            "audience_role": "administrador",
+            "title": "🔴 WhatsApp Isabella desconectado",
+            "body": reason,
+            "url": "/?view=atendimento",
+            "read": False,
+            "created_at": now_iso(),
+        })
+        logger.warning(
+            "[wa-baileys] notify admins: WhatsApp desconectado company=%s "
+            "reason=%s", company_id, reason,
+        )
+    except Exception as e:
+        logger.warning("[wa-baileys] notify admins falhou: %s", e)
 
 
 @router.get("/conversation/{phone}/inspect")

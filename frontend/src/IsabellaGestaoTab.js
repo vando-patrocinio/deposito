@@ -50,6 +50,8 @@ export default function IsabellaGestaoTab() {
 
       <IsabellaTicketsKpi />
 
+      <WhatsAppHealthCard />
+
       <SyncAgentsCard />
 
       <Tabs defaultValue="modules">
@@ -1123,6 +1125,190 @@ function SyncAgentsCard() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ============================================================================
+// WhatsAppHealthCard — semáforo de saúde do WhatsApp (Baileys + watchdog)
+// Auto-refresh a cada 20s. Mostra estado, uptime, último inbound e eventos
+// críticos recentes. Botão "Recarregar" força reconexão silenciosa.
+// ============================================================================
+function WhatsAppHealthCard() {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = async () => {
+    try {
+      const r = await api.waHealthSummary();
+      setData(r);
+      setErr(null);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    fetchData();
+    const t = setInterval(fetchData, 20_000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (loading) {
+    return (
+      <div data-testid="wa-health-card" style={{
+        marginBottom: 14, padding: 12, borderRadius: 10,
+        border: "1px solid var(--border-default)",
+        background: "var(--bg-surface)",
+        fontSize: 11, color: "var(--text-muted)",
+      }}>Carregando saúde do WhatsApp…</div>
+    );
+  }
+
+  const status = data?.status || (err ? "red" : "yellow");
+  const palette = {
+    green:  { bg: "linear-gradient(135deg, #ecfdf5, #d1fae5)",
+              border: "#86efac", dot: "#16a34a", textColor: "#065f46",
+              label: "ONLINE" },
+    yellow: { bg: "linear-gradient(135deg, #fffbeb, #fef3c7)",
+              border: "#fde68a", dot: "#f59e0b", textColor: "#78350f",
+              label: "ATENÇÃO" },
+    red:    { bg: "linear-gradient(135deg, #fef2f2, #fee2e2)",
+              border: "#fca5a5", dot: "#dc2626", textColor: "#7f1d1d",
+              label: "OFFLINE" },
+  };
+  const p = palette[status] || palette.yellow;
+  const s = data?.sidecar || {};
+  const w = data?.watchdog || {};
+  const upMin = s.uptime_s ? Math.floor(s.uptime_s / 60) : 0;
+  const inboundMin = s.secs_since_inbound != null
+    ? Math.floor(s.secs_since_inbound / 60) : null;
+
+  return (
+    <div data-testid="wa-health-card" style={{
+      marginBottom: 14, padding: 14, borderRadius: 10,
+      border: `1px solid ${p.border}`, background: p.bg,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10,
+                     flexWrap: "wrap" }}>
+        <div style={{
+          width: 14, height: 14, borderRadius: 99, background: p.dot,
+          boxShadow: status === "green"
+            ? `0 0 0 4px ${p.dot}22, 0 0 12px ${p.dot}77`
+            : `0 0 0 4px ${p.dot}22`,
+          animation: status !== "green" ? "pulse 1.5s infinite" : undefined,
+        }} />
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 800, fontSize: 12,
+                             color: p.textColor, letterSpacing: ".05em" }}>
+              WHATSAPP · {p.label}
+            </span>
+            {s.me?.id && (
+              <span style={{ fontSize: 10, color: p.textColor, opacity: .7,
+                              fontFamily: "var(--font-mono, ui-monospace)" }}>
+                {String(s.me.id).split("@")[0]}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 12, color: p.textColor, marginTop: 4,
+                         lineHeight: 1.4 }}>
+            {data?.message || "—"}
+          </div>
+        </div>
+        <button onClick={fetchData}
+                data-testid="wa-health-refresh"
+                style={{
+                  background: "transparent", color: p.textColor,
+                  fontWeight: 700, fontSize: 11, padding: "6px 12px",
+                  border: `1px solid ${p.border}`, borderRadius: 6,
+                  cursor: "pointer",
+                }}>
+          ↻ Atualizar
+        </button>
+      </div>
+
+      <div style={{
+        marginTop: 10, display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+        gap: 6, fontSize: 11, color: p.textColor,
+      }}>
+        <HealthMetric label="Estado"      value={s.state || "?"} mono />
+        <HealthMetric label="Uptime"
+                       value={upMin > 0 ? `${upMin}min` : "—"} mono />
+        <HealthMetric label="Última msg"
+                       value={inboundMin != null
+                         ? (inboundMin === 0 ? "agora" : `há ${inboundMin}min`)
+                         : "—"} mono />
+        <HealthMetric label="Watchdog"
+                       value={w.consecutive_zombie_checks
+                         ? `${w.consecutive_zombie_checks} alerta(s)`
+                         : "ok"} mono />
+      </div>
+
+      {data?.recent_events?.length > 0 && (
+        <details style={{ marginTop: 10, fontSize: 11, color: p.textColor }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+            Últimos eventos do sistema ({data.recent_events.length})
+          </summary>
+          <div style={{ marginTop: 6, display: "grid", gap: 4,
+                         maxHeight: 160, overflowY: "auto", paddingRight: 4 }}>
+            {data.recent_events.map((ev) => (
+              <div key={ev.id} style={{
+                padding: 6, background: "rgba(255,255,255,.6)",
+                borderRadius: 4, fontSize: 10,
+                fontFamily: "var(--font-mono, ui-monospace)",
+              }}>
+                <span style={{ fontWeight: 700 }}>{ev.event}</span>
+                {ev.code != null && (
+                  <span style={{ marginLeft: 6, opacity: .6 }}>
+                    [{ev.code}]
+                  </span>
+                )}
+                {ev.reason && (
+                  <div style={{ marginTop: 2, opacity: .8,
+                                 fontFamily: "inherit" }}>
+                    {ev.reason}
+                  </div>
+                )}
+                <div style={{ marginTop: 2, opacity: .5, fontSize: 9 }}>
+                  {ev.created_at && new Date(ev.created_at).toLocaleString("pt-BR")}
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {err && (
+        <div style={{ marginTop: 10, padding: 6, fontSize: 11,
+                       background: "rgba(255,255,255,.7)",
+                       color: "#7f1d1d", borderRadius: 4 }}>
+          ⚠️ {err}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HealthMetric({ label, value, mono }) {
+  return (
+    <div style={{
+      padding: "4px 8px", background: "rgba(255,255,255,.55)",
+      borderRadius: 4, lineHeight: 1.3,
+    }}>
+      <div style={{ fontSize: 9, opacity: .7,
+                     textTransform: "uppercase", letterSpacing: ".05em" }}>
+        {label}
+      </div>
+      <div style={{
+        fontSize: 12, fontWeight: 700, marginTop: 1,
+        fontFamily: mono ? "var(--font-mono, ui-monospace)" : "inherit",
+      }}>
+        {value}
+      </div>
     </div>
   );
 }

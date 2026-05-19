@@ -335,6 +335,11 @@ async def _startup() -> None:
     scheduler.add_job(baileys_watchdog_job,
                       "interval", minutes=2,
                       id="baileys_watchdog", replace_existing=True)
+    # Baileys: restart preventivo diário 04:00 (evita memory leak, garante uptime)
+    from routes.whatsapp_baileys import baileys_nightly_restart_job
+    scheduler.add_job(baileys_nightly_restart_job,
+                      CronTrigger(hour=4, minute=0),
+                      id="baileys_nightly_restart", replace_existing=True)
     asyncio.create_task(holidays_refresh_job())
     asyncio.create_task(location_logs_cleanup_job())
     routes_atlaz.start_worker()

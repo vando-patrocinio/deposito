@@ -1038,6 +1038,8 @@ export const api = {
   // Migration v6.80: refina prompts dos 4 agentes (Isabella/Álvaro/Camila/Teste)
   isabellaRefineAgentsV680: () =>
     client.post("/whatsapp-baileys/agents/refine-v680").then((r) => r.data),
+  waHealthSummary: () =>
+    client.get("/whatsapp-baileys/health-summary").then((r) => r.data),
 
   // --- Boleto PDF preview & logo custom ---
   boletoPreviewUrl: () =>
