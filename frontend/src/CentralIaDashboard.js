@@ -8,6 +8,7 @@ import { api } from "@/api";
 import SmartOltAiPanel from "@/SmartOltAiPanel";
 import CopilotRankingCard from "@/CopilotRankingCard";
 import HandoffDashboardCard from "@/HandoffDashboardCard";
+import SentimentDashboardCard from "@/SentimentDashboardCard";
 import ChurnDashboardPanel from "@/ChurnDashboardPanel";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
 import AtlazSubPanel from "@/AtlazSubPanel";
@@ -276,6 +277,9 @@ export default function CentralIaDashboard() {
 
       {/* Handoffs entre Agentes IA */}
       <HandoffDashboardCard />
+
+      {/* Sentimento dos Clientes (via stickers) */}
+      <SentimentDashboardCard />
 
       {/* Alertas proativos */}
       <AlertsCard items={alerts} onReload={reload} />

@@ -1111,6 +1111,113 @@ async def handoffs_summary(days: int = Query(7, ge=1, le=90),
     }
 
 
+# Buckets de sentimento extraídos do vision (regex/string match)
+SENTIMENT_BUCKETS = {
+    "alegre":       {"tone": "positive", "label": "Alegre",       "emoji": "😊"},
+    "positivo":     {"tone": "positive", "label": "Positivo",     "emoji": "👍"},
+    "agradecimento":{"tone": "positive", "label": "Agradecimento","emoji": "🙏"},
+    "agradecido":   {"tone": "positive", "label": "Agradecimento","emoji": "🙏"},
+    "romantico":    {"tone": "positive", "label": "Romântico",    "emoji": "❤️"},
+    "romântico":    {"tone": "positive", "label": "Romântico",    "emoji": "❤️"},
+    "brincadeira":  {"tone": "positive", "label": "Brincadeira",  "emoji": "😅"},
+    "surpreso":     {"tone": "neutral",  "label": "Surpreso",     "emoji": "😮"},
+    "confuso":      {"tone": "neutral",  "label": "Confuso",      "emoji": "🤔"},
+    "neutro":       {"tone": "neutral",  "label": "Neutro",       "emoji": "😐"},
+    "triste":       {"tone": "negative", "label": "Triste",       "emoji": "😢"},
+    "irritado":     {"tone": "negative", "label": "Irritado",     "emoji": "😠"},
+    "negativo":     {"tone": "negative", "label": "Negativo",     "emoji": "👎"},
+    "urgencia":     {"tone": "negative", "label": "Urgência",     "emoji": "🚨"},
+    "urgência":     {"tone": "negative", "label": "Urgência",     "emoji": "🚨"},
+}
+
+
+@router.get("/dashboard/sentiment")
+async def sentiment_summary(days: int = Query(7, ge=1, le=90),
+                              user: dict = Depends(require_role("gestor"))):
+    """Métricas de sentimento extraídas dos stickers analisados pela Vision.
+
+    Lê de aihub_wa_messages onde direction=inbound e text começa com
+    "Sticker <emoção>:".
+
+    Returns:
+      - total_stickers
+      - by_emotion: [{emotion, label, emoji, tone, count, pct}]
+      - by_tone: {positive: N, neutral: N, negative: N}
+      - timeline: [{date, positive, neutral, negative}]
+      - hot_phones: telefones com mais stickers negativos
+      - top_negative_phones: alerta de insatisfação
+    """
+    import re
+    cid = _cid(user)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    msgs = await db.aihub_wa_messages.find(
+        {"company_id": cid, "direction": "inbound",
+         "text": {"$regex": r"^Sticker\s+\w+:", "$options": "i"},
+         "created_at": {"$gte": cutoff}},
+        {"_id": 0, "text": 1, "created_at": 1, "phone": 1},
+    ).to_list(5000)
+
+    re_emotion = re.compile(r"^Sticker\s+([\wáéíóúâêôãõçÀ-ÿ]+)\s*:", re.IGNORECASE)
+    by_emo: Dict[str, int] = {}
+    by_tone = {"positive": 0, "neutral": 0, "negative": 0}
+    by_date: Dict[str, Dict[str, int]] = {}
+    by_phone_neg: Dict[str, int] = {}
+    for m in msgs:
+        text = m.get("text") or ""
+        match = re_emotion.match(text)
+        if not match:
+            continue
+        emo = match.group(1).strip().lower()
+        meta = SENTIMENT_BUCKETS.get(emo)
+        if not meta:
+            # Emoções desconhecidas → bucket "outro"/neutro
+            meta = {"tone": "neutral", "label": emo.capitalize(), "emoji": "🏷"}
+        by_emo[emo] = by_emo.get(emo, 0) + 1
+        by_tone[meta["tone"]] += 1
+        d = (m.get("created_at") or "")[:10]
+        if d:
+            if d not in by_date:
+                by_date[d] = {"positive": 0, "neutral": 0, "negative": 0, "date": d}
+            by_date[d][meta["tone"]] += 1
+        if meta["tone"] == "negative" and m.get("phone"):
+            by_phone_neg[m["phone"]] = by_phone_neg.get(m["phone"], 0) + 1
+
+    total = sum(by_tone.values())
+    by_emotion = []
+    for emo, count in sorted(by_emo.items(), key=lambda x: -x[1]):
+        meta = SENTIMENT_BUCKETS.get(emo, {
+            "tone": "neutral", "label": emo.capitalize(), "emoji": "🏷"})
+        by_emotion.append({
+            "emotion": emo,
+            "label": meta["label"],
+            "emoji": meta["emoji"],
+            "tone": meta["tone"],
+            "count": count,
+            "pct": round(count / total * 100, 1) if total else 0,
+        })
+
+    timeline = sorted(by_date.values(), key=lambda x: x["date"])
+    top_negative = sorted(
+        [{"phone": k, "count": v} for k, v in by_phone_neg.items()],
+        key=lambda x: -x["count"],
+    )[:5]
+    # Sentiment score: -1.0 (tudo negativo) a +1.0 (tudo positivo)
+    if total > 0:
+        score = round((by_tone["positive"] - by_tone["negative"]) / total, 2)
+    else:
+        score = 0.0
+
+    return {
+        "days": days,
+        "total_stickers": total,
+        "sentiment_score": score,
+        "by_tone": by_tone,
+        "by_emotion": by_emotion,
+        "timeline": timeline,
+        "top_negative_phones": top_negative,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Alertas proativos
 # ---------------------------------------------------------------------------
