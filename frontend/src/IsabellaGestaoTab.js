@@ -50,6 +50,8 @@ export default function IsabellaGestaoTab() {
 
       <IsabellaTicketsKpi />
 
+      <SyncAgentsCard />
+
       <Tabs defaultValue="modules">
         <TabsList>
           <TabsTrigger value="modules" data-testid="isabella-tab-modules">
@@ -968,3 +970,160 @@ const kpiSubStyle = {
   color: "var(--text-muted)",
   marginTop: 1,
 };
+
+// ============================================================================
+// SyncAgentsCard — botão admin para aplicar a migration v6.80 dos 4 agentes
+// (Isabella/Álvaro/Camila/Teste) na company logada. Útil em produção.
+// ============================================================================
+function SyncAgentsCard() {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+
+  const run = async () => {
+    setBusy(true); setErr(null); setResult(null);
+    try {
+      const r = await api.isabellaRefineAgentsV680();
+      setResult(r);
+      setConfirming(false);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    } finally { setBusy(false); }
+  };
+
+  const created = result?.created || [];
+  const updated = result?.updated || [];
+  const errors = result?.errors || [];
+
+  return (
+    <div data-testid="sync-agents-card" style={{
+      marginTop: 4, marginBottom: 14, padding: 12,
+      borderRadius: 10, border: "1px solid #fde68a",
+      background: "linear-gradient(135deg, #fffbeb, #fef3c7)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10,
+                     flexWrap: "wrap" }}>
+        <div style={{
+          width: 32, height: 32, borderRadius: 8,
+          background: "#f59e0b", display: "grid", placeItems: "center",
+        }}>
+          <Zap size={18} color="white" />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#78350f" }}>
+            Sincronizar Agentes (v6.80)
+          </div>
+          <div style={{ fontSize: 11, color: "#92400e", marginTop: 2 }}>
+            Aplica os prompts XML-like + handoff + anti-loop nos 4 agentes
+            (Isabella, Álvaro, Camila, Teste) desta empresa. Cria se não
+            existir. Use após deploy para produção.
+          </div>
+        </div>
+        {!confirming && !result && (
+          <button onClick={() => setConfirming(true)}
+                  disabled={busy}
+                  data-testid="sync-agents-btn"
+                  style={{
+                    background: "#f59e0b", color: "white",
+                    fontWeight: 700, fontSize: 12, padding: "8px 14px",
+                    border: 0, borderRadius: 8, cursor: "pointer",
+                  }}>
+            Sincronizar agora
+          </button>
+        )}
+        {confirming && !result && (
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={run} disabled={busy}
+                    data-testid="sync-agents-confirm"
+                    style={{
+                      background: "#16a34a", color: "white",
+                      fontWeight: 700, fontSize: 12, padding: "8px 14px",
+                      border: 0, borderRadius: 8, cursor: "pointer",
+                    }}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : "Confirmar"}
+            </button>
+            <button onClick={() => setConfirming(false)} disabled={busy}
+                    style={{
+                      background: "transparent", color: "#78350f",
+                      fontWeight: 600, fontSize: 12, padding: "8px 14px",
+                      border: "1px solid #fbbf24", borderRadius: 8,
+                      cursor: "pointer",
+                    }}>
+              Cancelar
+            </button>
+          </div>
+        )}
+        {result && (
+          <button onClick={() => { setResult(null); setConfirming(false); }}
+                  data-testid="sync-agents-again"
+                  style={{
+                    background: "transparent", color: "#78350f",
+                    fontWeight: 600, fontSize: 11, padding: "6px 10px",
+                    border: "1px solid #fbbf24", borderRadius: 6,
+                    cursor: "pointer",
+                  }}>
+            Rodar de novo
+          </button>
+        )}
+      </div>
+
+      {confirming && !result && !busy && (
+        <div style={{ marginTop: 10, padding: 8, borderRadius: 6,
+                       background: "rgba(255,255,255,.6)",
+                       fontSize: 11, color: "#78350f" }}>
+          ⚠️ Vai sobrescrever <b>system_prompt</b>, <b>modelo</b> e{" "}
+          <b>parâmetros</b> dos 4 agentes nesta empresa. Idempotente
+          (pode rodar de novo se algo der errado).
+        </div>
+      )}
+
+      {err && (
+        <div data-testid="sync-agents-error" style={{
+          marginTop: 10, padding: 8, borderRadius: 6,
+          background: "#fef2f2", color: "#991b1b",
+          fontSize: 11, fontWeight: 600,
+          display: "flex", gap: 6, alignItems: "center",
+        }}>
+          <AlertCircle size={14} /> {err}
+        </div>
+      )}
+
+      {result?.ok && (
+        <div data-testid="sync-agents-result" style={{
+          marginTop: 10, padding: 10, borderRadius: 6,
+          background: "rgba(255,255,255,.85)", fontSize: 11,
+          color: "#065f46",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6,
+                         fontWeight: 700, color: "#15803d", marginBottom: 6 }}>
+            <CheckCircle2 size={14} /> Sincronização concluída
+          </div>
+          <div style={{ display: "grid", gap: 4 }}>
+            {created.length > 0 && (
+              <div>✅ <b>Criados:</b> {created.join(", ")}</div>
+            )}
+            {updated.length > 0 && (
+              <div>🔄 <b>Atualizados:</b> {updated.join(", ")}</div>
+            )}
+            {created.length === 0 && updated.length === 0 && (
+              <div style={{ color: "#92400e" }}>
+                Nada para atualizar (pode ser permissão ou modelo já em uso).
+              </div>
+            )}
+            {errors.length > 0 && (
+              <div style={{ color: "#991b1b" }}>
+                ⚠️ <b>Erros:</b> {errors.join("; ")}
+              </div>
+            )}
+            <div style={{ fontSize: 10, color: "var(--text-muted)",
+                           marginTop: 6 }}>
+              Empresa: <code>{result.company_id}</code>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

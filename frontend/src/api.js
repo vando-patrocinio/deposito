@@ -1035,6 +1035,9 @@ export const api = {
     client.delete(`/whatsapp-baileys/isabella/fragments/${id}`).then((r) => r.data),
   isabellaTest: (text) =>
     client.post("/whatsapp-baileys/isabella/test", { text }).then((r) => r.data),
+  // Migration v6.80: refina prompts dos 4 agentes (Isabella/Álvaro/Camila/Teste)
+  isabellaRefineAgentsV680: () =>
+    client.post("/whatsapp-baileys/agents/refine-v680").then((r) => r.data),
 
   // --- Boleto PDF preview & logo custom ---
   boletoPreviewUrl: () =>
