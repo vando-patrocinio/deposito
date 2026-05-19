@@ -21,6 +21,7 @@ from auth import create_access_token, hash_password
 from core import (
     DEMO_COMPANY_ID,
     Company,
+    can_view_platform,
     effective_company_id,
     get_current_user,
     get_settings,
@@ -585,8 +586,8 @@ async def stripe_webhook(request: Request):
 # --------------------------------------------------------------------------
 @router.get("/admin/companies")
 async def list_companies(user: dict = Depends(get_current_user)):
-    if not is_super_admin(user):
-        raise HTTPException(403, "Acesso restrito ao super admin")
+    if not can_view_platform(user):
+        raise HTTPException(403, "Acesso restrito ao super admin ou auditor")
     docs = await db.companies.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     for co in docs:
         co["status_effective"] = _effective_status(co)
@@ -607,8 +608,8 @@ class CompanyUpdate(BaseModel):
 
 @router.patch("/admin/companies/{cid}")
 async def update_company(cid: str, payload: CompanyUpdate, user: dict = Depends(get_current_user)):
-    if not is_super_admin(user):
-        raise HTTPException(403, "Acesso restrito ao super admin")
+    if not can_view_platform(user):
+        raise HTTPException(403, "Acesso restrito ao super admin ou auditor")
     co = await db.companies.find_one({"id": cid}, {"_id": 0})
     if not co:
         raise HTTPException(404, "Empresa não encontrada")
@@ -649,8 +650,8 @@ async def delete_company(cid: str, user: dict = Depends(get_current_user)):
     - Não apaga a empresa do próprio super_admin logado
     - Não apaga empresas marcadas com `is_protected=true`
     """
-    if not is_super_admin(user):
-        raise HTTPException(403, "Acesso restrito ao super admin")
+    if not can_view_platform(user):
+        raise HTTPException(403, "Acesso restrito ao super admin ou auditor")
     if cid == "co-demo":
         raise HTTPException(400, "Não é permitido apagar a empresa de demonstração")
     if cid == user.get("company_id"):
@@ -714,8 +715,8 @@ async def delete_company(cid: str, user: dict = Depends(get_current_user)):
 @router.post("/admin/companies/bulk-delete")
 async def bulk_delete_companies(payload: dict, user: dict = Depends(get_current_user)):
     """Apaga várias empresas em lote. Body: {ids: [...]}."""
-    if not is_super_admin(user):
-        raise HTTPException(403, "Acesso restrito ao super admin")
+    if not can_view_platform(user):
+        raise HTTPException(403, "Acesso restrito ao super admin ou auditor")
     ids = [str(x).strip() for x in (payload.get("ids") or []) if x]
     if not ids:
         raise HTTPException(400, "Lista de IDs vazia")
@@ -740,8 +741,8 @@ async def admin_metrics(user: dict = Depends(get_current_user)):
     Retorna: MRR (R$ ativos), nº empresas por status, nº colaboradores totais,
     signups por mês (últimos 12), churn (cancelados últimos 30d).
     """
-    if not is_super_admin(user):
-        raise HTTPException(403, "Acesso restrito ao super admin")
+    if not can_view_platform(user):
+        raise HTTPException(403, "Acesso restrito ao super admin ou auditor")
 
     companies = await db.companies.find({}, {"_id": 0}).to_list(2000)
     now = datetime.now(timezone.utc)

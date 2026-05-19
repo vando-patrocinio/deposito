@@ -48,14 +48,15 @@ export const TAB_DEFINITIONS = [
   { id: "users",           label: "Usuários",          group: "Sistema" },
   { id: "motor-ia",        label: "Motor IA",          group: "Sistema" },
   { id: "settings",        label: "Configurações",     group: "Sistema" },
-  // `platform` é controlada por superAdminOnly, fora deste card.
+  { id: "platform",        label: "Plataforma",        group: "Sistema" },
 ];
 
 const ALL_TAB_IDS = TAB_DEFINITIONS.map((t) => t.id);
 
 // Default seed quando ainda não há tab_permissions cadastradas.
-// REGRA: Auditor tem acesso TOTAL (fiscalização sem restrição) — igual ao administrador.
-//        Gestor tem acesso operacional (sem Auditoria/Usuários/Motor IA/Settings).
+// REGRA: Auditor tem acesso TOTAL (fiscalização sem restrição) — igual ao administrador
+//        E inclui a aba Plataforma (gestão SaaS cross-tenant).
+//        Gestor tem acesso operacional (sem Auditoria/Usuários/Motor IA/Settings/Plataforma).
 export const DEFAULT_TAB_PERMISSIONS = {
   administrador: [...ALL_TAB_IDS],
   auditor:       [...ALL_TAB_IDS],

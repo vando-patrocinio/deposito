@@ -35,6 +35,19 @@ def is_super_admin(user: dict) -> bool:
     return (user.get("email") or "").strip().lower() in emails
 
 
+def can_view_platform(user: dict) -> bool:
+    """Quem pode ver/operar a aba Plataforma (gestão de empresas SaaS):
+      - super admin (allowlist do .env)
+      - auditor (fiscalização cross-tenant)
+    Não amplia tenant_filter — só destrava endpoints `/saas/admin/*` e a aba UI.
+    """
+    if not user:
+        return False
+    if is_super_admin(user):
+        return True
+    return (user.get("role") or "").lower() == "auditor"
+
+
 def tenant_filter(user: dict) -> dict:
     """Filtro Mongo para escopo de tenant.
     - Super admin SEM `_active_company` → sem filtro (cross-tenant)
