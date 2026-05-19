@@ -438,28 +438,32 @@ AGENTS_PLAN = [
 ]
 
 
-async def run(company_id: str = "co-demo") -> None:
+async def run(company_id: str = "co-demo") -> dict:
+    """Aplica a migration. Retorna dict com {created, updated, errors}.
+
+    Pode ser chamada via CLI ou via endpoint HTTP.
+    """
+    import uuid
+
     mongo_url = os.environ.get("MONGO_URL")
     db_name = os.environ.get("DB_NAME")
     if not mongo_url or not db_name:
         raise SystemExit("MONGO_URL/DB_NAME ausentes no .env")
     cli = AsyncIOMotorClient(mongo_url)
     db = cli[db_name]
+    result = {"created": [], "updated": [], "errors": []}
     try:
         print(f"\n=== Refinando 4 agentes (Isabella/Álvaro/Camila/Teste) "
               f"para company={company_id} ===\n")
         for (name, prov, model, temp, mx, sp) in AGENTS_PLAN:
-            current = await db.aihub_agents.find_one(
-                {"company_id": company_id, "name": name},
-                {"_id": 0, "id": 1, "system_prompt": 1},
-            )
-            if not current:
-                print(f"  ! {name:10} não existe nessa company — pulando "
-                      f"(rode seed_training_agents primeiro)")
-                continue
-            await db.aihub_agents.update_one(
-                {"company_id": company_id, "name": name},
-                {"$set": {
+            try:
+                current = await db.aihub_agents.find_one(
+                    {"company_id": company_id, "name": name},
+                    {"_id": 0, "id": 1},
+                )
+                update_doc = {
+                    "company_id": company_id,
+                    "name": name,
                     "model_provider": prov,
                     "model_name": model,
                     "temperature": temp,
@@ -469,13 +473,47 @@ async def run(company_id: str = "co-demo") -> None:
                     "updated_by": "migration:v680_refine_agents",
                     "training_loaded_at": _now_iso(),
                     "active": True,
-                }},
-            )
-            print(f"  ✓ {name:10} {prov}/{model:30} t={temp} mx={mx} "
-                  f"prompt={len(sp)}c")
+                }
+                if current:
+                    await db.aihub_agents.update_one(
+                        {"company_id": company_id, "name": name},
+                        {"$set": update_doc},
+                    )
+                    print(f"  ↻ {name:10} ATUALIZADO    {prov}/{model:30} "
+                          f"prompt={len(sp)}c")
+                    result["updated"].append(name)
+                else:
+                    # Cria do zero — produção inicial sem agentes prévios
+                    update_doc["id"] = f"agt-{uuid.uuid4().hex[:10]}"
+                    update_doc["created_at"] = _now_iso()
+                    update_doc["topology_node"] = (
+                        "isabella" if name == "Isabella" else "atendimento_ia"
+                    )
+                    update_doc["description"] = {
+                        "Isabella": "Vendas, retenção e ponto de entrada do atendimento.",
+                        "Alvaro":   "Suporte técnico (rede, sinal, ONU, LEDs).",
+                        "Camila":   "Financeiro (boleto, fatura, 2ª via, PIX).",
+                        "Teste":    "Agente sandbox de debug do ambiente dev.",
+                    }.get(name, "")
+                    update_doc["tools_enabled"] = []
+                    update_doc["company_info"] = ""
+                    update_doc["pricing_info"] = ""
+                    update_doc["priority_situations"] = ""
+                    update_doc["routing_intent"] = ""
+                    update_doc["form_fields"] = []
+                    update_doc["initial_message"] = ""
+                    await db.aihub_agents.insert_one(update_doc)
+                    print(f"  ✓ {name:10} CRIADO        {prov}/{model:30} "
+                          f"prompt={len(sp)}c")
+                    result["created"].append(name)
+            except Exception as e:
+                msg = f"{name}: {e}"
+                print(f"  ✗ {name:10} ERRO          {e}")
+                result["errors"].append(msg)
     finally:
         cli.close()
     print("\nMigration v6.80 concluída ✓\n")
+    return result
 
 
 if __name__ == "__main__":

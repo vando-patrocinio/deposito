@@ -202,6 +202,45 @@ async def delete_fragment(fragment_id: str,
 
 
 # ---------------------------------------------------------------------------
+# AGENT REFINE — aplica a migration v6.80 na company logada
+# (Usado para sincronizar prompts/agentes entre preview e produção)
+# ---------------------------------------------------------------------------
+@router.post("/agents/refine-v680")
+async def refine_agents_v680(user: dict = Depends(require_role("administrador"))):
+    """Aplica a migration v6.80 (Isabella/Álvaro/Camila/Teste) na company
+    do administrador logado.
+
+    - Cria agentes que não existem (defaults sensatos)
+    - Atualiza system_prompt, model_provider, model_name, temperature, max_tokens
+    - Idempotente: pode rodar várias vezes
+
+    Útil em produção: depois de fazer deploy do código, dispare este endpoint
+    uma vez (via curl ou botão na UI) pra trazer os prompts pro banco da
+    company produtiva.
+    """
+    cid = _cid(user)
+    try:
+        from migrations.refine_agents_v680 import run as _refine_run
+        result = await _refine_run(company_id=cid)
+        logger.info(
+            "[isabella-prompt] migration v680 aplicada company=%s "
+            "criados=%s atualizados=%s erros=%s",
+            cid, result.get("created"), result.get("updated"),
+            result.get("errors"),
+        )
+        return {
+            "ok": True,
+            "company_id": cid,
+            "created": result.get("created") or [],
+            "updated": result.get("updated") or [],
+            "errors": result.get("errors") or [],
+        }
+    except Exception as e:
+        logger.exception("[isabella-prompt] migration v680 falhou: %s", e)
+        raise HTTPException(500, f"Falha ao rodar migration: {e}")
+
+
+# ---------------------------------------------------------------------------
 # TESTE DE RESPOSTA — usado pelo botão "Testar resposta" da sub-aba Gestão
 # ---------------------------------------------------------------------------
 class IsabellaTestIn(BaseModel):
