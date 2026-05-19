@@ -44,6 +44,11 @@ const axios = require("axios");
 const pino = require("pino");
 const fs = require("fs");
 const path = require("path");
+// Carrega MONGO_URL e outras vars do .env do backend (mesma fonte de verdade)
+try { require("dotenv").config({ path: path.resolve(__dirname, "../backend/.env") }); }
+catch (e) { /* dotenv opcional */ }
+const { MongoClient } = require("mongodb");
+const { useMongoAuthState } = require("./mongo_auth_state");
 
 /* ---------------- Config ---------------- */
 const PORT = parseInt(process.env.PORT || process.env.WA_PORT || "3002", 10);
@@ -55,6 +60,14 @@ const INBOUND_TOKEN = process.env.WA_INBOUND_TOKEN || "";
 const SIDECAR_TOKEN = process.env.WA_SIDECAR_TOKEN || "";
 const AUTH_DIR = process.env.WA_AUTH_DIR || path.join(__dirname, "auth_info");
 const BROWSER_FP = (process.env.WA_BROWSER_FP || "Chrome (Linux),Chrome,120.0.0").split(",");
+
+// Mongo auth state — sessão persistente entre restarts (k8s/serverless)
+// Se MONGO_URL ausente, cai pra useMultiFileAuthState (modo dev)
+const WA_MONGO_URL = process.env.WA_MONGO_URL || process.env.MONGO_URL || "";
+const WA_MONGO_DB = process.env.WA_MONGO_DB || process.env.DB_NAME || "ponto";
+const WA_SESSION_ID = process.env.WA_SESSION_ID || "isabella";
+let mongoClient = null;
+let mongoDb = null;
 
 // Reconexão (exponential backoff)
 const RECONNECT_BASE_MS = 2000;
@@ -229,12 +242,46 @@ async function startSock() {
   clearReconnectTimer();
   if (shuttingDown) return;
   try {
-    fs.mkdirSync(AUTH_DIR, { recursive: true });
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    // === AUTH STATE: Mongo (durável) com fallback pra file ===
+    let state, saveCreds, clearAuth;
+    let authBackend = "file";
+    if (WA_MONGO_URL) {
+      try {
+        if (!mongoClient) {
+          mongoClient = new MongoClient(WA_MONGO_URL, {
+            maxPoolSize: 5,
+            serverSelectionTimeoutMS: 5000,
+          });
+          await mongoClient.connect();
+          mongoDb = mongoClient.db(WA_MONGO_DB);
+          logger.info({ db: WA_MONGO_DB, session: WA_SESSION_ID },
+            "wa-auth: Mongo conectado");
+        }
+        const m = await useMongoAuthState(mongoDb, WA_SESSION_ID, { logger });
+        state = m.state;
+        saveCreds = m.saveCreds;
+        clearAuth = m.clear;
+        authBackend = "mongo";
+      } catch (e) {
+        logger.warn({ err: e.message },
+          "wa-auth: Mongo falhou, fallback pra file-based");
+      }
+    }
+    if (!state) {
+      fs.mkdirSync(AUTH_DIR, { recursive: true });
+      const f = await useMultiFileAuthState(AUTH_DIR);
+      state = f.state;
+      saveCreds = f.saveCreds;
+      clearAuth = async () => {
+        try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); }
+        catch (e) { /* ignore */ }
+      };
+    }
+
     const { version } = await fetchLatestBaileysVersion()
       .catch(() => ({ version: [2, 3000, 0] }));
     connState = "connecting";
-    logger.info({ version, retryCount }, "iniciando socket Baileys");
+    logger.info({ version, retryCount, authBackend }, "iniciando socket Baileys");
 
     sock = makeWASocket({
       version,
@@ -248,6 +295,9 @@ async function startSock() {
     });
 
     sock.ev.on("creds.update", saveCreds);
+
+    // Guarda referência da função de clear pra usar no loggedOut/logout
+    sock._clearAuth = clearAuth;
 
     // Guard extra contra socket zumbi
     sock.ws?.on?.("error", (e) => {
@@ -312,10 +362,15 @@ async function startSock() {
             "loggedOut detectado",
           );
           try {
-            fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-            logger.info("AUTH_DIR limpo após loggedOut — pronto pra QR novo");
+            // Usa clear da auth backend ativa (Mongo OU file)
+            if (sock?._clearAuth) {
+              await sock._clearAuth();
+            } else {
+              fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+            }
+            logger.info("auth state limpo após loggedOut — pronto pra QR novo");
           } catch (e) {
-            logger.warn({ err: e.message }, "falha ao limpar AUTH_DIR pós-loggedOut");
+            logger.warn({ err: e.message }, "falha ao limpar auth pós-loggedOut");
           }
           await notifyAdmin("logged_out", { code, name, reason: reasonMsg });
 
@@ -835,11 +890,19 @@ app.post("/send-document", async (req, res) => {
 
 app.post("/logout", async (_req, res) => {
   try {
+    const oldClear = sock?._clearAuth;
     if (sock) {
       try { await sock.logout(); } catch (e) { /* ignore */ }
       sock = null;
     }
-    try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (e) { /* ignore */ }
+    // Limpa auth state (Mongo OU file)
+    try {
+      if (oldClear) {
+        await oldClear();
+      } else {
+        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+      }
+    } catch (e) { /* ignore */ }
     connState = "disconnected";
     currentQr = null; me = null; retryCount = 0;
     setTimeout(startSock, 800);
