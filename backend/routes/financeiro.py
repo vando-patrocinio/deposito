@@ -279,14 +279,18 @@ async def list_filiais(only_active: bool = False,
 async def create_filial(payload: FilialIn,
                         user: dict = Depends(require_finance())):
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    return await _create("fin_filiais", cid, "fil", payload.model_dump())
+    doc = await _create("fin_filiais", cid, "fil", payload.model_dump())
+    await _push_to_atlaz_config(cid, doc)
+    return doc
 
 
 @router.put("/filiais/{doc_id}")
 async def update_filial(doc_id: str, payload: FilialIn,
                         user: dict = Depends(require_finance())):
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    return await _update("fin_filiais", cid, doc_id, payload.model_dump())
+    doc = await _update("fin_filiais", cid, doc_id, payload.model_dump())
+    await _push_to_atlaz_config(cid, doc)
+    return doc
 
 
 @router.delete("/filiais/{doc_id}")
@@ -299,6 +303,51 @@ async def delete_filial(doc_id: str,
         {"$unset": {"filial_id": ""}},
     )
     return await _delete("fin_filiais", cid, doc_id)
+
+
+async def _push_to_atlaz_config(company_id: str, filial_doc: Dict[str, Any]) -> None:
+    """Sincroniza Filial → Atlaz config (bidirecional).
+
+    Quando o gestor cria/edita uma filial aqui no Financeiro com técnico padrão,
+    grava de volta no `db.atlaz_config.{filiais, filial_to_collaborator}` para
+    manter as 2 telas (Configurações → Atlaz e Financeiro → Filial) coerentes.
+
+    Não falha o request se o atlaz_config não existir — apenas faz log.
+    """
+    if not filial_doc or not filial_doc.get("name"):
+        return
+    name = filial_doc["name"]
+    default_col = filial_doc.get("default_collaborator_id")
+    try:
+        cfg = await db.atlaz_config.find_one(
+            {"company_id": company_id},
+            {"_id": 0, "filiais": 1, "filial_to_collaborator": 1},
+        )
+        if not cfg:
+            # Não existe config Atlaz pra esse tenant ainda — não cria sozinho
+            logger.info("atlaz_config not found for company %s, skipping push",
+                        company_id)
+            return
+        filiais: List[str] = list(cfg.get("filiais") or [])
+        mapping: Dict[str, str] = dict(cfg.get("filial_to_collaborator") or {})
+        # Lookup case-insensitive para não duplicar
+        existing_keys = {f.lower(): f for f in filiais}
+        canonical_name = existing_keys.get(name.lower(), name)
+        if canonical_name not in filiais:
+            filiais.append(canonical_name)
+        # Atualiza mapping. Remove chaves duplicadas case-insensitive.
+        clean_mapping = {k: v for k, v in mapping.items()
+                          if k.lower() != name.lower()}
+        if default_col:
+            clean_mapping[canonical_name] = default_col
+        await db.atlaz_config.update_one(
+            {"company_id": company_id},
+            {"$set": {"filiais": filiais,
+                       "filial_to_collaborator": clean_mapping}},
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("push_to_atlaz_config failed for %s/%s: %s",
+                        company_id, name, e)
 
 
 @router.post("/filiais/sync-from-atlaz")

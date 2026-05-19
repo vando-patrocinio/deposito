@@ -236,8 +236,13 @@ async def update_bill(bill_id: str, payload: BillUpdate,
 
 
 @router.delete("/bills/{bill_id}")
-async def delete_bill(bill_id: str,
-                      user: dict = Depends(require_finance())):
+async def delete_bill(
+    bill_id: str,
+    delete_future_installments: bool = Query(False,
+        description="Se True, apaga também todas as parcelas futuras "
+                    "(ainda não pagas) do mesmo grupo de parcelamento."),
+    user: dict = Depends(require_finance()),
+):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     bill = await db.fin_bills_payable.find_one(
         {"id": bill_id, "company_id": cid}, {"_id": 0},
@@ -251,7 +256,26 @@ async def delete_bill(bill_id: str,
             "company_id": cid, "reference_type": "bill", "reference_id": bill_id,
         })
     await db.fin_bills_payable.delete_one({"id": bill_id, "company_id": cid})
-    return {"ok": True}
+
+    extras_deleted = 0
+    if delete_future_installments and bill.get("installment_group_id"):
+        # Apaga TODAS as parcelas do mesmo grupo que AINDA não foram pagas
+        # (status != 'paid'). Parcelas pagas são preservadas para não bagunçar
+        # o histórico financeiro.
+        future_q = {
+            "company_id": cid,
+            "installment_group_id": bill["installment_group_id"],
+            "status": {"$ne": "paid"},
+        }
+        r = await db.fin_bills_payable.delete_many(future_q)
+        extras_deleted = r.deleted_count
+
+    return {
+        "ok": True,
+        "deleted_bill_id": bill_id,
+        "future_installments_deleted": extras_deleted,
+        "had_installment_group": bool(bill.get("installment_group_id")),
+    }
 
 
 @router.post("/bills/{bill_id}/pay")

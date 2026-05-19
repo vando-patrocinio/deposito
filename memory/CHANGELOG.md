@@ -1,5 +1,37 @@
 # PontoIA — Changelog
 
+## Fev 2026 — Filiais bidirecionais + Delete inteligente de parcelas
+
+### 1. Sync bidirecional Filial → Atlaz
+Helper `_push_to_atlaz_config()` adicionado no `routes/financeiro.py`. Sempre que o gestor cria ou edita uma filial no Financeiro com técnico padrão, o sistema **grava de volta** em `db.atlaz_config.{filiais, filial_to_collaborator}`:
+- Lookup case-insensitive para não duplicar (ex: "Filial Norte" não vira "FILIAL NORTE")
+- Limpa entradas duplicadas case-insensitive no mapping antes de gravar
+- Não cria `atlaz_config` se ainda não existir (apenas log)
+- Falha silenciosa: se o push falhar, a operação principal (CRUD da filial) não é abortada
+
+Agora as duas telas (**Configurações → Atlaz** e **Financeiro → Filial**) ficam coerentes nas duas direções.
+
+### 2. Delete de parcela com pergunta sobre futuras
+**Backend** (`DELETE /api/financeiro/bills/{id}?delete_future_installments=true`):
+- Query param opcional. Quando true, apaga TODAS as parcelas do mesmo `installment_group_id` que ainda não foram pagas (`status != "paid"`)
+- Parcelas pagas são **sempre preservadas** (proteção do histórico financeiro)
+- Resposta enriquecida: `{deleted_bill_id, future_installments_deleted, had_installment_group}`
+
+**Frontend** (`BillsTab.onDelete`):
+- 1ª confirmação: "Excluir 'X'? Se paga, estorna a movimentação."
+- Se a conta tem `installment_group_id` e `installment_total > 1`, mostra **2ª confirmação**:
+  > 📋 Esta conta faz parte de um parcelamento (1/3).
+  > Deseja APAGAR TAMBÉM as parcelas futuras ainda não pagas?
+- Toast no final mostra quantas parcelas extras foram apagadas
+- Badge `📋 1/3` em pílula roxa adicionado ao lado do nome na tabela para identificar visualmente
+
+### Verificação
+- Curl: 5 parcelas criadas → delete da 1ª com flag → 1 + 4 futuras apagadas ✅
+- Screenshots: 2 modais de confirmação em sequência funcionando
+- Lint + build limpos (Python + JS)
+
+
+
 ## Fev 2026 — Filiais: Sync com Atlaz (fonte da verdade)
 
 ### Problema identificado

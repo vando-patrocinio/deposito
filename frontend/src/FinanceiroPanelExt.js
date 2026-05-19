@@ -61,9 +61,29 @@ export function BillsTab() {
   useEffect(() => { loadRefs(); }, []);
 
   async function onDelete(b) {
-    if (!await window.confirm(`Excluir "${b.description}"? Estorna a movimentação se já paga.`))
-      return;
-    await api._client.delete(`/financeiro/bills/${b.id}`);
+    // Pergunta básica
+    if (!await window.confirm(
+      `Excluir "${b.description}"?\n\nSe a conta estiver paga, a movimentação é estornada.`,
+    )) return;
+
+    // Se faz parte de um parcelamento, pergunta se quer apagar as próximas
+    let deleteFuture = false;
+    if (b.installment_group_id && b.installment_total > 1) {
+      deleteFuture = await window.confirm(
+        `📋 Esta conta faz parte de um parcelamento (${b.installment_index}/${b.installment_total}).\n\n` +
+        `Deseja APAGAR TAMBÉM as parcelas futuras ainda não pagas?\n\n` +
+        `• OK → apaga essa parcela + todas as outras pendentes do grupo\n` +
+        `• Cancelar → apaga só essa parcela (as outras permanecem)`,
+      );
+    }
+    const qs = deleteFuture ? "?delete_future_installments=true" : "";
+    const res = await api._client.delete(`/financeiro/bills/${b.id}${qs}`)
+                              .then((r) => r.data);
+    if (deleteFuture && res?.future_installments_deleted > 0) {
+      await window.alert(
+        `✓ Conta apagada + ${res.future_installments_deleted} parcela(s) futura(s) removida(s).`,
+      );
+    }
     reload();
     loadRefs();
   }
@@ -187,7 +207,19 @@ function BillsTable({ items, refs, onEdit, onPay, onDelete }) {
           {items.map((b) => (
             <tr key={b.id} style={{ borderTop: "1px solid #f1f5f9" }}
                 data-testid={`bill-row-${b.id}`}>
-              <td style={{ padding: "10px 14px" }}>{b.description}</td>
+              <td style={{ padding: "10px 14px" }}>
+                {b.description}
+                {b.installment_group_id && b.installment_total > 1 && (
+                  <span data-testid={`bill-installment-badge-${b.id}`} style={{
+                    marginLeft: 6, padding: "1px 6px", borderRadius: 999,
+                    background: "#eef2ff", color: "#4338ca",
+                    fontSize: 10, fontWeight: 700,
+                    fontFamily: "ui-monospace, monospace",
+                  }} title="Conta parcelada">
+                    📋 {b.installment_index}/{b.installment_total}
+                  </span>
+                )}
+              </td>
               <td style={{ padding: "10px 14px",
                             color: b.status === "overdue" ? "#dc2626" : "#0f172a" }}>
                 {b.due_date}
