@@ -35,6 +35,7 @@ import DashboardPanel from "@/DashboardPanel";
 import PracasPanel from "@/PracasPanel";
 import LogsPanel from "@/LogsPanel";
 import PlatformAdminPanel from "@/PlatformAdminPanel";
+import BlockedPage from "@/BlockedPage";
 import LousaAdminPanel from "@/LousaAdminPanel";
 import EstoquePanel from "@/EstoquePanel";
 import AICenterPanel from "@/AICenterPanel";
@@ -920,7 +921,10 @@ function AppContent() {
   }
 
   const activeTab = ALL_TABS.find((t) => t.id === view);
-  const allowed = activeTab && hasRole(user, ...activeTab.roles);
+  // `tabs` já aplica TODAS as regras (superAdminOnly, tab_permissions custom,
+  // feature flags do user, e fallback DEFAULT_TAB_PERMISSIONS). Usamos ele
+  // como única fonte de verdade — se a aba não está lá, BlockedPage.
+  const allowed = !!(activeTab && tabs.find((t) => t.id === view));
 
   if (needsOnboarding === null) {
     return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--text-secondary)" }}>Carregando…</div>;
@@ -935,9 +939,7 @@ function AppContent() {
       <PublicAccessBanner />
       <BillingBanner />
       {!allowed ? (
-        <div className="surface" style={{ padding: 28, textAlign: "center", color: "var(--text-secondary)" }}>
-          Sem acesso a esta seção. Procure o gestor.
-        </div>
+        <BlockedPage tabLabel={activeTab?.label || "esta seção"} />
       ) : (
         <>
           {view === "dashboard" && <DashboardPanel />}
