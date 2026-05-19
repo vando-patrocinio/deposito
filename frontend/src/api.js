@@ -1040,6 +1040,8 @@ export const api = {
     client.post("/whatsapp-baileys/agents/refine-v680").then((r) => r.data),
   waHealthSummary: () =>
     client.get("/whatsapp-baileys/health-summary").then((r) => r.data),
+  lousaReturnedNotes: (daysBack = 30) =>
+    client.get(`/lousa/returned-notes?days_back=${daysBack}`).then((r) => r.data),
 
   // --- Boleto PDF preview & logo custom ---
   boletoPreviewUrl: () =>

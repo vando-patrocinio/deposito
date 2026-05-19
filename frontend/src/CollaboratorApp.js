@@ -513,87 +513,20 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     );
   }
 
-  // App acessado sem ?cid= no link → orienta o técnico a usar o link próprio.
-  // EXCEÇÃO: se o usuário logado é administrador/auditor, mostra seletor de
-  // colaborador (permite acessar o app como qualquer técnico, sem precisar do
-  // link único).
+  // App acessado sem ?cid= no link → mostra tela de LOGIN (email/senha).
+  // Se o usuário logar com sucesso, o token JWT é persistido e o collab
+  // associado ao user é resolvido automaticamente.
+  // ADMIN tem fluxo separado (seleção manual abaixo).
   if (!collabId) {
     return (
       <Wrapper>
-        <div data-testid="screen-no-link" style={{ ...appCard, padding: 28, textAlign: "center" }}>
-          <div style={{
-            width: 56, height: 56, borderRadius: 14, margin: "0 auto 14px",
-            background: "#f1f5f9", display: "grid", placeItems: "center",
-            border: "1px solid #e2e8f0",
-          }}>
-            <Icon name="phone" size={26} style={{ color: "#475569" }} />
-          </div>
-          <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 700, color: "#0f172a" }}>
-            Acesso pelo link próprio
-          </h2>
-          <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5, margin: "0 0 16px" }}>
-            Cada técnico tem um <strong style={{ color: "#0f172a" }}>link único</strong> enviado pelo gestor (geralmente por
-            WhatsApp). Abra o link que você recebeu para entrar na sua Lousa.
-          </p>
-
-          {isAdminTest && (
-            <div data-testid="admin-bypass-section"
-                 style={{
-                    background: "linear-gradient(135deg,#fef2f2,#fee2e2)",
-                    border: "1.5px solid #fca5a5", borderRadius: 12,
-                    padding: 14, marginBottom: 14, textAlign: "left",
-                 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8,
-                              marginBottom: 6 }}>
-                <span style={{ fontSize: 16 }}>🔓</span>
-                <strong style={{ fontSize: 13, color: "#7f1d1d",
-                                   letterSpacing: 0.2 }}>
-                  Modo administrador — acesso sem link
-                </strong>
-              </div>
-              <p style={{ margin: "0 0 10px", fontSize: 11,
-                            color: "#991b1b", lineHeight: 1.5 }}>
-                Você está logado como admin/auditor. Selecione um técnico
-                para abrir a Lousa dele direto, sem usar o link único.
-              </p>
-              <select
-                data-testid="admin-collab-select"
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v) setCollabId(v);
-                }}
-                defaultValue=""
-                style={{
-                  width: "100%", padding: "10px 12px", borderRadius: 8,
-                  border: "1.5px solid #dc2626", background: "white",
-                  fontSize: 13, fontWeight: 600, color: "#0f172a",
-                  cursor: "pointer",
-                }}>
-                <option value="" disabled>Selecione um colaborador…</option>
-                {collabs.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {c.role ? `· ${c.role}` : ""}
-                  </option>
-                ))}
-              </select>
-              <p style={{ margin: "8px 0 0", fontSize: 10,
-                            color: "#7f1d1d", fontStyle: "italic" }}>
-                ⚠ Apenas para suporte/admin. Ações continuam sendo registradas em
-                seu nome de admin no log.
-              </p>
-            </div>
-          )}
-
-          <div style={{
-            background: "#f8fafc", border: "1px solid #e2e8f0",
-            borderRadius: 10, padding: 12, fontSize: 12, color: "#475569", textAlign: "left",
-          }}>
-            <strong style={{ color: "#0f172a" }}>Não tem o link?</strong>
-            <br/>
-            Procure o gestor da sua filial. Ele consegue gerar/copiar/enviar o seu link em segundos
-            pela aba <em>Cadastro</em> do painel.
-          </div>
-        </div>
+        <CollabLoginScreen
+          onSuccess={(cid) => { setCollabId(cid); }}
+          isAdminTest={isAdminTest}
+          collabs={collabs}
+          setCollabId={setCollabId}
+          appCard={appCard}
+        />
       </Wrapper>
     );
   }
@@ -1259,3 +1192,191 @@ function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, 
     </div>
   );
 }
+
+// ============================================================
+// CollabLoginScreen — tela de login email/senha pro app mobile
+// Quando o colaborador entra sem ?cid=, mostra esse formulário.
+// Após login bem-sucedido, persiste JWT em localStorage e descobre
+// automaticamente o collaborator_id associado ao user logado.
+// Mantém o bypass admin (select de colaborador) abaixo.
+// ============================================================
+function CollabLoginScreen({ onSuccess, isAdminTest, collabs, setCollabId, appCard }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const submit = async (e) => {
+    e?.preventDefault?.();
+    if (!email || !password) {
+      setErr("Preencha e-mail e senha");
+      return;
+    }
+    setLoading(true); setErr(null);
+    try {
+      // Usa o endpoint padrão /auth/login (mesmo que o gestor)
+      const r = await api.client.post("/auth/login", {
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      const { access_token, user } = r.data || {};
+      if (!access_token) throw new Error("Token não recebido");
+      window.localStorage.setItem("ponto_token", access_token);
+      try { window.localStorage.setItem("ponto_user", JSON.stringify(user || {})); } catch {}
+
+      // Resolve collaborator_id:
+      // 1. user.collaborator_id (se cadastrado no perfil)
+      // 2. user.email batendo com collaborators[].email
+      let cid = user?.collaborator_id || null;
+      if (!cid && Array.isArray(collabs) && user?.email) {
+        const ue = user.email.toLowerCase();
+        const match = collabs.find((c) => (c.email || "").toLowerCase() === ue);
+        if (match) cid = match.id;
+      }
+      // 3. fallback: API dedicada (pode existir endpoint /collaborators/me)
+      if (!cid) {
+        try {
+          const me = await api.client.get("/collaborators/me");
+          cid = me?.data?.id || null;
+        } catch { /* ignora */ }
+      }
+
+      if (!cid) {
+        setErr("Login OK, mas seu colaborador não está vinculado. Peça pro gestor.");
+        setLoading(false);
+        return;
+      }
+      onSuccess(cid);
+    } catch (ex) {
+      const msg = ex?.response?.data?.detail || ex.message || "Erro ao entrar";
+      setErr(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div data-testid="screen-collab-login" style={{ ...appCard, padding: 28 }}>
+      <div style={{ textAlign: "center", marginBottom: 18 }}>
+        <div style={{
+          width: 56, height: 56, borderRadius: 14, margin: "0 auto 12px",
+          background: "linear-gradient(135deg, #1e40af, #3b82f6)",
+          display: "grid", placeItems: "center",
+          boxShadow: "0 4px 12px rgba(59,130,246,.3)",
+        }}>
+          <Icon name="phone" size={26} style={{ color: "white" }} />
+        </div>
+        <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 800, color: "#0f172a" }}>
+          Lousa do Colaborador
+        </h2>
+        <p style={{ color: "#64748b", fontSize: 12, margin: 0 }}>
+          Entre com o e-mail e senha do seu cadastro
+        </p>
+      </div>
+
+      <form onSubmit={submit}>
+        <label style={{ display: "block", fontSize: 11, fontWeight: 700,
+                          color: "#475569", marginBottom: 4, marginTop: 8 }}>
+          E-mail
+        </label>
+        <input
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          data-testid="collab-login-email"
+          placeholder="seu@email.com"
+          style={{
+            ...inputStyle, width: "100%", padding: "12px 14px",
+            fontSize: 14, marginBottom: 12,
+          }}
+        />
+
+        <label style={{ display: "block", fontSize: 11, fontWeight: 700,
+                          color: "#475569", marginBottom: 4 }}>
+          Senha
+        </label>
+        <input
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          data-testid="collab-login-password"
+          placeholder="••••••••"
+          style={{
+            ...inputStyle, width: "100%", padding: "12px 14px",
+            fontSize: 14, marginBottom: 16,
+          }}
+        />
+
+        {err && (
+          <div data-testid="collab-login-error" style={{
+            background: "#fef2f2", color: "#991b1b", padding: 10,
+            borderRadius: 8, fontSize: 12, marginBottom: 12, fontWeight: 600,
+          }}>
+            ⚠️ {err}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          data-testid="collab-login-submit"
+          style={{
+            width: "100%", padding: "12px 16px",
+            background: loading ? "#94a3b8" : "linear-gradient(135deg, #1e40af, #3b82f6)",
+            color: "white", border: 0, borderRadius: 10,
+            fontSize: 14, fontWeight: 700, cursor: loading ? "wait" : "pointer",
+            boxShadow: loading ? "none" : "0 2px 8px rgba(59,130,246,.3)",
+          }}>
+          {loading ? "Entrando..." : "Entrar"}
+        </button>
+      </form>
+
+      <div style={{
+        marginTop: 18, padding: 12, background: "#f8fafc",
+        border: "1px solid #e2e8f0", borderRadius: 10,
+        fontSize: 11, color: "#475569", lineHeight: 1.5,
+      }}>
+        <strong style={{ color: "#0f172a" }}>Não tem login?</strong>{" "}
+        Procure o gestor da sua filial — ele cria seu acesso na aba
+        <em> Cadastro</em> do painel.
+      </div>
+
+      {isAdminTest && (
+        <details data-testid="admin-bypass-section" style={{
+          marginTop: 14,
+          background: "linear-gradient(135deg,#fef2f2,#fee2e2)",
+          border: "1.5px solid #fca5a5", borderRadius: 12,
+          padding: 12,
+        }}>
+          <summary style={{ cursor: "pointer", fontSize: 12,
+                              fontWeight: 700, color: "#7f1d1d" }}>
+            🔓 Modo administrador — acesso direto sem login
+          </summary>
+          <p style={{ margin: "8px 0", fontSize: 11, color: "#991b1b" }}>
+            Você está logado como admin/auditor. Pode abrir a Lousa de qualquer técnico.
+          </p>
+          <select
+            data-testid="admin-collab-select"
+            onChange={(e) => { const v = e.target.value; if (v) setCollabId(v); }}
+            defaultValue=""
+            style={{
+              width: "100%", padding: "10px 12px", borderRadius: 8,
+              border: "1.5px solid #dc2626", background: "white",
+              fontSize: 13, fontWeight: 600, color: "#0f172a",
+              cursor: "pointer",
+            }}>
+            <option value="" disabled>Selecione um colaborador…</option>
+            {collabs.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} {c.role ? `· ${c.role}` : ""}
+              </option>
+            ))}
+          </select>
+        </details>
+      )}
+    </div>
+  );
+}
+

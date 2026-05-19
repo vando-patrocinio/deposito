@@ -271,6 +271,46 @@ async def list_collaborators(request: Request):
     return await db.collaborators.find(q, {"_id": 0, "reference_face": 0}).to_list(500)
 
 
+@router.get("/collaborators/me")
+async def get_my_collaborator(user: dict = Depends(get_current_user)):
+    """Retorna o documento de Collaborator vinculado ao USER logado.
+
+    Mapeia o user → collaborator por:
+    1. user.collaborator_id (se foi vinculado explicitamente)
+    2. user.email batendo com collaborator.email (case-insensitive)
+    3. user.cpf batendo com collaborator.cpf (se ambos cadastrados)
+
+    Usado pelo app mobile do colaborador depois do login email+senha.
+    """
+    cid_company = (user.get("company_id") or DEMO_COMPANY_ID)
+    explicit = user.get("collaborator_id")
+    if explicit:
+        doc = await db.collaborators.find_one(
+            {"id": explicit, "company_id": cid_company},
+            {"_id": 0, "reference_face": 0},
+        )
+        if doc:
+            return doc
+    em = (user.get("email") or "").lower().strip()
+    if em:
+        doc = await db.collaborators.find_one(
+            {"company_id": cid_company,
+             "email": {"$regex": f"^{em}$", "$options": "i"}},
+            {"_id": 0, "reference_face": 0},
+        )
+        if doc:
+            return doc
+    cpf = (user.get("cpf") or "").strip().replace(".", "").replace("-", "")
+    if cpf and len(cpf) == 11:
+        doc = await db.collaborators.find_one(
+            {"company_id": cid_company, "cpf": cpf},
+            {"_id": 0, "reference_face": 0},
+        )
+        if doc:
+            return doc
+    raise HTTPException(404, "Nenhum colaborador vinculado a esse usuário")
+
+
 @router.get("/collaborators/{cid}")
 async def get_collaborator(cid: str):
     doc = await db.collaborators.find_one({"id": cid}, {"_id": 0, "reference_face": 0})

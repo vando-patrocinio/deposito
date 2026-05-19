@@ -947,6 +947,85 @@ async def list_all_tickets(user: dict = Depends(require_role("gestor"))):
     return {"tickets": raw}
 
 
+@router.get("/lousa/returned-notes")
+async def list_returned_notes(
+    user: dict = Depends(require_role("gestor")),
+    days_back: int = 30,
+):
+    """Notas que **retornaram**: bolhas que ficaram em aberto/pendente em
+    dias anteriores ao de hoje. Não voltam pra fila — entram só nesta lista
+    para o gestor decidir manualmente (reagendar, cancelar, ou liberar
+    pra outro técnico).
+
+    Critério (exclusivo desta listagem):
+    - status em `pendente`/`aberta`/`aguardando_atendimento`
+    - `_ticket_day_iso(t)` < hoje (calculado pelo helper já usado pela lousa)
+    - dentro da janela `days_back` (default 30 dias)
+
+    Bolhas reagendadas (`status=reagendada`) NÃO entram aqui — quem
+    reagenda já indicou que vai trabalhar de novo. Só "esquecidas".
+    """
+    q = tenant_filter(user)
+    collabs = await db.collaborators.find(q, {"_id": 0, "id": 1, "name": 1}).to_list(500)
+    cids = [c["id"] for c in collabs]
+    name_by_cid = {c["id"]: c.get("name", "—") for c in collabs}
+
+    today_iso = _today_br_iso()
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
+
+    raw = await db.tickets.find(
+        {"assigned_collaborator_id": {"$in": cids},
+         "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]},
+         "created_at": {"$gte": cutoff_iso}},
+        {"_id": 0},
+    ).to_list(5000)
+
+    returned = []
+    for t in raw:
+        day = _ticket_day_iso(t)
+        if not day or day >= today_iso:
+            continue
+        t["returned_from_date"] = day
+        t["technician_name"] = name_by_cid.get(t.get("assigned_collaborator_id"), "—")
+        try:
+            tdate = datetime.fromisoformat(day)
+            now_br = datetime.now(timezone.utc)
+            days_old = max(1, (now_br.date() - tdate.date()).days)
+        except Exception:
+            days_old = None
+        t["days_overdue"] = days_old
+        returned.append(t)
+
+    returned.sort(key=lambda x: (x.get("returned_from_date") or "", x.get("position", 0)))
+
+    # Resumo por técnico (cards)
+    by_tech: dict = {}
+    for t in returned:
+        tid = t.get("assigned_collaborator_id") or "—"
+        if tid not in by_tech:
+            by_tech[tid] = {
+                "collaborator_id": tid,
+                "name": name_by_cid.get(tid, "—"),
+                "count": 0,
+                "oldest_date": None,
+            }
+        by_tech[tid]["count"] += 1
+        d = t.get("returned_from_date")
+        cur_old = by_tech[tid]["oldest_date"]
+        if d and (cur_old is None or d < cur_old):
+            by_tech[tid]["oldest_date"] = d
+
+    return {
+        "ok": True,
+        "total": len(returned),
+        "items": returned,
+        "by_technician": list(by_tech.values()),
+        "today": today_iso,
+        "days_back": days_back,
+    }
+
+
+
 @router.get("/lousa/tickets/{ticket_id}")
 async def get_ticket(ticket_id: str, user: dict = Depends(get_current_user)):
     t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})

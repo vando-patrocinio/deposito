@@ -80,22 +80,13 @@ const ROLES = [
 ];
 
 export default function TabPermissionsCard({ data, setData }) {
-  // Migration soft: quando há config salva no banco mas faltam abas criadas
-  // DEPOIS (ex.: aihub adicionada após o primeiro save), mergeia com
-  // DEFAULT_TAB_PERMISSIONS — abas novas que estão liberadas no default
-  // aparecem JÁ TICADAS aqui. Quando o gestor faz qualquer toggle, o estado
-  // mergeado é consolidado no banco.
-  const perms = useMemo(() => {
-    if (!data.tab_permissions) return DEFAULT_TAB_PERMISSIONS;
-    const merged = { ...data.tab_permissions };
-    for (const role of Object.keys(DEFAULT_TAB_PERMISSIONS)) {
-      const defaults = DEFAULT_TAB_PERMISSIONS[role] || [];
-      const saved = merged[role] || [];
-      const missing = defaults.filter((id) => !saved.includes(id));
-      if (missing.length) merged[role] = [...saved, ...missing];
-    }
-    return merged;
-  }, [data.tab_permissions]);
+  // Quando NÃO HÁ config salva ainda (1ª vez), usa defaults completos.
+  // Quando JÁ HÁ config salva, respeita exatamente o que está no banco
+  // (não re-mescla com defaults — senão impede o gestor de DESMARCAR abas
+  // que estão no default).
+  // Para abas NOVAS criadas após a 1ª configuração, exibimos com checkbox
+  // desmarcado por padrão; o gestor decide ativar se quiser.
+  const perms = data.tab_permissions || DEFAULT_TAB_PERMISSIONS;
 
   const toggle = (role, tabId) => {
     const current = perms[role] || [];

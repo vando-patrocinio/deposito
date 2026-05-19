@@ -558,6 +558,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         (activeSubTab === "central_ont" ? <CentralOntPanel /> :
         (activeSubTab === "quality_notes" ? <LousaQualityNotesPanel /> : <></>))}
       {activeSubTab === "board" && <>
+      <ReturnedNotesCard onJump={(t) => setEditingTicket(t)} />
       {/* Grade horizontal — coluna por técnico */}
       <div style={{
         display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16, minHeight: 540,
@@ -1459,3 +1460,152 @@ const navBtnStyle = {
   cursor: "pointer", fontSize: 12, color: "#475569",
   boxShadow: "0 1px 2px rgba(15,23,42,.08)",
 };
+
+
+// ============================================================================
+// ReturnedNotesCard — Notas que retornaram (bolhas esquecidas de dias
+// anteriores). Bolhas que ficaram pendente/aberta/aguardando_atendimento e
+// não foram reagendadas. Exibe contagem por técnico + lista expansível.
+// Estado visual: cinza/desativado para indicar que não fazem mais parte
+// do dia de hoje.
+// ============================================================================
+function ReturnedNotesCard({ onJump }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const r = await api.lousaReturnedNotes(30);
+      setData(r);
+    } catch (e) {
+      console.warn("returned-notes fetch failed:", e?.message);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const t = setInterval(fetchData, 60_000);
+    return () => clearInterval(t);
+  }, [fetchData]);
+
+  if (loading || !data) return null;
+  const total = data.total || 0;
+  if (total === 0) return null;
+
+  return (
+    <div data-testid="returned-notes-card" style={{
+      marginBottom: 14, padding: 14, borderRadius: 12,
+      background: "linear-gradient(135deg, #f8fafc, #f1f5f9)",
+      border: "1.5px solid #cbd5e1",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10,
+                     justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: "#64748b", display: "grid", placeItems: "center",
+            color: "white", fontWeight: 800, fontSize: 14,
+          }}>
+            {total}
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 13, color: "#0f172a",
+                           letterSpacing: "-.01em" }}>
+              Notas que retornaram
+            </div>
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 1 }}>
+              Bolhas esquecidas em dias anteriores (não reagendadas) ·
+              últimos {data.days_back || 30} dias
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          data-testid="returned-notes-toggle"
+          style={{
+            background: "transparent", color: "#475569",
+            fontSize: 12, fontWeight: 700,
+            padding: "6px 14px", borderRadius: 8,
+            border: "1px solid #cbd5e1", cursor: "pointer",
+          }}>
+          {expanded ? "Ocultar" : `Ver todas (${total})`}
+        </button>
+      </div>
+
+      {/* Resumo por técnico (cards horizontais) */}
+      <div style={{
+        marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap",
+        overflowX: "auto",
+      }}>
+        {(data.by_technician || []).map((tech) => (
+          <div key={tech.collaborator_id} style={{
+            padding: "8px 12px", background: "white",
+            borderRadius: 8, border: "1px solid #e2e8f0",
+            minWidth: 130,
+          }}>
+            <div style={{ fontSize: 10, color: "#64748b",
+                           textTransform: "uppercase", letterSpacing: ".05em" }}>
+              {tech.name}
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a",
+                           marginTop: 2 }}>
+              {tech.count}
+            </div>
+            {tech.oldest_date && (
+              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+                desde {tech.oldest_date.slice(0, 10)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Lista expandida (bolhas desativadas) */}
+      {expanded && (
+        <div data-testid="returned-notes-list" style={{
+          marginTop: 14, display: "grid", gap: 6,
+          maxHeight: 360, overflowY: "auto",
+          padding: 8, background: "white", borderRadius: 8,
+          border: "1px solid #e2e8f0",
+        }}>
+          {(data.items || []).map((t) => (
+            <div key={t.id} onClick={() => onJump && onJump(t)}
+                 style={{
+              padding: "8px 10px", borderRadius: 6,
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              opacity: 0.7, cursor: onJump ? "pointer" : "default",
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              gap: 10, fontSize: 12,
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontWeight: 600, color: "#475569",
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  textDecoration: "line-through", textDecorationThickness: 1,
+                  textDecorationColor: "#94a3b8",
+                }}>
+                  {t.cliente_nome || t.title || t.id}
+                </div>
+                <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+                  {t.technician_name} · {t.returned_from_date?.slice(0, 10)}
+                  {t.days_overdue ? ` · há ${t.days_overdue} dia(s)` : ""}
+                  {t.status ? ` · ${t.status}` : ""}
+                </div>
+              </div>
+              <span style={{
+                background: "#fef3c7", color: "#92400e",
+                padding: "2px 8px", borderRadius: 999,
+                fontSize: 10, fontWeight: 700, whiteSpace: "nowrap",
+              }}>
+                ESQUECIDA
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
