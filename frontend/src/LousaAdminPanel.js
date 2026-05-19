@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { api } from "@/api";
 import { Button, Icon } from "@/ui";
 import { useAuth } from "@/AuthContext";
@@ -98,6 +98,19 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [refreshFlash, setRefreshFlash] = useState(false);
   const [alertsOn, setAlertsOnState] = useState(() => isAlertsEnabled());
   const [selectMode, setSelectMode] = useState(false);
+  // Focus mode: filtra a Lousa pra mostrar APENAS a grade de UM técnico
+  // (visão "estação de trabalho"). Persiste em localStorage por gestor.
+  const [focusTechId, setFocusTechId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem("lousa_focus_tech") || "";
+  });
+  const [techMenuOpen, setTechMenuOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (focusTechId) window.localStorage.setItem("lousa_focus_tech", focusTechId);
+    else window.localStorage.removeItem("lousa_focus_tech");
+  }, [focusTechId]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectedDate, setSelectedDate] = useState(() => todayLocalISO());
   const [atlazTenantDomain, setAtlazTenantDomain] = useState("");
@@ -338,7 +351,25 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         <div>
           <h1 className="page-title" style={{ fontSize: 22 }}>Lousa de Serviços</h1>
           <p className="page-subtitle">
-            {grid.columns.length} técnico(s) · {totalTickets} serviço(s) ativos — arraste para transferir entre técnicos · duplo-clique abre serviço pendente
+            {focusTechId ? (
+              <>
+                Visão focada · 1 técnico de {grid.columns.length} · arraste para reordenar slots ·
+                <button
+                  onClick={() => setFocusTechId("")}
+                  data-testid="lousa-clear-focus"
+                  style={{
+                    marginLeft: 6, padding: "1px 8px", borderRadius: 999,
+                    background: "#e0e7ff", color: "#3730a3",
+                    border: "1px solid #c7d2fe", fontSize: 11,
+                    fontWeight: 700, cursor: "pointer",
+                  }}
+                >
+                  ✕ Mostrar todos
+                </button>
+              </>
+            ) : (
+              <>{grid.columns.length} técnico(s) · {totalTickets} serviço(s) ativos — arraste para transferir entre técnicos · duplo-clique abre serviço pendente</>
+            )}
             {overdueCount > 0 && (
               <span data-testid="overdue-counter" className="pill pill--danger" style={{ marginLeft: 10, fontWeight: 700 }}>
                 {overdueCount} atrasada(s)
@@ -346,144 +377,220 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             )}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <Button
-            variant="soft"
-            onClick={() => setShowSentinela(true)}
-            data-testid="open-sentinela-btn"
-            title="Alertas da Sentinela Lousa AI"
-            style={{
-              position: "relative",
-              background: sentinelaCount > 0 ? "#fef2f2" : "#f0fdf4",
-              color: sentinelaCount > 0 ? "#991b1b" : "#15803d",
-              border: `1px solid ${sentinelaCount > 0 ? "#fecaca" : "#bbf7d0"}`,
-              fontWeight: 700,
-            }}
-          >
-            🛡 Sentinela
-            {sentinelaCount > 0 && (
-              <span data-testid="sentinela-badge" style={{
-                marginLeft: 6, padding: "1px 7px", borderRadius: 999,
-                background: "#dc2626", color: "#fff",
-                fontSize: 11, fontWeight: 800,
-                fontFamily: "ui-monospace, monospace",
-              }}>{sentinelaCount}</span>
+        <div data-testid="lousa-toolbar" style={{
+          display: "flex", gap: 6, alignItems: "stretch", flexWrap: "wrap",
+          background: "#f8fafc",
+          padding: 4, borderRadius: 12,
+          border: "1px solid #e2e8f0",
+        }}>
+          {/* ─── Grupo 1: Sentinela + Data ─── */}
+          <ToolbarGroup>
+            <ToolbarBtn
+              onClick={() => setShowSentinela(true)}
+              data-testid="open-sentinela-btn"
+              title="Alertas da Sentinela Lousa AI"
+              accent={sentinelaCount > 0 ? "danger" : "success"}
+            >
+              <span style={{ fontSize: 13 }}>🛡</span>
+              <span>Sentinela</span>
+              {sentinelaCount > 0 && (
+                <span data-testid="sentinela-badge" style={{
+                  marginLeft: 2, padding: "1px 6px", borderRadius: 999,
+                  background: "#dc2626", color: "#fff",
+                  fontSize: 10, fontWeight: 800,
+                  fontFamily: "ui-monospace, monospace",
+                }}>{sentinelaCount}</span>
+              )}
+            </ToolbarBtn>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <DateNavigator
+                selectedDate={selectedDate}
+                isToday={isToday}
+                onPrev={() => shiftDay(-1)}
+                onNext={() => shiftDay(1)}
+                onToday={goToday}
+                onChange={setSelectedDate}
+              />
+            </div>
+          </ToolbarGroup>
+
+          {/* ─── Grupo 2: Filtro técnico + Visualização ─── */}
+          <ToolbarGroup>
+            <div style={{ position: "relative" }}>
+              <ToolbarBtn
+                onClick={() => setTechMenuOpen((v) => !v)}
+                data-testid="lousa-tech-filter-btn"
+                title="Focar em apenas 1 técnico (visão estação de trabalho)"
+                accent={focusTechId ? "primary" : "neutral"}
+                style={{ minWidth: 168 }}
+              >
+                {(() => {
+                  const focused = focusTechId
+                    ? grid.columns.find((c) => c.collaborator.id === focusTechId)?.collaborator
+                    : null;
+                  if (focused) {
+                    return (
+                      <>
+                        <span style={{
+                          width: 18, height: 18, borderRadius: "50%",
+                          background: focused.avatar ? `url(${focused.avatar}) center/cover` : "linear-gradient(135deg,#0d9488,#0f766e)",
+                          color: "white", fontSize: 9, fontWeight: 800,
+                          display: "grid", placeItems: "center", flexShrink: 0,
+                        }}>
+                          {!focused.avatar && (focused.name?.[0] || "?").toUpperCase()}
+                        </span>
+                        <span style={{ flex: 1, textAlign: "left", overflow: "hidden",
+                                       textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {focused.name}
+                        </span>
+                      </>
+                    );
+                  }
+                  return (
+                    <>
+                      <span style={{ fontSize: 13 }}>👥</span>
+                      <span style={{ flex: 1, textAlign: "left" }}>Todos os técnicos</span>
+                    </>
+                  );
+                })()}
+                <span style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
+              </ToolbarBtn>
+              {techMenuOpen && (
+                <TechFilterMenu
+                  columns={grid.columns}
+                  focusTechId={focusTechId}
+                  onSelect={(id) => { setFocusTechId(id); setTechMenuOpen(false); }}
+                  onClose={() => setTechMenuOpen(false)}
+                />
+              )}
+            </div>
+            <ToolbarBtn
+              onClick={toggleSelectMode}
+              data-testid="lousa-select-mode-toggle"
+              title={selectMode ? "Sair do modo seleção" : "Selecionar várias bolhas para ação coletiva"}
+              accent={selectMode ? "primary" : "neutral"}
+            >
+              <span style={{ fontSize: 13 }}>{selectMode ? "✕" : "☐"}</span>
+              <span>{selectMode ? "Sair seleção" : "Selecionar"}</span>
+            </ToolbarBtn>
+            {selectMode && (
+              <ToolbarBtn
+                onClick={selectAllOverdue}
+                data-testid="lousa-select-overdue-btn"
+                title="Selecionar todas as bolhas atrasadas (SLA estourado)"
+                accent="danger"
+                disabled={overdueCount === 0}
+              >
+                <span style={{ fontSize: 13 }}>⚠</span>
+                <span>Atrasadas · {overdueCount}</span>
+              </ToolbarBtn>
             )}
-          </Button>
-          <DateNavigator
-            selectedDate={selectedDate}
-            isToday={isToday}
-            onPrev={() => shiftDay(-1)}
-            onNext={() => shiftDay(1)}
-            onToday={goToday}
-            onChange={setSelectedDate}
-          />
-          {user?.role === "auditor" && (
-            <Button
-              variant="soft"
-              onClick={async () => {
-                const phrase = await window.prompt(
-                  "⚠ ATENÇÃO: isto APAGA TODAS as bolhas da empresa, incluindo as em execução.\n" +
-                  "Ação irreversível e auditada (logs).\n\n" +
-                  "Digite APAGAR TUDO para confirmar:");
-                if (phrase !== "APAGAR TUDO") return;
-                try {
-                  const res = await api.lousaWipeAll();
-                  await window.alert(`✓ ${res.deleted_count} bolha(s) apagadas.`);
-                  refresh();
-                } catch (e) {
-                  await window.alert("Falha: " + (e?.response?.data?.detail || e.message));
-                }
-              }}
-              data-testid="lousa-wipe-all-btn"
-              title="AUDITOR — Apaga todas as bolhas. Ação irreversível e logada."
-              style={{
-                background: "#fee2e2", color: "#7f1d1d",
-                border: "1px solid #f87171", fontWeight: 700,
-              }}
+            <ToolbarBtn
+              onClick={() => setShowHistory(true)}
+              data-testid="lousa-history-btn"
+              title="Histórico completo de notas (dia/mês/ano/período)"
+              accent="neutral"
             >
-              🗑 Apagar todas
-            </Button>
-          )}
-          <Button
-            variant="soft"
-            onClick={toggleSelectMode}
-            data-testid="lousa-select-mode-toggle"
-            title={selectMode ? "Sair do modo seleção" : "Selecionar várias bolhas para ação coletiva"}
-            style={{
-              background: selectMode ? "#e0e7ff" : "#f1f5f9",
-              color: selectMode ? "#3730a3" : "#475569",
-              border: `1px solid ${selectMode ? "#a5b4fc" : "#cbd5e1"}`,
-            }}
-          >
-            {selectMode ? "✕ Sair seleção" : "🔲 Selecionar"}
-          </Button>
-          {selectMode && (
-            <Button
-              variant="soft"
-              onClick={selectAllOverdue}
-              data-testid="lousa-select-overdue-btn"
-              title="Selecionar todas as bolhas atrasadas (SLA estourado)"
-              style={{
-                background: "#fee2e2", color: "#7f1d1d",
-                border: "1px solid #fca5a5", fontWeight: 700,
-              }}
-              disabled={overdueCount === 0}
+              <span style={{ fontSize: 13 }}>📚</span>
+              <span>Histórico</span>
+            </ToolbarBtn>
+          </ToolbarGroup>
+
+          {/* ─── Grupo 3: Operação ─── */}
+          <ToolbarGroup>
+            <ToolbarBtn
+              onClick={toggleAlerts}
+              data-testid="lousa-sla-alerts-toggle"
+              title={alertsOn ? "Alertas sonoros ativos — clique para desligar" : "Ativar alertas sonoros para serviços atrasados"}
+              accent={alertsOn ? "success" : "neutral"}
             >
-              ⚠ Atrasadas ({overdueCount})
-            </Button>
-          )}
-          <Button
-            variant="soft"
-            onClick={() => setShowHistory(true)}
-            data-testid="lousa-history-btn"
-            title="Histórico completo de notas (dia/mês/ano/período)"
-          >
-            📚 Histórico
-          </Button>
-          <Button
-            variant="soft"
-            onClick={() => setShowReleaseStuck(true)}
-            data-testid="lousa-release-stuck-btn"
-            title="EMERGÊNCIA — libera bolha presa do técnico (ação auditada)"
-            style={{
-              background: "#fee2e2", color: "#991b1b",
-              border: "1.5px solid #dc2626", fontWeight: 800,
-            }}
-          >
-            🚨 Liberar bolha
-          </Button>
-          <Button
-            variant="soft"
-            onClick={toggleAlerts}
-            data-testid="lousa-sla-alerts-toggle"
-            title={alertsOn ? "Alertas sonoros ativos — clique para desligar" : "Ativar alertas sonoros para serviços atrasados"}
-            style={{
-              background: alertsOn ? "#dcfce7" : "#f1f5f9",
-              color: alertsOn ? "#166534" : "#475569",
-              border: `1px solid ${alertsOn ? "#86efac" : "#cbd5e1"}`,
-            }}
-          >
-            {alertsOn ? "🔔 Alertas ON" : "🔕 Alertas OFF"}
-          </Button>
-          <Button
-            variant="soft"
-            onClick={refresh}
-            disabled={refreshing}
-            data-testid="lousa-refresh-btn"
-            style={{
-              background: refreshFlash ? "#dcfce7" : refreshing ? "#fef9c3" : "#dbeafe",
-              color: refreshFlash ? "#166534" : refreshing ? "#92400e" : "#1e40af",
-              border: `1px solid ${refreshFlash ? "#86efac" : refreshing ? "#fde68a" : "#93c5fd"}`,
-              transition: "background-color .25s, color .25s",
-            }}
-          >
-            {refreshing ? "⏳ Atualizando..." : refreshFlash ? "✓ Atualizado" : "🔄 Atualizar"}
-          </Button>
-          <Button onClick={openCreateTicket} data-testid="lousa-create-btn"
-            title={atlazTenantDomain ? `Abre o painel Atlaz (${atlazTenantDomain}) em nova aba` : "Cria uma nova nota local"}>
-            <Icon name="plus" /> Nova nota{atlazTenantDomain ? " 🔗" : ""}
-          </Button>
+              <span style={{ fontSize: 13 }}>{alertsOn ? "🔔" : "🔕"}</span>
+              <span>{alertsOn ? "Alertas" : "Mudo"}</span>
+            </ToolbarBtn>
+            <ToolbarBtn
+              onClick={refresh}
+              disabled={refreshing}
+              data-testid="lousa-refresh-btn"
+              accent={refreshFlash ? "success" : "neutral"}
+              style={{ transition: "background-color .25s, color .25s" }}
+            >
+              <span style={{ fontSize: 13 }}>{refreshing ? "⏳" : refreshFlash ? "✓" : "🔄"}</span>
+              <span>{refreshing ? "Atualizando" : refreshFlash ? "Atualizado" : "Atualizar"}</span>
+            </ToolbarBtn>
+            <ToolbarBtn
+              onClick={() => setShowReleaseStuck(true)}
+              data-testid="lousa-release-stuck-btn"
+              title="EMERGÊNCIA — libera bolha presa do técnico (ação auditada)"
+              accent="danger"
+            >
+              <span style={{ fontSize: 13 }}>🚨</span>
+              <span>Liberar bolha</span>
+            </ToolbarBtn>
+          </ToolbarGroup>
+
+          {/* ─── Grupo 4: CTA + Overflow ─── */}
+          <ToolbarGroup last>
+            <button
+              onClick={openCreateTicket}
+              data-testid="lousa-create-btn"
+              title={atlazTenantDomain ? `Abre o painel Atlaz (${atlazTenantDomain}) em nova aba` : "Cria uma nova nota local"}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "8px 14px", borderRadius: 8,
+                background: "#0f172a", color: "white",
+                border: "1px solid #0f172a",
+                fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                transition: "transform .12s, box-shadow .12s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(15,23,42,.18)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
+            >
+              <span style={{ fontSize: 14, lineHeight: 0 }}>+</span>
+              <span>Nova nota{atlazTenantDomain ? " 🔗" : ""}</span>
+            </button>
+            {user?.role === "auditor" && (
+              <div style={{ position: "relative" }}>
+                <ToolbarBtn
+                  onClick={() => setOverflowOpen((v) => !v)}
+                  data-testid="lousa-overflow-btn"
+                  title="Mais ações (auditor)"
+                  accent="neutral"
+                  style={{ padding: "8px 10px" }}
+                >
+                  <span style={{ fontSize: 16, lineHeight: 0.5, letterSpacing: 1 }}>⋯</span>
+                </ToolbarBtn>
+                {overflowOpen && (
+                  <OverflowMenu onClose={() => setOverflowOpen(false)}>
+                    <button
+                      onClick={async () => {
+                        setOverflowOpen(false);
+                        const phrase = await window.prompt(
+                          "⚠ ATENÇÃO: isto APAGA TODAS as bolhas da empresa, incluindo as em execução.\n" +
+                          "Ação irreversível e auditada (logs).\n\n" +
+                          "Digite APAGAR TUDO para confirmar:");
+                        if (phrase !== "APAGAR TUDO") return;
+                        try {
+                          const res = await api.lousaWipeAll();
+                          await window.alert(`✓ ${res.deleted_count} bolha(s) apagadas.`);
+                          refresh();
+                        } catch (e) {
+                          await window.alert("Falha: " + (e?.response?.data?.detail || e.message));
+                        }
+                      }}
+                      data-testid="lousa-wipe-all-btn"
+                      style={overflowItemStyle("#dc2626")}
+                    >
+                      <span style={{ fontSize: 14 }}>🗑</span>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 12.5 }}>Apagar todas as bolhas</div>
+                        <div style={{ fontSize: 10.5, opacity: 0.7 }}>Ação irreversível · auditor only</div>
+                      </div>
+                    </button>
+                  </OverflowMenu>
+                )}
+              </div>
+            )}
+          </ToolbarGroup>
         </div>
       </div>
 
@@ -572,7 +679,10 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             Nenhum técnico cadastrado.
           </div>
         )}
-        {grid.columns.map((col) => (
+        {(focusTechId
+          ? grid.columns.filter((c) => c.collaborator.id === focusTechId)
+          : grid.columns
+        ).map((col) => (
           <TechColumn
             key={col.collaborator.id + tick}
             column={col}
@@ -594,6 +704,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             selectMode={selectMode}
             selectedIds={selectedIds}
             onToggleSelect={toggleTicketSelected}
+            wide={!!focusTechId}
           />
         ))}
       </div>
@@ -717,7 +828,7 @@ function OptimizeRouteButton({ collaboratorId }) {
 }
 
 
-function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, maxPerSlot, onSlotDrop, selectMode, selectedIds, onToggleSelect }) {
+function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, maxPerSlot, onSlotDrop, selectMode, selectedIds, onToggleSelect, wide }) {
   const c = column.collaborator;
   const state = column.clock_state;
   const slots = column.slots || [];
@@ -733,7 +844,9 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       style={{
-        flex: "0 0 320px", maxWidth: 320,
+        flex: wide ? "1 1 auto" : "0 0 320px",
+        maxWidth: wide ? "100%" : 320,
+        minWidth: wide ? 480 : undefined,
         background: isDropTarget ? "var(--accent-soft)" : "var(--bg-surface)",
         border: `1px ${isDropTarget ? "dashed" : "solid"} ${isDropTarget ? "var(--accent)" : "var(--border-default)"}`,
         borderRadius: 12, padding: 12, transition: "all .15s",
@@ -2086,3 +2199,210 @@ function InsightsPanel({ onJumpTicket }) {
 }
 
 
+
+
+// ============================================================
+// Toolbar primitives — usados pelo header compacto da Lousa
+// ============================================================
+
+function ToolbarGroup({ children, last }) {
+  return (
+    <div style={{
+      display: "inline-flex", gap: 3, alignItems: "stretch",
+      padding: "2px 6px 2px 0",
+      borderRight: last ? "none" : "1px solid #e2e8f0",
+      marginRight: last ? 0 : 3,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+const _accentMap = {
+  neutral: { bg: "transparent", color: "#475569", hover: "#e2e8f0", border: "transparent" },
+  primary: { bg: "#0f172a", color: "white", hover: "#1e293b", border: "#0f172a" },
+  success: { bg: "#ecfdf5", color: "#047857", hover: "#d1fae5", border: "#a7f3d0" },
+  danger:  { bg: "#fef2f2", color: "#b91c1c", hover: "#fee2e2", border: "#fecaca" },
+};
+
+function ToolbarBtn({ children, accent = "neutral", disabled, style, ...rest }) {
+  const a = _accentMap[accent] || _accentMap.neutral;
+  return (
+    <button
+      {...rest}
+      disabled={disabled}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        padding: "8px 12px", borderRadius: 8,
+        background: a.bg, color: a.color,
+        border: `1px solid ${a.border}`,
+        fontSize: 12.5, fontWeight: 600,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        transition: "background-color .12s, color .12s",
+        whiteSpace: "nowrap",
+        lineHeight: 1.1,
+        ...(style || {}),
+      }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = a.hover; }}
+      onMouseLeave={(e) => { if (!disabled) e.currentTarget.style.background = a.bg; }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TechFilterMenu({ columns, focusTechId, onSelect, onClose }) {
+  const [search, setSearch] = useState("");
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return columns;
+    return columns.filter((c) => (c.collaborator.name || "").toLowerCase().includes(q));
+  }, [columns, search]);
+
+  // Fecha ao clicar fora
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (!e.target.closest?.("[data-tech-menu]")) onClose();
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [onClose]);
+
+  return (
+    <div data-tech-menu data-testid="lousa-tech-filter-menu" style={{
+      position: "absolute", top: "calc(100% + 6px)", left: 0,
+      width: 280, maxHeight: 380, overflowY: "auto",
+      background: "white",
+      border: "1px solid #e2e8f0",
+      borderRadius: 10,
+      boxShadow: "0 12px 32px rgba(15,23,42,.16)",
+      zIndex: 1500,
+      padding: 6,
+    }}>
+      <div style={{ padding: "6px 8px" }}>
+        <input
+          autoFocus
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar técnico…"
+          data-testid="lousa-tech-filter-search"
+          style={{
+            width: "100%", padding: "6px 10px",
+            border: "1px solid #e2e8f0", borderRadius: 7,
+            fontSize: 12, outline: "none",
+          }}
+        />
+      </div>
+      <button
+        onClick={() => onSelect("")}
+        data-testid="lousa-tech-filter-all"
+        style={{
+          display: "flex", alignItems: "center", gap: 9, width: "100%",
+          padding: "8px 10px", border: "none", background: !focusTechId ? "#f1f5f9" : "transparent",
+          borderRadius: 7, cursor: "pointer", textAlign: "left",
+          color: "#0f172a", fontSize: 12.5, fontWeight: 700,
+          marginBottom: 4,
+        }}
+      >
+        <span style={{
+          width: 24, height: 24, borderRadius: "50%",
+          background: "#e2e8f0", color: "#475569",
+          display: "grid", placeItems: "center", fontSize: 11, flexShrink: 0,
+        }}>👥</span>
+        <span style={{ flex: 1 }}>Todos os técnicos</span>
+        <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>
+          {columns.length}
+        </span>
+        {!focusTechId && <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>}
+      </button>
+      <div style={{ height: 1, background: "#f1f5f9", margin: "2px 4px 6px" }} />
+      {filtered.length === 0 && (
+        <div style={{ padding: "16px 10px", textAlign: "center",
+                        color: "#94a3b8", fontSize: 12 }}>
+          Nenhum técnico bate com "{search}"
+        </div>
+      )}
+      {filtered.map((col) => {
+        const c = col.collaborator;
+        const isActive = focusTechId === c.id;
+        const total = col.tickets?.length || 0;
+        const overdue = (col.tickets || []).filter((t) => t.sla?.status === "overdue").length;
+        return (
+          <button
+            key={c.id}
+            onClick={() => onSelect(c.id)}
+            data-testid={`lousa-tech-filter-${c.id}`}
+            style={{
+              display: "flex", alignItems: "center", gap: 9, width: "100%",
+              padding: "8px 10px", border: "none",
+              background: isActive ? "#f1f5f9" : "transparent",
+              borderRadius: 7, cursor: "pointer", textAlign: "left",
+              color: "#0f172a", fontSize: 12.5, fontWeight: 500,
+            }}
+            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "#f8fafc"; }}
+            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+          >
+            <span style={{
+              width: 24, height: 24, borderRadius: "50%",
+              background: c.avatar ? `url(${c.avatar}) center/cover` : "linear-gradient(135deg,#0d9488,#0f766e)",
+              color: "white", fontSize: 10, fontWeight: 700,
+              display: "grid", placeItems: "center", flexShrink: 0,
+            }}>
+              {!c.avatar && (c.name?.[0] || "?").toUpperCase()}
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, overflow: "hidden",
+                             textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {c.name}
+              </div>
+              <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 1 }}>
+                {total} ativo{total === 1 ? "" : "s"}
+                {overdue > 0 && (
+                  <span style={{ marginLeft: 5, color: "#dc2626", fontWeight: 700 }}>
+                    · {overdue} atrasada{overdue === 1 ? "" : "s"}
+                  </span>
+                )}
+              </div>
+            </div>
+            {isActive && <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function OverflowMenu({ children, onClose }) {
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (!e.target.closest?.("[data-overflow-menu]")) onClose();
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [onClose]);
+  return (
+    <div data-overflow-menu data-testid="lousa-overflow-menu" style={{
+      position: "absolute", top: "calc(100% + 6px)", right: 0,
+      width: 240,
+      background: "white",
+      border: "1px solid #e2e8f0",
+      borderRadius: 10,
+      boxShadow: "0 12px 32px rgba(15,23,42,.16)",
+      zIndex: 1500,
+      padding: 4,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function overflowItemStyle(color) {
+  return {
+    display: "flex", alignItems: "center", gap: 10,
+    padding: "9px 10px", width: "100%",
+    border: "none", background: "transparent",
+    borderRadius: 7, cursor: "pointer", textAlign: "left",
+    color: color || "#0f172a",
+  };
+}

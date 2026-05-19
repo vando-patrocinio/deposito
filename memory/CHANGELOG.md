@@ -1,5 +1,31 @@
 # PontoIA — Changelog
 
+## Fev 2026 — Lousa: Toolbar compacta + Filtro de técnico único
+
+### Toolbar refatorada (estilo Notion/Linear)
+Antes: 9 botões em 2 linhas com cores misturadas (vermelho, azul, preto, branco), caótico. Agora: **uma linha** com 4 grupos visualmente separados por divisores sutis, paleta monocromática neutra com acentos discretos (vermelho só para "Liberar bolha" e badge da Sentinela, preto sólido só pro CTA primário "Nova nota"):
+
+- **Grupo 1 (Navegação)**: 🛡 Sentinela · 📅 Data
+- **Grupo 2 (Visualização)**: 👥 Filtro de técnico · ☐ Selecionar · 📚 Histórico
+- **Grupo 3 (Operação)**: 🔔/🔕 Alertas · 🔄 Atualizar · 🚨 Liberar bolha
+- **Grupo 4 (Ações)**: + Nova nota (CTA) · ⋯ Overflow (Apagar todas — auditor only, movido pra fora do clique frequente)
+
+Adicionei `ToolbarGroup`, `ToolbarBtn`, `TechFilterMenu`, `OverflowMenu` como primitivos no fim do arquivo. Sistema de `accent` (neutral/primary/success/danger) padroniza cores.
+
+### Filtro de técnico único (Focus mode)
+- Dropdown na toolbar com avatar do técnico focado
+- Menu com busca, contadores (ativos + atrasadas por técnico) e opção "Todos os técnicos"
+- Persistência via `localStorage` (key `lousa_focus_tech`) — sobrevive ao F5
+- Quando focado: grade vira coluna larga (`flex: 1 1 auto`, `min-width: 480px`) ao invés de 320px fixos
+- Subtítulo da página muda para "Visão focada · 1 técnico de N" + botão `✕ Mostrar todos`
+- Prop `wide` adicionada ao `TechColumn` pra distinguir visualmente as duas modalidades
+
+### Verificação
+- `yarn build` ✅ limpo
+- Screenshots validados: toolbar nova / dropdown aberto com lista + busca / focus mode com Eddy em coluna ampliada
+
+
+
 ## Fev 2026 — Histórico de Ações (Dialog History Panel) + Hotfix `tabs is not defined`
 
 ### Feature: Painel de auditoria de modais
