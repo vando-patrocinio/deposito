@@ -1027,6 +1027,90 @@ async def top_intents(days: int = Query(7, ge=1, le=90),
     return {"items": items[:10], "total": total}
 
 
+@router.get("/dashboard/handoffs")
+async def handoffs_summary(days: int = Query(7, ge=1, le=90),
+                              user: dict = Depends(require_role("gestor"))):
+    """Métricas de handoff entre agentes IA.
+
+    Agrega de aihub_wa_messages (is_handoff_greeting=True):
+      - total_handoffs
+      - by_route: [{from, to, count, pct}]
+      - by_agent_received: [{agent, count}]
+      - by_agent_sent: [{agent, count}]
+      - timeline: [{date, count}]
+      - top_phones: conversas com mais handoffs (sinal de prompt fraco)
+    """
+    cid = _cid(user)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    msgs = await db.aihub_wa_messages.find(
+        {"company_id": cid, "is_handoff_greeting": True,
+         "created_at": {"$gte": cutoff}},
+        {"_id": 0, "agent": 1, "handoff_from": 1, "created_at": 1,
+         "phone": 1},
+    ).to_list(5000)
+
+    by_route: Dict[str, int] = {}
+    by_received: Dict[str, int] = {}
+    by_sent: Dict[str, int] = {}
+    by_date: Dict[str, int] = {}
+    by_phone: Dict[str, int] = {}
+    for m in msgs:
+        frm = m.get("handoff_from") or "?"
+        to = m.get("agent") or "?"
+        key = f"{frm} → {to}"
+        by_route[key] = by_route.get(key, 0) + 1
+        by_received[to] = by_received.get(to, 0) + 1
+        by_sent[frm] = by_sent.get(frm, 0) + 1
+        d = (m.get("created_at") or "")[:10]
+        if d:
+            by_date[d] = by_date.get(d, 0) + 1
+        if m.get("phone"):
+            by_phone[m["phone"]] = by_phone.get(m["phone"], 0) + 1
+
+    total = len(msgs)
+    routes = sorted(
+        [{"route": k, "from": k.split(" → ")[0], "to": k.split(" → ")[1],
+          "count": v,
+          "pct": round(v / total * 100, 1) if total else 0}
+         for k, v in by_route.items()],
+        key=lambda x: -x["count"],
+    )
+    received = sorted(
+        [{"agent": k, "count": v} for k, v in by_received.items()],
+        key=lambda x: -x["count"],
+    )
+    sent = sorted(
+        [{"agent": k, "count": v} for k, v in by_sent.items()],
+        key=lambda x: -x["count"],
+    )
+    timeline = sorted(
+        [{"date": k, "count": v} for k, v in by_date.items()],
+        key=lambda x: x["date"],
+    )
+    hot_phones = sorted(
+        [{"phone": k, "count": v} for k, v in by_phone.items()],
+        key=lambda x: -x["count"],
+    )[:5]
+    # Conta total de respostas IA pra calcular taxa de handoff
+    total_replies = await db.aihub_wa_messages.count_documents({
+        "company_id": cid, "auto_reply": True,
+        "direction": "outbound", "created_at": {"$gte": cutoff},
+    })
+    handoff_rate = round(total / total_replies * 100, 1) if total_replies else 0
+
+    return {
+        "days": days,
+        "total_handoffs": total,
+        "total_ai_replies": total_replies,
+        "handoff_rate_pct": handoff_rate,
+        "routes": routes,
+        "agents_received": received,
+        "agents_sent": sent,
+        "timeline": timeline,
+        "hot_phones": hot_phones,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Alertas proativos
 # ---------------------------------------------------------------------------
