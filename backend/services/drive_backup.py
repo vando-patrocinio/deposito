@@ -57,6 +57,10 @@ BACKUP_COLLECTIONS: List[tuple[str, bool]] = [
     ("users", True),
     ("companies", False),
     ("plan_adjustments_scheduled", False),
+    # Sessão WhatsApp (Baileys creds + Signal keys) — SEMPRE incluída,
+    # nunca mascarada (sem o valor real a sessão não restaura). É o que
+    # permite voltar do backup sem precisar escanear QR de novo.
+    ("wa_auth_state", False),
 ]
 
 SECRET_FIELDS = {
@@ -197,7 +201,17 @@ async def _collect_snapshot(company_id: str, include_secrets: bool) -> Dict[str,
     }
     for coll_name, must_mask in BACKUP_COLLECTIONS:
         try:
-            cur = db[coll_name].find({"company_id": company_id}, {"_id": 0})
+            # wa_auth_state usa session_id (não company_id) — captura tudo
+            # da empresa via convenção: session_id == company_id OU "isabella"
+            # (default). Em multi-tenant futuro, mapeia por env.
+            if coll_name == "wa_auth_state":
+                wa_session = os.environ.get("WA_SESSION_ID", "isabella")
+                q = {"session_id": {"$in": [wa_session, company_id]}}
+                proj = {"_id": 0}
+            else:
+                q = {"company_id": company_id}
+                proj = {"_id": 0}
+            cur = db[coll_name].find(q, proj)
             docs = await cur.to_list(10000)
             if must_mask and not include_secrets:
                 docs = [_mask(d) for d in docs]
@@ -478,6 +492,27 @@ async def restore_backup(company_id: str, file_id: str,
             skipped.append(coll_name)
             continue
         if not isinstance(docs, list) or not docs:
+            continue
+        # === wa_auth_state: chave composta session_id + key ===
+        if coll_name == "wa_auth_state":
+            inserted = 0
+            if mode == "replace":
+                wa_session = os.environ.get("WA_SESSION_ID", "isabella")
+                await db.wa_auth_state.delete_many(
+                    {"session_id": {"$in": [wa_session, company_id]}}
+                )
+            for doc in docs:
+                if not isinstance(doc, dict):
+                    continue
+                sid = doc.get("session_id")
+                key = doc.get("key")
+                if not (sid and key):
+                    continue
+                await db.wa_auth_state.replace_one(
+                    {"session_id": sid, "key": key}, doc, upsert=True,
+                )
+                inserted += 1
+            restored[coll_name] = inserted
             continue
         # Modo replace: limpa antes
         if mode == "replace":

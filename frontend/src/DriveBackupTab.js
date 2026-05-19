@@ -181,7 +181,14 @@ export default function DriveBackupTab() {
 
         <div style={{ marginTop: 14, padding: 10, background: "#f1f5f9", borderRadius: 8, fontSize: 11, color: "#475569", lineHeight: 1.55 }}>
           <Shield size={11} style={{ display: "inline", marginRight: 4 }} />
-          Backup automático todo dia às <strong>3h (BRT)</strong>. Snapshot inclui: settings, branding, planos, assinantes, técnicos, agentes IA, configurações de integração (com secrets mascarados).
+          Backup automático todo dia às <strong>3h (BRT)</strong>. Snapshot inclui: settings, branding, planos, assinantes, técnicos, agentes IA, configurações de integração (com secrets mascarados), <strong>sessão WhatsApp (Baileys)</strong> e mais.
+        </div>
+
+        <div style={{ marginTop: 8, padding: 10, background: "#ecfeff", border: "1px solid #67e8f9", borderRadius: 8, fontSize: 11, color: "#0e7490", lineHeight: 1.55 }} data-testid="drive-wa-session-info">
+          <strong>🟢 Inclui sessão WhatsApp:</strong> a coleção <code>wa_auth_state</code>{" "}
+          (creds + keys Signal protocol) entra em cada snapshot. Se o Mongo
+          travar, você restaura aqui e o Baileys reconecta automaticamente
+          sem precisar escanear QR Code de novo.
         </div>
 
         {error && (
