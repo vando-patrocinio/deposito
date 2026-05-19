@@ -1042,6 +1042,8 @@ export const api = {
     client.get("/whatsapp-baileys/health-summary").then((r) => r.data),
   lousaReturnedNotes: (daysBack = 30) =>
     client.get(`/lousa/returned-notes?days_back=${daysBack}`).then((r) => r.data),
+  lousaPingQualityReport: (daysBack = 7) =>
+    client.get(`/lousa/ping-quality-report?days_back=${daysBack}`).then((r) => r.data),
   collabGrantMobileAccess: (cid) =>
     client.post(`/collaborators/${cid}/grant-mobile-access`).then((r) => r.data),
   networkPing: ({ host, count = 4, port = 80, ticketId = null }) => {

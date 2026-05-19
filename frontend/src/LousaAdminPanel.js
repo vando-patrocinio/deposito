@@ -559,6 +559,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         (activeSubTab === "quality_notes" ? <LousaQualityNotesPanel /> : <></>))}
       {activeSubTab === "board" && <>
       <ReturnedNotesCard onJump={(t) => setEditingTicket(t)} />
+      <PingQualityCard />
       {/* Grade horizontal — coluna por técnico */}
       <div style={{
         display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16, minHeight: 540,
@@ -1605,6 +1606,126 @@ function ReturnedNotesCard({ onJump }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+
+
+// ============================================================================
+// PingQualityCard — % de bolhas finalizadas com teste de ping feito, por técnico.
+// KPI de qualidade: técnico que pula o ping vira métrica vermelha pro gestor.
+// ============================================================================
+function PingQualityCard() {
+  const [data, setData] = useState(null);
+  const [days, setDays] = useState(7);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const r = await api.lousaPingQualityReport(days);
+      setData(r);
+    } catch (e) {
+      console.warn("ping-quality fetch failed:", e?.message);
+    } finally { setLoading(false); }
+  }, [days]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchData();
+    const t = setInterval(fetchData, 90_000);
+    return () => clearInterval(t);
+  }, [fetchData]);
+
+  if (loading || !data) return null;
+  const total = data.totals?.finalized || 0;
+  if (total === 0) return null;
+
+  const rate = data.totals?.rate_pct || 0;
+  const accent = rate >= 80 ? "#16a34a" : rate >= 50 ? "#f59e0b" : "#dc2626";
+
+  return (
+    <div data-testid="ping-quality-card" style={{
+      marginBottom: 14, padding: 14, borderRadius: 12,
+      background: "linear-gradient(135deg, #ecfeff, #cffafe)",
+      border: "1.5px solid #67e8f9",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12,
+                     justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: 12, background: accent,
+            display: "grid", placeItems: "center", color: "white",
+            fontWeight: 800, fontSize: 16,
+          }}>
+            {rate.toFixed(0)}%
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 13, color: "#0c4a6e",
+                           letterSpacing: "-.01em" }}>
+              🛰 Qualidade do atendimento — Teste de Ping
+            </div>
+            <div style={{ fontSize: 11, color: "#0e7490", marginTop: 2 }}>
+              {data.totals.with_ping} de {data.totals.finalized} bolhas finalizadas
+              tiveram ping nos últimos {data.days_back} dias
+            </div>
+          </div>
+        </div>
+        <select value={days}
+                 onChange={(e) => setDays(parseInt(e.target.value, 10))}
+                 data-testid="ping-quality-days"
+                 style={{
+                   padding: "8px 12px", borderRadius: 8,
+                   background: "white", border: "1px solid #67e8f9",
+                   color: "#0c4a6e", fontSize: 12, fontWeight: 700,
+                   cursor: "pointer",
+                 }}>
+          <option value="1">Hoje (1 dia)</option>
+          <option value="7">7 dias</option>
+          <option value="30">30 dias</option>
+        </select>
+      </div>
+
+      <div style={{
+        marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap",
+        overflowX: "auto",
+      }}>
+        {(data.by_technician || []).map((tech) => {
+          const techRate = tech.rate_pct || 0;
+          const techAccent = techRate >= 80 ? "#16a34a"
+                              : techRate >= 50 ? "#f59e0b" : "#dc2626";
+          return (
+            <div key={tech.collaborator_id} style={{
+              padding: "8px 12px", background: "white",
+              borderRadius: 8, border: "1px solid #e2e8f0",
+              minWidth: 150,
+            }}>
+              <div style={{ fontSize: 10, color: "#64748b",
+                             textTransform: "uppercase", letterSpacing: ".05em",
+                             whiteSpace: "nowrap", overflow: "hidden",
+                             textOverflow: "ellipsis" }}>
+                {tech.name}
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 4,
+                             marginTop: 2 }}>
+                <span style={{ fontSize: 18, fontWeight: 800,
+                                 color: techAccent }}>
+                  {techRate.toFixed(0)}%
+                </span>
+                <span style={{ fontSize: 10, color: "#64748b" }}>
+                  {tech.with_ping}/{tech.finalized}
+                </span>
+              </div>
+              {tech.without_ping > 0 && (
+                <div style={{ fontSize: 9, color: "#dc2626", marginTop: 2,
+                                fontWeight: 700 }}>
+                  ⚠️ {tech.without_ping} sem ping
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

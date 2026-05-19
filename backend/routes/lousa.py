@@ -1025,6 +1025,84 @@ async def list_returned_notes(
     }
 
 
+@router.get("/lousa/ping-quality-report")
+async def lousa_ping_quality_report(
+    user: dict = Depends(require_role("gestor")),
+    days_back: int = 7,
+):
+    """KPI: % de bolhas FINALIZADAS que tiveram teste de ping realizado,
+    agrupado por técnico nos últimos N dias.
+
+    Critério "tem ping":
+      - completion_data.ping_summary contém "✓" ou "respondeu" (positivo) OR
+      - "realizado" (qualquer resultado, mesmo falha) — desde que NÃO seja
+        "NÃO FOI REALIZADO"
+
+    Resposta:
+      {
+        "days_back": 7,
+        "totals": { "finalized": 120, "with_ping": 78, "without_ping": 42,
+                     "rate_pct": 65.0 },
+        "by_technician": [ { collaborator_id, name, finalized, with_ping,
+                              without_ping, rate_pct }, ... ]
+      }
+    """
+    q = tenant_filter(user)
+    collabs = await db.collaborators.find(
+        q, {"_id": 0, "id": 1, "name": 1},
+    ).to_list(500)
+    cids = [c["id"] for c in collabs]
+    name_by_cid = {c["id"]: c.get("name", "—") for c in collabs}
+
+    since = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
+    tickets = await db.tickets.find(
+        {"assigned_collaborator_id": {"$in": cids},
+         "status": "finalizada",
+         "closed_at": {"$gte": since}},
+        {"_id": 0, "id": 1, "assigned_collaborator_id": 1,
+         "closed_at": 1, "completion_data.ping_summary": 1},
+    ).to_list(20000)
+
+    by_tech: dict = {}
+    total_fin = total_with = 0
+    for t in tickets:
+        tid = t.get("assigned_collaborator_id") or "—"
+        if tid not in by_tech:
+            by_tech[tid] = {
+                "collaborator_id": tid,
+                "name": name_by_cid.get(tid, "—"),
+                "finalized": 0, "with_ping": 0, "without_ping": 0,
+            }
+        by_tech[tid]["finalized"] += 1
+        total_fin += 1
+        cd = (t.get("completion_data") or {})
+        summary = (cd.get("ping_summary") or "").strip()
+        has_ping = bool(summary) and "NÃO FOI REALIZADO" not in summary.upper()
+        if has_ping:
+            by_tech[tid]["with_ping"] += 1
+            total_with += 1
+        else:
+            by_tech[tid]["without_ping"] += 1
+
+    rows = []
+    for r in by_tech.values():
+        n = r["finalized"]
+        r["rate_pct"] = round(100.0 * r["with_ping"] / n, 1) if n else 0.0
+        rows.append(r)
+    rows.sort(key=lambda x: (-x["finalized"], -x["rate_pct"]))
+
+    return {
+        "days_back": days_back,
+        "totals": {
+            "finalized": total_fin,
+            "with_ping": total_with,
+            "without_ping": total_fin - total_with,
+            "rate_pct": round(100.0 * total_with / total_fin, 1) if total_fin else 0.0,
+        },
+        "by_technician": rows,
+    }
+
+
 
 @router.get("/lousa/tickets/{ticket_id}")
 async def get_ticket(ticket_id: str, user: dict = Depends(get_current_user)):
