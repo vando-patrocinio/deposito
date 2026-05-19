@@ -1,4 +1,45 @@
 # PontoIA — Changelog
+
+## Mai 2026 — v6.80: Refactor multi-agente IA (best practices 2026)
+
+### Problema
+- Álvaro, Camila e Teste estavam com `model_provider=None` / `model_name=None` (caíam no fallback frágil).
+- Prompts misturavam estilo + regras + handoff em texto corrido (LLMs entregam melhor com seções XML-like).
+- Sem regra anti-loop: cliente que mudava de assunto era repassado eternamente entre agentes.
+- Reasoning não era instruído como interno → modelo às vezes vazava pensamento.
+
+### Solução aplicada
+1. **Migration `refine_agents_v680.py`** reescreve os 4 prompts (Isabella/Álvaro/Camila/Teste) seguindo padrão 2026:
+   - Estrutura XML-like: `<role>`, `<scope>`, `<reasoning>`, `<flow>`, `<output>`, `<examples>`, `<global_rules>`, `<handoff_protocol>`, `<sticker_handling>`
+   - Top-load: scope + anti-alucinação primeiro
+   - Reasoning interno (modelo pensa mas só envia resultado final)
+   - Few-shots específicos por agente (3-4 exemplos com handoff incluído)
+   - Output strict: bolhas ≤180c, máx 4 bolhas, sem markdown, emojis comedidos
+2. **Modelo explícito** para Álvaro/Camila/Teste (`deepseek/deepseek-chat`), Isabella mantém `deepseek-v3.1-terminus`.
+3. **Anti-loop dupla camada**:
+   - No prompt: regra R8 das `<global_rules>` ("se passou por handoff nas últimas 3 msgs, NÃO devolva")
+   - No código (`whatsapp_baileys.py`): conta `aihub_wa_messages.direction=inbound` com `created_at > last_handoff_at`. Se < 3, ignora marker e mantém agente atual.
+4. **handoff_detection.py** agora aceita `recent_handoff=True` e retorna `None` (anti-loop no pré-LLM também).
+5. **Documentação visual** do fluxo em `/app/memory/AI_AGENTS_FLOW.md` (diagrama, regras, como testar).
+
+### Validação
+3 cenários testados via `/api/whatsapp-baileys/isabella/test`:
+- ✅ "Quanto custa internet?" → Isabella saúda + pergunta bairro + 3 bolhas curtas, 1 emoji/bolha
+- ✅ "Internet caiu" → frase calorosa + `[ROTEAR_SUPORTE]` em linha separada
+- ✅ "Manda boleto" → transição + `[ROTEAR_COBRANCA]` em linha separada
+
+Latência ~2s, prompt 33k chars (com toda orquestração), formato perfeito.
+
+### Files changed
+- `+ /app/backend/migrations/refine_agents_v680.py` (novo, idempotente)
+- `~ /app/backend/services/wa/handoff_detection.py` (parâmetro `recent_handoff`)
+- `~ /app/backend/routes/whatsapp_baileys.py` (anti-loop pré-LLM + pós-LLM)
+- `+ /app/memory/AI_AGENTS_FLOW.md` (doc canônico do fluxo)
+- `~ /app/memory/test_credentials.md` (atualizado para v6.80)
+
+---
+
+
 # PontoIA — Changelog
 
 ## Fev 18, 2026 — Fix P0: foto/PDF inbound do WhatsApp não chegavam ao painel

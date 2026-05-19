@@ -1625,9 +1625,31 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     # pra essa mensagem (ex.: Isabella em conversa antiga, cliente agora pede
     # boleto), troca aqui mesmo. Economiza tokens + corrige leaks de escopo
     # que o LLM falha em detectar via marker.
+    #
+    # Anti-loop: se a conversa recebeu handoff nas últimas 3 mensagens do
+    # cliente, NÃO força novo redirecionamento — deixa o agente atual
+    # responder. Evita ping-pong infinito.
     try:
         from services.wa.handoff_detection import detect_forced_handoff
-        forced_target = detect_forced_handoff(agent.get("name"), user_text)
+        conv_doc = await db.wa_conversations.find_one(
+            {"company_id": cid, "phone": phone},
+            {"_id": 0, "last_handoff_at": 1},
+        )
+        recent_handoff = False
+        last_ho_iso = (conv_doc or {}).get("last_handoff_at")
+        if last_ho_iso:
+            try:
+                msgs_since_ho = await db.aihub_wa_messages.count_documents({
+                    "company_id": cid, "phone": phone,
+                    "direction": "inbound",
+                    "created_at": {"$gt": last_ho_iso},
+                })
+                recent_handoff = msgs_since_ho < 3
+            except Exception:
+                recent_handoff = False
+        forced_target = detect_forced_handoff(
+            agent.get("name"), user_text, recent_handoff=recent_handoff,
+        )
         if forced_target:
             forced_agent = await db.aihub_agents.find_one(
                 {"company_id": cid, "name": forced_target, "active": True},
@@ -2053,6 +2075,36 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                 handoff_target_name = target_name
                 reply_text = reply_text.replace(marker, "").strip()
                 break
+
+        # ANTI-LOOP: se a conversa já recebeu handoff nas últimas 3 mensagens
+        # do cliente, ignoramos a tentativa de re-rotear pra evitar
+        # ping-pong infinito (cliente que troca de tema toda hora).
+        # Limpamos o marker e deixamos o agente atual responder normalmente.
+        if handoff_target_name:
+            try:
+                conv = await db.wa_conversations.find_one(
+                    {"company_id": cid, "phone": phone},
+                    {"_id": 0, "last_handoff_at": 1},
+                )
+                last_ho = (conv or {}).get("last_handoff_at")
+                if last_ho:
+                    # Conta turnos de cliente desde o último handoff
+                    inbound_since = await db.aihub_wa_messages.count_documents({
+                        "company_id": cid,
+                        "phone": phone,
+                        "direction": "inbound",
+                        "created_at": {"$gt": last_ho},
+                    })
+                    if inbound_since < 3:
+                        logger.info(
+                            "[wa-baileys] handoff %s→%s BLOQUEADO (anti-loop: "
+                            "%d msgs do cliente desde último handoff em %s)",
+                            agent.get("name"), handoff_target_name,
+                            inbound_since, last_ho,
+                        )
+                        handoff_target_name = None
+            except Exception as e:
+                logger.info("[wa-baileys] anti-loop check skip: %s", e)
 
         if handoff_target_name:
             try:

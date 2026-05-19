@@ -68,17 +68,22 @@ _TARGET_PATTERNS = [
 
 
 def detect_forced_handoff(current_agent_name: Optional[str],
-                            user_text: str) -> Optional[str]:
+                            user_text: str,
+                            recent_handoff: bool = False) -> Optional[str]:
     """Retorna o nome do agente alvo se a mensagem do cliente claramente
     pertence a outra área. Retorna None se:
       - texto vazio
       - o match é pro próprio agente atual
       - nenhum padrão forte casa
+      - `recent_handoff=True` (anti-loop: conversa acabou de ser rerroteada)
 
     Conservador: prefere falso-negativo (deixa o LLM decidir) a
     falso-positivo (handoff errado).
     """
     if not user_text or len(user_text.strip()) < 5:
+        return None
+    if recent_handoff:
+        # Anti-loop: se acabou de receber handoff, não força novo
         return None
     text = user_text.strip()
     current = (current_agent_name or "").lower()
