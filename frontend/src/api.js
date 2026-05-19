@@ -926,6 +926,15 @@ export const api = {
   finCashAccountDelete: (id) =>
     client.delete(`/financeiro/cash-accounts/${id}`).then((r) => r.data),
 
+  // Filial (unidade/branch). Phase 1 cobre Financeiro (link com bills).
+  finFiliaisList: (only_active = false) =>
+    client.get(`/financeiro/filiais`, { params: { only_active } }).then((r) => r.data),
+  finFilialCreate: (data) => client.post(`/financeiro/filiais`, data).then((r) => r.data),
+  finFilialUpdate: (id, data) =>
+    client.put(`/financeiro/filiais/${id}`, data).then((r) => r.data),
+  finFilialDelete: (id) =>
+    client.delete(`/financeiro/filiais/${id}`).then((r) => r.data),
+
   // ===== Rede IA =====
   redeIaBairros: () => client.get(`/rede-ia/bairros`).then((r) => r.data),
   redeIaBairrosPublic: (collab_id) =>

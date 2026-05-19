@@ -73,6 +73,16 @@ class CashAccountIn(BaseModel):
     active: bool = True
 
 
+class FilialIn(BaseModel):
+    """Filial (unidade/branch). Conceito global do sistema — colaboradores,
+    clientes, contas e tickets podem ser vinculados a uma filial. Phase 1
+    cobre o cadastro mínimo (apenas nome + ativo) e linkagem com contas
+    do Financeiro. Phase 2 estende para colaboradores/clientes/lousa.
+    """
+    name: str = Field(..., min_length=1, max_length=120)
+    active: bool = True
+
+
 # ---------------------------------------------------------------------------
 # Generic CRUD helpers
 # ---------------------------------------------------------------------------
@@ -246,6 +256,44 @@ async def delete_cash_account(doc_id: str,
                               user: dict = Depends(require_finance())):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     return await _delete("fin_cash_accounts", cid, doc_id)
+
+
+# ===========================================================================
+# FILIAL (unidade/branch)
+# ===========================================================================
+@router.get("/filiais")
+async def list_filiais(only_active: bool = False,
+                       user: dict = Depends(require_finance())):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    return await _list("filiais", cid, only_active)
+
+
+@router.post("/filiais")
+async def create_filial(payload: FilialIn,
+                        user: dict = Depends(require_finance())):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    return await _create("filiais", cid, "fil", payload.model_dump())
+
+
+@router.put("/filiais/{doc_id}")
+async def update_filial(doc_id: str, payload: FilialIn,
+                        user: dict = Depends(require_finance())):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    return await _update("filiais", cid, doc_id, payload.model_dump())
+
+
+@router.delete("/filiais/{doc_id}")
+async def delete_filial(doc_id: str,
+                        user: dict = Depends(require_finance())):
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    # Limpa filial_id das contas vinculadas pra não deixar referência órfã
+    await db.fin_bills_payable.update_many(
+        {"company_id": cid, "filial_id": doc_id},
+        {"$unset": {"filial_id": ""}},
+    )
+    return await _delete("filiais", cid, doc_id)
+
+
 
 
 # ===========================================================================

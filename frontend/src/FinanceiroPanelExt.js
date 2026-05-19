@@ -23,31 +23,36 @@ const fmtMoney = (v) =>
 // =========================================================================
 export function BillsTab() {
   const [items, setItems] = useState([]);
-  const [filter, setFilter] = useState({ status: "" });
+  const [filter, setFilter] = useState({ status: "", filial_id: "" });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [paying, setPaying] = useState(null);
   const [refs, setRefs] = useState({ suppliers: [], categories: [],
-                                       payment_methods: [], cash_accounts: [] });
+                                       payment_methods: [], cash_accounts: [],
+                                       filiais: [] });
 
   async function reload() {
     setLoading(true);
     try {
-      const params = filter.status ? `?status=${filter.status}` : "";
-      const r = await api._client.get(`/financeiro/bills${params}`)
+      const params = new URLSearchParams();
+      if (filter.status) params.set("status", filter.status);
+      if (filter.filial_id) params.set("filial_id", filter.filial_id);
+      const qs = params.toString() ? `?${params}` : "";
+      const r = await api._client.get(`/financeiro/bills${qs}`)
                           .then((r) => r.data);
       setItems(r);
     } finally { setLoading(false); }
   }
   async function loadRefs() {
-    const [s, c, pm, ca] = await Promise.all([
+    const [s, c, pm, ca, fi] = await Promise.all([
       api.finSuppliersList(true), api.finCategoriesList(true),
       api.finPaymentMethodsList(true), api.finCashAccountsList(true),
+      api.finFiliaisList(true).catch(() => []),
     ]);
     setRefs({ suppliers: s, categories: c, payment_methods: pm,
-              cash_accounts: ca });
+              cash_accounts: ca, filiais: fi });
   }
-  useEffect(() => { reload(); }, [filter.status]); // eslint-disable-line
+  useEffect(() => { reload(); }, [filter.status, filter.filial_id]); // eslint-disable-line
   useEffect(() => { loadRefs(); }, []);
 
   async function onDelete(b) {
@@ -81,7 +86,7 @@ export function BillsTab() {
             { v: "cancelled", l: "Canceladas" },
           ].map((f) => (
             <button key={f.v}
-              onClick={() => setFilter({ status: f.v })}
+              onClick={() => setFilter((s) => ({ ...s, status: f.v }))}
               data-testid={`bills-filter-${f.v || "all"}`}
               style={{
                 padding: "6px 12px", borderRadius: 8,
@@ -93,6 +98,26 @@ export function BillsTab() {
               {f.l}
             </button>
           ))}
+          {refs.filiais.length > 0 && (
+            <select
+              data-testid="bills-filial-filter"
+              value={filter.filial_id}
+              onChange={(e) => setFilter((s) => ({ ...s, filial_id: e.target.value }))}
+              style={{
+                padding: "6px 10px", borderRadius: 8,
+                border: "1px solid #e2e8f0", background: "white",
+                fontSize: 12, fontWeight: 600, color: "#475569", cursor: "pointer",
+                marginLeft: 4,
+              }}
+              title="Filtrar por filial"
+            >
+              <option value="">🏢 Todas filiais</option>
+              {refs.filiais.map((f) => (
+                <option key={f.id} value={f.id}>🏢 {f.name}</option>
+              ))}
+              <option value="__none__">⊘ Sem filial</option>
+            </select>
+          )}
         </div>
         <Button onClick={() => setEditing({})}
                 data-testid="bills-new-btn">
@@ -135,6 +160,7 @@ export function BillsTab() {
 
 function BillsTable({ items, refs, onEdit, onPay, onDelete }) {
   const supById = Object.fromEntries(refs.suppliers.map((s) => [s.id, s.name]));
+  const filById = Object.fromEntries((refs.filiais || []).map((f) => [f.id, f.name]));
   return (
     <div style={{ border: "1px solid #e2e8f0", borderRadius: 10,
                   overflow: "hidden" }}>
@@ -142,10 +168,10 @@ function BillsTable({ items, refs, onEdit, onPay, onDelete }) {
                       fontSize: 13 }}>
         <thead>
           <tr style={{ background: "#f8fafc" }}>
-            {["Descrição", "Vencimento", "Fornecedor", "Valor", "Status", ""]
+            {["Descrição", "Vencimento", "Fornecedor", "Filial", "Valor", "Status", ""]
               .map((h, i) => (
               <th key={i} style={{
-                padding: "10px 14px", textAlign: i === 3 ? "right" : "left",
+                padding: "10px 14px", textAlign: i === 4 ? "right" : "left",
                 fontSize: 11, fontWeight: 700, color: "#475569",
                 textTransform: "uppercase", letterSpacing: 0.4,
               }}>{h}</th>
@@ -163,6 +189,17 @@ function BillsTable({ items, refs, onEdit, onPay, onDelete }) {
               </td>
               <td style={{ padding: "10px 14px", color: "#64748b" }}>
                 {supById[b.supplier_id] || "—"}
+              </td>
+              <td style={{ padding: "10px 14px" }}>
+                {b.filial_id && filById[b.filial_id] ? (
+                  <span data-testid={`bill-filial-${b.id}`} style={{
+                    padding: "2px 8px", borderRadius: 999,
+                    background: "#e0f2fe", color: "#075985",
+                    fontSize: 11, fontWeight: 600,
+                  }}>🏢 {filById[b.filial_id]}</span>
+                ) : (
+                  <span style={{ color: "#cbd5e1", fontSize: 11 }}>—</span>
+                )}
               </td>
               <td style={{ padding: "10px 14px", textAlign: "right",
                             fontWeight: 600 }}>
@@ -223,6 +260,7 @@ function BillForm({ initial, refs, onClose, onSaved, onRefsChanged }) {
     category_id: initial?.category_id || "",
     payment_method_id: initial?.payment_method_id || "",
     cash_account_id: initial?.cash_account_id || "",
+    filial_id: initial?.filial_id || "",
     document_number: initial?.document_number || "",
     notes: initial?.notes || "",
   });
@@ -235,6 +273,7 @@ function BillForm({ initial, refs, onClose, onSaved, onRefsChanged }) {
   // Inline create modals
   const [creatingSupplier, setCreatingSupplier] = useState(false);
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [creatingFilial, setCreatingFilial] = useState(false);
 
   const totalAmount = Number(form.amount) || 0;
   const parcelValue = recurrent ? totalAmount
@@ -394,6 +433,23 @@ function BillForm({ initial, refs, onClose, onSaved, onRefsChanged }) {
                     title="Criar categoria">+</button>
         </div>
       </Field>
+      <Field label="Filial">
+        <div style={{ display: "flex", gap: 6 }}>
+          <select style={{ ...inputStyle, flex: 1 }} value={form.filial_id}
+                  onChange={(e) => setForm({ ...form, filial_id: e.target.value })}
+                  data-testid="bill-fld-filial">
+            <option value="">— Sem filial —</option>
+            {(refs.filiais || []).map((f) => (
+              <option key={f.id} value={f.id}>🏢 {f.name}</option>
+            ))}
+          </select>
+          <button type="button"
+                    onClick={() => setCreatingFilial(true)}
+                    data-testid="bill-filial-new-btn"
+                    style={inlineCreateBtnStyle}
+                    title="Criar filial">+</button>
+        </div>
+      </Field>
       <Field label="Nº Documento">
         <input style={inputStyle} value={form.document_number}
                onChange={(e) => setForm({ ...form, document_number: e.target.value })} />
@@ -445,6 +501,22 @@ function BillForm({ initial, refs, onClose, onSaved, onRefsChanged }) {
             setCreatingCategory(false);
           }}
           endpoint="/financeiro/categories"
+        />
+      )}
+      {creatingFilial && (
+        <InlineCreate
+          title="Nova filial"
+          fields={[
+            { key: "name", label: "Nome *", required: true,
+              placeholder: "Ex.: Matriz, Filial Centro, Norte..." },
+          ]}
+          onClose={() => setCreatingFilial(false)}
+          onCreated={async (created) => {
+            await onRefsChanged?.();
+            setForm((s) => ({ ...s, filial_id: created.id }));
+            setCreatingFilial(false);
+          }}
+          endpoint="/financeiro/filiais"
         />
       )}
     </Modal>

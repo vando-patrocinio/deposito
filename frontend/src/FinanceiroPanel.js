@@ -4,7 +4,7 @@ import { Button, Card, Field, inputStyle } from "@/ui";
 import {
   TrendingUp, FileText, Wallet, CreditCard, Tag, Truck,
   Plus, Pencil, Trash2, Search, DollarSign, Inbox, RefreshCw,
-  Upload,
+  Upload, Building2,
 } from "lucide-react";
 import { BillsTab, CashFlowTab, ReceivablesTab } from "@/FinanceiroPanelExt";
 import ReadjustmentTab from "@/FinanceiroReadjustmentTab";
@@ -32,6 +32,7 @@ const SUBTABS = [
   { id: "metodo", label: "Método de Cobrança", icon: CreditCard, phase: 2 },
   { id: "categoria", label: "Categoria", icon: Tag, phase: 2 },
   { id: "fornecedor", label: "Fornecedor", icon: Truck, phase: 2 },
+  { id: "filial", label: "Filial", icon: Building2, phase: 2 },
 ];
 
 const fmtMoney = (v) =>
@@ -107,6 +108,7 @@ export default function FinanceiroPanel() {
       {active === "metodo" && <PaymentMethodsTab />}
       {active === "categoria" && <CategoriesTab />}
       {active === "fornecedor" && <SuppliersTab />}
+      {active === "filial" && <FiliaisTab />}
     </div>
   );
 }
@@ -585,3 +587,30 @@ function CashAccountsTab() {
     />
   );
 }
+
+// =========================================================================
+// FILIAIS (Phase 1 — apenas nome + ativo)
+// =========================================================================
+function FiliaisTab() {
+  return (
+    <CrudTab
+      title="Filiais"
+      testIdPrefix="fin-fil"
+      columns={[
+        { key: "name", label: "Nome" },
+        { key: "active", label: "Ativo",
+          render: (r) => r.active ? "✓" : "—" },
+      ]}
+      fields={[
+        { key: "name", label: "Nome da filial", required: true,
+          placeholder: "Ex.: Matriz Centro, Filial Norte..." },
+        { key: "active", label: "Ativa", type: "boolean", default: true },
+      ]}
+      listApi={() => api.finFiliaisList()}
+      createApi={api.finFilialCreate}
+      updateApi={api.finFilialUpdate}
+      deleteApi={api.finFilialDelete}
+    />
+  );
+}
+

@@ -38,6 +38,7 @@ class BillIn(BaseModel):
     category_id: Optional[str] = None
     payment_method_id: Optional[str] = None
     cash_account_id: Optional[str] = None
+    filial_id: Optional[str] = None  # Phase 1: linkagem com filial
     notes: Optional[str] = None
     document_number: Optional[str] = None
     # Parcelamento — se installments_count > 1, cria N parcelas a partir de
@@ -58,6 +59,7 @@ class BillUpdate(BaseModel):
     category_id: Optional[str] = None
     payment_method_id: Optional[str] = None
     cash_account_id: Optional[str] = None
+    filial_id: Optional[str] = None
     notes: Optional[str] = None
     document_number: Optional[str] = None
     status: Optional[str] = Field(None, pattern="^(pending|paid|overdue|cancelled)$")
@@ -106,6 +108,7 @@ async def _update_balance(cid: str, cash_account_id: str, delta: float) -> None:
 async def list_bills(
     status: Optional[str] = Query(None),
     supplier_id: Optional[str] = Query(None),
+    filial_id: Optional[str] = Query(None),
     from_date: Optional[str] = Query(None),
     to_date: Optional[str] = Query(None),
     user: dict = Depends(require_finance()),
@@ -116,6 +119,12 @@ async def list_bills(
         q["status"] = status
     if supplier_id:
         q["supplier_id"] = supplier_id
+    if filial_id:
+        # "__none__" filtra contas sem filial atribuída (caso "Sem filial")
+        if filial_id == "__none__":
+            q["$or"] = [{"filial_id": None}, {"filial_id": {"$exists": False}}]
+        else:
+            q["filial_id"] = filial_id
     if from_date or to_date:
         q["due_date"] = {}
         if from_date:

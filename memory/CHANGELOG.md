@@ -1,5 +1,37 @@
 # PontoIA — Changelog
 
+## Fev 2026 — Filiais (unidades/branches) — Phase 1
+
+### Feature
+Conceito de Filial introduzido no sistema. Phase 1 cobre cadastro + linkagem com contas do Financeiro. Phase 2 estenderá pra colaboradores, clientes, lousa.
+
+**Backend** (`/api/financeiro/filiais`):
+- Schema `FilialIn`: apenas `name` + `active` (cadastro mínimo)
+- CRUD completo no mesmo padrão dos outros recursos (`/api/financeiro/filiais`)
+- Delete limpa `filial_id` das contas vinculadas (`$unset` em `fin_bills_payable`)
+- Campo `filial_id` adicionado a `BillIn` e `BillUpdate` (opcional)
+- Endpoint `GET /api/financeiro/bills` aceita `?filial_id=xxx` (com sentinela `__none__` pra contas sem filial)
+
+**Frontend**:
+- API client estendido (`finFiliaisList/Create/Update/Delete`)
+- **Aba "Filial" nova** no FinanceiroPanel (CrudTab — reuso do padrão existente)
+- **BillForm** ganhou campo Filial com seletor `<select>` + botão `+` para criação inline (mesmo padrão Fornecedor/Categoria)
+- **BillsTab** filtro `<select>` na toolbar (🏢 Todas filiais / 🏢 Cada / ⊘ Sem filial)
+- **BillsTable** ganhou coluna "Filial" com pílula azul claro `🏢 <Nome>` ou em branco
+
+**4. Migration soft (P1 4b)**: contas existentes ficam com filial vazia. Usuário atribui manualmente.
+
+### Verificação
+- Testes curl validados: criar filial · criar bill com `filial_id` · filtrar bills por `filial_id`
+- Build limpo · Lint passa (frontend + backend)
+- Screenshots: aba Filial com lista + modal "Novo — Filiais" / modal "Nova conta" com seletor Filial entre Categoria e Nº Documento
+
+### Próximas fases
+- Phase 2: estender filial_id pra collaborators, clients, lousa_tickets
+- Phase 3: breakdown por filial no Dashboard (saldo separado, gráficos individuais)
+
+
+
 ## Fev 2026 — Lousa Focus Mode: Timeline View horizontal
 
 ### Feature
