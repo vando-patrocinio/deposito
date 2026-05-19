@@ -630,6 +630,19 @@ async def _emergent_chat_fallback(messages, model, temperature, max_tokens,
         if not api_key:
             continue
         try:
+            # PROMPT CACHING: Anthropic permite cachear até 4 blocos do system
+            # prompt. Quando ativado, custo de input cai de ~$3 → ~$0.30 por
+            # milhão de tokens cacheados (90% economia). TTL: 5 min ephemeral.
+            # Usamos SDK Anthropic direto pra ter controle sobre cache_control.
+            if prov_name == "anthropic" and len(sys_prompt) > 1024:
+                content = await _anthropic_with_cache(
+                    api_key=api_key, model=model_name,
+                    system_prompt=sys_prompt, user_msg=user_msg,
+                    max_tokens=max_tokens, temperature=temperature,
+                )
+                return {"content": content,
+                        "model": model_name, "provider": prov_name}
+            # Caminho normal pros outros providers
             chat = LlmChat(
                 api_key=api_key, session_id=session_id,
                 system_message=sys_prompt,
@@ -648,6 +661,60 @@ async def _emergent_chat_fallback(messages, model, temperature, max_tokens,
         "Nenhuma key de IA configurada. "
         "Configure em Configurações → AI Keys.",
     )
+
+
+async def _anthropic_with_cache(api_key: str, model: str,
+                                   system_prompt: str, user_msg: str,
+                                   max_tokens: int = 500,
+                                   temperature: float = 0.4) -> str:
+    """Chama Claude com prompt caching ativado no system_prompt.
+
+    Custos com cache:
+      - 1ª chamada (cache write):  preço normal + 25%
+      - Chamadas seguintes (hit):  10% do preço normal (90% mais barato)
+    TTL ephemeral: 5 minutos sem reuso → expira.
+    Suporta até 4 blocos cacheáveis por requisição.
+    """
+    from anthropic import AsyncAnthropic
+    client = AsyncAnthropic(api_key=api_key)
+    # Marca o system prompt como cacheável (1 bloco único)
+    system_blocks = [{
+        "type": "text",
+        "text": system_prompt,
+        "cache_control": {"type": "ephemeral"},
+    }]
+    resp = await client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        system=system_blocks,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+    # Log de uso pra dashboard
+    try:
+        usage = resp.usage
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        normal_input = getattr(usage, "input_tokens", 0) or 0
+        output = getattr(usage, "output_tokens", 0) or 0
+        if cache_read > 0:
+            logger.info(
+                "[motor-ia][cache] HIT — read=%d, write=%d, input=%d, output=%d "
+                "(economia ~%d%%)",
+                cache_read, cache_write, normal_input, output,
+                int(cache_read / (cache_read + normal_input + 1) * 90),
+            )
+        elif cache_write > 0:
+            logger.info(
+                "[motor-ia][cache] WRITE — criando cache de %d tokens",
+                cache_write,
+            )
+    except Exception as e:
+        logger.debug("[motor-ia][cache] log usage falhou: %s", e)
+    # Extrai texto
+    if resp.content and len(resp.content) > 0:
+        return resp.content[0].text.strip()
+    return ""
 
 
 # ---------------------------------------------------------------------------
