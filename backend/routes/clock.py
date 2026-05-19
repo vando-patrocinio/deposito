@@ -319,6 +319,109 @@ async def get_collaborator(cid: str):
     return doc
 
 
+# ---------------------------------------------------------------------------
+# Grant mobile access — cria/atualiza User vinculado ao Collaborator para
+# que ele possa logar no app mobile via email+senha (em vez do link único).
+# Gera senha aleatória curta e retorna pro gestor copiar/enviar via WhatsApp.
+# ---------------------------------------------------------------------------
+@router.post("/collaborators/{cid}/grant-mobile-access")
+async def grant_mobile_access(
+    cid: str,
+    user: dict = Depends(require_role("gestor")),
+):
+    import secrets
+    import string
+    from auth import hash_password
+
+    collab = await db.collaborators.find_one(
+        {"id": cid}, {"_id": 0, "id": 1, "name": 1, "email": 1, "phone": 1,
+                      "company_id": 1, "role": 1, "active": 1},
+    )
+    if not collab:
+        raise HTTPException(404, "Colaborador não encontrado")
+    if not collab.get("active", True):
+        raise HTTPException(400, "Colaborador inativo — reative antes")
+
+    email = (collab.get("email") or "").strip().lower()
+    if not email:
+        # Sem email cadastrado → gera email-placeholder com phone
+        phone = (collab.get("phone") or "").strip()
+        digits = "".join([c for c in phone if c.isdigit()])
+        if not digits:
+            raise HTTPException(
+                400, "Colaborador não tem email nem telefone — cadastre antes",
+            )
+        email = f"tec{digits}@local.app"
+
+    # Senha curta amigável (10 chars: 6 letras+4 dígitos)
+    alphabet = string.ascii_lowercase
+    pwd_letters = "".join(secrets.choice(alphabet) for _ in range(6))
+    pwd_digits = "".join(secrets.choice(string.digits) for _ in range(4))
+    new_password = pwd_letters + pwd_digits
+    pwd_hash = hash_password(new_password)
+
+    cid_company = collab.get("company_id") or DEMO_COMPANY_ID
+    now = now_iso()
+
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        # Atualiza o user existente: reset de senha + vincula collaborator_id
+        await db.users.update_one(
+            {"id": existing["id"]},
+            {"$set": {
+                "password_hash": pwd_hash,
+                "collaborator_id": cid,
+                "company_id": cid_company,
+                "active": True,
+                "mobile_access_granted_at": now,
+                "active_session_id": None,  # força re-login
+                "updated_at": now,
+            }},
+        )
+        action = "reset"
+        user_id = existing["id"]
+    else:
+        # Cria user novo
+        user_id = f"usr-{uuid.uuid4().hex[:10]}"
+        new_user = {
+            "id": user_id,
+            "email": email,
+            "name": collab.get("name") or "Colaborador",
+            "password_hash": pwd_hash,
+            "role": "colaborador",
+            "roles": ["colaborador"],
+            "company_id": cid_company,
+            "collaborator_id": cid,
+            "active": True,
+            "mobile_access_granted_at": now,
+            "created_at": now,
+            "created_by": user.get("id"),
+        }
+        await db.users.insert_one(new_user)
+        action = "created"
+
+    # Marca o collaborator pra refletir na UI
+    await db.collaborators.update_one(
+        {"id": cid},
+        {"$set": {
+            "has_mobile_access": True,
+            "mobile_access_email": email,
+            "mobile_access_granted_at": now,
+        }},
+    )
+
+    return {
+        "ok": True,
+        "action": action,
+        "user_id": user_id,
+        "email": email,
+        "password": new_password,  # plain text — gestor copia/envia
+        "collaborator_name": collab.get("name"),
+        "phone": collab.get("phone"),
+        "company_id": cid_company,
+    }
+
+
 @router.post("/collaborators")
 async def create_collaborator(payload: CollaboratorIn, user: dict = Depends(require_role("gestor"))):
     cid_company = effective_company_id(user) or DEMO_COMPANY_ID

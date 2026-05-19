@@ -1405,6 +1405,7 @@ function CollabShareLink({ collaborator }) {
             💬 WhatsApp
           </a>
         )}
+        <GrantMobileAccessButton collaborator={collaborator} />
       </div>
       <div style={{ fontSize: 10, color: "#64748b", marginTop: 4, paddingLeft: 2 }}>
         Abre o app de serviço já com {collaborator.name?.split(" ")[0] || "o técnico"} selecionado.
@@ -1761,3 +1762,189 @@ async function resizeImageToDataUrl(file, maxSize = 512, quality = 0.85) {
     reader.readAsDataURL(file);
   });
 }
+
+
+// ============================================================================
+// GrantMobileAccessButton — botão "Cadastrar acesso mobile" ao lado do link
+// único. Cria/reseta o User vinculado ao Collaborator com senha aleatória,
+// abre modal pra copiar credenciais + botão pré-formatado pra enviar via
+// WhatsApp do gestor.
+// ============================================================================
+function GrantMobileAccessButton({ collaborator }) {
+  const [busy, setBusy] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+  const [err, setErr] = React.useState(null);
+  const [copied, setCopied] = React.useState(false);
+
+  const onClick = async () => {
+    if (busy) return;
+    const has = !!collaborator?.has_mobile_access;
+    const msg = has
+      ? `Resetar a senha do acesso mobile de ${collaborator?.name || "este técnico"}? A senha anterior deixará de funcionar.`
+      : `Criar acesso mobile (email + senha) para ${collaborator?.name || "este técnico"}?`;
+    if (!window.confirm(msg)) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.collabGrantMobileAccess(collaborator.id);
+      setResult(r);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message);
+    } finally { setBusy(false); }
+  };
+
+  const close = () => { setResult(null); setCopied(false); };
+
+  const copyAll = async () => {
+    if (!result) return;
+    const txt = `Olá ${collaborator?.name?.split(" ")[0] || ""}! Seu acesso ao app de serviço:\n\nE-mail: ${result.email}\nSenha: ${result.password}\n\nAbra o app no celular e entre com esses dados.`;
+    try {
+      await navigator.clipboard.writeText(txt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch { /* ignora */ }
+  };
+
+  const phoneDigits = String(collaborator?.phone || "").replace(/\D/g, "");
+  const waMsg = result
+    ? encodeURIComponent(
+        `Olá ${collaborator?.name?.split(" ")[0] || ""}! Seu acesso ao app de serviço:\n\nE-mail: ${result.email}\nSenha: ${result.password}\n\nAbra o app no celular e entre com esses dados.`,
+      )
+    : "";
+  const waUrl = phoneDigits && result
+    ? `https://wa.me/${phoneDigits}?text=${waMsg}`
+    : null;
+
+  const has = !!collaborator?.has_mobile_access;
+
+  return (
+    <>
+      <button
+        data-testid={`collab-grant-mobile-${collaborator.id}`}
+        onClick={onClick}
+        disabled={busy}
+        title={has ? "Resetar senha do app mobile" : "Cadastrar acesso (e-mail/senha) para o app mobile"}
+        style={{
+          padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 800,
+          background: has ? "#7c3aed" : "#0f172a",
+          color: "white", border: 0, cursor: busy ? "wait" : "pointer", flexShrink: 0,
+          boxShadow: "0 2px 4px rgba(15,23,42,.1)",
+        }}
+      >
+        {busy ? "..." : (has ? "🔑 Resetar" : "🔑 Cadastrar acesso")}
+      </button>
+
+      {err && (
+        <div style={{
+          position: "fixed", top: 20, right: 20, zIndex: 9999,
+          background: "#fef2f2", color: "#991b1b", padding: 12,
+          borderRadius: 8, fontSize: 12, fontWeight: 700,
+          boxShadow: "0 4px 12px rgba(0,0,0,.15)",
+          maxWidth: 320,
+        }} onClick={() => setErr(null)}>
+          ⚠️ {err}
+        </div>
+      )}
+
+      {result && (
+        <div data-testid="grant-mobile-modal" style={{
+          position: "fixed", inset: 0, background: "rgba(15,23,42,.6)",
+          display: "grid", placeItems: "center", zIndex: 9999, padding: 20,
+        }} onClick={close}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: "white", borderRadius: 14, padding: 24,
+            maxWidth: 460, width: "100%",
+            boxShadow: "0 20px 60px rgba(0,0,0,.3)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10,
+                           marginBottom: 14 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 10,
+                background: result.action === "created" ? "#10b981" : "#7c3aed",
+                display: "grid", placeItems: "center", color: "white",
+                fontSize: 18, fontWeight: 800,
+              }}>
+                {result.action === "created" ? "✓" : "↻"}
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: "#0f172a" }}>
+                  {result.action === "created"
+                    ? "Acesso mobile criado"
+                    : "Senha resetada"}
+                </div>
+                <div style={{ fontSize: 11, color: "#64748b" }}>
+                  {result.collaborator_name}
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              background: "#f8fafc", border: "1px solid #e2e8f0",
+              borderRadius: 10, padding: 14, marginBottom: 14,
+              fontFamily: "ui-monospace,SFMono-Regular,monospace",
+            }}>
+              <div style={{ fontSize: 10, color: "#64748b",
+                             textTransform: "uppercase", letterSpacing: ".06em",
+                             marginBottom: 4 }}>E-mail</div>
+              <div data-testid="grant-mobile-email" style={{
+                fontSize: 13, color: "#0f172a", fontWeight: 700,
+                userSelect: "all", marginBottom: 10,
+              }}>{result.email}</div>
+              <div style={{ fontSize: 10, color: "#64748b",
+                             textTransform: "uppercase", letterSpacing: ".06em",
+                             marginBottom: 4 }}>Senha temporária</div>
+              <div data-testid="grant-mobile-password" style={{
+                fontSize: 16, color: "#dc2626", fontWeight: 800,
+                userSelect: "all", letterSpacing: ".05em",
+              }}>{result.password}</div>
+            </div>
+
+            <div style={{
+              background: "#fffbeb", border: "1px solid #fde68a",
+              borderRadius: 8, padding: 10, fontSize: 11, color: "#78350f",
+              marginBottom: 14, lineHeight: 1.5,
+            }}>
+              ⚠️ Anote ou envie agora — por segurança, a senha não é exibida novamente.
+              O técnico pode alterar depois do primeiro login.
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={copyAll}
+                      data-testid="grant-mobile-copy"
+                      style={{
+                        flex: 1, padding: "10px 14px", borderRadius: 8,
+                        background: copied ? "#10b981" : "#0ea5e9",
+                        color: "white", border: 0,
+                        fontSize: 13, fontWeight: 700, cursor: "pointer",
+                      }}>
+                {copied ? "✓ Copiado!" : "📋 Copiar credenciais"}
+              </button>
+              {waUrl && (
+                <a href={waUrl} target="_blank" rel="noopener noreferrer"
+                   data-testid="grant-mobile-whatsapp"
+                   style={{
+                     flex: 1, padding: "10px 14px", borderRadius: 8,
+                     background: "#25D366", color: "white",
+                     fontSize: 13, fontWeight: 700, textAlign: "center",
+                     textDecoration: "none",
+                   }}>
+                  💬 Enviar pelo WhatsApp
+                </a>
+              )}
+            </div>
+            <button onClick={close}
+                    data-testid="grant-mobile-close"
+                    style={{
+                      width: "100%", marginTop: 10, padding: "8px 14px",
+                      background: "transparent", color: "#64748b",
+                      border: "1px solid #e2e8f0", borderRadius: 8,
+                      fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    }}>
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
