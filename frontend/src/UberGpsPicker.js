@@ -92,7 +92,7 @@ export default function UberGpsPicker({
     }, 600);
   };
 
-  const useMyLocation = () => {
+  const useMyLocation = async () => {
     if (!navigator.geolocation) {
       await window.alert("Seu navegador não suporta geolocalização.");
       return;
@@ -106,7 +106,7 @@ export default function UberGpsPicker({
         setUsingGps(false);
         onMove({ lat: latitude, lng: longitude });
       },
-      (err) => {
+      async (err) => {
         setUsingGps(false);
         await window.alert("Não foi possível obter sua localização: " + err.message);
       },

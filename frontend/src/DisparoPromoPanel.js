@@ -107,7 +107,7 @@ export default function DisparoPromoPanel() {
     return () => clearInterval(t);
   }, [activeRun?.run_id, activeRun?.status]);
 
-  const onMediaChange = (e) => {
+  const onMediaChange = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 4 * 1024 * 1024) {

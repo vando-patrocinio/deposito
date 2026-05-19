@@ -145,7 +145,7 @@ export default function RedeIaMapMobile({ onBack }) {
     };
   }, [data]);
 
-  const goToMyLocation = () => {
+  const goToMyLocation = async () => {
     if (!navigator.geolocation) {
       await window.alert("Geolocalização não suportada.");
       return;
@@ -157,7 +157,7 @@ export default function RedeIaMapMobile({ onBack }) {
         setForceCenter(p);
         setTimeout(() => setForceCenter(null), 1000);
       },
-      (e) => await window.alert("Não foi possível obter GPS: " + e.message),
+      async (e) => await window.alert("Não foi possível obter GPS: " + e.message),
       { enableHighAccuracy: true, timeout: 15000 },
     );
   };

@@ -268,7 +268,7 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
     } finally { setBusy(false); }
   }
 
-  function copyLink() {
+  async function copyLink() {
     if (lastLink) {
       navigator.clipboard?.writeText(lastLink);
       await window.alert("✅ Link copiado.");

@@ -88,7 +88,7 @@ export default function SubscribersPanel() {
     else setSelected(new Set(items.map((s) => s.id)));
   };
 
-  const runBulk = () => {
+  const runBulk = async () => {
     if (!bulkAction) { await window.alert("Selecione uma ação."); return; }
     if (selected.size === 0) { await window.alert("Selecione ao menos um assinante."); return; }
     if (bulkAction === "export") {

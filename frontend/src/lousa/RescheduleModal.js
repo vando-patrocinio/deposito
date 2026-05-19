@@ -14,7 +14,7 @@ export default function RescheduleModal({ ticket, onClose, onConfirm, busy }) {
   const [time, setTime] = useState("09:00");
   const [reason, setReason] = useState("");
 
-  function submit(e) {
+  async function submit(e) {
     e?.preventDefault();
     if (!date || !time || !reason.trim()) {
       await window.alert("Preencha data, horário e motivo do reagendamento.");

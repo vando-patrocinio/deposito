@@ -63,7 +63,7 @@ export default function PlatformAdminPanel() {
     });
   }
 
-  function openDeleteModal(visibleIds) {
+  async function openDeleteModal(visibleIds) {
     const ids = visibleIds.filter((id) => selected.has(id));
     if (!ids.length) return;
     const blocked = ids.filter((id) => id === "co-demo");

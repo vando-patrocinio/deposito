@@ -1,5 +1,30 @@
 # PontoIA — Changelog
 
+## Fev 2026 — Hotfix: Frontend build quebrado (tela branca em produção)
+
+### Problema
+Após o usuário aceitar a refatoração de `window.alert/confirm/prompt` para modal customizado (`dialog.js`), o agente anterior usou `sed` para adicionar `await` antes de todas as chamadas. Isso quebrou 12 arquivos JSX porque vários handlers (`onClick={() => {...}}`, callbacks de geolocation, helpers internos) não eram `async`. Resultado: `Failed to compile · Unexpected reserved word 'await'`. Em produção (ligo.site) o build quebrado servia bundle vazio → tela branca após login.
+
+### Correção
+Tornei `async` cada função/handler que ficou com `await window.alert|confirm|prompt`:
+- `DisparoPromoPanel.js` — `onMediaChange`
+- `HoleritePanel.js` — `copyLink`
+- `LousaAdminPanel.js` — 2 handlers inline (`onClick` Encerrar/Cancelar)
+- `LousaMobile.js` — `goToStep2`, `submit`
+- `PlatformAdminPanel.js` — `openDeleteModal`
+- `PublicAccessPanel.js` — `copy`
+- `RedeIaMapMobile.js` — `goToMyLocation` + error callback do geolocation
+- `SubscribersPanel.js` — `runBulk`
+- `TabPermissionsCard.js` — `reset`
+- `UberGpsPicker.js` — `useMyLocation` + error callback do geolocation
+- `WhatsAppChatLayout.js` — handler inline do botão de coaching
+- `lousa/RescheduleModal.js` — `submit`
+
+### Verificação
+`yarn build` passa limpo. Login (`/login`) renderiza corretamente. Bundle de produção pode ser publicado em ligo.site.
+
+
+
 ## Mai 2026 — v6.80: Refactor multi-agente IA (best practices 2026)
 
 ### Problema

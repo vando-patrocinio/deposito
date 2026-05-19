@@ -72,7 +72,7 @@ export default function PublicAccessPanel() {
     }
   };
 
-  const copy = (id, token) => {
+  const copy = async (id, token) => {
     const link = buildPublicLink(token);
     try {
       navigator.clipboard.writeText(link);

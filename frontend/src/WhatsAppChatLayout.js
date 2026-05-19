@@ -2102,7 +2102,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
             tooltip explicando que coaching é interno e nunca vai pro cliente. */}
         <button
           data-testid="wa-coaching-icon-btn"
-          onClick={() => {
+          onClick={async () => {
             const unread = coachings.find((c) => !c.read);
             const target = unread || coachings[coachings.length - 1];
             if (!target) {

@@ -1185,7 +1185,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     }
   }
 
-  function goToStep2() {
+  async function goToStep2() {
     // Validação básica do step 1
     // INSTALAÇÃO: SN não é mais obrigatório aqui — provisionamento via Rede IA.
     if (isWithdraw && !form.ont) {
@@ -1199,7 +1199,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     setStep(2);
   }
 
-  function submit() {
+  async function submit() {
     if (needsMac && macStatus === "error") {
       if (!await window.confirm("MAC não encontrado no SmartOLT. Continuar mesmo "
                             + "assim? (Marca erro_estoque pra revisão)")) return;
