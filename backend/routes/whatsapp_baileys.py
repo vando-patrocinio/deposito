@@ -1621,6 +1621,40 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     if not agent:
         agent = default_agent
 
+    # 2.1. HANDOFF DETERMINÍSTICO (pré-LLM): se o agente já fixado é o errado
+    # pra essa mensagem (ex.: Isabella em conversa antiga, cliente agora pede
+    # boleto), troca aqui mesmo. Economiza tokens + corrige leaks de escopo
+    # que o LLM falha em detectar via marker.
+    try:
+        from services.wa.handoff_detection import detect_forced_handoff
+        forced_target = detect_forced_handoff(agent.get("name"), user_text)
+        if forced_target:
+            forced_agent = await db.aihub_agents.find_one(
+                {"company_id": cid, "name": forced_target, "active": True},
+                {"_id": 0},
+            )
+            if forced_agent:
+                logger.info(
+                    "[wa-baileys] handoff determinístico %s → %s phone=%s",
+                    agent.get("name"), forced_agent.get("name"), phone,
+                )
+                # Atualiza conversa + registra handoff_greeting
+                await db.wa_conversations.update_one(
+                    {"company_id": cid, "phone": phone},
+                    {"$set": {
+                        "routed_agent_id": forced_agent.get("id"),
+                        "routed_agent_name": forced_agent.get("name"),
+                        "last_handoff_at": now_iso(),
+                        "last_handoff_from": agent.get("name"),
+                        "last_handoff_kind": "deterministic",
+                    }},
+                    upsert=True,
+                )
+                # O novo agente passa a atender a mensagem atual
+                agent = forced_agent
+    except Exception as e:
+        logger.debug("[wa-baileys] forced handoff skip: %s", e)
+
     # 3. Monta prompt — herda personalidade/preços/situações + contexto do cliente
     sys_prompt = agent["system_prompt"]
     extra = []
