@@ -1,45 +1,82 @@
 import React, { useMemo } from "react";
 
+// ============================================================
 // IMPORTANT: Os IDs e labels devem refletir ALL_TABS em App.js.
 // Quando uma aba nova é adicionada lá, adicionar aqui também.
+//
+// Estrutura agrupada (mesma ordem do menu lateral) para facilitar
+// visualização. `group` é meramente visual — backend só lê o array
+// chato de tab_ids por role.
+// ============================================================
 export const TAB_DEFINITIONS = [
-  { id: "dashboard", label: "Painel" },
-  { id: "lousa", label: "Lousa" },
-  { id: "estoque", label: "Estoque" },
-  { id: "ai-center", label: "Central IA" },
-  { id: "ai-ranking", label: "Avaliação IA" },
-  { id: "central-ia", label: "Central IA" },
-  { id: "atendimento", label: "Atendimento IA" },
-  { id: "motor-ia", label: "Motor IA" },
-  { id: "cadastro", label: "Cadastro" },
-  { id: "subscribers", label: "Assinantes" },
-  { id: "plans", label: "Planos" },
-  { id: "pracas", label: "Praças" },
-  { id: "users", label: "Usuários" },
-  { id: "manager", label: "Auditoria" },
-  { id: "sheet", label: "Espelho" },
-  { id: "logs", label: "Logs" },
-  { id: "settings", label: "Configurações" },
-  // platform é controlada por superAdminOnly, fora deste card
+  // Operação
+  { id: "dashboard",       label: "Painel",            group: "Operação" },
+  { id: "lousa",           label: "Chamados",          group: "Operação" },
+  { id: "estoque",         label: "Movimento",         group: "Operação" },
+
+  // Inteligência
+  { id: "ai-ranking",      label: "Avaliação IA",      group: "Inteligência" },
+  { id: "ai-corrections",  label: "Correções IA",      group: "Inteligência" },
+  { id: "central-ia",      label: "Central IA",        group: "Inteligência" },
+  { id: "rede-ia",         label: "Rede IA",           group: "Inteligência" },
+  { id: "atendimento",     label: "Atendimento IA",    group: "Inteligência" },
+  { id: "alvaro-ia",       label: "Alvaro IA",         group: "Inteligência" },
+  { id: "mass-messaging",  label: "Disparo em Massa",  group: "Inteligência" },
+
+  // Cadastro
+  { id: "cadastro",        label: "Colaboradores",     group: "Cadastro" },
+  { id: "subscribers",     label: "Assinantes",        group: "Cadastro" },
+  { id: "plans",           label: "Planos",            group: "Cadastro" },
+  { id: "pracas",          label: "Praças",            group: "Cadastro" },
+
+  // Relatórios
+  { id: "manager",         label: "Auditoria",         group: "Relatórios" },
+  { id: "logs",            label: "Logs",              group: "Relatórios" },
+
+  // RH
+  { id: "sheet",           label: "Espelho de Ponto",  group: "RH" },
+  { id: "holerite",        label: "Holerite",          group: "RH" },
+  { id: "feriados",        label: "Feriados",          group: "RH" },
+
+  // Financeiro
+  { id: "financeiro",      label: "Financeiro",        group: "Financeiro" },
+
+  // Comercial
+  { id: "budget",          label: "Orçamento",         group: "Comercial" },
+
+  // Sistema
+  { id: "users",           label: "Usuários",          group: "Sistema" },
+  { id: "motor-ia",        label: "Motor IA",          group: "Sistema" },
+  { id: "settings",        label: "Configurações",     group: "Sistema" },
+  // `platform` é controlada por superAdminOnly, fora deste card.
 ];
 
+const ALL_TAB_IDS = TAB_DEFINITIONS.map((t) => t.id);
+
 // Default seed quando ainda não há tab_permissions cadastradas.
-// Reflete a regra original do App.js antes da customização.
+// REGRA: Auditor tem acesso TOTAL (fiscalização sem restrição) — igual ao administrador.
+//        Gestor tem acesso operacional (sem Auditoria/Usuários/Motor IA/Settings).
 export const DEFAULT_TAB_PERMISSIONS = {
-  administrador: TAB_DEFINITIONS.map((t) => t.id),
-  auditor: ["dashboard", "ai-center", "ai-ranking", "central-ia", "atendimento", "cadastro", "subscribers", "plans", "pracas", "users",
-            "manager", "sheet", "logs", "settings"],
-  gestor: ["dashboard", "estoque", "ai-center", "ai-ranking", "central-ia", "atendimento", "cadastro", "subscribers", "plans", "pracas",
-           "sheet", "logs"],
+  administrador: [...ALL_TAB_IDS],
+  auditor:       [...ALL_TAB_IDS],
+  gestor: [
+    "dashboard", "estoque",
+    "ai-ranking", "ai-corrections", "central-ia", "rede-ia",
+    "atendimento", "alvaro-ia", "mass-messaging",
+    "cadastro", "subscribers", "plans", "pracas",
+    "logs",
+    "sheet", "holerite", "feriados",
+    "budget",
+  ],
 };
 
 const ROLES = [
   { id: "administrador", label: "Administrador",
     note: "Acesso total — recomendado manter tudo selecionado." },
   { id: "auditor", label: "Auditor",
-    note: "Perfil de fiscalização/observação." },
+    note: "Fiscalização. Acesso total a tudo (read + write)." },
   { id: "gestor", label: "Gestor",
-    note: "Perfil operacional do dia-a-dia." },
+    note: "Operacional do dia-a-dia (sem Auditoria/Usuários/Sistema)." },
 ];
 
 export default function TabPermissionsCard({ data, setData }) {
@@ -73,7 +110,7 @@ export default function TabPermissionsCard({ data, setData }) {
       ...data,
       tab_permissions: {
         ...perms,
-        [role]: on ? TAB_DEFINITIONS.map((t) => t.id) : [],
+        [role]: on ? [...ALL_TAB_IDS] : [],
       },
     });
   };
@@ -82,6 +119,20 @@ export default function TabPermissionsCard({ data, setData }) {
     if (!window.confirm("Restaurar permissões padrão?")) return;
     setData({ ...data, tab_permissions: DEFAULT_TAB_PERMISSIONS });
   };
+
+  // Agrupa as tabs por seção, mantendo a ordem original.
+  const grouped = useMemo(() => {
+    const out = [];
+    let lastGroup = null;
+    for (const t of TAB_DEFINITIONS) {
+      if (t.group !== lastGroup) {
+        out.push({ kind: "header", group: t.group });
+        lastGroup = t.group;
+      }
+      out.push({ kind: "tab", tab: t });
+    }
+    return out;
+  }, []);
 
   return (
     <div data-testid="tab-permissions-card" className="surface" style={{
@@ -98,8 +149,10 @@ export default function TabPermissionsCard({ data, setData }) {
         </button>
       </div>
       <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "0 0 14px" }}>
-        Marque quais abas cada perfil pode ver no menu. Mudanças aparecem após o usuário
-        fazer logout/login. <em>Colaborador usa o app mobile e não tem abas de desktop.</em>
+        Marque quais abas cada perfil pode ver no menu. Mudanças aparecem após o
+        usuário fazer logout/login.{" "}
+        <em>Colaborador usa o app mobile e não tem abas de desktop.</em>{" "}
+        <em>Auditor tem acesso total por padrão (fiscalização).</em>
       </p>
 
       <div style={{ overflowX: "auto" }}>
@@ -125,25 +178,55 @@ export default function TabPermissionsCard({ data, setData }) {
             </tr>
           </thead>
           <tbody>
-            {TAB_DEFINITIONS.map((t) => (
-              <tr key={t.id} style={{ borderTop: "1px solid var(--border-default)" }}>
-                <td style={{ padding: "8px 10px", fontWeight: 600, color: "var(--text-primary)" }}>{t.label}</td>
-                {ROLES.map((r) => {
-                  const checked = (perms[r.id] || []).includes(t.id);
-                  return (
-                    <td key={r.id} style={{ padding: "8px 10px", textAlign: "center" }}>
-                      <input type="checkbox" checked={checked}
-                             onChange={() => toggle(r.id, t.id)}
-                             data-testid={`perm-${r.id}-${t.id}`}
-                             style={{ cursor: "pointer", width: 16, height: 16, accentColor: "var(--accent)" }} />
+            {grouped.map((row, idx) => {
+              if (row.kind === "header") {
+                return (
+                  <tr key={`grp-${row.group}-${idx}`}
+                      data-testid={`perm-group-${row.group}`}>
+                    <td colSpan={1 + ROLES.length}
+                        style={{
+                          padding: "10px 10px 4px",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: ".06em",
+                          color: "var(--text-muted)",
+                          background: "var(--bg-surface-2)",
+                          borderTop: "1px solid var(--border-default)",
+                        }}>
+                      {row.group}
                     </td>
-                  );
-                })}
-              </tr>
-            ))}
+                  </tr>
+                );
+              }
+              const t = row.tab;
+              return (
+                <tr key={t.id} style={{ borderTop: "1px solid var(--border-default)" }}>
+                  <td style={{ padding: "8px 10px", fontWeight: 600, color: "var(--text-primary)" }}>{t.label}</td>
+                  {ROLES.map((r) => {
+                    const checked = (perms[r.id] || []).includes(t.id);
+                    return (
+                      <td key={r.id} style={{ padding: "8px 10px", textAlign: "center" }}>
+                        <input type="checkbox" checked={checked}
+                               onChange={() => toggle(r.id, t.id)}
+                               data-testid={`perm-${r.id}-${t.id}`}
+                               style={{ cursor: "pointer", width: 16, height: 16, accentColor: "var(--accent)" }} />
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
+
+      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "12px 0 0",
+                  lineHeight: 1.6 }}>
+        💡 <strong>Total de {ALL_TAB_IDS.length} abas</strong> disponíveis.{" "}
+        Perfis específicos como <em>gestor_rede</em> e <em>financeiro</em>{" "}
+        usam permissões hardcoded no App.js (não controlados por este card).
+      </p>
     </div>
   );
 }
