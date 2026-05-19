@@ -1,6 +1,41 @@
 # PontoIA — Changelog
 # PontoIA — Changelog
 
+## Fev 18, 2026 — Fix P0: foto/PDF inbound do WhatsApp não chegavam ao painel
+
+### Bug reportado pelo usuário (produção)
+"Cliente envia foto/PDF pelo WhatsApp pro número da Isabella, e o atendente/painel não vê chegar. Áudio funciona normal."
+
+### Root cause
+`/app/whatsapp-service/server.js:449` — fazia `const msg = m.message` sem desempacotar envelopes de privacidade do WhatsApp. Quando o cliente tem **mensagens temporárias ativadas** (ephemeralMessage) ou envia **foto que some** (viewOnceMessageV2), o payload da imagem fica encapsulado:
+
+- `m.message.ephemeralMessage.message.imageMessage` (não tratado)
+- `m.message.viewOnceMessage.message.imageMessage` (não tratado)
+- `m.message.viewOnceMessageV2.message.imageMessage` (não tratado)
+- `m.message.documentWithCaptionMessage.message.documentMessage` (tratado APENAS pra doc)
+
+Como `msg.imageMessage` retornava `undefined`, o `downloadMediaMessage` nem era chamado, e o backend recebia o webhook com `media_b64=null`. Áudio funcionava porque WhatsApp não embrulha áudio em ephemeral por padrão.
+
+### Fix aplicado em `whatsapp-service/server.js`
+1. **Desempacota 5 envelopes** antes de ler `imageMessage/videoMessage/documentMessage/stickerMessage`:
+```js
+let msg = m.message;
+if (msg.ephemeralMessage?.message)         msg = msg.ephemeralMessage.message;
+if (msg.viewOnceMessage?.message)          msg = msg.viewOnceMessage.message;
+if (msg.viewOnceMessageV2?.message)        msg = msg.viewOnceMessageV2.message;
+if (msg.viewOnceMessageV2Extension?.message) msg = msg.viewOnceMessageV2Extension.message;
+if (msg.documentWithCaptionMessage?.message) msg = msg.documentWithCaptionMessage.message;
+```
+2. Adicionado `text` agora também lê `msg.documentMessage?.caption` (legenda de PDF).
+3. Logs explícitos `inbound media — iniciando download` / `download OK` / `buffer vazio` pra debug futuro.
+4. Removida lógica redundante de docMsg (agora resolvida no desempacotamento).
+
+### Status
+- Preview: aplicado e sintaxe validada. Sidecar precisa de novo QR pra testar end-to-end (sessão expirou).
+- Produção: usuário precisa fazer **novo deploy** pra o fix subir. Após deploy, fotos/PDFs ephemeral devem aparecer no painel normalmente.
+
+
+
 ## Fev 18, 2026 — Chaves de IA Multi-Tenant (P0 finalizado · iter98-fork)
 
 ### Contexto

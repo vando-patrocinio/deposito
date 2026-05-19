@@ -446,13 +446,25 @@ async function startSock() {
           ) {
             continue;
           }
-          const msg = m.message;
+          let msg = m.message;
           if (!msg) continue;
+          // ─────────────────────────────────────────────────────────
+          // DESEMPACOTA envelopes de privacidade do WhatsApp.
+          // Fotos/PDFs/vídeos vêm encapsulados quando a conversa tem
+          // mensagens temporárias ON ou cliente usa "ver uma vez".
+          // Áudio normalmente vem sem envelope (por isso funcionava).
+          // ─────────────────────────────────────────────────────────
+          if (msg.ephemeralMessage?.message)         msg = msg.ephemeralMessage.message;
+          if (msg.viewOnceMessage?.message)          msg = msg.viewOnceMessage.message;
+          if (msg.viewOnceMessageV2?.message)        msg = msg.viewOnceMessageV2.message;
+          if (msg.viewOnceMessageV2Extension?.message) msg = msg.viewOnceMessageV2Extension.message;
+          if (msg.documentWithCaptionMessage?.message) msg = msg.documentWithCaptionMessage.message;
           const text =
             msg.conversation ||
             msg.extendedTextMessage?.text ||
             msg.imageMessage?.caption ||
             msg.videoMessage?.caption ||
+            msg.documentMessage?.caption ||
             "";
           const fromJid = m.key.remoteJid || "";
           const rawId = fromJid.split("@")[0];
@@ -527,12 +539,18 @@ async function startSock() {
 
           const imageMsg = msg.imageMessage;
           const videoMsg = msg.videoMessage;
-          const docMsg = msg.documentMessage
-                       || msg.documentWithCaptionMessage?.message?.documentMessage;
+          const docMsg = msg.documentMessage;
           const stickerMsg = msg.stickerMessage;
           const target = imageMsg || videoMsg || docMsg || stickerMsg;
+          const kindHint = imageMsg ? "image"
+                          : videoMsg ? "video"
+                          : docMsg ? "document"
+                          : stickerMsg ? "sticker" : null;
           if (target) {
             try {
+              logger.info({ phone, kind: kindHint, mime: target.mimetype,
+                            size_hint: target.fileLength },
+                          "inbound media — iniciando download");
               const buf = await downloadMediaMessage(
                 m, "buffer", {},
                 { logger, reuploadRequest: sock.updateMediaMessage },
@@ -541,21 +559,23 @@ async function startSock() {
                 media_b64 = buf.toString("base64");
                 media_mimetype = target.mimetype || null;
                 media_size_bytes = buf.length;
-                media_kind = imageMsg ? "image"
-                            : videoMsg ? "video"
-                            : docMsg ? "document"
-                            : "sticker";
+                media_kind = kindHint;
                 media_filename = docMsg?.fileName
                               || (imageMsg ? `image-${m.key.id}.jpg`
                                   : videoMsg ? `video-${m.key.id}.mp4`
                                   : stickerMsg ? `sticker-${m.key.id}.webp`
                                   : `file-${m.key.id}`);
+                logger.info({ phone, kind: media_kind, size: buf.length },
+                              "inbound media — download OK");
               } else if (buf && buf.length > MEDIA_MAX) {
-                logger.warn({ phone, size: buf.length, kind: media_kind },
+                logger.warn({ phone, size: buf.length, kind: kindHint },
                   "inbound media too large, skipping download");
+              } else {
+                logger.warn({ phone, kind: kindHint, buf_len: buf?.length || 0 },
+                  "inbound media — buffer vazio");
               }
             } catch (e) {
-              logger.warn({ err: e.message, phone },
+              logger.warn({ err: e.message, phone, kind: kindHint },
                 "downloadMediaMessage(media) falhou");
             }
           }
