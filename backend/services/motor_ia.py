@@ -229,7 +229,7 @@ async def chat_completion(company_id: str,
         try:
             return await _emergent_chat_fallback(
                 messages, model, temperature, max_tokens, company_id=cid,
-                prefer=prefer, chain=chain,
+                prefer=prefer, chain=chain, agent_id=agent_id,
             )
         except Exception as e:
             logger.warning("[motor-ia] fallback chat falhou: %s", e)
@@ -237,7 +237,7 @@ async def chat_completion(company_id: str,
                 logger.warning("[motor-ia] última cartada — Emergent Key")
                 return await _emergent_chat_fallback(
                     messages, model, temperature, max_tokens, company_id="",
-                    prefer=prefer, chain=chain,
+                    prefer=prefer, chain=chain, agent_id=agent_id,
                 )
             raise RuntimeError("Motor IA não configurado. Configure em Configurações → AI Keys.")
 
@@ -250,6 +250,7 @@ async def chat_completion(company_id: str,
             messages, model, temperature, max_tokens, company_id=cid,
             prefer=cfg.get("atendimento_provider"),
             chain=cfg.get("atendimento_provider_chain"),
+            agent_id=agent_id,
         )
 
     # REGRA DE NEGÓCIO: agentes de atendimento usam APENAS DeepSeek.
@@ -393,15 +394,25 @@ def _is_garbage_response(text: str) -> bool:
 MODEL_PRICING: Dict[str, Dict[str, float]] = {
     # Anthropic
     "anthropic/claude-sonnet-4.5":      {"in": 3.0,  "out": 15.0},
+    "anthropic/claude-sonnet-4-5":      {"in": 3.0,  "out": 15.0},
+    "claude-sonnet-4-5":                {"in": 3.0,  "out": 15.0},
+    "claude-sonnet-4.5":                {"in": 3.0,  "out": 15.0},
     "anthropic/claude-4.5-sonnet":      {"in": 3.0,  "out": 15.0},
     "anthropic/claude-opus-4.5":        {"in": 15.0, "out": 75.0},
     "anthropic/claude-haiku-4.5":       {"in": 0.8,  "out": 4.0},
     "anthropic/claude-4.5-haiku":       {"in": 0.8,  "out": 4.0},
     "anthropic/claude-3.5-sonnet":      {"in": 3.0,  "out": 15.0},
     "anthropic/claude-3-haiku":         {"in": 0.25, "out": 1.25},
-    # OpenAI
+    # Gemini (direto)
+    "gemini-2.5-flash":                 {"in": 0.075, "out": 0.30},
+    "gemini-2.0-flash":                 {"in": 0.075, "out": 0.30},
+    "gemini-2.5-pro":                   {"in": 1.25,  "out": 5.0},
+    # OpenAI (direto + via openrouter)
     "openai/gpt-4o":                    {"in": 2.5,  "out": 10.0},
     "openai/gpt-4o-mini":               {"in": 0.15, "out": 0.6},
+    "gpt-5-mini":                       {"in": 0.15, "out": 0.6},
+    "gpt-4o":                           {"in": 2.5,  "out": 10.0},
+    "gpt-4o-mini":                      {"in": 0.15, "out": 0.6},
     # DeepSeek
     "deepseek/deepseek-chat":           {"in": 0.27, "out": 1.10},
     "deepseek/deepseek-r1":             {"in": 0.55, "out": 2.19},
@@ -529,12 +540,27 @@ def _estimate_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -
 
 
 async def _log_usage(company_id: str, agent: str, model: str,
-                       provider: str, prompt_tokens: int, completion_tokens: int):
-    """Persiste uma linha em `motor_ia_usage` (best-effort)."""
-    if prompt_tokens == 0 and completion_tokens == 0:
+                       provider: str, prompt_tokens: int, completion_tokens: int,
+                       cache_read_tokens: int = 0,
+                       cache_write_tokens: int = 0):
+    """Persiste uma linha em `motor_ia_usage` (best-effort).
+
+    Args:
+        cache_read_tokens: tokens lidos do cache (Anthropic — pagamos 10%)
+        cache_write_tokens: tokens criados no cache (pagamos 125% na 1ª vez)
+    """
+    if prompt_tokens == 0 and completion_tokens == 0 and cache_read_tokens == 0:
         return
-    cost = _estimate_cost_usd(model, prompt_tokens, completion_tokens)
-    await db.motor_ia_usage.insert_one({
+    # Para Anthropic com cache, o "prompt_tokens" do API já EXCLUI os cacheados.
+    # Custo é calculado separadamente:
+    #   - prompt_tokens normais → preço normal
+    #   - cache_read_tokens     → 10% do preço normal
+    #   - cache_write_tokens    → 125% do preço normal (penalty única)
+    base_cost = _estimate_cost_usd(model, prompt_tokens, completion_tokens)
+    cache_read_cost = _estimate_cost_usd(model, cache_read_tokens, 0) * 0.10
+    cache_write_cost = _estimate_cost_usd(model, cache_write_tokens, 0) * 1.25
+    cost = base_cost + cache_read_cost + cache_write_cost
+    doc = {
         "company_id": company_id,
         "agent": agent or "general",
         "model": model,
@@ -542,10 +568,13 @@ async def _log_usage(company_id: str, agent: str, model: str,
         "service": "text",
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
-        "total_tokens": prompt_tokens + completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens + cache_read_tokens + cache_write_tokens,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_write_tokens": cache_write_tokens,
         "estimated_cost_usd": cost,
         "created_at": now_iso(),
-    })
+    }
+    await db.motor_ia_usage.insert_one(doc)
 
     # Check de orçamento (best-effort, não bloqueia). Loga warn quando
     # gasto do mês ultrapassa o threshold ou o limite. Só executa se
@@ -589,13 +618,15 @@ async def _check_budget_alert(company_id: str):
 async def _emergent_chat_fallback(messages, model, temperature, max_tokens,
                                        company_id: str = "",
                                        prefer: Optional[str] = None,
-                                       chain: Optional[List[str]] = None):
+                                       chain: Optional[List[str]] = None,
+                                       agent_id: str = ""):
     """Fallback chat usando emergentintegrations + keys da empresa.
 
     chain:   ["gemini", "anthropic", "openai"] — ordem completa da cascata.
              Tem prioridade sobre `prefer`. Se uma chave falhar/estiver vazia,
              tenta a próxima imediatamente.
     prefer:  "gemini" | "anthropic" | "openai" — força essa primeira (compat).
+    agent_id: identificador do agente chamador, usado no log de uso.
     """
     from emergentintegrations.llm.chat import LlmChat, UserMessage
     from services.ai_keys import resolve_keys
@@ -635,12 +666,23 @@ async def _emergent_chat_fallback(messages, model, temperature, max_tokens,
             # milhão de tokens cacheados (90% economia). TTL: 5 min ephemeral.
             # Usamos SDK Anthropic direto pra ter controle sobre cache_control.
             if prov_name == "anthropic" and len(sys_prompt) > 1024:
-                content = await _anthropic_with_cache(
+                anth_out = await _anthropic_with_cache(
                     api_key=api_key, model=model_name,
                     system_prompt=sys_prompt, user_msg=user_msg,
                     max_tokens=max_tokens, temperature=temperature,
                 )
-                return {"content": content,
+                # Loga uso COM cache tokens pra dashboard
+                try:
+                    await _log_usage(
+                        company_id, agent_id, model_name, prov_name,
+                        prompt_tokens=anth_out["input_tokens"],
+                        completion_tokens=anth_out["output_tokens"],
+                        cache_read_tokens=anth_out["cache_read"],
+                        cache_write_tokens=anth_out["cache_write"],
+                    )
+                except Exception as e:
+                    logger.debug("[motor-ia] log usage anthropic falhou: %s", e)
+                return {"content": anth_out["content"],
                         "model": model_name, "provider": prov_name}
             # Caminho normal pros outros providers
             chat = LlmChat(
@@ -666,7 +708,7 @@ async def _emergent_chat_fallback(messages, model, temperature, max_tokens,
 async def _anthropic_with_cache(api_key: str, model: str,
                                    system_prompt: str, user_msg: str,
                                    max_tokens: int = 500,
-                                   temperature: float = 0.4) -> str:
+                                   temperature: float = 0.4) -> Dict[str, Any]:
     """Chama Claude com prompt caching ativado no system_prompt.
 
     Custos com cache:
@@ -674,6 +716,9 @@ async def _anthropic_with_cache(api_key: str, model: str,
       - Chamadas seguintes (hit):  10% do preço normal (90% mais barato)
     TTL ephemeral: 5 minutos sem reuso → expira.
     Suporta até 4 blocos cacheáveis por requisição.
+
+    Returns:
+        dict {content, input_tokens, output_tokens, cache_read, cache_write}
     """
     from anthropic import AsyncAnthropic
     client = AsyncAnthropic(api_key=api_key)
@@ -690,31 +735,34 @@ async def _anthropic_with_cache(api_key: str, model: str,
         system=system_blocks,
         messages=[{"role": "user", "content": user_msg}],
     )
-    # Log de uso pra dashboard
-    try:
-        usage = resp.usage
-        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
-        cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
-        normal_input = getattr(usage, "input_tokens", 0) or 0
-        output = getattr(usage, "output_tokens", 0) or 0
-        if cache_read > 0:
-            logger.info(
-                "[motor-ia][cache] HIT — read=%d, write=%d, input=%d, output=%d "
-                "(economia ~%d%%)",
-                cache_read, cache_write, normal_input, output,
-                int(cache_read / (cache_read + normal_input + 1) * 90),
-            )
-        elif cache_write > 0:
-            logger.info(
-                "[motor-ia][cache] WRITE — criando cache de %d tokens",
-                cache_write,
-            )
-    except Exception as e:
-        logger.debug("[motor-ia][cache] log usage falhou: %s", e)
-    # Extrai texto
+    # Extrai usage
+    usage = resp.usage
+    cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+    cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    normal_input = getattr(usage, "input_tokens", 0) or 0
+    output = getattr(usage, "output_tokens", 0) or 0
+    if cache_read > 0:
+        logger.info(
+            "[motor-ia][cache] HIT — read=%d, write=%d, input=%d, output=%d "
+            "(economia ~%d%%)",
+            cache_read, cache_write, normal_input, output,
+            int(cache_read / (cache_read + normal_input + 1) * 90),
+        )
+    elif cache_write > 0:
+        logger.info(
+            "[motor-ia][cache] WRITE — criando cache de %d tokens",
+            cache_write,
+        )
+    content = ""
     if resp.content and len(resp.content) > 0:
-        return resp.content[0].text.strip()
-    return ""
+        content = resp.content[0].text.strip()
+    return {
+        "content": content,
+        "input_tokens": normal_input,
+        "output_tokens": output,
+        "cache_read": cache_read,
+        "cache_write": cache_write,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -1879,6 +1879,10 @@ function LiveCostMeter({ data, expanded, onToggle }) {
   const totalTokens = totals.total_tokens || 0;
   const promptTokens = totals.prompt_tokens || 0;
   const completionTokens = totals.completion_tokens || 0;
+  const cacheHitRate = totals.cache_hit_rate_pct || 0;
+  const cacheSavings = totals.cache_savings_usd || 0;
+  const hasCacheActivity = (totals.cache_read_tokens || 0) > 0
+    || (totals.cache_write_tokens || 0) > 0;
   // Pulso visual quando há atividade nas últimas chamadas
   const isActive = calls > 0;
 
@@ -1942,6 +1946,31 @@ function LiveCostMeter({ data, expanded, onToggle }) {
       </div>
 
       <div style={{ width: 1, height: 38, background: "var(--border-default)" }} />
+
+      {hasCacheActivity && (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", minWidth: 110 }} data-testid="ci-cache-hit-block">
+            <span style={{ fontSize: 10, fontWeight: 800, color: "var(--text-muted)",
+                              textTransform: "uppercase", letterSpacing: ".05em",
+                              display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <Zap size={10} /> Cache hit
+            </span>
+            <span data-testid="ci-cache-hit-rate" style={{
+              fontSize: 17, fontWeight: 800,
+              color: cacheHitRate > 50 ? "#16a34a" : cacheHitRate > 20 ? "#ca8a04" : "var(--text-primary)",
+              fontVariantNumeric: "tabular-nums", lineHeight: 1.2,
+              display: "inline-flex", alignItems: "center", gap: 4,
+            }}>
+              {cacheHitRate.toFixed(1)}%
+              {cacheHitRate > 50 && <span style={{ fontSize: 14 }}>🔥</span>}
+            </span>
+            <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>
+              -{fmtUSDshort(cacheSavings)} economizado
+            </span>
+          </div>
+          <div style={{ width: 1, height: 38, background: "var(--border-default)" }} />
+        </>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 160 }}>
         <span style={{ fontSize: 10, fontWeight: 800, color: "var(--text-muted)",

@@ -153,6 +153,8 @@ async def usage_dashboard(
             "prompt_tokens": {"$sum": "$prompt_tokens"},
             "completion_tokens": {"$sum": "$completion_tokens"},
             "total_tokens": {"$sum": "$total_tokens"},
+            "cache_read_tokens": {"$sum": {"$ifNull": ["$cache_read_tokens", 0]}},
+            "cache_write_tokens": {"$sum": {"$ifNull": ["$cache_write_tokens", 0]}},
             "cost_usd": {"$sum": "$estimated_cost_usd"},
             "calls": {"$sum": 1},
         }},
@@ -160,9 +162,34 @@ async def usage_dashboard(
     tot = await db.motor_ia_usage.aggregate(pipe_totals).to_list(1)
     totals = tot[0] if tot else {
         "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
+        "cache_read_tokens": 0, "cache_write_tokens": 0,
         "cost_usd": 0.0, "calls": 0,
     }
     totals.pop("_id", None)
+
+    # Cache hit rate: % de input tokens vindos do cache vs total input
+    cache_read = totals.get("cache_read_tokens") or 0
+    cache_write = totals.get("cache_write_tokens") or 0
+    pt = totals.get("prompt_tokens") or 0
+    total_input_tokens = cache_read + pt + cache_write
+    if total_input_tokens > 0:
+        totals["cache_hit_rate_pct"] = round(cache_read / total_input_tokens * 100, 1)
+    else:
+        totals["cache_hit_rate_pct"] = 0.0
+    # Economia em USD: tokens cacheados × (preço normal - 10%)
+    # Estima média ponderada pelos modelos usados — simples: 90% do custo
+    # equivalente em prompt_tokens normais.
+    if cache_read > 0:
+        # Custo dos cacheados se fossem normais
+        from services.motor_ia import _estimate_cost_usd
+        # Usa o modelo mais usado pra estimar — fallback: claude-sonnet
+        most_model = "anthropic/claude-sonnet-4-5"
+        full_cost_if_no_cache = _estimate_cost_usd(most_model, cache_read, 0)
+        actual_cost_with_cache = full_cost_if_no_cache * 0.10
+        totals["cache_savings_usd"] = round(
+            full_cost_if_no_cache - actual_cost_with_cache, 4)
+    else:
+        totals["cache_savings_usd"] = 0.0
 
     # Por agente
     pipe_agents = [
@@ -279,6 +306,10 @@ async def usage_dashboard(
             "prompt_tokens": int(totals.get("prompt_tokens") or 0),
             "completion_tokens": int(totals.get("completion_tokens") or 0),
             "total_tokens": int(totals.get("total_tokens") or 0),
+            "cache_read_tokens": int(totals.get("cache_read_tokens") or 0),
+            "cache_write_tokens": int(totals.get("cache_write_tokens") or 0),
+            "cache_hit_rate_pct": float(totals.get("cache_hit_rate_pct") or 0.0),
+            "cache_savings_usd": round(float(totals.get("cache_savings_usd") or 0), 4),
             "cost_usd": round(float(totals.get("cost_usd") or 0), 4),
         },
         "by_agent": by_agent,
