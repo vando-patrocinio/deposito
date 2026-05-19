@@ -532,9 +532,26 @@ async def delete_collaborator(cid: str, user: dict = Depends(require_role("gesto
 
 @router.post("/collaborators/{cid}/reset-face")
 async def reset_collaborator_face(cid: str, reset_device: bool = False):
+    """Limpa o avatar/face de referência em TODOS os locais ligados a este
+    colaborador (simétrico ao upload de foto e à 1ª selfie do ponto):
+      - collaborators.{reference_face, avatar_data_url, foto_id, foto_id_updated_at}
+      - users.avatar_url (do user vinculado pelo email/google_email)
+    Se `reset_device=True`, zera também device_id + vínculo Google + sessões.
+
+    Importante: só afeta o colaborador identificado por `cid`.
+    """
+    coll = await db.collaborators.find_one(
+        {"id": cid},
+        {"_id": 0, "id": 1, "email": 1, "google_email": 1, "company_id": 1},
+    )
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado")
+
     update = {
         "reference_face": None,
         "avatar_data_url": None,
+        "foto_id": None,
+        "foto_id_updated_at": None,
         "updated_at": now_iso(),
     }
     if reset_device:
@@ -542,9 +559,18 @@ async def reset_collaborator_face(cid: str, reset_device: bool = False):
         update["google_email"] = None
         update["google_name"] = None
         update["google_picture"] = None
-    res = await db.collaborators.update_one({"id": cid}, {"$set": update})
-    if res.matched_count == 0:
-        raise HTTPException(404, "Colaborador não encontrado")
+    await db.collaborators.update_one({"id": cid}, {"$set": update})
+
+    # Propaga limpeza no users.avatar_url do user vinculado (chat/lousa/ranking)
+    email = (coll.get("google_email") or coll.get("email") or "").lower().strip()
+    user_updated = False
+    if email:
+        ur = await db.users.update_one(
+            {"email": email},
+            {"$set": {"avatar_url": None, "updated_at": now_iso()}},
+        )
+        user_updated = ur.matched_count > 0
+
     sessions_invalidated = 0
     if reset_device:
         deleted = await db.collaborator_sessions.delete_many({"collaborator_id": cid})
@@ -553,6 +579,7 @@ async def reset_collaborator_face(cid: str, reset_device: bool = False):
         "ok": True,
         "reset_device": bool(reset_device),
         "sessions_invalidated": sessions_invalidated,
+        "user_avatar_cleared": user_updated,
         "message": "Avatar e foto de referência removidos." + (
             " Dispositivo e vínculo Google também resetados." if reset_device else ""
         ),
@@ -963,9 +990,24 @@ async def create_clock_record(payload: ClockRecordIn, request: Request):
     await db.clock_records.insert_one(rec)
     update: dict[str, Any] = {"updated_at": now_iso()}
     if not coll.get("reference_face"):
+        # Primeira selfie aprovada vira a foto de referência + avatar oficial.
+        # Simétrico ao upload manual de foto (POST /collaborators/{id}/photo):
+        # também popula foto_id e propaga pra users.avatar_url do user vinculado.
         update["reference_face"] = payload.selfie_base64
         update["avatar_data_url"] = payload.selfie_base64
+        update["foto_id"] = payload.selfie_base64
+        update["foto_id_updated_at"] = now_iso()
     await db.collaborators.update_one({"id": payload.collaborator_id}, {"$set": update})
+
+    # Se preencheu a foto agora (1ª selfie), propaga pro user vinculado
+    if "foto_id" in update:
+        email = ((coll.get("google_email") or coll.get("email")) or "").lower().strip()
+        if email:
+            await db.users.update_one(
+                {"email": email},
+                {"$set": {"avatar_url": payload.selfie_base64,
+                            "updated_at": now_iso()}},
+            )
 
     # Após Saída com confirmação → força-encerra bolhas e notifica gestor
     if payload.type == "Saída" and payload.force_close_open_tickets:
