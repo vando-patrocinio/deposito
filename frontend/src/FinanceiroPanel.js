@@ -155,7 +155,7 @@ function ComingSoon({ title }) {
 // Generic CRUD Tab Component
 // =========================================================================
 function CrudTab({ title, columns, fields, listApi, createApi, updateApi,
-                  deleteApi, testIdPrefix }) {
+                  deleteApi, testIdPrefix, extraHeader }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -183,6 +183,7 @@ function CrudTab({ title, columns, fields, listApi, createApi, updateApi,
 
   return (
     <Card title={title}>
+      {extraHeader}
       <div style={{ display: "flex", justifyContent: "space-between",
                     alignItems: "center", marginBottom: 14, gap: 10,
                     flexWrap: "wrap" }}>
@@ -589,28 +590,108 @@ function CashAccountsTab() {
 }
 
 // =========================================================================
-// FILIAIS (Phase 1 — apenas nome + ativo)
+// FILIAIS (Phase 1 — apenas nome + ativo + técnico padrão)
 // =========================================================================
 function FiliaisTab() {
+  const [collabs, setCollabs] = useState([]);
+  useEffect(() => {
+    api.listCollaborators().then((list) => {
+      // Apenas técnicos ativos pra evitar lista enorme com inativos
+      setCollabs((list || []).filter((c) => c.active !== false));
+    }).catch(() => setCollabs([]));
+  }, []);
+
+  const collabOptions = useMemo(() => [
+    { value: "", label: "— Sem técnico padrão —" },
+    ...collabs.map((c) => ({ value: c.id, label: c.name })),
+  ], [collabs]);
+  const collabName = useMemo(() => {
+    const m = {};
+    collabs.forEach((c) => { m[c.id] = c.name; });
+    return m;
+  }, [collabs]);
+
   return (
     <CrudTab
       title="Filiais"
       testIdPrefix="fin-fil"
       columns={[
         { key: "name", label: "Nome" },
-        { key: "active", label: "Ativo",
+        { key: "default_collaborator_id", label: "Técnico padrão",
+          render: (r) => r.default_collaborator_id && collabName[r.default_collaborator_id]
+            ? <span style={{
+                padding: "2px 8px", borderRadius: 999,
+                background: "#ecfdf5", color: "#047857",
+                fontSize: 11, fontWeight: 600,
+              }}>👤 {collabName[r.default_collaborator_id]}</span>
+            : <span style={{ color: "#cbd5e1", fontSize: 11 }}>—</span> },
+        { key: "active", label: "Ativa",
           render: (r) => r.active ? "✓" : "—" },
       ]}
       fields={[
         { key: "name", label: "Nome da filial", required: true,
           placeholder: "Ex.: Matriz Centro, Filial Norte..." },
+        { key: "default_collaborator_id", label: "Técnico padrão",
+          type: "select", options: collabOptions,
+          hint: "Ao escolher esta filial em uma Nova conta, o técnico é copiado automaticamente." },
         { key: "active", label: "Ativa", type: "boolean", default: true },
       ]}
       listApi={() => api.finFiliaisList()}
       createApi={api.finFilialCreate}
       updateApi={api.finFilialUpdate}
       deleteApi={api.finFilialDelete}
+      extraHeader={<MappingSummaryCard collabName={collabName} />}
     />
   );
 }
+
+function MappingSummaryCard({ collabName }) {
+  const [filiais, setFiliais] = useState([]);
+  useEffect(() => {
+    api.finFiliaisList(true).then(setFiliais).catch(() => setFiliais([]));
+  }, []);
+  const mapped = filiais.filter((f) => f.default_collaborator_id);
+  if (!filiais.length) return null;
+  return (
+    <div data-testid="fin-fil-mapping-summary" style={{
+      padding: "12px 14px", marginBottom: 12,
+      background: "linear-gradient(135deg, #f0fdf4, #ecfdf5)",
+      border: "1px solid #bbf7d0", borderRadius: 10,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7,
+                       fontSize: 12.5, fontWeight: 700, color: "#047857",
+                       marginBottom: mapped.length ? 8 : 0 }}>
+        <Building2 size={14} />
+        <span>Mapeamento Filial → Técnico padrão</span>
+        <span style={{ fontSize: 10.5, color: "#10b981",
+                          fontWeight: 600, fontFamily: "ui-monospace, monospace" }}>
+          · {mapped.length}/{filiais.length} configurada{filiais.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {mapped.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: "#15803d", fontStyle: "italic" }}>
+          Nenhum mapeamento ainda. Edite uma filial e selecione o técnico padrão —
+          ele será copiado automaticamente em novas contas vinculadas à filial.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {mapped.map((f) => (
+            <span key={f.id} style={{
+              padding: "4px 10px", borderRadius: 999,
+              background: "white", color: "#047857",
+              fontSize: 11, fontWeight: 600,
+              border: "1px solid #bbf7d0",
+              display: "inline-flex", alignItems: "center", gap: 5,
+            }}>
+              🏢 {f.name}
+              <span style={{ color: "#94a3b8" }}>→</span>
+              👤 {collabName[f.default_collaborator_id] || "(técnico removido)"}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 

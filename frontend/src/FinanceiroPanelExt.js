@@ -44,13 +44,17 @@ export function BillsTab() {
     } finally { setLoading(false); }
   }
   async function loadRefs() {
-    const [s, c, pm, ca, fi] = await Promise.all([
+    const [s, c, pm, ca, fi, cols] = await Promise.all([
       api.finSuppliersList(true), api.finCategoriesList(true),
       api.finPaymentMethodsList(true), api.finCashAccountsList(true),
       api.finFiliaisList(true).catch(() => []),
+      api.listCollaborators().catch(() => []),
     ]);
+    const collabMap = {};
+    (cols || []).forEach((co) => { collabMap[co.id] = co.name; });
     setRefs({ suppliers: s, categories: c, payment_methods: pm,
-              cash_accounts: ca, filiais: fi });
+              cash_accounts: ca, filiais: fi,
+              collaborators_by_id: collabMap });
   }
   useEffect(() => { reload(); }, [filter.status, filter.filial_id]); // eslint-disable-line
   useEffect(() => { loadRefs(); }, []);
@@ -449,6 +453,26 @@ function BillForm({ initial, refs, onClose, onSaved, onRefsChanged }) {
                     style={inlineCreateBtnStyle}
                     title="Criar filial">+</button>
         </div>
+        {(() => {
+          if (!form.filial_id) return null;
+          const fil = (refs.filiais || []).find((f) => f.id === form.filial_id);
+          if (!fil?.default_collaborator_id) return null;
+          // Resolve nome do técnico padrão. `collaborators` é carregado no
+          // BillsTab principal? Não — fallback pra exibir só o id se ausente.
+          const techName = (refs.collaborators_by_id || {})[fil.default_collaborator_id]
+                          || fil.default_collaborator_id;
+          return (
+            <div data-testid="bill-filial-default-tech-hint" style={{
+              marginTop: 6, padding: "5px 10px",
+              background: "#ecfdf5", border: "1px solid #bbf7d0",
+              borderRadius: 7, fontSize: 11, color: "#047857",
+              display: "inline-flex", alignItems: "center", gap: 6,
+            }}>
+              <span>🏢→👤</span>
+              <span><strong>Técnico padrão</strong>: {techName}</span>
+            </div>
+          );
+        })()}
       </Field>
       <Field label="Nº Documento">
         <input style={inputStyle} value={form.document_number}

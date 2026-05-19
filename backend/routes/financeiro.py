@@ -78,9 +78,15 @@ class FilialIn(BaseModel):
     clientes, contas e tickets podem ser vinculados a uma filial. Phase 1
     cobre o cadastro mínimo (apenas nome + ativo) e linkagem com contas
     do Financeiro. Phase 2 estende para colaboradores/clientes/lousa.
+
+    `default_collaborator_id`: técnico padrão da filial. Quando o gestor
+    seleciona a filial em qualquer fluxo (Nova conta, Lousa, etc), o sistema
+    pré-preenche o técnico responsável usando este mapeamento. Pura
+    associação — sem inferência IA.
     """
     name: str = Field(..., min_length=1, max_length=120)
     active: bool = True
+    default_collaborator_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

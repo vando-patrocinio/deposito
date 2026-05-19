@@ -1,5 +1,27 @@
 # PontoIA — Changelog
 
+## Fev 2026 — Filiais Phase 1.5: Mapeamento Filial → Técnico padrão
+
+### Feature
+Cada Filial pode agora ter um **Técnico padrão** vinculado. Quando o gestor seleciona a filial em qualquer fluxo (atualmente: Modal "Nova conta"), o sistema **copia o técnico padrão por associação** (sem IA inferindo nada — pura lookup).
+
+**Backend**:
+- Campo `default_collaborator_id` opcional adicionado em `FilialIn`
+
+**Frontend**:
+- Form de criação/edição de Filial ganhou `<select>` "Técnico padrão" com lista de colaboradores ativos (carregada de `/api/collaborators`)
+- Tabela de Filiais ganhou coluna "Técnico padrão" com pílula verde `👤 <Nome>` ou `—`
+- Card resumo no topo da aba: **"🏢 Mapeamento Filial → Técnico padrão"** com contador (`N/M configuradas`) e pílulas `🏢 Filial → 👤 Técnico` lado a lado (visão Cadastros)
+- BillForm: quando filial é selecionada, exibe hint verde inline `🏢→👤 Técnico padrão: <Nome>` (resolução via `refs.collaborators_by_id` carregado no `BillsTab`)
+- `CrudTab` ganhou prop `extraHeader` (renderizado antes do search/Novo) — permite cards de contexto reutilizáveis
+
+### Verificação
+- Backend curl validado: PUT filial com `default_collaborator_id` retorna o campo persistido
+- Screenshots: aba Filial com card de mapeamento + coluna técnico padrão · modal Nova conta com hint verde após selecionar filial
+- Build + lint ✅
+
+
+
 ## Fev 2026 — Filiais (unidades/branches) — Phase 1
 
 ### Feature
