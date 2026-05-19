@@ -224,9 +224,11 @@ async def chat_completion(company_id: str,
     if not cfg.get("enabled") or not api_key:
         # Fallback: se OpenRouter não está configurado, usa keys próprias
         # (Anthropic/OpenAI/Gemini) da empresa via _emergent_chat_fallback.
+        prefer = cfg.get("atendimento_provider") if purpose == "atendimento" else None
         try:
             return await _emergent_chat_fallback(
                 messages, model, temperature, max_tokens, company_id=cid,
+                prefer=prefer,
             )
         except Exception as e:
             logger.warning("[motor-ia] fallback chat falhou: %s", e)
@@ -234,8 +236,18 @@ async def chat_completion(company_id: str,
                 logger.warning("[motor-ia] última cartada — Emergent Key")
                 return await _emergent_chat_fallback(
                     messages, model, temperature, max_tokens, company_id="",
+                    prefer=prefer,
                 )
             raise RuntimeError("Motor IA não configurado. Configure em Configurações → AI Keys.")
+
+    # OVERRIDE: se há atendimento_provider definido E o purpose é atendimento,
+    # ignora OpenRouter e usa chave própria do provider escolhido (mesmo se
+    # motor está enabled). Permite que o admin diga "Isabella usa Gemini direto".
+    if purpose == "atendimento" and cfg.get("atendimento_provider"):
+        return await _emergent_chat_fallback(
+            messages, model, temperature, max_tokens, company_id=cid,
+            prefer=cfg.get("atendimento_provider"),
+        )
 
     # REGRA DE NEGÓCIO: agentes de atendimento usam APENAS DeepSeek.
     # Ignora `model` recebido do caller e força configuração de atendimento.
@@ -572,8 +584,12 @@ async def _check_budget_alert(company_id: str):
 
 
 async def _emergent_chat_fallback(messages, model, temperature, max_tokens,
-                                       company_id: str = ""):
-    """Fallback chat usando emergentintegrations + keys da empresa."""
+                                       company_id: str = "",
+                                       prefer: Optional[str] = None):
+    """Fallback chat usando emergentintegrations + keys da empresa.
+
+    prefer: "gemini" | "anthropic" | "openai" — força ordem da cascata.
+    """
     from emergentintegrations.llm.chat import LlmChat, UserMessage
     from services.ai_keys import resolve_keys
     import uuid
@@ -581,41 +597,41 @@ async def _emergent_chat_fallback(messages, model, temperature, max_tokens,
     session_id = f"motoria-{uuid.uuid4().hex[:8]}"
     sys_prompt = next((m["content"] for m in messages if m["role"] == "system"), "")
     user_msg = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-    # Prioridade: Anthropic (Claude) → OpenAI → Gemini (cascata de fallback)
     anthropic_key = keys.get("anthropic")
     openai_key = keys.get("openai")
     gemini_key = keys.get("gemini")
-    # Tenta Claude Sonnet primeiro
-    if anthropic_key:
+    # Define ordem da cascata. Default: Anthropic → OpenAI → Gemini.
+    # Se prefer está setado, coloca esse provider primeiro.
+    default_order = ["anthropic", "openai", "gemini"]
+    if prefer and prefer in default_order:
+        order = [prefer] + [p for p in default_order if p != prefer]
+    else:
+        order = default_order
+    provider_funcs = {
+        "anthropic": (anthropic_key, "anthropic", "claude-sonnet-4-5"),
+        "openai":    (openai_key,    "openai",    "gpt-5-mini"),
+        "gemini":    (gemini_key,    "gemini",    "gemini-2.5-flash"),
+    }
+    last_err = None
+    for prov in order:
+        api_key, prov_name, model_name = provider_funcs[prov]
+        if not api_key:
+            continue
         try:
             chat = LlmChat(
-                api_key=anthropic_key, session_id=session_id,
+                api_key=api_key, session_id=session_id,
                 system_message=sys_prompt,
-            ).with_model("anthropic", "claude-sonnet-4-5")
+            ).with_model(prov_name, model_name)
+            if prov_name == "openai":
+                chat = chat.with_max_tokens(max_tokens)
             out = await chat.send_message(UserMessage(text=user_msg))
             return {"content": str(out).strip(),
-                    "model": "claude-sonnet-4-5", "provider": "anthropic"}
+                    "model": model_name, "provider": prov_name}
         except Exception as e:
-            logger.warning("[motor-ia] Claude falhou (%s) — tentando OpenAI", e)
-    if openai_key:
-        try:
-            chat = LlmChat(
-                api_key=openai_key, session_id=session_id,
-                system_message=sys_prompt,
-            ).with_model("openai", "gpt-5-mini").with_max_tokens(max_tokens)
-            out = await chat.send_message(UserMessage(text=user_msg))
-            return {"content": str(out).strip(),
-                    "model": "gpt-5-mini", "provider": "openai"}
-        except Exception as e:
-            logger.warning("[motor-ia] OpenAI falhou (%s) — tentando Gemini", e)
-    if gemini_key:
-        chat = LlmChat(
-            api_key=gemini_key, session_id=session_id,
-            system_message=sys_prompt,
-        ).with_model("gemini", "gemini-2.5-flash")
-        out = await chat.send_message(UserMessage(text=user_msg))
-        return {"content": str(out).strip(),
-                "model": "gemini-2.5-flash", "provider": "gemini"}
+            last_err = e
+            logger.warning("[motor-ia] %s falhou (%s) — tentando próximo", prov_name, e)
+    if last_err:
+        raise last_err
     raise RuntimeError(
         "Nenhuma key de IA configurada. "
         "Configure em Configurações → AI Keys.",
