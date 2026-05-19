@@ -40,6 +40,7 @@ from push_service import (
 )
 from routes import (
     admin as routes_admin,
+    ai_config as routes_ai_config,
     atlaz as routes_atlaz,
     clock as routes_clock,
     collab_auth as routes_collab_auth,
@@ -467,6 +468,7 @@ app.include_router(routes_clock.router)
 app.include_router(routes_locations.router)
 app.include_router(routes_dashboard.router)
 app.include_router(routes_admin.router)
+app.include_router(routes_ai_config.router)
 app.include_router(routes_push.router)
 app.include_router(routes_collab_auth.router)
 app.include_router(routes_logs.router)

@@ -8,6 +8,7 @@ import BrandingCard from "@/BrandingCard";
 import MotorIaCard from "@/MotorIaCard";
 import ConnectionsCard from "@/ConnectionsCard";
 import PublicAccessPanel from "@/PublicAccessPanel";
+import AiConfigCard from "@/AiConfigCard";
 
 export default function SettingsPanel() {
   const [s, setS] = useState(null);
@@ -312,78 +313,7 @@ export default function SettingsPanel() {
         </div>
       </Card>
 
-      <Card title="Integrações de IA">
-        <div style={{ marginBottom: 10 }}>
-          {s.emergent_key_available
-            ? <StatusBadge status="Aprovado">Emergent Universal Key ativa</StatusBadge>
-            : <StatusBadge status="Bloqueado">Emergent Universal Key ausente</StatusBadge>}
-          <p style={{ color: "#64748b", fontSize: 13, marginTop: 8 }}>
-            Cole abaixo as chaves <strong>diretas dos provedores</strong> pra evitar
-            a Emergent Universal Key. As chaves ficam isoladas por empresa
-            (multi-tenant) e têm prioridade sobre o fallback Emergent.
-          </p>
-        </div>
-
-        <Field label={`Anthropic (Claude) — sk-ant-... ${s.anthropic_api_key_set ? "— já existe (cole nova para trocar)" : ""}`}>
-          <input
-            data-testid="inp-anthropic-key"
-            type="password"
-            style={inputStyle}
-            value={form.anthropic_api_key || ""}
-            onChange={(e) => setForm({ ...form, anthropic_api_key: e.target.value })}
-            placeholder={s.anthropic_api_key_set ? s.anthropic_api_key : "sk-ant-api03-..."}
-          />
-        </Field>
-        <p style={{ color: "#94a3b8", fontSize: 11, marginTop: -6, marginBottom: 12 }}>
-          Usada pra <strong>chat da Isabella</strong> (Claude Sonnet 4.5 / Haiku 4.5).
-          {" "}Obter em <a href="https://console.anthropic.com/settings/keys"
-            target="_blank" rel="noreferrer">console.anthropic.com</a>.
-        </p>
-
-        <Field label={`OpenAI — sk-... ${s.openai_api_key_set ? "— já existe (cole nova para trocar)" : ""}`}>
-          <input
-            data-testid="inp-openai-key"
-            type="password"
-            style={inputStyle}
-            value={form.openai_api_key}
-            onChange={(e) => setForm({ ...form, openai_api_key: e.target.value })}
-            placeholder={s.openai_api_key_set ? s.openai_api_key : "sk-..."}
-          />
-        </Field>
-        <p style={{ color: "#94a3b8", fontSize: 11, marginTop: -6, marginBottom: 12 }}>
-          Usada pra <strong>Whisper (transcrição de áudio)</strong> e
-          {" "}<strong>TTS (Isabella falar)</strong>. Obter em
-          {" "}<a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">platform.openai.com/api-keys</a>.
-        </p>
-
-        <Field label={`Google Gemini — AIza... ${s.gemini_api_key_set ? "— já existe (cole nova para trocar)" : ""}`}>
-          <input
-            data-testid="inp-gemini-key"
-            type="password"
-            style={inputStyle}
-            value={form.gemini_api_key || ""}
-            onChange={(e) => setForm({ ...form, gemini_api_key: e.target.value })}
-            placeholder={s.gemini_api_key_set ? s.gemini_api_key : "AIzaSy..."}
-          />
-        </Field>
-        <p style={{ color: "#94a3b8", fontSize: 11, marginTop: -6 }}>
-          Usada pra <strong>Vision (análise de imagens/PDFs do cliente)</strong>.
-          {" "}Obter free em <a href="https://aistudio.google.com/apikey"
-            target="_blank" rel="noreferrer">aistudio.google.com/apikey</a>
-          {" "}(2 milhões de tokens/dia grátis).
-        </p>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, paddingTop: 14, borderTop: "1px solid #e2e8f0" }}>
-          <Button onClick={save} disabled={busy} data-testid="save-ai-keys-btn">
-            {busy ? "Salvando..." : "Salvar chaves de IA"}
-          </Button>
-          {msg && (
-            <span data-testid="save-ai-keys-msg" style={{ fontSize: 13, color: msg.startsWith("Erro") ? "#dc2626" : "#16a34a" }}>
-              {msg}
-            </span>
-          )}
-        </div>
-      </Card>
+      <AiConfigCard />
 
       <Card title="E-mail mensal (Resend)">
         <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 10px" }}>

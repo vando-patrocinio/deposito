@@ -224,11 +224,12 @@ async def chat_completion(company_id: str,
     if not cfg.get("enabled") or not api_key:
         # Fallback: se OpenRouter não está configurado, usa keys próprias
         # (Anthropic/OpenAI/Gemini) da empresa via _emergent_chat_fallback.
+        chain = cfg.get("atendimento_provider_chain") if purpose == "atendimento" else None
         prefer = cfg.get("atendimento_provider") if purpose == "atendimento" else None
         try:
             return await _emergent_chat_fallback(
                 messages, model, temperature, max_tokens, company_id=cid,
-                prefer=prefer,
+                prefer=prefer, chain=chain,
             )
         except Exception as e:
             logger.warning("[motor-ia] fallback chat falhou: %s", e)
@@ -236,17 +237,19 @@ async def chat_completion(company_id: str,
                 logger.warning("[motor-ia] última cartada — Emergent Key")
                 return await _emergent_chat_fallback(
                     messages, model, temperature, max_tokens, company_id="",
-                    prefer=prefer,
+                    prefer=prefer, chain=chain,
                 )
             raise RuntimeError("Motor IA não configurado. Configure em Configurações → AI Keys.")
 
-    # OVERRIDE: se há atendimento_provider definido E o purpose é atendimento,
-    # ignora OpenRouter e usa chave própria do provider escolhido (mesmo se
-    # motor está enabled). Permite que o admin diga "Isabella usa Gemini direto".
-    if purpose == "atendimento" and cfg.get("atendimento_provider"):
+    # OVERRIDE: se há atendimento_provider_chain definido E o purpose é atendimento,
+    # ignora OpenRouter e usa chaves próprias na ordem da cascata configurada.
+    # Permite drag-and-drop de prioridade entre Gemini/Anthropic/OpenAI.
+    if purpose == "atendimento" and (
+            cfg.get("atendimento_provider_chain") or cfg.get("atendimento_provider")):
         return await _emergent_chat_fallback(
             messages, model, temperature, max_tokens, company_id=cid,
             prefer=cfg.get("atendimento_provider"),
+            chain=cfg.get("atendimento_provider_chain"),
         )
 
     # REGRA DE NEGÓCIO: agentes de atendimento usam APENAS DeepSeek.
@@ -585,10 +588,14 @@ async def _check_budget_alert(company_id: str):
 
 async def _emergent_chat_fallback(messages, model, temperature, max_tokens,
                                        company_id: str = "",
-                                       prefer: Optional[str] = None):
+                                       prefer: Optional[str] = None,
+                                       chain: Optional[List[str]] = None):
     """Fallback chat usando emergentintegrations + keys da empresa.
 
-    prefer: "gemini" | "anthropic" | "openai" — força ordem da cascata.
+    chain:   ["gemini", "anthropic", "openai"] — ordem completa da cascata.
+             Tem prioridade sobre `prefer`. Se uma chave falhar/estiver vazia,
+             tenta a próxima imediatamente.
+    prefer:  "gemini" | "anthropic" | "openai" — força essa primeira (compat).
     """
     from emergentintegrations.llm.chat import LlmChat, UserMessage
     from services.ai_keys import resolve_keys
@@ -600,10 +607,15 @@ async def _emergent_chat_fallback(messages, model, temperature, max_tokens,
     anthropic_key = keys.get("anthropic")
     openai_key = keys.get("openai")
     gemini_key = keys.get("gemini")
-    # Define ordem da cascata. Default: Anthropic → OpenAI → Gemini.
-    # Se prefer está setado, coloca esse provider primeiro.
     default_order = ["anthropic", "openai", "gemini"]
-    if prefer and prefer in default_order:
+    # Define ordem da cascata
+    if chain:
+        order = [p for p in chain if p in default_order]
+        # Completa com providers faltantes pra não excluir fallback útil
+        for p in default_order:
+            if p not in order:
+                order.append(p)
+    elif prefer and prefer in default_order:
         order = [prefer] + [p for p in default_order if p != prefer]
     else:
         order = default_order
