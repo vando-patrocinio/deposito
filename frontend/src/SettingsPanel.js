@@ -372,6 +372,17 @@ export default function SettingsPanel() {
             target="_blank" rel="noreferrer">aistudio.google.com/apikey</a>
           {" "}(2 milhões de tokens/dia grátis).
         </p>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14, paddingTop: 14, borderTop: "1px solid #e2e8f0" }}>
+          <Button onClick={save} disabled={busy} data-testid="save-ai-keys-btn">
+            {busy ? "Salvando..." : "Salvar chaves de IA"}
+          </Button>
+          {msg && (
+            <span data-testid="save-ai-keys-msg" style={{ fontSize: 13, color: msg.startsWith("Erro") ? "#dc2626" : "#16a34a" }}>
+              {msg}
+            </span>
+          )}
+        </div>
       </Card>
 
       <Card title="E-mail mensal (Resend)">
