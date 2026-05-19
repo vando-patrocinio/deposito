@@ -1044,10 +1044,12 @@ export const api = {
     client.get(`/lousa/returned-notes?days_back=${daysBack}`).then((r) => r.data),
   collabGrantMobileAccess: (cid) =>
     client.post(`/collaborators/${cid}/grant-mobile-access`).then((r) => r.data),
-  networkPing: ({ host, count = 4, port = 80 }) => {
+  networkPing: ({ host, count = 4, port = 80, ticketId = null }) => {
     const cid = new URLSearchParams(window.location.search).get("cid");
     const qs = cid ? `?cid=${encodeURIComponent(cid)}` : "";
-    return client.post(`/network/ping${qs}`, { host, count, port }).then((r) => r.data);
+    const payload = { host, count, port };
+    if (ticketId) payload.ticket_id = ticketId;
+    return client.post(`/network/ping${qs}`, payload).then((r) => r.data);
   },
   networkResolve: ({ host }) => {
     const cid = new URLSearchParams(window.location.search).get("cid");

@@ -18,7 +18,7 @@ const DEFAULT_PORTS = [
   { label: "SNMP (161)", value: 161 },
 ];
 
-export default function PingTestModal({ open, onClose, defaultHost = "" }) {
+export default function PingTestModal({ open, onClose, defaultHost = "", ticketId = null }) {
   const [host, setHost] = useState(defaultHost);
   const [port, setPort] = useState(80);
   const [count, setCount] = useState(4);
@@ -50,7 +50,7 @@ export default function PingTestModal({ open, onClose, defaultHost = "" }) {
     if (!trimmed) { setErr("Digite IP ou hostname"); return; }
     setBusy(true); setErr(null); setResult(null);
     try {
-      const r = await api.networkPing({ host: trimmed, count, port });
+      const r = await api.networkPing({ host: trimmed, count, port, ticketId });
       setResult(r);
       loadHistory();
     } catch (ex) {

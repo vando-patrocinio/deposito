@@ -1728,13 +1728,34 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
     except Exception:
         pass
 
+    # === Anexa resumo dos pings feitos para essa bolha ===
+    # Se houve ping → resumo (RTT, loss, alive); se não houve → marca como
+    # "NÃO FOI REALIZADO". Vai pro completion_data.ping_summary (texto).
+    try:
+        from routes.network_diag import build_close_ping_summary
+        ping_summary = await build_close_ping_summary(
+            ticket_id, opened_at=t.get("opened_at"),
+        )
+    except Exception as e:
+        logger.info("[lousa] build_close_ping_summary skip: %s", e)
+        ping_summary = "🛰 Teste de ping: NÃO FOI REALIZADO durante o atendimento."
+
+    cd_dump = cd.model_dump()
+    cd_dump["ping_summary"] = ping_summary
+    # Também anexa no observations/laudo se já existir, agregando ao texto
+    obs_field = cd_dump.get("observations") or cd_dump.get("laudo") or ""
+    cd_dump["observations"] = (
+        (obs_field.rstrip() + "\n\n" + ping_summary)
+        if obs_field else ping_summary
+    )
+
     await db.tickets.update_one(
         {"id": ticket_id},
         {"$set": {
             "status": "finalizada", "outcome": payload.outcome,
             "closed_at": now_iso(), "closed_by": cid,
             "close_location": {"latitude": payload.latitude, "longitude": payload.longitude},
-            "completion_data": cd.model_dump(),
+            "completion_data": cd_dump,
             "central_ont": {
                 "sinal": cd.sinal,
                 "is_bad_signal": is_bad_signal,
@@ -1933,6 +1954,23 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
     if t["type"] == "instalacao" and not cd.ont:
         raise HTTPException(400, "ONT é obrigatório para instalação")
 
+    # Anexa resumo dos pings ao fechamento (igual ao endpoint público)
+    try:
+        from routes.network_diag import build_close_ping_summary
+        ping_summary = await build_close_ping_summary(
+            ticket_id, opened_at=t.get("opened_at"),
+        )
+    except Exception:
+        ping_summary = "🛰 Teste de ping: NÃO FOI REALIZADO durante o atendimento."
+
+    cd_dump = cd.model_dump()
+    cd_dump["ping_summary"] = ping_summary
+    obs_field = cd_dump.get("observations") or cd_dump.get("laudo") or ""
+    cd_dump["observations"] = (
+        (obs_field.rstrip() + "\n\n" + ping_summary)
+        if obs_field else ping_summary
+    )
+
     await db.tickets.update_one(
         {"id": ticket_id},
         {"$set": {
@@ -1941,7 +1979,7 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
             "closed_at": now_iso(),
             "closed_by": user["id"],
             "close_location": {"latitude": payload.latitude, "longitude": payload.longitude},
-            "completion_data": cd.model_dump(),
+            "completion_data": cd_dump,
         }},
     )
     # Quality notes — snapshot do sinal NO FECHAMENTO (SmartOLT live, honra toggle)

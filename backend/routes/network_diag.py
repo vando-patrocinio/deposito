@@ -83,6 +83,12 @@ class PingIn(BaseModel):
                         description="Número de pacotes (1-10)")
     port: int = Field(80, ge=1, le=65535,
                        description="Porta TCP para teste (default 80)")
+    ticket_id: str | None = Field(
+        None,
+        description="ID da bolha sendo trabalhada. Quando preenchido, o "
+                    "ping é vinculado a essa nota e o resumo é anexado "
+                    "automaticamente no fechamento.",
+    )
 
 
 async def _tcp_probe(host: str, port: int, timeout: float = 3.0) -> float:
@@ -183,7 +189,8 @@ async def network_ping(payload: PingIn,
     icmp = await _icmp_via_ping_cmd(host, payload.count)
     if icmp:
         finished_iso = datetime.now(timezone.utc).isoformat()
-        await _log_audit(user, host, payload.count, icmp, started_iso, finished_iso)
+        await _log_audit(user, host, payload.count, icmp,
+                          started_iso, finished_iso, payload.ticket_id)
         return {
             "ok": True,
             "host": host,
@@ -225,7 +232,8 @@ async def network_ping(payload: PingIn,
         "max_ms": max_ms,
         "port": payload.port,
     }
-    await _log_audit(user, host, payload.count, stats, started_iso, finished_iso)
+    await _log_audit(user, host, payload.count, stats,
+                      started_iso, finished_iso, payload.ticket_id)
 
     return {
         "ok": True,
@@ -237,26 +245,70 @@ async def network_ping(payload: PingIn,
 
 
 async def _log_audit(user: dict, host: str, count: int,
-                      stats: dict, started: str, finished: str) -> None:
+                      stats: dict, started: str, finished: str,
+                      ticket_id: str | None = None) -> None:
     try:
         cid = user.get("company_id") or DEMO_COMPANY_ID
         await db.network_ping_log.insert_one({
             "company_id": cid,
             "user_id": user.get("id"),
             "user_name": user.get("name") or user.get("email"),
+            "collaborator_id": user.get("_collab_id"),
+            "ticket_id": ticket_id,
             "host": host,
             "count": count,
+            "port": stats.get("port"),
             "alive": stats.get("alive"),
             "received": stats.get("received"),
             "sent": stats.get("sent"),
             "loss_pct": stats.get("loss_pct"),
             "avg_ms": stats.get("avg_ms"),
+            "min_ms": stats.get("min_ms"),
+            "max_ms": stats.get("max_ms"),
             "method": stats.get("method"),
             "started_at": started,
             "finished_at": finished,
         })
     except Exception as e:
         logger.info("[ping] audit log skip: %s", e)
+
+
+def summarize_ping_log(p: dict) -> str:
+    """Formata 1 log de ping em linha curta para anexar em laudo."""
+    host = p.get("host", "?")
+    if p.get("alive"):
+        rtt = p.get("avg_ms")
+        rtt_str = f"{rtt:.1f}ms" if isinstance(rtt, (int, float)) else "?"
+        loss = p.get("loss_pct")
+        loss_str = (f" | {loss:.0f}% loss"
+                    if isinstance(loss, (int, float)) and loss > 0 else "")
+        return f"✓ {host} respondeu — RTT {rtt_str}{loss_str}"
+    return f"✗ {host} NÃO respondeu — host offline ou bloqueado"
+
+
+async def build_close_ping_summary(ticket_id: str,
+                                     opened_at: str | None = None) -> str:
+    """Monta o texto que será anexado ao fechamento de uma bolha.
+
+    - Busca todos os pings feitos PARA essa ticket_id (campo direto)
+    - Se nada → retorna "Teste de ping NÃO FOI REALIZADO"
+    - Se algum → retorna lista resumida em texto multilinha
+    """
+    q: dict = {"ticket_id": ticket_id}
+    if opened_at:
+        # Considera pings desde a abertura (pra evitar logs de bolha antiga)
+        q["started_at"] = {"$gte": opened_at}
+    logs = await db.network_ping_log.find(
+        q, {"_id": 0}, sort=[("started_at", -1)],
+    ).to_list(20)
+    if not logs:
+        return "🛰 Teste de ping: NÃO FOI REALIZADO durante o atendimento."
+    lines = ["🛰 Teste de ping realizado:"]
+    for p in logs[:10]:  # max 10 entradas pra não inchar
+        lines.append(f"  · {summarize_ping_log(p)}")
+    if len(logs) > 10:
+        lines.append(f"  · (+ {len(logs) - 10} testes anteriores omitidos)")
+    return "\n".join(lines)
 
 
 @router.get("/network/ping/history")

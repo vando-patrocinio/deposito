@@ -4,6 +4,7 @@ import { Button, Icon } from "@/ui";
 import QRScannerModal from "@/QRScannerModal";
 import UberGpsPicker from "@/UberGpsPicker";
 import AchievementsCard from "@/AchievementsCard";
+import PingTestModal from "@/PingTestModal";
 
 /**
  * LousaMobile — vista da Lousa (bolhas) no app do colaborador.
@@ -1060,6 +1061,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   const [showPhotoWarn, setShowPhotoWarn] = useState(false);
   const [suggestBusy, setSuggestBusy] = useState(false);
   const [suggestResult, setSuggestResult] = useState(null);
+  const [showPingModal, setShowPingModal] = useState(false);
 
   async function suggestSupplies() {
     try {
@@ -1650,6 +1652,23 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
             }}
           />
 
+          {/* Botão de Ping vinculado à bolha — anexa resultado ao laudo */}
+          <Button onClick={() => setShowPingModal(true)}
+                   variant="soft"
+                   data-testid="ticket-ping-btn"
+                   style={{
+                     width: "100%", height: 44, marginBottom: 12,
+                     background: "#ecfeff", borderColor: "#67e8f9",
+                     color: "#0e7490", fontWeight: 700, fontSize: 13,
+                   }}>
+            🛰 Testar Ping (ONU deste cliente)
+          </Button>
+          <div style={{ fontSize: 10, color: "#64748b", marginTop: -8,
+                          marginBottom: 12, lineHeight: 1.4 }}>
+            O resultado é anexado automaticamente no laudo de fechamento.
+            Se você não fizer o teste, vai constar <strong>"NÃO FOI REALIZADO"</strong>.
+          </div>
+
           {err && <Banner color="#fee2e2" border="#dc2626" icon="!" text={err} />}
 
           <div style={{ display: "flex", gap: 8 }}>
@@ -1725,6 +1744,15 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
           }}
         />
       )}
+
+      {/* Modal de ping vinculado a esta bolha */}
+      <PingTestModal
+        open={showPingModal}
+        onClose={() => setShowPingModal(false)}
+        defaultHost={ticket?.live_signal?.ip_address
+                       || ticket?.client_snapshot?.ip_address || ""}
+        ticketId={ticket?.id}
+      />
     </div>
   );
 }
