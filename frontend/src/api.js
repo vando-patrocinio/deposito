@@ -935,6 +935,16 @@ export const api = {
   finFilialDelete: (id) =>
     client.delete(`/financeiro/filiais/${id}`).then((r) => r.data),
 
+  // Relatórios financeiros (DRE, Aging, KPIs)
+  finReportsDre: (params = {}) =>
+    client.get(`/financeiro/reports/dre`, { params }).then((r) => r.data),
+  finReportsAging: () =>
+    client.get(`/financeiro/reports/aging-payable`).then((r) => r.data),
+  finReportsTopSuppliers: (params = {}) =>
+    client.get(`/financeiro/reports/top-suppliers`, { params }).then((r) => r.data),
+  finReportsKpis: (params = {}) =>
+    client.get(`/financeiro/reports/kpis`, { params }).then((r) => r.data),
+
   // ===== Rede IA =====
   redeIaBairros: () => client.get(`/rede-ia/bairros`).then((r) => r.data),
   redeIaBairrosPublic: (collab_id) =>

@@ -1,5 +1,30 @@
 # PontoIA — Changelog
 
+## Fev 2026 — Financeiro: Aba "Relatórios" + KPIs (DRE, Aging, Top)
+
+### Feature
+Nova aba **"📊 Relatórios"** no Financeiro consolidando os principais KPIs financeiros do mês:
+
+**Backend** (`/app/backend/routes/financeiro_reports.py`):
+- `GET /api/financeiro/reports/dre?month=YYYY-MM` — DRE simplificado (receitas brutas, sub-componentes, despesas por categoria, lucro líquido, margem %)
+- `GET /api/financeiro/reports/aging-payable` — Aging de contas a pagar em 8 buckets (vencido >90/61-90/31-60/até 30 + a vencer ≤30/31-60/61-90/>90)
+- `GET /api/financeiro/reports/top-suppliers?month=YYYY-MM&limit=10` — Top fornecedores por valor
+- `GET /api/financeiro/reports/kpis?month=YYYY-MM` — KPI panel header (saldo, receita/despesa/lucro do mês, pendentes, vencidas)
+
+**Frontend** (`/app/frontend/src/FinanceiroReportsTab.js`):
+- Header preto com seletor "Mês anterior | Mês atual | DatePicker"
+- 4 cards KPI no topo (Saldo, Receita, Despesa, Lucro) com cores semânticas
+- 2 cards de bills (Pendentes amarelo / Vencidas vermelho) span-2
+- **DRE visual**: linha principal Receitas Brutas → sub-linhas indentadas (Movimentações + Faturas Atlaz) → (-) Despesas Operacionais por categoria → = Lucro/Prejuízo Líquido com margem %
+- **Aging chart**: ResponsiveContainer + BarChart horizontal vermelho (vencidas) / azul (a vencer)
+- **Top Fornecedores**: ranking 1-10 com badge dourado top 3, barra de progresso de fundo proporcional, pílulas de pagas/pendentes, total formatado em monoespaçado
+
+### Verificação
+- Curl validado para DRE, Aging, KPIs com dados reais (R$ 179.210,96 receita, R$ 99,90 vencidas)
+- Screenshot validado: aba completa renderizando com todos os 7 elementos
+
+
+
 ## Fev 2026 — Filiais Phase 1.5: Mapeamento Filial → Técnico padrão
 
 ### Feature

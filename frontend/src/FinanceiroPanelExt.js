@@ -3,7 +3,8 @@ import { api } from "@/api";
 import { Button, Card, Field, inputStyle } from "@/ui";
 import {
   Plus, Pencil, Trash2, CheckCircle2, AlertCircle, Calendar,
-  ArrowUp, ArrowDown, DollarSign, RotateCcw,
+  ArrowUp, ArrowDown, DollarSign, RotateCcw, TrendingUp, TrendingDown,
+  Wallet, FileText,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
