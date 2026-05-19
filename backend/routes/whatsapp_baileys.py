@@ -15,6 +15,7 @@ Webhook interno (chamado pelo sidecar):
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import os
@@ -2211,6 +2212,66 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         )
         reply_text = (result.get("content") or "").strip()
 
+        # ────────────────────────────────────────────────────────────────
+        # HANDOFF: detecta marker [ROTEAR_X] na resposta e troca de agente
+        # ────────────────────────────────────────────────────────────────
+        # Mapping dos markers → nome do agente alvo
+        HANDOFF_MAP = {
+            "[ROTEAR_VENDAS]":    "Isabella",
+            "[ROTEAR_SUPORTE]":   "Alvaro",
+            "[ROTEAR_COBRANCA]":  "Camila",
+            "[ROTEAR_COBRANÇA]":  "Camila",  # acentuado, IA pode gerar assim
+            "[ROTEAR_TESTE]":     "Teste",
+        }
+        handoff_target_name: Optional[str] = None
+        for marker, target_name in HANDOFF_MAP.items():
+            if reply_text and marker in reply_text:
+                # Não passa pro próprio agente atual
+                if (agent.get("name") or "").lower() == target_name.lower():
+                    reply_text = reply_text.replace(marker, "").strip()
+                    continue
+                handoff_target_name = target_name
+                reply_text = reply_text.replace(marker, "").strip()
+                break
+
+        if handoff_target_name:
+            try:
+                # Busca o agente alvo
+                target_agent = await db.aihub_agents.find_one(
+                    {"company_id": cid, "name": handoff_target_name,
+                     "active": True},
+                    {"_id": 0},
+                )
+                if target_agent:
+                    # Atualiza routed_agent_id na conversa (próximas msgs já
+                    # vão pro novo agente automaticamente)
+                    await db.wa_conversations.update_one(
+                        {"company_id": cid, "phone": phone},
+                        {"$set": {
+                            "routed_agent_id": target_agent.get("id"),
+                            "routed_agent_name": target_agent.get("name"),
+                            "last_handoff_at": now_iso(),
+                            "last_handoff_from": agent.get("name"),
+                        }},
+                        upsert=True,
+                    )
+                    logger.info(
+                        "[wa-baileys] handoff %s → %s phone=%s",
+                        agent.get("name"), target_agent.get("name"), phone,
+                    )
+                    # Marca a saudação do novo agente pra ser enviada como
+                    # segunda mensagem após o texto atual ser entregue
+                    handoff_pending_agent = target_agent
+                else:
+                    logger.warning(
+                        "[wa-baileys] handoff alvo %s não encontrado", handoff_target_name)
+                    handoff_pending_agent = None
+            except Exception as e:
+                logger.warning("[wa-baileys] handoff falhou: %s", e)
+                handoff_pending_agent = None
+        else:
+            handoff_pending_agent = None
+
         # Interceptor: se IA incluiu o marcador [GERAR_ONBOARDING_LINK],
         # cria a sessão de onboarding e substitui pela URL real.
         if reply_text and "[GERAR_ONBOARDING_LINK]" in reply_text:
@@ -2470,6 +2531,48 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                 )
         except Exception as e:
             logger.warning("[wa-baileys] falha ao mover handoff offline: %s", e)
+
+    # ─────────────────────────────────────────────────────────────
+    # HANDOFF FOLLOW-UP: novo agente envia saudação inicial logo
+    # após a mensagem de despedida do agente anterior. Cria a
+    # sensação de "passei a bola, ela já chegou".
+    # ─────────────────────────────────────────────────────────────
+    if send_ok and handoff_pending_agent:
+        try:
+            await asyncio.sleep(2.0)  # pequena pausa pra UX humana
+            greeting = (handoff_pending_agent.get("initial_message")
+                          or f"Oi! Aqui é o(a) {handoff_pending_agent.get('name')}. Vou continuar te ajudando 🙂")
+            # Envia saudação direta sem chamar LLM de novo (economia de tokens
+            # + saudação fica idêntica à inicial cadastrada no agente).
+            sent = await _sidecar_post_silent(
+                "/send", {"phone": phone, "text": greeting},
+            )
+            if sent.get("ok") is not False:
+                await db.aihub_wa_messages.insert_one({
+                    "company_id": cid, "phone": phone,
+                    "jid": f"{phone}@s.whatsapp.net",
+                    "direction": "outbound", "text": greeting,
+                    "subscriber_id": subscriber_id,
+                    "auto_reply": True,
+                    "agent": handoff_pending_agent.get("name"),
+                    "agent_id": handoff_pending_agent.get("id"),
+                    "is_handoff_greeting": True,
+                    "handoff_from": agent.get("name"),
+                    "delivery_status": "sent",
+                    "external_id": sent.get("message_id"),
+                    "created_at": now_iso(),
+                })
+                logger.info(
+                    "[wa-baileys] handoff greeting %s → %s entregue",
+                    agent.get("name"), handoff_pending_agent.get("name"),
+                )
+            else:
+                logger.warning(
+                    "[wa-baileys] handoff greeting falhou: %s",
+                    sent.get("error"))
+        except Exception as e:
+            logger.warning("[wa-baileys] handoff greeting top-level: %s", e)
+
     return reply_text
 
 
