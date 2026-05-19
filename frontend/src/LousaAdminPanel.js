@@ -558,10 +558,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         (activeSubTab === "central_ont" ? <CentralOntPanel /> :
         (activeSubTab === "quality_notes" ? <LousaQualityNotesPanel /> : <></>))}
       {activeSubTab === "board" && <>
-      <ReturnedNotesCard onJump={(t) => setEditingTicket(t)} />
-      <PingQualityCard />
-      <CoachingConfigCard />
-      <ClosureQualityCard />
+      <DashboardAccordion onJumpTicket={(t) => setEditingTicket(t)} />
       {/* Grade horizontal — coluna por técnico */}
       <div style={{
         display: "flex", gap: 14, overflowX: "auto", paddingBottom: 16, minHeight: 540,
@@ -2041,6 +2038,122 @@ function ClosureQualityCard() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+
+// ============================================================================
+// DashboardAccordion — agrupa os 4 cards superiores como abas exclusivas.
+// Clicar abre o card e fecha os outros automaticamente. Default: todos fechados.
+// ============================================================================
+function DashboardAccordion({ onJumpTicket }) {
+  const [openKey, setOpenKey] = useState(null);
+
+  const toggle = (key) => setOpenKey((cur) => (cur === key ? null : key));
+
+  const items = [
+    {
+      key: "returned",
+      icon: "📋",
+      title: "Notas que retornaram",
+      subtitle: "Bolhas esquecidas em dias anteriores",
+      accent: "#1e293b",
+      bg: "#f1f5f9",
+      content: <ReturnedNotesCard onJump={onJumpTicket} />,
+    },
+    {
+      key: "ping_quality",
+      icon: "🛰",
+      title: "Qualidade do atendimento — Teste de Ping",
+      subtitle: "% de bolhas finalizadas com ping por técnico",
+      accent: "#0c4a6e",
+      bg: "#cffafe",
+      content: <PingQualityCard />,
+    },
+    {
+      key: "coaching",
+      icon: "🎯",
+      title: "Coaching automático — Ping skip",
+      subtitle: "Alerta WhatsApp da Isabella quando técnico pula o ping",
+      accent: "#78350f",
+      bg: "#fde68a",
+      content: <CoachingConfigCard />,
+    },
+    {
+      key: "closure_quality",
+      icon: "🧠",
+      title: "Qualidade dos fechamentos — IA",
+      subtitle: "IA correlaciona reclamação x solução e dá nota",
+      accent: "#4c1d95",
+      bg: "#ddd6fe",
+      content: <ClosureQualityCard />,
+    },
+  ];
+
+  return (
+    <div data-testid="dashboard-accordion" style={{ marginBottom: 14,
+                                                       display: "flex",
+                                                       flexDirection: "column",
+                                                       gap: 8 }}>
+      {items.map((it) => {
+        const open = openKey === it.key;
+        return (
+          <div key={it.key} data-testid={`accordion-item-${it.key}`}
+               style={{ borderRadius: 12, overflow: "hidden",
+                          border: `1.5px solid ${it.accent}22`,
+                          background: "white",
+                          transition: "box-shadow .2s ease",
+                          boxShadow: open
+                            ? "0 8px 24px rgba(15,23,42,.08)"
+                            : "0 1px 2px rgba(15,23,42,.04)" }}>
+            <button type="button"
+                    onClick={() => toggle(it.key)}
+                    data-testid={`accordion-toggle-${it.key}`}
+                    style={{ width: "100%", display: "flex",
+                               alignItems: "center", gap: 12,
+                               padding: "12px 14px",
+                               background: open ? it.bg : "white",
+                               border: "none", cursor: "pointer",
+                               textAlign: "left",
+                               transition: "background .15s ease" }}>
+              <span style={{ width: 36, height: 36, borderRadius: 10,
+                               background: it.bg, color: it.accent,
+                               display: "grid", placeItems: "center",
+                               fontSize: 18, flexShrink: 0 }}>
+                {it.icon}
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 13,
+                                color: it.accent, letterSpacing: "-.01em" }}>
+                  {it.title}
+                </div>
+                <div style={{ fontSize: 11, color: "#64748b", marginTop: 2,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap" }}>
+                  {it.subtitle}
+                </div>
+              </span>
+              <span style={{ color: it.accent, fontSize: 18,
+                               transform: `rotate(${open ? 180 : 0}deg)`,
+                               transition: "transform .2s ease",
+                               flexShrink: 0 }}>
+                ⌄
+              </span>
+            </button>
+            {open && (
+              <div data-testid={`accordion-body-${it.key}`}
+                   style={{ padding: "0 14px 14px 14px",
+                              background: "white" }}>
+                <div style={{ marginTop: 8 }}>
+                  {it.content}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
