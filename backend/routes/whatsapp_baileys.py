@@ -1379,7 +1379,7 @@ async def inbound_webhook(payload: InboundIn,
     # e não tiver texto/caption do cliente, Isabella "vê" o conteúdo.
     vision_summary = None
     if (has_media_file and not (payload.text or "").strip()
-            and payload.media_kind in ("image", "document")):
+            and payload.media_kind in ("image", "document", "sticker")):
         try:
             from services.media_analysis import analyze_media
             vision_summary = await analyze_media(

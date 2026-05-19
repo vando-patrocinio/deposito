@@ -67,10 +67,35 @@ NUNCA use mais de 200 caracteres na descrição.
 """
 
 
+STICKER_PROMPT_VISION = """Você é uma analista de sentimento de mensagens.
+A imagem é um STICKER/figurinha do WhatsApp.
+Sua tarefa é descrever o TOM EMOCIONAL em UMA FRASE CURTA (max 100 chars).
+
+Formato: "Sticker [emoção]: [descrição curta]"
+
+Exemplos:
+- "Sticker alegre: emoji rindo segurando coração."
+- "Sticker triste: gato chorando com lágrimas."
+- "Sticker irritado: pessoa com cara vermelha."
+- "Sticker positivo: polegar pra cima animado."
+- "Sticker confuso: ponto de interrogação."
+- "Sticker agradecimento: mãos em prece."
+
+Emoções possíveis: alegre, triste, irritado, agradecido, surpreso, confuso, romântico, positivo, negativo, neutro, brincadeira, urgência.
+
+SEMPRE comece com "Sticker [emoção]:" antes da descrição.
+NUNCA passe de 100 caracteres no total.
+"""
+
+
 async def analyze_image(image_b64: str, mime_type: str = "image/jpeg",
                           company_id: Optional[str] = None,
-                          agent: str = "isabella_vision") -> Optional[str]:
+                          agent: str = "isabella_vision",
+                          sticker_mode: bool = False) -> Optional[str]:
     """Analisa imagem (base64) e retorna descrição curta.
+
+    Args:
+        sticker_mode: se True, usa STICKER_PROMPT_VISION focado em emoção.
 
     Returns:
         String descritiva pra injetar no prompt da Isabella, ou None em erro.
@@ -91,13 +116,16 @@ async def analyze_image(image_b64: str, mime_type: str = "image/jpeg",
             logger.warning("[vision] nenhuma key disponível (nem própria, nem Emergent) — pulando")
             return None
         session_id = f"vision-{base64.b32encode(os.urandom(6)).decode().lower()}"
+        system_prompt = STICKER_PROMPT_VISION if sticker_mode else SYSTEM_PROMPT_VISION
         chat = LlmChat(
             api_key=vision_key, session_id=session_id,
-            system_message=SYSTEM_PROMPT_VISION,
+            system_message=system_prompt,
         ).with_model(DEFAULT_PROVIDER, DEFAULT_MODEL)
 
+        user_text = ("Analise esse sticker do WhatsApp." if sticker_mode
+                       else "Analise essa mídia e descreva conforme suas regras.")
         msg = UserMessage(
-            text="Analise essa mídia e descreva conforme suas regras.",
+            text=user_text,
             file_contents=[ImageContent(image_base64=image_b64)],
         )
         response = await chat.send_message(msg)
@@ -219,5 +247,16 @@ async def analyze_media(media_b64: str, mime_type: str,
                                       agent=agent)
         # Outros docs (.docx, .xlsx) — não suportado por ora
         return None
-    # video / sticker → não analisamos
+    if kind == "sticker":
+        # Sticker normalmente é webp animado ou estático.
+        # Analisamos como imagem mas com prompt customizado pra
+        # capturar o TOM emocional, não o conteúdo literal.
+        return await analyze_image(
+            media_b64,
+            mime_type=mime_type or "image/webp",
+            company_id=company_id,
+            agent=agent,
+            sticker_mode=True,
+        )
+    # video → não analisamos
     return None
