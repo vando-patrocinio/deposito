@@ -1096,3 +1096,39 @@ disparava após 3+ falhas, o sidecar entrava em loop infinito de reset+logout.
   restart.
 
 **Pronto para o Admin escanear o QR via painel WhatsApp do gestor.**
+
+
+---
+
+## 2026-05-20 — Suporte a PDF Sicoob no Bank Import (P1)
+
+**Solicitação:** Aceitar PDF no card "Importar Movimentações Financeiras →
+Sicoob" (antes só OFX/CSV).
+
+**Desafio:** PDF Sicoob tem layout fixo mas com **quebras de linha
+problemáticas** quando o valor estoura a coluna — o valor ou o indicador
+C/D pulam para outras linhas. 3 padrões observados:
+1. Padrão A normal: `DD/MM <DESC> <VAL><C|D>` na mesma linha.
+2. Padrão B: valor na linha do DD/MM, `D`/`C` na linha seguinte.
+3. Padrão C: valor órfão na linha ANTERIOR ao DD/MM, indicador na linha
+   seguinte ao DD/MM.
+
+**Implementação:**
+- Novo módulo `backend/services/sicoob_pdf_parser.py` com state-machine
+  para os 3 padrões + `pending_value` para valores órfãos.
+- Extração de texto via `pdfplumber` (já instalado). Se PDF sem camada de
+  texto (escaneado) → erro pedindo OFX.
+- Detecta ano via `PERÍODO: DD/MM/YYYY - DD/MM/YYYY` do cabeçalho.
+- Pula linhas SALDO e seção RESUMO.
+- `routes/bank_import.py`: detecta `.pdf` (ou magic bytes `%PDF-`), só
+  aceita para `source=sicoob`. Limite 5→10 MB.
+- Frontend `BankImportTab.js`: `accept` condicional (Sicoob inclui PDF),
+  aviso sobre PDF digital vs escaneado.
+
+**Validação contra extrato real (abril/2026, R$1.160 → R$1.232):**
+- **577 transações** extraídas, todos os **20 dias batendo até o centavo**
+- Receitas R$297.044,05 · Despesas R$296.971,65 · Net +R$72,40
+- Edge cases (10k, 7k, 5.8k, 1.059,16 broken) todos capturados.
+
+**Testes via curl end-to-end:** POST upload retorna `staging_id` + 577
+items prontos para classificação IA (pipeline existente).

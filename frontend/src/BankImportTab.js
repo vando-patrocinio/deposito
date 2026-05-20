@@ -233,21 +233,31 @@ export default function BankImportTab() {
                           alignItems: "center", flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.5 }}>
-                Envie o arquivo <strong>OFX</strong> ou <strong>CSV</strong>
+                Envie o arquivo <strong>OFX</strong>, <strong>CSV</strong>
+                {source === "sicoob" && <> ou <strong>PDF</strong></>}
                 {" "}exportado do
                 {" "}{source === "sicoob" ? "Sicoob" : "seu banco"}.
                 A IA Claude Sonnet 4.5 classifica cada
                 transação como entrada/saída e sugere fornecedor + categoria.
+                {source === "sicoob" && (
+                  <div style={{ marginTop: 4, fontSize: 12, color: "#0369a1" }}>
+                    📄 <strong>PDF Sicoob:</strong> suportado para extratos
+                    digitais (com camada de texto). Limite: 10 MB.
+                  </div>
+                )}
               </div>
               <div style={{ marginTop: 6, fontSize: 11.5, color: "#64748b" }}>
                 💡 {source === "sicoob"
-                  ? "Sicoob → Internet Banking → Extrato → Exportar OFX"
+                  ? "Sicoob → Internet Banking → Extrato → Exportar OFX (preferencial) ou Imprimir/Salvar PDF"
                   : "Procure no internet banking: \"Exportar OFX\" "
                   + "ou \"Extrato em arquivo\""}
               </div>
             </div>
             <div>
-              <input ref={fileRef} type="file" accept=".ofx,.OFX,.csv,.CSV"
+              <input ref={fileRef} type="file"
+                      accept={source === "sicoob"
+                        ? ".ofx,.OFX,.csv,.CSV,.pdf,.PDF"
+                        : ".ofx,.OFX,.csv,.CSV"}
                       data-testid="bank-import-file-input"
                       onChange={(e) => {
                         const f = e.target.files?.[0];

@@ -368,15 +368,34 @@ async def upload_extract(file: UploadFile = File(...),
     raw = await file.read()
     if not raw:
         raise HTTPException(400, "Arquivo vazio")
-    if len(raw) > 5_000_000:
-        raise HTTPException(413, "Arquivo > 5 MB")
+    if len(raw) > 10_000_000:
+        raise HTTPException(413, "Arquivo > 10 MB")
     fname = (file.filename or "extrato").lower()
     if fname.endswith(".ofx") or b"<OFX>" in raw[:200].upper():
         txs = _parse_ofx_bytes(raw)
     elif fname.endswith(".csv"):
         txs = _parse_csv_bytes(raw)
+    elif fname.endswith(".pdf") or raw[:5] == b"%PDF-":
+        # PDF Sicoob (com camada de texto). Outros bancos: só OFX/CSV.
+        if source != "sicoob":
+            raise HTTPException(
+                415, "PDF é suportado apenas para Sicoob. Para outros "
+                       "bancos, envie OFX ou CSV.",
+            )
+        from services.sicoob_pdf_parser import parse_sicoob_pdf
+        try:
+            txs = parse_sicoob_pdf(raw)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            logger.exception("Erro ao processar PDF Sicoob")
+            raise HTTPException(
+                500, f"Falha ao ler PDF Sicoob: {e!s}. Tente exportar o "
+                       "extrato em OFX pelo Internet Banking.",
+            )
     else:
-        raise HTTPException(415, "Suporte só para OFX e CSV por enquanto")
+        raise HTTPException(415, "Formato não suportado. Envie OFX, CSV ou "
+                                   "PDF (apenas Sicoob).")
     if not txs:
         raise HTTPException(400, "Nenhuma transação encontrada no arquivo")
     return await _build_staging(cid, txs, file.filename or "extrato",
