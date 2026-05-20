@@ -48,9 +48,46 @@ from core import (
     today_str,
 )
 from database import db
+from cargo import (
+    ALL_CARGOS as CARGOS_VALID,
+    clock_in_enabled_for,
+    is_atendimento_cargo,
+)
 
 logger = logging.getLogger("ponto")
 router = APIRouter(prefix="/api", tags=["clock"])
+
+
+# -------------------------------------------------------------------------
+# Helpers — regras automáticas derivadas de `cargo`
+# -------------------------------------------------------------------------
+def _apply_cargo_rules(payload: "CollaboratorIn", user: dict) -> None:
+    """Aplica regras automáticas baseadas no cargo do colaborador.
+
+    - Associado → não bate ponto (clock_in_enabled=False)
+    - Aux. Administrativo / Atendente → libera Atendimento WhatsApp
+      (mas só se o solicitante for auditor; senão preserva valor atual)
+
+    Mutaciona o `payload` in-place.
+    """
+    if not payload.cargo:
+        return
+    if payload.cargo not in CARGOS_VALID:
+        # Cargo desconhecido — ignora silenciosamente (permite custom em DB)
+        return
+    payload.clock_in_enabled = clock_in_enabled_for(payload.cargo)
+    if is_atendimento_cargo(payload.cargo) and user.get("role") in ("auditor", "admin"):
+        payload.can_attend_whatsapp = True
+
+
+def _apply_cargo_rules_dict(data: dict, user: dict) -> None:
+    """Versão do `_apply_cargo_rules` que trabalha com dict (usado no UPDATE)."""
+    cargo = data.get("cargo")
+    if not cargo or cargo not in CARGOS_VALID:
+        return
+    data["clock_in_enabled"] = clock_in_enabled_for(cargo)
+    if is_atendimento_cargo(cargo) and user.get("role") in ("auditor", "admin"):
+        data["can_attend_whatsapp"] = True
 
 
 # -------------------------------------------------------------------------
@@ -76,6 +113,7 @@ class CollaboratorIn(BaseModel):
     email: EmailStr
     phone: str
     role: str = "Colaborador de Campo"
+    cargo: Optional[str] = None  # tecnico/reparador/instalador/associado/auxiliar_administrativo/atendente
     company: str = "Operação SP"
     schedule: WorkSchedule = Field(default_factory=WorkSchedule)
     overtime_policy: OvertimePolicy = Field(default_factory=OvertimePolicy)
@@ -422,6 +460,41 @@ async def grant_mobile_access(
     }
 
 
+@router.post("/collaborators/migrate-cargo")
+async def migrate_cargo(user: dict = Depends(require_role("administrador"))):
+    """Aplica heurística para preencher `cargo` em colaboradores legados.
+
+    Idempotente — só toca em docs onde `cargo` está vazio. Heurística:
+      - role contém "atendente"  → atendente
+      - role contém "admin" (não 'administra') → auxiliar_administrativo
+      - role contém "reparador"  → reparador
+      - role contém "instalador" → instalador
+      - role contém "associado"  → associado
+      - resto → tecnico (default seguro)
+
+    Também sincroniza `clock_in_enabled` e `can_attend_whatsapp` conforme
+    as regras de cargo.
+    """
+    from cargo import infer_cargo_from_legacy
+    cid_company = effective_company_id(user) or DEMO_COMPANY_ID
+    filt = {"company_id": cid_company,
+             "$or": [{"cargo": {"$exists": False}},
+                       {"cargo": None}, {"cargo": ""}]}
+    updated = 0
+    async for c in db.collaborators.find(filt, {"_id": 0, "id": 1, "role": 1}):
+        cargo = infer_cargo_from_legacy(c.get("role"))
+        await db.collaborators.update_one(
+            {"id": c["id"], "company_id": cid_company},
+            {"$set": {
+                "cargo": cargo,
+                "clock_in_enabled": clock_in_enabled_for(cargo),
+                "updated_at": now_iso(),
+            }},
+        )
+        updated += 1
+    return {"updated": updated}
+
+
 @router.post("/collaborators")
 async def create_collaborator(payload: CollaboratorIn, user: dict = Depends(require_role("gestor"))):
     cid_company = effective_company_id(user) or DEMO_COMPANY_ID
@@ -436,6 +509,8 @@ async def create_collaborator(payload: CollaboratorIn, user: dict = Depends(requ
     # Gestor cria o colaborador, mas o flag só pode ser ligado por auditor.
     if payload.can_attend_whatsapp and user.get("role") not in ("auditor", "admin"):
         payload.can_attend_whatsapp = False
+    # Aplica regras automáticas derivadas do `cargo`
+    _apply_cargo_rules(payload, user)
     cid = f"col-{uuid.uuid4().hex[:8]}"
     now = now_iso()
     coll = Collaborator(id=cid, **payload.model_dump(), created_at=now, updated_at=now)
@@ -471,6 +546,8 @@ async def update_collaborator(cid: str, payload: CollaboratorIn, user: dict = De
     if user.get("role") not in ("auditor", "admin"):
         prev_flag = bool((prev or {}).get("can_attend_whatsapp"))
         data["can_attend_whatsapp"] = prev_flag
+    # Reaplica regras de cargo (mesma lógica do POST)
+    _apply_cargo_rules_dict(data, user)
     res = await db.collaborators.update_one({"id": cid}, {"$set": data})
     if res.matched_count == 0:
         raise HTTPException(404, "Colaborador não encontrado")
@@ -778,6 +855,14 @@ async def create_clock_record(payload: ClockRecordIn, request: Request):
     coll = await db.collaborators.find_one({"id": payload.collaborator_id})
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado")
+    # Bloqueio por cargo: Associado não bate ponto
+    if not clock_in_enabled_for(coll.get("cargo")):
+        raise HTTPException(
+            403,
+            f"⛔ Cargo {coll.get('cargo')!r} não bate ponto. "
+            "Apenas Técnico, Reparador, Instalador e cargos administrativos "
+            "podem registrar ponto.",
+        )
 
     # ---- TIME SYNC: valida horário do dispositivo vs servidor (se configurado) ----
     # Pulado apenas para admin/auditor logado (modo teste de sessão admin).

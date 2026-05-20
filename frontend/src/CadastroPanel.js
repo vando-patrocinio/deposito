@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Car } from "lucide-react";
 import { api } from "@/api";
+import {
+  CARGO, CARGO_META, CARGO_OPTIONS_GROUPED,
+  isLousaCargo, isAtendimentoCargo, clockInEnabledFor,
+  cargoLabel, cargoEmoji,
+} from "@/cargo";
 import { AvatarZoomModal, Button, Card, Field, Icon, inputStyle, Row, StatusBadge } from "@/ui";
 import GeofenceMap from "@/GeofenceMap";
 import useEventStream from "@/useEventStream";
@@ -33,6 +38,7 @@ const EMPTY = {
   email: "",
   phone: "",
   role: "Colaborador de Campo",
+  cargo: "",
   praca_id: "",
   praca_ids_extra: [],
   pis: "",
@@ -150,6 +156,7 @@ export default function CadastroPanel() {
     setForm({
       name: c.name, cpf: c.cpf, email: c.email, phone: c.phone,
       role: c.role || "Colaborador de Campo",
+      cargo: c.cargo || "",
       praca_id: c.praca_id || "",
       praca_ids_extra: Array.isArray(c.praca_ids_extra) ? [...c.praca_ids_extra] : [],
       pis: c.pis || "",
@@ -346,8 +353,19 @@ export default function CadastroPanel() {
                       </span>
                     )}
                   </div>
-                  <div style={{ color: "#64748b", fontSize: 12, marginTop: 3 }}>
-                    {c.role}{praca ? ` · ${praca.city}/${praca.state}` : c.company ? ` · ${c.company}` : ""}
+                  <div style={{ color: "#64748b", fontSize: 12, marginTop: 3,
+                                  display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    {c.cargo && (
+                      <span data-testid={`collab-cargo-${c.id}`} style={{
+                        padding: "1px 7px", borderRadius: 999,
+                        background: isLousaCargo(c.cargo) ? "#dbeafe" : "#ecfdf5",
+                        color: isLousaCargo(c.cargo) ? "#1e40af" : "#047857",
+                        fontSize: 11, fontWeight: 700,
+                      }}>
+                        {cargoEmoji(c.cargo)} {cargoLabel(c.cargo)}
+                      </span>
+                    )}
+                    <span>{c.role}{praca ? ` · ${praca.city}/${praca.state}` : c.company ? ` · ${c.company}` : ""}</span>
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 14px", marginTop: 4, fontSize: 12, color: "#475569" }}>
                     <span><span style={{ color: "#94a3b8" }}>CPF</span>&nbsp;{c.cpf}</span>
@@ -572,8 +590,53 @@ export default function CadastroPanel() {
           <Field label="Telefone">
             <input data-testid="inp-phone" style={inputStyle} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+55 11 99999-0000" />
           </Field>
-          <Field label="Cargo">
-            <input style={inputStyle} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} />
+          <Field label="Cargo (função operacional)">
+            <select
+              data-testid="inp-cargo"
+              style={inputStyle}
+              value={form.cargo || ""}
+              onChange={(e) => {
+                const cargo = e.target.value;
+                setForm({
+                  ...form,
+                  cargo,
+                  clock_in_enabled: cargo === CARGO.ASSOCIADO ? false : true,
+                });
+              }}
+            >
+              <option value="">— Selecione o cargo —</option>
+              {CARGO_OPTIONS_GROUPED.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.options.map((c) => (
+                    <option key={c} value={c}>
+                      {CARGO_META[c].emoji} {CARGO_META[c].label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            {form.cargo && (
+              <div data-testid="cargo-rules-hint" style={{
+                marginTop: 6, padding: "6px 10px",
+                background: "#ecfeff", border: "1px solid #67e8f9",
+                borderRadius: 8, fontSize: 11, color: "#155e75",
+                display: "flex", flexWrap: "wrap", gap: 8,
+              }}>
+                {isLousaCargo(form.cargo) ? (
+                  <span>✓ Aparece na Lousa de Agendamento</span>
+                ) : isAtendimentoCargo(form.cargo) ? (
+                  <span>✓ Acessa Atendimento (WhatsApp tickets)</span>
+                ) : null}
+                {clockInEnabledFor(form.cargo)
+                  ? <span>✓ Bate ponto</span>
+                  : <span>⊘ NÃO bate ponto (Associado)</span>}
+              </div>
+            )}
+          </Field>
+          <Field label="Cargo livre (apenas texto descritivo — opcional)">
+            <input style={inputStyle} value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
+              placeholder="Ex: Técnico Senior, Coordenador..." />
           </Field>
           <Field label="Praça principal (local onde trabalha a maior parte do tempo)">
             {pracas.length === 0 ? (

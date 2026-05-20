@@ -937,8 +937,7 @@ export const api = {
 
   // Relatórios financeiros (DRE, Aging, KPIs)
   finReportsDre: (params = {}) =>
-    client.get(`/financeiro/reports/dre`, { params }).then((r) => r.data),
-  finReportsAging: () =>
+    client.get(`/financeiro/reports/dre`, { params }).then((r) => r.data),  finReportsAging: () =>
     client.get(`/financeiro/reports/aging-payable`).then((r) => r.data),
   finReportsTopSuppliers: (params = {}) =>
     client.get(`/financeiro/reports/top-suppliers`, { params }).then((r) => r.data),
@@ -947,6 +946,9 @@ export const api = {
 
   finFiliaisSyncAtlaz: () =>
     client.post(`/financeiro/filiais/sync-from-atlaz`).then((r) => r.data),
+
+  collabsMigrateCargo: () =>
+    client.post(`/collaborators/migrate-cargo`).then((r) => r.data),
 
   // ===== Rede IA =====
   redeIaBairros: () => client.get(`/rede-ia/bairros`).then((r) => r.data),

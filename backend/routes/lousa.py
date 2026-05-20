@@ -525,6 +525,16 @@ async def lousa_grid(
     em qualquer momento dentro do intervalo. View read-only para o frontend.
     """
     q = tenant_filter(user)
+    # Cargo filter: apenas funções de campo aparecem na Lousa.
+    # Colaboradores legados sem `cargo` (None/"") continuam visíveis pra
+    # compatibilidade — o admin pode rodar a migration depois.
+    from cargo import LOUSA_CARGOS
+    q["$or"] = [
+        {"cargo": {"$in": list(LOUSA_CARGOS)}},
+        {"cargo": {"$exists": False}},
+        {"cargo": None},
+        {"cargo": ""},
+    ]
     collabs = await db.collaborators.find(q, {"_id": 0}).to_list(500)
     collabs.sort(key=lambda c: c.get("name", ""))
 

@@ -1,5 +1,39 @@
 # PontoIA — Changelog
 
+## Fev 2026 — Cargos do Colaborador (Função Operacional)
+
+### Feature
+Introduzido o conceito de **Cargo** (função operacional) — separado de `role` (permissão de painel). 6 cargos disponíveis em 2 grupos:
+
+**🛠 Campo (Lousa de Agendamento)**: Técnico, Reparador, Instalador, Associado
+**💼 Administrativo (Atendimento)**: Auxiliar Administrativo, Atendente
+
+### Regras automáticas (aplicadas pelo backend ao salvar)
+- **Lousa**: aparecem só cargos do grupo Campo (filtro em `GET /api/lousa/grid`)
+- **Bate ponto**: TODOS exceto Associado (bloqueio 403 em `POST /api/clock-records`)
+- **Atendimento WhatsApp**: AUX. ADMIN + ATENDENTE → `can_attend_whatsapp=True` automaticamente (só se quem cadastrou for auditor)
+- **Compatibilidade**: colaboradores legados sem `cargo` continuam visíveis na Lousa e batendo ponto até migrar
+
+### Implementação
+**Backend**:
+- `cargo.py` novo módulo com constantes (`LOUSA_CARGOS`, `NO_CLOCK_CARGOS`, `ATENDIMENTO_CARGOS`) + helpers (`is_lousa_cargo`, `clock_in_enabled_for`, `is_atendimento_cargo`, `infer_cargo_from_legacy`)
+- `routes/clock.py`: campo `cargo` em `CollaboratorIn`; helpers `_apply_cargo_rules{_dict}` aplicados em CREATE/UPDATE; bloqueio 403 em `create_clock_record` se cargo não bate ponto
+- `routes/lousa.py`: filtro `$or` em `lousa_grid` aceitando cargos da Lousa OU sem cargo (legacy)
+- `POST /api/collaborators/migrate-cargo`: heurística idempotente que infere `cargo` a partir do `role` legado (testado: 10 colaboradores migrados todos como `tecnico`)
+
+**Frontend**:
+- `cargo.js` novo módulo espelho do backend (constantes + helpers + `CARGO_OPTIONS_GROUPED`)
+- `CadastroPanel.js`: campo `<select>` agrupado por categoria (optgroup) substituindo o input livre de "Cargo"; hint colorido inline mostrando 3 propriedades automáticas (Lousa/Atendimento/Bate-ponto) ao trocar a seleção
+- Mantém input livre "Cargo livre (apenas descritivo)" para `role` continuar customizável
+- Badge `🔧 Técnico` / `🤝 Associado` etc na listagem de colaboradores ao lado do nome
+
+### Verificação
+- Curl: migrate-cargo retornou `{updated: 10}` em 1 chamada
+- Screenshots: 4 estados validados (Vazio · Técnico · Associado · Atendente) com hints semânticos
+- Lint + build limpos
+
+
+
 ## Fev 2026 — Filiais bidirecionais + Delete inteligente de parcelas
 
 ### 1. Sync bidirecional Filial → Atlaz
