@@ -2977,11 +2977,7 @@ function AutoReschedConfigModal({ initial, onClose, onSaved }) {
  * Aplica os mesmos hooks no backend (signal snapshot, auto-resched).
  * ============================================================ */
 function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
-  const [form, setForm] = useState({
-    sinal: "", qtd_drop: 1, esticadores: 1, conectores_fast: 2,
-    cabo_rede: 10, conectores_rede: 2,
-    ont: "", observacoes: "",
-  });
+  const [form, setForm] = useState({ sinal: "", observacoes: "" });
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -2994,16 +2990,19 @@ function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
     }
     setBusy(true);
     try {
+      // Fechamento interno (gestor/auditor): NÃO consome insumos nem ONT.
+      // Apenas registra sinal final do cliente + observações + justificativa.
       const cd = {
         sinal: Number(form.sinal),
-        qtd_drop: Number(form.qtd_drop) || 0,
-        esticadores: Number(form.esticadores) || 0,
-        conectores_fast: Number(form.conectores_fast) || 0,
-        cabo_rede: Number(form.cabo_rede) || 0,
-        conectores_rede: Number(form.conectores_rede) || 0,
-        ont: form.ont || null,
+        qtd_drop: 0,
+        esticadores: 0,
+        conectores_fast: 0,
+        cabo_rede: 0,
+        conectores_rede: 0,
+        ont: null,
         observacoes: form.observacoes || null,
         closed_by_admin: true,
+        internal_close: true,
       };
       await onSubmit(cd, notes);
     } catch (e) {
@@ -3035,33 +3034,15 @@ function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
           {ticket.assigned_collaborator_id && (
             <span> · técnico: {ticket.collaborator_name || ticket.assigned_collaborator_id}</span>
           )}
-          <br/>Aplica as <strong>mesmas regras</strong> de fechamento: snapshot
-          de sinal, comparativo abertura/fechamento, auto-reagendamento se
-          degradar.
+          <br/>Fechamento <strong>interno</strong>: registra apenas o sinal
+          final do cliente e a descrição. <strong>Não consome insumos nem
+          ONT</strong> (técnico não esteve no local).
         </p>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
-                          gap: 8, marginBottom: 10 }}>
+        <div style={{ marginBottom: 10 }}>
           <FieldNum label="Sinal final (dBm) *" testid="adm-fin-sinal"
                       step="0.1" value={form.sinal}
                       onChange={(v) => setF("sinal", v)} required />
-          <FieldText label="ONT (opcional)" testid="adm-fin-ont"
-                      value={form.ont} onChange={(v) => setF("ont", v)} />
-          <FieldNum label="Drop (m)" testid="adm-fin-drop"
-                      value={form.qtd_drop}
-                      onChange={(v) => setF("qtd_drop", v)} />
-          <FieldNum label="Esticadores" testid="adm-fin-est"
-                      value={form.esticadores}
-                      onChange={(v) => setF("esticadores", v)} />
-          <FieldNum label="Conectores fast" testid="adm-fin-cf"
-                      value={form.conectores_fast}
-                      onChange={(v) => setF("conectores_fast", v)} />
-          <FieldNum label="Cabo rede (m)" testid="adm-fin-cabo"
-                      value={form.cabo_rede}
-                      onChange={(v) => setF("cabo_rede", v)} />
-          <FieldNum label="Conectores rede" testid="adm-fin-cr"
-                      value={form.conectores_rede}
-                      onChange={(v) => setF("conectores_rede", v)} />
         </div>
 
         <label style={{ display: "block", fontSize: 11, fontWeight: 700,
@@ -3133,19 +3114,6 @@ function FieldNum({ label, value, onChange, step = "1", required, testid }) {
     </label>
   );
 }
-function FieldText({ label, value, onChange, testid }) {
-  return (
-    <label style={{ display: "block" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "#475569",
-                       textTransform: "uppercase", letterSpacing: 0.4,
-                       marginBottom: 3 }}>{label}</div>
-      <input type="text" value={value}
-                data-testid={testid}
-                onChange={(e) => onChange(e.target.value)}
-                style={{ width: "100%", padding: "6px 8px",
-                          border: "1px solid #cbd5e1", borderRadius: 6,
-                          fontSize: 13, fontFamily: "monospace" }} />
-    </label>
-  );
-}
+// (FieldText removido — fechamento interno não usa campos de texto livre)
+
 

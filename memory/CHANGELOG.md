@@ -1,5 +1,41 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Fechamento interno (admin) NÃO consome insumos nem ONT
+
+### Regra de negócio
+Quando o gestor/auditor encerra uma OS no lugar do técnico (`AdminFinalizeModal`),
+o **técnico não esteve no local** — portanto **não pode haver baixa de
+insumos nem registro de ONT/ONU**. Apenas:
+
+- **Sinal final (dBm)** do cliente (obrigatório) — para snapshot e
+  auto-reagendamento se degradar.
+- **Observações do serviço** (texto livre).
+- **Justificativa (auditoria)** (texto livre, amarelo) — por que o gestor
+  está fechando manualmente.
+
+### Frontend (`LousaAdminPanel.js`)
+- Removidos do modal: ONT, Drop, Esticadores, Conectores Fast, Cabo Rede,
+  Conectores Rede.
+- `cd` enviado ao backend sempre com insumos = 0 e `ont = null`.
+- Adicionada flag `internal_close: true` no payload (para auditoria/relatórios).
+- Texto explicativo atualizado: *"Fechamento interno: registra apenas o sinal
+  final do cliente e a descrição. Não consome insumos nem ONT (técnico não
+  esteve no local)."*
+- Componente auxiliar `FieldText` removido (não era mais usado).
+
+### Backend
+Sem alterações — o handler `POST /api/lousa/tickets/{id}/admin-close` já
+**não** chamava nenhuma rotina de débito de estoque (apenas
+`_capture_signal_snapshot` + `_maybe_auto_resched_degraded`).
+
+### Validação E2E
+- Login `vando@example.com` → Chamados → bolha de BARBARA DA SILVA → Encerrar.
+- Modal abriu mostrando apenas 3 campos (sinal, observações, justificativa).
+- Submit registrou no Histórico de Ações como
+  *"Encerrada (gestor) · auditor · Administrador"*.
+- Bolha sumiu da fila (status = encerrada). Estoque do técnico **intacto**.
+
+
 ## 2026-05-20 — Bolha compacta com horário da grade + Finalização admin completa
 
 ### Sumário
