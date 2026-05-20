@@ -447,6 +447,25 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
                     gridTemplateColumns: "repeat(auto-fit,minmax(82px,1fr))",
                     gap: 4,
                   }}>
+                    {/* ONT/ONU como item de destaque no início (não fica só no
+                        número grande no canto). */}
+                    <div data-testid={`tech-row-${t.id}-ont`}
+                          style={{
+                            background: t.tech_onts === 0 ? "#f1f5f9" : "#ecfdf5",
+                            padding: "4px 6px",
+                            borderRadius: 6, fontSize: 10,
+                            color: t.tech_onts === 0 ? "#64748b" : "#065f46",
+                            border: t.tech_onts === 0
+                              ? "1px dashed #cbd5e1"
+                              : "1px solid #6ee7b7",
+                            display: "flex", justifyContent: "space-between",
+                            alignItems: "center", fontWeight: 700,
+                          }} title="ONT/ONU (equipamento serializado)">
+                      <span>📡 ONT</span>
+                      <strong style={{
+                        color: t.tech_onts === 0 ? "#94a3b8" : "#065f46",
+                      }}>{t.tech_onts}</strong>
+                    </div>
                     {consumables.map((c) => {
                       const qty = t.stock?.[c.id] || 0;
                       const lc = qty === 0 ? "#94a3b8"
