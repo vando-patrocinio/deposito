@@ -524,25 +524,47 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
                             <span>MACs com {t.name}</span>
                             <span style={{ color: "#10b981" }}>{(ontsByTech[t.id] || []).length}</span>
                           </div>
-                          {(ontsByTech[t.id] || []).map((o) => (
-                            <div key={o.mac} style={{
-                              padding: "5px 6px",
-                              borderBottom: "1px solid #f1f5f9",
-                              display: "flex", justifyContent: "space-between",
-                              alignItems: "center", gap: 6,
-                            }}>
-                              <span style={{
-                                fontFamily: "monospace",
-                                fontWeight: 700, fontSize: 11,
-                                color: "#0f172a",
-                              }}>{o.mac}</span>
-                              <span style={{
-                                fontSize: 10, color: "#64748b",
-                                background: "#f1f5f9",
-                                padding: "2px 6px", borderRadius: 4,
-                              }}>{o.model || "ONT"}</span>
-                            </div>
-                          ))}
+                          {(ontsByTech[t.id] || []).map((o) => {
+                            const fromClient = o.status === "retirada_com_tecnico";
+                            return (
+                              <div key={o.mac} style={{
+                                padding: "5px 6px",
+                                borderBottom: "1px solid #f1f5f9",
+                                display: "flex", justifyContent: "space-between",
+                                alignItems: "center", gap: 6, flexWrap: "wrap",
+                              }}>
+                                <span style={{
+                                  fontFamily: "monospace",
+                                  fontWeight: 700, fontSize: 11,
+                                  color: "#0f172a",
+                                }}>{o.mac}</span>
+                                <div style={{ display: "flex", gap: 4,
+                                                alignItems: "center",
+                                                marginLeft: "auto" }}>
+                                  <span title={fromClient
+                                    ? `Veio do cliente${o.client_name ? `: ${o.client_name}` : ""}`
+                                    : "Veio do estoque/praça"}
+                                          style={{
+                                            fontSize: 10, fontWeight: 700,
+                                            padding: "2px 6px", borderRadius: 4,
+                                            background: fromClient
+                                              ? "#fef3c7" : "#dbeafe",
+                                            color: fromClient
+                                              ? "#92400e" : "#1e40af",
+                                          }}>
+                                    {fromClient
+                                      ? "↩️ Cliente"
+                                      : "📦 Praça"}
+                                  </span>
+                                  <span style={{
+                                    fontSize: 10, color: "#64748b",
+                                    background: "#f1f5f9",
+                                    padding: "2px 6px", borderRadius: 4,
+                                  }}>{o.model || "ONT"}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </button>
