@@ -1,5 +1,33 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Estoque por Praça: cards clicáveis + timeline por MAC
+
+### O que foi feito
+- `PracaStockCard.js` (`/app/frontend/src/PracaStockCard.js`): cards de praça
+  já eram clicáveis (modal lateral). Agora cada ONT na lista do modal pode
+  ser **expandida** com mini-timeline do histórico (mesmo padrão validado
+  no popover dos técnicos no `EstoquePanel.js`).
+- Adicionado **campo de busca** dentro do modal (MAC ou modelo) p/ filtrar
+  rapidamente em praças com muitos ONTs.
+- Modal agora busca em paralelo `api.stokOntsList()` + `api.stokHistory({limit:2000})`
+  e indexa o histórico por MAC via regex (`[0-9A-F]{2}(?::[0-9A-F]{2}){5}`),
+  mostrando data/hora local PT-BR, tipo do evento e descrição.
+
+### Validação manual
+- Login: `admin@empresa.com` / `123456` → Movimento → clicar em LIGO CACHOEIRAS DE MACACÚ
+- ONT `BB:C6:CD:D3:72:D5` (Test ZTE H198A) expandida mostra 2 eventos
+  (DEVOLUCAO + TRANSFERENCIA) com data/hora corretas.
+- `data-testid`s: `praca-stock-{id}`, `praca-detail-modal`,
+  `praca-detail-ont-{mac}`, `praca-mac-timeline-{mac}`, `praca-detail-search`.
+
+### Próximos passos (carry-over)
+- P0: Smoke tests em `/app/backend/tests/` (estoque, central de compras, bank-import).
+- P1: Refactor de `EstoquePanel.js` (1685 linhas) e `LousaMobile.js`.
+- P1: Implementar Meta WhatsApp Cloud API como fallback do Baileys (recorrência #4).
+- P1: True Multi-Tenancy — remover `DEMO_COMPANY_ID` fallback no backend.
+
+
+
 ## Fev 2026 — Incident WhatsApp: Sidecar Railway DELETADO
 
 ### Sintoma

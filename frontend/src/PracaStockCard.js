@@ -9,20 +9,51 @@ import { api } from "@/api";
 
 function PracaDetailModal({ praca, onClose }) {
   const [allOnts, setAllOnts] = useState([]);
+  const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [expandedMac, setExpandedMac] = useState(null);
 
   useEffect(() => {
     if (!praca) return;
     setLoading(true);
-    api.stokOntsList().then((onts) => {
+    Promise.all([
+      api.stokOntsList(),
+      api.stokHistory({ limit: 2000 }).catch(() => []),
+    ]).then(([onts, hist]) => {
       setAllOnts(onts || []);
+      setHistory(hist || []);
     }).finally(() => setLoading(false));
   }, [praca]);
 
+  // historyByMac: extrai MACs via regex nas descrições (mesmo padrão da
+  // aba "Dashboard" do EstoquePanel — popover por técnico).
+  const historyByMac = useMemo(() => {
+    const m = {};
+    (history || []).forEach((h) => {
+      const text = `${h.description || ""} ${h.notes || ""}`;
+      const matches = text.match(/[0-9A-F]{2}(?::[0-9A-F]{2}){5}/gi);
+      (matches || []).forEach((mac) => {
+        const k = mac.toUpperCase();
+        (m[k] = m[k] || []).push(h);
+      });
+    });
+    Object.keys(m).forEach((k) => m[k].sort((a, b) =>
+      (b.created_at || b.date || "").localeCompare(
+        a.created_at || a.date || "")));
+    return m;
+  }, [history]);
+
   if (!praca) return null;
 
-  const pracaOnts = allOnts.filter(
+  const pracaOntsAll = allOnts.filter(
     (o) => o.location_type === "empresa" && o.praca_id === praca.praca_id);
+  const q = search.trim().toUpperCase();
+  const pracaOnts = q
+    ? pracaOntsAll.filter(
+        (o) => (o.mac || "").toUpperCase().includes(q)
+          || (o.model || "").toUpperCase().includes(q))
+    : pracaOntsAll;
 
   return (
     <div
@@ -99,10 +130,28 @@ function PracaDetailModal({ praca, onClose }) {
 
         {/* ONTs detalhadas */}
         <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase",
-                          letterSpacing: ".04em", color: "#475569",
-                          marginBottom: 8 }}>
-            ONTs disponíveis ({pracaOnts.length})
+          <div style={{
+            display: "flex", justifyContent: "space-between",
+            alignItems: "center", marginBottom: 8, gap: 8,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase",
+                            letterSpacing: ".04em", color: "#475569" }}>
+              ONTs disponíveis ({pracaOnts.length}{q && pracaOnts.length !== pracaOntsAll.length
+                ? ` de ${pracaOntsAll.length}` : ""})
+            </div>
+            {pracaOntsAll.length > 0 && (
+              <input
+                data-testid="praca-detail-search"
+                placeholder="Buscar MAC ou modelo…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{
+                  fontSize: 11, padding: "4px 8px",
+                  border: "1px solid #cbd5e1", borderRadius: 6,
+                  width: 180, fontFamily: "monospace",
+                }}
+              />
+            )}
           </div>
           {loading ? (
             <div style={{ padding: 14, color: "#64748b", fontSize: 13 }}>Carregando…</div>
@@ -111,30 +160,107 @@ function PracaDetailModal({ praca, onClose }) {
                             border: "1px dashed #cbd5e1", borderRadius: 8,
                             textAlign: "center", color: "#94a3b8",
                             fontSize: 12 }}>
-              Nenhuma ONT cadastrada nesta praça.
+              {q ? "Nenhum MAC corresponde à busca." : "Nenhuma ONT cadastrada nesta praça."}
             </div>
           ) : (
-            <div style={{ maxHeight: 240, overflowY: "auto" }}>
-              {pracaOnts.map((o) => (
-                <div key={o.mac}
-                      data-testid={`praca-detail-ont-${o.mac}`}
+            <div style={{ maxHeight: 320, overflowY: "auto",
+                            border: "1px solid #f1f5f9", borderRadius: 8 }}>
+              {pracaOnts.map((o) => {
+                const macHist = historyByMac[o.mac] || [];
+                const isOpen = expandedMac === o.mac;
+                return (
+                  <div key={o.mac}
+                        data-testid={`praca-detail-ont-${o.mac}`}
+                        style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <div
+                      onClick={() => setExpandedMac(isOpen ? null : o.mac)}
                       style={{
                         padding: "6px 10px",
-                        borderBottom: "1px solid #f1f5f9",
                         display: "flex", justifyContent: "space-between",
                         alignItems: "center", gap: 8,
+                        cursor: "pointer",
+                        background: isOpen ? "#f0f9ff" : "transparent",
                       }}>
-                  <span style={{ fontFamily: "monospace", fontWeight: 700,
-                                    fontSize: 12, color: "#0f172a" }}>
-                    {o.mac}
-                  </span>
-                  <span style={{ fontSize: 10, color: "#64748b",
-                                    background: "#f1f5f9",
-                                    padding: "2px 6px", borderRadius: 4 }}>
-                    {o.model || "ONT"}
-                  </span>
-                </div>
-              ))}
+                      <span style={{ fontFamily: "monospace", fontWeight: 700,
+                                        fontSize: 12, color: "#0f172a" }}>
+                        {isOpen ? "▾" : "▸"} {o.mac}
+                      </span>
+                      <div style={{ display: "flex", gap: 4,
+                                      alignItems: "center" }}>
+                        {macHist.length > 0 && (
+                          <span title={`${macHist.length} evento(s) no histórico`}
+                                style={{
+                                  fontSize: 10, fontWeight: 700,
+                                  padding: "2px 6px", borderRadius: 4,
+                                  background: "#dbeafe", color: "#1e40af",
+                                }}>
+                            📜 {macHist.length}
+                          </span>
+                        )}
+                        <span style={{ fontSize: 10, color: "#64748b",
+                                          background: "#f1f5f9",
+                                          padding: "2px 6px", borderRadius: 4 }}>
+                          {o.model || "ONT"}
+                        </span>
+                      </div>
+                    </div>
+                    {isOpen && (
+                      <div data-testid={`praca-mac-timeline-${o.mac}`}
+                            style={{
+                              background: "#f8fafc",
+                              padding: "8px 10px 8px 22px",
+                              borderLeft: "2px solid #3b82f6",
+                              marginLeft: 8, marginBottom: 4,
+                              borderRadius: 4,
+                            }}>
+                        <div style={{ fontSize: 9, fontWeight: 800,
+                                        textTransform: "uppercase",
+                                        color: "#64748b", marginBottom: 4 }}>
+                          Histórico ({macHist.length})
+                        </div>
+                        {macHist.length === 0 && (
+                          <div style={{ fontSize: 10, color: "#94a3b8",
+                                          fontStyle: "italic" }}>
+                            Sem histórico registrado para este MAC.
+                          </div>
+                        )}
+                        {macHist.slice(0, 12).map((h, i) => {
+                          const dt = (h.created_at || h.date || "");
+                          const dStr = dt
+                            ? new Date(dt).toLocaleString("pt-BR", {
+                                day: "2-digit", month: "2-digit",
+                                hour: "2-digit", minute: "2-digit",
+                              })
+                            : "—";
+                          return (
+                            <div key={i} style={{
+                              fontSize: 10, color: "#334155",
+                              padding: "3px 0",
+                              borderBottom: "1px dashed #e2e8f0",
+                            }}>
+                              <div style={{ fontWeight: 700, color: "#0f172a" }}>
+                                {dStr} · <span style={{
+                                  textTransform: "uppercase",
+                                  color: "#3b82f6",
+                                }}>{h.type || "—"}</span>
+                              </div>
+                              <div style={{ marginTop: 1, color: "#475569" }}>
+                                {h.description || h.notes || "(sem descrição)"}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {macHist.length > 12 && (
+                          <div style={{ fontSize: 9, color: "#94a3b8",
+                                          marginTop: 4, fontStyle: "italic" }}>
+                            +{macHist.length - 12} eventos antigos…
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
