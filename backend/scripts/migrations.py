@@ -59,12 +59,30 @@ async def m_20260520_vando_super_admin(db) -> None:
 
 
 # =============================================================================
+# 2026-05-20 — Central de Compras: índices e adição de campos opcionais
+# =============================================================================
+async def m_20260520_purchases_setup(db) -> None:
+    await db.purchases.create_index(
+        [("company_id", 1), ("created_at", -1)])
+    await db.purchases.create_index(
+        [("company_id", 1), ("praca_id", 1), ("status", 1)])
+    await db.purchases.create_index([("id", 1)], unique=True)
+    # Estende stok_onts com campos opcionais (compat com fluxo existente)
+    await db.stok_onts.create_index(
+        [("company_id", 1), ("praca_id", 1)], sparse=True)
+    await db.stok_stock.create_index(
+        [("company_id", 1), ("praca_id", 1), ("insumo_key", 1)],
+        sparse=True)
+
+
+# =============================================================================
 # Lista ordenada de migrations a executar
 # =============================================================================
 MIGRATIONS: List[Tuple[str, Callable[..., Awaitable[None]]]] = [
     ("20260520_bank_import_memory_indexes", m_20260520_bank_import_memory_indexes),
     ("20260520_branding_schema_version", m_20260520_branding_schema_version),
     ("20260520_vando_super_admin", m_20260520_vando_super_admin),
+    ("20260520_purchases_setup", m_20260520_purchases_setup),
 ]
 
 

@@ -16,9 +16,11 @@ INSTALADOR = "instalador"
 ASSOCIADO = "associado"
 AUX_ADMIN = "auxiliar_administrativo"
 ATENDENTE = "atendente"
+ALMOXARIFE = "almoxarife"
 
 ALL_CARGOS: set[str] = {
     TECNICO, REPARADOR, INSTALADOR, ASSOCIADO, AUX_ADMIN, ATENDENTE,
+    ALMOXARIFE,
 }
 
 # Cargos que aparecem na Lousa de Serviços
@@ -29,6 +31,9 @@ NO_CLOCK_CARGOS: set[str] = {ASSOCIADO}
 
 # Cargos que acessam Atendimento (WhatsApp)
 ATENDIMENTO_CARGOS: set[str] = {AUX_ADMIN, ATENDENTE}
+
+# Cargos que podem lançar compras na Central de Compras (sem ser admin/gestor)
+COMPRAS_CARGOS: set[str] = {ALMOXARIFE}
 
 
 def is_lousa_cargo(cargo: str | None) -> bool:

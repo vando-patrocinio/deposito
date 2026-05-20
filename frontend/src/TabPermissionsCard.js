@@ -13,6 +13,8 @@ export const TAB_DEFINITIONS = [
   { id: "dashboard",       label: "Painel",            group: "Operação" },
   { id: "lousa",           label: "Chamados",          group: "Operação" },
   { id: "estoque",         label: "Movimento",         group: "Operação" },
+  { id: "central-compras", label: "Central de Compras", group: "Operação",
+    hint: "Almoxarifes da praça veem só a própria; gestores veem todas." },
 
   // Inteligência
   { id: "ai-ranking",      label: "Avaliação IA",      group: "Inteligência" },

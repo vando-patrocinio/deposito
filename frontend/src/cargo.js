@@ -19,6 +19,7 @@ export const CARGO = {
   ASSOCIADO: "associado",
   AUX_ADMIN: "auxiliar_administrativo",
   ATENDENTE: "atendente",
+  ALMOXARIFE: "almoxarife",
 };
 
 export const CARGO_META = {
@@ -28,6 +29,7 @@ export const CARGO_META = {
   [CARGO.ASSOCIADO]:   { label: "Associado",                emoji: "🤝", grupo: "campo" },
   [CARGO.AUX_ADMIN]:   { label: "Auxiliar Administrativo",  emoji: "📋", grupo: "admin" },
   [CARGO.ATENDENTE]:   { label: "Atendente",                emoji: "💬", grupo: "admin" },
+  [CARGO.ALMOXARIFE]:  { label: "Almoxarife (Estoque Praça)", emoji: "📦", grupo: "admin" },
 };
 
 // Cargos que aparecem na Lousa de Serviços
@@ -40,6 +42,11 @@ export const NO_CLOCK_CARGOS = new Set([CARGO.ASSOCIADO]);
 
 // Cargos que acessam o módulo Atendimento (WhatsApp tickets, multi-agente IA)
 export const ATENDIMENTO_CARGOS = new Set([CARGO.AUX_ADMIN, CARGO.ATENDENTE]);
+
+// Cargos que podem lançar compras na Central de Compras (apenas almoxarife da
+// praça vinculada via `collaborator.warehouse_praca_id`). Gestores e admins
+// sempre podem (controle no backend).
+export const COMPRAS_CARGOS = new Set([CARGO.ALMOXARIFE]);
 
 export function cargoLabel(cargo) {
   return CARGO_META[cargo]?.label || cargo || "—";

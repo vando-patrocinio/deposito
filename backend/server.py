@@ -556,6 +556,8 @@ app.include_router(routes_disparo_promo.router)
 app.include_router(routes_bank_import.router)
 from routes import data_health as routes_data_health  # noqa: E402
 app.include_router(routes_data_health.router)
+from routes import purchases as routes_purchases  # noqa: E402
+app.include_router(routes_purchases.router)
 
 
 # ============================================================

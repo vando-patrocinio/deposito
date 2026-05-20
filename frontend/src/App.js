@@ -6,6 +6,7 @@ import {
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
   Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle, Cpu,
   Receipt, CalendarDays, Wand2, DollarSign, Megaphone, Calculator,
+  ShoppingCart,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
@@ -40,6 +41,7 @@ import DialogHost from "@/dialog";
 import DialogHistoryPanel from "@/DialogHistoryPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
 import EstoquePanel from "@/EstoquePanel";
+import CentralComprasPanel from "@/CentralComprasPanel";
 import AICenterPanel from "@/AICenterPanel";
 import AiRankingPanel from "@/AiRankingPanel";
 import AiCorrectionsPanel from "@/AiCorrectionsPanel";
@@ -130,6 +132,8 @@ const NAV_GROUPS = [
       { id: "dashboard", icon: BarChart3, label: "Painel", roles: ["gestor", "auditor", "administrador"] },
       { id: "lousa", icon: Layout, label: "Chamados", roles: ["administrador"] },
       { id: "estoque", icon: Boxes, label: "Movimento", roles: ["gestor", "administrador"] },
+      { id: "central-compras", icon: ShoppingCart, label: "Central de Compras",
+        roles: ["gestor", "administrador", "colaborador"] },
     ],
   },
   {
@@ -1011,6 +1015,7 @@ function AppContent() {
           {view === "dashboard" && <DashboardPanel />}
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} />}
           {view === "estoque" && <EstoquePanel />}
+          {view === "central-compras" && <CentralComprasPanel currentUser={user} />}
           {view === "ai-ranking" && <AiRankingPanel />}
           {view === "ai-corrections" && <AiCorrectionsPanel />}
           {view === "central-ia" && <CentralIaDashboard />}

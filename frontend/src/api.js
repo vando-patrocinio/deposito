@@ -326,6 +326,25 @@ export const api = {
   toggleSuperAdmin: (userId, isSuperAdmin) =>
     client.patch(`/users/${userId}/super-admin`,
       { is_super_admin: isSuperAdmin }).then((r) => r.data),
+
+  // ========= Central de Compras =========
+  purchasesRefs: () => client.get(`/purchases/refs`).then((r) => r.data),
+  purchasesList: (params = {}) =>
+    client.get(`/purchases`, { params }).then((r) => r.data),
+  purchasesCreate: (payload) =>
+    client.post(`/purchases`, payload).then((r) => r.data),
+  purchasesUploadExtract: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return client.post(`/purchases/upload-extract`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120000,
+    }).then((r) => r.data);
+  },
+  purchasesConfirm: (purchaseId) =>
+    client.post(`/purchases/${purchaseId}/confirm`).then((r) => r.data),
+  purchasesDelete: (purchaseId) =>
+    client.delete(`/purchases/${purchaseId}`).then((r) => r.data),
   bankImportAtlazFetch: (payload) =>
     client.post(`/financeiro/bank-import/atlaz-fetch`, payload)
       .then((r) => r.data),

@@ -1287,3 +1287,74 @@ no caixa), atualiza saldo da conta caixa, e chama `_save_memory` por item
 
 **Credenciais teste atualizadas em `/app/memory/test_credentials.md`:**
 - vando@example.com / vando123 (super admin titular)
+
+
+---
+
+## 2026-05-20 — Central de Compras (P0)
+
+**Solicitação:** nova aba para centralizar compras de material, com estoque
+por praça + responsável (almoxarife), entrada manual ou via upload de
+arquivo (PDF/foto/planilha) com IA Claude lendo automaticamente. Fluxo
+preservado: COMPRA → ENTRADA NO ESTOQUE (Praça+responsável) → TÉCNICO →
+CLIENTE.
+
+**Fases 1 + 2 entregues (Fase 3 = refator estoque global → por praça vira
+sprint dedicada):**
+
+1. **Backend** (`routes/purchases.py`):
+   - `GET /api/purchases/refs` — praças + colaboradores + tipos
+   - `GET /api/purchases?praca_id&status&type_` — lista (almoxarife só
+     vê própria praça; admin/gestor vê tudo)
+   - `POST /api/purchases` — manual
+   - `POST /api/purchases/upload-extract` — upload PDF/imagem/XLS/DOCX
+     → Claude Sonnet 4.5 extrai supplier/NF/valor/itens/MACs e retorna
+     DRAFT (não persiste; usuário revisa e confirma)
+   - `POST /api/purchases/{id}/confirm` — gera entradas em `stok_onts`
+     (ONT) ou incrementa `stok_stock` (insumo). Apenas gestor/admin.
+   - `DELETE /api/purchases/{id}` — só compras pendentes
+
+2. **Cargo `almoxarife`** adicionado em `cargo.py` (backend e frontend).
+   Colaborador com `cargo=almoxarife` + `warehouse_praca_id` vê e lança
+   apenas compras da própria praça. Gestor/admin tem acesso total e é o
+   único que pode **confirmar** a entrada no estoque.
+
+3. **Migration `20260520_purchases_setup`** (idempotente):
+   - Índices em `purchases` (company_id+created_at, +praca_id+status, id
+     unique)
+   - Adiciona índices `praca_id` em `stok_onts` e `stok_stock` (sparse,
+     preparando Fase 3)
+
+4. **Frontend** (`CentralComprasPanel.js`):
+   - Form completo: tipo (ONT/Insumo/Equipamento/Outros), praça,
+     responsável (com 📦 destacando almoxarifes), fornecedor, NF, valor,
+     items dinâmicos (descrição/qtd/un/preço/MACs)
+   - Upload box verde com `accept=".pdf,.jpg,.jpeg,.png,.webp,.xls,.xlsx,.doc,.docx"`,
+     resposta da IA com confidence + razão
+   - Histórico cronológico com badges (tipo, status), botão "Confirmar
+     entrada no estoque" só pra gestor/admin
+   - Banner azul para almoxarife: "Você é almoxarife: vê e lança somente
+     a sua praça"
+
+5. **Integrações**:
+   - `App.js`: tab "central-compras" sob Operação, ícone 🛒 ShoppingCart
+   - `TabPermissionsCard.js`: nova entrada com hint
+   - `tab_permissions` atualizado para administrador/gestor/auditor
+   - `api.js`: 5 métodos novos (`purchasesRefs/List/Create/UploadExtract/
+     Confirm/Delete`)
+
+**Validação E2E via curl:**
+- Login admin → refs retorna 8 praças + 10 colaboradores + 4 tipos
+- POST manual compra ONT com 3 MACs → 200 ok, status pending
+- POST /confirm → 200 ok, 3 ONTs gravadas em `stok_onts` com
+  `purchase_id`, `praca_id`, `warehouse_responsible_id`, status
+  "disponivel"
+- Migration aplicada idempotente na 1ª boot
+
+**Screenshot mostra app rodando, form, banner do fluxo no topo, histórico
+da compra confirmada com "✅ 3 item(s) gravados no estoque".**
+
+**Próxima Sprint (Fase 3):** refator do estoque para deixar de ser
+"empresa global" e passar a ser "por praça" (migração de
+`location_type=empresa` → `praca:{id}`). Adiciona relatório de saldo por
+praça e DRE de compras mensal.
