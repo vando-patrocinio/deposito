@@ -310,6 +310,19 @@ async def _startup() -> None:
     await ensure_indexes()
     await ensure_auth_indexes(db)
     await ensure_push_indexes(db)
+    # Migrations aditivas (idempotentes — só adicionam campos/índices,
+    # nunca apagam). Ver /app/memory/DATA_PERSISTENCE.md.
+    try:
+        from scripts.migrations import run_pending_migrations
+        result = await run_pending_migrations(db)
+        if result["applied"]:
+            logger.info("[startup] migrations aplicadas: %s",
+                          result["applied"])
+        if result["failed"]:
+            logger.error("[startup] migrations falharam: %s",
+                            result["failed"])
+    except Exception as e:
+        logger.exception("[startup] erro ao rodar migrations: %s", e)
     await routes_saas.ensure_demo_company()
     await seed_default_users(db)
     await get_or_create_vapid(db)
