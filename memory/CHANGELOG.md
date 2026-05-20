@@ -1,5 +1,68 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Sub-aba "Balanço" (cycle counting / stock reconciliation)
+
+### Sumário
+Nova feature em Estoque → Movimento → **Balanço**. Implementa best
+practices de contagem cíclica de estoque: escopo flexível, modo cego,
+separation of duties, variance reconciliation e audit trail completo.
+
+### Backend
+- `/app/backend/routes/balanco.py` (NEW): 6 endpoints REST cobrindo a state
+  machine `counting → pending_approval → approved | cancelled`.
+- Coleções: `stok_balanco_sessions` (com snapshot do esperado), scans
+  embutidos como `scanned_macs` + `scan_log`.
+- Indexes adicionados em `server.py` (id unique + composto status/created_at).
+- Helpers: `_expected_onts_for_scope`, `_expected_consumables_for_scope`,
+  `_compute_variance` (matched/missing/extra + accuracy_pct).
+- Auditoria: cada start/finalize/approve/cancel grava `stok_history`.
+
+### Endpoints
+- `POST /api/stok/balanco/start` — abre sessão (escopo + modo)
+- `GET  /api/stok/balanco/list` — histórico
+- `GET  /api/stok/balanco/{id}` — detalhes (oculta esperado em modo cego)
+- `POST /api/stok/balanco/{id}/scan` — registra MAC escaneado
+- `POST /api/stok/balanco/{id}/consumable` — atualiza qty de insumo
+- `POST /api/stok/balanco/{id}/finalize` — fecha contagem, calcula variance
+- `POST /api/stok/balanco/{id}/approve` — admin+super_admin aplica ajustes
+- `POST /api/stok/balanco/{id}/cancel`
+
+### Frontend
+- `/app/frontend/src/BalancoTab.js` (NEW · ~900 linhas) com:
+  - **Wizard** de 2 passos (escopo · modo · insumos / resumo · observação)
+  - **CountingScreen**: scan input com auto-focus, KPIs (escaneados / esperado
+    / faltam), lista de MACs registrados, contagem de insumos, finalize
+  - **ReviewScreen**: 3 cards (OK/Faltantes/Extras), ação para faltantes
+    (perdido vs investigação), ignore por MAC, aprovação por admin
+  - **HistoryList** com status badges + acurácia colorida (verde/laranja/vermelho)
+  - **ResultScreen** read-only para aprovados/cancelados
+- Polling a cada 5s da sessão ativa.
+- Integrado como nova sub-aba em `EstoquePanel.js` (entre "Ordens de
+  serviço" e "Histórico").
+
+### Best practices aplicadas
+- **Cycle counting**: usuário escolhe escopo (Empresa / Praça / Técnico)
+- **Blind count** (padrão): saldo esperado oculto durante a contagem
+- **Scan-first UX**: auto-focus, Enter submete, feedback inline (matched/extra/duplicate)
+- **Separation of duties**: gestor inicia/conta/finaliza; só administrador
+  ou super_admin pode aprovar (validado via API: gestor recebe 403)
+- **Variance categorization**: matched, missing, extra + accuracy_pct
+- **Snapshot congelado**: lista esperada gravada no `start` evita race
+  conditions com movimentações concorrentes
+- **Audit trail completo**: cada ação registra em `stok_history`
+- **State machine explícita** com transições validadas
+
+### Validação manual (admin@empresa.com / 123456)
+- Movimento → 📊 Balanço → Novo Balanço (praça LIGO CACHOEIRAS DE MACACÚ,
+  modo cego, com insumos)
+- Scan MAC `BB:C6:CD:D3:72:D5` (match) + `AA:BB:CC:DD:EE:FF` (extra)
+- Drop=500 nos insumos
+- Finalizar → revisão → Aprovar
+- Resultado: `BAL-CE09DF66` aprovado · 100% acurácia · 1 ajuste ONT + 1 insumo
+- Teste negativo: gestor@empresa.com recebeu 403 ao tentar `/approve`
+
+
+
 ## 2026-05-20 — Estoque por Praça: cards clicáveis + timeline por MAC
 
 ### O que foi feito

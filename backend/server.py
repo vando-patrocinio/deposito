@@ -80,6 +80,7 @@ from routes import (
     holerite as routes_holerite,
     feriados as routes_feriados,
     stok as routes_stok,
+    balanco as routes_balanco,
     onboarding as routes_onboarding,
     users as routes_users,
     secretaria as routes_secretaria,
@@ -153,6 +154,9 @@ async def ensure_indexes() -> None:
     await db.stok_services.create_index([("company_id", 1), ("status", 1)])
     await db.stok_services.create_index("ticket_id")
     await db.stok_history.create_index([("company_id", 1), ("date", -1)])
+    # Balanço de estoque
+    await db.stok_balanco_sessions.create_index("id", unique=True)
+    await db.stok_balanco_sessions.create_index([("company_id", 1), ("status", 1), ("created_at", -1)])
     # SmartOLT — cache de ONUs e config
     await db.smartolt_config.create_index("company_id", unique=True)
     await db.smartolt_onus.create_index(
@@ -498,6 +502,7 @@ app.include_router(routes_events.router)
 app.include_router(routes_saas.router)
 app.include_router(routes_saas.webhook_router)
 app.include_router(routes_stok.router)
+app.include_router(routes_balanco.router)
 app.include_router(routes_smartolt.router)
 app.include_router(routes_network_diag.router)
 app.include_router(routes_ai_preventive.router)

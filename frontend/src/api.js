@@ -247,6 +247,16 @@ export const api = {
     client.get(`/stok/clientes`, { params: { identify_manufacturer_max } }).then((r) => r.data),
   stokClientesIdentifyAll: (force = false) =>
     client.post(`/stok/clientes/identify-all`, null, { params: { force } }).then((r) => r.data),
+  // Balanço de Estoque (cycle counting)
+  balancoList: (limit = 100) => client.get(`/stok/balanco/list`, { params: { limit } }).then((r) => r.data),
+  balancoGet: (sid) => client.get(`/stok/balanco/${sid}`).then((r) => r.data),
+  balancoStart: (data) => client.post(`/stok/balanco/start`, data).then((r) => r.data),
+  balancoScan: (sid, mac) => client.post(`/stok/balanco/${sid}/scan`, { mac }).then((r) => r.data),
+  balancoConsumable: (sid, consumable_id, qty) =>
+    client.post(`/stok/balanco/${sid}/consumable`, { consumable_id, qty }).then((r) => r.data),
+  balancoFinalize: (sid) => client.post(`/stok/balanco/${sid}/finalize`).then((r) => r.data),
+  balancoApprove: (sid, data) => client.post(`/stok/balanco/${sid}/approve`, data).then((r) => r.data),
+  balancoCancel: (sid) => client.post(`/stok/balanco/${sid}/cancel`).then((r) => r.data),
   // SmartOLT
   smartoltSettings: () => client.get(`/smartolt/settings`).then((r) => r.data),
   smartoltSettingsUpdate: (data) => client.put(`/smartolt/settings`, data).then((r) => r.data),

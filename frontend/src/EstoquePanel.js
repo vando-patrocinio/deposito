@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { api } from "@/api";
 import { Card } from "@/ui";
 import PracaStockCard from "@/PracaStockCard";
+import BalancoTab from "@/BalancoTab";
 
 // ============================================================
 // Helpers visuais
@@ -12,6 +13,7 @@ const SUB_TABS = [
   { id: "insumos", label: "Insumos" },
   { id: "clientes", label: "Clientes (SmartOLT)" },
   { id: "servicos", label: "Ordens de serviço" },
+  { id: "balanco", label: "📊 Balanço" },
   { id: "historico", label: "Histórico" },
 ];
 
@@ -1622,20 +1624,21 @@ function ClientesSection() {
 // ============================================================
 // Painel principal
 // ============================================================
-export default function EstoquePanel() {
+export default function EstoquePanel({ currentUser }) {
   const [tab, setTab] = useState("dashboard");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [data, setData] = useState({ onts: [], technicians: [], services: [], history: [], stock: {}, dashboard: null, consumables: [] });
+  const [data, setData] = useState({ onts: [], technicians: [], services: [], history: [], stock: {}, dashboard: null, consumables: [], pracas: [] });
 
   const reload = useCallback(async () => {
     setLoading(true); setErr("");
     try {
-      const [onts, technicians, services, history, stock, dashboard, catalog] = await Promise.all([
+      const [onts, technicians, services, history, stock, dashboard, catalog, pracas] = await Promise.all([
         api.stokOnts(), api.stokTechnicians(), api.stokServices(), api.stokHistory(), api.stokStock(),
         api.stokDashboard(), api.stokCatalog(),
+        api.finFiliaisList(true).catch(() => []),
       ]);
-      setData({ onts, technicians, services, history, stock, dashboard, consumables: catalog.consumables });
+      setData({ onts, technicians, services, history, stock, dashboard, consumables: catalog.consumables, pracas: pracas || [] });
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
     } finally { setLoading(false); }
@@ -1679,6 +1682,11 @@ export default function EstoquePanel() {
       {tab === "insumos" && <InsumosSection consumables={data.consumables} technicians={data.technicians} stock={data.stock} reload={reload} />}
       {tab === "clientes" && <ClientesSection />}
       {tab === "servicos" && <ServicosSection services={data.services} technicians={data.technicians} consumables={data.consumables} reload={reload} />}
+      {tab === "balanco" && <BalancoTab
+        pracas={(data.pracas || []).map((p) => ({ id: p.id, name: p.name }))}
+        techs={(data.technicians || []).map((t) => ({ id: t.id, name: t.name }))}
+        consumablesCatalog={data.consumables}
+        currentUser={currentUser} />}
       {tab === "historico" && <HistoricoSection history={data.history} reload={reload} />}
     </div>
   );
