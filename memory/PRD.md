@@ -1132,3 +1132,69 @@ C/D pulam para outras linhas. 3 padrões observados:
 
 **Testes via curl end-to-end:** POST upload retorna `staging_id` + 577
 items prontos para classificação IA (pipeline existente).
+
+
+---
+
+## 2026-05-20 — IA Claude + Memória de aprendizagem por semelhança (P1)
+
+**Solicitação:** "USE O CLAUDE PRA LER O PDF DO FINANCEIRO, LANCE A DESPESA
+QUE ESTA SUBINDO PELO SICOOB, ABRINDO A POSSIBILIDADE DE INDENTIFICAÇÃO
+DOS GASTOS COM APRENDIZAGEM DA IA PARA REPETIR POR SEMELHANÇA"
+
+**Problema identificado:** Após o parser PDF extrair 577 transações, a IA
+estava sendo chamada com TODAS as 577 em UM único prompt → Claude truncava
+o JSON de resposta no limite de output tokens → `json.loads` falhava → todos
+items voltavam com `source="manual"` (sem classificação).
+
+**Implementação:**
+
+1. **Batching paralelo da IA**: `_ai_classify_batch` agora quebra em chunks
+   de 25 transações, processando 4 em paralelo (semáforo). Cada chunk envia
+   um prompt menor que cabe na janela de output do Claude.
+
+2. **Processamento em background**: Upload retorna IMEDIATAMENTE (3s) com
+   `ai_status="running"` e items marcados `source="pending_ai"`. A IA roda
+   via `asyncio.create_task` + `_run_ai_classify_async`. Resposta HTTP não
+   trava (importante pois ingress preview tem timeout de 60s).
+
+3. **Progresso incremental no Mongo**: Cada chunk completo atualiza os items
+   específicos via `$set "items.$.source"="ai"` e incrementa `ai_done`.
+   Frontend faz polling a cada 5s via `GET /staging/{id}` e vê o progresso.
+
+4. **Otimização de memory lookup**: Antes eram 577 `find_one` sequenciais
+   (>60s). Agora 2 `find` em batch (`$in` de docs + keys) → <100ms.
+
+5. **Aprendizagem por semelhança (já existia, agora ativa)**:
+   - `_norm_text(desc)` normaliza descrição (sem acentos, sem números,
+     lowercase): `"TARIFA COBRANÇA · DOC#3585221"` → `"tarifa cobranca doc"`
+   - `_extract_doc(desc)` extrai número de documento (DOC#xxx)
+   - Lookup primeiro por `(company_id, doc)` (match exato), fallback
+     por `(company_id, key)` (match por padrão)
+   - Ao confirmar, `_save_memory` upserta a entrada (hit_count++).
+   - **Validação real**: após confirmar 1 transação "TARIFA COBRANÇA"
+     com supplier=Sicoob/category=Tarifas Bancárias, recarregar o PDF
+     fez **20 transações TARIFA COBRANÇA** (de diferentes dias/DOC#s)
+     virem automaticamente classificadas com `source="memory"` e
+     `confidence=0.95`, sem chamar a IA.
+
+6. **Frontend (`BankImportTab.js`)**:
+   - `pollAiStatus()`: polling a cada 5s, máx 60 tentativas (5min).
+   - Banner azul "🤖 Claude Sonnet 4.5 classificando N transação(ões)…"
+     enquanto IA roda; some quando `ai_status === "done"`.
+   - Banner laranja "⚠️ IA falhou" se `ai_status === "failed"`.
+   - Preserva edições manuais do usuário entre polls (não sobrescreve
+     campos que o user já editou).
+
+**Validação E2E (PDF real abril/2026, 577 transações):**
+- Upload → return em 3.1s com staging_id + 20 memory hits + 557 pending_ai
+- Background processa 22 chunks paralelos (4 simultâneos)
+- ~6min para classificar todos 557 com Claude Sonnet 4.5
+- Status final: `{memory: 20, ai: 557}` = 577/577 classificadas
+- Razões em PT-BR coerentes ("Tarifa bancária", "Recebimento de cobrança
+  de cliente", "PIX para Posto - despesa com combustível", etc.)
+
+**Confirm flow (já existente):**
+`POST /bank-import/confirm` insere `fin_cash_movements` (despesas lançadas
+no caixa), atualiza saldo da conta caixa, e chama `_save_memory` por item
+→ próximo PDF semelhante já vem pré-classificado.

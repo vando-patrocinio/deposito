@@ -101,18 +101,66 @@ export default function BankImportTab() {
       const r = await api.bankImportUpload(file, source);
       setStaging(r);
       setItems((r.items || []).map((it) => ({ ...it, _skip: it.duplicate })));
-      const nonDup = (r.items || []).filter((it) => !it.duplicate);
-      const aiOrMem = nonDup.filter((it) =>
-        it.source === "ai" || it.source === "memory");
-      if (nonDup.length > 0 && aiOrMem.length === 0) {
-        setErr(
-          "A IA não conseguiu classificar (provavelmente sem créditos ou "
-          + "instabilidade). Você ainda pode classificar manualmente abaixo.",
-        );
+      // Se IA ainda rodando, faz polling até terminar
+      if (r.ai_status === "running" && r.staging_id) {
+        pollAiStatus(r.staging_id);
+      } else {
+        const nonDup = (r.items || []).filter((it) => !it.duplicate);
+        const aiOrMem = nonDup.filter((it) =>
+          it.source === "ai" || it.source === "memory");
+        if (nonDup.length > 0 && aiOrMem.length === 0) {
+          setErr(
+            "A IA não conseguiu classificar (provavelmente sem créditos ou "
+            + "instabilidade). Você ainda pode classificar manualmente abaixo.",
+          );
+        }
       }
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
     } finally { setUploading(false); }
+  }
+
+  /**
+   * Polling do staging enquanto IA classifica em background.
+   * Intervalo: 5s, máximo 60 tentativas (5min total).
+   */
+  async function pollAiStatus(stagingId) {
+    let tries = 0;
+    const maxTries = 60;
+    const tick = async () => {
+      tries++;
+      try {
+        const s = await api.bankImportGetStaging(stagingId);
+        setStaging((prev) => prev ? { ...prev, ...s } : s);
+        setItems((prev) => {
+          // Mantém eventuais edições manuais; só sobrescreve campos da IA
+          const byIdx = new Map(prev.map((it) => [it.idx, it]));
+          return (s.items || []).map((nv) => {
+            const old = byIdx.get(nv.idx);
+            if (!old) return { ...nv, _skip: nv.duplicate };
+            // Preserva _skip e edições manuais de campo
+            return {
+              ...nv,
+              _skip: old._skip,
+              // Só atualiza se ainda estava pending_ai
+              ...(old.source === "pending_ai" ? {} : {
+                supplier_id: old.supplier_id,
+                category_id: old.category_id,
+                type: old.type,
+              }),
+            };
+          });
+        });
+        if (s.ai_status === "done" || s.ai_status === "failed") {
+          if (s.ai_status === "failed") {
+            setErr(`IA falhou: ${s.ai_error || "erro desconhecido"}. Você pode classificar manualmente.`);
+          }
+          return; // para polling
+        }
+      } catch (_e) { /* silent retry */ }
+      if (tries < maxTries) setTimeout(tick, 5000);
+    };
+    setTimeout(tick, 4000);  // primeira chamada após 4s
   }
 
   async function onAtlazFetch() {
@@ -384,6 +432,20 @@ export default function BankImportTab() {
               testId="bi-alert-duplicates"
               title={`${staging.duplicate_count} transação(ões) já existem no caixa`}
               detail="Foram marcadas para ignorar (caixinha desmarcada). Você pode reativar manualmente." />
+          )}
+
+          {/* Banner IA em background */}
+          {staging.ai_status === "running" && (
+            <AlertCard tone="info" icon="🤖"
+              testId="bi-alert-ai-running"
+              title={`Claude Sonnet 4.5 classificando ${staging.ai_pending || 0} transação(ões)…`}
+              detail="A IA está sugerindo tipo, fornecedor e categoria. Os campos vão se preencher automaticamente — você pode ir cadastrando fornecedores/categorias enquanto isso." />
+          )}
+          {staging.ai_status === "failed" && (
+            <AlertCard tone="warn" icon="⚠️"
+              testId="bi-alert-ai-failed"
+              title="IA falhou ao classificar"
+              detail={staging.ai_error || "Você pode classificar manualmente abaixo."} />
           )}
 
           {/* Tabela editável */}

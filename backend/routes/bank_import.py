@@ -26,6 +26,7 @@ import logging
 import re
 import unicodedata
 import uuid
+import asyncio
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -229,9 +230,15 @@ async def _ai_classify_batch(cid: str, txs: List[Dict[str, Any]],
     """Classifica lote de transações via Claude Sonnet 4.5.
 
     Retorna dict {idx: {type, supplier_id, category_id, confidence, reason}}.
+
+    Roda em CHUNKS de até CHUNK_SIZE transações em PARALELO para evitar
+    truncamento da resposta JSON (limite de output do Claude ~8k tokens) e
+    acelerar imports grandes (PDF Sicoob c/ 500+ txs em ~30s).
     """
     if not txs:
         return {}
+    CHUNK_SIZE = 25
+    MAX_PARALLEL = 4   # evita 429 / rate-limit
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage
         from services.ai_keys import resolve_keys
@@ -248,57 +255,99 @@ async def _ai_classify_batch(cid: str, txs: List[Dict[str, Any]],
             f"- {c['id']}: {c['name']} ({c.get('type', 'expense')})"
             for c in refs["categories"][:60]
         ) or "(sem categorias cadastradas)"
-        # Lista de transações em JSON compacto
-        tx_lines = []
-        for i, t in enumerate(txs):
-            tx_lines.append(
-                f"{i}|{t['date']}|{t['type']}|R${t['amount']:.2f}|{t['description'][:140]}"
+
+        # Quebra em chunks indexados — cada chunk recebe o offset original
+        chunks: List[List[tuple]] = []
+        for start in range(0, len(txs), CHUNK_SIZE):
+            chunk = [(i, txs[i]) for i in range(start,
+                                                       min(start + CHUNK_SIZE, len(txs)))]
+            chunks.append(chunk)
+
+        async def _classify_one_chunk(chunk: List[tuple]) -> Dict[int, Dict[str, Any]]:
+            """Classifica UM chunk; retorna mapeado por idx ORIGINAL."""
+            tx_lines = []
+            for orig_idx, t in chunk:
+                tx_lines.append(
+                    f"{orig_idx}|{t['date']}|{t['type']}|R${t['amount']:.2f}"
+                    f"|{t['description'][:140]}",
+                )
+            prompt = (
+                "Você é um classificador financeiro de extrato bancário "
+                "para um provedor de internet brasileiro. Para cada "
+                "transação abaixo, decida:\n"
+                "- type: 'income' (entrada) ou 'expense' (saída). Já vem "
+                "pre-classificado pelo sinal, mas REVISE pela descrição "
+                "(PIX RECEB = income, PIX EMIT = expense).\n"
+                "- supplier_id: id do fornecedor mais provável da LISTA "
+                "(use null se nenhum bate).\n"
+                "- category_id: id da categoria mais provável da LISTA "
+                "(use null se nenhum bate).\n"
+                "- confidence: 0.0-1.0\n"
+                "- reason: 1 frase curta PT-BR.\n\n"
+                f"FORNECEDORES:\n{suppliers_str}\n\n"
+                f"CATEGORIAS:\n{categories_str}\n\n"
+                "TRANSAÇÕES (idx|data|tipo|valor|descrição):\n"
+                + "\n".join(tx_lines)
+                + "\n\nResponda APENAS um JSON válido neste formato (sem "
+                "markdown, sem ```):\n"
+                "{\"items\":[{\"idx\":N,\"type\":\"expense|income\","
+                "\"supplier_id\":\"sup-xxx\"|null,"
+                "\"category_id\":\"cat-xxx\"|null,"
+                "\"confidence\":0.0-1.0,\"reason\":\"...\"}]}"
             )
-        prompt = (
-            "Você é um classificador financeiro de extrato bancário "
-            "para um provedor de internet brasileiro. Para cada transação "
-            "abaixo, decida:\n"
-            "- type: 'income' (entrada) ou 'expense' (saída) - já vem "
-            "pre-classificado pelo sinal do valor, MAS revise se faz "
-            "sentido pela descrição (PIX REM = recebido, PIX ENV = enviado).\n"
-            "- supplier_id: id do fornecedor mais provável (da lista) ou null.\n"
-            "- category_id: id da categoria mais provável (da lista) ou null.\n"
-            "- confidence: 0.0-1.0 (sua certeza).\n"
-            "- reason: 1 frase curta em PT-BR explicando.\n\n"
-            f"FORNECEDORES CADASTRADOS:\n{suppliers_str}\n\n"
-            f"CATEGORIAS CADASTRADAS:\n{categories_str}\n\n"
-            "TRANSAÇÕES (idx|data|tipo|valor|descrição):\n"
-            + "\n".join(tx_lines)
-            + "\n\nResponda APENAS em JSON válido neste formato:\n"
-            "{\"items\": [{\"idx\": 0, \"type\": \"expense\", "
-            "\"supplier_id\": \"sup-xxx\" ou null, "
-            "\"category_id\": \"cat-xxx\" ou null, "
-            "\"confidence\": 0.85, \"reason\": \"...\"}]}"
+            chat = LlmChat(
+                api_key=ai_key,
+                session_id=f"bank-import-{cid}-{uuid.uuid4().hex[:6]}",
+                system_message="Você responde APENAS em JSON válido.",
+            ).with_model("anthropic", "claude-sonnet-4-5")
+            resp = await chat.send_message(UserMessage(text=prompt))
+            text = (resp or "").strip()
+            if text.startswith("```"):
+                text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text,
+                                  flags=re.MULTILINE)
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as e:
+                logger.warning("[bank-import] chunk JSON inválido (%s) — "
+                                  "ignorando %d txs", e, len(chunk))
+                return {}
+            out: Dict[int, Dict[str, Any]] = {}
+            valid_idx = {i for i, _ in chunk}
+            for it in data.get("items", []):
+                idx = it.get("idx")
+                if isinstance(idx, int) and idx in valid_idx:
+                    out[idx] = {
+                        "type": it.get("type") or "expense",
+                        "supplier_id": it.get("supplier_id"),
+                        "category_id": it.get("category_id"),
+                        "confidence": float(it.get("confidence") or 0.5),
+                        "reason": (it.get("reason") or "")[:200],
+                    }
+            return out
+
+        # Roda chunks em paralelo (com semáforo p/ não estourar rate-limit)
+        sem = asyncio.Semaphore(MAX_PARALLEL)
+
+        async def _bounded(chunk):
+            async with sem:
+                return await _classify_one_chunk(chunk)
+
+        results = await asyncio.gather(
+            *(_bounded(c) for c in chunks), return_exceptions=True,
         )
-        chat = LlmChat(
-            api_key=ai_key,
-            session_id=f"bank-import-{cid}-{uuid.uuid4().hex[:6]}",
-            system_message="Você responde APENAS em JSON válido.",
-        ).with_model("anthropic", "claude-sonnet-4-5")
-        resp = await chat.send_message(UserMessage(text=prompt))
-        # Limpa markdown se houver
-        text = (resp or "").strip()
-        if text.startswith("```"):
-            text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text,
-                              flags=re.MULTILINE)
-        data = json.loads(text)
-        out: Dict[int, Dict[str, Any]] = {}
-        for it in data.get("items", []):
-            idx = it.get("idx")
-            if isinstance(idx, int) and 0 <= idx < len(txs):
-                out[idx] = {
-                    "type": it.get("type") or txs[idx]["type"],
-                    "supplier_id": it.get("supplier_id"),
-                    "category_id": it.get("category_id"),
-                    "confidence": float(it.get("confidence") or 0.5),
-                    "reason": (it.get("reason") or "")[:200],
-                }
-        return out
+        merged: Dict[int, Dict[str, Any]] = {}
+        ok_chunks = 0
+        for r in results:
+            if isinstance(r, dict):
+                merged.update(r)
+                ok_chunks += 1
+            else:
+                logger.warning("[bank-import] chunk falhou: %s", r)
+        logger.info(
+            "[bank-import] IA classify: %d/%d chunks ok, %d txs classificadas "
+            "(de %d)", ok_chunks, len(chunks), len(merged), len(txs),
+        )
+        return merged
     except Exception as e:
         logger.warning("[bank-import] IA classify falhou: %s", e)
         return {}
@@ -331,6 +380,8 @@ class StagingResponse(BaseModel):
     new_count: int
     duplicate_count: int
     items: List[StagingTxOut]
+    ai_status: Optional[str] = None  # "running" | "done" | "failed"
+    ai_pending: Optional[int] = 0
 
 
 class ConfirmItemIn(BaseModel):
@@ -491,12 +542,32 @@ async def _build_staging(cid: str, txs: List[Dict[str, Any]],
             if s.get("cnpj"):
                 sup_by_doc[s["cnpj"]] = s["id"]
 
+    # Memória — BULK lookup (1 query por doc + 1 query por key, ao invés de
+    # 577 sequenciais). Critical pra PDFs grandes.
+    docs_uniq = [_extract_doc(t["description"]) for t in txs]
+    keys_uniq = [_norm_text(t["description"]) for t in txs]
+    docs_set = {d for d in docs_uniq if d}
+    keys_set = set(keys_uniq)
+    mem_by_doc: Dict[str, Dict[str, Any]] = {}
+    mem_by_key: Dict[str, Dict[str, Any]] = {}
+    if docs_set:
+        async for m in db.bank_import_memory.find(
+            {"company_id": cid, "doc": {"$in": list(docs_set)}}, {"_id": 0},
+        ):
+            mem_by_doc[m["doc"]] = m
+    if keys_set:
+        async for m in db.bank_import_memory.find(
+            {"company_id": cid, "doc": None, "key": {"$in": list(keys_set)}},
+            {"_id": 0},
+        ):
+            mem_by_key[m["key"]] = m
+
     # Memória + IA
     items: List[Dict[str, Any]] = []
     to_ai: List[int] = []
     for i, t in enumerate(txs):
-        doc = _extract_doc(t["description"])
-        key = _norm_text(t["description"])
+        doc = docs_uniq[i]
+        key = keys_uniq[i]
         h = hashes[i]
         is_dup = h in existing_set
         base = {
@@ -508,7 +579,7 @@ async def _build_staging(cid: str, txs: List[Dict[str, Any]],
         }
         if is_dup:
             items.append(base); continue
-        mem = await _lookup_memory(cid, doc, key)
+        mem = (mem_by_doc.get(doc) if doc else None) or mem_by_key.get(key)
         if mem:
             base["type"] = mem.get("type") or t["type"]
             base["supplier_id"] = mem.get("supplier_id")
@@ -534,25 +605,14 @@ async def _build_staging(cid: str, txs: List[Dict[str, Any]],
             base["source"] = "atlaz"
             items.append(base); continue
         to_ai.append(i)
+        # Marca como pendente de IA — frontend mostra spinner enquanto processa
+        base["source"] = "pending_ai"
         items.append(base)
-
-    if to_ai:
-        ai_txs = [txs[i] for i in to_ai]
-        ai_results = await _ai_classify_batch(cid, ai_txs, refs)
-        for local_idx, orig_idx in enumerate(to_ai):
-            r = ai_results.get(local_idx)
-            if not r:
-                continue
-            items[orig_idx]["type"] = r["type"]
-            items[orig_idx]["supplier_id"] = r["supplier_id"]
-            items[orig_idx]["category_id"] = r["category_id"]
-            items[orig_idx]["confidence"] = r["confidence"]
-            items[orig_idx]["reason"] = r["reason"]
-            items[orig_idx]["source"] = "ai"
 
     staging_id = f"bsi-{uuid.uuid4().hex[:10]}"
     new_count = sum(1 for x in items if not x["duplicate"])
     dup_count = sum(1 for x in items if x["duplicate"])
+    ai_pending = len(to_ai)
     await db.bank_import_staging.insert_one({
         "id": staging_id, "company_id": cid, "file_name": file_name,
         "source": source,
@@ -560,12 +620,181 @@ async def _build_staging(cid: str, txs: List[Dict[str, Any]],
         "total": len(items), "new_count": new_count,
         "duplicate_count": dup_count, "items": items,
         "status": "preview",
+        # IA roda em background; frontend faz polling em GET /staging/{id}
+        "ai_status": "running" if ai_pending else "done",
+        "ai_pending": ai_pending,
+        "ai_done": 0,
+        "ai_started_at": now_iso() if ai_pending else None,
     })
+
+    # Background task: classifica os itens "pending_ai" e atualiza o staging
+    if to_ai:
+        ai_txs_by_orig_idx = {i: txs[i] for i in to_ai}
+        asyncio.create_task(_run_ai_classify_async(
+            cid, staging_id, ai_txs_by_orig_idx, refs))
+
     return {
         "staging_id": staging_id, "file_name": file_name,
         "total": len(items), "new_count": new_count,
         "duplicate_count": dup_count, "items": items,
+        "ai_status": "running" if ai_pending else "done",
+        "ai_pending": ai_pending,
     }
+
+
+async def _run_ai_classify_async(
+    cid: str, staging_id: str,
+    ai_txs_by_orig_idx: Dict[int, Dict[str, Any]],
+    refs: Dict[str, Any],
+) -> None:
+    """Roda IA em background. Atualiza items do staging INCREMENTALMENTE
+    a cada chunk completo (frontend polling vê progresso em tempo real).
+    """
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from services.ai_keys import resolve_keys
+        keys = await resolve_keys(cid)
+        ai_key = (keys.get("anthropic") or keys.get("openai")
+                       or keys.get("gemini"))
+        if not ai_key:
+            await db.bank_import_staging.update_one(
+                {"id": staging_id, "company_id": cid},
+                {"$set": {"ai_status": "failed",
+                            "ai_error": "Nenhuma chave de IA disponível",
+                            "ai_finished_at": now_iso()}},
+            )
+            return
+
+        suppliers_str = "\n".join(
+            f"- {s['id']}: {s['name']}"
+            + (f" ({s.get('cnpj','')})" if s.get("cnpj") else "")
+            for s in refs["suppliers"][:60]
+        ) or "(sem fornecedores cadastrados)"
+        categories_str = "\n".join(
+            f"- {c['id']}: {c['name']} ({c.get('type', 'expense')})"
+            for c in refs["categories"][:60]
+        ) or "(sem categorias cadastradas)"
+
+        CHUNK_SIZE = 25
+        MAX_PARALLEL = 4
+        orig_idxs = sorted(ai_txs_by_orig_idx.keys())
+        # Lista de chunks: cada chunk = list[(orig_idx, tx_dict)]
+        chunks: List[List[tuple]] = []
+        for start in range(0, len(orig_idxs), CHUNK_SIZE):
+            chunk = [(orig_idxs[i],
+                       ai_txs_by_orig_idx[orig_idxs[i]])
+                      for i in range(start,
+                                       min(start + CHUNK_SIZE, len(orig_idxs)))]
+            chunks.append(chunk)
+        total_chunks = len(chunks)
+        sem = asyncio.Semaphore(MAX_PARALLEL)
+
+        async def process_chunk(chunk_idx: int, chunk: List[tuple]) -> int:
+            """Classifica um chunk e ATUALIZA o staging no Mongo. Retorna
+            quantidade de items aplicados."""
+            async with sem:
+                try:
+                    tx_lines = [
+                        f"{orig_idx}|{t['date']}|{t['type']}|R${t['amount']:.2f}"
+                        f"|{t['description'][:140]}"
+                        for orig_idx, t in chunk
+                    ]
+                    prompt = (
+                        "Você é um classificador financeiro de extrato "
+                        "bancário para um provedor de internet brasileiro. "
+                        "Para cada transação abaixo, decida:\n"
+                        "- type: 'income' ou 'expense' (REVISE pela descrição: "
+                        "PIX RECEB=income, PIX EMIT=expense)\n"
+                        "- supplier_id: id da LISTA ou null\n"
+                        "- category_id: id da LISTA ou null\n"
+                        "- confidence: 0.0-1.0\n"
+                        "- reason: 1 frase curta PT-BR\n\n"
+                        f"FORNECEDORES:\n{suppliers_str}\n\n"
+                        f"CATEGORIAS:\n{categories_str}\n\n"
+                        "TRANSAÇÕES (idx|data|tipo|valor|descrição):\n"
+                        + "\n".join(tx_lines)
+                        + "\n\nResponda APENAS JSON válido (sem markdown):\n"
+                        "{\"items\":[{\"idx\":N,\"type\":\"...\","
+                        "\"supplier_id\":\"sup-x\"|null,"
+                        "\"category_id\":\"cat-x\"|null,"
+                        "\"confidence\":0.X,\"reason\":\"...\"}]}"
+                    )
+                    chat = LlmChat(
+                        api_key=ai_key,
+                        session_id=f"bank-import-{cid}-{uuid.uuid4().hex[:6]}",
+                        system_message="Você responde APENAS em JSON válido.",
+                    ).with_model("anthropic", "claude-sonnet-4-5")
+                    resp = await chat.send_message(UserMessage(text=prompt))
+                    text = (resp or "").strip()
+                    if text.startswith("```"):
+                        text = re.sub(r"^```(?:json)?\s*|\s*```$", "",
+                                          text, flags=re.MULTILINE)
+                    data = json.loads(text)
+                    valid_idx = {i for i, _ in chunk}
+                    # Aplica via $set específico por item — incrementa ai_done
+                    applied = 0
+                    for it in data.get("items", []):
+                        idx = it.get("idx")
+                        if not (isinstance(idx, int) and idx in valid_idx):
+                            continue
+                        # Atualiza o item específico no array
+                        await db.bank_import_staging.update_one(
+                            {"id": staging_id, "company_id": cid,
+                             "items.idx": idx},
+                            {"$set": {
+                                "items.$.type": (it.get("type")
+                                                  or "expense"),
+                                "items.$.supplier_id": it.get("supplier_id"),
+                                "items.$.category_id": it.get("category_id"),
+                                "items.$.confidence": float(
+                                    it.get("confidence") or 0.5),
+                                "items.$.reason": (
+                                    it.get("reason") or "")[:200],
+                                "items.$.source": "ai",
+                            }},
+                        )
+                        applied += 1
+                    # Incrementa contador
+                    await db.bank_import_staging.update_one(
+                        {"id": staging_id, "company_id": cid},
+                        {"$inc": {"ai_done": applied}},
+                    )
+                    logger.info(
+                        "[bank-import] chunk %d/%d ok: %d txs classificadas "
+                        "(staging %s)",
+                        chunk_idx + 1, total_chunks, applied, staging_id,
+                    )
+                    return applied
+                except json.JSONDecodeError as e:
+                    logger.warning("[bank-import] chunk %d/%d JSON inválido: "
+                                    "%s", chunk_idx + 1, total_chunks, e)
+                    return 0
+                except Exception as e:
+                    logger.warning("[bank-import] chunk %d/%d falhou: %s",
+                                    chunk_idx + 1, total_chunks, e)
+                    return 0
+
+        results = await asyncio.gather(
+            *(process_chunk(i, c) for i, c in enumerate(chunks)),
+            return_exceptions=True,
+        )
+        total_applied = sum(r for r in results if isinstance(r, int))
+        await db.bank_import_staging.update_one(
+            {"id": staging_id, "company_id": cid},
+            {"$set": {"ai_status": "done",
+                       "ai_finished_at": now_iso()}},
+        )
+        logger.info("[bank-import] IA bg completo: %d txs no staging %s",
+                       total_applied, staging_id)
+    except Exception as e:
+        logger.exception("[bank-import] IA bg falhou no staging %s: %s",
+                            staging_id, e)
+        await db.bank_import_staging.update_one(
+            {"id": staging_id, "company_id": cid},
+            {"$set": {"ai_status": "failed",
+                       "ai_error": str(e)[:300],
+                       "ai_finished_at": now_iso()}},
+        )
 
 
 @router.get("/staging/{staging_id}")

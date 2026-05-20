@@ -307,8 +307,14 @@ export const api = {
     return client.post(`/financeiro/bank-import/upload`, fd, {
       params: { source },
       headers: { "Content-Type": "multipart/form-data" },
+      // Sicoob PDF c/ 500+ tx: parse + dedupe + memória pode ir até ~2min.
+      // IA roda em background (polling via bankImportGetStaging).
+      timeout: 180000,
     }).then((r) => r.data);
   },
+  bankImportGetStaging: (stagingId) =>
+    client.get(`/financeiro/bank-import/staging/${stagingId}`)
+      .then((r) => r.data),
   bankImportAtlazFetch: (payload) =>
     client.post(`/financeiro/bank-import/atlaz-fetch`, payload)
       .then((r) => r.data),
