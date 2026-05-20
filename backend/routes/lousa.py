@@ -222,6 +222,10 @@ class AdminCloseIn(BaseModel):
     new_scheduled_time: Optional[str] = None
     new_date: Optional[str] = None        # YYYY-MM-DD (alternativa a new_scheduled_time)
     new_time: Optional[str] = None        # HH:MM (combinada com new_date)
+    # Modo "fechamento técnico" — gestor preenche dados como se fosse o técnico.
+    # Quando preenchido em action=encerrar, gravamos em completion_data e
+    # disparamos os hooks (signal snapshot, auto-resched, etc).
+    completion_data: Optional[Dict[str, Any]] = None
 
 
 # -------------------------------------------------------------------------
@@ -2671,6 +2675,14 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
             )
         except Exception as e:
             logger.warning("[lousa] cancel_service_for_ticket falhou: %s", e)
+    # Hooks de fechamento (quando gestor fecha como se fosse técnico)
+    if payload.action == "encerrar" and payload.completion_data:
+        try:
+            company_id = t.get("company_id") or DEMO_COMPANY_ID
+            await _capture_signal_snapshot(ticket_id, company_id, "close")
+            await _maybe_auto_resched_degraded(ticket_id, company_id)
+        except Exception as e:
+            logger.warning("[lousa] admin-close hooks falharam: %s", e)
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 

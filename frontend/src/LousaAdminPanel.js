@@ -288,17 +288,35 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
     setDragOverCol(null);
   }
 
-  async function handleAdminClose(ticketId, action, notes) {
+  async function handleAdminClose(ticketId, action, notes, completionData = null) {
     if (isLocked) { await window.alert("Sistema bloqueado: dispositivo offline ou horário dessincronizado."); return; }
     setBusy(true);
     try {
-      await api.lousaAdminClose(ticketId, { action, notes: notes || "" });
+      const payload = { action, notes: notes || "" };
+      if (completionData) payload.completion_data = completionData;
+      await api.lousaAdminClose(ticketId, payload);
       await refresh();
     } catch (e) {
       await window.alert(e?.response?.data?.detail || e.message);
     }
     setBusy(false);
   }
+
+  // Modal de fechamento admin (mesmas regras do técnico)
+  const [adminFinalizeTicket, setAdminFinalizeTicket] = useState(null);
+
+  // Callback unificado: "encerrar" abre modal completo (com completion_data),
+  // "cancelar" e outros vão direto pro handleAdminClose simples.
+  const handleAdminCloseAction = useCallback((ticketOrId, action, notes) => {
+    const ticket = typeof ticketOrId === "object" ? ticketOrId : null;
+    const id = ticket?.id || ticketOrId;
+    if (action === "encerrar" && ticket) {
+      setAdminFinalizeTicket(ticket);
+      return;
+    }
+    return handleAdminClose(id, action, notes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleAdminOpen(ticketId) {
     if (isLocked) { await window.alert("Sistema bloqueado: dispositivo offline ou horário dessincronizado."); return; }
@@ -767,7 +785,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               onDragStart={(tid) => setDraggingId(tid)}
               onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
               draggingId={draggingId}
-              onAdminClose={handleAdminClose}
+              onAdminClose={handleAdminCloseAction}
               onAdminOpen={handleAdminOpen}
               onEdit={(t) => setEditingTicket(t)}
               onReschedule={(t) => setReschedTicket(t)}
@@ -790,7 +808,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             onDragStart={(tid) => setDraggingId(tid)}
             onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
             draggingId={draggingId}
-            onAdminClose={handleAdminClose}
+            onAdminClose={handleAdminCloseAction}
             onAdminOpen={handleAdminOpen}
             onEdit={(t) => setEditingTicket(t)}
             onReschedule={(t) => setReschedTicket(t)}
@@ -843,6 +861,16 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           initial={autoReschedCfg}
           onClose={() => setShowAutoReschedModal(false)}
           onSaved={(cfg) => { setAutoReschedCfg(cfg); setShowAutoReschedModal(false); }}
+        />
+      )}
+      {adminFinalizeTicket && (
+        <AdminFinalizeModal
+          ticket={adminFinalizeTicket}
+          onClose={() => setAdminFinalizeTicket(null)}
+          onSubmit={async (cd, notes) => {
+            await handleAdminClose(adminFinalizeTicket.id, "encerrar", notes, cd);
+            setAdminFinalizeTicket(null);
+          }}
         />
       )}
       {showSentinela && (
@@ -1149,6 +1177,7 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
                  title={tickets.length > 1 ? `Slot com ${tickets.length} bolhas — clique pra expandir/recolher` : undefined}>
               <BubbleCard
                 ticket={t}
+                slotHour={slot.slot}
                 blinkOverdue={blinkOverdue}
                 isDragging={draggingId === t.id}
                 onDragStart={() => onDragStart(t.id)}
@@ -1170,7 +1199,7 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
   );
 }
 
-function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, isSelected, onToggleSelect }) {
+function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, isSelected, onToggleSelect }) {
   const c = PRIORITY_COLORS[ticket.priority] || PRIORITY_COLORS.normal;
   const st = STATUS_LABEL[ticket.status] || { label: ticket.status, color: "#64748b" };
   const sla = ticket.sla || {};
@@ -1256,17 +1285,22 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
           ticket.type === "alerta_geofence" ? "#dc2626"
           : isSelected ? "#3b82f6"
           : isOverdue ? "#dc2626" : c.border}`,
-        borderRadius: 14, padding: "10px 12px 10px 14px",
-        marginBottom: 6, position: "relative",
+        borderRadius: 14, padding: "6px 10px 6px 12px",
+        marginBottom: 0, position: "relative",
         cursor: selectMode ? (isSelectable ? "pointer" : "not-allowed") : "grab",
         opacity: isDragging ? 0.4 : (selectMode && !isSelectable ? 0.55 : 1),
+        // Compact mode: altura máxima quando NÃO hovered; expande no hover
+        // para mostrar todo o conteúdo sem cortar.
+        maxHeight: showActions ? "none" : 42,
+        overflow: showActions ? "visible" : "hidden",
+        zIndex: showActions ? 999 : "auto",
         boxShadow: isSelected
           ? "0 0 0 3px rgba(59,130,246,.25), 0 4px 12px rgba(59,130,246,.18)"
           : isDragging ? "none"
+          : showActions ? "0 8px 24px rgba(15,23,42,.25)"
           : isOverdue ? "0 4px 14px rgba(220,38,38,.18)"
           : "0 1px 3px rgba(15,23,42,.06), 0 2px 6px rgba(15,23,42,.04)",
-        transition: "box-shadow .2s, border-color .2s, transform .15s",
-        overflow: "hidden",
+        transition: "max-height .25s, box-shadow .2s, border-color .2s, transform .15s",
       }}
     >
       {/* Faixa lateral colorida (priority accent) */}
@@ -1301,7 +1335,21 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
               background: c.accent, color: "white",
             }}>{c.icon} {c.label}</span>
           )}
-          {ticket.scheduled_time && (
+          {/* Horário da grade (slotHour) — refere-se à célula onde a bolha
+              está, não ao scheduled_time original. Se houver discrepância
+              (ticket reagendado p/ outro horário), mostra ambos. */}
+          {slotHour && (
+            <span style={{
+              fontSize: 10, fontWeight: 800, color: "#0f172a",
+              background: "#fef3c7", padding: "2px 7px", borderRadius: 999,
+              border: "1px solid #fcd34d",
+            }} title={ticket.scheduled_time
+              ? `Slot ${slotHour} · Agendado p/ ${ticket.scheduled_time.substr(11,5)}`
+              : `Slot ${slotHour}`}>
+              🕐 {slotHour}
+            </span>
+          )}
+          {!slotHour && ticket.scheduled_time && (
             <span style={{
               fontSize: 10, fontWeight: 800, color: "#475569",
               background: "#f1f5f9", padding: "2px 7px", borderRadius: 999,
@@ -1453,7 +1501,8 @@ function BubbleCard({ ticket, blinkOverdue, isDragging, onDragStart, onDragEnd, 
           <button data-testid={`ai-evaluate-${ticket.id}`} disabled={aiBusy}
             onClick={runAiAnalysis} style={btnSm("#0d9488")}>IA {aiBusy ? "..." : ""}</button>
           <button data-testid={`admin-close-${ticket.id}`} disabled={busy}
-            onClick={async () => { const n = await window.prompt("Notas:"); if (n !== null) onAdminClose(ticket.id, "encerrar", n); }} style={btnSm("#64748b")}>✓ Encerrar</button>
+            onClick={() => onAdminClose(ticket, "encerrar")}
+            style={btnSm("#64748b")}>✓ Encerrar</button>
           <button data-testid={`admin-reschedule-${ticket.id}`} disabled={busy}
             onClick={(e) => { e.stopPropagation(); if (onReschedule) onReschedule(ticket); }} style={btnSm("#3b82f6")}>📅 Reagendar</button>
           <button disabled={busy}
@@ -2917,6 +2966,186 @@ function AutoReschedConfigModal({ initial, onClose, onSaved }) {
         </div>
       </div>
     </div>
+  );
+}
+
+
+
+/* ============================================================
+ * AdminFinalizeModal — gestor finaliza OS no lugar do técnico,
+ * com mesmas regras (drop, esticadores, sinal, observações).
+ * Aplica os mesmos hooks no backend (signal snapshot, auto-resched).
+ * ============================================================ */
+function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
+  const [form, setForm] = useState({
+    sinal: "", qtd_drop: 1, esticadores: 1, conectores_fast: 2,
+    cabo_rede: 10, conectores_rede: 2,
+    ont: "", observacoes: "",
+  });
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const cname = ticket?.client_snapshot?.name || ticket?.id;
+
+  const submit = async () => {
+    if (form.sinal === "" || Number.isNaN(Number(form.sinal))) {
+      window.alert("Informe o sinal óptico final (dBm).");
+      return;
+    }
+    setBusy(true);
+    try {
+      const cd = {
+        sinal: Number(form.sinal),
+        qtd_drop: Number(form.qtd_drop) || 0,
+        esticadores: Number(form.esticadores) || 0,
+        conectores_fast: Number(form.conectores_fast) || 0,
+        cabo_rede: Number(form.cabo_rede) || 0,
+        conectores_rede: Number(form.conectores_rede) || 0,
+        ont: form.ont || null,
+        observacoes: form.observacoes || null,
+        closed_by_admin: true,
+      };
+      await onSubmit(cd, notes);
+    } catch (e) {
+      window.alert(e?.response?.data?.detail || e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div onClick={onClose} data-testid="admin-finalize-modal"
+          style={{ position: "fixed", inset: 0, zIndex: 1200,
+                    background: "rgba(0,0,0,.55)",
+                    display: "flex", alignItems: "center",
+                    justifyContent: "center", padding: 16,
+                    overflowY: "auto" }}>
+      <div onClick={(e) => e.stopPropagation()}
+            style={{ background: "var(--bg-canvas, white)", padding: 22,
+                      borderRadius: 12, maxWidth: 560, width: "100%",
+                      border: "2px solid #0f766e",
+                      boxShadow: "0 20px 50px rgba(0,0,0,.3)",
+                      maxHeight: "90vh", overflowY: "auto" }}>
+        <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800,
+                        color: "#0f172a" }}>
+          🏁 Finalizar OS no lugar do técnico
+        </h3>
+        <p style={{ fontSize: 11, color: "#64748b", marginBottom: 12 }}>
+          Cliente: <strong>{cname}</strong>
+          {ticket.assigned_collaborator_id && (
+            <span> · técnico: {ticket.collaborator_name || ticket.assigned_collaborator_id}</span>
+          )}
+          <br/>Aplica as <strong>mesmas regras</strong> de fechamento: snapshot
+          de sinal, comparativo abertura/fechamento, auto-reagendamento se
+          degradar.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
+                          gap: 8, marginBottom: 10 }}>
+          <FieldNum label="Sinal final (dBm) *" testid="adm-fin-sinal"
+                      step="0.1" value={form.sinal}
+                      onChange={(v) => setF("sinal", v)} required />
+          <FieldText label="ONT (opcional)" testid="adm-fin-ont"
+                      value={form.ont} onChange={(v) => setF("ont", v)} />
+          <FieldNum label="Drop (m)" testid="adm-fin-drop"
+                      value={form.qtd_drop}
+                      onChange={(v) => setF("qtd_drop", v)} />
+          <FieldNum label="Esticadores" testid="adm-fin-est"
+                      value={form.esticadores}
+                      onChange={(v) => setF("esticadores", v)} />
+          <FieldNum label="Conectores fast" testid="adm-fin-cf"
+                      value={form.conectores_fast}
+                      onChange={(v) => setF("conectores_fast", v)} />
+          <FieldNum label="Cabo rede (m)" testid="adm-fin-cabo"
+                      value={form.cabo_rede}
+                      onChange={(v) => setF("cabo_rede", v)} />
+          <FieldNum label="Conectores rede" testid="adm-fin-cr"
+                      value={form.conectores_rede}
+                      onChange={(v) => setF("conectores_rede", v)} />
+        </div>
+
+        <label style={{ display: "block", fontSize: 11, fontWeight: 700,
+                          color: "#475569", textTransform: "uppercase",
+                          letterSpacing: 0.5, marginBottom: 4 }}>
+          Observações do serviço
+        </label>
+        <textarea data-testid="adm-fin-obs"
+                    value={form.observacoes}
+                    onChange={(e) => setF("observacoes", e.target.value)}
+                    placeholder="Ex: substituído drop, ajustada emenda no CTO, etc."
+                    style={{ width: "100%", padding: 8, fontSize: 12,
+                              minHeight: 60, borderRadius: 6,
+                              border: "1px solid #cbd5e1", marginBottom: 10,
+                              fontFamily: "inherit" }} />
+
+        <label style={{ display: "block", fontSize: 11, fontWeight: 700,
+                          color: "#7c2d12", textTransform: "uppercase",
+                          letterSpacing: 0.5, marginBottom: 4 }}>
+          Justificativa (auditoria — por que o gestor está fechando)
+        </label>
+        <textarea data-testid="adm-fin-notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Ex: técnico não conseguiu finalizar via app, registrei manualmente."
+                    style={{ width: "100%", padding: 8, fontSize: 12,
+                              minHeight: 50, borderRadius: 6,
+                              border: "1px solid #fcd34d",
+                              background: "#fffbeb",
+                              marginBottom: 16, fontFamily: "inherit" }} />
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onClose}
+                    style={{ padding: "8px 18px", background: "white",
+                              border: "1px solid #cbd5e1", borderRadius: 6,
+                              fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+            Cancelar
+          </button>
+          <button onClick={submit}
+                    data-testid="adm-fin-submit"
+                    disabled={busy}
+                    style={{ padding: "8px 18px", background: "#0f766e",
+                              color: "white", border: "none",
+                              borderRadius: 6, fontWeight: 700, fontSize: 12,
+                              cursor: busy ? "wait" : "pointer",
+                              opacity: busy ? 0.7 : 1 }}>
+            {busy ? "Finalizando..." : "✓ Finalizar OS"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FieldNum({ label, value, onChange, step = "1", required, testid }) {
+  return (
+    <label style={{ display: "block" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#475569",
+                       textTransform: "uppercase", letterSpacing: 0.4,
+                       marginBottom: 3 }}>
+        {label}{required && <span style={{ color: "#dc2626" }}> *</span>}
+      </div>
+      <input type="number" step={step} value={value}
+                data-testid={testid}
+                onChange={(e) => onChange(e.target.value)}
+                style={{ width: "100%", padding: "6px 8px",
+                          border: "1px solid #cbd5e1", borderRadius: 6,
+                          fontSize: 13, fontWeight: 600 }} />
+    </label>
+  );
+}
+function FieldText({ label, value, onChange, testid }) {
+  return (
+    <label style={{ display: "block" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#475569",
+                       textTransform: "uppercase", letterSpacing: 0.4,
+                       marginBottom: 3 }}>{label}</div>
+      <input type="text" value={value}
+                data-testid={testid}
+                onChange={(e) => onChange(e.target.value)}
+                style={{ width: "100%", padding: "6px 8px",
+                          border: "1px solid #cbd5e1", borderRadius: 6,
+                          fontSize: 13, fontFamily: "monospace" }} />
+    </label>
   );
 }
 

@@ -1,5 +1,52 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Bolha compacta com horário da grade + Finalização admin completa
+
+### Sumário
+Duas correções importantes na Lousa de Serviços:
+
+1. **Bolha respeita a grade**: cada bolha tem altura **compacta** (40px) que
+   se expande no hover (`maxHeight: showActions ? 'none' : 42`). Mostra o
+   horário do slot onde está posicionada (`🕐 06:00`) ao invés do
+   `scheduled_time` original (que pode divergir após reagendamento).
+
+2. **Botão "Encerrar" abre modal completo** (não mais `window.prompt`):
+   - Gestor preenche TODOS os campos do técnico (sinal, drop, esticadores,
+     conectores, cabo, observações, ONT).
+   - Campo obrigatório de "Justificativa (auditoria)" em amarelo.
+   - **Mesmas regras** do fechamento mobile: dispara
+     `_capture_signal_snapshot(ticket_id, ..., 'close')` e
+     `_maybe_auto_resched_degraded(...)` — incluindo auto-reagendamento se
+     sinal degradar.
+
+### Backend (`routes/lousa.py`)
+- `AdminCloseIn` ganhou campo opcional `completion_data: Dict[str, Any]`.
+- Quando `action="encerrar"` E `completion_data` presente:
+  - Persiste `update["completion_data"] = payload.completion_data`
+  - Marca `status="finalizada"` + `outcome="instalada"`
+  - Chama `_capture_signal_snapshot` + `_maybe_auto_resched_degraded`
+
+### Frontend (`LousaAdminPanel.js`)
+- `BubbleCard`: novo prop `slotHour`, altura colapsada (42px), expansão no
+  hover (`onMouseEnter` já existia em `showActions`).
+- Badge de horário ganhou cor amarela para indicar que é o horário do slot.
+- Estado `adminFinalizeTicket` + callback `handleAdminCloseAction` que
+  intercepta `encerrar` e abre `AdminFinalizeModal`.
+- Componente `AdminFinalizeModal` (~180 linhas) com layout 2-col, todos
+  os campos do técnico, validação de sinal obrigatória e justificativa
+  de auditoria destacada.
+- Helpers `FieldNum` e `FieldText` para inputs do modal.
+
+### Validação visual
+- Bolha colapsada mostra `🕐 06:00 · BARBARA DA SILVA MACEIO ALVES`.
+- Hover expande mostrando: Reparo · VALERIO, SLA 10.0,
+  botões [Abrir | Editar | IA | Encerrar | Reagendar | Cancelar].
+- Clique em Encerrar abre modal `🏁 Finalizar OS no lugar do técnico` com
+  todos os campos do técnico + campo de justificativa em amarelo.
+- Lint passa.
+
+
+
 ## 2026-05-20 — Auto-Reagendamento de OS com Sinal Degradado (toggle do auditor)
 
 ### Sumário
