@@ -20,6 +20,7 @@ from auth import (
 )
 from core import (
     DEMO_COMPANY_ID,
+    can_grant_super_admin,
     get_current_user,
     is_super_admin,
     now_iso,
@@ -73,6 +74,9 @@ async def login(request: Request, payload: LoginIn):
     user.pop("_id", None)
     user.pop("password_hash", None)
     user["active_session_id"] = sid
+    # Flags computadas (não persistir, são derivadas)
+    user["is_super_admin"] = is_super_admin(user)
+    user["can_grant_super_admin"] = can_grant_super_admin(user)
     return {"ok": True, "access_token": token, "user": user}
 
 
@@ -194,6 +198,9 @@ async def google_login(payload: GoogleLoginIn):
 
 @router.get("/auth/me")
 async def auth_me(user: dict = Depends(get_current_user)):
+    # Anexa flags computadas para o frontend
+    user["is_super_admin"] = is_super_admin(user)
+    user["can_grant_super_admin"] = can_grant_super_admin(user)
     return user
 
 
@@ -368,3 +375,46 @@ async def delete_user(uid: str, user: dict = Depends(require_role("auditor"))):
     if res.deleted_count == 0:
         raise HTTPException(404, "Usuário não encontrado")
     return {"ok": True}
+
+
+class SuperAdminToggleIn(BaseModel):
+    is_super_admin: bool
+
+
+@router.patch("/users/{uid}/super-admin")
+async def toggle_super_admin(
+    uid: str, payload: SuperAdminToggleIn,
+    user: dict = Depends(get_current_user),
+):
+    """Ativa/desativa flag de super admin para um usuário.
+
+    Regras (decisão de produto):
+    - Apenas o grantor hardcoded (`vando@example.com`) pode usar este endpoint.
+    - O próprio grantor não pode se auto-desativar (segurança contra lockout).
+    """
+    if not can_grant_super_admin(user):
+        raise HTTPException(403, "Apenas o super admin titular pode conceder/revogar esse privilégio")
+    target = await db.users.find_one({"id": uid}, {"_id": 0})
+    if not target:
+        raise HTTPException(404, "Usuário não encontrado")
+    if target.get("email", "").strip().lower() == user.get("email", "").strip().lower() \
+       and payload.is_super_admin is False:
+        raise HTTPException(400, "Você não pode revogar seu próprio super admin")
+    await db.users.update_one(
+        {"id": uid},
+        {"$set": {"is_super_admin": payload.is_super_admin,
+                   "updated_at": now_iso(),
+                   "super_admin_changed_by": user.get("email"),
+                   "super_admin_changed_at": now_iso()}},
+    )
+    return {"ok": True, "user_id": uid, "is_super_admin": payload.is_super_admin}
+
+
+@router.get("/users/super-admin/grantor-status")
+async def grantor_status(user: dict = Depends(get_current_user)):
+    """Retorna se o usuário atual pode operar o TIK de super admin.
+    Frontend usa pra esconder/mostrar o componente."""
+    return {
+        "can_grant": can_grant_super_admin(user),
+        "is_super_admin": is_super_admin(user),
+    }

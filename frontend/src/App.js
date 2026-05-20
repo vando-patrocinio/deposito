@@ -189,8 +189,11 @@ const NAV_GROUPS = [
   {
     label: "Financeiro",
     items: [
+      // Aba Financeiro: visível APENAS para super admin (decisão de produto).
+      // O TIK "Super Admin" no card de Usuários é controlado pelo Vando.
       { id: "financeiro", icon: DollarSign, label: "Financeiro",
-        roles: ["auditor", "administrador", "financeiro"] },
+        roles: ["auditor", "administrador", "financeiro"],
+        superAdminOnly: true },
     ],
   },
   {

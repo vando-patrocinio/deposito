@@ -321,6 +321,11 @@ export const api = {
     client.get(`/admin/data-health`).then((r) => r.data),
   dataHealthRunMigrations: () =>
     client.post(`/admin/data-health/run-migrations`).then((r) => r.data),
+
+  // ========= Super Admin Toggle (somente Vando opera) =========
+  toggleSuperAdmin: (userId, isSuperAdmin) =>
+    client.patch(`/users/${userId}/super-admin`,
+      { is_super_admin: isSuperAdmin }).then((r) => r.data),
   bankImportAtlazFetch: (payload) =>
     client.post(`/financeiro/bank-import/atlaz-fetch`, payload)
       .then((r) => r.data),

@@ -28,11 +28,30 @@ SUPER_ADMIN_EMAILS_ENV = "SUPER_ADMIN_EMAILS"
 
 
 def is_super_admin(user: dict) -> bool:
-    """Super admin (allowlist do .env) tem visão cross-tenant."""
+    """Super admin tem visão cross-tenant. Determinado por:
+    1. Flag no banco `users.is_super_admin = true` (preferencial)
+    2. Email na env `SUPER_ADMIN_EMAILS` (compat legado)
+    O TIK de Super Admin no card de Usuários só é VISÍVEL para
+    `vando@example.com` (hardcoded), que controla quem é super admin.
+    """
     if not user:
         return False
+    if user.get("is_super_admin") is True:
+        return True
     emails = {e.strip().lower() for e in (os.environ.get(SUPER_ADMIN_EMAILS_ENV) or "").split(",") if e.strip()}
     return (user.get("email") or "").strip().lower() in emails
+
+
+# Email com poder de conceder/revogar super_admin para outros usuários.
+# Hardcoded por decisão de produto (resp. único: Vando).
+SUPER_ADMIN_GRANTOR_EMAIL = "vando@example.com"
+
+
+def can_grant_super_admin(user: dict) -> bool:
+    """Apenas o grantor (Vando) pode VER e USAR o TIK de Super Admin."""
+    if not user:
+        return False
+    return (user.get("email") or "").strip().lower() == SUPER_ADMIN_GRANTOR_EMAIL
 
 
 def can_view_platform(user: dict) -> bool:

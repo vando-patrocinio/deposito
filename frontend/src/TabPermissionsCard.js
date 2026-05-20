@@ -39,7 +39,9 @@ export const TAB_DEFINITIONS = [
   { id: "feriados",        label: "Feriados",          group: "RH" },
 
   // Financeiro
-  { id: "financeiro",      label: "Financeiro",        group: "Financeiro" },
+  { id: "financeiro",      label: "Financeiro",        group: "Financeiro",
+    superAdminOnly: true,
+    hint: "Mesmo marcado, só aparece para usuários com tik Super Admin." },
 
   // Comercial
   { id: "budget",          label: "Orçamento",         group: "Comercial" },
@@ -194,7 +196,27 @@ export default function TabPermissionsCard({ data, setData }) {
               const t = row.tab;
               return (
                 <tr key={t.id} style={{ borderTop: "1px solid var(--border-default)" }}>
-                  <td style={{ padding: "8px 10px", fontWeight: 600, color: "var(--text-primary)" }}>{t.label}</td>
+                  <td style={{ padding: "8px 10px", fontWeight: 600, color: "var(--text-primary)" }}>
+                    {t.label}
+                    {t.superAdminOnly && (
+                      <span title={t.hint || "Apenas Super Admin"}
+                            data-testid={`perm-superadmin-tag-${t.id}`}
+                            style={{
+                              marginLeft: 8, fontSize: 9, fontWeight: 800,
+                              padding: "2px 6px", borderRadius: 999,
+                              background: "#0f172a", color: "#facc15",
+                              letterSpacing: ".04em",
+                            }}>
+                        ⭐ SUPER ADMIN
+                      </span>
+                    )}
+                    {t.hint && (
+                      <div style={{ fontSize: 10, color: "#94a3b8",
+                                     marginTop: 2, fontStyle: "italic" }}>
+                        {t.hint}
+                      </div>
+                    )}
+                  </td>
                   {ROLES.map((r) => {
                     const checked = (perms[r.id] || []).includes(t.id);
                     return (

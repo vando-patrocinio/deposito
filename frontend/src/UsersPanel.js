@@ -71,6 +71,27 @@ export default function UsersPanel() {
     }
   }
 
+  // Só o "grantor" (Vando) opera o tik de super admin. Backend valida.
+  const canGrantSuperAdmin = !!currentUser?.can_grant_super_admin;
+
+  async function toggleSuperAdmin(u) {
+    const wanted = !u.is_super_admin;
+    if (!window.confirm(
+      wanted
+        ? `Tornar ${u.name} (${u.email}) SUPER ADMIN? Ele(a) terá acesso à aba Financeiro e visão cross-tenant.`
+        : `Revogar SUPER ADMIN de ${u.name} (${u.email})?`,
+    )) return;
+    try {
+      await api.toggleSuperAdmin(u.id, wanted);
+      setFlash(wanted ? `✅ Super admin concedido a ${u.name}` : `↩️ Super admin revogado de ${u.name}`);
+      setTimeout(() => setFlash(""), 4000);
+      await reload();
+    } catch (e) {
+      setFlash("❌ " + (e?.response?.data?.detail || e.message));
+      setTimeout(() => setFlash(""), 5000);
+    }
+  }
+
   function startNew() { setForm(EMPTY); setEditing("new"); setError(""); }
   function startEdit(u) {
     setForm({
@@ -242,6 +263,15 @@ export default function UsersPanel() {
                     <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: theme.bg, color: theme.fg }}>
                       {theme.emoji} {u.role}
                     </span>
+                    {u.is_super_admin && (
+                      <span data-testid={`super-admin-badge-${u.id}`}
+                            style={{ fontSize: 10, fontWeight: 800,
+                                      padding: "2px 8px", borderRadius: 999,
+                                      background: "#0f172a", color: "#facc15",
+                                      letterSpacing: ".04em" }}>
+                        ⭐ SUPER ADMIN
+                      </span>
+                    )}
                     {isMe && (
                       <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#0f172a", color: "white" }}>você</span>
                     )}
@@ -259,7 +289,34 @@ export default function UsersPanel() {
               </div>
 
               {/* Ações na linha de baixo */}
-              <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #f1f5f9", display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #f1f5f9", display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
+                {canGrantSuperAdmin && (
+                  <label
+                    data-testid={`super-admin-toggle-${u.id}`}
+                    title={u.is_super_admin
+                      ? "Clique para REVOGAR poderes de Super Admin"
+                      : "Clique para CONCEDER poderes de Super Admin (aba Financeiro + cross-tenant)"}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      padding: "6px 10px",
+                      background: u.is_super_admin ? "#0f172a" : "#f1f5f9",
+                      color: u.is_super_admin ? "#facc15" : "#475569",
+                      border: `1px solid ${u.is_super_admin
+                        ? "#facc15" : "#cbd5e1"}`,
+                      borderRadius: 999, cursor: "pointer",
+                      fontSize: 11, fontWeight: 700,
+                      marginRight: "auto",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!u.is_super_admin}
+                      onChange={() => toggleSuperAdmin(u)}
+                      style={{ accentColor: "#facc15", cursor: "pointer" }}
+                    />
+                    ⭐ Super Admin
+                  </label>
+                )}
                 {currentUser?.role === "auditor" && !isMe && (
                   <Button
                     variant="soft"

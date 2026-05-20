@@ -1236,3 +1236,54 @@ no caixa), atualiza saldo da conta caixa, e chama `_save_memory` por item
 - Endpoint protegido (super admin only)
 
 **Acesso:** Sidebar → Sistema → Plataforma → sub-aba "Saúde dos Dados".
+
+
+---
+
+## 2026-05-20 — Super Admin gerenciado pelo Vando + Financeiro restrito (P0)
+
+**Decisão de produto:**
+- Aba **Financeiro** passa a ser visível APENAS para usuários com flag
+  `is_super_admin=true`.
+- O TIK (toggle) "Super Admin" só pode ser visto e operado por
+  **vando@example.com** (hardcoded). Outros usuários nem veem o checkbox.
+- Vando opera quem é super_admin via UI da aba **Usuários**.
+
+**Implementado:**
+
+1. **Backend (`core.py`)**:
+   - `is_super_admin(user)` agora checa `user.is_super_admin` (DB) com
+     fallback para `SUPER_ADMIN_EMAILS` env (compat).
+   - Nova `can_grant_super_admin(user)` — `True` somente se
+     `email === SUPER_ADMIN_GRANTOR_EMAIL` (vando@example.com).
+2. **Backend (`routes/users.py`)**:
+   - `PATCH /api/users/{uid}/super-admin` — toggle, exige `can_grant`,
+     bloqueia auto-revogação.
+   - `GET /api/users/super-admin/grantor-status` — frontend usa pra
+     esconder/mostrar UI.
+   - `/auth/login` e `/auth/me` anexam `is_super_admin` e
+     `can_grant_super_admin` no payload (flags computadas).
+3. **Migration** (`scripts/migrations.py`): `20260520_vando_super_admin`
+   seta `vando@example.com.is_super_admin = true` (idempotente).
+4. **Frontend**:
+   - `App.js`: tab Financeiro recebe flag `superAdminOnly: true`
+     (já filtrada na linha 644 do tabs useMemo).
+   - `UsersPanel.js`: badge ⭐ SUPER ADMIN em cada user que é super; tik
+     clicável (`<input type="checkbox">`) renderizado APENAS se
+     `currentUser.can_grant_super_admin === true`. Confirm dialog antes
+     de aplicar.
+   - `TabPermissionsCard.js`: aba Financeiro recebe badge
+     ⭐ SUPER ADMIN + hint explicando que mesmo marcada só aparece pra
+     super admin.
+   - `api.js`: novo método `toggleSuperAdmin(userId, bool)`.
+
+**Validação E2E via curl:**
+- Login Vando → `is_super_admin: True`, `can_grant_super_admin: True`
+- Vando PATCH user → `{"ok": true}`
+- Admin (não-Vando) PATCH user → **403** "Apenas o super admin titular
+  pode conceder/revogar esse privilégio"
+- Migration aplicada na 1ª boot; pulada nas seguintes (idempotente)
+- 1 super admin no sistema: vando@example.com
+
+**Credenciais teste atualizadas em `/app/memory/test_credentials.md`:**
+- vando@example.com / vando123 (super admin titular)

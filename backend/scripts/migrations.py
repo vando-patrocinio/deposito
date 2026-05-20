@@ -48,11 +48,23 @@ async def m_20260520_branding_schema_version(db) -> None:
 
 
 # =============================================================================
+# 2026-05-20 — Vando = super_admin no banco (não mais env-only)
+# =============================================================================
+async def m_20260520_vando_super_admin(db) -> None:
+    """Set vando@example.com.is_super_admin = true. Idempotente."""
+    await db.users.update_one(
+        {"email": "vando@example.com"},
+        {"$set": {"is_super_admin": True}},
+    )
+
+
+# =============================================================================
 # Lista ordenada de migrations a executar
 # =============================================================================
 MIGRATIONS: List[Tuple[str, Callable[..., Awaitable[None]]]] = [
     ("20260520_bank_import_memory_indexes", m_20260520_bank_import_memory_indexes),
     ("20260520_branding_schema_version", m_20260520_branding_schema_version),
+    ("20260520_vando_super_admin", m_20260520_vando_super_admin),
 ]
 
 
