@@ -102,7 +102,28 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
     });
     return m;
   }, [onts]);
+
+  // Histórico indexado por MAC (regex em description) — pra mini-timeline
+  // expansível no popover.
+  const historyByMac = React.useMemo(() => {
+    const m = {};
+    (history || []).forEach((h) => {
+      const text = `${h.description || ""} ${h.notes || ""}`;
+      const matches = text.match(/[0-9A-F]{2}(?::[0-9A-F]{2}){5}/gi);
+      (matches || []).forEach((mac) => {
+        const k = mac.toUpperCase();
+        (m[k] = m[k] || []).push(h);
+      });
+    });
+    // Ordena por data desc
+    Object.keys(m).forEach((k) => m[k].sort((a, b) =>
+      (b.created_at || b.date || "").localeCompare(
+        a.created_at || a.date || "")));
+    return m;
+  }, [history]);
+
   const [popoverTechId, setPopoverTechId] = React.useState(null);
+  const [expandedMac, setExpandedMac] = React.useState(null);
   React.useEffect(() => {
     if (!popoverTechId) return;
     const close = () => setPopoverTechId(null);
@@ -526,42 +547,103 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
                           </div>
                           {(ontsByTech[t.id] || []).map((o) => {
                             const fromClient = o.status === "retirada_com_tecnico";
+                            const macHist = historyByMac[o.mac] || [];
+                            const isOpen = expandedMac === o.mac;
                             return (
-                              <div key={o.mac} style={{
-                                padding: "5px 6px",
-                                borderBottom: "1px solid #f1f5f9",
-                                display: "flex", justifyContent: "space-between",
-                                alignItems: "center", gap: 6, flexWrap: "wrap",
-                              }}>
-                                <span style={{
-                                  fontFamily: "monospace",
-                                  fontWeight: 700, fontSize: 11,
-                                  color: "#0f172a",
-                                }}>{o.mac}</span>
-                                <div style={{ display: "flex", gap: 4,
-                                                alignItems: "center",
-                                                marginLeft: "auto" }}>
-                                  <span title={fromClient
-                                    ? `Veio do cliente${o.client_name ? `: ${o.client_name}` : ""}`
-                                    : "Veio do estoque/praça"}
-                                          style={{
-                                            fontSize: 10, fontWeight: 700,
-                                            padding: "2px 6px", borderRadius: 4,
-                                            background: fromClient
-                                              ? "#fef3c7" : "#dbeafe",
-                                            color: fromClient
-                                              ? "#92400e" : "#1e40af",
-                                          }}>
-                                    {fromClient
-                                      ? "↩️ Cliente"
-                                      : "📦 Praça"}
-                                  </span>
+                              <div key={o.mac}
+                                    style={{
+                                      borderBottom: "1px solid #f1f5f9",
+                                    }}>
+                                <div
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedMac(isOpen ? null : o.mac);
+                                  }}
+                                  style={{
+                                    padding: "5px 6px",
+                                    display: "flex", justifyContent: "space-between",
+                                    alignItems: "center", gap: 6, flexWrap: "wrap",
+                                    cursor: "pointer",
+                                    background: isOpen ? "#f0f9ff" : "transparent",
+                                  }}>
                                   <span style={{
-                                    fontSize: 10, color: "#64748b",
-                                    background: "#f1f5f9",
-                                    padding: "2px 6px", borderRadius: 4,
-                                  }}>{o.model || "ONT"}</span>
+                                    fontFamily: "monospace",
+                                    fontWeight: 700, fontSize: 11,
+                                    color: "#0f172a",
+                                  }}>
+                                    {isOpen ? "▾" : "▸"} {o.mac}
+                                  </span>
+                                  <div style={{ display: "flex", gap: 4,
+                                                  alignItems: "center",
+                                                  marginLeft: "auto" }}>
+                                    <span title={fromClient
+                                      ? `Veio do cliente${o.client_name ? `: ${o.client_name}` : ""}`
+                                      : "Veio do estoque/praça"}
+                                            style={{
+                                              fontSize: 10, fontWeight: 700,
+                                              padding: "2px 6px", borderRadius: 4,
+                                              background: fromClient
+                                                ? "#fef3c7" : "#dbeafe",
+                                              color: fromClient
+                                                ? "#92400e" : "#1e40af",
+                                            }}>
+                                      {fromClient ? "↩️ Cliente" : "📦 Praça"}
+                                    </span>
+                                    <span style={{
+                                      fontSize: 10, color: "#64748b",
+                                      background: "#f1f5f9",
+                                      padding: "2px 6px", borderRadius: 4,
+                                    }}>{o.model || "ONT"}</span>
+                                  </div>
                                 </div>
+                                {isOpen && (
+                                  <div data-testid={`mac-timeline-${o.mac}`}
+                                        style={{
+                                          background: "#f8fafc",
+                                          padding: "8px 10px 8px 22px",
+                                          borderLeft: "2px solid #3b82f6",
+                                          marginLeft: 8, marginBottom: 4,
+                                          borderRadius: 4,
+                                        }}>
+                                    <div style={{ fontSize: 9, fontWeight: 800,
+                                                    textTransform: "uppercase",
+                                                    color: "#64748b",
+                                                    marginBottom: 4 }}>
+                                      Histórico ({macHist.length})
+                                    </div>
+                                    {macHist.length === 0 && (
+                                      <div style={{ fontSize: 10,
+                                                      color: "#94a3b8",
+                                                      fontStyle: "italic" }}>
+                                        Sem histórico registrado
+                                      </div>
+                                    )}
+                                    {macHist.slice(0, 8).map((h, i) => {
+                                      const dt = (h.created_at || h.date || "");
+                                      const dStr = dt
+                                        ? new Date(dt).toLocaleString("pt-BR",
+                                          { day: "2-digit", month: "2-digit",
+                                              hour: "2-digit", minute: "2-digit" })
+                                        : "—";
+                                      const icon = {
+                                        compra: "📥",
+                                        transferencia: "🚚",
+                                        instalacao: "🏠",
+                                        retirada: "↩️",
+                                        movimentacao: "↪",
+                                      }[h.type] || "•";
+                                      return (
+                                        <div key={i} style={{
+                                          fontSize: 10, color: "#475569",
+                                          marginBottom: 3, lineHeight: 1.3,
+                                        }}>
+                                          <strong style={{ color: "#0f172a" }}>{icon} {dStr}</strong>
+                                          {" — "}{(h.description || "").slice(0, 90)}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
