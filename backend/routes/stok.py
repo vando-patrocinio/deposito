@@ -264,6 +264,61 @@ async def transfer_ont_to_tech(payload: OntTransferIn, user: dict = Depends(requ
     return {"ok": True}
 
 
+class OntBulkTransferIn(BaseModel):
+    macs: List[str]
+    technician_id: str
+
+
+@router.post("/onts/transfer-to-tech/bulk")
+async def transfer_onts_bulk(payload: OntBulkTransferIn,
+                               user: dict = Depends(require_role("gestor"))):
+    """Transfere várias ONTs de uma vez (UX simple recomendada).
+
+    Aceita lista de MACs e o técnico destino. Retorna detalhes do que
+    foi/não foi transferido (ex: MAC não encontrado, MAC já com técnico).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    macs_norm = list(dict.fromkeys(normalize_mac(m) for m in payload.macs if m))
+    if not macs_norm:
+        raise HTTPException(400, "Informe pelo menos um MAC.")
+    tech = await _get_collab(payload.technician_id, cid)
+    docs = await db.stok_onts.find(
+        {"company_id": cid, "mac": {"$in": macs_norm}},
+        {"_id": 0, "mac": 1, "location_type": 1, "location_id": 1},
+    ).to_list(2000)
+    by_mac = {d["mac"]: d for d in docs}
+    transferred: List[str] = []
+    skipped: List[Dict[str, str]] = []
+    for m in macs_norm:
+        d = by_mac.get(m)
+        if not d:
+            skipped.append({"mac": m, "reason": "não encontrado"})
+            continue
+        if d["location_type"] != "empresa":
+            skipped.append({"mac": m, "reason":
+                              f"está em {d['location_type']}"})
+            continue
+        transferred.append(m)
+    if transferred:
+        await db.stok_onts.update_many(
+            {"company_id": cid, "mac": {"$in": transferred}},
+            {"$set": {"location_type": "tecnico",
+                       "location_id": payload.technician_id,
+                       "status": "com_tecnico"}},
+        )
+        await _add_history(
+            "transferencia",
+            f"BULK: {len(transferred)} ONT(s) transferidas para {tech['name']}",
+            user.get("name", "?"), "transferencia", cid,
+        )
+    return {
+        "ok": True,
+        "transferred_count": len(transferred),
+        "transferred": transferred,
+        "skipped": skipped,
+    }
+
+
 @router.post("/onts/{mac}/return-to-company")
 async def return_ont_to_company(mac: str, user: dict = Depends(require_role("gestor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID

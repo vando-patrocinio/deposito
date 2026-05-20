@@ -345,6 +345,13 @@ export const api = {
     client.post(`/purchases/${purchaseId}/confirm`).then((r) => r.data),
   purchasesDelete: (purchaseId) =>
     client.delete(`/purchases/${purchaseId}`).then((r) => r.data),
+
+  // ========= Stok bulk transfer =========
+  stokOntsList: () => client.get(`/stok/onts`).then((r) => r.data),
+  stokTechnicians: () => client.get(`/stok/technicians`).then((r) => r.data),
+  stokOntsBulkTransfer: (macs, technicianId) =>
+    client.post(`/stok/onts/transfer-to-tech/bulk`,
+      { macs, technician_id: technicianId }).then((r) => r.data),
   bankImportAtlazFetch: (payload) =>
     client.post(`/financeiro/bank-import/atlaz-fetch`, payload)
       .then((r) => r.data),

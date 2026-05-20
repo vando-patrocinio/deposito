@@ -10,6 +10,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/api";
+import TransferToTechPanel from "@/TransferToTechPanel";
 
 const TYPE_META = {
   ont: { label: "ONT", emoji: "📡", color: "#0ea5e9" },
@@ -532,6 +533,9 @@ export default function CentralComprasPanel({ currentUser }) {
                         canConfirm={canConfirm}
                         onReload={load} />
       </div>
+
+      {/* Transferência praça → técnico (visível para gestores/admin) */}
+      {canConfirm && <TransferToTechPanel pracas={refs.pracas || []} />}
     </div>
   );
 }
