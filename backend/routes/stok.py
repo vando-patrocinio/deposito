@@ -269,6 +269,78 @@ class OntBulkTransferIn(BaseModel):
     technician_id: str
 
 
+@router.get("/praca-summary")
+async def praca_summary(user: dict = Depends(require_role("gestor"))):
+    """Saldo de ONTs e insumos por praça (agregação).
+
+    Útil para o painel Movimento mostrar quanto cada filial tem em estoque.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    # 1) Praças ativas
+    pracas = await db.fin_filiais.find(
+        {"company_id": cid, "active": {"$ne": False}},
+        {"_id": 0, "id": 1, "name": 1, "default_collaborator_id": 1},
+    ).sort("name", 1).to_list(200)
+    # 2) ONTs disponíveis na empresa por praça
+    ont_rows: list = []
+    async for r in db.stok_onts.aggregate([
+        {"$match": {"company_id": cid, "location_type": "empresa",
+                     "status": {"$in": ["disponivel", None]}}},
+        {"$group": {"_id": "$praca_id", "count": {"$sum": 1}}},
+    ]):
+        ont_rows.append({"praca_id": r["_id"], "count": r["count"]})
+    ont_by_praca = {x["praca_id"]: x["count"] for x in ont_rows}
+    # 3) Insumos (stok_stock) por praça — agrupado por insumo_key
+    consum_rows: list = []
+    async for r in db.stok_stock.aggregate([
+        {"$match": {"company_id": cid}},
+        {"$group": {
+            "_id": {"praca_id": "$praca_id", "key": "$insumo_key"},
+            "qty": {"$sum": "$quantity"},
+            "label": {"$first": "$insumo_label"},
+        }},
+    ]):
+        consum_rows.append({
+            "praca_id": r["_id"].get("praca_id"),
+            "key": r["_id"].get("key"),
+            "label": r["label"],
+            "qty": r["qty"],
+        })
+    consum_by_praca: dict = {}
+    for c in consum_rows:
+        consum_by_praca.setdefault(c["praca_id"], []).append(c)
+    # 4) Almoxarife / responsável por praça (collaborator com cargo=almoxarife
+    #    e warehouse_praca_id = praça)
+    keepers: dict = {}
+    async for c in db.collaborators.find(
+            {"company_id": cid, "cargo": "almoxarife",
+              "active": {"$ne": False}},
+            {"_id": 0, "id": 1, "name": 1, "warehouse_praca_id": 1}):
+        if c.get("warehouse_praca_id"):
+            keepers.setdefault(c["warehouse_praca_id"], []).append({
+                "id": c["id"], "name": c["name"],
+            })
+    # 5) Monta resposta
+    items = []
+    for p in pracas:
+        items.append({
+            "praca_id": p["id"],
+            "praca_name": p["name"],
+            "ont_count": ont_by_praca.get(p["id"], 0),
+            "ont_no_praca": ont_by_praca.get(None, 0)
+                if p == pracas[0] else 0,  # legado sem praca_id
+            "keepers": keepers.get(p["id"], []),
+            "default_collaborator_id": p.get("default_collaborator_id"),
+            "consumables": consum_by_praca.get(p["id"], []),
+        })
+    # Total de ONTs sem praça (compat com estoque legado)
+    orphan_onts = ont_by_praca.get(None, 0)
+    return {
+        "items": items,
+        "orphan_onts": orphan_onts,
+    }
+
+
 @router.post("/onts/transfer-to-tech/bulk")
 async def transfer_onts_bulk(payload: OntBulkTransferIn,
                                user: dict = Depends(require_role("gestor"))):

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { api } from "@/api";
 import { Card } from "@/ui";
+import PracaStockCard from "@/PracaStockCard";
 
 // ============================================================
 // Helpers visuais
@@ -427,6 +428,9 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
           )}
         </Card>
       </div>
+
+      {/* === Row 3.5: Estoque por Praça === */}
+      <PracaStockCard />
 
       {/* === Row 4: Ranking técnicos === */}
       <Card title={(

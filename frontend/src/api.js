@@ -352,6 +352,10 @@ export const api = {
   stokOntsBulkTransfer: (macs, technicianId) =>
     client.post(`/stok/onts/transfer-to-tech/bulk`,
       { macs, technician_id: technicianId }).then((r) => r.data),
+
+  // ========= Estoque por Praça =========
+  stokPracaSummary: () =>
+    client.get(`/stok/praca-summary`).then((r) => r.data),
   bankImportAtlazFetch: (payload) =>
     client.post(`/financeiro/bank-import/atlaz-fetch`, payload)
       .then((r) => r.data),
