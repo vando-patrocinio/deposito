@@ -491,7 +491,8 @@ async def update_cable(cable_id: str, body: CableIn,
 
 @router.delete("/cables/{cable_id}")
 async def delete_cable(cable_id: str,
-                        user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
+                        user: dict = Depends(require_role(
+                            "administrador", "gestor", "gestor_rede", "auditor"))):
     cid = _company(user)
     prev = await db.network_cables.find_one(
         {"id": cable_id, "company_id": cid}, {"_id": 0})
@@ -504,6 +505,90 @@ async def delete_cable(cable_id: str,
         await _debit_fiber_for_cable(
             cid, user, prev["type"], prev.get("length_m"), cable_id, action="delete")
     return {"ok": True}
+
+
+class BulkDeleteIn(BaseModel):
+    cable_ids: Optional[List[str]] = None      # IDs específicos
+    cable_types: Optional[List[str]] = None    # filtro por tipo (6fo,12fo,24fo…)
+    since: Optional[str] = None                 # ISO date — created_at >= since
+    until: Optional[str] = None                 # ISO date — created_at <= until
+    refund_stock: bool = True                   # devolve material ao estoque
+    confirm_token: Optional[str] = None         # exige texto "APAGAR LANCAMENTOS"
+
+
+@router.post("/cables/bulk-delete")
+async def bulk_delete_cables(body: BulkDeleteIn,
+                              user: dict = Depends(require_role("auditor"))):
+    """Apaga lançamentos de cabo em lote — EXCLUSIVO do auditor.
+
+    Modos:
+    - `cable_ids` preenchido → deleta apenas esses (auditoria individual)
+    - Senão, aplica filtros `cable_types` + `since` + `until` (varredura)
+    - `refund_stock=True` (default) devolve fibras 6/12/24FO ao estoque
+    - Requer `confirm_token == "APAGAR LANCAMENTOS"` para varredura sem IDs
+    """
+    cid = _company(user)
+    # Monta query
+    q: Dict[str, Any] = {"company_id": cid}
+    if body.cable_ids:
+        q["id"] = {"$in": body.cable_ids}
+    else:
+        # Varredura — exige token
+        if body.confirm_token != "APAGAR LANCAMENTOS":
+            raise HTTPException(400,
+                "Para apagar em massa, envie confirm_token='APAGAR LANCAMENTOS'.")
+        if body.cable_types:
+            q["type"] = {"$in": body.cable_types}
+        if body.since or body.until:
+            rng: Dict[str, Any] = {}
+            if body.since:
+                rng["$gte"] = body.since
+            if body.until:
+                rng["$lte"] = body.until
+            q["created_at"] = rng
+
+    # Carrega todos antes de deletar (precisa pra refund)
+    to_delete = await db.network_cables.find(
+        q, {"_id": 0, "id": 1, "type": 1, "length_m": 1,
+            "created_by": 1, "created_at": 1}).to_list(5000)
+    if not to_delete:
+        return {"ok": True, "deleted": 0, "refunded": []}
+
+    # Apaga
+    ids = [c["id"] for c in to_delete]
+    await db.network_cables.delete_many({"company_id": cid, "id": {"$in": ids}})
+
+    # Refund estoque (best-effort, não derruba se falhar)
+    refunded: List[dict] = []
+    if body.refund_stock:
+        for c in to_delete:
+            if c.get("type") in _CABLE_TYPE_TO_STOK_ID \
+                    and (c.get("length_m") or 0) > 0:
+                try:
+                    r = await _debit_fiber_for_cable(
+                        cid, user, c["type"], c.get("length_m"),
+                        c["id"], action="delete")
+                    if r:
+                        refunded.append({"cable_id": c["id"], **r})
+                except Exception as e:
+                    logger.warning("[bulk-delete] refund %s falhou: %s", c["id"], e)
+
+    # Audit log explicito
+    summary = (f"Auditor {user.get('name')} apagou {len(ids)} lançamento(s) "
+               f"({'IDs específicos' if body.cable_ids else 'varredura'}). "
+               f"Refund: {len(refunded)} cabos de fibra devolvidos.")
+    await db.stok_history.insert_one({
+        "id": f"hist-{uuid.uuid4().hex[:10]}",
+        "company_id": cid, "date": now_iso(),
+        "type": "rede_bulk_delete",
+        "description": summary,
+        "user": user.get("name", "auditor"),
+        "tag": "rede_lancamento",
+        "cable_ids": ids,
+    })
+    logger.warning("[rede_ia] %s", summary)
+    return {"ok": True, "deleted": len(ids), "refunded": refunded,
+            "cable_ids": ids}
 
 
 # ---------------------------------------------------------------------------

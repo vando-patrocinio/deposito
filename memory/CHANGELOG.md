@@ -1,5 +1,51 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Auditoria de Lançamentos (apagar individual/lote)
+
+### Sumário
+Auditor agora pode apagar lançamentos de cabo (qualquer tipo) do mapa
+interativo — individualmente ou em massa, com refund opcional de fibra
+ao estoque. Tripla proteção RBAC: menu lateral + aba condicional + role
+exclusivo `auditor` no backend.
+
+### Backend (`rede_ia_map.py`)
+- `DELETE /api/rede-ia/cables/{id}` agora aceita também role `auditor`
+  (continua devolvendo fibra automaticamente).
+- `POST /api/rede-ia/cables/bulk-delete` (NEW · exclusivo `auditor`):
+  - Modo 1: `cable_ids: [...]` apaga IDs específicos.
+  - Modo 2: filtros `cable_types` + `since` + `until` + `confirm_token`.
+  - `refund_stock` controla devolução de fibra (default: true).
+  - `confirm_token` obrigatório p/ varredura sem IDs (texto literal
+    `APAGAR LANCAMENTOS`).
+  - Auditoria gravada em `stok_history` (tag=`rede_lancamento`,
+    type=`rede_bulk_delete`).
+
+### Frontend (`RedeIaPanel.js`)
+- Nova aba "🛡 Auditoria" condicionada a
+  `is_super_admin || role==auditor`.
+- Componente `AuditCables` com:
+  - Tabela ordenada por `created_at` desc (mais recente no topo).
+  - Filtros por tipo de cabo + busca por criador.
+  - Seleção múltipla (checkboxes) com header "selecionar todos".
+  - Barra amarela com botão "Apagar selecionados".
+  - Botão vermelho "⚠ Apagar TODOS (filtrados)" → modal com input de
+    confirmação `APAGAR LANCAMENTOS`.
+  - Coluna "Débito" mostra metros + location do `stok_debit`.
+  - Toggle "Devolver fibra" (controla `refund_stock`).
+- `api.js`: helpers `redeIaCableBulkDelete` + `redeIaCableDelete`.
+
+### Validação manual (Vando: super_admin + auditor)
+- Curl: gestor recebe `403 "Acesso restrito a: auditor"` ao tentar
+  bulk-delete.
+- Curl: auditor sem `confirm_token` rejeitado.
+- Curl: bulk delete com `cable_types:["12fo"]` + token correto apagou
+  3 cabos teste e fez refund de 150m de Fibra 12FO.
+- Screenshot: gestor não vê menu Rede IA (sidebar limpo). Vando
+  enxerga 8 abas com Auditoria; modal de confirmação visualmente claro
+  com aviso vermelho.
+
+
+
 ## 2026-05-20 — Gráfico temporal + Alertas de saldo baixo de fibra
 
 ### Sumário

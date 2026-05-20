@@ -1031,7 +1031,7 @@ function AppContent() {
           {view === "feriados" && <FeriadosPanel />}
           {view === "financeiro" && <FinanceiroPanel />}
           {view === "budget" && <BudgetPanel />}
-          {view === "rede-ia" && <RedeIaPanel />}
+          {view === "rede-ia" && <RedeIaPanel currentUser={user} />}
           {view === "alvaro-ia" && <AlvaroPanel />}
           {view === "mass-messaging" && <MassMessagingPanel />}
           {view === "logs" && <LogsPanel />}

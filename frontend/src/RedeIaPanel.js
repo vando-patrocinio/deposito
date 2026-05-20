@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { api } from "@/api";
 import { Card } from "@/ui";
+import { toast } from "sonner";
 import RedeIaMap from "@/RedeIaMap";
 import { KpiCard, AlertCard } from "@/components/Dashboard2026";
 
@@ -26,6 +27,7 @@ const TABS = [
   { id: "bairros", label: "Bairros / VLAN" },
   { id: "history", label: "Histórico" },
   { id: "diretrizes", label: "Diretrizes" },
+  { id: "audit", label: "🛡 Auditoria", auditorOnly: true },
 ];
 
 const STATUS_BADGE = {
@@ -35,8 +37,11 @@ const STATUS_BADGE = {
   rejected: { l: "Rejeitada", c: "#b91c1c", bg: "#fee2e2" },
 };
 
-export default function RedeIaPanel() {
+export default function RedeIaPanel({ currentUser }) {
   const [tab, setTab] = useState("overview");
+  const isAuditor = !!currentUser
+    && (currentUser.is_super_admin
+        || (currentUser.role || "").toLowerCase() === "auditor");
   const [notifCount, setNotifCount] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifs, setNotifs] = useState([]);
@@ -158,7 +163,7 @@ export default function RedeIaPanel() {
 
       <div style={{ display: "flex", gap: 4, flexWrap: "wrap",
                        borderBottom: "1px solid var(--border-default)", paddingBottom: 0 }}>
-        {TABS.map((t) => (
+        {TABS.filter((t) => !t.auditorOnly || isAuditor).map((t) => (
           <button key={t.id} data-testid={`rede-ia-tab-${t.id}`}
                   onClick={() => setTab(t.id)}
                   style={{
@@ -183,6 +188,7 @@ export default function RedeIaPanel() {
       {tab === "bairros" && <BairrosManager />}
       {tab === "history" && <HistoryList />}
       {tab === "diretrizes" && <DiretrizesEditor />}
+      {tab === "audit" && isAuditor && <AuditCables currentUser={currentUser} />}
     </div>
   );
 }
@@ -1809,6 +1815,356 @@ function DiretrizesEditor() {
                           fontSize: 13, color: "#1e1b4b", margin: 0 }}>
             {aiReport.report || JSON.stringify(aiReport, null, 2)}
           </pre>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+
+/* ============================================================
+ * AUDITORIA — apaga lançamentos de cabo (individual/lote)
+ * ============================================================ */
+function AuditCables({ currentUser }) {
+  const [items, setItems] = useState([]);
+  const [filterType, setFilterType] = useState("");
+  const [filterUser, setFilterUser] = useState("");
+  const [selected, setSelected] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkConfirm, setBulkConfirm] = useState("");
+  const [refundStock, setRefundStock] = useState(true);
+
+  const reload = useCallback(async () => {
+    setBusy(true);
+    try {
+      const r = await api.redeIaMapData();
+      const cables = (r.cables || []).slice()
+        .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+      setItems(cables);
+      setSelected({});
+    } finally { setBusy(false); }
+  }, []);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const filtered = useMemo(() => items.filter((c) =>
+    (!filterType || c.type === filterType)
+    && (!filterUser || (c.created_by || "").toLowerCase()
+                            .includes(filterUser.toLowerCase()))
+  ), [items, filterType, filterUser]);
+
+  const allSelected = filtered.length > 0
+    && filtered.every((c) => selected[c.id]);
+  const someSelected = Object.values(selected).some(Boolean);
+  const selectedIds = Object.keys(selected).filter((k) => selected[k]);
+
+  const toggleAll = () => {
+    if (allSelected) setSelected({});
+    else {
+      const next = {};
+      filtered.forEach((c) => { next[c.id] = true; });
+      setSelected(next);
+    }
+  };
+
+  const deleteOne = async (cableId) => {
+    if (!window.confirm(`Apagar cabo ${cableId}? Esta ação devolve a fibra ao estoque.`)) return;
+    setBusy(true);
+    try {
+      await api.redeIaCableDelete(cableId);
+      toast.success(`Cabo ${cableId} apagado`);
+      await reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || e.message);
+    } finally { setBusy(false); }
+  };
+
+  const deleteSelected = async () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Apagar ${selectedIds.length} lançamento(s) selecionado(s)?`)) return;
+    setBusy(true);
+    try {
+      const r = await api.redeIaCableBulkDelete({
+        cable_ids: selectedIds, refund_stock: refundStock,
+      });
+      toast.success(`${r.deleted} lançamento(s) apagado(s). ${r.refunded.length} fibra(s) devolvidas.`);
+      await reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || e.message);
+    } finally { setBusy(false); }
+  };
+
+  const deleteBulk = async () => {
+    if (bulkConfirm !== "APAGAR LANCAMENTOS") {
+      toast.error("Digite exatamente: APAGAR LANCAMENTOS");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await api.redeIaCableBulkDelete({
+        cable_types: filterType ? [filterType] : null,
+        refund_stock: refundStock,
+        confirm_token: "APAGAR LANCAMENTOS",
+      });
+      toast.success(`✅ Auditoria: ${r.deleted} lançamento(s) apagado(s). ${r.refunded.length} fibra(s) devolvidas.`);
+      setShowBulk(false);
+      setBulkConfirm("");
+      await reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || e.message);
+    } finally { setBusy(false); }
+  };
+
+  const fmtDate = (iso) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString("pt-BR", {
+        day: "2-digit", month: "2-digit", year: "2-digit",
+        hour: "2-digit", minute: "2-digit",
+      });
+    } catch (e) { return iso; }
+  };
+
+  return (
+    <Card style={{ padding: 18 }} data-testid="rede-ia-audit-cables">
+      <div style={{ display: "flex", justifyContent: "space-between",
+                       alignItems: "center", marginBottom: 14,
+                       flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800,
+                          color: "#7c2d12" }}>
+            🛡 Auditoria de Lançamentos
+          </h3>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            Apague cabos individualmente ou em lote. Refund automático
+            de fibra (6/12/24FO) ao estoque. Apenas auditor.
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <label style={{ fontSize: 11, color: "var(--text-secondary)",
+                            display: "flex", alignItems: "center", gap: 4 }}>
+            <input type="checkbox" checked={refundStock}
+                      data-testid="audit-refund-toggle"
+                      onChange={(e) => setRefundStock(e.target.checked)} />
+            Devolver fibra
+          </label>
+          <button data-testid="audit-bulk-btn"
+                    disabled={busy}
+                    onClick={() => setShowBulk(true)}
+                    style={{ padding: "7px 14px",
+                              background: "#dc2626", color: "white",
+                              border: "none", borderRadius: 7,
+                              fontWeight: 700, fontSize: 12,
+                              cursor: busy ? "wait" : "pointer" }}>
+            ⚠ Apagar TODOS (filtrados)
+          </button>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12,
+                       padding: 10, background: "var(--bg-subtle)",
+                       borderRadius: 8 }}>
+        <select value={filterType}
+                  data-testid="audit-filter-type"
+                  onChange={(e) => setFilterType(e.target.value)}
+                  style={{ padding: "5px 8px", fontSize: 12,
+                            borderRadius: 6, border: "1px solid var(--border-default)" }}>
+          <option value="">Todos tipos</option>
+          <option value="drop">DROP</option>
+          <option value="6fo">06FO</option>
+          <option value="12fo">12FO</option>
+          <option value="24fo">24FO</option>
+          <option value="48fo">48FO</option>
+          <option value="96fo">96FO</option>
+        </select>
+        <input placeholder="Filtrar por criador (nome)"
+                  data-testid="audit-filter-user"
+                  value={filterUser}
+                  onChange={(e) => setFilterUser(e.target.value)}
+                  style={{ flex: 1, padding: "5px 10px", fontSize: 12,
+                            borderRadius: 6, border: "1px solid var(--border-default)" }}/>
+        <button onClick={reload}
+                  style={{ padding: "5px 12px", fontSize: 12,
+                            borderRadius: 6, border: "1px solid var(--border-default)",
+                            background: "white", cursor: "pointer",
+                            fontWeight: 700 }}>
+          ↻ Recarregar
+        </button>
+      </div>
+
+      {someSelected && (
+        <div style={{ display: "flex", justifyContent: "space-between",
+                          alignItems: "center", padding: "8px 12px",
+                          background: "#fef3c7", border: "1px solid #fcd34d",
+                          borderRadius: 6, marginBottom: 8, fontSize: 12 }}>
+          <span><strong>{selectedIds.length}</strong> selecionado(s)</span>
+          <button data-testid="audit-delete-selected"
+                    onClick={deleteSelected}
+                    disabled={busy}
+                    style={{ padding: "5px 12px", background: "#dc2626",
+                              color: "white", border: "none", borderRadius: 6,
+                              fontWeight: 700, fontSize: 12,
+                              cursor: busy ? "wait" : "pointer" }}>
+            Apagar selecionados
+          </button>
+        </div>
+      )}
+
+      {/* Tabela */}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse",
+                              fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: "var(--bg-subtle)",
+                            textAlign: "left", fontSize: 11 }}>
+              <th style={{ padding: "6px 8px" }}>
+                <input type="checkbox" checked={allSelected}
+                          onChange={toggleAll}
+                          data-testid="audit-select-all" />
+              </th>
+              <th style={{ padding: "6px 8px" }}>ID</th>
+              <th style={{ padding: "6px 8px" }}>Tipo</th>
+              <th style={{ padding: "6px 8px" }}>Metros</th>
+              <th style={{ padding: "6px 8px" }}>Criado por</th>
+              <th style={{ padding: "6px 8px" }}>Em</th>
+              <th style={{ padding: "6px 8px" }}>Débito</th>
+              <th style={{ padding: "6px 8px" }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && (
+              <tr><td colSpan={8} style={{ padding: 20, textAlign: "center",
+                              color: "var(--text-muted)", fontStyle: "italic" }}>
+                Nenhum lançamento corresponde aos filtros.
+              </td></tr>
+            )}
+            {filtered.map((c) => {
+              const sd = c.stok_debit;
+              const isFiber = ["6fo", "12fo", "24fo"].includes(c.type);
+              return (
+                <tr key={c.id}
+                     data-testid={`audit-cable-row-${c.id}`}
+                     style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                  <td style={{ padding: "6px 8px" }}>
+                    <input type="checkbox"
+                              checked={!!selected[c.id]}
+                              data-testid={`audit-select-${c.id}`}
+                              onChange={(e) => setSelected({
+                                ...selected, [c.id]: e.target.checked,
+                              })} />
+                  </td>
+                  <td style={{ padding: "6px 8px", fontFamily: "monospace",
+                                  fontSize: 11 }}>{c.id}</td>
+                  <td style={{ padding: "6px 8px", fontWeight: 700,
+                                  color: isFiber ? "#4338ca" : "var(--text-primary)" }}>
+                    {(c.type || "").toUpperCase()}
+                  </td>
+                  <td style={{ padding: "6px 8px", fontWeight: 700 }}>
+                    {c.length_m ? `${Math.round(c.length_m)}m` : "—"}
+                  </td>
+                  <td style={{ padding: "6px 8px" }}>
+                    {c.created_by || "—"}
+                  </td>
+                  <td style={{ padding: "6px 8px",
+                                  color: "var(--text-muted)" }}>
+                    {fmtDate(c.created_at)}
+                  </td>
+                  <td style={{ padding: "6px 8px", fontSize: 10 }}>
+                    {sd ? (
+                      <span style={{ background: "#f0fdf4",
+                                        color: "#065f46",
+                                        padding: "2px 6px",
+                                        borderRadius: 4, fontWeight: 700 }}>
+                        {Math.abs(sd.meters_signed)}m {sd.location === "empresa" ? "Empresa" : "Téc."}
+                      </span>
+                    ) : "—"}
+                  </td>
+                  <td style={{ padding: "6px 8px" }}>
+                    <button data-testid={`audit-delete-${c.id}`}
+                              onClick={() => deleteOne(c.id)}
+                              disabled={busy}
+                              style={{ padding: "3px 8px",
+                                        background: "white",
+                                        border: "1px solid #fecaca",
+                                        color: "#dc2626", borderRadius: 4,
+                                        cursor: busy ? "wait" : "pointer",
+                                        fontWeight: 700, fontSize: 10 }}>
+                      Apagar
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modal bulk */}
+      {showBulk && (
+        <div onClick={() => setShowBulk(false)}
+              style={{ position: "fixed", inset: 0,
+                        background: "rgba(0,0,0,0.5)",
+                        display: "flex", alignItems: "center",
+                        justifyContent: "center", zIndex: 999 }}>
+          <div onClick={(e) => e.stopPropagation()}
+                data-testid="audit-bulk-modal"
+                style={{ background: "white", padding: 22,
+                          borderRadius: 12, maxWidth: 460,
+                          border: "2px solid #dc2626" }}>
+            <h3 style={{ margin: "0 0 10px", color: "#7f1d1d",
+                            fontSize: 17, fontWeight: 800 }}>
+              ⚠ Apagar lançamentos em massa
+            </h3>
+            <p style={{ fontSize: 13, color: "#475569",
+                          marginBottom: 12 }}>
+              Esta ação <strong>irreversível</strong> vai apagar{" "}
+              <strong>{filtered.length}</strong> lançamento(s)
+              {filterType ? ` do tipo ${filterType.toUpperCase()}` : ""}.
+              {refundStock ? " Fibra (6/12/24FO) será DEVOLVIDA ao estoque."
+                            : " Fibra NÃO será devolvida."}
+            </p>
+            <p style={{ fontSize: 12, color: "#475569",
+                          marginBottom: 8 }}>
+              Para confirmar, digite: <code style={{
+                background: "#fef3c7", padding: "2px 6px",
+                borderRadius: 4, fontWeight: 700,
+              }}>APAGAR LANCAMENTOS</code>
+            </p>
+            <input data-testid="audit-bulk-confirm"
+                      value={bulkConfirm}
+                      onChange={(e) => setBulkConfirm(e.target.value)}
+                      autoFocus
+                      style={{ width: "100%", padding: 8,
+                                border: "1px solid #cbd5e1",
+                                borderRadius: 6, fontSize: 13,
+                                fontFamily: "monospace",
+                                marginBottom: 14 }}/>
+            <div style={{ display: "flex", gap: 8,
+                            justifyContent: "flex-end" }}>
+              <button onClick={() => { setShowBulk(false); setBulkConfirm(""); }}
+                        style={{ padding: "8px 16px",
+                                  background: "white",
+                                  border: "1px solid var(--border-default)",
+                                  borderRadius: 6, fontWeight: 700,
+                                  fontSize: 12, cursor: "pointer" }}>
+                Cancelar
+              </button>
+              <button onClick={deleteBulk}
+                        data-testid="audit-bulk-confirm-btn"
+                        disabled={busy || bulkConfirm !== "APAGAR LANCAMENTOS"}
+                        style={{ padding: "8px 16px",
+                                  background: bulkConfirm === "APAGAR LANCAMENTOS"
+                                    ? "#dc2626" : "#cbd5e1",
+                                  color: "white", border: "none",
+                                  borderRadius: 6, fontWeight: 700, fontSize: 12,
+                                  cursor: bulkConfirm === "APAGAR LANCAMENTOS"
+                                    ? "pointer" : "not-allowed" }}>
+                Confirmar exclusão
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Card>
