@@ -1,5 +1,38 @@
 # PontoIA — Changelog
 
+## Fev 2026 — Incident WhatsApp: Sidecar Railway DELETADO
+
+### Sintoma
+WhatsApp parou de receber/enviar em ligo.site. Backend logs spammando:
+- `[wa-watchdog] sidecar offline:`
+- `[integrations] auto_reconnect ... result: 'sidecar_unreachable', new_status: 'sidecar_down'`
+
+### Root cause
+Service Railway `whatsapp-sidecar-preview` **foi deletado/removido** (provavelmente expirou créditos ou apagado por engano). URL `whatsapp-sidecar-preview-production.up.railway.app` retorna 404 do próprio Railway ("The train has not arrived at the station").
+
+Confirmado por:
+- DNS resolve OK (96ms)
+- Connect TCP OK
+- HTTP 404 retornado em `/health` (Railway error page, não 502 de container down)
+- Última atividade `wa_messages`: há ~12h
+- Sessão Mongo `wa_auth_state.isabella` permanece intacta mas não há ninguém lendo dela
+
+### Caminho de restauração (entregue ao usuário)
+1. Re-deploy `/app/whatsapp-service/` no Railway (Dockerfile + railway.json prontos)
+2. Variables: `MONGO_URL`, `WA_SESSION_ID=isabella`, `BACKEND_URL`, `PORT=3001`
+3. Atualizar `WA_SIDECAR_URL` no backend Emergent → redeploy backend
+4. Scanear QR novo no painel ligo.site (sessão antiga de 14d+ provavelmente expirou)
+
+Alternativa Render: já tem `render.yaml` configurado, free tier OK.
+
+### Ação preventiva (Sprint 3 do TECHNICAL_ROADMAP.md)
+Healthcheck cron `/api/wa/health` + alerta Telegram/Email se > 5min offline. Eliminaria o gap de 12h sem ninguém saber.
+
+### Webhook Meta também alertando
+~50 warnings/min `[meta] assinatura inválida company=co-demo` — independente do Baileys. `META_APP_SECRET` desatualizado ou outro app mandando webhook errado. Resolver depois do Baileys voltar.
+
+
+
 ## Fev 2026 — HOTFIX P0: Permissões do Gestor não aplicavam após salvar
 
 ### Problema reportado
