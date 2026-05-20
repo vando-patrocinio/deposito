@@ -9,6 +9,10 @@
    - Fluxograma (React Flow) — em sub-aba
 ============================================================= */
 import React, { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  Line, LineChart, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 import { api } from "@/api";
 import { Card } from "@/ui";
 import RedeIaMap from "@/RedeIaMap";
@@ -192,13 +196,18 @@ function Overview() {
   const [techStats, setTechStats] = useState({ by_technician: [], by_branch: [] });
   const [statsPeriod, setStatsPeriod] = useState("all");
   const [fiberKpi, setFiberKpi] = useState(null);
+  const [fiberKpiDays, setFiberKpiDays] = useState(30);
+  const [fiberAlerts, setFiberAlerts] = useState({ alerts: [], threshold: 200 });
   useEffect(() => {
     api.redeIaCtosList().then((r) => setCtos(r.items || []));
     api.redeIaPendencies().then((r) => setPend(r.items || []));
     api.redeIaBairros().then((r) => setBairros(r.items || []));
     api.redeIaMapData().then((r) => setMapData(r)).catch(() => {});
-    api.redeIaFiberKpi(7).then(setFiberKpi).catch(() => {});
+    api.redeIaFiberAlerts(200).then(setFiberAlerts).catch(() => {});
   }, []);
+  useEffect(() => {
+    api.redeIaFiberKpi(fiberKpiDays).then(setFiberKpi).catch(() => {});
+  }, [fiberKpiDays]);
   useEffect(() => {
     api.redeIaStatsByTechnician(statsPeriod).then(setTechStats).catch(() => {});
   }, [statsPeriod]);
@@ -320,13 +329,20 @@ function Overview() {
         {fiberKpi && (
           <KpiCard
             testId="rede-ia-kpi-fiber-week"
-            label="Fibra lançada (7d)"
+            label={`Fibra lançada (${fiberKpiDays}d)`}
             value={fiberKpi.total_meters}
             unit="m"
             tone={fiberKpi.total_meters > 0 ? "good" : "info"}
             hint={`${fiberKpi.cables_count} cabo(s) · 6FO ${fiberKpi.by_type["6fo"]}m · 12FO ${fiberKpi.by_type["12fo"]}m · 24FO ${fiberKpi.by_type["24fo"]}m`} />
         )}
       </div>
+
+      {/* Gráfico temporal de fibra lançada + alertas de saldo */}
+      {fiberKpi && (
+        <FiberTimelineCard kpi={fiberKpi} days={fiberKpiDays}
+                            onChangeDays={setFiberKpiDays}
+                            alerts={fiberAlerts} />
+      )}
 
       {/* Integração SmartOLT */}
       <Card style={{ padding: 16 }}>
@@ -665,6 +681,112 @@ function KPI({ label, value, color }) {
     </Card>
   );
 }
+
+/* ------------- CTOs list ------------- */
+function FiberTimelineCard({ kpi, days, onChangeDays, alerts }) {
+  const sevColor = {
+    critical: { bg: "#fef2f2", fg: "#991b1b", border: "#fecaca" },
+    warning:  { bg: "#fffbeb", fg: "#92400e", border: "#fcd34d" },
+    info:     { bg: "#eff6ff", fg: "#1e40af", border: "#bfdbfe" },
+  };
+  const hasAlerts = (alerts?.alerts || []).length > 0;
+  return (
+    <Card style={{ padding: 18 }} data-testid="rede-ia-fiber-timeline-card">
+      <div style={{ display: "flex", justifyContent: "space-between",
+                       alignItems: "center", marginBottom: 12, flexWrap: "wrap",
+                       gap: 8 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>
+            🧵 Curva de lançamento de fibra
+          </h3>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            Metros lançados por dia · útil para forecasting de bobinas
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 4 }}>
+          {[7, 30, 90].map((d) => (
+            <button key={d}
+                      data-testid={`fiber-range-${d}`}
+                      onClick={() => onChangeDays(d)}
+                      style={{
+                        padding: "5px 12px", borderRadius: 6,
+                        border: "1px solid var(--border-default)",
+                        background: days === d ? "#0f766e" : "transparent",
+                        color: days === d ? "white" : "var(--text-secondary)",
+                        fontWeight: 700, fontSize: 11, cursor: "pointer",
+                      }}>
+              {d}d
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "grid",
+                       gridTemplateColumns: hasAlerts ? "2fr 1fr" : "1fr",
+                       gap: 14 }}>
+        {/* Chart */}
+        <div style={{ height: 220 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={kpi.timeline}
+                          margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="date"
+                       tickFormatter={(v) => v.slice(5)} fontSize={10}
+                       interval="preserveStartEnd" />
+              <YAxis fontSize={10} unit="m" />
+              <RTooltip
+                contentStyle={{ fontSize: 12, borderRadius: 6 }}
+                formatter={(v) => [`${v}m`, "Fibra"]}
+                labelFormatter={(v) => new Date(v).toLocaleDateString("pt-BR")} />
+              <Line type="monotone" dataKey="meters"
+                      stroke="#0f766e" strokeWidth={2.5}
+                      dot={{ r: 3, fill: "#0f766e" }}
+                      activeDot={{ r: 5 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Alertas de saldo */}
+        {hasAlerts && (
+          <div data-testid="rede-ia-fiber-alerts">
+            <div style={{ fontSize: 11, fontWeight: 800,
+                            textTransform: "uppercase",
+                            color: "var(--text-secondary)",
+                            letterSpacing: 0.4, marginBottom: 6 }}>
+              ⚠️ Saldo baixo (&lt; {alerts.threshold}m)
+            </div>
+            <div style={{ maxHeight: 200, overflowY: "auto",
+                            display: "grid", gap: 4 }}>
+              {alerts.alerts.map((a, i) => {
+                const c = sevColor[a.severity] || sevColor.info;
+                return (
+                  <div key={i}
+                        data-testid={`fiber-alert-${a.location}-${a.consumable_id}`}
+                        style={{ padding: "6px 8px",
+                                  background: c.bg,
+                                  border: `1px solid ${c.border}`,
+                                  color: c.fg, borderRadius: 6,
+                                  fontSize: 11 }}>
+                    <div style={{ display: "flex",
+                                    justifyContent: "space-between",
+                                    fontWeight: 700 }}>
+                      <span>{a.location_label}</span>
+                      <span>{a.qty}m</span>
+                    </div>
+                    <div style={{ fontSize: 10, opacity: 0.85 }}>
+                      {a.consumable_label}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 
 /* ------------- CTOs list ------------- */
 function CTOsList() {

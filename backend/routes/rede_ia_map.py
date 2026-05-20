@@ -515,12 +515,13 @@ async def fiber_kpi(days: int = Query(7, ge=1, le=365),
                          "administrador", "gestor", "gestor_rede", "auditor"))):
     """KPIs de fibra lançada no mapa interativo (últimos N dias).
 
-    Retorna total geral, breakdown por tipo (6FO/12FO/24FO) e por técnico/origem.
-    Usado no painel Rede IA pra visão operacional rápida.
+    Retorna total geral, breakdown por tipo (6FO/12FO/24FO), por técnico/origem,
+    e série temporal por dia (para gráfico).
     """
     from datetime import timedelta
     cid = _company(user)
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=days)).isoformat()
 
     cur = db.network_cables.find(
         {"company_id": cid, "created_at": {"$gte": since},
@@ -530,6 +531,7 @@ async def fiber_kpi(days: int = Query(7, ge=1, le=365),
     )
     by_type: Dict[str, float] = {"6fo": 0, "12fo": 0, "24fo": 0}
     by_user: Dict[str, float] = {}
+    timeline: Dict[str, float] = {}  # 'YYYY-MM-DD' -> meters
     total_m = 0.0
     count = 0
     async for c in cur:
@@ -541,6 +543,16 @@ async def fiber_kpi(days: int = Query(7, ge=1, le=365),
         by_type[c["type"]] = by_type.get(c["type"], 0) + L
         u = c.get("created_by") or "—"
         by_user[u] = by_user.get(u, 0) + L
+        day = (c.get("created_at") or "")[:10]
+        if day:
+            timeline[day] = timeline.get(day, 0) + L
+
+    # Preenche dias sem lançamentos (eixo X contínuo)
+    timeline_full = []
+    for i in range(days - 1, -1, -1):
+        d = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+        timeline_full.append({"date": d, "meters": int(round(timeline.get(d, 0)))})
+
     return {
         "days": days,
         "total_meters": int(round(total_m)),
@@ -550,7 +562,53 @@ async def fiber_kpi(days: int = Query(7, ge=1, le=365),
             {"name": k, "meters": int(round(v))}
             for k, v in sorted(by_user.items(), key=lambda x: -x[1])
         ][:10],
+        "timeline": timeline_full,
     }
+
+
+@router.get("/map/fiber-alerts")
+async def fiber_alerts(threshold_m: int = Query(200, ge=0, le=10000),
+                        user: dict = Depends(require_role(
+                            "administrador", "gestor", "gestor_rede", "auditor"))):
+    """Identifica locais com saldo de fibra (6/12/24FO) abaixo do threshold.
+
+    Verifica `stok_stock` para 'empresa' + cada colaborador (técnico de rede).
+    Retorna lista de alertas com {location, location_label, consumable_id, qty, threshold}.
+    """
+    cid = _company(user)
+    # Carrega todos os locais de estoque
+    rows = await db.stok_stock.find(
+        {"company_id": cid}, {"_id": 0}).to_list(500)
+    # Mapa de collaborator_id → nome (para humanizar)
+    colab_names = {}
+    async for c in db.collaborators.find(
+            {"company_id": cid}, {"_id": 0, "id": 1, "name": 1}):
+        colab_names[c["id"]] = c["name"]
+
+    alerts: List[Dict[str, Any]] = []
+    for r in rows:
+        loc = r.get("location") or ""
+        loc_label = ("Empresa" if loc == "empresa"
+                     else colab_names.get(loc, f"Estoque {loc}"))
+        for cons_id in ("fibra_06fo", "fibra_12fo", "fibra_24fo"):
+            qty = int(r.get(cons_id, 0) or 0)
+            # Só alerta se houve atividade (qty > 0 em algum momento, ou negativo).
+            # Skipa locais que nunca tiveram fibra (sem saldo registrado).
+            if cons_id not in r:
+                continue
+            if qty <= threshold_m:
+                alerts.append({
+                    "location": loc, "location_label": loc_label,
+                    "consumable_id": cons_id,
+                    "consumable_label": cons_id.replace("fibra_", "Fibra ").upper().replace("FIBRA ", "Fibra "),
+                    "qty": qty, "threshold": threshold_m,
+                    "severity": "critical" if qty < 0 else
+                                  "warning" if qty < threshold_m / 2 else "info",
+                })
+    # Ordena: críticos primeiro, depois por saldo
+    severity_order = {"critical": 0, "warning": 1, "info": 2}
+    alerts.sort(key=lambda a: (severity_order.get(a["severity"], 3), a["qty"]))
+    return {"threshold": threshold_m, "alerts": alerts}
 
 
 @router.post("/map/positions")

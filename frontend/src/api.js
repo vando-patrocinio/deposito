@@ -1011,6 +1011,8 @@ export const api = {
   redeIaBairros: () => client.get(`/rede-ia/bairros`).then((r) => r.data),
   redeIaFiberKpi: (days = 7) =>
     client.get(`/rede-ia/map/fiber-kpi`, { params: { days } }).then((r) => r.data),
+  redeIaFiberAlerts: (threshold_m = 200) =>
+    client.get(`/rede-ia/map/fiber-alerts`, { params: { threshold_m } }).then((r) => r.data),
   redeIaBairrosPublic: (collab_id) =>
     client.get(`/rede-ia/public/bairros/${collab_id}`).then((r) => r.data),
   redeIaBairroCreate: (data) => client.post(`/rede-ia/bairros`, data).then((r) => r.data),

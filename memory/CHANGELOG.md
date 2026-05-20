@@ -1,5 +1,36 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Gráfico temporal + Alertas de saldo baixo de fibra
+
+### Sumário
+Visualização operacional avançada no painel Rede IA: curva de lançamento
+de fibra (forecasting) + alertas de saldo abaixo do threshold (reposição).
+
+### Backend (`rede_ia_map.py`)
+- `GET /map/fiber-kpi` agora retorna `timeline: [{date, meters}]` com série
+  contínua de N dias (preenche dias zerados).
+- `GET /map/fiber-alerts?threshold_m=N` (NEW):
+  - Lista locations de `stok_stock` (empresa + colaboradores) onde saldo
+    de fibra_06/12/24fo está abaixo do threshold.
+  - Severidade automática: `critical` (qty<0), `warning` (qty<threshold/2),
+    `info` (qty<=threshold).
+  - Ordenado por severidade + saldo crescente.
+
+### Frontend (`RedeIaPanel.js`)
+- Novo componente `FiberTimelineCard`:
+  - Recharts `LineChart` com curva temporal verde teal.
+  - Toggle de range (7d / 30d / 90d) — controla `fiberKpiDays` state.
+  - Painel lateral de alertas com cor por severidade (red/amber/blue).
+  - Layout adaptativo: 2-col quando há alertas; 1-col quando não há.
+- `api.js`: helper `redeIaFiberAlerts(threshold_m)`.
+
+### Validação manual
+- Curva renderiza picos reais: 05-15 com 302m (24FO) + 05-20 com 150m (12FO).
+- Toggle 7d/30d/90d altera a granularidade do eixo X corretamente.
+- Painel de alerta exibe `DIOGO HENRIQUE · Fibra 12FO · 200m` quando threshold=200.
+
+
+
 ## 2026-05-20 — Popup do cabo no mapa + KPI semanal de fibra
 
 ### Sumário
