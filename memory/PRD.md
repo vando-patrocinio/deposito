@@ -1059,3 +1059,40 @@ raciocínio em texto curto.
 
 **Validado via curl:** 4 endpoints OK + IA real analisou 2 tickets reais (score
 30 cada com verdict `sem_diagnostico` e raciocínio coerente).
+
+
+---
+
+## 2026-05-20 — WhatsApp Sidecar local estabilizado (P0)
+
+**Sintomas:** Sidecar em loop de logout/QR. Logs com `Bad MAC Error`, `Closing
+open session in favor of incoming prekey bundle`, `system-event webhook falhou
+(401)` e `CIRCUIT BREAKER ATIVO`. Não conseguia mais autenticar nem aceitar
+pareamento via QR.
+
+**Root cause:** Mismatch do `WA_INBOUND_TOKEN` entre o supervisor config do
+sidecar e o `backend/.env`. O supervisor injetava um token antigo via
+`environment=...`, que sobrescrevia o valor do `.env` carregado pelo dotenv.
+Isso fazia os webhooks `system-event` (logged_out, circuit_breaker_open) do
+sidecar para o backend serem rejeitados com 401, e como o circuit-breaker
+disparava após 3+ falhas, o sidecar entrava em loop infinito de reset+logout.
+
+**Fix aplicado:**
+1. `/etc/supervisor/conf.d/supervisord_whatsapp.conf` — removidos tokens
+   inline; o sidecar agora carrega tudo via dotenv de `/app/backend/.env`
+   (single source of truth). Só `WA_PORT=3002` e `WA_WEBHOOK_BASE` ficam no
+   supervisor.
+2. Sessão `isabella` na collection `wa_auth_state` (Mongo) limpa para forçar
+   QR novo (a sessão estava corrompida com `Bad MAC`).
+3. `supervisorctl reread && update` para aplicar.
+
+**Validação (curl):**
+- `/health` retorna `{ok:true, state:"connecting"}` sem loops.
+- `/qr` retorna PNG base64 válido (`last_qr_at: 2026-05-20T01:51:47Z`).
+- Webhook `POST /api/whatsapp-baileys/inbound`:
+  - Token correto + payload válido → `{"ok":true,"ignored":"empty"}`
+  - Token errado + payload válido → `{"detail":"X-WA-Token inválido"}` (401)
+- Zero ocorrências de `webhook falhou` ou `circuit_breaker_open` após o
+  restart.
+
+**Pronto para o Admin escanear o QR via painel WhatsApp do gestor.**
