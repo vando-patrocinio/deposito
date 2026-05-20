@@ -1,5 +1,51 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Insumos de Rede (Fibra 06FO/12FO/24FO) + bugfix PracaStockCard
+
+### Sumário
+Adicionados 3 novos insumos (fibras ópticas multi-FO em metros) para
+técnicos de rede / lançamentos de backbone. Disponíveis em toda a cadeia:
+compras → estoque empresa → técnico → consumo via Lousa Mobile.
+
+### Backend (`routes/stok.py`)
+- `CONSUMABLE_CATALOG`: adicionados `fibra_06fo`, `fibra_12fo`, `fibra_24fo`
+  (unidade: metros, bobina padrão 2000m, `category: "rede"`).
+- `_COMPLETION_FIELD_TO_CONSUMABLE`: mapeia os 3 novos campos da Lousa para
+  os IDs de catálogo correspondentes (auto-baixa no fechamento da OS).
+- Bugfix `/api/stok/praca-summary`: agregação reescrita para ler o formato
+  legacy (`{location, drop, cabo_rede, ...}` com `praca_id`) ao invés do
+  formato `insumo_key`/`quantity` que nunca foi populado. Resolve crash do
+  `PracaStockCard` quando havia `stok_stock` doc com `praca_id` sem
+  `insumo_key` (vinha do approve do balanço).
+
+### Frontend
+- `LousaMobile.js`: nova seção **🧵 Backbone / Fibra Óptica** no formulário
+  de finalização, condicional ao saldo do técnico (só mostra fibras que ele
+  efetivamente tem em poder). Estado `form` + checks de saldo + payload de
+  submit estendidos para os 3 campos.
+- `PracaStockCard.js`: render defensivo para `c.label || c.key` (fallback
+  `"—"` evita crash em docs com campos nulos).
+- `EstoquePanel.js` (catálogo dinâmico já iterava sobre `consumables`):
+  novos insumos aparecem automaticamente em
+    - Dashboard (KPI bar com saldo empresa/técnico)
+    - Insumos (tabela completa por técnico)
+    - Compra/Transferência (dropdowns)
+    - Cards "Estoque por Técnico" (badges fibra_06fo/12fo/24fo)
+    - Balanço (contagem cíclica)
+    - Fechamento de OS (ServicosSection)
+
+### Validação manual (admin@empresa.com)
+- `POST /api/stok/consumables/purchase` (1 bobina 12FO = 2000m) → OK
+- `POST /api/stok/consumables/transfer` (200m → DIOGO HENRIQUE) → OK
+- `GET /api/stok/public/collaborator/col-30aafc3c/stock` retorna
+  `Fibra 12FO: 200 m`
+- Dashboard mostra "Fibra 12FO 200 c/téc · 1800 m em estoque"
+- Card do técnico DIOGO HENRIQUE exibe "Fibra 12FO 200"
+- Lousa Mobile (DIOGO): seção Backbone só renderiza o campo 12FO
+  (Fibra 06FO e 24FO ocultas por saldo=0)
+
+
+
 ## 2026-05-20 — Sub-aba "Balanço" (cycle counting / stock reconciliation)
 
 ### Sumário

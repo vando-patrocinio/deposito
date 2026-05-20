@@ -296,7 +296,7 @@ function PracaDetailModal({ praca, onClose }) {
                 }}>
                   <span style={{ color: c.qty > 0 ? "#065f46" : "#94a3b8",
                                     fontWeight: 600 }}>
-                    {c.label || c.key}
+                    {c.label || c.key || "—"}
                   </span>
                   <strong style={{ color: c.qty > 0 ? "#065f46" : "#94a3b8" }}>
                     {c.qty}
@@ -433,26 +433,29 @@ export default function PracaStockCard() {
                                 display: "grid",
                                 gridTemplateColumns: "repeat(auto-fit, minmax(85px, 1fr))",
                                 gap: 4 }}>
-                  {p.consumables.slice(0, 12).map((c) => (
-                    <div key={c.key} style={{
-                      padding: "3px 6px",
-                      background: c.qty > 0 ? "#ecfdf5" : "#f1f5f9",
-                      border: c.qty > 0 ? "1px solid #6ee7b7"
-                                            : "1px dashed #cbd5e1",
-                      borderRadius: 5,
-                      fontSize: 10,
-                      display: "flex", justifyContent: "space-between",
-                      alignItems: "center",
-                      color: c.qty > 0 ? "#065f46" : "#94a3b8",
-                    }} title={c.label || c.key}>
-                      <span style={{
-                        whiteSpace: "nowrap",
-                        overflow: "hidden", textOverflow: "ellipsis",
-                        maxWidth: 60, fontWeight: 600,
-                      }}>{(c.label || c.key).slice(0, 9)}</span>
-                      <strong>{c.qty}</strong>
-                    </div>
-                  ))}
+                  {p.consumables.slice(0, 12).map((c) => {
+                    const lbl = c.label || c.key || "—";
+                    return (
+                      <div key={c.key || lbl} style={{
+                        padding: "3px 6px",
+                        background: c.qty > 0 ? "#ecfdf5" : "#f1f5f9",
+                        border: c.qty > 0 ? "1px solid #6ee7b7"
+                                              : "1px dashed #cbd5e1",
+                        borderRadius: 5,
+                        fontSize: 10,
+                        display: "flex", justifyContent: "space-between",
+                        alignItems: "center",
+                        color: c.qty > 0 ? "#065f46" : "#94a3b8",
+                      }} title={lbl}>
+                        <span style={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden", textOverflow: "ellipsis",
+                          maxWidth: 60, fontWeight: 600,
+                        }}>{String(lbl).slice(0, 9)}</span>
+                        <strong>{c.qty}</strong>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <div style={{ marginTop: 8, paddingTop: 8,

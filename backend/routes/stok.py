@@ -39,6 +39,10 @@ CONSUMABLE_CATALOG = [
     {"id": "conector_fibra", "name": "Conector de fibra", "unit": "un", "pack_label": "Unidade", "pack_qty": 1},
     {"id": "esticador", "name": "Esticador", "unit": "un", "pack_label": "Unidade", "pack_qty": 1},
     {"id": "conector_rede", "name": "Conector de rede", "unit": "un", "pack_label": "Unidade", "pack_qty": 1},
+    # Insumos de REDE (técnicos de rede / lançamentos de backbone)
+    {"id": "fibra_06fo", "name": "Fibra 06FO", "unit": "m", "pack_label": "Bobina", "pack_qty": 2000, "category": "rede"},
+    {"id": "fibra_12fo", "name": "Fibra 12FO", "unit": "m", "pack_label": "Bobina", "pack_qty": 2000, "category": "rede"},
+    {"id": "fibra_24fo", "name": "Fibra 24FO", "unit": "m", "pack_label": "Bobina", "pack_qty": 2000, "category": "rede"},
 ]
 CONSUMABLE_IDS = {c["id"] for c in CONSUMABLE_CATALOG}
 CONSUMABLE_BY_ID: Dict[str, Dict[str, Any]] = {c["id"]: c for c in CONSUMABLE_CATALOG}
@@ -290,25 +294,30 @@ async def praca_summary(user: dict = Depends(require_role("gestor"))):
     ]):
         ont_rows.append({"praca_id": r["_id"], "count": r["count"]})
     ont_by_praca = {x["praca_id"]: x["count"] for x in ont_rows}
-    # 3) Insumos (stok_stock) por praça — agrupado por insumo_key
-    consum_rows: list = []
-    async for r in db.stok_stock.aggregate([
-        {"$match": {"company_id": cid}},
-        {"$group": {
-            "_id": {"praca_id": "$praca_id", "key": "$insumo_key"},
-            "qty": {"$sum": "$quantity"},
-            "label": {"$first": "$insumo_label"},
-        }},
-    ]):
-        consum_rows.append({
-            "praca_id": r["_id"].get("praca_id"),
-            "key": r["_id"].get("key"),
-            "label": r["label"],
-            "qty": r["qty"],
-        })
+    # 3) Insumos (stok_stock) por praça — lê o formato real (campos por
+    #    consumable_id) em docs que têm praca_id OU location "praca:<id>".
     consum_by_praca: dict = {}
-    for c in consum_rows:
-        consum_by_praca.setdefault(c["praca_id"], []).append(c)
+    async for r in db.stok_stock.find(
+        {"company_id": cid,
+         "$or": [
+            {"praca_id": {"$exists": True, "$ne": None}},
+            {"location": {"$regex": "^praca:"}},
+         ]},
+        {"_id": 0},
+    ):
+        praca_id = r.get("praca_id")
+        if not praca_id and isinstance(r.get("location"), str) \
+                and r["location"].startswith("praca:"):
+            praca_id = r["location"].split("praca:", 1)[1]
+        if not praca_id:
+            continue
+        for cons in CONSUMABLE_CATALOG:
+            qty = int(r.get(cons["id"], 0) or 0)
+            if qty <= 0:
+                continue
+            consum_by_praca.setdefault(praca_id, []).append({
+                "key": cons["id"], "label": cons["name"], "qty": qty,
+            })
     # 4) Almoxarife / responsável por praça (collaborator com cargo=almoxarife
     #    e warehouse_praca_id = praça)
     keepers: dict = {}
@@ -883,6 +892,10 @@ _COMPLETION_FIELD_TO_CONSUMABLE = {
     "conectores_fast": "conector_fast",
     "cabo_rede": "cabo_rede",
     "conectores_rede": "conector_rede",
+    # Backbone / lançamento de rede
+    "fibra_06fo": "fibra_06fo",
+    "fibra_12fo": "fibra_12fo",
+    "fibra_24fo": "fibra_24fo",
     # `conector_fibra` não tem campo na Lousa hoje; gestor adiciona manualmente se precisar
 }
 

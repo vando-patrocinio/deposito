@@ -1033,7 +1033,9 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     : -25;
   const [form, setForm] = useState({
     sinal: initialSinal, qtd_drop: 1, esticadores: 1, conectores_fast: 2,
-    cabo_rede: 10, conectores_rede: 2, ont: "", observacoes: "",
+    cabo_rede: 10, conectores_rede: 2,
+    fibra_06fo: 0, fibra_12fo: 0, fibra_24fo: 0,
+    ont: "", observacoes: "",
     fotos: [],          // [{kind:'equipamento'|'sn', dataUrl}]
   });
   // Marca se o valor atual ainda é o auto-preenchido do SmartOLT (mostra badge
@@ -1212,6 +1214,8 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       ["drop", form.qtd_drop], ["esticador", form.esticadores],
       ["conector_fast", form.conectores_fast], ["cabo_rede", form.cabo_rede],
       ["conector_rede", form.conectores_rede],
+      ["fibra_06fo", form.fibra_06fo], ["fibra_12fo", form.fibra_12fo],
+      ["fibra_24fo", form.fibra_24fo],
     ];
     for (const [k, v] of checks) {
       const used = Number(v) || 0;
@@ -1228,6 +1232,9 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       conectores_fast: Number(form.conectores_fast),
       cabo_rede: Number(form.cabo_rede),
       conectores_rede: Number(form.conectores_rede),
+      fibra_06fo: Number(form.fibra_06fo) || 0,
+      fibra_12fo: Number(form.fibra_12fo) || 0,
+      fibra_24fo: Number(form.fibra_24fo) || 0,
       ont: form.ont || null,
       fotos: form.fotos.map((p) => p.dataUrl),
       observacoes: form.observacoes || null,
@@ -1659,6 +1666,43 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                                 form={form} setForm={setForm} />
             </div>
           </div>
+
+          {/* INSUMOS BACKBONE (fibras ópticas multi-FO — só mostra se o
+              técnico tiver saldo de alguma. Útil pra técnicos de rede). */}
+          {(((consMap.fibra_06fo?.qty || 0)
+             + (consMap.fibra_12fo?.qty || 0)
+             + (consMap.fibra_24fo?.qty || 0)) > 0) && (
+            <div style={{
+              padding: "12px 14px", background: "white",
+              border: "1px solid #c7d2fe", borderRadius: 14, marginBottom: 12,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#4338ca",
+                              marginBottom: 8, letterSpacing: 0.5,
+                              textTransform: "uppercase" }}>
+                🧵 Backbone / Fibra Óptica
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                {(consMap.fibra_06fo?.qty || 0) > 0 && (
+                  <ConsumableField label="06FO (m)" fieldKey="fibra_06fo"
+                                    consumableId="fibra_06fo" step="0.5"
+                                    consMap={consMap}
+                                    form={form} setForm={setForm} />
+                )}
+                {(consMap.fibra_12fo?.qty || 0) > 0 && (
+                  <ConsumableField label="12FO (m)" fieldKey="fibra_12fo"
+                                    consumableId="fibra_12fo" step="0.5"
+                                    consMap={consMap}
+                                    form={form} setForm={setForm} />
+                )}
+                {(consMap.fibra_24fo?.qty || 0) > 0 && (
+                  <ConsumableField label="24FO (m)" fieldKey="fibra_24fo"
+                                    consumableId="fibra_24fo" step="0.5"
+                                    consMap={consMap}
+                                    form={form} setForm={setForm} />
+                )}
+              </div>
+            </div>
+          )}
 
           <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
             📝 Observações
