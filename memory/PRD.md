@@ -1198,3 +1198,41 @@ items voltavam com `source="manual"` (sem classificação).
 `POST /bank-import/confirm` insere `fin_cash_movements` (despesas lançadas
 no caixa), atualiza saldo da conta caixa, e chama `_save_memory` por item
 → próximo PDF semelhante já vem pré-classificado.
+
+
+---
+
+## 2026-05-20 — Painel Data Health (P1)
+
+**Solicitação:** "SIM" — implementação do painel de saúde dos dados.
+
+**Implementado:**
+1. **Backend `/app/backend/routes/data_health.py`** — endpoint admin com:
+   - `GET /api/admin/data-health`: status geral (ok/warn/critical), info do
+     último backup (idade, tamanho, total), contagem de 28 coleções
+     protegidas, migrations aplicadas/pendentes/órfãs, alertas auto.
+   - `POST /api/admin/data-health/run-migrations`: força execução
+     idempotente de migrations pendentes (só super admin).
+
+2. **Frontend `/app/frontend/src/DataHealthPanel.js`** — UI completa:
+   - Banner de status overall (verde/amarelo/vermelho)
+   - Lista de alertas categorizados
+   - Card Backup: idade humanizada, tamanho, total retidos, hint pra cron
+   - Card Migrations: contador X/Y, badges pendentes, botão "Rodar
+     pendentes" (1-click), alerta de drift
+   - Grid de coleções com contagem por nome (highlight amarelo se vazia)
+   - Auto-detecta cron command e mostra pra copiar
+   - Link pra `/app/memory/DATA_PERSISTENCE.md`
+
+3. **Integração** em `PlatformAdminPanel.js`: nova sub-tab "Saúde dos
+   Dados" ao lado de "Visão Geral".
+
+**Validado via curl HTTPS público:**
+- `overall: critical` (porque ainda não tem backup no preview)
+- 28 coleções protegidas mapeadas
+- 10.969 documentos totais
+- 2/2 migrations aplicadas, 0 pendentes, 0 drift
+- 1 alerta: "Nenhum backup encontrado"
+- Endpoint protegido (super admin only)
+
+**Acesso:** Sidebar → Sistema → Plataforma → sub-aba "Saúde dos Dados".

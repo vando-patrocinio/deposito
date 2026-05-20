@@ -315,6 +315,12 @@ export const api = {
   bankImportGetStaging: (stagingId) =>
     client.get(`/financeiro/bank-import/staging/${stagingId}`)
       .then((r) => r.data),
+
+  // ========= Data Health (admin) =========
+  dataHealth: () =>
+    client.get(`/admin/data-health`).then((r) => r.data),
+  dataHealthRunMigrations: () =>
+    client.post(`/admin/data-health/run-migrations`).then((r) => r.data),
   bankImportAtlazFetch: (payload) =>
     client.post(`/financeiro/bank-import/atlaz-fetch`, payload)
       .then((r) => r.data),

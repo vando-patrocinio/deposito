@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "@/api";
+import DataHealthPanel from "@/DataHealthPanel";
 
 const ACCENT = "#10b981";
 
@@ -48,6 +49,7 @@ export default function PlatformAdminPanel() {
   const [selected, setSelected] = useState(() => new Set());
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null); // { ids: [...] }
+  const [subtab, setSubtab] = useState("overview"); // overview | data_health
 
   function reload() {
     return Promise.all([api.saasAdminMetrics(), api.saasListCompanies()])
@@ -119,6 +121,35 @@ export default function PlatformAdminPanel() {
         </h2>
         <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>Visão consolidada de todas as empresas, MRR, churn e crescimento.</p>
       </div>
+
+      {/* Sub-tabs */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 22,
+                       borderBottom: "1px solid #e2e8f0" }}>
+        {[
+          { id: "overview", label: "Visão Geral" },
+          { id: "data_health", label: "Saúde dos Dados" },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setSubtab(t.id)}
+            data-testid={`platform-subtab-${t.id}`}
+            style={{
+              padding: "10px 16px",
+              border: "none",
+              background: "transparent",
+              borderBottom: subtab === t.id
+                ? "3px solid #0f172a" : "3px solid transparent",
+              color: subtab === t.id ? "#0f172a" : "#64748b",
+              fontWeight: subtab === t.id ? 800 : 500,
+              fontSize: 13,
+              cursor: "pointer",
+              marginBottom: -1,
+            }}
+          >{t.label}</button>
+        ))}
+      </div>
+
+      {subtab === "data_health" ? <DataHealthPanel /> : <>
 
       {/* KPIs */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
@@ -287,6 +318,7 @@ export default function PlatformAdminPanel() {
           onConfirm={() => executeBulkDelete(confirmDelete.ids)}
         />
       )}
+      </>}
     </div>
   );
 }

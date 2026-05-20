@@ -554,6 +554,8 @@ app.include_router(routes_financeiro_reajuste.router)
 app.include_router(routes_public_access.router)
 app.include_router(routes_disparo_promo.router)
 app.include_router(routes_bank_import.router)
+from routes import data_health as routes_data_health  # noqa: E402
+app.include_router(routes_data_health.router)
 
 
 # ============================================================
