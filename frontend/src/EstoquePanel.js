@@ -91,6 +91,24 @@ const btnGhost = { padding: "6px 12px", background: "transparent", color: "#0f17
 // stock-by-location distribution, SKU stock with progress, activity feed.
 // ============================================================
 function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
+  // ONTs agrupadas por técnico (location_type=tecnico) — para popover ao
+  // clicar no item "📡 ONT N" do card de cada técnico.
+  const ontsByTech = React.useMemo(() => {
+    const m = {};
+    (onts || []).forEach((o) => {
+      if (o.location_type === "tecnico" && o.location_id) {
+        (m[o.location_id] = m[o.location_id] || []).push(o);
+      }
+    });
+    return m;
+  }, [onts]);
+  const [popoverTechId, setPopoverTechId] = React.useState(null);
+  React.useEffect(() => {
+    if (!popoverTechId) return;
+    const close = () => setPopoverTechId(null);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [popoverTechId]);
   if (!dashboard) return <Card>Carregando dashboard…</Card>;
 
   // ---- Métricas derivadas ----
@@ -447,25 +465,87 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
                     gridTemplateColumns: "repeat(auto-fit,minmax(82px,1fr))",
                     gap: 4,
                   }}>
-                    {/* ONT/ONU como item de destaque no início (não fica só no
-                        número grande no canto). */}
-                    <div data-testid={`tech-row-${t.id}-ont`}
-                          style={{
-                            background: t.tech_onts === 0 ? "#f1f5f9" : "#ecfdf5",
-                            padding: "4px 6px",
-                            borderRadius: 6, fontSize: 10,
-                            color: t.tech_onts === 0 ? "#64748b" : "#065f46",
-                            border: t.tech_onts === 0
-                              ? "1px dashed #cbd5e1"
-                              : "1px solid #6ee7b7",
-                            display: "flex", justifyContent: "space-between",
-                            alignItems: "center", fontWeight: 700,
-                          }} title="ONT/ONU (equipamento serializado)">
+                    {/* ONT/ONU como item de destaque no início (clicável:
+                        abre popover com lista de MACs daquele técnico). */}
+                    <button
+                      type="button"
+                      data-testid={`tech-row-${t.id}-ont`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPopoverTechId(popoverTechId === t.id ? null : t.id);
+                      }}
+                      title={t.tech_onts === 0
+                        ? "Sem ONT — clique pra fechar"
+                        : "Clique para ver MACs"}
+                      style={{
+                        background: t.tech_onts === 0 ? "#f1f5f9" : "#ecfdf5",
+                        padding: "4px 6px",
+                        borderRadius: 6, fontSize: 10,
+                        color: t.tech_onts === 0 ? "#64748b" : "#065f46",
+                        border: t.tech_onts === 0
+                          ? "1px dashed #cbd5e1"
+                          : "1px solid #6ee7b7",
+                        display: "flex", justifyContent: "space-between",
+                        alignItems: "center", fontWeight: 700,
+                        cursor: t.tech_onts > 0 ? "pointer" : "default",
+                        position: "relative",
+                      }}
+                    >
                       <span>📡 ONT</span>
                       <strong style={{
                         color: t.tech_onts === 0 ? "#94a3b8" : "#065f46",
                       }}>{t.tech_onts}</strong>
-                    </div>
+                      {popoverTechId === t.id && (ontsByTech[t.id] || []).length > 0 && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          data-testid={`tech-row-${t.id}-ont-popover`}
+                          style={{
+                            position: "absolute",
+                            top: "calc(100% + 4px)",
+                            left: 0,
+                            zIndex: 50,
+                            minWidth: 260,
+                            maxHeight: 280,
+                            overflowY: "auto",
+                            background: "white",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 10,
+                            boxShadow: "0 8px 24px rgba(15,23,42,.15)",
+                            padding: 10,
+                            textAlign: "left",
+                          }}
+                        >
+                          <div style={{
+                            fontSize: 11, fontWeight: 800,
+                            textTransform: "uppercase",
+                            color: "#475569", marginBottom: 8,
+                            display: "flex", justifyContent: "space-between",
+                          }}>
+                            <span>MACs com {t.name}</span>
+                            <span style={{ color: "#10b981" }}>{(ontsByTech[t.id] || []).length}</span>
+                          </div>
+                          {(ontsByTech[t.id] || []).map((o) => (
+                            <div key={o.mac} style={{
+                              padding: "5px 6px",
+                              borderBottom: "1px solid #f1f5f9",
+                              display: "flex", justifyContent: "space-between",
+                              alignItems: "center", gap: 6,
+                            }}>
+                              <span style={{
+                                fontFamily: "monospace",
+                                fontWeight: 700, fontSize: 11,
+                                color: "#0f172a",
+                              }}>{o.mac}</span>
+                              <span style={{
+                                fontSize: 10, color: "#64748b",
+                                background: "#f1f5f9",
+                                padding: "2px 6px", borderRadius: 4,
+                              }}>{o.model || "ONT"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </button>
                     {consumables.map((c) => {
                       const qty = t.stock?.[c.id] || 0;
                       const lc = qty === 0 ? "#94a3b8"
