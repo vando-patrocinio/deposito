@@ -271,23 +271,47 @@ function HistBubble({ ticket }) {
       {ticket.admin_notes && (
         <div style={{ fontSize: 10, color: "#dc2626", marginTop: 4, fontStyle: "italic" }}>📝 {ticket.admin_notes.substring(0, 100)}</div>
       )}
-      {ticket.completion_data?.ping_summary && (
-        <div data-testid={`ticket-ping-summary-${ticket.id}`}
-              style={{
-                fontSize: 10, marginTop: 4, padding: "3px 7px",
-                background: ticket.completion_data.ping_summary.includes("✓")
-                  ? "#ecfdf5" : ticket.completion_data.ping_summary.includes("✗")
-                  ? "#fef2f2" : "#f1f5f9",
-                color: ticket.completion_data.ping_summary.includes("✓")
-                  ? "#065f46" : ticket.completion_data.ping_summary.includes("✗")
-                  ? "#991b1b" : "#475569",
-                border: "1px solid", borderColor: "currentColor",
-                borderRadius: 4, fontWeight: 600,
-                whiteSpace: "nowrap", overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-              title={ticket.completion_data.ping_summary}>
-          🛰 {ticket.completion_data.ping_summary.split("\n")[0].substring(0, 60)}
+      {(ticket.completion_data?.sinal != null
+         || ticket.completion_data?.ping_summary) && (
+        <div style={{ display: "flex", gap: 4, marginTop: 4,
+                          flexWrap: "wrap", alignItems: "center" }}>
+          {ticket.completion_data?.sinal != null && (
+            <span data-testid={`ticket-sinal-${ticket.id}`}
+                    title={`Sinal óptico final: ${ticket.completion_data.sinal} dBm`}
+                    style={{
+                      fontSize: 10, padding: "2px 6px",
+                      background: ticket.completion_data.sinal >= -25
+                        ? "#ecfdf5" : ticket.completion_data.sinal >= -28
+                        ? "#fffbeb" : "#fef2f2",
+                      color: ticket.completion_data.sinal >= -25
+                        ? "#065f46" : ticket.completion_data.sinal >= -28
+                        ? "#92400e" : "#991b1b",
+                      border: "1px solid", borderColor: "currentColor",
+                      borderRadius: 4, fontWeight: 700,
+                      fontFamily: "ui-monospace,monospace",
+                    }}>
+              📶 {ticket.completion_data.sinal} dBm
+            </span>
+          )}
+          {ticket.completion_data?.ping_summary && (
+            <span data-testid={`ticket-ping-summary-${ticket.id}`}
+                    style={{
+                      fontSize: 10, padding: "2px 6px", flex: 1,
+                      background: ticket.completion_data.ping_summary.includes("✓")
+                        ? "#ecfdf5" : ticket.completion_data.ping_summary.includes("✗")
+                        ? "#fef2f2" : "#f1f5f9",
+                      color: ticket.completion_data.ping_summary.includes("✓")
+                        ? "#065f46" : ticket.completion_data.ping_summary.includes("✗")
+                        ? "#991b1b" : "#475569",
+                      border: "1px solid", borderColor: "currentColor",
+                      borderRadius: 4, fontWeight: 600,
+                      whiteSpace: "nowrap", overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                    title={ticket.completion_data.ping_summary}>
+              🛰 {ticket.completion_data.ping_summary.split("\n")[0].substring(0, 50)}
+            </span>
+          )}
         </div>
       )}
       {ticket.scheduled_time && (
