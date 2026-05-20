@@ -1,18 +1,194 @@
 /**
  * PracaStockCard — Estoque por Praça (saldo de ONTs e insumos por filial).
  *
- * Mostra:
- *  - Praça
- *  - Almoxarifes/responsáveis
- *  - Total de ONTs disponíveis
- *  - Lista de insumos (Drop, Cabo, etc) com quantidades
+ * - Cards clicáveis: abre modal lateral com lista detalhada de ONTs
+ *   daquela praça (MAC, modelo, status).
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
+
+function PracaDetailModal({ praca, onClose }) {
+  const [allOnts, setAllOnts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!praca) return;
+    setLoading(true);
+    api.stokOntsList().then((onts) => {
+      setAllOnts(onts || []);
+    }).finally(() => setLoading(false));
+  }, [praca]);
+
+  if (!praca) return null;
+
+  const pracaOnts = allOnts.filter(
+    (o) => o.location_type === "empresa" && o.praca_id === praca.praca_id);
+
+  return (
+    <div
+      onClick={onClose}
+      data-testid="praca-detail-modal-overlay"
+      style={{
+        position: "fixed", inset: 0,
+        background: "rgba(15,23,42,.55)", zIndex: 9999,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        data-testid="praca-detail-modal"
+        style={{
+          background: "white", borderRadius: 14, padding: 22,
+          width: "100%", maxWidth: 720, maxHeight: "90vh",
+          overflow: "auto",
+          boxShadow: "0 20px 60px rgba(0,0,0,.3)",
+        }}
+      >
+        <div style={{
+          display: "flex", justifyContent: "space-between",
+          alignItems: "flex-start", marginBottom: 16,
+        }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>
+              📦 {praca.praca_name}
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+              {praca.keepers.length > 0
+                ? `Almoxarife(s): ${praca.keepers.map((k) => k.name).join(", ")}`
+                : "Sem almoxarife vinculado"}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            data-testid="praca-detail-close"
+            style={{
+              background: "none", border: "none",
+              fontSize: 24, cursor: "pointer", color: "#64748b",
+              lineHeight: 1,
+            }}
+          >×</button>
+        </div>
+
+        {/* KPI bar */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "1fr 1fr",
+          gap: 10, marginBottom: 18,
+        }}>
+          <div style={{ background: "#f0fdf4",
+                          border: "1px solid #6ee7b7", borderRadius: 10,
+                          padding: 12, textAlign: "center" }}>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#065f46" }}>
+              {praca.ont_count}
+            </div>
+            <div style={{ fontSize: 11, color: "#065f46", fontWeight: 700 }}>
+              📡 ONTs disponíveis
+            </div>
+          </div>
+          <div style={{ background: "#eff6ff",
+                          border: "1px solid #93c5fd", borderRadius: 10,
+                          padding: 12, textAlign: "center" }}>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#1e40af" }}>
+              {praca.consumables.length}
+            </div>
+            <div style={{ fontSize: 11, color: "#1e40af", fontWeight: 700 }}>
+              🔌 Tipos de insumo
+            </div>
+          </div>
+        </div>
+
+        {/* ONTs detalhadas */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase",
+                          letterSpacing: ".04em", color: "#475569",
+                          marginBottom: 8 }}>
+            ONTs disponíveis ({pracaOnts.length})
+          </div>
+          {loading ? (
+            <div style={{ padding: 14, color: "#64748b", fontSize: 13 }}>Carregando…</div>
+          ) : pracaOnts.length === 0 ? (
+            <div style={{ padding: 14, background: "#f8fafc",
+                            border: "1px dashed #cbd5e1", borderRadius: 8,
+                            textAlign: "center", color: "#94a3b8",
+                            fontSize: 12 }}>
+              Nenhuma ONT cadastrada nesta praça.
+            </div>
+          ) : (
+            <div style={{ maxHeight: 240, overflowY: "auto" }}>
+              {pracaOnts.map((o) => (
+                <div key={o.mac}
+                      data-testid={`praca-detail-ont-${o.mac}`}
+                      style={{
+                        padding: "6px 10px",
+                        borderBottom: "1px solid #f1f5f9",
+                        display: "flex", justifyContent: "space-between",
+                        alignItems: "center", gap: 8,
+                      }}>
+                  <span style={{ fontFamily: "monospace", fontWeight: 700,
+                                    fontSize: 12, color: "#0f172a" }}>
+                    {o.mac}
+                  </span>
+                  <span style={{ fontSize: 10, color: "#64748b",
+                                    background: "#f1f5f9",
+                                    padding: "2px 6px", borderRadius: 4 }}>
+                    {o.model || "ONT"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Insumos */}
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase",
+                          letterSpacing: ".04em", color: "#475569",
+                          marginBottom: 8 }}>
+            Insumos ({praca.consumables.length})
+          </div>
+          {praca.consumables.length === 0 ? (
+            <div style={{ padding: 14, background: "#f8fafc",
+                            border: "1px dashed #cbd5e1", borderRadius: 8,
+                            textAlign: "center", color: "#94a3b8",
+                            fontSize: 12 }}>
+              Sem insumos lançados. Use a Central de Compras para registrar.
+            </div>
+          ) : (
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+              gap: 6,
+            }}>
+              {praca.consumables.map((c) => (
+                <div key={c.key} style={{
+                  padding: "6px 10px",
+                  background: c.qty > 0 ? "#ecfdf5" : "#f1f5f9",
+                  border: c.qty > 0 ? "1px solid #6ee7b7"
+                                        : "1px dashed #cbd5e1",
+                  borderRadius: 6, fontSize: 11,
+                  display: "flex", justifyContent: "space-between",
+                }}>
+                  <span style={{ color: c.qty > 0 ? "#065f46" : "#94a3b8",
+                                    fontWeight: 600 }}>
+                    {c.label || c.key}
+                  </span>
+                  <strong style={{ color: c.qty > 0 ? "#065f46" : "#94a3b8" }}>
+                    {c.qty}
+                  </strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function PracaStockCard() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
+  const [selected, setSelected] = useState(null);
 
   useEffect(() => {
     api.stokPracaSummary().then(setData).catch((e) =>
@@ -40,7 +216,7 @@ export default function PracaStockCard() {
             🏢 Estoque por Praça
           </h3>
           <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-            Saldo de ONTs e insumos em cada filial · {data.items.length} praça(s)
+            Saldo de ONTs e insumos em cada filial · {data.items.length} praça(s) · clique para detalhar
           </div>
         </div>
         {data.orphan_onts > 0 && (
@@ -67,13 +243,28 @@ export default function PracaStockCard() {
           gap: 10,
         }}>
           {data.items.map((p) => (
-            <div key={p.praca_id}
-                  data-testid={`praca-stock-${p.praca_id}`}
-                  style={{
-                    border: "1px solid #e2e8f0",
-                    borderRadius: 10, padding: 12,
-                    background: "#f8fafc",
-                  }}>
+            <button
+              type="button"
+              key={p.praca_id}
+              data-testid={`praca-stock-${p.praca_id}`}
+              onClick={() => setSelected(p)}
+              style={{
+                border: "1px solid #e2e8f0",
+                borderRadius: 10, padding: 12,
+                background: "#f8fafc",
+                textAlign: "left",
+                cursor: "pointer",
+                transition: "transform .12s, box-shadow .12s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-2px)";
+                e.currentTarget.style.boxShadow = "0 4px 12px rgba(15,23,42,.08)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "";
+                e.currentTarget.style.boxShadow = "";
+              }}
+            >
               <div style={{
                 display: "flex", justifyContent: "space-between",
                 alignItems: "baseline", marginBottom: 6,
@@ -145,10 +336,13 @@ export default function PracaStockCard() {
                   Sem insumos lançados nesta praça
                 </div>
               )}
-            </div>
+            </button>
           ))}
         </div>
       )}
+
+      {selected && <PracaDetailModal praca={selected}
+                                          onClose={() => setSelected(null)} />}
     </div>
   );
 }
