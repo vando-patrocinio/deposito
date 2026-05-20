@@ -1,5 +1,38 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Sinal na OS: badge antes/depois + comparativo
+
+### Sumário
+Cards de OS finalizada/encerrada agora exibem 4 badges:
+- **📥 Sinal abertura** (snapshot SmartOLT no momento da abertura)
+- **📤 Sinal fechamento** (preferindo `completion_data.sinal` digitado pelo
+  técnico; senão snapshot SmartOLT)
+- **Comparativo** (regra magnitude):
+  - `|close| > |open|` → "⚠ Sinal Degradado" (vermelho)
+  - `|close| < |open|` → "✓ Atualização do Sinal com Sucesso" (verde)
+  - `|close| = |open|` → "= Sinal estável" (azul)
+- **🛰 Ping summary** (gerado por `build_close_ping_summary` no fechamento)
+
+### Backend (`routes/lousa.py`)
+- `/api/lousa/history`: whitelist de campos retornados foi ampliada para
+  incluir `signal_at_open`, `signal_at_close` e `completion_data` (antes
+  só retornava metadados, deixando os badges sem dado).
+
+### Frontend (`lousa/LousaHistoryModal.js`)
+- Função inline renderiza os 4 badges com cores semânticas por intensidade:
+  - `|sinal| ≤ 25` verde, `≤ 28` amarelo, `> 28` vermelho.
+- Badges com `data-testid`: `ticket-sinal-open-{id}`, `ticket-sinal-close-{id}`,
+  `ticket-sinal-cmp-{id}`, `ticket-ping-summary-{id}`.
+
+### Validação
+- Curl `/lousa/history?date=2026-05-20` agora retorna campos corretos:
+  - `tkt-3560eb4f38`: open=-22.5  close=-29.1 (deve mostrar Degradado)
+  - `tkt-3e2184bfc4`: open=-27.8  close=-22.0 (deve mostrar Sucesso)
+  - `tkt-9b6c2ff91e`: open=-25.0  close=-25.0 (deve mostrar Estável)
+- Lint passa.
+
+
+
 ## 2026-05-20 — Smoke Tests P0 (Estoque + Balanço + Rede + Auditoria)
 
 ### Sumário

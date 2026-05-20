@@ -271,49 +271,103 @@ function HistBubble({ ticket }) {
       {ticket.admin_notes && (
         <div style={{ fontSize: 10, color: "#dc2626", marginTop: 4, fontStyle: "italic" }}>📝 {ticket.admin_notes.substring(0, 100)}</div>
       )}
-      {(ticket.completion_data?.sinal != null
-         || ticket.completion_data?.ping_summary) && (
-        <div style={{ display: "flex", gap: 4, marginTop: 4,
-                          flexWrap: "wrap", alignItems: "center" }}>
-          {ticket.completion_data?.sinal != null && (
-            <span data-testid={`ticket-sinal-${ticket.id}`}
-                    title={`Sinal óptico final: ${ticket.completion_data.sinal} dBm`}
-                    style={{
-                      fontSize: 10, padding: "2px 6px",
-                      background: ticket.completion_data.sinal >= -25
-                        ? "#ecfdf5" : ticket.completion_data.sinal >= -28
-                        ? "#fffbeb" : "#fef2f2",
-                      color: ticket.completion_data.sinal >= -25
-                        ? "#065f46" : ticket.completion_data.sinal >= -28
-                        ? "#92400e" : "#991b1b",
-                      border: "1px solid", borderColor: "currentColor",
-                      borderRadius: 4, fontWeight: 700,
-                      fontFamily: "ui-monospace,monospace",
-                    }}>
-              📶 {ticket.completion_data.sinal} dBm
-            </span>
-          )}
-          {ticket.completion_data?.ping_summary && (
-            <span data-testid={`ticket-ping-summary-${ticket.id}`}
-                    style={{
-                      fontSize: 10, padding: "2px 6px", flex: 1,
-                      background: ticket.completion_data.ping_summary.includes("✓")
-                        ? "#ecfdf5" : ticket.completion_data.ping_summary.includes("✗")
-                        ? "#fef2f2" : "#f1f5f9",
-                      color: ticket.completion_data.ping_summary.includes("✓")
-                        ? "#065f46" : ticket.completion_data.ping_summary.includes("✗")
-                        ? "#991b1b" : "#475569",
-                      border: "1px solid", borderColor: "currentColor",
-                      borderRadius: 4, fontWeight: 600,
-                      whiteSpace: "nowrap", overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                    title={ticket.completion_data.ping_summary}>
-              🛰 {ticket.completion_data.ping_summary.split("\n")[0].substring(0, 50)}
-            </span>
-          )}
-        </div>
-      )}
+      {(() => {
+        const cd = ticket.completion_data || {};
+        const sigOpen = ticket.signal_at_open?.rx_dbm;
+        // Fechamento: prioridade pro que o técnico digitou; senão usa snapshot SmartOLT
+        const sigClose = cd.sinal != null ? cd.sinal
+          : ticket.signal_at_close?.rx_dbm;
+        const hasOpen = sigOpen != null;
+        const hasClose = sigClose != null;
+        const hasPing = !!cd.ping_summary;
+        if (!hasOpen && !hasClose && !hasPing) return null;
+
+        // Comparação por magnitude (dBm é negativo: |-30| > |-25| → -30 é pior).
+        let cmpLabel = null;
+        let cmpColor = "#475569";
+        let cmpBg = "#f1f5f9";
+        if (hasOpen && hasClose) {
+          const absOpen = Math.abs(sigOpen);
+          const absClose = Math.abs(sigClose);
+          if (absClose > absOpen) {
+            cmpLabel = "⚠ Sinal Degradado";
+            cmpColor = "#991b1b"; cmpBg = "#fef2f2";
+          } else if (absClose < absOpen) {
+            cmpLabel = "✓ Atualização do Sinal com Sucesso";
+            cmpColor = "#065f46"; cmpBg = "#ecfdf5";
+          } else {
+            cmpLabel = "= Sinal estável";
+            cmpColor = "#1e40af"; cmpBg = "#eff6ff";
+          }
+        }
+
+        const sigColor = (v) => v == null ? "#94a3b8"
+          : Math.abs(v) <= 25 ? "#065f46"
+          : Math.abs(v) <= 28 ? "#92400e" : "#991b1b";
+
+        return (
+          <div style={{ marginTop: 4, display: "flex", gap: 4,
+                            flexWrap: "wrap", alignItems: "center" }}>
+            {hasOpen && (
+              <span data-testid={`ticket-sinal-open-${ticket.id}`}
+                      title={`Sinal na abertura: ${sigOpen} dBm`}
+                      style={{
+                        fontSize: 10, padding: "2px 6px",
+                        background: "white", color: sigColor(sigOpen),
+                        border: `1px solid ${sigColor(sigOpen)}`,
+                        borderRadius: 4, fontWeight: 700,
+                        fontFamily: "ui-monospace,monospace",
+                      }}>
+                📥 {sigOpen} dBm
+              </span>
+            )}
+            {hasClose && (
+              <span data-testid={`ticket-sinal-close-${ticket.id}`}
+                      title={`Sinal no fechamento: ${sigClose} dBm`}
+                      style={{
+                        fontSize: 10, padding: "2px 6px",
+                        background: "white", color: sigColor(sigClose),
+                        border: `1px solid ${sigColor(sigClose)}`,
+                        borderRadius: 4, fontWeight: 700,
+                        fontFamily: "ui-monospace,monospace",
+                      }}>
+                📤 {sigClose} dBm
+              </span>
+            )}
+            {cmpLabel && (
+              <span data-testid={`ticket-sinal-cmp-${ticket.id}`}
+                      style={{
+                        fontSize: 9, padding: "2px 6px",
+                        background: cmpBg, color: cmpColor,
+                        border: `1px solid ${cmpColor}`,
+                        borderRadius: 4, fontWeight: 800,
+                        textTransform: "uppercase", letterSpacing: 0.3,
+                      }}>
+                {cmpLabel}
+              </span>
+            )}
+            {hasPing && (
+              <span data-testid={`ticket-ping-summary-${ticket.id}`}
+                      style={{
+                        fontSize: 10, padding: "2px 6px", flex: 1,
+                        background: cd.ping_summary.includes("✓") ? "#ecfdf5"
+                          : cd.ping_summary.includes("✗") ? "#fef2f2"
+                          : "#f1f5f9",
+                        color: cd.ping_summary.includes("✓") ? "#065f46"
+                          : cd.ping_summary.includes("✗") ? "#991b1b"
+                          : "#475569",
+                        border: "1px solid", borderColor: "currentColor",
+                        borderRadius: 4, fontWeight: 600,
+                        whiteSpace: "nowrap", overflow: "hidden",
+                        textOverflow: "ellipsis", minWidth: 0,
+                      }}
+                      title={cd.ping_summary}>
+                🛰 {cd.ping_summary.split("\n")[0].substring(0, 50)}
+              </span>
+            )}
+          </div>
+        );
+      })()}
       {ticket.scheduled_time && (
         <div style={{ fontSize: 10, color: "#3b82f6", marginTop: 3 }}>📅 {new Date(ticket.scheduled_time).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</div>
       )}

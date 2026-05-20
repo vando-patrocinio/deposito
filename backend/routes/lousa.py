@@ -4864,6 +4864,11 @@ async def lousa_history(
             "admin_notes": d.get("admin_notes"),
             "collaborator_id": cid,
             "collaborator_name": coll_map.get(cid, "—"),
+            # Snapshot de sinal SmartOLT na abertura e fechamento + sinal
+            # informado pelo técnico no completion_data (badge no card).
+            "signal_at_open": d.get("signal_at_open"),
+            "signal_at_close": d.get("signal_at_close"),
+            "completion_data": d.get("completion_data"),
         })
         st = d.get("status", "pendente")
         summary[st] = summary.get(st, 0) + 1
