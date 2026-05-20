@@ -1,5 +1,46 @@
 # PontoIA — Changelog
 
+## Fev 2026 — HOTFIX P0: Permissões do Gestor não aplicavam após salvar
+
+### Problema reportado
+Usuário configurou em **Configurações → Permissões de abas** apenas 3 abas para o Gestor (Painel · Chamados · Colaboradores), mas ao logar como Gestor o sistema mostrava TODAS as abas.
+
+### Root cause
+A função de "migration soft" no `App.js` re-mesclava `tab_permissions` salvo com o `DEFAULT_TAB_PERMISSIONS`:
+
+```js
+const missing = defaults.filter((id) => !saved.includes(id));
+if (missing.length) merged[role] = [...saved, ...missing];  // ← BUG
+```
+
+Quando o admin desmarcava abas do Gestor, o merge sempre adicionava de volta TUDO que estava no default. Banco tinha `gestor: 4 tabs`, mas frontend recebia `gestor: 22 tabs`.
+
+### Fix
+Substituí a lógica de merge agressivo por **respeito exato ao que foi salvo**:
+
+```js
+if (!saved || typeof saved !== "object") {
+  setTabPerms(_DEFAULT_TAB_PERMS); // primeiro uso
+  return;
+}
+const merged = {};
+for (const role of Object.keys(_DEFAULT_TAB_PERMS)) {
+  // Se role foi customizado → respeita 100%. Se ausente → default daquela role.
+  merged[role] = Array.isArray(saved[role]) ? saved[role] : (_DEFAULT_TAB_PERMS[role] || []);
+}
+```
+
+Aplicado nos 2 lugares onde a lógica vivia (AppContent e AppShell).
+
+### Tradeoff e documentação
+Abas NOVAS criadas após a 1ª configuração não aparecem automaticamente — o admin precisa editar `Permissões de abas` e habilitá-las manualmente. Esse comportamento já é descrito no card de Permissões.
+
+### Verificação
+- Banco confirmado: `co-demo / company_branding.tab_permissions.gestor` tem 4 tabs
+- Screenshot validado: Gestor agora vê APENAS Painel, Chamados, Colaboradores no sidebar (header "Inteligência" sumiu também porque nenhuma aba desse grupo está liberada)
+
+
+
 ## Fev 2026 — Cargos do Colaborador (Função Operacional)
 
 ### Feature

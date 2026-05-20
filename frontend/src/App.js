@@ -601,19 +601,22 @@ function AppShell({ view, setView, children }) {
     ]).then(([api, perms]) => {
       api.brandingGet().then((cfg) => {
         if (!alive) return;
-        // Se a empresa ainda não tem `tab_permissions` salva, mantemos
-        // o DEFAULT_TAB_PERMISSIONS já aplicado no estado inicial — assim
-        // o filtro nunca cai num fallback permissivo que libera tudo pro gestor.
-        const base = cfg?.tab_permissions || perms.DEFAULT_TAB_PERMISSIONS;
-        const merged = { ...base };
-        // Migration soft: para cada role, se uma aba do default está liberada
-        // mas ainda não consta na config salva (porque a config foi gravada
-        // ANTES da aba ser criada), adiciona automaticamente.
+        const saved = cfg?.tab_permissions;
+        if (!saved || typeof saved !== "object") {
+          // Sem config salva → mantém defaults (já aplicados no estado inicial).
+          return;
+        }
+        // RESPEITA exatamente o que foi salvo. Se uma role NÃO foi customizada
+        // (chave ausente no cfg), cai para o default daquela role.
+        // CRITICAL: nunca adicionar abas do default em cima do array salvo —
+        // isso anula desmarcações feitas pelo admin.
+        const merged = {};
         for (const role of Object.keys(perms.DEFAULT_TAB_PERMISSIONS)) {
-          const saved = merged[role] || [];
-          const defaults = perms.DEFAULT_TAB_PERMISSIONS[role] || [];
-          const missing = defaults.filter((id) => !saved.includes(id));
-          if (missing.length) merged[role] = [...saved, ...missing];
+          if (Array.isArray(saved[role])) {
+            merged[role] = saved[role];
+          } else {
+            merged[role] = perms.DEFAULT_TAB_PERMISSIONS[role] || [];
+          }
         }
         setTabPerms(merged);
       }).catch(() => { /* ignore */ });
@@ -719,13 +722,22 @@ function AppContent() {
         if (alive && me?.is_super_admin) setIsSuperAdmin(true);
         const cfg = await api.brandingGet().catch(() => null);
         if (!alive) return;
-        const base = cfg?.tab_permissions || _DEFAULT_TAB_PERMS;
-        const merged = { ...base };
+        const saved = cfg?.tab_permissions;
+        if (!saved || typeof saved !== "object") {
+          // Sem config salva → usa defaults
+          setTabPerms(_DEFAULT_TAB_PERMS);
+          return;
+        }
+        // RESPEITA exatamente o que foi salvo. Se uma role NÃO foi customizada
+        // (chave ausente no cfg), aí sim cai para o default daquela role.
+        // Isso garante que desmarcar uma aba do Gestor remova ela DE FATO.
+        const merged = {};
         for (const role of Object.keys(_DEFAULT_TAB_PERMS)) {
-          const saved = merged[role] || [];
-          const defaults = _DEFAULT_TAB_PERMS[role] || [];
-          const missing = defaults.filter((id) => !saved.includes(id));
-          if (missing.length) merged[role] = [...saved, ...missing];
+          if (Array.isArray(saved[role])) {
+            merged[role] = saved[role];
+          } else {
+            merged[role] = _DEFAULT_TAB_PERMS[role] || [];
+          }
         }
         setTabPerms(merged);
       } catch { /* ignore */ }
