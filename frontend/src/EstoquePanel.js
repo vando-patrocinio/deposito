@@ -658,6 +658,10 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
                     </button>
                     {consumables.map((c) => {
                       const qty = t.stock?.[c.id] || 0;
+                      // Insumos de rede (fibras 06/12/24FO) só aparecem em
+                      // técnicos que efetivamente têm saldo (técnicos de rede).
+                      // Mantém o card limpo para técnicos comuns.
+                      if (c.category === "rede" && qty === 0) return null;
                       const lc = qty === 0 ? "#94a3b8"
                               : qty < 3 ? "#d97706" : "#16a34a";
                       return (

@@ -624,7 +624,7 @@ export default function RedeIaMap() {
                     dashArray: cab.type === "drop" ? "6 6" : null,
                   }}>
                   <Popup>
-                    <div style={{ minWidth: 200 }}>
+                    <div style={{ minWidth: 220 }}>
                       <div style={{ fontWeight: 800, marginBottom: 4 }}>
                         Cabo {cab.type.toUpperCase()}
                       </div>
@@ -632,6 +632,24 @@ export default function RedeIaMap() {
                         {cab.fo_count} fibras · {cab.length_m
                           ? `${Math.round(cab.length_m)}m` : "comprimento ?"}
                       </div>
+                      {cab.created_by && (
+                        <div style={{ fontSize: 11, marginTop: 4,
+                                        color: "#475569" }}>
+                          Lançado por <strong>{cab.created_by}</strong>
+                          {cab.created_at && ` · ${new Date(cab.created_at).toLocaleString("pt-BR", {day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"})}`}
+                        </div>
+                      )}
+                      {cab.stok_debit && (
+                        <div style={{ marginTop: 6, padding: "5px 8px",
+                                        background: "#f0fdf4",
+                                        border: "1px solid #bbf7d0",
+                                        borderRadius: 6, fontSize: 11,
+                                        color: "#065f46" }}>
+                          📦 Estoque: <strong>{Math.abs(cab.stok_debit.meters_signed)}m</strong>
+                          {" "}de <strong>{cab.stok_debit.consumable_id.replace("fibra_","").toUpperCase()}</strong>
+                          {" "}debitados de <strong>{cab.stok_debit.location === "empresa" ? "Empresa" : "Técnico"}</strong>
+                        </div>
+                      )}
                       {cab.notes && (
                         <div style={{ fontSize: 11, marginTop: 6, color: "#475569" }}>
                           {cab.notes}

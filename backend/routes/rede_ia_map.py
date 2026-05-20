@@ -46,6 +46,79 @@ router = APIRouter(prefix="/api/rede-ia", tags=["rede_ia_map"])
 CABLE_TYPES = ("drop", "6fo", "12fo", "24fo", "48fo", "96fo")
 CE_TYPES = ("primaria", "secundaria", "terciaria", "emenda_aerea", "emenda_subterranea")
 
+# Mapeia tipo de cabo (mapa) → ID do insumo (stok). Apenas estes geram
+# auto-baixa de estoque ao serem lançados no mapa interativo.
+_CABLE_TYPE_TO_STOK_ID = {
+    "6fo":  "fibra_06fo",
+    "12fo": "fibra_12fo",
+    "24fo": "fibra_24fo",
+}
+
+
+async def _debit_fiber_for_cable(
+    company_id: str, user: dict, cable_type: str, meters: Optional[float],
+    cable_id: str, action: str = "create",
+) -> Optional[dict]:
+    """Lança baixa/devolução de fibra no estoque do criador do cabo.
+
+    - Só atua em cabos de fibra contínua (6fo, 12fo, 24fo). drop/48fo/96fo são ignorados.
+    - Se `user` tem `collaborator_id` (técnico/gestor_rede), debita do estoque
+      DO técnico. Caso contrário (admin/gestor), debita do estoque "empresa".
+    - `action`: 'create'|'delete'|'adjust' apenas logado em history.
+    - Retorna `{location, consumable_id, meters, signed}` (signed=negativo p/ baixa,
+      positivo p/ devolução), ou None se nada foi alterado.
+
+    Não bloqueia se saldo for insuficiente — apenas registra a movimentação
+    (fica negativo). Gestor revisa via Estoque → Histórico (tag=rede_lancamento).
+    """
+    cons_id = _CABLE_TYPE_TO_STOK_ID.get(cable_type)
+    if not cons_id or not meters or meters <= 0:
+        return None
+
+    # Direção do ajuste
+    signed = -float(meters) if action == "create" else float(meters)
+
+    # Localização do estoque
+    collab_id = user.get("collaborator_id")
+    if collab_id:
+        location = collab_id
+        location_label = user.get("name") or "técnico"
+    else:
+        location = "empresa"
+        location_label = "Empresa"
+
+    # Aplica $inc (motor.update_one é atômico)
+    await db.stok_stock.update_one(
+        {"company_id": company_id, "location": location},
+        {"$inc": {cons_id: int(round(signed))},
+         "$setOnInsert": {"company_id": company_id, "location": location}},
+        upsert=True,
+    )
+
+    # Histórico
+    cons_label = {
+        "fibra_06fo": "Fibra 06FO", "fibra_12fo": "Fibra 12FO",
+        "fibra_24fo": "Fibra 24FO",
+    }[cons_id]
+    verb = "Baixa" if action == "create" else "Devolução" if action == "delete" else "Ajuste"
+    await db.stok_history.insert_one({
+        "id": f"hist-{uuid.uuid4().hex[:10]}",
+        "company_id": company_id,
+        "date": now_iso(),
+        "type": "rede_lancamento",
+        "description": (f"{verb} automática de {abs(int(round(signed)))}m de "
+                          f"{cons_label} ({location_label}) — cabo {cable_id} "
+                          f"({cable_type.upper()})"),
+        "user": user.get("name", "?"),
+        "tag": "rede_lancamento",
+        "cable_id": cable_id,
+        "action": action,
+    })
+    return {
+        "location": location, "consumable_id": cons_id,
+        "meters_signed": int(round(signed)),
+    }
+
 
 # ---------------------------------------------------------------------------
 # Models
@@ -349,6 +422,13 @@ async def create_cable(body: CableIn,
     }
     await db.network_cables.insert_one(doc)
     doc.pop("_id", None)
+    # Auto-baixa de estoque (6fo/12fo/24fo) no estoque do criador.
+    debit = await _debit_fiber_for_cable(
+        cid, user, body.type, length_m, doc["id"], action="create")
+    if debit:
+        await db.network_cables.update_one(
+            {"id": doc["id"]}, {"$set": {"stok_debit": debit}})
+        doc["stok_debit"] = debit
     # Notifica gestores de rede
     await _notify_managers(cid, {
         "event": "cable_created",
@@ -375,6 +455,11 @@ def _calculate_cable_length(segments: List[Dict[str, Any]]) -> float:
 async def update_cable(cable_id: str, body: CableIn,
                         user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
     cid = _company(user)
+    # Carrega o cabo atual para calcular diff de estoque (tipo ou comprimento podem ter mudado)
+    prev = await db.network_cables.find_one(
+        {"id": cable_id, "company_id": cid}, {"_id": 0})
+    if not prev:
+        raise HTTPException(404, "Cabo não encontrado")
     fo_map = {"drop": 1, "6fo": 6, "12fo": 12, "24fo": 24, "48fo": 48, "96fo": 96}
     segments = [s if isinstance(s, dict) else s.model_dump() for s in body.segments]
     length_m = body.length_m
@@ -390,6 +475,17 @@ async def update_cable(cable_id: str, body: CableIn,
     )
     if r.matched_count == 0:
         raise HTTPException(404, "Cabo não encontrado")
+    # Ajusta estoque: devolve o antigo e debita o novo (mesmo location)
+    prev_type = prev.get("type")
+    prev_len = prev.get("length_m") or 0
+    if prev_type in _CABLE_TYPE_TO_STOK_ID and prev_len > 0:
+        await _debit_fiber_for_cable(cid, user, prev_type, prev_len, cable_id, action="delete")
+    if body.type in _CABLE_TYPE_TO_STOK_ID and (length_m or 0) > 0:
+        new_debit = await _debit_fiber_for_cable(
+            cid, user, body.type, length_m, cable_id, action="create")
+        if new_debit:
+            await db.network_cables.update_one(
+                {"id": cable_id}, {"$set": {"stok_debit": new_debit}})
     return {"ok": True, "length_m": length_m}
 
 
@@ -397,15 +493,66 @@ async def update_cable(cable_id: str, body: CableIn,
 async def delete_cable(cable_id: str,
                         user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
     cid = _company(user)
+    prev = await db.network_cables.find_one(
+        {"id": cable_id, "company_id": cid}, {"_id": 0})
     r = await db.network_cables.delete_one({"id": cable_id, "company_id": cid})
     if r.deleted_count == 0:
         raise HTTPException(404, "Cabo não encontrado")
+    # Devolve o material ao estoque (refund)
+    if prev and prev.get("type") in _CABLE_TYPE_TO_STOK_ID \
+            and (prev.get("length_m") or 0) > 0:
+        await _debit_fiber_for_cable(
+            cid, user, prev["type"], prev.get("length_m"), cable_id, action="delete")
     return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
 # Position overrides (drag to reposition)
 # ---------------------------------------------------------------------------
+@router.get("/map/fiber-kpi")
+async def fiber_kpi(days: int = Query(7, ge=1, le=365),
+                     user: dict = Depends(require_role(
+                         "administrador", "gestor", "gestor_rede", "auditor"))):
+    """KPIs de fibra lançada no mapa interativo (últimos N dias).
+
+    Retorna total geral, breakdown por tipo (6FO/12FO/24FO) e por técnico/origem.
+    Usado no painel Rede IA pra visão operacional rápida.
+    """
+    from datetime import timedelta
+    cid = _company(user)
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    cur = db.network_cables.find(
+        {"company_id": cid, "created_at": {"$gte": since},
+         "type": {"$in": list(_CABLE_TYPE_TO_STOK_ID.keys())}},
+        {"_id": 0, "type": 1, "length_m": 1, "created_by": 1,
+         "stok_debit": 1, "created_at": 1},
+    )
+    by_type: Dict[str, float] = {"6fo": 0, "12fo": 0, "24fo": 0}
+    by_user: Dict[str, float] = {}
+    total_m = 0.0
+    count = 0
+    async for c in cur:
+        L = float(c.get("length_m") or 0)
+        if L <= 0:
+            continue
+        total_m += L
+        count += 1
+        by_type[c["type"]] = by_type.get(c["type"], 0) + L
+        u = c.get("created_by") or "—"
+        by_user[u] = by_user.get(u, 0) + L
+    return {
+        "days": days,
+        "total_meters": int(round(total_m)),
+        "cables_count": count,
+        "by_type": {k: int(round(v)) for k, v in by_type.items()},
+        "by_user": [
+            {"name": k, "meters": int(round(v))}
+            for k, v in sorted(by_user.items(), key=lambda x: -x[1])
+        ][:10],
+    }
+
+
 @router.post("/map/positions")
 async def save_position(body: PositionIn,
                          user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):

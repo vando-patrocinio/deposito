@@ -191,11 +191,13 @@ function Overview() {
   const [mapData, setMapData] = useState({ vlans: [], ces: [], cables: [] });
   const [techStats, setTechStats] = useState({ by_technician: [], by_branch: [] });
   const [statsPeriod, setStatsPeriod] = useState("all");
+  const [fiberKpi, setFiberKpi] = useState(null);
   useEffect(() => {
     api.redeIaCtosList().then((r) => setCtos(r.items || []));
     api.redeIaPendencies().then((r) => setPend(r.items || []));
     api.redeIaBairros().then((r) => setBairros(r.items || []));
     api.redeIaMapData().then((r) => setMapData(r)).catch(() => {});
+    api.redeIaFiberKpi(7).then(setFiberKpi).catch(() => {});
   }, []);
   useEffect(() => {
     api.redeIaStatsByTechnician(statsPeriod).then(setTechStats).catch(() => {});
@@ -315,6 +317,15 @@ function Overview() {
           unit="km"
           tone="info"
           hint={`${mapData.cables?.length || 0} cabo(s) cadastrado(s)`} />
+        {fiberKpi && (
+          <KpiCard
+            testId="rede-ia-kpi-fiber-week"
+            label="Fibra lançada (7d)"
+            value={fiberKpi.total_meters}
+            unit="m"
+            tone={fiberKpi.total_meters > 0 ? "good" : "info"}
+            hint={`${fiberKpi.cables_count} cabo(s) · 6FO ${fiberKpi.by_type["6fo"]}m · 12FO ${fiberKpi.by_type["12fo"]}m · 24FO ${fiberKpi.by_type["24fo"]}m`} />
+        )}
       </div>
 
       {/* Integração SmartOLT */}

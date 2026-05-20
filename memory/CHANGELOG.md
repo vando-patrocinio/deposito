@@ -1,5 +1,73 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Popup do cabo no mapa + KPI semanal de fibra
+
+### Sumário
+Polish da feature de auto-baixa de fibra: agora o gestor enxerga
+visualmente quanto cada cabo consumiu de estoque e tem KPI agregado
+semanal no painel Rede IA.
+
+### Backend (`rede_ia_map.py`)
+- Novo endpoint `GET /api/rede-ia/map/fiber-kpi?days=N`:
+  - Soma comprimento de cabos 6FO/12FO/24FO criados nos últimos N dias.
+  - Breakdown por tipo + top 10 usuários (criadores).
+  - Acessível a admin/gestor/gestor_rede/auditor.
+
+### Frontend
+- `RedeIaMap.js`: popup do cabo (clique numa polyline) agora exibe:
+  - Quem lançou (created_by) + data formatada PT-BR.
+  - Bloco verde com auto-baixa de estoque: `📦 Estoque: 150m de 12FO debitados de Empresa`.
+- `RedeIaPanel.js`: novo KPI card "Fibra lançada (7d)" com total +
+  breakdown 6FO/12FO/24FO.
+- `api.js`: helper `redeIaFiberKpi(days)`.
+
+### Validação
+- `GET /map/fiber-kpi?days=7` retorna `{total_meters: 452, by_type: {6fo:0, 12fo:150, 24fo:302}, by_user:[{Administrador, 452}]}`.
+- Cabo `cab-f993fda6bc` (12fo, 150m) criado e retornado com `stok_debit: {location:"empresa", consumable_id:"fibra_12fo", meters_signed:-150}` no `/map/data`.
+- KPI card visualmente renderizado em Rede IA → Painel.
+
+
+
+## 2026-05-20 — Auto-baixa de Fibra no mapa interativo + filtro de visibilidade
+
+### Sumário
+As fibras 06FO/12FO/24FO são especificamente para técnicos de rede. Agora:
+1. Auto-debitam do estoque quando um cabo é lançado no mapa interativo (Rede IA).
+2. Ocultadas dos cards de técnicos comuns (só aparecem em quem tem saldo).
+
+### Backend (`routes/rede_ia_map.py`)
+- Helper `_debit_fiber_for_cable(company_id, user, cable_type, meters, cable_id, action)`:
+  - Mapeia `6fo→fibra_06fo`, `12fo→fibra_12fo`, `24fo→fibra_24fo`.
+  - Se user tem `collaborator_id` → debita do estoque DELE.
+  - Caso contrário (admin/gestor) → debita de "empresa".
+  - `action='create'` (baixa) ou `action='delete'` (devolução).
+  - Registra em `stok_history` com tag `rede_lancamento`.
+- `POST /cables` agora chama o helper após inserir; resultado gravado em
+  `cable.stok_debit = {location, consumable_id, meters_signed}`.
+- `PUT /cables/{id}` faz **diff atômico**: devolve antigo + debita novo.
+- `DELETE /cables/{id}` faz refund completo.
+- Tipos `drop`, `48fo`, `96fo` NÃO geram auto-baixa (insumos diferentes / não catalogados).
+
+### Frontend (`EstoquePanel.js`)
+- Cards "Estoque por técnico" agora filtram itens com `c.category === "rede" && qty === 0`.
+- Técnicos sem fibra mostram cards limpos (Fibra 06/12/24FO ocultas).
+- Técnicos com saldo de qualquer fibra continuam exibindo os badges.
+
+### Validação curl end-to-end
+- Saldo inicial empresa Fibra 12FO: **1800m**
+- `POST /cables` (12fo, 50m) → empresa: **1750m** + `stok_debit` no doc do cabo ✅
+- `PUT /cables/{id}` (50m → 100m) → empresa: **1700m** (devolveu 50, debitou 100) ✅
+- `DELETE /cables/{id}` → empresa: **1800m** (refund total) ✅
+- `GET /stok/history?tag=rede_lancamento` retorna 4 entradas com descrição
+  detalhada (mts, localização, cabo_id, ação)
+
+### UI confirmada via screenshot
+- DIOGO HENRIQUE exibe `Fibra 12FO 200` no card
+- Todos os outros técnicos (JUNIOR, JEFFERSON, Eddy, EMANUELLE, Hudson,
+  VANDO, Alpha Tech, Mayara) com cards limpos sem as colunas de fibra
+
+
+
 ## 2026-05-20 — Insumos de Rede (Fibra 06FO/12FO/24FO) + bugfix PracaStockCard
 
 ### Sumário
