@@ -271,6 +271,25 @@ function HistBubble({ ticket }) {
       {ticket.admin_notes && (
         <div style={{ fontSize: 10, color: "#dc2626", marginTop: 4, fontStyle: "italic" }}>📝 {ticket.admin_notes.substring(0, 100)}</div>
       )}
+      {ticket.completion_data?.ping_summary && (
+        <div data-testid={`ticket-ping-summary-${ticket.id}`}
+              style={{
+                fontSize: 10, marginTop: 4, padding: "3px 7px",
+                background: ticket.completion_data.ping_summary.includes("✓")
+                  ? "#ecfdf5" : ticket.completion_data.ping_summary.includes("✗")
+                  ? "#fef2f2" : "#f1f5f9",
+                color: ticket.completion_data.ping_summary.includes("✓")
+                  ? "#065f46" : ticket.completion_data.ping_summary.includes("✗")
+                  ? "#991b1b" : "#475569",
+                border: "1px solid", borderColor: "currentColor",
+                borderRadius: 4, fontWeight: 600,
+                whiteSpace: "nowrap", overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+              title={ticket.completion_data.ping_summary}>
+          🛰 {ticket.completion_data.ping_summary.split("\n")[0].substring(0, 60)}
+        </div>
+      )}
       {ticket.scheduled_time && (
         <div style={{ fontSize: 10, color: "#3b82f6", marginTop: 3 }}>📅 {new Date(ticket.scheduled_time).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</div>
       )}

@@ -172,7 +172,24 @@ export default function PingTestModal({ open, onClose, defaultHost = "", ticketI
         )}
 
         {result && (
-          <PingResultCard result={result} />
+          <>
+            <PingResultCard result={result} />
+            {ticketId && (
+              <div data-testid="ping-saved-on-os" style={{
+                marginTop: 8, padding: "8px 10px",
+                background: "#ecfdf5", border: "1px solid #6ee7b7",
+                borderRadius: 8, fontSize: 11, color: "#065f46",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                📎 <span><strong>Resultado salvo na OS</strong>
+                  <span style={{
+                    marginLeft: 4, fontFamily: "ui-monospace,monospace",
+                    background: "rgba(255,255,255,.7)",
+                    padding: "1px 5px", borderRadius: 3,
+                  }}>{ticketId}</span></span>
+              </div>
+            )}
+          </>
         )}
 
         {history.length > 0 && (
