@@ -44,6 +44,7 @@ export default function LousaQualityNotesPanel() {
   const [showSettings, setShowSettings] = useState(false);
   const [savingCfg, setSavingCfg] = useState(false);
   const [filterGrade, setFilterGrade] = useState(null);
+  const [filterInternal, setFilterInternal] = useState(false);
 
   const load = async () => {
     setLoading(true); setErr("");
@@ -74,7 +75,8 @@ export default function LousaQualityNotesPanel() {
 
   const isEnabled = config?.enabled !== false;
   const items = (data?.items || []).filter(
-    (r) => !filterGrade || r.quality_grade === filterGrade,
+    (r) => (!filterGrade || r.quality_grade === filterGrade)
+        && (!filterInternal || r.internal_close),
   );
 
   return (
@@ -182,7 +184,7 @@ export default function LousaQualityNotesPanel() {
       {/* Resumo */}
       {data?.summary && isEnabled && (
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
+          display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
           gap: 10, marginBottom: 12,
         }}>
           {["bom", "regular", "ruim"].map((g) => {
@@ -210,6 +212,26 @@ export default function LousaQualityNotesPanel() {
               </button>
             );
           })}
+          <button
+            onClick={() => setFilterInternal((v) => !v)}
+            data-testid="quality-filter-internal"
+            title="OS encerradas pelo gestor (sem técnico no local)"
+            style={{
+              padding: 10, border: filterInternal
+                ? "2px solid #b45309" : "1px solid #fcd34d",
+              background: "#fffbeb",
+              borderRadius: 10, cursor: "pointer",
+              textAlign: "left",
+            }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#b45309",
+                            textTransform: "uppercase",
+                            letterSpacing: 0.3 }}>
+              🏢 INTERNO
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#b45309" }}>
+              {data.summary.internal_close || 0}
+            </div>
+          </button>
         </div>
       )}
 
@@ -261,12 +283,27 @@ export default function LousaQualityNotesPanel() {
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a",
+                                display: "flex", alignItems: "center", gap: 6,
+                                flexWrap: "wrap" }}>
                   {r.client_snapshot?.name || "—"}
+                  {r.internal_close && (
+                    <span data-testid={`internal-close-badge-${r.id}`}
+                          title="Fechamento interno: gestor encerrou no lugar do técnico (sem visita física, sem baixa de insumos)."
+                          style={{ fontSize: 9, fontWeight: 800,
+                                   padding: "2px 7px", borderRadius: 999,
+                                   background: "#fef3c7", color: "#92400e",
+                                   border: "1px solid #fcd34d",
+                                   letterSpacing: 0.4,
+                                   textTransform: "uppercase" }}>
+                      🏢 Fechamento Interno
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
                   {r.type} · {r.outcome || "—"}
                   {r.closed_by_name && ` · Técnico: ${r.closed_by_name}`}
+                  {r.internal_close && !r.closed_by_name && ` · Encerrado pelo gestor`}
                 </div>
                 <div style={{ fontSize: 11.5, color: "#475569",
                                 marginTop: 4, fontVariantNumeric: "tabular-nums" }}>

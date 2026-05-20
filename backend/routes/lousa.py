@@ -1755,7 +1755,7 @@ async def quality_notes_list(
     rows = await db.tickets.find(
         {
             "company_id": cid,
-            "status": "finalizada",
+            "status": {"$in": ["finalizada", "encerrada"]},
             "closed_at": {"$gte": cutoff},
             "signal_at_open": {"$ne": None},
             "signal_at_close": {"$ne": None},
@@ -1763,7 +1763,8 @@ async def quality_notes_list(
         {"_id": 0, "id": 1, "client_snapshot": 1, "type": 1,
          "assigned_collaborator_id": 1, "closed_at": 1, "closed_by": 1,
          "signal_at_open": 1, "signal_at_close": 1,
-         "signal_at_open_at": 1, "signal_at_close_at": 1, "outcome": 1},
+         "signal_at_open_at": 1, "signal_at_close_at": 1, "outcome": 1,
+         "admin_action": 1, "completion_data.internal_close": 1},
     ).sort("closed_at", -1).limit(min(limit, 500)).to_list(500)
 
     # Enriquece com nome do técnico
@@ -1775,7 +1776,7 @@ async def quality_notes_list(
         ).to_list(len(coll_ids)):
             coll_map[c["id"]] = c.get("name")
 
-    summary = {"bom": 0, "regular": 0, "ruim": 0}
+    summary = {"bom": 0, "regular": 0, "ruim": 0, "internal_close": 0}
     for r in rows:
         before = float(r["signal_at_open"]["rx_dbm"])
         after = float(r["signal_at_close"]["rx_dbm"])
@@ -1799,7 +1800,12 @@ async def quality_notes_list(
         r["quality_grade"] = grade
         r["quality_reason"] = reason
         r["closed_by_name"] = coll_map.get(r.get("closed_by"))
+        # Fechamento interno (gestor sem técnico no local): bandeira de auditoria
+        cd = r.get("completion_data") or {}
+        r["internal_close"] = bool(cd.get("internal_close")) or r.get("admin_action") == "encerrar"
         summary[grade] += 1
+        if r["internal_close"]:
+            summary["internal_close"] += 1
 
     return {
         "items": rows,
@@ -2617,6 +2623,12 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
         "admin_action": payload.action,
         "admin_notes": payload.notes,
     }
+    # Persiste completion_data (fechamento interno): sinal + observações.
+    # Marcado com internal_close=True para diferenciar de fechamento físico.
+    if payload.action == "encerrar" and payload.completion_data:
+        cd = dict(payload.completion_data)
+        cd.setdefault("internal_close", True)
+        update["completion_data"] = cd
     if payload.action == "reagendar":
         # aceita new_scheduled_time OU (new_date + new_time)
         sched = payload.new_scheduled_time

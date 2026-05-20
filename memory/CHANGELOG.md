@@ -1,5 +1,32 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Selo "Fechamento Interno" na aba Notas de Qualidade
+
+### Frontend (`LousaQualityNotesPanel.js`)
+- Novo card "🏢 INTERNO" no summary (4ª coluna), com contador de OS
+  encerradas pelo gestor.
+- Card clicável → filtra apenas OS internas (`filterInternal`).
+- Badge inline `🏢 Fechamento Interno` (amarelo) ao lado do nome do cliente
+  nas linhas de quality notes — tooltip: *"Fechamento interno: gestor
+  encerrou no lugar do técnico (sem visita física, sem baixa de insumos)"*.
+- Subtitle: quando não houver `closed_by_name`, mostra *"Encerrado pelo
+  gestor"*.
+
+### Backend (`routes/lousa.py`)
+- `admin-close` agora **persiste `completion_data`** no ticket (estava
+  faltando) com flag `internal_close: true` por padrão.
+- Query de quality-notes ampliada para incluir `status="encerrada"`
+  (admin-close) além de `"finalizada"` (técnico via app).
+- Projeção retorna `admin_action` + `completion_data.internal_close`.
+- Cada row recebe campo derivado `internal_close: bool`.
+- Summary ganha contador `internal_close: int`.
+
+### Validação E2E
+- Login `vando@example.com` → Chamados → aba **NOTAS DE QUALIDADE** →
+  card INTERNO renderiza, é clicável, ativa estado filtrado. Smoke tests
+  23/23 OK.
+
+
 ## 2026-05-20 — Fechamento interno (admin) NÃO consome insumos nem ONT
 
 ### Regra de negócio
