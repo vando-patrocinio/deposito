@@ -237,9 +237,24 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
         </Field>
         <Field label="Fornecedor">
           <input value={form.supplier_name}
+                  list="purchase-suppliers-list"
                   onChange={(e) => set("supplier_name", e.target.value)}
                   data-testid="purchase-supplier"
-                  style={inputStyle} placeholder="Ex: Datacom Ltda" />
+                  style={inputStyle}
+                  placeholder="Digite ou escolha (cria novo se não existir)" />
+          <datalist id="purchase-suppliers-list">
+            {(refs.suppliers || []).map((s) => (
+              <option key={s.id} value={s.name}>
+                {s.document || s.cnpj || ""}
+              </option>
+            ))}
+          </datalist>
+          {form.supplier_name && !(refs.suppliers || []).some(
+            (s) => s.name.toLowerCase() === form.supplier_name.toLowerCase()) && (
+            <div style={{ fontSize: 11, color: "#0369a1", marginTop: 4 }}>
+              ℹ️ Fornecedor novo — será cadastrado automaticamente ao salvar.
+            </div>
+          )}
         </Field>
         <Field label="Nº NF">
           <input value={form.invoice_number}

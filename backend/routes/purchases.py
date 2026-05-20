@@ -169,20 +169,75 @@ async def list_purchases(
 
 @router.get("/refs")
 async def get_refs(user: dict = Depends(get_current_user)) -> Dict[str, Any]:
-    """Retorna praças, responsáveis (almoxarifes) e tipos para o form."""
+    """Retorna praças, responsáveis (almoxarifes), fornecedores existentes
+    e tipos para autocomplete no form."""
     _require_purchase_access(user)
     cid = user.get("company_id") or DEMO_COMPANY_ID
     pracas = await db.fin_filiais.find(
         {"company_id": cid, "active": {"$ne": False}}, {"_id": 0}
     ).sort("name", 1).to_list(200)
-    # Almoxarifes (ou qualquer colaborador como fallback) por praça
     colls = await db.collaborators.find(
         {"company_id": cid, "active": {"$ne": False}},
         {"_id": 0, "id": 1, "name": 1, "cargo": 1,
           "warehouse_praca_id": 1},
     ).sort("name", 1).to_list(500)
+    suppliers = await db.fin_suppliers.find(
+        {"company_id": cid, "active": {"$ne": False}},
+        {"_id": 0, "id": 1, "name": 1, "document": 1, "cnpj": 1},
+    ).sort("name", 1).to_list(500)
     return {"pracas": pracas, "collaborators": colls,
+             "suppliers": suppliers,
              "types": list(PURCHASE_TYPES)}
+
+
+def _norm_supplier(name: str) -> str:
+    """Normaliza nome de fornecedor para busca fuzzy."""
+    import unicodedata
+    s = (name or "").strip().upper()
+    s = "".join(c for c in unicodedata.normalize("NFD", s)
+                  if unicodedata.category(c) != "Mn")
+    s = re.sub(r"\b(LTDA|ME|EPP|S/A|SA|EIRELI|MEI)\b", "", s)
+    s = re.sub(r"[^A-Z0-9]+", " ", s).strip()
+    return s
+
+
+async def _find_or_create_supplier(
+    cid: str, name: str, user_email: str,
+) -> Optional[str]:
+    """Encontra fornecedor por nome normalizado; se não existir, cria.
+
+    Retorna o `id` do fornecedor (ou None se nome vazio).
+    """
+    name = (name or "").strip()
+    if not name:
+        return None
+    norm = _norm_supplier(name)
+    if not norm:
+        return None
+    # Busca exata primeiro
+    existing = await db.fin_suppliers.find_one(
+        {"company_id": cid, "name": name}, {"_id": 0, "id": 1})
+    if existing:
+        return existing["id"]
+    # Busca normalizada (compara em memória — fin_suppliers é pequena)
+    async for s in db.fin_suppliers.find(
+            {"company_id": cid}, {"_id": 0, "id": 1, "name": 1}):
+        if _norm_supplier(s.get("name", "")) == norm:
+            return s["id"]
+    # Cria
+    new_id = f"fsup-{uuid.uuid4().hex[:10]}"
+    await db.fin_suppliers.insert_one({
+        "id": new_id,
+        "company_id": cid,
+        "name": name[:200],
+        "active": True,
+        "created_at": now_iso(),
+        "created_by": user_email,
+        "auto_created_from": "central_compras",
+    })
+    logger.info("[purchases] fornecedor auto-criado: %s (%s) cid=%s",
+                  name, new_id, cid)
+    return new_id
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +259,10 @@ async def create_purchase(
         raise HTTPException(403, "Você só pode lançar compras da sua praça")
 
     pid = f"pur-{uuid.uuid4().hex[:10]}"
+    # Resolve/cria fornecedor automaticamente (link com fin_suppliers)
+    supplier_id = await _find_or_create_supplier(
+        cid, payload.supplier_name or "", user.get("email") or "?",
+    )
     doc = {
         "id": pid,
         "company_id": cid,
@@ -211,6 +270,7 @@ async def create_purchase(
         "praca_id": payload.praca_id,
         "responsible_collaborator_id": payload.responsible_collaborator_id,
         "supplier_name": payload.supplier_name,
+        "supplier_id": supplier_id,
         "invoice_number": payload.invoice_number,
         "invoice_date": payload.invoice_date,
         "total_value": payload.total_value,
