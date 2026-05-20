@@ -1457,6 +1457,202 @@ async def _quality_capture_enabled(company_id: str) -> bool:
         return True
 
 
+# ---------------------------------------------------------------------------
+# Auto-Reschedule on Degraded Signal (controlado pelo auditor)
+# ---------------------------------------------------------------------------
+async def _auto_resched_config(company_id: str) -> dict:
+    """Configuração persistida em `lousa_auto_resched_config`.
+
+    Padrões (compatibilidade retro):
+        enabled=False, delay_hours=24, target_role='tecnico_rede',
+        target_collaborator_id=None
+    """
+    doc = await db.lousa_auto_resched_config.find_one(
+        {"company_id": company_id}, {"_id": 0},
+    ) or {}
+    return {
+        "enabled": bool(doc.get("enabled", False)),
+        "delay_hours": int(doc.get("delay_hours", 24)),
+        "target_role": doc.get("target_role") or "tecnico_rede",
+        "target_collaborator_id": doc.get("target_collaborator_id"),
+        "updated_by": doc.get("updated_by"),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+async def _pick_tecnico_rede(company_id: str,
+                              prefer_id: Optional[str] = None) -> Optional[dict]:
+    """Encontra um colaborador de rede para receber o reagendamento."""
+    if prefer_id:
+        c = await db.collaborators.find_one(
+            {"id": prefer_id, "company_id": company_id, "active": {"$ne": False}},
+            {"_id": 0, "id": 1, "name": 1},
+        )
+        if c:
+            return c
+    # Busca por role/cargo "tecnico_rede" no campo `role` ou `cargo`
+    c = await db.collaborators.find_one(
+        {"company_id": company_id, "active": {"$ne": False},
+         "$or": [
+            {"role": {"$regex": "rede", "$options": "i"}},
+            {"cargo": {"$regex": "rede", "$options": "i"}},
+            {"function": {"$regex": "rede", "$options": "i"}},
+         ]},
+        {"_id": 0, "id": 1, "name": 1},
+    )
+    return c
+
+
+async def _maybe_auto_resched_degraded(ticket_id: str, company_id: str) -> None:
+    """Se sinal degradou (|close| > |open|) E auditor ligou o toggle,
+    cria automaticamente um chamado de reinspeção para Técnico de Rede.
+
+    Não falha se algum requisito estiver ausente (skip silencioso).
+    """
+    cfg = await _auto_resched_config(company_id)
+    if not cfg["enabled"]:
+        return
+    t = await db.tickets.find_one(
+        {"id": ticket_id},
+        {"_id": 0, "id": 1, "client_snapshot": 1, "type": 1, "priority": 1,
+         "signal_at_open": 1, "signal_at_close": 1, "completion_data": 1,
+         "company_id": 1},
+    )
+    if not t:
+        return
+    sig_open = (t.get("signal_at_open") or {}).get("rx_dbm")
+    sig_close_obj = t.get("signal_at_close") or {}
+    sig_close = sig_close_obj.get("rx_dbm")
+    if sig_close is None:
+        sig_close = (t.get("completion_data") or {}).get("sinal")
+    if sig_open is None or sig_close is None:
+        return
+    if abs(float(sig_close)) <= abs(float(sig_open)):
+        # Não degradou — pode ter melhorado ou ficado estável. Skip.
+        return
+
+    target = await _pick_tecnico_rede(
+        company_id, cfg.get("target_collaborator_id"))
+    if not target:
+        logger.warning(
+            "[lousa.auto-resched] ticket=%s sinal degradou %.1f→%.1f mas "
+            "não há técnico de rede disponível.",
+            ticket_id, float(sig_open), float(sig_close))
+        return
+
+    # Calcula scheduled_time = agora + delay_hours
+    from datetime import datetime as dt_, timedelta, timezone as tz_
+    sched_dt = dt_.now(tz_.utc) + timedelta(hours=cfg["delay_hours"])
+    sched_iso = sched_dt.isoformat()
+
+    # Próxima posição no quadro do técnico de rede
+    last = await db.tickets.find_one(
+        {"assigned_collaborator_id": target["id"],
+         "company_id": company_id, "status": "pendente"},
+        sort=[("position", -1)], projection={"position": 1, "_id": 0},
+    )
+    next_pos = ((last or {}).get("position") or 0) + 1
+
+    new_id = f"tkt-{uuid.uuid4().hex[:10]}"
+    new_doc = {
+        "id": new_id,
+        "client_id": (t.get("client_snapshot") or {}).get("id"),
+        "client_snapshot": t.get("client_snapshot") or {},
+        "type": "manutencao_rede",
+        "priority": "alta",
+        "scheduled_time": sched_iso,
+        "position": next_pos,
+        "status": "pendente",
+        "assigned_collaborator_id": target["id"],
+        "company_id": company_id,
+        "opened_at": None, "closed_at": None, "closed_by": None,
+        "close_location": None, "outcome": None,
+        "whatsapp_status": "nao_enviado", "whatsapp_last_message": None,
+        "completion_data": None,
+        "admin_action": "auto_resched_degraded",
+        "admin_notes": (
+            f"Reinspeção automática — Sinal degradou de "
+            f"{float(sig_open):.1f} dBm para {float(sig_close):.1f} dBm "
+            f"na OS [{ticket_id}]."
+        ),
+        "auto_resched_from": ticket_id,
+        "ai_triage_pending": False,
+        "signal_at_open": None, "signal_at_open_at": None,
+        "signal_at_close": None, "signal_at_close_at": None,
+        "created_at": now_iso(),
+    }
+    await db.tickets.insert_one(dict(new_doc))
+    await _log_ticket_action(
+        ticket_id=new_id, action="auto_resched_degraded",
+        actor_id="system", actor_name="Sistema (auto)",
+        actor_role="system",
+        details=(f"Reagendada automaticamente a partir de {ticket_id} · "
+                  f"sinal {float(sig_open):.1f} → {float(sig_close):.1f} dBm"),
+        company_id=company_id,
+    )
+    logger.info(
+        "[lousa.auto-resched] %s → %s (téc rede %s) sinal %.1f→%.1f",
+        ticket_id, new_id, target["name"],
+        float(sig_open), float(sig_close))
+
+
+class AutoReschedConfigIn(BaseModel):
+    enabled: bool
+    delay_hours: Optional[int] = 24
+    target_collaborator_id: Optional[str] = None
+
+
+@router.get("/lousa/auto-resched-config")
+async def get_auto_resched_config(
+        user: dict = Depends(require_role("auditor", "administrador"))):
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _auto_resched_config(company_id)
+    # Anexa lista de técnicos de rede pra UI
+    rede_candidates = await db.collaborators.find(
+        {"company_id": company_id, "active": {"$ne": False},
+         "$or": [
+            {"role": {"$regex": "rede", "$options": "i"}},
+            {"cargo": {"$regex": "rede", "$options": "i"}},
+            {"function": {"$regex": "rede", "$options": "i"}},
+         ]},
+        {"_id": 0, "id": 1, "name": 1},
+    ).limit(20).to_list(20)
+    cfg["rede_candidates"] = rede_candidates
+    return cfg
+
+
+@router.put("/lousa/auto-resched-config")
+async def set_auto_resched_config(payload: AutoReschedConfigIn,
+        user: dict = Depends(require_role("auditor", "administrador"))):
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    delay = max(0, min(int(payload.delay_hours or 24), 168))  # 0..168h (1 sem)
+    doc = {
+        "company_id": company_id,
+        "enabled": bool(payload.enabled),
+        "delay_hours": delay,
+        "target_role": "tecnico_rede",
+        "target_collaborator_id": payload.target_collaborator_id,
+        "updated_by": user.get("name") or user.get("email"),
+        "updated_at": now_iso(),
+    }
+    await db.lousa_auto_resched_config.update_one(
+        {"company_id": company_id},
+        {"$set": doc}, upsert=True,
+    )
+    await _log_ticket_action(
+        ticket_id="-", action="auto_resched_config",
+        actor_id=user.get("id", "auditor"),
+        actor_name=user.get("name", "auditor"),
+        actor_role=user.get("role", "auditor"),
+        details=(f"Auto-resched ON sinal degradado · "
+                  f"enabled={payload.enabled} delay={delay}h "
+                  f"target={payload.target_collaborator_id or 'auto'}"),
+        company_id=company_id,
+    )
+    cfg = await _auto_resched_config(company_id)
+    return cfg
+
+
 async def _capture_signal_snapshot(ticket_id: str, company_id: str,
                                        moment: str) -> Optional[dict]:
     """Captura snapshot do sinal SmartOLT no chamado e grava em
@@ -2130,6 +2326,12 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
     except Exception as e:
         logger.warning("[lousa] coaching check falhou: %s", e)
 
+    # Auto-reschedule p/ Técnico de Rede se sinal degradou (honra toggle)
+    try:
+        await _maybe_auto_resched_degraded(ticket_id, company_id)
+    except Exception as e:
+        logger.warning("[lousa] auto-resched degraded falhou: %s", e)
+
     result = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
     # Anexa warnings pra exibir no app
     result["_warnings"] = {
@@ -2311,6 +2513,11 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
     # Quality notes — snapshot do sinal NO FECHAMENTO (SmartOLT live, honra toggle)
     company_id = t.get("company_id") or DEMO_COMPANY_ID
     await _capture_signal_snapshot(ticket_id, company_id, "close")
+    # Auto-reschedule p/ Técnico de Rede se sinal degradou (honra toggle)
+    try:
+        await _maybe_auto_resched_degraded(ticket_id, company_id)
+    except Exception as e:
+        logger.warning("[lousa] auto-resched degraded falhou: %s", e)
     # Coaching automático — mesmo gatilho do endpoint público
     try:
         from services.lousa_coaching import check_ping_skip_streak

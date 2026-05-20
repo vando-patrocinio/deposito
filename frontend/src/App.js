@@ -1013,7 +1013,7 @@ function AppContent() {
       ) : (
         <>
           {view === "dashboard" && <DashboardPanel />}
-          {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} />}
+          {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} currentUser={user} />}
           {view === "estoque" && <EstoquePanel currentUser={user} />}
           {view === "central-compras" && <CentralComprasPanel currentUser={user} />}
           {view === "ai-ranking" && <AiRankingPanel />}

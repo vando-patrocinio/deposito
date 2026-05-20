@@ -1017,6 +1017,11 @@ export const api = {
     client.post(`/rede-ia/cables/bulk-delete`, data).then((r) => r.data),
   redeIaCableDelete: (cable_id) =>
     client.delete(`/rede-ia/cables/${cable_id}`).then((r) => r.data),
+  // Auto-reschedule on degraded signal (controlado pelo auditor)
+  lousaAutoReschedGet: () =>
+    client.get(`/lousa/auto-resched-config`).then((r) => r.data),
+  lousaAutoReschedSet: (data) =>
+    client.put(`/lousa/auto-resched-config`, data).then((r) => r.data),
   redeIaBairrosPublic: (collab_id) =>
     client.get(`/rede-ia/public/bairros/${collab_id}`).then((r) => r.data),
   redeIaBairroCreate: (data) => client.post(`/rede-ia/bairros`, data).then((r) => r.data),

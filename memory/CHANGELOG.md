@@ -1,5 +1,57 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Auto-Reagendamento de OS com Sinal Degradado (toggle do auditor)
+
+### Sumário
+Auditor pode ligar/desligar uma automação: quando uma OS é finalizada com
+sinal degradado (`|sinal_close| > |sinal_open|`), o sistema cria automaticamente
+uma OS de **reinspeção** atribuída a um **Técnico de Rede**, agendada
+para +24h (configurável).
+
+### Backend (`routes/lousa.py`)
+- `_auto_resched_config(company_id)` → lê config persistida em
+  `lousa_auto_resched_config` (default: `enabled=False`, `delay_hours=24`).
+- `_pick_tecnico_rede(company_id)` → encontra colaborador ativo com
+  `role|cargo|function` matching "rede" (regex), com preferência por
+  `target_collaborator_id` se configurado.
+- `_maybe_auto_resched_degraded(ticket_id, company_id)`:
+  - Verifica toggle ligado.
+  - Compara magnitudes do sinal (open vs close — usa
+    `completion_data.sinal` se `signal_at_close` ausente).
+  - Cria novo `ticket` `type=manutencao_rede`, `priority=alta`,
+    `admin_action=auto_resched_degraded`, com `admin_notes` autodescritivo.
+  - Posiciona no final da coluna do técnico de rede + agenda
+    `scheduled_time = now + delay_hours`.
+  - Audit trail em `_log_ticket_action`.
+- Hook adicionado em ambos os pontos de fechamento:
+  - `public_finalize_ticket` (rota técnico/mobile)
+  - `admin-close` (rota admin/desktop)
+- Endpoints expostos:
+  - `GET  /api/lousa/auto-resched-config` (auditor/administrador)
+  - `PUT  /api/lousa/auto-resched-config` (auditor/administrador)
+  - GET inclui `rede_candidates` (lista de colaboradores) para popular UI.
+
+### Frontend (`LousaAdminPanel.js`)
+- LousaAdminPanel agora recebe `currentUser`.
+- Novo botão na toolbar (grupo "Operação", visível só ao auditor/admin/super):
+  - Etiqueta dinâmica "🟢 Auto-rede ON" / "⚪ Auto-rede OFF".
+  - Cor verde quando ligado.
+- Modal `AutoReschedConfigModal`:
+  - Toggle Ligado/Desligado.
+  - Botões de delay (12h/24h/48h/72h).
+  - Select de técnico de rede (Automático ou específico).
+  - Aviso amarelo se não há candidatos cadastrados.
+- `api.js`: helpers `lousaAutoReschedGet` + `lousaAutoReschedSet`.
+
+### Validação
+- Curl: Vando (auditor+super_admin) lê/grava config; gestor recebe 403.
+- Curl: simulado com `_maybe_auto_resched_degraded("tkt-3560eb4f38", ...)`
+  → criou `tkt-9ee598e3f1` (manutencao_rede, alta, +24h, DIOGO HENRIQUE).
+- Screenshot: botão "Auto-rede ON" verde na toolbar do Vando, modal abre
+  com checkbox marcado e seletor de delay/técnico.
+
+
+
 ## 2026-05-20 — Sinal na OS: badge antes/depois + comparativo
 
 ### Sumário

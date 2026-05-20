@@ -77,7 +77,17 @@ const ACTION_LABEL = {
   transferida: { icon: "↔", color: "#0d9488", label: "Transferida" },
 };
 
-export default function LousaAdminPanel({ systemStatus = { offline: false, drift_blocked: false } }) {
+export default function LousaAdminPanel({ systemStatus = { offline: false, drift_blocked: false }, currentUser = null }) {
+  const isAuditor = !!currentUser
+    && (currentUser.is_super_admin
+        || (currentUser.role || "").toLowerCase() === "auditor"
+        || (currentUser.role || "").toLowerCase() === "administrador");
+  const [autoReschedCfg, setAutoReschedCfg] = useState(null);
+  const [showAutoReschedModal, setShowAutoReschedModal] = useState(false);
+  useEffect(() => {
+    if (!isAuditor) return;
+    api.lousaAutoReschedGet().then(setAutoReschedCfg).catch(() => {});
+  }, [isAuditor]);
   const { user } = useAuth();
   const [grid, setGrid] = useState({ columns: [], sla_blink_when_overdue: true, sla_warning_pct: 80 });
   const [collabs, setCollabs] = useState([]);
@@ -572,6 +582,23 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               <span style={{ fontSize: 13 }}>🚨</span>
               <span>Liberar bolha</span>
             </ToolbarBtn>
+            {isAuditor && (
+              <ToolbarBtn
+                onClick={() => setShowAutoReschedModal(true)}
+                data-testid="lousa-auto-resched-toggle"
+                title={autoReschedCfg?.enabled
+                  ? "Auto-reagendar OS com sinal degradado: LIGADO (clique para configurar)"
+                  : "Auto-reagendar OS com sinal degradado: DESLIGADO (clique para ligar)"}
+                accent={autoReschedCfg?.enabled ? "success" : "neutral"}
+              >
+                <span style={{ fontSize: 13 }}>
+                  {autoReschedCfg?.enabled ? "🟢" : "⚪"}
+                </span>
+                <span>
+                  Auto-rede {autoReschedCfg?.enabled ? "ON" : "OFF"}
+                </span>
+              </ToolbarBtn>
+            )}
           </ToolbarGroup>
 
           {/* ─── Grupo 4: CTA + Overflow ─── */}
@@ -809,6 +836,13 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         <ReleaseStuckBubbleModal
           onClose={() => setShowReleaseStuck(false)}
           onReleased={refresh}
+        />
+      )}
+      {showAutoReschedModal && (
+        <AutoReschedConfigModal
+          initial={autoReschedCfg}
+          onClose={() => setShowAutoReschedModal(false)}
+          onSaved={(cfg) => { setAutoReschedCfg(cfg); setShowAutoReschedModal(false); }}
         />
       )}
       {showSentinela && (
@@ -2726,3 +2760,163 @@ function TimelineSlot({ slot, isCurrentHour, techId, maxPerSlot, onSlotDrop, dra
     </div>
   );
 }
+
+
+/* ============================================================
+ * Auto-Reschedule on Degraded Signal — Modal de configuração
+ * ============================================================ */
+function AutoReschedConfigModal({ initial, onClose, onSaved }) {
+  const [cfg, setCfg] = useState(initial || {
+    enabled: false, delay_hours: 24,
+    target_collaborator_id: null, rede_candidates: [],
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (initial) setCfg(initial);
+  }, [initial]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const next = await api.lousaAutoReschedSet({
+        enabled: cfg.enabled,
+        delay_hours: cfg.delay_hours,
+        target_collaborator_id: cfg.target_collaborator_id || null,
+      });
+      onSaved(next);
+    } catch (e) {
+      alert(e?.response?.data?.detail || e.message);
+    } finally { setSaving(false); }
+  };
+
+  const candidates = cfg.rede_candidates || [];
+
+  return (
+    <div onClick={onClose} data-testid="auto-resched-modal"
+          style={{ position: "fixed", inset: 0, zIndex: 1100,
+                    background: "rgba(0,0,0,.55)",
+                    display: "flex", alignItems: "center",
+                    justifyContent: "center", padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()}
+            style={{ background: "var(--bg-canvas)", padding: 24,
+                      borderRadius: 12, maxWidth: 520, width: "100%",
+                      border: "2px solid #0f766e",
+                      boxShadow: "0 20px 50px rgba(0,0,0,.3)" }}>
+        <h3 style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 800,
+                        color: "#0f172a" }}>
+          🟢 Auto-reagendar OS com sinal degradado
+        </h3>
+        <p style={{ fontSize: 12, color: "var(--text-muted)",
+                      marginBottom: 16 }}>
+          Quando um técnico finaliza uma OS e o sinal piora
+          (<strong>|sinal fechamento| &gt; |sinal abertura|</strong>),
+          o sistema cria automaticamente uma nova OS de reinspeção
+          atribuída a um técnico de rede.
+        </p>
+
+        {/* Toggle */}
+        <label data-testid="auto-resched-enable-label"
+                style={{ display: "flex", justifyContent: "space-between",
+                          alignItems: "center", padding: "10px 12px",
+                          background: cfg.enabled ? "#ecfdf5" : "#f1f5f9",
+                          border: `1px solid ${cfg.enabled ? "#6ee7b7" : "#cbd5e1"}`,
+                          borderRadius: 8, marginBottom: 14,
+                          cursor: "pointer" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 13,
+                              color: cfg.enabled ? "#065f46" : "#475569" }}>
+              {cfg.enabled ? "🟢 Ligado" : "⚪ Desligado"}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              {cfg.enabled
+                ? "Próximas OS com sinal degradado serão reagendadas automaticamente."
+                : "Nenhuma ação automática enquanto desligado."}
+            </div>
+          </div>
+          <input type="checkbox"
+                    data-testid="auto-resched-toggle-input"
+                    checked={!!cfg.enabled}
+                    onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })}
+                    style={{ width: 36, height: 20, cursor: "pointer" }} />
+        </label>
+
+        {/* Delay */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", fontSize: 11,
+                            fontWeight: 700, color: "var(--text-secondary)",
+                            textTransform: "uppercase", letterSpacing: 0.5,
+                            marginBottom: 6 }}>
+            Reagendar para daqui a quantas horas
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[12, 24, 48, 72].map((h) => (
+              <button key={h} type="button"
+                        data-testid={`auto-resched-delay-${h}`}
+                        onClick={() => setCfg({ ...cfg, delay_hours: h })}
+                        style={{ flex: 1, padding: "8px 0", borderRadius: 6,
+                                  border: `1px solid ${cfg.delay_hours === h ? "#0f766e" : "#cbd5e1"}`,
+                                  background: cfg.delay_hours === h ? "#0f766e" : "white",
+                                  color: cfg.delay_hours === h ? "white" : "#0f172a",
+                                  fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                {h}h
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Target */}
+        <div style={{ marginBottom: 18 }}>
+          <label style={{ display: "block", fontSize: 11,
+                            fontWeight: 700, color: "var(--text-secondary)",
+                            textTransform: "uppercase", letterSpacing: 0.5,
+                            marginBottom: 6 }}>
+            Técnico de rede que receberá a OS
+          </label>
+          <select value={cfg.target_collaborator_id || ""}
+                    data-testid="auto-resched-target-select"
+                    onChange={(e) => setCfg({
+                      ...cfg,
+                      target_collaborator_id: e.target.value || null,
+                    })}
+                    style={{ width: "100%", padding: "8px 10px",
+                              borderRadius: 6, border: "1px solid #cbd5e1",
+                              fontSize: 13 }}>
+            <option value="">Automático (primeiro disponível)</option>
+            {candidates.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          {candidates.length === 0 && (
+            <div style={{ fontSize: 10, color: "#92400e",
+                            background: "#fffbeb", padding: "5px 8px",
+                            borderRadius: 4, marginTop: 6, border: "1px solid #fcd34d" }}>
+              ⚠ Nenhum colaborador com cargo/role contendo &quot;rede&quot;.
+              Cadastre técnicos de rede no painel de Colaboradores.
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onClose}
+                    style={{ padding: "8px 18px", background: "white",
+                              border: "1px solid #cbd5e1", borderRadius: 6,
+                              fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+            Cancelar
+          </button>
+          <button onClick={save}
+                    data-testid="auto-resched-save"
+                    disabled={saving}
+                    style={{ padding: "8px 18px", background: "#0f766e",
+                              color: "white", border: "none",
+                              borderRadius: 6, fontWeight: 700, fontSize: 12,
+                              cursor: saving ? "wait" : "pointer",
+                              opacity: saving ? 0.7 : 1 }}>
+            {saving ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
