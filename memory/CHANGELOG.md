@@ -1,5 +1,55 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Smoke Tests P0 (Estoque + Balanço + Rede + Auditoria)
+
+### Sumário
+Suite de smoke tests automatizados executados em **12s** com **23/23 PASS**.
+Cobertura das features implementadas nesta sessão. Resolve a recorrência #5
+sobre testes ausentes.
+
+### Arquivos criados
+- `/app/backend/tests/test_estoque_smoke.py` (9 testes)
+  - Catalog expõe fibra_06fo/12fo/24fo (unit=m, category=rede)
+  - Dashboard, onts, technicians, praca-summary, stock
+  - Gestor pode ler dashboard
+  - Compra bobina + transfer pra técnico → saldos batem
+- `/app/backend/tests/test_balanco_smoke.py` (4 testes)
+  - Start session → cleanup
+  - Fluxo completo: start → scan (com duplicação) → finalize → approve por vando
+  - Modo cego oculta `expected_macs` no GET durante counting
+  - Separation of duties: gestor 403 ao aprovar
+- `/app/backend/tests/test_rede_fiber_smoke.py` (10 testes)
+  - Create cabo 12FO debita empresa (`stok_debit` no doc)
+  - Update faz diff atômico (devolve antigo + debita novo)
+  - Delete refund completo
+  - DROP NÃO debita fibra (validação negativa)
+  - `/map/fiber-kpi` retorna timeline + by_type + by_user
+  - `/map/fiber-alerts` retorna severidade ordenada
+  - Gestor 403 em bulk-delete
+  - Auditor sem confirm_token: 400
+  - Auditor bulk-delete por IDs faz refund de 2 cabos 24FO
+  - Auditor varredura por tipo com token apaga e devolve fibra
+- `/app/backend/tests/run_smoke.sh` — script wrapper
+
+### Executar
+```bash
+bash /app/backend/tests/run_smoke.sh
+# OU explicitamente:
+REACT_APP_BACKEND_URL=https://... python3 -m pytest \
+  backend/tests/test_{estoque,balanco,rede_fiber}_smoke.py -v
+```
+
+### Resultado
+```
+collected 23 items
+test_estoque_smoke.py .........             [ 39%]
+test_balanco_smoke.py ....                  [ 56%]
+test_rede_fiber_smoke.py ..........         [100%]
+========== 23 passed in 12.12s ==========
+```
+
+
+
 ## 2026-05-20 — Auditoria de Lançamentos (apagar individual/lote)
 
 ### Sumário
