@@ -230,7 +230,15 @@ async def recurrent_insights(days: int = 30, min_count: int = 3,
     )
     chat = _new_chat(SYS_INSIGHTS)
     try:
-        raw = await chat.send_message(UserMessage(text=prompt))
+        # Timeout duro de 25s — se LLM travar, devolve sem IA em vez de
+        # deixar a UI esperando o gateway derrubar.
+        raw = await asyncio.wait_for(
+            chat.send_message(UserMessage(text=prompt)), timeout=25.0)
+    except asyncio.TimeoutError:
+        logger.warning("recurrent_insights llm timeout 25s")
+        return {"period_days": days, "min_count": min_count, "alerts": alerts,
+                "ai": {"summary": "IA demorou demais para responder (>25s). Listando defeitos crus.",
+                       "bullets": [], "top_priority": None, "error": "llm_timeout"}}
     except Exception as e:
         logger.warning("recurrent_insights llm failed: %s", e)
         # Fallback gracioso: devolve sem IA
@@ -352,7 +360,16 @@ async def collaborator_health(cid: str, days: int = 60,
     )
     chat = _new_chat(SYS_HEALTH)
     try:
-        raw = await chat.send_message(UserMessage(text=prompt))
+        raw = await asyncio.wait_for(
+            chat.send_message(UserMessage(text=prompt)), timeout=25.0)
+    except asyncio.TimeoutError:
+        logger.warning("collaborator_health llm timeout 25s")
+        return {"collaborator": coll, "period_days": days, "history_count": len(rows),
+                "ai": {"score": None, "status": "atenção",
+                       "summary": "IA demorou demais (>25s).",
+                       "trend": "estável", "open_critical": [],
+                       "next_action": {"what": "Revisar checklists manualmente", "when": "agora"},
+                       "error": "llm_timeout"}}
     except Exception as e:
         logger.warning("collaborator_health llm failed: %s", e)
         return {"collaborator": coll, "period_days": days, "history_count": len(rows),
