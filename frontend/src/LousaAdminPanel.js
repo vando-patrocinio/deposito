@@ -2666,16 +2666,22 @@ function ClosedNotesPdfPopover({ onClose }) {
   const [end, setEnd] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [previewUrl, setPreviewUrl] = useState(null);
 
   useEffect(() => {
     const onDoc = (e) => {
+      if (previewUrl) return;
       if (!e.target.closest?.("[data-pdf-pop]")) onClose();
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
-  }, [onClose]);
+  }, [onClose, previewUrl]);
 
-  const download = async () => {
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  const generate = async () => {
     setErr(""); setBusy(true);
     try {
       const params = new URLSearchParams({ period });
@@ -2688,19 +2694,85 @@ function ClosedNotesPdfPopover({ onClose }) {
         { responseType: "blob" },
       );
       const url = URL.createObjectURL(r.data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `fechamento_notas_${period}_${new Date()
-          .toISOString().slice(0, 10)}.pdf`;
-      document.body.appendChild(a);
-      a.click(); a.remove();
-      URL.revokeObjectURL(url);
-      onClose();
+      setPreviewUrl(url);
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message || "Falha ao gerar PDF");
     } finally { setBusy(false); }
   };
 
+  const downloadFromPreview = () => {
+    if (!previewUrl) return;
+    const a = document.createElement("a");
+    a.href = previewUrl;
+    a.download = `fechamento_notas_${period}_${new Date()
+        .toISOString().slice(0, 10)}.pdf`;
+    document.body.appendChild(a);
+    a.click(); a.remove();
+  };
+
+  // ===== Modal de preview com iframe =====
+  if (previewUrl) {
+    return (
+      <div data-testid="lousa-pdf-preview-modal"
+            style={{
+              position: "fixed", inset: 0, zIndex: 9999,
+              background: "rgba(15,23,42,0.7)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: 20,
+            }}>
+        <div style={{
+          background: "#fff", borderRadius: 12,
+          width: "min(95vw, 1100px)", height: "min(92vh, 800px)",
+          display: "flex", flexDirection: "column", overflow: "hidden",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center",
+                          justifyContent: "space-between", padding: 14,
+                          borderBottom: "1px solid #e2e8f0" }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>
+                📄 Relatório PDF — Pré-visualização
+              </div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                Período: {{
+                  today: "Hoje", yesterday: "Ontem", week: "Últimos 7 dias",
+                  custom: `${start} → ${end}`,
+                }[period]}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button data-testid="lousa-pdf-preview-download"
+                      onClick={downloadFromPreview}
+                      style={{ padding: "8px 14px", borderRadius: 8,
+                                background: "linear-gradient(135deg,#0f766e,#0891b2)",
+                                color: "#fff", border: 0, fontSize: 12,
+                                fontWeight: 700, cursor: "pointer",
+                                display: "inline-flex", alignItems: "center",
+                                gap: 6 }}>
+                ⬇ Baixar PDF
+              </button>
+              <button data-testid="lousa-pdf-preview-close"
+                      onClick={() => { setPreviewUrl(null); onClose(); }}
+                      style={{ padding: "8px 14px", borderRadius: 8,
+                                background: "#fff", border: "1px solid #cbd5e1",
+                                color: "#475569", fontSize: 12, fontWeight: 700,
+                                cursor: "pointer" }}>
+                ✕ Fechar
+              </button>
+            </div>
+          </div>
+          <iframe
+            data-testid="lousa-pdf-preview-iframe"
+            src={previewUrl}
+            title="Pré-visualização PDF"
+            style={{ flex: 1, width: "100%", border: 0 }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ===== Popover de configuração =====
   return (
     <div data-pdf-pop data-testid="lousa-pdf-popover"
           style={{
@@ -2756,14 +2828,14 @@ function ClosedNotesPdfPopover({ onClose }) {
           ⚠ {err}
         </div>
       )}
-      <button data-testid="lousa-pdf-download"
-              onClick={download} disabled={busy}
+      <button data-testid="lousa-pdf-generate"
+              onClick={generate} disabled={busy}
               style={{ width: "100%", padding: "10px 12px", borderRadius: 8,
                         background: busy ? "#94a3b8"
                             : "linear-gradient(135deg,#0f766e,#0891b2)",
                         color: "#fff", border: 0, fontSize: 13, fontWeight: 700,
                         cursor: busy ? "wait" : "pointer" }}>
-        {busy ? "Gerando…" : "⬇ Baixar PDF"}
+        {busy ? "Gerando…" : "👁 Visualizar PDF"}
       </button>
     </div>
   );
