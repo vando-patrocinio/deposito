@@ -35,7 +35,7 @@ class SmartoltConfig(BaseModel):
     enabled: bool = False
     subdomain: str = ""           # ex.: "ligofibra"
     api_key: str = ""             # X-Token
-    sync_interval_minutes: int = Field(default=240, ge=15, le=1440)  # 4h default
+    sync_interval_minutes: int = Field(default=360, ge=60, le=1440)  # 6h default, mín 1h
     signal_cache_seconds: int = Field(default=60, ge=10, le=3600)
     timeout_seconds: int = Field(default=20, ge=5, le=120)
     last_sync_at: Optional[str] = None
@@ -46,7 +46,7 @@ class SmartoltConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
     subdomain: Optional[str] = None
     api_key: Optional[str] = None
-    sync_interval_minutes: Optional[int] = Field(default=None, ge=15, le=1440)
+    sync_interval_minutes: Optional[int] = Field(default=None, ge=60, le=1440)
     signal_cache_seconds: Optional[int] = Field(default=None, ge=10, le=3600)
     timeout_seconds: Optional[int] = Field(default=None, ge=5, le=120)
 
@@ -106,20 +106,86 @@ def _base_url(cfg: SmartoltConfig) -> str:
     return f"https://{sub}.smartolt.com/api"
 
 
+async def _is_rate_limited(company_id: str) -> Optional[str]:
+    """Retorna a string ISO `rate_limited_until` se a empresa ainda está
+    bloqueada por rate-limit no SmartOLT. Caso contrário retorna None.
+    """
+    cfg = await db.smartolt_config.find_one({"company_id": company_id},
+                                                  {"_id": 0, "rate_limited_until": 1})
+    if not cfg:
+        return None
+    until = cfg.get("rate_limited_until")
+    if not until:
+        return None
+    try:
+        from datetime import datetime as _dt
+        dt = _dt.fromisoformat(str(until).replace("Z", "+00:00"))
+        if dt.timestamp() > time.time():
+            return until
+    except Exception:
+        return None
+    # Expirou — limpa
+    await db.smartolt_config.update_one(
+        {"company_id": company_id},
+        {"$unset": {"rate_limited_until": 1}},
+    )
+    return None
+
+
+async def _mark_rate_limited(company_id: str, seconds: int = 3600) -> None:
+    """Marca a empresa como bloqueada por `seconds` segundos (default 1h).
+    Usado quando SmartOLT responde 403 com rate_limit_exceeded.
+    """
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    until = _dt.now(_tz.utc) + _td(seconds=seconds)
+    await db.smartolt_config.update_one(
+        {"company_id": company_id},
+        {"$set": {"rate_limited_until": until.isoformat()}},
+    )
+    logger.warning("[smartolt] company=%s pausada por %ds (rate_limit_exceeded)",
+                     company_id, seconds)
+
+
 async def _http_get(cfg: SmartoltConfig, path: str) -> Dict[str, Any]:
+    # Circuit-breaker: respeita rate limit anterior
+    if cfg.company_id:
+        rl = await _is_rate_limited(cfg.company_id)
+        if rl:
+            raise HTTPException(
+                429, f"SmartOLT em pausa por rate-limit até {rl}. "
+                "Aguarde o desbloqueio ou ajuste o intervalo de sync.")
     url = f"{_base_url(cfg)}{path}"
     async with httpx.AsyncClient(timeout=cfg.timeout_seconds) as client:
         r = await client.get(url, headers={"X-Token": cfg.api_key})
+        # 403 do SmartOLT (rate-limit, token inválido ou IP bloqueado) →
+        # ativa circuit-breaker. Como o body pode vir vazio, qualquer 403
+        # já é tratado como motivo pra pausar 1h.
+        if r.status_code == 403:
+            if cfg.company_id:
+                await _mark_rate_limited(cfg.company_id, 3600)
+            raise HTTPException(
+                429, "SmartOLT recusou conexão (403). Provavelmente "
+                "rate-limit horário, token inválido ou IP bloqueado. "
+                "Sync pausado por 1h.")
         r.raise_for_status()
         return r.json()
 
 
 async def _http_post(cfg: SmartoltConfig, path: str,
                       payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if cfg.company_id:
+        rl = await _is_rate_limited(cfg.company_id)
+        if rl:
+            raise HTTPException(
+                429, f"SmartOLT em pausa por rate-limit até {rl}.")
     url = f"{_base_url(cfg)}{path}"
     async with httpx.AsyncClient(timeout=cfg.timeout_seconds) as client:
         r = await client.post(url, headers={"X-Token": cfg.api_key},
                                 json=payload or {})
+        if r.status_code == 403:
+            if cfg.company_id:
+                await _mark_rate_limited(cfg.company_id, 3600)
+            raise HTTPException(429, "SmartOLT 403 — sync pausado por 1h.")
         r.raise_for_status()
         return r.json()
 
@@ -131,7 +197,24 @@ async def _http_post(cfg: SmartoltConfig, path: str,
 async def get_settings(user: dict = Depends(require_role("gestor"))):
     cid = user.get("company_id") or DEMO_COMPANY_ID
     cfg = await _get_config(cid)
-    return _public(cfg)
+    out = _public(cfg)
+    # Inclui status do rate-limit
+    rl_doc = await db.smartolt_config.find_one(
+        {"company_id": cid}, {"_id": 0, "rate_limited_until": 1})
+    out["rate_limited_until"] = (rl_doc or {}).get("rate_limited_until")
+    return out
+
+
+@router.post("/clear-rate-limit")
+async def clear_rate_limit(user: dict = Depends(require_role("gestor"))):
+    """Limpa o circuit-breaker de rate-limit manualmente (útil para testes
+    ou se o admin sabe que o limite foi reposto)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    await db.smartolt_config.update_one(
+        {"company_id": cid},
+        {"$unset": {"rate_limited_until": 1}},
+    )
+    return {"cleared": True}
 
 
 @router.put("/settings")
@@ -699,6 +782,9 @@ async def _worker_loop() -> None:
                 except Exception:
                     continue
                 cid = cfg.company_id
+                # Circuit-breaker: pula se em pausa por rate-limit
+                if await _is_rate_limited(cid):
+                    continue
                 interval = cfg.sync_interval_minutes * 60
                 if cid in last_run and (now - last_run[cid]) < interval:
                     continue
@@ -706,6 +792,12 @@ async def _worker_loop() -> None:
                 try:
                     res = await _do_sync(cid, cfg)
                     logger.info("[smartolt] worker sync %s — %s", cid, res)
+                except HTTPException as he:
+                    if he.status_code == 429:
+                        logger.info("[smartolt] worker %s pausado por rate-limit", cid)
+                    else:
+                        logger.warning("[smartolt] worker sync falhou %s: %s",
+                                          cid, he.detail)
                 except Exception as e:
                     logger.warning("[smartolt] worker sync falhou %s: %s", cid, e)
         except Exception as e:
