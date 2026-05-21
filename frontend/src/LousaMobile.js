@@ -1127,7 +1127,27 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   const cid = ticket.assigned_collaborator_id;
   const isInstall = ticket.type === "instalacao" || ticket.type === "troca_endereco";
   const isWithdraw = ticket.type === "retirada";
-  const needsMac = isInstall || isWithdraw;
+  const isRepair = ticket.type === "reparo";
+  // Cliente do ticket existe no SmartOLT? (null = ainda buscando)
+  // Quando found=true, há um MAC/SN registrado lá; o técnico precisa bater
+  // com esse valor no MAC informado em retirada/reparo. Quando found=false,
+  // não há referência → MAC vira opcional (pedido do usuário, 21/05/2026).
+  const [clientSmart, setClientSmart] = useState(null);
+  useEffect(() => {
+    if (!ticket?.id) return;
+    let alive = true;
+    api.publicClientByTicket(ticket.id)
+      .then((r) => { if (alive) setClientSmart(r); })
+      .catch(() => { if (alive) setClientSmart({ found: false }); });
+    return () => { alive = false; };
+  }, [ticket?.id]);
+
+  // Cobrança do MAC:
+  // - Instalação/troca → sempre obrigatório (cadastro novo no SmartOLT)
+  // - Retirada/Reparo → SÓ obrigatório se o cliente está no SmartOLT
+  // - Reparo sem retirada → opcional (continua opcional)
+  const clientInSmartOlt = clientSmart?.found === true;
+  const needsMac = isInstall || ((isWithdraw || isRepair) && clientInSmartOlt);
 
   // Carrega estoque do técnico
   useEffect(() => {
@@ -1154,6 +1174,17 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         } else if (isWithdraw && !r.in_client) {
           setMacStatus("warn"); // retirada precisa estar no cliente
         } else {
+          // Confere se bate com o MAC esperado do cliente (quando aplicável)
+          if ((isWithdraw || isRepair) && clientInSmartOlt) {
+            const expected = (
+              clientSmart?.mac_expected || clientSmart?.sn_expected || ""
+            ).toUpperCase();
+            const informed = (form.ont || "").toUpperCase();
+            if (expected && expected !== informed) {
+              setMacStatus("mismatch"); // MAC não bate com o registrado do cliente
+              return;
+            }
+          }
           setMacStatus("ok");
         }
       } catch {
@@ -1161,7 +1192,8 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       }
     }, 600);
     return () => clearTimeout(handle);
-  }, [form.ont, cid, isInstall, isWithdraw]);
+  }, [form.ont, cid, isInstall, isWithdraw, isRepair, clientInSmartOlt,
+       clientSmart?.mac_expected, clientSmart?.sn_expected]);
 
   // ============ HELPERS Foto + OCR ============
   const requireEquipPhoto = isInstall || isWithdraw;
@@ -1219,9 +1251,22 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   }
 
   async function goToStep2() {
-    if (isWithdraw && !form.ont) {
-      await window.alert("MAC da ONT retirada é obrigatório.");
+    // MAC obrigatório apenas:
+    // - Sempre em retirada quando cliente NÃO está no SmartOLT? Não.
+    //   Regra do usuário: SE cliente está no SmartOLT, exige MAC e que bata;
+    //   SE não está, NÃO cobra MAC.
+    if (isWithdraw && clientInSmartOlt && !form.ont) {
+      await window.alert(
+        "MAC da ONT retirada é obrigatório — cliente está cadastrado " +
+        "no SmartOLT e precisa bater com o MAC registrado.");
       return;
+    }
+    if ((isWithdraw || isRepair) && clientInSmartOlt && macStatus === "mismatch") {
+      const expected = clientSmart?.mac_expected || clientSmart?.sn_expected || "?";
+      const ok = await window.confirm(
+        `O MAC informado (${form.ont}) NÃO bate com o registrado no SmartOLT (${expected}).\n\n` +
+        "Confirma mesmo assim? (Recomendado revisar a foto/etiqueta antes)");
+      if (!ok) return;
     }
     if (requireEquipPhoto && !hasEquipPhoto) {
       setShowPhotoWarn(true);
@@ -1294,6 +1339,8 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     ok: { bg: "#dcfce7", color: "#166534", border: "#86efac", icon: "✓", txt: "Equipamento validado" },
     warn: { bg: "#fef3c7", color: "#92400e", border: "#fde68a", icon: "⚠", txt: "Não está no estoque correto" },
     error: { bg: "#fee2e2", color: "#991b1b", border: "#fca5a5", icon: "✕", txt: "MAC não encontrado no SmartOLT" },
+    mismatch: { bg: "#fee2e2", color: "#991b1b", border: "#fca5a5", icon: "🚫",
+                  txt: "MAC não bate com o registrado do cliente no SmartOLT" },
   };
   const macStyle = macStatus ? macColors[macStatus] : null;
 
@@ -1463,8 +1510,37 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       )}
       {step === 1 && isWithdraw && (
         <div style={{ marginBottom: 14 }}>
+          {/* Aviso da regra de cobrança do MAC baseada em SmartOLT */}
+          {clientSmart && (
+            <div data-testid="client-smartolt-status"
+                  style={{
+                    marginBottom: 8, padding: "8px 10px", borderRadius: 8,
+                    fontSize: 12, lineHeight: 1.4,
+                    background: clientInSmartOlt ? "#ecfdf5" : "#fef3c7",
+                    border: `1px solid ${clientInSmartOlt ? "#10b981" : "#f59e0b"}`,
+                    color: clientInSmartOlt ? "#065f46" : "#92400e",
+                  }}>
+              {clientInSmartOlt ? (
+                <>
+                  ✅ Cliente <b>encontrado no SmartOLT</b> · MAC esperado:{" "}
+                  <code style={{ fontFamily: "monospace", fontWeight: 800 }}>
+                    {(clientSmart.mac_expected || clientSmart.sn_expected || "?").toUpperCase()}
+                  </code>
+                  {clientSmart.signal_text && (
+                    <> · Sinal: {clientSmart.signal_text}</>
+                  )}
+                </>
+              ) : (
+                <>
+                  ⚠️ Cliente <b>NÃO encontrado no SmartOLT</b> · MAC não será
+                  cobrado (sem referência registrada para conferir).
+                </>
+              )}
+            </div>
+          )}
           <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
-            📡 MAC/SN da ONT {isWithdraw ? "(retirada do cliente)" : "(do estoque do técnico)"} *
+            📡 MAC/SN da ONT (retirada do cliente)
+            {clientInSmartOlt ? " *" : " (opcional)"}
           </label>
           <div style={{ display: "flex", gap: 6, marginTop: 4, marginBottom: 6 }}>
             <input

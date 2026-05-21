@@ -1628,6 +1628,177 @@ function ClientesSection() {
 
 
 // ============================================================
+// Botão de RESET destrutivo — visível apenas para Auditor
+// (zera ONTs, insumos e/ou histórico de lançamentos)
+// ============================================================
+function AuditorResetButton({ onDone }) {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [resetOnts, setResetOnts] = useState(true);
+  const [resetInsumos, setResetInsumos] = useState(true);
+  const [resetHistory, setResetHistory] = useState(true);
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState("");
+
+  const submit = async () => {
+    setErr(""); setBusy(true);
+    try {
+      const r = await api.stokAdminReset({
+        confirm: confirm,
+        reset_onts: resetOnts,
+        reset_insumos: resetInsumos,
+        reset_history: resetHistory,
+      });
+      setResult(r);
+      onDone?.();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Falha ao zerar.");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <button data-testid="auditor-reset-btn"
+              onClick={() => { setOpen(true); setConfirm(""); setResult(null); setErr(""); }}
+              style={{
+                padding: "8px 14px", borderRadius: 8, border: 0,
+                background: "linear-gradient(135deg,#dc2626,#991b1b)",
+                color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer",
+                display: "inline-flex", alignItems: "center", gap: 6,
+              }}>
+        🗑️ Zerar estoque e lançamentos
+      </button>
+      {open && (
+        <div data-testid="auditor-reset-modal"
+              style={{
+                position: "fixed", inset: 0, zIndex: 9999,
+                background: "rgba(15,23,42,0.7)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: 20,
+              }}>
+          <div style={{
+            background: "#fff", borderRadius: 12, padding: 22,
+            width: "min(94vw, 520px)",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+          }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "#991b1b",
+                            marginBottom: 8 }}>
+              🗑️ Zerar Estoque · Ação Destrutiva
+            </div>
+            {!result && (
+              <>
+                <div style={{ fontSize: 13, color: "#475569",
+                                lineHeight: 1.5, marginBottom: 14 }}>
+                  Esta ação <b>apaga permanentemente</b> os dados selecionados
+                  na <b>sua empresa</b>. Pode ser usada para um <i>reset
+                  controlado</i> antes de um inventário completo.
+                  <br /><br />
+                  O log da ação fica registrado em <code>stok_admin_log</code>
+                  com seu e-mail e horário — não é apagado mesmo com{" "}
+                  <i>"Apagar histórico"</i> marcado.
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column",
+                                gap: 6, marginBottom: 12,
+                                padding: 12, background: "#fef2f2",
+                                border: "1px solid #fecaca", borderRadius: 8 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                    <input type="checkbox" checked={resetOnts}
+                            data-testid="reset-onts-chk"
+                            onChange={(e) => setResetOnts(e.target.checked)} />
+                    Apagar todas as ONTs (estoque + alocadas)
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                    <input type="checkbox" checked={resetInsumos}
+                            data-testid="reset-insumos-chk"
+                            onChange={(e) => setResetInsumos(e.target.checked)} />
+                    Apagar todos os insumos
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                    <input type="checkbox" checked={resetHistory}
+                            data-testid="reset-history-chk"
+                            onChange={(e) => setResetHistory(e.target.checked)} />
+                    Apagar histórico de lançamentos
+                  </label>
+                </div>
+
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                  Para confirmar, digite{" "}
+                  <code style={{ background: "#fef2f2",
+                                   padding: "2px 6px", borderRadius: 4,
+                                   color: "#991b1b" }}>ZERAR ESTOQUE</code>
+                </label>
+                <input type="text" value={confirm}
+                        data-testid="reset-confirm-input"
+                        onChange={(e) => setConfirm(e.target.value)}
+                        placeholder="ZERAR ESTOQUE"
+                        style={{
+                          width: "100%", marginTop: 6, padding: "10px 12px",
+                          border: "2px solid #fecaca", borderRadius: 8,
+                          fontFamily: "monospace", fontSize: 14,
+                          boxSizing: "border-box",
+                        }} />
+
+                {err && (
+                  <div style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>
+                    {err}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 18,
+                                justifyContent: "flex-end" }}>
+                  <button onClick={() => setOpen(false)}
+                          data-testid="reset-cancel-btn"
+                          style={{ ...btnSec, padding: "8px 14px" }}>
+                    Cancelar
+                  </button>
+                  <button data-testid="reset-confirm-btn"
+                          onClick={submit}
+                          disabled={busy || confirm.trim().toUpperCase() !== "ZERAR ESTOQUE"
+                                       || !(resetOnts || resetInsumos || resetHistory)}
+                          style={{
+                            padding: "8px 16px", borderRadius: 8, border: 0,
+                            background: (busy || confirm.trim().toUpperCase() !== "ZERAR ESTOQUE")
+                              ? "#fca5a5"
+                              : "linear-gradient(135deg,#dc2626,#991b1b)",
+                            color: "#fff", fontSize: 13, fontWeight: 800,
+                            cursor: busy ? "wait" : "pointer",
+                          }}>
+                    {busy ? "Zerando…" : "🗑️ Confirmar e zerar"}
+                  </button>
+                </div>
+              </>
+            )}
+            {result && (
+              <div data-testid="reset-result">
+                <div style={{ background: "#ecfdf5", border: "1px solid #10b981",
+                                padding: 12, borderRadius: 8, marginBottom: 12 }}>
+                  <div style={{ fontWeight: 800, color: "#065f46", marginBottom: 6 }}>
+                    ✅ Reset concluído
+                  </div>
+                  <div style={{ fontSize: 12, color: "#065f46", lineHeight: 1.6 }}>
+                    ONTs apagadas: <b>{result.deleted?.onts || 0}</b> · Insumos: <b>{result.deleted?.insumos || 0}</b> · Histórico: <b>{result.deleted?.history || 0}</b>
+                    <br /> Log ID: <code style={{ fontSize: 11 }}>{result.log_id}</code>
+                  </div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button onClick={() => { setOpen(false); setConfirm(""); setResult(null); }}
+                          style={{ ...btnSec, padding: "8px 14px" }}>
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+
+// ============================================================
 // Painel principal
 // ============================================================
 export default function EstoquePanel({ currentUser }) {
@@ -1659,7 +1830,12 @@ export default function EstoquePanel({ currentUser }) {
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", color: "#0f172a" }}>Estoque · Fibra Óptica</h2>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>ONTs, insumos e ordens de serviço integrados aos técnicos da Lousa.</p>
         </div>
-        <button data-testid="estoque-reload" style={btnSec} onClick={reload} disabled={loading}>{loading ? "Carregando…" : "⟳ Recarregar"}</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {(currentUser?.role || "").toLowerCase() === "auditor" && (
+            <AuditorResetButton onDone={reload} />
+          )}
+          <button data-testid="estoque-reload" style={btnSec} onClick={reload} disabled={loading}>{loading ? "Carregando…" : "⟳ Recarregar"}</button>
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 4, padding: 4, background: "#f1f5f9", borderRadius: 12, marginBottom: 14, overflowX: "auto" }}>

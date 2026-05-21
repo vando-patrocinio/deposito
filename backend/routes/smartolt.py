@@ -390,6 +390,71 @@ async def public_validate_mac(mac_or_sn: str, collaborator_id: Optional[str] = N
 
 
 # ---------------------------------------------------------------------------
+# Endpoint PÚBLICO (mobile) — cliente do ticket está no SmartOLT?
+# ---------------------------------------------------------------------------
+@router.get("/public/client-by-ticket/{ticket_id}")
+async def public_client_by_ticket(ticket_id: str):
+    """Dado um ticket, descobre se o cliente está cadastrado no SmartOLT.
+
+    Regras de negócio (pedido do usuário, 21/05/2026):
+    - Em fluxo de retirada/reparo, se o cliente ESTIVER no SmartOLT, o
+      MAC retirado precisa BATER com o MAC registrado lá (cobrança).
+    - Se o cliente NÃO estiver no SmartOLT, o MAC vira opcional —
+      não há referência para conferir.
+
+    Resposta:
+    {
+      "found": bool,
+      "mac_expected": str|null,    # MAC/SN registrado no SmartOLT
+      "sn_expected": str|null,
+      "client_name": str|null,
+      "olt_name": str|null, "signal_text": str|null
+    }
+    """
+    t = await db.tickets.find_one(
+        {"id": ticket_id},
+        {"_id": 0, "client_snapshot": 1, "company_id": 1},
+    )
+    if not t:
+        raise HTTPException(404, "Ticket não encontrado")
+    cid = t.get("company_id") or DEMO_COMPANY_ID
+    cs = t.get("client_snapshot") or {}
+    name = cs.get("name") or ""
+    pppoe = cs.get("pppoe") or cs.get("login") or ""
+    out: Dict[str, Any] = {
+        "found": False, "mac_expected": None, "sn_expected": None,
+        "client_name": name, "olt_name": None, "signal_text": None,
+    }
+    norm_pppoe = _norm(pppoe)
+    norm_name = _norm(name)
+    if not norm_pppoe and not norm_name:
+        return out
+    onu = None
+    if norm_pppoe:
+        onu = await db.smartolt_onus.find_one(
+            {"company_id": cid, "name_norm": norm_pppoe}, {"_id": 0},
+        )
+    if not onu and norm_name:
+        onu = await db.smartolt_onus.find_one(
+            {"company_id": cid, "name_norm": norm_name}, {"_id": 0},
+        )
+    if not onu and norm_name and len(norm_name) >= 4:
+        onu = await db.smartolt_onus.find_one(
+            {"company_id": cid, "name_norm": {"$regex": norm_name}}, {"_id": 0},
+        )
+    if onu:
+        # MAC pode estar em "mac", "ont_mac" ou no SN; SmartOLT geralmente
+        # usa o SN (ex: ALCLFC090E99) como identificador
+        out["found"] = True
+        out["mac_expected"] = (onu.get("mac") or onu.get("ont_mac") or "").strip() or None
+        out["sn_expected"] = (onu.get("sn") or "").strip().upper() or None
+        out["olt_name"] = onu.get("olt_name")
+        out["signal_text"] = onu.get("signal_text") or onu.get("signal_1490")
+    return out
+
+
+
+# ---------------------------------------------------------------------------
 # Lookup + signal
 # ---------------------------------------------------------------------------
 @router.get("/onus/by-vlan/{vlan}")

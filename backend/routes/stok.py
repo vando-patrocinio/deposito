@@ -1291,3 +1291,97 @@ async def clientes_identify_all(force: bool = False,
             "new_manufacturers_found": new_found,
             "total_prefixes_unknown_before": len(sample_sns),
             "method": method}
+
+
+# ---------------------------------------------------------------------------
+# RESET DESTRUTIVO — zera estoque e movimentações (somente Auditor)
+# ---------------------------------------------------------------------------
+class StokResetIn(BaseModel):
+    """Confirmação obrigatória para o reset.
+
+    O usuário precisa digitar EXATAMENTE "ZERAR ESTOQUE" no campo `confirm`.
+    Sem isso a requisição é rejeitada. Garantia adicional contra mau uso.
+    """
+    confirm: str
+    reset_history: bool = True
+    reset_onts: bool = True
+    reset_insumos: bool = True
+
+
+@router.post("/admin/reset", status_code=200)
+async def stok_admin_reset(payload: StokResetIn,
+                              user: dict = Depends(require_role("auditor"))):
+    """Zera estoque (ONTs + insumos) e/ou histórico de lançamentos.
+
+    Restrições:
+    - Somente role=auditor pode chamar (RBAC do `require_role`).
+    - Exige `confirm == "ZERAR ESTOQUE"`.
+    - Apaga apenas dentro da `company_id` do auditor (escopo de tenant).
+    - Toda execução fica registrada em `stok_admin_log` com timestamp,
+      contagens antes/depois e o e-mail do auditor.
+    """
+    if (payload.confirm or "").strip().upper() != "ZERAR ESTOQUE":
+        raise HTTPException(400,
+            "Confirmação inválida. Digite exatamente 'ZERAR ESTOQUE'.")
+
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    q = {"company_id": cid}
+
+    # Conta antes para auditoria
+    before = {
+        "onts": await db.stok_onts.count_documents(q),
+        "insumos": await db.stok_consumables.count_documents(q),
+        "history": await db.stok_history.count_documents(q),
+    }
+
+    deleted = {"onts": 0, "insumos": 0, "history": 0}
+    if payload.reset_onts:
+        r = await db.stok_onts.delete_many(q)
+        deleted["onts"] = r.deleted_count
+    if payload.reset_insumos:
+        r = await db.stok_consumables.delete_many(q)
+        deleted["insumos"] = r.deleted_count
+    if payload.reset_history:
+        r = await db.stok_history.delete_many(q)
+        deleted["history"] = r.deleted_count
+
+    # Log permanente da ação destrutiva (mesmo se reset_history=True, esse
+    # log fica em coleção SEPARADA — `stok_admin_log` — então não é apagado)
+    log_entry = {
+        "id": str(uuid.uuid4()),
+        "company_id": cid,
+        "action": "stok_reset",
+        "performed_by_email": user.get("email"),
+        "performed_by_name": user.get("name"),
+        "performed_by_role": user.get("role"),
+        "timestamp": now_iso(),
+        "before": before,
+        "deleted": deleted,
+        "scope": {
+            "reset_onts": payload.reset_onts,
+            "reset_insumos": payload.reset_insumos,
+            "reset_history": payload.reset_history,
+        },
+    }
+    try:
+        await db.stok_admin_log.insert_one(log_entry)
+    except Exception as e:
+        logger.warning("[stok_reset] falha ao gravar log: %s", e)
+
+    logger.warning(
+        "[stok_reset] AUDITOR %s zerou estoque cid=%s · onts=%d insumos=%d hist=%d",
+        user.get("email"), cid,
+        deleted["onts"], deleted["insumos"], deleted["history"],
+    )
+    return {"ok": True, "before": before, "deleted": deleted,
+             "log_id": log_entry["id"]}
+
+
+@router.get("/admin/reset/log")
+async def stok_admin_reset_log(user: dict = Depends(require_role("auditor"))):
+    """Lista histórico de resets executados pelo auditor."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    items = await db.stok_admin_log.find(
+        {"company_id": cid, "action": "stok_reset"}, {"_id": 0},
+    ).sort("timestamp", -1).limit(50).to_list(50)
+    return {"items": items, "total": len(items)}
