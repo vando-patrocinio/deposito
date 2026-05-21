@@ -1137,6 +1137,9 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
   /* ⚠️ Status de vínculo: detecta phone vinculado a 2+ subscribers
      (cenário em que a Isabella usa dados errados de cliente homônimo) */
   const [linkStatus, setLinkStatus] = useState(null);
+  // Banner de conflito de vínculo começa colapsado por padrão (libera espaço
+  // da conversa). Usuário expande clicando no header se quiser ver/desvincular.
+  const [linkBannerCollapsed, setLinkBannerCollapsed] = useState(true);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -1899,59 +1902,81 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
       )}
 
       {/* ⚠️ Banner de conflito de vínculo: phone vinculado a 2+ subscribers.
-         Causa de "Isabella chamou cliente de nome errado" / dados misturados. */}
+         Causa de "Isabella chamou cliente de nome errado" / dados misturados.
+         RETRÁTIL — usuário pode colapsar para liberar espaço da conversa. */}
       {linkStatus?.has_conflict && (
         <div data-testid="wa-link-conflict-banner" style={{
-          padding: "10px 18px",
+          padding: "8px 14px",
           background: "rgba(245, 158, 11, 0.10)",
           borderBottom: "1px solid rgba(245, 158, 11, 0.30)",
-          display: "flex", alignItems: "flex-start", gap: 10,
           fontSize: 12, color: "#92400e",
         }}>
-          <span style={{ fontSize: 16, lineHeight: 1, marginTop: 1 }}>⚠️</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, marginBottom: 2 }}>
-              Este número está vinculado a {linkStatus.linked_count} clientes
-            </div>
-            <div style={{ opacity: 0.85, lineHeight: 1.4 }}>
-              A IA pode usar dados do cadastro errado. Clientes vinculados:{" "}
-              {linkStatus.subscribers.map((s, i) => (
-                <span key={s.id} style={{ fontWeight: 500 }}>
-                  {i > 0 && " · "}
-                  {s.name}{s.plan_name ? ` (${s.plan_name})` : ""}
+          {/* Linha do cabeçalho — sempre visível, clicável p/ expandir/colapsar */}
+          <button
+            type="button"
+            data-testid="wa-link-conflict-toggle"
+            onClick={() => setLinkBannerCollapsed((v) => !v)}
+            style={{
+              width: "100%", background: "transparent", border: 0, padding: 0,
+              cursor: "pointer", textAlign: "left",
+              display: "flex", alignItems: "center", gap: 8, color: "inherit",
+            }}>
+            <span style={{ fontSize: 14, lineHeight: 1 }}>⚠️</span>
+            <span style={{ flex: 1, fontWeight: 700 }}>
+              Vinculado a {linkStatus.linked_count} clientes
+              {linkBannerCollapsed && (
+                <span style={{ fontWeight: 400, opacity: 0.8, marginLeft: 6 }}>
+                  · {linkStatus.subscribers.map((s) => s.name).join(" · ")}
                 </span>
-              ))}
+              )}
+            </span>
+            <span style={{ fontSize: 11, opacity: 0.7 }}>
+              {linkBannerCollapsed ? "▾ expandir" : "▴ recolher"}
+            </span>
+          </button>
+
+          {!linkBannerCollapsed && (
+            <div style={{ marginTop: 6, paddingLeft: 22 }}>
+              <div style={{ opacity: 0.85, lineHeight: 1.4 }}>
+                A IA pode usar dados do cadastro errado. Clientes vinculados:{" "}
+                {linkStatus.subscribers.map((s, i) => (
+                  <span key={s.id} style={{ fontWeight: 500 }}>
+                    {i > 0 && " · "}
+                    {s.name}{s.plan_name ? ` (${s.plan_name})` : ""}
+                  </span>
+                ))}
+              </div>
+              <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {linkStatus.subscribers.map((s) => (
+                  <button key={s.id}
+                    data-testid={`wa-unlink-${s.id}`}
+                    onClick={async () => {
+                      if (!await window.confirm(
+                        `Desvincular telefone ${conv.phone} do cliente "${s.name}"?\n\n` +
+                        "Após confirmar, a Isabella deixará de usar os dados desse cadastro nessa conversa."
+                      )) return;
+                      try {
+                        await api.waBaileysUnlinkSubscriber(conv.phone, s.id);
+                        const fresh = await api.waBaileysConversationLinkStatus(conv.phone);
+                        setLinkStatus(fresh);
+                      } catch (e) {
+                        // eslint-disable-next-line no-alert
+                        await window.alert("Erro ao desvincular: " + (e?.message || e));
+                      }
+                    }}
+                    style={{
+                      padding: "3px 10px", borderRadius: 4,
+                      background: "white",
+                      border: "1px solid rgba(245, 158, 11, 0.5)",
+                      color: "#92400e", fontSize: 11, fontWeight: 600,
+                      cursor: "pointer",
+                    }}>
+                    Desvincular "{s.name}"
+                  </button>
+                ))}
+              </div>
             </div>
-            <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {linkStatus.subscribers.map((s) => (
-                <button key={s.id}
-                  data-testid={`wa-unlink-${s.id}`}
-                  onClick={async () => {
-                    if (!await window.confirm(
-                      `Desvincular telefone ${conv.phone} do cliente "${s.name}"?\n\n` +
-                      "Após confirmar, a Isabella deixará de usar os dados desse cadastro nessa conversa."
-                    )) return;
-                    try {
-                      await api.waBaileysUnlinkSubscriber(conv.phone, s.id);
-                      const fresh = await api.waBaileysConversationLinkStatus(conv.phone);
-                      setLinkStatus(fresh);
-                    } catch (e) {
-                      // eslint-disable-next-line no-alert
-                      await window.alert("Erro ao desvincular: " + (e?.message || e));
-                    }
-                  }}
-                  style={{
-                    padding: "3px 10px", borderRadius: 4,
-                    background: "white",
-                    border: "1px solid rgba(245, 158, 11, 0.5)",
-                    color: "#92400e", fontSize: 11, fontWeight: 600,
-                    cursor: "pointer",
-                  }}>
-                  Desvincular "{s.name}"
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
       )}
 
