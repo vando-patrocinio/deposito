@@ -1,5 +1,48 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Cadastro de CTO com mapa "Uber-like" + bairro auto
+
+Reformulação do fluxo de cadastro de CTO (`/cto-cadastro` no app do técnico):
+
+### Novidades
+- **Step 2 reformulado**: agora é um **mapa Leaflet/OSM** ocupando ~62% da
+  viewport, com **pino fixo no centro** (overlay CSS, não no mapa). O
+  técnico arrasta o mapa por baixo do pino — após `moveend`, chama
+  Nominatim (`/reverse`) e auto-preenche **rua, número, bairro, cidade**.
+- **Foto da CTO** movida para logo após o endereço (mesma tela do mapa).
+- **Step 3 (bairro)**: novo banner "Bairro detectado pelo mapa" com 2
+  estados:
+  - 🟢 **Verde** quando o bairro casa com a base cadastrada (auto-seleciona).
+  - 🟡 **Amarelo** quando não casa (avisa pra escolher manualmente).
+  - Match case/acento-insensível + substring fallback.
+- **Splitter sempre opcional**: step 6 deixou de ser exclusivo da rede
+  desbalanceada. Aparece para ambos os tipos com nova opção
+  *"Sem splitter / não informado"* (envia `null` ao backend).
+- **VLAN** continua sendo derivada do bairro selecionado (já que cada
+  bairro tem sigla+VLAN no cadastro de Rede IA).
+
+### Componente novo
+- `/app/frontend/src/CTOMapPicker.js`:
+  - `react-leaflet` + tiles OSM
+  - Reverse geocoding via Nominatim (gratuito, sem chave)
+  - Anti race-condition via `lastReqRef`
+  - GPS na montagem (fallback Maceió-AL se permissão negada)
+  - Chip flutuante no topo mostrando endereço detectado em tempo real
+
+### CadastroCTOWizard.js
+- Step 2 agora é em layout fullscreen (mapa + painel sticky inferior).
+- Novos campos no state: `bairro_detected`, `cidade_detected`, `estado_detected`,
+  `bairroAutoMatched`.
+- `totalSteps` fixo em 8 (não mais variável conforme rede).
+- `submit()` filtra splitter "Sem splitter / não informado" → `null`.
+
+### Validação E2E
+- Login `?cid=col-30aafc3c` (Diogo) → Cadastrar CTO → Step 2:
+  - Mapa carregou e pegou GPS automaticamente
+  - Nominatim retornou "Avenida Luiz Ramalho de Castro" / bairro "Jatiúca"
+  - Pino, painel inferior, foto e botão Continuar todos renderizados
+
+
 ## 2026-05-20 — Sidebar respeita Tags de Acesso + decorator `require_tag`
 
 ### Frontend (`App.js`)

@@ -13,6 +13,7 @@
 ============================================================= */
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/api";
+import CTOMapPicker from "@/CTOMapPicker";
 
 // Paleta storyboard — branca/limpa com roxo de destaque
 const C_BG = "#f8fafc";
@@ -95,10 +96,12 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
 
   const [address, setAddress] = useState({
     endereco: "", numero: "", referencia: "",
+    bairro_detected: "", cidade_detected: "", estado_detected: "",
   });
   const [gps, setGps] = useState({ lat: null, lng: null, accuracy: null });
   const [bairros, setBairros] = useState([]);
   const [bairroSelected, setBairroSelected] = useState(null);
+  const [bairroAutoMatched, setBairroAutoMatched] = useState(false);
   const [suggested, setSuggested] = useState({ name: "", number: null });
   const [capacity, setCapacity] = useState(null);
   const [networkType, setNetworkType] = useState(null);
@@ -168,13 +171,27 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
       : api.redeIaCtoCreate(data),
   }), [collabId]);
 
-  // Carrega bairros ao chegar no passo 3
+  // Carrega bairros ao chegar no passo 3 e tenta auto-match com o detectado
   useEffect(() => {
     if (step === 3) {
-      useApi.bairros().then((r) => setBairros(r.items || []))
-        .catch(() => setBairros([]));
+      useApi.bairros().then((r) => {
+        const list = r.items || [];
+        setBairros(list);
+        // Auto-match: normaliza (remove acentos/case) e compara com bairro_detected
+        if (address.bairro_detected && list.length > 0) {
+          const norm = (s) => (s || "").toString().normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+          const target = norm(address.bairro_detected);
+          const match = list.find((b) => norm(b.bairro) === target)
+            || list.find((b) => norm(b.bairro).includes(target) || target.includes(norm(b.bairro)));
+          if (match) {
+            setBairroSelected(match);
+            setBairroAutoMatched(true);
+          }
+        }
+      }).catch(() => setBairros([]));
     }
-  }, [step, useApi]);
+  }, [step, useApi, address.bairro_detected]);
 
   // Sempre que bairro muda no passo 3 → gera nomenclatura automática
   useEffect(() => {
@@ -192,16 +209,18 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
   const submit = async () => {
     setBusy(true); setError("");
     try {
+      const splitterValue = (splitter && !splitter.startsWith("Sem"))
+        ? splitter : null;
       const r = await useApi.create({
         rua: address.endereco,
         numero: address.numero,
         bairro: bairroSelected.bairro,
-        cidade: bairroSelected.cidade || "",
-        estado: bairroSelected.estado || "",
+        cidade: bairroSelected.cidade || address.cidade_detected || "",
+        estado: bairroSelected.estado || address.estado_detected || "",
         referencia: address.referencia,
         lat: gps.lat, lng: gps.lng,
         capacity, network_type: networkType,
-        splitter: networkType === "desbalanceada" ? splitter : null,
+        splitter: splitterValue,
         client_port: clientPort,
         sigla: bairroSelected.sigla,
         vlan: bairroSelected.vlan,
@@ -222,14 +241,12 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
     } finally { setBusy(false); }
   };
 
-  const totalSteps = networkType === "desbalanceada" ? 8 : 7;
+  const totalSteps = 8;
   const stepLabels = useMemo(() => [
-    "Início", "Endereço", "Identificação",
-    "Capacidade", "Tipo de rede",
-    networkType === "desbalanceada" ? "Splitter" : "Porta",
-    networkType === "desbalanceada" ? "Porta" : "Resumo",
-    "Resumo",
-  ], [networkType]);
+    "Início", "Endereço (mapa)", "Identificação",
+    "Capacidade", "Tipo de rede", "Splitter",
+    "Porta", "Resumo",
+  ], []);
 
   return (
     <div data-testid="cto-wizard" style={{
@@ -287,104 +304,129 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
           </div>
         )}
 
-        {/* === STEP 2 === */}
+        {/* === STEP 2 — Mapa Uber-like + endereço auto + foto === */}
         {step === 2 && (
-          <div>
-            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 14px",
-                          letterSpacing: -0.3, lineHeight: 1.3 }}>
-              Informe o endereço em frente à casa onde está a CTO
-            </h2>
+          <div style={{ display: "flex", flexDirection: "column",
+                          height: "calc(100vh - 110px)", marginTop: -20,
+                          marginLeft: -16, marginRight: -16 }}>
+            {/* MAPA — ocupa ~62% da tela */}
+            <div style={{ flex: "0 0 62%", position: "relative",
+                            background: "#e2e8f0" }}>
+              <CTOMapPicker
+                onMove={({ lat, lng, address: a }) => {
+                  setGps({ lat, lng, accuracy: null });
+                  setAddress((prev) => ({
+                    ...prev,
+                    endereco: a.road || prev.endereco,
+                    numero: a.house_number || prev.numero,
+                    bairro_detected: a.suburb || "",
+                    cidade_detected: a.city || "",
+                    estado_detected: a.state || "",
+                  }));
+                  setError("");
+                }}
+                onError={(m) => setError(m)}
+              />
+            </div>
 
-            <label style={labelStyle}>Endereço</label>
-            <input data-testid="cto-rua" style={inputBase} value={address.endereco}
-              onChange={(e) => setAddress({ ...address, endereco: e.target.value })}
-              placeholder="Rua das Flores" />
+            {/* PAINEL inferior — endereço + foto + continuar */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px 16px",
+                            background: "#fff", borderTopLeftRadius: 16,
+                            borderTopRightRadius: 16, marginTop: -16,
+                            position: "relative", zIndex: 5,
+                            boxShadow: "0 -6px 18px rgba(0,0,0,0.08)" }}>
+              <h2 style={{ fontSize: 16, fontWeight: 800,
+                              margin: "2px 0 10px", letterSpacing: -0.2 }}>
+                Posicione o pino na CTO
+              </h2>
 
-            <label style={labelStyle}>Número</label>
-            <input data-testid="cto-numero" style={inputBase} value={address.numero}
-              onChange={(e) => setAddress({ ...address, numero: e.target.value })}
-              placeholder="125" />
+              <label style={{ ...labelStyle, marginTop: 4 }}>Endereço (auto)</label>
+              <input data-testid="cto-rua" style={inputBase} value={address.endereco}
+                onChange={(e) => setAddress({ ...address, endereco: e.target.value })}
+                placeholder="Detectado pelo mapa" />
 
-            <label style={labelStyle}>Referência</label>
-            <input data-testid="cto-referencia" style={inputBase}
-              value={address.referencia}
-              onChange={(e) => setAddress({ ...address, referencia: e.target.value })}
-              placeholder="Casa azul com portão branco" />
-
-            <label style={labelStyle}>Localização da CTO</label>
-            <button data-testid="cto-gps-btn" onClick={captureGps}
-                    style={{
-                      ...inputBase, display: "flex", alignItems: "center",
-                      justifyContent: "space-between", cursor: "pointer",
-                      background: gps.lat ? "#ecfdf5" : "#fff",
-                      borderColor: gps.lat ? "#10b981" : C_BORDER,
-                      padding: "16px 14px",
-                    }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 20 }}>📍</span>
-                <span style={{ color: gps.lat ? "#065f46" : C_TEXT, fontWeight: 600 }}>
-                  {gps.lat
-                    ? `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}`
-                    : "Usar localização atual (Mapa)"}
-                </span>
-              </span>
-              <span style={{ color: C_MUTED, fontSize: 20 }}>›</span>
-            </button>
-
-            <label style={labelStyle}>Foto da CTO (opcional)</label>
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
-              onChange={onPhotoChange} style={{ display: "none" }}
-              data-testid="cto-photo-input" />
-            {photo ? (
-              <div style={{
-                position: "relative", borderRadius: 12,
-                overflow: "hidden", border: `1.5px solid ${C_BORDER}`,
-                marginBottom: 6,
-              }}>
-                <img src={photo} alt="Foto CTO" data-testid="cto-photo-preview"
-                  style={{ width: "100%", display: "block",
-                            maxHeight: 220, objectFit: "cover" }} />
-                <button data-testid="cto-photo-remove"
-                  onClick={() => { setPhoto(null);
-                                     if (fileInputRef.current) fileInputRef.current.value = ""; }}
-                  style={{
-                    position: "absolute", top: 8, right: 8,
-                    background: "rgba(0,0,0,0.6)", color: "#fff",
-                    border: 0, borderRadius: "50%", width: 28, height: 28,
-                    fontSize: 14, fontWeight: 800, cursor: "pointer",
-                  }}>×</button>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
+                              gap: 10 }}>
+                <div>
+                  <label style={labelStyle}>Número</label>
+                  <input data-testid="cto-numero" style={inputBase} value={address.numero}
+                    onChange={(e) => setAddress({ ...address, numero: e.target.value })}
+                    placeholder="—" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Bairro (auto)</label>
+                  <input data-testid="cto-bairro-detected" style={inputBase}
+                    value={address.bairro_detected} readOnly
+                    placeholder="—" />
+                </div>
               </div>
-            ) : (
-              <button data-testid="cto-photo-btn"
-                      onClick={() => fileInputRef.current?.click()}
-                      style={{
-                        ...inputBase, display: "flex", alignItems: "center",
-                        justifyContent: "space-between", cursor: "pointer",
-                        padding: "16px 14px",
-                      }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 20 }}>📷</span>
-                  <span style={{ color: C_TEXT, fontWeight: 600 }}>
-                    Tirar foto da CTO
-                  </span>
-                </span>
-                <span style={{ color: C_MUTED, fontSize: 20 }}>›</span>
-              </button>
-            )}
 
-            <div style={{ marginTop: 28 }}>
-              <button data-testid="cto-step2-continue"
-                      onClick={() => {
-                        if (!address.endereco || !address.numero) {
-                          setError("Endereço e número são obrigatórios.");
-                          return;
-                        }
-                        setError("");
-                        setStep(3);
-                      }}
-                      style={primaryBtn}>
-                Continuar
-              </button>
+              <label style={labelStyle}>Referência (opcional)</label>
+              <input data-testid="cto-referencia" style={inputBase}
+                value={address.referencia}
+                onChange={(e) => setAddress({ ...address, referencia: e.target.value })}
+                placeholder="Casa azul com portão branco" />
+
+              {/* FOTO da CTO — logo após o endereço (movido do step antigo) */}
+              <label style={labelStyle}>Foto da CTO (opcional)</label>
+              <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+                onChange={onPhotoChange} style={{ display: "none" }}
+                data-testid="cto-photo-input" />
+              {photo ? (
+                <div style={{
+                  position: "relative", borderRadius: 12,
+                  overflow: "hidden", border: `1.5px solid ${C_BORDER}`,
+                  marginBottom: 6,
+                }}>
+                  <img src={photo} alt="Foto CTO" data-testid="cto-photo-preview"
+                    style={{ width: "100%", display: "block",
+                              maxHeight: 220, objectFit: "cover" }} />
+                  <button data-testid="cto-photo-remove"
+                    onClick={() => { setPhoto(null);
+                                       if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                    style={{
+                      position: "absolute", top: 8, right: 8,
+                      background: "rgba(0,0,0,0.6)", color: "#fff",
+                      border: 0, borderRadius: "50%", width: 28, height: 28,
+                      fontSize: 14, fontWeight: 800, cursor: "pointer",
+                    }}>×</button>
+                </div>
+              ) : (
+                <button data-testid="cto-photo-btn"
+                        onClick={() => fileInputRef.current?.click()}
+                        style={{
+                          ...inputBase, display: "flex", alignItems: "center",
+                          justifyContent: "space-between", cursor: "pointer",
+                          padding: "14px 14px",
+                        }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 20 }}>📷</span>
+                    <span style={{ color: C_TEXT, fontWeight: 600 }}>
+                      Tirar foto da CTO
+                    </span>
+                  </span>
+                  <span style={{ color: C_MUTED, fontSize: 20 }}>›</span>
+                </button>
+              )}
+
+              <div style={{ marginTop: 16 }}>
+                <button data-testid="cto-step2-continue"
+                        onClick={() => {
+                          if (!gps.lat || !gps.lng) {
+                            setError("Posicione o pino no mapa antes de continuar.");
+                            return;
+                          }
+                          if (!address.endereco) {
+                            setError("Endereço não detectado. Mova o pino até a rua.");
+                            return;
+                          }
+                          setError("");
+                          setStep(3);
+                        }}
+                        style={primaryBtn}>
+                  Continuar
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -398,6 +440,28 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
             </h2>
 
             <label style={labelStyle}>Selecione o bairro</label>
+            {address.bairro_detected && (
+              <div data-testid="bairro-detected-banner" style={{
+                padding: "10px 12px", marginBottom: 10,
+                borderRadius: 10, fontSize: 12, lineHeight: 1.4,
+                background: bairroAutoMatched ? "#dcfce7" : "#fef3c7",
+                color: bairroAutoMatched ? "#065f46" : "#92400e",
+                border: `1px solid ${bairroAutoMatched ? "#86efac" : "#fcd34d"}`,
+              }}>
+                {bairroAutoMatched ? (
+                  <>
+                    ✓ Bairro detectado pelo mapa: <strong>{address.bairro_detected}</strong>
+                    {" "}— casou com a base cadastrada.
+                  </>
+                ) : (
+                  <>
+                    ⚠ Bairro detectado: <strong>{address.bairro_detected}</strong>
+                    {" "}não bate com nenhum bairro cadastrado. Selecione abaixo
+                    o equivalente ou peça ao admin para cadastrar.
+                  </>
+                )}
+              </div>
+            )}
             <div style={{ marginBottom: 14 }}>
               {bairros.length === 0 ? (
                 <div style={{
@@ -587,7 +651,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
             <div style={{ marginTop: 18 }}>
               <button data-testid="cto-step5-continue"
                       disabled={!networkType}
-                      onClick={() => setStep(networkType === "desbalanceada" ? 6 : 7)}
+                      onClick={() => setStep(6)}
                       style={{ ...primaryBtn, opacity: !networkType ? 0.5 : 1 }}>
                 Continuar
               </button>
@@ -595,18 +659,22 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
           </div>
         )}
 
-        {/* === STEP 6 — Splitter === */}
-        {step === 6 && networkType === "desbalanceada" && (
+        {/* === STEP 6 — Splitter (sempre opcional) === */}
+        {step === 6 && (
           <div>
             <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 4px",
                            letterSpacing: -0.3 }}>
-              Qual é o splitter de balanceamento?
+              {networkType === "desbalanceada"
+                ? "Qual é o splitter de balanceamento?"
+                : "Esta CTO tem splitter?"}
             </h2>
             <p style={{ color: C_MUTED, fontSize: 13, marginBottom: 22 }}>
-              Selecione o splitter utilizado na rede desbalanceada.
+              {networkType === "desbalanceada"
+                ? "Selecione o splitter utilizado na rede desbalanceada."
+                : "Informe o splitter se houver. Caso não saiba, escolha \"Sem splitter / não informado\"."}
             </p>
-            {["1:2", "1:4", "1:8", "Outro"].map((s) => (
-              <button key={s} data-testid={`cto-splitter-${s}`}
+            {["1:2", "1:4", "1:8", "Outro", "Sem splitter / não informado"].map((s) => (
+              <button key={s} data-testid={`cto-splitter-${s.replace(/[^a-z0-9]/gi,'_')}`}
                       onClick={() => setSplitter(s)}
                       style={optionCard(splitter === s)}>
                 <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -615,7 +683,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                     background: splitter === s ? "#ddd6fe" : "#f1f5f9",
                     color: C_PRIMARY, display: "grid", placeItems: "center",
                     fontSize: 18, fontWeight: 800,
-                  }}>▣</span>
+                  }}>{s.startsWith("Sem") ? "—" : "▣"}</span>
                   <span style={{ fontSize: 15, fontWeight: 700 }}>{s}</span>
                 </span>
                 <span style={checkBox(splitter === s)}>
