@@ -1,5 +1,24 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Mapa CTO usa o MESMO tile da Auditoria (CARTO Voyager)
+
+### Motivo
+O mapa anterior (OSM padrão) ficou inconsistente com o resto da aplicação
+e em algumas regiões não carregava bem. A aba Auditoria (`LiveMap.js`)
+já usa CARTO Voyager — tile leve, com rótulos em pt-BR e visual limpo.
+
+### Mudança
+- `CTOMapPicker.js`: TileLayer trocado de
+  `tile.openstreetmap.org/{z}/{x}/{y}.png` para
+  `basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png` com
+  `subdomains="abcd"` e `maxZoom={20}`.
+- Attribution: `Mapa © OpenStreetMap contribuidores © CARTO`.
+
+### Validação E2E
+- Inspeção do DOM confirmou o `src` dos tiles: `b.basemaps.cartocdn.com/...`.
+- Visual idêntico ao mapa da aba Auditoria.
+
+
 ## 2026-05-20 — Mapa CTO em pt-BR + GPS aprimorado
 
 ### Localização (i18n)

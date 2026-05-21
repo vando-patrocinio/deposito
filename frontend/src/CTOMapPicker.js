@@ -205,8 +205,10 @@ export default function CTOMapPicker({
         scrollWheelZoom
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">Colaboradores do OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='Mapa &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contribuidores &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          subdomains="abcd"
+          maxZoom={20}
         />
         <LocalizeZoomControl />
         <Recenter lat={center[0]} lng={center[1]} />
