@@ -1939,6 +1939,106 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                        || ticket?.client_snapshot?.ip_address || ""}
         ticketId={ticket?.id}
       />
+
+      {/* Bottom Sheet: Selecionar ONT do estoque do técnico */}
+      {showStockPicker && (
+        <div
+          onClick={() => setShowStockPicker(false)}
+          data-testid="ont-stock-picker-overlay"
+          style={{
+            position: "fixed", inset: 0,
+            background: "rgba(15,23,42,.6)", zIndex: 9999,
+            display: "flex", alignItems: "flex-end",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            data-testid="ont-stock-picker"
+            style={{
+              background: "white",
+              borderRadius: "20px 20px 0 0",
+              maxHeight: "75vh",
+              width: "100%", maxWidth: 600,
+              padding: 16,
+              display: "flex", flexDirection: "column",
+              boxShadow: "0 -10px 30px rgba(0,0,0,.2)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between",
+                            alignItems: "center", marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800,
+                                color: "#0f172a" }}>📦 Meu estoque de ONTs</div>
+                <div style={{ fontSize: 11, color: "#64748b" }}>
+                  Toque para selecionar
+                </div>
+              </div>
+              <button
+                onClick={() => setShowStockPicker(false)}
+                style={{ background: "none", border: "none",
+                          fontSize: 22, cursor: "pointer", color: "#64748b" }}
+              >×</button>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              {(stock?.onts || []).map((o) => {
+                const fromClient = o.status === "retirada_com_tecnico";
+                return (
+                  <button
+                    type="button"
+                    key={o.mac}
+                    data-testid={`stock-picker-ont-${o.mac}`}
+                    onClick={() => {
+                      setForm({ ...form, ont: o.mac });
+                      setShowStockPicker(false);
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "12px 14px",
+                      marginBottom: 8,
+                      background: form.ont === o.mac ? "#dbeafe" : "#f8fafc",
+                      border: form.ont === o.mac
+                        ? "2px solid #3b82f6" : "1px solid #e2e8f0",
+                      borderRadius: 10,
+                      cursor: "pointer",
+                      display: "flex", justifyContent: "space-between",
+                      alignItems: "center", gap: 8,
+                      textAlign: "left",
+                    }}
+                  >
+                    <div style={{ display: "flex", flexDirection: "column",
+                                    gap: 2, flex: 1, minWidth: 0 }}>
+                      <span style={{
+                        fontFamily: "monospace",
+                        fontWeight: 800, fontSize: 14,
+                        color: "#0f172a",
+                      }}>{o.mac}</span>
+                      <span style={{ fontSize: 11, color: "#64748b" }}>
+                        {o.model || "ONT"}
+                      </span>
+                    </div>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700,
+                      padding: "3px 8px", borderRadius: 999,
+                      background: fromClient ? "#fef3c7" : "#dbeafe",
+                      color: fromClient ? "#92400e" : "#1e40af",
+                      flexShrink: 0,
+                    }}>
+                      {fromClient ? "↩️ Cliente" : "📦 Praça"}
+                    </span>
+                  </button>
+                );
+              })}
+              {(stock?.onts || []).length === 0 && (
+                <div style={{ padding: 30, textAlign: "center",
+                                color: "#94a3b8", fontSize: 13 }}>
+                  Nenhuma ONT no seu estoque ainda.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2449,106 +2549,6 @@ function NotaTecnicaCard({ ticket, onRefresh }) {
               style={{ marginTop: 8, padding: 8, borderRadius: 8,
                         fontSize: 11, background: "#dcfce7", color: "#15803d" }}>
           ✓ {okMsg}
-        </div>
-      )}
-
-      {/* Bottom Sheet: Selecionar ONT do estoque do técnico */}
-      {showStockPicker && (
-        <div
-          onClick={() => setShowStockPicker(false)}
-          data-testid="ont-stock-picker-overlay"
-          style={{
-            position: "fixed", inset: 0,
-            background: "rgba(15,23,42,.6)", zIndex: 9999,
-            display: "flex", alignItems: "flex-end",
-            justifyContent: "center",
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            data-testid="ont-stock-picker"
-            style={{
-              background: "white",
-              borderRadius: "20px 20px 0 0",
-              maxHeight: "75vh",
-              width: "100%", maxWidth: 600,
-              padding: 16,
-              display: "flex", flexDirection: "column",
-              boxShadow: "0 -10px 30px rgba(0,0,0,.2)",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between",
-                            alignItems: "center", marginBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 800,
-                                color: "#0f172a" }}>📦 Meu estoque de ONTs</div>
-                <div style={{ fontSize: 11, color: "#64748b" }}>
-                  Toque para selecionar
-                </div>
-              </div>
-              <button
-                onClick={() => setShowStockPicker(false)}
-                style={{ background: "none", border: "none",
-                          fontSize: 22, cursor: "pointer", color: "#64748b" }}
-              >×</button>
-            </div>
-            <div style={{ overflowY: "auto", flex: 1 }}>
-              {(stock?.onts || []).map((o) => {
-                const fromClient = o.status === "retirada_com_tecnico";
-                return (
-                  <button
-                    type="button"
-                    key={o.mac}
-                    data-testid={`stock-picker-ont-${o.mac}`}
-                    onClick={() => {
-                      setForm({ ...form, ont: o.mac });
-                      setShowStockPicker(false);
-                    }}
-                    style={{
-                      width: "100%",
-                      padding: "12px 14px",
-                      marginBottom: 8,
-                      background: form.ont === o.mac ? "#dbeafe" : "#f8fafc",
-                      border: form.ont === o.mac
-                        ? "2px solid #3b82f6" : "1px solid #e2e8f0",
-                      borderRadius: 10,
-                      cursor: "pointer",
-                      display: "flex", justifyContent: "space-between",
-                      alignItems: "center", gap: 8,
-                      textAlign: "left",
-                    }}
-                  >
-                    <div style={{ display: "flex", flexDirection: "column",
-                                    gap: 2, flex: 1, minWidth: 0 }}>
-                      <span style={{
-                        fontFamily: "monospace",
-                        fontWeight: 800, fontSize: 14,
-                        color: "#0f172a",
-                      }}>{o.mac}</span>
-                      <span style={{ fontSize: 11, color: "#64748b" }}>
-                        {o.model || "ONT"}
-                      </span>
-                    </div>
-                    <span style={{
-                      fontSize: 10, fontWeight: 700,
-                      padding: "3px 8px", borderRadius: 999,
-                      background: fromClient ? "#fef3c7" : "#dbeafe",
-                      color: fromClient ? "#92400e" : "#1e40af",
-                      flexShrink: 0,
-                    }}>
-                      {fromClient ? "↩️ Cliente" : "📦 Praça"}
-                    </span>
-                  </button>
-                );
-              })}
-              {(stock?.onts || []).length === 0 && (
-                <div style={{ padding: 30, textAlign: "center",
-                                color: "#94a3b8", fontSize: 13 }}>
-                  Nenhuma ONT no seu estoque ainda.
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       )}
     </div>
