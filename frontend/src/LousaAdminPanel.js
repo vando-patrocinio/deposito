@@ -136,6 +136,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   }, [visibleTechIds]);
   const [techMenuOpen, setTechMenuOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [showPdfPopover, setShowPdfPopover] = useState(false);
   // Visualização dentro do focus mode: "grid" (coluna vertical clássica)
   // ou "timeline" (slots horizontais estilo Google Calendar / Asana).
   const [focusView, setFocusView] = useState(() => {
@@ -658,6 +659,19 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                   Auto-rede {autoReschedCfg?.enabled ? "ON" : "OFF"}
                 </span>
               </ToolbarBtn>
+            )}
+            <ToolbarBtn
+              onClick={() => setShowPdfPopover((v) => !v)}
+              data-testid="lousa-pdf-btn"
+              title="Gerar PDF de notas finalizadas (hoje/ontem/7 dias/período)"
+              accent="neutral"
+              style={{ position: "relative" }}
+            >
+              <span style={{ fontSize: 13 }}>📄</span>
+              <span>Relatório PDF</span>
+            </ToolbarBtn>
+            {showPdfPopover && (
+              <ClosedNotesPdfPopover onClose={() => setShowPdfPopover(false)} />
             )}
           </ToolbarGroup>
 
@@ -2642,6 +2656,119 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
     </div>
   );
 }
+
+function ClosedNotesPdfPopover({ onClose }) {
+  const [period, setPeriod] = useState("today");
+  const [start, setStart] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  });
+  const [end, setEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (!e.target.closest?.("[data-pdf-pop]")) onClose();
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [onClose]);
+
+  const download = async () => {
+    setErr(""); setBusy(true);
+    try {
+      const params = new URLSearchParams({ period });
+      if (period === "custom") {
+        params.set("start", start);
+        params.set("end", end);
+      }
+      const r = await api._client.get(
+        `/lousa/tickets/closed/pdf?${params.toString()}`,
+        { responseType: "blob" },
+      );
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `fechamento_notas_${period}_${new Date()
+          .toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      onClose();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Falha ao gerar PDF");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div data-pdf-pop data-testid="lousa-pdf-popover"
+          style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0,
+            width: 320, background: "white",
+            border: "1px solid #e2e8f0", borderRadius: 10,
+            boxShadow: "0 12px 32px rgba(15,23,42,.16)",
+            zIndex: 1500, padding: 14,
+          }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a",
+                      marginBottom: 8 }}>
+        📄 Relatório PDF — Notas finalizadas
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
+                      gap: 6, marginBottom: 8 }}>
+        {[
+          { id: "today", label: "Hoje" },
+          { id: "yesterday", label: "Ontem" },
+          { id: "week", label: "7 dias" },
+          { id: "custom", label: "Período…" },
+        ].map((p) => (
+          <button key={p.id}
+                  data-testid={`lousa-pdf-period-${p.id}`}
+                  onClick={() => setPeriod(p.id)}
+                  style={{
+                    padding: "8px 10px", borderRadius: 8,
+                    border: `1.5px solid ${period === p.id ? "#0f172a" : "#e2e8f0"}`,
+                    background: period === p.id ? "#0f172a" : "#fff",
+                    color: period === p.id ? "#fff" : "#0f172a",
+                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  }}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {period === "custom" && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
+                        gap: 6, marginBottom: 8 }}>
+          <input type="date" value={start} onChange={(e) => setStart(e.target.value)}
+                  data-testid="lousa-pdf-start"
+                  style={{ padding: "6px 8px", border: "1px solid #e2e8f0",
+                            borderRadius: 7, fontSize: 12 }} />
+          <input type="date" value={end} onChange={(e) => setEnd(e.target.value)}
+                  data-testid="lousa-pdf-end"
+                  style={{ padding: "6px 8px", border: "1px solid #e2e8f0",
+                            borderRadius: 7, fontSize: 12 }} />
+        </div>
+      )}
+      {err && (
+        <div data-testid="lousa-pdf-err"
+              style={{ marginBottom: 8, padding: 8, borderRadius: 6,
+                        background: "#fef2f2", color: "#991b1b", fontSize: 11 }}>
+          ⚠ {err}
+        </div>
+      )}
+      <button data-testid="lousa-pdf-download"
+              onClick={download} disabled={busy}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8,
+                        background: busy ? "#94a3b8"
+                            : "linear-gradient(135deg,#0f766e,#0891b2)",
+                        color: "#fff", border: 0, fontSize: 13, fontWeight: 700,
+                        cursor: busy ? "wait" : "pointer" }}>
+        {busy ? "Gerando…" : "⬇ Baixar PDF"}
+      </button>
+    </div>
+  );
+}
+
 
 function OverflowMenu({ children, onClose }) {
   useEffect(() => {
