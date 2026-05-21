@@ -155,6 +155,13 @@ async def list_purchases(
                      if d.get("responsible_collaborator_id")}
         pracas = {p["id"]: p["name"] async for p in db.fin_filiais.find(
             {"id": {"$in": list(praca_ids)}}, {"_id": 0, "id": 1, "name": 1})}
+        # Fallback: praças do cadastro principal (db.pracas)
+        missing = [pid for pid in praca_ids if pid and pid not in pracas]
+        if missing:
+            async for p in db.pracas.find(
+                {"id": {"$in": missing}}, {"_id": 0, "id": 1, "name": 1},
+            ):
+                pracas[p["id"]] = p.get("name") or "—"
         colls = {c["id"]: c["name"] async for c in db.collaborators.find(
             {"id": {"$in": list(coll_ids)}}, {"_id": 0, "id": 1, "name": 1})}
         for d in docs:
@@ -171,12 +178,47 @@ async def list_purchases(
 @router.get("/refs")
 async def get_refs(user: dict = Depends(get_current_user)) -> Dict[str, Any]:
     """Retorna praças, responsáveis (almoxarifes), fornecedores existentes
-    e tipos para autocomplete no form."""
+    e tipos para autocomplete no form.
+
+    Praças são lidas da UNIÃO de `fin_filiais` (Financeiro) e `pracas`
+    (Cadastro). Isso evita o bug em que o usuário cadastrou a praça em
+    Cadastro → Praças mas a Central de Compras só lia de fin_filiais.
+    """
     _require_purchase_access(user)
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    pracas = await db.fin_filiais.find(
-        {"company_id": cid, "active": {"$ne": False}}, {"_id": 0}
-    ).sort("name", 1).to_list(200)
+
+    # Junta as duas coleções, deduplica por id
+    seen_ids: set = set()
+    seen_names: set = set()
+    pracas: List[Dict[str, Any]] = []
+    async for p in db.fin_filiais.find(
+        {"company_id": cid, "active": {"$ne": False}}, {"_id": 0},
+    ).sort("name", 1):
+        pid = p.get("id")
+        pname = (p.get("name") or "").strip().lower()
+        if pid and pid not in seen_ids:
+            seen_ids.add(pid)
+            if pname:
+                seen_names.add(pname)
+            pracas.append(p)
+    # Fallback: praças do cadastro principal (db.pracas) que ainda não
+    # estão em fin_filiais — assim a Central de Compras sempre acha a
+    # praça que o usuário cadastrou em Cadastro → Praças.
+    async for p in db.pracas.find(
+        {"company_id": cid, "active": {"$ne": False}}, {"_id": 0},
+    ).sort("name", 1):
+        pid = p.get("id")
+        pname = (p.get("name") or "").strip().lower()
+        if not pid or pid in seen_ids:
+            continue
+        if pname and pname in seen_names:
+            continue
+        seen_ids.add(pid)
+        if pname:
+            seen_names.add(pname)
+        pracas.append(p)
+    pracas.sort(key=lambda x: (x.get("name") or "").lower())
+
     colls = await db.collaborators.find(
         {"company_id": cid, "active": {"$ne": False}},
         {"_id": 0, "id": 1, "name": 1, "cargo": 1,
