@@ -56,6 +56,7 @@ class PurchaseItem(BaseModel):
     quantity: float = 1
     unit: Optional[str] = None
     unit_price: Optional[float] = None
+    type: Optional[str] = None  # ont|insumo|equipamento|outros (por item)
     macs: Optional[List[str]] = None  # se tipo=ont, MACs
 
 
@@ -371,12 +372,18 @@ async def upload_extract(
             "  \"invoice_number\": \"...\",\n"
             "  \"invoice_date\": \"YYYY-MM-DD\",\n"
             "  \"total_value\": 1234.56,\n"
-            "  \"type\": \"ont\"|\"insumo\"|\"equipamento\"|\"outros\",\n"
+            "  \"type\": \"ont\"|\"insumo\"|\"equipamento\"|\"ferramenta\"|\"outros\",\n"
             "  \"items\": [{\n"
             "      \"description\": \"...\",\n"
             "      \"quantity\": 1,\n"
             "      \"unit\": \"un|m|cx\",\n"
             "      \"unit_price\": 0.0,\n"
+            "      \"type\": \"ont\"|\"insumo\"|\"equipamento\"|\"ferramenta\"|\"outros\",\n"
+            "        // CLASSIFIQUE CADA ITEM: ferramenta = alicate, chave,\n"
+            "        // OTDR, decapador, máquina de fusão, escada, etc.\n"
+            "        // insumo = splitter, conector, cordão, drop, CTO sem\n"
+            "        // splitter, adaptador. ont = modem/roteador/cliente.\n"
+            "        // equipamento = OLT, switch, rack, nobreak.\n"
             "      \"macs\": [\"...\"]  // se ONT, MACs identificados\n"
             "  }],\n"
             "  \"confidence\": 0.0-1.0,\n"

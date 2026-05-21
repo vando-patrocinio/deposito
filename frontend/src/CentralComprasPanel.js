@@ -16,6 +16,7 @@ const TYPE_META = {
   ont: { label: "ONT", emoji: "📡", color: "#0ea5e9" },
   insumo: { label: "Insumo", emoji: "🔌", color: "#10b981" },
   equipamento: { label: "Equipamento", emoji: "🛠️", color: "#8b5cf6" },
+  ferramenta: { label: "Ferramenta", emoji: "🔧", color: "#f59e0b" },
   outros: { label: "Outros", emoji: "📦", color: "#64748b" },
 };
 
@@ -23,11 +24,13 @@ const EMPTY_FORM = {
   type: "ont",
   praca_id: "",
   responsible_collaborator_id: "",
+  tool_recipient_collaborator_id: "",  // técnico que recebe as ferramentas
   supplier_name: "",
   invoice_number: "",
   invoice_date: "",
   total_value: "",
-  items: [{ description: "", quantity: 1, unit: "un", unit_price: "", macs: "" }],
+  items: [{ description: "", quantity: 1, unit: "un", unit_price: "",
+             macs: "", type: "ont" }],
   notes: "",
   file_url: "",
   file_name: "",
@@ -80,7 +83,7 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
     }));
   }
   function addItem() {
-    setForm((p) => ({ ...p, items: [...p.items, { description: "", quantity: 1, unit: "un", unit_price: "", macs: "" }] }));
+    setForm((p) => ({ ...p, items: [...p.items, { description: "", quantity: 1, unit: "un", unit_price: "", macs: "", type: p.type }] }));
   }
   function removeItem(i) {
     setForm((p) => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }));
@@ -105,6 +108,7 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
           unit: it.unit || "un",
           unit_price: it.unit_price || "",
           macs: (it.macs || []).join(", "),
+          type: it.type || d.type || next.type || "outros",
         }));
       }
       next.file_name = r.file_name || file.name;
@@ -123,30 +127,71 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
     try {
       if (!form.praca_id) throw new Error("Selecione a praça");
       if (!form.responsible_collaborator_id) throw new Error("Selecione o responsável");
-      const payload = {
-        type: form.type,
-        praca_id: form.praca_id,
-        responsible_collaborator_id: form.responsible_collaborator_id,
-        supplier_name: form.supplier_name || null,
-        invoice_number: form.invoice_number || null,
-        invoice_date: form.invoice_date || null,
-        total_value: form.total_value ? parseFloat(form.total_value) : null,
-        notes: form.notes || null,
-        file_name: form.file_name || null,
-        items: form.items
-          .filter((it) => (it.description || "").trim())
-          .map((it) => ({
+
+      // Separa itens por tipo: ferramentas vão por outro fluxo
+      const validItems = form.items.filter((it) => (it.description || "").trim());
+      const toolItems = validItems.filter((it) => it.type === "ferramenta");
+      const stockItems = validItems.filter((it) => it.type !== "ferramenta");
+
+      if (toolItems.length > 0 && !form.tool_recipient_collaborator_id) {
+        throw new Error("Selecione o técnico que receberá as ferramentas (romaneio)");
+      }
+
+      // 1) Compras de insumos/ONT/equipamento/outros → fluxo padrão de compras
+      if (stockItems.length > 0) {
+        const payload = {
+          // Tipo "dominante" da nota (compatibilidade): primeiro item
+          type: stockItems[0].type || form.type,
+          praca_id: form.praca_id,
+          responsible_collaborator_id: form.responsible_collaborator_id,
+          supplier_name: form.supplier_name || null,
+          invoice_number: form.invoice_number || null,
+          invoice_date: form.invoice_date || null,
+          total_value: form.total_value ? parseFloat(form.total_value) : null,
+          notes: form.notes || null,
+          file_name: form.file_name || null,
+          items: stockItems.map((it) => ({
             description: it.description,
             quantity: parseFloat(it.quantity) || 1,
             unit: it.unit || null,
             unit_price: it.unit_price ? parseFloat(it.unit_price) : null,
-            macs: form.type === "ont" && it.macs
+            type: it.type || null,
+            macs: it.type === "ont" && it.macs
               ? it.macs.split(/[\s,;]+/).filter(Boolean) : null,
           })),
-      };
-      await api.purchasesCreate(payload);
+        };
+        await api.purchasesCreate(payload);
+      }
+
+      // 2) Ferramentas → cria asset por item para o técnico (gera custódia)
+      let createdToolsCount = 0;
+      if (toolItems.length > 0) {
+        const recipient = form.tool_recipient_collaborator_id;
+        for (const it of toolItems) {
+          const qty = parseInt(it.quantity, 10) || 1;
+          await api.assetCreate({
+            collaborator_id: recipient,
+            category: "ferramenta",
+            item: it.description,
+            qty,
+            unit_value_brl: it.unit_price ? parseFloat(it.unit_price) : null,
+            notes: `Origem: NF ${form.invoice_number || "—"} · ${form.supplier_name || "—"}`,
+          });
+          createdToolsCount += qty;
+        }
+        // Abre o romaneio para assinatura digital em nova aba
+        const url = api.assetRomaneioUrl(recipient, true);
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+
       setForm({ ...EMPTY_FORM, praca_id: form.praca_id });
-      setAiNote("");
+      const stockMsg = stockItems.length > 0
+        ? `${stockItems.length} item(ns) lançado(s) em estoque`
+        : "";
+      const toolMsg = createdToolsCount > 0
+        ? `${createdToolsCount} ferramenta(s) transferida(s) ao técnico · romaneio aberto p/ assinatura`
+        : "";
+      setAiNote([stockMsg, toolMsg].filter(Boolean).join(" · ") || "Lançado.");
       onCreated?.();
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
@@ -202,7 +247,7 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
 
       {/* Campos principais */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-        <Field label="Tipo">
+        <Field label="Tipo padrão (novos itens)">
           <select value={form.type} onChange={(e) => set("type", e.target.value)}
                   data-testid="purchase-type"
                   style={inputStyle}>
@@ -279,41 +324,96 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
       <div style={{ marginTop: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between",
                        alignItems: "baseline", marginBottom: 6 }}>
-          <strong style={{ fontSize: 13, color: "#0f172a" }}>Itens</strong>
+          <strong style={{ fontSize: 13, color: "#0f172a" }}>
+            Itens
+            <span style={{ fontSize: 11, color: "#64748b", fontWeight: 500, marginLeft: 8 }}>
+              · escolha o tipo de cada item (ferramenta gera romaneio)
+            </span>
+          </strong>
           <button onClick={addItem}
                   data-testid="purchase-add-item"
                   style={btnSecondary}>+ item</button>
         </div>
-        {form.items.map((it, i) => (
-          <div key={i} style={{
-            display: "grid",
-            gridTemplateColumns: form.type === "ont"
-              ? "2fr 70px 70px 100px 2fr 30px" : "2fr 70px 70px 100px 30px",
-            gap: 6, marginBottom: 6, alignItems: "center",
-          }}>
-            <input value={it.description}
-                    onChange={(e) => setItem(i, "description", e.target.value)}
-                    placeholder={form.type === "ont" ? "Modelo (ex: HG6145D)" : "Descrição"}
-                    style={inputStyle} />
-            <input type="number" value={it.quantity}
-                    onChange={(e) => setItem(i, "quantity", e.target.value)}
-                    style={inputStyle} placeholder="qtd" />
-            <input value={it.unit}
-                    onChange={(e) => setItem(i, "unit", e.target.value)}
-                    style={inputStyle} placeholder="un" />
-            <input type="number" step="0.01" value={it.unit_price}
-                    onChange={(e) => setItem(i, "unit_price", e.target.value)}
-                    style={inputStyle} placeholder="R$" />
-            {form.type === "ont" && (
-              <input value={it.macs}
-                      onChange={(e) => setItem(i, "macs", e.target.value)}
-                      placeholder="MACs separados por vírgula"
+        {form.items.map((it, i) => {
+          const itType = it.type || form.type;
+          const isOnt = itType === "ont";
+          const isTool = itType === "ferramenta";
+          return (
+            <div key={i} style={{
+              display: "grid",
+              gridTemplateColumns: isOnt
+                ? "120px 2fr 60px 60px 90px 2fr 28px"
+                : "120px 2fr 60px 60px 90px 28px",
+              gap: 6, marginBottom: 6, alignItems: "center",
+            }}>
+              <select value={itType}
+                      data-testid={`purchase-item-type-${i}`}
+                      onChange={(e) => setItem(i, "type", e.target.value)}
+                      style={{
+                        ...inputStyle,
+                        background: isTool ? "#fef3c7" : "white",
+                        borderColor: isTool ? "#f59e0b" : "#e2e8f0",
+                        fontWeight: isTool ? 700 : 400,
+                      }}>
+                {Object.entries(TYPE_META).map(([id, m]) =>
+                  <option key={id} value={id}>{m.emoji} {m.label}</option>)}
+              </select>
+              <input value={it.description}
+                      onChange={(e) => setItem(i, "description", e.target.value)}
+                      placeholder={isOnt ? "Modelo (ex: HG6145D)"
+                        : isTool ? "Ex.: alicate de crimpagem, OTDR…"
+                        : "Descrição"}
                       style={inputStyle} />
-            )}
-            <button onClick={() => removeItem(i)}
-                    style={{ ...btnSecondary, padding: "4px 6px" }}>×</button>
+              <input type="number" value={it.quantity}
+                      onChange={(e) => setItem(i, "quantity", e.target.value)}
+                      style={inputStyle} placeholder="qtd" />
+              <input value={it.unit}
+                      onChange={(e) => setItem(i, "unit", e.target.value)}
+                      style={inputStyle} placeholder="un" />
+              <input type="number" step="0.01" value={it.unit_price}
+                      onChange={(e) => setItem(i, "unit_price", e.target.value)}
+                      style={inputStyle} placeholder="R$" />
+              {isOnt && (
+                <input value={it.macs}
+                        onChange={(e) => setItem(i, "macs", e.target.value)}
+                        placeholder="MACs separados por vírgula"
+                        style={inputStyle} />
+              )}
+              <button onClick={() => removeItem(i)}
+                      style={{ ...btnSecondary, padding: "4px 6px" }}>×</button>
+            </div>
+          );
+        })}
+
+        {/* Seletor de técnico — só aparece quando há itens "ferramenta" */}
+        {form.items.some((it) => it.type === "ferramenta") && (
+          <div data-testid="purchase-tool-recipient-box"
+                style={{ marginTop: 10, padding: 12,
+                          background: "#fef3c7", border: "1.5px solid #f59e0b",
+                          borderRadius: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e",
+                            marginBottom: 6 }}>
+              🔧 Ferramentas detectadas — transferência para o técnico
+            </div>
+            <Field label="Técnico recebedor (gera romaneio para assinatura)">
+              <select value={form.tool_recipient_collaborator_id}
+                      data-testid="purchase-tool-recipient"
+                      onChange={(e) => set("tool_recipient_collaborator_id", e.target.value)}
+                      style={inputStyle}>
+                <option value="">Selecione o técnico…</option>
+                {(refs.collaborators || []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.cargo === "almoxarife" ? "📦 " : "👷 "}{c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <div style={{ fontSize: 11, color: "#92400e", marginTop: 4 }}>
+              Ao confirmar, cada ferramenta será cadastrada como pertence do técnico
+              e o <b>romaneio</b> abre em nova aba para assinatura digital.
+            </div>
           </div>
-        ))}
+        )}
       </div>
 
       <Field label="Observações">
