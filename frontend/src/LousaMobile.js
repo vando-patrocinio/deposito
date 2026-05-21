@@ -513,39 +513,8 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
         ))}
       </div>
 
-      {/* Entrada de Cadastro de CTO avulso — fundido na Lousa como
-          Extended FAB (Floating Action Button). Padrão Material Design.
-          Não ocupa espaço no scroll e fica sempre acessível. */}
-      {onOpenCTO && !reorderMode && !openTicket && (
-        <button
-          data-testid="lousa-cto-cadastro-fab"
-          onClick={onOpenCTO}
-          aria-label="Cadastrar CTO (Rede IA)"
-          style={{
-            position: "fixed",
-            bottom: 80,
-            right: 16,
-            zIndex: 50,
-            padding: "14px 20px",
-            background: "linear-gradient(135deg,#f97316,#ea580c)",
-            border: "none",
-            borderRadius: 999,
-            color: "#fff",
-            fontWeight: 800, fontSize: 14,
-            cursor: "pointer",
-            boxShadow: "0 8px 24px rgba(234,88,12,0.45), 0 2px 6px rgba(0,0,0,0.12)",
-            display: "inline-flex", alignItems: "center", gap: 8,
-            letterSpacing: 0.2,
-            transition: "transform 150ms ease, box-shadow 150ms ease",
-          }}
-          onMouseDown={(e) => { e.currentTarget.style.transform = "scale(0.96)"; }}
-          onMouseUp={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
-        >
-          <span style={{ fontSize: 18, lineHeight: 1 }}>📍</span>
-          <span>Cadastrar CTO</span>
-        </button>
-      )}
+      {/* Entrada de cadastro de CTO foi FUNDIDA no Step 2 da finalização
+          (Vincular cliente à CTO opcional). Por isso, sem FAB separado. */}
     </div>
   );
 }
@@ -1246,10 +1215,11 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     setStep(2);
   }
 
-  // Total de steps no fluxo atual (3 para instalação, 2 para reparo/retirada)
-  const totalFinalizeSteps = isInstall ? 3 : 2;
-  // Step "Insumos" é o ÚLTIMO (3 se install, 2 caso contrário)
-  const insumosStepNum = totalFinalizeSteps;
+  // Total de steps no fluxo atual: 3 para TODOS os tipos
+  // (1=Sinal, 2=Vincular CTO+Porta opcional, 3=Insumos)
+  const totalFinalizeSteps = 3;
+  // Step "Insumos" é sempre o último (3)
+  const insumosStepNum = 3;
 
   async function submit() {
     if (needsMac && macStatus === "error") {
@@ -1633,14 +1603,12 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         <Button onClick={goToStep2}
                  data-testid="finalize-next-btn"
                  style={{ width: "100%", marginTop: 6, height: 52, fontSize: 15 }}>
-          {isInstall
-            ? "Próximo: Vincular cliente à CTO →"
-            : "Próximo: Materiais e Observações →"}
+          Próximo: Vincular cliente à CTO →
         </Button>
       )}
 
-      {/* ============ STEP 2 (CTO + Porta — APENAS INSTALAÇÃO) ============ */}
-      {step === 2 && isInstall && (
+      {/* ============ STEP 2 (CTO + Porta — opcional para TODOS os tipos) ============ */}
+      {step === 2 && (
         <>
           <div style={{
             padding: "10px 12px", borderRadius: 12, marginBottom: 12,
@@ -1650,12 +1618,13 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
             <span style={{ fontSize: 22 }}>🔌</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: "#065f46" }}>
-                Vincular cliente à CTO
+                Vincular cliente à CTO (opcional)
               </div>
               <div style={{ fontSize: 10, color: "#475569", marginTop: 2,
                               lineHeight: 1.3 }}>
                 Selecione a CTO em frente ao cliente e a porta usada.
                 Se a CTO não estiver no mapa, cadastre uma nova.
+                A IA vai associar este cliente automaticamente à porta escolhida.
               </div>
             </div>
           </div>
