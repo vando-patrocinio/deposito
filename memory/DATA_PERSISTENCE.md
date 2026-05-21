@@ -1,10 +1,18 @@
 # Política de Persistência de Dados — SmartProv
 
-**Versão:** 1.0  •  **Data:** 2026-05-20
+**Versão:** 1.1  •  **Última auditoria:** 2026-05-21
 
 Documento que descreve **o que persiste** entre deploys, **como garantimos que
 nada é apagado** quando uma nova estrutura é publicada, e **as regras
 obrigatórias** que TODO desenvolvedor (humano ou IA) deve seguir.
+
+> ✅ **Auditoria 2026-05-21 (sessão atual):** Todos os arquivos novos
+> (`services/cto_audit.py`, `services/cto_photo_inspector.py`,
+> `routes/smartolt.py`, `routes/pdf_reports.py`) foram revisados.
+> O único `delete_many` encontrado (`cto_audits` line 138) opera apenas em
+> **histórico de auditoria** (coleção derivada/log), mantendo os últimos 30
+> registros. **Não toca em coleções de cadastro de cliente.**
+>
 
 ---
 
