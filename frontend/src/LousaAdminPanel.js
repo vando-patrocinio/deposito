@@ -2659,6 +2659,7 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
 
 function ClosedNotesPdfPopover({ onClose }) {
   const [period, setPeriod] = useState("today");
+  const [mode, setMode] = useState("closed"); // "closed" | "open"
   const [start, setStart] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 7);
     return d.toISOString().slice(0, 10);
@@ -2684,7 +2685,7 @@ function ClosedNotesPdfPopover({ onClose }) {
   const generate = async () => {
     setErr(""); setBusy(true);
     try {
-      const params = new URLSearchParams({ period });
+      const params = new URLSearchParams({ period, mode });
       if (period === "custom") {
         params.set("start", start);
         params.set("end", end);
@@ -2693,7 +2694,8 @@ function ClosedNotesPdfPopover({ onClose }) {
         `/lousa/tickets/closed/pdf?${params.toString()}`,
         { responseType: "blob" },
       );
-      const url = URL.createObjectURL(r.data);
+      const blob = new Blob([r.data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
       setPreviewUrl(url);
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message || "Falha ao gerar PDF");
@@ -2704,10 +2706,15 @@ function ClosedNotesPdfPopover({ onClose }) {
     if (!previewUrl) return;
     const a = document.createElement("a");
     a.href = previewUrl;
-    a.download = `fechamento_notas_${period}_${new Date()
+    a.download = `${mode === "open" ? "bolhas_abertas" : "fechamento_notas"}_${period}_${new Date()
         .toISOString().slice(0, 10)}.pdf`;
     document.body.appendChild(a);
     a.click(); a.remove();
+  };
+
+  const openInNewTab = () => {
+    if (!previewUrl) return;
+    window.open(previewUrl, "_blank", "noopener,noreferrer");
   };
 
   // ===== Modal de preview com iframe =====
@@ -2731,16 +2738,29 @@ function ClosedNotesPdfPopover({ onClose }) {
                           borderBottom: "1px solid #e2e8f0" }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>
-                📄 Relatório PDF — Pré-visualização
+                {mode === "open"
+                  ? "🟡 Bolhas Abertas — Pré-visualização"
+                  : "📄 Notas Finalizadas — Pré-visualização"}
               </div>
               <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                Período: {{
-                  today: "Hoje", yesterday: "Ontem", week: "Últimos 7 dias",
-                  custom: `${start} → ${end}`,
-                }[period]}
+                {mode === "open" ? "Todas as OS pendentes/em execução" : (
+                  "Período: " + {
+                    today: "Hoje", yesterday: "Ontem", week: "Últimos 7 dias",
+                    custom: `${start} → ${end}`,
+                  }[period]
+                )}
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
+              <button data-testid="lousa-pdf-preview-open-tab"
+                      onClick={openInNewTab}
+                      title="Abrir em nova aba (alternativa se a pré-visualização ficar branca)"
+                      style={{ padding: "8px 14px", borderRadius: 8,
+                                background: "#fff", border: "1px solid #cbd5e1",
+                                color: "#0f172a", fontSize: 12, fontWeight: 700,
+                                cursor: "pointer" }}>
+                ↗ Abrir em nova aba
+              </button>
               <button data-testid="lousa-pdf-preview-download"
                       onClick={downloadFromPreview}
                       style={{ padding: "8px 14px", borderRadius: 8,
@@ -2761,12 +2781,24 @@ function ClosedNotesPdfPopover({ onClose }) {
               </button>
             </div>
           </div>
-          <iframe
-            data-testid="lousa-pdf-preview-iframe"
-            src={previewUrl}
-            title="Pré-visualização PDF"
+          <object
+            data-testid="lousa-pdf-preview-object"
+            data={previewUrl}
+            type="application/pdf"
             style={{ flex: 1, width: "100%", border: 0 }}
-          />
+          >
+            <div style={{ padding: 40, textAlign: "center" }}>
+              <p style={{ fontSize: 14, color: "#475569", marginBottom: 12 }}>
+                Seu navegador bloqueou a pré-visualização inline.
+              </p>
+              <button onClick={openInNewTab}
+                      style={{ padding: "10px 18px", borderRadius: 8,
+                                background: "#0891b2", color: "#fff",
+                                border: 0, fontWeight: 700, cursor: "pointer" }}>
+                ↗ Abrir PDF em nova aba
+              </button>
+            </div>
+          </object>
         </div>
       </div>
     );
@@ -2784,8 +2816,43 @@ function ClosedNotesPdfPopover({ onClose }) {
           }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a",
                       marginBottom: 8 }}>
-        📄 Relatório PDF — Notas finalizadas
+        📄 Relatório PDF
       </div>
+      {/* Seletor Modo: Finalizadas vs Abertas */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
+                      gap: 6, marginBottom: 10 }}>
+        <button data-testid="lousa-pdf-mode-closed"
+                onClick={() => setMode("closed")}
+                style={{ padding: "10px 8px", borderRadius: 8,
+                          border: `1.5px solid ${mode === "closed" ? "#0f766e" : "#e2e8f0"}`,
+                          background: mode === "closed" ? "#ecfdf5" : "#fff",
+                          color: mode === "closed" ? "#065f46" : "#0f172a",
+                          fontSize: 12, fontWeight: 700, cursor: "pointer",
+                          textAlign: "center" }}>
+          ✓ Notas FINALIZADAS
+        </button>
+        <button data-testid="lousa-pdf-mode-open"
+                onClick={() => setMode("open")}
+                style={{ padding: "10px 8px", borderRadius: 8,
+                          border: `1.5px solid ${mode === "open" ? "#ea580c" : "#e2e8f0"}`,
+                          background: mode === "open" ? "#fff7ed" : "#fff",
+                          color: mode === "open" ? "#9a3412" : "#0f172a",
+                          fontSize: 12, fontWeight: 700, cursor: "pointer",
+                          textAlign: "center" }}>
+          🟡 Bolhas ABERTAS
+        </button>
+      </div>
+      {mode === "open" && (
+        <div style={{ fontSize: 10, color: "#9a3412",
+                        background: "#fff7ed",
+                        border: "1px solid #fed7aa",
+                        borderRadius: 6, padding: 8, marginBottom: 8,
+                        lineHeight: 1.4 }}>
+          Mostra OS pendentes/em execução agrupadas por técnico (ignora o
+          período).
+        </div>
+      )}
+      {mode === "closed" && (
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
                       gap: 6, marginBottom: 8 }}>
         {[
@@ -2808,7 +2875,8 @@ function ClosedNotesPdfPopover({ onClose }) {
           </button>
         ))}
       </div>
-      {period === "custom" && (
+      )}
+      {period === "custom" && mode === "closed" && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
                         gap: 6, marginBottom: 8 }}>
           <input type="date" value={start} onChange={(e) => setStart(e.target.value)}
@@ -2835,7 +2903,9 @@ function ClosedNotesPdfPopover({ onClose }) {
                             : "linear-gradient(135deg,#0f766e,#0891b2)",
                         color: "#fff", border: 0, fontSize: 13, fontWeight: 700,
                         cursor: busy ? "wait" : "pointer" }}>
-        {busy ? "Gerando…" : "👁 Visualizar PDF"}
+        {busy ? "Gerando…" : (mode === "open"
+            ? "👁 Visualizar Bolhas Abertas"
+            : "👁 Visualizar Finalizadas")}
       </button>
     </div>
   );

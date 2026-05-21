@@ -191,6 +191,7 @@ async def closed_tickets_pdf(
     period: str = Query("today", description="today | yesterday | week | custom"),
     start: Optional[str] = Query(None, description="YYYY-MM-DD (período custom)"),
     end: Optional[str] = Query(None, description="YYYY-MM-DD (período custom)"),
+    mode: str = Query("closed", description="closed | open"),
     user: dict = Depends(get_current_user),
 ):
     cid = _company_id(user)
@@ -221,14 +222,18 @@ async def closed_tickets_pdf(
     rows = await db.tickets.find(
         {
             "company_id": cid,
-            "status": {"$in": ["finalizada", "encerrada"]},
-            "closed_at": {"$gte": d_start.isoformat(), "$lt": d_end.isoformat()},
+            **({"status": {"$nin": ["finalizada", "encerrada", "cancelada"]}}
+                if mode == "open" else
+                {"status": {"$in": ["finalizada", "encerrada"]},
+                  "closed_at": {"$gte": d_start.isoformat(),
+                                  "$lt": d_end.isoformat()}}),
         },
         {"_id": 0, "id": 1, "client_snapshot": 1, "type": 1, "priority": 1,
          "closed_at": 1, "closed_by": 1, "outcome": 1, "status": 1,
          "completion_data": 1, "admin_action": 1,
-         "assigned_collaborator_id": 1, "scheduled_time": 1},
-    ).sort("closed_at", 1).to_list(2000)
+         "assigned_collaborator_id": 1, "scheduled_time": 1,
+         "created_at": 1, "scheduled_date": 1},
+    ).sort("closed_at" if mode != "open" else "scheduled_time", 1).to_list(2000)
 
     # Mapa de nomes dos colaboradores
     coll_ids = {r.get("closed_by") for r in rows if r.get("closed_by")}
@@ -266,11 +271,14 @@ async def closed_tickets_pdf(
         "today": "Hoje", "yesterday": "Ontem",
         "week": "Últimos 7 dias", "custom": f"{start} → {end}",
     }.get(period, period)
+    is_open = (mode == "open")
     story += _header_paragraph(
         styles,
-        "📋 Fechamento de Notas (Lousa)",
-        f"Gerado em {_now_brt_str()} · Período: {period_lbl} · "
-        f"Total: {len(rows)} notas",
+        "🟡 Serviços em ABERTO (bolhas ativas)" if is_open
+            else "📋 Fechamento de Notas (Lousa)",
+        f"Gerado em {_now_brt_str()} · "
+        + (f"Total: {len(rows)} bolhas pendentes"
+            if is_open else f"Período: {period_lbl} · Total: {len(rows)} notas"),
     )
 
     # KPIs
@@ -297,13 +305,17 @@ async def closed_tickets_pdf(
         from collections import defaultdict
         by_tech: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         for r in rows:
-            tech_name = (coll_map.get(r.get("closed_by"))
-                          or coll_map.get(r.get("assigned_collaborator_id"))
-                          or "— Sem técnico —")
+            # Em modo "open": usa o atribuído (não tem closed_by)
+            if is_open:
+                tech_name = (coll_map.get(r.get("assigned_collaborator_id"))
+                              or "— Sem técnico —")
+            else:
+                tech_name = (coll_map.get(r.get("closed_by"))
+                              or coll_map.get(r.get("assigned_collaborator_id"))
+                              or "— Sem técnico —")
             by_tech[tech_name].append(r)
 
         # Adiciona TODOS os colaboradores ativos da empresa, mesmo com 0 notas
-        # (assim o gestor enxerga quem está "zerado" no período).
         active_techs = await db.collaborators.find(
             {"company_id": cid, "$or": [{"active": True}, {"active": {"$exists": False}}]},
             {"_id": 0, "name": 1},
@@ -313,93 +325,101 @@ async def closed_tickets_pdf(
             if tn not in by_tech:
                 by_tech[tn] = []
 
-        # Ordena: técnicos COM notas primeiro (mais → menos), depois zerados em A-Z
         sorted_techs = sorted(by_tech.keys(),
                                 key=lambda n: (-len(by_tech[n]), n.lower()))
 
         for tech_name in sorted_techs:
             tnotes = by_tech[tech_name]
             n = len(tnotes)
-            # Cabeçalho do técnico — destaca zerados em vermelho-suave
             if n == 0:
                 story.append(Paragraph(
                     f"<font color='#94a3b8'><b>👷 {tech_name}</b> · "
-                    f"<i>0 notas finalizadas no período</i> ⚠</font>",
+                    f"<i>{'0 bolhas abertas' if is_open else '0 notas finalizadas'} no período</i> ⚠</font>",
                     styles["body"]))
                 story.append(Spacer(1, 8))
                 continue
 
+            label_done = (f"{n} bolha{'s' if n > 1 else ''} aberta{'s' if n > 1 else ''}"
+                            if is_open else
+                            f"{n} nota{'s' if n > 1 else ''} finalizada{'s' if n > 1 else ''}")
+            color_done = "#ea580c" if is_open else "#0f766e"
             story.append(Paragraph(
                 f"<b>👷 {tech_name}</b> &nbsp;·&nbsp; "
-                f"<font color='#0f766e'><b>{n} nota{'s' if n > 1 else ''} finalizada{'s' if n > 1 else ''}</b></font>",
+                f"<font color='{color_done}'><b>{label_done}</b></font>",
                 styles["body"]))
             story.append(Spacer(1, 4))
 
-            # Tabela detalhada das notas deste técnico
-            header = ["#", "Fechada em", "Cliente", "Tipo", "Sinal",
-                       "CTO · Porta", "O que foi feito", "Origem"]
+            # Tabela detalhada
+            if is_open:
+                header = ["#", "Aberta em", "Agendada", "Cliente",
+                           "Tipo", "Prio", "Status", "Endereço"]
+            else:
+                header = ["#", "Fechada em", "Cliente", "Tipo", "Sinal",
+                           "CTO · Porta", "O que foi feito", "Origem"]
             body = [header]
             for i, r in enumerate(tnotes, 1):
                 cs = r.get("client_snapshot") or {}
                 cd = r.get("completion_data") or {}
-                closed_at = (r.get("closed_at") or "")[:16].replace("T", " ")
 
-                sinal = cd.get("sinal")
-                sinal_str = f"{sinal:.1f} dBm" if isinstance(sinal, (int, float)) else "—"
+                if is_open:
+                    created = (r.get("created_at") or "")[:16].replace("T", " ")
+                    sched = (r.get("scheduled_date") or "") + \
+                              (f" {r.get('scheduled_time')}" if r.get("scheduled_time") else "")
+                    sched = sched or "—"
+                    body.append([
+                        str(i), created, sched, (cs.get("name") or "—")[:30],
+                        (r.get("type") or "—")[:14],
+                        (r.get("priority") or "—")[:7],
+                        (r.get("status") or "—")[:14],
+                        Paragraph((cs.get("address") or "")[:120], styles["body"]),
+                    ])
+                else:
+                    closed_at = (r.get("closed_at") or "")[:16].replace("T", " ")
+                    sinal = cd.get("sinal")
+                    sinal_str = f"{sinal:.1f} dBm" if isinstance(sinal, (int, float)) else "—"
 
-                cto_str = "—"
-                if cd.get("cto_name"):
-                    cto_str = f"{cd['cto_name'][:18]}"
-                    if cd.get("cto_port_number"):
-                        cto_str += f" · P{cd['cto_port_number']}"
-                    if cd.get("cto_splitter"):
-                        cto_str += f"\n{cd['cto_splitter']}"
-                    if cd.get("cto_vlan"):
-                        cto_str += f" · VLAN {cd['cto_vlan']}"
+                    cto_str = "—"
+                    if cd.get("cto_name"):
+                        cto_str = f"{cd['cto_name'][:18]}"
+                        if cd.get("cto_port_number"):
+                            cto_str += f" · P{cd['cto_port_number']}"
+                        if cd.get("cto_splitter"):
+                            cto_str += f"\n{cd['cto_splitter']}"
+                        if cd.get("cto_vlan"):
+                            cto_str += f" · VLAN {cd['cto_vlan']}"
 
-                # Monta "o que foi feito" combinando vários campos
-                done_parts: List[str] = []
-                if cd.get("ont"):
-                    done_parts.append(f"<b>ONT:</b> {cd['ont']}")
-                if cd.get("drop"):
-                    done_parts.append(f"<b>Drop:</b> {cd['drop']}m")
-                if cd.get("esticador"):
-                    done_parts.append(f"<b>Est:</b> {cd['esticador']}")
-                if cd.get("conectores"):
-                    done_parts.append(f"<b>Con:</b> {cd['conectores']}")
-                if cd.get("backbone"):
-                    done_parts.append(f"<b>Bb:</b> {cd['backbone']}m")
-                fotos = cd.get("fotos") or []
-                fotos_count = len([f for f in fotos if f])
-                if fotos_count:
-                    done_parts.append(f"📷 {fotos_count} foto{'s' if fotos_count > 1 else ''}")
-                ping = (cd.get("ping_summary") or "").strip()
-                if ping:
-                    done_parts.append(f"<b>Ping:</b> {ping[:60]}")
-                obs = (cd.get("observacoes") or "").strip()
-                if obs:
-                    done_parts.append(f"<b>Obs:</b> {obs[:140]}")
-                outcome = r.get("outcome")
-                if outcome:
-                    done_parts.append(f"<b>Result:</b> {outcome[:30]}")
-                if not done_parts:
-                    done_parts.append("—")
+                    done_parts: List[str] = []
+                    if cd.get("ont"): done_parts.append(f"<b>ONT:</b> {cd['ont']}")
+                    if cd.get("drop"): done_parts.append(f"<b>Drop:</b> {cd['drop']}m")
+                    if cd.get("esticador"): done_parts.append(f"<b>Est:</b> {cd['esticador']}")
+                    if cd.get("conectores"): done_parts.append(f"<b>Con:</b> {cd['conectores']}")
+                    if cd.get("backbone"): done_parts.append(f"<b>Bb:</b> {cd['backbone']}m")
+                    fotos = cd.get("fotos") or []
+                    fotos_count = len([f for f in fotos if f])
+                    if fotos_count: done_parts.append(f"📷 {fotos_count} foto{'s' if fotos_count > 1 else ''}")
+                    ping = (cd.get("ping_summary") or "").strip()
+                    if ping: done_parts.append(f"<b>Ping:</b> {ping[:60]}")
+                    obs = (cd.get("observacoes") or "").strip()
+                    if obs: done_parts.append(f"<b>Obs:</b> {obs[:140]}")
+                    outcome = r.get("outcome")
+                    if outcome: done_parts.append(f"<b>Result:</b> {outcome[:30]}")
+                    if not done_parts: done_parts.append("—")
 
-                origem = "🛡 Gestor" if r.get("admin_action") == "encerrar" else "👷 Técnico"
+                    origem = "🛡 Gestor" if r.get("admin_action") == "encerrar" else "👷 Técnico"
 
-                body.append([
-                    str(i), closed_at, (cs.get("name") or "—")[:30],
-                    (r.get("type") or "—")[:14],
-                    sinal_str,
-                    cto_str,
-                    Paragraph(" · ".join(done_parts), styles["body"]),
-                    origem,
-                ])
-            table = Table(
-                body,
-                colWidths=[7*mm, 24*mm, 38*mm, 18*mm, 16*mm, 28*mm, 100*mm, 20*mm],
-                repeatRows=1,
-            )
+                    body.append([
+                        str(i), closed_at, (cs.get("name") or "—")[:30],
+                        (r.get("type") or "—")[:14],
+                        sinal_str, cto_str,
+                        Paragraph(" · ".join(done_parts), styles["body"]),
+                        origem,
+                    ])
+
+            if is_open:
+                col_widths = [7*mm, 24*mm, 24*mm, 38*mm, 18*mm, 14*mm, 22*mm, 100*mm]
+            else:
+                col_widths = [7*mm, 24*mm, 38*mm, 18*mm, 16*mm, 28*mm, 100*mm, 20*mm]
+            table = Table(body, colWidths=col_widths, repeatRows=1)
             ts = [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -407,18 +427,19 @@ async def closed_tickets_pdf(
                 ("FONTSIZE", (0, 0), (-1, -1), 7.5),
                 ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
-                ("ALIGN", (4, 0), (4, -1), "CENTER"),
-                ("ALIGN", (7, 0), (7, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1),
                     [colors.white, colors.HexColor("#f8fafc")]),
             ]
-            for i, r in enumerate(tnotes, start=1):
-                if r.get("admin_action") == "encerrar":
-                    ts.append(("BACKGROUND", (-1, i), (-1, i),
-                              colors.HexColor("#fef3c7")))
-                    ts.append(("TEXTCOLOR", (-1, i), (-1, i),
-                              colors.HexColor("#92400e")))
+            if not is_open:
+                ts.append(("ALIGN", (4, 0), (4, -1), "CENTER"))
+                ts.append(("ALIGN", (7, 0), (7, -1), "CENTER"))
+                for i, r in enumerate(tnotes, start=1):
+                    if r.get("admin_action") == "encerrar":
+                        ts.append(("BACKGROUND", (-1, i), (-1, i),
+                                  colors.HexColor("#fef3c7")))
+                        ts.append(("TEXTCOLOR", (-1, i), (-1, i),
+                                  colors.HexColor("#92400e")))
             table.setStyle(TableStyle(ts))
             story.append(table)
             story.append(Spacer(1, 10))
