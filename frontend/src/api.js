@@ -247,8 +247,11 @@ export const api = {
   stokServiceCreate: (data) => client.post(`/stok/services`, data).then((r) => r.data),
   stokServiceClose: (sid, data) => client.post(`/stok/services/${sid}/close`, data).then((r) => r.data),
   stokHistory: (params = {}) => client.get(`/stok/history`, { params }).then((r) => r.data),
-  stokClientes: (identify_manufacturer_max = 200) =>
-    client.get(`/stok/clientes`, { params: { identify_manufacturer_max } }).then((r) => r.data),
+  stokClientes: (identify_manufacturer_max = 0) =>
+    client.get(`/stok/clientes`, {
+      params: { identify_manufacturer_max },
+      timeout: 15000,  // 15s — backend tem timeout duro de 8s + margem
+    }).then((r) => r.data),
   stokClientesIdentifyAll: (force = false) =>
     client.post(`/stok/clientes/identify-all`, null, { params: { force } }).then((r) => r.data),
   // Balanço de Estoque (cycle counting)

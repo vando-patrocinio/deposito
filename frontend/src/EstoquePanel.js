@@ -1471,7 +1471,9 @@ function ClientesSection() {
   const reload = useCallback(async () => {
     setLoading(true); setErr("");
     try {
-      setData(await api.stokClientes(200));
+      // identify_manufacturer_max=0 → resposta rápida (só cache + KNOWN_PREFIXES).
+      // Para identificar prefixos novos, usuário clica em "Identificar tudo".
+      setData(await api.stokClientes(0));
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
     } finally { setLoading(false); }
@@ -1513,7 +1515,7 @@ function ClientesSection() {
     return { bg: "var(--danger-soft)", color: "var(--danger-soft-fg)" };
   };
 
-  if (loading && !data) return <Card>Carregando clientes do SmartOLT… (até 30s na primeira chamada)</Card>;
+  if (loading && !data) return <Card>Carregando clientes do SmartOLT… <span style={{ fontSize: 11, color: "#94a3b8" }}>(timeout duro: 10s)</span></Card>;
   if (err) return <Card><div style={{ color: "#dc2626" }}>Erro: {err}</div></Card>;
   if (!data) return null;
 

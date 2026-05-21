@@ -1043,7 +1043,7 @@ async def auto_close_service_from_ticket(
 # ---------------------------------------------------------------------------
 @router.get("/clientes")
 async def stok_clientes(only_authorized: bool = True, limit: int = 5000,
-                        identify_manufacturer_max: int = 100,
+                        identify_manufacturer_max: int = 0,
                         user: dict = Depends(require_role("gestor"))):
     """Lista todas as ONUs em uso pelos clientes (cache do SmartOLT).
 
@@ -1051,7 +1051,13 @@ async def stok_clientes(only_authorized: bool = True, limit: int = 5000,
     via prefixo IEEE/CCM, com fallback Gemini Flash). O `identify_manufacturer_max`
     limita quantas detecções por LLM são feitas por chamada (cache permanente
     em `manufacturer_cache` cobre repetições).
+
+    IMPORTANTE: por padrão (`identify_manufacturer_max=0`) NÃO faz chamada LLM
+    nova — usa só KNOWN_PREFIXES + cache em DB. Garante resposta rápida (<2s).
+    Para identificar prefixos novos via IA, use o endpoint
+    POST /stok/clientes/identify-all (botão "Identificar todos").
     """
+    import asyncio as _asyncio
     from manufacturers import identify_manufacturer
     cid = user.get("company_id") or DEMO_COMPANY_ID
 
@@ -1084,8 +1090,21 @@ async def stok_clientes(only_authorized: bool = True, limit: int = 5000,
 
     # Otimização: identifica por PREFIXO único (não por SN) — cache cobre
     # tudo de graça. Limit aplica apenas a chamadas LLM novas.
-    detected = await _detect_by_prefix(
-        sn_list, identify_manufacturer, llm_max=identify_manufacturer_max)
+    # Timeout duro de 8s para não travar a UI mesmo se Gemini estiver lento.
+    detected: dict = {}
+    try:
+        detected = await _asyncio.wait_for(
+            _detect_by_prefix(
+                sn_list, identify_manufacturer,
+                llm_max=identify_manufacturer_max),
+            timeout=8.0,
+        )
+    except _asyncio.TimeoutError:
+        logger.warning("[clientes] _detect_by_prefix timeout 8s — retornando "
+                          "sem identificação LLM (usa botão 'Identificar todos' "
+                          "para forçar)")
+    except Exception as e:
+        logger.warning("[clientes] _detect_by_prefix erro: %s", e)
 
     # Aplica nos itens
     for it in items:
