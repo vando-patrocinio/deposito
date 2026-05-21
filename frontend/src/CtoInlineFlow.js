@@ -52,12 +52,14 @@ const checkBox = (selected) => ({
  * - onAdvanceFromA(): técnico clica "Continuar" na tela A
  * - onBackFromB(): técnico clica "Voltar" na tela B
  * - onCreated({ cto, port_number }): CTO criada (chama callback final p/ TicketDetail)
+ * - onSelectExistingCto(cto): técnico tocou numa CTO existente no mapa
  */
 export default function CtoInlineFlow({
   screen,
   state, setState,
   collabId, client, technician,
   onSkipFromA, onAdvanceFromA, onBackFromB, onCreated,
+  onSelectExistingCto,
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -102,6 +104,22 @@ export default function CtoInlineFlow({
   async function submitCreate() {
     setBusy(true); setErr("");
     try {
+      if (!state.photo) throw new Error("Foto da CTO é obrigatória.");
+      if (!state.clientPort) throw new Error("Selecione a porta do cliente.");
+
+      // Modo "usar CTO existente" — não cria nova; só vincula via OS
+      if (state.existingCtoId) {
+        // Retorna a CTO existente (que está em ctoSelected externamente) com a porta
+        onCreated?.({
+          cto: { id: state.existingCtoId,
+                  name: state.address?.endereco ? null : null,
+                  ...(state) },
+          port_number: state.clientPort,
+          photo: state.photo,
+        });
+        return;
+      }
+
       const vlan = parseInt(state.vlan, 10);
       if (!vlan || vlan < 1 || vlan > 4094) {
         throw new Error("VLAN inválida (1 a 4094).");
@@ -120,7 +138,6 @@ export default function CtoInlineFlow({
       if (state.networkType === "desbalanceada" && !state.splitter) {
         throw new Error("Selecione o splitter (rede desbalanceada).");
       }
-      if (!state.clientPort) throw new Error("Selecione a porta do cliente.");
 
       // Garante que o bairro está cadastrado (cria se não existir)
       await api.redeIaBairroEnsureFromFieldPublic(collabId, {
@@ -195,6 +212,7 @@ export default function CtoInlineFlow({
                         height: 280 }}>
           <CTOMapPicker
             collabId={collabId}
+            onSelectExistingCto={onSelectExistingCto}
             onMove={({ lat, lng, address: a }) => {
               setState((s) => ({
                 ...s,
@@ -238,18 +256,26 @@ export default function CtoInlineFlow({
           </div>
         </div>
 
-        {/* Foto */}
-        <label style={labelStyle}>Foto da CTO (opcional)</label>
+        {/* Foto — OBRIGATÓRIA */}
+        <label style={labelStyle}>
+          Foto da CTO <span style={{ color: "#dc2626" }}>*</span>
+        </label>
         <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
                 onChange={onPhotoChange} style={{ display: "none" }}
                 data-testid="cto-inline-photo-input" />
         {state.photo ? (
           <div style={{ position: "relative", borderRadius: 12, overflow: "hidden",
-                          border: `1.5px solid ${C_BORDER}`, marginBottom: 6 }}>
+                          border: `1.5px solid #22c55e`, marginBottom: 6 }}>
             <img src={state.photo} alt="Foto CTO"
                   data-testid="cto-inline-photo-preview"
                   style={{ width: "100%", display: "block",
                             maxHeight: 200, objectFit: "cover" }} />
+            <div style={{ position: "absolute", top: 8, left: 8,
+                            background: "#15803d", color: "#fff",
+                            padding: "2px 8px", borderRadius: 999,
+                            fontSize: 10, fontWeight: 800 }}>
+              ✓ Foto registrada
+            </div>
             <button data-testid="cto-inline-photo-remove"
                     onClick={() => setState((s) => ({ ...s, photo: null }))}
                     style={{ position: "absolute", top: 8, right: 8,
@@ -262,12 +288,16 @@ export default function CtoInlineFlow({
                   onClick={() => fileInputRef.current?.click()}
                   style={{ ...inputBase, display: "flex", alignItems: "center",
                             justifyContent: "space-between", cursor: "pointer",
-                            padding: "14px 14px" }}>
+                            padding: "14px 14px",
+                            border: "1.5px dashed #dc2626",
+                            background: "#fef2f2" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: 20 }}>📷</span>
-              <span style={{ color: C_TEXT, fontWeight: 600 }}>Tirar foto da CTO</span>
+              <span style={{ color: "#991b1b", fontWeight: 700 }}>
+                Tirar foto da CTO (obrigatório)
+              </span>
             </span>
-            <span style={{ color: C_MUTED, fontSize: 20 }}>›</span>
+            <span style={{ color: "#dc2626", fontSize: 20 }}>›</span>
           </button>
         )}
 
@@ -302,6 +332,9 @@ export default function CtoInlineFlow({
                     if (!state.address?.endereco) {
                       setErr("Endereço não detectado. Mova o pino até a rua."); return;
                     }
+                    if (!state.photo) {
+                      setErr("Tire uma foto da CTO antes de continuar (obrigatório)."); return;
+                    }
                     if (!state.vlan) {
                       setErr("Informe a VLAN."); return;
                     }
@@ -320,55 +353,120 @@ export default function CtoInlineFlow({
   }
 
   // ===== Tela B =====
+  const isExistingMode = !!state.existingCtoId;
   return (
     <div data-testid="cto-inline-screen-b">
       <div style={{
         padding: "10px 12px", borderRadius: 12, marginBottom: 12,
-        background: "#ecfdf5", border: "1px dashed #10b981",
+        background: isExistingMode ? "#eff6ff" : "#ecfdf5",
+        border: `1px dashed ${isExistingMode ? "#3b82f6" : "#10b981"}`,
         display: "flex", alignItems: "flex-start", gap: 10,
       }}>
-        <span style={{ fontSize: 22 }}>🔌</span>
+        <span style={{ fontSize: 22 }}>{isExistingMode ? "📌" : "🔌"}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "#065f46" }}>
-            Portas, tipo de rede e porta do cliente
+          <div style={{ fontSize: 12, fontWeight: 800,
+                          color: isExistingMode ? "#1e40af" : "#065f46" }}>
+            {isExistingMode
+              ? "Usando CTO existente — tire foto e escolha porta"
+              : "Portas, tipo de rede e porta do cliente"}
           </div>
           <div style={{ fontSize: 10, color: "#475569", marginTop: 2, lineHeight: 1.3 }}>
-            A IA vai criar a CTO + vincular {client?.name
-                ? <strong>{client.name}</strong> : "o cliente"} à porta selecionada
-            e atualizar o mapa Rede IA.
+            {isExistingMode
+              ? <>VLAN, capacidade e splitter já vieram do cadastro. A IA vai
+                  vincular {client?.name ? <strong>{client.name}</strong> : "o cliente"} à porta selecionada.</>
+              : <>A IA vai criar a CTO + vincular {client?.name
+                  ? <strong>{client.name}</strong> : "o cliente"} à porta selecionada
+                  e atualizar o mapa Rede IA.</>}
           </div>
         </div>
       </div>
 
-      {/* Quantidade de portas */}
-      <label style={{ ...labelStyle, marginTop: 4 }}>Quantas portas tem a CTO?</label>
+      {/* Foto OBRIGATÓRIA também no modo CTO existente */}
+      {isExistingMode && (
+        <>
+          <label style={{ ...labelStyle, marginTop: 4 }}>
+            Foto da CTO <span style={{ color: "#dc2626" }}>*</span>
+          </label>
+          <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+                  onChange={onPhotoChange} style={{ display: "none" }}
+                  data-testid="cto-inline-photo-input-b" />
+          {state.photo ? (
+            <div style={{ position: "relative", borderRadius: 12, overflow: "hidden",
+                            border: `1.5px solid #22c55e`, marginBottom: 10 }}>
+              <img src={state.photo} alt="Foto CTO"
+                    style={{ width: "100%", display: "block",
+                              maxHeight: 180, objectFit: "cover" }} />
+              <div style={{ position: "absolute", top: 8, left: 8,
+                              background: "#15803d", color: "#fff",
+                              padding: "2px 8px", borderRadius: 999,
+                              fontSize: 10, fontWeight: 800 }}>
+                ✓ Foto registrada
+              </div>
+              <button onClick={() => setState((s) => ({ ...s, photo: null }))}
+                      style={{ position: "absolute", top: 8, right: 8,
+                                background: "rgba(0,0,0,0.6)", color: "#fff",
+                                border: 0, borderRadius: "50%", width: 28, height: 28,
+                                fontSize: 14, fontWeight: 800, cursor: "pointer" }}>×</button>
+            </div>
+          ) : (
+            <button data-testid="cto-inline-photo-btn-b"
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{ ...inputBase, display: "flex", alignItems: "center",
+                              justifyContent: "space-between", cursor: "pointer",
+                              padding: "14px 14px", marginBottom: 10,
+                              border: "1.5px dashed #dc2626",
+                              background: "#fef2f2" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 20 }}>📷</span>
+                <span style={{ color: "#991b1b", fontWeight: 700 }}>
+                  Tirar foto da CTO (obrigatório)
+                </span>
+              </span>
+              <span style={{ color: "#dc2626", fontSize: 20 }}>›</span>
+            </button>
+          )}
+        </>
+      )}
+
+      {/* Quantidade de portas — readonly em modo existente */}
+      <label style={{ ...labelStyle, marginTop: 4 }}>
+        Quantas portas tem a CTO?
+        {isExistingMode && <span style={{ color: "#3b82f6", marginLeft: 6, fontSize: 9 }}>(já cadastrado)</span>}
+      </label>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
-                      gap: 8, marginBottom: 6 }}>
+                      gap: 8, marginBottom: 6, opacity: isExistingMode ? 0.65 : 1 }}>
         {[4, 8, 16].map((cap) => (
           <button key={cap} data-testid={`cto-inline-cap-${cap}`}
+                  disabled={isExistingMode}
                   onClick={() => setState((s) => ({ ...s, capacity: cap,
                                                      clientPort: (s.clientPort && s.clientPort <= cap) ? s.clientPort : null }))}
                   style={{ padding: "16px 0", borderRadius: 10,
                             border: `1.5px solid ${state.capacity === cap ? C_PRIMARY : C_BORDER}`,
                             background: state.capacity === cap ? C_PRIMARY_LIGHT : "#fff",
                             color: C_TEXT, fontSize: 16, fontWeight: 700,
-                            cursor: "pointer" }}>
+                            cursor: isExistingMode ? "default" : "pointer" }}>
             {cap} portas
           </button>
         ))}
       </div>
 
       {/* Tipo de rede */}
-      <label style={{ ...labelStyle }}>Rede (Bal/Des)</label>
+      <label style={{ ...labelStyle }}>
+        Rede (Bal/Des)
+        {isExistingMode && <span style={{ color: "#3b82f6", marginLeft: 6, fontSize: 9 }}>(já cadastrado)</span>}
+      </label>
       {[
         { v: "balanceada", l: "Rede balanceada", d: "Sinal igual em todas as portas", icon: "⚖️" },
         { v: "desbalanceada", l: "Rede desbalanceada", d: "Sinal varia por porta (splitter)", icon: "⚙️" },
       ].map((opt) => (
         <button key={opt.v} data-testid={`cto-inline-net-${opt.v.slice(0,3)}`}
+                disabled={isExistingMode}
                 onClick={() => setState((s) => ({ ...s, networkType: opt.v,
                                                    splitter: opt.v === "balanceada" ? "Sem splitter / não informado" : null }))}
                 style={{ ...optionCard(state.networkType === opt.v),
-                          alignItems: "flex-start" }}>
+                          alignItems: "flex-start",
+                          opacity: isExistingMode && state.networkType !== opt.v ? 0.5 : 1,
+                          cursor: isExistingMode ? "default" : "pointer" }}>
           <span style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
             <span style={{ width: 32, height: 32, borderRadius: 8,
                             background: state.networkType === opt.v ? "#ddd6fe" : "#f1f5f9",
@@ -389,17 +487,22 @@ export default function CtoInlineFlow({
       {/* Splitter (só se desbalanceada) */}
       {state.networkType === "desbalanceada" && (
         <>
-          <label style={{ ...labelStyle }}>Splitter</label>
+          <label style={{ ...labelStyle }}>
+            Splitter
+            {isExistingMode && <span style={{ color: "#3b82f6", marginLeft: 6, fontSize: 9 }}>(já cadastrado)</span>}
+          </label>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
                           gap: 6, marginBottom: 4 }}>
             {["1:2", "1:4", "1:8", "5/95", "10/90", "20/80", "35/65", "50/50", "Outro"].map((s) => (
               <button key={s} data-testid={`cto-inline-spl-${s.replace(/[^a-z0-9]/gi,'_')}`}
+                      disabled={isExistingMode}
                       onClick={() => setState((st) => ({ ...st, splitter: s }))}
                       style={{ padding: "10px 0", borderRadius: 8,
                                 border: `1.5px solid ${state.splitter === s ? C_PRIMARY : C_BORDER}`,
                                 background: state.splitter === s ? C_PRIMARY_LIGHT : "#fff",
                                 color: C_TEXT, fontSize: 13, fontWeight: 700,
-                                cursor: "pointer" }}>
+                                cursor: isExistingMode ? "default" : "pointer",
+                                opacity: isExistingMode && state.splitter !== s ? 0.5 : 1 }}>
                 {s}
               </button>
             ))}
@@ -414,17 +517,35 @@ export default function CtoInlineFlow({
           <div style={{ display: "grid",
                           gridTemplateColumns: `repeat(${Math.min(state.capacity, 4)}, 1fr)`,
                           gap: 8, marginBottom: 6 }}>
-            {Array.from({ length: state.capacity }, (_, i) => i + 1).map((p) => (
-              <button key={p} data-testid={`cto-inline-port-${p}`}
-                      onClick={() => setState((s) => ({ ...s, clientPort: p }))}
-                      style={{ padding: "14px 0", borderRadius: 10,
-                                border: `2px solid ${state.clientPort === p ? C_PRIMARY : C_BORDER}`,
-                                background: state.clientPort === p ? C_PRIMARY : "#fff",
-                                color: state.clientPort === p ? "#fff" : C_TEXT,
-                                fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
-                {p}
-              </button>
-            ))}
+            {Array.from({ length: state.capacity }, (_, i) => i + 1).map((p) => {
+              const portInfo = (state.existingPorts || []).find((x) => x.number === p);
+              const used = portInfo && portInfo.status !== "free";
+              return (
+                <button key={p} data-testid={`cto-inline-port-${p}`}
+                        disabled={used}
+                        onClick={() => setState((s) => ({ ...s, clientPort: p }))}
+                        style={{ padding: "14px 0", borderRadius: 10,
+                                  border: `2px solid ${state.clientPort === p
+                                      ? C_PRIMARY
+                                      : used ? "#fca5a5" : C_BORDER}`,
+                                  background: state.clientPort === p
+                                      ? C_PRIMARY
+                                      : used ? "#fee2e2" : "#fff",
+                                  color: state.clientPort === p ? "#fff"
+                                      : used ? "#991b1b" : C_TEXT,
+                                  fontSize: 16, fontWeight: 700,
+                                  cursor: used ? "not-allowed" : "pointer",
+                                  position: "relative",
+                                  opacity: used ? 0.8 : 1 }}>
+                  {p}
+                  {used && (
+                    <span style={{ position: "absolute", bottom: 2, left: 0, right: 0,
+                                    fontSize: 8, fontWeight: 800,
+                                    color: "#991b1b" }}>OCUPADA</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
           {state.clientPort && (
             <div style={{
@@ -462,7 +583,10 @@ export default function CtoInlineFlow({
                           background: "#0f766e", border: 0,
                           color: "#fff", fontWeight: 700, fontSize: 14,
                           cursor: busy ? "wait" : "pointer", opacity: busy ? 0.7 : 1 }}>
-          {busy ? "Criando CTO..." : "✓ Criar CTO e vincular cliente"}
+          {busy ? "Salvando..."
+            : isExistingMode
+              ? "✓ Vincular cliente à porta"
+              : "✓ Criar CTO e vincular cliente"}
         </button>
       </div>
     </div>

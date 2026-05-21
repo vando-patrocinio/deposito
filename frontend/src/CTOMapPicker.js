@@ -87,6 +87,7 @@ export default function CTOMapPicker({
   onError,
   existingCtos = null,  // array de {id, name, lat, lng} OU null = busca sozinho
   collabId = null,      // se passado, busca CTOs públicas via collab_id
+  onSelectExistingCto = null,  // callback ao clicar num pin de CTO existente
 }) {
   const [center, setCenter] = useState(defaultCenter);
   const [gpsPos, setGpsPos] = useState(null);
@@ -273,7 +274,10 @@ export default function CTOMapPicker({
           const clng = c.lng ?? c.gps?.lng;
           if (clat == null || clng == null) return null;
           return (
-            <Marker key={c.id} position={[clat, clng]} icon={existingCtoIcon}>
+            <Marker key={c.id} position={[clat, clng]} icon={existingCtoIcon}
+                      eventHandlers={onSelectExistingCto ? {
+                        click: () => onSelectExistingCto(c),
+                      } : undefined}>
               <Tooltip direction="top" offset={[0, -28]} opacity={0.92}>
                 <div style={{ fontSize: 11, fontWeight: 700 }}>
                   {c.name || "CTO"}
@@ -281,6 +285,12 @@ export default function CTOMapPicker({
                 <div style={{ fontSize: 10, color: "#475569" }}>
                   {(c.ports || []).filter((p) => p.status === "free").length}/{c.capacity || "?"} portas livres
                 </div>
+                {onSelectExistingCto && (
+                  <div style={{ fontSize: 9, color: "#0891b2",
+                                  fontWeight: 700, marginTop: 2 }}>
+                    Toque para usar esta CTO →
+                  </div>
+                )}
               </Tooltip>
             </Marker>
           );

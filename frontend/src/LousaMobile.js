@@ -1051,7 +1051,11 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     networkType: null,
     splitter: null,
     clientPort: null,
+    // Quando preenchido, indica que estamos reusando uma CTO existente
+    existingCtoId: null,
   });
+  // CTO existente selecionada pelo mapa (mostra confirmação)
+  const [existingCtoPick, setExistingCtoPick] = useState(null);
   // Default do sinal: pega do SmartOLT (live_signal.rx_dbm) se disponível,
   // senão usa -25 dBm (média típica de instalação saudável)
   const initialSinal = ticket?.live_signal?.rx_dbm != null
@@ -1679,9 +1683,94 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                               name: ticket?.client_snapshot?.collaborator_name }}
               onSkipFromA={() => setStep(insumosStepNum)}
               onAdvanceFromA={() => setStep(3)}
+              onSelectExistingCto={(cto) => setExistingCtoPick(cto)}
             />
           )}
         </>
+      )}
+
+      {/* Modal de confirmação: usar CTO existente do mapa */}
+      {existingCtoPick && (
+        <div onClick={() => setExistingCtoPick(null)}
+              data-testid="existing-cto-confirm-overlay"
+              style={{ position: "fixed", inset: 0, zIndex: 9999,
+                        background: "rgba(15,23,42,0.6)",
+                        display: "flex", alignItems: "center",
+                        justifyContent: "center", padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()}
+                data-testid="existing-cto-confirm"
+                style={{ background: "#fff", borderRadius: 16,
+                          padding: 20, width: "100%", maxWidth: 380,
+                          boxShadow: "0 20px 60px rgba(0,0,0,.25)" }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a",
+                            marginBottom: 6 }}>
+              📍 Usar esta CTO existente?
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a",
+                            marginBottom: 4 }}>
+              {existingCtoPick.name}
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12,
+                            lineHeight: 1.5 }}>
+              VLAN <strong>{existingCtoPick.vlan}</strong> ·{" "}
+              {existingCtoPick.capacity} portas ·{" "}
+              {(existingCtoPick.ports || []).filter((p) => p.status === "free").length} livres
+              {existingCtoPick.splitter ? ` · Splitter ${existingCtoPick.splitter}` : ""}
+              <br/>
+              Os dados já cadastrados serão usados. Você só precisa{" "}
+              <strong>tirar a foto</strong> e <strong>escolher a porta</strong>.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button data-testid="existing-cto-cancel"
+                      onClick={() => setExistingCtoPick(null)}
+                      style={{ flex: 1, padding: "12px 14px", borderRadius: 10,
+                                background: "#fff", border: "1px solid #cbd5e1",
+                                color: "#475569", fontWeight: 600, fontSize: 13,
+                                cursor: "pointer" }}>
+                Cancelar
+              </button>
+              <button data-testid="existing-cto-use"
+                      onClick={() => {
+                        // Pré-preenche todos os dados da CTO existente
+                        const c = existingCtoPick;
+                        setCtoFlowState((s) => ({
+                          ...s,
+                          existingCtoId: c.id,
+                          existingPorts: c.ports || [],
+                          gps: { lat: c.gps?.lat || c.lat,
+                                  lng: c.gps?.lng || c.lng, accuracy: null },
+                          address: {
+                            ...(s.address || {}),
+                            endereco: c.address?.rua || s.address?.endereco || "",
+                            numero: c.address?.numero || s.address?.numero || "",
+                            bairro_detected: c.address?.bairro
+                                                || s.address?.bairro_detected || "",
+                            cidade_detected: c.address?.cidade
+                                                || s.address?.cidade_detected || "",
+                            estado_detected: c.address?.estado
+                                                || s.address?.estado_detected || "",
+                          },
+                          vlan: c.vlan ? String(c.vlan) : "",
+                          capacity: c.capacity || null,
+                          networkType: c.network_type || null,
+                          splitter: c.splitter || null,
+                          clientPort: null,
+                        }));
+                        setCtoSelected(c);
+                        setExistingCtoPick(null);
+                        // Vai pra tela B (foto + porta) — usuário ainda precisa
+                        // tirar foto E escolher porta
+                        setStep(3);
+                      }}
+                      style={{ flex: 2, padding: "12px 14px", borderRadius: 10,
+                                background: "#0f766e", border: 0,
+                                color: "#fff", fontWeight: 700, fontSize: 14,
+                                cursor: "pointer" }}>
+                ✓ Usar esta CTO
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ============ STEP 3 — Portas + Tipo + Porta do cliente ============ */}
@@ -1696,9 +1785,21 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
           technician={{ id: collaboratorId,
                           name: ticket?.client_snapshot?.collaborator_name }}
           onBackFromB={() => setStep(2)}
-          onCreated={({ cto, port_number }) => {
-            setCtoSelected(cto);
+          onCreated={({ cto, port_number, photo }) => {
+            // Modo "CTO existente": ctoSelected já está setado
+            // Modo "CTO nova": atualiza ctoSelected
+            if (cto && cto.id && !ctoSelected) {
+              setCtoSelected(cto);
+            }
             setCtoPortSelected(port_number);
+            // Adiciona a foto da CTO ao laudo de fotos do completion
+            if (photo) {
+              setForm((f) => ({
+                ...f,
+                fotos: [...(f.fotos || []),
+                          { kind: "cto", dataUrl: photo }],
+              }));
+            }
             setStep(insumosStepNum);
           }}
         />
