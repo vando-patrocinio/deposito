@@ -1186,10 +1186,21 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
   const isFull = slot.full;
   const tickets = slot.tickets || [];
   const isEmpty = tickets.length === 0;
-  // Altura fixa do slot (regra do horário): independente da quantidade de bolhas.
-  // Bolhas extras ficam interpostas (offset vertical de 6px). Hover/click "expande" pra ver todas.
-  const SLOT_BASE_HEIGHT = 64;          // altura fixa = 1 bolha
+  // Altura BASE do slot. Quando há bolha, a célula cresce dinamicamente
+  // para acomodar o conteúdo da bolha (CTO/cliente/status) sem vazar pra
+  // próxima célula de horário. Bolhas extras continuam empilhadas com
+  // offset vertical (clique no "+N 👁" expande).
+  const SLOT_BASE_HEIGHT = 64;          // altura mínima quando vazio
+  const BUBBLE_INNER_HEIGHT = 96;       // altura típica de 1 bolha renderizada
   const STACK_OFFSET = 6;               // deslocamento vertical entre bolhas empilhadas
+  // Altura efetiva: vazio = base; com bolha = base + bubble (e expandido cresce mais)
+  const cellHeight = isEmpty
+    ? SLOT_BASE_HEIGHT
+    : SLOT_BASE_HEIGHT
+      + (expanded
+            ? tickets.length * (BUBBLE_INNER_HEIGHT + 8)
+            : BUBBLE_INNER_HEIGHT
+                + Math.max(0, tickets.length - 1) * STACK_OFFSET);
 
   return (
     <div
@@ -1206,9 +1217,10 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
         background: over ? "#bfdbfe" : isFull ? "#fef3c7" : isEmpty ? "white" : "#f8fafc",
         border: `${over ? "2px dashed #3b82f6" : "1px solid #e2e8f0"}`,
         borderRadius: 8, padding: 6,
-        height: SLOT_BASE_HEIGHT,         // ALTURA FIXA — não cresce com mais bolhas
+        height: cellHeight,         // cresce conforme conteúdo
+        minHeight: SLOT_BASE_HEIGHT,
         position: "relative",
-        transition: "all .15s",
+        transition: "height .2s ease",
       }}
     >
       <div style={{
@@ -1233,14 +1245,16 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
           {over ? "↓ Solte aqui ↓" : "vazio"}
         </div>
       )}
-      {/* Tickets — em stack absoluto quando há mais de 1, pra preservar altura fixa */}
+      {/* Tickets — stack absoluto mantendo a 1ª bolha visível no topo */}
       {tickets.length > 0 && (
-        <div style={{ position: "relative", height: SLOT_BASE_HEIGHT - 22 }}>
+        <div style={{ position: "relative", height: cellHeight - 28 }}>
           {tickets.map((t, idx) => (
             <div key={t.id} data-testid={`stacked-${idx}-${t.id}`}
                  style={{
                    position: "absolute",
-                   top: expanded ? `${idx * (SLOT_BASE_HEIGHT - 8)}px` : `${idx * STACK_OFFSET}px`,
+                   top: expanded
+                          ? `${idx * (BUBBLE_INNER_HEIGHT + 8)}px`
+                          : `${idx * STACK_OFFSET}px`,
                    left: 0, right: 0,
                    zIndex: 100 - idx,    // primeira bolha por cima
                    transition: "top .25s ease",
