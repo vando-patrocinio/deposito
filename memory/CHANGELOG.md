@@ -1,5 +1,36 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Pino do mapa CTO virou ícone real de CTO + feedback GPS
+
+### Novo pino SVG (CTOMapPicker.js)
+Pino emoji `📍` substituído por **SVG inline** desenhado como uma CTO:
+- Gota vermelha externa (formato familiar de pino de mapa)
+- Caixa branca interna (representa a CTO física)
+- 8 círculos vermelhos arranjados em 2 linhas (portas/fibras 1–8)
+- Linha vertical embaixo (cabo principal saindo)
+- Mesma animação `ctoPinBounce` (1.4s ease-in-out infinite)
+- `drop-shadow` para destacar sobre o tile
+
+### Feedback de GPS melhorado
+- Novo estado `gpsError` + banner amarelo flutuante (`gpsErrorBanner`)
+  com mensagens específicas por código:
+  - `1 PERMISSION_DENIED` → "Toque em 🔒 na barra do navegador → permita Localização"
+  - `2 POSITION_UNAVAILABLE` → "Sinal de GPS fraco. Vá para área aberta..."
+  - `3 TIMEOUT` → "Tempo esgotado..."
+- Novo banner azul-escuro "Buscando localização..." com spinner
+  (`gpsLoadingBanner` + keyframe `ctoSpin`).
+- `recenterOnMe` agora também limpa `gpsError` antes de tentar de novo.
+
+### Observação sobre iframes
+A aba Auditoria (`LiveMap.js`) **não** depende de GPS do navegador — ela
+consulta `api.liveLocations()` no backend (que recebe coordenadas dos
+PWAs dos colaboradores). Já o CTOMapPicker precisa do GPS do **próprio
+dispositivo** do técnico (ele está em campo). Em iframes (como o preview
+do Emergent), `getCurrentPosition` pode ser bloqueada — em produção
+(`https://dual-combine-3.emergent.host`) e no celular nativo do técnico,
+funciona normalmente.
+
+
 ## 2026-05-20 — Mapa CTO usa o MESMO tile da Auditoria (CARTO Voyager)
 
 ### Motivo

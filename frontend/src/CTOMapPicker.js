@@ -70,8 +70,9 @@ export default function CTOMapPicker({
   onError,
 }) {
   const [center, setCenter] = useState(defaultCenter);
-  const [gpsPos, setGpsPos] = useState(null);     // { lat, lng, accuracy } - posição real do device
+  const [gpsPos, setGpsPos] = useState(null);
   const [gpsReady, setGpsReady] = useState(false);
+  const [gpsError, setGpsError] = useState(null);
   const [requestingGps, setRequestingGps] = useState(false);
   const [loading, setLoading] = useState(false);
   const [lastAddr, setLastAddr] = useState(null);
@@ -103,14 +104,18 @@ export default function CTOMapPicker({
         const lat = pos.coords.latitude, lng = pos.coords.longitude;
         setGpsPos({ lat, lng, accuracy: pos.coords.accuracy });
         setCenter([lat, lng]);
+        setGpsError(null);
       })
       .catch((err) => {
         if (cancelled) return;
         const msg = err?.code === 1
-          ? "Permissão de localização negada. Ative o GPS no navegador e recarregue."
+          ? "Permissão de localização negada. Toque em 🔒 na barra do navegador → permita Localização."
+          : err?.code === 2
+          ? "Sinal de GPS fraco. Vá para uma área aberta e toque em ◎ para tentar de novo."
           : err?.code === 3
-          ? "Tempo esgotado ao obter GPS. Arraste o mapa manualmente."
+          ? "Tempo esgotado ao obter GPS. Toque em ◎ para tentar de novo."
           : `GPS indisponível: ${err?.message || err}`;
+        setGpsError(msg);
         onError?.(msg);
       })
       .finally(() => {
@@ -182,13 +187,18 @@ export default function CTOMapPicker({
   // Botão "Minha localização": refaz request e centra
   const recenterOnMe = useCallback(async () => {
     setRequestingGps(true);
+    setGpsError(null);
     try {
       const pos = await requestGps();
       const lat = pos.coords.latitude, lng = pos.coords.longitude;
       setGpsPos({ lat, lng, accuracy: pos.coords.accuracy });
-      setCenter([lat, lng]);  // dispara Recenter
+      setCenter([lat, lng]);
     } catch (err) {
-      onError?.("Não foi possível obter a localização.");
+      const msg = err?.code === 1
+        ? "Permissão de localização negada."
+        : "Não foi possível obter a localização.";
+      setGpsError(msg);
+      onError?.(msg);
     } finally {
       setRequestingGps(false);
     }
@@ -240,10 +250,31 @@ export default function CTOMapPicker({
         )}
       </MapContainer>
 
-      {/* Pino fixo da CTO no centro */}
+      {/* Pino fixo da CTO no centro — ícone SVG de caixa CTO */}
       <div style={pinWrap} data-testid="cto-map-pin">
         <div style={pinShadow} />
-        <div style={pinIcon}>📍</div>
+        <svg width="42" height="56" viewBox="0 0 42 56"
+              xmlns="http://www.w3.org/2000/svg"
+              style={ctoPinSvg}>
+          {/* Gota (pin) */}
+          <path d="M21 0 C9.4 0 0 9.4 0 21 c0 15.2 17 31.5 19.4 33.7 a2.2 2.2 0 0 0 3.2 0 C25 52.5 42 36.2 42 21 42 9.4 32.6 0 21 0 Z"
+                fill="#dc2626"
+                stroke="#fff"
+                strokeWidth="1.5" />
+          {/* Caixa CTO */}
+          <rect x="10" y="11" width="22" height="18" rx="2"
+                fill="#fff" stroke="#7f1d1d" strokeWidth="1" />
+          {/* Portas da CTO (8 fibras) */}
+          {Array.from({ length: 8 }).map((_, i) => (
+            <circle key={i}
+                    cx={13 + (i % 4) * 5}
+                    cy={i < 4 ? 16 : 24}
+                    r="1.3" fill="#dc2626" />
+          ))}
+          {/* Cabo principal saindo embaixo */}
+          <line x1="21" y1="29" x2="21" y2="34"
+                stroke="#7f1d1d" strokeWidth="1.5" />
+        </svg>
       </div>
 
       {/* Chip topo: endereço atual em pt-BR */}
@@ -272,6 +303,22 @@ export default function CTOMapPicker({
         )}
       </div>
 
+      {/* Banner de erro GPS — só aparece se há falha */}
+      {gpsError && (
+        <div data-testid="cto-gps-error" style={gpsErrorBanner}>
+          <span style={{ fontSize: 14 }}>📡</span>
+          <span>{gpsError}</span>
+        </div>
+      )}
+
+      {/* Indicador "Buscando GPS..." durante o request inicial */}
+      {requestingGps && !gpsPos && (
+        <div data-testid="cto-gps-loading" style={gpsLoadingBanner}>
+          <span className="cto-spinner" style={spinnerStyle} />
+          <span>Buscando localização...</span>
+        </div>
+      )}
+
       {/* Botão flutuante "Minha localização" */}
       <button
         type="button"
@@ -298,8 +345,8 @@ const pinWrap = {
   pointerEvents: "none", zIndex: 999,
   display: "flex", flexDirection: "column", alignItems: "center",
 };
-const pinIcon = {
-  fontSize: 38, lineHeight: 1, filter: "drop-shadow(0 3px 4px rgba(0,0,0,0.4))",
+const ctoPinSvg = {
+  filter: "drop-shadow(0 3px 4px rgba(0,0,0,0.45))",
   animation: "ctoPinBounce 1.4s ease-in-out infinite",
 };
 const pinShadow = {
@@ -325,6 +372,30 @@ const locateBtn = {
   fontSize: 22, color: "#1d4ed8", fontWeight: 800,
   lineHeight: 1,
 };
+const gpsErrorBanner = {
+  position: "absolute", bottom: 14, left: 10, right: 10, zIndex: 998,
+  background: "#fef3c7", color: "#854d0e",
+  border: "1px solid #fcd34d",
+  padding: "9px 12px", borderRadius: 8,
+  fontSize: 11.5, lineHeight: 1.4,
+  display: "flex", alignItems: "center", gap: 8,
+  boxShadow: "0 4px 14px rgba(0,0,0,0.10)",
+};
+const gpsLoadingBanner = {
+  position: "absolute", bottom: 14, left: 10, right: 10, zIndex: 998,
+  background: "rgba(15,23,42,0.92)", color: "#fff",
+  padding: "8px 12px", borderRadius: 8,
+  fontSize: 12, fontWeight: 600,
+  display: "flex", alignItems: "center", gap: 8,
+  boxShadow: "0 4px 14px rgba(0,0,0,0.18)",
+};
+const spinnerStyle = {
+  width: 12, height: 12, borderRadius: "50%",
+  border: "2px solid rgba(255,255,255,0.3)",
+  borderTopColor: "#fff",
+  animation: "ctoSpin 0.8s linear infinite",
+  display: "inline-block",
+};
 
 // Inject keyframes once
 if (typeof document !== "undefined" && !document.getElementById("cto-pin-kf")) {
@@ -333,6 +404,10 @@ if (typeof document !== "undefined" && !document.getElementById("cto-pin-kf")) {
   s.innerHTML = `@keyframes ctoPinBounce {
     0%, 100% { transform: translateY(0); }
     50%      { transform: translateY(-6px); }
+  }
+  @keyframes ctoSpin {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }`;
   document.head.appendChild(s);
 }
