@@ -1024,6 +1024,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
   const recentResolved = column.recent_resolved || [];
   const totalTickets = column.tickets?.length || 0;
   const isOnline = state.is_online === true || (state.is_online === undefined && state.has_entrada && !state.ended_day && !state.in_intervalo);
+  const [closedDetailTicket, setClosedDetailTicket] = useState(null);
 
   return (
     <div
@@ -1094,7 +1095,14 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
         }}>
           <div style={{ fontWeight: 700, marginBottom: 4, color: "#0f172a" }}>📒 Encerrados (24h)</div>
           {recentResolved.map((t) => (
-            <div key={t.id} style={{ marginBottom: 4 }}>
+            <div key={t.id}
+                  data-testid={`recent-closed-row-${t.id}`}
+                  onDoubleClick={() => setClosedDetailTicket(t)}
+                  title="Duplo-clique para abrir os detalhes da finalização"
+                  style={{ marginBottom: 4, cursor: "pointer",
+                            borderRadius: 5, padding: "2px 4px" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "#eef2f7"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
               {t.gap_minutes_to_prev != null && (
                 <div style={{ fontStyle: "italic", color: "#94a3b8", padding: "2px 0" }}>
                   ⏱ {fmtGap(t.gap_minutes_to_prev)} entre o serviço anterior e este
@@ -1109,6 +1117,13 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
             </div>
           ))}
         </div>
+      )}
+
+      {closedDetailTicket && (
+        <ClosedTicketDetailModal
+          ticket={closedDetailTicket}
+          onClose={() => setClosedDetailTicket(null)}
+        />
       )}
 
       {/* Grade FIXA de slots */}
@@ -2657,6 +2672,191 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
   );
 }
 
+function ClosedTicketDetailModal({ ticket, onClose }) {
+  const [full, setFull] = useState(ticket);
+  const [loading, setLoading] = useState(false);
+
+  // Recarrega o ticket completo (lousa público pode ter completion_data)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!ticket?.id) return;
+      try {
+        setLoading(true);
+        const r = await api._client.get(`/lousa/tickets/${ticket.id}`);
+        if (alive && r.data) setFull({ ...ticket, ...r.data });
+      } catch { /* ignore — usa ticket inicial */ }
+      finally { if (alive) setLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [ticket]);
+
+  const cd = full?.completion_data || {};
+  const cs = full?.client_snapshot || {};
+  const fmt = (iso) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString("pt-BR",
+        { dateStyle: "short", timeStyle: "short" });
+    } catch { return iso; }
+  };
+
+  const fotos = (cd.fotos || []).filter(Boolean);
+  const fotosObjs = fotos.map((f) => {
+    if (typeof f === "string") return { dataUrl: f, kind: "geral" };
+    return { dataUrl: f.dataUrl || f.data_url, kind: f.kind || "geral" };
+  }).filter((f) => f.dataUrl);
+
+  return (
+    <div onClick={onClose}
+          data-testid="closed-ticket-detail-modal"
+          style={{ position: "fixed", inset: 0, zIndex: 9999,
+                    background: "rgba(15,23,42,0.7)",
+                    display: "flex", alignItems: "center",
+                    justifyContent: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: 12,
+                      width: "min(95vw, 720px)", maxHeight: "92vh",
+                      display: "flex", flexDirection: "column",
+                      overflow: "hidden",
+                      boxShadow: "0 20px 60px rgba(0,0,0,0.35)" }}>
+        {/* Header */}
+        <div style={{ padding: 16, borderBottom: "1px solid #e2e8f0",
+                        display: "flex", justifyContent: "space-between",
+                        alignItems: "flex-start", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b",
+                            textTransform: "uppercase", letterSpacing: 0.5 }}>
+              ✓ Nota finalizada · {TYPE_LABELS[full.type] || full.type}
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a",
+                            marginTop: 2 }}>
+              {cs.name || "—"}
+            </div>
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 4,
+                            lineHeight: 1.4 }}>
+              Fechada em <strong>{fmt(full.closed_at || full.finalized_at)}</strong>
+              {full.outcome && <> · Resultado: <strong>{full.outcome}</strong></>}
+              {full.admin_action === "encerrar" && (
+                <span style={{ marginLeft: 6, padding: "2px 7px",
+                                background: "#fef3c7", color: "#92400e",
+                                borderRadius: 999, fontSize: 9, fontWeight: 800 }}>
+                  🛡 Fechado pelo gestor
+                </span>
+              )}
+            </div>
+          </div>
+          <button onClick={onClose}
+                  data-testid="closed-detail-close"
+                  style={{ background: "transparent", border: 0, fontSize: 22,
+                            cursor: "pointer", color: "#64748b" }}>×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: 16, overflowY: "auto", flex: 1, fontSize: 13,
+                        color: "#0f172a" }}>
+          {loading && (
+            <div style={{ color: "#94a3b8", fontSize: 12 }}>Carregando…</div>
+          )}
+
+          {/* Endereço */}
+          {cs.address && (
+            <Section label="📍 Endereço">{cs.address}</Section>
+          )}
+
+          {/* Sinal */}
+          {cd.sinal != null && (
+            <Section label="📡 Sinal medido">
+              <strong>{Number(cd.sinal).toFixed(1)} dBm</strong>
+            </Section>
+          )}
+          {cd.ont && <Section label="🔌 ONT">{cd.ont}</Section>}
+
+          {/* CTO + porta + splitter + VLAN */}
+          {(cd.cto_name || cd.cto_port_number) && (
+            <Section label="🗺 Vínculo na Rede IA">
+              {cd.cto_name}
+              {cd.cto_port_number && ` · Porta ${cd.cto_port_number}`}
+              {cd.cto_splitter && ` · Splitter ${cd.cto_splitter}`}
+              {cd.cto_vlan && ` · VLAN ${cd.cto_vlan}`}
+              {cd.cto_network_type && ` · Rede ${cd.cto_network_type}`}
+            </Section>
+          )}
+
+          {/* Insumos */}
+          {(cd.drop || cd.backbone || cd.esticador || cd.conectores) && (
+            <Section label="🧰 Insumos utilizados">
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {cd.drop && <li>Drop: <strong>{cd.drop}m</strong></li>}
+                {cd.backbone && <li>Backbone: <strong>{cd.backbone}m</strong></li>}
+                {cd.esticador && <li>Esticador: <strong>{cd.esticador}</strong></li>}
+                {cd.conectores && <li>Conectores: <strong>{cd.conectores}</strong></li>}
+              </ul>
+            </Section>
+          )}
+
+          {/* Ping */}
+          {cd.ping_summary && (
+            <Section label="📶 Teste de Ping">
+              <pre style={{ background: "#f8fafc",
+                              padding: 10, borderRadius: 6, fontSize: 11,
+                              whiteSpace: "pre-wrap" }}>{cd.ping_summary}</pre>
+            </Section>
+          )}
+
+          {/* Observações */}
+          {cd.observacoes && (
+            <Section label="📝 Observações do técnico">
+              <div style={{ whiteSpace: "pre-wrap" }}>{cd.observacoes}</div>
+            </Section>
+          )}
+
+          {/* Fotos */}
+          {fotosObjs.length > 0 && (
+            <Section label={`📷 Fotos (${fotosObjs.length})`}>
+              <div style={{ display: "grid",
+                              gridTemplateColumns:
+                                "repeat(auto-fill, minmax(120px, 1fr))",
+                              gap: 8 }}>
+                {fotosObjs.map((f, i) => (
+                  <a key={i} href={f.dataUrl} target="_blank"
+                      rel="noopener noreferrer">
+                    <img src={f.dataUrl} alt={f.kind || ""}
+                          style={{ width: "100%", aspectRatio: "1/1",
+                                    objectFit: "cover", borderRadius: 8,
+                                    border: "1px solid #e2e8f0",
+                                    cursor: "zoom-in" }} />
+                  </a>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* fallback se nada estiver preenchido */}
+          {!loading && !cd.sinal && !cd.ont && !cd.cto_name && !cd.drop
+            && !cd.observacoes && fotosObjs.length === 0 && (
+            <div style={{ padding: 20, textAlign: "center",
+                            color: "#94a3b8", fontSize: 12 }}>
+              Nenhum dado de finalização registrado (técnico não preencheu).
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Section({ label, children }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b",
+                      textTransform: "uppercase", letterSpacing: 0.5,
+                      marginBottom: 4 }}>{label}</div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
 function ClosedNotesPdfPopover({ onClose }) {
   const [period, setPeriod] = useState("today");
   const [mode, setMode] = useState("closed"); // "closed" | "open"
@@ -2963,6 +3163,7 @@ function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId
   const recentResolved = column.recent_resolved || [];
   const totalTickets = column.tickets?.length || 0;
   const isOnline = state.is_online === true || (state.is_online === undefined && state.has_entrada && !state.ended_day && !state.in_intervalo);
+  const [closedDetailTicket, setClosedDetailTicket] = useState(null);
 
   // Hora atual pra desenhar a linha "agora" no timeline
   const now = new Date();
@@ -3096,11 +3297,18 @@ function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {recentResolved.map((t) => (
-              <div key={t.id} style={{
+              <div key={t.id}
+                    data-testid={`recent-closed-chip-${t.id}`}
+                    onDoubleClick={() => setClosedDetailTicket(t)}
+                    title="Duplo-clique para ver os detalhes do fechamento"
+                    style={{
                 padding: "4px 8px", background: "white",
                 border: "1px solid #e2e8f0", borderRadius: 6,
-                fontSize: 10.5,
-              }}>
+                fontSize: 10.5, cursor: "pointer",
+                transition: "background 120ms",
+              }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "#f1f5f9"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "white"; }}>
                 <strong>{TYPE_LABELS[t.type] || t.type}</strong>
                 {" · "}{t.client_snapshot?.name}
                 {t.duration_minutes != null && (
@@ -3112,6 +3320,13 @@ function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId
             ))}
           </div>
         </div>
+      )}
+
+      {closedDetailTicket && (
+        <ClosedTicketDetailModal
+          ticket={closedDetailTicket}
+          onClose={() => setClosedDetailTicket(null)}
+        />
       )}
     </div>
   );
