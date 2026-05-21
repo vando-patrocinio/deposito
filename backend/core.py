@@ -511,4 +511,4 @@ def _get_db():
     return db
 
 
-get_current_user, require_role = make_dependencies(_get_db)
+get_current_user, require_role, require_tag = make_dependencies(_get_db)

@@ -263,7 +263,30 @@ def make_dependencies(get_db_callable):
             return user
         return _dep
 
-    return get_current_user, require_role
+    def require_tag(*tags: str):
+        """Exige que o usuário tenha PELO MENOS UMA das tags listadas em
+        `access_tags`. Admins/Auditores sempre passam. Para outros papéis:
+        - Se o user não tem `access_tags` setado (None/vazio), aplica
+          o default do papel a partir de access_tags.DEFAULT_TAGS_BY_ROLE.
+        - Se tem `access_tags` setado, verifica se intersecta com `tags`.
+        """
+        async def _dep(user: dict = Depends(get_current_user)) -> dict:
+            if user["role"] in ("administrador", "auditor"):
+                return user
+            try:
+                from access_tags import effective_tags
+                allowed = set(effective_tags(user))
+            except Exception:
+                allowed = set(user.get("access_tags") or [])
+            if not (allowed & set(tags)):
+                raise HTTPException(
+                    403,
+                    f"Acesso restrito. Tag necessária: {' ou '.join(tags)}.",
+                )
+            return user
+        return _dep
+
+    return get_current_user, require_role, require_tag
 
 
 async def record_login_attempt(db, identifier: str, success: bool) -> Optional[int]:

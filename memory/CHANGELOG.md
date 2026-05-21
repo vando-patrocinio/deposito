@@ -1,5 +1,38 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Sidebar respeita Tags de Acesso + decorator `require_tag`
+
+### Frontend (`App.js`)
+- Novo mapa `TAB_TO_TAG` ligando cada `tab.id` à tag correspondente
+  (definida em `backend/access_tags.py`).
+- Função `tabs = useMemo(...)` agora aplica filtro adicional: se o user
+  NÃO é auditor/admin, a tab tem mapeamento de tag, e o user tem
+  `access_tags` salvo, exige que a tag esteja na lista. Caso contrário,
+  esconde a aba da sidebar.
+- Aplicado nos dois locais que constroem `tabs` (linhas ~643 e ~755).
+
+### Backend
+- `auth.py`: novo `require_tag(*tags)` exportado via `make_dependencies`.
+  - Admin/Auditor sempre passam.
+  - Demais papéis: usa `effective_tags(user)` e exige interseção com
+    a lista de tags requeridas.
+  - HTTP 403 com mensagem clara quando a tag falta.
+- `core.py`: passa a expor `require_tag` (importável em qualquer route).
+
+### Decisão de roll-out
+O decorator NÃO foi aplicado em massa nos 290 arquivos de rotas existentes
+(risco de regressão alto). Está disponível para uso incremental conforme
+cada endpoint for tocado em features futuras, e endpoints novos devem
+preferi-lo a `require_role` quando fizer sentido por módulo.
+
+### Validação E2E
+- Login como `admin@example.com` (gestor com `access_tags=['painel','lousa','estoque']`):
+  sidebar reduziu de **24 → 2 tabs** visíveis (Painel + Chamados). Estoque
+  fica escondido porque a config `tab_permissions` do tenant ainda
+  precisa habilitá-lo no default do gestor — interseção tabPerms × tags
+  funciona em conjunto.
+
+
 ## 2026-05-20 — Tags de Acesso (RBAC granular por usuário)
 
 Permissões por módulo agora são **tags clicáveis** no cadastro de usuário,

@@ -125,6 +125,35 @@ function useTheme() {
 /* ============================================================
    Navegação — nomenclatura alinhada com o padrão ISP (Atlaz/Voalle/SGP)
    ============================================================ */
+
+// Mapa tab.id → tag de acesso (definida em backend/access_tags.py)
+// Se um item NÃO tem mapeamento, é considerado "sempre visível" (ex.: Configurações)
+const TAB_TO_TAG = {
+  dashboard: "painel",
+  lousa: "lousa",
+  estoque: "estoque",
+  "central-compras": "central_compras",
+  "rede-ia": "rede_ia",
+  atendimento: "atendimento_wa",
+  "ai-ranking": "ia_avaliacao",
+  "ai-corrections": "ia_avaliacao",
+  "central-ia": "ia_avaliacao",
+  "alvaro-ia": "ia_avaliacao",
+  "mass-messaging": "atendimento_wa",
+  cadastro: "colaboradores",
+  clientes: "clientes",
+  subscribers: "clientes",
+  plans: "clientes",
+  pracas: "pracas",
+  manager: "auditoria",
+  logs: "logs",
+  espelho: "ponto",
+  sheet: "ponto",
+  holerite: "holerite",
+  feriados: "feriados",
+  financeiro: "financeiro",
+};
+
 const NAV_GROUPS = [
   {
     label: "Operação",
@@ -651,6 +680,16 @@ function AppShell({ view, setView, children }) {
     if (t.requires && user && user.role !== "administrador" && user.role !== "auditor") {
       if (!user[t.requires]) return false;
     }
+    // Filtro por TAGS DE ACESSO (RBAC granular).
+    // Auditor/Admin sempre passam. Para os demais, se a tab tem mapeamento
+    // de tag E o user tem `access_tags` definido, exige que a tag esteja lá.
+    if (user && user.role !== "administrador" && user.role !== "auditor") {
+      const tagNeeded = TAB_TO_TAG[t.id];
+      const userTags = Array.isArray(user.access_tags) ? user.access_tags : null;
+      if (tagNeeded && userTags && !userTags.includes(tagNeeded)) {
+        return false;
+      }
+    }
     if (tabPerms && user && tabPerms[user.role]) {
       if (user.role === "administrador") return true;
       return tabPerms[user.role].includes(t.id);
@@ -757,6 +796,14 @@ function AppContent() {
     if (t.superAdminOnly && !isSuperAdmin) return false;
     if (t.requires && user && user.role !== "administrador" && user.role !== "auditor") {
       if (!user[t.requires]) return false;
+    }
+    // RBAC granular por tag de acesso
+    if (user && user.role !== "administrador" && user.role !== "auditor") {
+      const tagNeeded = TAB_TO_TAG[t.id];
+      const userTags = Array.isArray(user.access_tags) ? user.access_tags : null;
+      if (tagNeeded && userTags && !userTags.includes(tagNeeded)) {
+        return false;
+      }
     }
     if (tabPerms && user && tabPerms[user.role]) {
       if (user.role === "administrador") return true;
