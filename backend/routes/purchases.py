@@ -392,7 +392,7 @@ async def upload_extract(
         ).with_model("anthropic", "claude-sonnet-4-5")
         msg_args: Dict[str, Any] = {"text": prompt}
         if image_b64:
-            msg_args["image_contents"] = [ImageContent(image_base64=image_b64)]
+            msg_args["file_contents"] = [ImageContent(image_base64=image_b64)]
         resp = await chat.send_message(UserMessage(**msg_args))
         text = (resp or "").strip()
         if text.startswith("```"):

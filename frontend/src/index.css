@@ -609,3 +609,33 @@ body.aihub-wa-fullscreen [data-testid="wa-chat-layout"] {
   from { opacity: 0; transform: translateY(20px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+
+/* ============================================================
+   Relatório imprimível da Lousa — esconde toda a UI ao redor
+   quando o usuário clica em "Imprimir / Salvar PDF" ou usa
+   Ctrl+P dentro do modal de relatório.
+   ============================================================ */
+@media print {
+  body.lousa-printing > *:not(.lousa-report-overlay) { display: none !important; }
+  body.lousa-printing .lousa-report-overlay {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    inset: auto !important;
+  }
+  body.lousa-printing .lousa-report-overlay > div {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100% !important;
+  }
+  body.lousa-printing #lousa-report-printable {
+    overflow: visible !important;
+    height: auto !important;
+    padding: 0 !important;
+  }
+  body.lousa-printing .no-print { display: none !important; }
+  @page { size: A4 landscape; margin: 10mm; }
+}

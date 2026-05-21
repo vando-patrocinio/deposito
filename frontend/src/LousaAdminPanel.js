@@ -2903,20 +2903,16 @@ function ClosedNotesPdfPopover({ onClose }) {
   const [end, setEnd] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [previewUrl, setPreviewUrl] = useState(null);
+  const [reportData, setReportData] = useState(null);
 
   useEffect(() => {
     const onDoc = (e) => {
-      if (previewUrl) return;
+      if (reportData) return;
       if (!e.target.closest?.("[data-pdf-pop]")) onClose();
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
-  }, [onClose, previewUrl]);
-
-  useEffect(() => () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-  }, [previewUrl]);
+  }, [onClose, reportData]);
 
   const generate = async () => {
     setErr(""); setBusy(true);
@@ -2927,116 +2923,27 @@ function ClosedNotesPdfPopover({ onClose }) {
         params.set("end", end);
       }
       const r = await api._client.get(
-        `/lousa/tickets/closed/pdf?${params.toString()}`,
-        { responseType: "blob" },
+        `/lousa/tickets/report/data?${params.toString()}`,
       );
-      const blob = new Blob([r.data], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      setPreviewUrl(url);
+      setReportData(r.data);
     } catch (e) {
-      setErr(e?.response?.data?.detail || e.message || "Falha ao gerar PDF");
+      setErr(e?.response?.data?.detail || e.message || "Falha ao gerar relatório");
     } finally { setBusy(false); }
   };
 
-  const downloadFromPreview = () => {
-    if (!previewUrl) return;
-    const a = document.createElement("a");
-    a.href = previewUrl;
-    a.download = `${mode === "open" ? "bolhas_abertas" : "fechamento_notas"}_${period}_${new Date()
-        .toISOString().slice(0, 10)}.pdf`;
-    document.body.appendChild(a);
-    a.click(); a.remove();
+  const handlePrint = () => {
+    // Aplica classe temporária pra esconder UI ao redor durante impressão
+    document.body.classList.add("lousa-printing");
+    window.print();
+    // Remove logo após — onafterprint não é confiável em todos navegadores
+    setTimeout(() => document.body.classList.remove("lousa-printing"), 500);
   };
 
-  const openInNewTab = () => {
-    if (!previewUrl) return;
-    window.open(previewUrl, "_blank", "noopener,noreferrer");
-  };
-
-  // ===== Modal de preview com iframe =====
-  if (previewUrl) {
+  // ===== Modal de relatório HTML imprimível =====
+  if (reportData) {
     return (
-      <div data-testid="lousa-pdf-preview-modal"
-            style={{
-              position: "fixed", inset: 0, zIndex: 9999,
-              background: "rgba(15,23,42,0.7)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              padding: 20,
-            }}>
-        <div style={{
-          background: "#fff", borderRadius: 12,
-          width: "min(95vw, 1100px)", height: "min(92vh, 800px)",
-          display: "flex", flexDirection: "column", overflow: "hidden",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
-        }}>
-          <div style={{ display: "flex", alignItems: "center",
-                          justifyContent: "space-between", padding: 14,
-                          borderBottom: "1px solid #e2e8f0" }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>
-                {mode === "open"
-                  ? "🟡 Bolhas Abertas — Pré-visualização"
-                  : "📄 Notas Finalizadas — Pré-visualização"}
-              </div>
-              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                {mode === "open" ? "Todas as OS pendentes/em execução" : (
-                  "Período: " + {
-                    today: "Hoje", yesterday: "Ontem", week: "Últimos 7 dias",
-                    custom: `${start} → ${end}`,
-                  }[period]
-                )}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button data-testid="lousa-pdf-preview-open-tab"
-                      onClick={openInNewTab}
-                      title="Abrir em nova aba (alternativa se a pré-visualização ficar branca)"
-                      style={{ padding: "8px 14px", borderRadius: 8,
-                                background: "#fff", border: "1px solid #cbd5e1",
-                                color: "#0f172a", fontSize: 12, fontWeight: 700,
-                                cursor: "pointer" }}>
-                ↗ Abrir em nova aba
-              </button>
-              <button data-testid="lousa-pdf-preview-download"
-                      onClick={downloadFromPreview}
-                      style={{ padding: "8px 14px", borderRadius: 8,
-                                background: "linear-gradient(135deg,#0f766e,#0891b2)",
-                                color: "#fff", border: 0, fontSize: 12,
-                                fontWeight: 700, cursor: "pointer",
-                                display: "inline-flex", alignItems: "center",
-                                gap: 6 }}>
-                ⬇ Baixar PDF
-              </button>
-              <button data-testid="lousa-pdf-preview-close"
-                      onClick={() => { setPreviewUrl(null); onClose(); }}
-                      style={{ padding: "8px 14px", borderRadius: 8,
-                                background: "#fff", border: "1px solid #cbd5e1",
-                                color: "#475569", fontSize: 12, fontWeight: 700,
-                                cursor: "pointer" }}>
-                ✕ Fechar
-              </button>
-            </div>
-          </div>
-          <object
-            data-testid="lousa-pdf-preview-object"
-            data={previewUrl}
-            type="application/pdf"
-            style={{ flex: 1, width: "100%", border: 0 }}
-          >
-            <div style={{ padding: 40, textAlign: "center" }}>
-              <p style={{ fontSize: 14, color: "#475569", marginBottom: 12 }}>
-                Seu navegador bloqueou a pré-visualização inline.
-              </p>
-              <button onClick={openInNewTab}
-                      style={{ padding: "10px 18px", borderRadius: 8,
-                                background: "#0891b2", color: "#fff",
-                                border: 0, fontWeight: 700, cursor: "pointer" }}>
-                ↗ Abrir PDF em nova aba
-              </button>
-            </div>
-          </object>
-        </div>
-      </div>
+      <PrintableReport data={reportData} onClose={() => { setReportData(null); onClose(); }}
+                       onPrint={handlePrint} />
     );
   }
 
@@ -3144,6 +3051,252 @@ function ClosedNotesPdfPopover({ onClose }) {
             : "👁 Visualizar Finalizadas")}
       </button>
     </div>
+  );
+}
+
+
+// ============================================================
+// PrintableReport — relatório HTML que abre direto na tela com botão
+// "Imprimir" que aciona o diálogo nativo do navegador (escolhe impressora
+// OU salva como PDF). Substitui o PDF binário (ReportLab) problemático.
+// ============================================================
+function PrintableReport({ data, onClose, onPrint }) {
+  const isOpen = data?.mode === "open";
+  const k = data?.kpis || {};
+  const techs = data?.by_tech || [];
+
+  return (
+    <div data-testid="lousa-report-modal" className="lousa-report-overlay"
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(15,23,42,0.7)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 20,
+          }}>
+      <div style={{
+        background: "#fff", borderRadius: 12,
+        width: "min(95vw, 1180px)", height: "min(92vh, 860px)",
+        display: "flex", flexDirection: "column", overflow: "hidden",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+      }}>
+        {/* Cabeçalho com botões (NÃO imprime) */}
+        <div className="no-print"
+              style={{ display: "flex", alignItems: "center",
+                        justifyContent: "space-between", padding: 14,
+                        borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>
+              {isOpen
+                ? "🟡 Bolhas Abertas — Pré-visualização"
+                : "📋 Notas Finalizadas — Pré-visualização"}
+            </div>
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+              {isOpen ? "Todas as OS pendentes/em execução" :
+                  `Período: ${data?.period_label || "—"}`}
+              {" · "}Gerado em {data?.generated_at}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button data-testid="lousa-report-print"
+                    onClick={onPrint}
+                    style={{ padding: "8px 16px", borderRadius: 8,
+                              background: "linear-gradient(135deg,#0f766e,#0891b2)",
+                              color: "#fff", border: 0, fontSize: 13,
+                              fontWeight: 700, cursor: "pointer",
+                              display: "inline-flex", alignItems: "center",
+                              gap: 6 }}>
+              🖨 Imprimir / Salvar PDF
+            </button>
+            <button data-testid="lousa-report-close"
+                    onClick={onClose}
+                    style={{ padding: "8px 14px", borderRadius: 8,
+                              background: "#fff", border: "1px solid #cbd5e1",
+                              color: "#475569", fontSize: 12, fontWeight: 700,
+                              cursor: "pointer" }}>
+              ✕ Fechar
+            </button>
+          </div>
+        </div>
+
+        {/* Área imprimível */}
+        <div id="lousa-report-printable" data-testid="lousa-report-content"
+              style={{ flex: 1, overflow: "auto", padding: "20px 28px",
+                        background: "#fff", color: "#0f172a",
+                        fontFamily: "Helvetica, Arial, sans-serif" }}>
+          {/* Título grande no topo da impressão */}
+          <h1 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 4px",
+                          color: "#0f172a" }}>
+            {isOpen
+              ? "Serviços em ABERTO (bolhas ativas)"
+              : "Fechamento de Notas (Lousa)"}
+          </h1>
+          <div style={{ fontSize: 11, color: "#64748b",
+                          marginBottom: 14, borderBottom: "2px solid #0f172a",
+                          paddingBottom: 8 }}>
+            {isOpen
+              ? `Total: ${data.total} bolhas pendentes`
+              : `Período: ${data.period_label} · Total: ${data.total} notas`}
+            {" · "}Gerado em {data.generated_at}
+          </div>
+
+          {/* KPIs */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)",
+                          gap: 8, marginBottom: 16 }}>
+            {[
+              { label: "Total", value: k.total },
+              { label: "Fechamento\ninterno (gestor)", value: k.internal_close },
+              { label: "Instalações", value: k.instalacao },
+              { label: "Reparos", value: k.reparo },
+              { label: "Retiradas", value: k.retirada },
+            ].map((kpi, i) => (
+              <div key={i} style={{
+                border: "1px solid #cbd5e1", borderRadius: 6,
+                background: "#f8fafc", padding: "12px 8px",
+                textAlign: "center", whiteSpace: "pre-line",
+              }}>
+                <div style={{ fontSize: 10, color: "#475569",
+                                fontWeight: 600 }}>{kpi.label}</div>
+                <div style={{ fontSize: 22, color: "#0f172a",
+                                fontWeight: 800, marginTop: 4 }}>
+                  {kpi.value ?? 0}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Por técnico */}
+          {techs.map((t) => (
+            <PrintableTechBlock key={t.name} tech={t} isOpen={isOpen} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PrintableTechBlock({ tech, isOpen }) {
+  const n = tech.count;
+  if (n === 0) {
+    return (
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: "#94a3b8" }}>
+          👷 <b>{tech.name}</b> ·{" "}
+          <i>{isOpen ? "0 bolhas abertas" : "0 notas finalizadas"} no período</i> ⚠
+        </div>
+      </div>
+    );
+  }
+  const accent = isOpen ? "#ea580c" : "#0f766e";
+  return (
+    <div style={{ marginBottom: 18, pageBreakInside: "avoid" }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6,
+                      color: "#0f172a" }}>
+        👷 {tech.name} ·{" "}
+        <span style={{ color: accent, fontWeight: 800 }}>
+          {n} {isOpen
+              ? (n > 1 ? "bolhas abertas" : "bolha aberta")
+              : (n > 1 ? "notas finalizadas" : "nota finalizada")}
+        </span>
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse",
+                        fontSize: 10, tableLayout: "fixed" }}>
+        <thead>
+          <tr style={{ background: "#0f172a", color: "#fff" }}>
+            {isOpen
+              ? ["#", "Aberta em", "Agendada", "Cliente", "Tipo", "Prio",
+                  "Status", "Endereço"].map((h) => (
+                <th key={h} style={thStyle}>{h}</th>))
+              : ["#", "Fechada em", "Cliente", "Tipo", "Sinal",
+                  "CTO · Porta", "O que foi feito", "Origem"].map((h) => (
+                <th key={h} style={thStyle}>{h}</th>))
+            }
+          </tr>
+        </thead>
+        <tbody>
+          {tech.tickets.map((r, i) => (
+            <PrintableTicketRow key={r.id || i} row={r} idx={i + 1} isOpen={isOpen} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const thStyle = {
+  padding: "5px 6px", textAlign: "left", fontWeight: 700,
+  fontSize: 9.5, border: "1px solid #1e293b",
+};
+const tdStyle = {
+  padding: "5px 6px", border: "1px solid #e2e8f0",
+  verticalAlign: "top", fontSize: 9.5, wordBreak: "break-word",
+};
+
+function PrintableTicketRow({ row, idx, isOpen }) {
+  const cs = row.client_snapshot || {};
+  const cd = row.completion_data || {};
+  const isInternal = row.admin_action === "encerrar";
+  const stripe = idx % 2 === 0 ? "#f8fafc" : "#fff";
+
+  if (isOpen) {
+    const created = (row.created_at || "").slice(0, 16).replace("T", " ");
+    const sched = (row.scheduled_date || "") +
+                  (row.scheduled_time ? ` ${row.scheduled_time}` : "");
+    return (
+      <tr style={{ background: stripe }}>
+        <td style={{ ...tdStyle, textAlign: "center" }}>{idx}</td>
+        <td style={tdStyle}>{created}</td>
+        <td style={tdStyle}>{sched || "—"}</td>
+        <td style={tdStyle}>{cs.name || "—"}</td>
+        <td style={tdStyle}>{row.type || "—"}</td>
+        <td style={tdStyle}>{row.priority || "—"}</td>
+        <td style={tdStyle}>{row.status || "—"}</td>
+        <td style={tdStyle}>{cs.address || "—"}</td>
+      </tr>
+    );
+  }
+
+  const closedAt = (row.closed_at || "").slice(0, 16).replace("T", " ");
+  const sinal = cd.sinal;
+  const sinalStr = typeof sinal === "number" ? `${sinal.toFixed(1)} dBm` : "—";
+  let ctoStr = "—";
+  if (cd.cto_name) {
+    ctoStr = cd.cto_name;
+    if (cd.cto_port_number) ctoStr += ` · P${cd.cto_port_number}`;
+    if (cd.cto_splitter) ctoStr += ` · ${cd.cto_splitter}`;
+    if (cd.cto_vlan) ctoStr += ` · VLAN ${cd.cto_vlan}`;
+  }
+  const doneParts = [];
+  if (cd.ont) doneParts.push(<><b>ONT:</b> {cd.ont}</>);
+  if (cd.drop) doneParts.push(<><b>Drop:</b> {cd.drop}m</>);
+  if (cd.esticador) doneParts.push(<><b>Est:</b> {cd.esticador}</>);
+  if (cd.conectores) doneParts.push(<><b>Con:</b> {cd.conectores}</>);
+  if (cd.backbone) doneParts.push(<><b>Bb:</b> {cd.backbone}m</>);
+  const fotos = (cd.fotos || []).filter(Boolean).length;
+  if (fotos) doneParts.push(`📷 ${fotos} foto${fotos > 1 ? "s" : ""}`);
+  if (cd.ping_summary) doneParts.push(<><b>Ping:</b> {String(cd.ping_summary).slice(0, 60)}</>);
+  if (cd.observacoes) doneParts.push(<><b>Obs:</b> {String(cd.observacoes).slice(0, 140)}</>);
+  if (row.outcome) doneParts.push(<><b>Result:</b> {row.outcome}</>);
+
+  return (
+    <tr style={{ background: stripe }}>
+      <td style={{ ...tdStyle, textAlign: "center" }}>{idx}</td>
+      <td style={tdStyle}>{closedAt}</td>
+      <td style={tdStyle}>{cs.name || "—"}</td>
+      <td style={tdStyle}>{row.type || "—"}</td>
+      <td style={{ ...tdStyle, textAlign: "center" }}>{sinalStr}</td>
+      <td style={tdStyle}>{ctoStr}</td>
+      <td style={tdStyle}>
+        {doneParts.length === 0 ? "—" : doneParts.map((p, i) => (
+          <React.Fragment key={i}>{p}{i < doneParts.length - 1 ? " · " : ""}</React.Fragment>
+        ))}
+      </td>
+      <td style={{ ...tdStyle, textAlign: "center",
+                    background: isInternal ? "#fef3c7" : undefined,
+                    color: isInternal ? "#92400e" : undefined,
+                    fontWeight: isInternal ? 700 : 400 }}>
+        {isInternal ? "🛡 Gestor" : "👷 Técnico"}
+      </td>
+    </tr>
   );
 }
 

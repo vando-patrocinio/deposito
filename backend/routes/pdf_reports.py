@@ -186,6 +186,134 @@ async def occupancy_pdf(
 # ============================================================
 # 2) RELATÓRIO DE FECHAMENTO DE NOTAS (LOUSA)
 # ============================================================
+@router.get("/lousa/tickets/report/data")
+async def lousa_tickets_report_data(
+    period: str = Query("today"),
+    start: Optional[str] = Query(None),
+    end: Optional[str] = Query(None),
+    mode: str = Query("closed"),
+    user: dict = Depends(get_current_user),
+):
+    """Versão JSON do relatório (substitui o PDF problemático).
+
+    Retorna dados agregados (KPIs, por técnico, linhas detalhadas) que o
+    frontend renderiza como HTML imprimível via window.print().
+    """
+    from collections import defaultdict
+    cid = _company_id(user)
+    now_utc = datetime.now(timezone.utc)
+    if period == "custom":
+        if not start or not end:
+            raise HTTPException(400, "Período custom requer start e end (YYYY-MM-DD).")
+        try:
+            d_start = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
+            d_end = (datetime.fromisoformat(end)
+                       + timedelta(days=1)).replace(tzinfo=timezone.utc)
+        except Exception:
+            raise HTTPException(400, "Datas inválidas. Use YYYY-MM-DD.")
+    elif period == "yesterday":
+        base = now_utc - timedelta(days=1)
+        d_start = base.replace(hour=3, minute=0, second=0, microsecond=0)
+        d_end = d_start + timedelta(days=1)
+    elif period == "week":
+        d_end = now_utc
+        d_start = d_end - timedelta(days=7)
+    else:  # today
+        d_start = now_utc.replace(hour=3, minute=0, second=0, microsecond=0)
+        if d_start > now_utc:
+            d_start -= timedelta(days=1)
+        d_end = d_start + timedelta(days=1)
+
+    is_open = (mode == "open")
+    query = {"company_id": cid}
+    if is_open:
+        query["status"] = {"$nin": ["finalizada", "encerrada", "cancelada"]}
+    else:
+        query["status"] = {"$in": ["finalizada", "encerrada"]}
+        query["closed_at"] = {"$gte": d_start.isoformat(),
+                                 "$lt": d_end.isoformat()}
+
+    rows = await db.tickets.find(
+        query,
+        {"_id": 0, "id": 1, "client_snapshot": 1, "type": 1, "priority": 1,
+         "closed_at": 1, "closed_by": 1, "outcome": 1, "status": 1,
+         "completion_data": 1, "admin_action": 1,
+         "assigned_collaborator_id": 1, "scheduled_time": 1,
+         "created_at": 1, "scheduled_date": 1},
+    ).sort("closed_at" if not is_open else "scheduled_time", 1).to_list(2000)
+
+    coll_ids = {r.get("closed_by") for r in rows if r.get("closed_by")}
+    coll_ids |= {r.get("assigned_collaborator_id")
+                  for r in rows if r.get("assigned_collaborator_id")}
+    coll_ids.discard(None)
+    coll_map: Dict[str, str] = {}
+    if coll_ids:
+        async for c in db.collaborators.find(
+            {"id": {"$in": list(coll_ids)}}, {"_id": 0, "id": 1, "name": 1},
+        ):
+            coll_map[c["id"]] = c.get("name") or "—"
+
+    types_count: Dict[str, int] = {}
+    internal_close_count = 0
+    by_tech: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        t = r.get("type") or "—"
+        types_count[t] = types_count.get(t, 0) + 1
+        if r.get("admin_action") == "encerrar":
+            internal_close_count += 1
+        if is_open:
+            tech_name = (coll_map.get(r.get("assigned_collaborator_id"))
+                          or "— Sem técnico —")
+        else:
+            tech_name = (coll_map.get(r.get("closed_by"))
+                          or coll_map.get(r.get("assigned_collaborator_id"))
+                          or "— Sem técnico —")
+        by_tech[tech_name].append(r)
+
+    # Todos os colaboradores ativos (mesmo com 0 notas)
+    active_techs = await db.collaborators.find(
+        {"company_id": cid,
+          "$or": [{"active": True}, {"active": {"$exists": False}}]},
+        {"_id": 0, "name": 1},
+    ).to_list(500)
+    for c in active_techs:
+        tn = c.get("name") or "—"
+        if tn not in by_tech:
+            by_tech[tn] = []
+
+    sorted_techs = sorted(by_tech.keys(),
+                            key=lambda n: (-len(by_tech[n]), n.lower()))
+    techs_payload = []
+    for tn in sorted_techs:
+        techs_payload.append({
+            "name": tn,
+            "count": len(by_tech[tn]),
+            "tickets": by_tech[tn],
+        })
+
+    period_lbl = {
+        "today": "Hoje", "yesterday": "Ontem",
+        "week": "Últimos 7 dias", "custom": f"{start} → {end}",
+    }.get(period, period)
+
+    return {
+        "mode": mode,
+        "period": period,
+        "period_label": period_lbl,
+        "generated_at": _now_brt_str(),
+        "total": len(rows),
+        "kpis": {
+            "total": len(rows),
+            "internal_close": internal_close_count,
+            "instalacao": types_count.get("instalacao", 0),
+            "reparo": types_count.get("reparo", 0),
+            "retirada": types_count.get("retirada", 0),
+        },
+        "by_tech": techs_payload,
+    }
+
+
+
 @router.get("/lousa/tickets/closed/pdf")
 async def closed_tickets_pdf(
     period: str = Query("today", description="today | yesterday | week | custom"),
