@@ -663,12 +663,12 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
             <ToolbarBtn
               onClick={() => setShowPdfPopover((v) => !v)}
               data-testid="lousa-pdf-btn"
-              title="Gerar PDF de notas finalizadas (hoje/ontem/7 dias/período)"
+              title="Gerar relatório de notas finalizadas/abertas (hoje/ontem/7 dias/período)"
               accent="neutral"
               style={{ position: "relative" }}
             >
               <span style={{ fontSize: 13 }}>📄</span>
-              <span>Relatório PDF</span>
+              <span>Relatório</span>
             </ToolbarBtn>
             {showPdfPopover && (
               <ClosedNotesPdfPopover onClose={() => setShowPdfPopover(false)} />
@@ -2959,7 +2959,7 @@ function ClosedNotesPdfPopover({ onClose }) {
           }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a",
                       marginBottom: 8 }}>
-        📄 Relatório PDF
+        📄 Relatório
       </div>
       {/* Seletor Modo: Finalizadas vs Abertas */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
