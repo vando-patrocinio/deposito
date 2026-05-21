@@ -1026,6 +1026,10 @@ export const api = {
   redeIaBairrosPublic: (collab_id) =>
     client.get(`/rede-ia/public/bairros/${collab_id}`).then((r) => r.data),
   redeIaBairroCreate: (data) => client.post(`/rede-ia/bairros`, data).then((r) => r.data),
+  redeIaBairroEnsureFromField: (data) =>
+    client.post(`/rede-ia/bairros/ensure-from-field`, data).then((r) => r.data),
+  redeIaBairroEnsureFromFieldPublic: (collab_id, data) =>
+    client.post(`/rede-ia/public/bairros/ensure-from-field/${collab_id}`, data).then((r) => r.data),
   redeIaBairroUpdate: (id, data) => client.put(`/rede-ia/bairros/${id}`, data).then((r) => r.data),
   redeIaBairroDelete: (id) => client.delete(`/rede-ia/bairros/${id}`).then((r) => r.data),
   redeIaBairrosLookup: (q) =>

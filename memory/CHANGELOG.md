@@ -1,5 +1,64 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Wizard CTO: VLAN informada pelo técnico + bairro auto-criado
+
+### Problema resolvido
+Na produção, o técnico no campo via tela do step 3 dizendo *"Nenhum bairro
+cadastrado. Peça ao admin para cadastrar bairros e VLANs no painel Rede IA
+→ Bairros"* — o que **bloqueava completamente** o cadastro de CTO em
+campo se o gestor ainda não tivesse pré-cadastrado o bairro.
+
+### Nova lógica
+O técnico não precisa mais que o bairro esteja pré-cadastrado:
+1. **Mapa (Step 2)** detecta o bairro pelo GPS automaticamente.
+2. **Step 3** agora pergunta apenas a **VLAN** (input numérico).
+3. Backend cria-ou-reusa via novo endpoint `ensure-from-field`:
+   - Match case/acento-insensível em `(bairro, vlan)`.
+   - Se já existe → reusa (retorna `created: false`).
+   - Se não → cria com **sigla auto-gerada** das iniciais (ex:
+     "Jardim Botanico" → `JAB`).
+   - Se mesma sigla colidir, sufixa número (`JAB2`, `JAB3`...).
+   - Se mesmo bairro tem outra VLAN, retorna `warning_other_vlans`.
+
+### Backend (`/app/backend/routes/rede_ia.py`)
+- Novo model `BairroEnsureIn`.
+- Função utilitária `_auto_sigla_from(bairro)`:
+  - 1 palavra → primeiras 3 letras
+  - 2 palavras → 2 letras da 1ª + 1 letra da 2ª
+  - 3+ palavras → 1ª letra de cada, ignorando preposições
+    ("DE", "DA", "DO", "DOS", "DAS")
+  - Remove acentos via `unicodedata.NFD`
+- Endpoint autenticado: `POST /api/rede-ia/bairros/ensure-from-field`
+- Endpoint **público** para técnicos via PWA:
+  `POST /api/rede-ia/public/bairros/ensure-from-field/{collab_id}`
+- Bairros criados ganham flag `auto_created: true` para auditoria.
+
+### Frontend (`CadastroCTOWizard.js`)
+- Removido select de bairros e mensagem "nenhum bairro cadastrado".
+- Step 3 agora é:
+  - **Header**: "Qual é a VLAN dessa CTO? Bairro detectado: X."
+  - **Chips de sugestão**: se o bairro detectado já tem cadastro em
+    alguma VLAN, lista as VLANs já registradas para reuso rápido
+    (toque para preencher).
+  - **Input numérico** da VLAN (1–4094).
+  - **Preview da nomenclatura**: "Será criado X · VLAN 999 (sigla auto)"
+    ou "Reutilizando X · sigla JAT · VLAN 301".
+  - **Botão Continuar** chama `ensure-from-field` (público ou
+    autenticado conforme contexto) e segue pro step 4.
+- Removido skip automático do step 3 (`goNext = (s) => s + 1`).
+- Adicionados states: `vlanInput`, `ensuringBairro`.
+- Novos métodos no `api.js`:
+  - `redeIaBairroEnsureFromField`
+  - `redeIaBairroEnsureFromFieldPublic(collab_id, data)`
+
+### Validação E2E (backend)
+- `POST /public/bairros/ensure-from-field/{cid}` com `Jardim Botanico/777`:
+  → `created: true, sigla: JAB`
+- Mesma chamada novamente → `created: false` (reuso).
+- `Jardim Botanico/888` (mesma bairro, VLAN diferente):
+  → `created: true, sigla: JAB2, warning_other_vlans: [{vlan: 777, sigla: "JAB"}]`
+
+
 ## 2026-05-20 — Pino do mapa CTO virou ícone real de CTO + feedback GPS
 
 ### Novo pino SVG (CTOMapPicker.js)

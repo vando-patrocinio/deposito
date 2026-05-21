@@ -193,6 +193,111 @@ async def delete_bairro(bid: str,
     return {"ok": True}
 
 
+class BairroEnsureIn(BaseModel):
+    bairro: str = Field(..., min_length=2)
+    vlan: int = Field(..., ge=1, le=4094)
+    cidade: str = ""
+    estado: str = ""
+
+
+def _auto_sigla_from(bairro: str) -> str:
+    """Gera sigla de 3 letras a partir do nome do bairro: 1ª letra de
+    cada palavra OU primeiras 3 do bairro composto."""
+    s = (bairro or "").strip().upper()
+    parts = [p for p in s.split() if p and p not in ("DE", "DA", "DO", "DOS", "DAS")]
+    if len(parts) >= 3:
+        cand = (parts[0][0] + parts[1][0] + parts[2][0])
+    elif len(parts) == 2:
+        cand = (parts[0][:2] + parts[1][0])
+    elif parts:
+        cand = parts[0][:3]
+    else:
+        cand = "GEN"
+    # Remove acentos
+    import unicodedata
+    cand = unicodedata.normalize("NFD", cand)
+    cand = "".join(c for c in cand if unicodedata.category(c) != "Mn")
+    return cand[:6] or "GEN"
+
+
+@router.post("/bairros/ensure-from-field")
+async def ensure_bairro_from_field(
+    body: BairroEnsureIn,
+    user: dict = Depends(get_current_user),
+):
+    """Garante existência de um bairro+VLAN, criando se necessário.
+
+    Usado pelo wizard mobile de cadastro de CTO quando o técnico já está
+    em campo: ele tem o bairro detectado pelo GPS (string livre) e
+    informa a VLAN. Se o par (bairro, vlan) já existe → reusa. Se não,
+    cria automaticamente (sigla auto-gerada das iniciais). Permitido para
+    qualquer usuário autenticado, inclusive técnicos via cid público.
+    """
+    cid = _user_company(user)
+    bairro_in = body.bairro.strip()
+    vlan = body.vlan
+
+    # Match case/acento-insensível por bairro (mesma cidade)
+    import unicodedata
+    def _norm(s):
+        s = unicodedata.normalize("NFD", s or "")
+        s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+        return s.lower().strip()
+    target = _norm(bairro_in)
+
+    # 1) Procura existente com mesmo bairro+vlan
+    candidates = await db.bairros_vlan_map.find(
+        {"company_id": cid, "vlan": vlan}, {"_id": 0},
+    ).to_list(500)
+    for c in candidates:
+        if _norm(c.get("bairro", "")) == target:
+            return {"ok": True, "created": False, "bairro": c}
+
+    # 2) Procura mesmo bairro com VLAN diferente (alerta)
+    others = await db.bairros_vlan_map.find(
+        {"company_id": cid}, {"_id": 0, "bairro": 1, "vlan": 1, "sigla": 1},
+    ).to_list(500)
+    same_name_other_vlan = [
+        o for o in others if _norm(o.get("bairro", "")) == target
+    ]
+
+    # 3) Cria novo registro com sigla auto-gerada
+    sigla = _auto_sigla_from(bairro_in)
+    # Se sigla colidir, anexa número
+    base_sigla = sigla
+    n = 2
+    while await db.bairros_vlan_map.find_one(
+        {"company_id": cid, "sigla": sigla},
+    ):
+        sigla = f"{base_sigla[:3]}{n}"
+        n += 1
+        if n > 99:
+            raise HTTPException(500, "Não foi possível gerar sigla única")
+
+    doc = {
+        "id": _new_id("bar"),
+        "company_id": cid,
+        "bairro": bairro_in,
+        "sigla": sigla,
+        "vlan": vlan,
+        "cidade": body.cidade.strip(),
+        "estado": body.estado.strip().upper(),
+        "regiao": "",
+        "auto_created": True,
+        "created_at": now_iso(),
+    }
+    await db.bairros_vlan_map.insert_one(doc)
+    doc.pop("_id", None)
+    return {
+        "ok": True,
+        "created": True,
+        "bairro": doc,
+        "warning_other_vlans": [
+            {"vlan": o["vlan"], "sigla": o.get("sigla")} for o in same_name_other_vlan
+        ] if same_name_other_vlan else None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # CTO Nomenclature helpers (Fase 1)
 # ---------------------------------------------------------------------------
@@ -1196,6 +1301,64 @@ async def public_bairros(collab_id: str):
         {"company_id": cid}, {"_id": 0},
     ).sort("bairro", 1).to_list(500)
     return {"items": items, "total": len(items)}
+
+
+@router.post("/public/bairros/ensure-from-field/{collab_id}")
+async def public_ensure_bairro_from_field(collab_id: str, body: BairroEnsureIn):
+    """Versão pública (técnico via PWA) de ensure-from-field."""
+    cid = await _company_for_collaborator(collab_id)
+    bairro_in = body.bairro.strip()
+    vlan = body.vlan
+    import unicodedata
+    def _norm(s):
+        s = unicodedata.normalize("NFD", s or "")
+        s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+        return s.lower().strip()
+    target = _norm(bairro_in)
+    candidates = await db.bairros_vlan_map.find(
+        {"company_id": cid, "vlan": vlan}, {"_id": 0},
+    ).to_list(500)
+    for c in candidates:
+        if _norm(c.get("bairro", "")) == target:
+            return {"ok": True, "created": False, "bairro": c}
+    others = await db.bairros_vlan_map.find(
+        {"company_id": cid}, {"_id": 0, "bairro": 1, "vlan": 1, "sigla": 1},
+    ).to_list(500)
+    same_name_other_vlan = [
+        o for o in others if _norm(o.get("bairro", "")) == target
+    ]
+    sigla = _auto_sigla_from(bairro_in)
+    base_sigla = sigla
+    n = 2
+    while await db.bairros_vlan_map.find_one(
+        {"company_id": cid, "sigla": sigla},
+    ):
+        sigla = f"{base_sigla[:3]}{n}"
+        n += 1
+        if n > 99:
+            raise HTTPException(500, "Não foi possível gerar sigla única")
+    doc = {
+        "id": _new_id("bar"),
+        "company_id": cid,
+        "bairro": bairro_in,
+        "sigla": sigla,
+        "vlan": vlan,
+        "cidade": body.cidade.strip(),
+        "estado": body.estado.strip().upper(),
+        "regiao": "",
+        "auto_created": True,
+        "created_at": now_iso(),
+    }
+    await db.bairros_vlan_map.insert_one(doc)
+    doc.pop("_id", None)
+    return {
+        "ok": True,
+        "created": True,
+        "bairro": doc,
+        "warning_other_vlans": [
+            {"vlan": o["vlan"], "sigla": o.get("sigla")} for o in same_name_other_vlan
+        ] if same_name_other_vlan else None,
+    }
 
 
 @router.get("/public/ctos/suggest-name/{collab_id}")

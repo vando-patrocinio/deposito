@@ -106,6 +106,8 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
   const [bairros, setBairros] = useState([]);
   const [bairroSelected, setBairroSelected] = useState(null);
   const [bairroAutoMatched, setBairroAutoMatched] = useState(false);
+  const [vlanInput, setVlanInput] = useState("");
+  const [ensuringBairro, setEnsuringBairro] = useState(false);
   const [suggested, setSuggested] = useState({ name: "", number: null });
   const [capacity, setCapacity] = useState(null);
   const [networkType, setNetworkType] = useState(null);
@@ -197,19 +199,10 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
     }).catch(() => setBairros([]));
   }, [address.bairro_detected, useApi]);
 
-  // Navegação que PULA o step 3 quando o bairro já casou automaticamente
-  const goNext = () => {
-    setStep((s) => {
-      if (s === 2) return bairroAutoMatched ? 4 : 3;
-      return s + 1;
-    });
-  };
-  const goBack = () => {
-    setStep((s) => {
-      if (s === 4 && bairroAutoMatched) return 2;
-      return s > 1 ? s - 1 : s;
-    });
-  };
+  // Navegação. NÃO pula mais o step 3 — a VLAN agora é informada pelo
+  // técnico (não vem do bairro pré-cadastrado).
+  const goNext = () => setStep((s) => s + 1);
+  const goBack = () => setStep((s) => (s > 1 ? s - 1 : s));
 
   // Sempre que bairro muda no passo 3 → gera nomenclatura automática
   useEffect(() => {
@@ -479,139 +472,153 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
           </div>
         )}
 
-        {/* === STEP 3 — Identificação automática === */}
+        {/* === STEP 3 — VLAN da CTO (sem precisar de bairro pré-cadastrado) === */}
         {step === 3 && (
           <div>
-            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 18px",
+            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 4px",
                            letterSpacing: -0.3 }}>
-              Dados identificados automaticamente
+              Qual é a VLAN dessa CTO?
             </h2>
+            <p style={{ color: C_MUTED, fontSize: 13, marginBottom: 18,
+                          lineHeight: 1.4 }}>
+              Bairro detectado: <strong>{address.bairro_detected || "—"}</strong>.
+              Informe o número da VLAN da rede no local. Se já existir um
+              cadastro desse bairro nessa VLAN, vamos reusar; caso contrário,
+              criamos automaticamente.
+            </p>
 
-            <label style={labelStyle}>Selecione o bairro</label>
-            {address.bairro_detected && (
-              <div data-testid="bairro-detected-banner" style={{
-                padding: "10px 12px", marginBottom: 10,
-                borderRadius: 10, fontSize: 12, lineHeight: 1.4,
-                background: bairroAutoMatched ? "#dcfce7" : "#fef3c7",
-                color: bairroAutoMatched ? "#065f46" : "#92400e",
-                border: `1px solid ${bairroAutoMatched ? "#86efac" : "#fcd34d"}`,
+            {/* VLANs já cadastradas para esse bairro (sugestão de reuso) */}
+            {(() => {
+              const norm = (s) => (s || "").normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+              const target = norm(address.bairro_detected);
+              const sameBairro = bairros.filter(
+                (b) => norm(b.bairro) === target,
+              );
+              if (sameBairro.length === 0) return null;
+              return (
+                <div data-testid="cto-vlan-suggestions" style={{ marginBottom: 16 }}>
+                  <div style={{ ...labelStyle, marginTop: 0 }}>
+                    Bairro já tem cadastro — toque para reutilizar:
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {sameBairro.map((b) => (
+                      <button key={b.id}
+                              data-testid={`cto-vlan-chip-${b.vlan}`}
+                              type="button"
+                              onClick={() => {
+                                setVlanInput(String(b.vlan));
+                                setBairroSelected(b);
+                              }}
+                              style={{
+                                padding: "8px 12px", borderRadius: 999,
+                                border: bairroSelected?.id === b.id
+                                  ? `1.5px solid ${C_PRIMARY}` : `1px solid ${C_BORDER}`,
+                                background: bairroSelected?.id === b.id
+                                  ? C_PRIMARY_LIGHT : "#fff",
+                                fontSize: 12, fontWeight: 700, color: C_TEXT,
+                                cursor: "pointer",
+                              }}>
+                        VLAN <strong>{b.vlan}</strong> · {b.sigla}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <label style={labelStyle}>VLAN (número de 1 a 4094)</label>
+            <input
+              data-testid="cto-vlan-input"
+              type="number"
+              inputMode="numeric"
+              min="1" max="4094"
+              value={vlanInput}
+              onChange={(e) => {
+                setVlanInput(e.target.value);
+                // Se digitou algo diferente do bairroSelected, limpa seleção
+                if (bairroSelected && String(bairroSelected.vlan) !== e.target.value) {
+                  setBairroSelected(null);
+                }
+              }}
+              style={{ ...inputBase, fontSize: 18, fontWeight: 700,
+                       fontFamily: "monospace", letterSpacing: 1 }}
+              placeholder="Ex: 301" />
+
+            {/* Preview da nomenclatura quando já temos VLAN */}
+            {vlanInput && parseInt(vlanInput, 10) > 0 && (
+              <div style={{
+                marginTop: 14, padding: "12px 14px",
+                background: "#f1f5f9", borderRadius: 8,
+                border: `1px solid ${C_BORDER}`,
+                fontSize: 12, color: C_MUTED, lineHeight: 1.5,
               }}>
-                {bairroAutoMatched ? (
+                {bairroSelected ? (
                   <>
-                    ✓ Bairro detectado pelo mapa: <strong>{address.bairro_detected}</strong>
-                    {" "}— casou com a base cadastrada.
+                    ✓ Reutilizando: <strong>{bairroSelected.bairro}</strong>
+                    {" "}· sigla <strong>{bairroSelected.sigla}</strong>
+                    {" "}· VLAN <strong>{bairroSelected.vlan}</strong>
                   </>
                 ) : (
                   <>
-                    ⚠ Bairro detectado: <strong>{address.bairro_detected}</strong>
-                    {" "}não bate com nenhum bairro cadastrado. Selecione abaixo
-                    o equivalente ou peça ao admin para cadastrar.
+                    Será criado: bairro <strong>{address.bairro_detected || "?"}</strong>
+                    {" "}· VLAN <strong>{vlanInput}</strong> (sigla auto-gerada)
                   </>
                 )}
               </div>
             )}
-            <div style={{ marginBottom: 14 }}>
-              {bairros.length === 0 ? (
-                <div style={{
-                  padding: 14, border: `1px dashed ${C_BORDER}`, borderRadius: 12,
-                  color: C_MUTED, fontSize: 12, textAlign: "center", background: "#fff",
-                }}>
-                  Nenhum bairro cadastrado. Peça ao admin para cadastrar bairros e
-                  VLANs no painel <strong>Rede IA → Bairros</strong>.
-                </div>
-              ) : (
-                <select data-testid="cto-bairro-select"
-                  value={bairroSelected?.id || ""}
-                  onChange={(e) => {
-                    const b = bairros.find((x) => x.id === e.target.value);
-                    setBairroSelected(b || null);
-                  }}
-                  style={{ ...inputBase, appearance: "none",
-                            paddingRight: 34,
-                            backgroundImage: "linear-gradient(45deg,transparent 50%,#64748b 50%),linear-gradient(135deg,#64748b 50%,transparent 50%)",
-                            backgroundPosition: "calc(100% - 18px) center,calc(100% - 12px) center",
-                            backgroundSize: "6px 6px,6px 6px",
-                            backgroundRepeat: "no-repeat" }}>
-                  <option value="">— Escolha um bairro —</option>
-                  {bairros.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.bairro} (sigla {b.sigla} · VLAN {b.vlan})
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
 
-            {bairroSelected && (
-              <>
-                {/* Bairro card */}
-                <div data-testid="auto-card-bairro" style={autoCardStyle}>
-                  <div style={iconBoxStyle("#dcfce7", C_SUCCESS)}>🏠</div>
-                  <div>
-                    <div style={autoLabelStyle}>
-                      Bairro identificado automaticamente
-                    </div>
-                    <div style={autoValueStyle}>
-                      {bairroSelected.bairro}
-                    </div>
-                    <div style={autoSubStyle}>
-                      Sigla {bairroSelected.sigla} · VLAN {bairroSelected.vlan}
-                      {bairroSelected.cidade ? ` · ${bairroSelected.cidade}` : ""}
-                    </div>
-                  </div>
-                </div>
-
-                {/* GPS card */}
-                <div data-testid="auto-card-gps" style={autoCardStyle}>
-                  <div style={iconBoxStyle("#dcfce7", C_SUCCESS)}>📍</div>
-                  <div>
-                    <div style={autoLabelStyle}>
-                      Posição GPS da CTO
-                    </div>
-                    <div style={{ ...autoValueStyle, fontFamily: "monospace",
-                                     fontSize: 13 }}>
-                      {gps.lat
-                        ? `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}`
-                        : "—  (volte ao passo 2 para capturar)"}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Nomenclatura card */}
-                <div data-testid="auto-card-name" style={autoCardStyle}>
-                  <div style={iconBoxStyle(C_PRIMARY_LIGHT, C_PRIMARY)}>🏷</div>
-                  <div>
-                    <div style={autoLabelStyle}>
-                      Nomenclatura da CTO gerada automaticamente
-                    </div>
-                    <div style={{ ...autoValueStyle, color: C_PRIMARY,
-                                     fontSize: 17, fontWeight: 800,
-                                     letterSpacing: 0.3 }}>
-                      {suggested.name || "—"}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{
-                  padding: "12px 14px", marginBottom: 16,
-                  background: "#f1f5f9", borderRadius: 10,
-                  display: "flex", alignItems: "flex-start", gap: 10,
-                  fontSize: 12, color: C_MUTED, lineHeight: 1.5,
-                  border: `1px solid ${C_BORDER}`,
-                }}>
-                  <span style={{ fontSize: 16 }}>ℹ️</span>
-                  <span>Essas informações foram geradas com base no endereço e na
-                    localização informada.</span>
-                </div>
-              </>
+            {error && step === 3 && (
+              <div style={{ marginTop: 12, padding: 10, background: "#fee2e2",
+                              color: "#991b1b", borderRadius: 8, fontSize: 12 }}>
+                {error}
+              </div>
             )}
 
             <button data-testid="cto-step3-continue"
-                    disabled={!bairroSelected || !suggested.name}
-                    onClick={() => setStep(4)}
+                    disabled={!vlanInput || parseInt(vlanInput, 10) < 1
+                              || parseInt(vlanInput, 10) > 4094 || ensuringBairro}
+                    onClick={async () => {
+                      const vlanNum = parseInt(vlanInput, 10);
+                      if (!vlanNum || vlanNum < 1 || vlanNum > 4094) {
+                        setError("VLAN deve ser um número entre 1 e 4094.");
+                        return;
+                      }
+                      setError("");
+                      // Se já reusou, segue
+                      if (bairroSelected && bairroSelected.vlan === vlanNum) {
+                        setStep(4);
+                        return;
+                      }
+                      // Senão, garante (cria ou reusa via backend)
+                      setEnsuringBairro(true);
+                      try {
+                        const fn = collabId
+                          ? (data) => useApi.redeIaBairroEnsureFromFieldPublic?.(collabId, data) ?? api.redeIaBairroEnsureFromFieldPublic(collabId, data)
+                          : api.redeIaBairroEnsureFromField;
+                        const r = await fn({
+                          bairro: address.bairro_detected || "Bairro detectado",
+                          vlan: vlanNum,
+                          cidade: address.cidade_detected || "",
+                          estado: address.estado_detected || "",
+                        });
+                        setBairroSelected(r.bairro);
+                        // Atualiza a lista de bairros para refletir o novo
+                        if (r.created) {
+                          setBairros((prev) => [...prev, r.bairro]);
+                        }
+                        setStep(4);
+                      } catch (e) {
+                        setError(e?.response?.data?.detail
+                                    || "Falha ao registrar bairro/VLAN.");
+                      } finally {
+                        setEnsuringBairro(false);
+                      }
+                    }}
                     style={{ ...primaryBtn,
-                              opacity: (!bairroSelected || !suggested.name) ? 0.5 : 1 }}>
-              Continuar
+                              marginTop: 22,
+                              opacity: (!vlanInput || ensuringBairro) ? 0.5 : 1 }}>
+              {ensuringBairro ? "Registrando..." : "Continuar"}
             </button>
           </div>
         )}
