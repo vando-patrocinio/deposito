@@ -1294,6 +1294,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
   const slaColor = sla.status === "overdue" ? "#dc2626" : sla.status === "warning" ? "#f59e0b" : "#10b981";
   const isOverdue = sla.status === "overdue";
   const [showActions, setShowActions] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiDetail, setAiDetail] = useState(null);
   const [aiBusy, setAiBusy] = useState(false);
@@ -1314,7 +1315,9 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
   function handleDoubleClick(e) {
     e.stopPropagation();
     if (selectMode) return;
-    if (onEdit) onEdit(ticket);
+    // Duplo-clique abre o modal de DETALHES (visualização read-only).
+    // Pra editar, o admin clica 1x → hover → botão "✎ Editar".
+    setShowDetails(true);
   }
 
   function handleClick(e) {
@@ -1585,6 +1588,9 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
             <button data-testid={`admin-edit-${ticket.id}`} disabled={busy}
               onClick={() => onEdit(ticket)} style={btnSm("#0ea5e9")}>✎ Editar</button>
           )}
+          <button data-testid={`admin-details-${ticket.id}`}
+            onClick={() => setShowDetails(true)}
+            style={btnSm("#8b5cf6")}>👁 Detalhes</button>
           <button data-testid={`ai-evaluate-${ticket.id}`} disabled={aiBusy}
             onClick={runAiAnalysis} style={btnSm("#0d9488")}>IA {aiBusy ? "..." : ""}</button>
           <button data-testid={`admin-close-${ticket.id}`} disabled={busy}
@@ -1598,6 +1604,12 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
       )}
       {aiOpen && aiDetail && (
         <AiDetailModal detail={aiDetail} onClose={() => setAiOpen(false)} />
+      )}
+      {showDetails && (
+        <ClosedTicketDetailModal
+          ticket={ticket}
+          onClose={() => setShowDetails(false)}
+        />
       )}
     </div>
   );
@@ -2739,26 +2751,40 @@ function ClosedTicketDetailModal({ ticket, onClose }) {
                         display: "flex", justifyContent: "space-between",
                         alignItems: "flex-start", gap: 12 }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b",
-                            textTransform: "uppercase", letterSpacing: 0.5 }}>
-              ✓ Nota finalizada · {TYPE_LABELS[full.type] || full.type}
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a",
-                            marginTop: 2 }}>
-              {cs.name || "—"}
-            </div>
-            <div style={{ fontSize: 11, color: "#64748b", marginTop: 4,
-                            lineHeight: 1.4 }}>
-              Fechada em <strong>{fmt(full.closed_at || full.finalized_at)}</strong>
-              {full.outcome && <> · Resultado: <strong>{full.outcome}</strong></>}
-              {full.admin_action === "encerrar" && (
-                <span style={{ marginLeft: 6, padding: "2px 7px",
-                                background: "#fef3c7", color: "#92400e",
-                                borderRadius: 999, fontSize: 9, fontWeight: 800 }}>
-                  🛡 Fechado pelo gestor
-                </span>
-              )}
-            </div>
+            {(() => {
+              const isClosed = ["finalizada", "encerrada"].includes(full?.status);
+              return (
+                <>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b",
+                                  textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    {isClosed ? "✓ Nota finalizada" : "🟡 Nota em andamento"} ·{" "}
+                    {TYPE_LABELS[full.type] || full.type}
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a",
+                                  marginTop: 2 }}>
+                    {cs.name || "—"}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4,
+                                  lineHeight: 1.4 }}>
+                    {isClosed
+                      ? <>Fechada em <strong>{fmt(full.closed_at || full.finalized_at)}</strong></>
+                      : <>Status: <strong>{full.status}</strong> · Aberta em <strong>{fmt(full.created_at)}</strong></>}
+                    {full.outcome && <> · Resultado: <strong>{full.outcome}</strong></>}
+                    {full.scheduled_date && (
+                      <> · Agendada: <strong>{full.scheduled_date}
+                        {full.scheduled_time ? ` ${full.scheduled_time}` : ""}</strong></>
+                    )}
+                    {full.admin_action === "encerrar" && (
+                      <span style={{ marginLeft: 6, padding: "2px 7px",
+                                      background: "#fef3c7", color: "#92400e",
+                                      borderRadius: 999, fontSize: 9, fontWeight: 800 }}>
+                        🛡 Fechado pelo gestor
+                      </span>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </div>
           <button onClick={onClose}
                   data-testid="closed-detail-close"
@@ -2776,6 +2802,21 @@ function ClosedTicketDetailModal({ ticket, onClose }) {
           {/* Endereço */}
           {cs.address && (
             <Section label="📍 Endereço">{cs.address}</Section>
+          )}
+          {cs.phone && (
+            <Section label="📞 Telefone">
+              <a href={`tel:${cs.phone}`} style={{ color: "#0891b2",
+                          textDecoration: "none", fontWeight: 700 }}>
+                {cs.phone}
+              </a>
+            </Section>
+          )}
+          {(cs.relato || full.notes) && (
+            <Section label="📋 Relato / Notas">
+              <div style={{ whiteSpace: "pre-wrap" }}>
+                {cs.relato || full.notes}
+              </div>
+            </Section>
           )}
 
           {/* Sinal */}
@@ -2848,10 +2889,11 @@ function ClosedTicketDetailModal({ ticket, onClose }) {
 
           {/* fallback se nada estiver preenchido */}
           {!loading && !cd.sinal && !cd.ont && !cd.cto_name && !cd.drop
-            && !cd.observacoes && fotosObjs.length === 0 && (
+            && !cd.observacoes && fotosObjs.length === 0
+            && !cs.relato && !full.notes && !cs.phone && !cs.address && (
             <div style={{ padding: 20, textAlign: "center",
                             color: "#94a3b8", fontSize: 12 }}>
-              Nenhum dado de finalização registrado (técnico não preencheu).
+              Nenhum dado registrado ainda.
             </div>
           )}
         </div>
