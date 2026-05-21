@@ -24,6 +24,7 @@ export const TAB_DEFINITIONS = [
   { id: "atendimento",     label: "Atendimento IA",    group: "Inteligência" },
   { id: "alvaro-ia",       label: "Alvaro IA",         group: "Inteligência" },
   { id: "mass-messaging",  label: "Disparo em Massa",  group: "Inteligência" },
+  { id: "sales-funnel",    label: "Funil de Vendas",   group: "Inteligência" },
 
   // Cadastro
   { id: "cadastro",        label: "Colaboradores",     group: "Cadastro" },
@@ -67,7 +68,7 @@ export const DEFAULT_TAB_PERMISSIONS = {
   gestor: [
     "dashboard", "estoque",
     "ai-ranking", "ai-corrections", "central-ia", "rede-ia",
-    "atendimento", "alvaro-ia", "mass-messaging",
+    "atendimento", "alvaro-ia", "mass-messaging", "sales-funnel",
     "cadastro", "subscribers", "plans", "pracas",
     "logs",
     "sheet", "holerite", "feriados",

@@ -76,6 +76,33 @@ async def m_20260520_purchases_setup(db) -> None:
 
 
 # =============================================================================
+# 2026-05-21 — Sales Funnel: garante que a aba aparece pras roles que tinham
+#              acesso default; cria índices nas novas coleções
+# =============================================================================
+async def m_20260521_sales_funnel_setup(db) -> None:
+    # 1. Adiciona "sales-funnel" ao tab_permissions de roles que TINHAM o
+    #    "mass-messaging" (mesmo grupo Inteligência) — preserva desmarcações.
+    async for doc in db.company_branding.find({}):
+        tp = doc.get("tab_permissions") or {}
+        changed = False
+        for role in ("administrador", "auditor", "gestor"):
+            arr = tp.get(role)
+            if isinstance(arr, list) and "mass-messaging" in arr and "sales-funnel" not in arr:
+                arr.append("sales-funnel")
+                changed = True
+        if changed:
+            await db.company_branding.update_one(
+                {"_id": doc["_id"]}, {"$set": {"tab_permissions": tp}})
+    # 2. Índices
+    await db.pre_subscribers.create_index([("company_id", 1), ("phone", 1)])
+    await db.pre_subscribers.create_index([("company_id", 1), ("status", 1),
+                                              ("created_at", -1)])
+    await db.sales_funnel_log.create_index([("company_id", 1), ("at", -1)])
+    await db.mass_messages_jobs.create_index(
+        [("company_id", 1), ("status", 1)], sparse=True)
+
+
+# =============================================================================
 # Lista ordenada de migrations a executar
 # =============================================================================
 MIGRATIONS: List[Tuple[str, Callable[..., Awaitable[None]]]] = [
@@ -83,6 +110,7 @@ MIGRATIONS: List[Tuple[str, Callable[..., Awaitable[None]]]] = [
     ("20260520_branding_schema_version", m_20260520_branding_schema_version),
     ("20260520_vando_super_admin", m_20260520_vando_super_admin),
     ("20260520_purchases_setup", m_20260520_purchases_setup),
+    ("20260521_sales_funnel_setup", m_20260521_sales_funnel_setup),
 ]
 
 

@@ -1,5 +1,29 @@
 # PontoIA — Changelog
 
+## 2026-05-21 — Funil de Vendas WhatsApp (sales-funnel)
+
+### Novo módulo
+- **Backend** `/api/sales/*` (`routes/sales_funnel.py`):
+  - `GET /sales/dashboard` — KPIs (leads, hot, vendas agendadas, convertidos, % conversão)
+  - `GET /sales/leads` — lista leads (filtra por temperatura hot/warm/cold)
+  - `GET /sales/leads/{phone}` — detalhe + histórico
+  - `POST /sales/leads/{phone}/convert` — converte lead em ticket de instalação + cria pre_subscriber
+  - `GET /sales/cold-leads` — leads frios (14-90d sem responder, mostraram intenção)
+  - `POST /sales/reactivate` — dispara mensagem em massa para reativação
+- **Heurística de intent score** 0-100 baseada em palavras-chave + markers da IA (`[HOT_LEAD]`, `[VENDA_AGENDADA]`)
+- **Frontend** `SalesFunnelPanel.js` com 3 abas:
+  - Pipeline (cards de leads por temperatura, conversão 1-clique → ticket)
+  - Reativação (cold leads + editor de mensagem + disparo em massa)
+  - Dashboard (KPIs)
+- **Seed do agente Vendas** (`scripts/seed_vendas_agent.py`) — Claude Sonnet 4.5, prompt consultivo de 5 etapas (intenção → cobertura → uso → plano sob medida → agendamento)
+- **Migration** `20260521_sales_funnel_setup` — adiciona `sales-funnel` ao tab_permissions de roles que tinham `mass-messaging` + índices em `pre_subscribers`, `sales_funnel_log`, `mass_messages_jobs`
+
+### Coleções novas
+- `pre_subscribers` — leads capturados aguardando aprovação para virarem assinantes
+- `sales_funnel_log` — auditoria das ações (convert / reactivate)
+
+
+
 ## 2026-05-21 — Lousa Admin: grade adapta às bolhas (distribuição horizontal)
 
 ### Mudança

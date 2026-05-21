@@ -26,6 +26,7 @@ import RedeIaPanel from "@/RedeIaPanel";
 import { DEFAULT_TAB_PERMISSIONS as _DEFAULT_TAB_PERMS } from "@/TabPermissionsCard";
 import AlvaroPanel from "@/AlvaroPanel";
 import MassMessagingPanel from "@/MassMessagingPanel";
+import SalesFunnelPanel from "@/SalesFunnelPanel";
 import MotorIaCard from "@/MotorIaCard";
 import MotorIaUsageCard from "@/MotorIaUsageCard";
 import MotorIaBudgetCard from "@/MotorIaBudgetCard";
@@ -142,6 +143,7 @@ const TAB_TO_TAG = {
   "central-ia": "ia_avaliacao",
   "alvaro-ia": "ia_avaliacao",
   "mass-messaging": "atendimento_wa",
+  "sales-funnel": "atendimento_wa",
   cadastro: "colaboradores",
   clientes: "clientes",
   subscribers: "clientes",
@@ -177,6 +179,7 @@ const NAV_GROUPS = [
       { id: "atendimento", icon: MessageCircle, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador", "colaborador"], requires: "can_attend_whatsapp" },
       { id: "alvaro-ia", icon: Brain, label: "Alvaro IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "mass-messaging", icon: Megaphone, label: "Disparo em Massa", roles: ["gestor", "auditor", "administrador"] },
+      { id: "sales-funnel", icon: Megaphone, label: "Funil de Vendas", roles: ["gestor", "auditor", "administrador"] },
     ],
   },
   {
@@ -1083,6 +1086,7 @@ function AppContent() {
           {view === "rede-ia" && <RedeIaPanel currentUser={user} />}
           {view === "alvaro-ia" && <AlvaroPanel />}
           {view === "mass-messaging" && <MassMessagingPanel />}
+          {view === "sales-funnel" && <SalesFunnelPanel />}
           {view === "logs" && <LogsPanel />}
           {view === "settings" && <SettingsPanel />}
           {view === "motor-ia" && (

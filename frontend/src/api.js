@@ -1210,4 +1210,20 @@ export const api = {
     client.put("/boleto/logo", { image_data_url }).then((r) => r.data),
   boletoLogoDelete: () =>
     client.delete("/boleto/logo").then((r) => r.data),
+
+  // Sales Funnel — pipeline de vendas no WhatsApp
+  salesDashboard: (days = 30) =>
+    client.get(`/sales/dashboard`, { params: { days } }).then((r) => r.data),
+  salesLeads: (params = {}) =>
+    client.get(`/sales/leads`, { params }).then((r) => r.data),
+  salesLeadDetail: (phone) =>
+    client.get(`/sales/leads/${encodeURIComponent(phone)}`).then((r) => r.data),
+  salesLeadScore: (phone) =>
+    client.get(`/sales/leads/${encodeURIComponent(phone)}/score`).then((r) => r.data),
+  salesConvertLead: (phone, payload) =>
+    client.post(`/sales/leads/${encodeURIComponent(phone)}/convert`, payload).then((r) => r.data),
+  salesColdLeads: (min_days = 14, max_days = 90) =>
+    client.get(`/sales/cold-leads`, { params: { min_days, max_days } }).then((r) => r.data),
+  salesReactivate: (phones, message) =>
+    client.post(`/sales/reactivate`, { phones, message }).then((r) => r.data),
 };
