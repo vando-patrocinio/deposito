@@ -178,10 +178,13 @@ class CompletionData(BaseModel):
     ont: Optional[str] = None
     fotos: List[str] = Field(default_factory=list)
     observacoes: Optional[str] = None
-    # Vínculo cliente ↔ CTO/porta (instalação)
+    # Vínculo cliente ↔ CTO/porta (todos os tipos de OS)
     cto_id: Optional[str] = None
     cto_name: Optional[str] = None
     cto_port_number: Optional[int] = None
+    cto_splitter: Optional[str] = None
+    cto_vlan: Optional[int] = None
+    cto_network_type: Optional[str] = None
     # Fibra adicional (já existia mas faltava no model)
     fibra_06fo: float = 0
     fibra_12fo: float = 0

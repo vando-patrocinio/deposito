@@ -1269,10 +1269,17 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       ont: form.ont || null,
       fotos: form.fotos.map((p) => p.dataUrl),
       observacoes: form.observacoes || null,
-      // Vínculo do cliente à porta da CTO (instalação)
+      // Vínculo do cliente à porta da CTO (todos os tipos de OS).
+      // Registra CTO, PORTA, SPLITTER, VLAN, Cliente no completion_data
+      // e no mapa interativo (Rede IA).
       cto_id: ctoSelected?.id || null,
       cto_name: ctoSelected?.name || null,
       cto_port_number: ctoPortSelected || null,
+      cto_splitter: ctoSelected?.splitter || ctoFlowState.splitter || null,
+      cto_vlan: ctoSelected?.vlan
+                  || (ctoFlowState.vlan ? parseInt(ctoFlowState.vlan, 10) : null),
+      cto_network_type: ctoSelected?.network_type
+                          || ctoFlowState.networkType || null,
     });
   }
 
