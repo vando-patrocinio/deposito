@@ -674,23 +674,6 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                     <Icon name="clipboard" /> Abrir Lousa de Serviços
                   </button>
 
-                  <button
-                    data-testid="open-cto-btn-noclock"
-                    onClick={() => setScreen("cto-cadastro")}
-                    style={{
-                      width: "100%", height: 52, marginBottom: 10,
-                      background: "#fff7ed",
-                      border: "1.5px solid #fdba74",
-                      borderRadius: 12,
-                      color: "#9a3412",
-                      fontWeight: 700, fontSize: 14,
-                      cursor: "pointer",
-                      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    }}
-                  >
-                    <Icon name="map" /> Cadastrar CTO (Rede IA)
-                  </button>
-
                   {/* Resumo do último serviço */}
                   {lousaSummary?.last_finished_ticket && (
                     <div data-testid="last-service-summary" style={{
@@ -762,23 +745,6 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 }}
               >
                 <Icon name="clipboard" /> Lousa de Serviços
-              </button>
-
-              <button
-                data-testid="open-cto-btn"
-                onClick={() => setScreen("cto-cadastro")}
-                style={{
-                  width: "100%", height: 48, marginTop: 6, marginBottom: 4,
-                  background: "#fff7ed",
-                  border: "1.5px solid #fdba74",
-                  borderRadius: 12,
-                  color: "#9a3412",
-                  fontWeight: 600, fontSize: 14,
-                  cursor: "pointer",
-                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-                }}
-              >
-                <Icon name="map" /> Cadastrar CTO (Rede IA)
               </button>
 
 
@@ -954,6 +920,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
           {screen === "lousa" && (
             <LousaMobile collaboratorId={collabId}
                           isAdminTest={isAdminTest}
+                          onOpenCTO={() => setScreen("cto-cadastro")}
                           onBack={() => setScreen("home")} />
           )}
 

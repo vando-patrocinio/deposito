@@ -15,7 +15,7 @@ import CadastroCTOWizard from "@/CadastroCTOWizard";
  * - Bolhas com priority='horario'/'prioridade' têm cadeado (não dá para reordenar — futuro).
  * - Banner com último ponto registrado entre as bolhas.
  */
-export default function LousaMobile({ collaboratorId, onBack, isAdminTest = false }) {
+export default function LousaMobile({ collaboratorId, onBack, isAdminTest = false, onOpenCTO }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -512,6 +512,28 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
           </React.Fragment>
         ))}
       </div>
+
+      {/* Entrada de Cadastro de CTO avulso — fundido na Lousa.
+          Aparece sempre, mas com destaque maior quando não há OS aberta. */}
+      {onOpenCTO && !reorderMode && (
+        <button
+          data-testid="lousa-cto-cadastro-entry"
+          onClick={onOpenCTO}
+          style={{
+            width: "100%", marginTop: 16, padding: "14px 16px",
+            background: "#fff7ed",
+            border: "1.5px solid #fdba74",
+            borderRadius: 14,
+            color: "#9a3412",
+            fontWeight: 700, fontSize: 14,
+            cursor: "pointer",
+            display: "inline-flex", alignItems: "center",
+            justifyContent: "center", gap: 8,
+          }}
+        >
+          📍 Cadastrar CTO (Rede IA)
+        </button>
+      )}
     </div>
   );
 }
@@ -1668,19 +1690,17 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                      style={{ flex: 1, height: 48, fontSize: 14 }}>
               ← Voltar
             </Button>
-            <Button onClick={() => {
-                       if (!ctoSelected || !ctoPortSelected) {
-                         window.alert("Selecione uma CTO e uma porta antes de continuar.");
-                         return;
-                       }
-                       setStep(3);
-                     }}
+            <Button onClick={() => setStep(3)}
                      data-testid="finalize-next-step3-btn"
-                     disabled={!ctoSelected || !ctoPortSelected}
-                     style={{ flex: 2, height: 48, fontSize: 14,
-                                opacity: (!ctoSelected || !ctoPortSelected) ? 0.5 : 1 }}>
-              Próximo: Insumos →
+                     style={{ flex: 2, height: 48, fontSize: 14 }}>
+              {ctoSelected && ctoPortSelected
+                ? "Próximo: Insumos →"
+                : "Pular e ir p/ Insumos →"}
             </Button>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, color: "#64748b",
+                          textAlign: "center", fontStyle: "italic" }}>
+            Se o cliente já está cadastrado em outra CTO, é só pular esta etapa.
           </div>
 
           {showCtoWizard && (
