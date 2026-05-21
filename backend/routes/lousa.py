@@ -975,6 +975,20 @@ async def _lousa_for_collaborator(
             pass
 
     active = next((t for t in active_raw if t["status"] in ("aberta", "aguardando_atendimento")), None)
+
+    # Enriquece bolhas com o nome do colaborador atribuído (útil no modo
+    # admin_test onde técnicos diferentes aparecem na mesma tela).
+    cids_in_tickets = {t.get("assigned_collaborator_id")
+                         for t in (active_raw + resolved_raw)
+                         if t.get("assigned_collaborator_id")}
+    if cids_in_tickets:
+        async for c in db.collaborators.find(
+            {"id": {"$in": list(cids_in_tickets)}},
+            {"_id": 0, "id": 1, "name": 1},
+        ):
+            for t in active_raw + resolved_raw:
+                if t.get("assigned_collaborator_id") == c["id"]:
+                    t["assigned_collaborator_name"] = c.get("name") or "—"
     # Enriquece com sinal SmartOLT (best-effort — útil pro técnico ver dBm antes de chegar)
     try:
         from routes.smartolt import enrich_tickets_with_live_signal
