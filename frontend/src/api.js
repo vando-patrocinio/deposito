@@ -1052,6 +1052,7 @@ export const api = {
   redeIaCtosListPublic: (collab_id, params = {}) =>
     client.get(`/rede-ia/public/ctos/list/${collab_id}`, { params }).then((r) => r.data),
   redeIaCtoGet: (id) => client.get(`/rede-ia/ctos/${id}`).then((r) => r.data),
+  redeIaCtoPhotos: (id) => client.get(`/rede-ia/ctos/${id}/photos`).then((r) => r.data),
   redeIaStatsByTechnician: (period = "all") =>
     client.get(`/rede-ia/stats/by-technician`, { params: { period } })
       .then((r) => r.data),

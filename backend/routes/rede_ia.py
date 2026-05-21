@@ -658,6 +658,72 @@ async def onu_push(
     return {"ok": True, "sn": onu_sn, "action": body.action, "response": resp}
 
 
+@router.get("/ctos/{cto_id}/photos")
+async def cto_get_photos(
+    cto_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Galeria de fotos da CTO — agrega:
+    1. Foto original do cadastro (`ctos.photo_data_url` ou `ctos.photo`)
+    2. Fotos tiradas em OSs finalizadas com `completion_data.cto_id == cto_id`
+       e `kind == "cto"` no array `completion_data.fotos`.
+
+    Retorna lista ordenada por data desc.
+    """
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid},
+                                    {"_id": 0, "id": 1, "name": 1, "photo": 1,
+                                      "photo_data_url": 1, "created_at": 1,
+                                      "technician_name": 1})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+
+    photos: List[Dict[str, Any]] = []
+    # 1) Foto original do cadastro
+    original = cto.get("photo_data_url") or cto.get("photo")
+    if original:
+        photos.append({
+            "data_url": original,
+            "source": "cadastro_inicial",
+            "captured_at": cto.get("created_at"),
+            "technician_name": cto.get("technician_name") or None,
+            "ticket_id": None, "client_name": None,
+        })
+
+    # 2) Fotos de tickets vinculados
+    cursor = db.tickets.find(
+        {"company_id": cid,
+         "completion_data.cto_id": cto_id,
+         "completion_data.fotos": {"$exists": True}},
+        {"_id": 0, "id": 1, "completion_data": 1, "client_snapshot": 1,
+         "finalized_at": 1, "created_at": 1},
+    ).sort("finalized_at", -1).limit(200)
+    async for t in cursor:
+        cd = t.get("completion_data") or {}
+        for f in (cd.get("fotos") or []):
+            if not isinstance(f, dict):
+                continue
+            if (f.get("kind") or "").lower() != "cto":
+                continue
+            url = f.get("dataUrl") or f.get("data_url") or f.get("url")
+            if not url:
+                continue
+            photos.append({
+                "data_url": url,
+                "source": "ticket",
+                "captured_at": t.get("finalized_at") or t.get("created_at"),
+                "technician_name": (t.get("client_snapshot") or {})
+                    .get("collaborator_name"),
+                "ticket_id": t.get("id"),
+                "client_name": (t.get("client_snapshot") or {}).get("name"),
+            })
+
+    # Ordena desc por captured_at
+    photos.sort(key=lambda p: p.get("captured_at") or "", reverse=True)
+    return {"cto_id": cto_id, "name": cto.get("name"),
+              "total": len(photos), "photos": photos}
+
+
 @router.get("/ctos/{cto_id}/clients")
 async def cto_get_clients(
     cto_id: str,

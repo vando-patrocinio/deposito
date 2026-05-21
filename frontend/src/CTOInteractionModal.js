@@ -12,7 +12,7 @@ import { api } from "@/api";
 import { Field, inputStyle } from "@/ui";
 import {
   X, Users, Plus, Signal, MapPin, Loader2, CheckCircle2,
-  AlertCircle, Search,
+  AlertCircle, Search, Camera,
 } from "lucide-react";
 
 function statusColor(s) {
@@ -91,6 +91,7 @@ export default function CTOInteractionModal({ ctoId, ctoMeta, onClose }) {
         <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0" }}>
           {[
             { id: "clients", label: "Clientes ligados", icon: Users },
+            { id: "photos",  label: "Histórico de fotos", icon: Camera },
             { id: "new",     label: "Cadastrar novo cliente", icon: Plus },
           ].map((t) => {
             const Icon = t.icon;
@@ -128,6 +129,8 @@ export default function CTOInteractionModal({ ctoId, ctoMeta, onClose }) {
             </div>
           ) : tab === "clients" ? (
             <ClientsList data={data} />
+          ) : tab === "photos" ? (
+            <CTOPhotosTab ctoId={ctoId} />
           ) : (
             <ProvisionForm cto={data?.cto} ctoId={ctoId}
                               freeSlots={data?.free_slots || []}
@@ -135,6 +138,152 @@ export default function CTOInteractionModal({ ctoId, ctoMeta, onClose }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function CTOPhotosTab({ ctoId }) {
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState("");
+  const [zoom, setZoom] = React.useState(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true); setErr("");
+      try {
+        const r = await api.redeIaCtoPhotos(ctoId);
+        if (alive) setData(r);
+      } catch (e) {
+        if (alive) setErr(e?.response?.data?.detail || e.message || "Erro");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [ctoId]);
+
+  if (loading) {
+    return (
+      <div style={{ padding: 24, textAlign: "center", color: "#64748b" }}>
+        <Loader2 size={16} className="animate-spin" /> Carregando fotos…
+      </div>
+    );
+  }
+  if (err) {
+    return (
+      <div style={{ padding: 12, background: "#fef2f2", color: "#991b1b",
+                      borderRadius: 8, fontSize: 12 }}>{err}</div>
+    );
+  }
+  if (!data || !data.photos?.length) {
+    return (
+      <div data-testid="cto-photos-empty"
+            style={{ padding: 24, textAlign: "center", color: "#94a3b8",
+                      fontSize: 13 }}>
+        Nenhuma foto registrada para esta CTO ainda.
+        <div style={{ fontSize: 11, marginTop: 6 }}>
+          As fotos aparecem aqui quando técnicos finalizarem OSs com vínculo
+          a esta CTO.
+        </div>
+      </div>
+    );
+  }
+
+  const fmt = (iso) => {
+    if (!iso) return "—";
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    } catch { return iso; }
+  };
+
+  return (
+    <div data-testid="cto-photos-list">
+      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
+        {data.total} foto{data.total > 1 ? "s" : ""} registrada{data.total > 1 ? "s" : ""}.
+      </div>
+      <div style={{ display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                      gap: 12 }}>
+        {data.photos.map((p, i) => (
+          <div key={i} data-testid={`cto-photo-${i}`}
+                onClick={() => setZoom(p)}
+                style={{ borderRadius: 10, overflow: "hidden",
+                          border: "1px solid #e2e8f0",
+                          background: "#fff", cursor: "pointer",
+                          transition: "transform 120ms ease, box-shadow 120ms",
+                        }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)";
+                                          e.currentTarget.style.boxShadow = "0 8px 20px rgba(0,0,0,0.08)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)";
+                                          e.currentTarget.style.boxShadow = "none"; }}>
+            <div style={{ position: "relative", aspectRatio: "1/1",
+                            background: "#f1f5f9" }}>
+              <img src={p.data_url} alt={`Foto ${i+1}`}
+                    style={{ width: "100%", height: "100%",
+                              objectFit: "cover", display: "block" }} />
+              <div style={{ position: "absolute", top: 6, left: 6,
+                              padding: "2px 7px", borderRadius: 999,
+                              background: p.source === "cadastro_inicial"
+                                  ? "#6366f1" : "#0f766e",
+                              color: "#fff", fontSize: 9, fontWeight: 800 }}>
+                {p.source === "cadastro_inicial" ? "Cadastro" : "OS"}
+              </div>
+            </div>
+            <div style={{ padding: 8, fontSize: 10, color: "#475569",
+                            lineHeight: 1.4 }}>
+              <div style={{ fontWeight: 700, color: "#0f172a" }}>
+                {fmt(p.captured_at)}
+              </div>
+              {p.technician_name && (
+                <div>👷 {p.technician_name}</div>
+              )}
+              {p.client_name && (
+                <div>👤 {p.client_name}</div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Lightbox */}
+      {zoom && (
+        <div onClick={() => setZoom(null)}
+              data-testid="cto-photo-lightbox"
+              style={{ position: "fixed", inset: 0, zIndex: 10000,
+                        background: "rgba(0,0,0,0.85)",
+                        display: "flex", alignItems: "center",
+                        justifyContent: "center", padding: 20,
+                        cursor: "zoom-out" }}>
+          <div onClick={(e) => e.stopPropagation()}
+                style={{ maxWidth: "92vw", maxHeight: "88vh",
+                          background: "#fff", borderRadius: 12,
+                          overflow: "hidden", display: "flex",
+                          flexDirection: "column" }}>
+            <img src={zoom.data_url} alt="Foto CTO"
+                  style={{ maxWidth: "92vw", maxHeight: "70vh",
+                            objectFit: "contain", background: "#000" }} />
+            <div style={{ padding: 12, fontSize: 12, color: "#475569" }}>
+              <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 13 }}>
+                {fmt(zoom.captured_at)}
+              </div>
+              <div style={{ marginTop: 4 }}>
+                {zoom.technician_name && <span>👷 {zoom.technician_name}</span>}
+                {zoom.client_name && <span> · 👤 {zoom.client_name}</span>}
+                {zoom.ticket_id && <span> · OS {zoom.ticket_id.slice(0, 8)}</span>}
+              </div>
+            </div>
+            <button onClick={() => setZoom(null)}
+                    style={{ position: "absolute", top: 16, right: 16,
+                              background: "rgba(255,255,255,.9)",
+                              border: 0, borderRadius: "50%", width: 36,
+                              height: 36, fontSize: 18, fontWeight: 800,
+                              cursor: "pointer" }}>×</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
