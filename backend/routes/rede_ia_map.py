@@ -277,6 +277,11 @@ async def get_map_data(user: dict = Depends(get_current_user)):
             "health": health,
             "moved_manually": key in pos_map,
             "photo_thumb": bool(c.get("photo_data_url")),
+            # Saúde física da IA (Gemini Vision) — opcional
+            "photo_severity": c.get("last_photo_severity"),
+            "photo_tags": c.get("last_photo_tags") or [],
+            "photo_summary": c.get("last_photo_summary"),
+            "photo_at": c.get("last_photo_at"),
         })
 
     # Aplica overrides nas CEs também

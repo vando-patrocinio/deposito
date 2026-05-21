@@ -162,3 +162,28 @@ async def analyze_cto_photo(data_url: str,
         log.warning("Falha cache analyses: %s", e)
 
     return parsed
+
+
+
+async def analyze_and_persist_for_cto(data_url: str, cto_id: str,
+                                          ticket_id: Optional[str] = None) -> None:
+    """Background-friendly: analisa a foto E atualiza a CTO com os campos
+    `last_photo_severity`, `last_photo_tags`, `last_photo_summary`,
+    `last_photo_at`. Erros são silenciosamente logados.
+    """
+    try:
+        r = await analyze_cto_photo(data_url=data_url, cto_id=cto_id,
+                                       ticket_id=ticket_id)
+        await db.ctos.update_one(
+            {"id": cto_id},
+            {"$set": {
+                "last_photo_severity": int(r.get("severity") or 0),
+                "last_photo_tags": r.get("tags") or [],
+                "last_photo_summary": r.get("summary") or "",
+                "last_photo_at": datetime.now(timezone.utc).isoformat(),
+                "last_photo_ticket_id": ticket_id,
+            }},
+        )
+    except Exception as e:
+        log.warning("[cto_photo_inspector] analyze_and_persist falhou cto=%s: %s",
+                      cto_id, e)

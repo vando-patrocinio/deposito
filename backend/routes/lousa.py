@@ -22,7 +22,7 @@ import httpx
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from core import (
@@ -176,7 +176,7 @@ class CompletionData(BaseModel):
     cabo_rede: float
     conectores_rede: int
     ont: Optional[str] = None
-    fotos: List[str] = Field(default_factory=list)
+    fotos: List[Any] = Field(default_factory=list)  # str (data url) ou dict {kind, dataUrl}
     observacoes: Optional[str] = None
     # Vínculo cliente ↔ CTO/porta (todos os tipos de OS)
     cto_id: Optional[str] = None
@@ -2221,6 +2221,7 @@ async def public_open_ticket(ticket_id: str, payload: PublicOpenIn,
 
 @router.post("/lousa/public/tickets/{ticket_id}/finalize")
 async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
+                                    background_tasks: BackgroundTasks = None,
                                     request: Request = None):
     cid = payload.collaborator_id
     # Modo "teste admin": admin/auditor pode finalizar nota de qualquer cid
@@ -2411,6 +2412,22 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             )
         except Exception as e:
             logger.warning("[lousa] vínculo CTO porta falhou: %s", e)
+    # Background: análise IA da foto da CTO (se houver foto tirada nesta OS)
+    if cd.cto_id and background_tasks is not None:
+        try:
+            cto_photos = [f for f in (cd.fotos or [])
+                            if isinstance(f, dict)
+                            and (f.get("kind") or "").lower() == "cto"
+                            and (f.get("dataUrl") or f.get("data_url"))]
+            if cto_photos:
+                # Pega a primeira foto da CTO desta OS
+                first = cto_photos[0]
+                data_url = first.get("dataUrl") or first.get("data_url")
+                from services.cto_photo_inspector import analyze_and_persist_for_cto
+                background_tasks.add_task(analyze_and_persist_for_cto,
+                                           data_url, cd.cto_id, ticket_id)
+        except Exception as e:
+            logger.warning("[lousa] agendamento análise foto CTO falhou: %s", e)
     # Quality notes — snapshot do sinal NO FECHAMENTO (SmartOLT live, honra toggle)
     await _capture_signal_snapshot(ticket_id, company_id, "close")
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1})

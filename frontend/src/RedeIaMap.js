@@ -745,8 +745,23 @@ export default function RedeIaMap() {
           {/* CTOs */}
           {filteredCtos.map((c) => {
             const c2 = CTO_COLORS[c.health.status] || CTO_COLORS.no_data;
+            // Saúde física da IA (Gemini Vision)
+            const photoSev = Number(c.photo_severity || 0);
+            const photoColor = photoSev >= 70 ? "#dc2626"
+                                : photoSev >= 40 ? "#ea580c"
+                                : photoSev >= 15 ? "#ca8a04" : null;
             return (
               <React.Fragment key={c.id}>
+                {/* halo saúde física via IA (anel externo) */}
+                {photoColor && (
+                  <CircleMarker center={[c.lat, c.lng]}
+                    radius={28}
+                    pathOptions={{
+                      color: photoColor, fillColor: photoColor,
+                      fillOpacity: 0.10, weight: 2,
+                      dashArray: "3 4",
+                    }} />
+                )}
                 {/* halo da saúde quando crítico/warning */}
                 {(c.health.status === "critical" || c.health.status === "warning") && (
                   <CircleMarker center={[c.lat, c.lng]}
@@ -823,6 +838,42 @@ export default function RedeIaMap() {
                       {c.address && (
                         <div style={{ fontSize: 11, color: "#475569" }}>
                           📍 {c.address.rua}, {c.address.numero}
+                        </div>
+                      )}
+                      {photoColor && (
+                        <div data-testid={`cto-photo-health-${c.id}`}
+                              style={{
+                                marginTop: 6, padding: 6, borderRadius: 6,
+                                background: photoColor + "15",
+                                border: `1px solid ${photoColor}`,
+                                fontSize: 11, color: "#0f172a", lineHeight: 1.35,
+                              }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ color: photoColor, fontWeight: 800 }}>
+                              🤖 Saúde física {photoSev}/100
+                            </span>
+                          </div>
+                          {c.photo_summary && (
+                            <div style={{ marginTop: 3, color: "#475569" }}>
+                              {c.photo_summary}
+                            </div>
+                          )}
+                          {(c.photo_tags || []).length > 0 && (
+                            <div style={{ marginTop: 4, display: "flex",
+                                            flexWrap: "wrap", gap: 3 }}>
+                              {(c.photo_tags || []).slice(0, 4).map((tg) => (
+                                <span key={tg}
+                                      style={{ fontSize: 9, padding: "1px 6px",
+                                                borderRadius: 999,
+                                                background: "#fff",
+                                                color: photoColor,
+                                                border: `1px solid ${photoColor}`,
+                                                fontWeight: 700 }}>
+                                  {tg.replace(/_/g, " ")}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                       {c.moved_manually && (
