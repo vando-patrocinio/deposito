@@ -1155,24 +1155,28 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
               fontSize: 10, fontWeight: 800, color: "#64748b", padding: "3px 8px",
               background: "#e2e8f0", borderRadius: 6, marginBottom: 4,
             }}>📋 Sem horário ({unscheduled.length})</div>
-            {unscheduled.map((t) => (
-              <BubbleCard
-                key={t.id}
-                ticket={t}
-                blinkOverdue={blinkOverdue}
-                isDragging={draggingId === t.id}
-                onDragStart={() => onDragStart(t.id)}
-                onDragEnd={onDragEnd}
-                onAdminClose={onAdminClose}
-                onAdminOpen={onAdminOpen}
-                onEdit={onEdit}
-                onReschedule={onReschedule}
-                busy={busy}
-                selectMode={selectMode}
-                isSelected={selectedIds?.includes(t.id)}
-                onToggleSelect={onToggleSelect}
-              />
-            ))}
+            <div data-testid={`unscheduled-bubbles-${c.id}`}
+                 style={{ display: "flex", gap: 6, alignItems: "stretch", width: "100%" }}>
+              {unscheduled.map((t) => (
+                <div key={t.id} style={{ flex: "1 1 0", minWidth: 0, display: "flex" }}>
+                  <BubbleCard
+                    ticket={t}
+                    blinkOverdue={blinkOverdue}
+                    isDragging={draggingId === t.id}
+                    onDragStart={() => onDragStart(t.id)}
+                    onDragEnd={onDragEnd}
+                    onAdminClose={onAdminClose}
+                    onAdminOpen={onAdminOpen}
+                    onEdit={onEdit}
+                    onReschedule={onReschedule}
+                    busy={busy}
+                    selectMode={selectMode}
+                    isSelected={selectedIds?.includes(t.id)}
+                    onToggleSelect={onToggleSelect}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -1182,25 +1186,13 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
 
 function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart, onDragEnd, blinkOverdue, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, selectedIds, onToggleSelect }) {
   const [over, setOver] = useState(false);
-  const [expanded, setExpanded] = useState(false);
   const isFull = slot.full;
   const tickets = slot.tickets || [];
   const isEmpty = tickets.length === 0;
-  // Altura BASE do slot. Quando há bolha, a célula cresce dinamicamente
-  // para acomodar o conteúdo da bolha (CTO/cliente/status) sem vazar pra
-  // próxima célula de horário. Bolhas extras continuam empilhadas com
-  // offset vertical (clique no "+N 👁" expande).
-  const SLOT_BASE_HEIGHT = 64;          // altura mínima quando vazio
-  const BUBBLE_INNER_HEIGHT = 96;       // altura típica de 1 bolha renderizada
-  const STACK_OFFSET = 6;               // deslocamento vertical entre bolhas empilhadas
-  // Altura efetiva: vazio = base; com bolha = base + bubble (e expandido cresce mais)
-  const cellHeight = isEmpty
-    ? SLOT_BASE_HEIGHT
-    : SLOT_BASE_HEIGHT
-      + (expanded
-            ? tickets.length * (BUBBLE_INNER_HEIGHT + 8)
-            : BUBBLE_INNER_HEIGHT
-                + Math.max(0, tickets.length - 1) * STACK_OFFSET);
+  // A célula da grade se ajusta automaticamente ao conteúdo (min-height).
+  // Quando há N bolhas no mesmo slot, elas dividem a largura igualmente
+  // (1 = 100%, 2 = 50/50, 3 = 33% cada, etc.) usando flex.
+  const SLOT_MIN_HEIGHT = 64;
 
   return (
     <div
@@ -1217,10 +1209,9 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
         background: over ? "#bfdbfe" : isFull ? "#fef3c7" : isEmpty ? "white" : "#f8fafc",
         border: `${over ? "2px dashed #3b82f6" : "1px solid #e2e8f0"}`,
         borderRadius: 8, padding: 6,
-        height: cellHeight,         // cresce conforme conteúdo
-        minHeight: SLOT_BASE_HEIGHT,
+        minHeight: SLOT_MIN_HEIGHT,
         position: "relative",
-        transition: "height .2s ease",
+        transition: "background .2s ease",
       }}
     >
       <div style={{
@@ -1230,14 +1221,6 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
         <span>🕐 {slot.slot}</span>
         <span style={{ fontSize: 9 }}>
           {tickets.length}/{maxPerSlot}{isFull && " 🔒 cheio"}
-          {tickets.length > 1 && (
-            <button onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
-                    data-testid={`slot-expand-${techId}-${slot.slot}`}
-                    style={{ marginLeft: 4, padding: "0 4px", fontSize: 9, border: "1px solid #cbd5e1",
-                             background: "white", borderRadius: 4, cursor: "pointer" }}>
-              {expanded ? "↑ recolher" : `+${tickets.length - 1} 👁`}
-            </button>
-          )}
         </span>
       </div>
       {isEmpty && (
@@ -1245,23 +1228,17 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
           {over ? "↓ Solte aqui ↓" : "vazio"}
         </div>
       )}
-      {/* Tickets — stack absoluto mantendo a 1ª bolha visível no topo */}
+      {/* Tickets — distribuídos lado a lado em flex (1 = 100%, 2 = 50/50, 3 = 33% cada) */}
       {tickets.length > 0 && (
-        <div style={{ position: "relative", height: cellHeight - 28 }}>
+        <div data-testid={`slot-bubbles-${techId}-${slot.slot}`}
+             style={{ display: "flex", gap: 6, alignItems: "stretch", width: "100%" }}>
           {tickets.map((t, idx) => (
-            <div key={t.id} data-testid={`stacked-${idx}-${t.id}`}
+            <div key={t.id} data-testid={`bubble-slot-${idx}-${t.id}`}
                  style={{
-                   position: "absolute",
-                   top: expanded
-                          ? `${idx * (BUBBLE_INNER_HEIGHT + 8)}px`
-                          : `${idx * STACK_OFFSET}px`,
-                   left: 0, right: 0,
-                   zIndex: 100 - idx,    // primeira bolha por cima
-                   transition: "top .25s ease",
-                   cursor: tickets.length > 1 ? "pointer" : "default",
-                 }}
-                 onClick={() => tickets.length > 1 && setExpanded((v) => !v)}
-                 title={tickets.length > 1 ? `Slot com ${tickets.length} bolhas — clique pra expandir/recolher` : undefined}>
+                   flex: "1 1 0",      // todas as bolhas dividem espaço igualmente
+                   minWidth: 0,        // permite encolher abaixo do conteúdo
+                   display: "flex",
+                 }}>
               <BubbleCard
                 ticket={t}
                 slotHour={slot.slot}
@@ -1377,6 +1354,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
           : isOverdue ? "#dc2626" : c.border}`,
         borderRadius: 14, padding: "6px 10px 6px 12px",
         marginBottom: 0, position: "relative",
+        width: "100%", minWidth: 0, boxSizing: "border-box",
         cursor: selectMode ? (isSelectable ? "pointer" : "not-allowed") : "grab",
         opacity: isDragging ? 0.4 : (selectMode && !isSelectable ? 0.55 : 1),
         // Compact mode: altura máxima quando NÃO hovered; expande no hover

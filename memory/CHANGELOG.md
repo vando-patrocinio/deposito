@@ -1,5 +1,22 @@
 # PontoIA — Changelog
 
+## 2026-05-21 — Lousa Admin: grade adapta às bolhas (distribuição horizontal)
+
+### Mudança
+`LousaAdminPanel.js` — `SlotRow` e seção "Sem horário" reescritos:
+- Antes: bolhas no mesmo slot ficavam empilhadas verticalmente com offset absoluto (`position: absolute`, `top: idx*6px`) e botão `+N 👁` para expandir.
+- Depois: bolhas distribuem espaço igualmente lado a lado via `flex: 1 1 0` + `minWidth: 0`.
+  - 1 bolha = 100% da largura da célula
+  - 2 bolhas = 50/50
+  - 3 bolhas = 33% cada
+- Removidos `expanded`, `BUBBLE_INNER_HEIGHT`, `STACK_OFFSET`. Altura da célula passou a ser apenas `minHeight: 64px` (cresce naturalmente com o conteúdo).
+- `BubbleCard` recebeu `width: 100%, minWidth: 0, boxSizing: border-box` para encolher corretamente.
+
+### Motivo
+Pedido do usuário: "a bolha pode expandir a grade ja permite isso, se colocar mais uma bolha ai fica metade pra uma e a outra metade para a outra".
+
+
+
 ## 2026-05-20 — Modo "teste admin" libera bolhas de qualquer colaborador
 
 ### Comportamento
