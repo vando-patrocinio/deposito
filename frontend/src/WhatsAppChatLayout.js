@@ -41,32 +41,6 @@ const BUCKETS = [
 ];
 
 
-/**
- * Ofusca um nome próprio para evitar vazar identidade quando há conflito
- * de vínculo (telefone vinculado a 2+ subscribers).
- *
- *  "Vando Patrocinio"     → "V*****  P*********"   (1ª letra + asteriscos)
- *  "PAMELA NERY TESTE LIGO" → "P*****  N***  T***  L***"
- *  "Ana"                  → "A**"
- *
- * Mantém legível o suficiente pro gestor (saber que são pessoas distintas)
- * sem revelar o nome completo a um atendente humano que ainda não confirmou
- * a identidade do cliente que está mandando msg.
- */
-function obscureName(name) {
-  if (!name || typeof name !== "string") return "—";
-  return name
-    .trim()
-    .split(/\s+/)
-    .map((w) => {
-      if (!w) return "";
-      const first = w.charAt(0).toUpperCase();
-      return first + "*".repeat(Math.min(Math.max(w.length - 1, 2), 6));
-    })
-    .join(" ");
-}
-
-
 export default function WhatsAppChatLayout() {
   const { user: authUser } = useAuth();
   const [bucket, setBucket] = useState("automatico");
@@ -1952,7 +1926,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
               Vinculado a {linkStatus.linked_count} clientes
               {linkBannerCollapsed && (
                 <span style={{ fontWeight: 400, opacity: 0.8, marginLeft: 6 }}>
-                  · {linkStatus.subscribers.map((s) => obscureName(s.name)).join(" · ")}
+                  · {linkStatus.subscribers.map((s) => s.name).join(" · ")}
                 </span>
               )}
             </span>
@@ -1964,12 +1938,11 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
           {!linkBannerCollapsed && (
             <div style={{ marginTop: 6, paddingLeft: 22 }}>
               <div style={{ opacity: 0.85, lineHeight: 1.4 }}>
-                A IA pode usar dados do cadastro errado. Nomes ofuscados por
-                privacidade até a vinculação ser resolvida:{" "}
+                A IA pode usar dados do cadastro errado. Clientes vinculados:{" "}
                 {linkStatus.subscribers.map((s, i) => (
                   <span key={s.id} style={{ fontWeight: 500 }}>
                     {i > 0 && " · "}
-                    {obscureName(s.name)}{s.plan_name ? ` (${s.plan_name})` : ""}
+                    {s.name}{s.plan_name ? ` (${s.plan_name})` : ""}
                   </span>
                 ))}
               </div>
