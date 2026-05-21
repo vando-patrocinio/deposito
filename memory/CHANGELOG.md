@@ -1,5 +1,37 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Botão "Ver no mapa" nas Pendências de validação da Rede IA
+
+### Frontend
+- Novo componente `/app/frontend/src/CTOLocationViewer.js`:
+  - Modal full-screen read-only com mapa CARTO Voyager centrado nas
+    coordenadas da CTO.
+  - Marcador SVG personalizado (mesma identidade visual do
+    `CTOMapPicker`: gota vermelha + caixa branca + 8 portas + cabo).
+  - **Tooltip permanente** com nome da CTO acima do pin.
+  - **Popup** ao clicar no pin com nome, endereço e coordenadas.
+  - **Header** com nome da CTO + endereço (rua, número, bairro).
+  - **Footer** com coordenadas em monospace + atalhos:
+    - 🔗 **Google Maps**: `https://www.google.com/maps?q={lat},{lng}&z=18`
+    - 🚗 **Waze**: `https://waze.com/ul?ll={lat},{lng}&navigate=yes`
+  - Compatível com 2 formatos de payload:
+    - Flat: `{lat, lng, rua, bairro}`
+    - Aninhado: `{gps: {lat, lng}, address: {rua, bairro}}` (caso da CTO
+      criada via Rede IA wizard).
+- `RedeIaPanel.js` (`Pendencies()`):
+  - Novo state `mapModal`.
+  - Novo botão **🗺 Ver no mapa** (teal `#0f766e`) renderizado **antes**
+    dos botões Aprovar/Solicitar correção/Rejeitar.
+  - Botão só aparece quando `gps.lat/lng` (ou `lat/lng` flat) existe.
+  - Modal renderizado dentro do `<Card>` da `Pendencies`.
+
+### Validação E2E
+- Login `vando@example.com` → Rede IA → Pendências → 2 botões "Ver no mapa"
+  renderizados → click abre modal exibindo a CTO `CTO 001_301_JAT` na
+  Avenida Governador Roberto Silveira 778, Jatiúca, com coordenadas
+  `-9.649800, -35.708900` e atalhos Google Maps + Waze funcionais.
+
+
 ## 2026-05-20 — Wizard CTO: VLAN informada pelo técnico + bairro auto-criado
 
 ### Problema resolvido

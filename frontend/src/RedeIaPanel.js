@@ -17,6 +17,7 @@ import { api } from "@/api";
 import { Card } from "@/ui";
 import { toast } from "sonner";
 import RedeIaMap from "@/RedeIaMap";
+import CTOLocationViewer from "@/CTOLocationViewer";
 import { KpiCard, AlertCard } from "@/components/Dashboard2026";
 
 const TABS = [
@@ -1021,6 +1022,7 @@ function Pendencies() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(null); // {item, action}
+  const [mapModal, setMapModal] = useState(null); // {item}
   const [comment, setComment] = useState("");
   const load = useCallback(async () => {
     setLoading(true);
@@ -1108,6 +1110,13 @@ function Pendencies() {
                   )}
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {((c.gps?.lat && c.gps?.lng) || (c.lat && c.lng)) && (
+                    <button data-testid={`pendency-map-${p.id}`}
+                            onClick={() => setMapModal({ item: p })}
+                            style={btnSm("#0f766e")}>
+                      🗺 Ver no mapa
+                    </button>
+                  )}
                   <button data-testid={`pendency-approve-${p.id}`}
                           onClick={() => { setModal({ item: p, action: "approve" }); setComment(""); }}
                           style={btnSm("#16a34a")}>Aprovar</button>
@@ -1154,6 +1163,13 @@ function Pendencies() {
             </div>
           </div>
         </div>
+      )}
+
+      {mapModal && (
+        <CTOLocationViewer
+          cto={mapModal.item.cto_snapshot || {}}
+          onClose={() => setMapModal(null)}
+        />
       )}
     </Card>
   );
