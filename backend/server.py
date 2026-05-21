@@ -390,6 +390,10 @@ async def _startup() -> None:
     scheduler.add_job(auto_sync_atlaz_financeiro,
                       CronTrigger(minute=15, hour="*/2"),
                       id="atlaz_fin_auto_sync", replace_existing=True)
+    # Cron: auditoria CTO ↔ SmartOLT — diário 03:15
+    from services.cto_audit import nightly_audit_job
+    scheduler.add_job(nightly_audit_job, CronTrigger(hour=3, minute=15),
+                      id="cto_audit_nightly", replace_existing=True)
     # Cron: REAJUSTE ANUAL automático — diário 04:00, aplica reajustes vencidos
     async def _readjustment_daily_all_companies():
         from services.inflation import refresh_index_cache, SGS_CODES

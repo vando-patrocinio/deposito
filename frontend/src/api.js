@@ -1055,6 +1055,9 @@ export const api = {
   redeIaCtoPhotos: (id) => client.get(`/rede-ia/ctos/${id}/photos`).then((r) => r.data),
   redeIaCtoPhotoAnalyze: (id, body) =>
     client.post(`/rede-ia/ctos/${id}/photos/analyze`, body).then((r) => r.data),
+  redeIaAuditOrphans: (refresh = false) =>
+    client.get(`/rede-ia/audit/orphan-onus`, { params: { refresh } })
+      .then((r) => r.data),
   redeIaStatsByTechnician: (period = "all") =>
     client.get(`/rede-ia/stats/by-technician`, { params: { period } })
       .then((r) => r.data),

@@ -17,6 +17,7 @@ import { api } from "@/api";
 import { Card } from "@/ui";
 import { toast } from "sonner";
 import RedeIaMap from "@/RedeIaMap";
+import ReconcileAuditPanel from "@/ReconcileAuditPanel";
 import CTOLocationViewer from "@/CTOLocationViewer";
 import CTOOccupancyPanel from "@/CTOOccupancyPanel";
 import { KpiCard, AlertCard } from "@/components/Dashboard2026";
@@ -27,6 +28,7 @@ const TABS = [
   { id: "occupancy", label: "📊 Ocupação" },
   { id: "pendencies", label: "Pendências" },
   { id: "map", label: "Mapa interativo" },
+  { id: "reconcile", label: "🔍 Conciliação" },
   { id: "bairros", label: "Bairros / VLAN" },
   { id: "history", label: "Histórico" },
   { id: "diretrizes", label: "Diretrizes" },
@@ -189,6 +191,7 @@ export default function RedeIaPanel({ currentUser }) {
       {tab === "pendencies" && <Pendencies />}
       {tab === "occupancy" && <CTOOccupancyPanel />}
       {tab === "map" && <RedeIaMap />}
+      {tab === "reconcile" && <ReconcileAuditPanel />}
       {tab === "bairros" && <BairrosManager />}
       {tab === "history" && <HistoryList />}
       {tab === "diretrizes" && <DiretrizesEditor />}

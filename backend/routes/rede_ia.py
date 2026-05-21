@@ -39,6 +39,37 @@ router = APIRouter(prefix="/api/rede-ia", tags=["rede_ia"])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+@router.get("/audit/orphan-onus")
+async def audit_orphan_onus(
+    refresh: bool = Query(False, description="Se true, roda auditoria agora"),
+    user: dict = Depends(get_current_user),
+):
+    """Retorna a última auditoria CTO ↔ SmartOLT da empresa.
+
+    - Por padrão lê o último doc salvo em `cto_audits` (computado pelo job
+      noturno).
+    - Com `?refresh=true`, força execução agora (computa + salva + retorna).
+    """
+    from services.cto_audit import run_audit_for_company
+    cid = _user_company(user)
+    if refresh:
+        return await run_audit_for_company(cid)
+    last = await db.cto_audits.find_one(
+        {"company_id": cid},
+        {"_id": 0},
+        sort=[("executed_at", -1)],
+    )
+    if not last:
+        # Nunca rodou — roda agora
+        return await run_audit_for_company(cid)
+    return {
+        "summary": {k: v for k, v in last.items()
+                       if k not in ("orphans_sample", "ghosts_sample")},
+        "orphans": last.get("orphans_sample") or [],
+        "ghosts": last.get("ghosts_sample") or [],
+    }
+
+
 def _new_id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:10]}"
 
