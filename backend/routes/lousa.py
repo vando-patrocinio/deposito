@@ -721,6 +721,19 @@ async def lousa_grid(
             in_slot = [t for t in tickets if t["grid_slot"] == slot_label]
             slots_data.append({"slot": slot_label, "tickets": in_slot, "full": len(in_slot) >= max_per_slot})
         unscheduled = [t for t in tickets if t["grid_slot"] == "sem_horario"]
+
+        # Regra de exibição (pedido do usuário, 21/05/2026):
+        # - Externos (clock_in_enabled=False) → sempre aparecem na lousa
+        # - Internos/CLT (clock_in_enabled=True) → SÓ aparecem se tiverem
+        #   ao menos 1 bolha (ativa em modo "hoje" ou qualquer bolha no
+        #   modo histórico).
+        is_external = (c.get("clock_in_enabled") is False)
+        has_any_bubble = bool(tickets) or bool(unscheduled) or (
+            is_historical and bool(recent_resolved)
+        )
+        if not is_external and not has_any_bubble:
+            continue
+
         columns.append({
             "collaborator": {
                 "id": cid, "name": c.get("name", ""),

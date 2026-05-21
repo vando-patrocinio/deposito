@@ -270,15 +270,20 @@ async def lousa_tickets_report_data(
                           or "— Sem técnico —")
         by_tech[tech_name].append(r)
 
-    # Todos os colaboradores ativos (mesmo com 0 notas)
+    # Todos os colaboradores que devem aparecer no relatório.
+    # Regra (21/05/2026): externos sempre listados (mesmo com 0 notas);
+    # internos/CLT só aparecem se tiverem ao menos 1 nota no período.
     active_techs = await db.collaborators.find(
         {"company_id": cid,
           "$or": [{"active": True}, {"active": {"$exists": False}}]},
-        {"_id": 0, "name": 1},
+        {"_id": 0, "name": 1, "clock_in_enabled": 1},
     ).to_list(500)
     for c in active_techs:
         tn = c.get("name") or "—"
-        if tn not in by_tech:
+        if tn in by_tech:
+            continue
+        # Não tem bolha — só inclui se for externo
+        if c.get("clock_in_enabled") is False:
             by_tech[tn] = []
 
     sorted_techs = sorted(by_tech.keys(),
