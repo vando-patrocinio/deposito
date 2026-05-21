@@ -76,6 +76,7 @@ class UserIn(BaseModel):
     role: str = "colaborador"
     collaborator_id: Optional[str] = None
     can_attend_whatsapp: bool = False
+    access_tags: Optional[list] = None
 
 
 class LoginIn(BaseModel):
@@ -100,6 +101,12 @@ def _user_public(u: dict) -> dict:
     can_wa = u.get("can_attend_whatsapp")
     if can_wa is None:
         can_wa = role in ("administrador", "gestor", "auditor")
+    # Tags efetivas (auditor/admin = todas; demais = persisted ou default)
+    try:
+        from access_tags import effective_tags
+        tags = effective_tags(u)
+    except Exception:
+        tags = u.get("access_tags") or []
     return {
         "id": u["id"],
         "email": u["email"],
@@ -109,6 +116,7 @@ def _user_public(u: dict) -> dict:
         "active": u.get("active", True),
         "created_at": u.get("created_at"),
         "can_attend_whatsapp": bool(can_wa),
+        "access_tags": tags,
     }
 
 

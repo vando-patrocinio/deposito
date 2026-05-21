@@ -1,5 +1,62 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Tags de Acesso (RBAC granular por usuário)
+
+Permissões por módulo agora são **tags clicáveis** no cadastro de usuário,
+substituindo o controle vinculado apenas ao "papel". Auditor/Administrador
+recebem todas as 17 tags automaticamente; Gestores podem ter granularidade.
+
+### Backend
+- Novo módulo `/app/backend/access_tags.py`:
+  - Catálogo de **17 tags** em 6 categorias (Operação, Inteligência,
+    Cadastro, Relatórios, RH, Financeiro).
+  - `sanitize_tags()` — valida e dedupica tags vindas do front.
+  - `effective_tags(user)` — auditor/admin = todas; demais = persistido
+    ou default do papel.
+  - `DEFAULT_TAGS_BY_ROLE` — fallback ao criar novo usuário.
+- `routes/users.py`:
+  - `GET /api/access-tags/catalog` — retorna catálogo + defaults +
+    tags do user atual.
+  - `POST /api/users` e `PUT /api/users/{id}` aceitam `access_tags`.
+  - `GET /api/users` agora anexa `effective_tags` em cada doc.
+- `auth.py`:
+  - `UserIn` ganhou campo opcional `access_tags`.
+  - `_user_public()` retorna `access_tags` (efetivo).
+
+### Frontend
+- Novo componente `/app/frontend/src/AccessTagsPicker.js`:
+  - Chips clicáveis agrupados por categoria.
+  - Atalhos: Padrão do papel · Liberar todos · Remover todos.
+  - Para auditor/admin mostra aviso de acesso total (sem edição).
+  - Contador "X / Y liberadas" em tempo real.
+- `UsersPanel.js`:
+  - Modal de edição/criação ganhou widget `AccessTagsPicker` logo
+    abaixo do campo "Papel".
+  - Form state inclui `access_tags`.
+- `api.js`: novo método `accessTagsCatalog()`.
+
+### Tags disponíveis
+| Categoria | Tags |
+|---|---|
+| Operação | painel, lousa, estoque, balanco, central_compras |
+| Inteligência | rede_ia, atendimento_wa, ia_avaliacao |
+| Cadastro | colaboradores, clientes, pracas |
+| Relatórios | auditoria, logs |
+| RH | ponto, holerite, feriados |
+| Financeiro | financeiro |
+
+### Validação E2E
+- Backend: catálogo retorna 17 tags / 6 categorias, gestor recebe 13
+  default, auditor recebe 17. Update aceita custom tags e filtra inválidas.
+- Frontend: widget renderizou todas as 17 chips em 6 grupos. Estado
+  visual "verde+✓" / "cinza++" funciona.
+
+### Próximo passo (não incluído nesta iteração)
+- Aplicar `effective_tags` na sidebar do frontend pra esconder painéis
+  não liberados (atualmente o widget só **salva** as tags; a aplicação
+  visual no menu fica como tarefa futura quando o usuário pedir).
+
+
 ## 2026-05-20 — Selo "Fechamento Interno" na aba Notas de Qualidade
 
 ### Frontend (`LousaQualityNotesPanel.js`)

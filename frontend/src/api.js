@@ -132,6 +132,7 @@ export const api = {
   listUsers: () => client.get("/users").then((r) => r.data),
   createUser: (data) => client.post("/users", data).then((r) => r.data),
   updateUser: (id, data) => client.put(`/users/${id}`, data).then((r) => r.data),
+  accessTagsCatalog: () => client.get("/access-tags/catalog").then((r) => r.data),
   deleteUser: (id) => client.delete(`/users/${id}`).then((r) => r.data),
   setUserPassword: (user_id, new_password) => client.post("/users/set-password", { user_id, new_password }).then((r) => r.data),
 

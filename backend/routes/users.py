@@ -28,6 +28,12 @@ from core import (
     tenant_filter,
 )
 from database import db
+from access_tags import (
+    TAGS as ACCESS_TAGS_CATALOG,
+    sanitize_tags,
+    effective_tags,
+    DEFAULT_TAGS_BY_ROLE,
+)
 from services.rate_limit import limiter, get_limit
 
 router = APIRouter(prefix="/api", tags=["auth", "users"])
@@ -277,7 +283,21 @@ async def get_impersonation_log(limit: int = 100, user: dict = Depends(require_r
 async def list_users(user: dict = Depends(require_role("auditor"))):
     q = tenant_filter(user)
     docs = await db.users.find(q, {"_id": 0, "password_hash": 0}).to_list(500)
+    # Anexa tags efetivas (já considerando o papel) para o frontend
+    for d in docs:
+        d["effective_tags"] = effective_tags(d)
     return docs
+
+
+@router.get("/access-tags/catalog")
+async def access_tags_catalog(user: dict = Depends(get_current_user)):
+    """Catálogo público (para auditor montar a tela). Retorna lista de tags
+    com label/categoria/ícone, defaults por papel e a lista do user atual."""
+    return {
+        "tags": ACCESS_TAGS_CATALOG,
+        "defaults_by_role": DEFAULT_TAGS_BY_ROLE,
+        "current_user_tags": effective_tags(user),
+    }
 
 
 @router.post("/users")
@@ -292,18 +312,23 @@ async def create_user(payload: UserIn, user: dict = Depends(require_role("audito
         coll = await db.collaborators.find_one({"id": payload.collaborator_id, "company_id": cid})
         if not coll:
             raise HTTPException(404, "Colaborador vinculado não existe nesta empresa")
+    # Tags: se vieram no payload, valida; senão usa default do papel
+    raw_tags = getattr(payload, "access_tags", None)
+    tags = sanitize_tags(raw_tags) if raw_tags is not None else list(DEFAULT_TAGS_BY_ROLE.get(payload.role, []))
     doc = {
         "id": f"usr-{uuid.uuid4().hex[:10]}",
         "email": email, "name": payload.name, "role": payload.role,
         "password_hash": hash_password(payload.password),
         "collaborator_id": payload.collaborator_id, "active": True,
         "can_attend_whatsapp": bool(payload.can_attend_whatsapp),
+        "access_tags": tags,
         "company_id": cid,
         "created_at": now_iso(), "updated_at": now_iso(),
     }
     await db.users.insert_one(doc)
     doc.pop("_id", None)
     doc.pop("password_hash", None)
+    doc["effective_tags"] = effective_tags(doc)
     return doc
 
 
@@ -327,6 +352,8 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_role
         update["collaborator_id"] = payload["collaborator_id"] or None
     if "can_attend_whatsapp" in payload:
         update["can_attend_whatsapp"] = bool(payload["can_attend_whatsapp"])
+    if "access_tags" in payload:
+        update["access_tags"] = sanitize_tags(payload.get("access_tags"))
     if "email" in payload and payload["email"]:
         new_email = str(payload["email"]).strip().lower()
         if "@" not in new_email or "." not in new_email:
@@ -345,7 +372,10 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_role
     res = await db.users.update_one({"id": uid}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Usuário não encontrado")
-    return await db.users.find_one({"id": uid}, {"_id": 0, "password_hash": 0})
+    doc = await db.users.find_one({"id": uid}, {"_id": 0, "password_hash": 0})
+    if doc:
+        doc["effective_tags"] = effective_tags(doc)
+    return doc
 
 
 @router.post("/users/set-password")

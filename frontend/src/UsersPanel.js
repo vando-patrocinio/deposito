@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
 import { useAuth } from "@/AuthContext";
 import { Button, Card, Field, Icon, inputStyle } from "@/ui";
+import AccessTagsPicker from "@/AccessTagsPicker";
 
 // Apenas papéis que ACESSAM o sistema. Colaboradores que batem ponto vão na aba Cadastro.
 const ROLES = [
@@ -22,7 +23,7 @@ function initials(name) {
   return (p[0][0] + p[p.length - 1][0]).toUpperCase();
 }
 
-const EMPTY = { email: "", password: "", name: "", role: "gestor", can_attend_whatsapp: false };
+const EMPTY = { email: "", password: "", name: "", role: "gestor", can_attend_whatsapp: false, access_tags: null };
 
 export default function UsersPanel() {
   const { user: currentUser, impersonate } = useAuth();
@@ -97,6 +98,7 @@ export default function UsersPanel() {
     setForm({
       email: u.email, password: "", name: u.name, role: u.role,
       can_attend_whatsapp: u.can_attend_whatsapp ?? false,
+      access_tags: Array.isArray(u.access_tags) ? u.access_tags : null,
     });
     setEditing(u.id); setError("");
   }
@@ -111,6 +113,7 @@ export default function UsersPanel() {
           name: form.name,
           role: form.role,
           can_attend_whatsapp: !!form.can_attend_whatsapp,
+          ...(Array.isArray(form.access_tags) ? { access_tags: form.access_tags } : {}),
         });
       } else {
         const payload = {
@@ -119,6 +122,9 @@ export default function UsersPanel() {
           email: form.email.trim().toLowerCase(),
           can_attend_whatsapp: !!form.can_attend_whatsapp,
         };
+        if (Array.isArray(form.access_tags)) {
+          payload.access_tags = form.access_tags;
+        }
         if (form.password && form.password.length > 0) {
           if (form.password.length < 6) { setError("Nova senha deve ter no mínimo 6 caracteres."); return; }
           payload.password = form.password;
@@ -380,6 +386,14 @@ export default function UsersPanel() {
             <select data-testid="u-role" style={inputStyle} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
               {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
+          </Field>
+
+          <Field label="Tags de acesso (módulos liberados)">
+            <AccessTagsPicker
+              role={form.role}
+              selected={form.access_tags}
+              onChange={(tags) => setForm({ ...form, access_tags: tags })}
+            />
           </Field>
           <p style={{ color: "#64748b", fontSize: 12, margin: "4px 0 12px",
                        background: "#eff6ff", padding: 10, borderRadius: 8,
