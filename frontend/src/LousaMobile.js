@@ -513,25 +513,37 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
         ))}
       </div>
 
-      {/* Entrada de Cadastro de CTO avulso — fundido na Lousa.
-          Aparece sempre, mas com destaque maior quando não há OS aberta. */}
-      {onOpenCTO && !reorderMode && (
+      {/* Entrada de Cadastro de CTO avulso — fundido na Lousa como
+          Extended FAB (Floating Action Button). Padrão Material Design.
+          Não ocupa espaço no scroll e fica sempre acessível. */}
+      {onOpenCTO && !reorderMode && !openTicket && (
         <button
-          data-testid="lousa-cto-cadastro-entry"
+          data-testid="lousa-cto-cadastro-fab"
           onClick={onOpenCTO}
+          aria-label="Cadastrar CTO (Rede IA)"
           style={{
-            width: "100%", marginTop: 16, padding: "14px 16px",
-            background: "#fff7ed",
-            border: "1.5px solid #fdba74",
-            borderRadius: 14,
-            color: "#9a3412",
-            fontWeight: 700, fontSize: 14,
+            position: "fixed",
+            bottom: 80,
+            right: 16,
+            zIndex: 50,
+            padding: "14px 20px",
+            background: "linear-gradient(135deg,#f97316,#ea580c)",
+            border: "none",
+            borderRadius: 999,
+            color: "#fff",
+            fontWeight: 800, fontSize: 14,
             cursor: "pointer",
-            display: "inline-flex", alignItems: "center",
-            justifyContent: "center", gap: 8,
+            boxShadow: "0 8px 24px rgba(234,88,12,0.45), 0 2px 6px rgba(0,0,0,0.12)",
+            display: "inline-flex", alignItems: "center", gap: 8,
+            letterSpacing: 0.2,
+            transition: "transform 150ms ease, box-shadow 150ms ease",
           }}
+          onMouseDown={(e) => { e.currentTarget.style.transform = "scale(0.96)"; }}
+          onMouseUp={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
         >
-          📍 Cadastrar CTO (Rede IA)
+          <span style={{ fontSize: 18, lineHeight: 1 }}>📍</span>
+          <span>Cadastrar CTO</span>
         </button>
       )}
     </div>
