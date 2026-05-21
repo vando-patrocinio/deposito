@@ -777,58 +777,84 @@ async def cto_get_clients(
     cto_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Lista clientes (ONUs SmartOLT) atualmente ligados nesta CTO.
+    """Lista clientes REGISTRADOS nesta CTO (via fluxo de cadastro/finalização
+    de OS — `ctos.ports[].client_subscriber_id`).
 
-    Junta dados da CTO com ONUs do SmartOLT cuja `zone_name` casa com o
-    padrão CTO-NN_SIGLA (mesma lógica do `/validate`).
+    Para cada porta ocupada, tenta enriquecer com sinal/status do SmartOLT
+    (busca por `subscriber_id` ou `pppoe_user`).
     """
-    import re as _re
     cid = _user_company(user)
     cto = await db.ctos.find_one({"id": cto_id, "company_id": cid}, {"_id": 0})
     if not cto:
         raise HTTPException(404, "CTO não encontrada")
 
     cto_name = (cto.get("name") or "").strip()
-    sigla = (cto.get("sigla_bairro") or "").strip()
+    sigla = (cto.get("sigla_bairro") or cto.get("sigla") or "").strip()
     capacity = int(cto.get("capacity") or 16)
-    number = cto.get("number") or None
+    ports = list(cto.get("ports") or [])
 
-    or_filt: List[Dict[str, Any]] = [{"zone_name": cto_name}]
-    if isinstance(number, int):
-        or_filt.append({"zone_name": {
-            "$regex": f"CTO[\\s\\-_]*0*{number}(?!\\d)",
-            "$options": "i",
-        }})
-    if sigla:
-        or_filt.append({"zone_name": {"$regex": f"_{_re.escape(sigla)}",
-                                          "$options": "i"}})
+    used_ports = [p for p in ports if (p.get("status") or "") == "used"]
+    used_slots = {int(p.get("number")) for p in used_ports
+                    if isinstance(p.get("number"), int)}
 
-    onus = await db.smartolt_onus.find(
-        {"company_id": cid, "$or": or_filt},
-        {"_id": 0, "olt_name": 1, "olt_id": 1, "board": 1, "port": 1,
-         "onu": 1, "sn": 1, "name": 1, "signal_text": 1,
-         "signal_1490": 1, "status": 1, "zone_name": 1, "address": 1},
-    ).limit(200).to_list(200)
+    # Enriquecimento opcional: busca ONUs do SmartOLT por subscriber_id/pppoe
+    subscriber_ids = [p.get("client_subscriber_id") for p in used_ports
+                          if p.get("client_subscriber_id")]
+    pppoes = [p.get("client_pppoe") for p in used_ports
+                  if p.get("client_pppoe")]
+    or_filt: List[Dict[str, Any]] = []
+    if subscriber_ids:
+        or_filt.append({"subscriber_id": {"$in": subscriber_ids}})
+    if pppoes:
+        or_filt.append({"pppoe_user": {"$in": pppoes}})
+    onu_by_sub: Dict[str, Dict[str, Any]] = {}
+    onu_by_pppoe: Dict[str, Dict[str, Any]] = {}
+    if or_filt:
+        try:
+            onus = await db.smartolt_onus.find(
+                {"company_id": cid, "$or": or_filt},
+                {"_id": 0, "olt_name": 1, "olt_id": 1, "board": 1, "port": 1,
+                 "onu": 1, "sn": 1, "name": 1, "signal_text": 1,
+                 "signal_1490": 1, "status": 1, "zone_name": 1, "address": 1,
+                 "subscriber_id": 1, "pppoe_user": 1},
+            ).limit(500).to_list(500)
+            for o in onus:
+                sid = o.get("subscriber_id")
+                if sid:
+                    onu_by_sub[str(sid)] = o
+                pp = o.get("pppoe_user")
+                if pp:
+                    onu_by_pppoe[str(pp).lower()] = o
+        except Exception as e:
+            logger.warning("[rede_ia] enriquecimento ONU falhou: %s", e)
 
     clients = []
-    used_slots = set()
-    for o in onus:
-        slot = o.get("onu")
-        if isinstance(slot, int):
-            used_slots.add(slot)
+    for p in used_ports:
+        sid = p.get("client_subscriber_id")
+        pp = p.get("client_pppoe")
+        onu = (onu_by_sub.get(str(sid)) if sid else None) or \
+              (onu_by_pppoe.get(str(pp).lower()) if pp else None) or {}
         clients.append({
-            "name": o.get("name") or "—",
-            "sn": o.get("sn"),
-            "slot": slot,
-            "olt_name": o.get("olt_name"),
-            "board": o.get("board"),
-            "port": o.get("port"),
-            "signal_dbm": o.get("signal_1490"),
-            "signal_status": (o.get("signal_text") or "").lower(),
-            "status": o.get("status"),
-            "address": o.get("address"),
-            "zone_name": o.get("zone_name"),
+            "name": p.get("client_name") or onu.get("name") or "—",
+            "subscriber_id": sid,
+            "pppoe_user": pp,
+            "sn": onu.get("sn"),
+            "slot": p.get("number"),  # Porta da CTO (1..capacity)
+            "olt_name": onu.get("olt_name"),
+            "board": onu.get("board"),
+            "port": onu.get("port"),
+            "signal_dbm": onu.get("signal_1490"),
+            "signal_status": (onu.get("signal_text") or "").lower(),
+            "status": onu.get("status"),
+            "address": onu.get("address"),
+            "zone_name": onu.get("zone_name"),
+            "connected_at": p.get("connected_at"),
+            "connected_via_ticket": p.get("connected_via_ticket"),
         })
+    # Ordena por slot (porta)
+    clients.sort(key=lambda c: (c.get("slot") is None,
+                                  c.get("slot") if c.get("slot") is not None else 999))
+
     free_slots = [n for n in range(1, capacity + 1) if n not in used_slots]
     return {
         "cto": {
