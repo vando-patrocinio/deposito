@@ -1,5 +1,46 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Mapa CTO em pt-BR + GPS aprimorado
+
+### Localização (i18n)
+- Attribution do Leaflet traduzida: *"© Colaboradores do OpenStreetMap"*.
+- Botões de zoom: `+ Aproximar` / `− Afastar` (era "Zoom in"/"Zoom out").
+- Reverse geocoding já estava em pt-BR (Nominatim com `accept-language=pt-BR`).
+- Rótulos das ruas no tile do OSM já vêm em português do Brasil (Avenida,
+  Rua, Edifício, etc) por padrão para o território brasileiro.
+
+### GPS aprimorado
+- **Alta acurácia obrigatória** (`enableHighAccuracy: true`, `maximumAge: 0`).
+- Timeout aumentado de 8s → 15s para acomodar GPS lento em campo.
+- **Mensagens de erro específicas** por código:
+  - `1 (PERMISSION_DENIED)` → "Permissão de localização negada. Ative o GPS..."
+  - `3 (TIMEOUT)` → "Tempo esgotado ao obter GPS. Arraste o mapa manualmente."
+- **`watchPosition` ativo**: atualiza o ponto azul em tempo real enquanto
+  o técnico se move (auto-clear no unmount).
+- **Ponto azul pulsante** (estilo Google Maps / Uber) no centro da posição
+  GPS do colaborador, com círculo de **acurácia** ao redor (proporcional
+  ao `accuracy` reportado pelo browser, capped 20–50px no zoom 18).
+  Visualmente separado do **pino vermelho da CTO** (que é fixo no centro
+  do mapa).
+- Novo **botão flutuante "Minha localização"** (◎ azul, canto superior
+  direito) que refaz `getCurrentPosition` e recentra o mapa no GPS.
+  Mostra `…` enquanto requisita.
+
+### Componente atualizado
+- `CTOMapPicker.js` reescrito (overwrite):
+  - Função `requestGps()` como Promise wrapper.
+  - `LocalizeZoomControl` (substitui tooltips do Leaflet via DOM ref).
+  - `CircleMarker` do react-leaflet para o pin azul.
+  - Layout do chip de endereço: agora `right: 64px` para deixar espaço
+    pro novo botão "Minha localização".
+
+### Validação E2E
+- Permissões de geolocalização concedidas no Playwright →
+  attribution em PT confirmada, tooltips de zoom em PT, reverse geocoding
+  retornando "Avenida Luiz Ramalho de Castro / Jatiúca / Maceió" em pt-BR.
+  Botão Minha localização visível e clicável.
+
+
 ## 2026-05-20 — Wizard CTO: Step 3 dinâmico + redesign sóbrio
 
 ### Comportamento
