@@ -106,7 +106,9 @@ function useTheme() {
     if (typeof window === "undefined") return "light";
     const saved = localStorage.getItem("ponto_theme");
     if (saved === "dark" || saved === "light") return saved;
-    return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
+    // Default: SEMPRE light — muitos componentes têm fundo branco hardcoded
+    // e ainda não foram migrados para dark mode.
+    return "light";
   };
   const [theme, setTheme] = useState(getInitial);
   useEffect(() => {

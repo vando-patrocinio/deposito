@@ -197,8 +197,18 @@ h1, h2, h3, h4, h5 {
 }
 *::-webkit-scrollbar-thumb:hover { background: rgba(15, 23, 42, 0.22); background-clip: padding-box; border: 2px solid transparent; }
 
-/* Selection */
-::selection { background: var(--accent); color: #fff; }
+/* Selection — força contraste legível em qualquer tema */
+::selection { background: #2563eb !important; color: #fff !important; }
+::-moz-selection { background: #2563eb !important; color: #fff !important; }
+
+/* Quando .dark ativo, mas o componente tem fundo BRANCO hardcoded
+   (inline style="background: #fff" / "background: white"),
+   força o texto a ficar legível.
+   CSS attribute selectors não funcionam pra todos os casos, então
+   adicionamos override geral: cards/superfícies brancas devem ter texto escuro. */
+.dark .card-light, .dark .surface-light {
+  color: #0f172a !important;
+}
 
 /* ============================================================
    Reusable design utilities (use across all panels)
