@@ -1161,10 +1161,21 @@ async def inbound_webhook(payload: InboundIn,
 
     subscriber_id = None
     subscriber_ctx = None
+    # Quando o phone está vinculado a 2+ subscribers, a IA NÃO pode chamar
+    # ninguém pelo nome (risco de vazar dados de outro cliente). Marca pra
+    # injetar diretiva específica no prompt mais abaixo.
+    subscriber_conflict_count = 0
     try:
         from phone_normalizer import link_phone_to_subscriber
         link = await link_phone_to_subscriber(effective_phone, cid)
-        if link and link.get("subscriber_id"):
+        if link and link.get("conflict"):
+            subscriber_conflict_count = link.get("conflict_count") or 0
+            logger.warning(
+                "[wa-baileys] phone=%s tem %d cadastros — IA não vai usar "
+                "nome próprio até cliente confirmar CPF.",
+                effective_phone, subscriber_conflict_count,
+            )
+        elif link and link.get("subscriber_id"):
             subscriber_id = link["subscriber_id"]
 
         # 🆕 Phone DESCONHECIDO — tag + tenta auto-link via CPF/CNPJ no texto
@@ -1776,6 +1787,34 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         extra.append(f"=== PREÇOS E VALORES ===\n{agent['pricing_info']}")
     if agent.get("priority_situations"):
         extra.append(f"=== SITUAÇÕES PRIORITÁRIAS ===\n{agent['priority_situations']}")
+    # 3a. Conflito de vínculo: se o telefone está vinculado a 2+ subscribers
+    # cadastrados, a IA NÃO pode chamar pelo nome (vazaria dados de outro
+    # cliente). Injeta diretiva clara forçando a IA a pedir CPF antes de
+    # qualquer personalização. Detecção feita aqui (re-lookup leve) pra não
+    # ter que propagar a flag por toda a pipeline.
+    conflict_count = 0
+    if not subscriber_ctx:  # só importa quando não há vínculo único certo
+        try:
+            from routes.subscribers import find_subscriber_by_phone
+            _r = await find_subscriber_by_phone(cid, phone)
+            if _r and _r.get("status") == "conflict":
+                conflict_count = len(_r.get("matches") or [])
+        except Exception as e:
+            logger.debug("[wa-baileys] conflict re-check skip: %s", e)
+    if conflict_count >= 2:
+        extra.append(
+            "=== CONFLITO DE CADASTRO (CRÍTICO) ===\n"
+            f"Este número de WhatsApp está cadastrado em {conflict_count} "
+            "assinantes diferentes no nosso sistema. NÃO use nenhum nome "
+            "próprio até o cliente CONFIRMAR a identidade — vazar nome de "
+            "outro cliente é uma falha grave de privacidade.\n"
+            "REGRA: na primeira resposta, peça gentilmente o CPF do titular "
+            "da conta para identificar qual cadastro é o dele. Exemplo: "
+            "\"Identifiquei mais de um cadastro com esse número 🙂 Pode me "
+            "confirmar o CPF do titular para eu te atender certinho?\"\n"
+            "Só personalize a conversa (nome/plano/endereço) DEPOIS que o "
+            "cliente confirmar o CPF e o sistema vincular oficialmente."
+        )
     if subscriber_ctx:
         extra.append(f"=== CLIENTE IDENTIFICADO ===\n{subscriber_ctx}\n\n"
                      "Use essas informações para personalizar — mas não recite "

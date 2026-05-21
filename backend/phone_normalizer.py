@@ -88,9 +88,12 @@ async def link_phone_to_subscriber(
     """REGRA MÁXIMA: tenta vincular um telefone a um assinante cadastrado.
 
     Chamada por TODO inbound do WhatsApp (e por toda listagem de conversas
-    para enriquecer registros antigos). Retorna `{subscriber_id, subscriber_name}`
-    quando há match único, ou `None` quando não há match ou há conflito (que
-    devem ser resolvidos manualmente na UI de Assinantes).
+    para enriquecer registros antigos). Retorna:
+    - `{subscriber_id, subscriber_name, ...}` quando há match único
+    - `{conflict: True, conflict_count: N, candidates: [{id,name,plan_name}...]}`
+      quando há 2+ assinantes com esse mesmo telefone (a IA NÃO deve usar
+      nome próprio nesse caso — pede CPF antes)
+    - `None` quando não há nenhum match
 
     Implementação delega para `find_subscriber_by_phone` em routes.subscribers
     (única fonte de verdade pra match).
@@ -101,7 +104,20 @@ async def link_phone_to_subscriber(
         result = await find_subscriber_by_phone(company_id, phone)
     except Exception:
         return None
-    if not result or result.get("status") != "matched":
+    if not result:
+        return None
+    status = result.get("status")
+    if status == "conflict":
+        # Expõe o conflito para o caller decidir como tratar (sem revelar
+        # dados do cliente — só a contagem e os nomes para auditoria/UI).
+        return {
+            "conflict": True,
+            "conflict_count": len(result.get("matches") or []),
+            "candidates": result.get("matches") or [],
+            "subscriber_id": None,
+            "subscriber_name": None,
+        }
+    if status != "matched":
         return None
     sub = result.get("subscriber") or {}
     if not sub.get("id"):
