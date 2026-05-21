@@ -11,6 +11,7 @@ Inclui toggle global ON/OFF da feature e ajuste de thresholds.
 */
 import React, { useEffect, useState } from "react";
 import { api } from "@/api";
+import LousaClosedNotesPdfCard from "@/LousaClosedNotesPdfCard";
 import { Card } from "@/ui";
 import {
   Activity, AlertTriangle, CheckCircle2, Clock, Trophy,
@@ -142,6 +143,11 @@ export default function LousaQualityNotesPanel() {
           capturado automaticamente. Ative o toggle acima pra começar.
         </div>
       )}
+
+      {/* PDF de fechamento de notas — sempre disponível */}
+      <div style={{ marginBottom: 14 }}>
+        <LousaClosedNotesPdfCard />
+      </div>
 
       {showSettings && config && (
         <div data-testid="quality-settings-panel"

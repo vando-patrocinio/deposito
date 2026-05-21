@@ -67,6 +67,30 @@ export default function CTOOccupancyPanel() {
           <span style={{ fontSize: 11, color: "#475569" }}>%</span>
           <button onClick={load} data-testid="reload-btn"
                     style={btnGhost}>↻</button>
+          <button data-testid="occupancy-pdf-btn"
+                    onClick={async () => {
+                      try {
+                        const r = await api._client.get(
+                          `/rede-ia/ctos/occupancy/pdf?threshold=${threshold/100}`,
+                          { responseType: "blob" },
+                        );
+                        const url = URL.createObjectURL(r.data);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `ocupacao_ctos_${new Date().toISOString().slice(0,10)}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                      } catch (e) {
+                        setErr(e?.response?.data?.detail || e.message);
+                      }
+                    }}
+                    style={{ ...btnGhost, background: "#0f172a", color: "#fff",
+                              borderColor: "#0f172a", fontSize: 12,
+                              cursor: "pointer" }}>
+            📄 PDF
+          </button>
         </div>
       </div>
 

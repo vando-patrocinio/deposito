@@ -1,5 +1,60 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Relatórios PDF: Ocupação de CTO + Fechamento de Notas
+
+### Backend (`/app/backend/routes/pdf_reports.py` — NOVO arquivo)
+Usa `reportlab` (já em requirements.txt). Helpers:
+- `_make_styles()` — title (16pt slate-900), subtitle (9pt slate-500),
+  body, muted.
+- `_header_paragraph()` — título + subtítulo padronizado.
+- `_now_brt_str()` — horário BRT (UTC-3) para cabeçalho.
+
+#### Endpoint 1: `GET /api/rede-ia/ctos/occupancy/pdf?threshold=0.8`
+- A4 retrato com 4 KPI cards no topo (CTOs, Ocupação Global, Saturadas,
+  Lotadas) + tabela detalhada ordenada por % decrescente.
+- Coluna "Status" com fundo amarelo (SATURADA) ou vermelho (LOTADA).
+
+#### Endpoint 2: `GET /api/lousa/tickets/closed/pdf?period=today`
+Aceita `period` ∈ {today, yesterday, week, custom} e `start/end` (YYYY-MM-DD).
+- A4 paisagem (mais colunas).
+- 5 KPI cards: Total, Fechamento interno, Instalações, Reparos, Retiradas.
+- Tabela com: #, Fechada em, Cliente, Tipo, Técnico, Sinal, Resultado,
+  Origem (Técnico/Gestor).
+- Linhas com `admin_action=encerrar` (fechamento interno) ganham fundo
+  amarelo na coluna Origem para destaque de auditoria.
+- Trata janela BRT (UTC-3) no cálculo de "hoje" e "ontem".
+
+Ambos os endpoints retornam `StreamingResponse` com `Content-Disposition:
+attachment` e nome de arquivo timestamped.
+
+### Frontend
+
+#### `LousaClosedNotesPdfCard.js` (NOVO componente)
+Card embutido na aba **Notas de Qualidade** da Lousa:
+- 4 chips clicáveis (Hoje, Ontem, 7 dias, Período personalizado).
+- Quando "Período personalizado": inputs `<input type="date">` com
+  min/max para impedir intervalos invertidos.
+- Botão "📥 Baixar PDF" usa `api._client.get(..., {responseType: blob})`
+  + `URL.createObjectURL` + `<a download>` para baixar com JWT no header.
+- Erro inline (`#fee2e2`) se a request falhar.
+
+#### Botão PDF no `CTOOccupancyPanel.js`
+Botão preto **📄 PDF** ao lado do reload, mesma mecânica de blob com JWT.
+
+### Registro
+- `server.py`: novo import `routes.pdf_reports as routes_pdf_reports`
+  + `app.include_router(routes_pdf_reports.router)`.
+
+### Validação E2E
+- 3 períodos do endpoint Lousa testados com curl autenticado:
+  todos retornaram HTTP 200 com bytes válidos e magic `%PDF-1.4`
+  (today: 2302B, week: 3308B, custom: 3422B).
+- Ocupação PDF: 2802B HTTP 200.
+- Screenshots confirmam: card PDF na Notas de Qualidade renderizado com
+  os 4 chips + inputs custom + botão. Botão PDF na aba Ocupação
+  renderizado.
+
+
 ## 2026-05-20 — Painel "Mapa de Ocupação por CTO" (Rede IA)
 
 ### Backend

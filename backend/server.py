@@ -76,6 +76,7 @@ from routes import (
     collaborator_assets as routes_collab_assets,
     vehicle_checklist as routes_vehicle_checklist,
     whatsapp_twilio as routes_whatsapp_twilio,
+    pdf_reports as routes_pdf_reports,
     whatsapp_meta as routes_whatsapp_meta,
     holerite as routes_holerite,
     feriados as routes_feriados,
@@ -503,6 +504,7 @@ app.include_router(routes_saas.router)
 app.include_router(routes_saas.webhook_router)
 app.include_router(routes_stok.router)
 app.include_router(routes_balanco.router)
+app.include_router(routes_pdf_reports.router)
 app.include_router(routes_smartolt.router)
 app.include_router(routes_network_diag.router)
 app.include_router(routes_ai_preventive.router)
