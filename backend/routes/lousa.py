@@ -178,6 +178,14 @@ class CompletionData(BaseModel):
     ont: Optional[str] = None
     fotos: List[str] = Field(default_factory=list)
     observacoes: Optional[str] = None
+    # Vínculo cliente ↔ CTO/porta (instalação)
+    cto_id: Optional[str] = None
+    cto_name: Optional[str] = None
+    cto_port_number: Optional[int] = None
+    # Fibra adicional (já existia mas faltava no model)
+    fibra_06fo: float = 0
+    fibra_12fo: float = 0
+    fibra_24fo: float = 0
 
 
 class TicketIn(BaseModel):
@@ -2290,6 +2298,27 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
             },
         }},
     )
+    # Vincula cliente à porta da CTO (instalação)
+    if cd.cto_id and cd.cto_port_number:
+        try:
+            cs = t.get("client_snapshot") or {}
+            await db.ctos.update_one(
+                {
+                    "id": cd.cto_id,
+                    "company_id": company_id,
+                    "ports.number": cd.cto_port_number,
+                },
+                {"$set": {
+                    "ports.$.status": "used",
+                    "ports.$.client_subscriber_id": cs.get("id"),
+                    "ports.$.client_name": cs.get("name"),
+                    "ports.$.client_pppoe": cs.get("pppoe_user") or t.get("pppoe_user"),
+                    "ports.$.connected_at": now_iso(),
+                    "ports.$.connected_via_ticket": ticket_id,
+                }},
+            )
+        except Exception as e:
+            logger.warning("[lousa] vínculo CTO porta falhou: %s", e)
     # Quality notes — snapshot do sinal NO FECHAMENTO (SmartOLT live, honra toggle)
     await _capture_signal_snapshot(ticket_id, company_id, "close")
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1})

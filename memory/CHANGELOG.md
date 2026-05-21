@@ -1,5 +1,73 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Fusão Lousa Mobile + CTO/Porta + CTOs visíveis no mapa
+
+### Parte 1: CTOs existentes no mapa de cadastro
+- Novo endpoint público **`GET /api/rede-ia/public/ctos/list/{collab_id}`**
+  retorna todas as CTOs aprovadas (com `gps`, `ports`, `capacity`).
+- `CTOMapPicker.js` agora aceita `collabId` e `existingCtos` props.
+  Quando passa `collabId`, busca automaticamente e renderiza markers
+  cinza (ícone CTO 26×34px com tooltip mostrando "X/Y portas livres").
+- `CadastroCTOWizard.js` passa `collabId={collabId}` para o picker.
+- **Objetivo**: técnico em campo VÊ as CTOs vizinhas antes de cadastrar
+  → evita duplicar uma CTO já registrada.
+
+### Parte 2: Fusão fluxo finalização da OS (instalação)
+**Antes** (2 steps): Sinal/ONT → Insumos+Obs
+
+**Agora** (3 steps para instalação, 2 para reparo/retirada):
+1. **Sinal + ONT + Fotos** (igual)
+2. 🆕 **CTO + Porta do cliente** (novo, só `isInstall`)
+3. **Insumos + Observações** (movido pro fim)
+
+### Novo componente `/app/frontend/src/CTOPortPicker.js`
+- Mapa Leaflet/CARTO com CTOs ao redor (markers cinza, click = selecionar).
+- Lista alternativa em cards mostrando "N/Y portas livres" (CTO lotada
+  fica desabilitada com fundo vermelho).
+- Após seleção: **grid de portas** (verde livre / vermelho usada).
+  Click numa porta livre + botão "Confirmar porta N".
+- Banner "🔴 LOTADA" quando CTO não tem porta livre (não permite usar).
+- Botão "+ Cadastrar nova CTO" sempre acessível (abre wizard).
+
+### Backend (`routes/lousa.py`)
+- `CompletionData` ganhou 3 campos:
+  - `cto_id: Optional[str]`
+  - `cto_name: Optional[str]`
+  - `cto_port_number: Optional[int]`
+  - (Também `fibra_06fo/12fo/24fo` que faltava no modelo.)
+- Endpoint de `complete` da OS agora, após salvar o ticket:
+  - Marca a porta da CTO selecionada como `used`
+  - Grava na porta: `client_subscriber_id`, `client_name`,
+    `client_pppoe`, `connected_at`, `connected_via_ticket`
+  - Falha silenciosa (log warning) — não bloqueia a finalização.
+
+### Frontend (`LousaMobile.js`)
+- States novos: `ctoSelected`, `ctoPortSelected`, `showCtoWizard`.
+- `TicketDetail` agora recebe `collaboratorId`.
+- Variáveis `totalFinalizeSteps` (2 ou 3) e `insumosStepNum` (último)
+  controlam progress bar e navegação.
+- Step 2 (novo) renderiza `<CTOPortPicker>` ou o resumo
+  ("✓ Conexão registrada: CTO 001_301_JAT · Porta 5").
+- Botões dinâmicos:
+  - Step 1 → "Próximo: Vincular cliente à CTO" (install) ou
+    "Próximo: Materiais e Observações" (outros).
+  - Step 2 → "Próximo: Insumos" (só install).
+  - Step 3 → "Voltar" volta para o step anterior dinamicamente.
+- Submit `onFinalize` envia `cto_id`, `cto_name`, `cto_port_number`.
+- Wizard `CadastroCTOWizard` abre em overlay full-screen quando técnico
+  cadastra nova CTO mid-fluxo (pré-seleciona após criar).
+
+### Regras (confirmadas pelo usuário)
+- **(a) CTO lotada**: bloqueia, técnico deve cadastrar nova CTO.
+- **(b) Reparo/retirada**: pula CTO+porta (cliente já tem vínculo).
+- **(c) Vínculo cliente**: usa `subscriber_id` + `pppoe` (rastreabilidade).
+
+### Validação
+- Backend: smoke tests 23/23 ✓. Endpoint público retorna 5 CTOs com GPS.
+- Frontend: lint OK, login técnico Diogo carrega a home com botões
+  "Lousa de Serviços" e "Cadastrar CTO (Rede IA)".
+
+
 ## 2026-05-20 — Botão "Ver no mapa" nas Pendências de validação da Rede IA
 
 ### Frontend

@@ -5,6 +5,8 @@ import QRScannerModal from "@/QRScannerModal";
 import UberGpsPicker from "@/UberGpsPicker";
 import AchievementsCard from "@/AchievementsCard";
 import PingTestModal from "@/PingTestModal";
+import CTOPortPicker from "@/CTOPortPicker";
+import CadastroCTOWizard from "@/CadastroCTOWizard";
 
 /**
  * LousaMobile — vista da Lousa (bolhas) no app do colaborador.
@@ -322,6 +324,7 @@ export default function LousaMobile({ collaboratorId, onBack }) {
         onClose={() => setOpenTicket(null)}
         onFinalize={(cd) => handleFinalize(openTicket, cd)}
         badSignalThreshold={badSignalThreshold}
+        collaboratorId={collaboratorId}
         onRefresh={async () => {
           try {
             const fresh = await api.lousaTicket(openTicket.id);
@@ -1024,8 +1027,14 @@ function ConsumableField({ label, fieldKey, consumableId, step, consMap, form, s
 }
 
 function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
-                          badSignalThreshold = -27 }) {
-  const [step, setStep] = useState(1); // 1: Sinal+ONT+Fotos · 2: Insumos+Obs
+                          badSignalThreshold = -27, collaboratorId = null }) {
+  // Total de steps:
+  // - Instalação (isInstall=true): 3 steps → 1=Sinal/ONT, 2=CTO+Porta, 3=Insumos
+  // - Demais (retirada/reparo): 2 steps → 1=Sinal/ONT, 2=Insumos
+  const [step, setStep] = useState(1);
+  const [ctoSelected, setCtoSelected] = useState(null);
+  const [ctoPortSelected, setCtoPortSelected] = useState(null);
+  const [showCtoWizard, setShowCtoWizard] = useState(false);
   // Default do sinal: pega do SmartOLT (live_signal.rx_dbm) se disponível,
   // senão usa -25 dBm (média típica de instalação saudável)
   const initialSinal = ticket?.live_signal?.rx_dbm != null
@@ -1189,8 +1198,6 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   }
 
   async function goToStep2() {
-    // Validação básica do step 1
-    // INSTALAÇÃO: SN não é mais obrigatório aqui — provisionamento via Rede IA.
     if (isWithdraw && !form.ont) {
       await window.alert("MAC da ONT retirada é obrigatório.");
       return;
@@ -1199,8 +1206,15 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       setShowPhotoWarn(true);
       return;
     }
+    // Para retirada/reparo, pula CTO+Porta e vai direto pra Insumos
+    // (que é o step 2 quando totalFinalizeSteps === 2)
     setStep(2);
   }
+
+  // Total de steps no fluxo atual (3 para instalação, 2 para reparo/retirada)
+  const totalFinalizeSteps = isInstall ? 3 : 2;
+  // Step "Insumos" é o ÚLTIMO (3 se install, 2 caso contrário)
+  const insumosStepNum = totalFinalizeSteps;
 
   async function submit() {
     if (needsMac && macStatus === "error") {
@@ -1238,6 +1252,10 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       ont: form.ont || null,
       fotos: form.fotos.map((p) => p.dataUrl),
       observacoes: form.observacoes || null,
+      // Vínculo do cliente à porta da CTO (instalação)
+      cto_id: ctoSelected?.id || null,
+      cto_name: ctoSelected?.name || null,
+      cto_port_number: ctoPortSelected || null,
     });
   }
 
@@ -1299,10 +1317,10 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
 
       <h3 style={{ marginTop: 18, marginBottom: 10, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>📋 Finalizar serviço</h3>
 
-      {/* Indicador de passos */}
+      {/* Indicador de passos (dinâmico: 3 p/ instalação, 2 p/ outros) */}
       <div data-testid="finalize-steps"
             style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        {[1, 2].map((n) => (
+        {Array.from({ length: totalFinalizeSteps }, (_, i) => i + 1).map((n) => (
           <div key={n} style={{
             flex: 1, height: 6, borderRadius: 999,
             background: step >= n ? "#0ea5e9" : "#e2e8f0",
@@ -1312,7 +1330,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700,
                        letterSpacing: 0.5, textTransform: "uppercase",
                        marginLeft: 8, alignSelf: "center" }}>
-          Etapa {step}/2
+          Etapa {step}/{totalFinalizeSteps}
         </div>
       </div>
 
@@ -1580,12 +1598,112 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         <Button onClick={goToStep2}
                  data-testid="finalize-next-btn"
                  style={{ width: "100%", marginTop: 6, height: 52, fontSize: 15 }}>
-          Próximo: Materiais e Observações →
+          {isInstall
+            ? "Próximo: Vincular cliente à CTO →"
+            : "Próximo: Materiais e Observações →"}
         </Button>
       )}
 
-      {/* ============ STEP 2 ============ */}
-      {step === 2 && (
+      {/* ============ STEP 2 (CTO + Porta — APENAS INSTALAÇÃO) ============ */}
+      {step === 2 && isInstall && (
+        <>
+          <div style={{
+            padding: "10px 12px", borderRadius: 12, marginBottom: 12,
+            background: "#ecfdf5", border: "1px dashed #10b981",
+            display: "flex", alignItems: "flex-start", gap: 10,
+          }}>
+            <span style={{ fontSize: 22 }}>🔌</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#065f46" }}>
+                Vincular cliente à CTO
+              </div>
+              <div style={{ fontSize: 10, color: "#475569", marginTop: 2,
+                              lineHeight: 1.3 }}>
+                Selecione a CTO em frente ao cliente e a porta usada.
+                Se a CTO não estiver no mapa, cadastre uma nova.
+              </div>
+            </div>
+          </div>
+
+          {ctoSelected && ctoPortSelected ? (
+            <div data-testid="cto-port-selected-summary"
+                  style={{
+                    padding: 14, borderRadius: 12,
+                    background: "#f0fdf4", border: "1.5px solid #86efac",
+                    marginBottom: 12,
+                  }}>
+              <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 800,
+                              textTransform: "uppercase", letterSpacing: 0.5 }}>
+                ✓ Conexão registrada
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 800, marginTop: 4,
+                              color: "#0f172a" }}>
+                {ctoSelected.name} · Porta {ctoPortSelected}
+              </div>
+              <button onClick={() => { setCtoPortSelected(null); }}
+                        style={{ marginTop: 8, padding: "6px 10px",
+                                  fontSize: 11, fontWeight: 700,
+                                  background: "transparent",
+                                  border: "1px solid #cbd5e1",
+                                  borderRadius: 999, cursor: "pointer",
+                                  color: "#475569" }}>
+                Trocar
+              </button>
+            </div>
+          ) : (
+            <CTOPortPicker
+              collabId={collaboratorId}
+              onSelect={({ cto, port_number }) => {
+                setCtoSelected(cto);
+                setCtoPortSelected(port_number);
+              }}
+              onRegisterNewCto={() => setShowCtoWizard(true)}
+            />
+          )}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <Button variant="soft" onClick={() => setStep(1)}
+                     data-testid="finalize-back-step1-btn"
+                     style={{ flex: 1, height: 48, fontSize: 14 }}>
+              ← Voltar
+            </Button>
+            <Button onClick={() => {
+                       if (!ctoSelected || !ctoPortSelected) {
+                         window.alert("Selecione uma CTO e uma porta antes de continuar.");
+                         return;
+                       }
+                       setStep(3);
+                     }}
+                     data-testid="finalize-next-step3-btn"
+                     disabled={!ctoSelected || !ctoPortSelected}
+                     style={{ flex: 2, height: 48, fontSize: 14,
+                                opacity: (!ctoSelected || !ctoPortSelected) ? 0.5 : 1 }}>
+              Próximo: Insumos →
+            </Button>
+          </div>
+
+          {showCtoWizard && (
+            <div style={{
+              position: "fixed", inset: 0, zIndex: 9999,
+              background: "#fff", overflow: "auto",
+            }}>
+              <CadastroCTOWizard
+                collabId={collaboratorId}
+                onClose={() => setShowCtoWizard(false)}
+                onCreated={(newCto) => {
+                  setShowCtoWizard(false);
+                  // pré-seleciona a CTO recém-criada
+                  setCtoSelected(newCto);
+                  setCtoPortSelected(null);
+                }}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ============ STEP DE INSUMOS — último step ============ */}
+      {step === insumosStepNum && (
         <>
           {/* SUGESTÃO IA — insumos baseados em histórico */}
           <div data-testid="suggest-supplies-card" style={{
@@ -1739,7 +1857,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
           {err && <Banner color="#fee2e2" border="#dc2626" icon="!" text={err} />}
 
           <div style={{ display: "flex", gap: 8 }}>
-            <Button onClick={() => setStep(1)} variant="soft"
+            <Button onClick={() => setStep(insumosStepNum - 1)} variant="soft"
                      data-testid="finalize-back-btn"
                      style={{ flex: 1, height: 52, fontSize: 14 }}>
               ← Voltar
