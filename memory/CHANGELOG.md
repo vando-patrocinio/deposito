@@ -1,5 +1,42 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Painel "Mapa de Ocupação por CTO" (Rede IA)
+
+### Backend
+- Novo endpoint `GET /api/rede-ia/ctos/occupancy?threshold=0.8`
+  retornando, por CTO aprovada, ocupação detalhada e agregações globais.
+- Estrutura de retorno:
+  - `items[]`: id, name, sigla, vlan, capacity, used, free, percent,
+    is_full, is_saturated, gps, bairro
+  - `summary`: total_ctos, total_ports, total_used, total_free,
+    global_percent, saturated_count, full_count, threshold_percent
+- Ordenado por % de ocupação descendente (mais críticos no topo).
+
+### Frontend
+- Novo componente `/app/frontend/src/CTOOccupancyPanel.js`:
+  - **4 summary cards**: CTOs aprovadas, Ocupação global, Saturadas, Lotadas
+    (cards de Saturadas/Lotadas são filtros clicáveis)
+  - **Input do limiar** configurável (50-100%, padrão 80%)
+  - **Lista de CTOs** com:
+    - Nome + badges "LOTADA" (vermelho) ou "SATURADA" (amarelo)
+    - Bairro · VLAN · X/Y portas usadas
+    - Barra de progresso colorida (verde <80% / âmbar 80-99% / vermelho 100%)
+    - Botão 🗺 que abre `CTOLocationViewer` integrado
+  - Reload manual via botão ↻
+- Nova aba **"📊 Ocupação"** no `RedeIaPanel.js`, entre "CTOs" e "Pendências".
+
+### Caso de uso
+Gestor visualiza num único lugar quais CTOs estão prestes a esgotar
+capacidade (>80% por padrão). Permite **planejar expansão** (cabo/splitter
+ou nova CTO no bairro) antes de bloquear vendas no local. Filtros por
+saturação ajudam a priorizar intervenções.
+
+### Validação
+- Demo retorna 2 CTOs aprovadas, ocupação global 33.3% (4/12 portas),
+  CTO 001_301_TST em 50%, CTO 001_3921_PB3 em 0%.
+- Lint OK (frontend + backend), painel renderiza com 4 cards + lista + barras.
+
+
 ## 2026-05-20 — Fusão Lousa Mobile + CTO/Porta + CTOs visíveis no mapa
 
 ### Parte 1: CTOs existentes no mapa de cadastro

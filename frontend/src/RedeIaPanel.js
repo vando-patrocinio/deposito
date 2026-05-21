@@ -18,11 +18,13 @@ import { Card } from "@/ui";
 import { toast } from "sonner";
 import RedeIaMap from "@/RedeIaMap";
 import CTOLocationViewer from "@/CTOLocationViewer";
+import CTOOccupancyPanel from "@/CTOOccupancyPanel";
 import { KpiCard, AlertCard } from "@/components/Dashboard2026";
 
 const TABS = [
   { id: "overview", label: "Painel" },
   { id: "ctos", label: "CTOs" },
+  { id: "occupancy", label: "📊 Ocupação" },
   { id: "pendencies", label: "Pendências" },
   { id: "map", label: "Mapa interativo" },
   { id: "bairros", label: "Bairros / VLAN" },
@@ -185,6 +187,7 @@ export default function RedeIaPanel({ currentUser }) {
       {tab === "overview" && <Overview />}
       {tab === "ctos" && <CTOsList />}
       {tab === "pendencies" && <Pendencies />}
+      {tab === "occupancy" && <CTOOccupancyPanel />}
       {tab === "map" && <RedeIaMap />}
       {tab === "bairros" && <BairrosManager />}
       {tab === "history" && <HistoryList />}

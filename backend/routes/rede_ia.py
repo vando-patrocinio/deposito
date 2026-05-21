@@ -467,6 +467,77 @@ async def create_cto(body: CTOCreateIn,
     return doc
 
 
+@router.get("/ctos/occupancy")
+async def ctos_occupancy(
+    threshold: float = Query(0.8, ge=0.0, le=1.0,
+                                description="Limiar (0.0–1.0) para marcar como saturada"),
+    user: dict = Depends(get_current_user),
+):
+    """Relatório de ocupação por CTO.
+
+    Retorna, por CTO aprovada, quantas portas estão usadas vs livres e
+    sinaliza as que ultrapassam `threshold` (default 80%) para alerta
+    de saturação. Inclui agregações globais para o dashboard.
+    """
+    cid = _user_company(user)
+    items = await db.ctos.find(
+        {"company_id": cid, "status": "approved"},
+        {"_id": 0, "id": 1, "name": 1, "sigla": 1, "vlan": 1,
+         "capacity": 1, "ports": 1, "gps": 1, "address": 1},
+    ).to_list(2000)
+
+    result = []
+    total_ports = 0
+    total_used = 0
+    saturated = 0
+    full = 0
+    for c in items:
+        cap = int(c.get("capacity") or 0)
+        ports = c.get("ports") or []
+        used = sum(1 for p in ports if p.get("status") == "used")
+        free = cap - used
+        pct = (used / cap) if cap else 0.0
+        is_full = free <= 0
+        is_saturated = pct >= threshold
+        total_ports += cap
+        total_used += used
+        if is_full:
+            full += 1
+        elif is_saturated:
+            saturated += 1
+        result.append({
+            "id": c["id"],
+            "name": c.get("name"),
+            "sigla": c.get("sigla"),
+            "vlan": c.get("vlan"),
+            "capacity": cap,
+            "used": used,
+            "free": free,
+            "percent": round(pct * 100, 1),
+            "is_full": is_full,
+            "is_saturated": is_saturated,
+            "gps": c.get("gps"),
+            "bairro": (c.get("address") or {}).get("bairro"),
+        })
+    # Ordena por % desc (mais críticos no topo)
+    result.sort(key=lambda x: x["percent"], reverse=True)
+    return {
+        "items": result,
+        "summary": {
+            "total_ctos": len(result),
+            "total_ports": total_ports,
+            "total_used": total_used,
+            "total_free": total_ports - total_used,
+            "global_percent": round(
+                (total_used / total_ports * 100) if total_ports else 0, 1,
+            ),
+            "saturated_count": saturated,
+            "full_count": full,
+            "threshold_percent": round(threshold * 100, 0),
+        },
+    }
+
+
 @router.get("/ctos")
 async def list_ctos(status: Optional[str] = Query(None),
                     bairro: Optional[str] = Query(None),
