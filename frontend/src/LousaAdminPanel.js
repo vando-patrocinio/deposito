@@ -114,6 +114,26 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem("lousa_focus_tech") || "";
   });
+  // Multi-seleção de técnicos visíveis na Lousa (array de IDs).
+  // Quando vazio, a Lousa mostra TODOS os técnicos (comportamento padrão).
+  // Quando tem 1+ IDs, mostra apenas esses (mesmo padrão visual, sem "focus mode").
+  const [visibleTechIds, setVisibleTechIds] = useState(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem("lousa_visible_techs");
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch { return []; }
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (visibleTechIds.length > 0) {
+      window.localStorage.setItem("lousa_visible_techs",
+                                    JSON.stringify(visibleTechIds));
+    } else {
+      window.localStorage.removeItem("lousa_visible_techs");
+    }
+  }, [visibleTechIds]);
   const [techMenuOpen, setTechMenuOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
   // Visualização dentro do focus mode: "grid" (coluna vertical clássica)
@@ -484,6 +504,16 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                       </>
                     );
                   }
+                  if (visibleTechIds.length > 0) {
+                    return (
+                      <>
+                        <span style={{ fontSize: 13 }}>✓</span>
+                        <span style={{ flex: 1, textAlign: "left" }}>
+                          {visibleTechIds.length} técnico{visibleTechIds.length > 1 ? "s" : ""}
+                        </span>
+                      </>
+                    );
+                  }
                   return (
                     <>
                       <span style={{ fontSize: 13 }}>👥</span>
@@ -497,7 +527,19 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 <TechFilterMenu
                   columns={grid.columns}
                   focusTechId={focusTechId}
-                  onSelect={(id) => { setFocusTechId(id); setTechMenuOpen(false); }}
+                  visibleTechIds={visibleTechIds}
+                  onSelectFocus={(id) => { setFocusTechId(id); setTechMenuOpen(false); }}
+                  onToggleVisible={(id) => {
+                    setFocusTechId(""); // sai do focus mode
+                    setVisibleTechIds((arr) =>
+                      arr.includes(id) ? arr.filter((x) => x !== id)
+                                          : [...arr, id]);
+                  }}
+                  onClearVisible={() => setVisibleTechIds([])}
+                  onSelectAllVisible={() => {
+                    setFocusTechId("");
+                    setVisibleTechIds(grid.columns.map((c) => c.collaborator.id));
+                  }}
                   onClose={() => setTechMenuOpen(false)}
                 />
               )}
@@ -772,7 +814,9 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         )}
         {(focusTechId
           ? grid.columns.filter((c) => c.collaborator.id === focusTechId)
-          : grid.columns
+          : (visibleTechIds.length > 0
+              ? grid.columns.filter((c) => visibleTechIds.includes(c.collaborator.id))
+              : grid.columns)
         ).map((col) => (
           focusTechId && focusView === "timeline" ? (
             <TechTimeline
@@ -2403,7 +2447,9 @@ function ToolbarBtn({ children, accent = "neutral", disabled, style, ...rest }) 
   );
 }
 
-function TechFilterMenu({ columns, focusTechId, onSelect, onClose }) {
+function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
+                            onSelectFocus, onToggleVisible,
+                            onClearVisible, onSelectAllVisible, onClose }) {
   const [search, setSearch] = useState("");
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -2420,10 +2466,15 @@ function TechFilterMenu({ columns, focusTechId, onSelect, onClose }) {
     return () => document.removeEventListener("mousedown", onDoc);
   }, [onClose]);
 
+  const allTechIds = columns.map((c) => c.collaborator.id);
+  const allSelected = visibleTechIds.length > 0
+    && visibleTechIds.length === allTechIds.length
+    && allTechIds.every((id) => visibleTechIds.includes(id));
+
   return (
     <div data-tech-menu data-testid="lousa-tech-filter-menu" style={{
       position: "absolute", top: "calc(100% + 6px)", left: 0,
-      width: 280, maxHeight: 380, overflowY: "auto",
+      width: 320, maxHeight: 440, overflowY: "auto",
       background: "white",
       border: "1px solid #e2e8f0",
       borderRadius: 10,
@@ -2445,12 +2496,41 @@ function TechFilterMenu({ columns, focusTechId, onSelect, onClose }) {
           }}
         />
       </div>
+
+      {/* Ações em massa */}
+      <div style={{ display: "flex", gap: 6, padding: "0 4px 6px" }}>
+        <button
+          data-testid="lousa-tech-filter-select-all"
+          onClick={() => allSelected ? onClearVisible() : onSelectAllVisible()}
+          style={{
+            flex: 1, padding: "6px 8px", border: "1px solid #cbd5e1",
+            borderRadius: 6, background: "#f8fafc", color: "#0f172a",
+            fontSize: 11, fontWeight: 700, cursor: "pointer",
+          }}>
+          {allSelected ? "☐ Desmarcar todos" : "☑ Marcar todos"}
+        </button>
+        {visibleTechIds.length > 0 && (
+          <button
+            data-testid="lousa-tech-filter-clear"
+            onClick={onClearVisible}
+            style={{
+              padding: "6px 10px", border: "1px solid #fecaca",
+              borderRadius: 6, background: "#fef2f2", color: "#991b1b",
+              fontSize: 11, fontWeight: 700, cursor: "pointer",
+            }}>
+            ✕ Limpar
+          </button>
+        )}
+      </div>
+
+      {/* "Todos" — desliga filtros (foco e multi) */}
       <button
-        onClick={() => onSelect("")}
+        onClick={() => { onSelectFocus(""); onClearVisible(); }}
         data-testid="lousa-tech-filter-all"
         style={{
           display: "flex", alignItems: "center", gap: 9, width: "100%",
-          padding: "8px 10px", border: "none", background: !focusTechId ? "#f1f5f9" : "transparent",
+          padding: "8px 10px", border: "none",
+          background: (!focusTechId && visibleTechIds.length === 0) ? "#f1f5f9" : "transparent",
           borderRadius: 7, cursor: "pointer", textAlign: "left",
           color: "#0f172a", fontSize: 12.5, fontWeight: 700,
           marginBottom: 4,
@@ -2465,9 +2545,18 @@ function TechFilterMenu({ columns, focusTechId, onSelect, onClose }) {
         <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>
           {columns.length}
         </span>
-        {!focusTechId && <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>}
+        {(!focusTechId && visibleTechIds.length === 0)
+          && <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>}
       </button>
+
       <div style={{ height: 1, background: "#f1f5f9", margin: "2px 4px 6px" }} />
+
+      <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700,
+                      textTransform: "uppercase", letterSpacing: 0.5,
+                      padding: "4px 10px 2px" }}>
+        Marque ✓ para escolher quem aparece — clique no nome para focar
+      </div>
+
       {filtered.length === 0 && (
         <div style={{ padding: "16px 10px", textAlign: "center",
                         color: "#94a3b8", fontSize: 12 }}>
@@ -2476,48 +2565,78 @@ function TechFilterMenu({ columns, focusTechId, onSelect, onClose }) {
       )}
       {filtered.map((col) => {
         const c = col.collaborator;
-        const isActive = focusTechId === c.id;
+        const isFocused = focusTechId === c.id;
+        const isChecked = visibleTechIds.includes(c.id);
         const total = col.tickets?.length || 0;
         const overdue = (col.tickets || []).filter((t) => t.sla?.status === "overdue").length;
         return (
-          <button
+          <div
             key={c.id}
-            onClick={() => onSelect(c.id)}
-            data-testid={`lousa-tech-filter-${c.id}`}
+            data-testid={`lousa-tech-filter-row-${c.id}`}
             style={{
-              display: "flex", alignItems: "center", gap: 9, width: "100%",
-              padding: "8px 10px", border: "none",
-              background: isActive ? "#f1f5f9" : "transparent",
-              borderRadius: 7, cursor: "pointer", textAlign: "left",
-              color: "#0f172a", fontSize: 12.5, fontWeight: 500,
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "6px 8px",
+              background: isFocused ? "#e0f2fe" : isChecked ? "#f0fdf4" : "transparent",
+              borderRadius: 7, marginBottom: 2,
             }}
-            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "#f8fafc"; }}
-            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
           >
-            <span style={{
-              width: 24, height: 24, borderRadius: "50%",
-              background: c.avatar ? `url(${c.avatar}) center/cover` : "linear-gradient(135deg,#0d9488,#0f766e)",
-              color: "white", fontSize: 10, fontWeight: 700,
-              display: "grid", placeItems: "center", flexShrink: 0,
-            }}>
-              {!c.avatar && (c.name?.[0] || "?").toUpperCase()}
-            </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, overflow: "hidden",
-                             textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {c.name}
+            {/* Checkbox (multi-seleção) */}
+            <button
+              type="button"
+              data-testid={`lousa-tech-filter-check-${c.id}`}
+              onClick={(e) => { e.stopPropagation(); onToggleVisible(c.id); }}
+              title={isChecked ? "Remover da Lousa" : "Adicionar à Lousa"}
+              style={{
+                width: 20, height: 20, borderRadius: 5,
+                border: `1.5px solid ${isChecked ? "#16a34a" : "#cbd5e1"}`,
+                background: isChecked ? "#16a34a" : "#fff",
+                color: "#fff", display: "grid", placeItems: "center",
+                cursor: "pointer", flexShrink: 0, padding: 0,
+                fontSize: 12, fontWeight: 800,
+              }}
+            >
+              {isChecked && "✓"}
+            </button>
+
+            {/* Nome + ações */}
+            <button
+              onClick={() => onSelectFocus(c.id)}
+              data-testid={`lousa-tech-filter-${c.id}`}
+              style={{
+                display: "flex", alignItems: "center", gap: 9, flex: 1,
+                padding: "4px 4px", border: "none",
+                background: "transparent",
+                borderRadius: 5, cursor: "pointer", textAlign: "left",
+                color: "#0f172a", fontSize: 12.5, fontWeight: 500,
+                minWidth: 0,
+              }}
+            >
+              <span style={{
+                width: 24, height: 24, borderRadius: "50%",
+                background: c.avatar ? `url(${c.avatar}) center/cover` : "linear-gradient(135deg,#0d9488,#0f766e)",
+                color: "white", fontSize: 10, fontWeight: 700,
+                display: "grid", placeItems: "center", flexShrink: 0,
+              }}>
+                {!c.avatar && (c.name?.[0] || "?").toUpperCase()}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, overflow: "hidden",
+                               textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.name}
+                </div>
+                <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 1 }}>
+                  {total} ativo{total === 1 ? "" : "s"}
+                  {overdue > 0 && (
+                    <span style={{ marginLeft: 5, color: "#dc2626", fontWeight: 700 }}>
+                      · {overdue} atrasada{overdue === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 1 }}>
-                {total} ativo{total === 1 ? "" : "s"}
-                {overdue > 0 && (
-                  <span style={{ marginLeft: 5, color: "#dc2626", fontWeight: 700 }}>
-                    · {overdue} atrasada{overdue === 1 ? "" : "s"}
-                  </span>
-                )}
-              </div>
-            </div>
-            {isActive && <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>}
-          </button>
+              {isFocused && <span style={{ color: "#0284c7", fontSize: 11,
+                                              fontWeight: 700 }}>FOCO</span>}
+            </button>
+          </div>
         );
       })}
     </div>
