@@ -729,7 +729,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                 ? "Selecione o splitter utilizado na rede desbalanceada."
                 : "Informe o splitter se houver. Caso não saiba, escolha \"Sem splitter / não informado\"."}
             </p>
-            {["1:2", "1:4", "1:8", "Outro", "Sem splitter / não informado"].map((s) => (
+            {["1:2", "1:4", "1:8", "5/95", "10/90", "20/80", "35/65", "50/50", "Outro", "Sem splitter / não informado"].map((s) => (
               <button key={s} data-testid={`cto-splitter-${s.replace(/[^a-z0-9]/gi,'_')}`}
                       onClick={() => setSplitter(s)}
                       style={optionCard(splitter === s)}>

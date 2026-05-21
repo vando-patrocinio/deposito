@@ -7,6 +7,7 @@ import AchievementsCard from "@/AchievementsCard";
 import PingTestModal from "@/PingTestModal";
 import CTOPortPicker from "@/CTOPortPicker";
 import CadastroCTOWizard from "@/CadastroCTOWizard";
+import CtoInlineFlow from "@/CtoInlineFlow";
 
 /**
  * LousaMobile — vista da Lousa (bolhas) no app do colaborador.
@@ -1039,6 +1040,18 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   const [ctoSelected, setCtoSelected] = useState(null);
   const [ctoPortSelected, setCtoPortSelected] = useState(null);
   const [showCtoWizard, setShowCtoWizard] = useState(false);
+  // State do fluxo de cadastro inline de CTO (4 telas integrado)
+  const [ctoFlowState, setCtoFlowState] = useState({
+    gps: { lat: null, lng: null, accuracy: null },
+    address: { endereco: "", numero: "", referencia: "",
+                bairro_detected: "", cidade_detected: "", estado_detected: "" },
+    photo: null,
+    vlan: "",
+    capacity: null,
+    networkType: null,
+    splitter: null,
+    clientPort: null,
+  });
   // Default do sinal: pega do SmartOLT (live_signal.rx_dbm) se disponível,
   // senão usa -25 dBm (média típica de instalação saudável)
   const initialSinal = ticket?.live_signal?.rx_dbm != null
@@ -1215,11 +1228,10 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     setStep(2);
   }
 
-  // Total de steps no fluxo atual: 3 para TODOS os tipos
-  // (1=Sinal, 2=Vincular CTO+Porta opcional, 3=Insumos)
-  const totalFinalizeSteps = 3;
-  // Step "Insumos" é sempre o último (3)
-  const insumosStepNum = 3;
+  // Total de steps no fluxo atual: 4 para TODOS os tipos
+  // 1=Sinal, 2=CTO Mapa+Foto+VLAN, 3=CTO Portas+Tipo+Porta, 4=Insumos
+  const totalFinalizeSteps = 4;
+  const insumosStepNum = 4;
 
   async function submit() {
     if (needsMac && macStatus === "error") {
@@ -1603,32 +1615,13 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         <Button onClick={goToStep2}
                  data-testid="finalize-next-btn"
                  style={{ width: "100%", marginTop: 6, height: 52, fontSize: 15 }}>
-          Próximo: Vincular cliente à CTO →
+          Próximo: Localização da CTO →
         </Button>
       )}
 
-      {/* ============ STEP 2 (CTO + Porta — opcional para TODOS os tipos) ============ */}
+      {/* ============ STEP 2 — Mapa GPS + Foto + VLAN ============ */}
       {step === 2 && (
         <>
-          <div style={{
-            padding: "10px 12px", borderRadius: 12, marginBottom: 12,
-            background: "#ecfdf5", border: "1px dashed #10b981",
-            display: "flex", alignItems: "flex-start", gap: 10,
-          }}>
-            <span style={{ fontSize: 22 }}>🔌</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#065f46" }}>
-                Vincular cliente à CTO (opcional)
-              </div>
-              <div style={{ fontSize: 10, color: "#475569", marginTop: 2,
-                              lineHeight: 1.3 }}>
-                Selecione a CTO em frente ao cliente e a porta usada.
-                Se a CTO não estiver no mapa, cadastre uma nova.
-                A IA vai associar este cliente automaticamente à porta escolhida.
-              </div>
-            </div>
-          </div>
-
           {ctoSelected && ctoPortSelected ? (
             <div data-testid="cto-port-selected-summary"
                   style={{
@@ -1638,70 +1631,70 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                   }}>
               <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 800,
                               textTransform: "uppercase", letterSpacing: 0.5 }}>
-                ✓ Conexão registrada
+                ✓ CTO já registrada
               </div>
               <div style={{ fontSize: 16, fontWeight: 800, marginTop: 4,
                               color: "#0f172a" }}>
                 {ctoSelected.name} · Porta {ctoPortSelected}
               </div>
-              <button onClick={() => { setCtoPortSelected(null); }}
+              <button onClick={() => {
+                          setCtoSelected(null);
+                          setCtoPortSelected(null);
+                        }}
                         style={{ marginTop: 8, padding: "6px 10px",
                                   fontSize: 11, fontWeight: 700,
                                   background: "transparent",
                                   border: "1px solid #cbd5e1",
                                   borderRadius: 999, cursor: "pointer",
                                   color: "#475569" }}>
-                Trocar
+                Trocar / recadastrar
               </button>
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <Button variant="soft" onClick={() => setStep(1)}
+                         style={{ flex: 1, height: 48, fontSize: 14 }}>
+                  ← Voltar
+                </Button>
+                <Button onClick={() => setStep(insumosStepNum)}
+                         style={{ flex: 2, height: 48, fontSize: 14 }}>
+                  Próximo: Insumos →
+                </Button>
+              </div>
             </div>
           ) : (
-            <CTOPortPicker
+            <CtoInlineFlow
+              screen="A"
+              state={ctoFlowState}
+              setState={setCtoFlowState}
               collabId={collaboratorId}
-              onSelect={({ cto, port_number }) => {
-                setCtoSelected(cto);
-                setCtoPortSelected(port_number);
-              }}
-              onRegisterNewCto={() => setShowCtoWizard(true)}
+              client={{ id: ticket?.client_id,
+                          name: ticket?.client_snapshot?.name }}
+              technician={{ id: collaboratorId,
+                              name: ticket?.client_snapshot?.collaborator_name }}
+              onSkipFromA={() => setStep(insumosStepNum)}
+              onAdvanceFromA={() => setStep(3)}
             />
           )}
-
-          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-            <Button variant="soft" onClick={() => setStep(1)}
-                     data-testid="finalize-back-step1-btn"
-                     style={{ flex: 1, height: 48, fontSize: 14 }}>
-              ← Voltar
-            </Button>
-            <Button onClick={() => setStep(3)}
-                     data-testid="finalize-next-step3-btn"
-                     style={{ flex: 2, height: 48, fontSize: 14 }}>
-              {ctoSelected && ctoPortSelected
-                ? "Próximo: Insumos →"
-                : "Pular e ir p/ Insumos →"}
-            </Button>
-          </div>
-          <div style={{ marginTop: 8, fontSize: 11, color: "#64748b",
-                          textAlign: "center", fontStyle: "italic" }}>
-            Se o cliente já está cadastrado em outra CTO, é só pular esta etapa.
-          </div>
-
-          {showCtoWizard && (
-            <div style={{
-              position: "fixed", inset: 0, zIndex: 9999,
-              background: "#fff", overflow: "auto",
-            }}>
-              <CadastroCTOWizard
-                collabId={collaboratorId}
-                onClose={() => setShowCtoWizard(false)}
-                onCreated={(newCto) => {
-                  setShowCtoWizard(false);
-                  // pré-seleciona a CTO recém-criada
-                  setCtoSelected(newCto);
-                  setCtoPortSelected(null);
-                }}
-              />
-            </div>
-          )}
         </>
+      )}
+
+      {/* ============ STEP 3 — Portas + Tipo + Porta do cliente ============ */}
+      {step === 3 && (
+        <CtoInlineFlow
+          screen="B"
+          state={ctoFlowState}
+          setState={setCtoFlowState}
+          collabId={collaboratorId}
+          client={{ id: ticket?.client_id,
+                      name: ticket?.client_snapshot?.name }}
+          technician={{ id: collaboratorId,
+                          name: ticket?.client_snapshot?.collaborator_name }}
+          onBackFromB={() => setStep(2)}
+          onCreated={({ cto, port_number }) => {
+            setCtoSelected(cto);
+            setCtoPortSelected(port_number);
+            setStep(insumosStepNum);
+          }}
+        />
       )}
 
       {/* ============ STEP DE INSUMOS — último step ============ */}
