@@ -292,7 +292,7 @@ async def closed_tickets_pdf(
     ]))
     story += [kpi, Spacer(1, 8)]
 
-    if rows:
+    if rows or True:  # Sempre mostra todos os técnicos, mesmo com 0 notas
         # Agrupa por técnico
         from collections import defaultdict
         by_tech: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -302,13 +302,36 @@ async def closed_tickets_pdf(
                           or "— Sem técnico —")
             by_tech[tech_name].append(r)
 
-        # Ordena técnicos por nome
-        for tech_name in sorted(by_tech.keys()):
+        # Adiciona TODOS os colaboradores ativos da empresa, mesmo com 0 notas
+        # (assim o gestor enxerga quem está "zerado" no período).
+        active_techs = await db.collaborators.find(
+            {"company_id": cid, "$or": [{"active": True}, {"active": {"$exists": False}}]},
+            {"_id": 0, "name": 1},
+        ).to_list(500)
+        for c in active_techs:
+            tn = c.get("name") or "—"
+            if tn not in by_tech:
+                by_tech[tn] = []
+
+        # Ordena: técnicos COM notas primeiro (mais → menos), depois zerados em A-Z
+        sorted_techs = sorted(by_tech.keys(),
+                                key=lambda n: (-len(by_tech[n]), n.lower()))
+
+        for tech_name in sorted_techs:
             tnotes = by_tech[tech_name]
-            # Cabeçalho do técnico
+            n = len(tnotes)
+            # Cabeçalho do técnico — destaca zerados em vermelho-suave
+            if n == 0:
+                story.append(Paragraph(
+                    f"<font color='#94a3b8'><b>👷 {tech_name}</b> · "
+                    f"<i>0 notas finalizadas no período</i> ⚠</font>",
+                    styles["body"]))
+                story.append(Spacer(1, 8))
+                continue
+
             story.append(Paragraph(
                 f"<b>👷 {tech_name}</b> &nbsp;·&nbsp; "
-                f"<font color='#64748b'>{len(tnotes)} nota{'s' if len(tnotes) > 1 else ''} finalizada{'s' if len(tnotes) > 1 else ''}</font>",
+                f"<font color='#0f766e'><b>{n} nota{'s' if n > 1 else ''} finalizada{'s' if n > 1 else ''}</b></font>",
                 styles["body"]))
             story.append(Spacer(1, 4))
 
@@ -399,9 +422,6 @@ async def closed_tickets_pdf(
             table.setStyle(TableStyle(ts))
             story.append(table)
             story.append(Spacer(1, 10))
-    else:
-        story.append(Paragraph("Nenhuma nota fechada no período selecionado.",
-                                 styles["body"]))
 
     doc.build(story)
     buf.seek(0)
