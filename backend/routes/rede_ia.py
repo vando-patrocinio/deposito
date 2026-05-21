@@ -1361,6 +1361,27 @@ async def public_ensure_bairro_from_field(collab_id: str, body: BairroEnsureIn):
     }
 
 
+@router.get("/public/ctos/list/{collab_id}")
+async def public_ctos_list(collab_id: str,
+                             status: Optional[str] = Query(None),
+                             limit: int = Query(500, ge=1, le=2000)):
+    """Lista CTOs da empresa do colaborador. Usado pelo wizard mobile
+    para mostrar CTOs já cadastradas no mapa e evitar duplicação."""
+    cid = await _company_for_collaborator(collab_id)
+    q: Dict[str, Any] = {"company_id": cid}
+    if status:
+        q["status"] = status
+    items = await db.ctos.find(
+        q, {"_id": 0, "id": 1, "name": 1, "sigla": 1, "vlan": 1,
+            "gps": 1, "capacity": 1, "ports": 1, "status": 1, "address": 1},
+    ).limit(limit).to_list(limit)
+    # Garante array de ports
+    for c in items:
+        c["ports"] = c.get("ports") or []
+    return {"items": items, "total": len(items)}
+
+
+
 @router.get("/public/ctos/suggest-name/{collab_id}")
 async def public_suggest_name(collab_id: str,
                                 sigla: str = Query(...),

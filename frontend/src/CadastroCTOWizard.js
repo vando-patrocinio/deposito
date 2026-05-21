@@ -324,6 +324,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
             <div style={{ flex: "0 0 62%", position: "relative",
                             background: "#e2e8f0" }}>
               <CTOMapPicker
+                collabId={collabId}
                 onMove={({ lat, lng, address: a }) => {
                   setGps({ lat, lng, accuracy: null });
                   setAddress((prev) => ({

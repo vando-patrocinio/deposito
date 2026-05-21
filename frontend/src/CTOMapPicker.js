@@ -12,8 +12,9 @@ UX:
 */
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
-  MapContainer, TileLayer, useMap, useMapEvents, CircleMarker,
+  MapContainer, TileLayer, useMap, useMapEvents, CircleMarker, Marker, Tooltip,
 } from "react-leaflet";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse";
@@ -63,11 +64,29 @@ function LocalizeZoomControl() {
   return null;
 }
 
+// Ícone cinza para CTOs já cadastradas (apenas referência visual)
+const existingCtoIcon = L.divIcon({
+  className: "cto-existing-icon",
+  html: `
+    <svg width="26" height="34" viewBox="0 0 42 56" xmlns="http://www.w3.org/2000/svg">
+      <path d="M21 0 C9.4 0 0 9.4 0 21 c0 15.2 17 31.5 19.4 33.7 a2.2 2.2 0 0 0 3.2 0 C25 52.5 42 36.2 42 21 42 9.4 32.6 0 21 0 Z"
+            fill="#64748b" stroke="#fff" stroke-width="1.5" opacity="0.85"/>
+      <rect x="10" y="11" width="22" height="18" rx="2"
+            fill="#fff" stroke="#334155" stroke-width="1"/>
+    </svg>
+  `,
+  iconSize: [26, 34],
+  iconAnchor: [13, 34],
+  popupAnchor: [0, -28],
+});
+
 export default function CTOMapPicker({
-  defaultCenter = [-9.6498, -35.7089], // Maceió-AL
+  defaultCenter = [-9.6498, -35.7089],
   initialZoom = 18,
   onMove,
   onError,
+  existingCtos = null,  // array de {id, name, lat, lng} OU null = busca sozinho
+  collabId = null,      // se passado, busca CTOs públicas via collab_id
 }) {
   const [center, setCenter] = useState(defaultCenter);
   const [gpsPos, setGpsPos] = useState(null);
@@ -76,8 +95,32 @@ export default function CTOMapPicker({
   const [requestingGps, setRequestingGps] = useState(false);
   const [loading, setLoading] = useState(false);
   const [lastAddr, setLastAddr] = useState(null);
+  const [ctosNearby, setCtosNearby] = useState([]);
   const lastReqRef = useRef(0);
   const watchIdRef = useRef(null);
+
+  // Carrega CTOs já cadastradas para mostrar no mapa
+  useEffect(() => {
+    if (existingCtos !== null) {
+      setCtosNearby(existingCtos);
+      return;
+    }
+    // fetch automático via API
+    (async () => {
+      try {
+        const { api } = await import("@/api");
+        const r = collabId
+          ? await api.redeIaCtosListPublic?.(collabId)
+          : await api.redeIaCtosList?.({ status: "approved" });
+        const items = (r?.items || []).filter(
+          (c) => (c?.gps?.lat || c?.lat) && (c?.gps?.lng || c?.lng),
+        );
+        setCtosNearby(items);
+      } catch (e) {
+        // silencioso - falha em carregar CTOs não bloqueia o fluxo
+      }
+    })();
+  }, [existingCtos, collabId]);
 
   // Solicita GPS (alta acurácia). Retorna Promise com a position.
   const requestGps = useCallback(() => {
@@ -223,6 +266,25 @@ export default function CTOMapPicker({
         <LocalizeZoomControl />
         <Recenter lat={center[0]} lng={center[1]} />
         <MoveListener onIdle={handleIdle} />
+
+        {/* CTOs já cadastradas (referência cinza) */}
+        {ctosNearby.map((c) => {
+          const clat = c.lat ?? c.gps?.lat;
+          const clng = c.lng ?? c.gps?.lng;
+          if (clat == null || clng == null) return null;
+          return (
+            <Marker key={c.id} position={[clat, clng]} icon={existingCtoIcon}>
+              <Tooltip direction="top" offset={[0, -28]} opacity={0.92}>
+                <div style={{ fontSize: 11, fontWeight: 700 }}>
+                  {c.name || "CTO"}
+                </div>
+                <div style={{ fontSize: 10, color: "#475569" }}>
+                  {(c.ports || []).filter((p) => p.status === "free").length}/{c.capacity || "?"} portas livres
+                </div>
+              </Tooltip>
+            </Marker>
+          );
+        })}
 
         {/* Indicador da posição GPS do COLABORADOR (ponto azul) */}
         {gpsPos && (
