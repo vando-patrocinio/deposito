@@ -1254,6 +1254,7 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
                 selectMode={selectMode}
                 isSelected={selectedIds?.includes(t.id)}
                 onToggleSelect={onToggleSelect}
+                forceExpanded={tickets.length === 1}
               />
             </div>
           ))}
@@ -1263,7 +1264,7 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
   );
 }
 
-function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, isSelected, onToggleSelect }) {
+function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, isSelected, onToggleSelect, forceExpanded }) {
   const c = PRIORITY_COLORS[ticket.priority] || PRIORITY_COLORS.normal;
   const st = STATUS_LABEL[ticket.status] || { label: ticket.status, color: "#64748b" };
   const sla = ticket.sla || {};
@@ -1358,9 +1359,10 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
         cursor: selectMode ? (isSelectable ? "pointer" : "not-allowed") : "grab",
         opacity: isDragging ? 0.4 : (selectMode && !isSelectable ? 0.55 : 1),
         // Compact mode: altura máxima quando NÃO hovered; expande no hover
-        // para mostrar todo o conteúdo sem cortar.
-        maxHeight: showActions ? "none" : 42,
-        overflow: showActions ? "visible" : "hidden",
+        // para mostrar todo o conteúdo sem cortar. Se forceExpanded (bolha
+        // única no slot), abre completa por padrão.
+        maxHeight: (showActions || forceExpanded) ? "none" : 42,
+        overflow: (showActions || forceExpanded) ? "visible" : "hidden",
         zIndex: showActions ? 999 : "auto",
         boxShadow: isSelected
           ? "0 0 0 3px rgba(59,130,246,.25), 0 4px 12px rgba(59,130,246,.18)"
