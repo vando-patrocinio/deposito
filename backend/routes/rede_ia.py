@@ -658,6 +658,54 @@ async def onu_push(
     return {"ok": True, "sn": onu_sn, "action": body.action, "response": resp}
 
 
+@router.post("/ctos/{cto_id}/photos/analyze")
+async def cto_analyze_photo(
+    cto_id: str,
+    body: Dict[str, Any],
+    user: dict = Depends(get_current_user),
+):
+    """Análise via IA (vision) de uma foto da CTO.
+
+    Body: { "photo_index": N }  — analisa a N-ésima foto (0 = mais recente)
+       OU { "data_url": "data:image/jpeg;base64,..." } — analisa direto.
+
+    Cacheado por hash da imagem em `cto_photo_analyses`.
+    """
+    cid = _user_company(user)
+    cto = await db.ctos.find_one({"id": cto_id, "company_id": cid},
+                                    {"_id": 0, "id": 1})
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+
+    data_url = (body or {}).get("data_url")
+    ticket_id = (body or {}).get("ticket_id")
+    if not data_url:
+        # Tenta buscar pela foto N do histórico
+        idx = int((body or {}).get("photo_index") or 0)
+        photos_resp = await cto_get_photos(cto_id, user)  # type: ignore
+        photos = photos_resp.get("photos") or []
+        if not photos:
+            raise HTTPException(400, "CTO não possui fotos para analisar")
+        if idx < 0 or idx >= len(photos):
+            raise HTTPException(400, f"photo_index fora do range (0..{len(photos)-1})")
+        data_url = photos[idx].get("data_url")
+        ticket_id = ticket_id or photos[idx].get("ticket_id")
+
+    if not data_url or not data_url.startswith("data:image/"):
+        raise HTTPException(400, "data_url inválido")
+
+    from services.cto_photo_inspector import analyze_cto_photo
+    try:
+        result = await analyze_cto_photo(
+            data_url=data_url, cto_id=cto_id, ticket_id=ticket_id,
+            force_refresh=bool((body or {}).get("force_refresh")),
+        )
+    except Exception as e:
+        logger.exception("Falha ao analisar foto CTO %s: %s", cto_id, e)
+        raise HTTPException(500, f"Análise falhou: {e}")
+    return result
+
+
 @router.get("/ctos/{cto_id}/photos")
 async def cto_get_photos(
     cto_id: str,

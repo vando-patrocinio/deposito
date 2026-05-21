@@ -147,6 +147,10 @@ function CTOPhotosTab({ ctoId }) {
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState("");
   const [zoom, setZoom] = React.useState(null);
+  const [zoomIndex, setZoomIndex] = React.useState(null);
+  const [analysis, setAnalysis] = React.useState(null);
+  const [analyzing, setAnalyzing] = React.useState(false);
+  const [analyzeErr, setAnalyzeErr] = React.useState("");
 
   React.useEffect(() => {
     let alive = true;
@@ -209,7 +213,7 @@ function CTOPhotosTab({ ctoId }) {
                       gap: 12 }}>
         {data.photos.map((p, i) => (
           <div key={i} data-testid={`cto-photo-${i}`}
-                onClick={() => setZoom(p)}
+                onClick={() => { setZoom(p); setZoomIndex(i); setAnalysis(null); setAnalyzeErr(""); }}
                 style={{ borderRadius: 10, overflow: "hidden",
                           border: "1px solid #e2e8f0",
                           background: "#fff", cursor: "pointer",
@@ -250,7 +254,7 @@ function CTOPhotosTab({ ctoId }) {
 
       {/* Lightbox */}
       {zoom && (
-        <div onClick={() => setZoom(null)}
+        <div onClick={() => { setZoom(null); setZoomIndex(null); }}
               data-testid="cto-photo-lightbox"
               style={{ position: "fixed", inset: 0, zIndex: 10000,
                         background: "rgba(0,0,0,0.85)",
@@ -258,14 +262,16 @@ function CTOPhotosTab({ ctoId }) {
                         justifyContent: "center", padding: 20,
                         cursor: "zoom-out" }}>
           <div onClick={(e) => e.stopPropagation()}
-                style={{ maxWidth: "92vw", maxHeight: "88vh",
+                style={{ maxWidth: "92vw", maxHeight: "92vh",
                           background: "#fff", borderRadius: 12,
-                          overflow: "hidden", display: "flex",
-                          flexDirection: "column" }}>
+                          overflow: "auto", display: "flex",
+                          flexDirection: "column", cursor: "default",
+                          position: "relative" }}>
             <img src={zoom.data_url} alt="Foto CTO"
-                  style={{ maxWidth: "92vw", maxHeight: "70vh",
+                  style={{ maxWidth: "92vw", maxHeight: "60vh",
                             objectFit: "contain", background: "#000" }} />
-            <div style={{ padding: 12, fontSize: 12, color: "#475569" }}>
+            <div style={{ padding: 14, fontSize: 12, color: "#475569",
+                            borderBottom: "1px solid #f1f5f9" }}>
               <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 13 }}>
                 {fmt(zoom.captured_at)}
               </div>
@@ -275,12 +281,112 @@ function CTOPhotosTab({ ctoId }) {
                 {zoom.ticket_id && <span> · OS {zoom.ticket_id.slice(0, 8)}</span>}
               </div>
             </div>
-            <button onClick={() => setZoom(null)}
-                    style={{ position: "absolute", top: 16, right: 16,
+
+            {/* Bloco de análise IA */}
+            <div style={{ padding: 14 }}>
+              {!analysis && !analyzing && (
+                <button data-testid="cto-photo-analyze-btn"
+                        onClick={async () => {
+                          setAnalyzing(true); setAnalyzeErr("");
+                          try {
+                            const r = await api.redeIaCtoPhotoAnalyze(ctoId, {
+                              photo_index: zoomIndex,
+                            });
+                            setAnalysis(r);
+                          } catch (e) {
+                            setAnalyzeErr(e?.response?.data?.detail
+                              || e.message || "Falha na análise");
+                          } finally { setAnalyzing(false); }
+                        }}
+                        style={{ width: "100%", padding: "12px 14px",
+                                  background: "linear-gradient(135deg,#7c3aed,#6366f1)",
+                                  color: "#fff", border: 0, borderRadius: 10,
+                                  fontSize: 13, fontWeight: 700,
+                                  cursor: "pointer",
+                                  display: "inline-flex", justifyContent: "center",
+                                  alignItems: "center", gap: 8 }}>
+                  🤖 Analisar foto com IA (Gemini Vision)
+                </button>
+              )}
+              {analyzing && (
+                <div style={{ padding: 12, textAlign: "center", color: "#64748b",
+                                fontSize: 12 }}>
+                  <Loader2 size={14} className="animate-spin" /> Analisando…
+                </div>
+              )}
+              {analyzeErr && (
+                <div style={{ padding: 10, background: "#fef2f2",
+                                color: "#991b1b", borderRadius: 8,
+                                fontSize: 12 }}>{analyzeErr}</div>
+              )}
+              {analysis && (
+                <div data-testid="cto-photo-analysis-result">
+                  <div style={{ display: "flex", justifyContent: "space-between",
+                                  alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: "#0f172a",
+                                    display: "flex", alignItems: "center", gap: 6 }}>
+                      🤖 Análise da IA
+                      {analysis.cached && (
+                        <span style={{ fontSize: 9, padding: "2px 6px",
+                                        borderRadius: 999, background: "#e0e7ff",
+                                        color: "#4338ca", fontWeight: 700 }}>cache</span>
+                      )}
+                    </div>
+                    <div style={{
+                      padding: "3px 10px", borderRadius: 999,
+                      fontSize: 11, fontWeight: 800, color: "#fff",
+                      background: analysis.severity >= 70 ? "#dc2626"
+                                  : analysis.severity >= 40 ? "#ea580c"
+                                  : analysis.severity >= 15 ? "#ca8a04"
+                                  : "#16a34a",
+                    }}>
+                      Severidade {analysis.severity}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: "#0f172a", marginBottom: 8,
+                                  lineHeight: 1.4 }}>
+                    {analysis.summary || "—"}
+                  </div>
+                  {(analysis.tags || []).length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap",
+                                    gap: 6, marginBottom: 10 }}>
+                      {analysis.tags.map((tg) => (
+                        <span key={tg}
+                              style={{ padding: "3px 9px", borderRadius: 999,
+                                        background: "#f1f5f9",
+                                        color: "#334155",
+                                        fontSize: 11, fontWeight: 600 }}>
+                          {tg.replace(/_/g, " ")}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {(analysis.recommendations || []).length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, color: "#64748b",
+                                      fontWeight: 700, marginBottom: 4,
+                                      textTransform: "uppercase",
+                                      letterSpacing: 0.5 }}>
+                        Recomendações
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12,
+                                    color: "#0f172a", lineHeight: 1.5 }}>
+                        {analysis.recommendations.map((rec, i) => (
+                          <li key={i}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => { setZoom(null); setZoomIndex(null); }}
+                    style={{ position: "absolute", top: 12, right: 12,
                               background: "rgba(255,255,255,.9)",
                               border: 0, borderRadius: "50%", width: 36,
                               height: 36, fontSize: 18, fontWeight: 800,
-                              cursor: "pointer" }}>×</button>
+                              cursor: "pointer", zIndex: 1 }}>×</button>
           </div>
         </div>
       )}
