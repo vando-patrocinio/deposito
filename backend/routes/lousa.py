@@ -22,7 +22,7 @@ import httpx
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from core import (
@@ -826,22 +826,49 @@ async def get_my_lousa(user: dict = Depends(get_current_user)):
 
 
 @router.get("/lousa/by-collaborator/{cid}")
-async def get_lousa_by_collaborator(cid: str):
-    """Lousa pública por collaborator_id (mobile PWA não tem auth)."""
-    coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "id": 1})
+async def get_lousa_by_collaborator(cid: str, admin_test: int = 0,
+                                       request: Request = None):
+    """Lousa pública por collaborator_id (mobile PWA não tem auth).
+
+    Quando `admin_test=1` é passado E o requisitante for administrador/auditor
+    autenticado, retorna bolhas de TODOS os colaboradores da empresa do
+    `cid` (modo "teste admin" — gestor/auditor pode abrir qualquer bolha de
+    qualquer técnico em qualquer horário). Sem essa flag, mantém o
+    comportamento histórico (só bolhas atribuídas ao próprio cid).
+    """
+    coll = await db.collaborators.find_one(
+        {"id": cid}, {"_id": 0, "id": 1, "company_id": 1},
+    )
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado")
-    return await _lousa_for_collaborator(cid)
+    cross_collab_company = None
+    if admin_test:
+        # Valida JWT manualmente — se for admin/auditor, libera o modo
+        # cross-colaborador
+        try:
+            auth_header = (request.headers.get("authorization") or "") if request else ""
+            if auth_header.lower().startswith("bearer "):
+                token = auth_header.split(" ", 1)[1].strip()
+                from auth import decode_token
+                payload = decode_token(token)
+                if payload and payload.get("role") in ("administrador", "auditor"):
+                    cross_collab_company = coll.get("company_id")
+        except Exception:
+            cross_collab_company = None
+    return await _lousa_for_collaborator(
+        cid, admin_test_company_id=cross_collab_company,
+    )
 
 
-async def _lousa_for_collaborator(cid: str) -> dict:
+async def _lousa_for_collaborator(
+    cid: str,
+    admin_test_company_id: Optional[str] = None,
+) -> dict:
     state = await _today_clock_state(cid)
-    # Colaboradores não-CLT (clock_in_enabled=false) não batem ponto — Lousa sempre liberada
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "clock_in_enabled": 1})
     clock_in_enabled = bool((coll or {}).get("clock_in_enabled", True))
-    # Bolhas só aparecem após bater Entrada (identificação do técnico)
-    # Para colaboradores sem ponto (freelancer/MEI/etc) liberamos direto.
-    if clock_in_enabled and not state["has_entrada"]:
+    # No modo admin_test, NUNCA bloqueia por ponto (gestor não bate ponto).
+    if (not admin_test_company_id) and clock_in_enabled and not state["has_entrada"]:
         return {
             "tickets": [],
             "recent_resolved": [],
@@ -852,16 +879,25 @@ async def _lousa_for_collaborator(cid: str) -> dict:
             "clock_in_enabled": True,
         }
     active_states = ["pendente", "aberta", "aguardando_atendimento"]
-    active_raw = await db.tickets.find(
-        {"assigned_collaborator_id": cid, "status": {"$in": active_states}},
-        {"_id": 0},
-    ).to_list(500)
+    # Query: admin_test busca por company_id; modo normal por collaborator_id
+    if admin_test_company_id:
+        active_query = {
+            "company_id": admin_test_company_id,
+            "status": {"$in": active_states},
+        }
+    else:
+        active_query = {
+            "assigned_collaborator_id": cid,
+            "status": {"$in": active_states},
+        }
+    active_raw = await db.tickets.find(active_query, {"_id": 0}).to_list(500)
     # REGRA DE DATA: filtra apenas bolhas cuja data de serviço/abertura
     # corresponde a HOJE (BR). Bolhas reagendadas pra outros dias somem
     # da Lousa de hoje (e aparecem na Lousa do dia agendado).
     today = _today_br_iso()
     active_raw = [t for t in active_raw if _ticket_day_iso(t) == today]
-    active_raw.sort(key=lambda t: (PRIORITY_RANK[t["priority"]], t["position"]))
+    active_raw.sort(key=lambda t: (PRIORITY_RANK.get(t.get("priority"), 99),
+                                       t.get("position") or 999))
     locked_idx = compute_locked_positions(active_raw)
     for i, t in enumerate(active_raw):
         # Para clock_in_enabled=false, in_intervalo e ended_day não aplicam
@@ -879,12 +915,19 @@ async def _lousa_for_collaborator(cid: str) -> dict:
     # Tickets resolvidos PELA GESTÃO (cancelada/reagendada) saem da Lousa do app —
     # gestão já cuidou e o técnico não precisa mais agir/ver.
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    resolved_raw = await db.tickets.find(
-        {"assigned_collaborator_id": cid,
-         "status": {"$in": list(TECH_RESOLVED)},  # apenas finalizada/encerrada pelo técnico
-         "closed_at": {"$gte": cutoff}},
-        {"_id": 0},
-    ).to_list(200)
+    if admin_test_company_id:
+        resolved_query = {
+            "company_id": admin_test_company_id,
+            "status": {"$in": list(TECH_RESOLVED)},
+            "closed_at": {"$gte": cutoff},
+        }
+    else:
+        resolved_query = {
+            "assigned_collaborator_id": cid,
+            "status": {"$in": list(TECH_RESOLVED)},
+            "closed_at": {"$gte": cutoff},
+        }
+    resolved_raw = await db.tickets.find(resolved_query, {"_id": 0}).to_list(200)
     resolved_raw.sort(key=lambda t: t.get("closed_at", ""), reverse=True)
     for t in resolved_raw:
         t["locked"] = True
@@ -2082,11 +2125,25 @@ class PublicFinalizeIn(BaseModel):
 
 
 @router.post("/lousa/public/tickets/{ticket_id}/open")
-async def public_open_ticket(ticket_id: str, payload: PublicOpenIn):
+async def public_open_ticket(ticket_id: str, payload: PublicOpenIn,
+                                request: Request = None):
     cid = payload.collaborator_id
+    # Modo "teste admin": admin/auditor logado pode abrir bolha de qualquer
+    # colaborador (impersonifica). Detecta via JWT no header.
+    is_admin_test = False
+    try:
+        auth_header = (request.headers.get("authorization") or "") if request else ""
+        if auth_header.lower().startswith("bearer "):
+            from auth import decode_token
+            payload_jwt = decode_token(auth_header.split(" ", 1)[1].strip())
+            if payload_jwt and payload_jwt.get("role") in ("administrador", "auditor"):
+                is_admin_test = True
+    except Exception:
+        is_admin_test = False
+
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "clock_in_enabled": 1})
     clock_in_enabled = bool((coll or {}).get("clock_in_enabled", True))
-    if clock_in_enabled:
+    if clock_in_enabled and not is_admin_test:
         state = await _today_clock_state(cid)
         if not state["has_entrada"]:
             raise HTTPException(412, "Bata o ponto de Entrada antes de abrir uma nota")
@@ -2095,12 +2152,16 @@ async def public_open_ticket(ticket_id: str, payload: PublicOpenIn):
         if state["ended_day"]:
             raise HTTPException(412, "Você já bateu a Saída do dia")
 
-    other = await _has_active_ticket(cid)
-    if other and other["id"] != ticket_id:
-        raise HTTPException(409, f"Finalize a nota atual antes: {other['client_snapshot']['name']}")
+    if not is_admin_test:
+        other = await _has_active_ticket(cid)
+        if other and other["id"] != ticket_id:
+            raise HTTPException(409, f"Finalize a nota atual antes: {other['client_snapshot']['name']}")
 
     t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
-    if not t or t["assigned_collaborator_id"] != cid:
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    # No modo normal, valida que a nota pertence ao colaborador
+    if (not is_admin_test) and t.get("assigned_collaborator_id") != cid:
         raise HTTPException(404, "Nota não encontrada")
     if t["status"] not in ("pendente", "aberta"):
         raise HTTPException(400, "Nota não está disponível")
@@ -2142,10 +2203,24 @@ async def public_open_ticket(ticket_id: str, payload: PublicOpenIn):
 
 
 @router.post("/lousa/public/tickets/{ticket_id}/finalize")
-async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn):
+async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
+                                    request: Request = None):
     cid = payload.collaborator_id
+    # Modo "teste admin": admin/auditor pode finalizar nota de qualquer cid
+    is_admin_test = False
+    try:
+        auth_header = (request.headers.get("authorization") or "") if request else ""
+        if auth_header.lower().startswith("bearer "):
+            from auth import decode_token
+            payload_jwt = decode_token(auth_header.split(" ", 1)[1].strip())
+            if payload_jwt and payload_jwt.get("role") in ("administrador", "auditor"):
+                is_admin_test = True
+    except Exception:
+        is_admin_test = False
     t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
-    if not t or t["assigned_collaborator_id"] != cid:
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    if (not is_admin_test) and t.get("assigned_collaborator_id") != cid:
         raise HTTPException(404, "Nota não encontrada")
     if t["status"] != "aberta":
         raise HTTPException(400, "Somente notas abertas podem ser finalizadas")

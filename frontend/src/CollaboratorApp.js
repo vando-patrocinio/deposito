@@ -952,7 +952,9 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
           )}
 
           {screen === "lousa" && (
-            <LousaMobile collaboratorId={collabId} onBack={() => setScreen("home")} />
+            <LousaMobile collaboratorId={collabId}
+                          isAdminTest={isAdminTest}
+                          onBack={() => setScreen("home")} />
           )}
 
           {screen === "cto-cadastro" && (

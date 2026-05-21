@@ -15,7 +15,7 @@ import CadastroCTOWizard from "@/CadastroCTOWizard";
  * - Bolhas com priority='horario'/'prioridade' têm cadeado (não dá para reordenar — futuro).
  * - Banner com último ponto registrado entre as bolhas.
  */
-export default function LousaMobile({ collaboratorId, onBack }) {
+export default function LousaMobile({ collaboratorId, onBack, isAdminTest = false }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -37,7 +37,8 @@ export default function LousaMobile({ collaboratorId, onBack }) {
     if (!collaboratorId) return;
     setRefreshing(true);
     try {
-      const d = await api.lousaByCollaborator(collaboratorId);
+      const d = await api.lousaByCollaborator(collaboratorId,
+                                                  { adminTest: isAdminTest });
       setData(d);
       // Quando recarrega fora do modo reorder, sincroniza orderedIds
       if (!reorderMode) {
@@ -50,7 +51,7 @@ export default function LousaMobile({ collaboratorId, onBack }) {
     } finally {
       setRefreshing(false);
     }
-  }, [collaboratorId, reorderMode]);
+  }, [collaboratorId, reorderMode, isAdminTest]);
 
   useEffect(() => { refresh(); }, [refresh]);
 

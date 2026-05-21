@@ -190,7 +190,10 @@ export const api = {
   saasBulkDeleteCompanies: (ids) => client.post(`/saas/admin/companies/bulk-delete`, { ids }).then((r) => r.data),
 
   // ============== LOUSA (notas de serviço) ==============
-  lousaByCollaborator: (cid) => client.get(`/lousa/by-collaborator/${cid}`).then((r) => r.data),
+  lousaByCollaborator: (cid, opts = {}) => {
+    const params = opts.adminTest ? { admin_test: 1 } : {};
+    return client.get(`/lousa/by-collaborator/${cid}`, { params }).then((r) => r.data);
+  },
   lousaAll: () => client.get(`/lousa/all`).then((r) => r.data),
   lousaLogs: (params = {}) => client.get(`/lousa/logs`, { params }).then((r) => r.data),
   lousaTicket: (tid) => client.get(`/lousa/tickets/${tid}`).then((r) => r.data),

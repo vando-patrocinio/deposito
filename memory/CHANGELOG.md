@@ -1,5 +1,57 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Modo "teste admin" libera bolhas de qualquer colaborador
+
+### Comportamento
+Antes: O perfil de Admin/Auditor que abrisse `/?cid=<col>` no PWA mobile
+via "Modo teste admin" só via as bolhas atribuídas a aquele colaborador
+específico — não podia validar fluxos de outros técnicos.
+
+Agora: Com o toggle "Modo teste admin" ativo, o painel mostra bolhas
+de **TODOS os colaboradores da empresa** e permite **abrir e finalizar**
+qualquer bolha de qualquer horário/técnico (impersonificação completa).
+
+### Backend (`/app/backend/routes/lousa.py`)
+- `GET /lousa/by-collaborator/{cid}?admin_test=1`:
+  - Detecta JWT no header `Authorization: Bearer ...`.
+  - Se role ∈ {administrador, auditor}: chama `_lousa_for_collaborator`
+    com `admin_test_company_id=coll.company_id` em vez de filtrar por cid.
+  - Bypassa validação de ponto (gestor não bate).
+- `_lousa_for_collaborator()` ganhou kwarg `admin_test_company_id`.
+  Quando truthy, a query active/resolved usa `company_id` em vez de
+  `assigned_collaborator_id`.
+- `POST /lousa/public/tickets/{id}/open` e
+  `POST /lousa/public/tickets/{id}/finalize`:
+  - Mesma detecção JWT.
+  - Quando `is_admin_test=True`: pula `_has_active_ticket`, pula
+    validação de ponto, e pula `t.assigned_collaborator_id != cid`.
+- Fix tangencial: `sort(key=...PRIORITY_RANK[t["priority"]])` virou
+  `.get(t.get("priority"), 99)` para tolerar prioridades antigas
+  inválidas (ex: "alta") que estavam quebrando 500 quando havia
+  tickets cross-collab.
+
+### Frontend
+- `api.lousaByCollaborator(cid, { adminTest: true })` → envia `?admin_test=1`.
+- `<LousaMobile collaboratorId={cid} isAdminTest={isAdminTest} />`
+  já vinha conectado ao toggle pelo `CollaboratorApp.js`.
+- `useEffect` de carregamento depende de `isAdminTest` agora (reload
+  automático ao alternar o toggle).
+- Open/Finalize: o interceptor do axios em `api.js` já anexa
+  `Authorization: Bearer ${token}` automaticamente quando há JWT no
+  localStorage — portanto admins logados via web ganham impersonificação
+  no PWA do mesmo browser sem trabalho extra.
+
+### Validação E2E
+- Login vando → `/?cid=col-30aafc3c` → toggle ativo → "Lousa de Serviços":
+  **15 bolhas** carregam, cobrindo **3 colaboradores distintos**
+  (`col-30aafc3c`, `col-f60464f5`, e outro). Banner "Modo teste admin
+  — cerca virtual ignorada" presente. Lista corrige nomes diferentes
+  (ALEXANDRE DEL RIO FURTADO, ADRIANA LUCIA, PAMELA, JJ Suportes,
+  FLAVIA, …).
+- Em modo normal (sem JWT/`admin_test`): retorna 0 (Diogo não tem
+  tickets) → backwards-compatible.
+
+
 ## 2026-05-20 — Relatórios PDF: Ocupação de CTO + Fechamento de Notas
 
 ### Backend (`/app/backend/routes/pdf_reports.py` — NOVO arquivo)
