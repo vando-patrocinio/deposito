@@ -1,5 +1,41 @@
 # PontoIA — Changelog
 
+## 2026-05-20 — Wizard CTO: Step 3 dinâmico + redesign sóbrio
+
+### Comportamento
+- **Step 3 (Identificação) só aparece como FALLBACK**: quando o bairro
+  detectado pelo GPS **não bate** com a base cadastrada. Quando casa,
+  o wizard pula automaticamente do Step 2 → Step 4 (capacidade).
+- O auto-match agora acontece **logo após o reverse geocoding no Step 2**
+  (não mais ao entrar no step 3), permitindo o skip.
+- Botão "voltar" do header também respeita o skip (step 4 → step 2 se
+  bairro foi auto-casado).
+- No Step 2, novo banner abaixo dos campos:
+  - 🟢 `Bairro X identificado — VLAN N (sigla XX)` quando casa
+  - 🟡 `Bairro Y não está na base. Na próxima tela você escolhe o equivalente.` quando não casa
+
+### Redesign sóbrio/corporate
+Substituição completa da paleta roxa+laranja por slate/teal:
+- Header: roxo `#5b21b6` → slate `#0f172a` (escuro sóbrio)
+- Primary buttons: roxo `#7c3aed` → slate `#1e293b`
+- Accent (submit final): laranja `#f97316` → teal `#0f766e`
+- Cards selecionados: lavanda `#ede9fe` → slate-100 `#f1f5f9`
+- Labels agora em **UPPERCASE + letter-spacing** (visual de form enterprise)
+- Botões com radius 8px (era 14px) e shadow sutil (era forte colorido)
+- Step badge: círculo `border-radius:50%` → quadrado 6px
+- Bordas reduzidas de 2px → 1.5px
+
+### Funções utilitárias
+- `goNext()` / `goBack()` no wizard agora encapsulam a navegação e
+  contêm a regra do skip do step 3.
+
+### Validação E2E
+- Login `?cid=col-30aafc3c` → Cadastrar CTO → Step 2 carrega mapa,
+  detecta "Jatiúca" (que não está na base demo "Cachoeiras de Macacu") →
+  banner amarelo aparece → Continuar abre Step 3 com select. Layout
+  visual confirmado sóbrio (slate/teal).
+
+
 ## 2026-05-20 — Cadastro de CTO com mapa "Uber-like" + bairro auto
 
 Reformulação do fluxo de cadastro de CTO (`/cto-cadastro` no app do técnico):

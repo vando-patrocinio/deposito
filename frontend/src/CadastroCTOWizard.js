@@ -15,77 +15,81 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/api";
 import CTOMapPicker from "@/CTOMapPicker";
 
-// Paleta storyboard — branca/limpa com roxo de destaque
+// Paleta sóbria/corporate — slate/indigo (sem roxo vibrante, sem laranja)
 const C_BG = "#f8fafc";
-const C_HEADER_BG = "#5b21b6"; // roxo SmartProv
-const C_PRIMARY = "#7c3aed";
-const C_PRIMARY_LIGHT = "#ede9fe";
-const C_ACCENT = "#f97316";
+const C_HEADER_BG = "#0f172a";       // slate-900 (header escuro elegante)
+const C_PRIMARY = "#1e293b";          // slate-800 (botão e estados ativos)
+const C_PRIMARY_LIGHT = "#f1f5f9";    // slate-100 (cards selecionados)
+const C_ACCENT = "#0f766e";           // teal-700 (submit final - sóbrio, transmite "concluir")
 const C_TEXT = "#0f172a";
 const C_MUTED = "#64748b";
 const C_BORDER = "#e2e8f0";
-const C_DANGER = "#dc2626";
-const C_SUCCESS = "#16a34a";
+const C_DANGER = "#b91c1c";
+const C_SUCCESS = "#15803d";
 
 const headerStyle = {
   background: C_HEADER_BG,
   color: "#fff",
-  padding: "16px 14px",
+  padding: "14px 16px",
   display: "flex", alignItems: "center", justifyContent: "space-between",
-  fontWeight: 700, fontSize: 16,
+  fontWeight: 600, fontSize: 15, letterSpacing: 0.2,
   position: "sticky", top: 0, zIndex: 10,
+  borderBottom: "1px solid rgba(255,255,255,0.06)",
 };
 const stepBadge = {
   display: "inline-flex", alignItems: "center", justifyContent: "center",
-  width: 26, height: 26, borderRadius: "50%",
-  background: "rgba(255,255,255,0.2)", color: "#fff",
-  fontSize: 13, fontWeight: 800, marginRight: 10,
+  width: 24, height: 24, borderRadius: 6,
+  background: "rgba(255,255,255,0.12)", color: "#fff",
+  fontSize: 12, fontWeight: 700, marginRight: 10,
+  fontVariantNumeric: "tabular-nums",
 };
 const cardBase = {
   background: "#fff",
-  borderRadius: 16,
-  border: `1.5px solid ${C_BORDER}`,
-  padding: "16px 14px",
+  borderRadius: 10,
+  border: `1px solid ${C_BORDER}`,
+  padding: "14px 14px",
   marginBottom: 10,
 };
 const inputBase = {
-  width: "100%", padding: "13px 14px", borderRadius: 12,
-  border: `1.5px solid ${C_BORDER}`, fontSize: 15, color: C_TEXT,
+  width: "100%", padding: "12px 13px", borderRadius: 8,
+  border: `1px solid ${C_BORDER}`, fontSize: 14, color: C_TEXT,
   background: "#fff", outline: "none", boxSizing: "border-box",
   fontFamily: "inherit",
 };
 const labelStyle = {
-  fontSize: 13, fontWeight: 600, color: C_TEXT,
-  marginBottom: 6, marginTop: 14, display: "block",
+  fontSize: 11, fontWeight: 700, color: C_MUTED,
+  marginBottom: 5, marginTop: 12, display: "block",
+  textTransform: "uppercase", letterSpacing: 0.6,
 };
 const primaryBtn = {
-  width: "100%", padding: "15px 20px", borderRadius: 14,
-  background: C_HEADER_BG, color: "#fff", border: 0,
-  fontWeight: 700, fontSize: 15, cursor: "pointer",
-  boxShadow: "0 4px 12px rgba(91,33,182,0.3)",
+  width: "100%", padding: "13px 20px", borderRadius: 8,
+  background: C_PRIMARY, color: "#fff", border: 0,
+  fontWeight: 600, fontSize: 14, cursor: "pointer",
+  letterSpacing: 0.2,
+  boxShadow: "0 1px 2px rgba(15,23,42,0.15)",
 };
 const accentBtn = {
   ...primaryBtn,
   background: C_ACCENT,
-  boxShadow: "0 4px 12px rgba(249,115,22,0.35)",
+  boxShadow: "0 1px 2px rgba(15,118,110,0.25)",
 };
 const optionCard = (selected) => ({
-  padding: "16px 14px",
-  borderRadius: 14,
-  border: `2px solid ${selected ? C_PRIMARY : C_BORDER}`,
+  padding: "14px 14px",
+  borderRadius: 10,
+  border: `1.5px solid ${selected ? C_PRIMARY : C_BORDER}`,
   background: selected ? C_PRIMARY_LIGHT : "#fff",
   cursor: "pointer",
   textAlign: "left",
   display: "flex", alignItems: "center", justifyContent: "space-between",
-  fontSize: 14, fontWeight: 600, color: C_TEXT,
-  marginBottom: 10,
+  fontSize: 14, fontWeight: 500, color: C_TEXT,
+  marginBottom: 8,
   transition: "background-color .15s, border-color .15s",
 });
 const checkBox = (selected) => ({
-  width: 22, height: 22, borderRadius: 6,
-  border: `2px solid ${selected ? C_PRIMARY : "#cbd5e1"}`,
+  width: 20, height: 20, borderRadius: 5,
+  border: `1.5px solid ${selected ? C_PRIMARY : "#cbd5e1"}`,
   background: selected ? C_PRIMARY : "#fff",
-  color: "#fff", fontSize: 13, fontWeight: 800,
+  color: "#fff", fontSize: 12, fontWeight: 700,
   display: "grid", placeItems: "center", flexShrink: 0,
 });
 
@@ -171,27 +175,41 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
       : api.redeIaCtoCreate(data),
   }), [collabId]);
 
-  // Carrega bairros ao chegar no passo 3 e tenta auto-match com o detectado
+  // Carrega bairros logo após o GPS pegar o bairro (no Step 2) para
+  // já fazer o auto-match e poder PULAR o step 3 se houver casamento.
   useEffect(() => {
-    if (step === 3) {
-      useApi.bairros().then((r) => {
-        const list = r.items || [];
-        setBairros(list);
-        // Auto-match: normaliza (remove acentos/case) e compara com bairro_detected
-        if (address.bairro_detected && list.length > 0) {
-          const norm = (s) => (s || "").toString().normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-          const target = norm(address.bairro_detected);
-          const match = list.find((b) => norm(b.bairro) === target)
-            || list.find((b) => norm(b.bairro).includes(target) || target.includes(norm(b.bairro)));
-          if (match) {
-            setBairroSelected(match);
-            setBairroAutoMatched(true);
-          }
-        }
-      }).catch(() => setBairros([]));
-    }
-  }, [step, useApi, address.bairro_detected]);
+    if (!address.bairro_detected) return;
+    useApi.bairros().then((r) => {
+      const list = r.items || [];
+      setBairros(list);
+      if (list.length === 0) return;
+      const norm = (s) => (s || "").toString().normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+      const target = norm(address.bairro_detected);
+      const match = list.find((b) => norm(b.bairro) === target)
+        || list.find((b) => norm(b.bairro).includes(target) || target.includes(norm(b.bairro)));
+      if (match) {
+        setBairroSelected(match);
+        setBairroAutoMatched(true);
+      } else {
+        setBairroAutoMatched(false);
+      }
+    }).catch(() => setBairros([]));
+  }, [address.bairro_detected, useApi]);
+
+  // Navegação que PULA o step 3 quando o bairro já casou automaticamente
+  const goNext = () => {
+    setStep((s) => {
+      if (s === 2) return bairroAutoMatched ? 4 : 3;
+      return s + 1;
+    });
+  };
+  const goBack = () => {
+    setStep((s) => {
+      if (s === 4 && bairroAutoMatched) return 2;
+      return s > 1 ? s - 1 : s;
+    });
+  };
 
   // Sempre que bairro muda no passo 3 → gera nomenclatura automática
   useEffect(() => {
@@ -256,7 +274,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
       <div style={headerStyle}>
         <div style={{ display: "flex", alignItems: "center" }}>
           <button data-testid="cto-back-btn"
-                  onClick={() => (step > 1 ? setStep(step - 1) : onClose?.())}
+                  onClick={() => (step > 1 ? goBack() : onClose?.())}
                   style={{ background: "transparent", border: 0, color: "#fff",
                             fontSize: 24, marginRight: 4, cursor: "pointer", padding: 4 }}>
             ←
@@ -409,6 +427,36 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                 </button>
               )}
 
+              {/* Feedback do match de bairro */}
+              {address.bairro_detected && bairros.length > 0 && (
+                <div data-testid="cto-bairro-feedback" style={{
+                  marginTop: 10, padding: "8px 10px",
+                  borderRadius: 6, fontSize: 11.5, lineHeight: 1.4,
+                  background: bairroAutoMatched ? "#f0fdf4" : "#fffbeb",
+                  color: bairroAutoMatched ? "#166534" : "#854d0e",
+                  border: `1px solid ${bairroAutoMatched ? "#bbf7d0" : "#fde68a"}`,
+                  display: "flex", alignItems: "center", gap: 8,
+                }}>
+                  <span style={{ fontSize: 13 }}>
+                    {bairroAutoMatched ? "✓" : "!"}
+                  </span>
+                  <span>
+                    {bairroAutoMatched ? (
+                      <>
+                        Bairro <strong>{bairroSelected.bairro}</strong> identificado
+                        — VLAN <strong>{bairroSelected.vlan}</strong> (sigla{" "}
+                        {bairroSelected.sigla}).
+                      </>
+                    ) : (
+                      <>
+                        Bairro <strong>{address.bairro_detected}</strong> não está na base.
+                        Na próxima tela você escolhe o equivalente.
+                      </>
+                    )}
+                  </span>
+                </div>
+              )}
+
               <div style={{ marginTop: 16 }}>
                 <button data-testid="cto-step2-continue"
                         onClick={() => {
@@ -421,7 +469,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                             return;
                           }
                           setError("");
-                          setStep(3);
+                          goNext();
                         }}
                         style={primaryBtn}>
                   Continuar
