@@ -3,6 +3,7 @@ import { api } from "@/api";
 import { Card } from "@/ui";
 import PracaStockCard from "@/PracaStockCard";
 import BalancoTab from "@/BalancoTab";
+import { GranularResetButton, ShrinkageReportCard } from "@/StokAuditCards";
 
 // ============================================================
 // Helpers visuais
@@ -1832,7 +1833,14 @@ export default function EstoquePanel({ currentUser }) {
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {(currentUser?.role || "").toLowerCase() === "auditor" && (
-            <AuditorResetButton onDone={reload} />
+            <>
+              <GranularResetButton
+                technicians={data.technicians}
+                pracas={data.pracas}
+                consumables={data.consumables}
+                onDone={reload} />
+              <AuditorResetButton onDone={reload} />
+            </>
           )}
           <button data-testid="estoque-reload" style={btnSec} onClick={reload} disabled={loading}>{loading ? "Carregando…" : "⟳ Recarregar"}</button>
         </div>
@@ -1859,7 +1867,14 @@ export default function EstoquePanel({ currentUser }) {
 
       {err && <Card><div style={{ color: "#dc2626" }}>Erro: {err}</div></Card>}
 
-      {tab === "dashboard" && <DashboardSection dashboard={data.dashboard} consumables={data.consumables} history={data.history || []} onts={data.onts || []} />}
+      {tab === "dashboard" && (
+        <>
+          {(currentUser?.role || "").toLowerCase() === "auditor" && (
+            <ShrinkageReportCard />
+          )}
+          <DashboardSection dashboard={data.dashboard} consumables={data.consumables} history={data.history || []} onts={data.onts || []} />
+        </>
+      )}
       {tab === "onts" && <OntsSection onts={data.onts} technicians={data.technicians} reload={reload} />}
       {tab === "insumos" && <InsumosSection consumables={data.consumables} technicians={data.technicians} stock={data.stock} reload={reload} />}
       {tab === "clientes" && <ClientesSection />}

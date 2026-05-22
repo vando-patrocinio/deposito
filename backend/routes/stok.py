@@ -1382,6 +1382,298 @@ async def stok_admin_reset_log(user: dict = Depends(require_role("auditor"))):
     """Lista histórico de resets executados pelo auditor."""
     cid = user.get("company_id") or DEMO_COMPANY_ID
     items = await db.stok_admin_log.find(
-        {"company_id": cid, "action": "stok_reset"}, {"_id": 0},
+        {"company_id": cid, "action": {"$in": ["stok_reset", "stok_reset_granular"]}},
+        {"_id": 0},
     ).sort("timestamp", -1).limit(50).to_list(50)
     return {"items": items, "total": len(items)}
+
+
+# ---------------------------------------------------------------------------
+# RESET GRANULAR — auditor zera por item, colaborador ou praça
+# ---------------------------------------------------------------------------
+class StokGranularResetIn(BaseModel):
+    """Reset com escopo limitado.
+
+    - `scope='item'` zera UM insumo específico em TODAS as locations
+      (consumable_id em `target_id`).
+    - `scope='collaborator'` zera ONTs com `location_id=<target_id>` (deleta
+      do `stok_onts`, devolvendo para "empresa" se preferir) E o doc
+      `stok_stock` com `location='tech:<target_id>'`.
+    - `scope='praca'` zera ONTs com `location_id=<target_id>` (location_type=praca)
+      E `stok_stock` com `location='praca:<target_id>'`.
+
+    `reset_onts` e `reset_consumables` controlam quais entidades são
+    afetadas dentro do escopo. Confirmação obrigatória.
+    """
+    confirm: str
+    scope: str  # "item" | "collaborator" | "praca"
+    target_id: str
+    reset_onts: bool = True
+    reset_consumables: bool = True
+
+
+@router.post("/admin/reset-granular", status_code=200)
+async def stok_admin_reset_granular(payload: StokGranularResetIn,
+                                       user: dict = Depends(require_role("auditor"))):
+    """Reset por escopo (item, colaborador, praça)."""
+    if (payload.confirm or "").strip().upper() != "ZERAR ESTOQUE":
+        raise HTTPException(400,
+            "Confirmação inválida. Digite exatamente 'ZERAR ESTOQUE'.")
+    scope = (payload.scope or "").strip().lower()
+    if scope not in ("item", "collaborator", "praca"):
+        raise HTTPException(400, "Escopo inválido. Use item|collaborator|praca.")
+    if not (payload.target_id or "").strip():
+        raise HTTPException(400, "target_id obrigatório.")
+
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    target = payload.target_id.strip()
+    deleted = {"onts": 0, "consumables_rows": 0, "consumable_units": 0}
+    before: Dict[str, Any] = {}
+    target_label = target
+
+    if scope == "item":
+        # Validação do consumable_id
+        if target not in CONSUMABLE_IDS:
+            raise HTTPException(400, f"Insumo desconhecido: {target}")
+        target_label = CONSUMABLE_BY_ID[target]["name"]
+        # Soma total antes
+        cur = db.stok_stock.find({"company_id": cid, target: {"$gt": 0}},
+                                       {"_id": 0, "location": 1, target: 1})
+        rows = await cur.to_list(2000)
+        total_before = sum(r.get(target, 0) for r in rows)
+        before = {"total_units": total_before, "rows_affected": len(rows)}
+        # Zera em todas as locations
+        r = await db.stok_stock.update_many(
+            {"company_id": cid}, {"$set": {target: 0}},
+        )
+        deleted["consumables_rows"] = r.modified_count
+        deleted["consumable_units"] = total_before
+
+    elif scope == "collaborator":
+        # Verifica que existe colaborador
+        coll = await db.collaborators.find_one(
+            {"id": target, "company_id": cid}, {"_id": 0, "name": 1},
+        )
+        if not coll:
+            raise HTTPException(404, "Colaborador não encontrado.")
+        target_label = coll.get("name", target)
+        if payload.reset_onts:
+            onts_count = await db.stok_onts.count_documents(
+                {"company_id": cid, "location_type": "tecnico",
+                  "location_id": target},
+            )
+            before["onts"] = onts_count
+            r = await db.stok_onts.delete_many(
+                {"company_id": cid, "location_type": "tecnico",
+                  "location_id": target},
+            )
+            deleted["onts"] = r.deleted_count
+        if payload.reset_consumables:
+            loc_key = f"tech:{target}"
+            doc = await db.stok_stock.find_one(
+                {"company_id": cid, "location": loc_key}, {"_id": 0},
+            )
+            if doc:
+                before["consumables_units"] = sum(
+                    v for k, v in doc.items() if k in CONSUMABLE_IDS
+                    and isinstance(v, (int, float)))
+            r = await db.stok_stock.delete_one(
+                {"company_id": cid, "location": loc_key})
+            deleted["consumables_rows"] = r.deleted_count
+
+    elif scope == "praca":
+        praca = await db.pracas.find_one(
+            {"id": target, "company_id": cid}, {"_id": 0, "name": 1},
+        )
+        if not praca:
+            raise HTTPException(404, "Praça não encontrada.")
+        target_label = praca.get("name", target)
+        if payload.reset_onts:
+            r = await db.stok_onts.delete_many(
+                {"company_id": cid, "location_type": "praca",
+                  "location_id": target},
+            )
+            deleted["onts"] = r.deleted_count
+        if payload.reset_consumables:
+            loc_key = f"praca:{target}"
+            doc = await db.stok_stock.find_one(
+                {"company_id": cid, "location": loc_key}, {"_id": 0},
+            )
+            if doc:
+                before["consumables_units"] = sum(
+                    v for k, v in doc.items() if k in CONSUMABLE_IDS
+                    and isinstance(v, (int, float)))
+            r = await db.stok_stock.delete_one(
+                {"company_id": cid, "location": loc_key})
+            # Também limpa praca_id para que não fique ortogonal
+            r2 = await db.stok_stock.update_many(
+                {"company_id": cid, "praca_id": target},
+                {"$set": {**{cid_: 0 for cid_ in CONSUMABLE_IDS}}},
+            )
+            deleted["consumables_rows"] = (
+                (r.deleted_count or 0) + (r2.modified_count or 0))
+
+    # Auditoria + histórico
+    log_entry = {
+        "id": str(uuid.uuid4()),
+        "company_id": cid,
+        "action": "stok_reset_granular",
+        "performed_by_email": user.get("email"),
+        "performed_by_name": user.get("name"),
+        "performed_by_role": user.get("role"),
+        "timestamp": now_iso(),
+        "scope": scope,
+        "target_id": target,
+        "target_label": target_label,
+        "reset_onts": payload.reset_onts,
+        "reset_consumables": payload.reset_consumables,
+        "before": before,
+        "deleted": deleted,
+    }
+    try:
+        await db.stok_admin_log.insert_one(log_entry)
+    except Exception as e:
+        logger.warning("[stok_reset_granular] log fail: %s", e)
+    await _add_history(
+        "admin_reset_granular",
+        f"Auditor zerou {scope}={target_label}: "
+        f"ONTs={deleted.get('onts', 0)}, "
+        f"insumos_rows={deleted.get('consumables_rows', 0)}, "
+        f"insumos_unidades={deleted.get('consumable_units', 0)}",
+        user.get("name", "?"), "auditoria", cid,
+    )
+    logger.warning(
+        "[stok_reset_granular] auditor=%s scope=%s target=%s deleted=%s",
+        user.get("email"), scope, target, deleted,
+    )
+    return {"ok": True, "scope": scope, "target_id": target,
+             "target_label": target_label, "before": before,
+             "deleted": deleted, "log_id": log_entry["id"]}
+
+
+# ---------------------------------------------------------------------------
+# RELATÓRIO DE QUEBRA DE ESTOQUE — perdas e divergências
+# ---------------------------------------------------------------------------
+@router.get("/admin/shrinkage-report")
+async def stok_shrinkage_report(user: dict = Depends(require_role("auditor"))):
+    """Relatório de quebra (shrinkage) de estoque.
+
+    Para cada **insumo**: compara
+      `entries`  (soma de eventos `entrada_insumo`) +
+      `transfer` (movimentações internas, somam zero em rede mas servem
+                  de auditoria) —
+      `services` (consumo via fechamento de OS, derivado de `servico`)
+      vs `current_balance` (soma de `stok_stock[item]` em todas as locations).
+
+    Se `entries - services - current_balance > 0`, classifica como
+    **QUEBRA** (item desaparecido / não rastreado).
+
+    Para **ONTs**: total de eventos `entrada_ont` − ONTs registradas
+    atualmente em `stok_onts` − ONTs instaladas em clientes
+    (status='com_cliente') = delta. Delta>0 → quebra.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    # ---- INSUMOS ----
+    consumables_report: List[Dict[str, Any]] = []
+    # Saldo atual por item
+    stock_rows = await db.stok_stock.find(
+        {"company_id": cid}, {"_id": 0},
+    ).to_list(2000)
+    current_balance = {cid_: 0 for cid_ in CONSUMABLE_IDS}
+    for r in stock_rows:
+        for k in CONSUMABLE_IDS:
+            v = r.get(k)
+            if isinstance(v, (int, float)) and v > 0:
+                current_balance[k] = current_balance.get(k, 0) + v
+
+    # Entradas e saídas via histórico (heurística baseada na descrição)
+    hist = await db.stok_history.find(
+        {"company_id": cid,
+          "type": {"$in": ["entrada_insumo", "servico", "transferencia_insumo"]}},
+        {"_id": 0, "type": 1, "description": 1},
+    ).to_list(50000)
+    entries = {cid_: 0 for cid_ in CONSUMABLE_IDS}
+    consumed = {cid_: 0 for cid_ in CONSUMABLE_IDS}
+    # Extrai quantidades das descrições — formato já padronizado:
+    #   "Entrada de N {pack_label}(s) de {name}: {total} {unit}"
+    import re
+    for h in hist:
+        desc = h.get("description") or ""
+        t = h.get("type")
+        for item_id, item in CONSUMABLE_BY_ID.items():
+            if item["name"] not in desc:
+                continue
+            # Tenta extrair total
+            m = re.search(r":\s*(\d+(?:\.\d+)?)\s*" + re.escape(item["unit"]),
+                              desc)
+            if not m:
+                m = re.search(r"(\d+(?:\.\d+)?)\s*" + re.escape(item["unit"]),
+                                  desc)
+            qty = float(m.group(1)) if m else 0
+            if qty <= 0:
+                continue
+            if t == "entrada_insumo":
+                entries[item_id] += qty
+            elif t == "servico":
+                consumed[item_id] += qty
+            break  # match único por linha
+    # Monta o relatório
+    total_entries = total_consumed = total_balance = total_shrinkage = 0
+    for item_id, item in CONSUMABLE_BY_ID.items():
+        e = entries.get(item_id, 0)
+        c = consumed.get(item_id, 0)
+        b = current_balance.get(item_id, 0)
+        # Quebra = entradas − consumidos − saldo. Se positivo, sumiu.
+        shrink = max(e - c - b, 0)
+        total_entries += e
+        total_consumed += c
+        total_balance += b
+        total_shrinkage += shrink
+        consumables_report.append({
+            "item_id": item_id, "name": item["name"], "unit": item["unit"],
+            "entries": e, "consumed": c, "current_balance": b,
+            "shrinkage": shrink,
+            "shrinkage_pct": round((shrink / e) * 100, 2) if e > 0 else 0,
+        })
+
+    # ---- ONTs ----
+    total_ont_entries = await db.stok_history.count_documents(
+        {"company_id": cid, "type": "entrada_ont"},
+    )
+    # Entradas reais (cada doc pode ter trazido N ONTs). Como a descrição é
+    # "Entrada de N ONT(s) modelo X" — soma N:
+    entry_docs = await db.stok_history.find(
+        {"company_id": cid, "type": "entrada_ont"},
+        {"_id": 0, "description": 1},
+    ).to_list(10000)
+    ont_in = 0
+    for d in entry_docs:
+        m = re.search(r"Entrada de (\d+) ONT", d.get("description") or "")
+        if m:
+            ont_in += int(m.group(1))
+    onts_now = await db.stok_onts.count_documents({"company_id": cid})
+    onts_with_clients = await db.stok_onts.count_documents(
+        {"company_id": cid, "status": "com_cliente"})
+    # Quebra = entradas − total atual no banco (independente da status,
+    # pois já estão em algum lugar dentro do sistema).
+    ont_shrinkage = max(ont_in - onts_now, 0)
+
+    return {
+        "company_id": cid,
+        "generated_at": now_iso(),
+        "consumables": consumables_report,
+        "consumables_totals": {
+            "entries": total_entries,
+            "consumed": total_consumed,
+            "current_balance": total_balance,
+            "shrinkage": total_shrinkage,
+        },
+        "onts": {
+            "entries_events": total_ont_entries,
+            "total_in": ont_in,
+            "current_count": onts_now,
+            "with_clients": onts_with_clients,
+            "shrinkage": ont_shrinkage,
+        },
+    }

@@ -257,6 +257,11 @@ export const api = {
   // Reset destrutivo (somente Auditor)
   stokAdminReset: (data) => client.post(`/stok/admin/reset`, data).then((r) => r.data),
   stokAdminResetLog: () => client.get(`/stok/admin/reset/log`).then((r) => r.data),
+  // Reset granular (item / colaborador / praça) + relatório de quebra
+  stokAdminResetGranular: (data) =>
+    client.post(`/stok/admin/reset-granular`, data).then((r) => r.data),
+  stokShrinkageReport: () =>
+    client.get(`/stok/admin/shrinkage-report`).then((r) => r.data),
   // Lookup público: cliente do ticket está no SmartOLT?
   publicClientByTicket: (ticket_id) =>
     client.get(`/smartolt/public/client-by-ticket/${ticket_id}`).then((r) => r.data),
