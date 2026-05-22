@@ -3378,7 +3378,20 @@ function PrintableTicketRow({ row, idx, isOpen }) {
     );
   }
 
-  const closedAt = (row.closed_at || "").slice(0, 16).replace("T", " ");
+  // Mostra fechamento no fuso local do navegador (BRT para usuários no
+  // Brasil), espelhando a hora do SmartOLT no celular. O backend grava
+  // em UTC; aqui convertemos para exibição.
+  const closedAt = row.closed_at
+    ? (() => {
+        try {
+          const d = new Date(row.closed_at);
+          if (Number.isNaN(d.getTime())) return "";
+          return d.toLocaleString("pt-BR", {
+            dateStyle: "short", timeStyle: "short",
+          });
+        } catch { return row.closed_at.slice(0, 16).replace("T", " "); }
+      })()
+    : "";
   const sinal = cd.sinal;
   const sinalStr = typeof sinal === "number" ? `${sinal.toFixed(1)} dBm` : "—";
   let ctoStr = "—";

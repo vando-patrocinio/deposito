@@ -30,6 +30,38 @@ from core import get_current_user
 router = APIRouter(prefix="/api", tags=["pdf-reports"])
 
 
+# Fuso horário do operador (BRT, UTC-3). O backend grava `closed_at`,
+# `created_at`, `scheduled_date/time` em UTC (`now_iso()`), mas o
+# relatório precisa exibir o MESMO horário que o técnico vê no celular
+# (sistema SmartOLT + WhatsApp em horário local). Pedido do usuário, 22/02.
+BR_TZ = timezone(timedelta(hours=-3))
+
+
+def _fmt_local_dt(value: Optional[str], with_tz_label: bool = False) -> str:
+    """Converte um ISO UTC ('2026-05-22T17:04:51+00:00' ou
+    '2026-05-22T17:04:51Z') para 'YYYY-MM-DD HH:MM' em BRT.
+
+    Tolerante: se a string não tem timezone, assume UTC (padrão do backend).
+    Se já vem com offset, respeita o offset original. Se for inválida,
+    devolve a string crua truncada (fallback).
+    """
+    if not value:
+        return ""
+    try:
+        s = str(value).strip().replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        local = dt.astimezone(BR_TZ)
+        out = local.strftime("%Y-%m-%d %H:%M")
+        if with_tz_label:
+            out += " BRT"
+        return out
+    except (ValueError, TypeError):
+        # Fallback gracioso: corta primeiras 16 chars e troca T por espaço
+        return str(value)[:16].replace("T", " ")
+
+
 def _company_id(user: dict) -> str:
     return user.get("company_id") or "company_demo"
 
@@ -495,7 +527,7 @@ async def closed_tickets_pdf(
                 cd = r.get("completion_data") or {}
 
                 if is_open:
-                    created = (r.get("created_at") or "")[:16].replace("T", " ")
+                    created = _fmt_local_dt(r.get("created_at"))
                     sched = (r.get("scheduled_date") or "") + \
                               (f" {r.get('scheduled_time')}" if r.get("scheduled_time") else "")
                     sched = sched or "—"
@@ -507,7 +539,7 @@ async def closed_tickets_pdf(
                         Paragraph((cs.get("address") or "")[:120], styles["body"]),
                     ])
                 else:
-                    closed_at = (r.get("closed_at") or "")[:16].replace("T", " ")
+                    closed_at = _fmt_local_dt(r.get("closed_at"))
                     sinal = cd.get("sinal")
                     sinal_str = f"{sinal:.1f} dBm" if isinstance(sinal, (int, float)) else "—"
 
