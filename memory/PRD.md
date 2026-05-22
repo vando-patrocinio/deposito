@@ -71,6 +71,29 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **Simulador de reajuste anual de planos** (10/05/2026 — iter48): Endpoints `POST /plans/{id}/adjustment/preview` (calcula impacto SEM aplicar — retorna assinantes afetados, novo preço, delta por assinante, delta receita mensal e anual, amostra de assinantes), `POST /plans/{id}/adjustment/apply` (aplica: atualiza `monthly_price` no plano + `plan_price` snapshot nos subscribers + grava log em `plan_adjustments_log`), `GET /plans/{id}/adjustment/history` (últimos 20 reajustes do plano). Filtro de status (default = só ATIVO/INADIMPLENTE/EM_INSTALACAO). Override de percentual disponível. UI: botão "Reajustar" no PlanCard (com badge laranja) abre modal com 4 KPI cards (Assinantes afetados, Por assinante, Receita mensal+, Receita anual+), amostra de até 8 subscribers impactados, histórico inline, fluxo de 2 cliques pra confirmar (revisar → aplicar). Validado curl: R$ 79,90 → R$ 85,09 (+6.5%), log gravado, preço persistido.
 ✅ **Aba Planos visível para todos os perfis** (10/05/2026 — iter48): adicionado `plans` ao `TAB_DEFINITIONS` e `DEFAULT_TAB_PERMISSIONS` (auditor + gestor) em TabPermissionsCard. Migração suave do tab_permissions cuida de adicionar pra empresas que já tinham config gravada.
 ✅ **SmartOLT AI — Modo ATIVO + CO-PILOTO interno** (10/05/2026): worker autônomo roda a cada **30s** com **threshold dinâmico** (≥10 ONUs em LOS OU ≥50% do PON). RECEPTIVO (A2A system_prompt), ATIVO (drafts → aprovação humana 1-clique), CO-PILOTO (internal notes amarelas, cliente nunca vê). Templates editáveis. Endpoints `/api/smartolt-ai/{summary,outages/{active,recent,detect},drafts,drafts/{id}/{send,discard},drafts/send-bulk,templates}`.
+✅ **Projetos · Checklist com Progresso Visual no Kanban** (22/02/2026 — iter124):
+
+**Backend** (`/app/backend/routes/projects.py`):
+- Novos schemas: `ChecklistItemIn` (text), `ChecklistItemPatch` (text/done)
+- 3 endpoints: `POST /api/projects/{id}/checklist` (adicionar item), `PATCH .../checklist/{item_id}` (toggle/editar — quando marca como done, grava `done_at` + `done_by_name`), `DELETE .../checklist/{item_id}` (remover via `$pull`)
+- `_normalize_project` agora retorna `checklist[]` + `checklist_progress: {done, total, pct}` computado on-the-fly
+- `_require_manager` ampliado: aceita `is_super_admin=True` (não só role gestor/administrador) — fix encontrado durante teste
+
+**Frontend** (`/app/frontend/src/ProjectsPanel.js`):
+- `<ProjectCard>` ganhou bloco de barra de progresso: aparece somente quando `checklist_progress.total > 0`, exibe `✓ 2/5 — 40%` + barra com altura 4px (azul `#0ea5e9` no progresso parcial, verde `#15803d` em 100%)
+- Novo `<ChecklistSection>` no modal de detalhes (bloco azul claro `#eff6ff`): header com contador `✓ Checklist · 2/5 (40%)`, barra de progresso 6px, lista de items com checkbox, line-through quando done, label "Concluído por {name} em {timestamp}", botão `×` para remover, input "Adicionar subtarefa (Enter)..." na parte inferior
+- `canManage` agora aceita `is_super_admin` (alinhado com backend)
+- data-testids: `checklist-progress-bar`, `checklist-item-{id}`, `checklist-toggle-{id}`, `checklist-delete-{id}`, `checklist-new-input`, `checklist-add-btn`, `progress-{project_id}` (no card)
+
+**Validado E2E** via Playwright:
+- Login admin@empresa.com (com `is_super_admin=true` aplicado pra teste) → cria projeto "Lançamento Backbone PB3-Centro" → adiciona 5 itens ("Autorização", "Lançamento aéreo", "Splice", "Certificação OTDR", "Ativação") → marca 2 como done
+- Modal de detalhes: bloco azul com checklist 2/5 (40%), itens marcados em line-through com timestamp, itens pendentes com checkbox vazio
+- Card no Kanban: barra de progresso azul a 40% visível abaixo das tags
+- Testes confirmaram: rendering com `prog text = ✓ 2/540%`
+- Lint Python + JS limpos
+
+⚠️ Atualização lateral: admin@empresa.com (auditor) ganhou `is_super_admin=true` para permitir gerenciamento de projetos. Atualizado em test_credentials.md.
+
 ✅ **Acompanhamento — Kanban de Projetos com Laudo Fotográfico** (22/02/2026 — iter123): nova aba "Acompanhamento" (Operação) inspirada em Trello/Linear/ClickUp + best practices da indústria fiber/telecom (Splynx Field Service).
 
 **Backend** (`/app/backend/routes/projects.py`, NOVO 320+ linhas):

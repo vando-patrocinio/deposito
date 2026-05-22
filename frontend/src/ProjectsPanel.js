@@ -40,7 +40,8 @@ export default function ProjectsPanel({ currentUser }) {
   const [showNew, setShowNew] = useState(false);
   const [selected, setSelected] = useState(null);
   const canManage = ["gestor", "administrador"]
-    .includes((currentUser?.role || "").toLowerCase());
+    .includes((currentUser?.role || "").toLowerCase())
+    || !!currentUser?.is_super_admin;
 
   const reload = async () => {
     setLoading(true); setErr("");
@@ -313,6 +314,28 @@ function ProjectCard({ p, draggable, onOpen }) {
               borderRadius: 4, fontWeight: 600,
             }}>#{t}</span>
           ))}
+        </div>
+      )}
+      {/* Progresso do checklist (apenas se houver subtarefas) */}
+      {p.checklist_progress && p.checklist_progress.total > 0 && (
+        <div data-testid={`progress-${p.id}`}
+              style={{ marginBottom: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between",
+                          fontSize: 9.5, color: "#475569",
+                          marginBottom: 2, fontWeight: 700 }}>
+            <span>✓ {p.checklist_progress.done}/{p.checklist_progress.total}</span>
+            <span>{p.checklist_progress.pct}%</span>
+          </div>
+          <div style={{ height: 4, background: "#e2e8f0",
+                          borderRadius: 4, overflow: "hidden" }}>
+            <div style={{
+              width: `${p.checklist_progress.pct}%`,
+              height: "100%",
+              background: p.checklist_progress.pct === 100
+                ? "#15803d" : "#0ea5e9",
+              transition: "width 0.3s",
+            }} />
+          </div>
         </div>
       )}
       <div style={{ display: "flex", justifyContent: "space-between",
@@ -724,6 +747,14 @@ function ProjectDetailModal({ projectId, canManage, onClose, onChanged }) {
         </div>
       )}
 
+      {/* Checklist (subtarefas) */}
+      <ChecklistSection
+        projectId={projectId}
+        items={data.checklist || []}
+        progress={data.checklist_progress}
+        canManage={canManage}
+        onChanged={reload} />
+
       {/* Files */}
       <div style={{ marginTop: 16, padding: 12,
                       background: "#fef9c3", borderRadius: 10,
@@ -826,6 +857,151 @@ function ProjectDetailModal({ projectId, canManage, onClose, onChanged }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+
+function ChecklistSection({ projectId, items, progress, canManage, onChanged }) {
+  const [newText, setNewText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const addItem = async (e) => {
+    e?.preventDefault?.();
+    const text = (newText || "").trim();
+    if (!text || busy) return;
+    setBusy(true);
+    try {
+      await client.post(`/projects/${projectId}/checklist`, { text });
+      setNewText("");
+      onChanged?.();
+    } finally { setBusy(false); }
+  };
+  const toggle = async (item) => {
+    try {
+      await client.patch(
+        `/projects/${projectId}/checklist/${item.id}`,
+        { done: !item.done });
+      onChanged?.();
+    } catch (e) { console.error(e); }
+  };
+  const remove = async (item) => {
+    if (!window.confirm("Remover este item?")) return;
+    try {
+      await client.delete(`/projects/${projectId}/checklist/${item.id}`);
+      onChanged?.();
+    } catch (e) { console.error(e); }
+  };
+
+  const done = progress?.done || 0;
+  const total = progress?.total || items.length;
+  const pct = progress?.pct || 0;
+
+  return (
+    <div data-testid="project-checklist"
+          style={{ marginTop: 16, padding: 12,
+                     background: "#eff6ff", borderRadius: 10,
+                     border: "1px solid #bfdbfe" }}>
+      <div style={{ display: "flex", justifyContent: "space-between",
+                      alignItems: "center", marginBottom: 8 }}>
+        <strong style={{ fontSize: 13, color: "#1e40af" }}>
+          ✓ Checklist · {done}/{total} ({pct}%)
+        </strong>
+      </div>
+      {/* Barra de progresso */}
+      {total > 0 && (
+        <div style={{ height: 6, background: "#dbeafe",
+                        borderRadius: 4, overflow: "hidden",
+                        marginBottom: 10 }}>
+          <div data-testid="checklist-progress-bar"
+                style={{
+                  width: `${pct}%`, height: "100%",
+                  background: pct === 100 ? "#15803d" : "#0ea5e9",
+                  transition: "width 0.3s",
+                }} />
+        </div>
+      )}
+      {/* Itens */}
+      {items.length === 0 && (
+        <div style={{ color: "#1d4ed8", fontSize: 12,
+                        marginBottom: canManage ? 10 : 0 }}>
+          Nenhuma subtarefa. Adicione passos como
+          "Autorização → Splice → Certificação → Ativação".
+        </div>
+      )}
+      {items.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column",
+                        gap: 4, marginBottom: canManage ? 10 : 0 }}>
+          {items.map((it) => (
+            <div key={it.id}
+                  data-testid={`checklist-item-${it.id}`}
+                  style={{ display: "flex", gap: 8, alignItems: "center",
+                              background: "white", padding: "6px 10px",
+                              borderRadius: 6, border: "1px solid #bfdbfe",
+                              fontSize: 12.5,
+                              opacity: it.done ? 0.65 : 1 }}>
+              <input type="checkbox"
+                      checked={!!it.done}
+                      onChange={() => toggle(it)}
+                      data-testid={`checklist-toggle-${it.id}`}
+                      disabled={!canManage}
+                      style={{ width: 16, height: 16,
+                                  cursor: canManage ? "pointer" : "default" }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontWeight: 600,
+                  color: it.done ? "#94a3b8" : "#0f172a",
+                  textDecoration: it.done ? "line-through" : "none",
+                  wordBreak: "break-word",
+                }}>{it.text}</div>
+                {it.done && it.done_by_name && (
+                  <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                    Concluído por {it.done_by_name}{" "}
+                    em {(it.done_at || "").slice(0, 16).replace("T", " ")}
+                  </div>
+                )}
+              </div>
+              {canManage && (
+                <button data-testid={`checklist-delete-${it.id}`}
+                          onClick={() => remove(it)}
+                          style={{
+                            background: "transparent", border: 0,
+                            color: "#dc2626", cursor: "pointer",
+                            fontSize: 16, padding: "0 4px",
+                          }}
+                          title="Remover">×</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {canManage && (
+        <form onSubmit={addItem}
+              style={{ display: "flex", gap: 6 }}>
+          <input data-testid="checklist-new-input"
+                  value={newText}
+                  onChange={(e) => setNewText(e.target.value)}
+                  placeholder="Adicionar subtarefa (Enter)…"
+                  disabled={busy}
+                  style={{
+                    flex: 1, padding: "6px 10px", borderRadius: 6,
+                    border: "1px solid #bfdbfe", fontSize: 12,
+                    background: "white",
+                  }} />
+          <button type="submit"
+                    data-testid="checklist-add-btn"
+                    disabled={busy || !newText.trim()}
+                    style={{
+                      padding: "6px 12px", borderRadius: 6, border: 0,
+                      background: busy || !newText.trim()
+                        ? "#cbd5e1" : "#0ea5e9",
+                      color: "white", fontSize: 12, fontWeight: 700,
+                      cursor: busy || !newText.trim() ? "default" : "pointer",
+                    }}>
+            +
+          </button>
+        </form>
+      )}
+    </div>
   );
 }
 

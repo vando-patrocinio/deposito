@@ -89,9 +89,22 @@ class ProjectPatch(BaseModel):
     end_date: Optional[str] = None
 
 
+class ChecklistItemIn(BaseModel):
+    text: str
+
+
+class ChecklistItemPatch(BaseModel):
+    text: Optional[str] = None
+    done: Optional[bool] = None
+
+
 def _require_manager(user: dict):
-    if user.get("role") not in ("gestor", "administrador"):
-        raise HTTPException(403, "Apenas gestor/administrador.")
+    if user.get("role") in ("gestor", "administrador"):
+        return
+    # Super admin (auditor com is_super_admin) também pode gerenciar.
+    if user.get("is_super_admin"):
+        return
+    raise HTTPException(403, "Apenas gestor/administrador.")
 
 
 def _normalize_project(p: dict) -> dict:
@@ -102,6 +115,13 @@ def _normalize_project(p: dict) -> dict:
     p.setdefault("tags", [])
     p.setdefault("assignees", [])
     p.setdefault("files_count", 0)
+    cl = p.get("checklist") or []
+    p["checklist"] = cl
+    done = sum(1 for it in cl if it.get("done"))
+    p["checklist_progress"] = {
+        "done": done, "total": len(cl),
+        "pct": round(done / len(cl) * 100) if cl else 0,
+    }
     return p
 
 
@@ -241,6 +261,75 @@ async def delete_project(project_id: str,
     fr = await db.project_files.delete_many(
         {"project_id": project_id, "company_id": cid})
     return {"ok": True, "files_removed": fr.deleted_count}
+
+
+# ---------------------------------------------------------------------------
+# Checklist (subtarefas dentro do projeto)
+# ---------------------------------------------------------------------------
+@router.post("/{project_id}/checklist", status_code=201)
+async def add_checklist_item(project_id: str, payload: ChecklistItemIn,
+                                  user: dict = Depends(get_current_user)):
+    _require_manager(user)
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(400, "Texto obrigatório.")
+    item = {
+        "id": f"ck-{uuid.uuid4().hex[:8]}",
+        "text": text,
+        "done": False,
+        "created_at": now_iso(),
+        "created_by_name": user.get("name"),
+    }
+    r = await db.projects.update_one(
+        {"id": project_id, "company_id": cid},
+        {"$push": {"checklist": item}, "$set": {"updated_at": now_iso()}},
+    )
+    if not r.matched_count:
+        raise HTTPException(404, "Projeto não encontrado.")
+    return item
+
+
+@router.patch("/{project_id}/checklist/{item_id}")
+async def patch_checklist_item(project_id: str, item_id: str,
+                                    payload: ChecklistItemPatch,
+                                    user: dict = Depends(get_current_user)):
+    _require_manager(user)
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    update: Dict[str, Any] = {"updated_at": now_iso()}
+    fields = payload.model_dump(exclude_unset=True)
+    if "text" in fields:
+        update["checklist.$.text"] = fields["text"]
+    if "done" in fields:
+        update["checklist.$.done"] = bool(fields["done"])
+        if fields["done"]:
+            update["checklist.$.done_at"] = now_iso()
+            update["checklist.$.done_by_name"] = user.get("name")
+        else:
+            update["checklist.$.done_at"] = None
+            update["checklist.$.done_by_name"] = None
+    r = await db.projects.update_one(
+        {"id": project_id, "company_id": cid, "checklist.id": item_id},
+        {"$set": update},
+    )
+    if not r.matched_count:
+        raise HTTPException(404, "Item não encontrado.")
+    return {"ok": True}
+
+
+@router.delete("/{project_id}/checklist/{item_id}", status_code=200)
+async def delete_checklist_item(project_id: str, item_id: str,
+                                      user: dict = Depends(get_current_user)):
+    _require_manager(user)
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    r = await db.projects.update_one(
+        {"id": project_id, "company_id": cid},
+        {"$pull": {"checklist": {"id": item_id}},
+          "$set": {"updated_at": now_iso()}},
+    )
+    if not r.matched_count:
+        raise HTTPException(404, "Projeto não encontrado.")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
