@@ -1455,3 +1455,25 @@ praça e DRE de compras mensal.
   - Refresh sem erro. Empty-state OK quando 1d=0 msgs.
 - **Impacto comercial**: gestor agora vê em tempo real o ROI da IA — "esta semana a IA atendeu 18 clientes únicos fora do horário, equivalente a R$ 442,50 de call-center economizados (81% das conversas da janela)".
 
+
+
+✅ **Viabilidade técnica automática por endereço — Isabella verifica cobertura ao receber endereço** (22/02/2026):
+- **Pedido do usuário** (PT-BR): "já que vc tem acesso ao endereço dos clientes, quando um cliente for instalar e vc for confirmar o endereço, verifique se temos esse endereço nos endereços de nossos clientes assim vc vai saber se tem viabilidade ou não".
+- **Backend novo** (`services/coverage_checker.py`):
+  - `parse_address(text)` — extrai street/district/cep/number de texto livre PT-BR. Heurística por "bairro X" explícito + fallback pela última parte textual (ignora CEP, números puros e cidades conhecidas).
+  - `looks_like_address(text)` — detecta menção de endereço (rua, av., CEP, "moro em", etc).
+  - `check_coverage(company_id, text)` — cruza com `subscriber_addresses` (clientes ATIVO) + `ctos` retornando 3 níveis:
+    - **VIAVEL_DIRETO**: rua bate ≥0.6 score com subscriber/CTO → confirma cobertura, segue venda.
+    - **VIAVEL_PROVAVEL**: bairro com ≥1 ponto de cobertura → oferece visita técnica.
+    - **SEM_REGISTROS**: bairro fora da malha → registra como pendente p/ equipe técnica.
+  - `format_for_prompt(check)` — produz bloco `=== VIABILIDADE TÉCNICA ===` com status + análise + neighbors **com nome mascarado** (`Vando P.`) e CTOs (rua/bairro/portas livres), respeitando LGPD.
+- **Integração** (`routes/whatsapp_baileys.py` ~linha 1810): quando `looks_like_address(user_text)` retorna True, dispara `check_coverage` com `asyncio.wait_for(timeout=4s)` e injeta o bloco no prompt antes da IA responder.
+- **Markers novos** (em `services/marker_router.py`):
+  - `[AGENDAR_VIABILIDADE:date=YYYY-MM-DD,time=HH:MM]` → cria ticket `type=viabilidade, status=aberto, priority=media, origin_source=isabella_viability` na Lousa.
+  - `[VIABILIDADE_PENDENTE]` → cria registro em `viability_requests` com `status=pending_technical_review`.
+- **Prompt da Isabella v6.80** atualizado com nova seção `<viability>` (3 status + regras LGPD "NUNCA cite nomes de outros clientes — neighbors vêm mascarados só pra você ter certeza") + `<markers>` ganhou os 2 novos.
+- **Validação**:
+  - Pytest `tests/test_coverage_viability.py` (1/1 PASS).
+  - Regressão zero: 6/6 pytests passam.
+  - `testing_agent_v3_fork` iteration_110: 0 falhas, confirmou NO LGPD name leak.
+- **Impacto comercial**: Isabella sabe em <4s se a empresa atende aquele endereço. Cliente recebe resposta direta ("já temos cobertura na sua rua! 🚀") ou agendamento técnico automático sem fricção.
