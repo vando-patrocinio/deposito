@@ -453,6 +453,214 @@ async def public_client_by_ticket(ticket_id: str):
     return out
 
 
+# ---------------------------------------------------------------------------
+# DIAGNÓSTICO PÚBLICO PARA O ÁLVARO (suporte técnico no WhatsApp)
+# ---------------------------------------------------------------------------
+@router.get("/public/onu-diagnose/{phone}")
+async def public_onu_diagnose(phone: str):
+    """Diagnóstico técnico da ONU do cliente identificado pelo telefone.
+
+    Usado pelo agente Álvaro durante atendimento de reparo no WhatsApp.
+
+    Retorna:
+    {
+      "found": bool,
+      "external_id": str|null,    # ID pra reboot
+      "client_name": str|null,
+      "status": "online"|"los"|"power_off"|"offline"|"unknown",
+      "uptime_minutes": int|null, # quanto tempo está online (se status=online)
+      "uptime_human": str|null,   # "2h 15min" formatado
+      "last_status_change": str|null,  # ISO timestamp da última mudança
+      "signal_text": str|null,
+      "olt_name": str|null,
+      "diagnosis": str,           # explicação pro cliente em PT-BR
+    }
+    """
+    # Procura o subscriber pelo phone (em qualquer empresa que tenha esse nº)
+    norm = _norm(phone)
+    sub_phone = await db.subscriber_phones.find_one(
+        {"variants": norm}, {"_id": 0, "subscriber_id": 1, "company_id": 1},
+    )
+    if not sub_phone:
+        return {"found": False, "diagnosis":
+                "Cliente não encontrado no SmartOLT. Vou abrir um atendimento "
+                "técnico pra investigar do zero."}
+    cid = sub_phone.get("company_id")
+    sub_id = sub_phone.get("subscriber_id")
+    sub = await db.subscribers.find_one(
+        {"id": sub_id}, {"_id": 0, "name": 1, "pppoe": 1, "external_code": 1},
+    )
+    if not sub:
+        return {"found": False, "diagnosis":
+                "Cadastro do cliente não encontrado."}
+    norm_name = _norm(sub.get("name") or "")
+    norm_pppoe = _norm(sub.get("pppoe") or sub.get("external_code") or "")
+    onu = None
+    if norm_pppoe:
+        onu = await db.smartolt_onus.find_one(
+            {"company_id": cid, "name_norm": norm_pppoe}, {"_id": 0},
+        )
+    if not onu and norm_name:
+        onu = await db.smartolt_onus.find_one(
+            {"company_id": cid, "name_norm": norm_name}, {"_id": 0},
+        )
+    if not onu:
+        return {"found": False, "client_name": sub.get("name"),
+                  "diagnosis": "Cliente está cadastrado mas a ONU não foi "
+                               "localizada no SmartOLT. Vou abrir atendimento."}
+
+    status_raw = (onu.get("status") or "").lower()
+    # Normaliza status para 4 categorias
+    if "online" in status_raw or "up" in status_raw:
+        status = "online"
+    elif "los" in status_raw or "loss" in status_raw:
+        status = "los"
+    elif "power" in status_raw and "off" in status_raw:
+        status = "power_off"
+    elif "off" in status_raw or "down" in status_raw:
+        status = "offline"
+    else:
+        status = status_raw or "unknown"
+
+    # Calcula uptime
+    uptime_minutes = None
+    uptime_human = None
+    last_change = onu.get("last_status_change")
+    if status == "online" and last_change:
+        try:
+            from datetime import datetime, timezone
+            dt = datetime.fromisoformat(str(last_change).replace("Z", "+00:00"))
+            delta = datetime.now(timezone.utc) - dt
+            uptime_minutes = int(delta.total_seconds() // 60)
+            d = delta.days
+            h = (delta.seconds // 3600)
+            m = (delta.seconds // 60) % 60
+            parts = []
+            if d:
+                parts.append(f"{d}d")
+            if h:
+                parts.append(f"{h}h")
+            if m and d == 0:
+                parts.append(f"{m}min")
+            uptime_human = " ".join(parts) or "<1min"
+        except Exception:
+            pass
+
+    # Diagnóstico em PT-BR pro cliente
+    diag_map = {
+        "online": (
+            f"Equipamento ONLINE há {uptime_human or '? tempo'}. "
+            "Sinal estável. Vou reiniciar a ONU remotamente — pode ser "
+            "uma instabilidade momentânea. Você também pode desligar o "
+            "equipamento da tomada por 30s e religar."
+        ),
+        "los": (
+            "Status LOS (Loss of Signal): a fibra que chega na sua casa "
+            "não está recebendo luz da nossa rede. Causas comuns: cabo "
+            "rompido na rua (caminhão, manutenção elétrica), conector "
+            "solto na caixa externa, ou problema na CTO do seu bairro. "
+            "Não é coisa que você resolve aí — preciso enviar técnico."
+        ),
+        "power_off": (
+            "Status POWER OFF: o equipamento não está recebendo energia. "
+            "Provavelmente é algo dentro da sua casa: a tomada onde o "
+            "aparelho está ligado, o cabo de força ou a fonte do roteador. "
+            "Verifique se a tomada tem energia (pode testar com um "
+            "carregador, por exemplo)."
+        ),
+        "offline": (
+            "Equipamento OFFLINE. Pode ser falta de energia, equipamento "
+            "desligado ou problema na fibra. Vou pedir pra você verificar "
+            "se ele está aceso primeiro."
+        ),
+        "unknown": (
+            "Não consegui identificar o status agora. Vou abrir "
+            "atendimento técnico pra investigar."
+        ),
+    }
+    return {
+        "found": True,
+        "external_id": onu.get("unique_external_id"),
+        "client_name": sub.get("name"),
+        "subscriber_id": sub_id,
+        "company_id": cid,
+        "status": status,
+        "uptime_minutes": uptime_minutes,
+        "uptime_human": uptime_human,
+        "last_status_change": last_change,
+        "signal_text": onu.get("signal_text"),
+        "olt_name": onu.get("olt_name"),
+        "diagnosis": diag_map.get(status, diag_map["unknown"]),
+    }
+
+
+class PublicRebootIn(BaseModel):
+    """Reboot ONU disparado pelo agente IA durante atendimento WhatsApp."""
+    external_id: str
+    phone: str  # pra auditoria — quem pediu o reboot
+
+
+@router.post("/public/reboot-onu")
+async def public_reboot_onu(payload: PublicRebootIn):
+    """Reinicia ONU via SmartOLT a pedido do agente IA.
+
+    Sem auth — usado pelo Álvaro (suporte técnico). Audita em
+    `smartolt_actions` quem disparou.
+
+    Rate-limit: max 1 reboot por external_id a cada 5 minutos.
+    """
+    from datetime import datetime, timezone, timedelta
+    ext = (payload.external_id or "").strip()
+    if not ext:
+        raise HTTPException(400, "external_id obrigatório")
+    onu = await db.smartolt_onus.find_one(
+        {"unique_external_id": ext},
+        {"_id": 0, "company_id": 1, "name": 1, "olt_name": 1},
+    )
+    if not onu:
+        raise HTTPException(404, "ONU não encontrada")
+    cid = onu.get("company_id")
+    # Rate-limit: olha últimos 5 minutos
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    recent = await db.smartolt_actions.find_one({
+        "company_id": cid, "external_id": ext,
+        "action": "reboot", "created_at": {"$gte": cutoff},
+    }, {"_id": 0, "id": 1})
+    if recent:
+        return {"ok": False, "skipped": True,
+                "reason": "reboot_recente",
+                "message": "Já reiniciei seu equipamento há poucos minutos. "
+                             "Aguarde mais 1-2 min antes de tentar de novo."}
+    cfg = await _get_config(cid)
+    if not cfg.enabled or not cfg.subdomain or not cfg.api_key:
+        raise HTTPException(503, "SmartOLT desabilitado")
+    try:
+        resp = await _http_post(cfg, f"/onu/reboot/{ext}")
+    except Exception as e:
+        raise HTTPException(502, f"SmartOLT erro: {e}") from e
+    ok = bool(resp.get("status"))
+    await db.smartolt_actions.insert_one({
+        "id": f"sma-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "action": "reboot",
+        "external_id": ext,
+        "onu_name": onu.get("name"),
+        "olt_name": onu.get("olt_name"),
+        "actor_user": "alvaro_ai",
+        "actor_phone": payload.phone,
+        "result_ok": ok,
+        "result_raw": resp,
+        "created_at": now_iso(),
+    })
+    return {"ok": ok, "external_id": ext,
+             "message": ("Pronto, mandei o reboot. Em ~60-90 segundos seu "
+                          "equipamento reconecta. Tenta agora aí.") if ok
+                          else "Não consegui reiniciar agora — vou abrir "
+                                "atendimento técnico."}
+
+
+
+
 
 # ---------------------------------------------------------------------------
 # Lookup + signal

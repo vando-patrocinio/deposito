@@ -2154,6 +2154,137 @@ class PublicFinalizeIn(BaseModel):
     bad_signal_auth_id: Optional[str] = None
 
 
+
+
+# ---------------------------------------------------------------------------
+# AGENTE IA — slots disponíveis + criação de ticket de reparo agendado
+# ---------------------------------------------------------------------------
+@router.get("/lousa/public/available-slots")
+async def lousa_public_available_slots(company_id: str,
+                                            days_ahead: int = 3,
+                                            ticket_type: str = "reparo"):
+    """Retorna próximos horários DISPONÍVEIS na Lousa para o agente IA
+    sugerir ao cliente.
+
+    Lógica simplificada (compatível com a grade fixa atual):
+    - Considera apenas dias úteis (seg-sáb) a partir de amanhã.
+    - Horários padrão: 08:00, 10:00, 13:00, 15:00, 17:00 (5 slots/dia).
+    - Conta tickets já agendados no dia/slot e marca como "cheio" se >= 3.
+    """
+    cid = company_id or DEMO_COMPANY_ID
+    from datetime import datetime, timedelta, timezone
+    fixed_slots = ["08:00", "10:00", "13:00", "15:00", "17:00"]
+    max_per_slot = 3
+    now = datetime.now(timezone.utc)
+    options = []
+    for i in range(1, days_ahead * 2 + 5):  # tenta mais dias se algum for domingo
+        d = (now + timedelta(days=i))
+        if d.weekday() == 6:  # domingo
+            continue
+        date_str = d.date().isoformat()
+        # Conta tickets no dia
+        day_tickets = await db.tickets.find(
+            {"company_id": cid, "scheduled_date": date_str,
+              "status": {"$nin": ["finalizada", "encerrada", "cancelada"]}},
+            {"_id": 0, "scheduled_time": 1},
+        ).to_list(200)
+        for sl in fixed_slots:
+            count = sum(1 for t in day_tickets if t.get("scheduled_time") == sl)
+            if count < max_per_slot:
+                options.append({
+                    "date": date_str,
+                    "weekday": ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][d.weekday()],
+                    "time": sl,
+                    "human": f"{['Seg','Ter','Qua','Qui','Sex','Sáb'][d.weekday()]} "
+                                f"({d.day:02d}/{d.month:02d}) às {sl}",
+                })
+            if len(options) >= 6:
+                break
+        if len(options) >= 6:
+            break
+    return {"company_id": cid, "ticket_type": ticket_type,
+              "options": options[:6]}
+
+
+class PublicCreateRepairIn(BaseModel):
+    """Cria ticket de reparo agendado a partir do diagnóstico do Álvaro."""
+    phone: str
+    subscriber_id: Optional[str] = None
+    company_id: str
+    scheduled_date: str  # YYYY-MM-DD
+    scheduled_time: str  # HH:MM
+    onu_status: str  # online/los/power_off/offline
+    diagnosis_text: str
+    client_name: Optional[str] = None
+    address: Optional[str] = None
+    neighborhood: Optional[str] = None
+    reboot_attempted: bool = False
+
+
+@router.post("/lousa/public/create-repair-from-ai")
+async def lousa_public_create_repair_from_ai(payload: PublicCreateRepairIn):
+    """Cria ticket de reparo aberto pela IA Álvaro.
+
+    Diferenças do ticket comum:
+    - origin_source = "alvaro_diagnose"
+    - Inclui status SmartOLT no client_snapshot pra técnico ver no app
+    - Prioridade automática:
+       * los       → alta (interrompe rede de mais clientes provavelmente)
+       * power_off → média (provavelmente interno do cliente)
+       * online    → média (instável)
+    """
+    cid = payload.company_id or DEMO_COMPANY_ID
+    sub = None
+    if payload.subscriber_id:
+        sub = await db.subscribers.find_one(
+            {"id": payload.subscriber_id},
+            {"_id": 0, "name": 1, "address": 1, "neighborhood": 1,
+              "city": 1, "plan_name": 1, "pppoe": 1},
+        )
+    snap = {
+        "name": (sub or {}).get("name") or payload.client_name or "Cliente WhatsApp",
+        "phone": payload.phone,
+        "address": payload.address or (sub or {}).get("address"),
+        "neighborhood": payload.neighborhood or (sub or {}).get("neighborhood"),
+        "city": (sub or {}).get("city"),
+        "plan_name": (sub or {}).get("plan_name"),
+        "pppoe": (sub or {}).get("pppoe"),
+        "smartolt_status": payload.onu_status,
+        "smartolt_diagnosis": payload.diagnosis_text,
+        "reboot_attempted": payload.reboot_attempted,
+    }
+    priority_map = {"los": "alta", "online": "media", "power_off": "media"}
+    ticket = {
+        "id": f"tkt-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "type": "reparo",
+        "status": "aberto",
+        "priority": priority_map.get(payload.onu_status, "media"),
+        "client_snapshot": snap,
+        "subscriber_id": payload.subscriber_id,
+        "origin_source": "alvaro_diagnose",
+        "origin_phone": payload.phone,
+        "scheduled_date": payload.scheduled_date,
+        "scheduled_time": payload.scheduled_time,
+        "notes": (f"Diagnóstico Álvaro IA: {payload.diagnosis_text}\n"
+                    f"Status SmartOLT: {payload.onu_status}\n"
+                    f"Reboot tentado: {'sim' if payload.reboot_attempted else 'não'}"),
+        "created_at": now_iso(),
+    }
+    await db.tickets.insert_one(dict(ticket))
+    # Marca conv com o ticket criado
+    await db.wa_conversations.update_one(
+        {"company_id": cid, "phone": payload.phone},
+        {"$set": {"alvaro_ticket_id": ticket["id"],
+                    "alvaro_ticket_at": now_iso()}},
+    )
+    return {"ok": True, "ticket_id": ticket["id"],
+             "scheduled": f"{payload.scheduled_date} às {payload.scheduled_time}",
+             "message": f"Tudo certo! Agendei sua visita técnica para "
+                         f"{payload.scheduled_date} às {payload.scheduled_time}. "
+                         f"O técnico vai te ligar antes de ir."}
+
+
 @router.post("/lousa/public/tickets/{ticket_id}/open")
 async def public_open_ticket(ticket_id: str, payload: PublicOpenIn,
                                 request: Request = None):

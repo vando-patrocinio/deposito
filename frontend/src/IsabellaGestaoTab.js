@@ -1014,12 +1014,12 @@ function SyncAgentsCard() {
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: "#78350f" }}>
-            Sincronizar Agentes (v6.82 · Disciplina de Contexto)
+            Sincronizar Agentes (v6.83 · Álvaro SmartOLT + Disciplina)
           </div>
           <div style={{ fontSize: 11, color: "#92400e", marginTop: 2 }}>
-            Aplica prompt Isabella Premium + nova disciplina de contexto
-            (sem repetir saudação/nome, 1 pergunta por vez, leitura
-            completa do histórico) em Isabella/Álvaro/Camila/Teste.
+            Inclui v6.82 (disciplina de contexto) + Álvaro com diagnóstico
+            automático SmartOLT (ONLINE/LOS/POWER_OFF), reboot remoto e
+            agendamento na Lousa via markers [REBOOT_ONU]/[AGENDAR_REPARO].
             Idempotente. Use após deploy.
           </div>
         </div>

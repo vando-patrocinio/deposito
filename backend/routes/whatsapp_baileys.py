@@ -1877,6 +1877,28 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         "leitura no celular. Nunca use formatação markdown (sem **, sem listas)."
     )
 
+    # 3a-pre. ÁLVARO TOOLS — diagnóstico SmartOLT + slots da Lousa
+    # Quando a mensagem parece reparo técnico, busca status da ONU + slots e
+    # injeta como contexto. O Álvaro recebe diagnóstico pronto + opções
+    # de agendamento, e usa markers [REBOOT_ONU] / [AGENDAR_REPARO:...] pra
+    # disparar as ações (tratadas no marker_router após a resposta).
+    alvaro_diag = None
+    try:
+        from services.alvaro_tools import (
+            looks_like_support, diagnose_for_alvaro, fetch_available_slots,
+            format_diag_context,
+        )
+        if looks_like_support(text):
+            alvaro_diag = await diagnose_for_alvaro(phone)
+            if alvaro_diag and alvaro_diag.get("found"):
+                slots = await fetch_available_slots(
+                    alvaro_diag.get("company_id") or cid)
+                ctx = format_diag_context(alvaro_diag, slots)
+                if ctx:
+                    extra.append(ctx)
+    except Exception as e:
+        logger.warning("[alvaro_tools] skip: %s", e)
+
     # 3a. CONTEXTO DE OUTAGE (Agent-to-Agent) — SmartOLT AI detecta panes
     # de rede e marca clientes afetados. Se este telefone está em outage
     # ativo, IA de atendimento informa proativamente em vez de fazer o
@@ -2199,6 +2221,18 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             )
         except Exception as e:
             logger.warning("[marker_router] erro: %s", e)
+
+        # Álvaro tools: processa [REBOOT_ONU] e [AGENDAR_REPARO:...]
+        # (chamadas em paralelo ao marker_router; se diag existir o Álvaro
+        # pode reiniciar a ONU e agendar reparo direto no mesmo turno).
+        try:
+            if alvaro_diag and alvaro_diag.get("found"):
+                from services.alvaro_tools import process_alvaro_actions
+                reply_text = await process_alvaro_actions(
+                    reply_text, phone, alvaro_diag,
+                )
+        except Exception as e:
+            logger.warning("[alvaro_tools] actions erro: %s", e)
 
         # ────────────────────────────────────────────────────────────────
         # HANDOFF: detecta marker [ROTEAR_X] na resposta e troca de agente
