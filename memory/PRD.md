@@ -1504,3 +1504,14 @@ praça e DRE de compras mensal.
   - **Regressão zero**: 7/7 pytests passam.
 - **Impacto**: técnicos/reparadores/instaladores em ISPs onde o admin/dono também executa serviços agora veem APENAS sua agenda — eliminando ruído visual + risco de pegar bolha errada de outro colega.
 
+
+✅ **Banner cross-test admin mais nominal e visual** (22/02/2026):
+- **Pedido**: deixar óbvio quando admin está visualizando o app de OUTRO técnico, com nome e cor distintiva pra evitar clique acidental em bolha alheia.
+- **Frontend** (`CollaboratorApp.js` ~580):
+  - Banner `data-testid=admin-test-banner` reformulado: ícone 👁 grande em círculo âmbar, texto **"Você está vendo o app de {NOME} (modo gestor) · cerca virtual ignorada"** com `data-testid=admin-test-target-name`, e pílula vermelha-âmbar `CUIDADO AO TOCAR` (`data-testid=admin-test-warn-pill`).
+  - Gradient `linear-gradient(90deg, #fef3c7 → #fde68a)` + shadow sutil.
+  - Wrapper raiz ganha `outline: 3px solid #f59e0b` (`data-testid=admin-test-mode-root`) somente quando `isAdminTest=true` no mobile, deixando a borda visualmente óbvia em toda a tela.
+- **Validação** (`testing_agent_v3_fork` iteration_112): **0 falhas**.
+  - Positivo: banner aparece com ícone, nome alvo, pílula de alerta e outline rgb(245,158,11) quando admin acessa `?cid=col-XYZ` com token de admin.
+  - Negativo: colaborador comum logado na mesma URL NÃO vê banner nem outline.
+
