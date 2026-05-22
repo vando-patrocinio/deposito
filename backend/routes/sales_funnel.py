@@ -55,6 +55,16 @@ COLD_KEYWORDS = {  # < 30 — curiosidade só
 # Marker que a Isabella/Vendas escreve na resposta quando detecta venda quente
 HOT_LEAD_MARKER = "[HOT_LEAD]"
 SALE_AGREED_MARKER = "[VENDA_AGENDADA]"
+# Markers de roteamento (Isabella decide pra onde mandar)
+ROUTE_HUMAN_MARKER = "[ROTEAR_HUMANO]"
+ROUTE_SUPPORT_MARKER = "[ROTEAR_SUPORTE]"
+ROUTE_FINANCE_MARKER = "[ROTEAR_FINANCEIRO]"
+CHURN_RISK_MARKER = "[CHURN_RISK]"
+ALL_MARKERS = [
+    HOT_LEAD_MARKER, SALE_AGREED_MARKER,
+    ROUTE_HUMAN_MARKER, ROUTE_SUPPORT_MARKER,
+    ROUTE_FINANCE_MARKER, CHURN_RISK_MARKER,
+]
 
 
 def _calc_intent_score(text: str) -> int:

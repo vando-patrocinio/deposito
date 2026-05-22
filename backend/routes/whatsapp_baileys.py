@@ -2184,6 +2184,23 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         reply_text = (result.get("content") or "").strip()
 
         # ────────────────────────────────────────────────────────────────
+        # MARKER ROUTER — markers de funil de vendas + roteamento Isabella
+        # ────────────────────────────────────────────────────────────────
+        # Processa markers funcionais ([HOT_LEAD], [VENDA_AGENDADA],
+        # [ROTEAR_HUMANO], [ROTEAR_FINANCEIRO], [CHURN_RISK]) que disparam
+        # ações no sistema (cria ticket, alerta retenção, pausa IA, etc.)
+        # Esses markers são REMOVIDOS do texto antes de enviar ao cliente.
+        # NÃO interfere no HANDOFF_MAP abaixo ([ROTEAR_VENDAS/SUPORTE/
+        # COBRANCA/TESTE]) que troca o agente da conversa.
+        try:
+            from services.marker_router import process_markers
+            reply_text = await process_markers(
+                reply_text, phone, cid,
+            )
+        except Exception as e:
+            logger.warning("[marker_router] erro: %s", e)
+
+        # ────────────────────────────────────────────────────────────────
         # HANDOFF: detecta marker [ROTEAR_X] na resposta e troca de agente
         # ────────────────────────────────────────────────────────────────
         # Mapping dos markers → nome do agente alvo
