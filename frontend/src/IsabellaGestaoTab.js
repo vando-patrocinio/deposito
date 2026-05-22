@@ -1014,12 +1014,13 @@ function SyncAgentsCard() {
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: "#78350f" }}>
-            Sincronizar Agentes (v6.81 · Ligo Premium)
+            Sincronizar Agentes (v6.82 · Disciplina de Contexto)
           </div>
           <div style={{ fontSize: 11, color: "#92400e", marginTop: 2 }}>
-            Aplica o prompt Isabella Ligo Premium (5 fases · catálogo
-            emocional · markers HOT_LEAD/CHURN_RISK/ROTEAR_*) + Álvaro/
-            Camila/Teste. Idempotente. Use após deploy para produção.
+            Aplica prompt Isabella Premium + nova disciplina de contexto
+            (sem repetir saudação/nome, 1 pergunta por vez, leitura
+            completa do histórico) em Isabella/Álvaro/Camila/Teste.
+            Idempotente. Use após deploy.
           </div>
         </div>
         {!confirming && !result && (
