@@ -1,0 +1,39 @@
+{
+  "summary": "Backend-only validation of new /api/projects (Kanban Acompanhamento) module + iter116/117 P0 fix (auditor role authorized via _require_manager + core.is_super_admin). Wrote pytest suite covering CRUD, status transitions, checklist subtasks (done/undo + done_at/done_by_name), file upload (PDF + invalid mime + 10MB limit), download with Content-Disposition, cascade delete, activity feed event types, and RBAC (auditor allowed; colaborador 403). 35/35 tests PASSED on the public preview URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter117_projects_kanban.py",
+    "/app/test_reports/pytest/iter117_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "RBAC on read endpoints is permissive: GET /api/projects, /stats, /{id}, /activity, /files/{id}/download are reachable by colaborador (verified in test_colaborador_can_list). Project requirement says 'colaborador apenas leitura', which matches current behavior — confirm this matches product intent. If projects should be assignee-scoped for colaborador, listing currently leaks all company projects to colab.",
+    "File storage uses base64 inside MongoDB documents (data_b64). 10MB limit OK, but heavy use (many files) will grow the projects collection quickly; consider GridFS or external object storage long-term.",
+    "Activity log uses best-effort try/except (good), but messages are not internationalized — fine for pt-BR product.",
+    "_normalize_project recomputes checklist_progress on every read — O(n) per project but n is small (<100 items typical). Acceptable.",
+    "MAX_FILE_SIZE check happens AFTER full file.read() — a hostile client uploading a 1GB file consumes server memory before the 413. Consider streaming/Content-Length pre-check for production hardening. Not blocking.",
+    "GET /api/projects sort is ('status', 1, 'created_at', -1) — alphabetical status ordering ('backlog' < 'em_andamento' < 'em_revisao' < 'finalizado' happens to work in PT-BR, but is fragile. Consider explicit status weight."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter117_projects_kanban.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "not_tested"
+  },
+  "test_credentials": "auditor@example.com/auditor123 + colaborador@empresa.com/123456 (both used and working)",
+  "seed_data_creation": "All test data prefixed TEST_iter117 and cleaned up at end of suite",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Pytest suite test_iter117_projects_kanban.py is self-contained and idempotent (creates/cleans TEST_iter117_* projects). Uses PUBLIC_BACKEND_URL env or falls back to current preview URL. Endpoints validated: POST/GET/PATCH/DELETE /api/projects, /stats, /checklist (CRUD + done/undo), /files (upload+download+delete with mime/size validation), /activity (event-type assertions for created/status_changed/checklist_added/done/undone/removed/file_uploaded/file_removed), cascade delete, and RBAC (auditor 200, colaborador 403 on create/patch).",
+  "rca of the issue": "Previous P0 (auditor 403 on POST /api/projects) — confirmed FIXED. _require_manager in /app/backend/routes/projects.py now accepts roles gestor/administrador/auditor + is_super_admin via core.is_super_admin(). Auditor (role=auditor, not super_admin) successfully created/patched/deleted projects and managed checklist/files. Colaborador correctly receives 403 on write endpoints."
+}

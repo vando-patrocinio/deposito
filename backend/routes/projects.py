@@ -27,8 +27,8 @@ Endpoints:
 
 Permissões:
   - Listagem/leitura: gestor, auditor, administrador, colaborador (próprio)
-  - Criação/edição/exclusão: gestor, administrador
-  - Auditor: leitura + comentários (futuro)
+  - Criação/edição/exclusão: gestor, administrador, auditor + super_admin
+  - Colaborador: leitura (próprio) + comentários (futuro)
 """
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from core import DEMO_COMPANY_ID, get_current_user, now_iso
+from core import DEMO_COMPANY_ID, get_current_user, is_super_admin, now_iso
 from database import db
 
 logger = logging.getLogger("ponto.projects")
@@ -99,12 +99,17 @@ class ChecklistItemPatch(BaseModel):
 
 
 def _require_manager(user: dict):
-    if user.get("role") in ("gestor", "administrador"):
+    """Permissão de gerenciamento do módulo Acompanhamento/Kanban.
+
+    Roles permitidas: gestor, administrador, auditor (perfil de
+    fiscalização/gestão cross-tenant no SmartProv) + super_admin
+    (flag DB ou via env `SUPER_ADMIN_EMAILS`).
+    """
+    if user.get("role") in ("gestor", "administrador", "auditor"):
         return
-    # Super admin (auditor com is_super_admin) também pode gerenciar.
-    if user.get("is_super_admin"):
+    if is_super_admin(user):
         return
-    raise HTTPException(403, "Apenas gestor/administrador.")
+    raise HTTPException(403, "Apenas gestor/administrador/auditor.")
 
 
 # ---------------------------------------------------------------------------
