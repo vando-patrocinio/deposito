@@ -906,25 +906,14 @@ export default function RedeIaMap() {
                                           gridTemplateColumns: "repeat(3, 1fr)",
                                           gap: 4 }}>
                             {c.photos.slice(0, 6).map((ph) => (
-                              <img key={ph.id}
+                              <ThumbWithDblClick key={ph.id}
                                     src={ph.url}
-                                    alt="Foto CTO"
-                                    title="2× para ampliar"
-                                    onDoubleClick={(e) => {
-                                      e.stopPropagation();
-                                      setPhotoLightbox({
-                                        url: ph.url,
-                                        ctoName: c.name,
-                                        uploadedByName: ph.uploaded_by_name,
-                                      });
-                                    }}
-                                    data-testid={`cto-photo-thumb-${ph.id}`}
-                                    style={{
-                                      width: "100%", aspectRatio: "1/1",
-                                      objectFit: "cover", borderRadius: 4,
-                                      cursor: "zoom-in",
-                                      border: "1px solid #e2e8f0",
-                                    }} />
+                                    testid={`cto-photo-thumb-${ph.id}`}
+                                    onOpen={() => setPhotoLightbox({
+                                      url: ph.url,
+                                      ctoName: c.name,
+                                      uploadedByName: ph.uploaded_by_name,
+                                    })} />
                             ))}
                           </div>
                         </div>
@@ -1123,6 +1112,38 @@ export default function RedeIaMap() {
 }
 
 /* PhotoLightbox compartilhado — modal full-screen pra ampliar foto da CTO. */
+function ThumbWithDblClick({ src, testid, onOpen }) {
+  // Leaflet bloqueia dblclick nativo dentro do Popup (DomEvent.
+  // disableClickPropagation engole o 2º click). Workaround: detecta
+  // 2 cliques manualmente com timer de 350ms.
+  const clickRef = useRef({ count: 0, timer: null });
+  const handle = (e) => {
+    e.stopPropagation();
+    const c = clickRef.current;
+    c.count += 1;
+    if (c.timer) { clearTimeout(c.timer); c.timer = null; }
+    if (c.count >= 2) {
+      c.count = 0;
+      onOpen();
+      return;
+    }
+    c.timer = setTimeout(() => { c.count = 0; }, 350);
+  };
+  return (
+    <img src={src} alt="Foto CTO"
+          title="2× para ampliar"
+          onClick={handle}
+          onDoubleClick={(e) => { e.stopPropagation(); onOpen(); }}
+          data-testid={testid}
+          style={{
+            width: "100%", aspectRatio: "1/1",
+            objectFit: "cover", borderRadius: 4,
+            cursor: "zoom-in",
+            border: "1px solid #e2e8f0",
+          }} />
+  );
+}
+
 function PhotoLightbox({ url, ctoName, uploadedByName, onClose }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
