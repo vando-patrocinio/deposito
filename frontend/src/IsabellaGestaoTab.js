@@ -1014,12 +1014,12 @@ function SyncAgentsCard() {
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: "#78350f" }}>
-            Sincronizar Agentes (v6.80)
+            Sincronizar Agentes (v6.81 · Ligo Premium)
           </div>
           <div style={{ fontSize: 11, color: "#92400e", marginTop: 2 }}>
-            Aplica os prompts XML-like + handoff + anti-loop nos 4 agentes
-            (Isabella, Álvaro, Camila, Teste) desta empresa. Cria se não
-            existir. Use após deploy para produção.
+            Aplica o prompt Isabella Ligo Premium (5 fases · catálogo
+            emocional · markers HOT_LEAD/CHURN_RISK/ROTEAR_*) + Álvaro/
+            Camila/Teste. Idempotente. Use após deploy para produção.
           </div>
         </div>
         {!confirming && !result && (
