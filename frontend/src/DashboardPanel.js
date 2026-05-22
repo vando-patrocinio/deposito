@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "@/api";
 import { Card, fmtMin } from "@/ui";
+import WhatsAppShareCard from "@/WhatsAppShareCard";
 
 function brl(v) { return `R$ ${(v || 0).toFixed(2).replace(".", ",")}`; }
 function hours(min) { return ((min || 0) / 60).toFixed(1); }
@@ -93,6 +94,10 @@ export default function DashboardPanel() {
 
       <ServiceStatsSection />
       <ManagementKpisSection />
+
+      <div style={{ margin: "14px 0" }}>
+        <WhatsAppShareCard />
+      </div>
 
       {/* Seletor de modo */}
       <Card style={{ marginBottom: 14 }}>

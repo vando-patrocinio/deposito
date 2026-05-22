@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 114 — Frontend-only test of new WhatsAppShareCard (click-to-chat QR + copy-link) on Dashboard. Logged via auto-demo as admin@empresa.com, opened Dashboard tab, exercised every required interaction. ALL 8 acceptance criteria PASS: (1) card renders between ManagementKpisSection and view-mode selector; (2) green gradient header with 'Seu link de WhatsApp pra divulgar' + subtitle; (3) left column shows phone input + Salvar + pre-filled message textarea; right column shows QR SVG + 'Baixar QR SVG' button; (4) Copy button transitions to '✓ Copiado!' when clipboard granted, graceful window.prompt fallback otherwise; (5) link contains 'wa.me/55' and configured number 5521965680949; (6) editing textarea triggers auto-reload of link (debounced via useCallback dep on text); (7) saving phone 11999998888 persists across full page reload (backend normalized to 5511999998888); (8) revert to original 5521965680949 works. All data-testids present and correctly wired.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "(various /api on Dashboard load)", "issue": "Pre-existing 500s during Dashboard load (overtimeTrend etc.) — unrelated to WhatsAppShareCard. Already noted in iteration_113. Visible as 'Erro: Request failed with status code 500' below the share card in screenshot but the share card itself works perfectly."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard > WhatsAppShareCard", "issues": ["Card is well-designed: green gradient header, centered QR with green border + shadow, clean two-column layout that collapses on narrow viewports (auto-fit minmax 220px). No contrast issues. Visually polished — matches the 'sticker / Instagram bio' use case described by the user."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "No fixes required for the WhatsAppShareCard feature — ship it.",
+    "(Pre-existing, out of scope) Investigate Dashboard 500s on overtimeTrend and related endpoints surfaced as 'Erro: Request failed with status code 500' on Dashboard."
+  ],
+  "critical_code_review_comments": [
+    "WhatsAppShareCard.js: copyLink fallback to window.prompt is good UX for environments without clipboard permission — verified working.",
+    "Backend normalizes phone with country code prefix (input '11999998888' came back as '5511999998888'). Behavior is sensible but undocumented in the UI — consider a small helper text like 'O 55 (Brasil) será adicionado automaticamente' under the phone input.",
+    "QR uses level='H' + includeMargin=false in a padded white box with green border — excellent scannability for printed stickers.",
+    "Textarea-driven reload re-fetches /click-to-chat on every keystroke (useCallback dep on text). Works but could be debounced 300ms to reduce API calls while typing long messages.",
+    "downloadQr serializes the SVG directly from DOM — clean approach, no canvas conversion needed for SVG download."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100% (8/8 acceptance criteria pass)"},
+  "test_credentials": "admin@empresa.com / 123456 — auto-demo login (no manual form interaction needed in preview env).",
+  "seed_data_creation": "None. Used existing config; phone temporarily changed to 11999998888 then reverted to 5521965680949 as requested.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "WhatsAppShareCard fully validated. Card location: Dashboard between ManagementKpisSection and the trend/month/ytd view-mode selector. All testids: whatsapp-share-card, wa-share-phone-input, wa-share-save-phone, wa-share-text, wa-share-qr (svg child), wa-share-download-qr, wa-share-copy, wa-share-link, wa-share-open. Endpoints used: GET /api/whatsapp-baileys/click-to-chat?text=..., PUT /api/whatsapp-baileys/click-to-chat/phone. To test copy button transition to 'Copiado!', must grant clipboard-read/write permissions via page.context.grant_permissions(['clipboard-read','clipboard-write']); otherwise fallback window.prompt opens (also acceptable behavior).",
+  "rca of the issue": "N/A — feature addition (not a bug). Implementation is clean and meets all user-requested acceptance criteria from the original PT-BR request ('criar QR-code do click-to-chat na home/dashboard com botão Copiar link pra colar no Instagram bio, adesivo de carros, etc')."
+}
