@@ -1,0 +1,43 @@
+{
+  "summary": "Tested viability-heatmap backend endpoint + ViabilityHeatmapSection inside Lousa Relatório popover. Backend: 8/8 pytests PASSED (default 30d, structure shape, demo districts present, parametrized days 7/30/90, auth required, days clamping). UI: confirmed section renders inside popover BELOW 'Visualizar Finalizadas' button (generate_btn y=1284 < section y=1338), title '🗺️ Demanda sem cobertura' visible, 3 range buttons (viab-range-7/30/90) all present and visible, viab-list rendered with 3 district items (Recreio 3, Jacarepagua 2, Olaria 1) matching backend data, gradient pink→purple bar visible, '6 lead(s) esperando expansão em 3 bairro(s)' caption shown, range toggle works (7d and 90d both reload and render 3 items in demo data). Sidebar entry is labeled 'Chamados' (route view='lousa') as per App.js line 166.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/whatsapp-baileys/viability-heatmap",
+        "issue": "days=0 falls back to 30 due to `int(days or 30)` short-circuit instead of being clamped to 1 — minor (negative/zero values unusual)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter111_viability_heatmap.py",
+    "/app/test_reports/pytest/iter111_viability.xml"
+  ],
+  "action_items": [
+    "(Optional) Pre-existing console errors: 4× 'Failed to load resource: 500' on initial page load (NOT from heatmap endpoint, observed during pre-Lousa navigation/dashboard load — likely from unrelated dashboard charts/widgets). Recommend main agent grep recent backend logs for 500s if dashboard widgets matter."
+  ],
+  "critical_code_review_comments": [
+    "viability-heatmap endpoint correctly aggregates by district with phone-fallback via parse_address on first inbound message. Sort desc by leads, top 10 returned (UI consumes top 5). Good.",
+    "ViabilityHeatmapSection: graceful empty state (viab-empty) wired to total_pending===0 with friendly PT-BR copy; loading state separates fetch from render. Component is self-contained inside the popover with marginTop:14 + border-top dashed — matches design spec.",
+    "Possible UX nit: viab-district-* test IDs use raw district name lowercased. If a district contains accents (e.g., 'Jacarepaguá' with á), the testid would carry the accent. The seed/demo strips accents already, but worth normalizing district.replace(/[^a-z0-9]+/g, '-') for robustness.",
+    "Backend `days = max(1, min(int(days or 30), 365))`: the `or 30` short-circuits when days=0, so the clamp to 1 never triggers for 0 (minor — see backend_issues.minor)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter111_viability_heatmap.py"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8)",
+    "frontend": "100% (all UI assertions passed)"
+  },
+  "test_credentials": "admin@empresa.com / 123456 (administrador) — works for the gestor-protected endpoint via require_role('gestor').",
+  "seed_data_creation": "None — relied on existing demo data (6 leads in 3 districts: Recreio 3, Jacarepagua 2, Olaria 1) seeded earlier.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Lousa is labeled 'Chamados' in sidebar (App.js:166). Login admin@empresa.com/123456 → click 'Chamados' → in Lousa header click data-testid=lousa-pdf-btn → popover opens at top-right → scroll to see ViabilityHeatmapSection below 'Visualizar Finalizadas' button. Backend demo data lives under company_id='co-demo' in db.viability_requests with phones whose first inbound message has Recreio/Jacarepagua/Olaria addresses.",
+  "rca of the issue": "N/A — feature works as specified. The minor 'days=0 → 30 fallback' is intentional Python `or` semantics; not blocking."
+}

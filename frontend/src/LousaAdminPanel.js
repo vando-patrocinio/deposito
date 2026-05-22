@@ -3050,6 +3050,129 @@ function ClosedNotesPdfPopover({ onClose }) {
             ? "👁 Visualizar Bolhas Abertas"
             : "👁 Visualizar Finalizadas")}
       </button>
+
+      <ViabilityHeatmapSection />
+    </div>
+  );
+}
+
+/* ---------- ViabilityHeatmapSection ---------- */
+function ViabilityHeatmapSection() {
+  const [days, setDays] = React.useState(30);
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await api._client.get(
+        `/whatsapp-baileys/viability-heatmap?days=${days}`,
+      );
+      setData(r.data);
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [days]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const total = data?.total_pending || 0;
+  const districts = data?.districts || [];
+  const maxLeads = Math.max(1, ...districts.map((d) => d.leads));
+
+  return (
+    <div data-testid="viability-heatmap-section" style={{
+      marginTop: 14, paddingTop: 12, borderTop: "1px dashed #cbd5e1",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8,
+                      marginBottom: 8 }}>
+        <span style={{ fontSize: 13 }}>🗺️</span>
+        <strong style={{ fontSize: 12.5, color: "#0f172a" }}>
+          Demanda sem cobertura
+        </strong>
+        <span style={{ flex: 1 }} />
+        <div style={{ display: "inline-flex", borderRadius: 6,
+                        background: "#f1f5f9" }}>
+          {[7, 30, 90].map((d) => (
+            <button key={d} onClick={() => setDays(d)}
+                    data-testid={`viab-range-${d}`}
+                    style={{
+                      padding: "3px 8px", fontSize: 10, fontWeight: 800,
+                      border: "none", cursor: "pointer",
+                      background: days === d ? "#0f172a" : "transparent",
+                      color: days === d ? "#fff" : "#475569",
+                      borderRadius: 6,
+                    }}>{d}d</button>
+          ))}
+        </div>
+      </div>
+
+      {loading && (
+        <div style={{ fontSize: 11, color: "#94a3b8" }}>Carregando…</div>
+      )}
+
+      {!loading && total === 0 && (
+        <div data-testid="viab-empty" style={{
+          padding: 10, borderRadius: 8, background: "#f8fafc",
+          fontSize: 11, color: "#64748b", textAlign: "center",
+          lineHeight: 1.5,
+        }}>
+          Nenhum lead aguardando viabilidade nos últimos {days} dias 🎯<br />
+          Quando Isabella receber endereços fora da cobertura, eles
+          aparecem aqui agrupados por bairro.
+        </div>
+      )}
+
+      {!loading && total > 0 && (
+        <div data-testid="viab-list" style={{ display: "grid", gap: 5 }}>
+          <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>
+            <strong style={{ color: "#7c3aed" }}>{total}</strong> lead(s)
+            esperando expansão em <strong>{data.districts_count}</strong>{" "}
+            bairro(s).
+          </div>
+          {districts.slice(0, 5).map((d) => (
+            <div key={d.district}
+                  data-testid={`viab-district-${d.district.replace(/\s+/g, '-').toLowerCase()}`}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    gap: 8, padding: "6px 8px", borderRadius: 6,
+                    background: "white", border: "1px solid #e2e8f0",
+                    alignItems: "center", fontSize: 12,
+                  }}>
+              <div style={{ display: "flex", flexDirection: "column",
+                              gap: 2, minWidth: 0 }}>
+                <strong style={{ color: "#0f172a",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}>{d.district}</strong>
+                <div style={{
+                  height: 5, borderRadius: 3, background: "#f1f5f9",
+                  overflow: "hidden",
+                }}>
+                  <div style={{
+                    height: "100%",
+                    width: `${(d.leads / maxLeads) * 100}%`,
+                    background: "linear-gradient(90deg,#fb7185,#7c3aed)",
+                  }} />
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 15, fontWeight: 800,
+                                color: "#7c3aed", lineHeight: 1 }}>
+                  {d.leads}
+                </div>
+                <div style={{ fontSize: 9, color: "#94a3b8" }}>
+                  {d.unique_phones} pessoa(s)
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -2934,6 +2934,85 @@ async def get_after_hours_metrics(
     }
 
 
+@router.get("/viability-heatmap")
+async def get_viability_heatmap(
+    days: int = 30,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Mapa de calor de leads SEM_REGISTROS — agrega `viability_requests`
+    (lead sem cobertura) por bairro. Identifica regiões pra expansão de
+    malha guiada por demanda real."""
+    from services.coverage_checker import parse_address
+
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    days = max(1, min(int(days or 30), 365))
+    since_dt = datetime.now(timezone.utc) - timedelta(days=days)
+    since_iso = since_dt.isoformat()
+
+    # Pula os requests da janela
+    requests = await db.viability_requests.find(
+        {"company_id": cid, "created_at": {"$gte": since_iso}},
+        {"_id": 0, "phone": 1, "created_at": 1, "address_text": 1,
+         "address_district": 1, "status": 1},
+    ).to_list(2000)
+
+    # Como o address_text/district pode não estar no doc inicial, pega
+    # a primeira mensagem inbound do phone que tinha endereço, e extrai
+    # bairro via parse_address. Cache pra evitar dupla query.
+    phone_to_district: Dict[str, Optional[str]] = {}
+
+    async def _district_from_phone(ph: str) -> Optional[str]:
+        if ph in phone_to_district:
+            return phone_to_district[ph]
+        msg = await db.aihub_wa_messages.find_one(
+            {"company_id": cid, "phone": ph, "direction": "inbound"},
+            {"_id": 0, "text": 1},
+            sort=[("created_at", 1)],
+        )
+        if not msg or not msg.get("text"):
+            phone_to_district[ph] = None
+            return None
+        parsed = parse_address(msg["text"])
+        phone_to_district[ph] = parsed.get("district")
+        return phone_to_district[ph]
+
+    by_district: Dict[str, Dict[str, Any]] = {}
+    for r in requests:
+        ph = r.get("phone")
+        district = r.get("address_district")
+        if not district and ph:
+            district = await _district_from_phone(ph)
+        district = district or "Não identificado"
+        key = district.strip().title()
+        slot = by_district.setdefault(key, {
+            "district": key, "count": 0, "phones": set(), "last_at": None,
+        })
+        slot["count"] += 1
+        if ph:
+            slot["phones"].add(ph)
+        ts = r.get("created_at")
+        if ts and (not slot["last_at"] or ts > slot["last_at"]):
+            slot["last_at"] = ts
+
+    heatmap = []
+    for k, v in by_district.items():
+        heatmap.append({
+            "district": v["district"],
+            "leads": v["count"],
+            "unique_phones": len(v["phones"]),
+            "last_at": v["last_at"],
+        })
+    heatmap.sort(key=lambda x: -x["leads"])
+
+    total = sum(h["leads"] for h in heatmap)
+    return {
+        "window_days": days,
+        "total_pending": total,
+        "districts": heatmap[:10],
+        "districts_count": len(heatmap),
+    }
+
+
 # ---------------------------------------------------------------------------
 # AI Health — diagnóstico do Atendimento IA (Isabela/Jerusa)
 # ---------------------------------------------------------------------------
