@@ -1,0 +1,48 @@
+{
+  "summary": "Tested GET /api/whatsapp-baileys/after-hours-metrics (gestor) + AfterHoursMetricsCard UI in Atendimento IA → Configuração. Backend 9/9 pytest PASS. Frontend: card renders correctly with all required data-testids (ah-total, ah-clients, ah-roi, ah-sparkline, ah-range-1/7/30, ah-refresh, ah-samples, ah-empty), header gradient purple (Moon icon) shown because business hours are closed, KPIs populated (7d: 177 msgs / 18 clients / R$ 442.50 / 81% share; 30d: 318 msgs / 30 bars), top_agents pills render (Isabella·156, —·21 for 7d; +Jerusa·76 for 30d), sparkline has 7 bars on 7d, 30 bars on 30d, 1 bar on 1d, samples list (5 items) renders, refresh works without error, empty-state appears when total=0 (1d window).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/whatsapp-baileys/after-hours-metrics",
+        "issue": "Inconsistency: after_hours_total_messages (177) ≠ sum(by_day counts) (134) for 7d window. Cursor filters by UTC `created_at >= now-7d`, but sparkline buckets are built using local-day keys from `today_local - timedelta(days=i)` for i in 0..6. Messages whose UTC timestamp falls within the cursor window but whose local-day key lies outside the 7 sparkline buckets are counted in the KPI total yet invisible in the chart (43 msgs missing visually). The UI shows total=177 but only 134 worth of bars — gestor sees mismatch. Fix: align cursor lower bound to `today_local - (days-1) days at 00:00 local` converted to UTC, OR drop messages outside the sparkline range from the total."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "AfterHoursMetricsCard top_agents pills",
+        "issues": [
+          "Pill for agent without name uses literal '—' as data-testid (ah-agent-—). Functional but: (a) hard to select in tests; (b) suggests upstream message has missing agent_name. Consider slugifying or treating null-agent as 'sem-agente'.",
+          "Sparkline on 7d window has a tooltip 'XX/XX: 0 msg' but the displayed bars sum to less than the headline KPI (see backend minor issue) — visually misleading."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter109_after_hours_metrics.py",
+    "/app/test_reports/pytest/iter109.xml"
+  ],
+  "action_items": [
+    "Align after_hours_total_messages with sparkline window so KPI total = sum(by_day.count). Either tighten the Mongo cursor to local-day boundary or exclude out-of-window messages from the total counter.",
+    "(Optional) Slugify agent_name in data-testid=ah-agent-{name} to avoid '—' or non-ASCII chars; map null agent to 'sem-agente'."
+  ],
+  "critical_code_review_comments": [
+    "whatsapp_baileys.py:2827 uses UTC `since_dt = now_utc - timedelta(days=days)`, but the sparkline (line 2886-2892) iterates local days. The two windows can shift by tz_off hours, causing total/sparkline mismatch.",
+    "Limit of 5000 messages on cursor (line 2842) is acceptable for current data but could under-count on busy tenants with >5k auto_reply in 90 days; consider aggregation pipeline ($group by day) for scale.",
+    "Samples capped at 8 server-side (line 2873) and sliced to 5 client-side (AfterHoursMetricsCard.js:208) — fine but 3 messages fetched are discarded; align caps or expose 'see all'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter109_after_hours_metrics.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9 pytest)", "frontend": "100% (all required testids + flows verified)"},
+  "test_credentials": "admin@empresa.com / 123456 (administrador) — used via /login form; demo auto-login did not engage on fresh playwright session.",
+  "seed_data_creation": "None. Used existing aihub_wa_messages (177 auto_reply outbound in last 7d).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Endpoint and card are fully functional. Only known issue: KPI/sparkline total mismatch due to UTC vs local-day window mismatch (see backend.minor). Frontend testids stable: after-hours-metrics-card, ah-total, ah-clients, ah-roi, ah-sparkline, ah-range-{1,7,30}, ah-refresh, ah-samples, ah-empty, ah-agent-{agent_name}. Access via Atendimento IA → Configuração tab (scroll to mid/bottom).",
+  "rca of the issue": "Backend pulls auto_reply outbound messages with `created_at >= utc_now - 7d` and bucketizes each msg by its local-date string. The sparkline then renders only buckets for `today_local..today_local-6d`. Because tz_off=-3, msgs sent at e.g. 23:30 UTC on day -7 fall inside the UTC cursor window but their local date is day -8, so they are stored in by_day with a key that the sparkline never displays. Hence after_hours_total_messages (177) counts them while sum(by_day visible) (134) does not. Reproduce: GET /api/whatsapp-baileys/after-hours-metrics?days=7 → compare top-level total vs sum(by_day[*].count). Mitigation: use the same local-day lower bound for the Mongo query OR ignore out-of-range buckets in the total."
+}

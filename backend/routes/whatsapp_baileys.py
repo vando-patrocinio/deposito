@@ -2808,6 +2808,107 @@ async def set_business_hours_endpoint(
     }
 
 
+@router.get("/after-hours-metrics")
+async def get_after_hours_metrics(
+    days: int = 7,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Métricas de conversas atendidas pela IA FORA DO HORÁRIO comercial.
+
+    Retorna: total, by_day (sparkline), top_agents, samples (últimas msgs).
+    Usa `auto_reply=True` em `aihub_wa_messages` cruzado com a janela
+    de business hours.
+    """
+    from services.business_hours import (
+        get_business_hours, compute_status,
+    )
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    days = max(1, min(int(days or 7), 90))
+    since_dt = datetime.now(timezone.utc) - timedelta(days=days)
+    since_iso = since_dt.isoformat()
+
+    bh_cfg = await get_business_hours(cid)
+    tz_off = bh_cfg.get("timezone_offset_hours", -3)
+    tz = timezone(timedelta(hours=tz_off))
+
+    # Pull all auto_reply outbound da janela
+    cursor = db.aihub_wa_messages.find(
+        {
+            "company_id": cid, "direction": "outbound", "auto_reply": True,
+            "created_at": {"$gte": since_iso},
+        },
+        {"_id": 0, "phone": 1, "created_at": 1, "agent_name": 1,
+         "text": 1},
+    ).sort([("created_at", -1)]).limit(5000)
+
+    # Agrega
+    by_day: Dict[str, int] = {}
+    by_agent: Dict[str, int] = {}
+    after_hours_phones: set = set()
+    in_hours_phones: set = set()
+    samples: list = []
+    after_hours_total = 0
+    in_hours_total = 0
+
+    async for m in cursor:
+        ts = m.get("created_at")
+        if not ts:
+            continue
+        try:
+            dt_utc = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception:
+            continue
+        dt_local = dt_utc.astimezone(tz)
+        st = compute_status(bh_cfg, now_local=dt_local)
+        is_after_hours = not st["is_open"]
+        ph = m.get("phone")
+        ag = m.get("agent_name") or "—"
+        day_key = dt_local.strftime("%Y-%m-%d")
+        if is_after_hours:
+            after_hours_total += 1
+            by_day[day_key] = by_day.get(day_key, 0) + 1
+            by_agent[ag] = by_agent.get(ag, 0) + 1
+            if ph:
+                after_hours_phones.add(ph)
+            if len(samples) < 8:
+                samples.append({
+                    "phone": ph,
+                    "agent_name": ag,
+                    "text": (m.get("text") or "")[:160],
+                    "at": dt_local.isoformat(timespec="minutes"),
+                })
+        else:
+            in_hours_total += 1
+            if ph:
+                in_hours_phones.add(ph)
+
+    # Sparkline normalizada (últimos N dias, todos preenchidos)
+    today_local = datetime.now(timezone.utc).astimezone(tz)
+    sparkline = []
+    for i in range(days - 1, -1, -1):
+        d = today_local - timedelta(days=i)
+        k = d.strftime("%Y-%m-%d")
+        sparkline.append({"date": k, "label": d.strftime("%d/%m"),
+                            "count": by_day.get(k, 0)})
+
+    top_agents = sorted(by_agent.items(), key=lambda x: -x[1])[:5]
+    cur_status = compute_status(bh_cfg)
+
+    return {
+        "window_days": days,
+        "is_open_now": cur_status["is_open"],
+        "next_open_human": cur_status.get("next_open_human"),
+        "after_hours_total_messages": after_hours_total,
+        "in_hours_total_messages": in_hours_total,
+        "after_hours_unique_clients": len(after_hours_phones),
+        "in_hours_unique_clients": len(in_hours_phones),
+        "by_day": sparkline,
+        "top_agents": [{"agent_name": a, "count": c}
+                          for a, c in top_agents],
+        "samples": samples,
+    }
+
+
 # ---------------------------------------------------------------------------
 # AI Health — diagnóstico do Atendimento IA (Isabela/Jerusa)
 # ---------------------------------------------------------------------------

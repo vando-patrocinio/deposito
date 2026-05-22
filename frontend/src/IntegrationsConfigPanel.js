@@ -6,6 +6,7 @@ import ChatTopologyMap from "@/ChatTopologyMap";
 import InlineAgentEditor from "@/InlineAgentEditor";
 import WallpaperConfigCard from "@/WallpaperConfigCard";
 import WaBusinessHoursCard from "@/WaBusinessHoursCard";
+import AfterHoursMetricsCard from "@/AfterHoursMetricsCard";
 import WaQuickImagesCard from "@/WaQuickImagesCard";
 import IsabellaGestaoTab from "@/IsabellaGestaoTab";
 import WaHealthDashboard from "@/WaHealthDashboard";
@@ -139,6 +140,9 @@ export default function IntegrationsConfigPanel() {
 
             {/* Horário de atendimento (mensagens fora do horário → "Fora de hora") */}
             <WaBusinessHoursCard />
+
+            {/* Dashboard de Conversas Resolvidas pela IA Fora do Horário */}
+            <AfterHoursMetricsCard />
 
             {/* Imagens rápidas — até 5 imagens pra envio rápido pela atendente */}
             <WaQuickImagesCard />
