@@ -1413,3 +1413,23 @@ praça e DRE de compras mensal.
   - Isabella · "instalação amanhã?" → "qual o seu bairro? assim já verifico a cobertura pra você! 🚀" (não inventa data passada — faz descoberta primeiro) ✅
 - **Regressão**: `test_alvaro_flow.py`, `test_alvaro_e2e.py`, `test_isabella_camila_e2e.py` continuam passando (4/4).
 - **Impacto**: agora os 3 agentes podem agendar visitas técnicas, instalações e mencionar "venceu há 3 dias" / "vence amanhã" com precisão absoluta — sem chutes nem alucinação de datas.
+
+
+✅ **Horário comercial dinâmico — IA respeita janela de atendimento humano** (22/02/2026 — pedido "Faça tudo"):
+- **Pedido**: que a IA seja explícita quando cliente pedir humano fora do expediente, em vez de fingir que está tudo aberto.
+- **Backend** (novo `services/business_hours.py` + endpoints em `routes/whatsapp_baileys.py`):
+  - `GET/PUT /api/whatsapp-baileys/business-hours` (role gestor) com persistência em `aihub_settings` (key=business_hours).
+  - Shape **legacy mantida** (compat com `WaBusinessHoursCard.js` que já existia): `enabled`, `timezone_offset_hours`, `weekly_schedule[0..6]={enabled,open,close}` (0=Dom..6=Sáb), `holidays[]`, `fora_de_hora_message`. Service aceita aliases novos (`schedule`/`tz_offset`/`after_hours_message`/`active`) por compat futuro.
+  - Função `compute_status()` retorna 6 estados: `open`, `before_open`, `after_close`, `closed_today`, `holiday`, `disabled` (toggle global off) + `next_open_human` em PT-BR ("amanhã (23/05) às 08:00").
+  - Função `format_for_prompt()` injeta bloco `=== HORÁRIO COMERCIAL ===` no system prompt da IA com status, mensagem oficial e regra explícita.
+- **Prompts atualizados** (Isabella, Álvaro, Camila): cada `<datetime_awareness>` ganhou seção sobre `=== HORÁRIO COMERCIAL ===` — quando ABERTO pode `[ROTEAR_HUMANO]`, quando FECHADO resolve sozinha e oferece retorno na próxima abertura.
+- **Frontend**:
+  - Componente `WaBusinessHoursCard.js` (legacy, em `Atendimento IA → Configuração`) volta a renderizar normalmente (estava quebrado por shape mismatch com a primeira versão do meu endpoint).
+  - `AgentConfigModal.js` ganhou link informativo `data-testid=agent-config-bh-link` apontando pra a aba certa em vez de duplicar o card.
+- **Bug fix**: a primeira versão do meu service usou shape própria (`schedule`, `tz_offset`) e quebrou o `WaBusinessHoursCard` legado. Corrigido adotando shape legacy como source of truth (mais completa: tem `holidays` e toggle global).
+- **Validação**:
+  - Pytest `tests/test_business_hours.py` 1/1 PASS — IA respondeu fora de horário: *"oi roberto! 👋 estamos offline agora, mas eu consigo resolver tudo por aqui pelo chat 🙂"*.
+  - 5/5 pytests E2E continuam passando (regressão zero).
+  - Curl REST validado (GET retorna shape legacy + status; PUT persiste).
+  - **Frontend testado pelo testing_agent_v3_fork (iteration_108)** — 0 falhas: card renderiza, 7 dias visíveis, salvar funciona com mensagem "✓ Horário salvo. Status agora: FORA DO HORÁRIO", sem duplicação no popup Configurar Robô.
+- **Como o cliente final percebe**: quando manda "preciso falar com humano" às 02h da manhã, IA responde combinando dados de AGORA + HORÁRIO COMERCIAL: *"oi! aqui são 02:25 da madrugada, e no momento nosso atendimento humano está offline. mas não se preocupe! resolvo tudo aqui pelo chat 🙂 como posso te ajudar agora?"*.
