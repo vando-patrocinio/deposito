@@ -27,6 +27,31 @@ function colorForId(id) {
 const RISK_COLOR = { alto: "#dc2626", medio: "#f59e0b", baixo: "#16a34a" };
 const RISK_LABEL = { alto: "ALTO", medio: "MÉDIO", baixo: "BAIXO" };
 
+// Quando dois pings consecutivos do mesmo colaborador têm um intervalo maior
+// que isso, quebramos a polyline em segmentos separados (evita "teleporte"
+// no mapa quando o GPS ficou off por horas e voltou em outro município).
+const TRACK_GAP_MINUTES = 30;
+
+function splitTrackBySessions(pts, gapMinutes = TRACK_GAP_MINUTES) {
+  if (!Array.isArray(pts) || pts.length < 2) return [];
+  const out = [];
+  let cur = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const ta = new Date(a.recorded_at || a.ts || a.timestamp || 0).getTime();
+    const tb = new Date(b.recorded_at || b.ts || b.timestamp || 0).getTime();
+    const gap = Math.abs(tb - ta) / 60000; // minutos
+    if (Number.isFinite(gap) && gap > gapMinutes) {
+      if (cur.length >= 2) out.push(cur);
+      cur = [b];
+    } else {
+      cur.push(b);
+    }
+  }
+  if (cur.length >= 2) out.push(cur);
+  return out;
+}
+
 function makeAvatarIcon(name, color, isStale, badge) {
   const initials = (name || "?").split(" ").filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase()).join("");
   const opacity = isStale ? 0.55 : 1;
@@ -181,7 +206,12 @@ export default function LiveMap() {
     const m = {}; (dwell?.items || []).forEach((d) => (m[d.collaborator_id] = d)); return m;
   }, [dwell]);
 
-  const points = useMemo(() => live.map((d) => [d.lat, d.lng]), [live]);
+  const points = useMemo(
+    () => live
+      .filter((d) => showTrack[d.collaborator_id] !== false)
+      .map((d) => [d.lat, d.lng]),
+    [live, showTrack],
+  );
 
   function isStale(iso) {
     if (!iso) return true;
@@ -295,18 +325,26 @@ export default function LiveMap() {
               />
               <FitBounds points={points} />
 
-              {/* Trajetos */}
+              {/* Trajetos — uma polyline por sessão (quebra em gaps > 30 min
+                  pra não ligar pontos distantes em linha reta). */}
               {Object.entries(tracks).map(([cid, pts]) => {
                 if (showTrack[cid] === false) return null;
                 if (!pts || pts.length < 2) return null;
                 const color = colorForId(cid);
-                const positions = pts.map((p) => [p.lat, p.lng]);
-                return <Polyline key={`tr-${cid}`} positions={positions} pathOptions={{ color, weight: 4, opacity: 0.8 }} />;
+                const segments = splitTrackBySessions(pts);
+                return segments.map((seg, sIdx) => (
+                  <Polyline key={`tr-${cid}-${sIdx}`}
+                              positions={seg.map((p) => [p.lat, p.lng])}
+                              pathOptions={{ color, weight: 4, opacity: 0.8 }} />
+                ));
               })}
 
-              {/* Estadias longas (dwell) - círculos com tempo */}
+              {/* Estadias longas (dwell) - círculos com tempo
+                  (também ocultos quando o colaborador está desligado na
+                  lista lateral) */}
               {(dwell?.items || []).flatMap((it) =>
-                (it.stays || []).map((s, idx) => {
+                (showTrack[it.collaborator_id] === false
+                  ? [] : (it.stays || [])).map((s, idx) => {
                   const c = colorsForRisk(it, dwellThreshold);
                   return (
                     <Circle
@@ -338,8 +376,11 @@ export default function LiveMap() {
                 })
               )}
 
-              {/* Marcadores ao vivo */}
+              {/* Marcadores ao vivo — ocultos quando o colaborador foi
+                  desligado na lista lateral (showTrack=false oculta
+                  marcador, círculo de precisão e trajeto). */}
               {live.map((d) => {
+                if (showTrack[d.collaborator_id] === false) return null;
                 const c = collabsById[d.collaborator_id];
                 const stale = isStale(d.recorded_at);
                 const color = colorForId(d.collaborator_id);
@@ -468,7 +509,9 @@ export default function LiveMap() {
                       variant={visible ? "soft" : "secondary"}
                       onClick={() => setShowTrack({ ...showTrack, [c.id]: !visible })}
                       data-testid={`toggle-track-${c.id}`}
-                      title={visible ? "Ocultar trajeto" : "Mostrar trajeto"}
+                      title={visible
+                        ? "Ocultar este colaborador do mapa (marcador + trajeto)"
+                        : "Mostrar este colaborador no mapa"}
                       style={{ fontSize: 11, padding: "6px 10px" }}
                     >
                       {visible ? "Ocultar" : "Mostrar"}
