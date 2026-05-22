@@ -38,7 +38,7 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -433,11 +433,27 @@ async def delete_checklist_item(project_id: str, item_id: str,
 # ---------------------------------------------------------------------------
 @router.post("/{project_id}/files", status_code=201)
 async def upload_file(project_id: str,
+                          request: Request,
                           file: UploadFile = File(...),
                           user: dict = Depends(get_current_user)):
     """Upload de PDF / DOC / DOCX / imagem como anexo do projeto."""
     _require_manager(user)
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    # Pre-check via Content-Length: rejeita upload hostil ANTES de ler o
+    # body para a RAM. Defesa em profundidade — o check pós-read continua
+    # como segundo gate (clientes podem mentir no header).
+    cl = request.headers.get("content-length")
+    if cl:
+        try:
+            cl_int = int(cl)
+            if cl_int > MAX_FILE_SIZE:
+                raise HTTPException(
+                    413,
+                    f"Arquivo muito grande ({cl_int} bytes, "
+                    f"máximo {MAX_FILE_SIZE}).",
+                )
+        except ValueError:
+            pass  # header não numérico: deixa o read-time check pegar
     p = await db.projects.find_one(
         {"id": project_id, "company_id": cid}, {"_id": 0, "id": 1})
     if not p:
