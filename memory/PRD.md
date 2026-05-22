@@ -1394,3 +1394,22 @@ praça e DRE de compras mensal.
   - `tests/test_alvaro_e2e.py` — `_maybe_auto_reply` real: roteamento → Alvaro · contexto SmartOLT injetado · resposta natural usando dados (`"ligou há bem pouco tempo — menos de 1 minuto"` direto do diagnose) · markers limpos.
   - `tests/test_isabella_camila_e2e.py` — Isabella não pede CPF e oferece upsell ("Combo Ligo Music + Apple TV+"); Camila chama o cliente pelo apelido ("Oba, Maria!") e responde sobre o boleto sem pedir CPF.
 - **Configurações verificadas**: `aihub_settings.agent_name` = `Isabella` (era `Jerusa` inexistente — corrigido).
+
+
+✅ **Agentes IA com consciência de DATA/HORA + fluxo contínuo (debounce 2s)** (22/02/2026 — pedido do usuário):
+- **Pedido**: "atualise o prompt dos agentes, eles tem que saber a data e a hora, quando um cliente perguntar eles tem que saber, isso significa que ele consegue agendar as notas. isabella, alvaro e Camila tem que aguardar 2 segundos depois que o cliente envia a mensagem, entender o contexto, e responder seguindo um fluxo contínuo."
+- **Backend** (`routes/whatsapp_baileys.py:1781`):
+  - Novo bloco `=== AGORA (DATA E HORA ATUAIS · BRASIL · BRT/UTC-3) ===` injetado em TODA chamada do `_maybe_auto_reply` antes de qualquer outro bloco contextual. Inclui: data `dd/mm/yyyy` + dia da semana em PT-BR + horário `HH:MM` + período (madrugada/manhã/tarde/noite) + ISO. Calculado em UTC-3 (BRT) na hora da chamada.
+  - **Debounce de 2s** já existia (`DEBOUNCE_SECONDS = 2.0` em linha 1530, com cancelamento de tasks anteriores quando nova msg chega) — confirmado e documentado nos prompts.
+- **Prompts atualizados** (Isabella · Álvaro · Camila), publicados via migration:
+  - `<continuity>` reforçada com dois blocos no topo: "🕒 DATA/HORA ATUAIS — sempre recebe bloco AGORA, use como ÚNICA fonte para 'hoje', 'amanhã', agendamentos" e "⏱️ FLUXO CONTÍNUO — sistema aguarda 2s antes de te chamar; releia histórico INTEIRO, identifique INTENÇÃO geral (cliente pode mandar 2-3 msgs), checa o que JÁ disse, SÓ ENTÃO escreve".
+  - Cada agente ganhou bloco específico `<datetime_awareness>`:
+    - **Isabella**: "Que dia é hoje?", "Que horas são?", "Tá aberto?" (calcula horário comercial 8h-18h seg-sex, 8h-13h sáb), agenda instalação só ≥AGORA+24h.
+    - **Álvaro**: usa AGORA pra calcular "quando o técnico chega", combina com `HORÁRIOS DISPONÍVEIS` do `=== DIAGNÓSTICO TÉCNICO ===`, marker `[AGENDAR_REPARO:date,time]` com data EXATA do slot.
+    - **Camila**: compara vencimento do boleto com AGORA pra dizer "vence amanhã", "venceu há 3 dias", "vence em 10 dias" — sem inventar.
+- **Validação E2E real** (`tests/test_agents_datetime.py` 1/1 PASS · DeepSeek):
+  - Isabella · "que dia é hoje?" → "Oi! 👋 hoje é 22/05 (sexta-feira) 🙂" ✅
+  - Camila · "que horas são?" → "Oi Joana! 👋 aqui são 02:14 da madrugada." ✅
+  - Isabella · "instalação amanhã?" → "qual o seu bairro? assim já verifico a cobertura pra você! 🚀" (não inventa data passada — faz descoberta primeiro) ✅
+- **Regressão**: `test_alvaro_flow.py`, `test_alvaro_e2e.py`, `test_isabella_camila_e2e.py` continuam passando (4/4).
+- **Impacto**: agora os 3 agentes podem agendar visitas técnicas, instalações e mencionar "venceu há 3 dias" / "vence amanhã" com precisão absoluta — sem chutes nem alucinação de datas.

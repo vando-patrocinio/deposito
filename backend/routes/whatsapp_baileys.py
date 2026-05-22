@@ -1781,6 +1781,31 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     # 3. Monta prompt — herda personalidade/preços/situações + contexto do cliente
     sys_prompt = agent["system_prompt"]
     extra = []
+
+    # 3.0. DATA E HORA ATUAIS (BRT) — sempre injetado pra IA saber "hoje"
+    # quando cliente perguntar ou for agendar visita técnica/instalação.
+    try:
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        _now_brt = _dt.now(_tz.utc).astimezone(_tz(_td(hours=-3)))
+        _wd = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
+                "sexta-feira", "sábado", "domingo"][_now_brt.weekday()]
+        _periodo = ("madrugada" if _now_brt.hour < 6 else
+                      "manhã" if _now_brt.hour < 12 else
+                      "tarde" if _now_brt.hour < 18 else "noite")
+        extra.append(
+            "=== AGORA (DATA E HORA ATUAIS · BRASIL · BRT/UTC-3) ===\n"
+            f"Data: {_now_brt.strftime('%d/%m/%Y')} ({_wd})\n"
+            f"Horário: {_now_brt.strftime('%H:%M')} ({_periodo})\n"
+            f"ISO: {_now_brt.isoformat(timespec='minutes')}\n"
+            "Use ESTA data como referência absoluta para 'hoje', 'amanhã', "
+            "'depois de amanhã', 'esta semana', 'que dia é hoje', 'que horas '"
+            "são', e para todo agendamento de visita técnica ou instalação. "
+            "Quando oferecer datas, calcule a partir DESTA data — nunca "
+            "invente datas passadas ou de outro ano."
+        )
+    except Exception as _e:
+        logger.debug("[wa-baileys] inject now_brt skip: %s", _e)
+
     if agent.get("company_info"):
         extra.append(f"=== INFORMAÇÕES DA EMPRESA ===\n{agent['company_info']}")
     if agent.get("pricing_info"):
