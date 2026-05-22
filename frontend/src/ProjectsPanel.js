@@ -755,6 +755,9 @@ function ProjectDetailModal({ projectId, canManage, onClose, onChanged }) {
         canManage={canManage}
         onChanged={reload} />
 
+      {/* Activity Timeline */}
+      <ActivityTimeline projectId={projectId} reloadKey={data.updated_at} />
+
       {/* Files */}
       <div style={{ marginTop: 16, padding: 12,
                       background: "#fef9c3", borderRadius: 10,
@@ -858,6 +861,133 @@ function ProjectDetailModal({ projectId, canManage, onClose, onChanged }) {
       </div>
     </Modal>
   );
+}
+
+
+function ActivityTimeline({ projectId, reloadKey }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    setLoading(true);
+    client.get(`/projects/${projectId}/activity`).then((r) => {
+      if (!cancel) {
+        setItems(r.data?.items || []);
+        setLoading(false);
+      }
+    }).catch(() => { if (!cancel) setLoading(false); });
+    return () => { cancel = true; };
+  }, [projectId, reloadKey]);
+
+  return (
+    <div data-testid="project-activity"
+          style={{ marginTop: 16, padding: 12,
+                     background: "#f5f3ff", borderRadius: 10,
+                     border: "1px solid #ddd6fe" }}>
+      <div style={{ display: "flex", justifyContent: "space-between",
+                      alignItems: "center",
+                      cursor: "pointer", userSelect: "none" }}
+            onClick={() => setCollapsed((c) => !c)}>
+        <strong style={{ fontSize: 13, color: "#5b21b6" }}>
+          📜 Timeline de Execução · {items.length}
+        </strong>
+        <span style={{ fontSize: 13, color: "#7c3aed",
+                          transform: collapsed ? "rotate(-90deg)" : "rotate(0)",
+                          transition: "transform 0.2s" }}>▾</span>
+      </div>
+      {!collapsed && (
+        <div style={{ marginTop: 10 }}>
+          {loading && (
+            <div style={{ color: "#7c3aed", fontSize: 12 }}>Carregando…</div>
+          )}
+          {!loading && items.length === 0 && (
+            <div style={{ color: "#7c3aed", fontSize: 12 }}>
+              Sem eventos ainda. Movimentações, checklist e arquivos
+              aparecem aqui em ordem cronológica.
+            </div>
+          )}
+          {!loading && items.length > 0 && (
+            <div data-testid="activity-list"
+                  style={{ display: "flex", flexDirection: "column",
+                              gap: 0, position: "relative",
+                              borderLeft: "2px solid #c4b5fd",
+                              marginLeft: 8, paddingLeft: 14 }}>
+              {items.map((ev) => (
+                <div key={ev.id}
+                      data-testid={`activity-${ev.id}`}
+                      style={{ position: "relative", paddingTop: 4,
+                                  paddingBottom: 10, fontSize: 12.5 }}>
+                  {/* dot */}
+                  <span style={{
+                    position: "absolute", left: -22, top: 7,
+                    width: 12, height: 12, borderRadius: 6,
+                    background: activityColor(ev.type),
+                    border: "2px solid white",
+                    boxShadow: "0 0 0 1px " + activityColor(ev.type),
+                  }} />
+                  <div style={{ color: "#0f172a",
+                                  fontWeight: 600, lineHeight: 1.4 }}>
+                    <span style={{ marginRight: 6 }}>
+                      {activityIcon(ev.type)}
+                    </span>
+                    {ev.message}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "#7c3aed",
+                                  marginTop: 2 }}>
+                    {ev.actor_name || ev.actor_email || "—"} ·{" "}
+                    {fmtActivityTs(ev.ts)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function activityColor(t) {
+  switch (t) {
+    case "created":          return "#15803d";
+    case "status_changed":   return "#0369a1";
+    case "edited":           return "#64748b";
+    case "checklist_added":  return "#0ea5e9";
+    case "checklist_done":   return "#15803d";
+    case "checklist_undone": return "#b45309";
+    case "checklist_removed":return "#dc2626";
+    case "file_uploaded":    return "#7c3aed";
+    case "file_removed":     return "#dc2626";
+    default:                  return "#7c3aed";
+  }
+}
+function activityIcon(t) {
+  switch (t) {
+    case "created":          return "✨";
+    case "status_changed":   return "🔁";
+    case "edited":           return "✏️";
+    case "checklist_added":  return "➕";
+    case "checklist_done":   return "✅";
+    case "checklist_undone": return "↩️";
+    case "checklist_removed":return "🗑";
+    case "file_uploaded":    return "📎";
+    case "file_removed":     return "🗑";
+    default:                  return "•";
+  }
+}
+function fmtActivityTs(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso.slice(0, 16);
+    return d.toLocaleString("pt-BR",
+      { dateStyle: "short", timeStyle: "short" });
+  } catch {
+    return iso.slice(0, 16);
+  }
 }
 
 

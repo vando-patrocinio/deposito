@@ -107,6 +107,32 @@ def _require_manager(user: dict):
     raise HTTPException(403, "Apenas gestor/administrador.")
 
 
+# ---------------------------------------------------------------------------
+# Activity feed — timeline auditável de cada projeto
+# ---------------------------------------------------------------------------
+async def _log_activity(project_id: str, company_id: str, atype: str,
+                              actor: dict, message: str,
+                              meta: Optional[dict] = None) -> None:
+    """Grava 1 evento no feed `project_activity`. Best-effort: nunca quebra
+    a operação principal se a coleção/insert falhar."""
+    try:
+        await db.project_activity.insert_one({
+            "id": f"act-{uuid.uuid4().hex[:10]}",
+            "project_id": project_id,
+            "company_id": company_id,
+            "type": atype,  # created|status_changed|edited|checklist_added|
+                              # checklist_done|checklist_undone|checklist_removed|
+                              # file_uploaded|file_removed|deleted
+            "message": message,
+            "meta": meta or {},
+            "actor_email": (actor or {}).get("email"),
+            "actor_name": (actor or {}).get("name"),
+            "ts": now_iso(),
+        })
+    except Exception as e:
+        logger.warning("[projects] log_activity fail: %s", e)
+
+
 def _normalize_project(p: dict) -> dict:
     """Garante campos default e exclui _id antes de retornar."""
     p.pop("_id", None)
@@ -182,6 +208,12 @@ async def create_project(payload: ProjectIn,
         "updated_at": now_iso(),
     }
     await db.projects.insert_one(dict(doc))
+    await _log_activity(
+        doc["id"], cid, "created", user,
+        f"Projeto criado: {doc['title']}",
+        {"title": doc["title"], "status": doc["status"],
+          "priority": doc["priority"]},
+    )
     return _normalize_project(doc)
 
 
@@ -241,10 +273,30 @@ async def patch_project(project_id: str, payload: ProjectPatch,
     if "priority" in fields and fields["priority"] not in PROJECT_PRIORITIES:
         raise HTTPException(400, "Prioridade inválida.")
     update.update(fields)
+    # Snapshot anterior para diff (status / priority)
+    before = await db.projects.find_one(
+        {"id": project_id, "company_id": cid},
+        {"_id": 0, "status": 1, "priority": 1, "title": 1},
+    ) or {}
     r = await db.projects.update_one(
         {"id": project_id, "company_id": cid}, {"$set": update})
     if not r.matched_count:
         raise HTTPException(404, "Projeto não encontrado.")
+    # Activity log — diferencia mudança de status vs edição genérica
+    if "status" in fields and fields["status"] != before.get("status"):
+        await _log_activity(
+            project_id, cid, "status_changed", user,
+            f"Status alterado: {before.get('status', '?')} → {fields['status']}",
+            {"from": before.get("status"), "to": fields["status"]},
+        )
+    else:
+        edited = [k for k in fields if k != "status"]
+        if edited:
+            await _log_activity(
+                project_id, cid, "edited", user,
+                f"Campos editados: {', '.join(edited)}",
+                {"fields": edited},
+            )
     return await get_project(project_id, user)
 
 
@@ -257,8 +309,10 @@ async def delete_project(project_id: str,
         {"id": project_id, "company_id": cid})
     if not r.deleted_count:
         raise HTTPException(404, "Projeto não encontrado.")
-    # Cleanup dos arquivos
+    # Cleanup dos arquivos e activity feed
     fr = await db.project_files.delete_many(
+        {"project_id": project_id, "company_id": cid})
+    await db.project_activity.delete_many(
         {"project_id": project_id, "company_id": cid})
     return {"ok": True, "files_removed": fr.deleted_count}
 
@@ -287,6 +341,11 @@ async def add_checklist_item(project_id: str, payload: ChecklistItemIn,
     )
     if not r.matched_count:
         raise HTTPException(404, "Projeto não encontrado.")
+    await _log_activity(
+        project_id, cid, "checklist_added", user,
+        f"Subtarefa adicionada: {text}",
+        {"item_id": item["id"], "text": text},
+    )
     return item
 
 
@@ -314,6 +373,28 @@ async def patch_checklist_item(project_id: str, item_id: str,
     )
     if not r.matched_count:
         raise HTTPException(404, "Item não encontrado.")
+    # Activity — concluir/desfazer + edição de texto
+    if "done" in fields:
+        # Busca o texto pra colocar na mensagem
+        proj = await db.projects.find_one(
+            {"id": project_id, "company_id": cid},
+            {"_id": 0, "checklist": 1},
+        ) or {}
+        cl = next((it for it in (proj.get("checklist") or [])
+                      if it.get("id") == item_id), {})
+        txt = cl.get("text", "")
+        if fields["done"]:
+            await _log_activity(
+                project_id, cid, "checklist_done", user,
+                f"Subtarefa concluída: {txt}",
+                {"item_id": item_id, "text": txt},
+            )
+        else:
+            await _log_activity(
+                project_id, cid, "checklist_undone", user,
+                f"Subtarefa reaberta: {txt}",
+                {"item_id": item_id, "text": txt},
+            )
     return {"ok": True}
 
 
@@ -322,6 +403,11 @@ async def delete_checklist_item(project_id: str, item_id: str,
                                       user: dict = Depends(get_current_user)):
     _require_manager(user)
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    # Busca o texto antes do pull pra log
+    proj = await db.projects.find_one(
+        {"id": project_id, "company_id": cid}, {"_id": 0, "checklist": 1}) or {}
+    cl = next((it for it in (proj.get("checklist") or [])
+                  if it.get("id") == item_id), {})
     r = await db.projects.update_one(
         {"id": project_id, "company_id": cid},
         {"$pull": {"checklist": {"id": item_id}},
@@ -329,6 +415,11 @@ async def delete_checklist_item(project_id: str, item_id: str,
     )
     if not r.matched_count:
         raise HTTPException(404, "Projeto não encontrado.")
+    await _log_activity(
+        project_id, cid, "checklist_removed", user,
+        f"Subtarefa removida: {cl.get('text', '?')}",
+        {"item_id": item_id, "text": cl.get("text")},
+    )
     return {"ok": True}
 
 
@@ -374,6 +465,12 @@ async def upload_file(project_id: str,
         {"id": project_id, "company_id": cid},
         {"$inc": {"files_count": 1}, "$set": {"updated_at": now_iso()}},
     )
+    await _log_activity(
+        project_id, cid, "file_uploaded", user,
+        f"Arquivo anexado: {doc['filename']}",
+        {"file_id": file_id, "filename": doc["filename"],
+          "size": len(data), "mime": doc["mime"]},
+    )
     return {
         "id": file_id, "filename": doc["filename"],
         "mime": doc["mime"], "size": doc["size"],
@@ -408,6 +505,10 @@ async def delete_file(project_id: str, file_id: str,
                           user: dict = Depends(get_current_user)):
     _require_manager(user)
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    f = await db.project_files.find_one(
+        {"id": file_id, "project_id": project_id, "company_id": cid},
+        {"_id": 0, "filename": 1},
+    ) or {}
     r = await db.project_files.delete_one(
         {"id": file_id, "project_id": project_id, "company_id": cid})
     if not r.deleted_count:
@@ -416,4 +517,32 @@ async def delete_file(project_id: str, file_id: str,
         {"id": project_id, "company_id": cid},
         {"$inc": {"files_count": -1}, "$set": {"updated_at": now_iso()}},
     )
+    await _log_activity(
+        project_id, cid, "file_removed", user,
+        f"Arquivo removido: {f.get('filename', '?')}",
+        {"file_id": file_id, "filename": f.get("filename")},
+    )
     return {"ok": True}
+
+
+@router.get("/{project_id}/activity")
+async def get_activity(project_id: str, limit: int = 100,
+                            user: dict = Depends(get_current_user)):
+    """Timeline cronológica de eventos do projeto.
+
+    Retorna eventos do mais recente ao mais antigo. Útil para
+    auditoria (cliente questionar tempo gasto em cada etapa).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    # Verifica que o projeto existe pra evitar fishing
+    p = await db.projects.find_one(
+        {"id": project_id, "company_id": cid},
+        {"_id": 0, "id": 1},
+    )
+    if not p:
+        raise HTTPException(404, "Projeto não encontrado.")
+    items = await db.project_activity.find(
+        {"project_id": project_id, "company_id": cid},
+        {"_id": 0},
+    ).sort("ts", -1).limit(min(max(limit, 1), 500)).to_list(500)
+    return {"items": items, "count": len(items)}
