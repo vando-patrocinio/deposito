@@ -4,6 +4,7 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 export const API = `${BACKEND_URL}/api`;
 
 const client = axios.create({ baseURL: API, timeout: 60000 });
+export { client };
 
 // Interceptor: injeta o token JWT salvo em localStorage (escrito pelo AuthContext)
 // e o header X-Active-Company (drill-down do super admin)

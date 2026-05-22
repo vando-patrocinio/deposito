@@ -6,10 +6,11 @@ import {
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
   Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle, Cpu,
   Receipt, CalendarDays, Wand2, DollarSign, Megaphone, Calculator,
-  ShoppingCart,
+  ShoppingCart, Trello,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
+import ProjectsPanel from "@/ProjectsPanel";
 import LeaderboardMural from "@/LeaderboardMural";
 import TvHub from "@/TvHub";
 import SubscribersPanel from "@/SubscribersPanel";
@@ -136,6 +137,7 @@ const TAB_TO_TAG = {
   lousa: "lousa",
   estoque: "estoque",
   "central-compras": "central_compras",
+  "projects": "projetos",
   "rede-ia": "rede_ia",
   atendimento: "atendimento_wa",
   "ai-ranking": "ia_avaliacao",
@@ -167,6 +169,8 @@ const NAV_GROUPS = [
       { id: "estoque", icon: Boxes, label: "Movimento", roles: ["gestor", "administrador"] },
       { id: "central-compras", icon: ShoppingCart, label: "Central de Compras",
         roles: ["gestor", "administrador", "colaborador"] },
+      { id: "projects", icon: Trello, label: "Acompanhamento",
+        roles: ["gestor", "administrador", "auditor"] },
     ],
   },
   {
@@ -697,6 +701,9 @@ function AppShell({ view, setView, children }) {
     }
     if (tabPerms && user && tabPerms[user.role]) {
       if (user.role === "administrador") return true;
+      // Super admin sempre vê todas as abas, mesmo que o saved tabPerms
+      // do role esteja desatualizado (ex: tab nova adicionada depois).
+      if (user.is_super_admin) return true;
       return tabPerms[user.role].includes(t.id);
     }
     // Administrador sempre vê tudo (super-role).
@@ -812,6 +819,9 @@ function AppContent() {
     }
     if (tabPerms && user && tabPerms[user.role]) {
       if (user.role === "administrador") return true;
+      // Super admin sempre vê todas as abas, mesmo que o saved tabPerms
+      // do role esteja desatualizado (ex: tab nova adicionada depois).
+      if (user.is_super_admin) return true;
       return tabPerms[user.role].includes(t.id);
     }
     if (user && user.role === "administrador") return true;
@@ -1068,6 +1078,7 @@ function AppContent() {
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} currentUser={user} />}
           {view === "estoque" && <EstoquePanel currentUser={user} />}
           {view === "central-compras" && <CentralComprasPanel currentUser={user} />}
+          {view === "projects" && <ProjectsPanel currentUser={user} />}
           {view === "ai-ranking" && <AiRankingPanel />}
           {view === "ai-corrections" && <AiCorrectionsPanel />}
           {view === "central-ia" && <CentralIaDashboard />}

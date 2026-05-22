@@ -103,6 +103,7 @@ from routes import (
     disparo_ia as routes_disparo_ia,
     disparo_boleto as routes_disparo_boleto,
     boleto_template as routes_boleto_template,
+    projects as routes_projects,
     isabella_prompt as routes_isabella_prompt,
     gestao_ia as routes_gestao_ia,
     isabella_kpis as routes_isabella_kpis,
@@ -509,6 +510,7 @@ app.include_router(routes_saas.router)
 app.include_router(routes_saas.webhook_router)
 app.include_router(routes_stok.router)
 app.include_router(routes_balanco.router)
+app.include_router(routes_projects.router)
 app.include_router(routes_pdf_reports.router)
 app.include_router(routes_smartolt.router)
 app.include_router(routes_network_diag.router)

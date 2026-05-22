@@ -71,6 +71,41 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **Simulador de reajuste anual de planos** (10/05/2026 — iter48): Endpoints `POST /plans/{id}/adjustment/preview` (calcula impacto SEM aplicar — retorna assinantes afetados, novo preço, delta por assinante, delta receita mensal e anual, amostra de assinantes), `POST /plans/{id}/adjustment/apply` (aplica: atualiza `monthly_price` no plano + `plan_price` snapshot nos subscribers + grava log em `plan_adjustments_log`), `GET /plans/{id}/adjustment/history` (últimos 20 reajustes do plano). Filtro de status (default = só ATIVO/INADIMPLENTE/EM_INSTALACAO). Override de percentual disponível. UI: botão "Reajustar" no PlanCard (com badge laranja) abre modal com 4 KPI cards (Assinantes afetados, Por assinante, Receita mensal+, Receita anual+), amostra de até 8 subscribers impactados, histórico inline, fluxo de 2 cliques pra confirmar (revisar → aplicar). Validado curl: R$ 79,90 → R$ 85,09 (+6.5%), log gravado, preço persistido.
 ✅ **Aba Planos visível para todos os perfis** (10/05/2026 — iter48): adicionado `plans` ao `TAB_DEFINITIONS` e `DEFAULT_TAB_PERMISSIONS` (auditor + gestor) em TabPermissionsCard. Migração suave do tab_permissions cuida de adicionar pra empresas que já tinham config gravada.
 ✅ **SmartOLT AI — Modo ATIVO + CO-PILOTO interno** (10/05/2026): worker autônomo roda a cada **30s** com **threshold dinâmico** (≥10 ONUs em LOS OU ≥50% do PON). RECEPTIVO (A2A system_prompt), ATIVO (drafts → aprovação humana 1-clique), CO-PILOTO (internal notes amarelas, cliente nunca vê). Templates editáveis. Endpoints `/api/smartolt-ai/{summary,outages/{active,recent,detect},drafts,drafts/{id}/{send,discard},drafts/send-bulk,templates}`.
+✅ **Acompanhamento — Kanban de Projetos com Laudo Fotográfico** (22/02/2026 — iter123): nova aba "Acompanhamento" (Operação) inspirada em Trello/Linear/ClickUp + best practices da indústria fiber/telecom (Splynx Field Service).
+
+**Backend** (`/app/backend/routes/projects.py`, NOVO 320+ linhas):
+- 4 status como colunas Kanban: `backlog` → `em_andamento` → `em_revisao` → `finalizado`
+- 4 prioridades: `baixa`/`media`/`alta`/`critica`
+- CRUD completo: `GET/POST/PATCH/DELETE /api/projects(/{id})` + filtros (status/priority/assignee)
+- KPIs: `GET /api/projects/stats` (totals por status/prioridade + completed_pct)
+- Files: `POST /api/projects/{id}/files` (upload multipart PDF/DOC/DOCX/imagem até 10MB, base64 em `project_files`), `GET .../download` (StreamingResponse), `DELETE`
+- Permissões: leitura para gestor/auditor/admin/colaborador; criação/edição/exclusão apenas gestor/administrador
+
+**Frontend** (`/app/frontend/src/ProjectsPanel.js`, NOVO 600+ linhas):
+- 2 views: **Kanban** (default) com drag-and-drop nativo HTML5 entre colunas e Lista tabular
+- 4 KPIs no topo (Total / Em Andamento / Em Revisão / Concluído%)
+- Filtro de prioridade no toolbar
+- Card design: título, descrição (line-clamp 2), badge de prioridade, tags `#tag`, datas com setinha `📅 05-25 → 06-10`, indicadores 📎 N (arquivos) e 👤 N (assignees), borda vermelha quando vencido
+- Modal de criação com todos os campos
+- Modal de detalhes com editor inline + upload de **PDF/DOC/imagem** via `<input type="file">` + lista de arquivos com download (⬇) e exclusão (×)
+- Optimistic UI no drag-and-drop
+- data-testids completos: `projects-panel`, `kanban-board`, `kanban-col-{status}`, `project-card-{id}`, `project-row-{id}`, `project-new-btn`, `project-form-modal`, `project-detail-modal`, `project-file-input`, `project-upload-btn`, `file-row-{id}`, `file-download-{id}`, `file-delete-{id}`, `view-kanban`, `view-lista`, `filter-priority`
+
+**Integrações**:
+- Registrado em `server.py` (`routes_projects.router`)
+- Adicionado em `App.js` NAV_GROUPS (Operação, ícone Trello da lucide-react)
+- TAB_DEFINITIONS atualizado em `TabPermissionsCard.js` (controle de RBAC)
+- `_DEFAULT_TAB_PERMS.gestor` ganhou 'projects'
+- Bug fix descoberto durante implementação: filtro de visibilidade de abas no App.js agora bypassa `tabPerms` quando `user.is_super_admin === true` — isso garante que super admin veja TODAS as abas mesmo quando o `tab_permissions` saved está desatualizado (ex: tab nova adicionada depois). Padrão: super admin é "owner" do sistema, vê tudo. `client` exportado de `api.js`.
+
+**Validado E2E**:
+- curl admin: GET/POST/PATCH/DELETE retornam payloads corretos com `files_count`, `created_by_name`, etc
+- GET `/stats` retorna `{total, by_status, by_priority, completed_pct}`
+- Screenshot do preview mostra Kanban completo: KPIs, 4 colunas coloridas (Backlog cinza / Em Andamento azul / Em Revisão amarelo / Finalizado verde), 1 card de teste com badge ALTA, tags, datas
+- Lint JS limpo
+
+⚠️ **Produção:** este fix está apenas em preview. Para que o produção (https://dual-combine-3.emergent.host) receba, será necessário redeploy.
+
 ✅ **Auditor: Reset granular de estoque + Relatório de Quebra** (22/02/2026 — iter122):
 
 **Backend** (`/app/backend/routes/stok.py`):

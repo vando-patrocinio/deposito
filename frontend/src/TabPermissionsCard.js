@@ -15,6 +15,8 @@ export const TAB_DEFINITIONS = [
   { id: "estoque",         label: "Movimento",         group: "Operação" },
   { id: "central-compras", label: "Central de Compras", group: "Operação",
     hint: "Almoxarifes da praça veem só a própria; gestores veem todas." },
+  { id: "projects",        label: "Acompanhamento",    group: "Operação",
+    hint: "Kanban de projetos/obras: início, término, laudos PDF/DOC." },
 
   // Inteligência
   { id: "ai-ranking",      label: "Avaliação IA",      group: "Inteligência" },
@@ -66,7 +68,7 @@ export const DEFAULT_TAB_PERMISSIONS = {
   administrador: [...ALL_TAB_IDS],
   auditor:       [...ALL_TAB_IDS],
   gestor: [
-    "dashboard", "estoque",
+    "dashboard", "estoque", "projects",
     "ai-ranking", "ai-corrections", "central-ia", "rede-ia",
     "atendimento", "alvaro-ia", "mass-messaging", "sales-funnel",
     "cadastro", "subscribers", "plans", "pracas",
