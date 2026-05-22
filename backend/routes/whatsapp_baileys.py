@@ -2751,8 +2751,14 @@ async def set_auto_reply(payload: AutoReplySettingsIn,
 # Business hours — horário comercial editável por empresa (afeta IA)
 # ---------------------------------------------------------------------------
 class BusinessHoursIn(BaseModel):
-    tz_offset: Optional[int] = -3
-    schedule: Dict[str, Any]   # {"0": {"open": "08:00", "close": "18:00", "active": true}, ...}
+    enabled: Optional[bool] = True
+    timezone_offset_hours: Optional[int] = -3
+    weekly_schedule: Optional[Dict[str, Any]] = None
+    holidays: Optional[List[str]] = None
+    fora_de_hora_message: Optional[str] = None
+    # Aliases novos (compat)
+    schedule: Optional[Dict[str, Any]] = None
+    tz_offset: Optional[int] = None
     after_hours_message: Optional[str] = None
 
 
@@ -2760,17 +2766,20 @@ class BusinessHoursIn(BaseModel):
 async def get_business_hours_endpoint(
     user: dict = Depends(require_role("gestor")),
 ):
-    """Retorna config + status atual (aberto/fechado + próxima abertura)."""
+    """Retorna config + status atual (aberto/fechado + próxima abertura).
+    Shape compatível com WaBusinessHoursCard (legacy) — campos `enabled`,
+    `weekly_schedule`, `timezone_offset_hours`, `holidays`,
+    `fora_de_hora_message`."""
     from services.business_hours import (
         get_business_hours, compute_status,
     )
     cid = user.get("company_id") or DEMO_COMPANY_ID
     cfg = await get_business_hours(cid)
+    st = compute_status(cfg)
     return {
-        "tz_offset": cfg["tz_offset"],
-        "schedule": cfg["schedule"],
-        "after_hours_message": cfg["after_hours_message"],
-        "status": compute_status(cfg),
+        **cfg,
+        "is_outside_now": not st["is_open"],
+        "status": st,
     }
 
 
@@ -2779,23 +2788,24 @@ async def set_business_hours_endpoint(
     payload: BusinessHoursIn,
     user: dict = Depends(require_role("gestor")),
 ):
-    """Atualiza horário comercial. Aceita schedule parcial (faz merge com defaults)."""
+    """Atualiza horário comercial. Aceita campos legacy ou novos."""
     from services.business_hours import (
         set_business_hours, compute_status,
     )
     cid = user.get("company_id") or DEMO_COMPANY_ID
     cfg = await set_business_hours(
         cid,
-        {
-            "tz_offset": payload.tz_offset or -3,
-            "schedule": payload.schedule or {},
-            "after_hours_message": payload.after_hours_message,
-        },
+        payload.model_dump(exclude_none=True),
         by=user.get("email") or user.get("id"),
     )
+    st = compute_status(cfg)
     logger.info("[wa-baileys] business_hours atualizado por %s",
                   user.get("email"))
-    return {"ok": True, **cfg, "status": compute_status(cfg)}
+    return {
+        "ok": True, "config": cfg,
+        "is_outside_now": not st["is_open"],
+        "status": st,
+    }
 
 
 # ---------------------------------------------------------------------------

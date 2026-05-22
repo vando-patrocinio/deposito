@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend-only UI validation of WaBusinessHoursCard inside Atendimento IA → Configuração. Card now renders correctly with the legacy shape (weekly_schedule, holidays, fora_de_hora_message, timezone_offset_hours, enabled). All 7 day checkboxes, textarea, holiday input, enabled toggle, and save button are present. Save flow returns shape legacy and shows success message '✓ Horário salvo. Status agora: FORA DO HORÁRIO.'. Persistence verified after page reload. AgentConfigModal popup confirmed via code review to contain ONLY data-testid=agent-config-bh-link (informative link) with no duplicate BusinessHoursCard import/render.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/.screenshots/bh_card.png",
+    "/app/.screenshots/bh_card_after_save.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AgentConfigModal.js (1681 lines) — exceeds 700-line guideline. Consider splitting into AutoReplySection, PersonalitySection, etc.",
+    "AIHubPanel.js (1301 lines) — also exceeds 700-line guideline; refactor into smaller tab components.",
+    "WaBusinessHoursCard uses inline 500 errors visible in console for some resources (favicon/other assets, NOT business-hours endpoint). Investigate noisy 500s in network if present in non-related routes."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456 (already logged in via persisted session)",
+  "seed_data_creation": "Set wa_business_hours textarea to 'TEST_ Mensagem fora de hora — automated abc' via the UI (cleanup not done; can be reset via UI or DB).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Login session persists in Playwright (no email field shown on revisit). To reach WaBusinessHoursCard: sidebar 'Atendimento IA' → click [data-testid=aihub-tab-configuracao] → card at [data-testid=wa-business-hours-card]. Save uses PUT /api/whatsapp-baileys/business-hours and the response is consumed correctly by the component. Popup 'Configurar Robô' (data-testid=wa-open-agent-config) lives in WhatsAppChatLayout.js:1834 — opening it requires a connected WA conversation; static code review of AgentConfigModal.js confirms only the link is present (no BusinessHoursCard).",
+  "rca of the issue": "Previous iteration (107) reported a white-screen crash because backend was returning the new shape (schedule, tz_offset, active, after_hours_message) while WaBusinessHoursCard accessed cfg.weekly_schedule, cfg.timezone_offset_hours, cfg.fora_de_hora_message, cfg.enabled. The backend was adapted to emit the legacy shape (also accepting the new shape as alias on PUT) — so the component now receives the keys it expects and renders/saves without errors."
+}

@@ -73,12 +73,11 @@ async def test_agentes_conhecem_data_hora():
             user_text="oi, que dia é hoje?",
             subscriber_id=sub_id, subscriber_ctx=sub_ctx,
         )
-        out1 = await db.aihub_wa_messages.find_one(
+        outs1 = await db.aihub_wa_messages.find(
             {"phone": phone_isa1, "direction": "outbound"},
-            {"_id": 0, "text": 1, "agent_name": 1},
-            sort=[("created_at", -1)],
-        )
-        text1 = ((out1 or {}).get("text") or "").lower()
+            {"_id": 0, "text": 1},
+        ).sort("created_at", 1).to_list(20)
+        text1 = " ".join((o.get("text") or "") for o in outs1).lower()
         print(f"\n=== Isabella · 'que dia é hoje?' ===")
         print(f"Resposta: {text1}")
         # Aceita: "dd/mm" ou "dia X" ou "dia da semana"
@@ -97,12 +96,11 @@ async def test_agentes_conhecem_data_hora():
             user_text="oi, que horas são aí?",
             subscriber_id=sub_id, subscriber_ctx=sub_ctx,
         )
-        out2 = await db.aihub_wa_messages.find_one(
+        outs2 = await db.aihub_wa_messages.find(
             {"phone": phone_cam, "direction": "outbound"},
-            {"_id": 0, "text": 1, "agent_name": 1},
-            sort=[("created_at", -1)],
-        )
-        text2 = ((out2 or {}).get("text") or "").lower()
+            {"_id": 0, "text": 1},
+        ).sort("created_at", 1).to_list(20)
+        text2 = " ".join((o.get("text") or "") for o in outs2).lower()
         print(f"\n=== Camila · 'que horas são?' ===")
         print(f"Resposta: {text2}")
         # Aceita: "HH:MM", "HHh", "HH horas", ou período (manhã/tarde/noite)
@@ -124,12 +122,11 @@ async def test_agentes_conhecem_data_hora():
             user_text="vocês tem horário pra instalação amanhã?",
             subscriber_id=None, subscriber_ctx=None,  # prospect novo
         )
-        out3 = await db.aihub_wa_messages.find_one(
+        outs3 = await db.aihub_wa_messages.find(
             {"phone": phone_isa2, "direction": "outbound"},
-            {"_id": 0, "text": 1, "agent_name": 1},
-            sort=[("created_at", -1)],
-        )
-        text3 = ((out3 or {}).get("text") or "").lower()
+            {"_id": 0, "text": 1},
+        ).sort("created_at", 1).to_list(20)
+        text3 = " ".join((o.get("text") or "") for o in outs3).lower()
         print(f"\n=== Isabella · 'instalação amanhã?' ===")
         print(f"Resposta: {text3}")
         # Aceita: a IA respondeu de forma coerente — não precisa mencionar

@@ -60,16 +60,16 @@ async def test_business_hours_full():
     try:
         # ── 1. Endpoints GET/PUT (via process direto) ──
         cfg = await get_business_hours(cid)
-        assert cfg["tz_offset"] == -3
-        assert "0" in cfg["schedule"]
-        assert cfg["schedule"]["0"]["open"] == "08:00"
+        assert cfg["timezone_offset_hours"] == -3
+        assert "1" in cfg["weekly_schedule"]  # segunda
 
-        # PUT custom: força FECHADO em todos os dias (offline)
-        all_off_schedule = {str(i): {"active": False} for i in range(7)}
+        # PUT custom: força FECHADO em todos os dias
+        all_off_schedule = {str(i): {"enabled": False} for i in range(7)}
         await set_business_hours(cid, {
-            "tz_offset": -3,
-            "schedule": all_off_schedule,
-            "after_hours_message": (
+            "enabled": True,
+            "timezone_offset_hours": -3,
+            "weekly_schedule": all_off_schedule,
+            "fora_de_hora_message": (
                 "Estamos OFFLINE. Resolvo tudo aqui pelo chat 🙂"
             ),
         }, by="test")
@@ -117,12 +117,13 @@ async def test_business_hours_full():
         print(f"✓ IA respondeu coerentemente fora do horário")
 
         # ── 3. Voltar ao default + status open agora ──
-        always_open = {str(i): {"open": "00:00", "close": "23:59",
-                                       "active": True} for i in range(7)}
+        always_open = {str(i): {"enabled": True, "open": "00:00",
+                                       "close": "23:59"} for i in range(7)}
         await set_business_hours(cid, {
-            "tz_offset": -3,
-            "schedule": always_open,
-            "after_hours_message": "default",
+            "enabled": True,
+            "timezone_offset_hours": -3,
+            "weekly_schedule": always_open,
+            "fora_de_hora_message": "default",
         }, by="test")
         st3 = compute_status(await get_business_hours(cid))
         assert st3["is_open"] is True
