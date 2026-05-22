@@ -477,13 +477,26 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
   // Detecta se está em "Modo celular" via session override (botão do header) — permite voltar
   const overrideMode = (typeof sessionStorage !== "undefined") && sessionStorage.getItem("ponto_mode") === "app";
+  // isAdminTest = TRUE apenas quando administrador/auditor está
+  // visualizando o app de OUTRO colaborador via `forcedCollabId`
+  // (rota /colaborador/{id} a partir do desktop). No app próprio do
+  // colaborador (mesmo se a pessoa logada também for admin), o modo
+  // é SEMPRE normal — só aparecem bolhas atribuídas ao seu cadastro.
   const isAdminTest = (() => {
     if (typeof window === "undefined") return false;
+    if (!forcedCollabId) return false;  // sem forced = app próprio = modo normal
     const token = window.localStorage.getItem("ponto_token");
     if (!token) return false;
     try {
       const payload = JSON.parse(atob(token.split(".")[1]));
-      return payload.role === "administrador" || payload.role === "auditor";
+      const role = payload.role;
+      if (role !== "administrador" && role !== "auditor") return false;
+      // Confirma que o admin está visualizando outro colab (não a si mesmo).
+      // Se forcedCollabId === próprio collaborator_id do admin, ainda é
+      // modo normal.
+      const ownCollabId = payload.collaborator_id || null;
+      if (ownCollabId && ownCollabId === forcedCollabId) return false;
+      return true;
     } catch { return false; }
   })();
   const exitMobile = () => {

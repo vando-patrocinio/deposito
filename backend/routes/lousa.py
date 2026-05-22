@@ -860,7 +860,11 @@ async def get_lousa_by_collaborator(cid: str, admin_test: int = 0,
     cross_collab_company = None
     if admin_test:
         # Valida JWT manualmente — se for admin/auditor, libera o modo
-        # cross-colaborador
+        # cross-colaborador. PORÉM, se o admin estiver olhando o PRÓPRIO
+        # cadastro (seu collaborator_id == cid), mantém o modo normal —
+        # só bolhas atribuídas a ele mesmo. (Pedido do usuário: app do
+        # colaborador SEMPRE mostra apenas suas bolhas, mesmo se a pessoa
+        # também for admin.)
         try:
             auth_header = (request.headers.get("authorization") or "") if request else ""
             if auth_header.lower().startswith("bearer "):
@@ -868,7 +872,11 @@ async def get_lousa_by_collaborator(cid: str, admin_test: int = 0,
                 from auth import decode_token
                 payload = decode_token(token)
                 if payload and payload.get("role") in ("administrador", "auditor"):
-                    cross_collab_company = coll.get("company_id")
+                    own_collab_id = payload.get("collaborator_id")
+                    if own_collab_id and own_collab_id == cid:
+                        cross_collab_company = None  # app próprio → normal
+                    else:
+                        cross_collab_company = coll.get("company_id")
         except Exception:
             cross_collab_company = None
     return await _lousa_for_collaborator(

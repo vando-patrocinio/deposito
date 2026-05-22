@@ -1486,3 +1486,21 @@ praça e DRE de compras mensal.
 - **Dados demo** seedados em `co-demo`: 6 leads em 3 bairros (Recreio 3, Jacarepagua 2, Olaria 1).
 - **Validação** (`testing_agent_v3_fork` iteration_111): **0 falhas**. Backend 8/8 pytests, UI confirmado posicionamento (y=1338 > y=1284 do botão — fica embaixo conforme pedido), 3 bairros renderizados com dados batendo backend.
 - **Uso operacional**: gestor olha esse card e tem direcionamento claro de onde expandir a malha guiado por demanda real (ex: "12 leads aguardando no bairro X → vale a pena puxar fibra pra lá").
+
+✅ **Bug fix · Isolamento estrito de bolhas no mobile do colaborador** (22/02/2026):
+- **Pedido do usuário** (PT-BR): "o mobile do colaborador, técnico, reparador/instalador e individual, só podem aparecer bolhas que estão especificamente em seus cadastros, não aparecendo nenhuma outra bolha que não está na lousa em seu nome".
+- **Bug raiz**: a flag `isAdminTest` no frontend (`CollaboratorApp.js:480`) era TRUE para **qualquer admin/auditor logado**, mesmo quando essa pessoa estava acessando o PRÓPRIO app de colaborador. Resultado: em ISPs pequenas onde o admin também é técnico, ele via bolhas de todos os colegas no app dele.
+- **Frontend fix** (`CollaboratorApp.js`):
+  - `isAdminTest` agora só é TRUE se: (1) há `forcedCollabId` (rota `/colaborador/{id}` a partir do desktop), (2) usuário é admin/auditor, E (3) o `forcedCollabId` ≠ próprio `collaborator_id` do JWT.
+  - Caso contrário (app próprio), modo sempre normal — só bolhas atribuídas a ele.
+- **Backend fix** (`routes/lousa.py` linha ~860):
+  - Endpoint `/lousa/by-collaborator/{cid}?admin_test=1` agora ignora a flag `admin_test` quando o JWT do admin tem `collaborator_id == cid` (admin olhando próprio app).
+  - Quando admin acessa OUTRO collab → cross-mode ativado normalmente (gestor pode auditar técnicos).
+- **Validação** (`tests/test_mobile_collab_isolation.py` 1/1 PASS · 4 cenários):
+  1. Tec A sem token → só sua bolha ✅
+  2. Admin sem `collaborator_id` no JWT + admin_test=1 → vê todas (cross-mode preservado) ✅
+  3. **Admin que TAMBÉM é Tec A acessando próprio id com admin_test=1 → SÓ suas bolhas** (o bug do usuário) ✅
+  4. Admin acessando OUTRO collab → cross-mode ativo (auditoria funcional) ✅
+  - **Regressão zero**: 7/7 pytests passam.
+- **Impacto**: técnicos/reparadores/instaladores em ISPs onde o admin/dono também executa serviços agora veem APENAS sua agenda — eliminando ruído visual + risco de pegar bolha errada de outro colega.
+
