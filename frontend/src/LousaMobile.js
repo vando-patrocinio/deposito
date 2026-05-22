@@ -327,6 +327,7 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
         onFinalize={(cd) => handleFinalize(openTicket, cd)}
         badSignalThreshold={badSignalThreshold}
         collaboratorId={collaboratorId}
+        isAdminTest={isAdminTest}
         onRefresh={async () => {
           try {
             const fresh = await api.lousaTicket(openTicket.id);
@@ -1032,7 +1033,8 @@ function ConsumableField({ label, fieldKey, consumableId, step, consMap, form, s
 }
 
 function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
-                          badSignalThreshold = -27, collaboratorId = null }) {
+                          badSignalThreshold = -27, collaboratorId = null,
+                          isAdminTest = false }) {
   // Total de steps:
   // - Instalação (isInstall=true): 3 steps → 1=Sinal/ONT, 2=CTO+Porta, 3=Insumos
   // - Demais (retirada/reparo): 2 steps → 1=Sinal/ONT, 2=Insumos
@@ -2041,10 +2043,16 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                      style={{ flex: 1, height: 52, fontSize: 14 }}>
               ← Voltar
             </Button>
-            <Button onClick={submit} disabled={busy}
+            <Button onClick={submit} disabled={busy || isAdminTest}
                      data-testid="finalize-btn"
-                     style={{ flex: 2, height: 52, fontSize: 15 }}>
-              <Icon name="check" /> {busy ? "Finalizando..." : "Finalizar nota"}
+                     title={isAdminTest
+                       ? "Modo gestor — não é possível finalizar bolha alheia"
+                       : undefined}
+                     style={{ flex: 2, height: 52, fontSize: 15,
+                                opacity: isAdminTest ? 0.5 : 1 }}>
+              <Icon name="check" /> {isAdminTest
+                ? "🔒 Modo gestor"
+                : (busy ? "Finalizando..." : "Finalizar nota")}
             </Button>
           </div>
         </>

@@ -3014,6 +3014,232 @@ async def get_viability_heatmap(
 
 
 # ---------------------------------------------------------------------------
+# Contact sync — agrega contatos das conversas + click-to-chat link
+# ---------------------------------------------------------------------------
+class ImportContactsIn(BaseModel):
+    phones: List[str]  # apenas estes serão importados
+    as_status: Optional[str] = "PROSPECT"
+    branch: Optional[str] = None
+
+
+@router.get("/contacts/from-conversations")
+async def list_contacts_from_conversations(
+    days: int = 60,
+    only_new: bool = True,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Agrega contatos a partir do histórico de mensagens WhatsApp (Baileys).
+    Cada `phone` único vira 1 contato com `push_name` (mais recente),
+    `last_message_at`, `total_messages` e flag `already_subscriber` (true
+    se já existe em `subscribers`/`subscriber_phones`)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    days = max(1, min(int(days or 60), 365))
+    since_iso = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    pipeline = [
+        {"$match": {"company_id": cid, "phone": {"$ne": None},
+                       "created_at": {"$gte": since_iso}}},
+        {"$sort": {"created_at": -1}},
+        {"$group": {
+            "_id": "$phone",
+            "push_name": {"$first": "$push_name"},
+            "last_message_at": {"$first": "$created_at"},
+            "total_messages": {"$sum": 1},
+            "directions": {"$addToSet": "$direction"},
+        }},
+        {"$sort": {"last_message_at": -1}},
+        {"$limit": 5000},
+    ]
+    raw = await db.aihub_wa_messages.aggregate(pipeline).to_list(5000)
+
+    phones = [r["_id"] for r in raw if r.get("_id")]
+    # Já cadastrados — busca via subscriber_phones (normalized)
+    existing = set()
+    if phones:
+        from phone_normalizer import get_phone_lookup_variants
+        all_variants = []
+        for p in phones:
+            try:
+                all_variants.extend(get_phone_lookup_variants(p) or [p])
+            except Exception:
+                all_variants.append(p)
+        async for sp in db.subscriber_phones.find(
+            {"company_id": cid,
+              "normalized_number": {"$in": list(set(all_variants))}},
+            {"_id": 0, "normalized_number": 1, "subscriber_id": 1},
+        ):
+            existing.add(sp.get("normalized_number"))
+
+    contacts = []
+    for r in raw:
+        ph = r["_id"]
+        already = any(v in existing
+                          for v in (get_phone_lookup_variants(ph)
+                                       if 'get_phone_lookup_variants' in dir()
+                                       else [ph]))
+        # Recalcula com variants
+        try:
+            from phone_normalizer import get_phone_lookup_variants as _gpv
+            already = any(v in existing for v in (_gpv(ph) or [ph]))
+        except Exception:
+            already = ph in existing
+        if only_new and already:
+            continue
+        contacts.append({
+            "phone": ph,
+            "push_name": r.get("push_name") or "(sem nome)",
+            "last_message_at": r.get("last_message_at"),
+            "total_messages": r.get("total_messages", 0),
+            "already_subscriber": already,
+            "had_inbound": "inbound" in (r.get("directions") or []),
+        })
+
+    return {
+        "window_days": days,
+        "total": len(contacts),
+        "contacts": contacts[:500],
+    }
+
+
+@router.post("/contacts/import-as-leads")
+async def import_contacts_as_leads(
+    payload: ImportContactsIn,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Importa lote de contatos como subscribers em status PROSPECT.
+    Cria também o vínculo em `subscriber_phones`."""
+    from phone_normalizer import normalize_brazilian_phone
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    now = datetime.now(timezone.utc).isoformat()
+    created = 0
+    skipped = 0
+    for raw_phone in (payload.phones or [])[:500]:
+        norm = normalize_brazilian_phone(raw_phone)
+        if not norm:
+            skipped += 1
+            continue
+        # Verifica se já existe
+        existing = await db.subscriber_phones.find_one(
+            {"company_id": cid, "normalized_number": norm},
+            {"_id": 0, "subscriber_id": 1},
+        )
+        if existing:
+            skipped += 1
+            continue
+        # Busca push_name da última msg
+        last_msg = await db.aihub_wa_messages.find_one(
+            {"company_id": cid, "phone": raw_phone},
+            {"_id": 0, "push_name": 1},
+            sort=[("created_at", -1)],
+        )
+        push_name = (last_msg or {}).get("push_name") or f"WhatsApp {norm[-4:]}"
+        sub_id = f"sub-{uuid.uuid4().hex[:10]}"
+        await db.subscribers.insert_one({
+            "id": sub_id, "company_id": cid, "name": push_name,
+            "status": payload.as_status or "PROSPECT",
+            "branch": payload.branch,
+            "origin": "whatsapp_contact_sync",
+            "created_at": now,
+        })
+        await db.subscriber_phones.insert_one({
+            "id": f"sphone-{uuid.uuid4().hex[:10]}",
+            "company_id": cid, "subscriber_id": sub_id,
+            "raw_number": raw_phone, "normalized_number": norm,
+            "is_primary": True, "is_whatsapp": True,
+            "created_at": now,
+        })
+        created += 1
+    logger.info("[wa-contacts] imported %d skipped %d (by %s)",
+                  created, skipped, user.get("email"))
+    return {"ok": True, "created": created, "skipped": skipped}
+
+
+@router.get("/click-to-chat")
+async def click_to_chat_link(
+    text: Optional[str] = None,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Retorna link público `wa.me/55XXXXXXXXX?text=...` da empresa pra
+    incorporar em site/QR-code/email/anúncios.
+    Usa o phone configurado em `aihub_settings.wa_business_phone` ou,
+    em fallback, o telefone do próprio sidecar (status.me.user).
+    """
+    from phone_normalizer import normalize_brazilian_phone
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    # 1. tenta config explícita
+    cfg = await db.aihub_settings.find_one(
+        {"company_id": cid, "key": "wa_business_phone"},
+        {"_id": 0, "value": 1},
+    )
+    phone = (cfg or {}).get("value")
+    # 2. fallback: pega do status do sidecar
+    if not phone:
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as cli:
+                r = await cli.get(
+                    f"{SIDECAR_BASE}/status",
+                    headers=({"x-token": SIDECAR_TOKEN}
+                              if SIDECAR_TOKEN else {}),
+                )
+                if r.status_code == 200:
+                    js = r.json()
+                    me = (js.get("me") or {}).get("id") or ""
+                    # baileys: "5521999999999:1@s.whatsapp.net"
+                    only = me.split(":")[0].split("@")[0]
+                    if only and only.isdigit():
+                        phone = only
+        except Exception:
+            pass
+
+    norm = normalize_brazilian_phone(phone) if phone else None
+    if not norm:
+        raise HTTPException(
+            404,
+            "Telefone do WhatsApp Business não configurado. "
+            "Configure em aihub_settings.wa_business_phone ou conecte o "
+            "sidecar.",
+        )
+    if not norm.startswith("55"):
+        norm = "55" + norm.lstrip("+").lstrip("55")
+    from urllib.parse import quote as _q
+    suffix = f"?text={_q(text)}" if text else ""
+    link = f"https://wa.me/{norm}{suffix}"
+    return {
+        "phone": norm,
+        "link": link,
+        "preview_text": text,
+    }
+
+
+class WaPhoneIn(BaseModel):
+    phone: str
+
+
+@router.put("/click-to-chat/phone")
+async def set_click_to_chat_phone(
+    payload: WaPhoneIn,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Define o telefone usado no link click-to-chat."""
+    from phone_normalizer import normalize_brazilian_phone
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    norm = normalize_brazilian_phone(payload.phone)
+    if not norm:
+        raise HTTPException(400, "Telefone inválido")
+    if not norm.startswith("55"):
+        norm = "55" + norm
+    await db.aihub_settings.update_one(
+        {"company_id": cid, "key": "wa_business_phone"},
+        {"$set": {"value": norm,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": user.get("email") or user.get("id")}},
+        upsert=True,
+    )
+    return {"ok": True, "phone": norm,
+            "link": f"https://wa.me/{norm}"}
+
+
+# ---------------------------------------------------------------------------
 # AI Health — diagnóstico do Atendimento IA (Isabela/Jerusa)
 # ---------------------------------------------------------------------------
 @router.get("/ai-health")

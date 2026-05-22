@@ -2377,16 +2377,33 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
                                     request: Request = None):
     cid = payload.collaborator_id
     # Modo "teste admin": admin/auditor pode finalizar nota de qualquer cid
+    # — EXCETO quando o admin também é o próprio colaborador da nota
+    # (collaborator_id no JWT == cid recebido), pois nesse caso seria
+    # "app próprio" e a action ainda é dele. Se for app de OUTRO técnico
+    # (cross-mode), a finalização é BLOQUEADA — admin está em modo gestor
+    # SOMENTE LEITURA.
     is_admin_test = False
+    is_admin_cross_mode = False
     try:
         auth_header = (request.headers.get("authorization") or "") if request else ""
         if auth_header.lower().startswith("bearer "):
             from auth import decode_token
             payload_jwt = decode_token(auth_header.split(" ", 1)[1].strip())
             if payload_jwt and payload_jwt.get("role") in ("administrador", "auditor"):
-                is_admin_test = True
+                own_collab = payload_jwt.get("collaborator_id")
+                if own_collab and own_collab == cid:
+                    is_admin_test = False  # app próprio
+                else:
+                    is_admin_cross_mode = True
+                    is_admin_test = True  # legado, mas será bloqueado abaixo
     except Exception:
         is_admin_test = False
+    if is_admin_cross_mode:
+        raise HTTPException(
+            403,
+            "Modo gestor é somente leitura — para finalizar esta nota, "
+            "peça ao colaborador atribuído ou troque para o app dele.",
+        )
     t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
     if not t:
         raise HTTPException(404, "Nota não encontrada")
