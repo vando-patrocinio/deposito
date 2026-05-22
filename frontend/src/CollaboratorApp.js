@@ -552,7 +552,16 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
   }
 
   return (
-    <div style={mobile ? {} : { display: "grid", gridTemplateColumns: "430px 1fr", gap: 22, alignItems: "start" }}>
+    <div data-testid={isAdminTest ? "admin-test-mode-root" : undefined}
+          style={mobile
+            ? (isAdminTest
+                ? { outline: "3px solid #f59e0b",
+                    outlineOffset: "-3px",
+                    borderRadius: 16, position: "relative" }
+                : {})
+            : { display: "grid",
+                gridTemplateColumns: "430px 1fr",
+                gap: 22, alignItems: "start" }}>
       {mobile && <PullIndicator {...ptr} />}
       {mobile && <PWAInstallPrompt />}
       <Wrapper>
@@ -574,13 +583,34 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
         )}
         {isAdminTest && (
           <div data-testid="admin-test-banner" style={{
-            background: "#fffbeb", color: "#92400e",
-            borderBottom: "1px solid #fcd34d",
-            padding: "10px 14px", fontSize: 12, fontWeight: 600,
+            background: "linear-gradient(90deg, #fef3c7 0%, #fde68a 100%)",
+            color: "#78350f",
+            borderBottom: "2px solid #f59e0b",
+            padding: "10px 14px", fontSize: 12, fontWeight: 700,
             display: "flex", alignItems: "center", gap: 10,
+            boxShadow: "0 2px 6px rgba(245, 158, 11, .15)",
           }}>
-            <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#f59e0b" }} />
-            <span>Modo teste admin — cerca virtual ignorada (bater ponto em qualquer localização)</span>
+            <span style={{
+              display: "inline-flex", alignItems: "center",
+              justifyContent: "center",
+              width: 22, height: 22, borderRadius: "50%",
+              background: "#f59e0b", color: "white",
+              fontSize: 13, fontWeight: 800, flexShrink: 0,
+            }}>👁</span>
+            <span style={{ flex: 1, minWidth: 0, lineHeight: 1.3 }}>
+              Você está vendo o app de{" "}
+              <strong data-testid="admin-test-target-name" style={{
+                fontWeight: 800, color: "#92400e",
+              }}>{collab?.name || "outro colaborador"}</strong>{" "}
+              (modo gestor) · cerca virtual ignorada
+            </span>
+            <span data-testid="admin-test-warn-pill" style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: 0.4,
+              padding: "3px 8px", borderRadius: 4,
+              background: "rgba(120, 53, 15, .12)",
+              color: "#78350f", whiteSpace: "nowrap",
+              border: "1px solid rgba(120, 53, 15, .25)",
+            }}>CUIDADO AO TOCAR</span>
           </div>
         )}
         <div style={{ padding: mobile ? "16px 16px 32px" : 18 }}>

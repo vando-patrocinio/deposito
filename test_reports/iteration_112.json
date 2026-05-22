@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only test of cross-test admin banner (Iteration 112). Validated banner appears with correct content (eye icon, target name, warning pill, '(modo gestor) · cerca virtual ignorada' text) and yellow 3px outline (rgb(245,158,11)) when admin/auditor views another collaborator's app via ?cid=col-30aafc3c with admin JWT in ponto_token. Validated negative case: when a regular colaborador logs in and visits the same URL, neither admin-test-banner nor admin-test-mode-root render.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "CollaboratorApp.js (1405 lines) > 700 — consider splitting into smaller modules (banner, login screen, kebab menu, wizard) for maintainability.",
+    "isAdminTest gates on role==='administrador'||'auditor' but admin@empresa.com JWT returns role='auditor' (works). No coverage for role 'gestor' visiting collab app — confirm intentional.",
+    "Banner is only rendered inside the mobile/PWA branch in App.js (mobile=true when ?cid=). On desktop with admin logged in, isManager=true blocks CollaboratorApp from rendering, so admin can only access cross-test via the mobile PWA branch — fine but worth documenting.",
+    "Console shows one unrelated 500 error on initial admin landing fetch (not related to banner)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "test_credentials": "admin@empresa.com / 123456 (auditor role per JWT); colaborador@empresa.com / 123456 (colaborador)",
+  "seed_data_creation": "None. Used existing demo collab col-30aafc3c (DIOGO HENRIQUE).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Cross-test banner UX validated. To reproduce: login admin/auditor via /api/auth/login, set returned access_token into localStorage as 'ponto_token', then navigate to /?cid=<otherCollabId> on a mobile viewport (390x844). Banner data-testids: admin-test-banner, admin-test-target-name, admin-test-warn-pill, admin-test-mode-root (outline rgb(245,158,11) 3px solid).",
+  "rca of the issue": "No issue found — visual enhancement is correctly implemented in CollaboratorApp.js lines 484-501 (isAdminTest detection) and 555-615 (banner + outline rendering)."
+}
