@@ -153,8 +153,16 @@ async def list_purchases(
         praca_ids = {d.get("praca_id") for d in docs if d.get("praca_id")}
         coll_ids = {d.get("responsible_collaborator_id") for d in docs
                      if d.get("responsible_collaborator_id")}
-        pracas = {p["id"]: p["name"] async for p in db.fin_filiais.find(
+        # Resolve nomes de praça via `pracas` (fonte canônica do tenant).
+        # Fallback em `fin_filiais` apenas para compras legadas cujo
+        # `praca_id` foi gravado antes da migração do dropdown.
+        pracas = {p["id"]: p["name"] async for p in db.pracas.find(
             {"id": {"$in": list(praca_ids)}}, {"_id": 0, "id": 1, "name": 1})}
+        missing = [pid for pid in praca_ids if pid and pid not in pracas]
+        if missing:
+            async for p in db.fin_filiais.find(
+                {"id": {"$in": missing}}, {"_id": 0, "id": 1, "name": 1}):
+                pracas.setdefault(p["id"], p["name"])
         colls = {c["id"]: c["name"] async for c in db.collaborators.find(
             {"id": {"$in": list(coll_ids)}}, {"_id": 0, "id": 1, "name": 1})}
         for d in docs:
@@ -173,15 +181,16 @@ async def get_refs(user: dict = Depends(get_current_user)) -> Dict[str, Any]:
     """Retorna praças, responsáveis (almoxarifes), fornecedores existentes
     e tipos para autocomplete no form.
 
-    Praças vêm exclusivamente de `fin_filiais` (Financeiro → Filiais).
-    Se o dropdown vier vazio em produção, cadastre as filiais em
-    Financeiro → Filiais.
+    Praças vêm de `pracas` (sidebar → Cadastro → Praças). Esta é a fonte
+    canônica do tenant; o dropdown "Praça destino" reflete exatamente o
+    que está cadastrado na aba Praças.
     """
     _require_purchase_access(user)
     cid = user.get("company_id") or DEMO_COMPANY_ID
-    pracas = await db.fin_filiais.find(
-        {"company_id": cid, "active": {"$ne": False}}, {"_id": 0}
-    ).sort("name", 1).to_list(200)
+    pracas = await db.pracas.find(
+        {"company_id": cid},
+        {"_id": 0, "id": 1, "name": 1, "city": 1, "state": 1},
+    ).sort("name", 1).to_list(500)
     colls = await db.collaborators.find(
         {"company_id": cid, "active": {"$ne": False}},
         {"_id": 0, "id": 1, "name": 1, "cargo": 1,
