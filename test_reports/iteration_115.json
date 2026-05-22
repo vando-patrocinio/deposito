@@ -1,0 +1,37 @@
+{
+  "summary": "E2E test of CTO-photos feature (PT-BR request): (a) duplo-clique na foto da pendencia abre lightbox; (b) aprovar persiste a foto em ctos.photos[]; (c) Mapa interativo - duplo-clique na CTO abre popup com galeria, e duplo-clique no thumb abre lightbox. Backend pytest 1/1 PASS. Pendencias UI PASS (all 4 testids + Esc + close button). Mapa interativo: marker dblclick abre popup PASS, gallery render PASS (testid cto-photos-{id} + cto-photo-thumb-{ph}), Esc/close-btn da map-photo-lightbox PASS. ISSUE encontrado: dblclick REAL em thumb dentro do Leaflet Popup nao dispara React onDoubleClick (page.mouse.dblclick falhou; somente dispatchEvent('dblclick') sintetico funcionou). Provavel causa: L.DomEvent.disableClickPropagation no container do Popup do Leaflet engole o segundo click antes do browser sintetizar o dblclick.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "(dashboard)", "issue": "500s pre-existentes em endpoints de dashboard (overtimeTrend etc.) sem relacao com esta feature."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "RedeIaMap.js - thumbnail onDoubleClick dentro de <Popup>", "issue": "onDoubleClick no <img data-testid='cto-photo-thumb-*'> NAO dispara via dblclick real do usuario (mouse.dblclick simulado em coordenadas centrais nao abriu o map-photo-lightbox; somente dispatchEvent('dblclick') sintetico funcionou). Leaflet's L.DomEvent.disableClickPropagation aplicado ao container do Popup intercepta a sequencia mousedown/up/mousedown/up impedindo o browser de sintetizar um 'dblclick' nativo. Resultado: usuario que clicar 2x rapido no thumb dentro do popup NAO ve a foto ampliada.", "selector": "[data-testid^='cto-photo-thumb-']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_cto_photos_on_approval.py"],
+  "action_items": [
+    "FIX (RedeIaMap.js linha ~908-928): substituir o onDoubleClick no <img> do thumb por uma deteccao manual de duplo-clique. Opcoes: (1) Adicionar onClick + ref de timestamp/contador (se 2 clicks em <400ms abre lightbox); (2) Usar useEffect/ref no <img> e registrar via L.DomEvent.on(el, 'dblclick', handler) - bypassa a supressao do Leaflet; (3) Tornar o thumb clicavel com 1 clique (mais simples e ja segue o padrao Instagram/Lightbox). Recomendado opcao (1) ou (3) para preservar a UX requisitada pelo usuario ('com 2 clics posso abrir a foto').",
+    "Verificar tambem o pendency-photo (RedeIaPanel.js ~1109): la nao tem Leaflet entao funciona perfeitamente. Sem mudancas.",
+    "Considerar adicionar e.preventDefault() no Marker.eventHandlers.dblclick para evitar o zoom default do Leaflet ao clicar 2x na CTO (no teste o popup abriu, mas o mapa tambem zoomou ao mesmo tempo - vide screenshots). Hoje so usa e.originalEvent?.stopPropagation()."
+  ],
+  "critical_code_review_comments": [
+    "RedeIaMap.js: o thumb dentro do Popup usa onDoubleClick mas Leaflet's Popup tem disableClickPropagation que pode bloquear dblclick sintetizado. Recomenda-se deteccao manual via onClick + tempo entre cliques.",
+    "RedeIaPanel.js PhotoLightbox e RedeIaMap.js PhotoLightbox sao DUPLICADAS (DRY violation, ~50 linhas iguais cada). Sugerir extrair para /app/frontend/src/components/PhotoLightbox.jsx e importar nos dois lugares.",
+    "Marker.eventHandlers.dblclick chama e.originalEvent?.stopPropagation() mas NAO impede o doubleClickZoom do Leaflet - durante teste o mapa zoomou ao mesmo tempo que abriu o popup. Adicionar L.DomEvent.preventDefault(e.originalEvent) ou desabilitar doubleClickZoom globalmente quando popup aberto.",
+    "Endpoint /map/data limita 8 fotos via slice no payload - confirmado por inspecao do codigo. No teste com 2 fotos, ambas chegaram corretamente; gallery mostra 6 no maximo (RedeIaMap.js slice(0,6)) - ha discrepancia: backend envia 8 mas frontend so renderiza 6. Decidir limite unico.",
+    "Pendency lightbox + Map lightbox usam data-testids diferentes (photo-lightbox vs map-photo-lightbox) - intencional para conseguir abrir as duas em telas distintas. OK."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (1/1 pytest)", "frontend": "85% (5/6 fluxos UI - falha apenas em thumb-dblclick real dentro do Leaflet Popup)"},
+  "test_credentials": "admin@empresa.com / 123456 (auto-demo). Tab disponivel via sidebar 'Rede IA' (nao 'Mapa Rede IA' como mencionado no problem statement).",
+  "seed_data_creation": "Inseridas no banco demo para teste e DELETADAS apos: CTO cto-uitest-pend-uitest (pending_validation com photo_data_url TINY_PNG) + cto_validations val-uitest-uitest + CTO cto-uitest-map-uitest (approved com photos[] de 2 fotos). Cleanup feito.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Para reproduzir o thumb-dblclick bug: 1) seed uma CTO com photos[] no banco; 2) navegar para Rede IA > Mapa interativo; 3) dblclick no marker abre popup com galeria (funciona); 4) tentar dblclick real (page.mouse.dblclick) em [data-testid^='cto-photo-thumb-'] - NAO abre o lightbox. Apenas el.dispatchEvent(new MouseEvent('dblclick')) funciona. Pendencia tab funciona 100% pois nao tem Leaflet no caminho. Backend pytest test_cto_photos_on_approval.py passa em 1.14s.",
+  "rca of the issue": "Leaflet's Popup container e configurado com L.DomEvent.disableClickPropagation que chama stopPropagation em mousedown/click/dblclick. Mesmo que stopPropagation nao deveria impedir o evento dblclick no proprio target, em alguns engines (Chromium) a combinacao com a sequencia de focus/blur de Leaflet pode impedir o browser de detectar a sequencia de 2 cliques dentro do mesmo target como dblclick nativo. Consequentemente React's onDoubleClick (que escuta o evento DOM 'dblclick' nativo) nunca dispara. Mitigacao: implementar deteccao manual via onClick + setTimeout/timestamp, ou registrar diretamente via L.DomEvent.on(thumbRef.current, 'dblclick', handler) no useEffect."
+}

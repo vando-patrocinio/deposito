@@ -1260,6 +1260,23 @@ async def validate_cto(cto_id: str, body: ValidationActionIn,
             "updated_at": now_iso(),
         }},
     )
+
+    # Quando aprovada, persiste a foto enviada pelo técnico no array
+    # `ctos.photos[]` pra ficar visível no card do mapa interativo.
+    if body.action == "approve":
+        photo_url = (validation.get("cto_snapshot") or {}).get("photo_data_url")
+        if photo_url:
+            photo_entry = {
+                "id": f"ph-{uuid.uuid4().hex[:10]}",
+                "url": photo_url,
+                "uploaded_at": now_iso(),
+                "uploaded_by_name": validation.get("technician_name")
+                    or "Técnico", "source": "validation_approved",
+            }
+            await db.ctos.update_one(
+                {"id": cto_id, "company_id": cid},
+                {"$push": {"photos": photo_entry}},
+            )
     await _audit(f"validate_{body.action}", cto_id,
                   {k: v for k, v in cto.items() if k != "_id"},
                   {"status": new_cto_status_map[body.action], "comment": body.comment},

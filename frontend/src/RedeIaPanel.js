@@ -1029,6 +1029,7 @@ function Pendencies() {
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(null); // {item, action}
   const [mapModal, setMapModal] = useState(null); // {item}
+  const [photoLightbox, setPhotoLightbox] = useState(null); // {url, cto, pendencyId}
   const [comment, setComment] = useState("");
   const load = useCallback(async () => {
     setLoading(true);
@@ -1108,10 +1109,21 @@ function Pendencies() {
                     <div data-testid={`pendency-photo-${p.id}`} style={{
                       marginTop: 10, borderRadius: 8, overflow: "hidden",
                       border: "1px solid var(--border-default)", maxWidth: 240,
-                    }}>
+                      position: "relative", cursor: "zoom-in",
+                    }}
+                          onDoubleClick={() => setPhotoLightbox({
+                            url: c.photo_data_url, cto: c, pendencyId: p.id,
+                          })}
+                          title="Clique 2× para ampliar">
                       <img src={c.photo_data_url} alt="Foto CTO"
                         style={{ width: "100%", display: "block",
                                   maxHeight: 180, objectFit: "cover" }} />
+                      <div style={{
+                        position: "absolute", bottom: 4, right: 6,
+                        padding: "2px 6px", borderRadius: 4,
+                        background: "rgba(15,23,42,.65)", color: "white",
+                        fontSize: 10, fontWeight: 700,
+                      }}>2× ampliar</div>
                     </div>
                   )}
                 </div>
@@ -1177,7 +1189,72 @@ function Pendencies() {
           onClose={() => setMapModal(null)}
         />
       )}
+
+      {photoLightbox && (
+        <PhotoLightbox
+          url={photoLightbox.url}
+          ctoName={photoLightbox.cto?.name}
+          uploadedByName={photoLightbox.cto?.technician_name}
+          onClose={() => setPhotoLightbox(null)}
+        />
+      )}
     </Card>
+  );
+}
+
+/* PhotoLightbox — modal full-screen pra ampliar foto da CTO.
+   Pedido do usuário: 'com 2 clics posso abrir a foto'. */
+function PhotoLightbox({ url, ctoName, uploadedByName, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div data-testid="photo-lightbox"
+          onClick={onClose}
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(0,0,0,.92)",
+            display: "grid", placeItems: "center", padding: 20,
+            cursor: "zoom-out",
+          }}>
+      <div onClick={(e) => e.stopPropagation()}
+            style={{ display: "flex", flexDirection: "column", gap: 12,
+                      maxWidth: "92vw", maxHeight: "92vh",
+                      alignItems: "center" }}>
+        <div style={{
+          padding: "6px 14px", borderRadius: 999,
+          background: "rgba(255,255,255,.1)", color: "white",
+          fontSize: 12, fontWeight: 700, display: "flex", gap: 10,
+          alignItems: "center",
+        }}>
+          📸 {ctoName || "CTO"}
+          {uploadedByName && (
+            <span style={{ opacity: 0.7, fontWeight: 500 }}>
+              · {uploadedByName}
+            </span>
+          )}
+        </div>
+        <img src={url} alt="Foto CTO ampliada"
+              data-testid="lightbox-img"
+              style={{
+                maxWidth: "100%", maxHeight: "82vh", borderRadius: 8,
+                boxShadow: "0 12px 40px rgba(0,0,0,.6)",
+                cursor: "default",
+              }} />
+        <button data-testid="lightbox-close"
+                onClick={onClose}
+                style={{
+                  padding: "8px 18px", borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,.3)",
+                  background: "rgba(255,255,255,.1)", color: "white",
+                  fontSize: 12, fontWeight: 700, cursor: "pointer",
+                }}>
+          Fechar (Esc)
+        </button>
+      </div>
+    </div>
   );
 }
 const btnSm = (color) => ({

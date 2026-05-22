@@ -282,6 +282,19 @@ async def get_map_data(user: dict = Depends(get_current_user)):
             "photo_tags": c.get("last_photo_tags") or [],
             "photo_summary": c.get("last_photo_summary"),
             "photo_at": c.get("last_photo_at"),
+            # Galeria de fotos cadastradas (aprovadas pela validação ou
+            # uploads manuais). Pedido do usuário: clique 2× na CTO no
+            # mapa interativo mostra a galeria no popup.
+            "photos": [
+                {"id": ph.get("id"),
+                  "url": ph.get("url") or ph.get("data_url"),
+                  "uploaded_at": ph.get("uploaded_at"),
+                  "uploaded_by_name": ph.get("uploaded_by_name"),
+                  "source": ph.get("source"),
+                  "caption": ph.get("caption")}
+                for ph in (c.get("photos") or [])
+                if (ph.get("url") or ph.get("data_url"))
+            ][:8],
         })
 
     # Aplica overrides nas CEs também

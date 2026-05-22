@@ -171,6 +171,7 @@ export default function RedeIaMap() {
   const [healthFilter, setHealthFilter] = useState("");
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState("view"); // view | drag | add-cable | add-ce | draw-cable
+  const [photoLightbox, setPhotoLightbox] = useState(null); // {url, ctoName, uploadedByName}
   const [cableDraft, setCableDraft] = useState({
     from: null,           // { id, type, lat, lng, name }
     waypoints: [],        // [{lat,lng}] intermediários do draw-cable
@@ -776,6 +777,12 @@ export default function RedeIaMap() {
                   draggable={mode === "drag"}
                   eventHandlers={{
                     dragend: (e) => handleDragEnd("cto", c.id, e.target.getLatLng()),
+                    dblclick: (e) => {
+                      // Pedido do usuário: clicar 2× na CTO abre o card
+                      // com as informações + fotos cadastradas.
+                      e.originalEvent?.stopPropagation();
+                      e.target.openPopup();
+                    },
                     click: (e) => {
                       if (mode === "add-cable" || mode === "draw-cable") {
                         e.originalEvent?.stopPropagation();
@@ -881,6 +888,48 @@ export default function RedeIaMap() {
                           ✋ Posição ajustada manualmente
                         </div>
                       )}
+
+                      {Array.isArray(c.photos) && c.photos.length > 0 && (
+                        <div data-testid={`cto-photos-${c.id}`}
+                              style={{
+                                marginTop: 8, paddingTop: 8,
+                                borderTop: "1px dashed #cbd5e1",
+                              }}>
+                          <div style={{ fontSize: 10, fontWeight: 800,
+                                          color: "#7c3aed",
+                                          textTransform: "uppercase",
+                                          letterSpacing: 0.4,
+                                          marginBottom: 5 }}>
+                            📸 Fotos cadastradas ({c.photos.length})
+                          </div>
+                          <div style={{ display: "grid",
+                                          gridTemplateColumns: "repeat(3, 1fr)",
+                                          gap: 4 }}>
+                            {c.photos.slice(0, 6).map((ph) => (
+                              <img key={ph.id}
+                                    src={ph.url}
+                                    alt="Foto CTO"
+                                    title="2× para ampliar"
+                                    onDoubleClick={(e) => {
+                                      e.stopPropagation();
+                                      setPhotoLightbox({
+                                        url: ph.url,
+                                        ctoName: c.name,
+                                        uploadedByName: ph.uploaded_by_name,
+                                      });
+                                    }}
+                                    data-testid={`cto-photo-thumb-${ph.id}`}
+                                    style={{
+                                      width: "100%", aspectRatio: "1/1",
+                                      objectFit: "cover", borderRadius: 4,
+                                      cursor: "zoom-in",
+                                      border: "1px solid #e2e8f0",
+                                    }} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                         {(() => {
                           const tok = window.localStorage.getItem("ponto_token") || "";
@@ -1065,7 +1114,63 @@ export default function RedeIaMap() {
           onClose={() => setActiveCto(null)}
         />
       )}
+      {photoLightbox && (
+        <PhotoLightbox {...photoLightbox}
+                        onClose={() => setPhotoLightbox(null)} />
+      )}
     </Card>
+  );
+}
+
+/* PhotoLightbox compartilhado — modal full-screen pra ampliar foto da CTO. */
+function PhotoLightbox({ url, ctoName, uploadedByName, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div data-testid="map-photo-lightbox"
+          onClick={onClose}
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(0,0,0,.92)",
+            display: "grid", placeItems: "center", padding: 20,
+            cursor: "zoom-out",
+          }}>
+      <div onClick={(e) => e.stopPropagation()}
+            style={{ display: "flex", flexDirection: "column", gap: 12,
+                      alignItems: "center" }}>
+        <div style={{
+          padding: "6px 14px", borderRadius: 999,
+          background: "rgba(255,255,255,.1)", color: "white",
+          fontSize: 12, fontWeight: 700, display: "flex", gap: 10,
+        }}>
+          📸 {ctoName || "CTO"}
+          {uploadedByName && (
+            <span style={{ opacity: 0.7, fontWeight: 500 }}>
+              · {uploadedByName}
+            </span>
+          )}
+        </div>
+        <img src={url} alt="Foto CTO ampliada"
+              data-testid="map-lightbox-img"
+              style={{
+                maxWidth: "92vw", maxHeight: "82vh", borderRadius: 8,
+                boxShadow: "0 12px 40px rgba(0,0,0,.6)",
+              }} />
+        <button data-testid="map-lightbox-close"
+                onClick={onClose}
+                style={{
+                  padding: "8px 18px", borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,.3)",
+                  background: "rgba(255,255,255,.1)", color: "white",
+                  fontSize: 12, fontWeight: 700, cursor: "pointer",
+                }}>
+          Fechar (Esc)
+        </button>
+      </div>
+    </div>
   );
 }
 
