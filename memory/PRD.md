@@ -1515,3 +1515,30 @@ praça e DRE de compras mensal.
   - Positivo: banner aparece com ícone, nome alvo, pílula de alerta e outline rgb(245,158,11) quando admin acessa `?cid=col-XYZ` com token de admin.
   - Negativo: colaborador comum logado na mesma URL NÃO vê banner nem outline.
 
+
+✅ **Fix global · Zero scroll horizontal em todas as abas + Read-only no modo cross-test + Sincronização de contatos WhatsApp + Click-to-chat** (22/02/2026):
+
+### 1) Read-only no modo cross-test (segurança adicional)
+- **Frontend** (`LousaMobile.js`): botão "Finalizar nota" e label de modo trocados quando `isAdminTest=true` — mostra "🔒 Modo gestor", `disabled` + tooltip "não é possível finalizar bolha alheia".
+- **Backend** (`routes/lousa.py:2374`): endpoint `POST /api/lousa/public/tickets/{ticket_id}/finalize` agora **bloqueia (HTTP 403)** quando o JWT do admin tem `collaborator_id != cid` (cross-mode). Mantém autorização normal quando o próprio collaborator_id == cid (app próprio do admin/técnico).
+
+### 2) Zero scroll horizontal global (pedido: "todas as abas em full, dentro do parametro de uma tela")
+- **`index.css`** linha ~426:
+  - `.app-main { overflow-x: hidden; }`
+  - `.app-content { min-width: 0; }`
+  - Regra global `.app-content > * { min-width: 0; max-width: 100% }` impede que qualquer card filho estoure o container.
+  - `.table-wrap` com `overflow-x: auto` pra rolagem horizontal CONFINADA dentro do card (não estoura a viewport).
+- **Grids responsivas**: 16 ocorrências de `gridTemplateColumns: "1fr 1fr"` / `"repeat(3, 1fr)"` / `"repeat(4, 1fr)"` substituídas por `repeat(auto-fit, minmax(140-280px, 1fr))` em DisparoIaPanel, DisparoPromoPanel, MassMessagingPanel, AICenterPanel, AlvaroPanel, EstoquePanel, FinanceiroPanelExt, RedeIaPanel.
+- **Tabelas**: 11 tabelas em AlvaroPanel, FinanceiroPanel, FinanceiroPanelExt, AssetsSection, ClientsClassificationPanel, HoleritePanel, ManagerPanel, ReconcileAuditPanel ganharam `minWidth: 640` + wrapper `<div className="table-wrap">` com `overflowX:auto`.
+- **Validação** (`testing_agent_v3_fork` iteration_113): **39/39 medições OK** — 13 abas × 3 viewports (1024, 1280, 1440) — `scrollWidth - innerWidth = 0` em TODAS, incluindo Disparo em Massa > Disparo IA específica do pedido. Zero scroll horizontal de página detectado.
+
+### 3) Sincronização de contatos WhatsApp via histórico (Baileys → CRM)
+- **Backend** (`routes/whatsapp_baileys.py`):
+  - `GET /api/whatsapp-baileys/contacts/from-conversations?days=N&only_new=true` — agrega `aihub_wa_messages` por phone, retorna lista com `push_name`, `last_message_at`, `total_messages`, `already_subscriber`, `had_inbound`. Curl validado: 51 contatos novos descobertos em 30d.
+  - `POST /api/whatsapp-baileys/contacts/import-as-leads` — importa lote `{phones, as_status, branch}` como subscribers PROSPECT com `origin: whatsapp_contact_sync` + cria vínculo em `subscriber_phones`.
+- Vantagem: não depende do sidecar exposing `/contacts` — usa o que já temos no banco.
+
+### 4) Click-to-chat público
+- `GET /api/whatsapp-baileys/click-to-chat?text=Olá!` — retorna `{phone, link: "https://wa.me/55XXXXXXXXX?text=..."}` pra incorporar em sites/QR-codes/anúncios. Pega phone de `aihub_settings.wa_business_phone` ou fallback do sidecar status.
+- `PUT /api/whatsapp-baileys/click-to-chat/phone {phone}` — define telefone Business da empresa. Normaliza pra `55DDXXXXXXXXX`.
+
