@@ -1379,3 +1379,18 @@ praça e DRE de compras mensal.
   - Curl `/api/lousa/public/available-slots?company_id=co-demo&days_ahead=2` → 200 com 6 slots (`Sáb (23/05) às 08:00`, ..., 13:00).
   - Curl `/api/smartolt/public/onu-diagnose/<phone-fixture>` retorna JSON com diagnóstico em PT-BR pronto para o Álvaro.
 - **Impacto**: tier-1 técnico no WhatsApp agora é totalmente automático para clientes cadastrados no SmartOLT — zero intervenção humana até o reparo agendado aparecer no app do técnico via Lousa.
+
+
+✅ **Bug crítico · `text` undefined em `_maybe_auto_reply` + prompts v6.80 reforçados** (22/02/2026 — verificação completa):
+- **Bug raiz descoberto durante validação E2E**: em `routes/whatsapp_baileys.py:1891` o código chamava `looks_like_support(text)` mas a variável correta é `user_text` (parâmetro de `_maybe_auto_reply`). O `try/except` envolvendo a integração com `alvaro_tools` engolia o `NameError` silenciosamente — resultado: o bloco `=== DIAGNÓSTICO TÉCNICO ===` NUNCA era injetado no prompt, fazendo o Álvaro inventar "seu equipamento não está vinculado ao seu cadastro" e pedir CPF redundantemente.
+- **Fix**: corrigido para `looks_like_support(user_text)` + adicionado log INFO ao injetar contexto pra rastreamento.
+- **Reforço dos 3 prompts (Isabella · Álvaro · Camila)** publicado em `aihub_agents`:
+  - **Álvaro**: bloco `<context_smartolt>` virou REGRA Nº 1 IMPERATIVA — quando há `=== CLIENTE IDENTIFICADO ===` + `=== DIAGNÓSTICO TÉCNICO ===`, NÃO peça CPF. NÃO duvide do cadastro. Use o fluxo recomendado direto. Só pede CPF em CONFLITO DE CADASTRO ou ausência de diagnóstico. Seção `<markers>` reforçada como "OBRIGATÓRIA — esquecer = ação não acontece".
+  - **Camila**: nova `REGRA #0 PRIORITÁRIA` no `<lgpd>` — se já há `=== CLIENTE IDENTIFICADO ===`, USE direto e prossiga com tool de fatura sem pedir CPF. Pede CPF apenas se NÃO houver identificação ou houver CONFLITO.
+  - **Isabella**: bloco `<privacy>` reescrito em 3 regras claras (#0 cliente identificado → use; #1 conflito → CPF; #2 prospect → descoberta natural).
+  - **GLOBAL_RULES R3** atualizada: markers entre colchetes (`[REBOOT_ONU]`, `[AGENDAR_REPARO:...]`, `[ROTEAR_*]`, `[HOT_LEAD]`) são EXCEÇÃO obrigatória — sistema remove antes de enviar.
+- **Validação E2E (3 pytests, 3/3 PASS)** com chamadas LLM REAIS (DeepSeek):
+  - `tests/test_alvaro_flow.py` — endpoints + tools isolados.
+  - `tests/test_alvaro_e2e.py` — `_maybe_auto_reply` real: roteamento → Alvaro · contexto SmartOLT injetado · resposta natural usando dados (`"ligou há bem pouco tempo — menos de 1 minuto"` direto do diagnose) · markers limpos.
+  - `tests/test_isabella_camila_e2e.py` — Isabella não pede CPF e oferece upsell ("Combo Ligo Music + Apple TV+"); Camila chama o cliente pelo apelido ("Oba, Maria!") e responde sobre o boleto sem pedir CPF.
+- **Configurações verificadas**: `aihub_settings.agent_name` = `Isabella` (era `Jerusa` inexistente — corrigido).

@@ -1888,7 +1888,7 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             looks_like_support, diagnose_for_alvaro, fetch_available_slots,
             format_diag_context,
         )
-        if looks_like_support(text):
+        if looks_like_support(user_text):
             alvaro_diag = await diagnose_for_alvaro(phone)
             if alvaro_diag and alvaro_diag.get("found"):
                 slots = await fetch_available_slots(
@@ -1896,6 +1896,10 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
                 ctx = format_diag_context(alvaro_diag, slots)
                 if ctx:
                     extra.append(ctx)
+                    logger.info(
+                        "[alvaro_tools] diag injetado phone=%s status=%s slots=%d",
+                        phone, alvaro_diag.get("status"), len(slots),
+                    )
     except Exception as e:
         logger.warning("[alvaro_tools] skip: %s", e)
 

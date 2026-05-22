@@ -73,7 +73,9 @@ async def test_alvaro_end_to_end_via_maybe_auto_reply():
 
         result = await _maybe_auto_reply(
             cid=cid, phone=phone, user_text=user_text,
-            subscriber_id=sub_id, subscriber_ctx=None,
+            subscriber_id=sub_id,
+            subscriber_ctx=(f"Nome: {name} · Plano: Fibra 500 Mega Teste · "
+                                f"Status: ATIVO · Filial: TESTE"),
             inbound_was_voice=False,
         )
         print(f"\n=== AUTO-REPLY RESULT ===")
