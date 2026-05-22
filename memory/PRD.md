@@ -1555,3 +1555,21 @@ praça e DRE de compras mensal.
 - **Validação** (`testing_agent_v3_fork` iteration_114): **8/8 critérios PASS** — render entre seções corretas, header verde, layout 2 colunas, copy button com transição, link contém `wa.me/55{phone}`, edição da textarea triggers auto-reload, save de novo telefone persiste após reload completo, normalização BR (11999998888 → 5511999998888).
 - **Impacto comercial**: dono pega o QR e cola onde quiser — quando alguém escaneia, abre direto o WhatsApp com a Isabella já com mensagem pré-preenchida pra qualificar lead. Custo de aquisição zero.
 
+
+✅ **Fotos da CTO: lightbox 2× clique + persistência ao aprovar + galeria no mapa interativo** (22/02/2026):
+- **Pedido do usuário** (PT-BR, com screenshot do card de pendência): "atualise o script: com 2 clics posso abrir a foto, sendo aceita coloque elas em um banco de cadastros, e essa foto pode aparecer na cto cadastrada no card junto com as informações quando clicado 2x na cto em mapa interativo".
+- **Backend** (`routes/rede_ia.py` ~linha 1266): quando uma validação de CTO é aprovada (`POST /api/rede-ia/ctos/{cto_id}/validate {action:'approve'}`), o `photo_data_url` do `cto_snapshot` da validação é persistido em `ctos.photos[]` via `$push`. Cada entry: `{id, url, uploaded_at, uploaded_by_name, source: 'validation_approved'}`.
+- **Backend** (`routes/rede_ia_map.py` ~linha 282): endpoint `GET /api/rede-ia/map/data` agora retorna `ctos[].photos` (até 8 por CTO) com `{id, url, uploaded_at, uploaded_by_name, source, caption}` pra renderização no popup.
+- **Frontend** (`RedeIaPanel.js` → PendenciasTab):
+  - Duplo-clique na foto de pendência (`data-testid=pendency-photo-{id}`) abre `<PhotoLightbox>` (data-testid=photo-lightbox) com imagem ampliada, badge `📸 nome-cto · técnico`, e fecha por click no fundo, botão Fechar ou tecla Esc.
+- **Frontend** (`RedeIaMap.js`):
+  - Marker da CTO ganhou eventHandler `dblclick` → `e.target.openPopup()` (cumpre o "clicado 2x na CTO no mapa" do pedido).
+  - Popup mostra galeria `data-testid=cto-photos-{cto_id}` com até 6 thumbnails 3×3 (data-testid=cto-photo-thumb-{photo_id}).
+  - **Bug Leaflet descoberto** (iteration_115): Leaflet usa `L.DomEvent.disableClickPropagation` no container do Popup → engole o 2º click nativo. **Fix**: novo componente `ThumbWithDblClick` que detecta 2 cliques manualmente via timer 350ms + onClick handler (mantém onDoubleClick como fallback). Validado em E2E (`page.mouse.click x2 com gap <350ms`).
+  - Lightbox no mapa: `data-testid=map-photo-lightbox` com `map-lightbox-img` + botão `map-lightbox-close` + Esc.
+- **Validação**:
+  - Pytest `tests/test_cto_photos_on_approval.py` 1/1 PASS — aprovar persiste em `ctos.photos[0]` + `/map/data` expõe.
+  - `testing_agent_v3_fork` iteration_115: bug Leaflet detectado.
+  - `testing_agent_v3_fork` iteration_116: bug corrigido — clicks reais com timer abrem lightbox; Esc fecha; click lento (>350ms) NÃO abre (timer reseta corretamente).
+  - Regressão zero: 6/6 pytests passando.
+
