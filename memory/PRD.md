@@ -29,6 +29,8 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 15. **Ligo IA consulta faturas** — 2 tools novas (`consult_subscriber_invoices`, `next_due_invoice`) permitem que a Secretária IA responda automaticamente perguntas como "quanto eu devo", "2ª via", "qual minha próxima fatura" usando os dados sincronizados do Atlaz. Reconhece CPF/CNPJ com ou sem máscara. (Feb/2026)
 16. **Analytics financeiro + Rate Limiting** — (a) Gráfico em linha comparando Recebimentos vs Despesas com 7 ranges (1d/7d/30d/3m/6m/1y/5y) e 3 agrupamentos (dia/mês/ano), métricas de regularidade via CV%. (b) Rate limiting global via slowapi protegendo brute force no login (5 tentativas/min) e endpoints sensíveis. (Feb/2026)
 
+17. **Álvaro auto-diagnóstico SmartOLT + auto-agendamento de reparo** (Feb/2026) — agente Álvaro (suporte técnico WhatsApp) recebe automaticamente diagnóstico ONLINE/LOS/POWER_OFF do SmartOLT antes de responder. Dispara `[REBOOT_ONU]` quando ONLINE com instabilidade (reboot remoto silencioso) e `[AGENDAR_REPARO:date,time]` quando precisa de visita técnica (cria ticket aberto na Lousa direto do chat). Slots vêm do endpoint `/api/lousa/public/available-slots`.
+
 
 ## Arquitetura técnica
 - **Backend**: FastAPI · MongoDB (Motor async) · APScheduler · workers async (atlaz, smartolt, ai_preventive, holidays).
@@ -1358,3 +1360,22 @@ da compra confirmada com "✅ 3 item(s) gravados no estoque".**
 "empresa global" e passar a ser "por praça" (migração de
 `location_type=empresa` → `praca:{id}`). Adiciona relatório de saldo por
 praça e DRE de compras mensal.
+
+
+---
+
+✅ **Álvaro auto-diagnóstico SmartOLT + auto-agendamento de reparo · finalizado e validado** (22/02/2026 — fork hand-off):
+- **Objetivo**: agente Álvaro (suporte técnico WhatsApp) consultar status SmartOLT (online/LOS/power off), explicar tecnicamente ao cliente, tentar reboot remoto e — se persistir — agendar reparo automaticamente em slot disponível da Lousa.
+- **Status anterior** (handoff): prompt + tools wired mas migration não havia rodado e o lookup de subscriber pelo phone usava `{"variants": norm}` (campo inexistente — `subscriber_phones` usa `normalized_number`).
+- **Fixes finais**:
+  1. **Migration `refine_agents_v680.py` rodada** → prompt v6.80 do Álvaro publicado no banco (13.839 chars, contém `[REBOOT_ONU]`, `[AGENDAR_REPARO:date=YYYY-MM-DD,time=HH:MM]`, bloco `<context_smartolt>` com fluxo ONLINE/LOS/POWER_OFF/UNKNOWN).
+  2. **`smartolt.py` linha 481 corrigida**: `_norm` + `{"variants": norm}` substituído por `get_phone_lookup_variants(phone)` + `{"normalized_number": {"$in": variants}}` — agora bate com a única fonte de verdade (`find_subscriber_by_phone`).
+  3. **`smartolt.py` linha 495 corrigida**: subscriber projection inclui `pppoe_user` (era apenas `pppoe`/`external_code`, mas o schema atual usa `pppoe_user`).
+- **Wiring confirmado**:
+  - `whatsapp_baileys.py` linha 1885 → `looks_like_support(text)` → `diagnose_for_alvaro(phone)` → `fetch_available_slots(cid)` → `format_diag_context()` injeta bloco no contexto antes do LLM.
+  - `whatsapp_baileys.py` linha 2228 → `process_alvaro_actions(reply, phone, diag)` processa `[REBOOT_ONU]` (POST `/api/smartolt/public/reboot-onu`) e `[AGENDAR_REPARO:date,time]` (POST `/api/lousa/public/create-repair-from-ai` cria ticket de reparo aberto na Lousa).
+- **Validação**:
+  - Pytest `/app/backend/tests/test_alvaro_flow.py` (1/1 PASS) cobre tudo num único teste async (evita event-loop fechado entre fixtures): cria subscriber+phone+ONU teste → endpoint diagnose retorna `found=True status=online external_id=...` → endpoint slots retorna 6 opções → `format_diag_context` produz bloco com `DIAGNÓSTICO TÉCNICO`/`ONLINE`/`HORÁRIOS DISPONÍVEIS`/`external_id` → `process_alvaro_actions` strip de `[REBOOT_ONU]` e dispara reboot → strip de `[AGENDAR_REPARO]` e cria ticket real em `db.tickets` com `origin_source=alvaro_diagnose`, `client_snapshot.smartolt_status=online`, `scheduled_date/time` corretos → `extract_markers` strip de `[ROTEAR_SUPORTE]`.
+  - Curl `/api/lousa/public/available-slots?company_id=co-demo&days_ahead=2` → 200 com 6 slots (`Sáb (23/05) às 08:00`, ..., 13:00).
+  - Curl `/api/smartolt/public/onu-diagnose/<phone-fixture>` retorna JSON com diagnóstico em PT-BR pronto para o Álvaro.
+- **Impacto**: tier-1 técnico no WhatsApp agora é totalmente automático para clientes cadastrados no SmartOLT — zero intervenção humana até o reparo agendado aparecer no app do técnico via Lousa.

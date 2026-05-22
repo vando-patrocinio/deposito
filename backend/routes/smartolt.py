@@ -477,9 +477,14 @@ async def public_onu_diagnose(phone: str):
     }
     """
     # Procura o subscriber pelo phone (em qualquer empresa que tenha esse nº)
-    norm = _norm(phone)
+    try:
+        from phone_normalizer import get_phone_lookup_variants
+        variants = get_phone_lookup_variants(phone) or [phone]
+    except Exception:
+        variants = [phone]
     sub_phone = await db.subscriber_phones.find_one(
-        {"variants": norm}, {"_id": 0, "subscriber_id": 1, "company_id": 1},
+        {"normalized_number": {"$in": variants}},
+        {"_id": 0, "subscriber_id": 1, "company_id": 1},
     )
     if not sub_phone:
         return {"found": False, "diagnosis":
@@ -488,13 +493,15 @@ async def public_onu_diagnose(phone: str):
     cid = sub_phone.get("company_id")
     sub_id = sub_phone.get("subscriber_id")
     sub = await db.subscribers.find_one(
-        {"id": sub_id}, {"_id": 0, "name": 1, "pppoe": 1, "external_code": 1},
+        {"id": sub_id}, {"_id": 0, "name": 1, "pppoe": 1, "pppoe_user": 1,
+                          "external_code": 1},
     )
     if not sub:
         return {"found": False, "diagnosis":
                 "Cadastro do cliente não encontrado."}
     norm_name = _norm(sub.get("name") or "")
-    norm_pppoe = _norm(sub.get("pppoe") or sub.get("external_code") or "")
+    norm_pppoe = _norm(sub.get("pppoe") or sub.get("pppoe_user") or
+                          sub.get("external_code") or "")
     onu = None
     if norm_pppoe:
         onu = await db.smartolt_onus.find_one(
