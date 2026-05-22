@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "@/api";
 import { Button, Card, fmtMin, Icon, Metric, Row, StatusBadge } from "@/ui";
 import LiveMap from "@/LiveMap";
+import EquipmentSwapAuditCard from "@/EquipmentSwapAuditCard";
 
 export default function ManagerPanel() {
   const [records, setRecords] = useState([]);
@@ -107,6 +108,8 @@ export default function ManagerPanel() {
             <Metric label="Bloqueados" value={blocked.length} />
           </div>
         </Card>
+
+        <EquipmentSwapAuditCard />
 
         <Card title="Aprovações pendentes">
           {pending.length === 0 && <p style={{ color: "#64748b" }}>Nenhuma pendência.</p>}

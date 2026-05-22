@@ -86,6 +86,13 @@ export const api = {
   approveRecord: (rid) => client.post(`/clock-records/${rid}/approve`).then((r) => r.data),
   rejectRecord: (rid) => client.post(`/clock-records/${rid}/reject`).then((r) => r.data),
 
+  // Auditoria — trocas de ONT/ONU detectadas na finalização da OS
+  listEquipmentSwaps: (limit = 100) =>
+    client.get("/lousa/equipment-swaps", { params: { limit } }).then((r) => r.data),
+  equipmentSwapsMonthlyReport: (months = 6) =>
+    client.get("/lousa/equipment-swaps/monthly-report",
+                  { params: { months } }).then((r) => r.data),
+
   // Espelho
   timesheet: (cid, year, month) => client.get(`/timesheets/${cid}/${year}/${month}`).then((r) => r.data),
   timesheetPdfUrl: (cid, year, month) => `${API}/timesheets/${cid}/${year}/${month}/pdf`,
