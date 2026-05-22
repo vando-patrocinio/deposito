@@ -1542,3 +1542,16 @@ praça e DRE de compras mensal.
 - `GET /api/whatsapp-baileys/click-to-chat?text=Olá!` — retorna `{phone, link: "https://wa.me/55XXXXXXXXX?text=..."}` pra incorporar em sites/QR-codes/anúncios. Pega phone de `aihub_settings.wa_business_phone` ou fallback do sidecar status.
 - `PUT /api/whatsapp-baileys/click-to-chat/phone {phone}` — define telefone Business da empresa. Normaliza pra `55DDXXXXXXXXX`.
 
+
+✅ **WhatsAppShareCard — QR-code + Copiar link no Dashboard (viralização orgânica)** (22/02/2026):
+- **Pedido**: "sim" à sugestão de QR-code do click-to-chat na home do gestor pra colar no Instagram bio, adesivo de carros, camisetas, balcão da loja.
+- **Frontend novo** (`WhatsAppShareCard.js`):
+  - Header verde gradient + ícone MessageCircle.
+  - Lado esquerdo: input de telefone Business (data-testid=wa-share-phone-input) + botão Salvar (persiste via PUT /click-to-chat/phone) + textarea de mensagem pré-preenchida (recarrega o link automaticamente).
+  - Lado direito: **QR-code SVG** 180px verde (qrcode.react@4.2.0) + botão "Baixar QR SVG" (gera blob e faz download `wa-ligo-{phone}.svg`).
+  - Botão "Copiar link" com feedback "✓ Copiado!" + fallback `window.prompt` se clipboard API negada.
+  - Link visível em monospace verde-claro pra QA visual.
+- **Integração** (`DashboardPanel.js` linha 16/96): import + renderização entre `ManagementKpisSection` e seletor de modo.
+- **Validação** (`testing_agent_v3_fork` iteration_114): **8/8 critérios PASS** — render entre seções corretas, header verde, layout 2 colunas, copy button com transição, link contém `wa.me/55{phone}`, edição da textarea triggers auto-reload, save de novo telefone persiste após reload completo, normalização BR (11999998888 → 5511999998888).
+- **Impacto comercial**: dono pega o QR e cola onde quiser — quando alguém escaneia, abre direto o WhatsApp com a Isabella já com mensagem pré-preenchida pra qualificar lead. Custo de aquisição zero.
+
