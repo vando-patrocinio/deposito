@@ -111,6 +111,10 @@ export default function LiveMap() {
   const [, setTick] = useState(0);
   const lastFetchRef = useRef(0);
 
+  // CTOs cadastradas no Mapa Interativo (Rede IA) — espelhadas neste mapa
+  const [ctos, setCtos] = useState([]);
+  const [showCtos, setShowCtos] = useState(true);
+
   // Dwell / IA
   const [dwell, setDwell] = useState(null);
   const [dwellThreshold, setDwellThreshold] = useState(30);
@@ -147,6 +151,26 @@ export default function LiveMap() {
   }
 
   useEffect(() => { api.listCollaborators().then(setCollabs); }, []);
+
+  // Espelha as CTOs cadastradas no Mapa Interativo (Rede IA).
+  // CTOs raramente mudam de posição, então refrescamos a cada 60s.
+  useEffect(() => {
+    let cancelled = false;
+    const loadCtos = async () => {
+      try {
+        const d = await api.redeIaMapData();
+        if (cancelled) return;
+        const withCoords = (d?.ctos || []).filter(
+          (c) => Number.isFinite(c?.lat) && Number.isFinite(c?.lng),
+        );
+        setCtos(withCoords);
+      } catch (_e) { /* silencioso */ }
+    };
+    loadCtos();
+    const id = setInterval(loadCtos, 60000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
 
   const reload = async () => {
     try {
@@ -255,6 +279,15 @@ export default function LiveMap() {
             Avaliar com IA
           </label>
           <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, color: "#475569" }}>
+            <input type="checkbox" checked={showCtos}
+                    onChange={(e) => setShowCtos(e.target.checked)}
+                    data-testid="toggle-ctos-layer" />
+            CTOs cadastradas {ctos.length > 0 && (
+              <span style={{ fontSize: 11, color: "#0d9488",
+                                fontWeight: 700 }}>· {ctos.length}</span>
+            )}
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, color: "#475569" }}>
             <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} data-testid="auto-refresh" />
             Atualização automática
           </label>
@@ -324,6 +357,60 @@ export default function LiveMap() {
                 maxZoom={20}
               />
               <FitBounds points={points} />
+
+              {/* CTOs cadastradas — espelho do Mapa Interativo (Rede IA).
+                  Pequeno círculo teal pra não competir com o marcador
+                  do colaborador. Clique no popup mostra info essencial
+                  + link "Abrir no Mapa Interativo". */}
+              {showCtos && ctos.map((c) => (
+                <Circle key={`cto-${c.id}`}
+                          center={[c.lat, c.lng]}
+                          radius={20}
+                          pathOptions={{
+                            color: "#0f766e",
+                            weight: 2,
+                            fillColor: "#14b8a6",
+                            fillOpacity: 0.85,
+                          }}
+                          data-testid={`livemap-cto-${c.id}`}>
+                  <LTooltip direction="top" offset={[0, -6]}>
+                    <span style={{ fontWeight: 700, fontSize: 11 }}>
+                      📦 {c.name}
+                      {c.sigla && (
+                        <span style={{ color: "#0d9488", marginLeft: 4 }}>
+                          · {c.sigla}
+                        </span>
+                      )}
+                    </span>
+                  </LTooltip>
+                  <Popup>
+                    <div style={{ fontSize: 12, minWidth: 180 }}>
+                      <div style={{ fontWeight: 800, color: "#0f766e",
+                                       marginBottom: 4 }}>
+                        📦 {c.name}
+                      </div>
+                      {c.address && (
+                        <div style={{ color: "#475569", marginBottom: 4 }}>
+                          {c.address}
+                        </div>
+                      )}
+                      <div style={{ display: "grid",
+                                       gridTemplateColumns: "auto auto",
+                                       gap: "2px 8px", color: "#334155" }}>
+                        {c.vlan && <><span>VLAN:</span><strong>{c.vlan}</strong></>}
+                        {c.splitter && <><span>Splitter:</span><strong>{c.splitter}</strong></>}
+                        {c.capacity != null && (
+                          <>
+                            <span>Portas:</span>
+                            <strong>{c.used_ports || 0}/{c.capacity}</strong>
+                          </>
+                        )}
+                        {c.network_type && <><span>Tipo:</span><strong>{c.network_type}</strong></>}
+                      </div>
+                    </div>
+                  </Popup>
+                </Circle>
+              ))}
 
               {/* Trajetos — uma polyline por sessão (quebra em gaps > 30 min
                   pra não ligar pontos distantes em linha reta). */}
