@@ -553,7 +553,7 @@ function CommonIssuesSection({ days }) {
   if (!d) return <Card>Carregando…</Card>;
   const total = d.by_category.reduce((s, x) => s + x.count, 0);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
       <Card title="Categorias de chamado">
         {d.by_category.map((c) => (
           <div key={c.category} style={{ marginBottom: 8 }}>
@@ -650,7 +650,7 @@ function AssetsOverviewSection() {
         <Metric label="Devolvidos" value={k.returned} />
         <Metric label="Danificados/Perdidos" value={(k.damaged || 0) + (k.lost || 0)} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
         <Card title="Distribuição por categoria">
           {(d.by_category || []).length === 0
             ? <div style={{ color: "#64748b" }}>Sem itens cadastrados ainda.</div>

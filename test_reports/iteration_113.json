@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 113 — Frontend-only test of horizontal-scroll regression after global CSS + table-wrap changes. Logged in as admin@empresa.com/123456, navigated every main sidebar tab (Dashboard, Lousa/Chamados, Atendimento IA, Disparo em Massa with sub-tabs Campanhas manuais/Promoção/Disparo IA, Funil de Vendas, Estoque/Movimento, Cadastro, Configurações, Financeiro, Rede IA, Central IA, Alvaro IA) at three viewports: 1280x800, 1024x768, 1440x900. For each view ran document.documentElement.scrollWidth vs window.innerWidth and listed any element whose getBoundingClientRect().right > innerWidth+1. RESULT: 39/39 measurements OK — diff = 0 px on every tab and every viewport, including Disparo em Massa > Disparo IA. No page-level horizontal scroll detected anywhere.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "(unknown – several /api calls during navigation)", "issue": "Console shows multiple 500/503 errors during tab loads (Disparo IA preview, AI summary endpoints). Out of scope for this scroll test but worth flagging to main agent — they manifest as a runtime-error overlay on the Disparo IA panel."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Disparo em Massa > Disparo IA", "issue": "Uncaught runtime errors overlay (Script error) appears due to backend 500/503 responses; layout itself is OK (no horizontal scroll) but the page is visually blocked by the dev error overlay.", "affected_selectors": ["[data-testid='mass-tab-disparo_ia']"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Horizontal-scroll fix is confirmed working across all main tabs at 1024/1280/1440 viewports — no further action needed on the original user complaint.",
+    "Investigate backend 500/503s producing the 'Uncaught runtime errors' overlay on Disparo IA (separate issue, not part of this scroll review).",
+    "Optional: fix SalesFunnel hydration warning (<span> child inside <option>) — pre-existing, unrelated to scroll fix."
+  ],
+  "critical_code_review_comments": [
+    "Global .app-main { overflow-x: hidden } + .app-content > * { min-width: 0; max-width: 100% } is an effective safeguard but hides genuinely overflowing children silently. Consider keeping it for now and adding per-component table-wrap as already done.",
+    "Some panels still emit Recharts warnings 'width(-1) height(-1)' on first paint — indicates ResponsiveContainer parents with 0 width on mount; consider explicit minHeight."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100% (39/39 scroll checks pass)"},
+  "test_credentials": "admin@empresa.com / 123456 (gestor/auditor) — used real login form via [data-testid='login-email/password/submit'].",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reproducible script: set viewport to 1280x800 (or 1024x768, 1440x900), login as admin, click [data-testid='tab-<id>'] for each id in [dashboard, lousa, atendimento, mass-messaging, sales-funnel, estoque, cadastro, settings, financeiro, rede-ia, central-ia, alvaro-ia] and for mass sub-tabs [mass-tab-manual, mass-tab-promo, mass-tab-disparo_ia]. Assert document.documentElement.scrollWidth - window.innerWidth <= 5. Currently diff is exactly 0 on every tab — change passes.",
+  "rca of the issue": "User reported that some tabs (notably Disparo em Massa > Disparo IA) required horizontal scrolling at the viewport level. Root cause was non-responsive CSS grids (1fr 1fr / repeat(N,1fr)) plus wide tables without scroll wrappers. Fixes applied by main agent: (1) .app-main { overflow-x: hidden }, (2) .app-content { min-width: 0 } and .app-content > * { min-width: 0; max-width: 100% }, (3) tables wrapped in .table-wrap with overflowX:auto, (4) grids switched to repeat(auto-fit, minmax(220px, 1fr)). Verified: scrollWidth == innerWidth on all tested screens. Issue is RESOLVED."
+}

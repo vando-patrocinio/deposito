@@ -158,7 +158,7 @@ function OrphanList({ items }) {
   }
   return (
     <div data-testid="orphans-list" style={{ overflow: "auto", maxHeight: 480 }}>
-      <table style={{ width: "100%", borderCollapse: "collapse",
+      <div className="table-wrap" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse",
                         fontSize: 12 }}>
         <thead>
           <tr style={{ background: "var(--bg-surface-2)",
@@ -198,7 +198,7 @@ function OrphanList({ items }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }
@@ -215,7 +215,7 @@ function GhostList({ items }) {
   }
   return (
     <div data-testid="ghosts-list" style={{ overflow: "auto", maxHeight: 480 }}>
-      <table style={{ width: "100%", borderCollapse: "collapse",
+      <div className="table-wrap" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse",
                         fontSize: 12 }}>
         <thead>
           <tr style={{ background: "var(--bg-surface-2)",
@@ -241,7 +241,7 @@ function GhostList({ items }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

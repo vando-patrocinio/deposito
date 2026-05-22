@@ -132,10 +132,11 @@ export default function MassMessagingPanel() {
             Nenhuma campanha. Clique em <strong>Nova campanha</strong>.
           </div>
         ) : (
-          <div style={{ border: "1px solid #e2e8f0", borderRadius: 10,
-                        overflow: "hidden" }}>
+          <div className="table-wrap"
+                  style={{ border: "1px solid #e2e8f0", borderRadius: 10,
+                            overflow: "hidden", overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse",
-                            fontSize: 13 }}>
+                            fontSize: 13, minWidth: 700 }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
                   {["Nome", "Canal", "Modo", "Total", "Enviadas", "Status",
@@ -254,7 +255,7 @@ function CampaignCreateModal({ onClose, onCreated }) {
                onChange={(e) => setForm({ ...form, name: e.target.value })}
                data-testid="camp-fld-name" />
       </Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
         <Field label="Canal *">
           <select style={inputStyle} value={form.channel}
                   onChange={(e) => setForm({ ...form, channel: e.target.value })}
@@ -296,7 +297,7 @@ function CampaignCreateModal({ onClose, onCreated }) {
           </Field>
         </>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
         <Field label="Throttle (msgs/min)" hint="Meta recomenda <80">
           <input style={inputStyle} type="number" min="1" max="600"
                  value={form.throttle_per_min}
@@ -428,7 +429,7 @@ function CampaignDetail({ camp, onBack }) {
         </div>
 
         <div style={{ display: "grid",
-                      gridTemplateColumns: "repeat(4,1fr)",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
                       gap: 10, marginTop: 14 }}>
           <Chip label="Total" value={camp.total_recipients}
                 icon={Users} />

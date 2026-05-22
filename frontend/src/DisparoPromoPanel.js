@@ -148,7 +148,8 @@ export default function DisparoPromoPanel() {
       <Card title="Compor mensagem"
               subtitle="Use {nome}, {plano}, {valor} ou {cidade} pra personalizar.">
         <div style={{ display: "grid",
-                        gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                        gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                        gap: 14 }}>
           <div>
             <Field label="Modelos sugeridos (clique pra preencher)">
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -304,7 +305,7 @@ export default function DisparoPromoPanel() {
         <Card title="Disparo em andamento"
                 subtitle={`Run: ${activeRun.run_id}`}>
           <div style={{ display: "grid",
-                          gridTemplateColumns: "repeat(4, 1fr)",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
                           gap: 12, marginBottom: 10 }}>
             <Metric label="Total" value={activeRun.total_candidates} />
             <Metric label="Enviadas" value={activeRun.sent || 0} color="#15803d" />

@@ -150,7 +150,7 @@ export function BillsTab() {
         </Button>
       </div>
       <div style={{ display: "grid",
-                    gridTemplateColumns: "repeat(3,1fr)",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
                     gap: 10, marginBottom: 14 }}>
         <Chip label="Pendentes" value={fmtMoney(totals.pending)}
               color="#64748b" />
@@ -189,7 +189,7 @@ function BillsTable({ items, refs, onEdit, onPay, onDelete }) {
   return (
     <div style={{ border: "1px solid #e2e8f0", borderRadius: 10,
                   overflow: "hidden" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse",
+      <div className="table-wrap" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse",
                       fontSize: 13 }}>
         <thead>
           <tr style={{ background: "#f8fafc" }}>
@@ -266,7 +266,7 @@ function BillsTable({ items, refs, onEdit, onPay, onDelete }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }
@@ -353,7 +353,7 @@ function BillForm({ initial, refs, onClose, onSaved, onRefsChanged }) {
                onChange={(e) => setForm({ ...form, description: e.target.value })}
                data-testid="bill-fld-description" />
       </Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
         <Field label="Valor (R$) *">
           <input style={inputStyle} type="number" step="0.01"
                  value={form.amount}
@@ -957,7 +957,7 @@ export function CashFlowTab() {
         ) : (
           <div style={{ border: "1px solid #e2e8f0", borderRadius: 10,
                         overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse",
+            <div className="table-wrap" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse",
                             fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
@@ -1001,7 +1001,7 @@ export function CashFlowTab() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </div>
         )}
       </Card>
@@ -1036,7 +1036,7 @@ function MovementForm({ refs, onClose, onSaved }) {
   }
   return (
     <Modal onClose={onClose} title="Novo lançamento" testId="mov-modal">
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
         <Field label="Tipo *">
           <select style={inputStyle} value={form.type}
                   onChange={(e) => setForm({ ...form, type: e.target.value })}
@@ -1189,7 +1189,7 @@ export function ReceivablesTab() {
 
         {stats && (
           <div style={{ display: "grid",
-                        gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
+                        gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
             <Chip label="Total" value={stats.total_invoices} />
             {Object.entries(stats.by_status || {}).slice(0, 3).map(([st, v]) => (
               <Chip key={st} label={st}
@@ -1226,7 +1226,7 @@ export function ReceivablesTab() {
           <div style={{ border: "1px solid #e2e8f0", borderRadius: 10,
                         overflow: "hidden", maxHeight: 500,
                         overflowY: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse",
+            <div className="table-wrap" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse",
                             fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "#f8fafc",
@@ -1304,7 +1304,7 @@ export function ReceivablesTab() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </div>
         )}
       </Card>

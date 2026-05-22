@@ -171,7 +171,7 @@ export default function HoleritePanel() {
             </div>
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div className="table-wrap" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "var(--bg-surface-2)" }}>
                 <Th>Colaborador</Th>
@@ -189,7 +189,7 @@ export default function HoleritePanel() {
                               onShowAudit={() => setAuditOf(h)} />
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 

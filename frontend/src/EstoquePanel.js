@@ -1269,7 +1269,7 @@ function CreateServiceDialog({ open, onClose, onDone, technicians }) {
       footer={<><button style={btnSec} onClick={onClose}>Cancelar</button>
         <button style={btnPrimary} onClick={submit} data-testid="svc-create-submit">Abrir OS</button></>}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginBottom: 10 }}>
         <div>
           <label style={labelStyle}>Tipo</label>
           <select data-testid="svc-create-type" style={inputStyle} value={data.type} onChange={(e) => setData({ ...data, type: e.target.value })}>
@@ -1337,7 +1337,7 @@ function CloseServiceDialog({ service, onClose, onDone, consumables }) {
       </div>
       <div>
         <label style={labelStyle}>Insumos utilizados (opcional)</label>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
           {consumables.map((c) => (
             <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 13, flex: 1 }}>{c.name}</span>

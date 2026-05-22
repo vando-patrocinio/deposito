@@ -244,7 +244,7 @@ export default function AssetsSection({ collaborator, onClose }) {
 
         <div style={{ marginTop: 14, background: "white", borderRadius: 14,
                        border: "1px solid #e2e8f0", overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <div className="table-wrap" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
                 {["Categoria", "Item", "Marca/Modelo", "Tam.", "Qtd", "Valor", "Série",
@@ -316,7 +316,7 @@ export default function AssetsSection({ collaborator, onClose }) {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         </div>
       </div>
       {romaneioPdf && (

@@ -454,7 +454,8 @@ function SuggestionDetailModal({ suggestion, onClose, onChange }) {
           <>
             <Section title="Parâmetros de envio">
               <div style={{ display: "grid",
-                              gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                              gap: 10 }}>
                 <label style={{ display: "flex", flexDirection: "column",
                                   fontSize: 11, gap: 4 }}>
                   <span style={{ fontWeight: 700, color: "#64748b",

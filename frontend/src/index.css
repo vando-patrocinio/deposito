@@ -423,7 +423,7 @@ textarea.input { height: auto; min-height: 80px; padding: 10px 12px; resize: ver
   display: flex; gap: 8px; align-items: center;
 }
 
-.app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-x: hidden; }
 .app-topbar {
   position: sticky; top: 0; z-index: 30;
   height: 56px;
@@ -440,7 +440,21 @@ textarea.input { height: auto; min-height: 80px; padding: 10px 12px; resize: ver
 .app-content {
   padding: 22px clamp(10px, 1.4vw, 22px) 60px;
   width: 100%;
+  min-width: 0;
   margin: 0;
+}
+
+/* Garante que NENHUM card/tabela force largura maior que o container —
+   tabelas com muitas colunas devem rolar dentro de si mesmas, não
+   estourar a viewport. Pedido do usuário: 'a aba disparo em massa/disparo
+   ia tem que abrir a pagina de lado pra ver tudo, isso não pode acontecer'.
+*/
+.app-content > * { min-width: 0; max-width: 100%; }
+.app-content table { max-width: 100%; }
+.app-content .scroll-x,
+.app-content .table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* WhatsApp em modo full-screen — escapa do limite de 1440px e do padding */

@@ -262,7 +262,7 @@ export default function ManagerPanel() {
                   <summary style={{ cursor: "pointer", fontWeight: 700 }}>
                     Ver dados brutos ({fleetInsights.alerts.length} alerta(s))
                   </summary>
-                  <table style={{ width: "100%", marginTop: 6, fontSize: 11, borderCollapse: "collapse" }}>
+                  <div className="table-wrap" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ width: "100%", minWidth: 640, marginTop: 6, fontSize: 11, borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ background: "#f8fafc" }}>
                         <th style={{ textAlign: "left", padding: 4, borderBottom: "1px solid #e2e8f0" }}>Placa</th>
@@ -281,7 +281,7 @@ export default function ManagerPanel() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></div>
                 </details>
               )}
             </div>

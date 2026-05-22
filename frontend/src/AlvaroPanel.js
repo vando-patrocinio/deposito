@@ -211,7 +211,7 @@ export default function AlvaroPanel() {
       </div>
 
       {/* Risk grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
                      gap: 8, marginBottom: 20 }}>
         {["baixo", "medio", "alto", "critico"].map((r) => (
           <button key={r}
@@ -240,7 +240,7 @@ export default function AlvaroPanel() {
       </div>
 
       {/* Two columns: bairros + tipos */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}>
         <Card title="Top bairros com reclamações" icon={<MapPin size={14} />}>
           {(report.top_bairros_reclamacoes || []).slice(0, 8).map((b) => (
             <Row key={b.bairro} label={b.bairro} value={b.qtd} max={report.top_bairros_reclamacoes[0]?.qtd} />
@@ -256,7 +256,7 @@ export default function AlvaroPanel() {
 
       {/* Bairros não/mal atendidos */}
       {((report.bairros_nao_atendidos?.length || 0) + (report.bairros_mal_atendidos?.length || 0)) > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}>
           <Card title={`Bairros NÃO atendidos (${report.bairros_nao_atendidos?.length || 0})`}
                 titleColor="#dc2626">
             {(report.bairros_nao_atendidos || []).length === 0 ? (
@@ -346,7 +346,7 @@ export default function AlvaroPanel() {
       {/* Oportunidades */}
       {((report.oportunidades_comerciais?.length || 0)
         + (report.oportunidades_expansao?.length || 0)) > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                        gap: 16, marginTop: 20 }}>
           <Card title="💰 Oportunidades comerciais"
                 titleColor="#0e7490">
@@ -506,7 +506,7 @@ function HistoryModal({ items, onClose }) {
       {items.length === 0 ? (
         <p style={{ color: "#64748b" }}>Sem relatórios anteriores.</p>
       ) : (
-        <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+        <div className="table-wrap" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ width: "100%", minWidth: 640, fontSize: 13, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f8fafc", textAlign: "left" }}>
               <th style={{ padding: 8 }}>Data</th>
@@ -529,7 +529,7 @@ function HistoryModal({ items, onClose }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </Modal>
   );

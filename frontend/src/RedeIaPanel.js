@@ -1549,7 +1549,7 @@ function OnuDetailModal({ onu, onClose }) {
           )}
           {!sigError && (
             <div style={{ display: "grid",
-                           gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                           gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
               <SigBox label="RX 1490" value={rxLabel} highlight />
               <SigBox label="TX 1310" value={onuLive.signal_1310 || "—"} />
               <SigBox label="Status"

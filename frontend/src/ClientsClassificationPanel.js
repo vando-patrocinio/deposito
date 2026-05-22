@@ -200,8 +200,7 @@ export default function ClientsClassificationPanel() {
           )}
         </div>
         <div style={{ maxHeight: 600, overflow: "auto" }}>
-          <table style={{
-            width: "100%", borderCollapse: "collapse", fontSize: 12,
+          <div className="table-wrap" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}><table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse", fontSize: 12,
           }}>
             <thead style={{
               background: "var(--bg-card)",
@@ -232,7 +231,7 @@ export default function ClientsClassificationPanel() {
               )}
               {filteredItems.map((c) => <ClientRow key={c.client_id} c={c} />)}
             </tbody>
-          </table>
+          </table></div>
         </div>
       </Card>
     </div>
