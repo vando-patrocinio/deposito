@@ -28,20 +28,29 @@ log = logging.getLogger("ponto.marker_router")
 
 MARKER_PATTERN = re.compile(
     r"\[(HOT_LEAD|VENDA_AGENDADA|ROTEAR_HUMANO|ROTEAR_SUPORTE|"
-    r"ROTEAR_FINANCEIRO|CHURN_RISK)\]",
+    r"ROTEAR_FINANCEIRO|CHURN_RISK|VIABILIDADE_PENDENTE)\]"
+    r"|\[AGENDAR_VIABILIDADE:date=(\d{4}-\d{2}-\d{2}),time=(\d{2}:\d{2})\]",
     re.IGNORECASE,
 )
 
 
 def extract_markers(text: str) -> Tuple[str, List[str]]:
-    """Retorna (texto limpo, lista de markers encontrados em UPPERCASE)."""
+    """Retorna (texto limpo, lista de markers encontrados em UPPERCASE).
+
+    Para markers parametrizados (AGENDAR_VIABILIDADE:date,time), retorna
+    a string completa em UPPER pra processamento posterior.
+    """
     if not text:
         return text, []
-    found = [m.group(1).upper() for m in MARKER_PATTERN.finditer(text)]
+    found: List[str] = []
+    for m in MARKER_PATTERN.finditer(text):
+        if m.group(1):
+            found.append(m.group(1).upper())
+        elif m.group(2) and m.group(3):
+            found.append(f"AGENDAR_VIABILIDADE:date={m.group(2)},time={m.group(3)}")
     cleaned = MARKER_PATTERN.sub("", text).strip()
-    # remove espaços múltiplos / linhas em branco no fim que sobraram
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).rstrip()
-    return cleaned, list(dict.fromkeys(found))  # mantém ordem, sem duplicar
+    return cleaned, list(dict.fromkeys(found))
 
 
 async def process_markers(text: str, phone: str, company_id: str,
@@ -86,6 +95,10 @@ async def process_markers(text: str, phone: str, company_id: str,
                 await _route_finance(phone, company_id, now)
             elif m == "CHURN_RISK":
                 await _on_churn_risk(phone, company_id, now)
+            elif m == "VIABILIDADE_PENDENTE":
+                await _on_viability_pending(phone, company_id, now)
+            elif m.startswith("AGENDAR_VIABILIDADE:"):
+                await _on_viability_scheduled(m, phone, company_id, now)
         except Exception as e:
             log.warning("[marker_router] %s falhou: %s", m, e)
 
@@ -205,3 +218,62 @@ async def _on_churn_risk(phone, cid, now):
         "churn_risk": True, "churn_risk_at": now,
     })
     log.warning("[CHURN_RISK] phone=%s — retenção precisa agir", phone)
+
+
+async def _on_viability_pending(phone, cid, now):
+    """Lead aguardando análise técnica de viabilidade fora da malha."""
+    await _set_conv_flags(phone, cid, {
+        "viability_pending": True, "viability_pending_at": now,
+    })
+    await db.viability_requests.insert_one({
+        "id": f"viab-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "phone": phone,
+        "status": "pending_technical_review",
+        "created_at": now,
+    })
+    log.info("[viability_pending] phone=%s — lead pra equipe técnica", phone)
+
+
+async def _on_viability_scheduled(marker_full: str, phone, cid, now):
+    """Cria ticket de visita técnica de viabilidade na Lousa."""
+    m = re.search(r"date=(\d{4}-\d{2}-\d{2}),time=(\d{2}:\d{2})",
+                  marker_full, re.IGNORECASE)
+    if not m:
+        log.warning("[viability_scheduled] marker mal-formado: %s", marker_full)
+        return
+    date, time = m.group(1), m.group(2)
+    conv = await db.wa_conversations.find_one(
+        {"company_id": cid, "phone": phone},
+        {"_id": 0, "subscriber_id": 1, "push_name": 1},
+    )
+    sub_id = (conv or {}).get("subscriber_id")
+    push_name = (conv or {}).get("push_name") or "Cliente WhatsApp"
+    snap = {"name": push_name, "phone": phone}
+
+    ticket = {
+        "id": f"tkt-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "type": "viabilidade",
+        "status": "aberto",
+        "priority": "media",
+        "scheduled_date": date,
+        "scheduled_time": time,
+        "client_snapshot": snap,
+        "subscriber_id": sub_id,
+        "origin_source": "isabella_viability",
+        "origin_phone": phone,
+        "notes": (
+            "Visita técnica de viabilidade agendada pela Isabella via "
+            "WhatsApp (cliente está no bairro mas a rua específica não "
+            "tem cobertura confirmada)."
+        ),
+        "created_at": now,
+    }
+    await db.tickets.insert_one(dict(ticket))
+    await _set_conv_flags(phone, cid, {
+        "viability_ticket_id": ticket["id"],
+        "viability_scheduled_at": now,
+    })
+    log.info("[viability_scheduled] phone=%s → ticket=%s @ %s %s",
+              phone, ticket["id"], date, time)

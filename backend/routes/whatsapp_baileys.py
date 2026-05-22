@@ -1823,6 +1823,31 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
             extra.append(bh_block)
     except Exception as _e:
         logger.debug("[wa-baileys] business_hours skip: %s", _e)
+
+    # 3.0c. VIABILIDADE TÉCNICA — se o cliente mandou um endereço (rua,
+    # avenida, CEP, bairro), checa cobertura cruzando com subscribers
+    # ativos + CTOs. Injeta bloco === VIABILIDADE TÉCNICA === pra Isabella.
+    try:
+        from services.coverage_checker import (
+            looks_like_address, check_coverage,
+            format_for_prompt as _cov_fmt,
+        )
+        if looks_like_address(user_text):
+            cov = await asyncio.wait_for(
+                check_coverage(cid, user_text), timeout=4.0,
+            )
+            if cov:
+                extra.append(_cov_fmt(cov))
+                logger.info(
+                    "[coverage] check phone=%s viable=%s neighbors=%d "
+                    "ctos=%d", phone, cov.get("viable"),
+                    len(cov.get("neighbors") or []),
+                    len(cov.get("ctos") or []),
+                )
+    except asyncio.TimeoutError:
+        logger.warning("[coverage] timeout pra phone=%s", phone)
+    except Exception as _e:
+        logger.warning("[coverage] skip: %s", _e)
     # 3a. Conflito de vínculo: se o telefone está vinculado a 2+ subscribers
     # cadastrados, a IA NÃO pode chamar pelo nome (vazaria dados de outro
     # cliente). Injeta diretiva clara forçando a IA a pedir CPF antes de

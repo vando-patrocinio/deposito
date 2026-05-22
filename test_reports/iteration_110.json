@@ -1,0 +1,43 @@
+{
+  "summary": "Backend testing for new VIABILITY/COVERAGE feature (Isabella WhatsApp). Validated service `services.coverage_checker` (parse_address, looks_like_address, check_coverage 3 levels VIAVEL_DIRETO/VIAVEL_PROVAVEL/SEM_REGISTROS, format_for_prompt LGPD-masked), marker router (`[AGENDAR_VIABILIDADE:date,time]` + `[VIABILIDADE_PENDENTE]`), ticket creation (type=viabilidade, status=aberto, origin_source=isabella_viability), viability_requests collection, and Isabella v6.80 prompt has <viability> section with VIAVEL_DIRETO/VIAVEL_PROVAVEL/SEM_REGISTROS + both markers. Pytest `test_coverage_viability.py` PASSED 1/1. Regression on 5 previous test files (test_alvaro_flow, test_alvaro_e2e, test_isabella_camila_e2e, test_agents_datetime, test_business_hours) PASSED individually. Also ran a standalone validation script that exercised all 3 viability levels with real DB writes and confirmed NO LGPD name leak in the prompt block, marker text is correctly stripped before sending to client, and ticket fields (scheduled_date, scheduled_time, type='viabilidade', status='aberto') are persisted correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "n/a (pytest infra)",
+        "issue": "Running multiple async pytest files in same process triggers Motor 'Event loop is closed' due to shared executor. Tests pass when run one-by-one. Recommend `forked` plugin or per-test event loop fixture to enable bulk regression runs."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_coverage_viability.py",
+    "/app/test_reports/pytest/coverage_iter.xml"
+  ],
+  "action_items": [
+    "(Optional) Add a pytest fixture that gives each async test its own Motor client to allow batched regression runs without 'Event loop is closed' (not a product bug, only test infra).",
+    "(Optional) Consider extracting the inline coverage block injection (lines 1827-1850 in routes/whatsapp_baileys.py) into a helper to keep `_maybe_auto_reply` lean — that file is already large."
+  ],
+  "critical_code_review_comments": [
+    "coverage_checker.py: solid — LGPD masking via _mask_name (first name + last initial), capped at 20 neighbors + 8 CTOs, score_overlap threshold 0.6 for direct match — reasonable. Uses normalize NFD + stopwords for PT-BR address robustness.",
+    "marker_router.py MARKER_PATTERN: parametrized marker `[AGENDAR_VIABILIDADE:date=YYYY-MM-DD,time=HH:MM]` is correctly captured via group(2)/group(3) and re-serialized for downstream processing. Good design.",
+    "whatsapp_baileys.py: 4-second timeout around check_coverage prevents the IA pipeline from hanging on slow Mongo — good safety net.",
+    "Both new tickets/viability_requests collections are created on-the-fly — confirmed insertion works against live DB.",
+    "Isabella prompt in `aihub_agents` collection contains <viability> section with all 3 status strings + both new markers (confirmed via DB query)."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "n/a (backend only test)"
+  },
+  "test_credentials": "co-demo (company_id) — no auth/user credentials needed for this backend service test.",
+  "seed_data_creation": "Test creates ephemeral fixtures (1 subscriber ATIVO + 1 subscriber_address + 1 CTO in unique-suffixed district) and removes them in finally block. No persistent seed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Coverage/viability backend feature is fully functional end-to-end. The pytest in /app/backend/tests/test_coverage_viability.py is the canonical regression. The reported 'Event loop is closed' errors when batching async tests is a pytest+Motor infra quirk (not a real failure): run each test file separately or use `pytest --forked`. All 3 viability levels were validated against live MongoDB with proper LGPD masking and marker stripping. Isabella v6.80 prompt in DB confirmed updated.",
+  "rca of the issue": "n/a — no bugs found. Feature behaves as specified: (a) parse_address extracts street/district/cep/number from free PT-BR text; (b) check_coverage classifies into 3 viability tiers using street-overlap score≥0.6 / district match / CEP match against ACTIVE subscribers + non-inactive CTOs; (c) format_for_prompt outputs a sanitized block with masked neighbor names — full client names never leak; (d) integration in _maybe_auto_reply uses asyncio.wait_for timeout=4s; (e) markers AGENDAR_VIABILIDADE and VIABILIDADE_PENDENTE are stripped before sending to client AND trigger db.tickets / db.viability_requests inserts respectively."
+}
