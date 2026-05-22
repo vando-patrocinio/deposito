@@ -1069,6 +1069,8 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     fibra_06fo: 0, fibra_12fo: 0, fibra_24fo: 0,
     ont: "", observacoes: "",
     fotos: [],          // [{kind:'equipamento'|'sn', dataUrl}]
+    // Troca de ONT/ONU em reparo
+    isSwap: false, old_ont_mac: "", new_ont_mac: "",
   });
   // Marca se o valor atual ainda é o auto-preenchido do SmartOLT (mostra badge
   // "do SmartOLT"). Quando o usuário edita o input, vira false.
@@ -1150,6 +1152,20 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   // - Reparo sem retirada → opcional (continua opcional)
   const clientInSmartOlt = clientSmart?.found === true;
   const needsMac = isInstall || ((isWithdraw || isRepair) && clientInSmartOlt);
+
+  // Auto-prefill `old_ont_mac` (MAC/SN retirado) com o valor registrado no
+  // SmartOLT quando o técnico ativar "Troca de ONT/ONU" em reparo. Mantém
+  // editável caso o técnico precise corrigir manualmente.
+  useEffect(() => {
+    if (!isRepair || !form.isSwap) return;
+    const expected = (
+      clientSmart?.mac_expected || clientSmart?.sn_expected || ""
+    ).toUpperCase();
+    if (expected && !form.old_ont_mac) {
+      setForm((f) => ({ ...f, old_ont_mac: expected }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRepair, form.isSwap, clientSmart?.mac_expected, clientSmart?.sn_expected]);
 
   // Carrega estoque do técnico
   useEffect(() => {
@@ -1320,6 +1336,11 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       ont: form.ont || null,
       fotos: form.fotos.map((p) => p.dataUrl),
       observacoes: form.observacoes || null,
+      // Troca de ONT/ONU em reparo — capturado opcionalmente pelo técnico.
+      // Quando isSwap=ON e isRepair, enviamos old/new explicitamente. O
+      // backend também tenta auto-detectar comparando `ont` × SmartOLT.
+      old_ont_mac: (isRepair && form.isSwap && form.old_ont_mac) || null,
+      new_ont_mac: (isRepair && form.isSwap && form.new_ont_mac) || null,
       // Vínculo do cliente à porta da CTO (todos os tipos de OS).
       // Registra CTO, PORTA, SPLITTER, VLAN, Cliente no completion_data
       // e no mapa interativo (Rede IA).
@@ -1644,6 +1665,77 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                   🏷 Estoque: {macInfo.ont_record.location_type === "tecnico" ? "no técnico" : macInfo.ont_record.location_type === "cliente" ? `cliente ${macInfo.ont_record.client_name || ""}` : macInfo.ont_record.location_type}
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* REPARO — toggle de Troca de ONT/ONU (opcional) */}
+      {step === 1 && isRepair && (
+        <div data-testid="repair-swap-section" style={{ marginBottom: 14 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 10,
+                            padding: "10px 12px", borderRadius: 10,
+                            background: form.isSwap ? "#eef2ff" : "#f8fafc",
+                            border: `1px solid ${form.isSwap ? "#6366f1" : "#cbd5e1"}`,
+                            cursor: "pointer", fontSize: 13.5,
+                            color: form.isSwap ? "#3730a3" : "#334155",
+                            fontWeight: 700 }}>
+            <input type="checkbox" data-testid="repair-swap-toggle"
+                    checked={form.isSwap}
+                    onChange={(e) => setForm({ ...form, isSwap: e.target.checked })}
+                    style={{ width: 18, height: 18, cursor: "pointer" }} />
+            🔁 Foi troca de ONT/ONU neste atendimento?
+          </label>
+          {form.isSwap && (
+            <div style={{ marginTop: 10, padding: 12, borderRadius: 10,
+                            background: "#fefce8", border: "1px solid #fde68a" }}>
+              {clientInSmartOlt && (
+                <div style={{ marginBottom: 8, fontSize: 11.5,
+                                color: "#92400e", lineHeight: 1.5 }}>
+                  💡 MAC esperado do cliente (SmartOLT):{" "}
+                  <code style={{ fontFamily: "monospace", fontWeight: 800 }}>
+                    {(clientSmart?.mac_expected || clientSmart?.sn_expected
+                      || "?").toUpperCase()}
+                  </code>
+                </div>
+              )}
+              <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
+                📤 MAC/SN da ONT RETIRADA (antigo)
+              </label>
+              <input
+                data-testid="repair-old-mac"
+                value={form.old_ont_mac}
+                onChange={(e) => setForm({
+                  ...form, old_ont_mac: e.target.value.trim().toUpperCase(),
+                })}
+                placeholder="Ex.: ALCLFC090E99 ou AA:BB:CC:DD:EE:FF"
+                style={{ width: "100%", padding: "10px 12px",
+                          border: "1px solid #cbd5e1", borderRadius: 10,
+                          fontSize: 14, fontFamily: "monospace",
+                          textTransform: "uppercase", boxSizing: "border-box",
+                          marginTop: 4, marginBottom: 10 }}
+              />
+              <label style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
+                📥 MAC/SN da ONT NOVA (instalada)
+              </label>
+              <input
+                data-testid="repair-new-mac"
+                value={form.new_ont_mac}
+                onChange={(e) => setForm({
+                  ...form, new_ont_mac: e.target.value.trim().toUpperCase(),
+                })}
+                placeholder="Ex.: HWTC12345678 ou DD:EE:FF:11:22:33"
+                style={{ width: "100%", padding: "10px 12px",
+                          border: "1px solid #cbd5e1", borderRadius: 10,
+                          fontSize: 14, fontFamily: "monospace",
+                          textTransform: "uppercase", boxSizing: "border-box",
+                          marginTop: 4 }}
+              />
+              <p style={{ margin: "8px 0 0 0", fontSize: 11,
+                            color: "#92400e", lineHeight: 1.5 }}>
+                Ambos os MACs serão gravados na OS finalizada para auditoria
+                e rastreabilidade do equipamento.
+              </p>
             </div>
           )}
         </div>

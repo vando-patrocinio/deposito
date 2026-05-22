@@ -189,6 +189,13 @@ class CompletionData(BaseModel):
     fibra_06fo: float = 0
     fibra_12fo: float = 0
     fibra_24fo: float = 0
+    # === Troca de ONT/ONU (reparo) — opcional, o técnico pode informar
+    # explicitamente os MACs antigo (retirado) e novo (instalado). Quando não
+    # informado, o backend tenta auto-detectar via SmartOLT (cache).
+    old_ont_mac: Optional[str] = None
+    old_ont_sn: Optional[str] = None
+    new_ont_mac: Optional[str] = None
+    new_ont_sn: Optional[str] = None
 
 
 class TicketIn(BaseModel):
@@ -256,6 +263,119 @@ def compute_locked_positions(tickets_sorted: List[Dict[str, Any]]) -> set:
 async def _user_collaborator_id(user: dict) -> Optional[str]:
     """Retorna o collaborator_id ligado ao usuário (se for colaborador)."""
     return user.get("collaborator_id")
+
+
+# ---------------------------------------------------------------------------
+# SmartOLT cross-check helpers (auto-detect ONT/ONU swap + relax rules
+# for clients que não estão cadastrados na SmartOLT).
+# ---------------------------------------------------------------------------
+def _norm_hexid(s: Optional[str]) -> str:
+    """Normaliza um MAC/SN para comparação (remove separadores e espaços,
+    devolve UPPER). Aceita MAC (12 hex), SN da ONU (ex.: ALCLFC090E99)
+    e qualquer formato livre."""
+    if not s:
+        return ""
+    return "".join(c for c in str(s).upper() if c.isalnum())
+
+
+async def _resolve_smartolt_for_ticket(ticket: dict) -> Optional[dict]:
+    """Resolve o documento da ONU no cache `smartolt_onus` para um ticket.
+    Retorna None quando o cliente NÃO está cadastrado no SmartOLT — neste caso
+    todas as regras dependentes do SmartOLT (sinal bloqueante, sn_mismatch,
+    snapshot, detecção de troca) devem ser puladas (pedido do usuário)."""
+    try:
+        from routes.smartolt import resolve_signal_for_ticket
+        return await resolve_signal_for_ticket(ticket)
+    except Exception as e:
+        logger.warning("[lousa] resolve_smartolt_for_ticket falhou: %s", e)
+        return None
+
+
+def _detect_equipment_swap(ticket: dict, cd: "CompletionData",
+                              smartolt_onu: Optional[dict]) -> Optional[dict]:
+    """Detecta se a finalização representa uma troca de ONT/ONU.
+
+    Regras:
+      - Tipos elegíveis: `reparo` (a troca em reparo é o caso clássico).
+        `troca_endereco` também é considerado, pois pode envolver swap.
+      - Cliente PRECISA estar no SmartOLT (do contrário não há MAC/SN antigo
+        confiável pra comparar). Se o técnico informar `old_ont_mac/sn`
+        manualmente, aceitamos mesmo sem SmartOLT.
+      - É considerado swap quando o MAC/SN novo informado (`cd.new_ont_sn`,
+        `cd.new_ont_mac` ou fallback `cd.ont`) é DIFERENTE do registrado no
+        SmartOLT (ou do `old_ont_mac/sn` informado manualmente).
+
+    Retorna um dict com `{old_mac, old_sn, new_mac, new_sn, source}` ou None
+    quando não há troca.
+    """
+    t_type = (ticket or {}).get("type") or ""
+    if t_type not in ("reparo", "troca_endereco"):
+        return None
+
+    # Resolve novo MAC/SN — pode vir explícito ou via `cd.ont` (legado).
+    new_sn = cd.new_ont_sn or cd.ont or ""
+    new_mac = cd.new_ont_mac or ""
+    if not (new_sn or new_mac):
+        return None
+
+    # Resolve antigo MAC/SN — preferência: manual (técnico informou) →
+    # SmartOLT cache (auto-derivado).
+    old_sn = (cd.old_ont_sn or "").strip()
+    old_mac = (cd.old_ont_mac or "").strip()
+    source = "manual"
+    if (not old_sn) and (not old_mac) and smartolt_onu:
+        old_sn = (smartolt_onu.get("sn") or "").strip()
+        old_mac = (smartolt_onu.get("mac")
+                    or smartolt_onu.get("ont_mac") or "").strip()
+        source = "smartolt_cache"
+    if not (old_sn or old_mac):
+        return None  # sem referência → não é possível afirmar swap
+
+    # Compara — qualquer dos hexids antigos batendo com o novo = NÃO é swap
+    new_norm = {_norm_hexid(new_sn), _norm_hexid(new_mac)} - {""}
+    old_norm = {_norm_hexid(old_sn), _norm_hexid(old_mac)} - {""}
+    if not new_norm or not old_norm:
+        return None
+    if new_norm & old_norm:
+        return None  # mesmo equipamento — não houve troca
+    return {
+        "old_mac": old_mac or None,
+        "old_sn": old_sn or None,
+        "new_mac": new_mac or None,
+        "new_sn": new_sn or None,
+        "source": source,        # "manual" | "smartolt_cache"
+        "detected_at": now_iso(),
+    }
+
+
+async def _persist_equipment_swap(ticket_id: str, company_id: str,
+                                       swap: dict, technician_id: str,
+                                       technician_name: str) -> None:
+    """Grava registro de auditoria de troca de ONT/ONU em
+    `equipment_swaps`. Idempotente (chave: ticket_id)."""
+    try:
+        doc = {
+            "id": f"swap-{uuid.uuid4().hex[:10]}",
+            "company_id": company_id,
+            "ticket_id": ticket_id,
+            "technician_id": technician_id,
+            "technician_name": technician_name,
+            "old_mac": swap.get("old_mac"),
+            "old_sn": swap.get("old_sn"),
+            "new_mac": swap.get("new_mac"),
+            "new_sn": swap.get("new_sn"),
+            "source": swap.get("source"),
+            "created_at": now_iso(),
+        }
+        # upsert por ticket_id pra não duplicar se finalize for chamado 2x
+        await db.equipment_swaps.update_one(
+            {"company_id": company_id, "ticket_id": ticket_id},
+            {"$set": doc}, upsert=True,
+        )
+    except Exception as e:
+        logger.warning("[lousa] persist_equipment_swap falhou: %s", e)
+
+
 
 
 async def _today_clock_state(collaborator_id: str) -> dict:
@@ -2422,6 +2542,15 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
 
     company_id = t.get("company_id") or DEMO_COMPANY_ID
 
+    # === SmartOLT awareness ===
+    # Cliente cadastrado na SmartOLT? Regras dependentes do SmartOLT
+    # (bloqueio de sinal ruim, sn_mismatch, snapshot, detecção de swap)
+    # SÓ valem quando há vínculo confirmado. Pedido do usuário:
+    #   "para clientes que não estão cadastrados na smartolt, não peça
+    #    regras de quem está."
+    smartolt_onu = await _resolve_smartolt_for_ticket(t)
+    is_smartolt_client = bool(smartolt_onu)
+
     # === CENTRAL_ONT: validação de sinal ruim + autorização ===
     cfg = await db.central_ont_settings.find_one(
         {"company_id": company_id}, {"_id": 0},
@@ -2431,7 +2560,10 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
     is_bad_signal = cd.sinal is not None and cd.sinal < threshold
 
     auth_used = None
-    if is_bad_signal and block_enabled:
+    # SÓ aplicamos o bloqueio quando o cliente está mapeado no SmartOLT
+    # (sem mapeamento, o valor de sinal é digitado pelo técnico sem
+    # validação remota — não dá pra cobrar autorização nesse caso).
+    if is_bad_signal and block_enabled and is_smartolt_client:
         if not payload.bad_signal_auth_id:
             # Cria uma request pending automaticamente
             req_id = f"bsa-{uuid.uuid4().hex[:10]}"
@@ -2506,22 +2638,20 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
         )
 
     # === SN mismatch (somente warning, não bloqueia) ===
+    # Só faz sentido quando o cliente está mapeado no SmartOLT.
     sn_mismatch = None
-    if cd.ont and t.get("live_signal", {}).get("sn"):
-        # live_signal pode não ter sido enriquecido — re-enriquece on-demand
-        pass
-    # Buscar SN da SmartOLT pelo PPPoE
-    try:
-        from routes.smartolt import enrich_tickets_with_live_signal
-        t_for_sn = dict(t)
-        await enrich_tickets_with_live_signal([t_for_sn], company_id)
-        smartolt_sn = (t_for_sn.get("live_signal") or {}).get("sn")
-        if (cd.ont and smartolt_sn
-                and cd.ont.upper().replace(":", "")
-                != smartolt_sn.upper().replace(":", "")):
-            sn_mismatch = {"smartolt_sn": smartolt_sn, "typed_sn": cd.ont}
-    except Exception:
-        pass
+    if is_smartolt_client and cd.ont:
+        try:
+            smartolt_sn = (smartolt_onu.get("sn") or "").strip()
+            if (smartolt_sn
+                    and _norm_hexid(cd.ont) != _norm_hexid(smartolt_sn)):
+                sn_mismatch = {"smartolt_sn": smartolt_sn, "typed_sn": cd.ont}
+        except Exception:
+            pass
+
+    # === Detecta troca de ONT/ONU (reparo/troca_endereco) e persiste
+    # MAC retirado + MAC novo no completion_data + auditoria global. ===
+    equipment_swap = _detect_equipment_swap(t, cd, smartolt_onu)
 
     # === Anexa resumo dos pings feitos para essa bolha ===
     # Se houve ping → resumo (RTT, loss, alive); se não houve → marca como
@@ -2543,6 +2673,13 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
         (obs_field.rstrip() + "\n\n" + ping_summary)
         if obs_field else ping_summary
     )
+    # Anexa swap detectado ao completion_data (espelhado no ticket)
+    if equipment_swap:
+        cd_dump["equipment_swap"] = equipment_swap
+        cd_dump["old_ont_mac"] = equipment_swap.get("old_mac")
+        cd_dump["old_ont_sn"]  = equipment_swap.get("old_sn")
+        cd_dump["new_ont_mac"] = equipment_swap.get("new_mac")
+        cd_dump["new_ont_sn"]  = equipment_swap.get("new_sn")
 
     await db.tickets.update_one(
         {"id": ticket_id},
@@ -2551,6 +2688,8 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             "closed_at": now_iso(), "closed_by": cid,
             "close_location": {"latitude": payload.latitude, "longitude": payload.longitude},
             "completion_data": cd_dump,
+            "smartolt_managed": is_smartolt_client,
+            "equipment_swap": equipment_swap,  # null quando não houve troca
             "central_ont": {
                 "sinal": cd.sinal,
                 "is_bad_signal": is_bad_signal,
@@ -2598,14 +2737,40 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
         except Exception as e:
             logger.warning("[lousa] agendamento análise foto CTO falhou: %s", e)
     # Quality notes — snapshot do sinal NO FECHAMENTO (SmartOLT live, honra toggle)
-    await _capture_signal_snapshot(ticket_id, company_id, "close")
+    # Só faz sentido pra clientes mapeados no SmartOLT.
+    if is_smartolt_client:
+        await _capture_signal_snapshot(ticket_id, company_id, "close")
     coll = await db.collaborators.find_one({"id": cid}, {"_id": 0, "name": 1})
     coll_name = (coll or {}).get("name", "Técnico")
+    # Persiste auditoria global da troca de equipamento + notifica gestor.
+    if equipment_swap:
+        await _persist_equipment_swap(
+            ticket_id=ticket_id, company_id=company_id,
+            swap=equipment_swap, technician_id=cid, technician_name=coll_name,
+        )
+        await _create_notification(
+            type_="equipment_swap",
+            title="🔁 Troca de ONT/ONU registrada",
+            message=(
+                f"{coll_name} trocou o equipamento em "
+                f"{t['client_snapshot'].get('name','—')}. "
+                f"MAC retirado: {equipment_swap.get('old_mac') or equipment_swap.get('old_sn') or '—'} · "
+                f"MAC novo: {equipment_swap.get('new_mac') or equipment_swap.get('new_sn') or '—'}"
+            ),
+            collaborator_id=cid, ticket_id=ticket_id,
+            company_id=company_id, severity="info",
+        )
     await _log_ticket_action(
         ticket_id=ticket_id, action="finalizada",
         actor_id=cid, actor_name=coll_name,
         actor_role="colaborador",
-        details=f"ONT={cd.ont or '-'} · sinal={cd.sinal} dBm · fotos={len(cd.fotos)}",
+        details=(
+            f"ONT={cd.ont or '-'} · sinal={cd.sinal} dBm · "
+            f"fotos={len(cd.fotos)}"
+            + (f" · TROCA: {equipment_swap.get('old_mac') or equipment_swap.get('old_sn') or '-'}"
+               f" → {equipment_swap.get('new_mac') or equipment_swap.get('new_sn') or '-'}"
+               if equipment_swap else "")
+        ),
         company_id=company_id,
     )
     # Notification de sinal ruim (sempre que o sinal for abaixo do threshold,
@@ -2808,6 +2973,13 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
     except Exception:
         ping_summary = "🛰 Teste de ping: NÃO FOI REALIZADO durante o atendimento."
 
+    company_id = t.get("company_id") or DEMO_COMPANY_ID
+    # SmartOLT-aware: detecta troca de ONT/ONU e relaxa snapshot quando o
+    # cliente não está mapeado.
+    smartolt_onu = await _resolve_smartolt_for_ticket(t)
+    is_smartolt_client = bool(smartolt_onu)
+    equipment_swap = _detect_equipment_swap(t, cd, smartolt_onu)
+
     cd_dump = cd.model_dump()
     cd_dump["ping_summary"] = ping_summary
     obs_field = cd_dump.get("observations") or cd_dump.get("laudo") or ""
@@ -2815,6 +2987,12 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
         (obs_field.rstrip() + "\n\n" + ping_summary)
         if obs_field else ping_summary
     )
+    if equipment_swap:
+        cd_dump["equipment_swap"] = equipment_swap
+        cd_dump["old_ont_mac"] = equipment_swap.get("old_mac")
+        cd_dump["old_ont_sn"]  = equipment_swap.get("old_sn")
+        cd_dump["new_ont_mac"] = equipment_swap.get("new_mac")
+        cd_dump["new_ont_sn"]  = equipment_swap.get("new_sn")
 
     await db.tickets.update_one(
         {"id": ticket_id},
@@ -2825,11 +3003,20 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
             "closed_by": user["id"],
             "close_location": {"latitude": payload.latitude, "longitude": payload.longitude},
             "completion_data": cd_dump,
+            "smartolt_managed": is_smartolt_client,
+            "equipment_swap": equipment_swap,
         }},
     )
-    # Quality notes — snapshot do sinal NO FECHAMENTO (SmartOLT live, honra toggle)
-    company_id = t.get("company_id") or DEMO_COMPANY_ID
-    await _capture_signal_snapshot(ticket_id, company_id, "close")
+    # Quality notes — snapshot do sinal NO FECHAMENTO (apenas SmartOLT-mapped)
+    if is_smartolt_client:
+        await _capture_signal_snapshot(ticket_id, company_id, "close")
+    # Auditoria de troca de equipamento
+    if equipment_swap:
+        await _persist_equipment_swap(
+            ticket_id=ticket_id, company_id=company_id,
+            swap=equipment_swap, technician_id=cid,
+            technician_name=(user.get("name") or "Técnico"),
+        )
     # Auto-reschedule p/ Técnico de Rede se sinal degradou (honra toggle)
     try:
         await _maybe_auto_resched_degraded(ticket_id, company_id)
@@ -2842,6 +3029,29 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
     except Exception as e:
         logger.warning("[lousa] coaching check (auth) falhou: %s", e)
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+
+
+# ---------------------------------------------------------------------------
+# Equipment Swap audit — lista trocas de ONT/ONU registradas em finalizações
+# ---------------------------------------------------------------------------
+@router.get("/lousa/equipment-swaps")
+async def list_equipment_swaps(limit: int = 100,
+                                  user: dict = Depends(get_current_user)):
+    """Lista as últimas trocas de ONT/ONU registradas.
+
+    Cada item corresponde a uma OS finalizada onde o MAC/SN novo (instalado
+    pelo técnico) era diferente do MAC/SN antigo (registrado no SmartOLT ou
+    informado manualmente). Filtra por `company_id` do usuário."""
+    if user.get("role") not in ("administrador", "gestor", "auditor"):
+        raise HTTPException(403, "Apenas gestor/administrador/auditor")
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cur = db.equipment_swaps.find(
+        {"company_id": cid}, {"_id": 0},
+    ).sort("created_at", -1).limit(min(max(limit, 1), 500))
+    items = await cur.to_list(500)
+    return {"company_id": cid, "count": len(items), "items": items}
+
+
 
 
 class CaptureSignalIn(BaseModel):
