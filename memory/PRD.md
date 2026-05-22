@@ -1477,3 +1477,12 @@ praça e DRE de compras mensal.
   - Regressão zero: 6/6 pytests passam.
   - `testing_agent_v3_fork` iteration_110: 0 falhas, confirmou NO LGPD name leak.
 - **Impacto comercial**: Isabella sabe em <4s se a empresa atende aquele endereço. Cliente recebe resposta direta ("já temos cobertura na sua rua! 🚀") ou agendamento técnico automático sem fricção.
+
+
+✅ **Mapa de calor de demanda sem cobertura — embaixo do popover Relatório (Lousa)** (22/02/2026):
+- **Pedido do usuário** (PT-BR, com screenshot do popover Relatório): "sim, e a imagem enviada tem que aparecer embaixo do botão relatorio".
+- **Backend novo** (`routes/whatsapp_baileys.py` ~linha 2900): `GET /api/whatsapp-baileys/viability-heatmap?days=N` (role gestor, max 365d). Agrega `viability_requests` por bairro (`address_district` ou extraído via `parse_address` da primeira inbound do telefone). Retorna `total_pending`, `districts` ordenado por leads desc, `unique_phones`, `last_at`.
+- **Frontend** (`LousaAdminPanel.js`): componente `ViabilityHeatmapSection` adicionado DENTRO do popover `ClosedNotesPdfPopover`, separado por linha tracejada após o botão "Visualizar Finalizadas". Header 🗺️ "Demanda sem cobertura" + toggle 7d/30d/90d. Lista até 5 bairros com barra de calor gradient pink→roxo, leads em destaque e pessoas únicas. Empty-state amigável.
+- **Dados demo** seedados em `co-demo`: 6 leads em 3 bairros (Recreio 3, Jacarepagua 2, Olaria 1).
+- **Validação** (`testing_agent_v3_fork` iteration_111): **0 falhas**. Backend 8/8 pytests, UI confirmado posicionamento (y=1338 > y=1284 do botão — fica embaixo conforme pedido), 3 bairros renderizados com dados batendo backend.
+- **Uso operacional**: gestor olha esse card e tem direcionamento claro de onde expandir a malha guiado por demanda real (ex: "12 leads aguardando no bairro X → vale a pena puxar fibra pra lá").
