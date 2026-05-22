@@ -905,14 +905,14 @@ export default function RedeIaMap() {
                           <div style={{ display: "grid",
                                           gridTemplateColumns: "repeat(3, 1fr)",
                                           gap: 4 }}>
-                            {c.photos.slice(0, 6).map((ph) => (
+                            {c.photos.slice(0, 6).map((ph, phIdx) => (
                               <ThumbWithDblClick key={ph.id}
                                     src={ph.url}
                                     testid={`cto-photo-thumb-${ph.id}`}
                                     onOpen={() => setPhotoLightbox({
-                                      url: ph.url,
+                                      photos: c.photos.slice(0, 6),
+                                      index: phIdx,
                                       ctoName: c.name,
-                                      uploadedByName: ph.uploaded_by_name,
                                     })} />
                             ))}
                           </div>
@@ -1144,12 +1144,137 @@ function ThumbWithDblClick({ src, testid, onOpen }) {
   );
 }
 
-function PhotoLightbox({ url, ctoName, uploadedByName, onClose }) {
+function PhotoLightbox({ photos, index, ctoName, onClose,
+                              // Back-compat: callers antigos podem passar
+                              // {url, uploadedByName} no lugar de {photos, index}.
+                              url, uploadedByName }) {
+  const list = Array.isArray(photos) && photos.length > 0
+    ? photos
+    : (url ? [{ url, uploaded_by_name: uploadedByName }] : []);
+  const [idx, setIdx] = useState(typeof index === "number" ? index : 0);
+  const safeIdx = Math.min(Math.max(idx, 0), Math.max(list.length - 1, 0));
+  const current = list[safeIdx] || {};
+  const total = list.length;
+  const hasMany = total > 1;
+
+  // Zoom-pan state (resetado a cada troca de foto)
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragRef = useRef({ active: false, sx: 0, sy: 0, ox: 0, oy: 0 });
+  const touchRef = useRef({ pinchDist: 0, baseZoom: 1, swipeStartX: null });
+
+  const reset = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+  useEffect(() => { reset(); }, [safeIdx, reset]);
+
+  const next = useCallback(() => {
+    if (hasMany) setIdx((i) => (i + 1) % total);
+  }, [hasMany, total]);
+  const prev = useCallback(() => {
+    if (hasMany) setIdx((i) => (i - 1 + total) % total);
+  }, [hasMany, total]);
+
+  // Keyboard: Esc fecha, ← → navegam, +/- zoom, 0 reset
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "ArrowRight") { next(); return; }
+      if (e.key === "ArrowLeft") { prev(); return; }
+      if (e.key === "+" || e.key === "=") {
+        setZoom((z) => Math.min(z + 0.25, 5));
+      }
+      if (e.key === "-" || e.key === "_") {
+        setZoom((z) => Math.max(z - 0.25, 1));
+      }
+      if (e.key === "0") { reset(); }
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, next, prev, reset]);
+
+  // Wheel zoom — apenas sobre a imagem
+  const onWheel = (e) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.15 : -0.15;
+    setZoom((z) => {
+      const nz = Math.min(Math.max(z + delta, 1), 5);
+      if (nz === 1) setPan({ x: 0, y: 0 });
+      return nz;
+    });
+  };
+
+  // Drag pan (mouse) — só ativa quando zoom > 1
+  const onMouseDown = (e) => {
+    if (zoom <= 1) return;
+    e.preventDefault();
+    dragRef.current = {
+      active: true, sx: e.clientX, sy: e.clientY,
+      ox: pan.x, oy: pan.y,
+    };
+  };
+  const onMouseMove = (e) => {
+    const d = dragRef.current;
+    if (!d.active) return;
+    setPan({ x: d.ox + (e.clientX - d.sx), y: d.oy + (e.clientY - d.sy) });
+  };
+  const stopDrag = () => { dragRef.current.active = false; };
+
+  // Touch: 1 dedo = swipe horizontal (mudar foto), 2 dedos = pinch-zoom
+  const dist2 = (a, b) => {
+    const dx = a.clientX - b.clientX, dy = a.clientY - b.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+  const onTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      touchRef.current.pinchDist = dist2(e.touches[0], e.touches[1]);
+      touchRef.current.baseZoom = zoom;
+      touchRef.current.swipeStartX = null;
+    } else if (e.touches.length === 1 && zoom === 1) {
+      touchRef.current.swipeStartX = e.touches[0].clientX;
+    } else if (e.touches.length === 1 && zoom > 1) {
+      // Pan single-finger no zoom in
+      dragRef.current = {
+        active: true,
+        sx: e.touches[0].clientX, sy: e.touches[0].clientY,
+        ox: pan.x, oy: pan.y,
+      };
+      touchRef.current.swipeStartX = null;
+    }
+  };
+  const onTouchMove = (e) => {
+    if (e.touches.length === 2 && touchRef.current.pinchDist) {
+      const d = dist2(e.touches[0], e.touches[1]);
+      const ratio = d / touchRef.current.pinchDist;
+      const nz = Math.min(Math.max(touchRef.current.baseZoom * ratio, 1), 5);
+      setZoom(nz);
+      if (nz === 1) setPan({ x: 0, y: 0 });
+    } else if (e.touches.length === 1 && dragRef.current.active) {
+      const d = dragRef.current;
+      setPan({
+        x: d.ox + (e.touches[0].clientX - d.sx),
+        y: d.oy + (e.touches[0].clientY - d.sy),
+      });
+    }
+  };
+  const onTouchEnd = (e) => {
+    // Swipe horizontal: dispara só se foi gesto rápido E zoom=1
+    if (touchRef.current.swipeStartX !== null && zoom === 1
+        && e.changedTouches.length === 1) {
+      const dx = e.changedTouches[0].clientX - touchRef.current.swipeStartX;
+      if (Math.abs(dx) > 60) {
+        if (dx < 0) next();
+        else prev();
+      }
+    }
+    dragRef.current.active = false;
+    touchRef.current.pinchDist = 0;
+    touchRef.current.swipeStartX = null;
+  };
+
+  if (list.length === 0) return null;
+
   return (
     <div data-testid="map-photo-lightbox"
           onClick={onClose}
@@ -1161,39 +1286,150 @@ function PhotoLightbox({ url, ctoName, uploadedByName, onClose }) {
           }}>
       <div onClick={(e) => e.stopPropagation()}
             style={{ display: "flex", flexDirection: "column", gap: 12,
-                      alignItems: "center" }}>
+                      alignItems: "center", maxWidth: "100%" }}>
+        {/* Header: CTO + uploader + contador */}
         <div style={{
           padding: "6px 14px", borderRadius: 999,
           background: "rgba(255,255,255,.1)", color: "white",
-          fontSize: 12, fontWeight: 700, display: "flex", gap: 10,
+          fontSize: 12, fontWeight: 700,
+          display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+          justifyContent: "center",
         }}>
           📸 {ctoName || "CTO"}
-          {uploadedByName && (
+          {current.uploaded_by_name && (
             <span style={{ opacity: 0.7, fontWeight: 500 }}>
-              · {uploadedByName}
+              · {current.uploaded_by_name}
+            </span>
+          )}
+          {hasMany && (
+            <span data-testid="lightbox-counter"
+                    style={{
+                      padding: "1px 8px", borderRadius: 999,
+                      background: "rgba(255,255,255,.18)", fontSize: 11,
+                    }}>
+              {safeIdx + 1} / {total}
+            </span>
+          )}
+          {zoom > 1 && (
+            <span style={{
+              padding: "1px 8px", borderRadius: 999,
+              background: "rgba(16,185,129,.25)", fontSize: 11,
+              color: "#a7f3d0",
+            }}>
+              {zoom.toFixed(1)}×
             </span>
           )}
         </div>
-        <img src={url} alt="Foto CTO ampliada"
-              data-testid="map-lightbox-img"
-              style={{
-                maxWidth: "92vw", maxHeight: "82vh", borderRadius: 8,
-                boxShadow: "0 12px 40px rgba(0,0,0,.6)",
-              }} />
-        <button data-testid="map-lightbox-close"
-                onClick={onClose}
+
+        {/* Imagem + setas */}
+        <div style={{ position: "relative", display: "flex",
+                        alignItems: "center", justifyContent: "center" }}>
+          {hasMany && (
+            <button data-testid="lightbox-prev"
+                      aria-label="Anterior"
+                      onClick={prev}
+                      style={navBtn("left")}>‹</button>
+          )}
+          <div onWheel={onWheel}
+                onMouseDown={onMouseDown}
+                onMouseMove={onMouseMove}
+                onMouseUp={stopDrag}
+                onMouseLeave={stopDrag}
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
                 style={{
-                  padding: "8px 18px", borderRadius: 8,
-                  border: "1px solid rgba(255,255,255,.3)",
-                  background: "rgba(255,255,255,.1)", color: "white",
-                  fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  overflow: "hidden",
+                  maxWidth: "92vw", maxHeight: "78vh",
+                  cursor: zoom > 1
+                    ? (dragRef.current.active ? "grabbing" : "grab")
+                    : "zoom-in",
+                  borderRadius: 8,
+                  boxShadow: "0 12px 40px rgba(0,0,0,.6)",
+                  touchAction: "none",
                 }}>
-          Fechar (Esc)
-        </button>
+            <img src={current.url} alt="Foto CTO ampliada"
+                  data-testid="map-lightbox-img"
+                  draggable={false}
+                  onDoubleClick={() => {
+                    // Toggle entre 1× e 2× num clique duplo
+                    setZoom((z) => (z === 1 ? 2 : 1));
+                    if (zoom !== 1) setPan({ x: 0, y: 0 });
+                  }}
+                  style={{
+                    display: "block",
+                    maxWidth: "92vw", maxHeight: "78vh",
+                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                    transformOrigin: "center",
+                    transition: dragRef.current.active
+                      ? "none" : "transform 0.18s ease-out",
+                    userSelect: "none",
+                  }} />
+          </div>
+          {hasMany && (
+            <button data-testid="lightbox-next"
+                      aria-label="Próxima"
+                      onClick={next}
+                      style={navBtn("right")}>›</button>
+          )}
+        </div>
+
+        {/* Toolbar: zoom controls + close */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center",
+                        flexWrap: "wrap", justifyContent: "center" }}>
+          <button data-testid="lightbox-zoom-out"
+                    aria-label="Diminuir zoom"
+                    onClick={() => setZoom((z) =>
+                      Math.max(z - 0.5, 1))}
+                    style={tbZoomBtn}>−</button>
+          <button data-testid="lightbox-zoom-reset"
+                    aria-label="Resetar zoom"
+                    onClick={reset} style={tbZoomBtn}>
+            {zoom > 1 ? "Reset" : "1×"}
+          </button>
+          <button data-testid="lightbox-zoom-in"
+                    aria-label="Aumentar zoom"
+                    onClick={() => setZoom((z) =>
+                      Math.min(z + 0.5, 5))}
+                    style={tbZoomBtn}>+</button>
+          <button data-testid="map-lightbox-close"
+                    onClick={onClose}
+                    style={{
+                      padding: "8px 18px", borderRadius: 8,
+                      border: "1px solid rgba(255,255,255,.3)",
+                      background: "rgba(255,255,255,.1)", color: "white",
+                      fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    }}>
+            Fechar (Esc)
+          </button>
+        </div>
+        <div style={{ color: "rgba(255,255,255,.45)", fontSize: 10,
+                        textAlign: "center", marginTop: -4 }}>
+          {hasMany && "← → muda foto · "}
+          scroll/+/− zoom · 0 reset · arrastar para mover
+        </div>
       </div>
     </div>
   );
 }
+
+const navBtn = (side) => ({
+  position: "absolute",
+  [side]: -54,
+  top: "50%", transform: "translateY(-50%)",
+  width: 44, height: 44, borderRadius: "50%",
+  border: "1px solid rgba(255,255,255,.25)",
+  background: "rgba(255,255,255,.12)", color: "white",
+  fontSize: 28, lineHeight: 1, cursor: "pointer", fontWeight: 700,
+  display: "flex", alignItems: "center", justifyContent: "center",
+});
+
+const tbZoomBtn = {
+  width: 36, height: 36, borderRadius: 8,
+  border: "1px solid rgba(255,255,255,.3)",
+  background: "rgba(255,255,255,.1)", color: "white",
+  fontSize: 16, fontWeight: 700, cursor: "pointer",
+};
 
 const selectStyle = {
   padding: "6px 10px", borderRadius: 6,
