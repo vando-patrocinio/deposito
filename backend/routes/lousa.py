@@ -354,6 +354,7 @@ async def _persist_equipment_swap(ticket_id: str, company_id: str,
     """Grava registro de auditoria de troca de ONT/ONU em
     `equipment_swaps`. Idempotente (chave: ticket_id)."""
     try:
+        verif = swap.get("verification") or {}
         doc = {
             "id": f"swap-{uuid.uuid4().hex[:10]}",
             "company_id": company_id,
@@ -365,6 +366,15 @@ async def _persist_equipment_swap(ticket_id: str, company_id: str,
             "new_mac": swap.get("new_mac"),
             "new_sn": swap.get("new_sn"),
             "source": swap.get("source"),
+            # Verificação via uptime SmartOLT
+            "verified": verif.get("verified"),       # True / False / None
+            "verification_reason": verif.get("reason"),
+            "uptime_seconds_at_close": verif.get("uptime_seconds"),
+            "uptime_minutes_at_close": verif.get("uptime_minutes"),
+            "last_status_change": verif.get("last_status_change"),
+            "onu_status_at_close": verif.get("status"),
+            "threshold_minutes": verif.get(
+                "threshold_minutes", SWAP_UPTIME_THRESHOLD_MINUTES),
             "created_at": now_iso(),
         }
         # upsert por ticket_id pra não duplicar se finalize for chamado 2x
@@ -374,6 +384,94 @@ async def _persist_equipment_swap(ticket_id: str, company_id: str,
         )
     except Exception as e:
         logger.warning("[lousa] persist_equipment_swap falhou: %s", e)
+
+
+# Janela mínima (em minutos) que define uma troca de ONT/ONU LEGÍTIMA:
+# se a ONU está online há mais que isso (sem reboot recente), a troca
+# declarada pelo técnico é considerada SUSPEITA — equipamento provavelmente
+# não foi realmente substituído (não passou pelo reboot que acompanha a troca).
+SWAP_UPTIME_THRESHOLD_MINUTES = 10
+
+
+def _parse_smartolt_ts(ts: Optional[str]) -> Optional[datetime]:
+    """Converte timestamps comuns do SmartOLT ('YYYY-MM-DD HH:MM:SS' ou ISO)
+    para `datetime` aware (UTC). Retorna None em qualquer falha."""
+    if not ts:
+        return None
+    try:
+        s = str(ts).strip().replace("Z", "+00:00")
+        if " " in s and "T" not in s:
+            s = s.replace(" ", "T", 1)
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+async def _verify_swap_via_uptime(smartolt_onu: Optional[dict],
+                                          threshold_minutes: int = SWAP_UPTIME_THRESHOLD_MINUTES,
+                                          ) -> dict:
+    """Verifica se a troca declarada pelo técnico é coerente com o estado
+    REAL da ONU no SmartOLT (uptime / último status change).
+
+    Regra (pedido do usuário, 22/02/2026):
+      Se a ONU NÃO foi desligada nas últimas N (=10) minutos, a troca não pôde
+      ter ocorrido — toda substituição física implica reboot. Marcamos o
+      registro como `verified=false` e o motivo `uptime_too_high` ou
+      `no_recent_disconnect`. Vai pro card de auditoria mensal.
+
+    Quando não há cache SmartOLT (cliente não mapeado), retorna
+    `verified=null, reason="no_smartolt_mapping"` — ou seja, sem dado, sem
+    julgamento (não é "suspeito", é apenas "não verificável").
+    """
+    out: Dict[str, Any] = {
+        "verified": None, "reason": None,
+        "uptime_seconds": None, "uptime_minutes": None,
+        "last_status_change": None, "status": None,
+        "threshold_minutes": threshold_minutes,
+        "checked_at": now_iso(),
+    }
+    if not smartolt_onu:
+        out["reason"] = "no_smartolt_mapping"
+        return out
+
+    last_change = smartolt_onu.get("last_status_change")
+    status_str = (smartolt_onu.get("status") or "").lower()
+    out["last_status_change"] = last_change
+    out["status"] = status_str
+
+    # Se a ONU está LOS/offline/power_off neste momento, ela acabou de cair —
+    # podemos assumir que está num momento de transição (provavelmente
+    # justamente sendo trocada). Não rejeita.
+    if status_str and status_str != "online":
+        out["verified"] = True
+        out["reason"] = f"status_{status_str}"
+        return out
+
+    dt = _parse_smartolt_ts(last_change)
+    if not dt:
+        # Sem timestamp confiável — não rejeita nem confirma.
+        out["reason"] = "no_last_status_change"
+        return out
+
+    delta = datetime.now(timezone.utc) - dt
+    secs = max(int(delta.total_seconds()), 0)
+    out["uptime_seconds"] = secs
+    out["uptime_minutes"] = secs // 60
+
+    if secs <= threshold_minutes * 60:
+        out["verified"] = True
+        out["reason"] = "recent_reboot"  # ONU rebootou recentemente → troca coerente
+    else:
+        out["verified"] = False
+        out["reason"] = "uptime_too_high"  # ONU online há > N min sem reboot
+    return out
+
+
+
+
 
 
 
@@ -2652,6 +2750,41 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
     # === Detecta troca de ONT/ONU (reparo/troca_endereco) e persiste
     # MAC retirado + MAC novo no completion_data + auditoria global. ===
     equipment_swap = _detect_equipment_swap(t, cd, smartolt_onu)
+    # Verifica via uptime do SmartOLT — se a ONU está online há > 10min sem
+    # reboot, a troca é considerada SUSPEITA (provavelmente não houve
+    # substituição física). Auditado no card mensal.
+    if equipment_swap:
+        # Pra obter um `last_status_change` fresco, preferimos uma leitura
+        # live da SmartOLT (best-effort). Se falhar, caímos no cache.
+        fresh_onu = smartolt_onu
+        try:
+            ext_id = (smartolt_onu or {}).get("unique_external_id")
+            if ext_id:
+                cfg = await db.smartolt_configs.find_one(
+                    {"company_id": company_id}, {"_id": 0},
+                ) or {}
+                if cfg.get("enabled") and cfg.get("subdomain") and cfg.get("api_key"):
+                    from routes.smartolt import _http_get  # type: ignore
+                    class _CfgShim:
+                        pass
+                    shim = _CfgShim()
+                    shim.subdomain = cfg["subdomain"]
+                    shim.api_key = cfg["api_key"]
+                    shim.timeout_seconds = cfg.get("timeout_seconds", 8)
+                    st = await _http_get(shim, f"/onu/get_onu_status/{ext_id}")
+                    st_resp = (st or {}).get("response") or {}
+                    if st_resp:
+                        fresh_onu = dict(smartolt_onu or {})
+                        fresh_onu["status"] = (st_resp.get("status")
+                                                  or fresh_onu.get("status"))
+                        fresh_onu["last_status_change"] = (
+                            st_resp.get("last_status_change")
+                            or fresh_onu.get("last_status_change")
+                        )
+        except Exception as e:
+            logger.info("[lousa] live status fetch (swap verify) falhou: %s", e)
+        swap_verification = await _verify_swap_via_uptime(fresh_onu)
+        equipment_swap["verification"] = swap_verification
 
     # === Anexa resumo dos pings feitos para essa bolha ===
     # Se houve ping → resumo (RTT, loss, alive); se não houve → marca como
@@ -2748,18 +2881,36 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             ticket_id=ticket_id, company_id=company_id,
             swap=equipment_swap, technician_id=cid, technician_name=coll_name,
         )
-        await _create_notification(
-            type_="equipment_swap",
-            title="🔁 Troca de ONT/ONU registrada",
-            message=(
-                f"{coll_name} trocou o equipamento em "
-                f"{t['client_snapshot'].get('name','—')}. "
-                f"MAC retirado: {equipment_swap.get('old_mac') or equipment_swap.get('old_sn') or '—'} · "
-                f"MAC novo: {equipment_swap.get('new_mac') or equipment_swap.get('new_sn') or '—'}"
-            ),
-            collaborator_id=cid, ticket_id=ticket_id,
-            company_id=company_id, severity="info",
-        )
+        verif = equipment_swap.get("verification") or {}
+        verified = verif.get("verified")
+        if verified is False:
+            # Troca SUSPEITA — ONU online há mais que o threshold sem reboot.
+            await _create_notification(
+                type_="equipment_swap_suspect",
+                title="🚨 Troca de ONT/ONU SUSPEITA",
+                message=(
+                    f"{coll_name} declarou troca em "
+                    f"{t['client_snapshot'].get('name','—')}, mas a ONU está "
+                    f"online há {verif.get('uptime_minutes','?')} min sem "
+                    f"reboot (limite {verif.get('threshold_minutes')} min). "
+                    f"Provavelmente o equipamento NÃO foi substituído."
+                ),
+                collaborator_id=cid, ticket_id=ticket_id,
+                company_id=company_id, severity="warning",
+            )
+        else:
+            await _create_notification(
+                type_="equipment_swap",
+                title="🔁 Troca de ONT/ONU registrada",
+                message=(
+                    f"{coll_name} trocou o equipamento em "
+                    f"{t['client_snapshot'].get('name','—')}. "
+                    f"MAC retirado: {equipment_swap.get('old_mac') or equipment_swap.get('old_sn') or '—'} · "
+                    f"MAC novo: {equipment_swap.get('new_mac') or equipment_swap.get('new_sn') or '—'}"
+                ),
+                collaborator_id=cid, ticket_id=ticket_id,
+                company_id=company_id, severity="info",
+            )
     await _log_ticket_action(
         ticket_id=ticket_id, action="finalizada",
         actor_id=cid, actor_name=coll_name,
@@ -2979,6 +3130,12 @@ async def finalize_ticket(ticket_id: str, payload: FinalizeIn, user: dict = Depe
     smartolt_onu = await _resolve_smartolt_for_ticket(t)
     is_smartolt_client = bool(smartolt_onu)
     equipment_swap = _detect_equipment_swap(t, cd, smartolt_onu)
+    if equipment_swap:
+        # Verificação por uptime (best-effort, sem live fetch nesta rota
+        # autenticada — usamos o cache do SmartOLT, mais barato).
+        equipment_swap["verification"] = await _verify_swap_via_uptime(
+            smartolt_onu,
+        )
 
     cd_dump = cd.model_dump()
     cd_dump["ping_summary"] = ping_summary
@@ -3050,6 +3207,90 @@ async def list_equipment_swaps(limit: int = 100,
     ).sort("created_at", -1).limit(min(max(limit, 1), 500))
     items = await cur.to_list(500)
     return {"company_id": cid, "count": len(items), "items": items}
+
+
+@router.get("/lousa/equipment-swaps/monthly-report")
+async def equipment_swaps_monthly_report(
+        months: int = 6,
+        user: dict = Depends(get_current_user),
+):
+    """Relatório mensal de trocas de ONT/ONU — card de auditoria.
+
+    Agrega `equipment_swaps` por mês (YYYY-MM) e por técnico, distinguindo
+    trocas LEGÍTIMAS (`verified=true`/`null`) vs SUSPEITAS (`verified=false`,
+    geralmente porque a ONU não passou por reboot — uptime > threshold).
+    `months` = janela em meses (default 6, max 24).
+    """
+    if user.get("role") not in ("administrador", "gestor", "auditor"):
+        raise HTTPException(403, "Apenas gestor/administrador/auditor")
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    months = min(max(months, 1), 24)
+    cutoff = (datetime.now(timezone.utc)
+                - timedelta(days=months * 31)).isoformat()
+    cur = db.equipment_swaps.find(
+        {"company_id": cid, "created_at": {"$gte": cutoff}},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(5000)
+    rows = await cur.to_list(5000)
+    # Agrega por mês + técnico
+    by_month: Dict[str, Dict[str, Any]] = {}
+    by_tech: Dict[str, Dict[str, Any]] = {}
+    total_legit = 0
+    total_suspect = 0
+    total_unknown = 0
+    for r in rows:
+        ym = (r.get("created_at") or "")[:7]  # "YYYY-MM"
+        verified = r.get("verified")
+        legit = bool(verified)
+        suspect = verified is False
+        unknown = verified is None
+        if legit:
+            total_legit += 1
+        if suspect:
+            total_suspect += 1
+        if unknown:
+            total_unknown += 1
+        m = by_month.setdefault(ym, {
+            "month": ym, "total": 0, "legit": 0, "suspect": 0, "unknown": 0,
+        })
+        m["total"] += 1
+        m["legit"] += int(legit)
+        m["suspect"] += int(suspect)
+        m["unknown"] += int(unknown)
+        tid = r.get("technician_id") or "—"
+        tname = r.get("technician_name") or "—"
+        tk = by_tech.setdefault(tid, {
+            "technician_id": tid, "technician_name": tname,
+            "total": 0, "legit": 0, "suspect": 0, "unknown": 0,
+        })
+        tk["total"] += 1
+        tk["legit"] += int(legit)
+        tk["suspect"] += int(suspect)
+        tk["unknown"] += int(unknown)
+    months_sorted = sorted(by_month.values(), key=lambda d: d["month"], reverse=True)
+    techs_sorted = sorted(by_tech.values(),
+                              key=lambda d: (d["suspect"], d["total"]),
+                              reverse=True)
+    return {
+        "company_id": cid,
+        "window_months": months,
+        "totals": {
+            "swaps": len(rows),
+            "legit": total_legit,
+            "suspect": total_suspect,
+            "unknown": total_unknown,
+            "suspect_rate": (
+                round(total_suspect / len(rows), 3) if rows else 0
+            ),
+            "threshold_minutes": SWAP_UPTIME_THRESHOLD_MINUTES,
+        },
+        "by_month": months_sorted,
+        "by_technician": techs_sorted,
+        # Lista de suspeitas no período (pra UI "drill-down" do card)
+        "suspects": [
+            r for r in rows if r.get("verified") is False
+        ][:200],
+    }
 
 
 
