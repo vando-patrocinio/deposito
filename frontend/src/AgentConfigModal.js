@@ -1605,8 +1605,189 @@ function AutoReplySection({ draft, patch, autoReply, onToggle, busy, isNew }) {
           ✅ <strong>{draft.name}</strong> é o agente que responde automaticamente o WhatsApp agora.
         </div>
       )}
+
+      <BusinessHoursCard />
     </div>
   );
+}
+
+/* ---------- BusinessHoursCard ---------- */
+const WEEKDAYS = [
+  { id: "0", short: "Seg", long: "Segunda" },
+  { id: "1", short: "Ter", long: "Terça" },
+  { id: "2", short: "Qua", long: "Quarta" },
+  { id: "3", short: "Qui", long: "Quinta" },
+  { id: "4", short: "Sex", long: "Sexta" },
+  { id: "5", short: "Sáb", long: "Sábado" },
+  { id: "6", short: "Dom", long: "Domingo" },
+];
+
+function BusinessHoursCard() {
+  const [cfg, setCfg] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [flash, setFlash] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/whatsapp-baileys/business-hours");
+      setCfg({
+        tz_offset: data.tz_offset ?? -3,
+        schedule: data.schedule || {},
+        after_hours_message: data.after_hours_message || "",
+      });
+      setStatus(data.status);
+    } catch (e) {
+      setError(extractErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const patchDay = (id, key, val) => {
+    setCfg((c) => ({
+      ...c,
+      schedule: {
+        ...c.schedule,
+        [id]: { ...(c.schedule[id] || {}), [key]: val },
+      },
+    }));
+  };
+
+  const save = async () => {
+    if (!cfg) return;
+    setSaving(true);
+    setError("");
+    try {
+      const { data } = await api.put("/whatsapp-baileys/business-hours", cfg);
+      setStatus(data.status);
+      setFlash("✅ Horário comercial atualizado");
+      setTimeout(() => setFlash(""), 3000);
+    } catch (e) {
+      setError(extractErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return (
+    <div data-testid="bh-loading" style={{ padding: 14, fontSize: 12,
+      color: "var(--text-muted)" }}>Carregando horário comercial…</div>
+  );
+  if (!cfg) return null;
+
+  const isOpen = status?.is_open;
+  return (
+    <div data-testid="business-hours-card" style={{
+      padding: 16, borderRadius: 12, background: "var(--bg-surface-2)",
+      border: `1px solid ${isOpen ? "#86efac" : "#fecaca"}`,
+      display: "grid", gap: 12,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10,
+                      flexWrap: "wrap" }}>
+        <strong style={{ fontSize: 14 }}>Horário comercial · Atendimento humano</strong>
+        <span data-testid="bh-status-pill" style={{
+          padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800,
+          background: isOpen ? "#dcfce7" : "#fee2e2",
+          color: isOpen ? "#166534" : "#991b1b",
+          border: `1px solid ${isOpen ? "#86efac" : "#fecaca"}`,
+          textTransform: "uppercase", letterSpacing: ".05em",
+        }}>
+          {isOpen ? "ABERTO" : "FECHADO"}
+        </span>
+        {!isOpen && status?.next_open_human && (
+          <span data-testid="bh-next-open" style={{ fontSize: 12,
+            color: "var(--text-secondary)" }}>
+            abre {status.next_open_human}
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <button onClick={save} disabled={saving}
+                data-testid="bh-save"
+                style={{
+                  padding: "7px 14px", borderRadius: 8,
+                  border: "1px solid #16a34a", background: "#16a34a",
+                  color: "white", fontSize: 12, fontWeight: 800,
+                  cursor: saving ? "wait" : "pointer",
+                }}>
+          {saving ? "Salvando…" : "Salvar"}
+        </button>
+      </div>
+
+      <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+        Define quando há humano disponível pra escalar conversas. A IA usa
+        isso pra responder coerentemente fora do expediente.
+      </div>
+
+      <div style={{ display: "grid", gap: 6 }}>
+        {WEEKDAYS.map((wd) => {
+          const day = cfg.schedule[wd.id] || { active: false };
+          return (
+            <div key={wd.id}
+                  data-testid={`bh-day-${wd.id}`}
+                  style={{ display: "flex", alignItems: "center", gap: 10,
+                            padding: "6px 8px", background: "var(--bg-surface)",
+                            borderRadius: 8, fontSize: 13 }}>
+              <label style={{ display: "inline-flex", alignItems: "center",
+                                gap: 6, minWidth: 110, fontWeight: 700,
+                                cursor: "pointer" }}>
+                <input type="checkbox" checked={!!day.active}
+                        onChange={(e) => patchDay(wd.id, "active", e.target.checked)}
+                        data-testid={`bh-active-${wd.id}`} />
+                {wd.long}
+              </label>
+              {day.active ? (
+                <>
+                  <input type="time"
+                          data-testid={`bh-open-${wd.id}`}
+                          value={day.open || "08:00"}
+                          onChange={(e) => patchDay(wd.id, "open", e.target.value)}
+                          style={timeInputStyle()} />
+                  <span style={{ color: "var(--text-muted)" }}>até</span>
+                  <input type="time"
+                          data-testid={`bh-close-${wd.id}`}
+                          value={day.close || "18:00"}
+                          onChange={(e) => patchDay(wd.id, "close", e.target.value)}
+                          style={timeInputStyle()} />
+                </>
+              ) : (
+                <span style={{ fontSize: 12, color: "var(--text-muted)",
+                                fontStyle: "italic" }}>Fechado</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <Field icon={MessageSquare} label="Mensagem fora do horário"
+              hint="Texto que a IA usa quando o cliente pede atendimento humano fora do expediente. Ex: 'Atendimento humano só amanhã às 8h, mas eu já posso resolver tudo aqui pelo chat 🙂'">
+        <textarea data-testid="bh-after-hours-message"
+                   rows={2} value={cfg.after_hours_message}
+                   onChange={(e) => setCfg((c) => ({ ...c, after_hours_message: e.target.value }))}
+                   placeholder="Atendimento humano só amanhã às 8h, mas eu já posso resolver tudo aqui pelo chat 🙂"
+                   style={textareaStyle()} />
+      </Field>
+
+      {flash && <div data-testid="bh-flash" style={{ fontSize: 12,
+        color: "#166534", fontWeight: 700 }}>{flash}</div>}
+      {error && <div data-testid="bh-error" style={{ fontSize: 12,
+        color: "#991b1b", fontWeight: 700 }}>{error}</div>}
+    </div>
+  );
+}
+
+function timeInputStyle() {
+  return {
+    padding: "5px 8px", borderRadius: 6,
+    border: "1px solid var(--border-default)",
+    background: "var(--bg-surface)", fontSize: 13,
+    fontFamily: "JetBrains Mono, monospace",
+  };
 }
 
 /* ---------- helpers ---------- */

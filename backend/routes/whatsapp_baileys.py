@@ -1812,6 +1812,17 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         extra.append(f"=== PREÇOS E VALORES ===\n{agent['pricing_info']}")
     if agent.get("priority_situations"):
         extra.append(f"=== SITUAÇÕES PRIORITÁRIAS ===\n{agent['priority_situations']}")
+
+    # 3.0b. HORÁRIO COMERCIAL — IA precisa saber se há humano disponível
+    # pra escalar AGORA, e qual mensagem dar quando cliente pedir humano
+    # fora do expediente. Config editável em Configurações.
+    try:
+        from services.business_hours import format_for_prompt as _bh_fmt
+        bh_block = await _bh_fmt(cid)
+        if bh_block:
+            extra.append(bh_block)
+    except Exception as _e:
+        logger.debug("[wa-baileys] business_hours skip: %s", _e)
     # 3a. Conflito de vínculo: se o telefone está vinculado a 2+ subscribers
     # cadastrados, a IA NÃO pode chamar pelo nome (vazaria dados de outro
     # cliente). Injeta diretiva clara forçando a IA a pedir CPF antes de
@@ -2734,6 +2745,57 @@ async def set_auto_reply(payload: AutoReplySettingsIn,
                  user.get("email"))
     return {"ok": True, "enabled": payload.enabled,
             "agent_name": payload.agent_name or "Jerusa"}
+
+
+# ---------------------------------------------------------------------------
+# Business hours — horário comercial editável por empresa (afeta IA)
+# ---------------------------------------------------------------------------
+class BusinessHoursIn(BaseModel):
+    tz_offset: Optional[int] = -3
+    schedule: Dict[str, Any]   # {"0": {"open": "08:00", "close": "18:00", "active": true}, ...}
+    after_hours_message: Optional[str] = None
+
+
+@router.get("/business-hours")
+async def get_business_hours_endpoint(
+    user: dict = Depends(require_role("gestor")),
+):
+    """Retorna config + status atual (aberto/fechado + próxima abertura)."""
+    from services.business_hours import (
+        get_business_hours, compute_status,
+    )
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await get_business_hours(cid)
+    return {
+        "tz_offset": cfg["tz_offset"],
+        "schedule": cfg["schedule"],
+        "after_hours_message": cfg["after_hours_message"],
+        "status": compute_status(cfg),
+    }
+
+
+@router.put("/business-hours")
+async def set_business_hours_endpoint(
+    payload: BusinessHoursIn,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Atualiza horário comercial. Aceita schedule parcial (faz merge com defaults)."""
+    from services.business_hours import (
+        set_business_hours, compute_status,
+    )
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await set_business_hours(
+        cid,
+        {
+            "tz_offset": payload.tz_offset or -3,
+            "schedule": payload.schedule or {},
+            "after_hours_message": payload.after_hours_message,
+        },
+        by=user.get("email") or user.get("id"),
+    )
+    logger.info("[wa-baileys] business_hours atualizado por %s",
+                  user.get("email"))
+    return {"ok": True, **cfg, "status": compute_status(cfg)}
 
 
 # ---------------------------------------------------------------------------

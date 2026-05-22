@@ -1,0 +1,59 @@
+{
+  "summary": "Backend GET/PUT /api/whatsapp-baileys/business-hours validados (3/3 REST + 1/1 service E2E PASS). CRITICAL frontend regression: o componente legado WaBusinessHoursCard (renderizado em IntegrationsConfigPanel → tab 'Configuração' do Atendimento IA) quebra com 'Uncaught TypeError: Cannot read properties of undefined (reading 0)' porque consome a antiga shape (cfg.weekly_schedule) enquanto o novo endpoint retorna cfg.schedule. Resultado: tela inteira do Atendimento IA fica em estado de erro (white-screen overlay do react-error-overlay) impedindo qualquer interação — inclusive abrir o popup 'Configurar Robô' onde está o NOVO BusinessHoursCard que o usuário pediu. Não foi possível validar visualmente o novo BusinessHoursCard porque o crash acontece antes.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "WaBusinessHoursCard (/app/frontend/src/WaBusinessHoursCard.js linha 115)",
+        "issue": "TypeError: Cannot read properties of undefined (reading '0'). Componente legado lê cfg.weekly_schedule[d.key] mas o endpoint /whatsapp-baileys/business-hours agora retorna {schedule, tz_offset, after_hours_message, status} — não há 'weekly_schedule', 'enabled', 'holidays' etc. Quebra toda a tela Atendimento IA → Configuração",
+        "selector": "[data-testid=\"wa-business-hours-card\"]",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "Atendimento IA (tela Ligo)",
+        "issue": "Página fica presa em 'Verificando conexão WhatsApp...' indefinidamente em ambiente preview (sem agente conectado), portanto o botão data-testid=wa-open-agent-config nunca aparece e o NOVO BusinessHoursCard dentro do modal não pode ser acessado pela UI",
+        "selector": "[data-testid=\"wa-open-agent-config\"]",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "GET /whatsapp-baileys/business-hours (frontend legado)",
+        "issue": "Schema breaking change não acompanhada por migração no WaBusinessHoursCard. Resposta nova: {tz_offset, schedule (keys '0'-'6'), after_hours_message, status}. WaBusinessHoursCard.save() ainda envia campos antigos (enabled, timezone_offset_hours, weekly_schedule, holidays, fora_de_hora_message) que o backend ignora.",
+        "affected_selectors": ["[data-testid=\"wa-business-hours-card\"]", "[data-testid=\"wa-bh-day-0\"]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_business_hours_rest.py",
+    "/app/backend/tests/test_business_hours.py",
+    "/app/test_reports/pytest/test_business_hours_rest.xml"
+  ],
+  "action_items": [
+    "URGENTE: corrigir crash em /app/frontend/src/WaBusinessHoursCard.js — duas opções recomendadas: (a) REMOVER <WaBusinessHoursCard /> de /app/frontend/src/IntegrationsConfigPanel.js linha 141 porque o novo BusinessHoursCard em AgentConfigModal o supersede; OU (b) migrar WaBusinessHoursCard para a nova shape (cfg.schedule + active/open/close) e remover dependência de holidays/fora_de_hora_message se não vão ser repostas. Opção (a) é mais segura e enxuta.",
+    "Validar manualmente o popup 'Configurar Robô' → tab Auto-reply/Ativação após corrigir o crash. Em ambiente preview sem WA conectado o botão wa-open-agent-config pode estar oculto; garantir que o botão esteja acessível mesmo sem conexão (ou prover um caminho alternativo p/ abrir o modal)."
+  ],
+  "critical_code_review_comments": [
+    "Schema breaking change no GET/PUT /whatsapp-baileys/business-hours não foi propagada para todos os consumidores frontend. Sempre que um endpoint mudar o contrato, fazer grep de TODOS os consumidores (api.get('/whatsapp-baileys/business-hours')).",
+    "AgentConfigModal.js está com 1848 linhas — acima do limite recomendado de 700. Considerar extrair BusinessHoursCard (linhas 1614-1782) para arquivo próprio /app/frontend/src/AgentConfigModal/BusinessHoursCard.js.",
+    "Backend route bem implementado: usa require_role('gestor'), exclui _id via projection, faz upsert e responde com status calculado. Boa prática.",
+    "_norm_cfg em services/business_hours.py é robusto contra cfg parcial — bom design defensivo."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_business_hours_rest.py (novo)"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4 testes — 3 REST + 1 service E2E)",
+    "frontend": "BLOCKED pelo crash do WaBusinessHoursCard antes de poder validar o novo BusinessHoursCard via UI"
+  },
+  "test_credentials": "admin@empresa.com / 123456 (role administrador) - funcional",
+  "seed_data_creation": "Nenhuma (test_business_hours_rest.py preserva config original via backup/restore)",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend 100% OK. Foco: revalidar UI APÓS o main agent corrigir o crash do WaBusinessHoursCard (remoção de IntegrationsConfigPanel é a fix recomendada). Endpoints corretos: GET/PUT /api/whatsapp-baileys/business-hours retornam {tz_offset, schedule (keys '0'-'6'), after_hours_message, status:{is_open,status,now_iso,next_open_human}}. data-testids do NOVO componente (em AgentConfigModal.js linhas 1614+): business-hours-card, bh-status-pill, bh-next-open, bh-day-{0..6}, bh-active-{0..6}, bh-open-{0..6}, bh-close-{0..6}, bh-after-hours-message, bh-save, bh-flash, bh-error.",
+  "rca_of_the_issue": "Crash em WaBusinessHoursCard.js:115 — código legado faz `cfg.weekly_schedule[d.key]` mas o endpoint /whatsapp-baileys/business-hours foi refatorado pelo main agent para devolver `schedule` (sem 'weekly_'). Como `cfg.weekly_schedule` é undefined, o acesso `[d.key]` (que internamente é o '0') lança TypeError. Stack trace do bundle: WaBusinessHoursCard → Array.map (linha 114-151). Reprodução: login admin@empresa.com / 123456 → sidebar 'Atendimento IA' → aguardar 6s → clicar tab 'Configuração' → overlay vermelho de react-error-overlay aparece. Mitigação: remover <WaBusinessHoursCard /> de IntegrationsConfigPanel.js:141 (componente redundante com o NOVO BusinessHoursCard dentro do popup 'Configurar Robô' em AgentConfigModal) OU adaptar WaBusinessHoursCard à nova shape."
+}
