@@ -1433,3 +1433,25 @@ praça e DRE de compras mensal.
   - Curl REST validado (GET retorna shape legacy + status; PUT persiste).
   - **Frontend testado pelo testing_agent_v3_fork (iteration_108)** — 0 falhas: card renderiza, 7 dias visíveis, salvar funciona com mensagem "✓ Horário salvo. Status agora: FORA DO HORÁRIO", sem duplicação no popup Configurar Robô.
 - **Como o cliente final percebe**: quando manda "preciso falar com humano" às 02h da manhã, IA responde combinando dados de AGORA + HORÁRIO COMERCIAL: *"oi! aqui são 02:25 da madrugada, e no momento nosso atendimento humano está offline. mas não se preocupe! resolvo tudo aqui pelo chat 🙂 como posso te ajudar agora?"*.
+
+✅ **Dashboard "Conversas Resolvidas pela IA Fora do Horário" — ROI visível** (22/02/2026):
+- **Pedido**: criar métrica para o gestor mostrando quantas conversas a IA atendeu fora do horário comercial sem precisar de humano.
+- **Backend** (`routes/whatsapp_baileys.py` ~linha 2800):
+  - Endpoint `GET /api/whatsapp-baileys/after-hours-metrics?days=N` (role gestor, max 90d). Cruza cada `auto_reply=True` outbound de `aihub_wa_messages` com `compute_status` da business_hours no timestamp da mensagem (não no agora) — assim contabiliza corretamente mesmo se a config de horário comercial mudou desde então.
+  - Retorna: `after_hours_total_messages`, `after_hours_unique_clients`, sparkline `by_day` (preenche dias zerados), `top_agents`, `samples` (até 8 últimas msgs com phone+agent+text+at), `is_open_now`, `next_open_human`, `share %` calculado no front.
+- **Frontend** (`AfterHoursMetricsCard.js` novo):
+  - Header gradient (verde quando aberto / roxo-índigo quando fechado, com ícone Sun/Moon).
+  - 3 KPIs: mensagens auto-respondidas, clientes únicos, ROI estimado em call-center (≈R$2,50/atendimento evitado).
+  - Sparkline de barras dos últimos N dias (1/7/30) com toggle.
+  - Pills de top agents.
+  - Lista das 5 últimas respostas reais da IA fora do horário.
+  - Empty-state amigável quando 0 msgs.
+  - Renderizado em `IntegrationsConfigPanel` (Atendimento IA → aba Configuração) logo após `WaBusinessHoursCard`.
+- **Validação** (`testing_agent_v3_fork` iteration_109 — 0 falhas):
+  - Backend 9/9 PASS.
+  - Dados reais retornados — 7d: **177 msgs · 18 clientes únicos · R$ 442,50 · 81% das conversas atendidas fora do horário** (Isabella 156, sem agente 21).
+  - 30d: 318 msgs (Isabella 156, sem agente 21, Jerusa 76).
+  - Range toggle funciona (sparkline atualiza quantidade de barras).
+  - Refresh sem erro. Empty-state OK quando 1d=0 msgs.
+- **Impacto comercial**: gestor agora vê em tempo real o ROI da IA — "esta semana a IA atendeu 18 clientes únicos fora do horário, equivalente a R$ 442,50 de call-center economizados (81% das conversas da janela)".
+
