@@ -68,6 +68,10 @@ module.exports = [
       // React JSX basics
       'react/jsx-uses-react': 'error',
       'react/jsx-uses-vars': 'error',
+      // Pega componente JSX usado sem import (ex: <Metric/> da iter135).
+      // CRÍTICO: `no-undef` sozinho NÃO inspeciona JSX tags customizadas,
+      // só identifiers JS. Precisa dessa regra específica do React plugin.
+      'react/jsx-no-undef': 'error',
       // Disable rules too noisy for this codebase
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'no-undef': 'error',         // pega componentes/variáveis usados sem import (ex: bug iter135 <Metric>)

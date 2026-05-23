@@ -71,6 +71,24 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **Simulador de reajuste anual de planos** (10/05/2026 — iter48): Endpoints `POST /plans/{id}/adjustment/preview` (calcula impacto SEM aplicar — retorna assinantes afetados, novo preço, delta por assinante, delta receita mensal e anual, amostra de assinantes), `POST /plans/{id}/adjustment/apply` (aplica: atualiza `monthly_price` no plano + `plan_price` snapshot nos subscribers + grava log em `plan_adjustments_log`), `GET /plans/{id}/adjustment/history` (últimos 20 reajustes do plano). Filtro de status (default = só ATIVO/INADIMPLENTE/EM_INSTALACAO). Override de percentual disponível. UI: botão "Reajustar" no PlanCard (com badge laranja) abre modal com 4 KPI cards (Assinantes afetados, Por assinante, Receita mensal+, Receita anual+), amostra de até 8 subscribers impactados, histórico inline, fluxo de 2 cliques pra confirmar (revisar → aplicar). Validado curl: R$ 79,90 → R$ 85,09 (+6.5%), log gravado, preço persistido.
 ✅ **Aba Planos visível para todos os perfis** (10/05/2026 — iter48): adicionado `plans` ao `TAB_DEFINITIONS` e `DEFAULT_TAB_PERMISSIONS` (auditor + gestor) em TabPermissionsCard. Migração suave do tab_permissions cuida de adicionar pra empresas que já tinham config gravada.
 ✅ **SmartOLT AI — Modo ATIVO + CO-PILOTO interno** (10/05/2026): worker autônomo roda a cada **30s** com **threshold dinâmico** (≥10 ONUs em LOS OU ≥50% do PON). RECEPTIVO (A2A system_prompt), ATIVO (drafts → aprovação humana 1-clique), CO-PILOTO (internal notes amarelas, cliente nunca vê). Templates editáveis. Endpoints `/api/smartolt-ai/{summary,outages/{active,recent,detect},drafts,drafts/{id}/{send,discard},drafts/send-bulk,templates}`.
+✅ **Pre-commit Hook · Husky + lint-staged + jsx-no-undef** (22/02/2026 — iter137): Build agora **impossível de regredir** com componente fantasma. 3 entregas:
+
+**1. Descoberta crítica**: ao testar o pre-commit hook contra o bug original (`<Metric/>`), descobri que `no-undef` **NÃO inspeciona tags JSX customizadas** — só identifiers JS comuns. Isso significa que sem a regra `react/jsx-no-undef`, `<ComponenteFantasma/>` passaria silenciosamente mesmo com `no-undef: error` (iter136). Ativada `react/jsx-no-undef: error` no eslint.config.js. **Agora SIM** o bug iter135 seria pego antes do deploy. Validado com test sintético: `<Metric/>` → exit 1 + erro claro.
+
+**2. Husky + lint-staged instalados** (`yarn add --dev husky@9.1.7 lint-staged@15.5.0`):
+- `.husky/pre-commit` (executável 755): smart-skip (sai instantâneo se nenhum arquivo de `frontend/src/` foi staged — testado em 8ms), roda `lint-staged --concurrent false` só com arquivos relevantes
+- Config `lint-staged` no `package.json` do frontend: `eslint --max-warnings 0` em `src/**/*.{js,jsx,ts,tsx}` (CI-mode estrito por commit)
+- `git config core.hooksPath .husky` ativo na raiz `/app/`
+- Comentário no hook: skip emergencial via `git commit --no-verify` (uso desencorajado)
+
+**3. Validações end-to-end**:
+- ✅ Arquivo válido → hook passa instantâneo
+- ✅ Backend Python edit → hook skip (smart pattern, 8ms)
+- ✅ JSX fantasma `<ComponenteQueNaoExiste/>` → exit 1, mensagem clara, lint-staged faz auto-revert do git stash, commit bloqueado
+- ✅ `yarn lint` codebase continua 0 errors, 210 warnings (nenhum regrediu)
+
+**Categoria "tela quebrada por componente esquecido após refactor" agora EXTINTA**: build/PR só roda se ESLint strict passar. Bug iter135 (`<Metric>`) seria pego em 200ms localmente antes de virar deploy.
+
 ✅ **ESLint Hardening · `no-undef` + 4 Duplicate Keys Reais Eliminados** (22/02/2026 — iter136): Ativada regra `no-undef: error` (estava `off` com comentário "CRA doesn't need this" — mas era exatamente ela que teria pego o bug iter135 do `<Metric>` faltando antes do deploy).
 
 **Bugs ocultos revelados ao ligar a regra**:

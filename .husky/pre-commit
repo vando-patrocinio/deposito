@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+# SmartProv pre-commit hook
+# - Roda ESLint (estrito, 0 warnings) só nos arquivos staged do frontend.
+# - Garante que bugs como no-undef / no-dupe-keys / globals faltando
+#   sejam pegos ANTES do commit.
+#
+# Skip temporário: `git commit --no-verify` (use só em emergência).
+
+cd "$(dirname "$0")/../frontend" || exit 1
+
+# Rola apenas se houver arquivos staged dentro de /frontend/src
+if git diff --cached --name-only --relative=frontend | grep -qE '^src/.*\.(js|jsx|ts|tsx)$'; then
+  echo "🔍 Rodando lint-staged (ESLint strict nos arquivos modificados)…"
+  npx lint-staged --concurrent false || {
+    echo "❌ Lint falhou. Corrija os erros acima ou use --no-verify (não recomendado)."
+    exit 1
+  }
+fi
+
+exit 0
