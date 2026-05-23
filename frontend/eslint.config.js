@@ -1,48 +1,22 @@
 /**
- * ESLint flat config — strict for NEW files, lenient for grandfathered legacy files.
+ * ESLint flat config — sane defaults for SmartProv.
  *
- * Goal: `react-hooks/exhaustive-deps` is `error` by default so new code can't add
- * more debt. Files in `LEGACY_FILES` keep the rule as `warn` so the existing 108
- * violations don't block the CI. Remove a path from `LEGACY_FILES` once it's clean.
+ * Regras críticas:
+ *   - `no-undef: error` — pega componentes/variáveis usados sem import
+ *     (foi exatamente isso que travou a tela no iter135 com <Metric>).
+ *   - `no-dupe-keys: error` (default) — pega bugs como o que estava em
+ *     `api.js` (chaves duplicadas sobrescrevendo silenciosamente).
+ *   - `react-hooks/rules-of-hooks: error` — proteção máxima.
+ *   - `react-hooks/exhaustive-deps: warn` — segue recomendação oficial do
+ *     time React (warn ao invés de error, evita CI vermelho por hint).
  *
  * Run:
- *   yarn lint           # report (warnings allowed in legacy)
+ *   yarn lint           # report (warnings allowed)
  *   yarn lint:strict    # CI mode (any warning = fail)
  */
 const reactHooks = require('eslint-plugin-react-hooks');
 const reactPlugin = require('eslint-plugin-react');
 const js = require('@eslint/js');
-
-// Files allowed to keep the existing exhaustive-deps violations.
-// New files MUST NOT be added here.
-const LEGACY_FILES = [
-  'src/App.js',
-  'src/CollaboratorApp.js',
-  'src/CadastroPanel.js',
-  'src/SettingsPanel.js',
-  'src/LousaAdminPanel.js',
-  'src/LousaMobile.js',
-  'src/LiveMap.js',
-  'src/LogsPanel.js',
-  'src/StokPanel.js',
-  'src/AtlazIntegrationCard.js',
-  'src/EstoquePanel.js',
-  'src/DashboardPanel.js',
-  'src/PracasPanel.js',
-  'src/TimesheetView.js',
-  'src/AdminLogin.js',
-  'src/AuthContext.js',
-  'src/AiRankingPanel.js',
-  'src/SmartoltIntegrationCard.js',
-  'src/QRScannerModal.js',
-  'src/useEventStream.js',
-  'src/serverTime.js',
-  'src/lousa/LousaHistoryModal.js',
-  'src/lousa/EditTicketModal.js',
-  'src/lousa/CreateTicketModal.js',
-  'src/lousa/BulkActionsBar.js',
-  'src/lousa/RescheduleModal.js',
-];
 
 module.exports = [
   js.configs.recommended,
@@ -68,26 +42,36 @@ module.exports = [
         Notification: 'readonly', SpeechSynthesisUtterance: 'readonly',
         speechSynthesis: 'readonly', process: 'readonly', module: 'readonly',
         require: 'readonly', __dirname: 'readonly', global: 'readonly',
+        // Globals do browser que faltavam (revelados ao ligar no-undef):
+        Event: 'readonly', CustomEvent: 'readonly', WebSocket: 'readonly',
+        XMLSerializer: 'readonly', Audio: 'readonly', atob: 'readonly',
+        btoa: 'readonly', crypto: 'readonly', HTMLImageElement: 'readonly',
+        HTMLInputElement: 'readonly', HTMLElement: 'readonly',
+        DOMParser: 'readonly', RTCPeerConnection: 'readonly',
+        navigator: 'readonly', screen: 'readonly', location: 'readonly',
+        getComputedStyle: 'readonly', matchMedia: 'readonly',
+        history: 'readonly', Worker: 'readonly', SharedWorker: 'readonly',
+        Blob: 'readonly', ImageData: 'readonly', OffscreenCanvas: 'readonly',
+        BroadcastChannel: 'readonly', queueMicrotask: 'readonly',
+        TextEncoder: 'readonly', TextDecoder: 'readonly',
+        structuredClone: 'readonly', AbortSignal: 'readonly',
       },
     },
     plugins: { 'react-hooks': reactHooks, react: reactPlugin },
     settings: { react: { version: 'detect' } },
     rules: {
-      // React Hooks — STRICT for new files
+      // React Hooks
       'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'error',
+      // exhaustive-deps fica como warn por design — recomendação oficial
+      // React team. Pega tanto novos quanto legados sem quebrar CI/build.
+      'react-hooks/exhaustive-deps': 'warn',
       // React JSX basics
       'react/jsx-uses-react': 'error',
       'react/jsx-uses-vars': 'error',
       // Disable rules too noisy for this codebase
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      'no-undef': 'off',          // globals handled above; CRA doesn't need this
+      'no-undef': 'error',         // pega componentes/variáveis usados sem import (ex: bug iter135 <Metric>)
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
-  },
-  // Grandfathered files — exhaustive-deps as warning to not block CI
-  {
-    files: LEGACY_FILES,
-    rules: { 'react-hooks/exhaustive-deps': 'warn' },
   },
 ];

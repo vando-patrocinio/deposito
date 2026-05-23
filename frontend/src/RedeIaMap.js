@@ -1522,7 +1522,7 @@ function LegendItem({ color, label, sq, diamond, line, dashed }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
       <span style={{
-        width: 18, height: 14,
+        width: 18,
         background: line ? "transparent" : color,
         border: line ? "none" : `1.5px solid rgba(0,0,0,0.2)`,
         borderRadius: sq ? 3 : (diamond ? 0 : 99),

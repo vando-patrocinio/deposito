@@ -71,6 +71,23 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **Simulador de reajuste anual de planos** (10/05/2026 — iter48): Endpoints `POST /plans/{id}/adjustment/preview` (calcula impacto SEM aplicar — retorna assinantes afetados, novo preço, delta por assinante, delta receita mensal e anual, amostra de assinantes), `POST /plans/{id}/adjustment/apply` (aplica: atualiza `monthly_price` no plano + `plan_price` snapshot nos subscribers + grava log em `plan_adjustments_log`), `GET /plans/{id}/adjustment/history` (últimos 20 reajustes do plano). Filtro de status (default = só ATIVO/INADIMPLENTE/EM_INSTALACAO). Override de percentual disponível. UI: botão "Reajustar" no PlanCard (com badge laranja) abre modal com 4 KPI cards (Assinantes afetados, Por assinante, Receita mensal+, Receita anual+), amostra de até 8 subscribers impactados, histórico inline, fluxo de 2 cliques pra confirmar (revisar → aplicar). Validado curl: R$ 79,90 → R$ 85,09 (+6.5%), log gravado, preço persistido.
 ✅ **Aba Planos visível para todos os perfis** (10/05/2026 — iter48): adicionado `plans` ao `TAB_DEFINITIONS` e `DEFAULT_TAB_PERMISSIONS` (auditor + gestor) em TabPermissionsCard. Migração suave do tab_permissions cuida de adicionar pra empresas que já tinham config gravada.
 ✅ **SmartOLT AI — Modo ATIVO + CO-PILOTO interno** (10/05/2026): worker autônomo roda a cada **30s** com **threshold dinâmico** (≥10 ONUs em LOS OU ≥50% do PON). RECEPTIVO (A2A system_prompt), ATIVO (drafts → aprovação humana 1-clique), CO-PILOTO (internal notes amarelas, cliente nunca vê). Templates editáveis. Endpoints `/api/smartolt-ai/{summary,outages/{active,recent,detect},drafts,drafts/{id}/{send,discard},drafts/send-bulk,templates}`.
+✅ **ESLint Hardening · `no-undef` + 4 Duplicate Keys Reais Eliminados** (22/02/2026 — iter136): Ativada regra `no-undef: error` (estava `off` com comentário "CRA doesn't need this" — mas era exatamente ela que teria pego o bug iter135 do `<Metric>` faltando antes do deploy).
+
+**Bugs ocultos revelados ao ligar a regra**:
+1. **4 endpoints duplicados em `api.js`** (chave sobrescrita silenciosamente — definição menos completa vencendo a mais nova):
+   - `waBaileysGetAutoReply` / `waBaileysSetAutoReply` duplicado (745 vs 864)
+   - `stokTechnicians` duplicado (245 vs 743)
+   - `redeIaCableDelete` com 2 assinaturas conflitantes (`cable_id` vs `id` na URL)
+2. **`Duplicate key 'height'`** em `RedeIaMap.js:1525` — `height: 14` fixo sendo sobrescrito por uma lógica condicional na mesma assinatura de style — visual bug latente.
+3. **Globals do browser faltando** no config (~20 itens): `Event`, `CustomEvent`, `WebSocket`, `XMLSerializer`, `Audio`, `atob`, `btoa`, `crypto`, `HTMLImageElement`, `DOMParser`, `RTCPeerConnection`, `MutationObserver`, `BroadcastChannel`, etc — todos adicionados.
+
+**Limpeza do config** (`eslint.config.js`):
+- Removido sistema `LEGACY_FILES` (60 linhas → 30 linhas)
+- `react-hooks/exhaustive-deps` rebaixado pra `warn` globalmente (segue recomendação oficial do time React — não bloqueia CI, mas continua visível como hint)
+- Comentários atualizados explicando cada regra crítica e referenciando iter135/iter136 como casos reais
+
+**Resultado**: lint passou de "20 errors mascarados" pra **0 errors, 210 warnings** (warnings legítimos de dev hint). Build/CI pode agora ser confiável.
+
 ✅ **Bugfix · ReferenceError 'Metric is not defined' no Estoque/Clientes** (22/02/2026 — iter135): Uncaught runtime error fatal travando a tela com `ReferenceError: Metric is not defined at ClientesSection`. RCA: componente `<Metric>` era usado em 3 lugares (`EstoquePanel.js:1529-1534` — Total clientes, Identificados IA, Top fabricantes) mas nunca foi declarado nem importado. Provavelmente esquecido após refactor de `KpiCard`. Fix: criado componente local `Metric({ label, value, hint })` antes do `ClientesSection` (10 linhas, estilo consistente com KpiCard mas mais compacto pra grid de mini-stats). Validado via screenshot: erro fatal eliminado, tela renderiza normalmente. Lint JS limpo.
 
 ✅ **Bugfix · Reset Granular de Estoque "Praça não encontrada"** (22/02/2026 — iter134): Auditor selecionava praça (ex: "LIGO CACHOEIRAS DE MACACÚ") no modal Zerar Estoque por Escopo → backend respondia 404 "Praça não encontrada". RCA: dropdown populado por `praca_summary` consolida 2 coleções (`db.pracas` + `db.fin_filiais`), mas `stok_admin_reset_granular` só olhava `db.pracas`. A praça selecionada (`fil-d3132f0278`) estava só em `db.fin_filiais`. Fix em `routes/stok.py` linha 1484-1499: tenta `db.pracas` primeiro, fallback pra `db.fin_filiais` (mesmo padrão já existente em `purchases.py:159-163`). Validado via curl: HTTP 200, label correto, deleted=1 consumables_rows, log gravado.

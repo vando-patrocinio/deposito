@@ -384,7 +384,6 @@ export const api = {
 
   // ========= Stok bulk transfer =========
   stokOntsList: () => client.get(`/stok/onts`).then((r) => r.data),
-  stokTechnicians: () => client.get(`/stok/technicians`).then((r) => r.data),
   stokOntsBulkTransfer: (macs, technicianId) =>
     client.post(`/stok/onts/transfer-to-tech/bulk`,
       { macs, technician_id: technicianId }).then((r) => r.data),
@@ -861,11 +860,6 @@ export const api = {
     client.post(`/whatsapp-baileys/contact/${encodeURIComponent(phone)}/subscribe-presence`).then((r) => r.data),
   waCustomerProfile: (phone) =>
     client.get(`/whatsapp-baileys/customer-profile/${encodeURIComponent(phone)}`).then((r) => r.data),
-  waBaileysGetAutoReply: () =>
-    client.get(`/whatsapp-baileys/auto-reply`).then((r) => r.data),
-  waBaileysSetAutoReply: (enabled, agentName = "Jerusa") =>
-    client.put(`/whatsapp-baileys/auto-reply`,
-      { enabled, agent_name: agentName }).then((r) => r.data),
 
   aihubScheduleLousaTicket: (payload) =>
     client.post(`/aihub/tools/schedule-lousa-ticket`, payload).then((r) => r.data),
@@ -1069,8 +1063,6 @@ export const api = {
     client.get(`/rede-ia/map/fiber-alerts`, { params: { threshold_m } }).then((r) => r.data),
   redeIaCableBulkDelete: (data) =>
     client.post(`/rede-ia/cables/bulk-delete`, data).then((r) => r.data),
-  redeIaCableDelete: (cable_id) =>
-    client.delete(`/rede-ia/cables/${cable_id}`).then((r) => r.data),
   // Auto-reschedule on degraded signal (controlado pelo auditor)
   lousaAutoReschedGet: () =>
     client.get(`/lousa/auto-resched-config`).then((r) => r.data),
