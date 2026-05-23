@@ -615,6 +615,32 @@ async def change_wifi(sid: str, payload: WifiChangeIn,
             "elapsed_ms": elapsed_ms,
         })
 
+    # Compromisso conversacional: se a troca veio do WhatsApp (Álvaro IA),
+    # agenda mensagem-resumo 2min depois com SSID + senha pro cliente anotar.
+    # Best-effort — não bloqueia a resposta da API.
+    if payload.source == "whatsapp_alvaro" and (
+            payload.password_24 or payload.password_5):
+        try:
+            from services.sales_outreach import schedule_wifi_confirmation
+            # Resolve telefone primário do subscriber pra envio
+            primary_phone = await db.subscriber_phones.find_one(
+                {"company_id": cid, "subscriber_id": sid, "is_primary": True},
+                {"_id": 0, "raw_number": 1, "normalized_number": 1},
+                sort=[("created_at", 1)],
+            )
+            if primary_phone:
+                phone_for_send = (primary_phone.get("raw_number")
+                                    or primary_phone.get("normalized_number"))
+                ssid_used = payload.ssid_24 or after["24"] or "MinhaRede"
+                pwd_used = payload.password_24 or payload.password_5 or ""
+                await schedule_wifi_confirmation(
+                    cid=cid, phone=phone_for_send,
+                    subscriber_name=sub.get("name"),
+                    ssid=ssid_used, password=pwd_used,
+                )
+        except Exception as e:
+            logger.warning("[wifi] schedule confirmation fail: %s", e)
+
     return {
         "ok": True,
         "subscriber_id": sid,

@@ -655,7 +655,11 @@ async def update_subscriber(sid: str, payload: SubscriberUpdate,
             if (current.get("nickname") or "") == old_default:
                 upd["nickname"] = _derive_nickname(upd["name"])
     # Se plan_id mudou, atualiza snapshot
+    old_plan_id = None
     if "plan_id" in upd:
+        current_for_plan = await db.subscribers.find_one(
+            {"company_id": cid, "id": sid}, {"_id": 0, "plan_id": 1})
+        old_plan_id = (current_for_plan or {}).get("plan_id")
         plan_snap = await _hydrate_plan(cid, upd["plan_id"])
         if plan_snap:
             upd.update(plan_snap)
@@ -664,6 +668,19 @@ async def update_subscriber(sid: str, payload: SubscriberUpdate,
         {"company_id": cid, "id": sid}, {"$set": upd})
     if res.matched_count == 0:
         raise HTTPException(404, "Assinante não encontrado.")
+    # Hook de conversão automática do funil Wi-Fi self-service
+    if "plan_id" in upd and upd["plan_id"] != old_plan_id:
+        try:
+            from services.sales_outreach import (
+                maybe_convert_leads_after_plan_change,
+            )
+            await maybe_convert_leads_after_plan_change(
+                cid, sid, upd["plan_id"], old_plan_id)
+        except Exception as e:
+            # Best-effort — não bloqueia o update se houver problema
+            import logging
+            logging.getLogger("ponto.subscribers").warning(
+                "[subscribers] convert leads fail: %s", e)
     sub = await db.subscribers.find_one(
         {"company_id": cid, "id": sid}, {"_id": 0})
     return await _hydrate(sub)

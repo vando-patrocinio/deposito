@@ -245,3 +245,132 @@ async def stop_worker() -> None:
         except Exception:
             pass
         _worker_task = None
+
+
+# ---------------------------------------------------------------------------
+# Compromisso conversacional: confirmação 2min após troca de Wi-Fi
+# ---------------------------------------------------------------------------
+WIFI_CONFIRM_DELAY_SECONDS = 120
+
+WIFI_CONFIRM_TEMPLATE = (
+    "✅ *Lembrete da sua nova senha do Wi-Fi*\n\n"
+    "Olá {first_name}! Confirmando a troca que fizemos juntos:\n\n"
+    "📡 *Nome da rede (SSID):* {ssid}\n"
+    "🔑 *Senha:* `{password}`\n\n"
+    "*Salve esta mensagem* — assim você sempre tem a senha à mão. "
+    "Se algum aparelho não conectar, conecte de novo usando os "
+    "dados acima. 😊\n\n"
+    "_Qualquer coisa, é só me chamar!_"
+)
+
+
+async def schedule_wifi_confirmation(
+        cid: str, phone: str, subscriber_name: Optional[str],
+        ssid: str, password: str,
+        delay_seconds: int = WIFI_CONFIRM_DELAY_SECONDS) -> asyncio.Task:
+    """Agenda mensagem-resumo 2min após troca de Wi-Fi (WhatsApp).
+
+    Cria um asyncio.Task que dorme + envia. Best-effort: se sidecar falhar
+    ou o processo reiniciar, a mensagem se perde (aceitável pro use-case;
+    pra garantia hard precisaria de Celery/Redis).
+    """
+    async def _send_later():
+        try:
+            await asyncio.sleep(delay_seconds)
+            first = (subscriber_name or "").split()[0] if subscriber_name \
+                else "amigo(a)"
+            text = WIFI_CONFIRM_TEMPLATE.format(
+                first_name=first, ssid=ssid, password=password)
+            send_resp = await _send_via_sidecar(phone, text)
+            if not send_resp:
+                log.warning(
+                    "[sales_outreach] confirm wifi send failed phone=%s",
+                    phone)
+                return
+            # Grava bolha outbound
+            import uuid
+            try:
+                await db.aihub_wa_messages.insert_one({
+                    "id": f"wam-{uuid.uuid4().hex[:10]}",
+                    "company_id": cid,
+                    "direction": "outbound",
+                    "phone": phone,
+                    "text": text,
+                    "channel": "baileys",
+                    "message_id": send_resp.get("message_id"),
+                    "agent_name": "Alvaro",
+                    "session_id": f"wa-{phone}",
+                    "auto_reply": True,
+                    "delivery_status": "sent",
+                    "metadata": {"source": "wifi_confirmation_reminder"},
+                    "created_at": now_iso(),
+                })
+            except Exception as e:
+                log.warning("[sales_outreach] confirm persist fail: %s", e)
+            log.info("[sales_outreach] confirm wifi sent phone=%s ssid=%s",
+                        phone, ssid)
+        except Exception as e:
+            log.warning("[sales_outreach] confirm wifi err: %s", e)
+    return asyncio.create_task(_send_later())
+
+
+# ---------------------------------------------------------------------------
+# Conversão automática de leads Wi-Fi self-service
+# ---------------------------------------------------------------------------
+async def maybe_convert_leads_after_plan_change(
+        cid: str, subscriber_id: str, new_plan_id: str,
+        old_plan_id: Optional[str] = None) -> int:
+    """Marca leads do funil Wi-Fi self-service como `converted` quando o
+    subscriber muda pra um plano Premium (premium_features inclui
+    wifi_self_service).
+
+    Idempotente — só converte leads em estado `new`, `contacted` ou
+    `send_failed` do mesmo subscriber/phone.
+
+    Retorna a quantidade de leads convertidos.
+    """
+    if not new_plan_id or new_plan_id == old_plan_id:
+        return 0
+    # Verifica se novo plano é Premium
+    plan = await db.plans.find_one(
+        {"id": new_plan_id, "company_id": cid},
+        {"_id": 0, "premium_features": 1},
+    )
+    if not plan:
+        return 0
+    feats = set(plan.get("premium_features") or [])
+    if "wifi_self_service" not in feats:
+        return 0
+    # Encontra leads vinculados a esse subscriber OU aos phones dele
+    phones = await db.subscriber_phones.find(
+        {"subscriber_id": subscriber_id, "company_id": cid},
+        {"_id": 0, "raw_number": 1, "normalized_number": 1},
+    ).to_list(20)
+    phone_set = set()
+    for p in phones:
+        for k in ("raw_number", "normalized_number"):
+            if p.get(k):
+                phone_set.add(p[k])
+    # Filtro: leads do funil wifi nos estados pré-conversão
+    q = {
+        "company_id": cid,
+        "source": "whatsapp_alvaro_wifi_request",
+        "status": {"$in": ["new", "contacted", "send_failed",
+                            "deduplicated_cooldown",
+                            "stale_needs_human_review"]},
+        "$or": [
+            {"subscriber_id": subscriber_id},
+        ],
+    }
+    if phone_set:
+        q["$or"].append({"phone": {"$in": list(phone_set)}})
+    res = await db.sales_leads.update_many(q, {"$set": {
+        "status": "converted",
+        "converted_at": now_iso(),
+        "converted_to_plan_id": new_plan_id,
+        "updated_at": now_iso(),
+    }})
+    if res.modified_count:
+        log.info("[sales_outreach] converted %d leads sid=%s plan=%s",
+                    res.modified_count, subscriber_id, new_plan_id)
+    return res.modified_count

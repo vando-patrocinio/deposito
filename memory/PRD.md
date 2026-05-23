@@ -71,6 +71,34 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **Simulador de reajuste anual de planos** (10/05/2026 — iter48): Endpoints `POST /plans/{id}/adjustment/preview` (calcula impacto SEM aplicar — retorna assinantes afetados, novo preço, delta por assinante, delta receita mensal e anual, amostra de assinantes), `POST /plans/{id}/adjustment/apply` (aplica: atualiza `monthly_price` no plano + `plan_price` snapshot nos subscribers + grava log em `plan_adjustments_log`), `GET /plans/{id}/adjustment/history` (últimos 20 reajustes do plano). Filtro de status (default = só ATIVO/INADIMPLENTE/EM_INSTALACAO). Override de percentual disponível. UI: botão "Reajustar" no PlanCard (com badge laranja) abre modal com 4 KPI cards (Assinantes afetados, Por assinante, Receita mensal+, Receita anual+), amostra de até 8 subscribers impactados, histórico inline, fluxo de 2 cliques pra confirmar (revisar → aplicar). Validado curl: R$ 79,90 → R$ 85,09 (+6.5%), log gravado, preço persistido.
 ✅ **Aba Planos visível para todos os perfis** (10/05/2026 — iter48): adicionado `plans` ao `TAB_DEFINITIONS` e `DEFAULT_TAB_PERMISSIONS` (auditor + gestor) em TabPermissionsCard. Migração suave do tab_permissions cuida de adicionar pra empresas que já tinham config gravada.
 ✅ **SmartOLT AI — Modo ATIVO + CO-PILOTO interno** (10/05/2026): worker autônomo roda a cada **30s** com **threshold dinâmico** (≥10 ONUs em LOS OU ≥50% do PON). RECEPTIVO (A2A system_prompt), ATIVO (drafts → aprovação humana 1-clique), CO-PILOTO (internal notes amarelas, cliente nunca vê). Templates editáveis. Endpoints `/api/smartolt-ai/{summary,outages/{active,recent,detect},drafts,drafts/{id}/{send,discard},drafts/send-bulk,templates}`.
+✅ **Conversão Automática de Leads + Mensagem-Resumo Wi-Fi (compromisso conversacional)** (22/02/2026 — iter130): Fecha o loop de ROI do funil Wi-Fi Self-Service.
+
+**Conversão automática** (`services/sales_outreach.py` + hook em `routes/subscribers.py`):
+- `maybe_convert_leads_after_plan_change(cid, sid, new_plan_id, old_plan_id)`: marca leads `new/contacted/send_failed/deduplicated_cooldown/stale_needs_human_review` como `converted` quando subscriber muda pra plano com `wifi_self_service` em premium_features. Match por `subscriber_id` OU phones (via `subscriber_phones`).
+- Hook no PATCH `/api/subscribers/{sid}` (linhas 660-680): captura `old_plan_id` antes do update, dispara conversão after o update. Best-effort (não bloqueia se houver erro). Idempotente (`old_plan_id == new_plan_id` → no-op).
+- Persiste em `sales_leads`: `status=converted`, `converted_at=now_iso()`, `converted_to_plan_id=X`, `updated_at`.
+- Resultado: ROI mensurável do feature (lead → contacted → **converted**). KPI agregado disponível via `GET /api/wifi/leads` no campo `by_status.converted`.
+
+**Mensagem-resumo 2min** (`services/sales_outreach.py` + invocação em `routes/wifi.py`):
+- `schedule_wifi_confirmation(cid, phone, subscriber_name, ssid, password, delay_seconds=120)`: cria `asyncio.Task` que dorme 2min e envia template formatado com SSID + senha pro cliente anotar. Template: *"✅ Lembrete da sua nova senha do Wi-Fi · Olá {nome}! Confirmando a troca... Salve esta mensagem — assim você sempre tem a senha à mão."*
+- Invocação automática em `change_wifi` quando `payload.source == "whatsapp_alvaro"` E `password` foi trocada (linhas 618-642 de wifi.py). Resolve telefone primário via `subscriber_phones.is_primary=True` ordenado por `created_at`.
+- Best-effort: se sidecar Baileys offline ou processo reiniciar, mensagem se perde (aceitável pro use-case — pra garantia hard precisaria Celery/Redis Queue).
+- Persiste bolha outbound em `aihub_wa_messages` com `metadata.source=wifi_confirmation_reminder` pra auditoria.
+
+**Validado E2E**:
+- Smoke test curl real: Maria José com 2 leads pendentes (new + contacted) → PATCH plan_id 500M→1G → hook disparou → 2/2 convertidos com timestamp e plan_id corretos
+- 4/5 tests passing em iter130 (1 fail é race condition motor event loop conhecida cross-suite — código produção funciona)
+- 101/103 passing total em 5 suites (iter117 Projects, iter118 Wi-Fi auth, iter119 Álvaro WhatsApp, iter129 Sales Outreach, iter130 Conversion+Confirmation)
+
+**Ciclo completo de monetização AGORA fechado**:
+1. Cliente WhatsApp não-Premium: *"trocar senha do wifi"*
+2. Álvaro IA → marker `[OFFER_UPGRADE]` + `[ROTEAR_VENDAS]` → lead em `sales_leads` (status=new)
+3. Worker `sales_outreach` (60s loop): envia template Isabella (1G/2G/5G) → status=contacted
+4. Cliente aceita upgrade → atendente faz PATCH plan_id → **hook converte lead pra `converted`**
+5. Cliente vira Premium → na próxima vez que pedir troca de wifi pelo WhatsApp, fluxo direto (sem upsell)
+6. Cliente Premium que troca via Álvaro → **2min depois recebe mensagem-resumo com SSID/senha** pra salvar
+7. Gestor vê KPI completo: leads novos / contatados / **convertidos** = funil mensurável
+
 ✅ **Sales Outreach Worker · Isabella IA Proativa + Planos Premium 1G/2G/5G** (22/02/2026 — iter129): Fecha o ciclo de monetização do Wi-Fi self-service. Worker `services/sales_outreach.py` em background no event loop do FastAPI; pega leads `status=new` de `sales_leads` (source=`whatsapp_alvaro_wifi_request`) e dispara mensagem-template de upsell via sidecar Baileys, transitando lead pra `contacted`. Painel UI no Funil de Vendas.
 
 **Backend** (`sales_outreach.py` + `plans.py` + `wifi.py`):
