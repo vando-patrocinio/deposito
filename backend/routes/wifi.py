@@ -942,3 +942,114 @@ async def trigger_outreach_now(user: dict = Depends(get_current_user)):
     from services.sales_outreach import process_pending_leads
     stats = await process_pending_leads()
     return {"ok": True, "stats": stats}
+
+
+# ---------------------------------------------------------------------------
+# KPIs de conversão do funil Wi-Fi Premium
+# ---------------------------------------------------------------------------
+@router.get("/leads/conversion-kpis")
+async def conversion_kpis(user: dict = Depends(get_current_user)):
+    """Retorna KPIs agregados do funil Wi-Fi Self-Service.
+
+    - Totais por status (lifetime)
+    - Conversão (current week vs prior week, em pp)
+    - MRR adicional (soma de diferenças de preço novo - antigo nos
+      leads converted)
+    - Série temporal: últimos 8 buckets semanais ou 30 dias diários
+    """
+    if user.get("role") not in ("gestor", "administrador", "auditor") \
+            and not is_super_admin(user):
+        raise HTTPException(403, "Apenas gestor/administrador/auditor.")
+    cid = _cid(user)
+    src_filter = {"company_id": cid,
+                   "source": "whatsapp_alvaro_wifi_request"}
+
+    # --- Totals por status
+    by_status: Dict[str, int] = {}
+    async for d in db.sales_leads.aggregate([
+        {"$match": src_filter},
+        {"$group": {"_id": "$status", "n": {"$sum": 1}}},
+    ]):
+        by_status[d["_id"] or "unknown"] = d["n"]
+    total = sum(by_status.values())
+    converted_count = by_status.get("converted", 0)
+    contacted_count = (by_status.get("contacted", 0)
+                        + converted_count)  # contacted_or_better
+    conversion_lifetime_pct = (
+        round((converted_count / total) * 100, 1) if total else 0.0
+    )
+
+    # --- Conversão semanal: contacted vs converted em janelas de 7 dias
+    now_dt = datetime.now(timezone.utc)
+    this_week_start = (now_dt - timedelta(days=7)).isoformat()
+    prior_week_start = (now_dt - timedelta(days=14)).isoformat()
+
+    async def _conv_pct(since: str, until: Optional[str]) -> Dict[str, Any]:
+        ts_q = {"$gte": since}
+        if until:
+            ts_q["$lt"] = until
+        contacted = await db.sales_leads.count_documents({
+            **src_filter, "ts": ts_q,
+            "status": {"$in": ["contacted", "converted",
+                                "send_failed",
+                                "deduplicated_cooldown",
+                                "stale_needs_human_review"]},
+        })
+        converted = await db.sales_leads.count_documents({
+            **src_filter, "ts": ts_q, "status": "converted",
+        })
+        pct = round((converted / contacted) * 100, 1) if contacted else 0.0
+        return {"contacted": contacted, "converted": converted, "pct": pct}
+
+    week = await _conv_pct(this_week_start, None)
+    prior = await _conv_pct(prior_week_start, this_week_start)
+    delta_pp = round(week["pct"] - prior["pct"], 1)
+
+    # --- MRR adicional (soma das diferenças de preço dos planos)
+    mrr_total = 0.0
+    converted_ids = set()
+    async for lead in db.sales_leads.find(
+            {**src_filter, "status": "converted"},
+            {"_id": 0, "current_plan_id": 1,
+             "converted_to_plan_id": 1, "id": 1}):
+        converted_ids.add(lead.get("id"))
+        old_p = await db.plans.find_one(
+            {"id": lead.get("current_plan_id"), "company_id": cid},
+            {"_id": 0, "monthly_price": 1},
+        ) if lead.get("current_plan_id") else None
+        new_p = await db.plans.find_one(
+            {"id": lead.get("converted_to_plan_id"), "company_id": cid},
+            {"_id": 0, "monthly_price": 1},
+        ) if lead.get("converted_to_plan_id") else None
+        if new_p:
+            diff = float(new_p.get("monthly_price") or 0) \
+                - float((old_p or {}).get("monthly_price") or 0)
+            mrr_total += max(diff, 0)
+
+    # --- Série temporal: últimas 4 semanas, contacted vs converted
+    series = []
+    for i in range(3, -1, -1):
+        start = (now_dt - timedelta(days=7 * (i + 1))).isoformat()
+        end = (now_dt - timedelta(days=7 * i)).isoformat()
+        pt = await _conv_pct(start, end)
+        series.append({
+            "week_start": start[:10], "week_end": end[:10],
+            "contacted": pt["contacted"],
+            "converted": pt["converted"],
+            "pct": pt["pct"],
+        })
+
+    return {
+        "by_status": by_status,
+        "total": total,
+        "lifetime": {
+            "contacted_or_better": contacted_count,
+            "converted": converted_count,
+            "conversion_pct": conversion_lifetime_pct,
+        },
+        "this_week": week,
+        "prior_week": prior,
+        "delta_pp": delta_pp,
+        "mrr_additional": round(mrr_total, 2),
+        "series_weekly": series,
+    }

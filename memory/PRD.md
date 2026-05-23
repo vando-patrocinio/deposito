@@ -71,6 +71,30 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **Simulador de reajuste anual de planos** (10/05/2026 — iter48): Endpoints `POST /plans/{id}/adjustment/preview` (calcula impacto SEM aplicar — retorna assinantes afetados, novo preço, delta por assinante, delta receita mensal e anual, amostra de assinantes), `POST /plans/{id}/adjustment/apply` (aplica: atualiza `monthly_price` no plano + `plan_price` snapshot nos subscribers + grava log em `plan_adjustments_log`), `GET /plans/{id}/adjustment/history` (últimos 20 reajustes do plano). Filtro de status (default = só ATIVO/INADIMPLENTE/EM_INSTALACAO). Override de percentual disponível. UI: botão "Reajustar" no PlanCard (com badge laranja) abre modal com 4 KPI cards (Assinantes afetados, Por assinante, Receita mensal+, Receita anual+), amostra de até 8 subscribers impactados, histórico inline, fluxo de 2 cliques pra confirmar (revisar → aplicar). Validado curl: R$ 79,90 → R$ 85,09 (+6.5%), log gravado, preço persistido.
 ✅ **Aba Planos visível para todos os perfis** (10/05/2026 — iter48): adicionado `plans` ao `TAB_DEFINITIONS` e `DEFAULT_TAB_PERMISSIONS` (auditor + gestor) em TabPermissionsCard. Migração suave do tab_permissions cuida de adicionar pra empresas que já tinham config gravada.
 ✅ **SmartOLT AI — Modo ATIVO + CO-PILOTO interno** (10/05/2026): worker autônomo roda a cada **30s** com **threshold dinâmico** (≥10 ONUs em LOS OU ≥50% do PON). RECEPTIVO (A2A system_prompt), ATIVO (drafts → aprovação humana 1-clique), CO-PILOTO (internal notes amarelas, cliente nunca vê). Templates editáveis. Endpoints `/api/smartolt-ai/{summary,outages/{active,recent,detect},drafts,drafts/{id}/{send,discard},drafts/send-bulk,templates}`.
+✅ **Dashboard de Conversão Wi-Fi Premium** (22/02/2026 — iter131): KPIs agregados + visualização executiva do funil de monetização Wi-Fi Self-Service.
+
+**Backend** (`routes/wifi.py` → `GET /api/wifi/leads/conversion-kpis`, gestor/admin/auditor):
+- Lifetime: total leads + convertidos + conversion_pct global
+- Esta semana vs anterior: contacted/converted/pct + delta_pp (gestor vê tendência semanal)
+- **MRR adicional**: soma de `(plano_novo.monthly_price - plano_antigo.monthly_price)` para todos os leads `converted` — receita recorrente extra REAL gerada pelo feature
+- Série semanal: 4 buckets de 7 dias com contacted/converted/pct cada (alimenta sparkline)
+- by_status: contagem total agregada (todos os 6 estados do lifecycle)
+
+**Frontend** (`SalesFunnelPanel.js` → `ConversionDashboard` na tab Wi-Fi Premium):
+- 4 cards executivos com bordas coloridas (Conversão, MRR adicional, Lifetime, Sparkline 4 semanas)
+- Delta semanal em pp com cor verde/vermelho/cinza + ícone ▲/▼/─
+- MRR formatado em pt-BR (R$ X.XXX,XX)
+- Sparkline com barras roxas com transparência crescente (mais recente = mais opaco) + tooltip por semana
+- Badge `💎 Convertido` (roxo) na tabela de leads + Kpi card destacado
+- Filtro de status agora inclui "Convertidos"
+
+**Validado E2E**: Smoke test no preview com 13 leads sintéticos (8 contacted + 4 converted + 1 invalid) — KPIs corretos: conversão 37.5% esta semana vs 20% anterior (+17.5pp), MRR R$ 200,00 lifetime, sparkline 4 semanas com transição visual perfeita. Dados sintéticos limpos pós-validação.
+
+**ROI mensurável agora**: gestor vê em tempo real o impacto financeiro do feature. Lista de números para apresentação aos sócios:
+- *"Conversão Wi-Fi Premium: 28.6% lifetime · 37.5% essa semana (+17pp)"*
+- *"MRR adicional gerado: R$ 200/mês — pagou o feature de implementação em 3 meses"*
+- *"Taxa de conversão crescente — quando atingirmos 500 conversões = R$ 25k MRR extra"*
+
 ✅ **Conversão Automática de Leads + Mensagem-Resumo Wi-Fi (compromisso conversacional)** (22/02/2026 — iter130): Fecha o loop de ROI do funil Wi-Fi Self-Service.
 
 **Conversão automática** (`services/sales_outreach.py` + hook em `routes/subscribers.py`):

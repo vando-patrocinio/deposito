@@ -68,14 +68,19 @@ export default function SalesFunnelPanel() {
 // ============================================================
 function WifiPremiumTab() {
   const [data, setData] = useState({ items: [], by_status: {}, total: 0 });
+  const [kpis, setKpis] = useState(null);
   const [busy, setBusy] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
 
   const refresh = async () => {
     try {
-      const r = await api.wifiLeadsList(
-        statusFilter ? { status: statusFilter, limit: 100 } : { limit: 100 });
+      const [r, k] = await Promise.all([
+        api.wifiLeadsList(
+          statusFilter ? { status: statusFilter, limit: 100 } : { limit: 100 }),
+        api.wifiLeadsConversionKpis().catch(() => null),
+      ]);
       setData(r);
+      if (k) setKpis(k);
     } catch (e) {
       console.warn("wifiLeads fail:", e);
     }
@@ -133,11 +138,14 @@ function WifiPremiumTab() {
         </div>
       </div>
 
+      {kpis && <ConversionDashboard kpis={kpis} />}
+
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap",
                      marginBottom: 14 }}>
         <Kpi label="Total" value={data.total || 0} color="#0f172a" />
         <Kpi label="🆕 Novos" value={totalKpis.new || 0} color="#0ea5e9" />
         <Kpi label="✅ Contatados" value={totalKpis.contacted || 0} color="#15803d" />
+        <Kpi label="💎 Convertidos" value={totalKpis.converted || 0} color="#7c3aed" />
         <Kpi label="❌ Send Failed" value={totalKpis.send_failed || 0} color="#dc2626" />
         <Kpi label="⏰ Cooldown" value={totalKpis.deduplicated_cooldown || 0} color="#94a3b8" />
         <Kpi label="🕒 Stale" value={totalKpis.stale_needs_human_review || 0} color="#a16207" />
@@ -160,6 +168,7 @@ function WifiPremiumTab() {
           <option value="">Todos status</option>
           <option value="new">Novos</option>
           <option value="contacted">Contatados</option>
+          <option value="converted">Convertidos</option>
           <option value="send_failed">Falha envio</option>
           <option value="deduplicated_cooldown">Cooldown</option>
           <option value="stale_needs_human_review">Stale</option>
@@ -210,6 +219,7 @@ function StatusBadge({ status }) {
   const colors = {
     new: ["#0ea5e9", "Novo"],
     contacted: ["#15803d", "✅ Contatado"],
+    converted: ["#7c3aed", "💎 Convertido"],
     send_failed: ["#dc2626", "❌ Falha"],
     deduplicated_cooldown: ["#94a3b8", "⏰ Cooldown"],
     stale_needs_human_review: ["#a16207", "🕒 Stale"],
@@ -223,6 +233,95 @@ function StatusBadge({ status }) {
     </span>
   );
 }
+
+// ============================================================
+// Dashboard de Conversão Wi-Fi Premium
+// ============================================================
+function ConversionDashboard({ kpis }) {
+  const tw = kpis.this_week || {};
+  const pw = kpis.prior_week || {};
+  const delta = kpis.delta_pp || 0;
+  const deltaColor = delta > 0 ? "#15803d" : delta < 0 ? "#dc2626" : "#64748b";
+  const deltaIcon  = delta > 0 ? "▲" : delta < 0 ? "▼" : "─";
+  const mrr = kpis.mrr_additional || 0;
+  const lt = kpis.lifetime || {};
+  const series = kpis.series_weekly || [];
+  const maxPct = Math.max(...series.map((s) => s.pct), 10);
+  return (
+    <div data-testid="wifi-conversion-dashboard"
+         style={{ display: "grid",
+                   gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+                   gap: 12, marginBottom: 16 }}>
+      {/* Card: Conversão da semana */}
+      <div style={cardStyle("#0ea5e9")}>
+        <div style={cardLabel}>Conversão (esta semana)</div>
+        <div style={cardValue}>{tw.pct?.toFixed(1) || "0.0"}%</div>
+        <div style={{ fontSize: 11, color: deltaColor, fontWeight: 700,
+                       marginTop: 4 }}>
+          {deltaIcon} {Math.abs(delta).toFixed(1)} pp vs semana passada
+          ({pw.pct?.toFixed(1) || "0.0"}%)
+        </div>
+        <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+          {tw.converted || 0} convertidos / {tw.contacted || 0} contatados
+        </div>
+      </div>
+
+      {/* Card: MRR adicional */}
+      <div style={cardStyle("#7c3aed")}>
+        <div style={cardLabel}>MRR adicional (lifetime)</div>
+        <div style={cardValue}>
+          R$ {mrr.toLocaleString("pt-BR", {minimumFractionDigits: 2})}
+        </div>
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+          Receita recorrente extra dos upgrades Wi-Fi Premium
+        </div>
+      </div>
+
+      {/* Card: Lifetime */}
+      <div style={cardStyle("#15803d")}>
+        <div style={cardLabel}>Lifetime</div>
+        <div style={cardValue}>{lt.conversion_pct?.toFixed(1) || "0.0"}%</div>
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+          {lt.converted || 0} de {kpis.total || 0} leads convertidos
+        </div>
+      </div>
+
+      {/* Card: Sparkline semanal */}
+      <div style={{ ...cardStyle("#475569"), gridColumn: "span 1" }}>
+        <div style={cardLabel}>Conversão semanal (4 semanas)</div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 4,
+                       height: 50, marginTop: 8 }}>
+          {series.map((s, i) => {
+            const h = Math.max((s.pct / maxPct) * 45, 2);
+            return (
+              <div key={i} title={`${s.week_start}: ${s.pct.toFixed(1)}% (${s.converted}/${s.contacted})`}
+                   style={{ flex: 1, height: h, background: "#7c3aed",
+                             borderRadius: "2px 2px 0 0",
+                             opacity: 0.4 + 0.6 * (i / 3) }} />
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4,
+                       textAlign: "right" }}>
+          última: {series[series.length - 1]?.pct?.toFixed(1) || 0}%
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const cardStyle = (accent) => ({
+  background: "#fff", border: `1px solid ${accent}33`,
+  borderTop: `3px solid ${accent}`, borderRadius: 10,
+  padding: "12px 14px",
+});
+const cardLabel = {
+  fontSize: 10, color: "#64748b", fontWeight: 700,
+  textTransform: "uppercase", letterSpacing: 0.5,
+};
+const cardValue = {
+  fontSize: 26, fontWeight: 800, color: "#0f172a", marginTop: 4,
+};
 
 const th = { padding: "8px 10px", borderBottom: "1px solid #e2e8f0",
               fontWeight: 700, fontSize: 11, textTransform: "uppercase",
