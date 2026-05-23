@@ -71,6 +71,44 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **Simulador de reajuste anual de planos** (10/05/2026 — iter48): Endpoints `POST /plans/{id}/adjustment/preview` (calcula impacto SEM aplicar — retorna assinantes afetados, novo preço, delta por assinante, delta receita mensal e anual, amostra de assinantes), `POST /plans/{id}/adjustment/apply` (aplica: atualiza `monthly_price` no plano + `plan_price` snapshot nos subscribers + grava log em `plan_adjustments_log`), `GET /plans/{id}/adjustment/history` (últimos 20 reajustes do plano). Filtro de status (default = só ATIVO/INADIMPLENTE/EM_INSTALACAO). Override de percentual disponível. UI: botão "Reajustar" no PlanCard (com badge laranja) abre modal com 4 KPI cards (Assinantes afetados, Por assinante, Receita mensal+, Receita anual+), amostra de até 8 subscribers impactados, histórico inline, fluxo de 2 cliques pra confirmar (revisar → aplicar). Validado curl: R$ 79,90 → R$ 85,09 (+6.5%), log gravado, preço persistido.
 ✅ **Aba Planos visível para todos os perfis** (10/05/2026 — iter48): adicionado `plans` ao `TAB_DEFINITIONS` e `DEFAULT_TAB_PERMISSIONS` (auditor + gestor) em TabPermissionsCard. Migração suave do tab_permissions cuida de adicionar pra empresas que já tinham config gravada.
 ✅ **SmartOLT AI — Modo ATIVO + CO-PILOTO interno** (10/05/2026): worker autônomo roda a cada **30s** com **threshold dinâmico** (≥10 ONUs em LOS OU ≥50% do PON). RECEPTIVO (A2A system_prompt), ATIVO (drafts → aprovação humana 1-clique), CO-PILOTO (internal notes amarelas, cliente nunca vê). Templates editáveis. Endpoints `/api/smartolt-ai/{summary,outages/{active,recent,detect},drafts,drafts/{id}/{send,discard},drafts/send-bulk,templates}`.
+✅ **Sales Outreach Worker · Isabella IA Proativa + Planos Premium 1G/2G/5G** (22/02/2026 — iter129): Fecha o ciclo de monetização do Wi-Fi self-service. Worker `services/sales_outreach.py` em background no event loop do FastAPI; pega leads `status=new` de `sales_leads` (source=`whatsapp_alvaro_wifi_request`) e dispara mensagem-template de upsell via sidecar Baileys, transitando lead pra `contacted`. Painel UI no Funil de Vendas.
+
+**Backend** (`sales_outreach.py` + `plans.py` + `wifi.py`):
+- Worker poll 60s + `process_pending_leads()` callable manualmente
+- Template de copy focado (planos 1000/2000/5000 Mega) — Isabella IA se apresenta, lista os 3 planos Premium com emoji+benefícios, pergunta qual cliente prefere
+- **Salvaguardas comerciais**: cooldown 7 dias por phone (anti-spam), rate-limit global 50 disparos/hora (anti-reputation-damage WhatsApp), age cutoff 24h (leads antigos viram `stale_needs_human_review` pra fila humana)
+- **Statuses do lifecycle**: `new` → `contacted` (sucesso) / `send_failed` (sidecar offline) / `deduplicated_cooldown` / `stale_needs_human_review` / `invalid_no_phone`
+- Endpoint `POST /api/plans/auto-mark-premium` — idempotente, marca todos os planos com `speed_down_mbps >= 1000` como Premium (`premium_features: ['wifi_self_service']`). Threshold central via constant `PREMIUM_SPEED_THRESHOLD_MBPS = 1000`. Cobre 1G atual + 2G/5G futuros sem código novo.
+- Endpoint `PATCH /api/plans/{id}/premium-feature` — toggle granular pra qualquer feature (wifi_self_service, speed_test_remote, static_ip, vpn_access, priority_support)
+- Endpoint `GET /api/wifi/leads` (gestor/admin/auditor) — lista + KPIs `by_status` agregados via aggregation pipeline. Filtro `?status=` opcional
+- Endpoint `POST /api/wifi/leads/process-now` (gestor/admin only) — trigger manual do worker pra dev/debug
+- Bolhas outbound persistidas em `aihub_wa_messages` com `agent_name=Isabella`, `metadata.source=sales_outreach_worker` e `metadata.campaign=wifi_self_service_upsell` — auditoria total
+- Personalização: extrai primeiro nome do `subscriber_name` quando disponível e injeta no template ("Oi João!")
+- Copy de upsell no `alvaro_tools.format_wifi_context` ATUALIZADO: Álvaro fala "1000 Mega, 2000 Mega e 5000 Mega" explicitamente, NÃO menciona preços (Isabella faz isso)
+
+**Frontend** (`SalesFunnelPanel.js` — nova tab "📡 Wi-Fi Premium"):
+- Banner contextual amarelo com regras do worker
+- 6 KPIs (Total / Novos / Contatados / Send Failed / Cooldown / Stale)
+- Botão "▶️ Disparar Isabella agora" + alert com stats detalhadas
+- Botão "⚡ Auto-mark planos ≥ 1000Mbps Premium"
+- Filtro por status (dropdown) + Refresh
+- Tabela com colunas Data/Telefone/Cliente/Plano atual/Status/Contatado em + StatusBadge colorido por estado
+- Empty state amigável: "Quando algum cliente pedir troca de senha do Wi-Fi pelo WhatsApp, vai aparecer aqui automaticamente"
+- 5 data-testids: `wifi-premium-tab`, `wifi-leads-process-now`, `plans-auto-mark-premium`, `wifi-leads-status-filter`, `wifi-lead-{id}`
+
+**Validado E2E**:
+- 100/100 tests passing em 4 suites pytest (Projects Kanban 35 + Wi-Fi auth 25 + Álvaro WhatsApp 29 + Sales Outreach 11 + 1 xpassed da iter119)
+- Cobertura iter129: toggle enable/disable/404, auto-mark idempotent + threshold, list leads KPIs + filter + RBAC (auditor vê, colaborador 403), process-now stats schema + RBAC (auditor 403), stale marking + invalid_no_phone marking via process_pending_leads
+- Smoke E2E preview: tab "Wi-Fi Premium" renderiza no Funil de Vendas com header completo, 6 KPIs, 2 botões de ação, filtro, tabela vazia com mensagem instrucional. Curl real: criou lead via marker simulado → KPI mostra `by_status: {new: 1}` → trigger manual processou (sidecar offline em test → status virou `send_failed` corretamente)
+
+**Fluxo completo end-to-end agora ativo**:
+1. Cliente WhatsApp não-Premium: *"quero trocar a senha do wifi"*
+2. Álvaro IA detecta intent → injeta contexto state=`premium_required` com copy citando 1000/2000/5000 Mega
+3. Álvaro emite `[OFFER_UPGRADE]` → cria lead em `sales_leads` (status=new) + injeta `[ROTEAR_VENDAS]`
+4. Pipeline de handoff existente roteia conversa pra Isabella
+5. Worker `sales_outreach` em paralelo (poll 60s) pega o lead → envia template de upsell via Isabella → marca `contacted`
+6. Gestor vê tudo na aba "📡 Wi-Fi Premium" do Funil de Vendas com KPIs em tempo real
+
 ✅ **Álvaro IA · Wi-Fi Self-Service via WhatsApp (Premium + Upsell)** (22/02/2026 — iter128): Álvaro IA agora conduz o fluxo de troca de Wi-Fi pelo WhatsApp com gating Premium e handoff automático pra Isabella IA quando cliente não-Premium pede troca (lead pro funil de vendas).
 
 **Backend** (`/app/backend/services/alvaro_tools.py` + `/app/backend/routes/wifi.py` + `/app/backend/routes/whatsapp_baileys.py`):

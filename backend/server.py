@@ -383,6 +383,11 @@ async def _startup() -> None:
         start_worker as start_ai_training_scheduler,
     )
     start_ai_training_scheduler()
+    # Sales outreach worker — Isabella IA proativa em leads de wifi self-service
+    from services.sales_outreach import (
+        start_worker as start_sales_outreach,
+    )
+    await start_sales_outreach()
     routes_mass_messaging.start_worker()
     # Cron: auto-marca contas a pagar vencidas — diário 03:00
     from routes.financeiro_ops import auto_mark_overdue

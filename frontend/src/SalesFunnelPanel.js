@@ -19,6 +19,7 @@ const COLORS = {
 
 const TABS = [
   { id: "pipeline", label: "🎯 Pipeline" },
+  { id: "wifi-premium", label: "📡 Wi-Fi Premium" },
   { id: "reativacao", label: "♻️ Reativação" },
   { id: "dashboard", label: "📊 Dashboard" },
 ];
@@ -54,11 +55,179 @@ export default function SalesFunnelPanel() {
       </div>
 
       {tab === "pipeline" && <PipelineTab />}
+      {tab === "wifi-premium" && <WifiPremiumTab />}
       {tab === "reativacao" && <ReactivationTab />}
       {tab === "dashboard" && <DashboardTab />}
     </div>
   );
 }
+
+// ============================================================
+// WI-FI PREMIUM — Leads do Álvaro IA (cliente pediu trocar wifi mas
+// não é Premium → Isabella IA contata)
+// ============================================================
+function WifiPremiumTab() {
+  const [data, setData] = useState({ items: [], by_status: {}, total: 0 });
+  const [busy, setBusy] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("");
+
+  const refresh = async () => {
+    try {
+      const r = await api.wifiLeadsList(
+        statusFilter ? { status: statusFilter, limit: 100 } : { limit: 100 });
+      setData(r);
+    } catch (e) {
+      console.warn("wifiLeads fail:", e);
+    }
+  };
+  useEffect(() => { refresh(); /* eslint-disable-line */ }, [statusFilter]);
+
+  const processNow = async () => {
+    setBusy(true);
+    try {
+      const r = await api.wifiLeadsProcessNow();
+      const s = r.stats || {};
+      await window.alert(
+        `Worker processou:\n` +
+        `  · checados: ${s.checked || 0}\n` +
+        `  · enviados: ${s.sent || 0}\n` +
+        `  · cooldown: ${s.skipped_cooldown || 0}\n` +
+        `  · stale: ${s.stale_marked || 0}\n` +
+        `  · erros: ${s.errors || 0}`);
+      refresh();
+    } catch (e) {
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally { setBusy(false); }
+  };
+
+  const autoMarkPremium = async () => {
+    if (!await window.confirm(
+      "Marcar TODOS os planos >= 1000 Mbps como Premium (wifi_self_service)?")) return;
+    setBusy(true);
+    try {
+      const r = await api.plansAutoMarkPremium();
+      await window.alert(
+        `Auto-mark concluído:\n` +
+        `Updated: ${r.updated_count} planos\n` +
+        `Já premium: ${r.already_premium.length}\n\n` +
+        `Threshold: ${r.threshold_mbps} Mbps`);
+    } catch (e) {
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally { setBusy(false); }
+  };
+
+  const totalKpis = data.by_status || {};
+  return (
+    <div data-testid="wifi-premium-tab">
+      <div style={{ padding: 14, background: "linear-gradient(135deg,#fef3c7,#fffbeb)",
+                     border: "1px solid #fde047", borderRadius: 12,
+                     marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "#92400e",
+                       marginBottom: 4 }}>
+          📡 Funil Wi-Fi Self-Service (Premium)
+        </div>
+        <div style={{ fontSize: 12, color: "#78350f" }}>
+          Quando cliente não-Premium pede troca de senha do Wi-Fi pelo
+          WhatsApp, o Álvaro IA cria um lead aqui. A Isabella IA dispara
+          mensagem de upsell automaticamente (1 disparo / 7 dias / phone).
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap",
+                     marginBottom: 14 }}>
+        <Kpi label="Total" value={data.total || 0} color="#0f172a" />
+        <Kpi label="🆕 Novos" value={totalKpis.new || 0} color="#0ea5e9" />
+        <Kpi label="✅ Contatados" value={totalKpis.contacted || 0} color="#15803d" />
+        <Kpi label="❌ Send Failed" value={totalKpis.send_failed || 0} color="#dc2626" />
+        <Kpi label="⏰ Cooldown" value={totalKpis.deduplicated_cooldown || 0} color="#94a3b8" />
+        <Kpi label="🕒 Stale" value={totalKpis.stale_needs_human_review || 0} color="#a16207" />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <button data-testid="wifi-leads-process-now"
+                className="btn btn-primary" disabled={busy} onClick={processNow}>
+          {busy ? "Processando..." : "▶️ Disparar Isabella agora"}
+        </button>
+        <button data-testid="plans-auto-mark-premium"
+                className="btn btn-secondary" disabled={busy}
+                onClick={autoMarkPremium}>
+          ⚡ Auto-mark planos ≥ 1000Mbps Premium
+        </button>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+                style={{ padding: "6px 10px", borderRadius: 6,
+                          border: "1px solid #cbd5e1", fontSize: 13 }}
+                data-testid="wifi-leads-status-filter">
+          <option value="">Todos status</option>
+          <option value="new">Novos</option>
+          <option value="contacted">Contatados</option>
+          <option value="send_failed">Falha envio</option>
+          <option value="deduplicated_cooldown">Cooldown</option>
+          <option value="stale_needs_human_review">Stale</option>
+        </select>
+        <button className="btn btn-ghost" onClick={refresh}>🔄</button>
+      </div>
+
+      <div style={{ overflowX: "auto", border: "1px solid #e2e8f0",
+                     borderRadius: 10, background: "#fff" }}>
+        <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
+              <th style={th}>Data</th>
+              <th style={th}>Telefone</th>
+              <th style={th}>Cliente</th>
+              <th style={th}>Plano atual</th>
+              <th style={th}>Status</th>
+              <th style={th}>Contatado em</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data.items || []).map((l) => (
+              <tr key={l.id} data-testid={`wifi-lead-${l.id}`}>
+                <td style={td}>{(l.ts || "").replace("T", " ").slice(0, 16)}</td>
+                <td style={td}>{l.phone}</td>
+                <td style={td}>{l.subscriber_name || "—"}</td>
+                <td style={td}>{l.current_plan_id || "—"}</td>
+                <td style={td}><StatusBadge status={l.status} /></td>
+                <td style={td}>{(l.outreach_sent_at || "").replace("T", " ").slice(0, 16) || "—"}</td>
+              </tr>
+            ))}
+            {(data.items || []).length === 0 && (
+              <tr><td style={td} colSpan={6}>
+                <div style={{ textAlign: "center", padding: 20, color: "#94a3b8" }}>
+                  Sem leads. Quando algum cliente pedir troca de senha do
+                  Wi-Fi pelo WhatsApp, vai aparecer aqui automaticamente.
+                </div>
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const colors = {
+    new: ["#0ea5e9", "Novo"],
+    contacted: ["#15803d", "✅ Contatado"],
+    send_failed: ["#dc2626", "❌ Falha"],
+    deduplicated_cooldown: ["#94a3b8", "⏰ Cooldown"],
+    stale_needs_human_review: ["#a16207", "🕒 Stale"],
+    invalid_no_phone: ["#7c2d12", "⚠️ Sem phone"],
+  };
+  const [bg, label] = colors[status] || ["#475569", status || "?"];
+  return (
+    <span style={{ background: bg, color: "#fff", padding: "2px 8px",
+                    borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
+      {label}
+    </span>
+  );
+}
+
+const th = { padding: "8px 10px", borderBottom: "1px solid #e2e8f0",
+              fontWeight: 700, fontSize: 11, textTransform: "uppercase",
+              letterSpacing: 0.5, color: "#475569" };
+const td = { padding: "8px 10px", borderBottom: "1px solid #f1f5f9" };
 
 // ============================================================
 // PIPELINE

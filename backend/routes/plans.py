@@ -204,6 +204,78 @@ async def delete_plan(plan_id: str,
 
 
 # ---------------------------------------------------------------------------
+# Premium features — toggle por plano + auto-mark por velocidade
+# ---------------------------------------------------------------------------
+PREMIUM_SPEED_THRESHOLD_MBPS = 1000  # 1G/2G/5G planos = Premium por padrão
+
+
+class PremiumFeatureToggleIn(BaseModel):
+    feature: str = Field(..., min_length=2, max_length=64)
+    enabled: bool
+
+
+@router.patch("/{plan_id}/premium-feature")
+async def toggle_premium_feature(plan_id: str,
+                                   payload: PremiumFeatureToggleIn,
+                                   user: dict = Depends(require_role("gestor"))):
+    """Habilita/desabilita uma premium feature específica num plano.
+
+    Reconhecidas: wifi_self_service, speed_test_remote, static_ip,
+    vpn_access, priority_support.
+    """
+    cid = _cid(user)
+    plan = await db.plans.find_one(
+        {"company_id": cid, "id": plan_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(404, "Plano não encontrado.")
+    feats = set(plan.get("premium_features") or [])
+    if payload.enabled:
+        feats.add(payload.feature)
+    else:
+        feats.discard(payload.feature)
+    await db.plans.update_one(
+        {"company_id": cid, "id": plan_id},
+        {"$set": {"premium_features": sorted(feats),
+                  "updated_at": now_iso()}},
+    )
+    return {"ok": True, "plan_id": plan_id,
+            "premium_features": sorted(feats)}
+
+
+@router.post("/auto-mark-premium")
+async def auto_mark_premium(user: dict = Depends(require_role("gestor"))):
+    """Auto-marca planos com `speed_down_mbps >= 1000` como Premium
+    (adiciona `wifi_self_service` em premium_features).
+
+    Idempotente: pula planos que já têm a feature.
+    """
+    cid = _cid(user)
+    cur = db.plans.find(
+        {"company_id": cid, "active": True,
+         "speed_down_mbps": {"$gte": PREMIUM_SPEED_THRESHOLD_MBPS}},
+        {"_id": 0, "id": 1, "name": 1, "speed_down_mbps": 1,
+         "premium_features": 1},
+    )
+    updated, skipped = [], []
+    async for plan in cur:
+        feats = set(plan.get("premium_features") or [])
+        if "wifi_self_service" in feats:
+            skipped.append({"id": plan["id"], "name": plan.get("name")})
+            continue
+        feats.add("wifi_self_service")
+        await db.plans.update_one(
+            {"company_id": cid, "id": plan["id"]},
+            {"$set": {"premium_features": sorted(feats),
+                      "updated_at": now_iso()}},
+        )
+        updated.append({"id": plan["id"], "name": plan.get("name"),
+                         "speed": plan.get("speed_down_mbps")})
+    return {"ok": True, "threshold_mbps": PREMIUM_SPEED_THRESHOLD_MBPS,
+            "updated": updated, "already_premium": skipped,
+            "updated_count": len(updated)}
+
+
+# ---------------------------------------------------------------------------
 # Simulador de reajuste anual
 # ---------------------------------------------------------------------------
 class AdjustmentIn(BaseModel):

@@ -193,13 +193,19 @@ def format_wifi_context(wifi: Dict[str, Any]) -> str:
     elif state == "premium_required":
         parts.append(
             "Cliente NÃO é Premium. NÃO troque diretamente.\n"
-            "FLUXO DE UPSELL:\n"
-            "1. Explique que troca pelo WhatsApp é vantagem exclusiva do Premium.\n"
-            "2. Liste 2-3 benefícios (troca Wi-Fi 24/7, speed test, suporte priori).\n"
-            "3. Pergunte se quer upgrade. SE SIM, use marker [OFFER_UPGRADE]\n"
-            "   pra encaminhar pra equipe de Vendas (Isabella).\n"
-            "4. SE NÃO, ofereça abrir chamado pra atendente humano trocar.\n"
-            "5. NUNCA trate como erro — é oportunidade comercial."
+            "FLUXO DE UPSELL (use copy exato abaixo, adaptando o tom):\n"
+            "\"Posso te ajudar com isso! 😊 A troca de senha do Wi-Fi pelo "
+            "WhatsApp é um benefício exclusivo dos nossos planos *1000 Mega, "
+            "2000 Mega e 5000 Mega*. Com qualquer um deles, você troca a "
+            "senha do seu Wi-Fi pelo próprio WhatsApp em segundos, "
+            "sem precisar esperar atendimento.\"\n\n"
+            "Pergunte se cliente quer fazer upgrade.\n"
+            "SE SIM → use marker [OFFER_UPGRADE] (sistema repassa pra "
+            "equipe de Vendas que entra em contato).\n"
+            "SE NÃO → ofereça abrir chamado pra atendente humano fazer "
+            "a troca pela operação.\n"
+            "NUNCA trate como erro — é oportunidade comercial.\n"
+            "NÃO mencione preços (Isabella IA fará isso na sequência)."
         )
     elif state == "no_onu":
         parts.append(

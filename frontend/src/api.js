@@ -917,6 +917,15 @@ export const api = {
     client.get(`/wifi/subscriber/${sid}/logs`).then((r) => r.data),
   wifiRebootOnu: (sid) =>
     client.post(`/wifi/subscriber/${sid}/reboot-onu`).then((r) => r.data),
+  wifiLeadsList: (params = {}) =>
+    client.get(`/wifi/leads`, { params }).then((r) => r.data),
+  wifiLeadsProcessNow: () =>
+    client.post(`/wifi/leads/process-now`).then((r) => r.data),
+  plansAutoMarkPremium: () =>
+    client.post(`/plans/auto-mark-premium`).then((r) => r.data),
+  planTogglePremiumFeature: (id, feature, enabled) =>
+    client.patch(`/plans/${id}/premium-feature`,
+                  { feature, enabled }).then((r) => r.data),
 
   // ----- Plans CRUD -----
   plansList: (params = {}) => client.get(`/plans`, { params }).then((r) => r.data),

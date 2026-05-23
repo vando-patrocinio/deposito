@@ -873,3 +873,46 @@ async def public_upgrade_lead(payload: UpgradeLeadIn):
         logger.warning("[wifi] upgrade-lead insert fail: %s", e)
     return {"ok": True, "lead_id": lead["id"],
             "subscriber_id": lead["subscriber_id"]}
+
+
+# ---------------------------------------------------------------------------
+# Admin endpoints — gestão de leads (Isabella IA outreach)
+# ---------------------------------------------------------------------------
+@router.get("/leads")
+async def list_leads(status: Optional[str] = None, limit: int = 50,
+                       user: dict = Depends(get_current_user)):
+    """Lista leads do funil Wi-Fi self-service (admin/gestor only)."""
+    if user.get("role") not in ("gestor", "administrador", "auditor") \
+            and not is_super_admin(user):
+        raise HTTPException(403, "Apenas gestor/administrador/auditor.")
+    cid = _cid(user)
+    q: Dict[str, Any] = {"company_id": cid,
+                          "source": "whatsapp_alvaro_wifi_request"}
+    if status:
+        q["status"] = status
+    cur = db.sales_leads.find(q, {"_id": 0}).sort("ts", -1).limit(
+        min(max(limit, 1), 200))
+    items = await cur.to_list(200)
+    # KPIs
+    total = await db.sales_leads.count_documents(
+        {"company_id": cid, "source": "whatsapp_alvaro_wifi_request"})
+    by_status: Dict[str, int] = {}
+    async for d in db.sales_leads.aggregate([
+        {"$match": {"company_id": cid,
+                     "source": "whatsapp_alvaro_wifi_request"}},
+        {"$group": {"_id": "$status", "n": {"$sum": 1}}},
+    ]):
+        by_status[d["_id"] or "unknown"] = d["n"]
+    return {"items": items, "count": len(items),
+            "total": total, "by_status": by_status}
+
+
+@router.post("/leads/process-now")
+async def trigger_outreach_now(user: dict = Depends(get_current_user)):
+    """Dispara o worker de outreach manualmente (admin debug)."""
+    if user.get("role") not in ("gestor", "administrador") \
+            and not is_super_admin(user):
+        raise HTTPException(403, "Apenas gestor/administrador.")
+    from services.sales_outreach import process_pending_leads
+    stats = await process_pending_leads()
+    return {"ok": True, "stats": stats}
