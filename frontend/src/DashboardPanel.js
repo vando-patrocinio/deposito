@@ -215,6 +215,9 @@ export default function DashboardPanel() {
         </Card>
       </div>
 
+      {/* Wi-Fi Premium Revenue Widget */}
+      <WifiPremiumWidget />
+
       {/* Chart 1 */}
       <Card title={chartTitle}>
         <div style={{ width: "100%", height: 280, minWidth: 200 }} data-testid="chart-ot-monthly">
@@ -693,6 +696,58 @@ function KpiCard({ label, value, color, testId }) {
       <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 900, color, marginTop: 4 }}>{value}</div>
     </div>
+  );
+}
+
+
+function WifiPremiumWidget() {
+  const [k, setK] = React.useState(null);
+  React.useEffect(() => {
+    api.wifiLeadsConversionKpis().then(setK).catch(() => setK(null));
+  }, []);
+  if (!k) return null;
+  const mrr = k.mrr_additional || 0;
+  // Esconde widget se ainda não houve nenhum lead (evita ruído visual zero-state)
+  if ((k.total || 0) === 0) return null;
+  const tw = k.this_week || {};
+  const delta = k.delta_pp || 0;
+  const deltaColor = delta > 0 ? "#15803d" : delta < 0 ? "#dc2626" : "#64748b";
+  const deltaIcon  = delta > 0 ? "▲" : delta < 0 ? "▼" : "─";
+  return (
+    <Card style={{ marginBottom: 16, background: "linear-gradient(135deg,#faf5ff,#fff)",
+                    border: "1px solid #ddd6fe" }}
+          data-testid="dashboard-wifi-premium-widget">
+      <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ fontSize: 36 }}>💎</div>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed",
+                         textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Receita extra Wi-Fi Premium (lifetime)
+          </div>
+          <div style={{ fontSize: 30, fontWeight: 900, color: "#0f172a", lineHeight: 1.2 }}>
+            R$ {mrr.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}<span
+              style={{ fontSize: 14, fontWeight: 700, color: "#7c3aed" }}>/mês</span>
+          </div>
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+            {(k.lifetime?.converted || 0)} upgrades convertidos do funil
+            self-service · acumulado de receita recorrente
+          </div>
+        </div>
+        <div style={{ borderLeft: "1px solid #e9d5ff", paddingLeft: 18,
+                       minWidth: 180 }}>
+          <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700,
+                         textTransform: "uppercase" }}>
+            Conversão (esta semana)
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>
+            {(tw.pct || 0).toFixed(1)}%
+          </div>
+          <div style={{ fontSize: 11, color: deltaColor, fontWeight: 700, marginTop: 2 }}>
+            {deltaIcon} {Math.abs(delta).toFixed(1)} pp vs semana anterior
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 

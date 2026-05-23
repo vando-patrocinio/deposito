@@ -71,6 +71,17 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **Simulador de reajuste anual de planos** (10/05/2026 — iter48): Endpoints `POST /plans/{id}/adjustment/preview` (calcula impacto SEM aplicar — retorna assinantes afetados, novo preço, delta por assinante, delta receita mensal e anual, amostra de assinantes), `POST /plans/{id}/adjustment/apply` (aplica: atualiza `monthly_price` no plano + `plan_price` snapshot nos subscribers + grava log em `plan_adjustments_log`), `GET /plans/{id}/adjustment/history` (últimos 20 reajustes do plano). Filtro de status (default = só ATIVO/INADIMPLENTE/EM_INSTALACAO). Override de percentual disponível. UI: botão "Reajustar" no PlanCard (com badge laranja) abre modal com 4 KPI cards (Assinantes afetados, Por assinante, Receita mensal+, Receita anual+), amostra de até 8 subscribers impactados, histórico inline, fluxo de 2 cliques pra confirmar (revisar → aplicar). Validado curl: R$ 79,90 → R$ 85,09 (+6.5%), log gravado, preço persistido.
 ✅ **Aba Planos visível para todos os perfis** (10/05/2026 — iter48): adicionado `plans` ao `TAB_DEFINITIONS` e `DEFAULT_TAB_PERMISSIONS` (auditor + gestor) em TabPermissionsCard. Migração suave do tab_permissions cuida de adicionar pra empresas que já tinham config gravada.
 ✅ **SmartOLT AI — Modo ATIVO + CO-PILOTO interno** (10/05/2026): worker autônomo roda a cada **30s** com **threshold dinâmico** (≥10 ONUs em LOS OU ≥50% do PON). RECEPTIVO (A2A system_prompt), ATIVO (drafts → aprovação humana 1-clique), CO-PILOTO (internal notes amarelas, cliente nunca vê). Templates editáveis. Endpoints `/api/smartolt-ai/{summary,outages/{active,recent,detect},drafts,drafts/{id}/{send,discard},drafts/send-bulk,templates}`.
+✅ **Widget Wi-Fi Premium no Dashboard Executivo** (22/02/2026 — iter132): Card 💎 plugado no `DashboardPanel.js` (a primeira tela que o gestor abre) com receita extra recorrente em destaque + conversão semanal compacta. Aparece logo abaixo dos 4 KPIs de HE/Custo, mas **AUTO-OCULTA** quando ainda não há nenhum lead (`if (k.total === 0) return null` — evita zero-state ruidoso).
+
+**Layout** (Card com gradiente roxo-claro #faf5ff→#fff, borda lilás #ddd6fe):
+- Esquerda: ícone 💎 36px + label "RECEITA EXTRA WI-FI PREMIUM (LIFETIME)" + valor monetário grande em pt-BR `R$ X,XX/mês` + count de upgrades convertidos
+- Divisória vertical lilás (#e9d5ff)
+- Direita: label "CONVERSÃO (ESTA SEMANA)" + pct grande + delta_pp colorido (verde/vermelho) com ícone ▲/▼/─ vs semana anterior
+
+**Validado E2E**: smoke screenshot mostra widget renderizando perfeitamente entre KPIs de HE e gráfico de tendência. Dados sintéticos: R$ 200,00/mês · 4 upgrades · 28.6% conversão lifetime · ▼ 4.7 pp esta semana. Demo leads cleaned pós-validação. Lint JS limpo.
+
+**Visibilidade gestor**: agora todo dia ao logar, vê o número da receita extra crescendo no painel principal — feature "viciante" de monitorar conforme cliente sugeriu na ideia da iter132.
+
 ✅ **Dashboard de Conversão Wi-Fi Premium** (22/02/2026 — iter131): KPIs agregados + visualização executiva do funil de monetização Wi-Fi Self-Service.
 
 **Backend** (`routes/wifi.py` → `GET /api/wifi/leads/conversion-kpis`, gestor/admin/auditor):
