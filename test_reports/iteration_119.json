@@ -1,0 +1,39 @@
+{
+  "summary": "Iter119 — Álvaro IA WhatsApp Wi-Fi self-service: 28 passed + 1 xfailed (bug real flagado). Cobertos: endpoints públicos /api/wifi/public/* (status/change-by-phone/upgrade-lead), helpers em alvaro_tools.py (looks_like_wifi_change, fetch_wifi_status_for_alvaro, WIFI_MARKER_RE/UPGRADE_MARKER_RE, process_alvaro_actions), auditoria em wifi_change_logs (source='whatsapp_alvaro' gravado mesmo em 502 TR069_FAILED), criação de lead em sales_leads (source='whatsapp_alvaro_wifi_request', status='new'), e gates de segurança (phone fora do subscriber → 403, sub desconhecido → 404, plano não-premium → 402 PREMIUM_REQUIRED, rate-limit 1/24h → 429 RATE_LIMITED). SmartOLT retornou 502 TR069_FAILED conforme esperado (TR-069 disabled) e a auditoria foi gravada corretamente.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "services/alvaro_tools.py:WIFI_CHANGE_KEYWORDS", "issue": "Keyword 'mudar nome do wifi' (com artigo 'do') NÃO é detectada por looks_like_wifi_change — só existe 'mudar nome wifi' na lista. Variantes 'trocar nome do wifi' e 'trocar o nome do wifi' existem, mas a do verbo 'mudar' está incompleta. Adicionar 'mudar nome do wifi' e 'mudar o nome do wifi' à tupla."},
+      {"endpoint": "POST /api/wifi/public/subscriber/{sid}/change-by-phone", "issue": "_recent_changes_count filtra success=True; em ambiente onde TR-069 sempre falha (caso atual), o rate-limit do whatsapp_alvaro nunca dispara porque tentativas falhas não contam. Resultado: cliente pode martelar troca infinitamente. Considerar contar também falhas TR069_FAILED como parte do rate-limit OU registrar 'attempt logs' separado."},
+      {"endpoint": "GET /api/wifi/public/subscriber/{sid}/status", "issue": "Sem autenticação e sem rate-limit per-IP. Permite enumeração de subscriber IDs com leak de info (plan_premium, smartolt_onu_id, onu.model). Aplicar throttle ou exigir phone como evidência."},
+      {"endpoint": "POST /api/wifi/public/upgrade-lead", "issue": "Sem rate-limit nem dedup — abusador pode inserir N leads iguais. Sugerir dedup por (cid, phone, ts<1h) ou throttle por IP."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter119_alvaro_wifi_flow.py",
+    "/app/test_reports/pytest/iter119_alvaro_wifi.xml"
+  ],
+  "action_items": [
+    "Adicionar 'mudar nome do wifi' e 'mudar o nome do wifi' em WIFI_CHANGE_KEYWORDS (alvaro_tools.py) — usuário cita esta variante exata no requisito",
+    "(opcional) Persistir audit log também para tentativas falhas TR-069 contadas no rate-limit, OU implementar contador atomic separado por (cid,sid,source='whatsapp_alvaro')",
+    "(opcional) Adicionar throttle/IP rate-limit em /api/wifi/public/subscriber/{sid}/status e /api/wifi/public/upgrade-lead",
+    "(opcional) Documentar gate order: ONU presence (409) → premium (402) → force (403) → rate-limit (429) → ONU online (409) — atualmente premium check passa antes de online check"
+  ],
+  "critical_code_review_comments": [
+    "process_alvaro_actions remove o marker [TROCAR_WIFI] do texto MESMO quando estado != ready (não dispara HTTP). Isso é correto pra evitar vazar o marker pro cliente, mas o Álvaro deveria garantir que NUNCA emite o marker em estado != ready (já está no prompt em format_wifi_context). ✓",
+    "OFFER_UPGRADE → injeta [ROTEAR_VENDAS] no final do texto + lead criado: comportamento conforme spec. Bom reuso do pipeline de handoff existente. ✓",
+    "_phone_belongs_to_subscriber usa endswith fallback (com/sem 55) — funciona bem pra Brasil mas pode ter false-positive em sub com phone curto. Considerar exigir match exato + normalização strict (libphonenumber).",
+    "public_change_by_phone constrói synthetic_user com role='whatsapp_client' e delega pra change_wifi reaproveitando gates — bom design. Auditoria fica com actor_email='whatsapp:5521...' pra rastreabilidade.",
+    "public_upgrade_lead é best-effort: try/except no insert, sempre retorna ok=True. Isso esconde falhas de persistência do cliente. Considerar retornar erro real se DB falhar (mas Álvaro continua o fluxo).",
+    "Sem teste e2e: cliente WhatsApp manda msg → baileys injeta wifi_ctx → LLM emite marker → action processor executa. Componentes individuais funcionam, mas a costura completa não foi testada nesta iteração."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter119_alvaro_wifi_flow.py"],
+  "success_rate": {"backend": "96.5% (28/29 — 1 xfail flagando bug real de keyword)", "frontend": "n/a"},
+  "test_credentials": "Endpoints públicos não usam credentials. Subscriber teste: sub-91c01c46fc (Maria José, phones +5521911112222/+5521933334444). Subscriber TEST não-premium é criado e limpo pelo setup do teste (sub-TEST-iter119np, phone +5521900000119).",
+  "seed_data_creation": "Pré-teste cria sub-TEST-iter119np com plan-7e2605ff7d (non-premium) + ONU 4954425332697d69 (reaproveitada) + subscriber_phones 5521900000119. Pós-teste limpa tudo. Logs/leads de teste removidos por fixtures _reset_state e _final_cleanup. Circuit breaker do smartolt_config.rate_limited_until limpo no setup e cleanup final.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Antes de rodar, garantir: (1) sub-91c01c46fc com plan_id=plan-1b0578d85d, smartolt_onu_id=4954425332697d69; (2) plan-1b0578d85d.premium_features=['wifi_self_service']; (3) smartolt_config.rate_limited_until limpo. O test file já recria sub-TEST-iter119np se removido, mas precisa rodar o snippet de setup separado (ver fixture _reset_state). SmartOLT retorna 502 TR069_FAILED — comportamento esperado pra co-demo. Rate-limit test agora usa injeção direta de log success=True no DB (workaround pro fato de TR-069 nunca conseguir success=True neste ambiente). xfail 'mudar nome do wifi' vira pass quando main agent fixar a keyword.",
+  "rca of the issue": "Bug keyword 'mudar nome do wifi': em /app/backend/services/alvaro_tools.py linhas 226-232, a tupla WIFI_CHANGE_KEYWORDS inclui 'mudar nome wifi' (sem o artigo 'do') mas NÃO inclui 'mudar nome do wifi'. Como looks_like_wifi_change faz substring match (`any(k in t for k in WIFI_CHANGE_KEYWORDS)`), a frase do usuário 'mudar nome do wifi' não é detectada — nenhuma das keywords é substring dela. Fix: adicionar 'mudar nome do wifi' e idealmente 'mudar o nome do wifi' à tupla. Alternativa mais robusta: normalizar (remover artigos 'o','a','do','da') antes do match, ou usar regex com grupos opcionais."
+}

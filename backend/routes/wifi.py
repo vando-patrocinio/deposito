@@ -676,3 +676,185 @@ async def reboot_onu_proxy(sid: str,
     if not ok:
         raise HTTPException(502, f"SmartOLT recusou: {resp.get('error') or resp}")
     return {"ok": True, "subscriber_id": sid, "external_id": onu_id}
+
+
+# ---------------------------------------------------------------------------
+# Endpoints PÚBLICOS — chamados pelo Álvaro IA (WhatsApp) sem JWT.
+# Segurança: o subscriber só pode ser operado por quem provar conhecer o
+# telefone dele (matching contra `subscribers.phones[].raw_number`).
+# ---------------------------------------------------------------------------
+class WifiChangeByPhoneIn(BaseModel):
+    phone: str
+    company_id: Optional[str] = None
+    ssid: str = Field(..., max_length=32)
+    password: Optional[str] = Field(default=None,
+                                    min_length=PASSWORD_MIN,
+                                    max_length=PASSWORD_MAX)
+    apply_to_both: bool = True
+    source: str = "whatsapp_alvaro"
+
+
+class UpgradeLeadIn(BaseModel):
+    phone: str
+    subscriber_id: Optional[str] = None
+    company_id: Optional[str] = None
+    plan_hint: Optional[str] = None
+    source: str = "whatsapp_alvaro_wifi_request"
+
+
+def _normalize_phone(raw: str) -> str:
+    """Normaliza pra dígitos puros (estratégia simples; mesmo padrão dos
+    outros módulos que fazem match por telefone)."""
+    return re.sub(r"\D", "", raw or "")
+
+
+async def _resolve_subscriber_by_phone(cid: str, phone: str) -> Optional[dict]:
+    """Match best-effort por telefone — usa coleção `subscriber_phones`."""
+    norm = _normalize_phone(phone)
+    if not norm:
+        return None
+    # Match direto pelo normalized_number (campo já normalizado pela ingestão)
+    ph = await db.subscriber_phones.find_one(
+        {"company_id": cid, "normalized_number": norm},
+        {"_id": 0, "subscriber_id": 1},
+    )
+    if not ph:
+        # Match parcial (com/sem prefixo país)
+        candidates = [norm, norm.lstrip("55"), "55" + norm]
+        ph = await db.subscriber_phones.find_one(
+            {"company_id": cid, "normalized_number": {"$in": candidates}},
+            {"_id": 0, "subscriber_id": 1},
+        )
+    if not ph:
+        return None
+    return await db.subscribers.find_one(
+        {"id": ph["subscriber_id"], "company_id": cid}, {"_id": 0})
+
+
+async def _phone_belongs_to_subscriber(cid: str, sid: str,
+                                        phone: str) -> bool:
+    norm = _normalize_phone(phone)
+    if not norm:
+        return False
+    candidates = {norm, norm.lstrip("55"), "55" + norm}
+    cur = db.subscriber_phones.find(
+        {"company_id": cid, "subscriber_id": sid},
+        {"_id": 0, "normalized_number": 1},
+    )
+    async for p in cur:
+        n = p.get("normalized_number") or ""
+        if n in candidates:
+            return True
+        # endswith match (DDD+número)
+        if n and (n.endswith(norm) or norm.endswith(n)):
+            return True
+    return False
+
+
+@router.get("/public/subscriber/{sid}/status")
+async def public_status(sid: str, company_id: Optional[str] = None):
+    """Versão pública usada pelo Álvaro IA. Lê-only e sem dados sensíveis."""
+    cid = company_id or DEMO_COMPANY_ID
+    sub = await db.subscribers.find_one(
+        {"id": sid, "company_id": cid}, {"_id": 0})
+    if not sub:
+        raise HTTPException(404, "Assinante não encontrado.")
+    onu_id = sub.get("smartolt_onu_id")
+    onu_summary = {}
+    if onu_id:
+        onu = await _onu_by_id(cid, onu_id)
+        if onu:
+            onu_summary = await _summarize_onu(onu)
+    plan_premium = await _plan_has_feature(sub.get("plan_id"), cid, FEATURE_WIFI)
+    recent = await _recent_changes_count(sid, cid)
+    if not onu_id or not onu_summary:
+        state = "no_onu"
+    elif not plan_premium:
+        state = "premium_required"
+    elif not onu_summary.get("is_online"):
+        state = "onu_offline"
+    elif recent >= RATE_LIMIT_MAX:
+        state = "rate_limited"
+    else:
+        state = "ready"
+    return {
+        "subscriber_id": sid,
+        "plan_premium": plan_premium,
+        "smartolt_onu_id": onu_id,
+        "onu": {k: onu_summary.get(k) for k in
+                ("model", "status", "is_online", "rx_dbm")},
+        "state": state,
+    }
+
+
+@router.post("/public/subscriber/{sid}/change-by-phone")
+async def public_change_by_phone(sid: str, payload: WifiChangeByPhoneIn):
+    """Troca Wi-Fi via Álvaro IA. Valida ownership pelo telefone.
+
+    Segurança em camadas:
+      1. phone presente em `subscribers.phones[].raw_number` do sid
+      2. Plano tem premium feature `wifi_self_service`
+      3. ONU vinculada + online
+      4. Rate limit 1/24h (whatsapp_alvaro source)
+    """
+    cid = payload.company_id or DEMO_COMPANY_ID
+    sub = await db.subscribers.find_one(
+        {"id": sid, "company_id": cid}, {"_id": 0})
+    if not sub:
+        raise HTTPException(404, "Assinante não encontrado.")
+    # Match phone ↔ subscriber (coleção subscriber_phones)
+    if not await _phone_belongs_to_subscriber(cid, sid, payload.phone):
+        raise HTTPException(403, "Telefone não autorizado pra este assinante.")
+    # Constrói o payload interno e delega pro change_wifi
+    inner = WifiChangeIn(
+        ssid_24=payload.ssid,
+        password_24=payload.password,
+        apply_to_both=payload.apply_to_both,
+        source=payload.source,
+        force=False,
+    )
+    # Constrói "user" sintético — chama internamente. Mesmo gates aplicam.
+    norm_in = _normalize_phone(payload.phone)
+    synthetic_user = {
+        "email": f"whatsapp:{norm_in}",
+        "name": sub.get("name") or "Cliente WhatsApp",
+        "role": "whatsapp_client",
+        "company_id": cid,
+    }
+    return await change_wifi(sid, inner, synthetic_user)
+
+
+@router.post("/public/upgrade-lead")
+async def public_upgrade_lead(payload: UpgradeLeadIn):
+    """Registra lead de upgrade — funil de vendas (Isabella vai puxar).
+
+    Não bloqueia caso falhe (best-effort). Insere em `sales_leads`.
+    """
+    cid = payload.company_id or DEMO_COMPANY_ID
+    sub = None
+    if payload.subscriber_id:
+        sub = await db.subscribers.find_one(
+            {"id": payload.subscriber_id, "company_id": cid},
+            {"_id": 0, "id": 1, "name": 1, "plan_id": 1},
+        )
+    if not sub:
+        sub = await _resolve_subscriber_by_phone(cid, payload.phone)
+    lead = {
+        "id": f"lead-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "phone": payload.phone,
+        "subscriber_id": (sub or {}).get("id"),
+        "subscriber_name": (sub or {}).get("name"),
+        "current_plan_id": (sub or {}).get("plan_id"),
+        "plan_hint": payload.plan_hint,
+        "source": payload.source,
+        "reason": "wifi_self_service_request",
+        "status": "new",
+        "ts": now_iso(),
+    }
+    try:
+        await db.sales_leads.insert_one(dict(lead))
+    except Exception as e:
+        logger.warning("[wifi] upgrade-lead insert fail: %s", e)
+    return {"ok": True, "lead_id": lead["id"],
+            "subscriber_id": lead["subscriber_id"]}

@@ -1964,6 +1964,38 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     except Exception as e:
         logger.warning("[alvaro_tools] skip: %s", e)
 
+    # 3a-bis. ÁLVARO TOOLS — Wi-Fi self-service (Premium gate + upsell)
+    # Quando a mensagem parece "trocar senha do wifi", injeta contexto com
+    # estado computado (ready / premium_required / onu_offline / no_onu /
+    # rate_limited) + instruções de fluxo. Markers [TROCAR_WIFI] e
+    # [OFFER_UPGRADE] processados depois.
+    wifi_ctx = None
+    try:
+        from services.alvaro_tools import (
+            looks_like_wifi_change, fetch_wifi_status_for_alvaro,
+            format_wifi_context,
+        )
+        if looks_like_wifi_change(user_text):
+            # Resolve subscriber por telefone via cache do alvaro_diag se já
+            # foi calculado — senão, descobre agora via lookup direto.
+            sid_hint = (alvaro_diag or {}).get("subscriber_id")
+            if not sid_hint:
+                from routes.wifi import _resolve_subscriber_by_phone
+                _sub = await _resolve_subscriber_by_phone(cid, phone)
+                sid_hint = (_sub or {}).get("id")
+            wifi_ctx = await fetch_wifi_status_for_alvaro(sid_hint, cid)
+            ctx_text = format_wifi_context(wifi_ctx or {})
+            extra.append(ctx_text)
+            # injeta subscriber_id pra ação posterior nos markers
+            if wifi_ctx is None and sid_hint:
+                wifi_ctx = {"subscriber_id": sid_hint, "state": "unknown"}
+            elif wifi_ctx:
+                wifi_ctx["subscriber_id"] = sid_hint
+            logger.info("[alvaro_tools] wifi ctx phone=%s state=%s sid=%s",
+                        phone, (wifi_ctx or {}).get("state"), sid_hint)
+    except Exception as e:
+        logger.warning("[alvaro_tools] wifi ctx skip: %s", e)
+
     # 3a. CONTEXTO DE OUTAGE (Agent-to-Agent) — SmartOLT AI detecta panes
     # de rede e marca clientes afetados. Se este telefone está em outage
     # ativo, IA de atendimento informa proativamente em vez de fazer o
@@ -2291,10 +2323,13 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         # (chamadas em paralelo ao marker_router; se diag existir o Álvaro
         # pode reiniciar a ONU e agendar reparo direto no mesmo turno).
         try:
-            if alvaro_diag and alvaro_diag.get("found"):
+            # Roda action processor sempre — markers de wifi/upgrade podem
+            # estar presentes mesmo sem alvaro_diag (cliente pediu trocar wifi
+            # diretamente, sem etapa de diagnóstico).
+            if (alvaro_diag and alvaro_diag.get("found")) or wifi_ctx:
                 from services.alvaro_tools import process_alvaro_actions
                 reply_text = await process_alvaro_actions(
-                    reply_text, phone, alvaro_diag,
+                    reply_text, phone, alvaro_diag, wifi_ctx=wifi_ctx,
                 )
         except Exception as e:
             logger.warning("[alvaro_tools] actions erro: %s", e)
