@@ -1431,7 +1431,9 @@ async def timesheet(cid: str, year: int, month: int):
         )
     return {
         "collaborator": {
-            "id": coll["id"], "name": coll["name"], "cpf": coll["cpf"], "email": coll["email"],
+            "id": coll["id"], "name": coll.get("name") or "—",
+            "cpf": coll.get("cpf") or "",
+            "email": coll.get("email") or "",
             "schedule": coll.get("schedule", {}),
             "overtime_policy": policy.model_dump(),
             "city": coll.get("city"), "state": coll.get("state"),
@@ -1474,6 +1476,14 @@ async def dashboard_overtime(year: int, month: int, company_id: Optional[str] = 
         try:
             sheet = await timesheet(c["id"], year, month)
         except HTTPException:
+            continue
+        except Exception as exc:
+            # Defensive: colaborador com dado corrompido não deve derrubar
+            # o relatório consolidado do dashboard inteiro.
+            import logging
+            logging.getLogger("ponto.clock").warning(
+                "[dashboard_overtime] skip cid=%s err=%s",
+                c.get("id"), exc)
             continue
         rows.append({
             "collaborator_id": c["id"], "name": c["name"],
