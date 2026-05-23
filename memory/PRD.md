@@ -71,6 +71,37 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 ✅ **Simulador de reajuste anual de planos** (10/05/2026 — iter48): Endpoints `POST /plans/{id}/adjustment/preview` (calcula impacto SEM aplicar — retorna assinantes afetados, novo preço, delta por assinante, delta receita mensal e anual, amostra de assinantes), `POST /plans/{id}/adjustment/apply` (aplica: atualiza `monthly_price` no plano + `plan_price` snapshot nos subscribers + grava log em `plan_adjustments_log`), `GET /plans/{id}/adjustment/history` (últimos 20 reajustes do plano). Filtro de status (default = só ATIVO/INADIMPLENTE/EM_INSTALACAO). Override de percentual disponível. UI: botão "Reajustar" no PlanCard (com badge laranja) abre modal com 4 KPI cards (Assinantes afetados, Por assinante, Receita mensal+, Receita anual+), amostra de até 8 subscribers impactados, histórico inline, fluxo de 2 cliques pra confirmar (revisar → aplicar). Validado curl: R$ 79,90 → R$ 85,09 (+6.5%), log gravado, preço persistido.
 ✅ **Aba Planos visível para todos os perfis** (10/05/2026 — iter48): adicionado `plans` ao `TAB_DEFINITIONS` e `DEFAULT_TAB_PERMISSIONS` (auditor + gestor) em TabPermissionsCard. Migração suave do tab_permissions cuida de adicionar pra empresas que já tinham config gravada.
 ✅ **SmartOLT AI — Modo ATIVO + CO-PILOTO interno** (10/05/2026): worker autônomo roda a cada **30s** com **threshold dinâmico** (≥10 ONUs em LOS OU ≥50% do PON). RECEPTIVO (A2A system_prompt), ATIVO (drafts → aprovação humana 1-clique), CO-PILOTO (internal notes amarelas, cliente nunca vê). Templates editáveis. Endpoints `/api/smartolt-ai/{summary,outages/{active,recent,detect},drafts,drafts/{id}/{send,discard},drafts/send-bulk,templates}`.
+✅ **Álvaro IA · Wi-Fi Self-Service via WhatsApp (Premium + Upsell)** (22/02/2026 — iter128): Álvaro IA agora conduz o fluxo de troca de Wi-Fi pelo WhatsApp com gating Premium e handoff automático pra Isabella IA quando cliente não-Premium pede troca (lead pro funil de vendas).
+
+**Backend** (`/app/backend/services/alvaro_tools.py` + `/app/backend/routes/wifi.py` + `/app/backend/routes/whatsapp_baileys.py`):
+- 3 endpoints PÚBLICOS (sem JWT, segurança por matching phone↔subscriber):
+  - `GET /api/wifi/public/subscriber/{sid}/status?company_id=...` — leitura segura (sem dados sensíveis), retorna `state` computado pro Álvaro IA contextualizar a conversa
+  - `POST /api/wifi/public/subscriber/{sid}/change-by-phone` — exige `phone` válido em `subscriber_phones.normalized_number` do subscriber; rejeita 403 se telefone alheio. Reaproveita `change_wifi` interna com synthetic_user (role=`whatsapp_client`)
+  - `POST /api/wifi/public/upgrade-lead` — registra lead em `sales_leads` collection. **Dedup 1h** por `(company_id, phone, status=new)` pra evitar lead spam
+- 3 helpers em `alvaro_tools.py`:
+  - `looks_like_wifi_change(text)` — 18 keywords PT-BR (trocar/mudar/alterar/renomear senha/nome do wifi/wi-fi com variações de artigos)
+  - `fetch_wifi_status_for_alvaro(sid, cid)` — HTTP call pro endpoint público de status
+  - `format_wifi_context(wifi)` — gera bloco de contexto que injetamos no prompt do Álvaro com instruções operacionais passo-a-passo + marker a usar (`[TROCAR_WIFI:ssid=X,senha=Y]` se ready / `[OFFER_UPGRADE]` se premium_required)
+- 2 markers novos no `process_alvaro_actions`:
+  - `[TROCAR_WIFI:ssid=CasaJoao,senha=minhasenha123]` — dispara HTTP best-effort pro `change-by-phone`. Só executa se `wifi_ctx.state=='ready'` (Álvaro não emite em outros estados por design via prompt)
+  - `[OFFER_UPGRADE]` ou `[OFFER_UPGRADE:plan=plan-id]` — cria lead via `/upgrade-lead` E injeta `[ROTEAR_VENDAS]` no texto final → pipeline de handoff existente faz handoff automático pra Isabella IA
+- `_resolve_subscriber_by_phone(cid, phone)` e `_phone_belongs_to_subscriber(cid, sid, phone)` usam a coleção `subscriber_phones` (não embeded — arquitetura correta do SmartProv) com match strict + endswith fallback (com/sem prefixo 55)
+- `_recent_changes_count` agora conta TENTATIVAS (não só sucessos) — previne martelagem em ambiente onde TR-069 do SmartOLT está lento/intermitente
+- Hook em `whatsapp_baileys.py` linha 1968-2002: bloco "3a-bis ÁLVARO TOOLS — Wi-Fi self-service" detecta intent e injeta `wifi_ctx` no contexto LLM; bloco 2325-2330 passa `wifi_ctx` pro `process_alvaro_actions`
+
+**Validado E2E**:
+- 89/89 tests passing across 3 suites (Projects Kanban 35 + Wi-Fi auth 25 + Álvaro WhatsApp 29 com 1 xpassed do bug-fix de keyword)
+- Cenários cobertos: status público (premium/non-premium/unknown), security (phone alheio → 403, sub inexistente → 404, plano non-premium → 402, ONU offline → 409, rate-limit 1/24h → 429), markers regex extraction, process_alvaro_actions com TROCAR_WIFI/OFFER_UPGRADE/REBOOT_ONU/AGENDAR_REPARO combinados, dedup de upgrade-lead (mesmo phone <1h não cria duplicata), auditoria gravada mesmo em 502 TR069_FAILED, handoff `[ROTEAR_VENDAS]` injetado automaticamente após `[OFFER_UPGRADE]`
+- Bug "mudar nome do wifi" (artigo "do" não detectado) corrigido (xpassed → passed)
+
+**Fluxo end-to-end ativo**:
+1. Cliente WhatsApp: *"quero trocar a senha do wifi"*
+2. `whatsapp_baileys` detecta intent via `looks_like_wifi_change` + busca subscriber por phone via `_resolve_subscriber_by_phone`
+3. `fetch_wifi_status_for_alvaro` retorna state computado → `format_wifi_context` injeta passo-a-passo no LLM
+4. Álvaro IA pergunta SSID + senha → confirma → emite `[TROCAR_WIFI:ssid=X,senha=Y]`
+5. `process_alvaro_actions` chama `change-by-phone` (best-effort), strip marker, retorna texto limpo pro cliente
+6. Caso non-premium: Álvaro emite `[OFFER_UPGRADE]` → lead criado em `sales_leads` + `[ROTEAR_VENDAS]` injetado → handoff pra Isabella IA automaticamente
+
 ✅ **Wi-Fi Self-Service via SmartOLT TR-069 (Premium Feature)** (22/02/2026 — iter127): novo módulo `wifi.py` (700+ linhas) + `WifiStatusCard.js` integrado no `SubscriberEditor`. Habilita troca de SSID/senha do Wi-Fi do cliente remotamente via SmartOLT (atendente UI + futuro fluxo WhatsApp via Álvaro IA), gated por (a) ONU SmartOLT vinculada ao subscriber e (b) plano com `premium_features: ['wifi_self_service']`.
 
 **Backend** (`/app/backend/routes/wifi.py`):

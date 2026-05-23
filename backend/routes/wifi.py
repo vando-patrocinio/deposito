@@ -149,14 +149,18 @@ async def _summarize_onu(onu: dict) -> Dict[str, Any]:
 async def _recent_changes_count(sid: str, cid: str,
                                 window_hours: int = RATE_LIMIT_WINDOW_HOURS,
                                 ) -> int:
-    """Conta trocas com sucesso na janela. Considera só source != atendente
-    no rate limit (atendente humano sempre pode forçar)."""
+    """Conta TENTATIVAS (success ou falha) na janela. Considera só
+    source != atendente — atendente humano sempre pode forçar.
+
+    Contar falhas também previne martelagem: cliente abusivo que tenta
+    50× rapidinho não consegue bypassar via "mas todas falharam" se o
+    SmartOLT real estiver lento/intermitente.
+    """
     since = (datetime.now(timezone.utc)
              - timedelta(hours=window_hours)).isoformat()
     return await db.wifi_change_logs.count_documents({
         "company_id": cid,
         "subscriber_id": sid,
-        "success": True,
         "source": {"$ne": "atendente"},
         "ts": {"$gte": since},
     })
@@ -828,7 +832,8 @@ async def public_change_by_phone(sid: str, payload: WifiChangeByPhoneIn):
 async def public_upgrade_lead(payload: UpgradeLeadIn):
     """Registra lead de upgrade — funil de vendas (Isabella vai puxar).
 
-    Não bloqueia caso falhe (best-effort). Insere em `sales_leads`.
+    Dedup: não cria duplicata se já existe lead 'new' do mesmo phone na
+    última 1h (mesmo cid). Best-effort — não bloqueia caso falhe.
     """
     cid = payload.company_id or DEMO_COMPANY_ID
     sub = None
@@ -839,6 +844,16 @@ async def public_upgrade_lead(payload: UpgradeLeadIn):
         )
     if not sub:
         sub = await _resolve_subscriber_by_phone(cid, payload.phone)
+    # Dedup window 1h — evita lead spam
+    since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    dup = await db.sales_leads.find_one(
+        {"company_id": cid, "phone": payload.phone,
+         "status": "new", "ts": {"$gte": since}},
+        {"_id": 0, "id": 1},
+    )
+    if dup:
+        return {"ok": True, "lead_id": dup["id"], "deduplicated": True,
+                "subscriber_id": (sub or {}).get("id")}
     lead = {
         "id": f"lead-{uuid.uuid4().hex[:10]}",
         "company_id": cid,

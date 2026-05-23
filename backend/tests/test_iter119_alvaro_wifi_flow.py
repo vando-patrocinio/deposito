@@ -97,6 +97,57 @@ def _reset_state():
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _seed_test_subscribers():
+    """Cria subscriber não-premium temporário pra testes (limpa no fim)."""
+    # Plano não-premium (sem wifi_self_service)
+    plan_id = "plan-7e2605ff7d"
+    db.plans.update_one(
+        {"id": plan_id, "company_id": CID},
+        {"$setOnInsert": {
+            "id": plan_id, "company_id": CID,
+            "name": "Test Plan Non-Premium iter119",
+            "monthly_price": 50.0, "active": True,
+            "premium_features": [],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    # Subscriber não-premium com ONU vinculada
+    db.subscribers.update_one(
+        {"id": SID_NONPREM, "company_id": CID},
+        {"$set": {
+            "id": SID_NONPREM, "company_id": CID,
+            "name": "Teste Iter119 NonPremium",
+            "plan_id": plan_id,
+            "smartolt_onu_id": "4954425332697d69",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "status": "ativo",
+        }},
+        upsert=True,
+    )
+    # Phone do subscriber
+    db.subscriber_phones.update_one(
+        {"company_id": CID, "subscriber_id": SID_NONPREM,
+         "normalized_number": "5521900000119"},
+        {"$setOnInsert": {
+            "id": "sphone-TEST-iter119np",
+            "company_id": CID,
+            "subscriber_id": SID_NONPREM,
+            "raw_number": "+5521900000119",
+            "normalized_number": "5521900000119",
+            "is_whatsapp": True, "is_primary": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    yield
+    # Cleanup
+    db.subscribers.delete_one({"id": SID_NONPREM, "company_id": CID})
+    db.subscriber_phones.delete_many({"subscriber_id": SID_NONPREM,
+                                       "company_id": CID})
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _final_cleanup():
     yield
     db.wifi_change_logs.delete_many({"company_id": CID,

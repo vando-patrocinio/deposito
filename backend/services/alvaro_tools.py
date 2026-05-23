@@ -225,8 +225,10 @@ def format_wifi_context(wifi: Dict[str, Any]) -> str:
 # Palavras-chave que indicam pedido de troca de Wi-Fi.
 WIFI_CHANGE_KEYWORDS = (
     "trocar senha do wifi", "trocar a senha do wifi", "mudar senha wifi",
+    "mudar a senha do wifi", "mudar senha do wifi",
     "trocar wifi", "mudar wifi", "trocar nome do wifi", "trocar o nome do wifi",
-    "mudar nome wifi", "nova senha wifi", "alterar senha do wifi",
+    "mudar nome wifi", "mudar nome do wifi", "mudar o nome do wifi",
+    "nova senha wifi", "alterar senha do wifi",
     "renomear wifi", "renomear o wifi", "alterar wifi", "troca de wifi",
     "trocar minha senha", "trocar minha senha do wi-fi",
 )
