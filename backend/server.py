@@ -114,6 +114,7 @@ from routes import (
     public_access as routes_public_access,
     disparo_promo as routes_disparo_promo,
     bank_import as routes_bank_import,
+    wifi as routes_wifi,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -511,6 +512,7 @@ app.include_router(routes_saas.webhook_router)
 app.include_router(routes_stok.router)
 app.include_router(routes_balanco.router)
 app.include_router(routes_projects.router)
+app.include_router(routes_wifi.router)
 app.include_router(routes_pdf_reports.router)
 app.include_router(routes_smartolt.router)
 app.include_router(routes_network_diag.router)

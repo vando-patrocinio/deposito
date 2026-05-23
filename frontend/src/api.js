@@ -901,6 +901,23 @@ export const api = {
     client.post(`/subscribers/import`, formData,
       { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data),
 
+  // ----- Wi-Fi self-service (TR-069 via SmartOLT) -----
+  wifiStatus: (sid) =>
+    client.get(`/wifi/subscriber/${sid}/status`).then((r) => r.data),
+  wifiLinkOnu: (sid, smartolt_onu_id) =>
+    client.post(`/wifi/subscriber/${sid}/link-onu`, { smartolt_onu_id })
+          .then((r) => r.data),
+  wifiUnlinkOnu: (sid) =>
+    client.delete(`/wifi/subscriber/${sid}/link-onu`).then((r) => r.data),
+  wifiAutoMatch: (sid) =>
+    client.post(`/wifi/subscriber/${sid}/auto-match`).then((r) => r.data),
+  wifiChange: (sid, payload) =>
+    client.post(`/wifi/subscriber/${sid}/change`, payload).then((r) => r.data),
+  wifiLogs: (sid) =>
+    client.get(`/wifi/subscriber/${sid}/logs`).then((r) => r.data),
+  wifiRebootOnu: (sid) =>
+    client.post(`/wifi/subscriber/${sid}/reboot-onu`).then((r) => r.data),
+
   // ----- Plans CRUD -----
   plansList: (params = {}) => client.get(`/plans`, { params }).then((r) => r.data),
   planCreate: (data) => client.post(`/plans`, data).then((r) => r.data),

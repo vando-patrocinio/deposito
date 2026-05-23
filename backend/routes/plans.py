@@ -37,6 +37,10 @@ class PlanIn(BaseModel):
     annual_adjustment_pct: float = Field(default=0, ge=0, le=100)
     description: Optional[str] = Field(default=None, max_length=600)
     active: bool = True
+    # Premium gating — array de features que esse plano libera. Drive de upsell.
+    # Atualmente reconhecidas: "wifi_self_service" (troca SSID/senha via UI ou
+    # WhatsApp), "speed_test_remote", "static_ip", "vpn_access", "priority_support".
+    premium_features: List[str] = Field(default_factory=list)
 
 
 class PlanUpdate(BaseModel):
@@ -48,6 +52,7 @@ class PlanUpdate(BaseModel):
     annual_adjustment_pct: Optional[float] = None
     description: Optional[str] = None
     active: Optional[bool] = None
+    premium_features: Optional[List[str]] = None
 
 
 def _cid(user: dict) -> str:

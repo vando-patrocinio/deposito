@@ -1,0 +1,41 @@
+{
+  "summary": "Iter118 — Wi-Fi self-service via SmartOLT TR-069. 25/25 testes do backend passaram. Cobertos: status (ready/no_onu/premium_required), link/unlink/auto-match com displacement, change com matriz completa de gates (sem ONU 409, plano não-premium 402 PREMIUM_REQUIRED, ONU offline 409 ONU_OFFLINE, rate-limit whatsapp_alvaro 429 RATE_LIMITED, atendente bypassa rate-limit, force só pra atendente 403), validações SSID/senha (non-ASCII 400, senha <8/>63 = 422 Pydantic), auditoria em wifi_change_logs e notifications, RBAC colaborador 403 em link/unlink/auto-match/reboot e 200 em status, reboot sem ONU 409, logs em ordem desc. SmartOLT real retornou 502 TR069_FAILED conforme esperado (TR-069 desabilitado) e o log de auditoria fica gravado com success=false + error_reason + tr069_response_time_ms.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/wifi/subscriber/{sid}/change", "issue": "Race condition no rate-limit: dois requests simultâneos do whatsapp_alvaro podem ambos passar o gate antes de qualquer log ser gravado. Janela curta (~ms), mas em cenário de Álvaro IA reagindo a duas msgs concorrentes do mesmo cliente isso permite 2 trocas em <24h. Recomenda lock por (cid, sid) ou índice único condicional no log."},
+      {"endpoint": "POST /api/wifi/subscriber/{sid}/change", "issue": "Não há audit log para tentativas rejeitadas nos gates (no_onu/premium_required/onu_offline/rate_limited). Só os requests que passam todos os gates e chegam ao TR-069 viram log. Para conformidade/SOC2 vale registrar tentativas falhas também (sem persistir credencial)."},
+      {"endpoint": "link-onu/unlink-onu/auto-match/reboot-onu", "issue": "RBAC string 'administrador' não bate com a constante usada em outros módulos ('admin'). Como super_admin cobre, não dá erro funcional, mas usuários com role 'admin' literal não passariam — verificar consistência entre módulos."},
+      {"endpoint": "POST /api/wifi/subscriber/{sid}/change", "issue": "HTTP 402 (Payment Required) é semântica incomum em APIs B2B; equipe de FE/clientes WhatsApp precisa estar ciente. Stripe usa 402, mas a maioria dos middlewares trata como 'pague para continuar'. Considerar 403 com code PREMIUM_REQUIRED ou manter 402 documentado."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter118_wifi_smartolt.py",
+    "/app/test_reports/pytest/iter118_wifi.xml"
+  ],
+  "action_items": [
+    "(opcional) Adicionar lock por (cid,sid) no início do change_wifi para fechar race do rate-limit Álvaro IA",
+    "(opcional) Auditar tentativas rejeitadas pelos gates (premium_required/onu_offline/rate_limited)",
+    "(opcional) Padronizar role 'admin' vs 'administrador' nos checks de RBAC do wifi.py",
+    "(opcional) Documentar 402 PREMIUM_REQUIRED no contrato consumido pelo frontend/Álvaro"
+  ],
+  "critical_code_review_comments": [
+    "wifi.py com 600+ linhas concentrando 7 endpoints está no limite — considerar splitting em wifi_link.py + wifi_change.py + wifi_audit.py pro próximo refactor",
+    "Auditoria não persiste plaintext de senha (bom) — apenas flag password_changed. ✓",
+    "Validação SSID via regex ASCII printable está correta (WPA2 PSK). Validação senha 8-63 via Pydantic está correta. ✓",
+    "Circuit-breaker do SmartOLT é compartilhado entre wifi.py e smartolt.py via _is_rate_limited — bom reuso. Após 403 do TR-069 a pausa de 1h afeta TODO o sync, não só wifi (esperado). ✓",
+    "_log_change usa try/except em torno de insert_one + notifications e só warn — bom; falha de log não derruba a operação principal. ✓",
+    "_recent_changes_count filtra source != atendente já na query e o gate revalida — defesa em profundidade. ✓"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter118_wifi_smartolt.py"
+  ],
+  "success_rate": {"backend": "100% (25/25)", "frontend": "n/a"},
+  "test_credentials": "auditor@example.com/auditor123 (atendente), admin@empresa.com/123456 (super admin), colaborador@empresa.com/123456 (RBAC 403)",
+  "seed_data_creation": "Nenhum dado permanente criado. Logs/notifications criados pelos testes são limpos por fixture clean_wifi_logs. Fixtures restauram subscribers.smartolt_onu_id/plan_id e smartolt_onus.status entre testes.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Antes de rodar o teste de change_wifi, limpar smartolt_config.rate_limited_until — o test fixture _reset_circuit_breaker já faz isso automaticamente. Subscriber premium fixo: sub-91c01c46fc / ONU 4954425332697d69 / plano plan-1b0578d85d (premium_features=['wifi_self_service']). Subscriber sem ONU usado: sub-c1a6d684e0 (Vando). ONU online alternativa: HWTC792DFCB1. Plano não-premium usado: plan-7e2605ff7d (Fibra 300 Mega). Em ambiente real SmartOLT retorna 405 (TR-069 desabilitado) — 502 TR069_FAILED é o caminho esperado e os testes já validam isso + a auditoria.",
+  "rca of the issue": "n/a — feature funcionando conforme spec"
+}

@@ -5,6 +5,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, History,
   Filter, Download, Printer, Mail, MessageCircle, RefreshCw, Phone,
 } from "lucide-react";
+import WifiStatusCard from "./WifiStatusCard";
 
 const STATUS_OPTIONS = [
   "ATIVO", "BLOQUEADO", "SUSPENSO", "CANCELADO",
@@ -558,6 +559,12 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
       <h3 style={{ margin: "0 0 16px", fontSize: 17, fontWeight: 700 }}>
         {data.id ? `Editar: ${data.name}` : "Novo assinante"}
       </h3>
+
+      {data.id && (
+        <WifiStatusCard subscriberId={data.id}
+                         subscriberName={data.name}
+                         canManage={true} />
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr 1fr", gap: 12 }}>
         <Field label="Nome completo *">
