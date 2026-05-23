@@ -1482,9 +1482,16 @@ async def stok_admin_reset_granular(payload: StokGranularResetIn,
             deleted["consumables_rows"] = r.deleted_count
 
     elif scope == "praca":
+        # Aceita praça vinda tanto de `db.pracas` (módulo Praças) quanto
+        # de `db.fin_filiais` (módulo Financeiro/Filiais). Frontend popula
+        # o dropdown a partir do praca_summary que consolida as duas.
         praca = await db.pracas.find_one(
             {"id": target, "company_id": cid}, {"_id": 0, "name": 1},
         )
+        if not praca:
+            praca = await db.fin_filiais.find_one(
+                {"id": target, "company_id": cid}, {"_id": 0, "name": 1},
+            )
         if not praca:
             raise HTTPException(404, "Praça não encontrada.")
         target_label = praca.get("name", target)
