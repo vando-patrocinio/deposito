@@ -1461,6 +1461,33 @@ const _th = { padding: "8px 10px", fontSize: 11, fontWeight: 700,
               borderBottom: "1px solid var(--border-default)" };
 const _td = { padding: "10px", fontSize: 12, verticalAlign: "middle" };
 
+
+// Componente compacto de KPI usado no ClientesSection (linha 1529+).
+// Mantido leve e isolado pra não acoplar com KpiCard mais ornamentado.
+function Metric({ label, value, hint }) {
+  return (
+    <div style={{
+      background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10,
+      padding: "10px 12px",
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b",
+                     textTransform: "uppercase", letterSpacing: 0.5 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a",
+                     marginTop: 2 }}>
+        {value}
+      </div>
+      {hint && (
+        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+          {hint}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function ClientesSection() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
