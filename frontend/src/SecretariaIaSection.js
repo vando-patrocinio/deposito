@@ -294,6 +294,9 @@ Sempre que o usuário fizer uma pergunta sobre dados operacionais (clientes, té
         <h4 style={{ margin: "10px 0 4px", fontSize: 12, fontWeight: 700, color: "#475569" }}>ChatGPT customizado</h4>
         <ChatGptStatusBadge status={cfg.chatgpt_status} />
 
+        {/* Botão Testar Webhook — valida o round-trip HTTP completo */}
+        <TestWebhookSection onTested={load} />
+
         <h4 style={{ margin: "14px 0 4px", fontSize: 12, fontWeight: 700, color: "#475569" }}>URL do Webhook</h4>
         <code style={{ ...codeBlock, display: "block", wordBreak: "break-all", padding: "8px 10px", fontSize: 11 }} data-testid="sec-gpt-webhook-url">
           {cfg.webhook_url}
@@ -307,6 +310,92 @@ Sempre que o usuário fizer uma pergunta sobre dados operacionais (clientes, té
     </div>
   );
 }
+
+function TestWebhookSection({ onTested }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [question, setQuestion] = useState("ping de teste — quantos clientes ativos?");
+
+  async function run() {
+    setBusy(true); setResult(null);
+    try {
+      const r = await api.secretariaTestWebhook(question);
+      setResult(r);
+      onTested?.();
+    } catch (e) {
+      setResult({
+        ok: false,
+        network: { error: e?.response?.data?.detail || e?.message || "Falha" },
+        answer: null,
+      });
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div data-testid="sec-test-webhook" style={{ marginTop: 10 }}>
+      <h4 style={{ margin: "10px 0 6px", fontSize: 12, fontWeight: 700, color: "#475569" }}>
+        Testar webhook agora
+      </h4>
+      <p style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5, margin: "0 0 8px" }}>
+        Dispara uma chamada HTTP real ao próprio webhook (igualzinho ao ChatGPT faz).
+        Valida token, conectividade e a resposta da IA — tudo em 1 clique.
+      </p>
+      <input type="text" value={question} onChange={(e) => setQuestion(e.target.value)}
+        placeholder="Pergunta de teste..." disabled={busy}
+        data-testid="sec-test-webhook-question"
+        style={{ width: "100%", padding: "6px 10px", border: "1px solid #cbd5e1",
+                  borderRadius: 6, fontSize: 12, marginBottom: 8 }} />
+      <button onClick={run} disabled={busy}
+        data-testid="sec-test-webhook-btn"
+        style={{ width: "100%", padding: "8px 12px",
+                 background: busy ? "#cbd5e1" : "#0d9488",
+                 color: "white", border: "none", borderRadius: 6,
+                 fontSize: 12, fontWeight: 700,
+                 cursor: busy ? "wait" : "pointer", marginBottom: 8 }}>
+        {busy ? "Testando webhook…" : "Testar webhook agora"}
+      </button>
+      {result && (
+        <div data-testid="sec-test-webhook-result" style={{
+          padding: 10,
+          background: result.ok ? "#ecfdf5" : "#fef2f2",
+          border: `1px solid ${result.ok ? "#6ee7b7" : "#fecaca"}`,
+          borderRadius: 8, fontSize: 11, lineHeight: 1.55,
+          color: result.ok ? "#065f46" : "#991b1b",
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>
+            {result.ok ? "✓ Webhook respondeu OK" : "✗ Falhou"}
+            {result.network?.elapsed_ms != null && (
+              <span style={{ marginLeft: 6, fontWeight: 500, opacity: 0.7 }}>
+                ({result.network.elapsed_ms} ms)
+              </span>
+            )}
+          </div>
+          {result.network?.status && (
+            <div>HTTP <code style={{ background: "rgba(0,0,0,.06)", padding: "1px 4px",
+                                          borderRadius: 3 }}>{result.network.status}</code>
+              {result.iterations > 0 && <> · {result.iterations} iteração(ões) de IA</>}
+            </div>
+          )}
+          {result.answer && (
+            <div style={{ marginTop: 6, padding: 6,
+                            background: "rgba(255,255,255,.6)", borderRadius: 4 }}>
+              <span style={{ color: "#64748b" }}>Resposta da IA:</span>
+              <br />
+              <em style={{ color: "#0f172a" }}>"{result.answer.slice(0, 280)}"</em>
+            </div>
+          )}
+          {result.network?.error && (
+            <div style={{ marginTop: 6, fontSize: 10,
+                            fontFamily: "JetBrains Mono, monospace" }}>
+              {result.network.error}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function ChatGptStatusBadge({ status }) {
   const s = status || {};

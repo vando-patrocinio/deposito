@@ -7,10 +7,12 @@ import {
   Sparkles, Building2, DollarSign, Star, Wand2, ArrowUp, QrCode,
 } from "lucide-react";
 import WhatsAppQRPanel from "@/WhatsAppQRPanel";
+import WhatsAppChannelsPanel from "@/WhatsAppChannelsPanel";
 import IntegrationsConfigPanel from "@/IntegrationsConfigPanel";
 
 const BASE_TABS = [
   { id: "whatsapp_qr", label: "WhatsApp", icon: QrCode, dynamic: true },
+  { id: "channels", label: "Canais", icon: Plug },
   { id: "configuracao", label: "Configuração", icon: Settings },
 ];
 
@@ -107,6 +109,7 @@ export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
           <WhatsAppQRPanel />
         </ChatErrorBoundary>
       )}
+      {tab === "channels" && <WhatsAppChannelsPanel />}
       {tab === "configuracao" && <IntegrationsConfigPanel />}
       {tab === "mensagem" && <MensagemTab />}
       {tab === "playground" && <PlaygroundTab />}

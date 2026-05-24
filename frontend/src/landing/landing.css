@@ -1,0 +1,33 @@
+/* SmartProv Landing - Design Tokens (Outfit + DM Sans, blueprint Swiss High-Contrast).
+   Importado uma vez em ProviderLanding pra carregar fontes Google. */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+.sp-landing { font-family: 'DM Sans', system-ui, sans-serif; color: #0F172A; background: #FAFAFA; }
+.sp-landing .display { font-family: 'Outfit', sans-serif; letter-spacing: -0.04em; }
+.sp-landing .eyebrow { font-family: 'Outfit', sans-serif; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.22em; font-size: 11px; color: #4F46E5; }
+.sp-landing button, .sp-landing input, .sp-landing select { font-family: inherit; }
+
+/* Marquee infinito de logos de combos */
+@keyframes sp-marquee { 0% { transform: translateX(0) } 100% { transform: translateX(-50%) } }
+.sp-marquee-track { animation: sp-marquee 28s linear infinite; }
+
+/* Pulse no card "MAIS VENDIDO" */
+@keyframes sp-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79,70,229,.45), 0 24px 56px -16px rgba(79,70,229,.45); }
+  50%      { box-shadow: 0 0 0 14px rgba(79,70,229,0),  0 28px 64px -16px rgba(79,70,229,.55); }
+}
+.sp-best-pulse { animation: sp-pulse 2.4s ease-in-out infinite; }
+
+/* WhatsApp floating pulse */
+@keyframes sp-whats-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(37,211,102,.55); }
+  100% { box-shadow: 0 0 0 22px rgba(37,211,102,0); }
+}
+.sp-whats-pulse::before {
+  content: ""; position: absolute; inset: 0; border-radius: 9999px;
+  animation: sp-whats-pulse 1.8s infinite;
+}
+
+/* Scroll suave */
+html { scroll-behavior: smooth; }

@@ -405,7 +405,10 @@ async def create_cto(body: CTOCreateIn,
         raise HTTPException(400, "Splitter é obrigatório em rede desbalanceada")
 
     cid = _user_company(user)
-    sigla_u = body.sigla.upper()
+    # Normaliza sigla (remove acentos): "BRÁ" → "BRA"
+    import unicodedata as _u
+    sigla_u = "".join(c for c in _u.normalize("NFD", body.sigla or "")
+                       if _u.category(c) != "Mn").upper().strip()
 
     # Re-valida que o bairro/sigla existe na tabela admin
     bmap = await db.bairros_vlan_map.find_one(
@@ -1689,7 +1692,13 @@ async def public_create_cto(collab_id: str, body: CTOCreateIn):
     if not coll:
         raise HTTPException(404, "Colaborador não encontrado")
     cid = coll.get("company_id") or DEMO_COMPANY_ID
-    sigla_u = body.sigla.upper()
+
+    # Normaliza a sigla: remove acentos e maiúsculas (resiliente a versões
+    # antigas do app que mandavam sigla com acento — "BRÁ" → "BRA")
+    import unicodedata as _u
+    _norm = "".join(c for c in _u.normalize("NFD", body.sigla or "")
+                     if _u.category(c) != "Mn")
+    sigla_u = _norm.upper().strip()
 
     bmap = await db.bairros_vlan_map.find_one(
         {"company_id": cid, "sigla": sigla_u}, {"_id": 0},

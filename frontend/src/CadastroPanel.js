@@ -50,6 +50,7 @@ const EMPTY = {
   clock_in_enabled: true,
   active: true,
   can_attend_whatsapp: false,  // só auditor libera (UI condicional)
+  requires_vehicle: false,  // Frota: técnico/instalador opera veículo (gera vistoria semanal)
 };
 
 export default function CadastroPanel() {
@@ -100,6 +101,7 @@ export default function CadastroPanel() {
         is_test_mode: !!c.is_test_mode,
         active: c.active !== false,
         can_attend_whatsapp: !!c.can_attend_whatsapp,  // preserva flag de Atendimento WhatsApp
+        requires_vehicle: !!c.requires_vehicle,  // preserva flag de frota
         clock_in_enabled: next,
       });
       setFlash(`✅ ${c.name} agora ${next ? "BATE PONTO" : "NÃO BATE PONTO"}.`);
@@ -168,6 +170,7 @@ export default function CadastroPanel() {
       clock_in_enabled: c.clock_in_enabled !== false,  // default true (legado)
       active: c.active !== false,  // default true
       can_attend_whatsapp: !!c.can_attend_whatsapp,
+      requires_vehicle: !!c.requires_vehicle,
       avatar_data_url: c.avatar_data_url || c.foto_id || "",
       foto_id: c.foto_id || c.avatar_data_url || "",
     });
@@ -807,6 +810,33 @@ export default function CadastroPanel() {
                   Ao desativar, o colaborador <strong>não bate mais ponto</strong> e some das listas operacionais.
                   {' '}Se ele tiver itens em custódia ativos, ao salvar você verá a lista pra cobrar/devolver e
                   poderá imprimir o romaneio.
+                </div>
+              </div>
+            </label>
+          </div>
+
+          {/* Frota — opera veículo? (gera vistoria semanal automática) */}
+          <div data-testid="fleet-perm-block" style={{
+            background: form.requires_vehicle ? "#fff7ed" : "#f8fafc",
+            border: `2px solid ${form.requires_vehicle ? "#fb923c" : "#e2e8f0"}`,
+            borderRadius: 14, padding: 12, marginTop: 12, marginBottom: 6,
+            transition: "all .2s",
+          }}>
+            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+              <input
+                data-testid="inp-requires-vehicle"
+                type="checkbox"
+                checked={!!form.requires_vehicle}
+                onChange={(e) => setForm({ ...form, requires_vehicle: e.target.checked })}
+                style={{ marginTop: 3, transform: "scale(1.4)" }}
+              />
+              <div>
+                <strong style={{ color: form.requires_vehicle ? "#9a3412" : "#0f172a" }}>
+                  🚗 {form.requires_vehicle ? "Opera veículo da empresa" : "Não opera veículo"}
+                </strong>
+                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                  Quando marcado, o colaborador <strong>fará vistoria semanal</strong> obrigatória do veículo
+                  (5 fotos + KM, com validação por IA) e poderá receber transferências de frota com assinatura digital.
                 </div>
               </div>
             </label>

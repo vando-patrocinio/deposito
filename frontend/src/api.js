@@ -221,6 +221,161 @@ export const api = {
   lousaAiRankings: (days = 30) => client.get(`/lousa/ai-rankings`, { params: { days } }).then((r) => r.data),
   lousaBulkAction: (data) => client.post(`/lousa/tickets/bulk-action`, data).then((r) => r.data),
   lousaBulkAiEvaluate: (ticket_ids) => client.post(`/lousa/tickets/bulk-ai-evaluate`, { ticket_ids }).then((r) => r.data),
+  // Manager callbacks — pedidos do técnico pra gestor entrar em contato
+  lousaManagerCallbacks: (status = "pending", limit = 50) =>
+    client.get(`/lousa/manager-callbacks`,
+      { params: { status, limit } }).then((r) => r.data),
+  lousaManagerCallbackResolve: (req_id, data) =>
+    client.post(`/lousa/manager-callbacks/${req_id}/resolve`, data)
+      .then((r) => r.data),
+  lousaManagerCallbackReleaseBack: (req_id, data) =>
+    client.post(`/lousa/manager-callbacks/${req_id}/release-back`, data)
+      .then((r) => r.data),
+  lousaManagerCallbackCreateNewTicket: (req_id, data) =>
+    client.post(`/lousa/manager-callbacks/${req_id}/create-new-ticket`, data)
+      .then((r) => r.data),
+  // RADIUS / PPPoE — Módulo 2
+  radiusDashboard: () => client.get(`/radius/dashboard`).then((r) => r.data),
+  radiusSessionsActive: (params = {}) =>
+    client.get(`/radius/sessions/active`, { params }).then((r) => r.data),
+  radiusSessionsHistory: (params = {}) =>
+    client.get(`/radius/sessions/history`, { params }).then((r) => r.data),
+  radiusDisconnect: (sid) =>
+    client.post(`/radius/sessions/${sid}/disconnect`).then((r) => r.data),
+  radiusNasList: () => client.get(`/radius/nas`).then((r) => r.data),
+  radiusNasUpsert: (data) =>
+    client.post(`/radius/nas`, data).then((r) => r.data),
+  radiusNasDelete: (id) =>
+    client.delete(`/radius/nas/${id}`).then((r) => r.data),
+  radiusNasTest: (id, body) =>
+    client.post(`/radius/nas/${id}/test-connection`, body).then((r) => r.data),
+  radiusLogs: (params = {}) =>
+    client.get(`/radius/logs`, { params }).then((r) => r.data),
+  // Payment gateways (Asaas, Cora, ...)
+  paymentsGatewaysStatus: () =>
+    client.get(`/payments/gateways/status`).then((r) => r.data),
+  paymentsCustomerSync: (subscriberId, body = { gateway: "asaas" }) =>
+    client.post(`/payments/customers/${subscriberId}/sync`, body).then((r) => r.data),
+  paymentsChargesList: (params = {}) =>
+    client.get(`/payments/charges`, { params }).then((r) => r.data),
+  paymentsChargeCreate: (body) =>
+    client.post(`/payments/charges`, body).then((r) => r.data),
+  paymentsChargeGet: (id, refresh = false) =>
+    client.get(`/payments/charges/${id}`,
+      { params: refresh ? { refresh: true } : {} }).then((r) => r.data),
+  paymentsChargeCancel: (id) =>
+    client.post(`/payments/charges/${id}/cancel`).then((r) => r.data),
+  paymentsChargeRefund: (id, value) =>
+    client.post(`/payments/charges/${id}/refund`,
+      value != null ? { value } : null).then((r) => r.data),
+  // Site público (landing do provedor)
+  siteConfigGet: () => client.get(`/site/config`).then((r) => r.data),
+  siteConfigUpdate: (data) =>
+    client.put(`/site/config`, data).then((r) => r.data),
+  siteLeadsList: (params = {}) =>
+    client.get(`/site/leads`, { params }).then((r) => r.data),
+  siteLeadUpdate: (id, data) =>
+    client.put(`/site/leads/${id}`, data).then((r) => r.data),
+  // Fleet (Frota)
+  fleetVehicleList: (params = {}) =>
+    client.get(`/fleet/vehicles`, { params }).then((r) => r.data),
+  fleetVehicleCreate: (data) =>
+    client.post(`/fleet/vehicles`, data).then((r) => r.data),
+  fleetVehicleUpdate: (id, data) =>
+    client.put(`/fleet/vehicles/${id}`, data).then((r) => r.data),
+  fleetVehicleAssign: (id, collabId) =>
+    client.post(`/fleet/vehicles/${id}/assign`,
+      null, { params: { collaborator_id: collabId } }).then((r) => r.data),
+  fleetVehicleKpis: (id) =>
+    client.get(`/fleet/vehicles/${id}/kpis`).then((r) => r.data),
+  fleetVehicleDelete: (id) =>
+    client.delete(`/fleet/vehicles/${id}`).then((r) => r.data),
+  fleetInspectionDelete: (id) =>
+    client.delete(`/fleet/inspections/${id}`).then((r) => r.data),
+  fleetFuelDelete: (id) =>
+    client.delete(`/fleet/fuel/${id}`).then((r) => r.data),
+  fleetFuelImportCsv: (csv_content, opts = {}) =>
+    client.post("/fleet/fuel/import-csv", {
+      csv_content, delimiter: opts.delimiter || ";",
+      dry_run: opts.dry_run !== false,
+    }).then((r) => r.data),
+  fleetTransferDelete: (id) =>
+    client.delete(`/fleet/transfers/${id}`).then((r) => r.data),
+  fleetInspectionStart: (vehicleId) =>
+    client.post(`/fleet/inspections/start`,
+      vehicleId ? { vehicle_id: vehicleId } : {}).then((r) => r.data),
+  fleetInspectionUpload: (id, body) =>
+    client.post(`/fleet/inspections/${id}/upload-photo`,
+      body).then((r) => r.data),
+  fleetInspectionSubmit: (id) =>
+    client.post(`/fleet/inspections/${id}/submit`).then((r) => r.data),
+  fleetInspectionList: (params = {}) =>
+    client.get(`/fleet/inspections`, { params }).then((r) => r.data),
+  fleetInspectionGet: (id) =>
+    client.get(`/fleet/inspections/${id}`).then((r) => r.data),
+  fleetInspectionManualApprove: (id) =>
+    client.post(`/fleet/inspections/${id}/manual-approve`).then((r) => r.data),
+  fleetCanOperate: () =>
+    client.get(`/fleet/me/can-operate`).then((r) => r.data),
+  fleetTransferList: (params = {}) =>
+    client.get(`/fleet/transfers`, { params }).then((r) => r.data),
+  fleetTransferCreate: (data) =>
+    client.post(`/fleet/transfers`, data).then((r) => r.data),
+  fleetTransferSign: (id, data) =>
+    client.post(`/fleet/transfers/${id}/sign`, data).then((r) => r.data),
+  fleetTransferApprove: (id) =>
+    client.post(`/fleet/transfers/${id}/approve`).then((r) => r.data),
+  fleetTransferPdfUrl: (id) => {
+    const base = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
+    const token = window.localStorage.getItem("ponto_token") || "";
+    // Endpoint usa StreamingResponse inline → abrir em _blank é suficiente.
+    // Como /api/fleet exige auth, anexamos token via querystring se backend aceita,
+    // senão usa via fetch + blob.
+    return `${base}/api/fleet/transfers/${id}/pdf?__t=${encodeURIComponent(token)}`;
+  },
+  fleetTransferPdfBlob: async (id) => {
+    const r = await client.get(`/fleet/transfers/${id}/pdf`,
+      { responseType: "blob" });
+    return r.data;
+  },
+  fleetFuelList: (params = {}) =>
+    client.get(`/fleet/fuel`, { params }).then((r) => r.data),
+  fleetFuelCreate: (data) =>
+    client.post(`/fleet/fuel`, data).then((r) => r.data),
+  fleetFuelOcr: (receipt_data_url) =>
+    client.post(`/fleet/fuel/ocr`,
+      { receipt_data_url }).then((r) => r.data),
+  fleetKpis: () =>
+    client.get(`/fleet/kpis`).then((r) => r.data),
+  // Payment gateways (Asaas, Cora, ...)
+  // Contratos / aging policy
+  contractsList: (params = {}) =>
+    client.get(`/contracts`, { params }).then((r) => r.data),
+  contractsCreate: (data) =>
+    client.post(`/contracts`, data).then((r) => r.data),
+  contractsGet: (id) =>
+    client.get(`/contracts/${id}`).then((r) => r.data),
+  contractsPatch: (id, data) =>
+    client.patch(`/contracts/${id}`, data).then((r) => r.data),
+  contractsSuspend: (id, reason) =>
+    client.post(`/contracts/${id}/suspend`, { reason })
+      .then((r) => r.data),
+  contractsReactivate: (id, reason) =>
+    client.post(`/contracts/${id}/reactivate`, { reason })
+      .then((r) => r.data),
+  contractsApplyRadius: (id) =>
+    client.post(`/contracts/${id}/apply-radius`).then((r) => r.data),
+  contractsLog: (id, limit = 50) =>
+    client.get(`/contracts/${id}/log`, { params: { limit } })
+      .then((r) => r.data),
+  contractsAgingRunNow: () =>
+    client.post(`/contracts/aging/run-now`).then((r) => r.data),
+  // Clients segments (estilo Atlaz)
+  clientsSegment: (segment, search = "", limit = 200) =>
+    client.get(`/clients-segments/${segment}`,
+      { params: { search, limit } }).then((r) => r.data),
+  clientsSegmentCounts: () =>
+    client.get(`/clients-segments/_counts/dashboard`).then((r) => r.data),
   // Atlaz integração
   atlazGetSettings: () => client.get(`/atlaz/settings`).then((r) => r.data),
   atlazUpdateSettings: (data) => client.put(`/atlaz/settings`, data).then((r) => r.data),
@@ -631,6 +786,20 @@ export const api = {
     client.post(`/aihub/agents/text-gen`, payload).then((r) => r.data),
   // ===== WhatsApp Baileys (QR) =====
   waBaileysQR: () => client.get(`/whatsapp-baileys/qr`).then((r) => r.data),
+  // ===== WhatsApp Channels (multi-number) =====
+  waChannelsList: () => client.get(`/whatsapp-channels`).then((r) => r.data),
+  waChannelRename: (channelId, name) =>
+    client.patch(`/whatsapp-channels/${channelId}`,
+                  { channel_name: name }).then((r) => r.data),
+  waChannelSetDefault: (channelId) =>
+    client.post(`/whatsapp-channels/${channelId}/set-default-outbound`)
+      .then((r) => r.data),
+  waChannelQR: (channelId) =>
+    client.get(`/whatsapp-channels/${channelId}/qr`).then((r) => r.data),
+  waChannelStatus: (channelId) =>
+    client.get(`/whatsapp-channels/${channelId}/status`).then((r) => r.data),
+  waChannelLogout: (channelId) =>
+    client.post(`/whatsapp-channels/${channelId}/logout`).then((r) => r.data),
   waBaileysRefreshQR: () => client.post(`/whatsapp-baileys/qr/refresh`).then((r) => r.data),
   waBaileysStatus: () => client.get(`/whatsapp-baileys/status`).then((r) => r.data),
   waBaileysSend: (phone, text, polishedByAi = false) =>
@@ -898,6 +1067,39 @@ export const api = {
   // ----- Wi-Fi self-service (TR-069 via SmartOLT) -----
   wifiStatus: (sid) =>
     client.get(`/wifi/subscriber/${sid}/status`).then((r) => r.data),
+  // ----- Billing Engine (Módulo 1 — substituição do Atlaz) -----
+  billingStats: (params = {}) =>
+    client.get(`/billing/stats`, { params }).then((r) => r.data),
+  billingInvoicesList: (params = {}) =>
+    client.get(`/billing/invoices`, { params }).then((r) => r.data),
+  billingInvoiceGet: (id) =>
+    client.get(`/billing/invoices/${id}`).then((r) => r.data),
+  billingInvoiceCreate: (data) =>
+    client.post(`/billing/invoices`, data).then((r) => r.data),
+  billingInvoiceMarkPaid: (id, data = {}) =>
+    client.post(`/billing/invoices/${id}/mark-paid`, data).then((r) => r.data),
+  billingInvoiceCancel: (id) =>
+    client.post(`/billing/invoices/${id}/cancel`).then((r) => r.data),
+  billingInvoiceDelete: (id) =>
+    client.delete(`/billing/invoices/${id}`).then((r) => r.data),
+  billingGenerateBatch: (data) =>
+    client.post(`/billing/generate-batch`, data).then((r) => r.data),
+  billingGenerateBatchPreview: (competence) =>
+    client.get(`/billing/generate-batch/preview`,
+      { params: { competence } }).then((r) => r.data),
+  billingDunningRulesGet: () =>
+    client.get(`/billing/dunning-rules`).then((r) => r.data),
+  billingDunningRulesUpdate: (rules) =>
+    client.put(`/billing/dunning-rules`, { rules }).then((r) => r.data),
+  billingDunningRun: (dryRun = false) =>
+    client.post(`/billing/dunning-rules/run`,
+      null, { params: { dry_run: dryRun } }).then((r) => r.data),
+  billingDunningEventsList: (params = {}) =>
+    client.get(`/billing/dunning-events`, { params }).then((r) => r.data),
+  billingRunsList: (limit = 50) =>
+    client.get(`/billing/runs`, { params: { limit } }).then((r) => r.data),
+  billingBackfillPhones: () =>
+    client.post(`/billing/invoices/backfill-phones`).then((r) => r.data),
   wifiLinkOnu: (sid, smartolt_onu_id) =>
     client.post(`/wifi/subscriber/${sid}/link-onu`, { smartolt_onu_id })
           .then((r) => r.data),
@@ -907,8 +1109,24 @@ export const api = {
     client.post(`/wifi/subscriber/${sid}/auto-match`).then((r) => r.data),
   wifiChange: (sid, payload) =>
     client.post(`/wifi/subscriber/${sid}/change`, payload).then((r) => r.data),
+  // Pesquisa de endereço (Nominatim via backend)
+  searchAddress: (q) =>
+    client.get(`/lousa/map/search-address`, { params: { q } })
+          .then((r) => r.data),
+
   wifiLogs: (sid) =>
     client.get(`/wifi/subscriber/${sid}/logs`).then((r) => r.data),
+
+  // Lousa Map — pinos de serviços por técnico
+  lousaMapServices: (params = {}) =>
+    client.get(`/lousa/map/services`, { params }).then((r) => r.data),
+  lousaMapGeocodeNow: (max_count = 60) =>
+    client.post(`/lousa/map/geocode-now`, null, { params: { max_count } })
+          .then((r) => r.data),
+  wifiReadLive: (sid) =>
+    client.get(`/wifi/subscriber/${sid}/read-live`).then((r) => r.data),
+  wifiReadLogs: (sid) =>
+    client.get(`/wifi/subscriber/${sid}/read-logs`).then((r) => r.data),
   wifiRebootOnu: (sid) =>
     client.post(`/wifi/subscriber/${sid}/reboot-onu`).then((r) => r.data),
   wifiLeadsList: (params = {}) =>
@@ -950,6 +1168,10 @@ export const api = {
   secretariaConfig: () => client.get(`/secretaria/config`).then((r) => r.data),
   secretariaRegenerateToken: () =>
     client.post(`/secretaria/regenerate-token`).then((r) => r.data),
+  secretariaTestWebhook: (question) =>
+    client.post(`/secretaria/test-webhook`,
+      { question: question || "ping de teste" },
+      { timeout: 90000 }).then((r) => r.data),
   secretariaLogs: (limit = 50) =>
     client.get(`/secretaria/logs`, { params: { limit } }).then((r) => r.data),
 
@@ -987,10 +1209,51 @@ export const api = {
     client.put(`/ai-training/schedule`, data).then((r) => r.data),
   driveBackupNow: (include_secrets = false) =>
     client.post(`/drive/backup`, { include_secrets }).then((r) => r.data),
+  driveBackupLocalUrl: (include_secrets = false, include_files = true) => {
+    // Retorna URL direta pro download — usado em <a href> ou window.open.
+    // Inclui o JWT como `?t=` pois o navegador não envia headers customizados
+    // em navegação direta.
+    const params = new URLSearchParams({
+      include_secrets: include_secrets ? "true" : "false",
+      include_files: include_files ? "true" : "false",
+    });
+    const tok = localStorage.getItem("ponto_token");
+    if (tok) params.set("t", tok);
+    return `${client.defaults.baseURL.replace(/\/$/, "")}/drive/backup-local?${params}`;
+  },
+  driveBackupLocal: async (include_secrets = false, include_files = true) => {
+    // Faz POST autenticado e retorna o Blob pra dar download via JS
+    const params = new URLSearchParams({
+      include_secrets: include_secrets ? "true" : "false",
+      include_files: include_files ? "true" : "false",
+    });
+    const res = await client.post(`/drive/backup-local?${params}`, null, {
+      responseType: "blob",
+      timeout: 600000,  // 10 min — backup pode ser pesado
+    });
+    // Extract filename from Content-Disposition
+    const cd = res.headers["content-disposition"] || "";
+    const match = cd.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : `smartprov-backup-${Date.now()}.zip`;
+    return { blob: res.data, filename, size: res.data.size };
+  },
   driveBackupList: () => client.get(`/drive/backups`).then((r) => r.data),
   driveRemoteFiles: () => client.get(`/drive/remote-files`).then((r) => r.data),
   driveRestore: (file_id, mode = "merge", collections = null) =>
     client.post(`/drive/restore`, { file_id, mode, collections }).then((r) => r.data),
+  driveSnapshotInfo: () =>
+    client.get(`/drive/snapshot-info`).then((r) => r.data),
+  driveRestoreUpload: (file, mode = "merge", onUploadProgress, filesTarball = null) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("mode", mode);
+    if (filesTarball) fd.append("files_tarball", filesTarball);
+    return client.post(`/drive/restore-upload`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress,
+      timeout: 240000,  // 4 min — tarball pode ser pesado
+    }).then((r) => r.data);
+  },
 
   // Conexões (card unificado em Settings)
   connectionsList: () => client.get(`/connections/`).then((r) => r.data),
@@ -1126,6 +1389,45 @@ export const api = {
 
   // ===== Rede IA Map =====
   redeIaMapData: () => client.get(`/rede-ia/map/data`).then((r) => r.data),
+  // Signal points (mancha de clientes com sinal ruim/crítico)
+  redeIaSignalPoints: (status = "all", geocode_max = 15) =>
+    client.get(`/rede-ia/map/signal-points`,
+               { params: { status, geocode_max } })
+          .then((r) => r.data),
+  redeIaSignalGeocodeBatch: (max_count = 60) =>
+    client.post(`/rede-ia/map/signal-points/geocode-batch`,
+                null, { params: { max_count } })
+          .then((r) => r.data),
+  // KMZ — export/import da topologia
+  redeIaExportKmzUrl: (vlan = null) => {
+    const tok = localStorage.getItem("ponto_token");
+    const params = new URLSearchParams();
+    if (vlan != null && vlan !== "") params.set("vlan", vlan);
+    if (tok) params.set("t", tok);
+    return `${client.defaults.baseURL.replace(/\/$/, "")}`
+           + `/rede-ia/map/export-kmz?${params}`;
+  },
+  redeIaExportKmz: async (vlan = null) => {
+    const params = {};
+    if (vlan != null && vlan !== "") params.vlan = vlan;
+    const r = await client.get(`/rede-ia/map/export-kmz`, {
+      params, responseType: "blob",
+    });
+    const cd = r.headers["content-disposition"] || "";
+    const m = /filename="([^"]+)"/.exec(cd);
+    const filename = m ? m[1]
+      : `smartprov-topologia-${Date.now()}.kmz`;
+    return { blob: r.data, filename };
+  },
+  redeIaImportKmz: async (file, dry_run = false) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await client.post(`/rede-ia/map/import-kmz`, fd, {
+      params: { dry_run },
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return r.data;
+  },
   redeIaCeCreate: (data) => client.post(`/rede-ia/ces`, data).then((r) => r.data),
   redeIaCeUpdate: (id, data) => client.put(`/rede-ia/ces/${id}`, data).then((r) => r.data),
   redeIaCeDelete: (id) => client.delete(`/rede-ia/ces/${id}`).then((r) => r.data),

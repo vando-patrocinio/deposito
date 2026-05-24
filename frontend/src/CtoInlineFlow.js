@@ -65,11 +65,15 @@ export default function CtoInlineFlow({
   const [err, setErr] = useState("");
   const fileInputRef = useRef(null);
 
-  // Sigla padrão do bairro detectado (fallback simples: 3 primeiras letras maiúsculas)
+  // Sigla padrão do bairro detectado (3 primeiras letras maiúsculas, SEM
+  // acentos — pra bater com a normalização do backend que armazena
+  // siglas ASCII no bairros_vlan_map).
   const autoSigla = useMemo(() => {
     const b = (state?.address?.bairro_detected || "").trim();
     if (!b) return "";
-    return b.replace(/[^A-Za-zÀ-ÿ]/g, "").toUpperCase().slice(0, 3);
+    // Remove acentos via NFD + filtra diacríticos (combining marks)
+    const noAccents = b.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return noAccents.replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 3);
   }, [state?.address?.bairro_detected]);
 
   const onPhotoChange = useCallback((e) => {

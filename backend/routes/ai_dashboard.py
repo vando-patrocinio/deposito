@@ -967,3 +967,252 @@ async def manufacturer_quality(days: int = 90,
         "unmatched_calls": unmatched_calls,
         "rows": rows,
     }
+
+
+
+# ===========================================================================
+# Clients per District — agrupa assinantes por bairro com normalização
+# inteligente (fuzzy + opcional LLM) pra unificar variações ortográficas
+#
+# Exemplos automáticos:
+#   "Cordovil" = "CORDOVIL" = "cordovil"  (case)
+#   "Brás de Pina" = "Bras de Pina" = "Braz de Pina"  (acento + s/z)
+#   "Sao Joao" = "São João"  (acentos)
+#
+# Algoritmo:
+#  1. Extrai bairro de cada subscriber (campos: bairro, district, address)
+#  2. Normaliza (NFD remove acentos, lowercase, trim, replace z→s)
+#  3. Agrupa por chave normalizada
+#  4. Para chaves diferentes mas SequenceMatcher.ratio >= 0.86 → merge
+#  5. Retorna ranking top N com %, count, lista de variações originais
+# ===========================================================================
+def _normalize_district(name: str) -> str:
+    """Chave de canonização: ASCII lowercase com substitutos comuns
+    (z→s, ph→f, espaços comprimidos, sem pontuação)."""
+    import unicodedata as _u
+    if not name: return ""
+    # Remove acentos via NFD + filtra diacríticos
+    s = "".join(c for c in _u.normalize("NFD", name)
+                 if _u.category(c) != "Mn")
+    s = s.lower().strip()
+    # Remove pontuação básica e múltiplos espaços
+    s = re.sub(r"[^a-z0-9\s]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    # Trocas fonéticas comuns em português
+    s = s.replace("ph", "f").replace("ch", "x").replace("th", "t")
+    # z/s no final ou antes de vogal (braz→bras, jose→jose)
+    s = re.sub(r"z(?=\s|$)", "s", s)
+    s = re.sub(r"\bbraz\b", "bras", s)
+    # Remove "de", "da", "do" entre palavras pra robustez
+    # (mantém quando faz parte de nome composto curto)
+    return s
+
+
+def _extract_district(sub: dict) -> tuple[str, str]:
+    """Tenta extrair (bairro, cidade) de um documento de subscriber.
+
+    Schema do SmartProv: addresses[] com is_primary=True, e
+    primary_address_summary = "Rua X, Bairro, Cidade".
+    """
+    # Tenta primeiro o endereço primário em addresses[]
+    addrs = sub.get("addresses") or []
+    if isinstance(addrs, list) and addrs:
+        primary = next((a for a in addrs if isinstance(a, dict)
+                         and a.get("is_primary")), addrs[0])
+        if isinstance(primary, dict):
+            d = primary.get("district") or primary.get("neighborhood")
+            if d and str(d).strip():
+                return str(d).strip(), str(primary.get("city") or "").strip()
+
+    # Campos top-level (fallback legacy)
+    candidates = [
+        sub.get("bairro"), sub.get("district"), sub.get("neighborhood"),
+        sub.get("province"), sub.get("address_district"),
+    ]
+    for c in candidates:
+        if isinstance(c, str) and c.strip():
+            return c.strip(), str(sub.get("city") or sub.get("cidade") or "")
+
+    # Parse de address livre: "Rua X, 100, Bairro Y, Cidade"
+    summary = sub.get("primary_address_summary") or sub.get("address") or ""
+    if isinstance(summary, str) and "," in summary:
+        parts = [p.strip() for p in summary.split(",") if p.strip()]
+        # primary_address_summary é "Rua N, Bairro, Cidade" → bairro=parts[1]
+        if len(parts) >= 2:
+            return parts[1], parts[2] if len(parts) >= 3 else ""
+    return "", ""
+
+
+@router.get("/clients-per-district")
+async def clients_per_district(
+    top: int = 25,
+    fuzzy_threshold: float = 0.86,
+    user: dict = Depends(require_role(
+        "administrador", "gestor", "auditor", "comercial", "financeiro")),
+):
+    """Distribuição de assinantes por bairro com clustering fuzzy.
+
+    Params:
+      top: quantos bairros retornar no ranking
+      fuzzy_threshold: similaridade SequenceMatcher pra mesclar (0.0–1.0)
+    """
+    from difflib import SequenceMatcher
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    cursor = db.subscribers.find(
+        {"company_id": cid},
+        {"_id": 0, "addresses": 1, "primary_address_summary": 1,
+          "bairro": 1, "district": 1, "neighborhood": 1,
+          "province": 1, "address_district": 1, "address": 1, "status": 1,
+          "city": 1, "cidade": 1},
+    )
+    subs = await cursor.to_list(50000)
+    total_subs = len(subs)
+    total_active = sum(1 for s in subs
+                       if (s.get("status") or "").upper() not in
+                       ("CANCELADO", "INATIVO", "BLOQUEADO"))
+
+    # Step 1: agrupa por chave normalizada
+    groups: Dict[str, Dict[str, Any]] = {}
+    no_district = 0
+    for s in subs:
+        raw, city = _extract_district(s)
+        if not raw:
+            no_district += 1
+            continue
+        key = _normalize_district(raw)
+        if not key:
+            no_district += 1
+            continue
+        g = groups.setdefault(key, {
+            "key": key, "count": 0, "active_count": 0,
+            "variations": Counter(), "city": None,
+        })
+        g["count"] += 1
+        if (s.get("status") or "").upper() not in (
+                "CANCELADO", "INATIVO", "BLOQUEADO"):
+            g["active_count"] += 1
+        g["variations"][raw] += 1
+        if not g["city"] and city:
+            g["city"] = city
+
+    # Step 2: fuzzy merge — combina chaves com similarity >= threshold
+    keys = sorted(groups.keys(), key=lambda k: -groups[k]["count"])
+    merged: Dict[str, Dict[str, Any]] = {}
+    for k in keys:
+        merged_into = None
+        for mk in merged:
+            ratio = SequenceMatcher(None, k, mk).ratio()
+            if ratio >= fuzzy_threshold:
+                merged_into = mk
+                break
+        if merged_into:
+            target = merged[merged_into]
+            src = groups[k]
+            target["count"] += src["count"]
+            target["active_count"] += src["active_count"]
+            target["variations"].update(src["variations"])
+            target["merged_keys"].append(k)
+        else:
+            merged[k] = {**groups[k], "merged_keys": [k]}
+
+    # Step 3: ranking com %
+    items: List[Dict[str, Any]] = []
+    total_with_district = sum(g["count"] for g in merged.values())
+    for g in merged.values():
+        variations_list = g["variations"].most_common()
+        # Canonical name = variação mais frequente, capitalizada
+        canonical_raw = variations_list[0][0] if variations_list else g["key"]
+        canonical = canonical_raw.strip().title()
+        pct = (g["count"] / total_with_district * 100) if total_with_district else 0.0
+        pct_active = (g["active_count"] / total_active * 100) if total_active else 0.0
+        items.append({
+            "canonical_name": canonical,
+            "count": g["count"],
+            "active_count": g["active_count"],
+            "pct_total": round(pct, 2),
+            "pct_active": round(pct_active, 2),
+            "city": g["city"] or "",
+            "variations": [{"name": v, "count": c} for v, c in variations_list],
+            "merged_keys": g["merged_keys"],
+        })
+
+    items.sort(key=lambda r: -r["count"])
+
+    return {
+        "total_subscribers": total_subs,
+        "total_active": total_active,
+        "total_with_district": total_with_district,
+        "no_district": no_district,
+        "unique_districts": len(merged),
+        "raw_unique_before_merge": len(groups),
+        "fuzzy_threshold": fuzzy_threshold,
+        "items": items[:top],
+        "top": top,
+    }
+
+
+@router.post("/clients-per-district/ai-review")
+async def clients_per_district_ai_review(
+    body: dict | None = None,
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    """Usa LLM (Emergent Key) pra revisar os grupos sugeridos.
+
+    Envia a lista de canonical_name + variações pra a LLM e pede:
+      - confirme se as variações são realmente o mesmo bairro
+      - sugira merges adicionais que o fuzzy não pegou (ex: apelidos)
+      - sugira split se uma variação foi merged errado
+    """
+    body = body or {}
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+
+    # Re-roda o clustering pra ter o estado atual
+    data = await clients_per_district(top=200, user=user)
+    items = data.get("items", [])
+    if not items:
+        return {"ok": True, "suggestions": [], "reviewed": 0,
+                "note": "Sem bairros pra revisar"}
+
+    # Monta um payload compacto pra LLM
+    compact = [
+        {"canonical": it["canonical_name"],
+          "variations": [v["name"] for v in it["variations"][:6]]}
+        for it in items[:60]  # limita pra não estourar contexto
+    ]
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"ai-review-bairros-{cid}-{int(datetime.now(timezone.utc).timestamp())}",
+            system_message=(
+                "Você é um especialista em endereçamento postal brasileiro. "
+                "Recebe uma lista de bairros já agrupados por similaridade e "
+                "valida se as variações são realmente o MESMO bairro. "
+                "Retorne JSON puro (sem markdown, sem ```), no formato: "
+                "{\"merges\": [[\"Canonical A\", \"Canonical B\"]], "
+                "\"splits\": [{\"canonical\": \"X\", \"keep\": [\"...\"], "
+                "\"remove\": [\"...\"]}], \"notes\": \"...\"}. "
+                "merges: bairros que deveriam ser unificados mas não foram. "
+                "splits: bairros agrupados erroneamente."
+            ),
+        ).with_model("openai", "gpt-4o-mini").with_max_tokens(2048)
+        msg = UserMessage(text=json.dumps(compact, ensure_ascii=False))
+        raw = await asyncio.wait_for(chat.send_message(msg), timeout=45)
+        # Tenta parsear JSON puro
+        txt = raw.strip()
+        if txt.startswith("```"):
+            txt = re.sub(r"^```(json)?\s*", "", txt)
+            txt = re.sub(r"\s*```\s*$", "", txt)
+        try:
+            suggestions = json.loads(txt)
+        except Exception:
+            # fallback: retorna o texto raw
+            suggestions = {"raw": raw}
+    except Exception as e:
+        logger.warning("[ai-review-bairros] LLM falhou: %s", e)
+        return {"ok": False, "error": str(e), "reviewed": len(compact)}
+
+    return {"ok": True, "reviewed": len(compact),
+            "suggestions": suggestions}

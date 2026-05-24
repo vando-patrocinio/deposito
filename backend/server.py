@@ -1,5 +1,14 @@
 """Backend do Ponto do Colaborador — orquestrador thin.
 
+================================================================
+SmartProv — ISP Suite
+Copyright (c) 2025-2026  V S DO PATROCINIO PROVEDOR DE INTERNET ME
+CNPJ: 13.302.883/0001-36  ·  vando@ligotelecom.com
+All rights reserved. Proprietary software — see /LICENSE.
+Unauthorized copy, reverse engineering or redistribution is prohibited
+under Lei 9.609/98 e Lei 9.610/98 (Brasil).
+================================================================
+
 Endpoints estão organizados em /app/backend/routes/:
   - users.py      → /api/auth/* + /api/users/*
   - pracas.py     → /api/pracas/*
@@ -66,9 +75,19 @@ from routes import (
     plans as routes_plans,
     voice as routes_voice,
     whatsapp_baileys as routes_wa_baileys,
+    whatsapp_channels as routes_wa_channels,
     central_ia as routes_central_ia,
     rede_ia as routes_rede_ia,
     rede_ia_map as routes_rede_ia_map,
+    rede_ia_kmz as routes_rede_ia_kmz,
+    rede_ia_signals as routes_rede_ia_signals,
+    radius as routes_radius,
+    contracts as routes_contracts,
+    clients_segments as routes_clients_segments,
+    lousa_map as routes_lousa_map,
+    payment_charges as routes_payment_charges,
+    provider_site as routes_provider_site,
+    fleet as routes_fleet,
     churn as routes_churn,
     subscribers as routes_subscribers,
     branding as routes_branding,
@@ -115,6 +134,7 @@ from routes import (
     disparo_promo as routes_disparo_promo,
     bank_import as routes_bank_import,
     wifi as routes_wifi,
+    billing as routes_billing,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -305,6 +325,27 @@ async def _seed_demo_tickets() -> None:
 # -------------------------------------------------------------------------
 app = FastAPI(title="Ponto do Colaborador")
 
+# ── Fingerprint de propriedade (não remover — Lei 9.609/98, 9.610/98) ──
+# Adiciona endpoint /api/about + header X-Powered-By + marca o DB.
+# Centralizado em backend/identity.py.
+from identity import about_payload, x_powered_by_value, OWNER, _BOOT_AT
+
+
+@app.get("/api/about", tags=["public"])
+async def public_about():
+    """Retorna a identidade do produto e fingerprint criptográfico.
+
+    Endpoint público, sem auth — serve como prova de origem do software.
+    """
+    return about_payload()
+
+
+@app.middleware("http")
+async def _add_powered_by_header(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Powered-By"] = x_powered_by_value()
+    return response
+
 # Rate limiting global via slowapi
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
@@ -336,6 +377,22 @@ async def _startup() -> None:
     await get_or_create_vapid(db)
     await _seed_demo_if_empty()
     await _seed_demo_tickets()
+    # Fingerprint de propriedade no banco (sobrevive a clone de MongoDB)
+    try:
+        await db.system_settings.update_one(
+            {"_id": "owner_fingerprint"},
+            {"$set": {
+                "company": OWNER["company"],
+                "cnpj": OWNER["cnpj"],
+                "email": OWNER["email"],
+                "copyright": OWNER["copyright"],
+                "license": OWNER["license"],
+                "last_boot_at": _BOOT_AT,
+            }, "$setOnInsert": {"created_at": _BOOT_AT}},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning("[startup] não foi possível gravar owner_fingerprint: %s", e)
     scheduler.start()
     scheduler.add_job(monthly_email_job, CronTrigger(day="last", hour=23, minute=30),
                       id="monthly_email", replace_existing=True)
@@ -377,6 +434,15 @@ async def _startup() -> None:
     start_sentinela_lousa()
     from services.lousa_ai_triagem import start_worker as start_lousa_ai
     start_lousa_ai()
+    # Lousa Map — geocoding noturno de tickets sem coordenadas
+    await routes_lousa_map.start_worker()
+    # Outage Detector — detecta rupturas em massa e abre bolha automática
+    from services.rede_ia_outage_detector import start_worker as start_outage
+    await start_outage()
+    # Contracts Aging Worker — aplica REDUZIDO/WALL_GARDEN/SUSPENSO conforme
+    # invoices vencidas + dispara CoA pra reaplicar perfil no Mikrotik
+    from services.contracts_aging_worker import worker_loop as _aging_loop
+    asyncio.create_task(_aging_loop())
     from services.churn_scheduler import start_worker as start_churn_scheduler
     start_churn_scheduler()
     from services.ai_training_scheduler import (
@@ -481,6 +547,28 @@ async def _startup() -> None:
                       CronTrigger(hour=6, minute=30),
                       id="disparo_ia_daily", replace_existing=True)
     asyncio.create_task(routes_plans.adjustment_scheduler_worker())
+    # Cron: BILLING DUNNING — todo dia 07:00 avalia régua de cobrança em todas
+    # as empresas. Não envia mensagens reais ainda (apenas grava eventos);
+    # essa flag será habilitada por empresa quando Meta WhatsApp Cloud estiver
+    # estável (Módulo P1 do roadmap ISP).
+    async def _billing_dunning_all_companies():
+        from routes.billing import _evaluate_dunning_for_company
+        async for cdoc in db.companies.find({}, {"_id": 0, "id": 1}):
+            cid = cdoc.get("id")
+            if not cid:
+                continue
+            try:
+                result = await _evaluate_dunning_for_company(cid, actor_email="system_cron")
+                logger.info(
+                    "[billing] dunning company=%s events=%d invoices=%d",
+                    cid, result.get("events_triggered", 0),
+                    result.get("invoices_evaluated", 0),
+                )
+            except Exception as e:
+                logger.warning("[billing] dunning company=%s falhou: %s", cid, e)
+    scheduler.add_job(_billing_dunning_all_companies,
+                      CronTrigger(hour=7, minute=0),
+                      id="billing_dunning_daily", replace_existing=True)
     from services.drive_backup import daily_backup_worker as drive_daily_worker
     asyncio.create_task(drive_daily_worker())
     logger.info("Scheduler iniciado.")
@@ -518,6 +606,7 @@ app.include_router(routes_stok.router)
 app.include_router(routes_balanco.router)
 app.include_router(routes_projects.router)
 app.include_router(routes_wifi.router)
+app.include_router(routes_billing.router)
 app.include_router(routes_pdf_reports.router)
 app.include_router(routes_smartolt.router)
 app.include_router(routes_network_diag.router)
@@ -536,6 +625,15 @@ app.include_router(routes_isabella_prompt.router)
 app.include_router(routes_central_ia.router)
 app.include_router(routes_rede_ia.router)
 app.include_router(routes_rede_ia_map.router)
+app.include_router(routes_rede_ia_kmz.router)
+app.include_router(routes_rede_ia_signals.router)
+app.include_router(routes_radius.router)
+app.include_router(routes_contracts.router)
+app.include_router(routes_clients_segments.router)
+app.include_router(routes_lousa_map.router)
+app.include_router(routes_payment_charges.router)
+app.include_router(routes_provider_site.router)
+app.include_router(routes_fleet.router)
 app.include_router(routes_budget.router)
 app.include_router(routes_churn.router)
 app.include_router(routes_subscribers.router)
@@ -562,6 +660,7 @@ app.include_router(routes_financeiro_reports.router)
 app.include_router(routes_atlaz_financeiro.router)
 app.include_router(routes_alvaro.router)
 app.include_router(routes_whatsapp_config.router)
+app.include_router(routes_wa_channels.router)
 app.include_router(routes_mass_messaging.router)
 app.include_router(routes_disparo_ia.router)
 app.include_router(routes_disparo_boleto.router)

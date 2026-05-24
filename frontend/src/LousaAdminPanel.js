@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { api } from "@/api";
+import { fmtAddress, fmtPhone, fmtName, fmtRelato, safeText } from "@/utils/format";
 import { Button, Icon } from "@/ui";
 import { useAuth } from "@/AuthContext";
 import EditTicketModal from "./lousa/EditTicketModal";
@@ -14,6 +15,15 @@ import ReleaseStuckBubbleModal from "./lousa/ReleaseStuckBubbleModal";
 import CentralOntPanel from "./lousa/CentralOntPanel";
 import GestaoMetasPanel from "./lousa/GestaoMetasPanel";
 import LousaQualityNotesPanel from "./LousaQualityNotesPanel";
+import LousaServicesMap from "./LousaServicesMap";
+import ManagerCallbacksPanel from "./ManagerCallbacksPanel";
+import {
+  AiDetailModal,
+  ClosedTicketDetailModal,
+  AutoReschedConfigModal,
+  AdminFinalizeModal,
+} from "./lousa-admin/modals";
+import { ClosedNotesPdfPopover } from "./lousa-admin/report";
 
 const TYPE_LABELS = {
   reparo: "🔧 Reparo",
@@ -99,6 +109,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [showReleaseStuck, setShowReleaseStuck] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState("board"); // board | central_ont
   const [sentinelaCount, setSentinelaCount] = useState(0);
+  const [pendingCallbacksCount, setPendingCallbacksCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -137,6 +148,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [techMenuOpen, setTechMenuOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [showPdfPopover, setShowPdfPopover] = useState(false);
+  const [showServicesMap, setShowServicesMap] = useState(false);
   // Visualização dentro do focus mode: "grid" (coluna vertical clássica)
   // ou "timeline" (slots horizontais estilo Google Calendar / Asana).
   const [focusView, setFocusView] = useState(() => {
@@ -155,6 +167,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectedDate, setSelectedDate] = useState(() => todayLocalISO());
   const [atlazTenantDomain, setAtlazTenantDomain] = useState("");
+  const [onlyFleetAlerts, setOnlyFleetAlerts] = useState(false);  // filtro frota_alerta
   const prevOverdueRef = useRef(0);
   const isLocked = systemStatus.offline || systemStatus.drift_blocked;
   const isToday = selectedDate === todayLocalISO();
@@ -260,6 +273,19 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
     const fetchCount = () => {
       api.sentinelaSummary()
         .then((s) => { if (alive) setSentinelaCount(s?.active || 0); })
+        .catch(() => {});
+    };
+    fetchCount();
+    const t = setInterval(fetchCount, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
+  // Polling do contador de callbacks pendentes (técnico→gestor)
+  useEffect(() => {
+    let alive = true;
+    const fetchCount = () => {
+      api.lousaManagerCallbacks("pending", 200)
+        .then((r) => { if (alive) setPendingCallbacksCount(r?.count || 0); })
         .catch(() => {});
     };
     fetchCount();
@@ -382,6 +408,8 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
 
   const totalTickets = grid.columns.reduce((sum, c) => sum + (c.tickets?.length || 0), 0);
   const overdueCount = grid.columns.flatMap((c) => c.tickets || []).filter((t) => t.sla?.status === "overdue").length;
+  const fleetAlertCount = grid.columns.flatMap((c) => c.tickets || [])
+    .filter((t) => t.type === "frota_alerta" && t.status !== "finalizada").length;
 
   // Detecta se data selecionada é passada/futura (para mostrar banner)
   const dateMode = (() => {
@@ -602,6 +630,17 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 <span>Atrasadas · {overdueCount}</span>
               </ToolbarBtn>
             )}
+            {fleetAlertCount > 0 && (
+              <ToolbarBtn
+                onClick={() => setOnlyFleetAlerts(!onlyFleetAlerts)}
+                data-testid="lousa-fleet-filter-btn"
+                title="Mostrar apenas alertas de Frota (vistoria recusada pela IA)"
+                accent={onlyFleetAlerts ? "warning" : "neutral"}
+              >
+                <span style={{ fontSize: 13 }}>🚗</span>
+                <span>{onlyFleetAlerts ? "Só Frota" : "Frota"} · {fleetAlertCount}</span>
+              </ToolbarBtn>
+            )}
             <ToolbarBtn
               onClick={() => setShowHistory(true)}
               data-testid="lousa-history-btn"
@@ -660,19 +699,29 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 </span>
               </ToolbarBtn>
             )}
+            <div style={{ position: "relative", display: "inline-flex" }}>
+              <ToolbarBtn
+                onClick={() => setShowPdfPopover((v) => !v)}
+                data-testid="lousa-pdf-btn"
+                title="Gerar relatório de notas finalizadas/abertas (hoje/ontem/7 dias/período)"
+                accent="neutral"
+              >
+                <span style={{ fontSize: 13 }}>📄</span>
+                <span>Relatório</span>
+              </ToolbarBtn>
+              {showPdfPopover && (
+                <ClosedNotesPdfPopover onClose={() => setShowPdfPopover(false)} />
+              )}
+            </div>
             <ToolbarBtn
-              onClick={() => setShowPdfPopover((v) => !v)}
-              data-testid="lousa-pdf-btn"
-              title="Gerar relatório de notas finalizadas/abertas (hoje/ontem/7 dias/período)"
+              onClick={() => setShowServicesMap(true)}
+              data-testid="lousa-map-btn"
+              title="Visualiza no mapa todas as bolhas com pinos coloridos por técnico"
               accent="neutral"
-              style={{ position: "relative" }}
             >
-              <span style={{ fontSize: 13 }}>📄</span>
-              <span>Relatório</span>
+              <span style={{ fontSize: 13 }}>🗺️</span>
+              <span>Mapa</span>
             </ToolbarBtn>
-            {showPdfPopover && (
-              <ClosedNotesPdfPopover onClose={() => setShowPdfPopover(false)} />
-            )}
           </ToolbarGroup>
 
           {/* ─── Grupo 4: CTA + Overflow ─── */}
@@ -794,6 +843,18 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           { id: "central_ont", label: "🛰️ CENTRAL_ONT" },
           { id: "gestao_metas", label: "📊 GESTÃO E METAS" },
           { id: "quality_notes", label: "📶 NOTAS DE QUALIDADE" },
+          { id: "callbacks", label: (
+            <>
+              📞 AGUARDANDO CONTATO
+              {pendingCallbacksCount > 0 && (
+                <span data-testid="callbacks-badge" style={{
+                  marginLeft: 6, background: "#dc2626", color: "#fff",
+                  padding: "1px 7px", borderRadius: 99, fontSize: 10,
+                  fontWeight: 800,
+                }}>{pendingCallbacksCount}</span>
+              )}
+            </>
+          ) },
         ].map((t) => (
           <button key={t.id} onClick={() => setActiveSubTab(t.id)}
                    data-testid={`lousa-subtab-${t.id}`}
@@ -812,9 +873,10 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       {activeSubTab === "gestao_metas" ? <GestaoMetasPanel /> :
         (activeSubTab === "central_ont" ? <CentralOntPanel /> :
         (activeSubTab === "quality_notes" ? <LousaQualityNotesPanel /> :
+        (activeSubTab === "callbacks" ? <ManagerCallbacksPanel /> :
         (activeSubTab === "insights"
           ? <InsightsPanel onJumpTicket={(t) => setEditingTicket(t)} />
-          : <></>)))}
+          : <></>))))}
       {activeSubTab === "board" && <>
       {/* Grade horizontal — coluna por técnico */}
       <div style={{
@@ -831,8 +893,13 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           : (visibleTechIds.length > 0
               ? grid.columns.filter((c) => visibleTechIds.includes(c.collaborator.id))
               : grid.columns)
-        ).map((col) => (
-          focusTechId && focusView === "timeline" ? (
+        ).map((origCol) => {
+          // Filtro "Só Frota": esconde bolhas que não são frota_alerta
+          const col = onlyFleetAlerts
+            ? { ...origCol, tickets: (origCol.tickets || [])
+                .filter((t) => t.type === "frota_alerta") }
+            : origCol;
+          return focusTechId && focusView === "timeline" ? (
             <TechTimeline
               key={col.collaborator.id + tick}
               column={col}
@@ -853,31 +920,31 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               onToggleSelect={toggleTicketSelected}
             />
           ) : (
-          <TechColumn
-            key={col.collaborator.id + tick}
-            column={col}
-            isDropTarget={dragOverCol === col.collaborator.id}
-            blinkOverdue={grid.sla_blink_when_overdue}
-            maxPerSlot={grid.grid?.max_per_slot || 2}
-            onSlotDrop={handleSlotDrop}
-            onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.collaborator.id); }}
-            onDragLeave={() => setDragOverCol((c) => c === col.collaborator.id ? null : c)}
-            onDrop={() => handleDrop(col.collaborator.id)}
-            onDragStart={(tid) => setDraggingId(tid)}
-            onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
-            draggingId={draggingId}
-            onAdminClose={handleAdminCloseAction}
-            onAdminOpen={handleAdminOpen}
-            onEdit={(t) => setEditingTicket(t)}
-            onReschedule={(t) => setReschedTicket(t)}
-            busy={busy}
-            selectMode={selectMode}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleTicketSelected}
-            wide={!!focusTechId}
-          />
-          )
-        ))}
+            <TechColumn
+              key={col.collaborator.id + tick}
+              column={col}
+              isDropTarget={dragOverCol === col.collaborator.id}
+              blinkOverdue={grid.sla_blink_when_overdue}
+              maxPerSlot={grid.grid?.max_per_slot || 2}
+              onSlotDrop={handleSlotDrop}
+              onDragOver={(e) => { e.preventDefault(); setDragOverCol(col.collaborator.id); }}
+              onDragLeave={() => setDragOverCol((c) => c === col.collaborator.id ? null : c)}
+              onDrop={() => handleDrop(col.collaborator.id)}
+              onDragStart={(tid) => setDraggingId(tid)}
+              onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
+              draggingId={draggingId}
+              onAdminClose={handleAdminCloseAction}
+              onAdminOpen={handleAdminOpen}
+              onEdit={(t) => setEditingTicket(t)}
+              onReschedule={(t) => setReschedTicket(t)}
+              busy={busy}
+              selectMode={selectMode}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleTicketSelected}
+              wide={!!focusTechId}
+            />
+          );
+        })}
       </div>
 
       {/* Logs de auditoria */}
@@ -908,6 +975,9 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
         />
       )}
       {showHistory && <LousaHistoryModal onClose={() => setShowHistory(false)} />}
+      {showServicesMap && (
+        <LousaServicesMap onClose={() => setShowServicesMap(false)} />
+      )}
       {showReleaseStuck && (
         <ReleaseStuckBubbleModal
           onClose={() => setShowReleaseStuck(false)}
@@ -1312,12 +1382,12 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
     ? (isSelectable ? (isSelected ? "Clique para desmarcar" : "Clique para selecionar") : "Não selecionável neste status")
     : [
         `${TYPE_LABELS[ticket.type] || ticket.type}`,
-        `Cliente: ${ticket.client_snapshot.name}`,
-        ticket.client_snapshot.phone ? `Tel: ${ticket.client_snapshot.phone}` : null,
-        ticket.client_snapshot.address ? `End.: ${ticket.client_snapshot.address}` : null,
-        ticket.client_snapshot.neighborhood ? `Bairro: ${ticket.client_snapshot.neighborhood}` : null,
+        `Cliente: ${fmtName(ticket.client_snapshot.name)}`,
+        ticket.client_snapshot.phone ? `Tel: ${fmtPhone(ticket.client_snapshot.phone)}` : null,
+        ticket.client_snapshot.address ? `End.: ${fmtAddress(ticket.client_snapshot.address)}` : null,
+        ticket.client_snapshot.neighborhood ? `Bairro: ${safeText(ticket.client_snapshot.neighborhood)}` : null,
         ticket.scheduled_time ? `Horário: ${ticket.scheduled_time.substr(11, 5)}` : null,
-        ticket.client_snapshot.relato ? `\nRelato:\n${ticket.client_snapshot.relato}` : null,
+        ticket.client_snapshot.relato ? `\nRelato:\n${fmtRelato(ticket.client_snapshot.relato)}` : null,
         ai.score != null ? `\nIA: ${ai.score.toFixed(1)}/10 (${ai.label || ""})` : null,
         ticket.in_execution ? "\n▶ Em execução pelo técnico" : null,
         ticket.atlaz_external_id ? `\n🔗 Atlaz #${ticket.atlaz_external_id}` : null,
@@ -1343,14 +1413,18 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
       title={tooltipText}
       className={
         (ticket.type === "alerta_geofence" ? "lousa-alert-blink " : "")
+        + (ticket.type === "frota_alerta" ? "lousa-fleet-glow " : "")
         + (isOverdue && blinkOverdue ? "sla-overdue" : "")
       }
       style={{
         background: ticket.type === "alerta_geofence"
           ? "linear-gradient(135deg,#fee2e2,#fecaca)"
+          : ticket.type === "frota_alerta"
+          ? "linear-gradient(135deg,#fef3c7,#fde68a)"
           : c.bg,
-        border: `${ticket.type === "alerta_geofence" ? 2 : 1}px solid ${
+        border: `${(ticket.type === "alerta_geofence" || ticket.type === "frota_alerta") ? 2 : 1}px solid ${
           ticket.type === "alerta_geofence" ? "#dc2626"
+          : ticket.type === "frota_alerta" ? "#f59e0b"
           : isSelected ? "#3b82f6"
           : isOverdue ? "#dc2626" : c.border}`,
         borderRadius: 14, padding: "6px 10px 6px 12px",
@@ -1449,13 +1523,13 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
             fontSize: 13.5, fontWeight: 800, color: c.text,
             lineHeight: 1.25, letterSpacing: -0.1,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>{ticket.client_snapshot.name}</div>
+          }}>{fmtName(ticket.client_snapshot.name)}</div>
           <div style={{
             fontSize: 11, color: "#64748b", marginTop: 1,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
             {TYPE_LABELS[ticket.type]?.replace(/^\S+\s/, "") || ticket.type}
-            {ticket.client_snapshot.neighborhood ? ` · ${ticket.client_snapshot.neighborhood}` : ""}
+            {ticket.client_snapshot.neighborhood ? ` · ${safeText(ticket.client_snapshot.neighborhood)}` : ""}
           </div>
         </div>
       </div>
@@ -1591,55 +1665,6 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
           onClose={() => setShowDetails(false)}
         />
       )}
-    </div>
-  );
-}
-
-function AiDetailModal({ detail, onClose }) {
-  return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 110, display: "grid", placeItems: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} data-testid="ai-detail-modal"
-           style={{ background: "white", borderRadius: 18, padding: 22, maxWidth: 540, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>Avaliação IA do Serviço</h2>
-          <span style={{ background: aiScoreColor(detail.ai_score), color: "white", padding: "4px 12px", borderRadius: 999, fontWeight: 900, fontSize: 14 }}>
-            {detail.ai_score?.toFixed(1)}/10
-          </span>
-        </div>
-        <div style={{ fontSize: 13, color: "#475569", marginBottom: 8 }}>
-          <strong>Veredito:</strong> {detail.verdict} · <span style={{ color: "#94a3b8", fontSize: 11 }}>({detail.method})</span>
-        </div>
-        <p style={{ background: "#f8fafc", padding: 10, borderRadius: 8, fontSize: 13, color: "#0f172a", margin: "8px 0" }}>
-          {detail.summary}
-        </p>
-        {detail.recommendations?.length > 0 && (
-          <>
-            <h4 style={{ fontSize: 13, margin: "10px 0 4px" }}>Recomendações</h4>
-            <ul style={{ paddingLeft: 18, margin: 0, fontSize: 12, color: "#334155" }}>
-              {detail.recommendations.map((r, i) => <li key={i} style={{ marginBottom: 4 }}>{r}</li>)}
-            </ul>
-          </>
-        )}
-        {detail.heuristic?.signals?.length > 0 && (
-          <>
-            <h4 style={{ fontSize: 13, margin: "12px 0 4px" }}>Sinais (heurística)</h4>
-            <div style={{ fontSize: 11 }}>
-              {detail.heuristic.signals.map((s, i) => (
-                <div key={i} style={{
-                  padding: "4px 8px", marginBottom: 3, borderRadius: 6,
-                  background: s.level === "critical" ? "#fee2e2" : s.level === "warning" ? "#fef3c7" : "#dcfce7",
-                  color: s.level === "critical" ? "#7f1d1d" : s.level === "warning" ? "#78350f" : "#166534",
-                }}>
-                  {s.level === "critical" ? "🔴" : s.level === "warning" ? "🟡" : "🟢"} {s.msg}
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-          <Button variant="soft" onClick={onClose}>Fechar</Button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -2453,6 +2478,7 @@ const _accentMap = {
   primary: { bg: "#0f172a", color: "white", hover: "#1e293b", border: "#0f172a" },
   success: { bg: "#ecfdf5", color: "#047857", hover: "#d1fae5", border: "#a7f3d0" },
   danger:  { bg: "#fef2f2", color: "#b91c1c", hover: "#fee2e2", border: "#fecaca" },
+  warning: { bg: "#fffbeb", color: "#92400e", hover: "#fef3c7", border: "#fcd34d" },
 };
 
 function ToolbarBtn({ children, accent = "neutral", disabled, style, ...rest }) {
@@ -2675,764 +2701,6 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
         );
       })}
     </div>
-  );
-}
-
-function ClosedTicketDetailModal({ ticket, onClose }) {
-  const [full, setFull] = useState(ticket);
-  const [loading, setLoading] = useState(false);
-
-  // Recarrega o ticket completo (lousa público pode ter completion_data)
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!ticket?.id) return;
-      try {
-        setLoading(true);
-        const r = await api._client.get(`/lousa/tickets/${ticket.id}`);
-        if (alive && r.data) setFull({ ...ticket, ...r.data });
-      } catch { /* ignore — usa ticket inicial */ }
-      finally { if (alive) setLoading(false); }
-    })();
-    return () => { alive = false; };
-  }, [ticket]);
-
-  const cd = full?.completion_data || {};
-  const cs = full?.client_snapshot || {};
-  const fmt = (iso) => {
-    if (!iso) return "—";
-    try {
-      return new Date(iso).toLocaleString("pt-BR",
-        { dateStyle: "short", timeStyle: "short" });
-    } catch { return iso; }
-  };
-
-  const fotos = (cd.fotos || []).filter(Boolean);
-  const fotosObjs = fotos.map((f) => {
-    if (typeof f === "string") return { dataUrl: f, kind: "geral" };
-    return { dataUrl: f.dataUrl || f.data_url, kind: f.kind || "geral" };
-  }).filter((f) => f.dataUrl);
-
-  return (
-    <div onClick={onClose}
-          data-testid="closed-ticket-detail-modal"
-          style={{ position: "fixed", inset: 0, zIndex: 9999,
-                    background: "rgba(15,23,42,0.7)",
-                    display: "flex", alignItems: "center",
-                    justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()}
-            style={{ background: "#fff", borderRadius: 12,
-                      width: "min(95vw, 720px)", maxHeight: "92vh",
-                      display: "flex", flexDirection: "column",
-                      overflow: "hidden",
-                      boxShadow: "0 20px 60px rgba(0,0,0,0.35)" }}>
-        {/* Header */}
-        <div style={{ padding: 16, borderBottom: "1px solid #e2e8f0",
-                        display: "flex", justifyContent: "space-between",
-                        alignItems: "flex-start", gap: 12 }}>
-          <div>
-            {(() => {
-              const isClosed = ["finalizada", "encerrada"].includes(full?.status);
-              return (
-                <>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b",
-                                  textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    {isClosed ? "✓ Nota finalizada" : "🟡 Nota em andamento"} ·{" "}
-                    {TYPE_LABELS[full.type] || full.type}
-                  </div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a",
-                                  marginTop: 2 }}>
-                    {cs.name || "—"}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4,
-                                  lineHeight: 1.4 }}>
-                    {isClosed
-                      ? <>Fechada em <strong>{fmt(full.closed_at || full.finalized_at)}</strong></>
-                      : <>Status: <strong>{full.status}</strong> · Aberta em <strong>{fmt(full.created_at)}</strong></>}
-                    {full.outcome && <> · Resultado: <strong>{full.outcome}</strong></>}
-                    {full.scheduled_date && (
-                      <> · Agendada: <strong>{full.scheduled_date}
-                        {full.scheduled_time ? ` ${full.scheduled_time}` : ""}</strong></>
-                    )}
-                    {full.admin_action === "encerrar" && (
-                      <span style={{ marginLeft: 6, padding: "2px 7px",
-                                      background: "#fef3c7", color: "#92400e",
-                                      borderRadius: 999, fontSize: 9, fontWeight: 800 }}>
-                        🛡 Fechado pelo gestor
-                      </span>
-                    )}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-          <button onClick={onClose}
-                  data-testid="closed-detail-close"
-                  style={{ background: "transparent", border: 0, fontSize: 22,
-                            cursor: "pointer", color: "#64748b" }}>×</button>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: 16, overflowY: "auto", flex: 1, fontSize: 13,
-                        color: "#0f172a" }}>
-          {loading && (
-            <div style={{ color: "#94a3b8", fontSize: 12 }}>Carregando…</div>
-          )}
-
-          {/* Endereço */}
-          {cs.address && (
-            <Section label="📍 Endereço">{cs.address}</Section>
-          )}
-          {cs.phone && (
-            <Section label="📞 Telefone">
-              <a href={`tel:${cs.phone}`} style={{ color: "#0891b2",
-                          textDecoration: "none", fontWeight: 700 }}>
-                {cs.phone}
-              </a>
-            </Section>
-          )}
-          {(cs.relato || full.notes) && (
-            <Section label="📋 Relato / Notas">
-              <div style={{ whiteSpace: "pre-wrap" }}>
-                {cs.relato || full.notes}
-              </div>
-            </Section>
-          )}
-
-          {/* Sinal */}
-          {cd.sinal != null && (
-            <Section label="📡 Sinal medido">
-              <strong>{Number(cd.sinal).toFixed(1)} dBm</strong>
-            </Section>
-          )}
-          {cd.ont && <Section label="🔌 ONT">{cd.ont}</Section>}
-
-          {/* CTO + porta + splitter + VLAN */}
-          {(cd.cto_name || cd.cto_port_number) && (
-            <Section label="🗺 Vínculo na Rede IA">
-              {cd.cto_name}
-              {cd.cto_port_number && ` · Porta ${cd.cto_port_number}`}
-              {cd.cto_splitter && ` · Splitter ${cd.cto_splitter}`}
-              {cd.cto_vlan && ` · VLAN ${cd.cto_vlan}`}
-              {cd.cto_network_type && ` · Rede ${cd.cto_network_type}`}
-            </Section>
-          )}
-
-          {/* Insumos */}
-          {(cd.drop || cd.backbone || cd.esticador || cd.conectores) && (
-            <Section label="🧰 Insumos utilizados">
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {cd.drop && <li>Drop: <strong>{cd.drop}m</strong></li>}
-                {cd.backbone && <li>Backbone: <strong>{cd.backbone}m</strong></li>}
-                {cd.esticador && <li>Esticador: <strong>{cd.esticador}</strong></li>}
-                {cd.conectores && <li>Conectores: <strong>{cd.conectores}</strong></li>}
-              </ul>
-            </Section>
-          )}
-
-          {/* Ping */}
-          {cd.ping_summary && (
-            <Section label="📶 Teste de Ping">
-              <pre style={{ background: "#f8fafc",
-                              padding: 10, borderRadius: 6, fontSize: 11,
-                              whiteSpace: "pre-wrap" }}>{cd.ping_summary}</pre>
-            </Section>
-          )}
-
-          {/* Observações */}
-          {cd.observacoes && (
-            <Section label="📝 Observações do técnico">
-              <div style={{ whiteSpace: "pre-wrap" }}>{cd.observacoes}</div>
-            </Section>
-          )}
-
-          {/* Fotos */}
-          {fotosObjs.length > 0 && (
-            <Section label={`📷 Fotos (${fotosObjs.length})`}>
-              <div style={{ display: "grid",
-                              gridTemplateColumns:
-                                "repeat(auto-fill, minmax(120px, 1fr))",
-                              gap: 8 }}>
-                {fotosObjs.map((f, i) => (
-                  <a key={i} href={f.dataUrl} target="_blank"
-                      rel="noopener noreferrer">
-                    <img src={f.dataUrl} alt={f.kind || ""}
-                          style={{ width: "100%", aspectRatio: "1/1",
-                                    objectFit: "cover", borderRadius: 8,
-                                    border: "1px solid #e2e8f0",
-                                    cursor: "zoom-in" }} />
-                  </a>
-                ))}
-              </div>
-            </Section>
-          )}
-
-          {/* fallback se nada estiver preenchido */}
-          {!loading && !cd.sinal && !cd.ont && !cd.cto_name && !cd.drop
-            && !cd.observacoes && fotosObjs.length === 0
-            && !cs.relato && !full.notes && !cs.phone && !cs.address && (
-            <div style={{ padding: 20, textAlign: "center",
-                            color: "#94a3b8", fontSize: 12 }}>
-              Nenhum dado registrado ainda.
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Section({ label, children }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b",
-                      textTransform: "uppercase", letterSpacing: 0.5,
-                      marginBottom: 4 }}>{label}</div>
-      <div>{children}</div>
-    </div>
-  );
-}
-
-function ClosedNotesPdfPopover({ onClose }) {
-  const [period, setPeriod] = useState("today");
-  const [mode, setMode] = useState("closed"); // "closed" | "open"
-  const [start, setStart] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() - 7);
-    return d.toISOString().slice(0, 10);
-  });
-  const [end, setEnd] = useState(() => new Date().toISOString().slice(0, 10));
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const [reportData, setReportData] = useState(null);
-
-  useEffect(() => {
-    const onDoc = (e) => {
-      if (reportData) return;
-      if (!e.target.closest?.("[data-pdf-pop]")) onClose();
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [onClose, reportData]);
-
-  const generate = async () => {
-    setErr(""); setBusy(true);
-    try {
-      const params = new URLSearchParams({ period, mode });
-      if (period === "custom") {
-        params.set("start", start);
-        params.set("end", end);
-      }
-      const r = await api._client.get(
-        `/lousa/tickets/report/data?${params.toString()}`,
-      );
-      setReportData(r.data);
-    } catch (e) {
-      setErr(e?.response?.data?.detail || e.message || "Falha ao gerar relatório");
-    } finally { setBusy(false); }
-  };
-
-  const handlePrint = () => {
-    // Aplica classe temporária pra esconder UI ao redor durante impressão
-    document.body.classList.add("lousa-printing");
-    window.print();
-    // Remove logo após — onafterprint não é confiável em todos navegadores
-    setTimeout(() => document.body.classList.remove("lousa-printing"), 500);
-  };
-
-  // ===== Modal de relatório HTML imprimível =====
-  if (reportData) {
-    return (
-      <PrintableReport data={reportData} onClose={() => { setReportData(null); onClose(); }}
-                       onPrint={handlePrint} />
-    );
-  }
-
-  // ===== Popover de configuração =====
-  return (
-    <div data-pdf-pop data-testid="lousa-pdf-popover"
-          style={{
-            position: "absolute", top: "calc(100% + 6px)", right: 0,
-            width: 320, background: "white",
-            border: "1px solid #e2e8f0", borderRadius: 10,
-            boxShadow: "0 12px 32px rgba(15,23,42,.16)",
-            zIndex: 1500, padding: 14,
-          }}>
-      <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a",
-                      marginBottom: 8 }}>
-        📄 Relatório
-      </div>
-      {/* Seletor Modo: Finalizadas vs Abertas */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
-                      gap: 6, marginBottom: 10 }}>
-        <button data-testid="lousa-pdf-mode-closed"
-                onClick={() => setMode("closed")}
-                style={{ padding: "10px 8px", borderRadius: 8,
-                          border: `1.5px solid ${mode === "closed" ? "#0f766e" : "#e2e8f0"}`,
-                          background: mode === "closed" ? "#ecfdf5" : "#fff",
-                          color: mode === "closed" ? "#065f46" : "#0f172a",
-                          fontSize: 12, fontWeight: 700, cursor: "pointer",
-                          textAlign: "center" }}>
-          ✓ Notas FINALIZADAS
-        </button>
-        <button data-testid="lousa-pdf-mode-open"
-                onClick={() => setMode("open")}
-                style={{ padding: "10px 8px", borderRadius: 8,
-                          border: `1.5px solid ${mode === "open" ? "#ea580c" : "#e2e8f0"}`,
-                          background: mode === "open" ? "#fff7ed" : "#fff",
-                          color: mode === "open" ? "#9a3412" : "#0f172a",
-                          fontSize: 12, fontWeight: 700, cursor: "pointer",
-                          textAlign: "center" }}>
-          🟡 Bolhas ABERTAS
-        </button>
-      </div>
-      {mode === "open" && (
-        <div style={{ fontSize: 10, color: "#9a3412",
-                        background: "#fff7ed",
-                        border: "1px solid #fed7aa",
-                        borderRadius: 6, padding: 8, marginBottom: 8,
-                        lineHeight: 1.4 }}>
-          Mostra OS pendentes/em execução agrupadas por técnico (ignora o
-          período).
-        </div>
-      )}
-      {mode === "closed" && (
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
-                      gap: 6, marginBottom: 8 }}>
-        {[
-          { id: "today", label: "Hoje" },
-          { id: "yesterday", label: "Ontem" },
-          { id: "week", label: "7 dias" },
-          { id: "custom", label: "Período…" },
-        ].map((p) => (
-          <button key={p.id}
-                  data-testid={`lousa-pdf-period-${p.id}`}
-                  onClick={() => setPeriod(p.id)}
-                  style={{
-                    padding: "8px 10px", borderRadius: 8,
-                    border: `1.5px solid ${period === p.id ? "#0f172a" : "#e2e8f0"}`,
-                    background: period === p.id ? "#0f172a" : "#fff",
-                    color: period === p.id ? "#fff" : "#0f172a",
-                    fontSize: 12, fontWeight: 700, cursor: "pointer",
-                  }}>
-            {p.label}
-          </button>
-        ))}
-      </div>
-      )}
-      {period === "custom" && mode === "closed" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
-                        gap: 6, marginBottom: 8 }}>
-          <input type="date" value={start} onChange={(e) => setStart(e.target.value)}
-                  data-testid="lousa-pdf-start"
-                  style={{ padding: "6px 8px", border: "1px solid #e2e8f0",
-                            borderRadius: 7, fontSize: 12 }} />
-          <input type="date" value={end} onChange={(e) => setEnd(e.target.value)}
-                  data-testid="lousa-pdf-end"
-                  style={{ padding: "6px 8px", border: "1px solid #e2e8f0",
-                            borderRadius: 7, fontSize: 12 }} />
-        </div>
-      )}
-      {err && (
-        <div data-testid="lousa-pdf-err"
-              style={{ marginBottom: 8, padding: 8, borderRadius: 6,
-                        background: "#fef2f2", color: "#991b1b", fontSize: 11 }}>
-          ⚠ {err}
-        </div>
-      )}
-      <button data-testid="lousa-pdf-generate"
-              onClick={generate} disabled={busy}
-              style={{ width: "100%", padding: "10px 12px", borderRadius: 8,
-                        background: busy ? "#94a3b8"
-                            : "linear-gradient(135deg,#0f766e,#0891b2)",
-                        color: "#fff", border: 0, fontSize: 13, fontWeight: 700,
-                        cursor: busy ? "wait" : "pointer" }}>
-        {busy ? "Gerando…" : (mode === "open"
-            ? "👁 Visualizar Bolhas Abertas"
-            : "👁 Visualizar Finalizadas")}
-      </button>
-
-      <ViabilityHeatmapSection />
-    </div>
-  );
-}
-
-/* ---------- ViabilityHeatmapSection ---------- */
-function ViabilityHeatmapSection() {
-  const [days, setDays] = React.useState(30);
-  const [data, setData] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
-
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await api._client.get(
-        `/whatsapp-baileys/viability-heatmap?days=${days}`,
-      );
-      setData(r.data);
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
-
-  React.useEffect(() => { load(); }, [load]);
-
-  const total = data?.total_pending || 0;
-  const districts = data?.districts || [];
-  const maxLeads = Math.max(1, ...districts.map((d) => d.leads));
-
-  return (
-    <div data-testid="viability-heatmap-section" style={{
-      marginTop: 14, paddingTop: 12, borderTop: "1px dashed #cbd5e1",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8,
-                      marginBottom: 8 }}>
-        <span style={{ fontSize: 13 }}>🗺️</span>
-        <strong style={{ fontSize: 12.5, color: "#0f172a" }}>
-          Demanda sem cobertura
-        </strong>
-        <span style={{ flex: 1 }} />
-        <div style={{ display: "inline-flex", borderRadius: 6,
-                        background: "#f1f5f9" }}>
-          {[7, 30, 90].map((d) => (
-            <button key={d} onClick={() => setDays(d)}
-                    data-testid={`viab-range-${d}`}
-                    style={{
-                      padding: "3px 8px", fontSize: 10, fontWeight: 800,
-                      border: "none", cursor: "pointer",
-                      background: days === d ? "#0f172a" : "transparent",
-                      color: days === d ? "#fff" : "#475569",
-                      borderRadius: 6,
-                    }}>{d}d</button>
-          ))}
-        </div>
-      </div>
-
-      {loading && (
-        <div style={{ fontSize: 11, color: "#94a3b8" }}>Carregando…</div>
-      )}
-
-      {!loading && total === 0 && (
-        <div data-testid="viab-empty" style={{
-          padding: 10, borderRadius: 8, background: "#f8fafc",
-          fontSize: 11, color: "#64748b", textAlign: "center",
-          lineHeight: 1.5,
-        }}>
-          Nenhum lead aguardando viabilidade nos últimos {days} dias 🎯<br />
-          Quando Isabella receber endereços fora da cobertura, eles
-          aparecem aqui agrupados por bairro.
-        </div>
-      )}
-
-      {!loading && total > 0 && (
-        <div data-testid="viab-list" style={{ display: "grid", gap: 5 }}>
-          <div style={{ fontSize: 11, color: "#475569", marginBottom: 4 }}>
-            <strong style={{ color: "#7c3aed" }}>{total}</strong> lead(s)
-            esperando expansão em <strong>{data.districts_count}</strong>{" "}
-            bairro(s).
-          </div>
-          {districts.slice(0, 5).map((d) => (
-            <div key={d.district}
-                  data-testid={`viab-district-${d.district.replace(/\s+/g, '-').toLowerCase()}`}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: 8, padding: "6px 8px", borderRadius: 6,
-                    background: "white", border: "1px solid #e2e8f0",
-                    alignItems: "center", fontSize: 12,
-                  }}>
-              <div style={{ display: "flex", flexDirection: "column",
-                              gap: 2, minWidth: 0 }}>
-                <strong style={{ color: "#0f172a",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}>{d.district}</strong>
-                <div style={{
-                  height: 5, borderRadius: 3, background: "#f1f5f9",
-                  overflow: "hidden",
-                }}>
-                  <div style={{
-                    height: "100%",
-                    width: `${(d.leads / maxLeads) * 100}%`,
-                    background: "linear-gradient(90deg,#fb7185,#7c3aed)",
-                  }} />
-                </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 15, fontWeight: 800,
-                                color: "#7c3aed", lineHeight: 1 }}>
-                  {d.leads}
-                </div>
-                <div style={{ fontSize: 9, color: "#94a3b8" }}>
-                  {d.unique_phones} pessoa(s)
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-// ============================================================
-// PrintableReport — relatório HTML que abre direto na tela com botão
-// "Imprimir" que aciona o diálogo nativo do navegador (escolhe impressora
-// OU salva como PDF). Substitui o PDF binário (ReportLab) problemático.
-// ============================================================
-function PrintableReport({ data, onClose, onPrint }) {
-  const isOpen = data?.mode === "open";
-  const k = data?.kpis || {};
-  const techs = data?.by_tech || [];
-
-  return (
-    <div data-testid="lousa-report-modal" className="lousa-report-overlay"
-          style={{
-            position: "fixed", inset: 0, zIndex: 9999,
-            background: "rgba(15,23,42,0.7)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: 20,
-          }}>
-      <div style={{
-        background: "#fff", borderRadius: 12,
-        width: "min(95vw, 1180px)", height: "min(92vh, 860px)",
-        display: "flex", flexDirection: "column", overflow: "hidden",
-        boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
-      }}>
-        {/* Cabeçalho com botões (NÃO imprime) */}
-        <div className="no-print"
-              style={{ display: "flex", alignItems: "center",
-                        justifyContent: "space-between", padding: 14,
-                        borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>
-              {isOpen
-                ? "🟡 Bolhas Abertas — Pré-visualização"
-                : "📋 Notas Finalizadas — Pré-visualização"}
-            </div>
-            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-              {isOpen ? "Todas as OS pendentes/em execução" :
-                  `Período: ${data?.period_label || "—"}`}
-              {" · "}Gerado em {data?.generated_at}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button data-testid="lousa-report-print"
-                    onClick={onPrint}
-                    style={{ padding: "8px 16px", borderRadius: 8,
-                              background: "linear-gradient(135deg,#0f766e,#0891b2)",
-                              color: "#fff", border: 0, fontSize: 13,
-                              fontWeight: 700, cursor: "pointer",
-                              display: "inline-flex", alignItems: "center",
-                              gap: 6 }}>
-              🖨 Imprimir / Salvar PDF
-            </button>
-            <button data-testid="lousa-report-close"
-                    onClick={onClose}
-                    style={{ padding: "8px 14px", borderRadius: 8,
-                              background: "#fff", border: "1px solid #cbd5e1",
-                              color: "#475569", fontSize: 12, fontWeight: 700,
-                              cursor: "pointer" }}>
-              ✕ Fechar
-            </button>
-          </div>
-        </div>
-
-        {/* Área imprimível */}
-        <div id="lousa-report-printable" data-testid="lousa-report-content"
-              style={{ flex: 1, overflow: "auto", padding: "20px 28px",
-                        background: "#fff", color: "#0f172a",
-                        fontFamily: "Helvetica, Arial, sans-serif" }}>
-          {/* Título grande no topo da impressão */}
-          <h1 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 4px",
-                          color: "#0f172a" }}>
-            {isOpen
-              ? "Serviços em ABERTO (bolhas ativas)"
-              : "Fechamento de Notas (Lousa)"}
-          </h1>
-          <div style={{ fontSize: 11, color: "#64748b",
-                          marginBottom: 14, borderBottom: "2px solid #0f172a",
-                          paddingBottom: 8 }}>
-            {isOpen
-              ? `Total: ${data.total} bolhas pendentes`
-              : `Período: ${data.period_label} · Total: ${data.total} notas`}
-            {" · "}Gerado em {data.generated_at}
-          </div>
-
-          {/* KPIs */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)",
-                          gap: 8, marginBottom: 16 }}>
-            {[
-              { label: "Total", value: k.total },
-              { label: "Fechamento\ninterno (gestor)", value: k.internal_close },
-              { label: "Instalações", value: k.instalacao },
-              { label: "Reparos", value: k.reparo },
-              { label: "Retiradas", value: k.retirada },
-            ].map((kpi, i) => (
-              <div key={i} style={{
-                border: "1px solid #cbd5e1", borderRadius: 6,
-                background: "#f8fafc", padding: "12px 8px",
-                textAlign: "center", whiteSpace: "pre-line",
-              }}>
-                <div style={{ fontSize: 10, color: "#475569",
-                                fontWeight: 600 }}>{kpi.label}</div>
-                <div style={{ fontSize: 22, color: "#0f172a",
-                                fontWeight: 800, marginTop: 4 }}>
-                  {kpi.value ?? 0}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Por técnico */}
-          {techs.map((t) => (
-            <PrintableTechBlock key={t.name} tech={t} isOpen={isOpen} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PrintableTechBlock({ tech, isOpen }) {
-  const n = tech.count;
-  if (n === 0) {
-    return (
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 13, color: "#94a3b8" }}>
-          👷 <b>{tech.name}</b> ·{" "}
-          <i>{isOpen ? "0 bolhas abertas" : "0 notas finalizadas"} no período</i> ⚠
-        </div>
-      </div>
-    );
-  }
-  const accent = isOpen ? "#ea580c" : "#0f766e";
-  return (
-    <div style={{ marginBottom: 18, pageBreakInside: "avoid" }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6,
-                      color: "#0f172a" }}>
-        👷 {tech.name} ·{" "}
-        <span style={{ color: accent, fontWeight: 800 }}>
-          {n} {isOpen
-              ? (n > 1 ? "bolhas abertas" : "bolha aberta")
-              : (n > 1 ? "notas finalizadas" : "nota finalizada")}
-        </span>
-      </div>
-      <table style={{ width: "100%", borderCollapse: "collapse",
-                        fontSize: 10, tableLayout: "fixed" }}>
-        <thead>
-          <tr style={{ background: "#0f172a", color: "#fff" }}>
-            {isOpen
-              ? ["#", "Aberta em", "Agendada", "Cliente", "Tipo", "Prio",
-                  "Status", "Endereço"].map((h) => (
-                <th key={h} style={thStyle}>{h}</th>))
-              : ["#", "Fechada em", "Cliente", "Tipo", "Sinal",
-                  "CTO · Porta", "O que foi feito", "Origem"].map((h) => (
-                <th key={h} style={thStyle}>{h}</th>))
-            }
-          </tr>
-        </thead>
-        <tbody>
-          {tech.tickets.map((r, i) => (
-            <PrintableTicketRow key={r.id || i} row={r} idx={i + 1} isOpen={isOpen} />
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-const thStyle = {
-  padding: "5px 6px", textAlign: "left", fontWeight: 700,
-  fontSize: 9.5, border: "1px solid #1e293b",
-};
-const tdStyle = {
-  padding: "5px 6px", border: "1px solid #e2e8f0",
-  verticalAlign: "top", fontSize: 9.5, wordBreak: "break-word",
-};
-
-function PrintableTicketRow({ row, idx, isOpen }) {
-  const cs = row.client_snapshot || {};
-  const cd = row.completion_data || {};
-  const isInternal = row.admin_action === "encerrar";
-  const stripe = idx % 2 === 0 ? "#f8fafc" : "#fff";
-
-  if (isOpen) {
-    const created = (row.created_at || "").slice(0, 16).replace("T", " ");
-    const sched = (row.scheduled_date || "") +
-                  (row.scheduled_time ? ` ${row.scheduled_time}` : "");
-    return (
-      <tr style={{ background: stripe }}>
-        <td style={{ ...tdStyle, textAlign: "center" }}>{idx}</td>
-        <td style={tdStyle}>{created}</td>
-        <td style={tdStyle}>{sched || "—"}</td>
-        <td style={tdStyle}>{cs.name || "—"}</td>
-        <td style={tdStyle}>{row.type || "—"}</td>
-        <td style={tdStyle}>{row.priority || "—"}</td>
-        <td style={tdStyle}>{row.status || "—"}</td>
-        <td style={tdStyle}>{cs.address || "—"}</td>
-      </tr>
-    );
-  }
-
-  // Mostra fechamento no fuso local do navegador (BRT para usuários no
-  // Brasil), espelhando a hora do SmartOLT no celular. O backend grava
-  // em UTC; aqui convertemos para exibição.
-  const closedAt = row.closed_at
-    ? (() => {
-        try {
-          const d = new Date(row.closed_at);
-          if (Number.isNaN(d.getTime())) return "";
-          return d.toLocaleString("pt-BR", {
-            dateStyle: "short", timeStyle: "short",
-          });
-        } catch { return row.closed_at.slice(0, 16).replace("T", " "); }
-      })()
-    : "";
-  const sinal = cd.sinal;
-  const sinalStr = typeof sinal === "number" ? `${sinal.toFixed(1)} dBm` : "—";
-  let ctoStr = "—";
-  if (cd.cto_name) {
-    ctoStr = cd.cto_name;
-    if (cd.cto_port_number) ctoStr += ` · P${cd.cto_port_number}`;
-    if (cd.cto_splitter) ctoStr += ` · ${cd.cto_splitter}`;
-    if (cd.cto_vlan) ctoStr += ` · VLAN ${cd.cto_vlan}`;
-  }
-  const doneParts = [];
-  if (cd.ont) doneParts.push(<><b>ONT:</b> {cd.ont}</>);
-  if (cd.drop) doneParts.push(<><b>Drop:</b> {cd.drop}m</>);
-  if (cd.esticador) doneParts.push(<><b>Est:</b> {cd.esticador}</>);
-  if (cd.conectores) doneParts.push(<><b>Con:</b> {cd.conectores}</>);
-  if (cd.backbone) doneParts.push(<><b>Bb:</b> {cd.backbone}m</>);
-  const fotos = (cd.fotos || []).filter(Boolean).length;
-  if (fotos) doneParts.push(`📷 ${fotos} foto${fotos > 1 ? "s" : ""}`);
-  if (cd.ping_summary) doneParts.push(<><b>Ping:</b> {String(cd.ping_summary).slice(0, 60)}</>);
-  if (cd.observacoes) doneParts.push(<><b>Obs:</b> {String(cd.observacoes).slice(0, 140)}</>);
-  if (row.outcome) doneParts.push(<><b>Result:</b> {row.outcome}</>);
-
-  return (
-    <tr style={{ background: stripe }}>
-      <td style={{ ...tdStyle, textAlign: "center" }}>{idx}</td>
-      <td style={tdStyle}>{closedAt}</td>
-      <td style={tdStyle}>{cs.name || "—"}</td>
-      <td style={tdStyle}>{row.type || "—"}</td>
-      <td style={{ ...tdStyle, textAlign: "center" }}>{sinalStr}</td>
-      <td style={tdStyle}>{ctoStr}</td>
-      <td style={tdStyle}>
-        {doneParts.length === 0 ? "—" : doneParts.map((p, i) => (
-          <React.Fragment key={i}>{p}{i < doneParts.length - 1 ? " · " : ""}</React.Fragment>
-        ))}
-      </td>
-      <td style={{ ...tdStyle, textAlign: "center",
-                    background: isInternal ? "#fef3c7" : undefined,
-                    color: isInternal ? "#92400e" : undefined,
-                    fontWeight: isInternal ? 700 : 400 }}>
-        {isInternal ? "🛡 Gestor" : "👷 Técnico"}
-      </td>
-    </tr>
   );
 }
 
@@ -3738,310 +3006,5 @@ function TimelineSlot({ slot, isCurrentHour, techId, maxPerSlot, onSlotDrop, dra
   );
 }
 
-
-/* ============================================================
- * Auto-Reschedule on Degraded Signal — Modal de configuração
- * ============================================================ */
-function AutoReschedConfigModal({ initial, onClose, onSaved }) {
-  const [cfg, setCfg] = useState(initial || {
-    enabled: false, delay_hours: 24,
-    target_collaborator_id: null, rede_candidates: [],
-  });
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (initial) setCfg(initial);
-  }, [initial]);
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const next = await api.lousaAutoReschedSet({
-        enabled: cfg.enabled,
-        delay_hours: cfg.delay_hours,
-        target_collaborator_id: cfg.target_collaborator_id || null,
-      });
-      onSaved(next);
-    } catch (e) {
-      alert(e?.response?.data?.detail || e.message);
-    } finally { setSaving(false); }
-  };
-
-  const candidates = cfg.rede_candidates || [];
-
-  return (
-    <div onClick={onClose} data-testid="auto-resched-modal"
-          style={{ position: "fixed", inset: 0, zIndex: 1100,
-                    background: "rgba(0,0,0,.55)",
-                    display: "flex", alignItems: "center",
-                    justifyContent: "center", padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()}
-            style={{ background: "var(--bg-canvas)", padding: 24,
-                      borderRadius: 12, maxWidth: 520, width: "100%",
-                      border: "2px solid #0f766e",
-                      boxShadow: "0 20px 50px rgba(0,0,0,.3)" }}>
-        <h3 style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 800,
-                        color: "#0f172a" }}>
-          🟢 Auto-reagendar OS com sinal degradado
-        </h3>
-        <p style={{ fontSize: 12, color: "var(--text-muted)",
-                      marginBottom: 16 }}>
-          Quando um técnico finaliza uma OS e o sinal piora
-          (<strong>|sinal fechamento| &gt; |sinal abertura|</strong>),
-          o sistema cria automaticamente uma nova OS de reinspeção
-          atribuída a um técnico de rede.
-        </p>
-
-        {/* Toggle */}
-        <label data-testid="auto-resched-enable-label"
-                style={{ display: "flex", justifyContent: "space-between",
-                          alignItems: "center", padding: "10px 12px",
-                          background: cfg.enabled ? "#ecfdf5" : "#f1f5f9",
-                          border: `1px solid ${cfg.enabled ? "#6ee7b7" : "#cbd5e1"}`,
-                          borderRadius: 8, marginBottom: 14,
-                          cursor: "pointer" }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 13,
-                              color: cfg.enabled ? "#065f46" : "#475569" }}>
-              {cfg.enabled ? "🟢 Ligado" : "⚪ Desligado"}
-            </div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-              {cfg.enabled
-                ? "Próximas OS com sinal degradado serão reagendadas automaticamente."
-                : "Nenhuma ação automática enquanto desligado."}
-            </div>
-          </div>
-          <input type="checkbox"
-                    data-testid="auto-resched-toggle-input"
-                    checked={!!cfg.enabled}
-                    onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })}
-                    style={{ width: 36, height: 20, cursor: "pointer" }} />
-        </label>
-
-        {/* Delay */}
-        <div style={{ marginBottom: 14 }}>
-          <label style={{ display: "block", fontSize: 11,
-                            fontWeight: 700, color: "var(--text-secondary)",
-                            textTransform: "uppercase", letterSpacing: 0.5,
-                            marginBottom: 6 }}>
-            Reagendar para daqui a quantas horas
-          </label>
-          <div style={{ display: "flex", gap: 8 }}>
-            {[12, 24, 48, 72].map((h) => (
-              <button key={h} type="button"
-                        data-testid={`auto-resched-delay-${h}`}
-                        onClick={() => setCfg({ ...cfg, delay_hours: h })}
-                        style={{ flex: 1, padding: "8px 0", borderRadius: 6,
-                                  border: `1px solid ${cfg.delay_hours === h ? "#0f766e" : "#cbd5e1"}`,
-                                  background: cfg.delay_hours === h ? "#0f766e" : "white",
-                                  color: cfg.delay_hours === h ? "white" : "#0f172a",
-                                  fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                {h}h
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Target */}
-        <div style={{ marginBottom: 18 }}>
-          <label style={{ display: "block", fontSize: 11,
-                            fontWeight: 700, color: "var(--text-secondary)",
-                            textTransform: "uppercase", letterSpacing: 0.5,
-                            marginBottom: 6 }}>
-            Técnico de rede que receberá a OS
-          </label>
-          <select value={cfg.target_collaborator_id || ""}
-                    data-testid="auto-resched-target-select"
-                    onChange={(e) => setCfg({
-                      ...cfg,
-                      target_collaborator_id: e.target.value || null,
-                    })}
-                    style={{ width: "100%", padding: "8px 10px",
-                              borderRadius: 6, border: "1px solid #cbd5e1",
-                              fontSize: 13 }}>
-            <option value="">Automático (primeiro disponível)</option>
-            {candidates.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          {candidates.length === 0 && (
-            <div style={{ fontSize: 10, color: "#92400e",
-                            background: "#fffbeb", padding: "5px 8px",
-                            borderRadius: 4, marginTop: 6, border: "1px solid #fcd34d" }}>
-              ⚠ Nenhum colaborador com cargo/role contendo &quot;rede&quot;.
-              Cadastre técnicos de rede no painel de Colaboradores.
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={onClose}
-                    style={{ padding: "8px 18px", background: "white",
-                              border: "1px solid #cbd5e1", borderRadius: 6,
-                              fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-            Cancelar
-          </button>
-          <button onClick={save}
-                    data-testid="auto-resched-save"
-                    disabled={saving}
-                    style={{ padding: "8px 18px", background: "#0f766e",
-                              color: "white", border: "none",
-                              borderRadius: 6, fontWeight: 700, fontSize: 12,
-                              cursor: saving ? "wait" : "pointer",
-                              opacity: saving ? 0.7 : 1 }}>
-            {saving ? "Salvando..." : "Salvar"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-
-/* ============================================================
- * AdminFinalizeModal — gestor finaliza OS no lugar do técnico,
- * com mesmas regras (drop, esticadores, sinal, observações).
- * Aplica os mesmos hooks no backend (signal snapshot, auto-resched).
- * ============================================================ */
-function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
-  const [form, setForm] = useState({ sinal: "", observacoes: "" });
-  const [notes, setNotes] = useState("");
-  const [busy, setBusy] = useState(false);
-  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const cname = ticket?.client_snapshot?.name || ticket?.id;
-
-  const submit = async () => {
-    if (form.sinal === "" || Number.isNaN(Number(form.sinal))) {
-      window.alert("Informe o sinal óptico final (dBm).");
-      return;
-    }
-    setBusy(true);
-    try {
-      // Fechamento interno (gestor/auditor): NÃO consome insumos nem ONT.
-      // Apenas registra sinal final do cliente + observações + justificativa.
-      const cd = {
-        sinal: Number(form.sinal),
-        qtd_drop: 0,
-        esticadores: 0,
-        conectores_fast: 0,
-        cabo_rede: 0,
-        conectores_rede: 0,
-        ont: null,
-        observacoes: form.observacoes || null,
-        closed_by_admin: true,
-        internal_close: true,
-      };
-      await onSubmit(cd, notes);
-    } catch (e) {
-      window.alert(e?.response?.data?.detail || e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div onClick={onClose} data-testid="admin-finalize-modal"
-          style={{ position: "fixed", inset: 0, zIndex: 1200,
-                    background: "rgba(0,0,0,.55)",
-                    display: "flex", alignItems: "center",
-                    justifyContent: "center", padding: 16,
-                    overflowY: "auto" }}>
-      <div onClick={(e) => e.stopPropagation()}
-            style={{ background: "var(--bg-canvas, white)", padding: 22,
-                      borderRadius: 12, maxWidth: 560, width: "100%",
-                      border: "2px solid #0f766e",
-                      boxShadow: "0 20px 50px rgba(0,0,0,.3)",
-                      maxHeight: "90vh", overflowY: "auto" }}>
-        <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800,
-                        color: "#0f172a" }}>
-          🏁 Finalizar OS no lugar do técnico
-        </h3>
-        <p style={{ fontSize: 11, color: "#64748b", marginBottom: 12 }}>
-          Cliente: <strong>{cname}</strong>
-          {ticket.assigned_collaborator_id && (
-            <span> · técnico: {ticket.collaborator_name || ticket.assigned_collaborator_id}</span>
-          )}
-          <br/>Fechamento <strong>interno</strong>: registra apenas o sinal
-          final do cliente e a descrição. <strong>Não consome insumos nem
-          ONT</strong> (técnico não esteve no local).
-        </p>
-
-        <div style={{ marginBottom: 10 }}>
-          <FieldNum label="Sinal final (dBm) *" testid="adm-fin-sinal"
-                      step="0.1" value={form.sinal}
-                      onChange={(v) => setF("sinal", v)} required />
-        </div>
-
-        <label style={{ display: "block", fontSize: 11, fontWeight: 700,
-                          color: "#475569", textTransform: "uppercase",
-                          letterSpacing: 0.5, marginBottom: 4 }}>
-          Observações do serviço
-        </label>
-        <textarea data-testid="adm-fin-obs"
-                    value={form.observacoes}
-                    onChange={(e) => setF("observacoes", e.target.value)}
-                    placeholder="Ex: substituído drop, ajustada emenda no CTO, etc."
-                    style={{ width: "100%", padding: 8, fontSize: 12,
-                              minHeight: 60, borderRadius: 6,
-                              border: "1px solid #cbd5e1", marginBottom: 10,
-                              fontFamily: "inherit" }} />
-
-        <label style={{ display: "block", fontSize: 11, fontWeight: 700,
-                          color: "#7c2d12", textTransform: "uppercase",
-                          letterSpacing: 0.5, marginBottom: 4 }}>
-          Justificativa (auditoria — por que o gestor está fechando)
-        </label>
-        <textarea data-testid="adm-fin-notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Ex: técnico não conseguiu finalizar via app, registrei manualmente."
-                    style={{ width: "100%", padding: 8, fontSize: 12,
-                              minHeight: 50, borderRadius: 6,
-                              border: "1px solid #fcd34d",
-                              background: "#fffbeb",
-                              marginBottom: 16, fontFamily: "inherit" }} />
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={onClose}
-                    style={{ padding: "8px 18px", background: "white",
-                              border: "1px solid #cbd5e1", borderRadius: 6,
-                              fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-            Cancelar
-          </button>
-          <button onClick={submit}
-                    data-testid="adm-fin-submit"
-                    disabled={busy}
-                    style={{ padding: "8px 18px", background: "#0f766e",
-                              color: "white", border: "none",
-                              borderRadius: 6, fontWeight: 700, fontSize: 12,
-                              cursor: busy ? "wait" : "pointer",
-                              opacity: busy ? 0.7 : 1 }}>
-            {busy ? "Finalizando..." : "✓ Finalizar OS"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FieldNum({ label, value, onChange, step = "1", required, testid }) {
-  return (
-    <label style={{ display: "block" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: "#475569",
-                       textTransform: "uppercase", letterSpacing: 0.4,
-                       marginBottom: 3 }}>
-        {label}{required && <span style={{ color: "#dc2626" }}> *</span>}
-      </div>
-      <input type="number" step={step} value={value}
-                data-testid={testid}
-                onChange={(e) => onChange(e.target.value)}
-                style={{ width: "100%", padding: "6px 8px",
-                          border: "1px solid #cbd5e1", borderRadius: 6,
-                          fontSize: 13, fontWeight: 600 }} />
-    </label>
-  );
-}
-// (FieldText removido — fechamento interno não usa campos de texto livre)
 
 

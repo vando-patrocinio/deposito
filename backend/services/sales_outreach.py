@@ -74,13 +74,29 @@ async def _phone_in_cooldown(phone: str) -> bool:
     return n > 0
 
 
-async def _send_via_sidecar(phone: str, text: str) -> Optional[dict]:
-    """Envia mensagem via sidecar Baileys. None se falhar."""
-    from services.wa.sidecar import SIDECAR_BASE, _sidecar_headers
+async def _send_via_sidecar(phone: str, text: str,
+                              cid: Optional[str] = None) -> Optional[dict]:
+    """Envia mensagem via sidecar Baileys do canal padrão outbound da empresa.
+
+    Resolve o canal via `whatsapp_channels.get_default_outbound_channel(cid)`;
+    se cid não for fornecido (compat), cai no canal-1.
+    """
+    from services.wa.sidecar import _sidecar_headers, SIDECAR_BASE
+    from services.whatsapp_channels import (
+        base_url_for, get_default_outbound_channel,
+    )
+    base_url = SIDECAR_BASE
+    if cid:
+        try:
+            from database import db as _db
+            ch_id = await get_default_outbound_channel(_db, cid)
+            base_url = base_url_for(ch_id)
+        except Exception as e:
+            log.warning("[sales_outreach] channel resolve failed: %s", e)
     try:
         async with httpx.AsyncClient(headers=_sidecar_headers(),
                                        timeout=20.0) as cli:
-            r = await cli.post(f"{SIDECAR_BASE}/send",
+            r = await cli.post(f"{base_url.rstrip('/')}/send",
                                  json={"phone": phone, "text": text})
             if r.status_code >= 400:
                 log.warning("[sales_outreach] sidecar HTTP %s: %s",
@@ -179,7 +195,8 @@ async def process_pending_leads() -> dict:
         if name:
             first = name.split()[0]
             text = text.replace("Oi!", f"Oi {first}!", 1)
-        send_resp = await _send_via_sidecar(phone, text)
+        send_resp = await _send_via_sidecar(phone, text,
+                                              cid=lead.get("company_id"))
         if not send_resp:
             stats["errors"] += 1
             await db.sales_leads.update_one(
@@ -281,7 +298,7 @@ async def schedule_wifi_confirmation(
                 else "amigo(a)"
             text = WIFI_CONFIRM_TEMPLATE.format(
                 first_name=first, ssid=ssid, password=password)
-            send_resp = await _send_via_sidecar(phone, text)
+            send_resp = await _send_via_sidecar(phone, text, cid=cid)
             if not send_resp:
                 log.warning(
                     "[sales_outreach] confirm wifi send failed phone=%s",

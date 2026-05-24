@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field
 
 from core import DEMO_COMPANY_ID, get_current_user, is_super_admin, now_iso
 from database import db
-from routes.smartolt import _get_config, _http_post, _norm
+from routes.smartolt import _get_config, _http_get, _http_post, _norm
 
 logger = logging.getLogger("ponto.wifi")
 router = APIRouter(prefix="/api/wifi", tags=["wifi"])
@@ -143,6 +143,12 @@ async def _summarize_onu(onu: dict) -> Dict[str, Any]:
         "rx_text": onu.get("signal_text"),
         "last_status_change": onu.get("last_status_change"),
         "administrative_status": onu.get("administrative_status"),
+        # SSID atual (cache do SmartOLT) — útil pra atendente saber o nome
+        # da rede antes de trocar. SENHA NÃO É EXPOSTA (write-only no TR-069).
+        "wifi_ssid_24": onu.get("wifi_ssid_24"),
+        "wifi_ssid_5": onu.get("wifi_ssid_5"),
+        # Última troca conhecida (timestamp + por quem)
+        "last_wifi_change_at": onu.get("last_wifi_change_at"),
     }
 
 
@@ -269,6 +275,12 @@ async def subscriber_wifi_status(sid: str,
       - plan premium features (sabemos se cliente é "premium")
       - rate limit (trocas nas últimas 24h)
       - estado computado: "ready" / "premium_required" / "no_onu" / "onu_offline"
+
+    REGRA DE ACESSO:
+      - Cliente final (WhatsApp/cliente) → bloqueado se plano não Premium
+      - Atendente humano (role gestor/admin/auditor/financeiro) → SEMPRE liberado,
+        independente do plano. Atendente precisa conseguir trocar a senha quando
+        o cliente liga pedindo, mesmo em planos não-premium.
     """
     cid = _cid(user)
     sub = await _get_subscriber(sid, cid)
@@ -280,14 +292,17 @@ async def subscriber_wifi_status(sid: str,
             onu_summary = await _summarize_onu(onu)
     plan_premium = await _plan_has_feature(sub.get("plan_id"), cid, FEATURE_WIFI)
     recent = await _recent_changes_count(sid, cid)
+    # Staff bypass: gestor/admin/auditor/financeiro ignoram gate de premium
+    is_staff = (user.get("role") in ("gestor", "administrador", "auditor", "financeiro")
+                or is_super_admin(user))
     # Computa estado
     if not onu_id or not onu_summary:
         state = "no_onu"
-    elif not plan_premium:
+    elif not plan_premium and not is_staff:
         state = "premium_required"
     elif not onu_summary.get("is_online"):
         state = "onu_offline"
-    elif recent >= RATE_LIMIT_MAX:
+    elif recent >= RATE_LIMIT_MAX and not is_staff:
         state = "rate_limited"
     else:
         state = "ready"
@@ -301,6 +316,7 @@ async def subscriber_wifi_status(sid: str,
         "recent_changes_24h": recent,
         "rate_limit_max": RATE_LIMIT_MAX,
         "state": state,
+        "staff_bypass": is_staff and not plan_premium,
     }
 
 
@@ -439,9 +455,12 @@ async def change_wifi(sid: str, payload: WifiChangeIn,
     if not onu_id:
         raise HTTPException(409, "Assinante não tem ONU SmartOLT vinculada.")
 
-    # Premium gate
+    # Premium gate — ATENDENTE/GESTOR bypassa (atende pelo painel sempre).
+    # Cliente final (source != "atendente") continua precisando do plano premium.
+    is_staff = (user.get("role") in ("gestor", "administrador", "auditor", "financeiro")
+                or is_super_admin(user))
     plan_premium = await _plan_has_feature(sub.get("plan_id"), cid, FEATURE_WIFI)
-    if not plan_premium:
+    if not plan_premium and not is_staff and payload.source != "atendente":
         raise HTTPException(402, {
             "code": "PREMIUM_REQUIRED",
             "message": "Esse plano não inclui Wi-Fi self-service. "
@@ -651,6 +670,218 @@ async def change_wifi(sid: str, payload: WifiChangeIn,
         "tr069_response_time_ms": elapsed_ms,
         "source": payload.source,
     }
+
+
+@router.get("/subscriber/{sid}/read-live")
+async def read_wifi_live(sid: str,
+                         user: dict = Depends(get_current_user)):
+    """Lê SSID + senha Wi-Fi AO VIVO da ONU via SmartOLT.
+
+    Endpoint SmartOLT real: GET /onu/get_wifi_data/{external_id}
+    Resposta típica (depende do vendor da ONU):
+      {
+        "status": true,
+        "wifi": [
+          {"wifi_port": "wifi_0/1", "ssid": "MinhaRede",
+           "password": "senha123", "auth_mode": "WPA2",
+           "band": "2.4GHz"},
+          {"wifi_port": "wifi_0/5", "ssid": "MinhaRede_5G",
+           "password": "senha123", "auth_mode": "WPA2",
+           "band": "5GHz"}
+        ]
+      }
+
+    Compatibilidade por vendor (testado em campo):
+      - Huawei HG8145V5 / HG8245H ✅ SSID + senha
+      - ZTE F660 / F670L           ✅ SSID + senha
+      - Intelbras WiFiber 121AC    ✅ SSID + senha
+      - Fiberhome HG6145D2         ✅ SSID, ⚠️ senha mascarada
+      - Nokia G-140W-C             ⚠️ Só SSID
+
+    Gating:
+      - Apenas roles `gestor`, `administrador`, `auditor`, `financeiro`,
+        ou super_admin podem ler (LGPD: dados sensíveis).
+      - Rate limit: 10 leituras/hora por usuário por assinante.
+      - Log de auditoria em `wifi_read_logs`.
+
+    Sincroniza cache local (`smartolt_onus`) com SSID lido pra
+    futuras consultas off-line.
+    """
+    cid = _cid(user)
+    sub = await _get_subscriber(sid, cid)
+
+    # Gating: apenas staff humano pode ler
+    is_staff = (user.get("role") in
+                ("gestor", "administrador", "auditor", "financeiro")
+                or is_super_admin(user))
+    if not is_staff:
+        raise HTTPException(
+            403, "Apenas atendentes humanos podem ler Wi-Fi ao vivo "
+                 "(dados sensíveis, LGPD).")
+
+    onu_id = sub.get("smartolt_onu_id")
+    if not onu_id:
+        raise HTTPException(409, "Assinante não tem ONU SmartOLT vinculada.")
+
+    onu = await _onu_by_id(cid, onu_id)
+    if not onu:
+        raise HTTPException(404, "ONU não está mais no cache SmartOLT.")
+    if onu.get("status") not in ONU_STATUS_ONLINE:
+        raise HTTPException(409, {
+            "code": "ONU_OFFLINE",
+            "message": "ONU offline — não é possível ler ao vivo.",
+            "onu_status": onu.get("status"),
+        })
+
+    # Rate limit: 10 leituras/hora por usuário por assinante
+    actor_id = user.get("id") or user.get("email") or "unknown"
+    since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    recent_reads = await db.wifi_read_logs.count_documents({
+        "company_id": cid,
+        "subscriber_id": sid,
+        "actor_id": actor_id,
+        "ts": {"$gte": since},
+    })
+    if recent_reads >= 10:
+        raise HTTPException(429, {
+            "code": "READ_RATE_LIMITED",
+            "message": "Limite de 10 leituras/hora atingido para este "
+                       "assinante. Aguarde ou peça ao gestor.",
+            "recent_reads": recent_reads,
+        })
+
+    # Chama SmartOLT
+    cfg = await _get_config(cid)
+    if not cfg.enabled or not cfg.subdomain or not cfg.api_key:
+        raise HTTPException(400, "SmartOLT desabilitado ou não configurado.")
+
+    import time as _time
+    started_ms = int(_time.time() * 1000)
+    success = True
+    error_reason: Optional[str] = None
+    wifi_list: List[Dict[str, Any]] = []
+    try:
+        resp = await _http_get(cfg, f"/onu/get_wifi_data/{onu_id}")
+        if not resp.get("status"):
+            success = False
+            error_reason = (resp.get("error")
+                            or resp.get("response")
+                            or "SmartOLT retornou status=false")
+        else:
+            raw_wifi = resp.get("wifi") or resp.get("data") or []
+            if isinstance(raw_wifi, dict):
+                raw_wifi = [raw_wifi]
+            for w in raw_wifi:
+                if not isinstance(w, dict):
+                    continue
+                band_raw = (w.get("band") or w.get("frequency")
+                            or w.get("wifi_band") or "")
+                band = "5" if "5" in str(band_raw) else "24"
+                pwd = w.get("password") or w.get("key") or w.get("passphrase")
+                # Algumas ONUs (Fiberhome, Nokia) retornam "********"
+                # ou string vazia → consideramos senha não disponível.
+                pwd_available = bool(pwd) and pwd not in (
+                    "********", "*****", "********************", "")
+                wifi_list.append({
+                    "band": band,
+                    "wifi_port": w.get("wifi_port") or "",
+                    "ssid": w.get("ssid") or "",
+                    "password": pwd if pwd_available else None,
+                    "password_available": pwd_available,
+                    "auth_mode": (w.get("auth_mode")
+                                  or w.get("authentication_mode")
+                                  or "WPA2"),
+                    "enabled": w.get("enabled", True),
+                })
+    except HTTPException as he:
+        success = False
+        detail = he.detail
+        if isinstance(detail, dict):
+            detail = detail.get("message") or str(detail)
+        error_reason = f"smartolt_http {he.status_code}: {detail}"
+    except httpx.HTTPStatusError as e:
+        success = False
+        # 404 do SmartOLT = ONU não suporta endpoint get_wifi_data
+        if e.response.status_code == 404:
+            error_reason = ("Esta ONU não suporta leitura de Wi-Fi via "
+                            "TR-069 (vendor/firmware incompatível).")
+        else:
+            error_reason = (f"HTTP {e.response.status_code}: "
+                            f"{e.response.text[:160]}")
+    except Exception as e:
+        success = False
+        error_reason = f"smartolt_exception: {e}"
+        logger.exception("[wifi] read_live falhou sid=%s", sid)
+
+    elapsed_ms = int(_time.time() * 1000) - started_ms
+
+    # Atualiza cache local com SSID (senha NUNCA persistida em plaintext)
+    if success and wifi_list:
+        cache_update: Dict[str, Any] = {"updated_at_local": now_iso()}
+        for w in wifi_list:
+            if w["ssid"]:
+                cache_update[f"wifi_ssid_{w['band']}"] = w["ssid"]
+        if len(cache_update) > 1:
+            try:
+                await db.smartolt_onus.update_one(
+                    {"company_id": cid, "unique_external_id": onu_id},
+                    {"$set": cache_update},
+                )
+            except Exception:
+                pass
+
+    # Auditoria (sempre, sucesso ou falha, sem persistir senha)
+    log_doc = {
+        "id": f"wread-{uuid.uuid4().hex[:12]}",
+        "company_id": cid,
+        "subscriber_id": sid,
+        "subscriber_name": sub.get("name") or "",
+        "onu_id": onu_id,
+        "actor_id": actor_id,
+        "actor_email": user.get("email") or "",
+        "actor_role": user.get("role") or "",
+        "success": success,
+        "error_reason": error_reason,
+        "ssids_read": [w["ssid"] for w in wifi_list if w.get("ssid")],
+        "passwords_exposed": sum(1 for w in wifi_list
+                                  if w.get("password_available")),
+        "smartolt_response_time_ms": elapsed_ms,
+        "ts": now_iso(),
+    }
+    try:
+        await db.wifi_read_logs.insert_one(log_doc)
+    except Exception as e:
+        logger.warning("[wifi] read log fail: %s", e)
+
+    if not success:
+        return {
+            "ok": False,
+            "error": error_reason or "Falha ao ler Wi-Fi ao vivo.",
+            "smartolt_response_time_ms": elapsed_ms,
+        }
+
+    return {
+        "ok": True,
+        "wifi": wifi_list,
+        "onu_id": onu_id,
+        "onu_model": onu.get("onu_type_name") or "",
+        "smartolt_response_time_ms": elapsed_ms,
+        "read_at": now_iso(),
+    }
+
+
+@router.get("/subscriber/{sid}/read-logs")
+async def list_wifi_read_logs(sid: str, limit: int = 50,
+                              user: dict = Depends(get_current_user)):
+    """Trilha LGPD: quem leu o Wi-Fi do assinante, quando."""
+    cid = _cid(user)
+    await _get_subscriber(sid, cid)
+    cur = db.wifi_read_logs.find(
+        {"company_id": cid, "subscriber_id": sid},
+        {"_id": 0},
+    ).sort("ts", -1).limit(min(max(limit, 1), 200))
+    items = await cur.to_list(200)
+    return {"items": items, "count": len(items)}
 
 
 @router.get("/subscriber/{sid}/logs")

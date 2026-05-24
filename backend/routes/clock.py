@@ -129,6 +129,9 @@ class CollaboratorIn(BaseModel):
     clock_in_enabled: bool = True  # CLT bate ponto. False = freelancer/MEI/3rd party — Lousa direta sem ponto.
     active: bool = True  # False = colaborador inativo (desligado, em férias longas, etc)
     can_attend_whatsapp: bool = False  # AUDITOR: libera o menu "Atendimento IA" para o colaborador acessar conversas WhatsApp
+    requires_vehicle: bool = False  # Frota: técnico/instalador que precisa operar veículo (gera vistoria semanal)
+    current_vehicle_id: Optional[str] = None  # ID do veículo vinculado atualmente (auto-atualizado pelo /fleet/assign)
+    fleet_block_reason: Optional[str] = None  # Bloqueio frota (transferência pendente, sinistro etc)
 
 
 class Collaborator(CollaboratorIn):

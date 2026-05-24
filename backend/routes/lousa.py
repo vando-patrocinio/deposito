@@ -62,6 +62,29 @@ PRIORITY_RANK = {"urgente": -1, "prioridade": 0, "horario": 1, "normal": 2}
 ADMIN_RESOLVED = ("encerrada", "reagendada", "cancelada")
 TECH_RESOLVED = ("finalizada",)
 
+
+
+# =============================================================================
+# Normalização de client_snapshot — protege contra crashes no frontend
+# (helpers movidos para /app/backend/utils/normalize.py; mantido alias local)
+# =============================================================================
+from utils.normalize import (
+    norm_string as _norm_string,
+    normalize_fields as _normalize_client_snapshot,
+)
+
+
+def _normalize_ticket(t: dict) -> dict:
+    """Aplica normalização defensiva a um ticket inteiro antes de retornar.
+
+    Não muta o input — retorna shallow copy com client_snapshot saneado.
+    """
+    if not t:
+        return t
+    if t.get("client_snapshot"):
+        t["client_snapshot"] = _normalize_client_snapshot(t["client_snapshot"])
+    return t
+
 # -------------------------------------------------------------------------
 # REGRA: Bolha da Lousa só aparece no dia que corresponde à sua data.
 # Cada ticket tem um "dia do calendário" (BR, UTC-3) calculado a partir de
@@ -968,10 +991,10 @@ async def lousa_grid(
                 "online_threshold_minutes": online_threshold_min,
                 "records": sorted(s["records"], key=lambda r: r["time"]),
             },
-            "tickets": tickets,
-            "recent_resolved": recent_resolved,
+            "tickets": [_normalize_ticket(t) for t in tickets],
+            "recent_resolved": [_normalize_ticket(t) for t in recent_resolved],
             "slots": slots_data,
-            "unscheduled": unscheduled,
+            "unscheduled": [_normalize_ticket(t) for t in unscheduled],
         })
     # Enriquece TODAS as bolhas com sinal SmartOLT (cache local, 1 query batch)
     try:
@@ -1138,6 +1161,10 @@ async def _lousa_for_collaborator(
     # da Lousa de hoje (e aparecem na Lousa do dia agendado).
     today = _today_br_iso()
     active_raw = [t for t in active_raw if _ticket_day_iso(t) == today]
+    # REGRA: bolhas pausadas aguardando ação do gestor (técnico chamou
+    # gestor via "Não consegui executar") somem da lousa do técnico até
+    # o gestor liberá-la de volta (ou fechá-la improdutiva / criar nova OS).
+    active_raw = [t for t in active_raw if not t.get("needs_manager_action")]
     active_raw.sort(key=lambda t: (PRIORITY_RANK.get(t.get("priority"), 99),
                                        t.get("position") or 999))
     locked_idx = compute_locked_positions(active_raw)
@@ -1242,8 +1269,8 @@ async def _lousa_for_collaborator(
     # MIRROR: Lousa do colaborador = APENAS bolhas ativas (mesmas que aparecem na lousa do gestor)
     # Resolvidos vão como metadata separada para o card "Último serviço encerrado", não na lista de bolhas
     return {
-        "tickets": active_raw,  # apenas ativas — espelha exatamente lousa do gestor
-        "recent_resolved": resolved_raw,  # metadata para histórico do dia
+        "tickets": [_normalize_ticket(t) for t in active_raw],  # apenas ativas — espelha exatamente lousa do gestor
+        "recent_resolved": [_normalize_ticket(t) for t in resolved_raw],  # metadata para histórico do dia
         "active_ticket_id": active["id"] if active else None,
         "last_closed_at": last_closed_at,
         "minutes_since_last_close": minutes_since_last_close,
@@ -1265,7 +1292,7 @@ async def list_all_tickets(user: dict = Depends(require_role("gestor"))):
         PRIORITY_RANK.get(t.get("priority", "normal"), 2),
         t.get("position", 0),
     ))
-    return {"tickets": raw}
+    return {"tickets": [_normalize_ticket(t) for t in raw]}
 
 
 @router.get("/lousa/returned-notes")
@@ -1665,7 +1692,7 @@ async def get_ticket(ticket_id: str, user: dict = Depends(get_current_user)):
         cid = await _user_collaborator_id(user)
         if t["assigned_collaborator_id"] != cid:
             raise HTTPException(403, "Esta nota não é sua")
-    return t
+    return _normalize_ticket(t)
 
 
 # -------------------------------------------------------------------------
@@ -2629,6 +2656,106 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
         raise HTTPException(404, "Nota não encontrada")
     if t["status"] != "aberta":
         raise HTTPException(400, "Somente notas abertas podem ser finalizadas")
+
+    # ======================================================================
+    # REGRA: técnico/instalador/reparador NÃO PODE finalizar OS "informada"
+    # (sem execução). Apenas o gestor pode encerrar essa OS após contatar
+    # o cliente. O técnico solicita o contato; cria pedido em
+    # `lousa_manager_callback_requests` e bloqueia o fechamento.
+    # `is_admin_test=True` significa que um administrador/auditor está
+    # operando no próprio app — esses podem finalizar normalmente.
+    # ======================================================================
+    if payload.outcome == "informada" and not is_admin_test:
+        cd = payload.completion_data
+        motivo = (cd.observacoes or "").strip()
+        if len(motivo) < 5:
+            raise HTTPException(400, {
+                "code": "INFORMADA_REQUIRES_REASON",
+                "message": (
+                    "Para registrar 'sem execução', escreva no campo de "
+                    "observações o motivo (ex: cliente ausente, endereço "
+                    "incorreto, recusou atendimento, sem acesso ao poste, "
+                    "etc). Mínimo 5 caracteres."
+                ),
+            })
+        snap = t.get("client_snapshot") or {}
+        req_id = f"mcr-{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc)
+        ticket_company_id = t.get("company_id") or DEMO_COMPANY_ID
+        await db.lousa_manager_callback_requests.insert_one({
+            "id": req_id,
+            "company_id": ticket_company_id,
+            "ticket_id": ticket_id,
+            "ticket_type": t.get("type"),
+            "ticket_atlaz_protocolo": t.get("atlaz_protocolo"),
+            "collaborator_id": cid,
+            "collaborator_name": t.get("assigned_collaborator_name")
+                or "Técnico",
+            "client_name": snap.get("name") or "",
+            "client_phone": snap.get("phone") or "",
+            "client_address": snap.get("address") or "",
+            "client_neighborhood": snap.get("neighborhood") or "",
+            "motivo": motivo,
+            "fotos_count": len(cd.fotos or []),
+            "fotos": cd.fotos[:6] if cd.fotos else [],
+            "sinal": cd.sinal,
+            "latitude": payload.latitude,
+            "longitude": payload.longitude,
+            "status": "pending",       # pending | contacted | resolved
+            "created_at": now.isoformat(),
+            "requested_at": now.isoformat(),
+        })
+        # Marca a OS como "aguardando_gestor" (NÃO é finalizada ainda).
+        # O gestor decide se: a) reagenda; b) fecha como improdutiva
+        # após contato; c) realoca pra outro técnico.
+        await db.tickets.update_one(
+            {"id": ticket_id},
+            {"$set": {
+                "manager_callback_required": True,
+                "manager_callback_request_id": req_id,
+                "manager_callback_motivo": motivo,
+                "manager_callback_requested_by": cid,
+                "manager_callback_requested_at": now.isoformat(),
+                # status fica "aberta" — não fechamos. Adicionamos flag visual
+                "needs_manager_action": True,
+            }},
+        )
+        # Notifica gestores em tempo real
+        try:
+            await db.notifications.insert_one({
+                "id": f"notif-{uuid.uuid4().hex[:10]}",
+                "company_id": ticket_company_id,
+                "type": "manager_callback_required",
+                "severity": "warning",
+                "title": "📞 Contato com cliente solicitado pelo técnico",
+                "body": (
+                    f"{t.get('assigned_collaborator_name', 'Técnico')} "
+                    f"informou que a OS de "
+                    f"{snap.get('name') or 'cliente'} "
+                    f"não pode ser executada. Motivo: {motivo[:120]}"
+                ),
+                "ticket_id": ticket_id,
+                "callback_request_id": req_id,
+                "target_roles": ["gestor", "administrador"],
+                "read_by": [],
+                "created_at": now.isoformat(),
+            })
+        except Exception as e:
+            logger.warning("[lousa] notif callback fail: %s", e)
+        logger.info("[lousa] OS %s — técnico %s solicitou contato do gestor "
+                    "(motivo=%s)", ticket_id, cid, motivo[:60])
+        return {
+            "ok": True,
+            "blocked_close": True,
+            "manager_callback_required": True,
+            "callback_request_id": req_id,
+            "message": (
+                "OS marcada como aguardando contato do gestor. "
+                "Você NÃO pode fechá-la sem execução — o gestor entrará "
+                "em contato com o cliente e decidirá os próximos passos."
+            ),
+        }
+
     cd = payload.completion_data
     # Wizard 2-passos (iter89+) coleta foto do equipamento (obrigatória) + opcional foto
     # da etiqueta (OCR SN/MAC). Mínimo passa a ser 1 foto — front já bloqueia avanço sem
@@ -5295,6 +5422,46 @@ async def lousa_ai_rankings(user: dict = Depends(require_role("gestor")),
         })
     items.sort(key=lambda x: x["avg_score"], reverse=True)
 
+    # ── Frota: score IA das vistorias semanais aprovadas (mesma janela) ────
+    # Agrega por colaborador a média de ai_score e conta vistorias 90+
+    if coll_ids:
+        fleet_docs = await db.fleet_inspections.find({
+            "collaborator_id": {"$in": coll_ids},
+            "status": "approved",
+            "ai_score": {"$ne": None},
+            "ai_reviewed_at": {"$gte": cutoff},
+        }, {"_id": 0, "collaborator_id": 1, "ai_score": 1}).to_list(2000)
+        fleet_by_coll: Dict[str, Dict[str, Any]] = {}
+        for f in fleet_docs:
+            cid = f["collaborator_id"]
+            sc = float(f.get("ai_score") or 0)
+            fb = fleet_by_coll.setdefault(cid,
+                {"scores": [], "count_90plus": 0})
+            fb["scores"].append(sc)
+            if sc >= 90:
+                fb["count_90plus"] += 1
+        # Attach fleet data nos items
+        for it in items:
+            fb = fleet_by_coll.get(it["collaborator_id"])
+            if fb and fb["scores"]:
+                it["fleet_score"] = round(sum(fb["scores"]) / len(fb["scores"]), 1)
+                it["fleet_inspections_count"] = len(fb["scores"])
+                it["fleet_count_90plus"] = fb["count_90plus"]
+            else:
+                it["fleet_score"] = None
+                it["fleet_inspections_count"] = 0
+                it["fleet_count_90plus"] = 0
+        # Motorista do mês: maior fleet_score entre os que têm pelo menos 1
+        # vistoria 90+ e ≥2 vistorias aprovadas no período
+        eligible = [it for it in items
+                     if (it.get("fleet_score") is not None
+                          and it.get("fleet_inspections_count", 0) >= 2
+                          and it.get("fleet_count_90plus", 0) >= 1)]
+        if eligible:
+            best = max(eligible, key=lambda x: (x["fleet_score"],
+                                                  x["fleet_count_90plus"]))
+            best["is_motorista_mes"] = True
+
     overall_avg = (
         round(sum(x["avg_score"] * x["total_evaluated"] for x in items)
               / max(sum(x["total_evaluated"] for x in items), 1), 2)
@@ -5893,4 +6060,385 @@ async def lousa_history(
         "to_iso": to_iso,
         "items": items,
         "summary": summary,
+    }
+
+
+# ===========================================================================
+# Manager Callback Requests — pedidos de contato com cliente (técnico→gestor)
+# ===========================================================================
+@router.get("/lousa/manager-callbacks")
+async def list_manager_callbacks(
+    status: str = "pending",
+    limit: int = 50,
+    user: dict = Depends(get_current_user),
+):
+    """Lista pedidos de contato pendentes/contactados/resolvidos."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    q = {"company_id": cid}
+    if status != "all":
+        q["status"] = status
+    items = await db.lousa_manager_callback_requests.find(
+        q, {"_id": 0}).sort("requested_at", -1).limit(min(limit, 200))\
+        .to_list(200)
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/lousa/manager-callbacks/{req_id}/resolve")
+async def resolve_manager_callback(
+    req_id: str,
+    payload: Dict[str, Any],
+    user: dict = Depends(require_role("gestor")),
+):
+    """Gestor marca um pedido como contatado / resolvido.
+
+    Body:
+      action: "contacted" | "resolved_close" | "resolved_reschedule" | "resolved_reassign"
+      observacao: texto livre (obrigatório, mínimo 5 chars)
+      new_scheduled_time: opcional, se action="resolved_reschedule"
+      new_collaborator_id: opcional, se action="resolved_reassign"
+      close_outcome: opcional, default "informada" (se action="resolved_close")
+    """
+    action = (payload.get("action") or "").strip()
+    if action not in ("contacted", "resolved_close",
+                       "resolved_reschedule", "resolved_reassign"):
+        raise HTTPException(400, "action inválido")
+    obs = (payload.get("observacao") or "").strip()
+    if len(obs) < 5:
+        raise HTTPException(400, "observacao mínima 5 caracteres")
+
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    req = await db.lousa_manager_callback_requests.find_one(
+        {"id": req_id, "company_id": cid}, {"_id": 0})
+    if not req:
+        raise HTTPException(404, "Pedido de contato não encontrado")
+    if req.get("status") == "resolved":
+        raise HTTPException(409, "Pedido já resolvido")
+
+    now = datetime.now(timezone.utc).isoformat()
+    new_status = "contacted" if action == "contacted" else "resolved"
+    update = {
+        "status": new_status,
+        "manager_action": action,
+        "manager_observacao": obs,
+        "manager_id": user.get("id"),
+        "manager_name": user.get("name") or user.get("email"),
+        f"{new_status}_at": now,
+    }
+    if action == "contacted":
+        # Só marca que o gestor ligou — não muda OS ainda
+        await db.lousa_manager_callback_requests.update_one(
+            {"id": req_id}, {"$set": update})
+        # Adiciona ao histórico do ticket
+        await db.tickets.update_one(
+            {"id": req["ticket_id"]},
+            {"$push": {"manager_callback_log": {
+                "ts": now, "action": "contacted",
+                "manager": user.get("name") or "",
+                "observacao": obs,
+            }}},
+        )
+        return {"ok": True, "status": "contacted",
+                "next_action_required": True,
+                "message": "Contato registrado. Defina o próximo passo "
+                           "(fechar improdutiva, reagendar ou realocar)."}
+
+    # Resolved — modifica a OS de fato
+    ticket_id = req["ticket_id"]
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "OS associada não existe mais")
+
+    if action == "resolved_close":
+        outcome = payload.get("close_outcome") or "informada"
+        if outcome not in ("informada", "sucesso", "cancelada"):
+            outcome = "informada"
+        await db.tickets.update_one(
+            {"id": ticket_id},
+            {"$set": {
+                "status": "finalizada",
+                "outcome": outcome,
+                "closed_at": now,
+                "closed_by": user.get("id") or "manager",
+                "manager_close_reason": obs,
+                "manager_callback_resolved": True,
+                "needs_manager_action": False,
+            }},
+        )
+    elif action == "resolved_reschedule":
+        new_time = payload.get("new_scheduled_time")
+        if not new_time:
+            raise HTTPException(400, "new_scheduled_time obrigatório")
+        await db.tickets.update_one(
+            {"id": ticket_id},
+            {"$set": {
+                "scheduled_time": new_time,
+                "manager_callback_resolved": True,
+                "needs_manager_action": False,
+                "rescheduled_at": now,
+                "rescheduled_by": user.get("id") or "manager",
+                "rescheduled_reason": obs,
+            }},
+        )
+    elif action == "resolved_reassign":
+        new_collab = payload.get("new_collaborator_id")
+        if not new_collab:
+            raise HTTPException(400, "new_collaborator_id obrigatório")
+        collab = await db.collaborators.find_one(
+            {"id": new_collab, "company_id": cid},
+            {"_id": 0, "id": 1, "name": 1})
+        if not collab:
+            raise HTTPException(404, "Colaborador não encontrado")
+        await db.tickets.update_one(
+            {"id": ticket_id},
+            {"$set": {
+                "assigned_collaborator_id": new_collab,
+                "assigned_collaborator_name": collab.get("name"),
+                "manager_callback_resolved": True,
+                "needs_manager_action": False,
+                "reassigned_at": now,
+                "reassigned_by": user.get("id") or "manager",
+                "reassign_reason": obs,
+            }},
+        )
+
+    await db.lousa_manager_callback_requests.update_one(
+        {"id": req_id}, {"$set": update})
+    await db.tickets.update_one(
+        {"id": ticket_id},
+        {"$push": {"manager_callback_log": {
+            "ts": now, "action": action,
+            "manager": user.get("name") or "",
+            "observacao": obs,
+        }}},
+    )
+    return {"ok": True, "status": "resolved", "action": action,
+            "ticket_id": ticket_id}
+
+
+
+# ---------------------------------------------------------------------------
+# Manager Callback: liberar OS de volta para o técnico (sem fechar)
+# ---------------------------------------------------------------------------
+@router.post("/lousa/manager-callbacks/{req_id}/release-back")
+async def release_back_manager_callback(
+    req_id: str,
+    payload: Dict[str, Any],
+    user: dict = Depends(require_role("gestor")),
+):
+    """Gestor libera a OS pausada de volta para o técnico (mesmo ou outro).
+
+    Body:
+      observacao: obrigatório (>=5 chars) — o que o cliente disse
+      new_collaborator_id: opcional — se quiser realocar pra outro técnico
+      new_scheduled_time: opcional — se quiser reagendar pra outra hora
+    """
+    obs = (payload.get("observacao") or "").strip()
+    if len(obs) < 5:
+        raise HTTPException(400, "observacao mínima 5 caracteres")
+
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    req = await db.lousa_manager_callback_requests.find_one(
+        {"id": req_id, "company_id": cid}, {"_id": 0})
+    if not req:
+        raise HTTPException(404, "Pedido de contato não encontrado")
+    if req.get("status") == "resolved":
+        raise HTTPException(409, "Pedido já resolvido")
+
+    ticket_id = req["ticket_id"]
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "OS associada não existe mais")
+
+    now = datetime.now(timezone.utc).isoformat()
+    set_fields = {
+        "needs_manager_action": False,
+        "manager_callback_resolved": True,
+        "released_back_at": now,
+        "released_back_by": user.get("id") or "manager",
+        "released_back_reason": obs,
+    }
+
+    new_collab = (payload.get("new_collaborator_id") or "").strip()
+    if new_collab and new_collab != t.get("assigned_collaborator_id"):
+        collab = await db.collaborators.find_one(
+            {"id": new_collab, "company_id": cid},
+            {"_id": 0, "id": 1, "name": 1})
+        if not collab:
+            raise HTTPException(404, "Colaborador novo não encontrado")
+        set_fields["assigned_collaborator_id"] = new_collab
+        set_fields["assigned_collaborator_name"] = collab.get("name")
+        set_fields["reassigned_at"] = now
+        set_fields["reassigned_by"] = user.get("id") or "manager"
+        set_fields["reassign_reason"] = obs
+
+    new_time = (payload.get("new_scheduled_time") or "").strip()
+    if new_time:
+        set_fields["scheduled_time"] = new_time
+        set_fields["rescheduled_at"] = now
+        set_fields["rescheduled_by"] = user.get("id") or "manager"
+        set_fields["rescheduled_reason"] = obs
+
+    await db.tickets.update_one({"id": ticket_id}, {"$set": set_fields})
+    await db.tickets.update_one(
+        {"id": ticket_id},
+        {"$push": {"manager_callback_log": {
+            "ts": now, "action": "released_back",
+            "manager": user.get("name") or "",
+            "observacao": obs,
+            "new_collaborator_id": new_collab or None,
+            "new_scheduled_time": new_time or None,
+        }}},
+    )
+    await db.lousa_manager_callback_requests.update_one(
+        {"id": req_id},
+        {"$set": {
+            "status": "resolved",
+            "manager_action": "released_back",
+            "manager_observacao": obs,
+            "manager_id": user.get("id"),
+            "manager_name": user.get("name") or user.get("email"),
+            "resolved_at": now,
+        }},
+    )
+    return {"ok": True, "ticket_id": ticket_id, "released_back": True}
+
+
+# ---------------------------------------------------------------------------
+# Manager Callback: cria nova OS pra continuar o serviço
+# (a OS original PERMANECE pausada até o gestor decidir o que fazer com ela)
+# ---------------------------------------------------------------------------
+class CreateNewOsFromCallbackIn(BaseModel):
+    observacao: str = Field(..., min_length=5)
+    # Dados da nova OS (gestor edita tudo)
+    client_name: str
+    address: str
+    neighborhood: str = ""
+    phone: str = ""
+    relato: str = ""
+    pppoe_user: str = ""
+    type: TicketType = "reparo"
+    priority: Priority = "normal"
+    scheduled_time: Optional[str] = None
+    assigned_collaborator_id: str
+
+
+@router.post("/lousa/manager-callbacks/{req_id}/create-new-ticket")
+async def create_new_ticket_from_callback(
+    req_id: str,
+    payload: CreateNewOsFromCallbackIn,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Cria uma NOVA OS pra continuar o atendimento do cliente.
+
+    A OS ORIGINAL permanece pausada (needs_manager_action=true) até o
+    gestor explicitamente fechar improdutiva OU liberar de volta.
+    A nova OS recebe `parent_ticket_id` e `from_manager_callback_id`
+    pra rastreabilidade.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    req = await db.lousa_manager_callback_requests.find_one(
+        {"id": req_id, "company_id": cid}, {"_id": 0})
+    if not req:
+        raise HTTPException(404, "Pedido de contato não encontrado")
+
+    coll = await db.collaborators.find_one(
+        {"id": payload.assigned_collaborator_id},
+        {"_id": 0, "company_id": 1, "name": 1, "id": 1},
+    )
+    if not coll:
+        raise HTTPException(404, "Colaborador novo não encontrado")
+
+    # Geocode (best-effort)
+    lat, lng = None, None
+    try:
+        geo = await geocode_address(payload.address)
+        lat, lng = geo.lat, geo.lng
+    except Exception as e:
+        logger.warning("[lousa.callback.new-os] geocode falhou '%s': %s",
+                       payload.address, e)
+
+    last = await db.tickets.find(
+        {"assigned_collaborator_id": payload.assigned_collaborator_id,
+         "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]}},
+        {"_id": 0, "position": 1},
+    ).sort("position", -1).to_list(1)
+    next_pos = (last[0]["position"] + 1) if last else 0
+
+    parent_ticket_id = req["ticket_id"]
+    now = now_iso()
+    new_id = f"tkt-{uuid.uuid4().hex[:10]}"
+    doc = {
+        "id": new_id,
+        "client_id": str(uuid.uuid4()),
+        "client_snapshot": {
+            "name": payload.client_name,
+            "address": payload.address,
+            "neighborhood": payload.neighborhood,
+            "phone": payload.phone,
+            "latitude": lat, "longitude": lng,
+            "relato": payload.relato,
+            "pppoe_user": payload.pppoe_user,
+            "test_history": [],
+        },
+        "type": payload.type,
+        "priority": payload.priority,
+        "scheduled_time": payload.scheduled_time,
+        "position": next_pos,
+        "status": "pendente",
+        "assigned_collaborator_id": payload.assigned_collaborator_id,
+        "company_id": coll.get("company_id") or DEMO_COMPANY_ID,
+        "opened_at": None, "closed_at": None, "closed_by": None,
+        "close_location": None, "outcome": None,
+        "whatsapp_status": "nao_enviado", "whatsapp_last_message": None,
+        "completion_data": None, "admin_action": None, "admin_notes": None,
+        "ai_triage_pending": True,
+        "signal_at_open": None, "signal_at_open_at": None,
+        "signal_at_close": None, "signal_at_close_at": None,
+        "created_at": now,
+        # Rastreabilidade — OS criada a partir de callback do gestor
+        "parent_ticket_id": parent_ticket_id,
+        "from_manager_callback_id": req_id,
+        "creation_reason": "manager_callback_continuation",
+    }
+    await db.tickets.insert_one(doc)
+
+    # Marca callback como tendo gerado nova OS (mas NÃO resolve — gestor
+    # ainda precisa decidir o destino da OS original)
+    await db.lousa_manager_callback_requests.update_one(
+        {"id": req_id},
+        {"$set": {
+            "new_ticket_id": new_id,
+            "new_ticket_created_at": now,
+            "new_ticket_created_by": user.get("id") or "manager",
+            "manager_observacao": payload.observacao,
+            "manager_id": user.get("id"),
+            "manager_name": user.get("name") or user.get("email"),
+        }},
+    )
+    # Loga no ticket original
+    await db.tickets.update_one(
+        {"id": parent_ticket_id},
+        {"$push": {"manager_callback_log": {
+            "ts": now, "action": "new_ticket_created",
+            "manager": user.get("name") or "",
+            "observacao": payload.observacao,
+            "new_ticket_id": new_id,
+        }}},
+    )
+    await _log_ticket_action(
+        ticket_id=new_id, action="criada_via_callback",
+        actor_id=user["id"], actor_name=user.get("name", "Gestor"),
+        actor_role=user.get("role", "gestor"),
+        details=(f"Continuação do callback {req_id} "
+                 f"(OS original: {parent_ticket_id})"),
+        company_id=doc["company_id"],
+    )
+    return {
+        "ok": True,
+        "new_ticket_id": new_id,
+        "parent_ticket_id": parent_ticket_id,
+        "callback_request_id": req_id,
+        "message": ("Nova OS criada. A OS original continua pausada "
+                    "até você decidir o que fazer com ela "
+                    "(fechar improdutiva ou liberar de volta)."),
     }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, Button, Metric } from "@/ui";
 import { api } from "@/api";
+import { fmtAddress } from "@/utils/format";
 import { Circle, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -27,6 +28,7 @@ const SUB_TABS = [
   { id: "defective", label: "Equipamentos" },
   { id: "common_issues", label: "Chamados" },
   { id: "recurring", label: "Reincidência" },
+  { id: "districts", label: "Bairros" },
   { id: "fleet", label: "Frota" },
   { id: "manuf_quality", label: "Qualidade de fabricantes" },
   { id: "assets", label: "Checklist" },
@@ -393,7 +395,7 @@ function CriticalMapSection() {
                       </span>
                       <br />
                       <span style={{ color: "var(--text-secondary)" }}>
-                        {p.address}
+                        {fmtAddress(p.address)}
                       </span>
                       <br />
                       {p.rx_dbm != null && (
@@ -624,7 +626,7 @@ function RecurringSection({ days }) {
                   <strong>{c.client_name}</strong>
                   <div style={{ fontSize: 10, color: "#64748b", fontFamily: "monospace" }}>{c.pppoe_user}</div>
                 </td>
-                <td style={css.td}>{c.address}</td>
+                <td style={css.td}>{fmtAddress(c.address)}</td>
                 <td style={css.td}><span style={css.pill("#dbeafe", "#1e40af")}>{c.total_tickets}</span></td>
                 <td style={css.td}>{Object.entries(c.tipos).map(([k, v]) => `${k}:${v}`).join(" · ")}</td>
               </tr>
@@ -970,6 +972,322 @@ function ManufacturerQualitySection({ days }) {
 }
 
 // ============================================================
+
+
+/* =============================================================
+   DistrictsSection — Distribuição de assinantes por bairro com
+   clustering inteligente (fuzzy match para juntar variações
+   ortográficas: Cordovil = CORDOVIL = cordovil,
+   Braz/Brás/Bras de Pina, etc).
+============================================================= */
+function DistrictsSection({ days }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [topN, setTopN] = useState(30);
+  const [aiReview, setAiReview] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [expanded, setExpanded] = useState(null);
+
+  React.useEffect(() => {
+    setLoading(true);
+    api._client.get(`/ai/dashboard/clients-per-district?top=${topN}`)
+      .then((r) => setData(r.data))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, [topN, days]);
+
+  const runAiReview = async () => {
+    setAiBusy(true);
+    try {
+      const r = await api._client.post(
+        `/ai/dashboard/clients-per-district/ai-review`, {});
+      setAiReview(r.data);
+    } catch (e) {
+      setAiReview({ ok: false, error: e?.response?.data?.detail || e.message });
+    } finally { setAiBusy(false); }
+  };
+
+  if (loading) return (
+    <div style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}>
+      Carregando distribuição de bairros…
+    </div>
+  );
+  if (!data || !data.items) return (
+    <div style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}>
+      Erro ao carregar dados.
+    </div>
+  );
+
+  const maxCount = Math.max(1, ...data.items.map((x) => x.count));
+
+  return (
+    <div data-testid="districts-section">
+      {/* KPIs */}
+      <div style={{
+        display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
+        gap: 10, marginBottom: 18,
+      }}>
+        <KpiCard icon="👥" color="#0f172a" label="Total assinantes"
+                  value={data.total_subscribers} />
+        <KpiCard icon="🏘️" color="#4f46e5" label="Bairros únicos"
+                  value={data.unique_districts}
+                  sub={`fuzzy-merged ${data.raw_unique_before_merge - data.unique_districts} variantes`} />
+        <KpiCard icon="📍" color="#16a34a" label="Com bairro"
+                  value={data.total_with_district} />
+        <KpiCard icon="⚠️" color="#f59e0b" label="Sem bairro"
+                  value={data.no_district}
+                  sub="precisam de cadastro" />
+      </div>
+
+      {/* Toolbar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8,
+                       marginBottom: 14, flexWrap: "wrap" }}>
+        <select value={topN} onChange={(e) => setTopN(Number(e.target.value))}
+                  data-testid="districts-top-select"
+                  style={{ padding: "8px 12px", borderRadius: 8,
+                            border: "1px solid #cbd5e1", fontSize: 13 }}>
+          <option value={15}>Top 15</option>
+          <option value={30}>Top 30</option>
+          <option value={50}>Top 50</option>
+          <option value={100}>Top 100</option>
+        </select>
+        <span style={{ fontSize: 11, color: "#94a3b8" }}>
+          Mostrando os top {topN} bairros por número de assinantes
+        </span>
+        <span style={{ flex: 1 }} />
+        <button onClick={runAiReview} disabled={aiBusy}
+                  data-testid="districts-ai-review"
+                  style={{
+                    padding: "8px 16px", borderRadius: 8, border: 0,
+                    background: aiBusy
+                      ? "#94a3b8"
+                      : "linear-gradient(135deg,#4f46e5,#7c3aed)",
+                    color: "#fff", fontSize: 12, fontWeight: 700,
+                    cursor: aiBusy ? "wait" : "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                  }}>
+          🤖 {aiBusy ? "Analisando…" : "Revisar com IA"}
+        </button>
+      </div>
+
+      {/* AI review result */}
+      {aiReview && (
+        <div data-testid="districts-ai-result" style={{
+          marginBottom: 14, padding: 14, borderRadius: 10,
+          background: aiReview.ok ? "#f3e8ff" : "#fee2e2",
+          border: `1px solid ${aiReview.ok ? "#c4b5fd" : "#fecaca"}`,
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6,
+                          color: aiReview.ok ? "#5b21b6" : "#991b1b" }}>
+            🤖 Revisão da IA ({aiReview.reviewed || 0} bairros analisados)
+          </div>
+          {aiReview.ok ? (
+            <AIReviewView suggestions={aiReview.suggestions} />
+          ) : (
+            <div style={{ fontSize: 12, color: "#991b1b" }}>
+              ⚠ {aiReview.error || "Falha na revisão"}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Ranking */}
+      <div style={{ background: "white", borderRadius: 12, padding: 4,
+                       border: "1px solid #e2e8f0" }}>
+        {data.items.map((it, idx) => (
+          <div key={it.canonical_name} data-testid={`district-row-${idx}`}
+                style={{
+                  padding: "12px 14px",
+                  borderBottom: idx < data.items.length - 1
+                    ? "1px solid #f1f5f9" : "none",
+                }}>
+            <div style={{
+              display: "grid", gridTemplateColumns: "30px 1fr auto auto 18px",
+              gap: 12, alignItems: "center", cursor: "pointer",
+            }}
+            onClick={() =>
+              setExpanded(expanded === idx ? null : idx)}>
+              <span style={{
+                fontSize: 11, fontWeight: 800, color: "#64748b",
+                fontFamily: "ui-monospace,monospace",
+              }}>#{idx + 1}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8,
+                                marginBottom: 4 }}>
+                  <strong style={{ fontSize: 14, color: "#0f172a" }}>
+                    {it.canonical_name}
+                  </strong>
+                  {it.city && (
+                    <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                      · {it.city}
+                    </span>
+                  )}
+                  {it.variations.length > 1 && (
+                    <span style={{
+                      padding: "2px 7px", borderRadius: 999,
+                      background: "#dbeafe", color: "#1e3a8a",
+                      fontSize: 9, fontWeight: 700,
+                    }}>{it.variations.length} variações</span>
+                  )}
+                </div>
+                {/* Barra de progresso */}
+                <div style={{
+                  height: 6, borderRadius: 3,
+                  background: "#f1f5f9", overflow: "hidden",
+                }}>
+                  <div style={{
+                    height: "100%",
+                    width: `${(it.count / maxCount) * 100}%`,
+                    background:
+                      idx === 0 ? "linear-gradient(90deg,#4f46e5,#7c3aed)"
+                        : idx < 3 ? "linear-gradient(90deg,#0ea5e9,#06b6d4)"
+                        : idx < 10 ? "#10b981" : "#94a3b8",
+                  }} />
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a",
+                                letterSpacing: "-0.02em" }}>
+                  {it.count}
+                </div>
+                <div style={{ fontSize: 9, color: "#94a3b8" }}>
+                  assinantes
+                </div>
+              </div>
+              <div style={{
+                padding: "3px 10px", borderRadius: 999,
+                background: "#0f172a", color: "#fff",
+                fontSize: 11, fontWeight: 800, minWidth: 50, textAlign: "center",
+              }}>
+                {it.pct_total.toFixed(1)}%
+              </div>
+              <span style={{ color: "#cbd5e1", fontSize: 14 }}>
+                {expanded === idx ? "▾" : "▸"}
+              </span>
+            </div>
+            {expanded === idx && (
+              <div style={{ marginTop: 10, padding: "10px 14px",
+                              background: "#f8fafc", borderRadius: 8,
+                              fontSize: 12, color: "#475569" }}>
+                <div style={{ fontWeight: 700, marginBottom: 6,
+                                color: "#0f172a" }}>
+                  Variações ortográficas detectadas e mescladas:
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {it.variations.map((v) => (
+                    <span key={v.name} style={{
+                      padding: "3px 9px", borderRadius: 999,
+                      background: "white", border: "1px solid #cbd5e1",
+                      fontFamily: "ui-monospace,monospace",
+                    }}>
+                      "{v.name}" <strong>×{v.count}</strong>
+                    </span>
+                  ))}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11, color: "#94a3b8" }}>
+                  Active: {it.active_count} / {it.count}{" "}
+                  ({((it.active_count / it.count) * 100).toFixed(1)}%) ·{" "}
+                  Cluster keys: {it.merged_keys.join(", ")}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({ icon, color, label, value, sub }) {
+  return (
+    <div style={{
+      background: "white", padding: 14, borderRadius: 10,
+      border: `1px solid ${color}22`,
+    }}>
+      <div style={{ fontSize: 18, marginBottom: 4 }}>{icon}</div>
+      <div style={{ fontSize: 9, fontWeight: 800, color,
+                       textTransform: "uppercase", letterSpacing: 0.5 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: "#0f172a",
+                       letterSpacing: "-0.02em", marginTop: 2 }}>
+        {value}
+      </div>
+      {sub && (
+        <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+          {sub}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AIReviewView({ suggestions }) {
+  if (!suggestions || typeof suggestions !== "object") {
+    return <div style={{ fontSize: 12 }}>Sem sugestões.</div>;
+  }
+  if (suggestions.raw) {
+    return (
+      <pre style={{ fontSize: 11, whiteSpace: "pre-wrap",
+                       background: "rgba(255,255,255,.5)",
+                       padding: 8, borderRadius: 6, color: "#0f172a" }}>
+        {suggestions.raw}
+      </pre>
+    );
+  }
+  const merges = suggestions.merges || [];
+  const splits = suggestions.splits || [];
+  return (
+    <div style={{ fontSize: 12, color: "#0f172a" }}>
+      {merges.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          <strong>↔ Sugestões de merge</strong>{" "}
+          <span style={{ color: "#5b21b6", fontSize: 11 }}>
+            (bairros que deveriam ser unificados)
+          </span>
+          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+            {merges.map((m, i) => (
+              <li key={i}>
+                {Array.isArray(m) ? m.join(" = ") : String(m)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {splits.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          <strong>✂ Sugestões de split</strong>{" "}
+          <span style={{ color: "#5b21b6", fontSize: 11 }}>
+            (agrupamento errado — separar)
+          </span>
+          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+            {splits.map((s, i) => (
+              <li key={i}>
+                <strong>{s.canonical}</strong>:{" "}
+                manter <code>{(s.keep || []).join(", ")}</code>,{" "}
+                remover <code>{(s.remove || []).join(", ")}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {suggestions.notes && (
+        <div style={{ marginTop: 8, fontSize: 11,
+                        background: "rgba(255,255,255,.5)",
+                        padding: 8, borderRadius: 6 }}>
+          <strong>Nota:</strong> {suggestions.notes}
+        </div>
+      )}
+      {merges.length === 0 && splits.length === 0 && !suggestions.notes && (
+        <div style={{ color: "#16a34a", fontWeight: 700 }}>
+          ✓ A IA concorda com a classificação atual — nenhum ajuste necessário.
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // Main panel
 // ============================================================
 const TAB_COMPONENTS = {
@@ -982,6 +1300,7 @@ const TAB_COMPONENTS = {
   defective: DefectiveSection,
   common_issues: CommonIssuesSection,
   recurring: RecurringSection,
+  districts: DistrictsSection,
   fleet: FleetDefectsSection,
   manuf_quality: ManufacturerQualitySection,
   assets: AssetsOverviewSection,

@@ -586,6 +586,9 @@ class InboundIn(BaseModel):
     media_filename: Optional[str] = None
     media_kind: Optional[str] = None       # "image" | "video" | "document" | "sticker"
     media_size_bytes: Optional[int] = None
+    # Multi-canal: identifica qual sidecar/número recebeu a mensagem.
+    # Fallback "channel-1" mantém compatibilidade com sidecars antigos.
+    channel_id: Optional[str] = None
 
 
 class SystemEventIn(BaseModel):
@@ -1309,6 +1312,17 @@ async def inbound_webhook(payload: InboundIn,
             logger.warning("[wa-baileys] transcribe falhou: %s", e)
             transcript = None
 
+    # Resolve channel_id (multi-número) — fallback channel-1 pra compat
+    channel_id = payload.channel_id or "channel-1"
+    channel_name = None
+    try:
+        from services.whatsapp_channels import get_channel as _get_ch
+        ch_doc = await _get_ch(db, cid, channel_id)
+        if ch_doc:
+            channel_name = ch_doc.get("channel_name")
+    except Exception:
+        pass
+
     inbound_doc = {
         "id": msg_id,
         "company_id": cid,
@@ -1323,6 +1337,8 @@ async def inbound_webhook(payload: InboundIn,
             else ""
         ),
         "channel": "baileys",
+        "channel_id": channel_id,
+        "channel_name": channel_name,
         "push_name": payload.push_name,
         "message_id": payload.message_id,
         "wa_timestamp": payload.timestamp,
@@ -1347,6 +1363,18 @@ async def inbound_webhook(payload: InboundIn,
             inbound_doc["vision_summary"] = vision_summary
             inbound_doc["vision_engine"] = "gemini-2.5-flash"
     await db.aihub_wa_messages.insert_one(inbound_doc)
+    # Marca o último canal por onde o cliente falou (UI mostra badge)
+    try:
+        await db.wa_conversations.update_one(
+            {"company_id": cid, "phone": effective_phone},
+            {"$set": {
+                "last_channel_id": channel_id,
+                "last_channel_name": channel_name,
+            }},
+            upsert=True,
+        )
+    except Exception:
+        pass
     # Atualiza conv com flag LID quando aplicável
     if payload.is_lid:
         await db.wa_conversations.update_one(

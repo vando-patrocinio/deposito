@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { api } from "@/api";
 import { Button, Card, Field, inputStyle } from "@/ui";
 import {
@@ -7,12 +7,13 @@ import {
 } from "lucide-react";
 import DisparoIaPanel from "@/DisparoIaPanel";
 import DisparoPromoPanel from "@/DisparoPromoPanel";
+import QuickCampaignsPanel from "@/QuickCampaignsPanel";
 import ErrorBoundary from "@/ErrorBoundary";
 
 const fmtDate = (s) => s ? new Date(s).toLocaleString("pt-BR") : "—";
 
 export default function MassMessagingPanel() {
-  const [tab, setTab] = useState("manual"); // manual | disparo_ia
+  const [tab, setTab] = useState("quick"); // quick | manual | promo | disparo_ia
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -77,6 +78,7 @@ export default function MassMessagingPanel() {
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid #e2e8f0" }}>
         {[
+          { id: "quick", label: "Campanhas rápidas", icon: Zap },
           { id: "manual", label: "Campanhas manuais", icon: Megaphone },
           { id: "promo", label: "Promoção / Aviso", icon: Megaphone },
           { id: "disparo_ia", label: "Disparo IA", icon: Zap },
@@ -113,7 +115,12 @@ export default function MassMessagingPanel() {
         })}
       </div>
 
-      {tab === "disparo_ia" ? (
+      {tab === "quick" ? (
+        <ErrorBoundary name="quick-campaigns"
+                         fallbackText="O painel de Campanhas Rápidas encontrou um erro. Recarregue para tentar de novo.">
+          <QuickCampaignsPanel />
+        </ErrorBoundary>
+      ) : tab === "disparo_ia" ? (
         <ErrorBoundary name="disparo-ia"
                          fallbackText="O painel de Disparo IA encontrou um erro. Recarregue para tentar de novo — os outros recursos seguem ativos.">
           <DisparoIaPanel />
@@ -221,14 +228,164 @@ function StatusBadge({ status }) {
   );
 }
 
+/* ============================================================ */
+/* Mapa de Variáveis Disponíveis — referência colapsável        */
+/* ============================================================ */
+const TEMPLATE_VARIABLES = [
+  { group: "Cliente", items: [
+    { key: "name",        desc: "Nome completo do cliente",     example: "Maria José Silva" },
+    { key: "nome",        desc: "Apelido (primeiro nome)",       example: "Maria" },
+    { key: "cpf",         desc: "CPF/CNPJ do cliente",            example: "123.456.789-00" },
+    { key: "email",       desc: "E-mail principal",                example: "maria@email.com" },
+    { key: "cidade",      desc: "Cidade do endereço",              example: "Rio de Janeiro" },
+    { key: "bairro",      desc: "Bairro",                          example: "Tijuca" },
+    { key: "endereco",    desc: "Logradouro + número",             example: "Rua X, 123" },
+  ]},
+  { group: "Plano & Valor", items: [
+    { key: "plano",       desc: "Nome do plano contratado",       example: "1 Giga" },
+    { key: "velocidade",  desc: "Velocidade (Mbps)",               example: "1000" },
+    { key: "valor",       desc: "Valor mensal (R$)",               example: "99,90" },
+  ]},
+  { group: "Fatura / Cobrança", items: [
+    { key: "vencimento",  desc: "Data de vencimento",              example: "10/06/2026" },
+    { key: "dias_atraso", desc: "Dias em atraso (se vencido)",     example: "3" },
+    { key: "valor_atualizado", desc: "Valor com multa+juros",      example: "102,40" },
+    { key: "competencia", desc: "Mês de referência",               example: "05/2026" },
+    { key: "boleto_url",  desc: "Link do boleto/PIX",              example: "https://..." },
+  ]},
+  { group: "Sistema (CSV upload)", items: [
+    { key: "1", desc: "1ª coluna extra do CSV (após phone)",       example: "—" },
+    { key: "2", desc: "2ª coluna extra do CSV",                    example: "—" },
+    { key: "3", desc: "3ª coluna extra do CSV",                    example: "—" },
+  ]},
+];
+
+function VariablesReference({ onInsert }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div data-testid="vars-reference" style={{ marginTop: 8 }}>
+      <button
+        type="button"
+        data-testid="vars-toggle"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          background: "#f1f5f9", color: "#0f172a", border: "1px solid #cbd5e1",
+          padding: "5px 10px", borderRadius: 6, cursor: "pointer",
+          fontSize: 12, fontWeight: 600,
+          display: "inline-flex", alignItems: "center", gap: 6,
+        }}
+      >
+        {open ? "▼" : "▶"} Variáveis disponíveis (mapa)
+      </button>
+      {open && (
+        <div style={{
+          marginTop: 8,
+          background: "#f8fafc", border: "1px solid #e2e8f0",
+          borderRadius: 8, padding: 12,
+        }}>
+          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 10 }}>
+            Clique no chip para inserir <code style={{ background: "#fff", padding: "1px 5px", borderRadius: 3 }}>{`{{variavel}}`}</code> no
+            cursor da mensagem. As variáveis são preenchidas automaticamente
+            por <b>linha do CSV</b> (caso enviado) e <b>dados do cliente</b>
+            (quando o telefone faz match com um assinante cadastrado).
+          </div>
+          {TEMPLATE_VARIABLES.map((g) => (
+            <div key={g.group} style={{ marginBottom: 10 }}>
+              <div style={{
+                fontSize: 10, fontWeight: 700, color: "#64748b",
+                letterSpacing: 1, textTransform: "uppercase",
+                marginBottom: 6,
+              }}>
+                {g.group}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {g.items.map((v) => (
+                  <button
+                    key={v.key}
+                    type="button"
+                    data-testid={`vars-chip-${v.key}`}
+                    onClick={() => onInsert(v.key)}
+                    title={`${v.desc} — ex: ${v.example}`}
+                    style={{
+                      padding: "5px 10px", borderRadius: 999,
+                      background: "white", border: "1px solid #cbd5e1",
+                      color: "#0f766e", cursor: "pointer",
+                      fontSize: 11.5, fontFamily: "JetBrains Mono, monospace",
+                      fontWeight: 600,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "#ecfdf5";
+                      e.currentTarget.style.borderColor = "#0d9488";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "white";
+                      e.currentTarget.style.borderColor = "#cbd5e1";
+                    }}
+                  >
+                    {`{{${v.key}}}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div style={{
+            marginTop: 4, fontSize: 11, color: "#94a3b8",
+            borderTop: "1px dashed #e2e8f0", paddingTop: 8,
+          }}>
+            💡 Dica: nomes de variáveis aceitos são <b>case-insensitive</b> e
+            seguem o cabeçalho do CSV. Se sua coluna for chamada
+            <code style={{ background: "#fff", padding: "1px 5px", borderRadius: 3, marginLeft: 4 }}>cidade</code>,
+            use <code style={{ background: "#fff", padding: "1px 5px", borderRadius: 3 }}>{`{{cidade}}`}</code> no
+            texto. Variáveis ausentes ficam em branco no envio.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CampaignCreateModal({ onClose, onCreated }) {
   const [form, setForm] = useState({
     name: "", channel: "meta_cloud", mode: "free",
     text: "", template_name: "", template_language: "pt_BR",
-    schedule_at: "", throttle_per_min: 60,
+    schedule_at: "", throttle_per_min: 60, channel_id: "",
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [channels, setChannels] = useState([]);
+  const textareaRef = useRef(null);
+
+  // Insere {{variavel}} no cursor do textarea (chip do mapa de variáveis)
+  const insertVarAtCursor = (varName) => {
+    const ta = textareaRef.current;
+    const placeholder = `{{${varName}}}`;
+    const current = form.text || "";
+    if (!ta) {
+      setForm({ ...form, text: current + placeholder });
+      return;
+    }
+    const start = ta.selectionStart ?? current.length;
+    const end = ta.selectionEnd ?? current.length;
+    const next = current.slice(0, start) + placeholder + current.slice(end);
+    setForm({ ...form, text: next });
+    // Restaura foco e cursor depois do placeholder
+    requestAnimationFrame(() => {
+      ta.focus();
+      const pos = start + placeholder.length;
+      try { ta.setSelectionRange(pos, pos); } catch { /* ignore */ }
+    });
+  };
+
+  // Carrega canais Baileys quando o usuário escolhe canal=baileys
+  useEffect(() => {
+    if (form.channel !== "baileys") { setChannels([]); return; }
+    let alive = true;
+    api.waChannelsList().then((d) => {
+      if (!alive) return;
+      setChannels(d?.channels || []);
+    }).catch(() => { /* ignore */ });
+    return () => { alive = false; };
+  }, [form.channel]);
 
   async function create() {
     setBusy(true); setErr("");
@@ -239,6 +396,9 @@ function CampaignCreateModal({ onClose, onCreated }) {
         delete payload.template_name;
       } else {
         delete payload.text;
+      }
+      if (payload.channel !== "baileys" || !payload.channel_id) {
+        delete payload.channel_id;
       }
       const c = await api._client.post("/mass-messaging/campaigns", payload)
                               .then((r) => r.data);
@@ -262,6 +422,7 @@ function CampaignCreateModal({ onClose, onCreated }) {
                   data-testid="camp-fld-channel">
             <option value="meta_cloud">Meta WhatsApp Cloud</option>
             <option value="twilio">Twilio WhatsApp</option>
+            <option value="baileys">WhatsApp QR (Baileys)</option>
           </select>
         </Field>
         <Field label="Modo *">
@@ -273,14 +434,41 @@ function CampaignCreateModal({ onClose, onCreated }) {
           </select>
         </Field>
       </div>
+      {form.channel === "baileys" && (
+        <Field
+          label="Número de origem (canal Baileys)"
+          hint="Em branco = usa o canal padrão outbound da empresa."
+        >
+          <select
+            style={inputStyle}
+            value={form.channel_id}
+            onChange={(e) => setForm({ ...form, channel_id: e.target.value })}
+            data-testid="camp-fld-channel-id"
+          >
+            <option value="">Padrão outbound da empresa</option>
+            {channels.map((ch) => (
+              <option key={ch.id} value={ch.id}>
+                {ch.channel_name}
+                {ch.phone_number ? ` · +${ch.phone_number}` : ""}
+                {ch.is_default_outbound ? " ★" : ""}
+                {ch.live_connected ? "" : " (offline)"}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       {form.mode === "free" ? (
         <Field label="Mensagem * (use {{nome}}, {{variavel}} para placeholders)">
           <textarea
+            ref={textareaRef}
             style={{ ...inputStyle, minHeight: 100, resize: "vertical" }}
             value={form.text}
             onChange={(e) => setForm({ ...form, text: e.target.value })}
             placeholder="Olá {{name}}, sua fatura vence em {{vencimento}}."
             data-testid="camp-fld-text"
+          />
+          <VariablesReference
+            onInsert={insertVarAtCursor}
           />
         </Field>
       ) : (

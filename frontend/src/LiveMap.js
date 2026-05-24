@@ -3,6 +3,7 @@ import { Circle, MapContainer, Marker, Polyline, Popup, TileLayer, Tooltip as LT
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { api } from "@/api";
+import { fmtAddress } from "@/utils/format";
 import { Button, Card, Icon } from "@/ui";
 import { disablePushForGestor, enablePushForGestor, getCurrentSubscription, getPushPermission, sendTestPush } from "@/push";
 
@@ -391,7 +392,7 @@ export default function LiveMap() {
                       </div>
                       {c.address && (
                         <div style={{ color: "#475569", marginBottom: 4 }}>
-                          {c.address}
+                          {fmtAddress(c.address)}
                         </div>
                       )}
                       <div style={{ display: "grid",

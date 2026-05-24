@@ -617,6 +617,13 @@ body.aihub-wa-fullscreen [data-testid="wa-chat-layout"] {
 }
 .lousa-alert-blink { animation: lousa-alert-blink 1.4s ease-in-out infinite; }
 
+/* Alerta Frota — bolha com glow âmbar/dourado para frota_alerta */
+@keyframes lousa-fleet-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.55), 0 4px 14px rgba(245,158,11,.25); }
+  50% { box-shadow: 0 0 0 6px rgba(245,158,11,0.0), 0 8px 22px rgba(245,158,11,.40); }
+}
+.lousa-fleet-glow { animation: lousa-fleet-glow 2s ease-in-out infinite; }
+
 
 /* PWA install prompt — slide up animation */
 @keyframes slideUp {
@@ -629,27 +636,61 @@ body.aihub-wa-fullscreen [data-testid="wa-chat-layout"] {
    Relatório imprimível da Lousa — esconde toda a UI ao redor
    quando o usuário clica em "Imprimir / Salvar PDF" ou usa
    Ctrl+P dentro do modal de relatório.
+
+   Estratégia (visibility): React monta em #root, então NÃO
+   podemos usar `body > *:not(.x) { display:none }` (escondia o
+   #root inteiro, levando o modal junto e gerando página em
+   branco). Usamos `visibility:hidden` no body inteiro e
+   `visibility:visible` apenas no overlay+descendentes — funciona
+   independente da profundidade do React tree.
    ============================================================ */
 @media print {
-  body.lousa-printing > *:not(.lousa-report-overlay) { display: none !important; }
-  body.lousa-printing .lousa-report-overlay {
-    position: static !important;
-    background: transparent !important;
-    padding: 0 !important;
-    inset: auto !important;
+  body.lousa-printing { visibility: hidden !important; }
+  body.lousa-printing .lousa-report-overlay,
+  body.lousa-printing .lousa-report-overlay * {
+    visibility: visible !important;
   }
+  /* Tira o flex/center que comprime o conteúdo na impressão.
+     Mantém `position:fixed` pra fixar à viewport (não a um ancestor
+     posicionado). `left/top/right/bottom: auto` evita herança. */
+  body.lousa-printing .lousa-report-overlay {
+    position: fixed !important;
+    left: 0 !important; top: 0 !important;
+    right: 0 !important; bottom: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: auto !important;
+    display: block !important;
+    align-items: initial !important;
+    justify-content: initial !important;
+    overflow: visible !important;
+  }
+  /* Reset do card interno: ocupa largura toda, sem alturas fixas */
   body.lousa-printing .lousa-report-overlay > div {
     box-shadow: none !important;
     border-radius: 0 !important;
     width: 100% !important;
-    height: auto !important;
     max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: block !important;
+    flex-direction: initial !important;
+    margin: 0 !important;
   }
   body.lousa-printing #lousa-report-printable {
     overflow: visible !important;
     height: auto !important;
+    max-height: none !important;
+    flex: initial !important;
     padding: 0 !important;
+    width: 100% !important;
   }
-  body.lousa-printing .no-print { display: none !important; }
+  body.lousa-printing .no-print,
+  body.lousa-printing .no-print * { display: none !important; }
   @page { size: A4 landscape; margin: 10mm; }
 }

@@ -121,11 +121,40 @@ function RankingRow({ item, position }) {
         {!item.avatar && (item.collaborator_name?.[0] || "?").toUpperCase()}
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
           {item.collaborator_name}
+          {item.is_motorista_mes && (
+            <span
+              data-testid={`motorista-mes-badge-${item.collaborator_id}`}
+              title="🏆 Motorista do mês — vistorias semanais com IA ≥ 90"
+              style={{
+                fontSize: 10, fontWeight: 900, padding: "2px 7px",
+                borderRadius: 999, background: "linear-gradient(135deg,#fbbf24,#f59e0b)",
+                color: "white", letterSpacing: 0.5,
+                boxShadow: "0 2px 6px rgba(245,158,11,0.4)",
+              }}>
+              🏆 MOTORISTA DO MÊS
+            </span>
+          )}
+          {!item.is_motorista_mes && item.fleet_score != null && (
+            <span
+              data-testid={`fleet-score-badge-${item.collaborator_id}`}
+              title={`Score médio de vistorias semanais (${item.fleet_inspections_count} vistorias)`}
+              style={{
+                fontSize: 10, fontWeight: 800, padding: "2px 6px",
+                borderRadius: 999,
+                background: item.fleet_score >= 90 ? "#dcfce7"
+                  : item.fleet_score >= 70 ? "#dbeafe" : "#fee2e2",
+                color: item.fleet_score >= 90 ? "#166534"
+                  : item.fleet_score >= 70 ? "#1e40af" : "#991b1b",
+              }}>
+              🚗 {item.fleet_score}
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 11, color: "#64748b" }}>
           {item.praca || "—"} · {item.total_evaluated} ticket(s)
+          {item.fleet_inspections_count > 0 && ` · ${item.fleet_inspections_count} vistoria(s)`}
         </div>
       </div>
       <div data-testid={`ai-rank-score-${item.collaborator_id}`} style={{

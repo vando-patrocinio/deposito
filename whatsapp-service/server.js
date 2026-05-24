@@ -66,6 +66,10 @@ const BROWSER_FP = (process.env.WA_BROWSER_FP || "Chrome (Linux),Chrome,120.0.0"
 const WA_MONGO_URL = process.env.WA_MONGO_URL || process.env.MONGO_URL || "";
 const WA_MONGO_DB = process.env.WA_MONGO_DB || process.env.DB_NAME || "ponto";
 const WA_SESSION_ID = process.env.WA_SESSION_ID || "isabella";
+// Channel identification (multi-number support).
+// Cada sidecar é um "canal" diferente — o backend roteia inbound msgs
+// pelo channel_id pra exibir o nome do canal na conversa.
+const WA_CHANNEL_ID = process.env.WA_CHANNEL_ID || "channel-1";
 let mongoClient = null;
 let mongoDb = null;
 
@@ -161,7 +165,7 @@ async function notifyAdmin(event, payload) {
   // Best-effort — avisa o FastAPI sobre eventos críticos (ban, max retries)
   try {
     await axios.post(`${WEBHOOK_BASE}/whatsapp-baileys/system-event`, {
-      event, ...payload, ts: new Date().toISOString(),
+      event, channel_id: WA_CHANNEL_ID, ...payload, ts: new Date().toISOString(),
     }, {
       timeout: 8000,
       headers: INBOUND_TOKEN ? { "X-WA-Token": INBOUND_TOKEN } : {},
@@ -639,6 +643,8 @@ async function startSock() {
             phone, jid: fromJid, from_me: false, text,
             message_id: m.key.id, timestamp: m.messageTimestamp,
             push_name: m.pushName || null,
+            // Multi-canal: identifica de qual número WhatsApp veio a mensagem.
+            channel_id: WA_CHANNEL_ID,
             // Novos campos para o backend decidir como identificar
             is_lid: isLid,
             lid: isLid ? rawId : null,

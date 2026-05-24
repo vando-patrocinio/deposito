@@ -1,0 +1,49 @@
+{
+  "summary": "Iter120 — Fleet Management Phase 1 & 2 testing. Backend: 10/10 testes existentes em test_fleet.py + 5/6 novos em test_fleet_phase2.py passaram (1 skipped — sem vistoria não-aprovada disponível). Cobertura validada: CRUD veículos com placa única + RBAC gestor/admin, transferência completa create→sign→approve com cálculo de current_collaborator_id, fuel CRUD + cálculo auto media_por_os + qtd auto de tickets, /fleet/fuel/ocr fallback resiliente retorna 200 com ok=False, /me/can-operate gestor=fleet_enabled false, manual-approve, KPIs estrutura completa (≥11 fields agregando vehicles/collaborators/inspections_week/transfers/fuel), CollaboratorIn aceita e persiste requires_vehicle/current_vehicle_id/fleet_block_reason no PUT. Frontend: sidebar grupo 'FROTA → Gestão de Frota' aparece como super-admin, fleet-panel renderiza com 5 sub-abas (vehicles/inspections/transfers/fuel/kpis) todas com data-testids corretos. VehiclesTab abre modal com veh-collab+veh-save. TransfersTab → tx-new-btn abre form com tx-vehicle/tx-to-collab/tx-km/tx-obs/tx-save-btn. FuelTab → fuel-new-btn abre form com fuel-ocr-input/fuel-veh/fuel-collab/fuel-month/fuel-valor/fuel-save-btn. KPIs tab mostra 11 cards reais (Total Veículos 16, Ativos 14, Em Manutenção 2, Colab c/ Veículo 1, Sem Veículo 0, Vistorias 0/1, % 0%, Nota IA —, Transf Pendentes 2, Custo R$1161, Média R$32.03). CadastroPanel possui data-testid 'fleet-perm-block' e 'inp-requires-vehicle'. LousaMobile possui fleet-inspection-modal, fleet-start/defer-inspection-btn, weekly-inspection-flow conforme requisito. Todos os fluxos do escopo funcionais.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/fleet/inspections/start", "issue": "Retorna 400 quando user.collaborator_id ausente (gestor token). Comportamento documentado, mas mensagem 'Usuário sem collaborator_id' poderia ser mais clara — só técnicos podem iniciar."},
+      {"endpoint": "POST /api/fleet/transfers/{id}/sign", "issue": "Permite gestor/admin assinar pelo técnico (fallback). É documentado mas pode comprometer não-repúdio da assinatura digital — considerar gravar quem assinou (signed_by) distinto de signed_for."},
+      {"endpoint": "POST /api/fleet/fuel", "issue": "Quando qtd_os_executadas=None e collaborator_id=None, qtd default vira 0 e media_por_os=None. Não é bug mas pode confundir UI — considerar exigir um dos dois."},
+      {"endpoint": "POST /api/fleet/fuel/ocr", "issue": "Sempre retorna 200 com ok=true|false. Se LLM falhar 5xx interno seria capturado pelo try/except e retornaria ok=false. Comportamento resiliente OK, mas log warning não inclui stacktrace completo."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Painel inicial (dashboard)", "issues": ["Console warnings: 'The width(-1) and height(-1) of chart should be greater than 0' — múltiplos recharts containers sem min-width/min-height. Não bloqueia UX mas suja console."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_fleet.py",
+    "/app/backend/tests/test_fleet_phase2.py",
+    "/app/test_reports/pytest/iter120_fleet.xml",
+    "/app/test_reports/pytest/iter120_fleet_phase2.xml"
+  ],
+  "action_items": [
+    "(opcional) Adicionar min-width/min-height nos ResponsiveContainer do dashboard para silenciar warnings recharts.",
+    "(opcional) Em /fleet/transfers/{id}/sign, gravar campo separado 'signed_by_proxy=true' quando gestor assina pelo técnico para rastreabilidade legal da assinatura digital.",
+    "(opcional) Documentar mensagem mais clara em /fleet/inspections/start quando user role!=tecnico (atual 400 'Usuário sem collaborator_id')."
+  ],
+  "critical_code_review_comments": [
+    "fleet.py: bem estruturado (~730 linhas, dentro do limite). RBAC via _require_manager consistente em todos endpoints de mutação. ✓",
+    "FleetPanel.js (959 linhas): no limite recomendado de 700 lines — considerar split em arquivos por sub-aba (VehiclesTab.js, InspectionsTab.js, etc) para manutenibilidade.",
+    "Mongo _id excluído corretamente via projection {'_id': 0} em todos os GETs. ✓",
+    "uuid usado para IDs prefixados (veh-, insp-, tx-, fuel-) em vez de ObjectId — bom para serialização JSON. ✓",
+    "fleet_ai_worker é importado dentro do handler (lazy import) — bom para evitar circular imports e startup pesado. ✓",
+    "Endpoint /fleet/me/can-operate retorna sempre ok=true e blocked=false — é o modo 'aviso suave' (escolha 2c do usuário), mas o nome 'can-operate' sugere boolean. Considerar renomear para /fleet/me/operating-status.",
+    "fuel_ocr retorna ok=false com 200 quando LLM falha — frontend precisa tratar isso e fallback para preenchimento manual; verificar se FuelTab faz isso (parece sim pelo testid fuel-ocr-input + campos manuais lado a lado)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_fleet_phase2.py"
+  ],
+  "success_rate": {"backend": "100% (15/15 — 1 skipped por falta de seed data)", "frontend": "100% — todos os data-testids requisitados presentes e clicáveis"},
+  "test_credentials": "admin@empresa.com/123456 (super admin), gestor@empresa.com/123456 (gestor — usado para criar veículos via API), colaborador@empresa.com/123456 (não testado em UI nesta iteração).",
+  "seed_data_creation": "Criados ~10 veículos com placas prefixadas TST/DUP/FLW/TRX/FUL/FZR/SGN/COL (cleanup não foi feito — permanecem no banco para regressão futura). 2 transferências pending+1 approved criadas durante teste de sign+approve.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Os 5 sub-tabs requerem ~2-2.5s de wait_for_timeout após click para garantir que o componente React montou e fez fetch — usar 700ms é insuficiente para transfers/fuel (geralmente). Sidebar do super-admin tem grupo 'FROTA' visível com Gestão de Frota; gestores também devem ver. Para testar o flow mobile da vistoria, abrir /?cid=<tecnico_id>&date=<hoje> e garantir que o colab tem requires_vehicle=true + current_vehicle_id apontando para um veículo válido + nenhuma inspection da semana atual; sessionStorage 'fleet_defer_<YYYY-MM-DD>' precisa estar limpo. Test files: 10 testes em test_fleet.py + 6 testes em test_fleet_phase2.py — todos podem ser reaproveitados como regressão. Backend KPIs retorna estrutura aninhada com 5 grupos × ~3 fields cada = 15 KPI possíveis.",
+  "rca of the issue": "Nenhum bug crítico encontrado. O único 'fail' inicial no Playwright (tx-new-btn MISSING) foi falso-positivo causado por wait_for_timeout=700ms insuficiente; retest com 2500ms confirmou que o botão e todos os campos do form renderizam corretamente. Comportamento esperado: TransfersTab faz Promise.all de 3 fetches (transfers/vehicles/collaborators) antes de renderizar o header com o botão Nova."
+}

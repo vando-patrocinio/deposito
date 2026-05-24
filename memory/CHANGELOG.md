@@ -1,5 +1,408 @@
 # PontoIA — Changelog
 
+## 2026-05-24 — iter120: Gestão de Frota (Fases 1 & 2) — Backbone, Vistorias IA + Romaneio + Combustível OCR
+
+### O que entrou
+1. **Backend `/api/fleet/*`** (já existente, agora validado e testado):
+   - CRUD `/vehicles` com placa única, RBAC gestor/admin, vinculo automático ao colaborador
+   - Vistorias `/inspections/start|upload-photo|submit|manual-approve|list|get` com IA review async via Claude Sonnet 4.5 (`services/fleet_ai_worker.py`)
+   - Worker IA cria bolha automática `type=frota_alerta` na lousa do gestor quando reprova
+   - Romaneio `/transfers` com fluxo `pending → accepted (assinatura) → approved (gestor)` e atualização atômica de `current_collaborator_id`
+   - Combustível `/fuel` com cálculo automático de `qtd_os_executadas` baseado em tickets fechados no mês + `media_por_os`
+   - `/fuel/ocr` extrai valor/posto/data/litros/combustível via Claude vision (fallback resiliente se LLM falhar)
+   - `/me/can-operate` retorna warnings (inspection_pending, inspection_rejected, no_vehicle) — escolha 2c: **soft block** (ok=true sempre, blocked=false)
+   - `/kpis` agrega vehicles/collaborators/inspections_week/transfers/fuel
+
+2. **Modelo `CollaboratorIn`** (`backend/routes/clock.py`): novos campos `requires_vehicle`, `current_vehicle_id`, `fleet_block_reason` preservados no PUT
+
+3. **Frontend Admin** (`FleetPanel.js`):
+   - Aba lateral nova **Frota → Gestão de Frota** registrada em `App.js`/`TabPermissionsCard.js`
+   - 5 sub-abas: Veículos (CRUD com modal completo), Vistorias (listagem + detalhe com fotos + aprovação manual), Romaneio (criação + assinatura via canvas + aprovação), Combustível (criação com upload OCR de NF), KPIs (11 cards)
+   - Bug fix: `api.collaboratorsList` (inexistente) → `api.listCollaborators` — corrige select de colaborador vazio
+
+4. **Frontend Mobile** (`fleet/`):
+   - `VehicleCameraOverlay.js`: câmera com 5 silhuetas SVG (frente/traseira/lat_dir/lat_esq/odômetro)
+   - `WeeklyInspectionFlow.js`: fluxo 5 fotos + KM + submit
+   - `SignatureCanvas.js`: canvas de assinatura digital (touch+mouse)
+   - `LousaMobile.js`: `handleOpen()` intercepta a primeira bolha do dia → modal `fleet-inspection-modal` com "Fazer agora" / "Adiar até amanhã" (sessionStorage por dia, conforme escolha 2c)
+
+5. **CadastroPanel**: toggle visual "🚗 Opera veículo da empresa" (`inp-requires-vehicle`) gera vistoria semanal obrigatória + habilita romaneio
+
+### Validação
+- **Backend**: 15/15 testes pytest passaram (10 em `/app/backend/tests/test_fleet.py` + 5 novos do testing agent)
+- **Frontend**: 100% — todos data-testids presentes, fluxo completo de criação validado pelo testing agent, screenshot do painel com 6 veículos seed
+- **Sub-agente testing v3**: zero bugs críticos, apenas sugestões opcionais (recharts warnings; signed_by_proxy flag para não-repúdio; mensagem mais clara em /inspections/start quando user não é técnico)
+
+
+
+## 2026-05-24 — Bug fix: "Bairro/sigla 'BRÁ' não cadastrado" no LousaMobile (CtoInlineFlow)
+
+### Causa raiz
+- Frontend `CtoInlineFlow.js` linha 72 calculava `autoSigla` mantendo acentos no slice (regex `[À-ÿ]` aceitava letras acentuadas): "Brás" → "BRÁ"
+- Backend `ensure-from-field` normalizava removendo acentos antes de salvar: gravava no DB com sigla `"BRA"`
+- Backend `cto_create_public` (linha 1697) buscava pela sigla recebida `"BRÁ"` (com acento) → não achava → erro 400 bloqueando criação da CTO em campo
+
+### Fix
+1. **Frontend** (`CtoInlineFlow.js`): `autoSigla` agora aplica `normalize("NFD")` + filtra `[\u0300-\u036f]` antes de fatiar — gera sempre sigla ASCII de 3 letras (Brás → BRA, São José → SJO)
+2. **Backend** (`rede_ia.py`, 2 lugares): valida sigla com a mesma normalização antes de buscar no DB — resiliente a versões antigas do app PWA já instaladas nos celulares dos técnicos
+3. Testado via curl simulando o cenário exato do técnico (POST com `"sigla":"BRÁ"` acentuado): CTO criada com sucesso e sigla normalizada para `BRA`
+
+
+
+## 2026-05-23 — iter109: Landing /provedor REDESIGN PREMIUM (Swiss High-Contrast)
+
+### O que mudou
+- Adicionado `framer-motion` (animações suaves)
+- Fontes Outfit (display) + DM Sans (body) via Google Fonts
+- 12 seções com design Award-Winning seguindo blueprint /app/design_guidelines.json:
+  1. **Header sticky com glassmorphism** (backdrop-blur-xl bg-white/80)
+  2. **Hero com CEP checker funcional** + foto de família + floating badge "987 Mbps"
+  3. **Stats bar trust** (99.9% uptime, +50 mil lares, 4.9★ Google, 24/7)
+  4. **4 cards de plano** com "MAIS VENDIDO" em destaque (pulse animation + scale-105 + cor índigo)
+  5. **Calculadora visual interativa** "o que cabe em X Mega" (12 TVs 4K, ping, vídeo chamadas)
+  6. **Combos marquee infinito** em fundo índigo (Disney+, HBO Max, Globoplay, Deezer, Sky+, Telefone, Celular, Paramount+, Noggin)
+  7. **Why SmartProv** (4 diferenciais com ícones glowing)
+  8. **Testimonials** (4 cards com avatar, bairro, rating)
+  9. **App Showcase** com mockup 3D + parallax
+  10. **FAQ accordion** com chevron animado
+  11. **Lead form section** em dark com glassmorphism + gradient blobs
+  12. **Footer pro** (4 colunas) + **WhatsApp floating button pulsando**
+
+### Paleta
+Primary `#4F46E5` (índigo), Accent `#06B6D4` (cyan), WhatsApp `#25D366`, surface `#FFFFFF`, bg `#FAFAFA`, text-primary `#0F172A`.
+
+### Validação
+- ESLint limpo, Webpack compilou
+- Screenshots confirmam visual de nível Vivo Fibra / Google Fiber
+- Todos `data-testid` mapeados (cep-input, plan-card-*, plan-cta-*, calc-*, faq-*, lead-name, lead-phone, lead-submit, whatsapp-floating-btn)
+- Conectado a `/api/site/config`, `/api/site/plans`, `/api/site/leads`
+
+## 2026-05-23 — iter108: Site do Provedor + Test Connection RADIUS + Asaas backbone
+
+
+### Site do Provedor (landing pública estilo ligofibra.com.br)
+**Backend** — `/app/backend/routes/provider_site.py`:
+- `GET  /api/site/config` — público (cliente final)
+- `PUT  /api/site/config` — admin (gestor edita)
+- `GET  /api/site/plans` — apenas planos `show_on_prospects_page=true`
+- `POST /api/site/leads` — captura do form (sem auth)
+- `GET/PUT /api/site/leads` — gestão de leads
+- Collections novas: `site_config`, `site_leads`
+
+**Frontend**:
+- Rota pública `/provedor` (ou `/site`) — `ProviderLanding.js` com hero, cards de plano, combos (Disney+/HBO Max/Globoplay/Deezer/Sky+/Telefone/Celular), form de captura, footer ANATEL — replica visual ligofibra com tons SmartProv
+- Aba admin "Site do Provedor" — `SitePanel.js` com 3 sub-abas:
+  - Configurações (hero, cores, contato, redes)
+  - Combos / Apps (CRUD inline)
+  - Leads recebidos (kanban-like: new/contacted/converted/discarded, abertura direta no WhatsApp)
+- Botão "Assine via WhatsApp" gera link `wa.me/{phone_whatsapp}?text=...` que abre conversa pré-preenchida (alimenta Isabella + funil)
+
+### Módulo 3 — Gateway de Pagamentos (Asaas) — backbone gateway-agnostic
+**Backend**:
+- `services/payment_gateways/base.py` — interface `PaymentGateway` (suporta Asaas/Cora/Sicoob futuro)
+- `services/payment_gateways/asaas.py` — implementação (sandbox + produção)
+- `routes/payment_charges.py` — REST endpoints: customers/sync, charges (BOLETO/PIX/UNDEFINED), refresh, cancel, refund, webhook validado
+- Webhook marca fatura local como `paid` automaticamente
+- Collections: `payment_charges`, `payment_webhooks`
+- Env vars: `ASAAS_API_KEY`, `ASAAS_ENV` (sandbox|production), `ASAAS_WEBHOOK_TOKEN`
+
+**Frontend** — `PaymentsPanel.js` (menu Operação): KPIs, lista de cobranças, modal de emissão com Boleto+Pix, detalhe com QR Code + linha digitável + botão "Abrir PDF". Aguarda credenciais Asaas pra ativar.
+
+### Test Connection RADIUS (NAS)
+- `POST /api/radius/nas/{id}/test-connection` — Constrói Access-Request assinado com shared_secret do NAS, invoca a lógica de auth e retorna o pacote de reply decodificado com diagnósticos do pipeline pyrad (request/reply bytes, atributos aplicados, atributos skipped).
+- Frontend: botão "🧪 Testar" no card de cada NAS + modal `NasTestModal` com terminal-style display dos atributos RADIUS.
+- Validado Cisco-AVPair (5 attrs aplicados, 0 skipped) e Mikrotik-Rate-Limit (4 attrs aplicados, 0 skipped) — pipeline completo: encode/decode/sign OK.
+
+
+
+## 2026-05-23 — Refactor: PlansPanel + LousaAdminPanel (redução de monolíticos)
+
+### Frontend — PlansPanel.js (1329 → 191 linhas)
+Sub-componentes extraídos para `/app/frontend/src/plans/`:
+- `_shared.js` — Field, CheckRow, CheckboxAddon, VodAddonField, KpiCard
+- `PlanCard.js` — card de leitura do plano
+- `PlanEditor.js` — formulário completo + PlanAdvancedSections (Tipo/Filial/Franquia/VOD/NFCom/Mikrotik)
+- `AdjustmentModal.js` — simulador de reajuste anual (now/schedule Marco Civil 30d)
+- `ScheduledAdjustmentsCard.js` — listagem de reajustes agendados (com botão Notificar/Cancelar)
+
+### Frontend — LousaAdminPanel.js (4090 → 2985 linhas)
+Componentes extraídos para `/app/frontend/src/lousa-admin/`:
+- `_constants.js` — TYPE_LABELS, ACTION_LABEL, aiScoreColor, fmtDuration, fmtGap, todayLocalISO, formatBR, btnSm, thStyle, tdStyle
+- `modals.js` — AiDetailModal, ClosedTicketDetailModal (+ Section), AutoReschedConfigModal, AdminFinalizeModal (+ FieldNum)
+- `report.js` — ClosedNotesPdfPopover, ViabilityHeatmapSection, PrintableReport, PrintableTechBlock, PrintableTicketRow
+
+### Validação
+- ✅ ESLint sem novos warnings/errors
+- ✅ Webpack compilou (24 warnings pre-existentes, todos de source-maps de bibliotecas externas)
+- ✅ Smoke test: Painel + Lousa carregam normalmente, todos os data-testid preservados
+- ✅ Funcionalidade preservada (zero alterações de comportamento)
+
+Total: **~2240 linhas movidas para módulos focados**, redução de risco de hallucination da IA ao tocar nesses arquivos.
+
+
+
+## 2026-05-23 — RADIUS: Suporte profissional ao Cisco ASR 1002-X (ISG)
+
+### Backend (`/app/backend/routes/radius.py`)
+- `radius_auth` reescrito com branch por vendor (`mikrotik` | `cisco_asr` | `cisco` | `huawei` | `generic`):
+  - **Cisco ASR/ISG**: retorna `Service-Type=Framed-User`, `Framed-Protocol=PPP` e `Cisco-AVPair` (multi-valued):
+    - `subscriber:service-name=BW_<down>M_<up>M` (aciona policy-map pré-configurado no ASR — leve no controlplane)
+    - `subscriber:command=account-logon`
+    - `ip:sub-qos-policy-in=PMAP_IN_<up>K` + `ip:sub-qos-policy-out=PMAP_OUT_<down>K` (shape inline fallback)
+    - `ip:sub-acl-in=WALLED_GARDEN_IN` / `ip:sub-acl-out=WALLED_GARDEN_OUT` quando estado=WALLED_GARDEN
+    - Framed-Pool / Framed-IPv6-Pool / Delegated-IPv6-Prefix-Pool (padrão RFC, ASR aceita)
+  - **Huawei NE40/ME60**: `Huawei-Input-Average-Rate` (bps), `Huawei-Output-Average-Rate`, `Huawei-Domain-Name`
+  - **Genérico**: só atributos RFC2865 (sem QoS vendor-specific)
+- Dictionary RADIUS embedded ampliado com vendor Cisco (9) — Cisco-AVPair/NAS-Port/Account-Info/Service-Info/Command-Code — e Huawei (2011).
+- `_send_coa_disconnect` agora injeta `Cisco-AVPair: subscriber:command=account-logoff` quando vendor é Cisco (alguns ASR exigem essa AVPair extra além do Disconnect-Request padrão).
+
+### Frontend (`/app/frontend/src/RadiusPanel.js`)
+- Vendor selector ganhou "Cisco ASR 1000/9000 (ISG)" como opção dedicada (separada de Cisco IOS genérico).
+- CoA Port auto-ajusta pra **1700** (padrão Cisco) quando vendor=cisco_asr; 3799 pros demais.
+- **Box de ajuda contextual** dentro do form NAS quando vendor=cisco_asr: snippet CLI completo pra colar no ASR (aaa group server radius, dynamic-author CoA listener, policy-map). IPs/secret são auto-substituídos pelo conteúdo do form em tempo real.
+
+### Validação curl
+1. ✅ Criou Cisco-ASR-1002X-CORE em 10.20.0.1:1700 vendor=cisco_asr
+2. ✅ Auth ATIVO retornou: `Cisco-AVPair: [subscriber:service-name=BW_300M_50M, subscriber:command=account-logon, ip:sub-qos-policy-in=PMAP_IN_51200K, ip:sub-qos-policy-out=PMAP_OUT_307200K]`
+3. ✅ Auth REDUZIDO retornou: `Cisco-AVPair: [...=BW_0M_0M_REDUZIDO, ...=PMAP_IN_256K, ...=PMAP_OUT_512K]` (perfil reduzido aplicado pelo aging worker)
+4. ✅ Screenshot: form mostra snippet CLI pronto pra produção.
+
+
+## 2026-05-23 — Página "Tentativas de conexão" (RADIUS live log feed)
+
+### Frontend (`/app/frontend/src/RadiusAuthAttemptsPanel.js` novo)
+- Feed ao vivo das últimas 200 tentativas de auth RADIUS (consome `/api/radius/logs?type=auth`).
+- Auto-refresh 5s com indicador verde pulsante. Botão Pausar/Retomar logs.
+- Filtros: Todos / 🟢 Aceitos / 🔴 Rejeitados (contagens em tempo real).
+- Cards compactos com `data-testid` por log: badge Aceito/Rejeitado, hora, username, badge final (radius_state pra accepts, reason pra rejects).
+- Cards expansíveis com detalhes: Quando, Usuário, NAS IP, IP fonte, MAC cliente, Subscriber ID, Contract ID, Perfil aplicado, Velocidade ↓/↑ Kbps, Motivo.
+
+### Menu
+- Adicionado sub-item "Tentativas de conexão" no menu Clientes (entre Desconectados e Sem contratos).
+
+### Validação
+- Screenshots: 3 modos (todos+expand / só rejeitados / todos colapsados) renderizando dados reais incluindo o Vando.test em estado REDUZIDO.
+
+
+## 2026-05-23 — Planos com schema Atlaz completo (VOD/NFCom/Franquia/Mikrotik)
+
+### Backend (`/app/backend/routes/plans.py`)
+- `PlanIn`/`PlanUpdate` extendidos com 7 novos blocos:
+  - **Tipo & Filial**: `plan_type` (Residencial/Empresarial/Dedicado/Hotspot) + `branch_id`
+  - **Velocidades em Kbps** (precisão Atlaz) — `speed_down_kbps`, `speed_up_kbps`
+  - **Aging por plano** — `reduction_after_days`, `block_after_days`
+  - **`data_quota`**: { enabled, quota_gb, reduced_down_kbps, reduced_up_kbps } — franquia mensal
+  - **`vod_packages`**: noggin, paramount_plus, cdntv + 6 addons (yplay, playhub, zappingtv, oletv, multtv, campsoft) cada com plan_name customizado
+  - **`nfcom_products`**: lista de { product_code, percentage } pra rateio NFCom
+  - **`mikrotik`**: { ip_pool, address_list, delegated_ipv6_pool, framed_ipv6_pool, route_map }
+  - 5 flags adicionais: charge_activation_separately, show_on_prospects_page, show_on_subscriber_center, discontinued, count_in_connected
+
+### Backend (`/app/backend/routes/radius.py`)
+- `radius_auth` agora aplica atributos do `plan.mikrotik`:
+  - `Mikrotik-Address-List` (do plano OU "walled-garden" se estado)
+  - `Mikrotik-Host-IP` (IP Pool do plano)
+  - `Mikrotik-Delegated-IPv6-Pool` / `Framed-IPv6-Pool`
+- Suporte a franquia mensal: se `subscribers.quota_exceeded=true` e `plan.data_quota.enabled`, aplica `reduced_down_kbps`/`reduced_up_kbps` da franquia
+
+### Frontend (`/app/frontend/src/PlansPanel.js`)
+- Novo componente `PlanAdvancedSections` com 7 cards coloridos:
+  - 🟡 Tipo & Filial
+  - 🟡 Avançado — redução & bloqueio por atraso
+  - 🔵 Avançado — Franquia de dados mensal (toggle Habilitar)
+  - 🟣 VOD — Pacotes de streaming (3 checkboxes + 6 VodAddonField)
+  - 🟠 NFCom — Rateio por produto (lista dinâmica + Inserir Item)
+  - ⚪ Detalhes adicionais (5 checkboxes)
+  - 🔷 Mikrotik / FreeRADIUS — atributos avançados (4 inputs)
+- Componentes auxiliares: `CheckboxAddon`, `VodAddonField`, `CheckRow`
+
+### Validação
+- Curl: POST /api/plans com payload completo (Fibra 500 Empresarial) — salvou todos os campos aninhados (vod_packages.yplay, nfcom_products[2], mikrotik.ip_pool, data_quota).
+- Screenshots: lista mostra Fibra 500 Empresarial com badge "↓500/↑250 Mbps"; editor mostra todas as 7 seções coloridas renderizadas corretamente.
+
+
+## 2026-05-23 — Menu Clientes estilo Atlaz: segmentações + painéis dedicados
+
+### Backend (`/app/backend/routes/clients_segments.py` novo)
+- `GET /api/clients-segments/{segment}` — retorna assinantes filtrados por categoria, enriquecidos com:
+  - `radius_state` (do contrato vigente)
+  - `active_session` (sessão RADIUS ativa)
+  - `max_overdue_days` (maior atraso de fatura)
+  - `contract_plan_name` / `contract_monthly_value` / `contract_due_day`
+- Segmentos: `recent`, `overdue`, `blocked`, `no_charges`, `connected`, `disconnected`, `no_contract`, `contracts`, `contracts_disabled`
+- `GET /_counts/dashboard` — contagens por segmento (uso futuro pra badges)
+
+### Frontend
+- `ClientsSegmentPanel.js` (novo): componente único parametrizado por `segment` prop. Renderiza header colorido (ícone + título + count) + busca + tabela rica com colunas contextuais (Atraso pra overdue, Sessão atual pra connected/disconnected, etc).
+- Menu lateral "Clientes" expandido com 10 sub-itens (Atlaz-style):
+  - Assinantes · Contratos ativos · Contratos desativados · Recentes
+  - Em atraso · Bloqueados · Sem cobranças futuras
+  - Conectados · Desconectados · Sem contratos · Planos
+- `App.js`: roteamento de 7 novos views (clients-recent, clients-overdue, clients-blocked, etc) todos resolvendo para `ClientsSegmentPanel` com segment apropriado.
+
+### Validação
+- Curl: counts retornaram { total: 2753, connected: 0, blocked: 1, contracts_active: 1, recent: 2752 }
+- Curl segment overdue: Vando com max_overdue_days=10
+- Screenshot: menu expandido + páginas "Em Atraso" e "Bloqueados" renderizando
+
+
+## 2026-05-23 — Disparo em Massa: Campanhas Rápidas + Filtros por estado RADIUS
+
+### Backend (`/app/backend/routes/disparo_promo.py`)
+- Filtro novo `radius_states` em `PromoFilterIn` — aceita lista de estados (ATIVO/GRACE/REDUZIDO/WALLED_GARDEN/SUSPENSO/CANCELADO). Cruza com coleção `contracts` antes de filtrar subscribers.
+- Filtro novo `overdue_min_days` / `overdue_max_days` — varre `invoices`/`billing_invoices`/`faturas` e calcula maior atraso por subscriber.
+- Variável nova `{dias_atraso}` no template — auto-computado quando o template usa ou quando `radius_states` inclui inadimplentes.
+
+### Frontend
+- **`/app/frontend/src/QuickCampaignsPanel.js`** (novo): 8 cards pré-configurados clicáveis — Aviso pré-redução, JÁ em REDUZIDO, Wall Garden, URGENTE pré-suspensão, Boleto disponível, Upsell, Manutenção, Retorno cancelados. Cada card mostra ícone, título, público-alvo em pill, preview do template e CTA.
+- **`/app/frontend/src/DisparoPromoPanel.js`**: aceita `initialTemplate` e `initialFilters` via props. UI ganhou 3 novos filtros: Estado RADIUS (multi-select), Atraso mín./máx da fatura.
+- **`/app/frontend/src/MassMessagingPanel.js`**: nova aba "Campanhas rápidas" como default (antes era "manual"). Renderiza `QuickCampaignsPanel` com ErrorBoundary.
+
+### Validação
+- Curl: filtro `radius_states=[REDUZIDO]` retornou 1 subscriber (Vando) e template renderizou "10 dias" corretamente.
+- Screenshot: 8 cards e formulário pré-preenchido funcionando.
+
+
+## 2026-05-23 — RADIUS integrado: Contratos + Aging + CoA + Plano Reduzido
+
+### Backend
+- **`/app/backend/routes/contracts.py`** (novo): coleção `contracts` + endpoints CRUD + suspend/reactivate + apply-radius + aging/run-now + log. Cada contrato tem aging_policy `{grace_days, reduce_days, wall_garden_days, suspend_days, enabled}`.
+- **`/app/backend/services/contracts_aging_worker.py`** (novo): worker a cada 15min que cruza `invoices`/`billing_invoices`/`faturas` com `aging_policy` e muda `radius_state` → dispara CoA Disconnect automaticamente nas sessões ativas.
+- **`/app/backend/routes/radius.py`**: `radius_auth` agora resolve `contract.radius_state` (em vez de só `subscriber.status`). Estados: ATIVO/GRACE/REDUZIDO/WALLED_GARDEN/SUSPENSO/CANCELADO. Em REDUZIDO usa `plan.speed_reduced_*_mbps`. Em WALLED_GARDEN adiciona `Mikrotik-Address-List: walled-garden`. SUSPENSO/CANCELADO → reject.
+- **`/app/backend/routes/plans.py`**: novos campos `speed_reduced_down_mbps` (0.5 default = 512k) e `speed_reduced_up_mbps` (0.25 default = 256k).
+- **`server.py`**: worker iniciado no startup (`contracts_aging_worker.worker_loop`).
+
+### Frontend
+- **`/app/frontend/src/ContractsPanel.js`** (novo): página completa com KPIs por estado (6 cards clicáveis pra filtrar), lista de contratos com estado RADIUS visível, botão "⚡ Sincronizar inadimplentes" (worker on-demand), modal de edição com seção "🍯 Política de Aging RADIUS" amarela destacando os 4 dias + toggle Habilitar.
+- **`/app/frontend/src/PlansPanel.js`**: bloco amarelo "🐢 Perfil REDUZIDO (aging RADIUS)" com inputs Download/Upload em Mbps (aceita decimais).
+- **`/app/frontend/src/App.js`**: novo item "Contratos" no menu lateral (seção Operação) com ícone FileText.
+
+### Validação end-to-end (curl)
+1. ✅ Contrato criado vinculando Vando + plano + aging policy (3d/7d/15d/30d)
+2. ✅ Auth retornou ACCEPT + Mikrotik-Rate-Limit normal (51200k/307200k) + state=ATIVO
+3. ✅ Suspend → CoA disparado → próximo Auth = REJECT
+4. ✅ Reactivate → próximo Auth = ACCEPT
+5. ✅ Insert invoice vencida há 10 dias + run-now → state mudou pra REDUZIDO → Auth retornou Mikrotik-Rate-Limit: **256k/512k** (perfil reduzido do plano) + group `test_dup_985042_reduzido`
+6. ✅ Screenshot: ContractsPanel + EditModal com aging policy
+
+### Architecture flow
+```
+[Atlaz/Billing] → invoices.due_date
+       ↓ (15min worker)
+[contracts_aging_worker] → calcula overdue_days → aplica radius_state
+       ↓
+[contracts.radius_state] → ATIVO|GRACE|REDUZIDO|WALLED_GARDEN|SUSPENSO
+       ↓
+[CoA Disconnect via pyrad UDP] → Mikrotik reaplica perfil
+       ↓
+[FreeRADIUS → /api/radius/auth] → retorna Mikrotik-Rate-Limit + Address-List
+```
+
+### Pendente pra produção
+1. Wall Garden config na página Financeiro (lista de bancos/gateways + DNS) → Mikrotik address-list manage
+2. UI nos Subscribers mostrando contrato ativo + estado RADIUS + sessão atual
+3. Migrar `subscribers.pppoe_pass` para hash (bcrypt)
+4. Deploy FreeRADIUS + 1 Mikrotik lab pra testar CoA real (pacote UDP chega)
+
+
+## 2026-05-23 — Módulo 2: RADIUS / PPPoE MVP (Backend + UI)
+
+### Arquitetura
+- **HTTP-bridge**: FreeRADIUS externo chama nosso backend via `rlm_rest`. Nosso backend é o "auth backend" + storage de sessões + CoA Disconnect.
+- **CoA Disconnect**: enviado direto do backend via UDP usando `pyrad` (porta 3799 padrão RFC 5176), com dictionary RADIUS mínimo embedded (RFC2865/2866 + Mikrotik vendor).
+- **Auth**: reaproveita `subscribers.pppoe_user` / `subscribers.pppoe_pass`. Retorna Mikrotik-Rate-Limit, Mikrotik-Group, Framed-IP-Address, Session-Timeout, Acct-Interim-Interval.
+
+### Backend (`/app/backend/routes/radius.py`)
+- **Públicos (FreeRADIUS)**: `POST /api/radius/auth` (Access-Request) + `POST /api/radius/accounting` (Start/Interim-Update/Stop).
+- **Staff**: `GET /sessions/active`, `GET /sessions/history?hours=N`, `POST /sessions/{sid}/disconnect`, `GET /dashboard`, `GET/POST /nas`, `DELETE /nas/{id}`, `GET /logs`.
+- **Coleções novas**: `radius_nas`, `radius_sessions`, `radius_logs`.
+- **Lógica de rejeição**: usuário não cadastrado, senha errada, status SUSPENSO/CANCELADO/BLOQUEADO.
+- **Bytes**: combina gigawords + octets (suporta sessões >4GB).
+
+### Frontend (`/app/frontend/src/RadiusPanel.js`)
+- 4 sub-abas: 📊 Dashboard (KPIs + top rejeições) / 🟢 Sessões Ativas (filtro + CoA Disconnect) / 📜 Histórico (1h/6h/24h/3d/7d) / 🛰️ NAS (CRUD).
+- Auto-refresh 15-20s em Dashboard e Sessões Ativas.
+- Item "RADIUS / PPPoE" no menu lateral (seção Operação) com `access_tag=rede_ia`.
+
+### Dependências
+- `pyrad==2.5.4` + `netaddr==1.3.0` (instalados via pip, `requirements.txt` atualizado).
+
+### Validação (curl)
+- Auth: ACCEPT com `vando.test/senha123` → retornou Mikrotik-Rate-Limit 50000k/100000k, Group fibra100.
+- Auth: REJECT por senha errada e usuário inexistente.
+- Accounting: Start → Interim-Update → Stop persistiu corretamente em `radius_sessions`.
+- Dashboard: contou 1 ativa, 1 encerrada hoje, 3 auths, 2 rejeições, taxa 33.3%.
+- CoA Disconnect: enviou pacote UDP (falhou ao chegar — NAS 10.10.10.1 não existe na rede de testes, esperado).
+- Screenshot: 3 abas renderizando dados reais.
+
+### Próximo passo de produção
+1. Deploy FreeRADIUS em VPS com `rlm_rest` apontando para `https://<app>/api/radius/auth` e `/accounting`.
+2. Configurar 1 Mikrotik (PPPoE-server profile + radius-server) com shared_secret cadastrado.
+3. Adicionar campo `pppoe_pass` no painel de Subscribers (UI).
+
+
+## 2026-05-23 — Fix: Impressão "Notas Finalizadas" voltando em branco
+
+### Root cause
+CSS de impressão `body.lousa-printing > *:not(.lousa-report-overlay) { display:none }` filtrava apenas filhos diretos do `body`. Mas o React monta o app dentro de `#root`, então o seletor escondia `#root` inteiro — junto com o modal de relatório que estava dentro dele. Resultado: página em branco no preview de impressão.
+
+### Fix (`frontend/src/index.css`)
+- Trocada estratégia para `visibility: hidden` no body inteiro + `visibility: visible` no overlay e descendentes (funciona independente da profundidade do React tree).
+- `position: fixed` (não `absolute`) no overlay pra ancorar à viewport e não a algum ancestor `position: relative`.
+- Override do `display:flex; align-items:center; justify-content:center` que comprimia o conteúdo em coluna estreita no canto direito.
+- `flex: initial` no `#lousa-report-printable` (sem isso, herdava `flex:1` de tela e ficava com height 0 na impressão).
+
+### Validação
+- Playwright + `emulate_media(media="print")`: pré-visualização mostra título "Fechamento de Notas (Lousa)", KPIs em 5 colunas, lista de técnicos. Overlay computed width: 1920px (largura total).
+
+
+## 2026-05-23 — Painel "Aguardando Contato" + Criar Nova OS (continuação de serviço)
+
+### Backend (`/app/backend/routes/lousa.py`)
+- `_lousa_for_collaborator`: exclui tickets com `needs_manager_action=true` da lousa do técnico (OS pausada some até gestor agir).
+- `POST /api/lousa/manager-callbacks/{req_id}/release-back` — Libera a OS pausada de volta pro técnico (opcional: realocar técnico e/ou reagendar). Resolve o callback.
+- `POST /api/lousa/manager-callbacks/{req_id}/create-new-ticket` — Cria uma NOVA OS pra continuar o atendimento. A OS original permanece pausada (gestor ainda decide fechar improdutiva ou liberar). Nova OS tem `parent_ticket_id` + `from_manager_callback_id` + `creation_reason="manager_callback_continuation"` pra rastreabilidade.
+
+### Frontend
+- `ManagerCallbacksPanel.js` (novo): painel completo com filtros (Pendentes/Contatados/Resolvidos/Todos), cards com motivo + técnico + endereço + telefone clicável (`tel:`), 3 ações (🆕 Criar nova OS / 🔄 Liberar de volta / ✗ Fechar improdutiva) + 2 modais (CreateNewOsModal full-form, ReleaseBackModal compacto).
+- `LousaAdminPanel.js`: nova sub-aba "📞 AGUARDANDO CONTATO" com badge vermelho (count em tempo real via polling 30s).
+- `api.js`: 3 métodos novos — `lousaManagerCallbacks`, `lousaManagerCallbackReleaseBack`, `lousaManagerCallbackCreateNewTicket`.
+
+### Validação
+- Curl: `create-new-ticket` retornou `new_ticket_id: tkt-e36f4eea85`, OS original `tkt-6f94e324bf` permanece pausada (`needs_manager_action=true`).
+- Curl: `release-back` resolveu callback `mcr-e9f17b6e4e34`, ticket `tkt-604c5fe440` voltou para o técnico com reagendamento.
+- Screenshot: painel + modal rendered corretamente com badge "2" pendentes.
+
+
+## 2026-05-23 — Validação visual: bloqueio de OS "informada" (técnico → gestor)
+
+### Validação completada
+- Backend `POST /api/lousa/public/tickets/{tid}/finalize` com `outcome=informada` retorna `{ blocked_close:true, manager_callback_required:true, callback_request_id, message }` e cria registro em `lousa_manager_callback_requests` (status=pending).
+- Frontend `LousaMobile.js`:
+  - `CantExecuteModal` (preventivo, upfront): avisa "Esta OS NÃO será fechada por você" ANTES de submeter.
+  - `BlockedCloseModal` (após backend): "📞 Gestor foi acionado — Você NÃO pode finalizar esta OS".
+- Ticket permanece `status=aberta` + `needs_manager_action=true` + `manager_callback_required=true` (resolvido pelo gestor depois).
+
+### Fix bônus
+- Adicionado timeout de 6s no GPS `navigator.geolocation.getCurrentPosition` em `handleFinalize` — evita travar o finalize em ambientes sem sinal de GPS (prédios, headless tests). Fallback (0,0) após timeout.
+
+### Files
+- `frontend/src/LousaMobile.js` — geolocation timeout, modal pipeline já existente validado.
+
+
+## 2026-05-23 — Mapa de Serviços: toggles "Sinal Ruim" e "Crítico"
+
+### Mudança
+- `LousaServicesMap.js` ganhou dois botões na toolbar (header direito):
+  - **Sinal Ruim** (laranja, `#f59e0b`) — toggle independente, conta warning
+  - **Crítico** (vermelho, `#dc2626`) — toggle independente, conta critical
+- Quando ativados, renderiza CircleMarker pequenos (raio 3.5/4.5) reaproveitando o endpoint `GET /api/rede-ia/map/signal-points` (já existente do RedeIaMap).
+- Botão **+40** aparece automaticamente se houver ONUs sem coords (chama `redeIaSignalGeocodeBatch`).
+- Tooltip com nome, RX 1490nm, OLT/zona e status OFFLINE quando aplicável.
+
+### Files
+- `frontend/src/LousaServicesMap.js` — imports CircleMarker/Tooltip; state showSignalWarning/showSignalCritical; effect de load com cache em memória; botões e filtro de pontos.
+
+
 ## 2026-05-21 — Funil de Vendas WhatsApp (sales-funnel)
 
 ### Novo módulo
@@ -4077,3 +4480,34 @@ Aplicadas as melhores práticas para Baileys em produção (pesquisa Feb/2026):
 ### Limitação conhecida
 SmartOLT não expõe PUT/PATCH/DELETE para zones na coleção pública. Renomear/excluir
 requer ação manual no painel SmartOLT.
+
+
+✅ **iter-140 — Wi-Fi Read Live (SSID + senha ao vivo via SmartOLT)** (23/05/2026):
+- **Pedido do usuário** (PT-BR): "aonde vejo a senha do wifi e o wifi, e como eu troco a senha quando o cliente pedir?" → seguido de "não tras nenhuma informação do nome e da senha que ja estão na ont/onu?" → "sim".
+- **Contexto**: o sistema só populava `wifi_ssid_24/5` quando alguém trocava via SmartProv. SSID configurado na instalação pelo técnico = invisível. Senha = nunca lida (write-only no TR-069).
+- **Backend** (`routes/wifi.py`):
+  - Novo endpoint `GET /api/wifi/subscriber/{sid}/read-live` chama `GET /onu/get_wifi_data/{external_id}` no SmartOLT.
+  - Normaliza resposta multi-vendor: extrai SSID + senha + auth_mode + band (2.4/5).
+  - Detecta senha mascarada (`********`, vazia) → marca `password_available=false` e exibe alerta de vendor incompatível (Nokia, Fiberhome antigos).
+  - Atualiza cache `smartolt_onus.wifi_ssid_24/5` com SSID lido (senha NUNCA persistida em plaintext).
+  - **Gating**: apenas roles `gestor`, `administrador`, `auditor`, `financeiro`, super_admin (LGPD: dados sensíveis).
+  - **Rate limit**: 10 leituras/hora por usuário por assinante (anti-abuso interno).
+  - **Auditoria** em `wifi_read_logs` (sempre, sucesso ou falha) com: actor, ssids_read[], passwords_exposed (contador), error_reason, response_time_ms, ts.
+  - Novo endpoint `GET /api/wifi/subscriber/{sid}/read-logs` para trilha LGPD por assinante.
+- **Frontend** (`WifiStatusCard.js`):
+  - Novo botão `🔍 Ler Wi-Fi ao Vivo` (data-testid=`wifi-read-live-btn`) na barra de ações, só visível quando ONU está vinculada + online.
+  - Novo `WifiReadLiveModal` (data-testid=`wifi-read-live-modal`):
+    - Loading com mensagem "Consultando ONU via SmartOLT… (pode levar até 15s)".
+    - Para cada banda (2.4/5), card com SSID (sempre visível) + senha mascarada `••••••` com botões 👁️ Mostrar, 📋 Copiar.
+    - **Auto-oculta senha após 60s** (LGPD) via `setTimeout`.
+    - Feedback "✓ copiado" 1.5s após copy via `navigator.clipboard.writeText`.
+    - Mensagem clara quando senha não disponível: "🔒 senha não exposta por esta ONU (vendor/firmware restrito) — use '📡 Trocar Wi-Fi'".
+    - Exibe `smartolt_response_time_ms` + `onu_model` no rodapé.
+  - `api.js`: novos métodos `wifiReadLive(sid)` e `wifiReadLogs(sid)`.
+- **Validação** (`tests/test_iter140_wifi_read_live.py` — 4/4 PASS):
+  - Sub sem ONU vinculada → 409 com mensagem clara.
+  - Auditoria sempre gravada em `wifi_read_logs` mesmo em falha de SmartOLT (testado via 429 do circuit-breaker).
+  - Estrutura da resposta validada: `ok`, `smartolt_response_time_ms`, `wifi[].password_available`.
+  - Rate limit: após 10 leituras seguidas, 11ª retorna 429 com `code=READ_RATE_LIMITED`.
+- **Curl manual**: 200 OK pra admin (gestor), 200 OK pra auditor; ambos passam pelo gating. SmartOLT em rate-limit retorna `ok=false` com erro amigável sem quebrar o fluxo.
+- **Compatibilidade documentada** no docstring do endpoint: Huawei HG8145V5/HG8245H ✅, ZTE F660/F670L ✅, Intelbras WiFiber 121AC ✅, Fiberhome HG6145D2 ⚠️ (só SSID), Nokia G-140W-C ⚠️ (só SSID).

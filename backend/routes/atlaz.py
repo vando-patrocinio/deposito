@@ -766,6 +766,96 @@ def _digits(s: Any) -> str:
     return "".join(c for c in str(s or "") if c.isdigit())
 
 
+def _slug(s: Optional[str]) -> str:
+    """Normaliza string para matching: minúsculas, sem acento, sem espaços extra."""
+    if not s:
+        return ""
+    n = unicodedata.normalize("NFD", str(s))
+    n = "".join(c for c in n if unicodedata.category(c) != "Mn")
+    return n.lower().strip().replace("  ", " ")
+
+
+async def _build_branch_index(company_id: str) -> List[Dict[str, str]]:
+    """Carrega filiais de `fin_filiais` + `pracas` e retorna lista normalizada.
+
+    Cada item: {id, name, slug, keywords[]} pra match contra cidade/bairro.
+    """
+    items: List[Dict[str, str]] = []
+    for coll in ("fin_filiais", "pracas"):
+        async for f in db[coll].find({"company_id": company_id, "active": {"$ne": False}},
+                                       {"_id": 0, "id": 1, "name": 1}):
+            name = (f.get("name") or "").strip()
+            if not name:
+                continue
+            slug = _slug(name)
+            # Remove prefixo "ligo" pra match contra cidade
+            keyword = slug
+            for prefix in ("ligo ", "filial "):
+                if keyword.startswith(prefix):
+                    keyword = keyword[len(prefix):]
+            items.append({"id": f.get("id"), "name": name,
+                           "slug": slug, "keyword": keyword})
+    return items
+
+
+def _derive_branch(branches: List[Dict[str, str]], city: Optional[str],
+                    district: Optional[str], document: Optional[str],
+                    custom_rules: Optional[List[Dict[str, str]]] = None) -> Optional[str]:
+    """Deriva nome da filial a partir do endereço + tipo de documento.
+
+    Heurística (em ordem de precedência):
+    0. REGRAS CUSTOMIZADAS (do gestor): match por district/city → branch específico
+    1. Cidade bate diretamente com keyword da filial (ex: "Guaratinguetá" ↔ "guaratingueta")
+    2. Bairro bate (ex: "Penha" → "LIGO PENHA")
+    3. CNPJ (14 dígitos) → "LIGO EMPRESAS" se existir
+    4. Cidade RJ default → "LIGO RIO" se existir
+    """
+    if not branches:
+        return None
+    city_slug = _slug(city)
+    dist_slug = _slug(district)
+    # 0) regras customizadas do gestor (precedência máxima)
+    if custom_rules:
+        for rule in custom_rules:
+            mt = (rule.get("match_type") or "").lower()
+            val = _slug(rule.get("value"))
+            branch_name = rule.get("branch")
+            if not val or not branch_name:
+                continue
+            target = dist_slug if mt == "district" else (city_slug if mt == "city" else "")
+            if not target:
+                continue
+            # match exato OU substring (cobre "Bocaina" vs "BOCAINAS")
+            if target == val or val in target or target in val:
+                return branch_name
+    # 1) match exato por cidade
+    for b in branches:
+        kw = b["keyword"]
+        if not kw:
+            continue
+        if kw in city_slug or city_slug in kw and kw:
+            return b["name"]
+    # 2) match por bairro
+    if dist_slug:
+        for b in branches:
+            kw = b["keyword"]
+            if not kw or kw in ("empresas", "rio"):
+                continue
+            if kw in dist_slug:
+                return b["name"]
+    # 3) CNPJ → empresas
+    if document and len(_digits(document)) == 14:
+        for b in branches:
+            if "empresas" in b["keyword"]:
+                return b["name"]
+    # 4) fallback RJ
+    if "rio" in city_slug or "rj" == _slug(city or "").strip():
+        for b in branches:
+            if b["keyword"] == "rio":
+                return b["name"]
+    return None
+
+
 @router.get("/customers/preview")
 async def preview_customers(user: dict = Depends(require_role("gestor"))):
     """Mostra um sample da 1ª página + total — sem persistir nada.
@@ -820,8 +910,24 @@ async def sync_customers(user: dict = Depends(require_role("gestor"))):
         "skipped_no_doc": 0,
         "errors": 0,
         "phones_attached": 0,
+        "addresses_filled": 0,
+        "access_points_synced": 0,
+        "branch_derived": 0,
+        "branch_not_found": 0,
+        "plans_referenced": set(),
     }
     started = datetime.now(timezone.utc)
+    # Carrega filiais 1x (não muda durante o sync)
+    branches = await _build_branch_index(company_id)
+    # Carrega regras customizadas de derivação (district/city → branch)
+    cfg_doc = await db.atlaz_config.find_one(
+        {"company_id": company_id}, {"_id": 0, "branch_rules": 1},
+    )
+    custom_branch_rules = (cfg_doc or {}).get("branch_rules") or []
+    logger.info(
+        "[atlaz] sync_customers branches=%s custom_rules=%d",
+        [b["name"] for b in branches], len(custom_branch_rules),
+    )
     try:
         # Página 1 — descobre total de páginas
         page1 = await _fetch_assinantes_page(cfg, 1)
@@ -840,6 +946,7 @@ async def sync_customers(user: dict = Depends(require_role("gestor"))):
             stats["pages_fetched"] += 1
             for entry in (pg_data.get("assinantes") or {}).values():
                 a = entry.get("assinante") or {}
+                pontos = entry.get("pontos_de_acesso") or []
                 stats["items_seen"] += 1
                 doc_cpf = _digits(a.get("cpf_cnpj"))
                 ext_id = a.get("id_assinante")
@@ -849,6 +956,72 @@ async def sync_customers(user: dict = Depends(require_role("gestor"))):
 
                 ext_code = f"ATLAZ-{ext_id}" if ext_id else None
                 phone_raw = _digits(a.get("telefone"))
+
+                # ===== ENDEREÇO + PPPoE + Status do 1º ponto ATIVO =====
+                primary_point: Optional[Dict[str, Any]] = None
+                addresses: List[Dict[str, Any]] = []
+                pppoe_user: Optional[str] = None
+                derived_status: str = "ATIVO"
+                primary_plan_atlaz_id: Optional[str] = None
+                primary_plan_name: Optional[str] = None
+                for pt in pontos:
+                    if not isinstance(pt, dict):
+                        continue
+                    # Endereço
+                    if any(pt.get(k) for k in ("logradouro", "bairro", "cidade",
+                                                 "cep", "numero", "estado")):
+                        lat_lng = (pt.get("gps") or "").split(",")
+                        try:
+                            lat = float(lat_lng[0].strip()) if len(lat_lng) >= 1 and lat_lng[0].strip() else None
+                            lng = float(lat_lng[1].strip()) if len(lat_lng) >= 2 and lat_lng[1].strip() else None
+                        except (ValueError, IndexError):
+                            lat, lng = None, None
+                        addr = {
+                            "id": f"addr-{uuid.uuid4().hex[:10]}",
+                            "label": pt.get("plano") or "Atlaz",
+                            "street": (pt.get("logradouro") or "").strip()[:200] or None,
+                            "number": (str(pt.get("numero") or "").strip())[:30] or None,
+                            "complement": (pt.get("complemento") or "").strip()[:120] or None,
+                            "district": (pt.get("bairro") or "").strip()[:120] or None,
+                            "city": (pt.get("cidade") or "").strip()[:120] or None,
+                            "state": (pt.get("estado") or "").strip()[:4] or None,
+                            "zip_code": _digits(pt.get("cep"))[:9] or None,
+                            "lat": lat, "lng": lng,
+                            "source": "atlaz",
+                            "atlaz_id_ponto": pt.get("id_ponto"),
+                            "is_primary": primary_point is None,
+                        }
+                        addresses.append(addr)
+                    # 1º ponto ativo vira primário
+                    if primary_point is None and str(pt.get("status") or "").lower() in (
+                            "ativo", "active", "1", "true"):
+                        primary_point = pt
+                        pppoe_user = (pt.get("username") or "").strip()[:80] or None
+                        primary_plan_atlaz_id = pt.get("id_plano")
+                        primary_plan_name = pt.get("plano")
+                # Status mapping: pelo menos 1 ponto ativo → ATIVO; nenhum ativo → INATIVO
+                if pontos:
+                    statuses = [str(p.get("status") or "").lower() for p in pontos if isinstance(p, dict)]
+                    if any(s in ("ativo", "active") for s in statuses):
+                        derived_status = "ATIVO"
+                    elif any(s in ("bloqueado", "suspenso", "suspended", "blocked") for s in statuses):
+                        derived_status = "INADIMPLENTE"
+                    elif any(s in ("inativo", "inactive", "cancelado") for s in statuses):
+                        derived_status = "INATIVO"
+
+                # Deriva FILIAL a partir do primeiro endereço + tipo de doc
+                derived_branch: Optional[str] = None
+                if addresses:
+                    a0 = addresses[0]
+                    derived_branch = _derive_branch(
+                        branches, a0.get("city"), a0.get("district"), doc_cpf,
+                        custom_rules=custom_branch_rules,
+                    )
+                if derived_branch:
+                    stats["branch_derived"] += 1
+                else:
+                    stats["branch_not_found"] += 1
+
                 payload = {
                     "company_id": company_id,
                     "name": (a.get("nome") or "").strip()[:160] or "—",
@@ -857,23 +1030,37 @@ async def sync_customers(user: dict = Depends(require_role("gestor"))):
                     "external_code": ext_code,
                     "due_day": (int(a.get("dia_de_vencimento"))
                                  if str(a.get("dia_de_vencimento") or "").isdigit() else None),
-                    "status": "ATIVO",
-                    "metadata": {"atlaz_id_assinante": ext_id},
+                    "status": derived_status,
+                    "pppoe_user": pppoe_user,
+                    "branch": derived_branch,
+                    "metadata": {
+                        "atlaz_id_assinante": ext_id,
+                        "atlaz_plan_id": primary_plan_atlaz_id,
+                        "atlaz_plan_name": primary_plan_name,
+                        "atlaz_access_points_count": len(pontos),
+                    },
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
+                if primary_plan_atlaz_id:
+                    stats["plans_referenced"].add(str(primary_plan_atlaz_id))
 
                 # Match: 1) document; 2) external_code (ATLAZ-id)
                 match = None
                 if doc_cpf:
                     match = await db.subscribers.find_one(
                         {"company_id": company_id, "document": doc_cpf},
-                        {"_id": 0, "id": 1},
+                        {"_id": 0, "id": 1, "addresses": 1},
                     )
                 if not match and ext_code:
                     match = await db.subscribers.find_one(
                         {"company_id": company_id, "external_code": ext_code},
-                        {"_id": 0, "id": 1},
+                        {"_id": 0, "id": 1, "addresses": 1},
                     )
+
+                # Merge de endereços: sempre substitui pelos do Atlaz (fonte de verdade)
+                if addresses:
+                    payload["addresses"] = addresses
+                    stats["addresses_filled"] += 1
 
                 if match:
                     sid = match["id"]
@@ -891,6 +1078,79 @@ async def sync_customers(user: dict = Depends(require_role("gestor"))):
                     payload.pop("_id", None)
                     stats["inserted"] += 1
 
+                # ===== PERSISTIR endereços ALSO em coleção dedicada =====
+                # A listagem (`/subscribers`) lê dessa coleção, não do array
+                # embedded. Limpa endereços antigos do Atlaz e re-insere
+                # (fonte de verdade é o Atlaz).
+                if addresses:
+                    await db.subscriber_addresses.delete_many(
+                        {"company_id": company_id, "subscriber_id": sid,
+                         "source": "atlaz"},
+                    )
+                    addr_docs = []
+                    for i, a_obj in enumerate(addresses):
+                        addr_docs.append({
+                            **a_obj,
+                            "company_id": company_id,
+                            "subscriber_id": sid,
+                            "is_primary": i == 0,
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                        })
+                    if addr_docs:
+                        try:
+                            await db.subscriber_addresses.insert_many(addr_docs, ordered=False)
+                        except Exception as e:
+                            logger.warning("[atlaz] addresses insert falhou: %s", e)
+
+                # ===== PERSISTIR pontos_de_acesso em coleção dedicada =====
+                # 1 doc por ponto. Upsert via (company_id, atlaz_id_ponto).
+                if pontos:
+                    from pymongo import UpdateOne
+                    ap_ops = []
+                    for pt in pontos:
+                        if not isinstance(pt, dict):
+                            continue
+                        id_ponto = pt.get("id_ponto")
+                        if not id_ponto:
+                            continue
+                        ap_doc = {
+                            "company_id": company_id,
+                            "subscriber_id": sid,
+                            "subscriber_external_id": str(ext_id) if ext_id else None,
+                            "atlaz_id_ponto": str(id_ponto),
+                            "atlaz_id_plano": str(pt.get("id_plano")) if pt.get("id_plano") else None,
+                            "plan_name": pt.get("plano"),
+                            "pppoe_user": pt.get("username"),
+                            "status": pt.get("status"),
+                            "address": {
+                                "street": pt.get("logradouro"),
+                                "number": pt.get("numero"),
+                                "complement": pt.get("complemento"),
+                                "district": pt.get("bairro"),
+                                "city": pt.get("cidade"),
+                                "state": pt.get("estado"),
+                                "zip_code": _digits(pt.get("cep")) or None,
+                                "gps": pt.get("gps"),
+                            },
+                            "isento": pt.get("isento"),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        ap_ops.append(UpdateOne(
+                            {"company_id": company_id, "atlaz_id_ponto": str(id_ponto)},
+                            {"$set": ap_doc,
+                             "$setOnInsert": {
+                                 "id": f"ap-{uuid.uuid4().hex[:10]}",
+                                 "created_at": ap_doc["updated_at"],
+                             }},
+                            upsert=True,
+                        ))
+                    if ap_ops:
+                        try:
+                            await db.subscriber_access_points.bulk_write(ap_ops, ordered=False)
+                            stats["access_points_synced"] += len(ap_ops)
+                        except Exception as e:
+                            logger.warning("[atlaz] access_points bulk falhou: %s", e)
+
                 # Telefone (normaliza + dedupe na coleção subscriber_phones)
                 if phone_raw and len(phone_raw) >= 10:
                     existing = await db.subscriber_phones.find_one(
@@ -903,6 +1163,8 @@ async def sync_customers(user: dict = Depends(require_role("gestor"))):
                             "company_id": company_id,
                             "subscriber_id": sid,
                             "phone": phone_raw,
+                            "normalized_number": phone_raw,
+                            "raw_number": phone_raw,
                             "label": "atlaz",
                             "is_primary": True,
                             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -916,6 +1178,9 @@ async def sync_customers(user: dict = Depends(require_role("gestor"))):
 
     stats["duration_s"] = round((datetime.now(timezone.utc) - started).total_seconds(), 1)
     stats["finished_at"] = datetime.now(timezone.utc).isoformat()
+    # Converte set -> list para serialização BSON/JSON
+    if isinstance(stats.get("plans_referenced"), set):
+        stats["plans_referenced"] = sorted(stats["plans_referenced"])
     # Persiste o último sync de assinantes (para mostrar no painel)
     await db.atlaz_config.update_one(
         {"company_id": company_id},
@@ -945,6 +1210,101 @@ async def customers_stats(user: dict = Depends(require_role("gestor"))):
         "last_sync_at": cfg_doc.get("last_customer_sync_at"),
         "last_sync_stats": cfg_doc.get("last_customer_sync_stats"),
     }
+
+
+# ===========================================================================
+# Branch rules — Regras de derivação de filial por bairro/cidade
+# ===========================================================================
+class BranchRule(BaseModel):
+    match_type: str = Field(..., description="'district' (bairro) ou 'city' (cidade)")
+    value: str = Field(..., min_length=1, max_length=120,
+                       description="Texto a casar (case/acento-insensitive)")
+    branch: str = Field(..., min_length=1, max_length=120,
+                        description="Nome da filial (ex: LIGO CPX)")
+
+
+class BranchRulesIn(BaseModel):
+    rules: List[BranchRule]
+
+
+@router.get("/branch-rules")
+async def get_branch_rules(user: dict = Depends(require_role("gestor"))):
+    """Retorna regras customizadas de derivação de filial."""
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await db.atlaz_config.find_one(
+        {"company_id": company_id},
+        {"_id": 0, "branch_rules": 1, "filiais": 1},
+    ) or {}
+    return {
+        "rules": cfg.get("branch_rules") or [],
+        "available_branches": cfg.get("filiais") or [],
+    }
+
+
+@router.put("/branch-rules")
+async def put_branch_rules(payload: BranchRulesIn,
+                            user: dict = Depends(require_role("gestor"))):
+    """Substitui o conjunto inteiro de regras. Validação leve."""
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    rules = [r.model_dump() for r in payload.rules]
+    for r in rules:
+        if r["match_type"] not in ("district", "city"):
+            raise HTTPException(400, f"match_type inválido: {r['match_type']}")
+    await db.atlaz_config.update_one(
+        {"company_id": company_id},
+        {"$set": {"branch_rules": rules,
+                  "branch_rules_updated_at": datetime.now(timezone.utc).isoformat(),
+                  "branch_rules_updated_by": user.get("email")}},
+        upsert=True,
+    )
+    return {"ok": True, "rules_count": len(rules)}
+
+
+@router.post("/branch-rules/apply-now")
+async def apply_branch_rules_now(user: dict = Depends(require_role("gestor"))):
+    """Reaplica regras de filial em TODOS os subscribers SEM re-sincronizar Atlaz.
+
+    Recarrega regras + branches do banco, percorre subscribers com endereço
+    cadastrado e atualiza `subscriber.branch` conforme regras atuais.
+    """
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    branches = await _build_branch_index(company_id)
+    cfg = await db.atlaz_config.find_one(
+        {"company_id": company_id}, {"_id": 0, "branch_rules": 1},
+    ) or {}
+    custom_rules = cfg.get("branch_rules") or []
+    from pymongo import UpdateOne
+    ops = []
+    changed = 0
+    unchanged = 0
+    no_address = 0
+    async for sub in db.subscribers.find(
+        {"company_id": company_id}, {"_id": 0, "id": 1, "branch": 1,
+                                      "addresses": 1, "document": 1},
+    ):
+        addrs = sub.get("addresses") or []
+        if not addrs:
+            no_address += 1
+            continue
+        a0 = addrs[0] or {}
+        new_branch = _derive_branch(
+            branches, a0.get("city"), a0.get("district"), sub.get("document"),
+            custom_rules=custom_rules,
+        )
+        if new_branch != sub.get("branch"):
+            ops.append(UpdateOne(
+                {"company_id": company_id, "id": sub["id"]},
+                {"$set": {"branch": new_branch,
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
+            ))
+            changed += 1
+        else:
+            unchanged += 1
+    if ops:
+        for i in range(0, len(ops), 1000):
+            await db.subscribers.bulk_write(ops[i:i + 1000], ordered=False)
+    return {"changed": changed, "unchanged": unchanged,
+            "no_address": no_address, "rules_count": len(custom_rules)}
 
 
 async def _customers_sync_internal(company_id: str) -> Dict[str, Any]:

@@ -14,6 +14,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { api } from "@/api";
+import { fmtAddress } from "@/utils/format";
 import { Card } from "@/ui";
 import { toast } from "sonner";
 import RedeIaMap from "@/RedeIaMap";
@@ -1470,7 +1471,7 @@ function OnusByVlanModal({ vlan, bairro, onClose }) {
                       {o.name || "—"}
                       {o.address && (
                         <div style={{ fontSize: 10, color: "#94a3b8" }}>
-                          {o.address}
+                          {fmtAddress(o.address)}
                         </div>
                       )}
                     </td>

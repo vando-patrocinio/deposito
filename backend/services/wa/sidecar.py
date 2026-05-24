@@ -63,9 +63,21 @@ async def _sidecar_post_silent(path: str, payload: dict, timeout: float = 50.0
     `ok=False` em caso de erro. Útil pra envios em background (boleto PDF)
     onde queremos persistir falha mas seguir a vida.
     """
+    return await _sidecar_post_silent_at(SIDECAR_BASE, path, payload, timeout)
+
+
+async def _sidecar_post_silent_at(base_url: str, path: str, payload: dict,
+                                    timeout: float = 50.0) -> Dict[str, Any]:
+    """Variante multi-canal: envia para qualquer sidecar (porta diferente).
+
+    Usado pelos serviços outbound (mass_messaging, sales_outreach,
+    disparo_boleto) que resolvem o canal via `get_default_outbound_channel`
+    ou override por campanha.
+    """
     try:
-        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=timeout) as cli:
-            r = await cli.post(f"{SIDECAR_BASE}{path}", json=payload)
+        async with httpx.AsyncClient(headers=_sidecar_headers(),
+                                        timeout=timeout) as cli:
+            r = await cli.post(f"{base_url.rstrip('/')}{path}", json=payload)
             try:
                 body = r.json()
             except Exception:
@@ -76,3 +88,27 @@ async def _sidecar_post_silent(path: str, payload: dict, timeout: float = 50.0
             return body
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+async def _sidecar_post_at(base_url: str, path: str,
+                            payload: Optional[dict] = None) -> Dict[str, Any]:
+    """Variante multi-canal de _sidecar_post (com HTTPException)."""
+    try:
+        async with httpx.AsyncClient(headers=_sidecar_headers(),
+                                        timeout=15.0) as cli:
+            r = await cli.post(f"{base_url.rstrip('/')}{path}",
+                                json=payload or {})
+            try:
+                body = r.json()
+            except Exception:
+                body = {"raw": r.text}
+            if r.status_code >= 400:
+                detail = body.get("error") or body.get("raw") or f"HTTP {r.status_code}"
+                raise HTTPException(r.status_code, detail)
+            return body
+    except httpx.HTTPError as e:
+        logger.warning("[wa-baileys] sidecar POST %s @ %s falhou: %s",
+                        path, base_url, e)
+        raise HTTPException(503,
+                            f"WhatsApp sidecar indisponível: {e}") from e
+

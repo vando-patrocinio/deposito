@@ -1,3 +1,13 @@
+/*
+ * ================================================================
+ * SmartProv — ISP Suite (frontend root)
+ * Copyright (c) 2025-2026  V S DO PATROCINIO PROVEDOR DE INTERNET ME
+ * CNPJ: 13.302.883/0001-36  ·  vando@ligotelecom.com
+ * All rights reserved. Proprietary software — see /LICENSE.
+ * Unauthorized copy, reverse engineering or redistribution is prohibited
+ * under Lei 9.609/98 e Lei 9.610/98 (Brasil).
+ * ================================================================
+ */
 import React, { useEffect, useMemo, useState } from "react";
 import "@/App.css";
 import {
@@ -6,7 +16,7 @@ import {
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
   Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle, Cpu,
   Receipt, CalendarDays, Wand2, DollarSign, Megaphone, Calculator,
-  ShoppingCart, Trello,
+  ShoppingCart, Trello, FileText, CreditCard, Globe, Car,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
 import CadastroPanel from "@/CadastroPanel";
@@ -23,7 +33,15 @@ import FeriadosPanel from "@/FeriadosPanel";
 import SettingsPanel from "@/SettingsPanel";
 import FinanceiroPanel from "@/FinanceiroPanel";
 import BudgetPanel from "@/BudgetPanel";
+import BillingPanel from "@/BillingPanel";
 import RedeIaPanel from "@/RedeIaPanel";
+import RadiusPanel from "@/RadiusPanel";
+import PaymentsPanel from "@/PaymentsPanel";
+import FleetPanel from "@/FleetPanel";
+import SitePanel from "@/SitePanel";
+import ContractsPanel from "@/ContractsPanel";
+import ClientsSegmentPanel from "@/ClientsSegmentPanel";
+import RadiusAuthAttemptsPanel from "@/RadiusAuthAttemptsPanel";
 import { DEFAULT_TAB_PERMISSIONS as _DEFAULT_TAB_PERMS } from "@/TabPermissionsCard";
 import AlvaroPanel from "@/AlvaroPanel";
 import MassMessagingPanel from "@/MassMessagingPanel";
@@ -55,6 +73,7 @@ import ServerClock from "@/ServerClock";
 import { startServerTime } from "@/serverTime";
 import LoginPage from "@/LoginPage";
 import LandingPage from "@/LandingPage";
+import ProviderLanding from "@/ProviderLanding";
 import SignupPage from "@/SignupPage";
 import OnboardingWizard from "@/OnboardingWizard";
 import { BillingBanner, BillingCancelPage, BillingSuccessPage } from "@/BillingPage";
@@ -138,6 +157,17 @@ const TAB_TO_TAG = {
   estoque: "estoque",
   "central-compras": "central_compras",
   "projects": "projetos",
+  "radius": "rede_ia",
+  "contracts": "subscribers",
+  "contracts-disabled": "subscribers",
+  "clients-recent": "subscribers",
+  "clients-overdue": "subscribers",
+  "clients-blocked": "subscribers",
+  "clients-no-charges": "subscribers",
+  "clients-connected": "subscribers",
+  "clients-disconnected": "subscribers",
+  "clients-attempts": "subscribers",
+  "clients-no-contract": "subscribers",
   "rede-ia": "rede_ia",
   atendimento: "atendimento_wa",
   "ai-ranking": "ia_avaliacao",
@@ -171,6 +201,21 @@ const NAV_GROUPS = [
         roles: ["gestor", "administrador", "colaborador"] },
       { id: "projects", icon: Trello, label: "Acompanhamento",
         roles: ["gestor", "administrador", "auditor"] },
+      { id: "radius", icon: Boxes, label: "RADIUS / PPPoE",
+        roles: ["gestor", "administrador", "auditor"] },
+      { id: "contracts", icon: FileText, label: "Contratos",
+        roles: ["gestor", "administrador", "auditor"] },
+      { id: "payments", icon: CreditCard, label: "Pagamentos",
+        roles: ["gestor", "administrador", "auditor"] },
+      { id: "site", icon: Globe, label: "Site do Provedor",
+        roles: ["gestor", "administrador"] },
+    ],
+  },
+  {
+    label: "Frota",
+    items: [
+      { id: "fleet", icon: Car, label: "Gestão de Frota",
+        roles: ["gestor", "administrador", "auditor"] },
     ],
   },
   {
@@ -197,6 +242,16 @@ const NAV_GROUPS = [
         roles: ["gestor", "auditor", "administrador"],
         children: [
           { id: "subscribers", label: "Assinantes" },
+          { id: "contracts", label: "Contratos ativos" },
+          { id: "contracts-disabled", label: "Contratos desativados" },
+          { id: "clients-recent", label: "Recentes" },
+          { id: "clients-overdue", label: "Em atraso" },
+          { id: "clients-blocked", label: "Bloqueados" },
+          { id: "clients-no-charges", label: "Sem cobranças futuras" },
+          { id: "clients-connected", label: "Conectados" },
+          { id: "clients-disconnected", label: "Desconectados" },
+          { id: "clients-attempts", label: "Tentativas de conexão" },
+          { id: "clients-no-contract", label: "Sem contratos" },
           { id: "plans", label: "Planos" },
         ],
       },
@@ -236,6 +291,8 @@ const NAV_GROUPS = [
       { id: "financeiro", icon: DollarSign, label: "Financeiro",
         roles: ["auditor", "administrador", "financeiro"],
         superAdminOnly: true },
+      { id: "billing", icon: Receipt, label: "Faturamento",
+        roles: ["gestor", "auditor", "administrador", "financeiro"] },
     ],
   },
   {
@@ -930,6 +987,7 @@ function AppContent() {
     const path = window.location.pathname || "/";
     if (path === "/signup") return "signup";
     if (path === "/login") return "login";
+    if (path === "/provedor" || path === "/site") return "provedor";
     return "landing";
   });
 
@@ -939,6 +997,7 @@ function AppContent() {
       setRoute({ path, params: Object.fromEntries(new URLSearchParams(window.location.search)) });
       if (path === "/signup") setPublicView("signup");
       else if (path === "/login") setPublicView("login");
+      else if (path === "/provedor" || path === "/site") setPublicView("provedor");
       else setPublicView("landing");
     };
     window.addEventListener("popstate", onPop);
@@ -1035,6 +1094,11 @@ function AppContent() {
     return <HoleriteViewer token={token} onBack={() => navigate("/")} />;
   }
 
+  // Landing pública do PROVEDOR (cliente final). Independe de auth.
+  if (route.path === "/provedor" || route.path === "/site") {
+    return <ProviderLanding />;
+  }
+
   if (!user) {
     if (publicView === "signup") {
       return <SignupPage
@@ -1094,7 +1158,31 @@ function AppContent() {
           {view === "feriados" && <FeriadosPanel />}
           {view === "financeiro" && <FinanceiroPanel />}
           {view === "budget" && <BudgetPanel />}
+          {view === "billing" && <BillingPanel />}
           {view === "rede-ia" && <RedeIaPanel currentUser={user} />}
+          {view === "radius" && <RadiusPanel currentUser={user} />}
+          {view === "payments" && <PaymentsPanel />}
+          {view === "fleet" && <FleetPanel />}
+          {view === "site" && <SitePanel />}
+          {view === "contracts" && <ContractsPanel currentUser={user} />}
+          {view === "contracts-disabled" &&
+            <ClientsSegmentPanel segment="contracts_disabled" />}
+          {view === "clients-recent" &&
+            <ClientsSegmentPanel segment="recent" />}
+          {view === "clients-overdue" &&
+            <ClientsSegmentPanel segment="overdue" />}
+          {view === "clients-blocked" &&
+            <ClientsSegmentPanel segment="blocked" />}
+          {view === "clients-no-charges" &&
+            <ClientsSegmentPanel segment="no_charges" />}
+          {view === "clients-connected" &&
+            <ClientsSegmentPanel segment="connected" />}
+          {view === "clients-disconnected" &&
+            <ClientsSegmentPanel segment="disconnected" />}
+          {view === "clients-attempts" &&
+            <RadiusAuthAttemptsPanel />}
+          {view === "clients-no-contract" &&
+            <ClientsSegmentPanel segment="no_contract" />}
           {view === "alvaro-ia" && <AlvaroPanel />}
           {view === "mass-messaging" && <MassMessagingPanel />}
           {view === "sales-funnel" && <SalesFunnelPanel />}

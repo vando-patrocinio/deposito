@@ -137,6 +137,71 @@ async def regenerate_token(user: dict = Depends(require_role("gestor"))):
     return {"webhook_token": new_token}
 
 
+class TestWebhookIn(BaseModel):
+    question: Optional[str] = "ping de teste — quantos assinantes ativos?"
+
+
+@router.post("/test-webhook")
+async def test_webhook(payload: TestWebhookIn = TestWebhookIn(),
+                        user: dict = Depends(require_role("gestor"))):
+    """Faz uma chamada HTTP REAL ao próprio webhook /webhook/chatgpt usando o
+    token salvo. Útil pra validar a config sem precisar abrir o ChatGPT.
+
+    Mede:
+      - HTTP status do round-trip
+      - Tempo de resposta (ms)
+      - Resposta da IA (mesma que o ChatGPT receberia)
+
+    Marca o canal como `chatgpt_test` no log pra distinguir de chamadas reais
+    mas atualiza o `last_seen` do painel — assim você consegue confirmar que
+    a infra está saudável em 1 clique.
+    """
+    import time
+    import httpx
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_or_create_config(cid)
+    token = cfg.get("webhook_token")
+    if not token:
+        raise HTTPException(500, "Webhook token não configurado.")
+    backend_url = (os.environ.get("PUBLIC_BACKEND_URL")
+                   or os.environ.get("REACT_APP_BACKEND_URL")
+                   or "http://localhost:8001").rstrip("/")
+    url = f"{backend_url}/api/secretaria/webhook/chatgpt"
+    started = time.perf_counter()
+    network = {"url": url, "status": None, "elapsed_ms": None, "error": None}
+    answer = None
+    iterations = 0
+    try:
+        async with httpx.AsyncClient(timeout=60.0,
+                                       verify=not backend_url.startswith("http://")) as c:
+            r = await c.post(
+                url,
+                headers={"Authorization": f"Bearer {token}",
+                         "Content-Type": "application/json",
+                         "User-Agent": "SmartProv-WebhookTester/1.0"},
+                json={"question": payload.question, "asker": "ui_test"},
+            )
+            network["status"] = r.status_code
+            network["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+            if r.status_code == 200:
+                data = r.json()
+                answer = data.get("answer")
+                iterations = int(data.get("iterations") or 0)
+            else:
+                network["error"] = f"HTTP {r.status_code}: {r.text[:200]}"
+    except Exception as e:
+        network["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+        network["error"] = f"{type(e).__name__}: {str(e)[:200]}"
+    return {
+        "ok": network.get("status") == 200,
+        "network": network,
+        "answer": answer,
+        "iterations": iterations,
+        "tested_at": __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc).isoformat(),
+    }
+
+
 @router.get("/logs")
 async def list_logs(user: dict = Depends(require_role("gestor")), limit: int = 50):
     cid = user.get("company_id") or DEMO_COMPANY_ID

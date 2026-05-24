@@ -1,0 +1,75 @@
+CONTRATO DE LICENÇA DE USO DE SOFTWARE PROPRIETÁRIO — SmartProv
+================================================================
+
+Copyright © 2025-2026  V S DO PATROCINIO PROVEDOR DE INTERNET ME
+CNPJ: 13.302.883/0001-36
+Contato: vando@ligotelecom.com
+
+Todos os direitos reservados.
+
+
+1. PROPRIEDADE INTELECTUAL
+--------------------------
+Este software ("SmartProv") e todo o seu código-fonte, documentação,
+arquitetura, design de banco de dados, fluxos de negócio, integrações,
+scripts de implantação, configurações, materiais de marca, prompts de IA
+e demais artefatos relacionados são de propriedade exclusiva da empresa
+V S DO PATROCINIO PROVEDOR DE INTERNET ME, inscrita no CNPJ sob o
+nº 13.302.883/0001-36 (doravante "PROPRIETÁRIA").
+
+A presente obra encontra-se protegida pela Lei nº 9.609/98 (Lei do
+Software), Lei nº 9.610/98 (Lei de Direitos Autorais) e demais legislações
+brasileiras e internacionais aplicáveis à propriedade intelectual.
+
+
+2. DIREITOS DA PROPRIETÁRIA
+---------------------------
+A PROPRIETÁRIA detém, com exclusividade, todos os direitos patrimoniais
+e morais sobre o SmartProv, incluindo, sem limitação:
+
+  (a) o direito de uso, gozo, fruição e disposição do software;
+  (b) o direito de modificação, adaptação, evolução e descontinuação;
+  (c) o direito de licenciar, sublicenciar, vender ou ceder o software;
+  (d) o direito de auditar instalações e usos derivados.
+
+
+3. RESTRIÇÕES
+-------------
+É EXPRESSAMENTE PROIBIDO, sem autorização escrita da PROPRIETÁRIA:
+
+  (a) copiar, redistribuir, sublicenciar ou disponibilizar o código,
+      no todo ou em parte, a terceiros;
+  (b) realizar engenharia reversa, descompilação ou desofuscação;
+  (c) remover, alterar ou ocultar avisos de copyright, marcas, créditos,
+      cabeçalhos de arquivos ou identificadores embutidos;
+  (d) usar o SmartProv para criar produto derivado concorrente;
+  (e) hospedar instâncias do software fora do controle da PROPRIETÁRIA.
+
+
+4. FINGERPRINT DE PROPRIEDADE
+-----------------------------
+O código contém múltiplos identificadores de origem (fingerprints):
+
+  - cabeçalhos de copyright em arquivos-fonte
+  - endpoint público `/api/about` retornando os dados desta licença
+  - cabeçalho HTTP `X-Powered-By` em todas as respostas da API
+  - meta tags HTML embutidas no frontend compilado
+  - hash criptográfico de identificação no payload de `/api/about`
+
+A remoção, alteração ou ocultação proposital desses identificadores
+constitui violação contratual passível de medidas judiciais cíveis e
+criminais (art. 184 do Código Penal Brasileiro).
+
+
+5. FORO
+-------
+Fica eleito o foro da comarca da sede da PROPRIETÁRIA para dirimir
+quaisquer controvérsias decorrentes desta licença, com renúncia expressa
+a qualquer outro, por mais privilegiado que seja.
+
+
+------------------------------------------------------------
+V S DO PATROCINIO PROVEDOR DE INTERNET ME
+CNPJ: 13.302.883/0001-36
+vando@ligotelecom.com
+------------------------------------------------------------

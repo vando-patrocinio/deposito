@@ -220,8 +220,19 @@ async def send_boletos_dispatch(
 async def _process_dispatch(cid: str, run_id: str,
                               candidates: List[Dict[str, Any]],
                               body: SendIn) -> None:
-    """Roda em background — envia 1 por 1 com throttle."""
-    from routes.whatsapp_baileys import _sidecar_post  # lazy import
+    """Roda em background — envia 1 por 1 com throttle.
+
+    Usa o canal padrão outbound da empresa (multi-número).
+    """
+    from services.wa.sidecar import _sidecar_post_at
+    from services.whatsapp_channels import (
+        base_url_for, get_default_outbound_channel,
+    )
+    try:
+        channel_id = await get_default_outbound_channel(db, cid)
+    except Exception:
+        channel_id = "channel-1"
+    base_url = base_url_for(channel_id)
 
     sent = 0
     failed = 0
@@ -248,8 +259,8 @@ async def _process_dispatch(cid: str, run_id: str,
                 })
                 sent += 1
             else:
-                resp = await _sidecar_post(
-                    "/send", {"phone": phone, "text": message}
+                resp = await _sidecar_post_at(
+                    base_url, "/send", {"phone": phone, "text": message}
                 )
                 if resp.get("ok"):
                     sent += 1
@@ -260,6 +271,7 @@ async def _process_dispatch(cid: str, run_id: str,
                         "jid": f"{phone}@s.whatsapp.net",
                         "direction": "outbound", "text": message,
                         "agent": "disparo_boleto",
+                        "channel_id": channel_id,
                         "delivery_status": "sent",
                         "external_id": msg_id,
                         "disparo_run_id": run_id,
@@ -322,8 +334,6 @@ async def send_single_message(
     telefone e ANEXA o resumo dos boletos em aberto (mesmo formato do
     disparo em massa).
     """
-    from routes.whatsapp_baileys import _sidecar_post
-
     cid = _user_company(user)
     phone = _normalize_phone(body.phone)
     if not phone:
@@ -360,8 +370,20 @@ async def send_single_message(
         except Exception as e:
             logger.warning("[send-single] anexar boletos falhou: %s", e)
 
+    # Resolve canal padrão outbound da empresa (multi-número)
+    from services.wa.sidecar import _sidecar_post_at
+    from services.whatsapp_channels import (
+        base_url_for, get_default_outbound_channel,
+    )
     try:
-        resp = await _sidecar_post("/send", {"phone": phone, "text": text})
+        channel_id = await get_default_outbound_channel(db, cid)
+    except Exception:
+        channel_id = "channel-1"
+    base_url = base_url_for(channel_id)
+
+    try:
+        resp = await _sidecar_post_at(base_url, "/send",
+                                       {"phone": phone, "text": text})
     except Exception as e:
         raise HTTPException(503, f"Erro ao enviar via WhatsApp: {e}")
 

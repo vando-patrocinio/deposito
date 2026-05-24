@@ -23,6 +23,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.heat";
 import { api } from "@/api";
+import { fmtAddress } from "@/utils/format";
 import { Card } from "@/ui";
 import CTOInteractionModal from "@/CTOInteractionModal";
 
@@ -180,6 +181,11 @@ export default function RedeIaMap() {
   const [newCe, setNewCe] = useState(null); // { lat, lng } pendente nome
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [legendOpen, setLegendOpen] = useState(true);
+  // Mancha de sinal ruim/crítico
+  const [showSignalLayer, setShowSignalLayer] = useState(false);
+  const [signalPoints, setSignalPoints] = useState([]);
+  const [signalStats, setSignalStats] = useState(null);
+  const [signalLoading, setSignalLoading] = useState(false);
   // CTO ativa no modal de interação (clientes + cadastro)
   const [activeCto, setActiveCto] = useState(null);
 
@@ -193,6 +199,48 @@ export default function RedeIaMap() {
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // Carrega/recarrega pontos de sinal quando o toggle for ativado
+  useEffect(() => {
+    if (!showSignalLayer) return;
+    let cancelled = false;
+    (async () => {
+      setSignalLoading(true);
+      try {
+        // geocode_max=0 → só usa cache (rápido). User pode disparar batch manual.
+        const r = await api.redeIaSignalPoints("all", 0);
+        if (cancelled) return;
+        setSignalPoints(r.points || []);
+        setSignalStats(r.stats || null);
+      } catch (e) {
+        console.warn("[signal-layer] err:", e);
+      } finally {
+        if (!cancelled) setSignalLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showSignalLayer]);
+
+  // Batch geocode manual (botão "Geocodificar mais")
+  async function geocodeSignalBatch() {
+    if (signalLoading) return;
+    setSignalLoading(true);
+    try {
+      const r = await api.redeIaSignalGeocodeBatch(40);
+      // Recarrega após batch
+      const sp = await api.redeIaSignalPoints("all", 0);
+      setSignalPoints(sp.points || []);
+      setSignalStats(sp.stats || null);
+      window.alert(
+        `Geocodificou ${r.geocoded} de ${r.processed} ONUs. `
+        + `${r.remaining_estimate} ainda sem coords — clique de novo pra processar mais.`
+      );
+    } catch (e) {
+      window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setSignalLoading(false);
+    }
+  }
 
   const filteredCtos = useMemo(() => {
     return data.ctos.filter((c) => {
@@ -506,6 +554,38 @@ export default function RedeIaMap() {
             title="Gera link público read-only com TTL configurável">
           🔗 Compartilhar
         </button>
+        <KmzControls vlanFilter={vlanFilter} onImported={load} />
+        <button data-testid="map-toggle-signal-layer"
+                onClick={() => setShowSignalLayer((v) => !v)}
+                title="Mostra mancha de clientes com sinal ruim/crítico no mapa"
+                style={{
+                  padding: "6px 12px", borderRadius: 7, fontSize: 12,
+                  fontWeight: 700, cursor: "pointer",
+                  background: showSignalLayer ? "#dc2626" : "#fff",
+                  color: showSignalLayer ? "#fff" : "#dc2626",
+                  border: `1.5px solid #dc2626`,
+                }}>
+          {signalLoading ? "⏳ Carregando…"
+            : (showSignalLayer
+                ? `⚠️ Sinal ruim${signalStats
+                    ? ` (${signalStats.with_coords}/${signalStats.total_with_issue})`
+                    : ""}`
+                : "⚠️ Mostrar sinal ruim")}
+        </button>
+        {showSignalLayer && signalStats?.without_coords > 0 && (
+          <button data-testid="map-signal-geocode-more"
+                  onClick={geocodeSignalBatch}
+                  disabled={signalLoading}
+                  title="Geocodifica mais 40 clientes (~40 segundos)"
+                  style={{
+                    padding: "6px 10px", borderRadius: 7, fontSize: 11,
+                    fontWeight: 700, cursor: signalLoading ? "wait" : "pointer",
+                    background: "#0ea5e9", color: "#fff", border: 0,
+                    opacity: signalLoading ? 0.5 : 1,
+                  }}>
+            ⚡ +40 ({signalStats.without_coords} restantes)
+          </button>
+        )}
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>
           {filteredCtos.length}/{totalCtos} CTOs ·
           {" "}{data.ces.length} CEs · {data.cables.length} cabos
@@ -720,7 +800,7 @@ export default function RedeIaMap() {
                     {ce.type} · {ce.capacity_fo} FO
                   </div>
                   {ce.address && (
-                    <div style={{ fontSize: 11, marginTop: 6 }}>📍 {ce.address}</div>
+                    <div style={{ fontSize: 11, marginTop: 6 }}>📍 {fmtAddress(ce.address)}</div>
                   )}
                   {ce.notes && (
                     <div style={{ fontSize: 11, marginTop: 6, fontStyle: "italic",
@@ -971,6 +1051,60 @@ export default function RedeIaMap() {
                   </Popup>
                 </Marker>
               </React.Fragment>
+            );
+          })}
+          {/* Mancha de sinal ruim/crítico — bolinhas pequenas */}
+          {showSignalLayer && signalPoints.map((p) => {
+            const isCritical = p.status === "critical";
+            const color = isCritical ? "#dc2626" : "#f59e0b";
+            return (
+              <CircleMarker key={`sig-${p.id}`}
+                center={[p.lat, p.lng]}
+                radius={isCritical ? 4.5 : 3.5}
+                pathOptions={{
+                  color: color,
+                  fillColor: color,
+                  fillOpacity: 0.75,
+                  weight: 1,
+                  opacity: 0.95,
+                }}>
+                <Tooltip>
+                  <div style={{ fontSize: 11, lineHeight: 1.35 }}>
+                    <b style={{
+                      color: color, textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}>
+                      {isCritical ? "🔴 CRITICAL" : "🟠 WARNING"}
+                    </b>
+                    <br/>
+                    <span style={{ fontWeight: 700 }}>{p.name}</span>
+                    {p.signal_1490 != null && (
+                      <>
+                        <br/>
+                        <span style={{ color: "#475569" }}>
+                          Rx 1490nm: <b>{p.signal_1490} dBm</b>
+                        </span>
+                      </>
+                    )}
+                    {p.olt && (
+                      <>
+                        <br/>
+                        <span style={{ color: "#94a3b8" }}>
+                          OLT: {p.olt}{p.zone ? ` · ${p.zone}` : ""}
+                        </span>
+                      </>
+                    )}
+                    {!p.online && (
+                      <>
+                        <br/>
+                        <span style={{ color: "#dc2626", fontWeight: 700 }}>
+                          ⚡ OFFLINE
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </Tooltip>
+              </CircleMarker>
             );
           })}
         </MapContainer>
@@ -1538,5 +1672,139 @@ function LegendItem({ color, label, sq, diamond, line, dashed }) {
       }} />
       <span>{label}</span>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// KmzControls — botões Exportar e Importar KMZ
+// ---------------------------------------------------------------------------
+function KmzControls({ vlanFilter, onImported }) {
+  const [busy, setBusy] = useState(false);
+  const fileInputRef = useRef(null);
+
+  async function handleExport() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      // Em iframe do Emergent, link direto via window.open com ?t=token
+      const inIframe = window.self !== window.top;
+      if (inIframe) {
+        const url = api.redeIaExportKmzUrl(vlanFilter || null);
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      // Fora de iframe: usa File System Access API se disponível
+      const r = await api.redeIaExportKmz(vlanFilter || null);
+      if (typeof window.showSaveFilePicker === "function") {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: r.filename,
+            types: [{ description: "Google Earth (.kmz)",
+                       accept: { "application/vnd.google-earth.kmz": [".kmz"] } }],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(r.blob);
+          await writable.close();
+          return;
+        } catch (e) {
+          if (e.name === "AbortError") return;
+          // Cai pro download via blob abaixo
+        }
+      }
+      const url = window.URL.createObjectURL(r.blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = r.filename;
+      document.body.appendChild(a); a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }, 1500);
+    } catch (e) {
+      window.alert("Erro ao exportar KMZ: "
+        + (e?.response?.data?.detail || e.message));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleImport(file) {
+    if (!file || busy) return;
+    setBusy(true);
+    try {
+      // 1) Dry-run pra mostrar prévia
+      const preview = await api.redeIaImportKmz(file, true);
+      const total = preview.ctos_created + preview.ctos_updated
+                    + preview.ces_created + preview.ces_updated
+                    + preview.cables_created + preview.cables_updated;
+      if (total === 0) {
+        window.alert(
+          `Nada importável no arquivo "${file.name}". `
+          + `(ignorados: ${preview.ignored})`,
+        );
+        return;
+      }
+      const ok = window.confirm(
+        `Importar de "${file.name}"?\n\n`
+        + `📍 CTOs: ${preview.ctos_created} novas, ${preview.ctos_updated} atualizadas\n`
+        + `◆ CEs:  ${preview.ces_created} novos, ${preview.ces_updated} atualizados\n`
+        + `━ Cabos: ${preview.cables_created} novos, ${preview.cables_updated} atualizados\n`
+        + (preview.ignored ? `\n⚠️ ${preview.ignored} Placemarks ignorados (sem coordenadas válidas)` : "")
+        + `\n\nConfirma?`
+      );
+      if (!ok) return;
+      // 2) Import real
+      const result = await api.redeIaImportKmz(file, false);
+      window.alert(
+        `✅ Importação concluída!\n\n`
+        + `CTOs: +${result.ctos_created}, ~${result.ctos_updated}\n`
+        + `CEs:  +${result.ces_created}, ~${result.ces_updated}\n`
+        + `Cabos: +${result.cables_created}, ~${result.cables_updated}`
+      );
+      onImported && onImported();
+    } catch (e) {
+      window.alert("Erro ao importar KMZ: "
+        + (e?.response?.data?.detail || e.message));
+    } finally {
+      setBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  return (
+    <>
+      <button data-testid="map-export-kmz" onClick={handleExport}
+              disabled={busy}
+              title={vlanFilter
+                ? `Exporta CTOs/CEs/Cabos da VLAN ${vlanFilter} como KMZ (Google Earth)`
+                : "Exporta TODA a topologia como KMZ (Google Earth/QGIS)"}
+              style={{
+                padding: "6px 12px", borderRadius: 7, fontSize: 12,
+                fontWeight: 700, cursor: busy ? "wait" : "pointer",
+                background: "#0ea5e9", color: "#fff", border: 0,
+                opacity: busy ? 0.5 : 1,
+              }}>
+        📥 Exportar KMZ
+      </button>
+      <button data-testid="map-import-kmz"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={busy}
+              title="Importa CTOs/CEs/Cabos de arquivo KMZ ou KML"
+              style={{
+                padding: "6px 12px", borderRadius: 7, fontSize: 12,
+                fontWeight: 700, cursor: busy ? "wait" : "pointer",
+                background: "#f59e0b", color: "#fff", border: 0,
+                opacity: busy ? 0.5 : 1,
+              }}>
+        📤 Importar KMZ
+      </button>
+      <input
+        ref={fileInputRef}
+        data-testid="map-import-kmz-input"
+        type="file"
+        accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml"
+        onChange={(e) => handleImport(e.target.files?.[0])}
+        style={{ display: "none" }}
+      />
+    </>
   );
 }

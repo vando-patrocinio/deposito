@@ -26,7 +26,8 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 12. **Conexões / Integrações (Card unificado)** — Em Configurações, lista todas as 8 integrações externas (Atlaz, SmartOLT, Twilio, Meta WhatsApp, OpenRouter, Resend, Stripe, Google Drive) com chaves mascaradas e modal de edição. Cobre auditoria de troca de credenciais. (Feb/2026)
 13. **Financeiro (Fase 1-4)** — Módulo financeiro completo (interno + clientes). Sub-abas: Categoria, Fornecedor, Método de Cobrança, Caixa (cadastros base), Contas a Pagar (com ação "Pagar" que gera movimentação automaticamente), Fluxo de Caixa (gráfico Recharts + lançamentos manuais), Recebimentos (sync com Atlaz V2: cobranças/boletos/pagamentos dos assinantes via endpoints /listacobrancas, /listaboletos, /listapagamentos com fallback gracioso). Nova role `financeiro`. (Feb/2026)
 14. **Disparo em Massa WhatsApp** — Campanhas via Meta Cloud API ou Twilio, modo template HSM ou texto livre com variáveis `{{var}}`, upload CSV, preview, throttle configurável (default 60 msgs/min), agendamento, pause/resume, status por destinatário (queued/sending/sent/failed). Worker assíncrono em background. Suporta volumes >10k contatos. (Feb/2026)
-15. **Ligo IA consulta faturas** — 2 tools novas (`consult_subscriber_invoices`, `next_due_invoice`) permitem que a Secretária IA responda automaticamente perguntas como "quanto eu devo", "2ª via", "qual minha próxima fatura" usando os dados sincronizados do Atlaz. Reconhece CPF/CNPJ com ou sem máscara. (Feb/2026)
+15. **Gestão de Frota (NOVO mai/2026)** — Cadastro de veículos com vínculo a colaborador (`requires_vehicle`), vistoria semanal mobile (5 fotos + KM com silhuetas SVG + Claude Sonnet 4.5 vision review automático), romaneio de transferência com canvas de assinatura digital, lançamento mensal de combustível com OCR de NF (Claude vision extrai valor/posto/litros), bolhas automáticas `frota_alerta` na lousa quando IA recusa vistoria, KPIs agregados (vehicles/inspections_week/transfers/fuel), soft block ("Adiar até amanhã" via sessionStorage) na primeira bolha do dia para técnicos com vistoria pendente. Tab `Frota → Gestão de Frota` no menu lateral.
+16. **Ligo IA consulta faturas** — 2 tools novas (`consult_subscriber_invoices`, `next_due_invoice`) permitem que a Secretária IA responda automaticamente perguntas como "quanto eu devo", "2ª via", "qual minha próxima fatura" usando os dados sincronizados do Atlaz. Reconhece CPF/CNPJ com ou sem máscara. (Feb/2026)
 16. **Analytics financeiro + Rate Limiting** — (a) Gráfico em linha comparando Recebimentos vs Despesas com 7 ranges (1d/7d/30d/3m/6m/1y/5y) e 3 agrupamentos (dia/mês/ano), métricas de regularidade via CV%. (b) Rate limiting global via slowapi protegendo brute force no login (5 tentativas/min) e endpoints sensíveis. (Feb/2026)
 
 17. **Álvaro auto-diagnóstico SmartOLT + auto-agendamento de reparo** (Feb/2026) — agente Álvaro (suporte técnico WhatsApp) recebe automaticamente diagnóstico ONLINE/LOS/POWER_OFF do SmartOLT antes de responder. Dispara `[REBOOT_ONU]` quando ONLINE com instabilidade (reboot remoto silencioso) e `[AGENDAR_REPARO:date,time]` quando precisa de visita técnica (cria ticket aberto na Lousa direto do chat). Slots vêm do endpoint `/api/lousa/public/available-slots`.
@@ -49,6 +50,99 @@ Plataforma SaaS de operações para provedores de internet (ISP). Une três base
 - **Componentes**: classes utilitárias `.btn`, `.surface`, `.stat-card`, `.pill`, `.input`, `.app-sidebar`, `.app-topbar` em `index.css`.
 
 ## Status atual (Feb 2026)
+✅ **Multi-Canal Outbound · Serviços usam canal padrão + override por campanha** (24/05/2026 — iter140): Complementa o iter139. Os 3 serviços outbound principais (mass_messaging, sales_outreach, disparo_boleto) agora resolvem o canal Baileys dinamicamente em vez de hardcodar port 3002.
+
+**Backend**:
+- `services/wa/sidecar.py`: 2 novas funções `_sidecar_post_at(base_url, path, payload)` e `_sidecar_post_silent_at(base_url, path, payload, timeout)` — variantes multi-canal das chamadas existentes; refatorado `_sidecar_post_silent` pra delegar.
+- `services/sales_outreach.py::_send_via_sidecar(phone, text, cid=None)`: nova assinatura aceita `cid`; resolve via `get_default_outbound_channel(db, cid) → base_url_for(channel_id)`; fallback canal-1.
+- `routes/mass_messaging.py::_send_baileys(camp, rec, text)`: prioridade `camp.channel_id` (override) > default outbound da empresa > canal-1. Persiste `channel_id` no histórico `aihub_wa_messages` pra auditoria.
+- `routes/mass_messaging.py::CampaignCreate`: novo campo opcional `channel_id: str` validado por regex `^channel-[1-4]$` (422 quando inválido).
+- `routes/disparo_boleto.py::_process_dispatch`: lê default outbound da empresa antes do loop; `_send_single` idem. Removido import direto de `_sidecar_post`.
+
+**Frontend** (`MassMessagingPanel.js` — `CampaignCreateModal`):
+- Novo option no dropdown "Canal *": **WhatsApp QR (Baileys)** (junto com Meta Cloud e Twilio).
+- Quando `channel === "baileys"`, aparece campo extra **"Número de origem (canal Baileys)"** com dropdown listando os 4 canais (com indicador ★ pro default e (offline) pros desconectados) — opção 1 é "Padrão outbound da empresa" (fica vazio = backend resolve).
+- 1 novo data-testid: `camp-fld-channel-id`.
+
+**Validado via curl**:
+- Campanha com `channel_id=channel-2` → persistida com `channel_id: "channel-2"` ✓
+- Campanha com `channel_id=channel-9` → HTTP 422 (regex rejeita) ✓
+- Campanha sem `channel_id` → `channel_id: null` (resolve no runtime via `get_default_outbound_channel`) ✓
+- Screenshot Playwright: modal "Nova campanha" com canal "WhatsApp QR (Baileys)" mostra o dropdown novo com 5 opções (Padrão + Canal 1-4 com badge ★ no default).
+
+**Resultado prático**: agora se o admin definir o **Canal 3** (ex: "Suporte") como padrão outbound na aba Canais, **todos** os disparos automáticos (Isabella upsell, dunning, boletos em massa) saem por esse número — sem trocar 1 linha de código. E o admin ainda pode escolher um canal diferente por campanha específica via o dropdown novo.
+
+✅ **Multi-Canal WhatsApp · 4 números no mesmo sistema de agentes** (24/05/2026 — iter139): primeira feature de multi-tenancy de números WhatsApp dentro de SmartProv. Cada empresa agora pode conectar até 4 números WhatsApp ("canais") simultaneamente — todos os agentes IA (Isabella/Alvaro/Camila) atendem em qualquer canal, e o nome do canal aparece nas conversas.
+
+**Sidecar (Node.js Baileys)**:
+- 4 instâncias do mesmo `server.js` rodando em portas 3002–3005 via supervisor (programs `whatsapp-service`, `whatsapp-service-2`, `whatsapp-service-3`, `whatsapp-service-4`)
+- Cada sidecar com `WA_CHANNEL_ID` + `WA_SESSION_ID` distintos (isolamento de auth state na collection `wa_auth_state` por session_id)
+- Webhook `/inbound` agora inclui `channel_id` no payload → backend stampa nas mensagens
+
+**Backend** (`/app/backend/services/whatsapp_channels.py` + `/app/backend/routes/whatsapp_channels.py`):
+- Collection `whatsapp_channels`: `{id, company_id, channel_name, port, session_id, is_default_outbound, phone_number, last_status, created_at, updated_at}`
+- Seed automático: ao primeiro GET `/api/whatsapp-channels`, cria os 4 slots se ainda não existem
+- 6 endpoints: `GET /api/whatsapp-channels` (lista + live status paralelo), `PATCH /{id}` (rename), `POST /{id}/set-default-outbound` (exclusivo), `GET /{id}/qr`, `GET /{id}/status`, `POST /{id}/logout`
+- Webhook inbound (`whatsapp_baileys.py`) agora persiste `channel_id` e `channel_name` em `aihub_wa_messages` E em `wa_conversations.last_channel_id/last_channel_name`
+
+**Frontend** (`/app/frontend/src/WhatsAppChannelsPanel.js` — 350+ linhas):
+- Nova sub-aba "Canais" em Atendimento IA (AIHubPanel)
+- Grid responsivo de 4 cards (1-2 colunas dependendo da largura)
+- Cada card: nome editável (lápis), badge de status live (Conectando/Conectado/Desconectado/Sidecar fora), telefone conectado em mono font, botões "Conectar via QR" / "Desconectar" / "Definir como padrão outbound"
+- Card do canal default outbound destacado com borda teal + badge "PADRÃO OUTBOUND"
+- Modal de QR scan reusa polling 4s; auto-close ao conectar
+- Poll de lista a cada 8s (status live atualiza sem refresh manual)
+- 18 data-testids (`wa-channels-panel`, `channel-card-{id}`, `channel-name-{id}`, `channel-name-edit-{id}`, `channel-connect-btn-{id}`, `channel-logout-btn-{id}`, `channel-set-default-btn-{id}`, `channel-default-badge-{id}`, `channel-state-{key}`, `channel-phone-{id}`, `qr-modal`, `qr-image`, `qr-modal-close`, `qr-connected`, `channels-refresh-btn`, `channels-error`)
+
+**Validado E2E**:
+- 4 sidecars rodando saudáveis em portas 3002/3003/3004/3005 (`curl /health` → ok=True state=connecting em todos)
+- Backend retorna lista de 4 canais com live status
+- PATCH rename (`Canal 2 → Vendas`) e POST set-default funcionam corretamente; default exclusivo (apenas 1 canal default por vez)
+- Webhook inbound simulado com `channel_id=channel-2` → mensagem e conversa persistidas com `channel_id="channel-2"` + `channel_name="Canal 2"`
+- Smoke screenshot Playwright: painel renderiza com 4 cards, badge "PADRÃO OUTBOUND" no canal-1, rename de canal-2 → "Vendas" persistido
+
+**Compatibilidade preservada**:
+- Endpoints `/api/whatsapp-baileys/*` (legacy) continuam apontando pra canal-1 (port 3002, session_id="isabella") — nenhum fluxo existente quebrou
+- `WA_CHANNEL_ID` default = "channel-1" → sidecars antigos sem env var continuam funcionando
+
+⚠️ Próximo passo natural (não implementado nesta iter): seletor de canal por campanha em `MassMessagingPanel` + serviços outbound (mass_messaging, sales_outreach, disparo_boleto) lerem `get_default_outbound_channel(db, cid)` em vez do hardcoded `SIDECAR_BASE`. Hoje todo outbound proativo sai pelo canal-1 por padrão.
+
+✅ **Módulo 1 — Billing Engine (CORE) · Substituição do Atlaz** (23/02/2026 — iter138): Primeiro passo concreto do **pivot estratégico ISP Suite**. Módulo nativo de faturas + régua de cobrança configurável, totalmente independente do Atlaz.
+
+**Backend** (`/app/backend/routes/billing.py` — 580+ linhas):
+- 14 endpoints sob `/api/billing/*`:
+  - **Invoices CRUD**: `GET /invoices` (filtros: status/sid/competence/due_range/source/pagination), `GET /invoices/{id}` (com dunning_events do invoice), `POST /invoices` (manual), `POST /invoices/{id}/mark-paid` (com payment_method/notes), `POST /invoices/{id}/cancel`, `DELETE /invoices/{id}` (admin only)
+  - **Generate batch**: `POST /generate-batch` (gera mensalidades pra todos ATIVOS com plan_id+plan_price; idempotente via competence; chunks de 1000), `GET /generate-batch/preview` (dry_run via querystring)
+  - **Dunning rules CRUD**: `GET /dunning-rules` (com defaults inline), `PUT /dunning-rules` (validação leve), `POST /dunning-rules/run` (manual + dry_run)
+  - **Eventos & runs**: `GET /dunning-events` (filtros), `GET /runs` (histórico de generate-batch)
+  - **KPIs**: `GET /stats` (by_status agregado + MRR + collection_rate + total_invoiced/paid/open + active_subscribers)
+- **Engine de cálculo**:
+  - `_compute_due_date(competence, due_day)`: ajuste automático pro último dia válido do mês (due_day=31 em fev → 28/29)
+  - `_compute_overdue_amount(invoice, today, fee_percent, interest)`: fórmula BR padrão (multa 2% + juros 1%/mês pró-rata por dia)
+  - `_render_template(template, invoice, amount_updated)`: placeholders `{nome}`, `{valor}`, `{valor_atualizado}`, `{vencimento}`, `{competencia}`
+- **Régua default (5 estágios)**: D-3 (lembrete) → D+1 (1ª cobrança) → D+5 (2ª cobrança + multa/juros) → D+10 (suspender — marca `financial_status: INADIMPLENTE` no subscriber) → D+30 (aviso final)
+- **Dedup**: dunning_events tem chave única `(company_id, invoice_id, rule_id)` — impossível disparar o mesmo evento 2x
+- **Cron diário** às 07:00 (`_billing_dunning_all_companies` em `server.py`): avalia régua em todas as companies, grava eventos. Atualmente NÃO envia WhatsApp/SMS — apenas registra para auditoria (será habilitado quando Meta WhatsApp Cloud API estiver estável)
+- **Schema compatível** com `subscriber_invoices` (collection existente, herdada do Atlaz sync) — diferencia por `source: 'native_billing'` vs `'atlaz_faturas'`. Tudo que já consome (Ligo IA, relatórios, disparos) continua funcionando
+
+**Frontend** (`/app/frontend/src/BillingPanel.js` — 700+ linhas):
+- Nova aba "Faturamento" no grupo Financeiro (registrada em `App.js` NAV_GROUPS + `TabPermissionsCard`)
+- 5 tabs: **Visão Geral** (4 KPI cards + distribuição por status), **Faturas** (lista com filtros de status/competência, modal de detalhe com timeline de dunning_events, botão Marcar paga inline), **Gerar Lote** (preview com 5 contadores + botão de confirmação + histórico de runs), **Régua de Cobrança** (editor visual de regras: offset_days/canal/ação/template/checkbox apply_fees, botões Simular dry-run + Executar real, alerta de "using defaults"), **Histórico Régua** (lista de dunning_events filtrável por ação)
+- 22+ data-testids (`billing-panel`, `billing-tab-*`, `kpi-mrr`, `invoice-row-*`, `batch-preview-*`, `batch-run-btn`, `dunning-rule-*`, `dunning-run-*`, etc)
+- Esquema visual coerente com Swiss/High-Contrast design system (slate + teal, JetBrains Mono pros números)
+
+**Validado E2E**:
+- **17/17 backend tests passing** em `tests/test_iter138_billing_engine.py`: stats structure + collection_rate, dunning_rules defaults + roundtrip + invalid payload (400), generate-batch preview + idempotency + invalid competence, manual invoice create+mark_paid+cancel, subscriber_not_found 404, dry_run não persiste, list filters (status válido+inválido), RBAC (auditor vê stats, sem token = 401/403)
+- Smoke screenshot do preview com **dados reais da co-demo**: MRR R$ 254,19 · Total Faturado R$ 548.327,21 (5306 faturas) · Recebido R$ 202.079,25 (36.85% arrecadação) · Em Aberto R$ 341.362,18 (3264 faturas)
+
+**Pivot estratégico ISP Suite — milestones:**
+- ✅ **Módulo 1: Billing Engine CORE** (iter138) — geração de faturas + régua + KPIs
+- ⏳ **Módulo 4: NFCom** (próximo — P0): integração TecnoSpeed/NFE.io pra emissão fiscal (obrigatório por lei)
+- ⏳ **Módulo 3: Gateway pagamentos** (Asaas/Cora — boleto+Pix+webhooks)
+- ⏳ **Módulo 2: RADIUS/PPPoE** (D+10 vai falar com o NAS via CoA Disconnect)
+- ⏳ **Habilitar dunning real**: hoje grava eventos; próximo passo é enviar mensagens via Meta WhatsApp Cloud API + SMS Twilio
+
+
 ✅ Funcional (Atlaz V2 sync ativo, 68 tickets/dia, sem erros)
 ✅ Redesign completo (sidebar+topbar+login split, paleta slate+teal, sem emojis em desktop)
 ✅ **Dark Mode** com toggle no TopBar, persistência localStorage, soft variants para status

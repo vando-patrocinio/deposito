@@ -47,6 +47,12 @@ class CampaignCreate(BaseModel):
     template_components: Optional[List[Dict[str, Any]]] = None
     schedule_at: Optional[str] = None  # ISO; None = imediato após start
     throttle_per_min: int = Field(60, ge=1, le=600)
+    # Override de canal Baileys (multi-número). None = usa o canal default
+    # outbound da empresa. Aceito apenas quando channel=='baileys'.
+    channel_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^channel-[1-4]$",
+    )
 
 
 class CampaignStartPayload(BaseModel):
@@ -352,16 +358,35 @@ async def _send_baileys(camp: Dict[str, Any], rec: Dict[str, Any],
     Funciona apenas em modo `free` (texto livre). Templates HSM não se aplicam
     ao Baileys. Após envio com sucesso, persiste no `aihub_wa_messages` para
     a mensagem aparecer no histórico da Isabella (mesma collection).
+
+    Resolve o canal outbound na seguinte ordem de prioridade:
+      1. `camp["channel_id"]` — override explícito da campanha (escolha do admin)
+      2. `get_default_outbound_channel(cid)` — canal default da empresa
+      3. fallback canal-1 (SIDECAR_BASE / port 3002)
     """
     import httpx
     import uuid as _uuid
     from routes.whatsapp_baileys import SIDECAR_BASE  # reuse base URL
+    from services.whatsapp_channels import (
+        base_url_for, get_default_outbound_channel,
+    )
     cid = camp["company_id"]
     phone = rec["phone"]
+
+    # Resolve qual canal vai enviar
+    channel_id = camp.get("channel_id")
+    try:
+        if not channel_id:
+            channel_id = await get_default_outbound_channel(db, cid)
+        base_url = base_url_for(channel_id)
+    except Exception:
+        base_url = SIDECAR_BASE
+        channel_id = "channel-1"
+
     try:
         async with httpx.AsyncClient(timeout=25.0) as cli:
             r = await cli.post(
-                f"{SIDECAR_BASE}/send",
+                f"{base_url.rstrip('/')}/send",
                 json={"phone": phone, "text": text[:4096]},
             )
             try:
@@ -385,6 +410,7 @@ async def _send_baileys(camp: Dict[str, Any], rec: Dict[str, Any],
             "phone": phone,
             "text": text,
             "channel": "baileys",
+            "channel_id": channel_id,
             "message_id": msg_id,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "actor_user": "disparo_ia",
@@ -396,7 +422,7 @@ async def _send_baileys(camp: Dict[str, Any], rec: Dict[str, Any],
     except Exception as e:
         logger.info("[mass] baileys hist persist skip: %s", e)
 
-    return {"ok": True, "message_id": msg_id}
+    return {"ok": True, "message_id": msg_id, "channel_id": channel_id}
 
 
 async def _send_meta_cloud(camp: Dict[str, Any], rec: Dict[str, Any],

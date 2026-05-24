@@ -6,6 +6,7 @@
 ============================================================= */
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
+import { fmtAddress } from "@/utils/format";
 import { Card } from "@/ui";
 import {
   AlertTriangle, ShieldCheck, ShieldOff, Check, X,
@@ -313,7 +314,7 @@ export default function CentralOntPanel() {
                     )}
                   </div>
                   <div style={{ fontSize: 11, color: "#64748b" }}>
-                    {it.address} · ONT {it.ont || "—"}
+                    {fmtAddress(it.address)} · ONT {it.ont || "—"}
                   </div>
                   <div style={{ fontSize: 10, color: "#94a3b8" }}>
                     {it.collaborator_name} · {new Date(it.closed_at)

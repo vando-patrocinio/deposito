@@ -34,14 +34,19 @@ const TEMPLATES_SUGGESTED = [
   },
 ];
 
-export default function DisparoPromoPanel() {
-  const [template, setTemplate] = useState("");
+export default function DisparoPromoPanel({
+  initialTemplate = "", initialFilters = null,
+} = {}) {
+  const [template, setTemplate] = useState(initialTemplate);
   const [filters, setFilters] = useState({
-    status: ["active"],
-    city: "",
-    tenure_min_months: "",
-    tenure_max_months: "",
-    only_with_phone: true,
+    status: initialFilters?.status || ["active"],
+    city: initialFilters?.city || "",
+    tenure_min_months: initialFilters?.tenure_min_months || "",
+    tenure_max_months: initialFilters?.tenure_max_months || "",
+    only_with_phone: initialFilters?.only_with_phone !== false,
+    radius_states: initialFilters?.radius_states || [],
+    overdue_min_days: initialFilters?.overdue_min_days ?? "",
+    overdue_max_days: initialFilters?.overdue_max_days ?? "",
   });
   const [preview, setPreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -59,9 +64,19 @@ export default function DisparoPromoPanel() {
     template,
     status: filters.status.length ? filters.status : null,
     city: filters.city || null,
-    tenure_min_months: filters.tenure_min_months ? Number(filters.tenure_min_months) : null,
-    tenure_max_months: filters.tenure_max_months ? Number(filters.tenure_max_months) : null,
+    tenure_min_months: filters.tenure_min_months
+      ? Number(filters.tenure_min_months) : null,
+    tenure_max_months: filters.tenure_max_months
+      ? Number(filters.tenure_max_months) : null,
     only_with_phone: filters.only_with_phone,
+    radius_states: filters.radius_states?.length
+      ? filters.radius_states : null,
+    overdue_min_days: filters.overdue_min_days !== "" &&
+                       filters.overdue_min_days != null
+      ? Number(filters.overdue_min_days) : null,
+    overdue_max_days: filters.overdue_max_days !== "" &&
+                       filters.overdue_max_days != null
+      ? Number(filters.overdue_max_days) : null,
   });
 
   const loadPreview = async () => {
@@ -239,6 +254,37 @@ export default function DisparoPromoPanel() {
             <input type="number" value={filters.tenure_max_months} min="0"
                      onChange={(e) => setFilters((s) => ({ ...s, tenure_max_months: e.target.value }))}
                      data-testid="promo-tenure-max" style={inputStyle} />
+          </Field>
+          <Field label="Estado RADIUS (contratos)">
+            <select multiple value={filters.radius_states}
+                      onChange={(e) => setFilters((s) => ({
+                        ...s,
+                        radius_states: Array.from(
+                          e.target.selectedOptions, (o) => o.value),
+                      }))}
+                      data-testid="promo-radius-states"
+                      style={{ ...inputStyle, height: 100 }}>
+              <option value="ATIVO">🟢 Ativo</option>
+              <option value="GRACE">⏳ Tolerância</option>
+              <option value="REDUZIDO">🟠 Reduzido</option>
+              <option value="WALLED_GARDEN">🔒 Wall Garden</option>
+              <option value="SUSPENSO">🔴 Suspenso</option>
+              <option value="CANCELADO">⚫ Cancelado</option>
+            </select>
+          </Field>
+          <Field label="Atraso mín. da fatura (dias)">
+            <input type="number" value={filters.overdue_min_days} min="0"
+                     onChange={(e) => setFilters((s) => ({
+                       ...s, overdue_min_days: e.target.value }))}
+                     data-testid="promo-overdue-min"
+                     placeholder="ex: 7" style={inputStyle} />
+          </Field>
+          <Field label="Atraso máx. da fatura (dias)">
+            <input type="number" value={filters.overdue_max_days} min="0"
+                     onChange={(e) => setFilters((s) => ({
+                       ...s, overdue_max_days: e.target.value }))}
+                     data-testid="promo-overdue-max"
+                     placeholder="ex: 29" style={inputStyle} />
           </Field>
         </div>
         <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>

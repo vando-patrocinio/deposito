@@ -8,6 +8,8 @@ import PingTestModal from "@/PingTestModal";
 import CTOPortPicker from "@/CTOPortPicker";
 import CadastroCTOWizard from "@/CadastroCTOWizard";
 import CtoInlineFlow from "@/CtoInlineFlow";
+import WeeklyInspectionFlow from "@/fleet/WeeklyInspectionFlow";
+import { fmtAddress, fmtPhone, fmtName, fmtRelato, safeText } from "@/utils/format";
 
 /**
  * LousaMobile — vista da Lousa (bolhas) no app do colaborador.
@@ -28,6 +30,10 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
   const [perf, setPerf] = useState(null);
+  // ── Frota: vistoria semanal obrigatória na primeira bolha do dia ─────────
+  const [fleetWarnings, setFleetWarnings] = useState([]);
+  const [showInspectionFlow, setShowInspectionFlow] = useState(false);
+  const [pendingTicket, setPendingTicket] = useState(null);
   const [dashCfg, setDashCfg] = useState({
     show_performance: true, show_achievements: true,
     show_smart_route: true, show_points: true,
@@ -210,8 +216,37 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
     setDragId(null); setDragOverId(null);
   }
 
+  // Helpers Frota — controla "primeira bolha do dia"
+  function _todayKey() {
+    return `fleet_insp_defer_${collaboratorId}_${new Date().toISOString().slice(0, 10)}`;
+  }
+  function _isDeferredToday() {
+    try { return sessionStorage.getItem(_todayKey()) === "1"; }
+    catch { return false; }
+  }
+  function _markDeferredToday() {
+    try { sessionStorage.setItem(_todayKey(), "1"); } catch { /* */ }
+  }
+
   async function handleOpen(ticket) {
     if (ticket.locked) return;
+    // ── Verificação de frota: se vistoria pendente, intercepta com modal ──
+    // (escolha 2c: soft block — usuário pode adiar pelo dia)
+    if (!isAdminTest && !_isDeferredToday()) {
+      try {
+        const co = await api.fleetCanOperate();
+        if (co?.fleet_enabled && co?.warnings?.length) {
+          const pendInsp = co.warnings.find(
+            (w) => w.code === "inspection_pending" || w.code === "inspection_rejected"
+          );
+          if (pendInsp) {
+            setFleetWarnings(co.warnings);
+            setPendingTicket(ticket);
+            return; // não abre a bolha ainda; modal vai aparecer
+          }
+        }
+      } catch { /* falha silenciosa — não bloqueia operação */ }
+    }
     if (ticket.status === "aberta" || ticket.status === "aguardando_atendimento") {
       setOpenTicket(ticket);
       return;
@@ -231,19 +266,36 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
   async function handleFinalize(ticket, completionData, opts = {}) {
     setBusy(true); setErr("");
     try {
-      const lat = await new Promise((res) => navigator.geolocation
-        ? navigator.geolocation.getCurrentPosition(
-            (p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
-            () => res({ lat: 0, lng: 0 }),
-          )
-        : res({ lat: 0, lng: 0 }));
-      await api.lousaPublicFinalize(ticket.id, {
+      // Timeout de 6s no GPS — fallback (0,0). Evita travar finalize
+      // sem sinal de GPS (especialmente em prédios e headless tests).
+      const lat = await new Promise((res) => {
+        if (!navigator.geolocation) return res({ lat: 0, lng: 0 });
+        let done = false;
+        const finish = (v) => { if (done) return; done = true; res(v); };
+        navigator.geolocation.getCurrentPosition(
+          (p) => finish({ lat: p.coords.latitude, lng: p.coords.longitude }),
+          () => finish({ lat: 0, lng: 0 }),
+          { timeout: 6000, maximumAge: 60000 },
+        );
+        setTimeout(() => finish({ lat: 0, lng: 0 }), 6500);
+      });
+      const r = await api.lousaPublicFinalize(ticket.id, {
         collaborator_id: collaboratorId,
         completion_data: completionData,
         latitude: lat.lat, longitude: lat.lng,
-        outcome: "sucesso",
+        outcome: opts.outcome || "sucesso",
         bad_signal_auth_id: opts.bad_signal_auth_id || null,
       });
+      // Resposta especial: bloqueio "sem execução" → gestor precisa contatar
+      if (r?.blocked_close && r?.manager_callback_required) {
+        setBlockedCloseInfo({
+          ticket,
+          message: r.message,
+          callback_request_id: r.callback_request_id,
+        });
+        // NÃO fecha o painel — técnico precisa ver o aviso
+        return;
+      }
       setOpenTicket(null);
       setBadSignalAuth(null);
       await refresh();
@@ -284,6 +336,7 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
 
   // Estado: aguardando autorização do gestor pra fechar com sinal ruim
   const [badSignalAuth, setBadSignalAuth] = useState(null);
+  const [blockedCloseInfo, setBlockedCloseInfo] = useState(null);
   // Poll: a cada 4s checa status da request
   useEffect(() => {
     if (!badSignalAuth?.request_id) return undefined;
@@ -318,13 +371,105 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
     );
   }
 
+  // Vistoria semanal de Frota — modal full-screen na primeira bolha do dia
+  if (showInspectionFlow) {
+    return (
+      <div data-testid="fleet-inspection-overlay" style={{
+        minHeight: "100vh", background: "#f8fafc",
+      }}>
+        <WeeklyInspectionFlow
+          onClose={() => {
+            setShowInspectionFlow(false);
+            // após enviar vistoria, abre o ticket que estava pendente
+            if (pendingTicket) {
+              const t = pendingTicket;
+              setPendingTicket(null);
+              setFleetWarnings([]);
+              setTimeout(() => handleOpen(t), 100);
+            }
+          }}
+          onDefer={() => {
+            _markDeferredToday();
+            setShowInspectionFlow(false);
+            if (pendingTicket) {
+              const t = pendingTicket;
+              setPendingTicket(null);
+              setFleetWarnings([]);
+              setTimeout(() => handleOpen(t), 100);
+            }
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Modal soft-block: avisa vistoria pendente antes de abrir 1ª bolha do dia
+  if (pendingTicket && fleetWarnings.length > 0) {
+    const w = fleetWarnings[0];
+    return (
+      <div data-testid="fleet-inspection-modal" style={{
+        position: "fixed", inset: 0, background: "rgba(15,23,42,0.7)",
+        zIndex: 9000, display: "flex", alignItems: "center",
+        justifyContent: "center", padding: 16,
+      }}>
+        <div style={{
+          background: "white", borderRadius: 16, padding: 24,
+          width: "100%", maxWidth: 480, textAlign: "center",
+        }}>
+          <div style={{ fontSize: 52 }}>🚗</div>
+          <h2 style={{ fontSize: 19, fontWeight: 800, margin: "12px 0 8px",
+                          color: "#0f172a" }}>
+            Vistoria semanal do veículo
+          </h2>
+          <p style={{ color: "#475569", fontSize: 14, lineHeight: 1.5, margin: 0 }}>
+            {w.msg || "Faça a vistoria antes de iniciar suas OS de hoje."}
+            {" "}Leva ~3 minutos (5 fotos + KM).
+          </p>
+          <div style={{ marginTop: 18, display: "flex", gap: 8,
+                          flexDirection: "column" }}>
+            <button
+              data-testid="fleet-start-inspection-btn"
+              onClick={() => setShowInspectionFlow(true)}
+              style={{
+                padding: "13px 20px", background: "#0ea5e9", color: "white",
+                border: "none", borderRadius: 10, fontWeight: 700,
+                fontSize: 15, cursor: "pointer",
+              }}>
+              📸 Fazer vistoria agora
+            </button>
+            <button
+              data-testid="fleet-defer-inspection-btn"
+              onClick={() => {
+                _markDeferredToday();
+                const t = pendingTicket;
+                setPendingTicket(null);
+                setFleetWarnings([]);
+                setTimeout(() => handleOpen(t), 80);
+              }}
+              style={{
+                padding: "11px 18px", background: "#f1f5f9",
+                color: "#475569", border: "1px solid #e2e8f0",
+                borderRadius: 10, fontWeight: 600, fontSize: 13,
+                cursor: "pointer",
+              }}>
+              Adiar até amanhã
+            </button>
+          </div>
+          <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 12 }}>
+            Adiar não bloqueia sua operação — é apenas um lembrete.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (openTicket) {
     return (
       <>
       <TicketDetail
         ticket={openTicket}
         onClose={() => setOpenTicket(null)}
-        onFinalize={(cd) => handleFinalize(openTicket, cd)}
+        onFinalize={(cd, opts) => handleFinalize(openTicket, cd, opts || {})}
         badSignalThreshold={badSignalThreshold}
         collaboratorId={collaboratorId}
         isAdminTest={isAdminTest}
@@ -342,6 +487,16 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
         <BadSignalAuthWaitModal
           state={badSignalAuth}
           onClose={() => setBadSignalAuth(null)}
+        />
+      )}
+      {blockedCloseInfo && (
+        <BlockedCloseModal
+          info={blockedCloseInfo}
+          onClose={() => {
+            setBlockedCloseInfo(null);
+            setOpenTicket(null);
+            refresh();
+          }}
         />
       )}
       </>
@@ -589,12 +744,12 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
   const typeLabel = (ticket.type || "").replace(/_/g, " ");
   const tooltipText = [
     `${typeLabel.toUpperCase()}`,
-    `Cliente: ${ticket.client_snapshot.name}`,
-    ticket.client_snapshot.phone ? `Tel: ${ticket.client_snapshot.phone}` : null,
-    ticket.client_snapshot.address ? `End.: ${ticket.client_snapshot.address}` : null,
-    ticket.client_snapshot.neighborhood ? `Bairro: ${ticket.client_snapshot.neighborhood}` : null,
+    `Cliente: ${fmtName(ticket.client_snapshot.name)}`,
+    ticket.client_snapshot.phone ? `Tel: ${fmtPhone(ticket.client_snapshot.phone)}` : null,
+    ticket.client_snapshot.address ? `End.: ${fmtAddress(ticket.client_snapshot.address)}` : null,
+    ticket.client_snapshot.neighborhood ? `Bairro: ${safeText(ticket.client_snapshot.neighborhood)}` : null,
     ticket.scheduled_time ? `Horário: ${ticket.scheduled_time.substr(11, 5)}` : null,
-    ticket.client_snapshot.relato ? `\nRelato:\n${ticket.client_snapshot.relato}` : null,
+    ticket.client_snapshot.relato ? `\nRelato:\n${fmtRelato(ticket.client_snapshot.relato)}` : null,
   ].filter(Boolean).join("\n");
 
   // Em modo reorder, a bolha vira um container drag-handle (não clica para abrir)
@@ -651,9 +806,9 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
               display: "inline-block",
             }}>{c.icon} {c.label}</div>
           )}
-          <div style={{ fontSize: 14, fontWeight: 800 }}>{ticket.client_snapshot.name}</div>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>{fmtName(ticket.client_snapshot.name)}</div>
           <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-            {ticket.type.toUpperCase()} · {ticket.client_snapshot.neighborhood}
+            {ticket.type.toUpperCase()} · {safeText(ticket.client_snapshot.neighborhood)}
           </div>
         </div>
       </div>
@@ -730,7 +885,7 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
             fontSize: 14.5, fontWeight: 800, lineHeight: 1.2,
             color: c.text, letterSpacing: -0.1,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>{ticket.client_snapshot.name}</div>
+          }}>{fmtName(ticket.client_snapshot.name)}</div>
           <div style={{
             fontSize: 11, color: "#64748b", marginTop: 2,
             textTransform: "uppercase", letterSpacing: 0.4,
@@ -738,7 +893,7 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
           }}>{typeLabel}</div>
           {ticket.client_snapshot.neighborhood && (
             <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
-              📍 {ticket.client_snapshot.neighborhood}
+              📍 {safeText(ticket.client_snapshot.neighborhood)}
             </div>
           )}
         </div>
@@ -1039,6 +1194,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   // - Instalação (isInstall=true): 3 steps → 1=Sinal/ONT, 2=CTO+Porta, 3=Insumos
   // - Demais (retirada/reparo): 2 steps → 1=Sinal/ONT, 2=Insumos
   const [step, setStep] = useState(1);
+  const [showCantExecuteModal, setShowCantExecuteModal] = useState(false);
   const [ctoSelected, setCtoSelected] = useState(null);
   const [ctoPortSelected, setCtoPortSelected] = useState(null);
   const [showCtoWizard, setShowCtoWizard] = useState(false);
@@ -1387,7 +1543,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         </div>
         <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>{ticket.client_snapshot.name}</div>
         <div style={{ fontSize: 12, color: "#cbd5e1", marginBottom: 8 }}>
-          📍 {ticket.client_snapshot.address}{ticket.client_snapshot.neighborhood ? ` · ${ticket.client_snapshot.neighborhood}` : ""}
+          📍 {fmtAddress(ticket.client_snapshot.address)}{ticket.client_snapshot.neighborhood ? ` · ${ticket.client_snapshot.neighborhood}` : ""}
         </div>
         {ticket.client_snapshot.pppoe_user && (
           <PppoeChip pppoe={ticket.client_snapshot.pppoe_user} />
@@ -2147,6 +2303,20 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                 : (busy ? "Finalizando..." : "Finalizar nota")}
             </Button>
           </div>
+          {/* Saída alternativa: técnico não consegue executar — chama gestor */}
+          {!isAdminTest && (
+            <button onClick={() => setShowCantExecuteModal(true)}
+                    disabled={busy}
+                    data-testid="cant-execute-btn"
+                    style={{
+                      marginTop: 12, width: "100%", padding: "12px 14px",
+                      background: "#fef2f2", color: "#991b1b",
+                      border: "1.5px solid #fecaca", borderRadius: 9,
+                      fontSize: 13, fontWeight: 700, cursor: "pointer",
+                    }}>
+              🚫 Não consegui executar — chamar gestor
+            </button>
+          )}
         </>
       )}
 
@@ -2317,9 +2487,129 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
           </div>
         </div>
       )}
+      {showCantExecuteModal && (
+        <CantExecuteModal
+          onClose={() => setShowCantExecuteModal(false)}
+          onConfirm={async (motivo) => {
+            setShowCantExecuteModal(false);
+            // Envia o motivo como `observacoes` + outcome=informada
+            // Reusa o form atual pra ficar consistente
+            const cd = {
+              observacoes: motivo,
+              sinal: parseFloat(form.sinal) || -22.0,
+              qtd_drop: parseInt(form.qtd_drop) || 0,
+              esticadores: parseInt(form.esticadores) || 0,
+              conectores_fast: parseInt(form.conectores_fast) || 0,
+              cabo_rede: parseInt(form.cabo_rede) || 0,
+              conectores_rede: parseInt(form.conectores_rede) || 0,
+              fotos: [],
+            };
+            onFinalize(cd, { outcome: "informada" });
+          }}
+        />
+      )}
     </div>
   );
 }
+
+// =========================================================================
+// Modal: técnico não consegue executar — pede contato pelo gestor
+// =========================================================================
+function CantExecuteModal({ onClose, onConfirm }) {
+  const [motivo, setMotivo] = useState("");
+  const [reason, setReason] = useState("ausente");
+  const REASONS = [
+    { id: "ausente", label: "Cliente ausente / sem resposta" },
+    { id: "endereco", label: "Endereço incorreto ou não encontrado" },
+    { id: "acesso", label: "Sem acesso (portão/poste/apto)" },
+    { id: "recusou", label: "Cliente recusou atendimento" },
+    { id: "indisponivel", label: "Material/equipamento indisponível" },
+    { id: "outro", label: "Outro motivo (descreva)" },
+  ];
+  const fullMotivo = (() => {
+    const lbl = REASONS.find((r) => r.id === reason)?.label || "";
+    if (motivo.trim()) return `${lbl}. ${motivo.trim()}`;
+    return lbl;
+  })();
+  const canSubmit = fullMotivo.length >= 5
+    && (reason !== "outro" || motivo.trim().length >= 5);
+
+  return (
+    <div data-testid="cant-execute-modal"
+         style={{ position: "fixed", inset: 0,
+                   background: "rgba(15,23,42,.7)", zIndex: 99999,
+                   display: "flex", alignItems: "center",
+                   justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "white", padding: 22, borderRadius: 14,
+                     width: "100%", maxWidth: 460,
+                     maxHeight: "92vh", overflow: "auto" }}>
+        <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800,
+                      color: "#991b1b" }}>
+          🚫 Não consegui executar
+        </h3>
+        <div style={{ margin: "10px 0 16px", padding: "10px 12px",
+                       background: "#fef9c3", borderRadius: 9,
+                       border: "1px solid #fde047",
+                       fontSize: 12, color: "#713f12", lineHeight: 1.5 }}>
+          ⚠️ Esta OS <b>NÃO será fechada por você</b>. O gestor receberá
+          um pedido de contato com o cliente e decidirá os próximos
+          passos (reagendar, realocar ou fechar improdutiva).
+        </div>
+        <label style={{ fontSize: 12, fontWeight: 700, color: "#0f172a",
+                         display: "block", marginBottom: 6 }}>
+          Motivo principal:
+        </label>
+        <select value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                data-testid="cant-execute-reason"
+                style={{ width: "100%", padding: "10px 12px",
+                          borderRadius: 9, border: "1.5px solid #cbd5e1",
+                          fontSize: 14, marginBottom: 14,
+                          background: "white" }}>
+          {REASONS.map((r) => (
+            <option key={r.id} value={r.id}>{r.label}</option>
+          ))}
+        </select>
+        <label style={{ fontSize: 12, fontWeight: 700, color: "#0f172a",
+                         display: "block", marginBottom: 6 }}>
+          Observações detalhadas
+          {reason === "outro" ? " (obrigatório)" : ""}:
+        </label>
+        <textarea
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          data-testid="cant-execute-obs"
+          placeholder="Descreva o que aconteceu (chamadas tentadas, vizinhos consultados, etc)"
+          rows={4}
+          style={{ width: "100%", padding: 10, borderRadius: 9,
+                    border: "1.5px solid #cbd5e1", fontSize: 13,
+                    boxSizing: "border-box", resize: "vertical" }}
+        />
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button onClick={onClose}
+                  data-testid="cant-execute-cancel"
+                  style={{ flex: 1, padding: "12px 14px",
+                            background: "#f1f5f9", color: "#475569",
+                            border: 0, borderRadius: 9, fontSize: 14,
+                            fontWeight: 700, cursor: "pointer" }}>
+            ← Voltar
+          </button>
+          <button onClick={() => onConfirm(fullMotivo)}
+                  disabled={!canSubmit}
+                  data-testid="cant-execute-confirm"
+                  style={{ flex: 2, padding: "12px 14px",
+                            background: canSubmit ? "#dc2626" : "#cbd5e1",
+                            color: "white", border: 0, borderRadius: 9,
+                            fontSize: 14, fontWeight: 700,
+                            cursor: canSubmit ? "pointer" : "not-allowed" }}>
+            📞 Pedir contato do gestor
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function reorderBtnStyle(disabled) {
   return {
@@ -2331,6 +2621,58 @@ function reorderBtnStyle(disabled) {
     display: "grid", placeItems: "center",
     boxShadow: "0 1px 2px rgba(15,23,42,.05)",
   };
+}
+
+
+/* Modal: técnico foi bloqueado de fechar OS sem execução */
+function BlockedCloseModal({ info, onClose }) {
+  return (
+    <div data-testid="blocked-close-modal"
+         style={{
+           position: "fixed", inset: 0, zIndex: 1500,
+           background: "rgba(2,6,23,0.85)",
+           display: "grid", placeItems: "center", padding: 18,
+         }}>
+      <div style={{
+        background: "white", borderRadius: 14, padding: 24,
+        maxWidth: 420, width: "100%", textAlign: "center",
+        boxShadow: "0 25px 60px rgba(0,0,0,0.4)",
+      }}>
+        <div style={{
+          width: 72, height: 72, borderRadius: "50%",
+          margin: "0 auto 14px", background: "#fef3c7",
+          display: "grid", placeItems: "center", fontSize: 36,
+        }}>📞</div>
+        <h3 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 800,
+                      color: "#0f172a" }}>
+          Gestor foi acionado
+        </h3>
+        <p style={{ margin: "0 0 16px", color: "#475569", fontSize: 13,
+                     lineHeight: 1.5 }}>
+          {info.message || (
+            "Sua solicitação foi registrada. O gestor entrará em contato "
+            + "com o cliente e decidirá os próximos passos."
+          )}
+        </p>
+        <div style={{ padding: "10px 12px", background: "#eff6ff",
+                       border: "1px solid #bfdbfe", borderRadius: 8,
+                       fontSize: 11, color: "#1e40af",
+                       lineHeight: 1.5, marginBottom: 14 }}>
+          🔒 Você <b>não pode finalizar</b> esta OS. Ela ficará marcada
+          como "aguardando contato do gestor" e será resolvida pelo
+          gestor depois que ele conversar com o cliente.
+        </div>
+        <button onClick={onClose}
+                data-testid="blocked-close-modal-ok"
+                style={{ width: "100%", padding: "13px 14px",
+                          background: "#0f172a", color: "white",
+                          border: 0, borderRadius: 9, fontSize: 14,
+                          fontWeight: 700, cursor: "pointer" }}>
+          ✓ Entendi
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /* Modal: técnico aguardando autorização do gestor pra fechar com sinal ruim */

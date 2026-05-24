@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "@/api";
+import { fmtAddress } from "@/utils/format";
 import { Button, Card, fmtMin, Icon, Metric, Row, StatusBadge } from "@/ui";
 import LiveMap from "@/LiveMap";
 import EquipmentSwapAuditCard from "@/EquipmentSwapAuditCard";

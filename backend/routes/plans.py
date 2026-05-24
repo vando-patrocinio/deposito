@@ -28,30 +28,117 @@ router = APIRouter(prefix="/api/plans", tags=["plans"])
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+class VodAddon(BaseModel):
+    """Pacote/addon de VOD ligado ao plano (Yplay, Playhub, ZappingTV, etc).
+    `name` é o nome do plano externo no provedor; `addons` é livre (csv)."""
+    enabled: bool = False
+    plan_name: Optional[str] = None
+    addons: Optional[str] = None  # ZappingTV usa addons multi-select
+
+
+class VodPackages(BaseModel):
+    noggin: bool = False
+    paramount_plus: bool = False
+    cdntv_enabled: bool = False
+    cdntv_plan_name: Optional[str] = None
+    yplay: VodAddon = Field(default_factory=VodAddon)
+    playhub: VodAddon = Field(default_factory=VodAddon)
+    zappingtv: VodAddon = Field(default_factory=VodAddon)
+    oletv: VodAddon = Field(default_factory=VodAddon)
+    multtv: VodAddon = Field(default_factory=VodAddon)
+    campsoft: VodAddon = Field(default_factory=VodAddon)
+
+
+class NfcomProductSplit(BaseModel):
+    """Rateio NFCom: produto + % do valor total da fatura."""
+    product_code: str
+    percentage: float = Field(ge=0, le=100)
+
+
+class DataQuotaConfig(BaseModel):
+    """Franquia mensal — após atingir, reduz até o último dia do mês."""
+    enabled: bool = False
+    quota_gb: Optional[float] = Field(default=None, ge=0)
+    reduced_down_kbps: Optional[int] = Field(default=2048, ge=0)
+    reduced_up_kbps: Optional[int] = Field(default=2048, ge=0)
+
+
+class MikrotikConfig(BaseModel):
+    """Atributos do Mikrotik/RouterOS aplicados via FreeRADIUS."""
+    ip_pool: Optional[str] = None              # ex: "pool_residencial"
+    address_list: Optional[str] = None         # ex: "clientes-ativos"
+    delegated_ipv6_pool: Optional[str] = None
+    framed_ipv6_pool: Optional[str] = None
+    route_map: Optional[str] = None            # Cisco compat
+
+
 class PlanIn(BaseModel):
     name: str = Field(..., min_length=2, max_length=120)
     speed_label: Optional[str] = Field(default=None, max_length=40)
+    # Velocidades — preferimos Kbps (precisão Atlaz). Aceita Mbps como fallback.
+    speed_down_kbps: Optional[int] = Field(default=None, ge=128, le=10000000)
+    speed_up_kbps: Optional[int] = Field(default=None, ge=128, le=10000000)
     speed_down_mbps: Optional[int] = Field(default=None, ge=1, le=100000)
     speed_up_mbps: Optional[int] = Field(default=None, ge=1, le=100000)
     monthly_price: float = Field(..., ge=0)
     annual_adjustment_pct: float = Field(default=0, ge=0, le=100)
     description: Optional[str] = Field(default=None, max_length=600)
     active: bool = True
-    # Premium gating — array de features que esse plano libera. Drive de upsell.
-    # Atualmente reconhecidas: "wifi_self_service" (troca SSID/senha via UI ou
-    # WhatsApp), "speed_test_remote", "static_ip", "vpn_access", "priority_support".
+    # Tipo de plano + filial
+    plan_type: str = Field(default="Residencial",
+        description="Residencial | Empresarial | Dedicado | Hotspot")
+    branch_id: Optional[str] = None
+    # Perfil REDUZIDO (aplicado quando contrato fica em REDUZIDO por atraso)
+    speed_reduced_down_mbps: Optional[float] = Field(default=0.5, ge=0, le=1000)
+    speed_reduced_up_mbps: Optional[float] = Field(default=0.25, ge=0, le=1000)
+    reduction_after_days: int = Field(default=7, ge=0, le=365,
+        description="Após quantos dias de atraso aplicar a redução")
+    block_after_days: int = Field(default=20, ge=0, le=365,
+        description="Dias de navegação antes do bloqueio total")
+    # Franquia mensal
+    data_quota: DataQuotaConfig = Field(default_factory=DataQuotaConfig)
+    # VOD addons (Yplay, Playhub, ZappingTV, etc)
+    vod_packages: VodPackages = Field(default_factory=VodPackages)
+    # NFCom — rateio do valor da fatura por produto
+    nfcom_products: List[NfcomProductSplit] = Field(default_factory=list)
+    # Detalhes adicionais (flags do Atlaz)
+    charge_activation_separately: bool = False
+    show_on_prospects_page: bool = False
+    show_on_subscriber_center: bool = True
+    discontinued: bool = False
+    count_in_connected: bool = True
+    # Mikrotik avançado
+    mikrotik: MikrotikConfig = Field(default_factory=MikrotikConfig)
+    # Premium gating
     premium_features: List[str] = Field(default_factory=list)
 
 
 class PlanUpdate(BaseModel):
     name: Optional[str] = None
     speed_label: Optional[str] = None
+    speed_down_kbps: Optional[int] = None
+    speed_up_kbps: Optional[int] = None
     speed_down_mbps: Optional[int] = None
     speed_up_mbps: Optional[int] = None
     monthly_price: Optional[float] = None
     annual_adjustment_pct: Optional[float] = None
     description: Optional[str] = None
     active: Optional[bool] = None
+    plan_type: Optional[str] = None
+    branch_id: Optional[str] = None
+    speed_reduced_down_mbps: Optional[float] = None
+    speed_reduced_up_mbps: Optional[float] = None
+    reduction_after_days: Optional[int] = None
+    block_after_days: Optional[int] = None
+    data_quota: Optional[DataQuotaConfig] = None
+    vod_packages: Optional[VodPackages] = None
+    nfcom_products: Optional[List[NfcomProductSplit]] = None
+    charge_activation_separately: Optional[bool] = None
+    show_on_prospects_page: Optional[bool] = None
+    show_on_subscriber_center: Optional[bool] = None
+    discontinued: Optional[bool] = None
+    count_in_connected: Optional[bool] = None
+    mikrotik: Optional[MikrotikConfig] = None
     premium_features: Optional[List[str]] = None
 
 

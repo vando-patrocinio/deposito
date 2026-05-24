@@ -43,6 +43,13 @@ class PromoFilterIn(BaseModel):
     tenure_max_months: Optional[int] = Field(default=None, ge=0, le=600)
     only_with_phone: bool = Field(default=True,
         description="Se True, ignora clientes sem celular")
+    # Filtros baseados em CONTRATO/RADIUS
+    radius_states: Optional[List[str]] = Field(default=None,
+        description="ATIVO | GRACE | REDUZIDO | WALLED_GARDEN | SUSPENSO | CANCELADO")
+    overdue_min_days: Optional[int] = Field(default=None, ge=0, le=365,
+        description="Atraso mínimo da fatura mais antiga em aberto")
+    overdue_max_days: Optional[int] = Field(default=None, ge=0, le=365,
+        description="Atraso máximo (ex: 0-3 para clientes ainda em grace)")
 
 
 class PromoPreviewIn(PromoFilterIn):
@@ -85,6 +92,7 @@ def _render_template(template: str, sub: Dict[str, Any]) -> str:
         .replace("{plano}", str(plan))
         .replace("{valor}", str(valor))
         .replace("{cidade}", str(city))
+        .replace("{dias_atraso}", str(sub.get("_overdue_days") or 0))
     )
 
 
@@ -98,7 +106,62 @@ async def _build_audience(cid: str, body: PromoFilterIn) -> List[Dict[str, Any]]
     if body.city:
         match["address_city"] = {"$regex": re.escape(body.city), "$options": "i"}
 
+    # Resolve filtros de RADIUS state — busca contratos primeiro
+    sub_ids_filter = None
+    if body.radius_states:
+        rs_match = {"company_id": cid,
+                     "radius_state": {"$in": body.radius_states}}
+        contracts = await db.contracts.find(
+            rs_match, {"_id": 0, "subscriber_id": 1}).to_list(20000)
+        sub_ids_filter = {c["subscriber_id"] for c in contracts
+                          if c.get("subscriber_id")}
+        if not sub_ids_filter:
+            return []
+        match["id"] = {"$in": list(sub_ids_filter)}
+
     subs = await db.subscribers.find(match, {"_id": 0}).limit(10000).to_list(10000)
+
+    # Filtros por overdue (atraso de fatura) ou se template usa {dias_atraso}
+    inadimp_states = {"GRACE", "REDUZIDO", "WALLED_GARDEN", "SUSPENSO"}
+    template_uses_dias_atraso = "{dias_atraso}" in (
+        getattr(body, "template", "") or "")
+    radius_has_inadimp = bool(body.radius_states
+        and any(s in inadimp_states for s in body.radius_states))
+    overdue_filter = (body.overdue_min_days is not None
+                       or body.overdue_max_days is not None)
+    need_overdue = (overdue_filter or template_uses_dias_atraso
+                     or radius_has_inadimp)
+    overdue_map: Dict[str, int] = {}
+    if need_overdue:
+        today = datetime.now(timezone.utc).date()
+        sub_ids = [s["id"] for s in subs if s.get("id")]
+        for coll_name in ("invoices", "billing_invoices", "faturas"):
+            try:
+                coll = db[coll_name]
+                async for inv in coll.find({
+                    "company_id": cid,
+                    "subscriber_id": {"$in": sub_ids},
+                    "status": {"$in": ["open", "pending", "vencida",
+                                         "em_aberto", "atrasada", "OVERDUE"]},
+                }, {"_id": 0, "subscriber_id": 1, "due_date": 1}):
+                    sid = inv.get("subscriber_id")
+                    due = inv.get("due_date")
+                    if not sid or not due:
+                        continue
+                    try:
+                        ddate = (datetime.fromisoformat(
+                            due.replace("Z", "+00:00")).date()
+                                  if isinstance(due, str) else due.date())
+                        if ddate >= today:
+                            continue
+                        days = (today - ddate).days
+                        if days > overdue_map.get(sid, 0):
+                            overdue_map[sid] = days
+                    except (ValueError, TypeError, AttributeError):
+                        continue
+            except Exception:
+                continue
+
     out: List[Dict[str, Any]] = []
     now = datetime.now(timezone.utc)
     for s in subs:
@@ -118,6 +181,16 @@ async def _build_audience(cid: str, body: PromoFilterIn) -> List[Dict[str, Any]]
                     continue
             except Exception:
                 continue
+        # Filtro de overdue
+        if overdue_filter:
+            od = overdue_map.get(s.get("id"), 0)
+            if body.overdue_min_days is not None and od < body.overdue_min_days:
+                continue
+            if body.overdue_max_days is not None and od > body.overdue_max_days:
+                continue
+        # Sempre seta _overdue_days quando computado (pra render do template)
+        if need_overdue:
+            s["_overdue_days"] = overdue_map.get(s.get("id"), 0)
         # Normaliza para formato internacional (55)
         if len(phone_digits) >= 11 and not phone_digits.startswith("55"):
             phone_digits = "55" + phone_digits

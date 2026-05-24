@@ -47,6 +47,8 @@ export const TAB_DEFINITIONS = [
   { id: "financeiro",      label: "Financeiro",        group: "Financeiro",
     superAdminOnly: true,
     hint: "Mesmo marcado, só aparece para usuários com tik Super Admin." },
+  { id: "billing",         label: "Faturamento",       group: "Financeiro",
+    hint: "Geração de faturas, régua de cobrança e dunning (substitui o Atlaz)." },
 
   // Comercial
   { id: "budget",          label: "Orçamento",         group: "Comercial" },
@@ -68,13 +70,13 @@ export const DEFAULT_TAB_PERMISSIONS = {
   administrador: [...ALL_TAB_IDS],
   auditor:       [...ALL_TAB_IDS],
   gestor: [
-    "dashboard", "estoque", "projects",
+    "dashboard", "lousa", "estoque", "central-compras", "projects",
     "ai-ranking", "ai-corrections", "central-ia", "rede-ia",
     "atendimento", "alvaro-ia", "mass-messaging", "sales-funnel",
     "cadastro", "subscribers", "plans", "pracas",
     "logs",
     "sheet", "holerite", "feriados",
-    "budget",
+    "budget", "billing", "fleet",
   ],
 };
 
