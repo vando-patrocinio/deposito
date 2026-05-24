@@ -260,6 +260,116 @@ const TEMPLATE_VARIABLES = [
   ]},
 ];
 
+/* ============================================================ */
+/* Preview ao vivo da mensagem — balão estilo WhatsApp           */
+/* ============================================================ */
+// Flatten dos exemplos para renderizar a mensagem como o cliente receberia
+const PREVIEW_EXAMPLE_VALUES = TEMPLATE_VARIABLES.reduce((acc, g) => {
+  g.items.forEach((v) => {
+    if (v.example && v.example !== "—") acc[v.key.toLowerCase()] = v.example;
+  });
+  return acc;
+}, {});
+
+function renderTemplate(text, vars) {
+  if (!text) return "";
+  let out = text;
+  // Substitui {{key}} (case-insensitive) pelos valores; placeholders sem valor
+  // ficam destacados visualmente para alertar o gestor.
+  out = out.replace(/\{\{\s*([a-zA-Z0-9_\-.]+)\s*\}\}/g, (match, key) => {
+    const lc = (key || "").toLowerCase();
+    if (vars[lc] !== undefined) return vars[lc];
+    return `[${key}?]`;  // não encontrado — destaca pro gestor ver
+  });
+  return out;
+}
+
+function MessagePreview({ text }) {
+  const empty = !text || !text.trim();
+  const rendered = empty ? "" : renderTemplate(text, PREVIEW_EXAMPLE_VALUES);
+  const hasMissing = !empty && /\[[a-zA-Z0-9_\-.]+\?\]/.test(rendered);
+  return (
+    <div
+      data-testid="message-preview"
+      style={{
+        marginTop: 10,
+        background: "#e7f3fe",
+        border: "1px solid #bfdbfe",
+        borderRadius: 10,
+        padding: 12,
+      }}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        fontSize: 10, fontWeight: 700, color: "#1e40af",
+        letterSpacing: 1, textTransform: "uppercase", marginBottom: 8,
+      }}>
+        <span>👁  Preview ao vivo (exemplo)</span>
+        {hasMissing && (
+          <span style={{
+            background: "#fef3c7", color: "#92400e",
+            padding: "2px 8px", borderRadius: 999,
+            fontSize: 9, fontWeight: 700,
+          }}>
+            ⚠ variáveis não mapeadas
+          </span>
+        )}
+      </div>
+      {/* Balão estilo WhatsApp */}
+      <div style={{
+        background: "#d9fdd3",
+        borderRadius: "12px 12px 12px 4px",
+        padding: "10px 14px",
+        maxWidth: "90%",
+        boxShadow: "0 1px 0.5px rgba(11,20,26,.13)",
+        position: "relative",
+      }}>
+        {empty ? (
+          <span style={{
+            color: "#94a3b8", fontStyle: "italic", fontSize: 13,
+          }}>
+            Escreva a mensagem acima — o preview aparece aqui.
+          </span>
+        ) : (
+          <div
+            data-testid="preview-bubble-text"
+            style={{
+              whiteSpace: "pre-wrap", wordBreak: "break-word",
+              fontSize: 13.5, lineHeight: 1.45, color: "#0f172a",
+              fontFamily: "system-ui, -apple-system, sans-serif",
+            }}
+            dangerouslySetInnerHTML={{
+              __html: rendered
+                .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                // Destaca placeholders não mapeados
+                .replace(/\[([a-zA-Z0-9_\-.]+)\?\]/g,
+                  '<span style="background:#fef3c7;color:#92400e;padding:1px 4px;border-radius:3px;font-weight:600;">[$1?]</span>')
+                // Bold do WhatsApp: *texto*
+                .replace(/\*([^*\n]+)\*/g, "<b>$1</b>")
+                // Italic do WhatsApp: _texto_
+                .replace(/(^|\s)_([^_\n]+)_(\s|$)/g, "$1<i>$2</i>$3"),
+            }}
+          />
+        )}
+        {!empty && (
+          <div style={{
+            textAlign: "right", fontSize: 10, color: "#667781",
+            marginTop: 4,
+          }}>
+            12:34  ✓✓
+          </div>
+        )}
+      </div>
+      <div style={{
+        fontSize: 11, color: "#64748b", marginTop: 8,
+      }}>
+        Valores de exemplo. No envio real, cada destinatário recebe os
+        próprios dados (CSV + cadastro do assinante).
+      </div>
+    </div>
+  );
+}
+
 function VariablesReference({ onInsert }) {
   const [open, setOpen] = useState(false);
   return (
@@ -467,6 +577,7 @@ function CampaignCreateModal({ onClose, onCreated }) {
             placeholder="Olá {{name}}, sua fatura vence em {{vencimento}}."
             data-testid="camp-fld-text"
           />
+          <MessagePreview text={form.text} />
           <VariablesReference
             onInsert={insertVarAtCursor}
           />
