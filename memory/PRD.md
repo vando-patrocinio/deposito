@@ -1,3 +1,13 @@
+🛟 **RECUPERAÇÃO DE EMERGÊNCIA — 01/06/2026 22:00 UTC**:
+- O usuário (Vando) executou o botão Rollback do Emergent e o código foi revertido para o checkpoint de 26 de Maio.
+- Todo o trabalho de iter195–iter203 (~141 arquivos, +39.182 linhas) foi reconstruído extraindo objetos órfãos do `.git/` local (sem custo de reconstrução LLM).
+- Commit de recuperação: `eaf2e398 Recover iter195-203 features from orphan git objects (post-rollback recovery)`.
+- Branch de backup do estado pós-rollback (pré-recuperação): `backup-rollback-state-20260601-215310`.
+- **AÇÃO PENDENTE**: orientar usuário a usar "Save to Github" para garantir backup remoto e nunca mais depender de objetos órfãos do git local.
+
+---
+
+
 ✅ **iter197c — Scanner IA de SN em Transferir para Técnico** (10/02/2026):
 - Pedido do usuário: aceitou sugestão da iter197b — botão 📷 também no painel "Transferir do Estoque da Praça → Técnico" com validação anti-erro em tempo real.
 - **Frontend `TransferToTechPanel.js` (rewrite):**
