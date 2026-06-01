@@ -22,9 +22,37 @@ const fmtMoney = (v) =>
 // =========================================================================
 // CONTAS A PAGAR
 // =========================================================================
+// iter180 — helpers para o filtro de período (mês ↔ personalizado).
+const _bills_today = () => new Date().toISOString().slice(0, 10);
+const _bills_first_day_of = (d) => {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+};
+const _bills_last_day_of = (d) => {
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+};
+const _bills_shift_month = (yyyymm, delta) => {
+  const [y, m] = yyyymm.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+const _bills_label_month = (yyyymm) => {
+  const [y, m] = yyyymm.split("-").map(Number);
+  const NAMES = ["jan", "fev", "mar", "abr", "mai", "jun",
+                 "jul", "ago", "set", "out", "nov", "dez"];
+  return `${NAMES[m - 1]}/${String(y).slice(2)}`;
+};
+
 export function BillsTab() {
   const [items, setItems] = useState([]);
-  const [filter, setFilter] = useState({ status: "", filial_id: "" });
+  // iter180 — filtro inclui período: 'all' | 'month' (yyyy-mm) | 'custom'
+  const [filter, setFilter] = useState({
+    status: "", filial_id: "",
+    periodMode: "month",
+    monthValue: new Date().toISOString().slice(0, 7),
+    fromDate: _bills_first_day_of(new Date()),
+    toDate: _bills_last_day_of(new Date()),
+  });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
   const [paying, setPaying] = useState(null);
@@ -32,12 +60,25 @@ export function BillsTab() {
                                        payment_methods: [], cash_accounts: [],
                                        filiais: [] });
 
+  // Resolve as datas efetivas a enviar pro backend conforme o modo
+  const resolvedDates = useMemo(() => {
+    if (filter.periodMode === "all") return { from: null, to: null };
+    if (filter.periodMode === "month") {
+      const [y, m] = filter.monthValue.split("-").map(Number);
+      const d = new Date(y, m - 1, 1);
+      return { from: _bills_first_day_of(d), to: _bills_last_day_of(d) };
+    }
+    return { from: filter.fromDate || null, to: filter.toDate || null };
+  }, [filter.periodMode, filter.monthValue, filter.fromDate, filter.toDate]);
+
   async function reload() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (filter.status) params.set("status", filter.status);
       if (filter.filial_id) params.set("filial_id", filter.filial_id);
+      if (resolvedDates.from) params.set("from_date", resolvedDates.from);
+      if (resolvedDates.to) params.set("to_date", resolvedDates.to);
       const qs = params.toString() ? `?${params}` : "";
       const r = await api._client.get(`/financeiro/bills${qs}`)
                           .then((r) => r.data);
@@ -57,7 +98,8 @@ export function BillsTab() {
               cash_accounts: ca, filiais: fi,
               collaborators_by_id: collabMap });
   }
-  useEffect(() => { reload(); }, [filter.status, filter.filial_id]); // eslint-disable-line
+  useEffect(() => { reload(); },
+    [filter.status, filter.filial_id, resolvedDates.from, resolvedDates.to]); // eslint-disable-line
   useEffect(() => { loadRefs(); }, []);
 
   async function onDelete(b) {
@@ -148,6 +190,104 @@ export function BillsTab() {
                 data-testid="bills-new-btn">
           <Plus size={14} /> Nova conta
         </Button>
+      </div>
+
+      {/* iter180 — filtro de período (mês ↔ personalizado ↔ todos) */}
+      <div data-testid="bills-period-bar" style={{
+        display: "flex", flexWrap: "wrap", gap: 8,
+        alignItems: "center", marginBottom: 14,
+        padding: "10px 12px", background: "#f8fafc",
+        borderRadius: 10, border: "1px solid #e2e8f0",
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#475569",
+                          textTransform: "uppercase", letterSpacing: 0.5 }}>
+          📅 Vencimento
+        </span>
+        {[
+          { v: "month", l: "Por mês" },
+          { v: "custom", l: "Personalizado" },
+          { v: "all", l: "Todos" },
+        ].map((p) => (
+          <button key={p.v}
+            data-testid={`bills-period-mode-${p.v}`}
+            onClick={() => setFilter((s) => ({ ...s, periodMode: p.v }))}
+            style={{
+              padding: "5px 10px", borderRadius: 8,
+              background: filter.periodMode === p.v ? "#0e7490" : "#fff",
+              color: filter.periodMode === p.v ? "#fff" : "#475569",
+              fontSize: 12, fontWeight: 600,
+              border: "1px solid",
+              borderColor: filter.periodMode === p.v ? "#0e7490" : "#cbd5e1",
+              cursor: "pointer",
+            }}>{p.l}</button>
+        ))}
+
+        {filter.periodMode === "month" && (
+          <>
+            <button data-testid="bills-month-prev"
+              onClick={() => setFilter((s) => ({
+                ...s, monthValue: _bills_shift_month(s.monthValue, -1),
+              }))}
+              style={{
+                padding: "5px 9px", borderRadius: 8, background: "#fff",
+                border: "1px solid #cbd5e1", cursor: "pointer", fontSize: 13,
+              }}>‹</button>
+            <input type="month" value={filter.monthValue}
+              data-testid="bills-month-input"
+              onChange={(e) => setFilter((s) => ({ ...s, monthValue: e.target.value }))}
+              style={{
+                padding: "5px 8px", borderRadius: 8, border: "1px solid #cbd5e1",
+                fontSize: 12, fontWeight: 600, color: "#0f172a",
+              }} />
+            <span style={{ fontSize: 11, color: "#64748b" }}>
+              ({_bills_label_month(filter.monthValue)})
+            </span>
+            <button data-testid="bills-month-next"
+              onClick={() => setFilter((s) => ({
+                ...s, monthValue: _bills_shift_month(s.monthValue, +1),
+              }))}
+              style={{
+                padding: "5px 9px", borderRadius: 8, background: "#fff",
+                border: "1px solid #cbd5e1", cursor: "pointer", fontSize: 13,
+              }}>›</button>
+            <button data-testid="bills-month-current"
+              onClick={() => setFilter((s) => ({
+                ...s, monthValue: new Date().toISOString().slice(0, 7),
+              }))}
+              style={{
+                padding: "5px 10px", borderRadius: 8, background: "#fff",
+                border: "1px solid #cbd5e1", cursor: "pointer",
+                fontSize: 11, fontWeight: 600, color: "#475569",
+              }}>Mês atual</button>
+          </>
+        )}
+
+        {filter.periodMode === "custom" && (
+          <>
+            <input type="date" value={filter.fromDate} max={filter.toDate}
+              data-testid="bills-from-date"
+              onChange={(e) => setFilter((s) => ({ ...s, fromDate: e.target.value }))}
+              style={{
+                padding: "5px 8px", borderRadius: 8, border: "1px solid #cbd5e1",
+                fontSize: 12, fontWeight: 600, color: "#0f172a",
+              }} />
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>até</span>
+            <input type="date" value={filter.toDate} min={filter.fromDate}
+              data-testid="bills-to-date"
+              onChange={(e) => setFilter((s) => ({ ...s, toDate: e.target.value }))}
+              style={{
+                padding: "5px 8px", borderRadius: 8, border: "1px solid #cbd5e1",
+                fontSize: 12, fontWeight: 600, color: "#0f172a",
+              }} />
+          </>
+        )}
+
+        {filter.periodMode !== "all" && (resolvedDates.from || resolvedDates.to) && (
+          <span style={{ marginLeft: "auto", fontSize: 11, color: "#0e7490",
+                            fontWeight: 600 }}>
+            Mostrando {items.length} {items.length === 1 ? "conta" : "contas"}
+          </span>
+        )}
       </div>
       <div style={{ display: "grid",
                     gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",

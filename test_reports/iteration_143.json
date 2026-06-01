@@ -1,0 +1,33 @@
+{
+  "summary": "Backend-only testing for iter143 (ONT label scanner + retirada move-on-create). All 7 acceptance criteria from the review request passed: Claude Sonnet 4.6 vision OCR of MAC/SN (happy path + invalid base64 400 + pydantic min_length 422 + auth 401/403), and _move_ont_for_withdraw via /api/stok/services/{id}/close in 3 scenarios (unknown MAC creates new ONT with source=ai_scan_retirada, wrong location forces move + withdraw_inconsistency=true, correct client moves cleanly to technician).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter143_ont_scan_retirada.py",
+    "/app/test_reports/pytest/iter143_full.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "stok.py is now 1890 lines (well beyond the 700-line guideline). Recommend splitting into modules: stok/onts.py, stok/services.py, stok/history.py, stok/dashboard.py. This is a long-standing tech-debt warning, not blocking.",
+    "ont_scan.py:140 uses `raw_resp[:500] if isinstance(raw_resp, str) else None` — if the LLM call raised before assignment, this line is unreachable (it's inside the success branch), so it is safe; OK.",
+    "_move_ont_for_withdraw insertion (stok.py:594) does not generate an `id` field for the new ONT doc; other bulk-create paths also omit `id`. Consistent with the rest of the collection schema, but worth double-checking if downstream code expects `id`.",
+    "stok.py `normalize_mac` is just strip+upper — does not enforce 12-hex format. The new flow stores whatever scan IA returns. ont_scan.py:_normalize_mac DOES enforce 12-hex, so end-to-end is safe; but direct API callers could insert garbage MACs via /services/{id}/close. Consider unifying."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter143_ont_scan_retirada.py (new)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "not tested (backend-only request)"},
+  "test_credentials": "gestor@empresa.com / 123456 (per request); login works, JWT issued, role=gestor, company_id=co-demo",
+  "seed_data_creation": "Each retirada test creates its own service via POST /api/stok/services and seeds ONTs via /api/stok/onts/bulk + /api/stok/onts/transfer-to-tech as needed. New stok_onts docs are tagged with TEST_ client_name prefix for traceability. No cleanup teardown — DB state accumulates test data (matches pattern used in iter141/142).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend URL must be exported as REACT_APP_BACKEND_URL env var when running pytest (conftest.py default URL is stale: selfie-attendance-7). The current preview URL is https://dual-combine-3.preview.emergentagent.com. Run: `cd /app/backend && REACT_APP_BACKEND_URL=https://dual-combine-3.preview.emergentagent.com python -m pytest tests/test_iter143_ont_scan_retirada.py -v`. Claude vision call takes ~2s on synthetic PNG; full suite finishes in ~7s.",
+  "rca of the issue": "N/A — no issues found. End-to-end flow works: synthetic PNG (MAC + SN drawn with PIL ImageDraw) → Claude Sonnet 4.6 vision via emergentintegrations LlmChat + ImageContent → returns normalized MAC AA:BB:CC:DD:EE:FF + uppercased SN + confidence 0.97. _move_ont_for_withdraw correctly handles all 3 paths in stok.py lines 585-632."
+}

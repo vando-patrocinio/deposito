@@ -1,0 +1,34 @@
+{
+  "summary": "Iter121 backend validation: NEO Reports schedules CRUD + dispatcher + manual run, /api/rede-ia/public/ctos/list 5km radius filter, e auth login. 23/23 testes passaram.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter121_neo_reports_and_radius.py",
+    "/app/test_reports/pytest/iter121_neo_reports.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "neo_reports.py: dispatch_due_schedules_job compara next_run_at (BRT ISO com offset -03:00) com $lte de now BRT ISO — funciona pois ISO strings com mesmo offset são lexicograficamente ordenáveis. Mas se schedules antigos tiverem next_run_at sem offset ou em UTC, comparação pode falhar silenciosamente. Considerar normalizar/migrar.",
+    "_build_pdf_bytes injeta fake_user = {'company_id': cid} sem 'role' nos dois primeiros tipos; se occupancy_pdf/closed_tickets_pdf checarem role internamente, pode quebrar. Hoje passou — mas é frágil.",
+    "Schedule órfão com schema antigo (campos enabled/report_type=weekly_ops/hour_local) — o dispatcher tem try/except por schedule e _validate só roda na criação/patch, portanto schedules legados podem disparar erros em execução. Recomendar limpeza ou migration.",
+    "_compute_next_run para weekly: se candidate cair no mesmo dia/hora atual e weekday==target_dow, adiciona 7 dias (correto). Verificado e OK.",
+    "rede_ia.py public_ctos_list: endpoint público sem auth — qualquer um pode descobrir as CTOs de uma empresa passando o collab_id. Considerar adicionar throttle ou pelo menos validar que collab_id existe (já faz via _company_for_collaborator)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter121_neo_reports_and_radius.py (novo)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A (backend only)"},
+  "test_credentials": "gestor@empresa.com / 123456 — login funcionou e retornou access_token. Endpoints /api/neo-reports/* aceitam o token.",
+  "seed_data_creation": "Cria schedules TEST_* via fixtures e limpa via DELETE no test_delete_schedules_cleanup. Nenhum lixo permanente.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend NEO Reports validado 100%. Arquivo de testes pode ser reutilizado: /app/backend/tests/test_iter121_neo_reports_and_radius.py. Rodar com REACT_APP_BACKEND_URL exportado: REACT_APP_BACKEND_URL=https://dual-combine-3.preview.emergentagent.com pytest .../test_iter121_neo_reports_and_radius.py -v. Cobertura: CRUD schedules (daily/weekly/monthly + next_run_at), run-now (PDF 2.7kB gerado, status=success sem whatsapp_phone), history, report-types, validações 400, role enforcement, filtro 5km Haversine. Confirmado manualmente: GET /api/rede-ia/public/ctos/list/col-30aafc3c?lat=-23.55&lng=-46.63 retorna total=1, filtered_out_count=4, role_filter_applied=true, radius_km=5.0. Sem lat/lng o filtro não é aplicado.",
+  "rca of the issue": "N/A — Sem bugs encontrados. Implementação está sólida. Code review comments são sugestões de hardening, não bugs."
+}

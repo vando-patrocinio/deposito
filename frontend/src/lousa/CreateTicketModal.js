@@ -4,11 +4,13 @@ import { Button } from "@/ui";
 
 const css = { width: "100%", padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 10, fontSize: 13, marginBottom: 8 };
 
-export default function CreateTicketModal({ collabs, onClose, onCreated }) {
+export default function CreateTicketModal({ collabs, onClose, onCreated, defaults }) {
   const [form, setForm] = useState({
     client_name: "", address: "", neighborhood: "", phone: "",
-    relato: "", type: "reparo", priority: "normal",
-    scheduled_time: "", assigned_collaborator_id: collabs[0]?.id || "",
+    relato: "", type: "reparo",
+    priority: defaults?.scheduled_time ? "horario" : "normal",
+    scheduled_time: defaults?.scheduled_time || "",
+    assigned_collaborator_id: defaults?.assigned_collaborator_id || collabs[0]?.id || "",
   });
   const [saving, setSaving] = useState(false);
 

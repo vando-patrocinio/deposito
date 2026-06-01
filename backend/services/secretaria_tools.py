@@ -227,6 +227,30 @@ TOOLS_SPEC_EXTRA: List[Dict[str, Any]] = [
             },
         },
     },
+    # --------- NEO (orquestrador IA executivo) ---------
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_neo",
+            "description": (
+                "Encaminha uma pergunta executiva para o NEO — orquestrador IA "
+                "que consolida dados de TODOS os agentes (Isabella, Álvaro, Camila, "
+                "Secretaria) e gera respostas resumidas. Use para perguntas como: "
+                "'me dê um resumo de vendas da Isabella esta semana', 'quantos "
+                "tickets o Álvaro resolveu hoje?', 'quanto a Camila cobrou este mês?', "
+                "'me dê a timeline do cliente 5582999...', 'me dê KPIs dos agentes "
+                "no último mês'. Retorna texto pronto para exibir."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string",
+                                  "description": "Pergunta em linguagem natural para o NEO."},
+                },
+                "required": ["question"],
+            },
+        },
+    },
 ]
 
 
@@ -664,6 +688,56 @@ async def _tool_notifications_unread(cid: str, args: Dict[str, Any]) -> Dict[str
             "items": await cur.to_list(limit)}
 
 
+# ---------- NEO orquestrador ----------
+async def _tool_ask_neo(cid: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Encaminha pergunta ao NEO. Reutiliza o LLM + tools do NEO Chat.
+
+    Diferente da Secretaria (que faz tool-use Anthropic style), o NEO usa
+    um pipeline mais simples: 1 LLM call escolhe a tool, 1 LLM call sintetiza.
+    """
+    question = (args or {}).get("question") or ""
+    if not question:
+        return {"error": "question vazia"}
+    try:
+        from routes.neo_chat import (
+            TOOL_CATALOG_PROMPT, SUMMARIZE_PROMPT, TOOLS as NEO_TOOLS,
+            _llm_chat, _parse_json_loose,
+        )
+        from emergentintegrations.llm.chat import UserMessage
+        import uuid as _uuid
+        sid = f"sec2neo-{_uuid.uuid4().hex[:8]}"
+        chat1 = _llm_chat(f"{sid}-route", TOOL_CATALOG_PROMPT)
+        raw1 = await chat1.send_message(UserMessage(text=question))
+        decision = _parse_json_loose(raw1)
+        tool_name = decision.get("tool") or "freeform"
+        params = decision.get("params") or {}
+        if tool_name == "freeform":
+            return {"answer": decision.get("answer") or "Sem dados.", "via_neo": True}
+        if tool_name in NEO_TOOLS:
+            fn = NEO_TOOLS[tool_name]
+            allowed = {}
+            if tool_name == "customer_timeline":
+                allowed["phone"] = str(params.get("phone") or "")
+            elif "days" in params:
+                try:
+                    allowed["days"] = max(1, min(90, int(params["days"])))
+                except Exception:
+                    pass
+            data = await fn(cid, **allowed)
+            chat2 = _llm_chat(f"{sid}-sum", "Você é o NEO. PT-BR, breve.")
+            import json as _json
+            prompt = SUMMARIZE_PROMPT.format(
+                question=question, tool=tool_name,
+                data=_json.dumps(data, ensure_ascii=False, default=str)[:5000],
+            )
+            answer = await chat2.send_message(UserMessage(text=prompt))
+            return {"answer": answer, "via_neo": True, "tool_used": tool_name}
+        return {"answer": f"NEO não encontrou tool para '{tool_name}'", "via_neo": True}
+    except Exception as e:
+        logger.warning("[secretaria] ask_neo fail: %s", e)
+        return {"error": f"NEO indisponível: {e}"}
+
+
 # ============================================================
 # DISPATCH TABLE
 # ============================================================
@@ -687,4 +761,5 @@ TOOL_FUNCS_EXTRA = {
     "system_health": _tool_system_health,
     "ai_preventive_insights": _tool_ai_preventive_insights,
     "notifications_unread": _tool_notifications_unread,
+    "ask_neo": _tool_ask_neo,
 }

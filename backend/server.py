@@ -81,6 +81,7 @@ from routes import (
     rede_ia_map as routes_rede_ia_map,
     rede_ia_kmz as routes_rede_ia_kmz,
     rede_ia_signals as routes_rede_ia_signals,
+    cto_ports_base as routes_cto_ports_base,
     radius as routes_radius,
     contracts as routes_contracts,
     clients_segments as routes_clients_segments,
@@ -135,6 +136,9 @@ from routes import (
     bank_import as routes_bank_import,
     wifi as routes_wifi,
     billing as routes_billing,
+    retirada_template as routes_retirada_template,
+    os_validation_toggles as routes_os_validation_toggles,
+    tech_tracking as routes_tech_tracking,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -173,6 +177,40 @@ async def ensure_indexes() -> None:
     # Estoque (stok) — coleções isoladas
     await db.stok_onts.create_index([("company_id", 1), ("mac", 1)], unique=True)
     await db.stok_onts.create_index("location_id")
+    # iter162 — indexes para queries de defeituosa e auditoria SN
+    await db.stok_onts.create_index([("company_id", 1), ("status", 1)])
+    await db.stok_onts.create_index([("company_id", 1), ("location_type", 1),
+                                       ("location_id", 1), ("status", 1)])
+    # Tracking GPS dos técnicos (iter157)
+    await db.tech_locations.create_index([("company_id", 1), ("collab_id", 1),
+                                            ("captured_at", -1)])
+    await db.tech_locations.create_index([("company_id", 1), ("captured_at", -1)])
+    # Auditoria SN da Retirada (iter161)
+    await db.withdraw_sn_audit.create_index([("company_id", 1), ("created_at", -1)])
+    await db.withdraw_sn_audit.create_index([("company_id", 1),
+                                                ("technician_id", 1),
+                                                ("created_at", -1)])
+    await db.withdraw_sn_audit.create_index([("company_id", 1), ("reason", 1)])
+    # Histórico de Equipamento por Cliente (iter163)
+    await db.client_equipment_history.create_index("id", unique=True)
+    await db.client_equipment_history.create_index([
+        ("company_id", 1), ("client_id", 1), ("captured_at", -1),
+    ])
+    await db.client_equipment_history.create_index([
+        ("company_id", 1), ("client_id", 1), ("action", 1),
+    ])
+    # Alertas de ONT Duplicada (iter164)
+    await db.ont_duplicate_alerts.create_index("id", unique=True)
+    await db.ont_duplicate_alerts.create_index([
+        ("company_id", 1), ("status", 1), ("detected_at", -1),
+    ])
+    # iter176 — Correções de OCR
+    await db.stok_ocr_corrections.create_index([
+        ("company_id", 1), ("created_at", -1),
+    ])
+    await db.stok_ocr_corrections.create_index([
+        ("company_id", 1), ("ont_model", 1),
+    ])
     await db.stok_stock.create_index([("company_id", 1), ("location", 1)], unique=True)
     await db.stok_services.create_index("id", unique=True)
     await db.stok_services.create_index([("company_id", 1), ("status", 1)])
@@ -425,11 +463,17 @@ async def _startup() -> None:
     routes_atlaz.start_worker()
     await routes_smartolt.start_worker()
     await routes_ai_preventive.start_worker()
+    # iter186 — Vision AI auto-link de cabos órfãos (cron noturno)
+    await routes_rede_ia.start_vision_worker()
     await routes_aihub.start_worker()
     await routes_central_ia.start_worker()
     # SmartOLT AI worker — detecta outages a cada 90s
     from services.smartolt_ai import start_worker as start_smartolt_ai
     start_smartolt_ai()
+    # iter180 — SmartOLT VLAN sync worker: detecta mudanças de VLAN e
+    # emite ticket vlan_change_unexpected
+    from services.smartolt_vlan_sync import start_worker as start_vlan_sync
+    start_vlan_sync()
     from services.sentinela_lousa import start_worker as start_sentinela_lousa
     start_sentinela_lousa()
     from services.lousa_ai_triagem import start_worker as start_lousa_ai
@@ -569,6 +613,11 @@ async def _startup() -> None:
     scheduler.add_job(_billing_dunning_all_companies,
                       CronTrigger(hour=7, minute=0),
                       id="billing_dunning_daily", replace_existing=True)
+    # NEO • Relatórios Agendados — dispatcher a cada 5 min
+    from routes.neo_reports import dispatch_due_schedules_job
+    scheduler.add_job(dispatch_due_schedules_job,
+                      "interval", minutes=5,
+                      id="neo_reports_dispatcher", replace_existing=True)
     from services.drive_backup import daily_backup_worker as drive_daily_worker
     asyncio.create_task(drive_daily_worker())
     logger.info("Scheduler iniciado.")
@@ -627,6 +676,7 @@ app.include_router(routes_rede_ia.router)
 app.include_router(routes_rede_ia_map.router)
 app.include_router(routes_rede_ia_kmz.router)
 app.include_router(routes_rede_ia_signals.router)
+app.include_router(routes_cto_ports_base.router)
 app.include_router(routes_radius.router)
 app.include_router(routes_contracts.router)
 app.include_router(routes_clients_segments.router)
@@ -679,6 +729,23 @@ from routes import data_health as routes_data_health  # noqa: E402
 app.include_router(routes_data_health.router)
 from routes import purchases as routes_purchases  # noqa: E402
 app.include_router(routes_purchases.router)
+from routes import neo_reports as routes_neo_reports  # noqa: E402
+app.include_router(routes_neo_reports.router)
+from routes import neo_chat as routes_neo_chat  # noqa: E402
+app.include_router(routes_neo_chat.router)
+from routes import ont_scan as routes_ont_scan  # noqa: E402
+app.include_router(routes_ont_scan.router)
+from routes import stok_transfers as routes_stok_transfers  # noqa: E402
+app.include_router(routes_stok_transfers.router)
+from routes import projetos_propostas as routes_projetos_propostas  # noqa: E402
+app.include_router(routes_projetos_propostas.router)
+from routes import network_test as routes_network_test  # noqa: E402
+app.include_router(routes_network_test.router)
+app.include_router(routes_retirada_template.router)
+app.include_router(routes_os_validation_toggles.router)
+app.include_router(routes_tech_tracking.router)
+from routes import kpi_churn as routes_kpi_churn  # noqa: E402
+app.include_router(routes_kpi_churn.router)
 
 
 # ============================================================

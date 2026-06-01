@@ -3,6 +3,8 @@ import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Responsive
 import { api } from "@/api";
 import { Card, fmtMin } from "@/ui";
 import WhatsAppShareCard from "@/WhatsAppShareCard";
+import Ipv6QualityCard from "@/Ipv6QualityCard";
+import ChurnReasonsKpiCard from "@/ChurnReasonsKpiCard";
 
 function brl(v) { return `R$ ${(v || 0).toFixed(2).replace(".", ",")}`; }
 function hours(min) { return ((min || 0) / 60).toFixed(1); }
@@ -98,6 +100,10 @@ export default function DashboardPanel() {
       <div style={{ margin: "14px 0" }}>
         <WhatsAppShareCard />
       </div>
+
+      <Ipv6QualityCard />
+
+      <ChurnReasonsKpiCard />
 
       {/* Seletor de modo */}
       <Card style={{ marginBottom: 14 }}>

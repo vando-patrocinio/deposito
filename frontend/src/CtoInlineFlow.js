@@ -60,10 +60,34 @@ export default function CtoInlineFlow({
   collabId, client, technician,
   onSkipFromA, onAdvanceFromA, onBackFromB, onCreated,
   onSelectExistingCto,
+  isFullUnlock = false,
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const fileInputRef = useRef(null);
+
+  // === Detecção de "cliente já está cadastrado em outra porta" ===
+  // Busca a porta atual do cliente (em qualquer CTO da empresa) e, quando
+  // o técnico seleciona uma porta diferente, pergunta se quer trocar. Se
+  // confirmar, libera a porta antiga e ocupa a nova (e sincroniza com o
+  // SmartOLT, se o cadastro original veio de lá).
+  const [clientCurrentPort, setClientCurrentPort] = useState(null);
+  const [showSwapDialog, setShowSwapDialog] = useState(false);
+  const [swapTargetPort, setSwapTargetPort] = useState(null);
+  const [swapBusy, setSwapBusy] = useState(false);
+
+  useEffect(() => {
+    if (!client?.id || !collabId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api.redeIaClientCurrentPort(collabId, client.id);
+        if (cancelled) return;
+        setClientCurrentPort(r?.found ? r.current : null);
+      } catch { /* sem trava se falhar */ }
+    })();
+    return () => { cancelled = true; };
+  }, [client?.id, collabId]);
 
   // Sigla padrão do bairro detectado (3 primeiras letras maiúsculas, SEM
   // acentos — pra bater com a normalização do backend que armazena
@@ -108,7 +132,7 @@ export default function CtoInlineFlow({
   async function submitCreate() {
     setBusy(true); setErr("");
     try {
-      if (!state.photo) throw new Error("Foto da CTO é obrigatória.");
+      if (!state.photo && !isFullUnlock) throw new Error("Foto da CTO é obrigatória.");
       if (!state.clientPort) throw new Error("Selecione a porta do cliente.");
 
       // Modo "usar CTO existente" — não cria nova; só vincula via OS
@@ -135,7 +159,7 @@ export default function CtoInlineFlow({
         throw new Error("Endereço não detectado.");
       }
       if (!autoSigla || autoSigla.length < 2) {
-        throw new Error("Bairro não detectado. Volte e ajuste o pino.");
+        throw new Error("Digite o bairro (campo acima) para gerar a sigla.");
       }
       if (!state.capacity) throw new Error("Selecione a quantidade de portas.");
       if (!state.networkType) throw new Error("Selecione o tipo de rede.");
@@ -174,6 +198,7 @@ export default function CtoInlineFlow({
         sigla: autoSigla,
         vlan,
         suggested_name: "",
+        cto_number: state.ctoNumber ? Number(state.ctoNumber) : null,
         technician_id: technician?.id || collabId,
         technician_name: technician?.name || "",
         photo_data_url: state.photo || null,
@@ -182,7 +207,16 @@ export default function CtoInlineFlow({
       onCreated?.({ cto: r, port_number: state.clientPort });
     } catch (e) {
       const d = e?.response?.data?.detail;
-      setErr(typeof d === "string" ? d : (d?.msg || e.message || "Falha ao criar CTO."));
+      // Erro 409 = duplicidade. d é objeto com suggested_number.
+      if (e?.response?.status === 409 && d && d.suggested_number) {
+        setErr(
+          `${d.msg || "CTO já existe"}. Próximo número livre: ${d.suggested_number}.`,
+        );
+        // Auto-preenche o sugerido pro técnico só apertar Criar de novo
+        setState((s) => ({ ...s, ctoNumber: String(d.suggested_number) }));
+      } else {
+        setErr(typeof d === "string" ? d : (d?.msg || e.message || "Falha ao criar CTO."));
+      }
     } finally {
       setBusy(false);
     }
@@ -192,24 +226,6 @@ export default function CtoInlineFlow({
   if (screen === "A") {
     return (
       <div data-testid="cto-inline-screen-a">
-        <div style={{
-          padding: "10px 12px", borderRadius: 12, marginBottom: 12,
-          background: "#ecfdf5", border: "1px dashed #10b981",
-          display: "flex", alignItems: "flex-start", gap: 10,
-        }}>
-          <span style={{ fontSize: 22 }}>📍</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#065f46" }}>
-              Localização da CTO + Foto + VLAN
-            </div>
-            <div style={{ fontSize: 10, color: "#475569", marginTop: 2, lineHeight: 1.3 }}>
-              Posicione o pino no mapa, tire uma foto e informe a VLAN.
-              A IA vai vincular {client?.name ? <strong>{client.name}</strong> : "este cliente"}
-              {" "}à porta escolhida na próxima tela.
-            </div>
-          </div>
-        </div>
-
         {/* Mapa GPS — mesmo CTOMapPicker do wizard original */}
         <div style={{ borderRadius: 14, overflow: "hidden",
                         border: `1px solid ${C_BORDER}`, marginBottom: 10,
@@ -223,11 +239,22 @@ export default function CtoInlineFlow({
                 gps: { lat, lng, accuracy: null },
                 address: {
                   ...(s.address || {}),
-                  endereco: a.road || s.address?.endereco || "",
+                  endereco: a.road || a.pedestrian || a.cycleway
+                              || s.address?.endereco || "",
                   numero: a.house_number || s.address?.numero || "",
-                  bairro_detected: a.suburb || "",
-                  cidade_detected: a.city || "",
+                  // Fallback agressivo de bairro: OSM varia bastante nesse campo.
+                  bairro_detected: a.suburb
+                                    || a.neighbourhood
+                                    || a.quarter
+                                    || a.city_district
+                                    || a.residential
+                                    || a.borough
+                                    || a.hamlet
+                                    || a.village
+                                    || "",
+                  cidade_detected: a.city || a.town || a.municipality || "",
                   estado_detected: a.state || "",
+                  cep: a.postcode || s.address?.cep || "",
                 },
               }));
               setErr("");
@@ -236,73 +263,103 @@ export default function CtoInlineFlow({
           />
         </div>
 
-        <label style={labelStyle}>Endereço (auto)</label>
-        <input data-testid="cto-inline-rua" style={inputBase}
-                value={state.address?.endereco || ""}
-                onChange={(e) => setState((s) => ({
-                  ...s, address: { ...(s.address || {}), endereco: e.target.value } }))}
-                placeholder="Detectado pelo mapa" />
+        {/* Card visual "Endereço detectado" — substitui os inputs avulsos
+            com layout mais polido (ícones + linhas formatadas) */}
+        <div data-testid="cto-inline-address-card" style={{
+          marginTop: 4, padding: 12, borderRadius: 12,
+          background: "linear-gradient(135deg,#f8fafc 0%,#ecfdf5 100%)",
+          border: "1px solid #bbf7d0",
+        }}>
+          <div style={{ display: "flex", alignItems: "center",
+                            justifyContent: "space-between", marginBottom: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 800,
+                              color: "#065f46", letterSpacing: 0.5,
+                              textTransform: "uppercase" }}>
+              📍 Endereço da CTO {state.address?.endereco
+                ? "· detectado por GPS" : "· aguardando GPS"}
+            </div>
+          </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <label style={labelStyle}>Número</label>
-            <input data-testid="cto-inline-numero" style={inputBase}
-                    value={state.address?.numero || ""}
-                    onChange={(e) => setState((s) => ({
-                      ...s, address: { ...(s.address || {}), numero: e.target.value } }))}
-                    placeholder="—" />
+          <label style={labelStyle}>Logradouro</label>
+          <input data-testid="cto-inline-rua" style={inputBase}
+                  value={state.address?.endereco || ""}
+                  onChange={(e) => setState((s) => ({
+                    ...s, address: { ...(s.address || {}),
+                                        endereco: e.target.value } }))}
+                  placeholder="Detectado pelo mapa" />
+
+          <div style={{ display: "grid", gap: 10, marginTop: 6,
+                            gridTemplateColumns: "1fr 1.5fr" }}>
+            <div>
+              <label style={labelStyle}>
+                Número {state.address?.numero
+                  ? <span style={{ color: "#065f46" }}>· GPS ✓</span>
+                  : <span style={{ color: "#dc2626" }}>· digite</span>}
+              </label>
+              <input data-testid="cto-inline-numero" style={inputBase}
+                      value={state.address?.numero || ""}
+                      onChange={(e) => setState((s) => ({
+                        ...s, address: { ...(s.address || {}),
+                                            numero: e.target.value } }))}
+                      placeholder="—" inputMode="numeric" />
+            </div>
+            <div>
+              <label style={labelStyle}>
+                Bairro {state.address?.bairro_detected
+                  ? <span style={{ color: "#065f46" }}>· GPS ✓</span>
+                  : <span style={{ color: "#dc2626" }}>· digite</span>}
+              </label>
+              <input data-testid="cto-inline-bairro" style={inputBase}
+                      value={state.address?.bairro_detected || ""}
+                      onChange={(e) => setState((s) => ({
+                        ...s, address: { ...(s.address || {}),
+                                            bairro_detected: e.target.value } }))}
+                      placeholder="Ex.: Centro" />
+            </div>
           </div>
-          <div>
-            <label style={labelStyle}>Bairro (auto)</label>
-            <input data-testid="cto-inline-bairro" style={{ ...inputBase, background: "#f8fafc" }}
-                    value={state.address?.bairro_detected || ""} readOnly
-                    placeholder="—" />
-          </div>
+
+          {state.address?.cidade_detected && (
+            <div style={{
+              marginTop: 8, padding: "6px 10px", borderRadius: 8,
+              background: "rgba(16,185,129,0.08)",
+              border: "1px solid rgba(16,185,129,0.25)",
+              fontSize: 11, color: "#065f46", lineHeight: 1.5,
+              display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <span style={{ fontSize: 14 }}>🌆</span>
+              <span>
+                <strong>{state.address.cidade_detected}</strong>
+                {state.address?.estado_detected
+                  ? ` · ${state.address.estado_detected}` : ""}
+                {state.address?.cep ? ` · CEP ${state.address.cep}` : ""}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Foto — OBRIGATÓRIA */}
-        <label style={labelStyle}>
-          Foto da CTO <span style={{ color: "#dc2626" }}>*</span>
-        </label>
         <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
                 onChange={onPhotoChange} style={{ display: "none" }}
                 data-testid="cto-inline-photo-input" />
-        {state.photo ? (
-          <div style={{ position: "relative", borderRadius: 12, overflow: "hidden",
-                          border: `1.5px solid #22c55e`, marginBottom: 6 }}>
-            <img src={state.photo} alt="Foto CTO"
-                  data-testid="cto-inline-photo-preview"
-                  style={{ width: "100%", display: "block",
-                            maxHeight: 200, objectFit: "cover" }} />
-            <div style={{ position: "absolute", top: 8, left: 8,
-                            background: "#15803d", color: "#fff",
-                            padding: "2px 8px", borderRadius: 999,
-                            fontSize: 10, fontWeight: 800 }}>
-              ✓ Foto registrada
+        {state.photo && (
+          <>
+            <label style={labelStyle}>
+              Foto da CTO <span style={{ color: "#15803d" }}>✓</span>
+            </label>
+            <div style={{ position: "relative", borderRadius: 12, overflow: "hidden",
+                            border: `1.5px solid #22c55e`, marginBottom: 6 }}>
+              <img src={state.photo} alt="Foto CTO"
+                    data-testid="cto-inline-photo-preview"
+                    style={{ width: "100%", display: "block",
+                              maxHeight: 200, objectFit: "cover" }} />
+              <button data-testid="cto-inline-photo-remove"
+                      onClick={() => setState((s) => ({ ...s, photo: null }))}
+                      style={{ position: "absolute", top: 8, right: 8,
+                                background: "rgba(0,0,0,0.6)", color: "#fff",
+                                border: 0, borderRadius: "50%", width: 28, height: 28,
+                                fontSize: 14, fontWeight: 800, cursor: "pointer" }}>×</button>
             </div>
-            <button data-testid="cto-inline-photo-remove"
-                    onClick={() => setState((s) => ({ ...s, photo: null }))}
-                    style={{ position: "absolute", top: 8, right: 8,
-                              background: "rgba(0,0,0,0.6)", color: "#fff",
-                              border: 0, borderRadius: "50%", width: 28, height: 28,
-                              fontSize: 14, fontWeight: 800, cursor: "pointer" }}>×</button>
-          </div>
-        ) : (
-          <button data-testid="cto-inline-photo-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{ ...inputBase, display: "flex", alignItems: "center",
-                            justifyContent: "space-between", cursor: "pointer",
-                            padding: "14px 14px",
-                            border: "1.5px dashed #dc2626",
-                            background: "#fef2f2" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 20 }}>📷</span>
-              <span style={{ color: "#991b1b", fontWeight: 700 }}>
-                Tirar foto da CTO (obrigatório)
-              </span>
-            </span>
-            <span style={{ color: "#dc2626", fontSize: 20 }}>›</span>
-          </button>
+          </>
         )}
 
         {/* VLAN */}
@@ -320,14 +377,6 @@ export default function CtoInlineFlow({
         )}
 
         <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-          <button data-testid="cto-inline-skip-from-a"
-                  onClick={onSkipFromA}
-                  style={{ flex: 1, padding: "12px 14px", borderRadius: 10,
-                            background: "#fff", border: `1px solid ${C_BORDER}`,
-                            color: C_MUTED, fontWeight: 600, fontSize: 13,
-                            cursor: "pointer" }}>
-            Pular CTO →
-          </button>
           <button data-testid="cto-inline-continue-from-a"
                   onClick={() => {
                     if (!state.gps?.lat || !state.gps?.lng) {
@@ -336,20 +385,24 @@ export default function CtoInlineFlow({
                     if (!state.address?.endereco) {
                       setErr("Endereço não detectado. Mova o pino até a rua."); return;
                     }
-                    if (!state.photo) {
-                      setErr("Tire uma foto da CTO antes de continuar (obrigatório)."); return;
-                    }
-                    if (!state.vlan) {
+                    if (!state.vlan && !isFullUnlock) {
                       setErr("Informe a VLAN."); return;
+                    }
+                    if (!state.photo && !isFullUnlock) {
+                      // Abre câmera; o handler onPhotoChange salva no state.
+                      // O técnico clica Continuar novamente após capturar.
+                      fileInputRef.current?.click();
+                      return;
                     }
                     setErr("");
                     onAdvanceFromA?.();
                   }}
-                  style={{ flex: 2, padding: "12px 14px", borderRadius: 10,
-                            background: C_PRIMARY, border: 0,
+                  style={{ flex: 2, padding: "14px 14px", borderRadius: 10,
+                            background: (state.photo || isFullUnlock) ? C_PRIMARY : "#0f172a",
+                            border: 0,
                             color: "#fff", fontWeight: 700, fontSize: 14,
                             cursor: "pointer" }}>
-            Continuar →
+            {(state.photo || isFullUnlock) ? "Continuar →" : "📸 Tirar foto da CTO e continuar →"}
           </button>
         </div>
       </div>
@@ -360,33 +413,9 @@ export default function CtoInlineFlow({
   const isExistingMode = !!state.existingCtoId;
   return (
     <div data-testid="cto-inline-screen-b">
-      <div style={{
-        padding: "10px 12px", borderRadius: 12, marginBottom: 12,
-        background: isExistingMode ? "#eff6ff" : "#ecfdf5",
-        border: `1px dashed ${isExistingMode ? "#3b82f6" : "#10b981"}`,
-        display: "flex", alignItems: "flex-start", gap: 10,
-      }}>
-        <span style={{ fontSize: 22 }}>{isExistingMode ? "📌" : "🔌"}</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 800,
-                          color: isExistingMode ? "#1e40af" : "#065f46" }}>
-            {isExistingMode
-              ? "Usando CTO existente — tire foto e escolha porta"
-              : "Portas, tipo de rede e porta do cliente"}
-          </div>
-          <div style={{ fontSize: 10, color: "#475569", marginTop: 2, lineHeight: 1.3 }}>
-            {isExistingMode
-              ? <>VLAN, capacidade e splitter já vieram do cadastro. A IA vai
-                  vincular {client?.name ? <strong>{client.name}</strong> : "o cliente"} à porta selecionada.</>
-              : <>A IA vai criar a CTO + vincular {client?.name
-                  ? <strong>{client.name}</strong> : "o cliente"} à porta selecionada
-                  e atualizar o mapa Rede IA.</>}
-          </div>
-        </div>
-      </div>
 
-      {/* Foto OBRIGATÓRIA também no modo CTO existente */}
-      {isExistingMode && (
+      {/* Foto OBRIGATÓRIA também no modo CTO existente — exceto Modo Teste */}
+      {isExistingMode && !isFullUnlock && (
         <>
           <label style={{ ...labelStyle, marginTop: 4 }}>
             Foto da CTO <span style={{ color: "#dc2626" }}>*</span>
@@ -429,6 +458,32 @@ export default function CtoInlineFlow({
               <span style={{ color: "#dc2626", fontSize: 20 }}>›</span>
             </button>
           )}
+        </>
+      )}
+
+      {/* Nº da CTO — técnico informa manualmente; backend valida unicidade */}
+      {!isExistingMode && (
+        <>
+          <label style={{ ...labelStyle, marginTop: 4 }}>
+            Nº da CTO <span style={{ color: "#64748b", fontWeight: 500 }}>
+              (ex: 1, 2, 15 — único por bairro/VLAN)
+            </span>
+          </label>
+          <input
+            type="number"
+            inputMode="numeric"
+            min="1" max="9999"
+            data-testid="cto-inline-number-input"
+            value={state.ctoNumber || ""}
+            placeholder="Deixe em branco para auto-numerar"
+            onChange={(e) => setState((s) => ({ ...s,
+                ctoNumber: e.target.value.replace(/\D/g, "") }))}
+            style={{
+              width: "100%", padding: "12px 14px", borderRadius: 10,
+              border: `1.5px solid ${C_BORDER}`, fontSize: 15,
+              boxSizing: "border-box", marginBottom: 10,
+            }}
+          />
         </>
       )}
 
@@ -524,28 +579,55 @@ export default function CtoInlineFlow({
             {Array.from({ length: state.capacity }, (_, i) => i + 1).map((p) => {
               const portInfo = (state.existingPorts || []).find((x) => x.number === p);
               const used = portInfo && portInfo.status !== "free";
+              // Marca a porta atual do cliente (vinda de outra CTO ou da mesma)
+              const isClientCurrent = clientCurrentPort
+                                       && clientCurrentPort.port_number === p
+                                       && (state.existingCtoId === clientCurrentPort.cto_id
+                                            || !state.existingCtoId);
               return (
                 <button key={p} data-testid={`cto-inline-port-${p}`}
-                        disabled={used}
-                        onClick={() => setState((s) => ({ ...s, clientPort: p }))}
+                        disabled={used && !isClientCurrent}
+                        onClick={() => {
+                          // Se o cliente já tem porta nesta CTO e o técnico
+                          // escolheu uma porta DIFERENTE, abre o diálogo de
+                          // confirmação de troca.
+                          if (clientCurrentPort
+                              && state.existingCtoId === clientCurrentPort.cto_id
+                              && clientCurrentPort.port_number !== p) {
+                            setSwapTargetPort(p);
+                            setShowSwapDialog(true);
+                            return;
+                          }
+                          setState((s) => ({ ...s, clientPort: p }));
+                        }}
                         style={{ padding: "14px 0", borderRadius: 10,
                                   border: `2px solid ${state.clientPort === p
                                       ? C_PRIMARY
-                                      : used ? "#fca5a5" : C_BORDER}`,
+                                      : isClientCurrent ? "#0d9488"
+                                      : used ? "#475569" : C_BORDER}`,
                                   background: state.clientPort === p
                                       ? C_PRIMARY
-                                      : used ? "#fee2e2" : "#fff",
+                                      : isClientCurrent ? "#ccfbf1"
+                                      : used ? "#334155" : "#fff",
                                   color: state.clientPort === p ? "#fff"
-                                      : used ? "#991b1b" : C_TEXT,
+                                      : isClientCurrent ? "#0f766e"
+                                      : used ? "#fff" : C_TEXT,
                                   fontSize: 16, fontWeight: 700,
-                                  cursor: used ? "not-allowed" : "pointer",
+                                  cursor: used && !isClientCurrent ? "not-allowed" : "pointer",
                                   position: "relative",
-                                  opacity: used ? 0.8 : 1 }}>
+                                  opacity: used && !isClientCurrent ? 0.95 : 1 }}>
                   {p}
-                  {used && (
+                  {used && !isClientCurrent && (
                     <span style={{ position: "absolute", bottom: 2, left: 0, right: 0,
                                     fontSize: 8, fontWeight: 800,
-                                    color: "#991b1b" }}>OCUPADA</span>
+                                    color: "#cbd5e1", letterSpacing: 0.3 }}>
+                      CADASTRADA
+                    </span>
+                  )}
+                  {isClientCurrent && (
+                    <span style={{ position: "absolute", bottom: 2, left: 0, right: 0,
+                                    fontSize: 8, fontWeight: 800,
+                                    color: "#0f766e" }}>ATUAL</span>
                   )}
                 </button>
               );
@@ -593,6 +675,108 @@ export default function CtoInlineFlow({
               : "✓ Criar CTO e vincular cliente"}
         </button>
       </div>
+
+      {/* Dialog: Troca de porta (cliente já cadastrado em outra porta da MESMA CTO) */}
+      {showSwapDialog && clientCurrentPort && swapTargetPort && (
+        <div data-testid="port-swap-dialog"
+              onClick={() => !swapBusy && setShowSwapDialog(false)}
+              style={{
+                position: "fixed", inset: 0, zIndex: 9999,
+                background: "rgba(15,23,42,0.65)",
+                display: "grid", placeItems: "center", padding: 16,
+              }}>
+          <div onClick={(e) => e.stopPropagation()}
+                style={{
+                  background: "white", borderRadius: 14, padding: 20,
+                  maxWidth: 360, width: "100%",
+                  boxShadow: "0 20px 50px rgba(15,23,42,.4)",
+                }}>
+            <div style={{ fontSize: 28, textAlign: "center", marginBottom: 8 }}>
+              🔄
+            </div>
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800,
+                            color: "#0f172a", textAlign: "center",
+                            marginBottom: 8 }}>
+              Trocar porta do cliente?
+            </h3>
+            <p style={{ fontSize: 13, color: "#475569", textAlign: "center",
+                          lineHeight: 1.5, marginBottom: 14 }}>
+              <strong>{client?.name || "Este cliente"}</strong> já está
+              cadastrado na porta{" "}
+              <strong style={{ color: "#0f766e" }}>
+                {clientCurrentPort.port_number}
+              </strong>{" "}
+              desta CTO. Deseja trocar para a porta{" "}
+              <strong style={{ color: "#0f172a" }}>{swapTargetPort}</strong>?
+            </p>
+
+            {clientCurrentPort.from_smartolt && (
+              <div style={{
+                padding: "8px 10px", background: "#eff6ff",
+                border: "1px solid #93c5fd", borderRadius: 8,
+                fontSize: 11, color: "#1e40af", marginBottom: 14,
+                lineHeight: 1.4,
+              }}>
+                ℹ️ Esse cadastro veio do SmartOLT — a porta também será
+                atualizada lá.
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button data-testid="port-swap-cancel"
+                       disabled={swapBusy}
+                       onClick={() => { setShowSwapDialog(false);
+                                            setSwapTargetPort(null); }}
+                       style={{
+                         flex: 1, padding: "12px 14px", borderRadius: 10,
+                         background: "#fff", border: "1px solid #cbd5e1",
+                         color: "#475569", fontWeight: 600, fontSize: 13,
+                         cursor: swapBusy ? "wait" : "pointer",
+                       }}>
+                ← Não trocar
+              </button>
+              <button data-testid="port-swap-confirm"
+                       disabled={swapBusy}
+                       onClick={async () => {
+                         setSwapBusy(true); setErr("");
+                         try {
+                           const r = await api.redeIaSwapClientPort(
+                             collabId, {
+                               subscriber_id: client?.id,
+                               cto_id: clientCurrentPort.cto_id,
+                               new_port: swapTargetPort,
+                             });
+                           // Atualiza UI: clientPort = nova porta, current_port
+                           // muda pra refletir o novo estado.
+                           setState((s) => ({ ...s, clientPort: swapTargetPort }));
+                           setClientCurrentPort({
+                             ...clientCurrentPort,
+                             port_number: swapTargetPort,
+                           });
+                           setShowSwapDialog(false);
+                           setSwapTargetPort(null);
+                           if (r?.from_smartolt && !r?.smartolt_synced) {
+                             setErr("Porta trocada localmente, mas SmartOLT não sincronizou. Gestor pode confirmar manual.");
+                           }
+                         } catch (e) {
+                           setErr(e?.response?.data?.detail
+                                     || e.message || "Falha na troca.");
+                         } finally { setSwapBusy(false); }
+                       }}
+                       style={{
+                         flex: 2, padding: "12px 14px", borderRadius: 10,
+                         background: "#0f766e", border: 0,
+                         color: "#fff", fontWeight: 700, fontSize: 13,
+                         cursor: swapBusy ? "wait" : "pointer",
+                         opacity: swapBusy ? 0.7 : 1,
+                       }}>
+                {swapBusy ? "Trocando..."
+                  : `✓ Trocar para porta ${swapTargetPort}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

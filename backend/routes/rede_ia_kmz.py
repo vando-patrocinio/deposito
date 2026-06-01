@@ -506,6 +506,12 @@ async def _import_placemark(pm: ET.Element, folder_name: str,
                         "imported_from_kmz": True,
                         "created_at": datetime.now(timezone.utc).isoformat(),
                     })
+                    # iter183 — Sync Base de Portas (KMZ import)
+                    try:
+                        from routes.cto_ports_base import sync_cto_all_ports
+                        await sync_cto_all_ports(company_id, new_id)
+                    except Exception:
+                        pass
                 summary["ctos_created"] += 1
             else:  # ce
                 if existing_id and not dry_run:

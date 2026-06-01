@@ -1,0 +1,38 @@
+{
+  "summary": "Frontend Playwright validation of the redesigned mobile-first Cadastro Rede wizard (CTO/CE/CABO). Wizard opens correctly with 3 type cards; CTO 8-step regression and CE 5-step new flow both completed end-to-end with successful POST to /api/rede-ia/public/ctos/{collab_id} and wizard auto-closing on success. CABO navigation, search/picker and origin-exclusion verified, but full CABO submit could not be exercised because the public listElements endpoint filters by status='approved' and only 1 approved element (PB3 / VLAN 3921 / Centro) exists in this collab's base — newly-created CTO/CE from the wizard remain pending and are NOT immediately selectable as CABO endpoints in the same session.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "CABO end-to-end",
+        "issue": "CABO endpoint picker only loads approved elements (api.redeIaCtosListPublic with status='approved'). Items just created by the technician via the same wizard go to pending and are therefore not selectable as origem/destino in the same session. Real test environment has only 1 approved element so full CABO submit could not be exercised. Consider including 'pending' (or technician's own pending items) in the picker OR auto-approving wizard-created CTOs/CEs for the same technician.",
+        "affected_selectors": ["cabo-origem-picker", "cabo-destino-picker"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Seed at least 2 approved CTOs/CEs in collab col-30aafc3c base so the CABO flow can be fully validated end-to-end (currently only PB3/VLAN3921/Centro exists). OR change ElementPicker filter to include 'pending' items created by the same technician.",
+    "Optional: auto-approve elements created by a technician via the wizard so they can be referenced immediately by CABO endpoints in field."
+  ],
+  "critical_code_review_comments": [
+    "CadastroCTOWizard.js is 1562 lines — exceeds 700-line guideline. Recommend splitting into CTOFlow.js, CEFlow.js, CABOFlow.js + shared MapStep/VLANStep/PhotoInput sub-components. Maintainability risk is high.",
+    "Step 6 (CTO splitter) hard-codes setStep(8), skipping step 7 (client port) entirely. The wizard never reaches step 7 — there is no test-id `cto-step7-continue` exercised in any happy path. Either remove step 7 or wire it properly (e.g., setStep(7) and let the port step decide). Currently 'Porta do cliente' is shown in the summary card only when clientPort is set, but it cannot be set because step 7 is skipped.",
+    "submit() for cabo: when from.gps.lat is null but to.gps.lat is not, midLng falls back to (from.gps.lng || null) — same for lat; that means cable midpoint can be (null, to.gps.lng) instead of (to.gps.lat, to.gps.lng). Edge-case but worth a clean fallback.",
+    "ElementPicker filters with `status: 'approved'`; this implicit business rule isn't shown to the user — when only 1 approved exists and the technician selected it as origem, the destino screen shows an empty list with the generic 'Nenhum elemento encontrado' message but no hint that they need to create/approve more items first. Add a contextual help message.",
+    "Bairros auto-match useEffect lists `useApi` in deps which is a useMemo recreated on every collabId change — fine, but causes the bairros fetch to re-run on every parent re-render that updates collabId. Acceptable as collabId is stable, but verify."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "~85% (CTO 100%, CE 100%, CABO 60% navigation/picker only — submit blocked by seed data)"},
+  "test_credentials": "Public collab URL: https://dual-combine-3.preview.emergentagent.com/?cid=col-30aafc3c (technician DIOGO)",
+  "seed_data_creation": "Created via UI during the test: 1× CE (001_301_JAT, VLAN 301 bairro Jatiúca) and 1× CTO (002_301_JAT, VLAN 301 bairro Jatiúca). Both POSTed successfully via /api/rede-ia/public/ctos/{collab_id} and wizard closed. They are in pending status so they did NOT appear in the CABO picker.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All key data-testids work as documented in the review request: cto-wizard root, cadastro-tipo-cto/ce/cabo, cto-step2-continue, cto-vlan-input, cto-step3-continue, cto-cap-{4|8|16}, cto-net-bal/des, cto-splitter-* (sanitized strings, e.g. cto-splitter-Sem_splitter___n_o_informado), cto-step4/5/6/7-continue, cto-summary-submit, ce-bandejas-{4|8|12|24|48}, ce-bandejas-continue, ce-tipo-{aerea|subterranea|camara}, ce-tipo-continue, cabo-origem-picker, cabo-origem-picker-search, cabo-origem-picker-item-{id}, cabo-origem-continue, cabo-destino-picker, cabo-destino-continue, cabo-fibras-{2|4|6|12|24|36|48|72|96|144}, cabo-tipo-{drop|distribuicao|backbone}, cabo-config-continue. Map (Leaflet) requires either Playwright geolocation grant OR a manual drag (mouse.down/move/up) to trigger moveend + Nominatim reverse-geocode; tested location -9.6498,-35.7089 (Maceió) auto-detects Jatiúca correctly. Suggested names confirmed as NNN_VLAN_SIGLA (e.g. 001_301_JAT, 002_301_JAT). CABO suggested name not observed since submit not reached.",
+  "rca of the issue": "N/A — the only blocking issue (CABO end-to-end submit) is a seed-data limitation, not a functional bug. The wizard frontend itself is functioning correctly."
+}

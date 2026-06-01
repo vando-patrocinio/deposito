@@ -76,7 +76,9 @@ async def login(request: Request, payload: LoginIn):
         {"id": user["id"]},
         {"$set": {"active_session_id": sid, "last_login_at": now_iso()}},
     )
-    token = create_access_token(user["id"], user["email"], user["role"], company_id=cid, session_id=sid)
+    token = create_access_token(user["id"], user["email"], user["role"],
+                                  company_id=cid, session_id=sid,
+                                  is_super_admin=is_super_admin(user))
     user.pop("_id", None)
     user.pop("password_hash", None)
     user["active_session_id"] = sid

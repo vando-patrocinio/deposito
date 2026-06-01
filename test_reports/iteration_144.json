@@ -1,0 +1,42 @@
+{
+  "summary": "Iter 144 — testou fluxo completo de transferências ONT estoque↔cliente (8 endpoints novos em stok_transfers.py + _move_ont_for_install/withdraw modificados em stok.py). 19/19 testes passaram. Auth role (gestor) validado; preview-mac cobre os 3 casos (match, mismatch, smartolt ausente); fluxo install MATCH move ONT pro cliente com status=instalada; fluxo MISMATCH cria stok_pending_transfers com kind=install_mac_mismatch e marca ONT como pendente_aprovacao_gestor; approve move pro cliente; reject restaura estoque; KPIs retornam todas as chaves esperadas (installed_direct, pending, approved, rejected, withdrawn, match_pct, top_pending_techs ≤5).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/stok/services/{sid}/preview-mac",
+        "issue": "normalize_mac() em stok.py:102 só faz strip().upper() — não valida formato MAC. Strings tipo 'INVALID_MAC' são aceitas como MAC e retornam 200 (predicted_status=pendente_mac_divergente). Apenas MAC vazio/whitespace dispara 400."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stok_transfers.py",
+    "/app/test_reports/pytest/iter144_stok_transfers.xml"
+  ],
+  "action_items": [
+    "(Opcional) Adicionar regex MAC em normalize_mac() ou em preview_mac_match para devolver 400 quando string não casa com formato XX:XX:XX:XX:XX:XX — atualmente qualquer string vira 'mac normalizado' e segue para comparação.",
+    "Considerar adicionar índice composto em stok_pending_transfers (company_id, status, created_at) para acelerar listagem e KPIs em produção."
+  ],
+  "critical_code_review_comments": [
+    "stok.py linha 580: _move_ont_for_install valida apenas location_type/location_id do técnico, mas não checa status da ONT — uma ONT já 'retirada_com_tecnico' (source=ai_scan_retirada) consegue ser usada para instalação. Validação intencional? Caso contrário, restringir status in ['no_estoque'] antes de mover.",
+    "stok_transfers.py linha 252-257: installed_direct usa filtro {approved_by_email:{$exists:false}} pra excluir instalações que vieram de approve. OK, mas se um doc legacy não tem esse campo, contará como direto — verificar migração.",
+    "stok_transfers.py linha 200-203: $unset usa string vazia como valor (correto pro MongoDB), mas o reject também executa $unset mesmo sem pending_install_to_client setado — operação idempotente, sem problema.",
+    "stok.py é muito grande (1956 linhas) — recomenda-se quebrar em sub-módulos (services, history, ont_movement) por questão de manutenibilidade.",
+    "normalize_mac() não valida formato — função de utilidade pública usada em 4+ pontos; uma única função util/mac.py com validação regex seria mais segura."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stok_transfers.py (novo)"
+  ],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "n/a"},
+  "test_credentials": "gestor@empresa.com / 123456 (role gestor) — usado para todos endpoints.",
+  "seed_data_creation": "Test fixture cria via Mongo direto: 2 clients (cli-*), 3 ONTs (MAC_MATCH=AA:BB:CC:DD:EE:11 / MAC_MISMATCH=CC:DD:EE:FF:00:11 / MAC_CLIENT_ONT=DD:EE:FF:00:11:22), 2 smartolt_onus, 2 stok_services (instalacao). Cleanup automático via fixture teardown remove TODOS os docs criados.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Test file em /app/backend/tests/test_stok_transfers.py cobre 100% dos endpoints de stok_transfers.py (8 endpoints) + fluxo close_service de stok.py (instalacao MATCH + MISMATCH). Para retest basta rodar: pytest /app/backend/tests/test_stok_transfers.py. Fixture cleanup roda sempre. MAC normalize_mac() não valida formato — caso o main agent decida endurecer, atualizar test_preview_empty_mac para test_preview_invalid_mac. Demais módulos (close_service em ticket auto, retrieve, etc.) não foram testados nesta iteração.",
+  "rca of the issue": "N/A — nenhum bug encontrado."
+}

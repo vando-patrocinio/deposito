@@ -1,7 +1,7 @@
 {
-  "name": "SmartProv — Lousa do Técnico",
-  "short_name": "SmartProv",
-  "description": "App de campo para técnicos: bate ponto com foto, fila de serviços, mapa de rede e cadastro de CTO/POP.",
+  "name": "Ligo Colaborador",
+  "short_name": "Ligo",
+  "description": "App de campo do colaborador Ligo: ponto, lousa de serviços, mapa da rede e cadastro de CTO/CE.",
   "start_url": "/?mode=app",
   "scope": "/",
   "display": "standalone",
@@ -12,7 +12,7 @@
   "categories": ["business", "productivity", "utilities"],
   "lang": "pt-BR",
   "dir": "ltr",
-  "id": "/smartprov",
+  "id": "/ligo-colaborador",
   "prefer_related_applications": false,
   "icons": [
     {
@@ -38,18 +38,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
-    },
-    {
-      "src": "/smartprov_icon.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/smartprov_icon.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
     }
   ],
   "shortcuts": [

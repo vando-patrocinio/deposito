@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 import unicodedata
+from datetime import datetime, timedelta, timezone
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -20,7 +22,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from core import DEMO_COMPANY_ID, now_iso, require_role
+from core import DEMO_COMPANY_ID, get_current_user, now_iso, require_role
 from database import db
 
 logger = logging.getLogger("ponto.smartolt")
@@ -35,7 +37,7 @@ class SmartoltConfig(BaseModel):
     enabled: bool = False
     subdomain: str = ""           # ex.: "ligofibra"
     api_key: str = ""             # X-Token
-    sync_interval_minutes: int = Field(default=360, ge=60, le=1440)  # 6h default, mín 1h
+    sync_interval_minutes: int = Field(default=15, ge=15, le=1440)  # iter182 — 15min default; mín 15min
     signal_cache_seconds: int = Field(default=60, ge=10, le=3600)
     timeout_seconds: int = Field(default=20, ge=5, le=120)
     last_sync_at: Optional[str] = None
@@ -46,7 +48,7 @@ class SmartoltConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
     subdomain: Optional[str] = None
     api_key: Optional[str] = None
-    sync_interval_minutes: Optional[int] = Field(default=None, ge=60, le=1440)
+    sync_interval_minutes: Optional[int] = Field(default=None, ge=15, le=1440)
     signal_cache_seconds: Optional[int] = Field(default=None, ge=10, le=3600)
     timeout_seconds: Optional[int] = Field(default=None, ge=5, le=120)
 
@@ -132,9 +134,12 @@ async def _is_rate_limited(company_id: str) -> Optional[str]:
     return None
 
 
-async def _mark_rate_limited(company_id: str, seconds: int = 3600) -> None:
-    """Marca a empresa como bloqueada por `seconds` segundos (default 1h).
-    Usado quando SmartOLT responde 403 com rate_limit_exceeded.
+async def _mark_rate_limited(company_id: str, seconds: int = 900) -> None:
+    """Marca a empresa como bloqueada por `seconds` segundos (default 15min).
+
+    iter183 — reduzido de 1h → 15min. SmartOLT trial geralmente desbloqueia
+    a cada 5-10min; 1h era muito punitivo. Se ainda bater, o circuit
+    reabre automaticamente após 15min.
     """
     from datetime import datetime as _dt, timedelta as _td, timezone as _tz
     until = _dt.now(_tz.utc) + _td(seconds=seconds)
@@ -157,16 +162,26 @@ async def _http_get(cfg: SmartoltConfig, path: str) -> Dict[str, Any]:
     url = f"{_base_url(cfg)}{path}"
     async with httpx.AsyncClient(timeout=cfg.timeout_seconds) as client:
         r = await client.get(url, headers={"X-Token": cfg.api_key})
-        # 403 do SmartOLT (rate-limit, token inválido ou IP bloqueado) →
-        # ativa circuit-breaker. Como o body pode vir vazio, qualquer 403
-        # já é tratado como motivo pra pausar 1h.
+        # 403 do SmartOLT: pode ser RENEW (assinatura vencida) ou rate-limit.
+        # iter183 — Detecta "renew" no body → erro específico + pausa 24h
+        # (não enche o log). Caso contrário, mantém comportamento de
+        # rate-limit (pausa 15min).
         if r.status_code == 403:
+            body = (r.text or "").lower()
+            is_renew = "renew" in body or "subscription" in body \
+                          or "expired" in body or "must renew" in body
             if cfg.company_id:
-                await _mark_rate_limited(cfg.company_id, 3600)
+                await _mark_rate_limited(cfg.company_id,
+                                            86400 if is_renew else 900)
+            if is_renew:
+                raise HTTPException(
+                    429,
+                    "Assinatura SmartOLT vencida — renove em smartolt.com. "
+                    "Sync pausado por 24h.")
             raise HTTPException(
                 429, "SmartOLT recusou conexão (403). Provavelmente "
                 "rate-limit horário, token inválido ou IP bloqueado. "
-                "Sync pausado por 1h.")
+                "Sync pausado por 15min.")
         r.raise_for_status()
         return r.json()
 
@@ -183,9 +198,18 @@ async def _http_post(cfg: SmartoltConfig, path: str,
         r = await client.post(url, headers={"X-Token": cfg.api_key},
                                 json=payload or {})
         if r.status_code == 403:
+            body = (r.text or "").lower()
+            is_renew = "renew" in body or "subscription" in body \
+                          or "expired" in body or "must renew" in body
             if cfg.company_id:
-                await _mark_rate_limited(cfg.company_id, 3600)
-            raise HTTPException(429, "SmartOLT 403 — sync pausado por 1h.")
+                await _mark_rate_limited(cfg.company_id,
+                                            86400 if is_renew else 900)
+            if is_renew:
+                raise HTTPException(
+                    429,
+                    "Assinatura SmartOLT vencida — renove em smartolt.com. "
+                    "Sync pausado por 24h.")
+            raise HTTPException(429, "SmartOLT 403 — sync pausado por 15min.")
         r.raise_for_status()
         return r.json()
 
@@ -292,14 +316,43 @@ async def _do_sync(company_id: str, cfg: SmartoltConfig) -> dict:
             "service_ports": o.get("service_ports") or [],
             "synced_at": bulk_ts,
         }
-        res = await db.smartolt_onus.update_one(
-            {"company_id": company_id, "unique_external_id": ext_id},
-            {"$set": doc}, upsert=True,
-        )
+        # iter180 — MAC vem do endpoint per-ONU (não do bulk).
+        # Aqui só seto MAC se vier no payload (Huawei às vezes traz),
+        # senão NÃO sobrescrevo o valor já cacheado.
+        payload_mac = (o.get("ont_mac") or o.get("mac")
+                       or o.get("mac_address") or "").strip().upper() or None
+        if payload_mac:
+            doc["mac"] = payload_mac
+        # iter182 — Histórico de sinal (rolling window últimas 24h)
+        # para o detector de degradação. Só guarda se signal_1490 mudou.
+        s1490 = doc.get("signal_1490")
+        try:
+            new_rx = float(s1490) if s1490 is not None else None
+        except (TypeError, ValueError):
+            new_rx = None
+        if new_rx is not None:
+            update_payload = {"$set": doc, "$push": {
+                "signal_history_24h": {
+                    "$each": [{"t": bulk_ts, "rx": new_rx}],
+                    # Limita a 24 entradas (1 a cada hora aprox.)
+                    "$slice": -24,
+                },
+            }}
+            res = await db.smartolt_onus.update_one(
+                {"company_id": company_id, "unique_external_id": ext_id},
+                update_payload, upsert=True,
+            )
+        else:
+            res = await db.smartolt_onus.update_one(
+                {"company_id": company_id, "unique_external_id": ext_id},
+                {"$set": doc}, upsert=True,
+            )
         if res.upserted_id:
             inserted += 1
         elif res.modified_count:
             updated += 1
+    # iter182 — Após o sync, roda o detector de degradação
+    await _detect_signal_degradation(company_id, bulk_ts)
     # Atualiza config com timestamps
     await db.smartolt_config.update_one(
         {"company_id": company_id},
@@ -420,7 +473,8 @@ async def public_client_by_ticket(ticket_id: str):
     cid = t.get("company_id") or DEMO_COMPANY_ID
     cs = t.get("client_snapshot") or {}
     name = cs.get("name") or ""
-    pppoe = cs.get("pppoe") or cs.get("login") or ""
+    # iter162 — também tenta pppoe_user (campo legado de alguns tickets)
+    pppoe = cs.get("pppoe") or cs.get("login") or cs.get("pppoe_user") or ""
     out: Dict[str, Any] = {
         "found": False, "mac_expected": None, "sn_expected": None,
         "client_name": name, "olt_name": None, "signal_text": None,
@@ -451,6 +505,276 @@ async def public_client_by_ticket(ticket_id: str):
         out["olt_name"] = onu.get("olt_name")
         out["signal_text"] = onu.get("signal_text") or onu.get("signal_1490")
     return out
+
+
+# ---------------------------------------------------------------------------
+# iter160 — VALIDAÇÃO DE RETIRADA POR SN (foto + OCR contra SmartOLT)
+# ---------------------------------------------------------------------------
+@router.get("/public/validate-withdraw-sn/{ticket_id}")
+async def public_validate_withdraw_sn(ticket_id: str, sn: str):
+    """Valida se o SN escaneado coincide com o equipamento cadastrado no
+    SmartOLT para o cliente do ticket.
+
+    Regra (pedido user 28/05/2026):
+    - Foto da Retirada lê o SN via OCR (Claude 4.6)
+    - Aqui comparamos `sn` informado com o `sn_expected` do SmartOLT
+    - Só libera a retirada quando coincidir; caso contrário, técnico
+      precisa confirmar divergência manualmente (bypass = `force=true`
+      no submit).
+
+    Resposta:
+    {
+      "ok": true/false,
+      "match": true/false,
+      "sn_scanned": "ALCLFC...",
+      "sn_expected": "ALCLFC...",
+      "client_found": bool,
+      "client_name": str,
+      "reason": "match" | "mismatch" | "not_in_smartolt" | "no_sn_scanned",
+      "olt_name": str | null
+    }
+    """
+    if not sn or not sn.strip():
+        return {"ok": False, "match": False, "reason": "no_sn_scanned"}
+    sn_n = sn.strip().upper().replace(":", "").replace("-", "").replace(" ", "")
+
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        return {"ok": False, "match": False, "reason": "ticket_not_found"}
+
+    # Reaproveita lookup do public_client_by_ticket
+    cid = t.get("company_id") or DEMO_COMPANY_ID
+    cs = t.get("client_snapshot") or {}
+    name = cs.get("name") or ""
+    pppoe = cs.get("pppoe") or cs.get("login") or cs.get("pppoe_user") or ""
+    norm_pppoe = _norm(pppoe)
+    norm_name = _norm(name)
+    onu = None
+    if norm_pppoe:
+        onu = await db.smartolt_onus.find_one(
+            {"company_id": cid, "name_norm": norm_pppoe}, {"_id": 0})
+    if not onu and norm_name:
+        onu = await db.smartolt_onus.find_one(
+            {"company_id": cid, "name_norm": norm_name}, {"_id": 0})
+    if not onu and norm_name and len(norm_name) >= 4:
+        onu = await db.smartolt_onus.find_one(
+            {"company_id": cid, "name_norm": {"$regex": norm_name}},
+            {"_id": 0})
+
+    if not onu:
+        # iter161 — auditoria: registra a tentativa também quando o cliente
+        # não está no SmartOLT (sem `sn_expected`)
+        try:
+            await db.withdraw_sn_audit.insert_one({
+                "company_id": cid,
+                "ticket_id": ticket_id,
+                "client_name": name,
+                "sn_scanned": sn_n,
+                "sn_expected": None,
+                "match": False,
+                "reason": "not_in_smartolt",
+                "olt_name": None,
+                "technician_id": t.get("assigned_to_id"),
+                "technician_name": t.get("assigned_to_name"),
+                "created_at": now_iso(),
+            })
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[smartolt] audit log not_in_smartolt falhou: %s", e)
+        return {
+            "ok": True, "match": False, "client_found": False,
+            "client_name": name, "sn_scanned": sn_n, "sn_expected": None,
+            "reason": "not_in_smartolt",
+            "olt_name": None,
+        }
+
+    sn_expected = (onu.get("sn") or "").strip().upper().replace(":", "").replace("-", "")
+    is_match = bool(sn_expected) and (sn_expected == sn_n)
+    response = {
+        "ok": True, "match": is_match,
+        "client_found": True, "client_name": name,
+        "sn_scanned": sn_n,
+        "sn_expected": sn_expected or None,
+        "reason": "match" if is_match else (
+            "mismatch" if sn_expected else "not_in_smartolt"),
+        "olt_name": onu.get("olt_name"),
+        "signal_text": onu.get("signal_text") or onu.get("signal_1490"),
+    }
+    # iter161 — auditoria: registra toda tentativa de validação para o gestor
+    try:
+        await db.withdraw_sn_audit.insert_one({
+            "company_id": cid,
+            "ticket_id": ticket_id,
+            "client_name": name,
+            "sn_scanned": sn_n,
+            "sn_expected": sn_expected or None,
+            "match": is_match,
+            "reason": response["reason"],
+            "olt_name": onu.get("olt_name"),
+            "technician_id": t.get("assigned_to_id"),
+            "technician_name": t.get("assigned_to_name"),
+            "created_at": now_iso(),
+        })
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[smartolt] audit log falhou: %s", e)
+    return response
+
+
+@router.get("/clients-stock")
+async def smartolt_clients_stock(search: Optional[str] = None,
+                                       limit: int = 200,
+                                       user: dict = Depends(get_current_user)):
+    """iter163 — View consolidada "1 cliente = 1 equipamento".
+
+    Lista todos os clientes do SmartOLT (cache local) com o SN atual,
+    porta da CTO, sinal, último ticket de instalação e retirada conhecidos,
+    e histórico de trocas de porta.
+
+    Esta é a aba "👤 Clientes (SmartOLT)" do Estoque.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    q: Dict[str, Any] = {"company_id": cid}
+    if search:
+        q["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"sn": {"$regex": search, "$options": "i"}},
+            {"address": {"$regex": search, "$options": "i"}},
+        ]
+    onus = await db.smartolt_onus.find(
+        q,
+        {"_id": 0, "name": 1, "name_norm": 1, "sn": 1, "olt_name": 1,
+         "board": 1, "port": 1, "onu": 1, "signal_text": 1,
+         "signal_1490": 1, "status": 1, "zone_name": 1, "address": 1,
+         "synced_at": 1, "authorization_date": 1},
+    ).limit(limit).to_list(limit)
+    # Resolve histórico em batch: tickets finalizados de instalacao/retirada
+    # + port swaps (db.cto_port_swaps).
+    name_norms = [o.get("name_norm") for o in onus if o.get("name_norm")]
+    tickets_by_norm: Dict[str, List[Dict[str, Any]]] = {}
+    if name_norms:
+        async for t in db.tickets.find(
+                {"company_id": cid,
+                 "type": {"$in": ["instalacao", "retirada", "reparo"]},
+                 "status": "fechado",
+                 "client_snapshot.name_norm": {"$in": name_norms}},
+                {"_id": 0, "id": 1, "type": 1, "closed_at": 1,
+                 "client_snapshot": 1, "closed_by_email": 1,
+                 "assigned_to_name": 1, "completion_data": 1}):
+            n = (t.get("client_snapshot") or {}).get("name_norm") or ""
+            tickets_by_norm.setdefault(n, []).append(t)
+    # port swaps por SN (mais confiável que name_norm)
+    sns = [o.get("sn") for o in onus if o.get("sn")]
+    swaps_by_sn: Dict[str, List[Dict[str, Any]]] = {}
+    if sns:
+        async for sw in db.cto_port_swaps.find(
+                {"company_id": cid,
+                 "$or": [{"new_mac": {"$in": sns}},
+                          {"old_mac": {"$in": sns}}]},
+                {"_id": 0}):
+            for k in ("new_mac", "old_mac"):
+                if sw.get(k) in sns:
+                    swaps_by_sn.setdefault(sw[k], []).append(sw)
+    items: List[Dict[str, Any]] = []
+    for o in onus:
+        norm = o.get("name_norm") or ""
+        tlist = sorted(tickets_by_norm.get(norm, []),
+                          key=lambda x: x.get("closed_at") or "", reverse=True)
+        last_install = next((t for t in tlist if t.get("type") == "instalacao"), None)
+        last_withdraw = next((t for t in tlist if t.get("type") == "retirada"), None)
+        swap_list = swaps_by_sn.get(o.get("sn") or "", [])
+        items.append({
+            "name": o.get("name"),
+            "sn": o.get("sn"),
+            "olt_name": o.get("olt_name"),
+            "board": o.get("board"),
+            "port": o.get("port"),
+            "onu": o.get("onu"),
+            "cto_port": f"{o.get('board')}/{o.get('port')}/{o.get('onu')}"
+                          if o.get("board") else None,
+            "signal": o.get("signal_text") or o.get("signal_1490"),
+            "status": o.get("status"),
+            "zone_name": o.get("zone_name"),
+            "address": o.get("address"),
+            "synced_at": o.get("synced_at"),
+            "authorization_date": o.get("authorization_date"),
+            "installed_by": (last_install or {}).get("assigned_to_name")
+                              or (last_install or {}).get("closed_by_email"),
+            "installed_at": (last_install or {}).get("closed_at"),
+            "withdrawn_by": (last_withdraw or {}).get("assigned_to_name")
+                              or (last_withdraw or {}).get("closed_by_email"),
+            "withdrawn_at": (last_withdraw or {}).get("closed_at"),
+            "port_swap_count": len(swap_list),
+            "last_port_swap": (swap_list[0] if swap_list else None),
+        })
+    items.sort(key=lambda x: (x.get("status") != "online",
+                                 (x.get("name") or "").lower()))
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/withdraw-sn-audit")
+async def withdraw_sn_audit(
+        days: int = 30,
+        only_mismatch: bool = False,
+        technician_id: Optional[str] = None,
+        user: dict = Depends(get_current_user)):
+    """iter161 — Histórico auditável das validações SN da Retirada.
+
+    Cada tentativa de validação durante uma Retirada é registrada em
+    `withdraw_sn_audit`. Este endpoint permite ao gestor:
+    - Ver todos os registros dos últimos N dias
+    - Filtrar apenas mismatches (tentativas de retirada com SN errado)
+    - Filtrar por técnico
+
+    Resposta inclui agregação por técnico para detectar "forçadores"
+    (técnicos com taxa de mismatch acima da média).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, min(days, 365)))
+    q: Dict[str, Any] = {"company_id": cid,
+                              "created_at": {"$gte": cutoff.isoformat()}}
+    if only_mismatch:
+        q["reason"] = "mismatch"
+    if technician_id:
+        q["technician_id"] = technician_id
+
+    items = await db.withdraw_sn_audit.find(q, {"_id": 0}).sort(
+        "created_at", -1).limit(500).to_list(500)
+
+    # Agregação por técnico
+    by_tech: Dict[str, Dict[str, Any]] = {}
+    for it in items:
+        tid = it.get("technician_id") or "—"
+        tname = it.get("technician_name") or "Sem nome"
+        if tid not in by_tech:
+            by_tech[tid] = {"technician_id": tid, "technician_name": tname,
+                              "total": 0, "match": 0, "mismatch": 0,
+                              "not_in_smartolt": 0}
+        bt = by_tech[tid]
+        bt["total"] += 1
+        if it.get("match"):
+            bt["match"] += 1
+        elif it.get("reason") == "mismatch":
+            bt["mismatch"] += 1
+        elif it.get("reason") == "not_in_smartolt":
+            bt["not_in_smartolt"] += 1
+    # Calcula taxa de mismatch e ordena
+    for bt in by_tech.values():
+        bt["mismatch_rate"] = round(bt["mismatch"] / bt["total"] * 100, 1) \
+            if bt["total"] else 0
+    tech_summary = sorted(by_tech.values(),
+                              key=lambda x: -x["mismatch_rate"])
+
+    return {
+        "items": items,
+        "total": len(items),
+        "days": days,
+        "by_technician": tech_summary,
+        "total_match": sum(1 for it in items if it.get("match")),
+        "total_mismatch": sum(1 for it in items
+                                  if it.get("reason") == "mismatch"),
+        "total_not_in_smartolt": sum(1 for it in items
+                                          if it.get("reason") == "not_in_smartolt"),
+    }
+
 
 
 # ---------------------------------------------------------------------------
@@ -672,6 +996,139 @@ async def public_reboot_onu(payload: PublicRebootIn):
 # ---------------------------------------------------------------------------
 # Lookup + signal
 # ---------------------------------------------------------------------------
+@router.post("/onus/{external_id}/refresh-mac")
+async def refresh_onu_mac(external_id: str,
+                              user: dict = Depends(require_role("gestor", "tecnico",
+                                                                  "auditor"))):
+    """Busca o MAC de uma ONU específica via SmartOLT (consulta per-ONU).
+
+    A API bulk (`/onu/get_all_onus_details`) NÃO retorna o MAC — só o SN.
+    Aqui usamos `/onu/get_onu_running_config/{external_id}` (que retorna
+    config completa, incluindo MAC) e persistimos o resultado no cache
+    local. Idempotente — chamadas seguintes só rotear o doc atualizado.
+
+    Custo: 1 chamada da API SmartOLT (limite global 1000/h por empresa).
+    Use de forma esparsa — geralmente uma vez por ONU é suficiente.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(cid)
+    if not cfg.enabled or not cfg.subdomain or not cfg.api_key:
+        raise HTTPException(400, "SmartOLT desabilitado ou não configurado.")
+    # Tenta primeiro o endpoint mais leve (running_config) e cai pra
+    # full_status_info se o servidor não responder.
+    endpoints = [
+        f"/onu/get_onu_running_config/{external_id}",
+        f"/onu/get_onu_full_status_info/{external_id}",
+        f"/onu/get_onu_details/{external_id}",
+    ]
+    raw = None
+    last_err = None
+    for ep in endpoints:
+        try:
+            data = await _http_get(cfg, ep)
+            if data.get("status"):
+                raw = data
+                break
+        except HTTPException:
+            raise
+        except Exception as e:
+            last_err = str(e)
+    if raw is None:
+        raise HTTPException(502, f"SmartOLT não retornou ONU. Último erro: {last_err}")
+    # Extração heurística do MAC em vários formatos comuns
+    blob = raw.get("response") or raw.get("config") or raw.get("onu") or raw
+    mac = None
+    if isinstance(blob, dict):
+        mac = (blob.get("ont_mac") or blob.get("mac")
+                 or blob.get("mac_address") or blob.get("device_mac"))
+        # ZTE às vezes aninha em `lan_info` ou similar
+        if not mac:
+            for key in ("device", "info", "status", "wan", "lan"):
+                sub = blob.get(key)
+                if isinstance(sub, dict):
+                    mac = (sub.get("mac") or sub.get("ont_mac")
+                            or sub.get("mac_address"))
+                    if mac:
+                        break
+    elif isinstance(blob, list):
+        # algumas APIs retornam linhas de tabela
+        for line in blob:
+            if not isinstance(line, str):
+                continue
+            m = re.search(r"\b([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\b", line)
+            if m:
+                mac = m.group(1)
+                break
+    if not mac:
+        # Procura em qualquer texto livre na resposta
+        import json as _json  # noqa: PLC0415
+        txt = _json.dumps(raw, default=str)
+        m = re.search(
+            r"\b([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})\b", txt)
+        if m:
+            mac = m.group(1)
+    if not mac:
+        return {"ok": False, "external_id": external_id,
+                "msg": "MAC não encontrado na resposta da SmartOLT.",
+                "raw_keys": list(raw.keys()) if isinstance(raw, dict) else None}
+    mac_norm = mac.upper().strip()
+    await db.smartolt_onus.update_one(
+        {"company_id": cid, "unique_external_id": external_id},
+        {"$set": {"mac": mac_norm, "mac_fetched_at": now_iso()}},
+    )
+    return {"ok": True, "external_id": external_id, "mac": mac_norm}
+
+
+@router.post("/onus/refresh-mac-batch")
+async def refresh_macs_batch(
+    limit: int = Query(50, ge=1, le=100,
+        description="Quantas ONUs sem MAC processar nesta chamada"),
+    user: dict = Depends(require_role("gestor", "auditor")),
+):
+    """Pega N ONUs sem MAC e tenta resolver. Cada doc = 1 chamada SmartOLT.
+
+    Útil para preencher o cache aos poucos respeitando o budget.
+    Chame periodicamente (1x por hora idealmente) até cobrir o parque.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(cid)
+    if not cfg.enabled or not cfg.subdomain or not cfg.api_key:
+        raise HTTPException(400, "SmartOLT desabilitado ou não configurado.")
+    pending = await db.smartolt_onus.find(
+        {"company_id": cid, "status": "Online",
+         "$or": [{"mac": None}, {"mac": ""}, {"mac": {"$exists": False}}]},
+        {"_id": 0, "unique_external_id": 1, "name": 1},
+    ).sort("synced_at", -1).limit(limit).to_list(limit)
+    if not pending:
+        return {"ok": True, "scanned": 0, "resolved": 0, "missing": 0}
+    resolved = 0
+    missing = 0
+    errors: List[str] = []
+    for o in pending:
+        ext = o.get("unique_external_id")
+        if not ext:
+            continue
+        try:
+            r = await refresh_onu_mac(ext, user)
+            if r.get("ok"):
+                resolved += 1
+            else:
+                missing += 1
+        except HTTPException as e:
+            # 429 = rate-limit → para o batch
+            if e.status_code == 429:
+                errors.append("rate-limit")
+                break
+            missing += 1
+            errors.append(str(e.detail)[:60])
+        except Exception as e:
+            missing += 1
+            errors.append(str(e)[:60])
+    return {"ok": True, "scanned": len(pending),
+            "resolved": resolved, "missing": missing,
+            "errors": errors[:5]}
+
+
 @router.get("/onus/by-vlan/{vlan}")
 async def list_onus_by_vlan(
     vlan: int,
@@ -682,20 +1139,75 @@ async def list_onus_by_vlan(
     A SmartOLT API NÃO tem endpoint nativo `get_by_vlan`. Estratégia:
       1. Chama /onu/get_all_onus_details (mesmo endpoint usado no sync).
       2. Filtra ONUs cujo service_ports[*].vlan == vlan (em string ou int).
+
+    iter183 — Fallback CACHE: se SmartOLT estiver indisponível (rate-limit
+    429, timeout, 5xx), retornamos a última lista sincronizada (collection
+    `smartolt_onus` populada pelo sync a cada 15min). Marca `source` no
+    payload pra UI mostrar badge "CACHE" em vez de "LIVE".
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
     cfg = await _get_config(cid)
     if not cfg.enabled or not cfg.subdomain or not cfg.api_key:
         raise HTTPException(400, "SmartOLT desabilitado ou não configurado.")
+    target = str(vlan)
+    live_error: Optional[str] = None
     try:
         data = await _http_get(cfg, "/onu/get_all_onus_details")
+    except HTTPException as he:
+        # Rate-limit ou config issue → cair pro cache
+        if he.status_code == 429:
+            live_error = str(he.detail)[:120]
+            data = None
+        else:
+            raise
     except httpx.HTTPStatusError as e:
-        raise HTTPException(502, f"SmartOLT HTTP {e.response.status_code}")
+        live_error = f"HTTP {e.response.status_code}"
+        data = None
     except Exception as e:
-        raise HTTPException(502, f"SmartOLT erro: {type(e).__name__}: {e}")
+        live_error = f"{type(e).__name__}: {e}"[:120]
+        data = None
+
+    if data is None:
+        # === FALLBACK CACHE ===
+        cached = await db.smartolt_onus.find(
+            {"company_id": cid, "vlan": target},
+            {"_id": 0},
+        ).to_list(2000)
+        if not cached:
+            # Tenta busca permissiva no campo service_ports
+            cached = await db.smartolt_onus.find(
+                {"company_id": cid,
+                 "$or": [{"vlan": vlan}, {"vlan": target}]},
+                {"_id": 0},
+            ).to_list(2000)
+        onus_norm = []
+        for o in cached:
+            onus_norm.append({
+                "unique_external_id": str(o.get("unique_external_id") or ""),
+                "name": o.get("name") or "",
+                "sn": o.get("sn") or "",
+                "olt_name": o.get("olt_name") or "",
+                "board": str(o.get("board") or ""),
+                "port": str(o.get("port") or ""),
+                "onu": str(o.get("onu") or ""),
+                "zone_name": o.get("zone_name") or "",
+                "address": o.get("address") or "",
+                "status": o.get("status") or "",
+                "signal_text": o.get("signal_text") or o.get("signal") or "",
+                "vlan": str(o.get("vlan") or vlan),
+            })
+        return {
+            "vlan": vlan,
+            "count": len(onus_norm),
+            "total_scanned": len(onus_norm),
+            "source": "smartolt_cache",
+            "onus": onus_norm,
+            "live_error": live_error,
+            "cache_warning": "Dados do último sync (até 15min atrás). "
+                                "SmartOLT temporariamente indisponível.",
+        }
 
     onus_raw = data.get("onus") or []
-    target = str(vlan)
     onus_norm = []
     for o in onus_raw:
         sps = o.get("service_ports") or []
@@ -913,8 +1425,17 @@ async def resolve_signal_for_ticket(ticket: dict) -> Optional[dict]:
 
 
 def _live_signal_summary(onu: dict) -> dict:
-    """Resumo compacto pro pill/UI da Lousa (não expõe campos pesados)."""
-    rx = onu.get("signal_1490") or onu.get("signal_1310")
+    """Resumo compacto pro pill/UI da Lousa (não expõe campos pesados).
+
+    iter182 — Sensibilidade aumentada:
+    - Usa SOMENTE `signal_1490` (downstream OLT → cliente, valor real
+      que o cliente experimenta). Não cai pra 1310nm (que é upstream e
+      mascara leituras quando 1490 está vazio).
+    - 5 faixas de qualidade (excelente / bom / atenção / crítico /
+      falha) seguindo best practices FTTH 2026 — alerta antes do
+      cliente reclamar.
+    """
+    rx = onu.get("signal_1490")  # só 1490nm; sem fallback p/ 1310
     rxf = None
     try:
         rxf = float(rx) if rx is not None else None
@@ -922,10 +1443,14 @@ def _live_signal_summary(onu: dict) -> dict:
         rxf = None
     quality = "unknown"
     if rxf is not None:
-        if rxf >= -23:
+        if rxf >= -20:
+            quality = "excellent"
+        elif rxf >= -24:
             quality = "good"
         elif rxf >= -27:
             quality = "warn"
+        elif rxf >= -28:
+            quality = "critical"
         else:
             quality = "bad"
     # Parse CTO + CTO-port a partir do `zone_name` (formato típico
@@ -995,6 +1520,7 @@ def _live_signal_summary(onu: dict) -> dict:
         "olt_port": olt_port,         # "1/10"
         "board": board, "port": port, "onu": onu_id,
         "sn": onu.get("sn"),
+        "mac": (onu.get("mac") or onu.get("ont_mac") or None),  # iter180
         "cto_box": cto_box,            # "CTO 1 10"
         "cto_port": cto_port,          # "01"
         "vlan": vlan,
@@ -1038,8 +1564,226 @@ async def enrich_tickets_with_live_signal(tickets: List[dict], company_id: str) 
             onu = (idx.get(np_) if np_ else None) or (idx.get(nn_) if nn_ else None)
             if onu:
                 tickets[i]["live_signal"] = _live_signal_summary(onu)
+        # iter182 — Fallback via Base de Portas: para os tickets que NÃO
+        # casaram com SmartOLT (live_signal == null), busca a porta CTO
+        # vinculada ao subscriber e cria um live_signal sintético a
+        # partir do que está cacheado no `cto_ports`. Garante que o card
+        # SEMPRE mostre alguma info de rede quando o cliente tem porta
+        # designada.
+        unmatched = [(i, tickets[i]) for i, _, _ in per_ticket
+                     if not tickets[i].get("live_signal")]
+        sub_ids = [t.get("subscriber_id") or t.get("client_id")
+                   for _, t in unmatched if (t.get("subscriber_id")
+                                              or t.get("client_id"))]
+        if sub_ids:
+            port_idx: Dict[str, dict] = {}
+            async for p in db.cto_ports.find(
+                {"company_id": company_id, "status": "occupied",
+                 "subscriber_id": {"$in": sub_ids}},
+                {"_id": 0},
+            ):
+                port_idx[p["subscriber_id"]] = p
+            for i, t in unmatched:
+                sid = t.get("subscriber_id") or t.get("client_id")
+                if not sid or sid not in port_idx:
+                    continue
+                p = port_idx[sid]
+                tickets[i]["live_signal"] = {
+                    "rx_dbm": p.get("signal_dbm"),
+                    "status": "—",
+                    "olt_name": p.get("olt_name"),
+                    "vlan": p.get("vlan"),
+                    "cto_name": p.get("cto_name"),
+                    "cto_port": p.get("port_number"),
+                    "mac": p.get("mac"),
+                    "sn": p.get("sn"),
+                    "quality": "unknown",
+                    "source": "cto_ports_fallback",
+                }
+        # iter180 — adiciona a média de sinal da VLAN do cliente
+        # (mesmo OLT, mesma VLAN) para o gestor comparar individual vs rede.
+        await _enrich_vlan_avg_for_tickets(tickets, company_id)
     except Exception as e:
         logger.warning("[smartolt] enrich_tickets_with_live_signal falhou: %s", e)
+
+
+async def _enrich_vlan_avg_for_tickets(tickets: List[dict],
+                                            company_id: str) -> None:
+    """Para cada ticket que já tem `live_signal.olt_name` + `vlan`, computa
+    a média de sinal de TODAS as ONUs Online dessa mesma combinação
+    (olt + vlan) e anexa em `live_signal.vlan_avg_dbm` + `vlan_onu_count`.
+
+    1 query agregada por chamada — eficiente.
+    """
+    keys: set = set()
+    for t in tickets:
+        ls = t.get("live_signal") or {}
+        olt = ls.get("olt_name")
+        vlan = ls.get("vlan")
+        if olt and vlan:
+            try:
+                keys.add((olt, int(str(vlan).strip())))
+            except Exception:
+                pass
+    if not keys:
+        return
+    olts = list({k[0] for k in keys})
+    pipeline = [
+        {"$match": {"company_id": company_id, "status": "Online",
+                      "olt_name": {"$in": olts},
+                      "signal_1490": {"$nin": [None, ""]}}},
+        {"$unwind": "$service_ports"},
+        {"$match": {"service_ports.vlan": {"$nin": [None, "", "0"]}}},
+        {"$addFields": {
+            "_vlan_int": {"$convert": {
+                "input": "$service_ports.vlan", "to": "int",
+                "onError": None, "onNull": None,
+            }},
+            "_sig_num": {"$convert": {
+                "input": "$signal_1490", "to": "double",
+                "onError": None, "onNull": None,
+            }},
+        }},
+        {"$match": {"_vlan_int": {"$ne": None},
+                      "_sig_num": {"$ne": None}}},
+        {"$group": {
+            "_id": {"olt": "$olt_name", "vlan": "$_vlan_int"},
+            "avg": {"$avg": "$_sig_num"},
+            "count": {"$sum": 1},
+        }},
+    ]
+    stats: Dict[tuple, Dict[str, Any]] = {}
+    async for row in db.smartolt_onus.aggregate(pipeline):
+        k = (row["_id"]["olt"], row["_id"]["vlan"])
+        if row.get("avg") is None:
+            continue
+        stats[k] = {"avg": round(float(row["avg"]), 1),
+                     "count": int(row["count"])}
+    for t in tickets:
+        ls = t.get("live_signal") or {}
+        olt = ls.get("olt_name")
+        vlan = ls.get("vlan")
+        if not (olt and vlan):
+            continue
+        try:
+            k = (olt, int(str(vlan).strip()))
+        except Exception:
+            continue
+        s = stats.get(k)
+        if not s:
+            continue
+        ls["vlan_avg_dbm"] = s["avg"]
+        ls["vlan_onu_count"] = s["count"]
+        # Diff vs média: positivo = pior que a rede, negativo = melhor
+        rx = ls.get("rx_dbm")
+        if isinstance(rx, (int, float)):
+            ls["vlan_diff_dbm"] = round(rx - s["avg"], 1)
+
+
+# ---------------------------------------------------------------------------
+# iter182 — Endpoint: lista alertas de degradação
+# ---------------------------------------------------------------------------
+@router.get("/signal-degradation")
+async def list_signal_degradation(
+    status: str = "active",
+    limit: int = 50,
+    user: dict = Depends(require_role("administrador", "gestor",
+                                          "gestor_rede", "auditor",
+                                          "supervisor")),
+):
+    """Lista alertas de degradação de sinal (piora ≥3 dBm em 24h).
+    status: active | resolved | all
+    """
+    cid = user.get("company_id")
+    filt = {"company_id": cid}
+    if status != "all":
+        filt["status"] = status
+    items = []
+    cursor = db.signal_degradation_alerts.find(filt, {"_id": 0})\
+        .sort("detected_at", -1).limit(min(limit, 200))
+    async for it in cursor:
+        items.append(it)
+    return {"items": items, "count": len(items)}
+
+
+# ---------------------------------------------------------------------------
+# iter182 — Detector de degradação de sinal (alerta -3 dBm em 24h)
+# ---------------------------------------------------------------------------
+SIGNAL_DEGRADATION_DELTA_DB = 3.0  # alerta se piora ≥ 3 dBm
+SIGNAL_DEGRADATION_WINDOW_H = 24   # janela de 24h
+
+
+async def _detect_signal_degradation(company_id: str, run_ts: str) -> None:
+    """Varre ONUs após o sync e detecta degradação de sinal.
+
+    Critério: o valor MAIS RECENTE de signal_1490 piorou em ≥ 3 dBm
+    em relação à MÉDIA das amostras das últimas 24h (excluindo o atual).
+    Cria/atualiza um doc em `signal_degradation_alerts` por ONU.
+    """
+    try:
+        cursor = db.smartolt_onus.find(
+            {"company_id": company_id,
+             "signal_history_24h.0": {"$exists": True}},
+            {"_id": 0, "unique_external_id": 1, "name": 1, "olt_name": 1,
+             "signal_1490": 1, "signal_history_24h": 1, "status": 1},
+        )
+        new_alerts = 0
+        resolved = 0
+        async for onu in cursor:
+            hist = onu.get("signal_history_24h") or []
+            if len(hist) < 3:  # precisa de algumas amostras
+                continue
+            try:
+                current = float(onu.get("signal_1490"))
+            except (TypeError, ValueError):
+                continue
+            # Média das amostras anteriores (exclui a última)
+            prev = [h["rx"] for h in hist[:-1]
+                    if isinstance(h.get("rx"), (int, float))]
+            if len(prev) < 2:
+                continue
+            avg_prev = sum(prev) / len(prev)
+            delta = current - avg_prev  # negativo = pior (mais negativo)
+            alert_key = {"company_id": company_id,
+                            "unique_external_id": onu["unique_external_id"]}
+            if delta <= -SIGNAL_DEGRADATION_DELTA_DB:
+                # PIOROU significativamente: cria/atualiza alerta
+                doc = {
+                    "company_id": company_id,
+                    "unique_external_id": onu["unique_external_id"],
+                    "name": onu.get("name"),
+                    "olt_name": onu.get("olt_name"),
+                    "status": "active",
+                    "current_rx_dbm": round(current, 2),
+                    "avg_24h_rx_dbm": round(avg_prev, 2),
+                    "delta_dbm": round(delta, 2),
+                    "detected_at": run_ts,
+                    "samples_count": len(hist),
+                }
+                r = await db.signal_degradation_alerts.update_one(
+                    alert_key,
+                    {"$set": doc, "$setOnInsert": {"created_at": run_ts}},
+                    upsert=True,
+                )
+                if r.upserted_id:
+                    new_alerts += 1
+            else:
+                # Sinal voltou ao normal: resolve alerta anterior se existia
+                r = await db.signal_degradation_alerts.update_one(
+                    {**alert_key, "status": "active"},
+                    {"$set": {"status": "resolved",
+                                 "resolved_at": run_ts,
+                                 "resolved_rx_dbm": round(current, 2),
+                                 "resolved_delta_dbm": round(delta, 2)}},
+                )
+                if r.modified_count:
+                    resolved += 1
+        if new_alerts or resolved:
+            logger.info(
+                "[smartolt] degradation cid=%s new=%s resolved=%s",
+                company_id, new_alerts, resolved)
+    except Exception as e:
+        logger.warning("[smartolt] _detect_signal_degradation falhou: %s", e)
 
 
 # ---------------------------------------------------------------------------

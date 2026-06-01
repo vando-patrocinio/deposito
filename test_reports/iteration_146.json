@@ -1,0 +1,35 @@
+{
+  "summary": "Iter146 — Lógica de PORTA DE CTO ao fechar OS. Backend 9/9 testes passaram cobrindo: GET /client-cto-port (com/sem porta), retirada libera porta automaticamente, port_swap ocupa nova + libera antiga com release_reason='port_swap', validações (missing new_port=400, same_port=400, occupied=409), regressão payload antigo, e instalação SEM porta com cto_id/cto_port_number ocupa porta. Frontend validado via code review: CloseServiceDialog renderiza svc-close-cto-port só quando current_port existe, mostra release-note se retirada, ou checkbox+select para instalacao/troca; submit envia port_swap + new_port_number.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Painel executivo (Gestor)", "issues": ["Recharts width(-1)/height(-1) warnings repetidos no console na primeira renderização (já reportado iter145, cosmético)"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter146_cto_port_close.py",
+    "/app/test_reports/pytest/iter146_cto_port.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FE EstoquePanel.js linha 1333: `isInstallOrMaint = [instalacao, manutencao, troca]` inclui 'manutencao' mas ServiceIn (stok.py:537) NÃO aceita 'manutencao' como tipo válido (apenas instalacao|reparo|troca|retirada|ponto_adicional). O branch 'manutencao' do _handle_cto_port_on_close é efetivamente dead-code via API de criação. Sugestão: alinhar com 'reparo' OU adicionar 'manutencao' ao enum do ServiceIn se for o intended.",
+    "BE stok.py: _handle_cto_port_on_close está dentro de try/except amplo (linha 891-894) que loga warning. Erros de validação (HTTPException 400/409) corretamente re-raise, mas exceções inesperadas (ex: Mongo write) são silenciosamente engolidas, deixando OS fechada mas porta inconsistente. Considerar fail-fast para erros não-HTTP.",
+    "BE: Validação no _occupy_cto_port — quando porta tem status diferente de 'used' mas o destino é o mesmo client_id, permite re-ocupação (idempotente). Comportamento OK.",
+    "FE: O dropdown svc-close-port-swap-select mostra mensagem 'Nenhuma porta livre' quando free_ports_same_cto vazio — bom UX."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter146_cto_port_close.py"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "code-review OK"},
+  "test_credentials": "gestor@empresa.com / 123456 (role=gestor, company_id=co-demo). col-30aafc3c (Diogo) usado como técnico.",
+  "seed_data_creation": "Fixtures pytest criam TEST_cto_* com 5 portas (1,2,7 free, 3 used por outro cliente, 5 used por client_id de teste) + clientes TEST_cli_*/TEST_other_*/TEST_inst_* + services + ONTs MAC fake. Teardown remove tudo via mdb.ctos.delete_one + stok_services.delete_many.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend completo via test_iter146_cto_port_close.py. Para UI E2E real: app usa cookie auth (httpOnly), não localStorage — usar credentials:'include' em fetch. Para testar conditional rendering: criar service tipo=instalacao com novo client_id (sem porta) → modal deve NÃO renderizar [data-testid=svc-close-cto-port]. Para client COM porta: criar CTO com ports[].client_subscriber_id == client_id antes de criar service, então tipo=retirada deve mostrar svc-close-port-release-note, tipo=troca deve mostrar svc-close-port-swap-toggle. Nota: type 'manutencao' não passa no ServiceIn (validado em stok.py:537) — use 'troca' para exercitar o caminho de port_swap.",
+  "rca of the issue": "N/A — feature funciona conforme spec. Única observação é a inconsistência menor de 'manutencao' no FE (dead-code branch) que não afeta funcionalidade."
+}

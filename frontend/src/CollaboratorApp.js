@@ -8,10 +8,13 @@ import RedeIaMapMobile from "@/RedeIaMapMobile";
 import MyAssetsModal from "@/MyAssetsModal";
 import MyHoleritesModal from "@/MyHoleritesModal";
 import PWAInstallPrompt from "@/PWAInstallPrompt";
+import OfflineQueueBadge from "@/OfflineQueueBadge";
+import outbox from "@/utils/offlineQueue";
 // PingTestModal não é mais usado nesta tela — botão removido do home;
 // permanece disponível em LousaMobile (finalização de OS).
 import ServerClock from "@/ServerClock";
 import { serverNow } from "@/serverTime";
+import useGlobalTechTracking from "@/hooks/useGlobalTechTracking";
 import { AvatarZoomModal, Button, Card, fmtMin, Icon, inputStyle, PhoneFrame, Row, StatusBadge } from "@/ui";
 import { enqueue as enqueueOffline, count as offlineCount, flush as flushOffline } from "@/offlineClockQueue";
 import { cropAvatarFromSelfie } from "@/faceCrop";
@@ -36,9 +39,9 @@ function formatGap(min) {
    baixo no topo → dispara refresh, sem sair da tela.
    - Bloqueia o pull-to-refresh nativo do browser (overscroll-behavior)
    - Mostra spinner que cresce com o arraste
-   - Threshold de 70px aciona o refresh
+   - Threshold de 140px aciona o refresh (puxão longo, evita disparo acidental)
 ============================================================= */
-function usePullToRefresh(onRefresh, { enabled = true, threshold = 70 } = {}) {
+function usePullToRefresh(onRefresh, { enabled = true, threshold = 140 } = {}) {
   const [pullDistance, setPullDistance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const stateRef = React.useRef({ startY: 0, active: false });
@@ -57,12 +60,15 @@ function usePullToRefresh(onRefresh, { enabled = true, threshold = 70 } = {}) {
     const onTouchMove = (e) => {
       if (!stateRef.current.active || isRefreshing) return;
       const dy = e.touches[0].clientY - stateRef.current.startY;
-      if (dy > 0) {
-        // arrastando pra baixo
-        const damped = Math.min(dy * 0.5, threshold * 1.5);
+      // Zona morta: ignora os primeiros 30px pra evitar disparo acidental
+      const DEAD_ZONE = 30;
+      if (dy > DEAD_ZONE) {
+        // arrastando pra baixo (com damping mais forte = sensação de elástico)
+        const effective = dy - DEAD_ZONE;
+        const damped = Math.min(effective * 0.35, threshold * 1.5);
         setPullDistance(damped);
-        // só previne o default se o gesto está realmente pra baixo + no topo
-        if (e.cancelable && dy > 5) e.preventDefault();
+        // só previne o default depois da zona morta (evita capturar scroll/clique)
+        if (e.cancelable && dy > DEAD_ZONE + 10) e.preventDefault();
       } else {
         setPullDistance(0);
       }
@@ -141,6 +147,10 @@ export default function CollaboratorApp({ mobile = false, forcedCollabId = null,
 function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout = null }) {
   const [collabs, setCollabs] = useState([]);
   const [collabId, setCollabId] = useState(forcedCollabId);
+  // iter162 — tracking GPS global (independente da tela aberta).
+  // Roda enquanto o app do técnico estiver carregado, alimentando
+  // o painel de Auditoria de Trajeto (Fleet › Trajetos).
+  useGlobalTechTracking(collabId);
   const [today, setToday] = useState(null);
   const [fences, setFences] = useState([]);
   const [screen, setScreen] = useState("home");
@@ -237,6 +247,8 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
   // Carrega colaboradores + praças
   useEffect(() => {
+    // iter183 — inicia auto-sync da fila offline de cadastros (CTO/CE/Cabo)
+    outbox.startAutoSync(process.env.REACT_APP_BACKEND_URL || "");
     // Aplica forcedCollabId imediatamente para que o wizard CTO funcione
     // mesmo se a chamada listCollaborators falhar (link público / sem auth).
     if (forcedCollabId) {
@@ -508,7 +520,16 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
 
   // Pull-to-refresh: gesto nativo no app mobile — arrastar pra baixo atualiza
   // a tela sem sair da página. Só ativa quando está em modo celular E há collab.
-  const ptr = usePullToRefresh(doRefresh, { enabled: mobile && !!collabId });
+  // iter183 — Desativa o PTR em telas com mapas/wizards próprios pra não
+  // interceptar o drag do pino do mapa (bug: o usuário arrastava o pin e
+  // o gesto era capturado pelo PTR, levando o wizard de volta pra step 1).
+  const SCREENS_WITHOUT_PTR = new Set([
+    "cto-cadastro", "rede-map", "qr-scanner",
+    "camera", "selfie-error",
+  ]);
+  const ptrEnabled = mobile && !!collabId
+                       && !SCREENS_WITHOUT_PTR.has(screen);
+  const ptr = usePullToRefresh(doRefresh, { enabled: ptrEnabled });
 
   // Bloqueia o pull-to-refresh nativo do browser (que recarrega a tab inteira)
   useEffect(() => {
@@ -562,7 +583,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             : { display: "grid",
                 gridTemplateColumns: "430px 1fr",
                 gap: 22, alignItems: "start" }}>
-      {mobile && <PullIndicator {...ptr} />}
+      {mobile && ptrEnabled && <PullIndicator {...ptr} />}
       {mobile && <PWAInstallPrompt />}
       <Wrapper>
         {mobile && overrideMode && (
@@ -677,6 +698,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 onOpenHolerites={collabId ? () => setShowMyHolerites(true) : null}
                 onOpenQrScanner={() => setScreen("qr-scanner")}
                 onOpenRedeMap={() => setScreen("rede-map")}
+                onOpenCadastroRede={() => setScreen("cto-cadastro")}
               />
             </div>
           </div>
@@ -692,6 +714,10 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             if (!clockEnabled) {
               return (
                 <div data-testid="screen-home-no-clock">
+                  <div style={{ display: "flex", justifyContent: "flex-end",
+                                  marginBottom: 8 }}>
+                    <OfflineQueueBadge collabId={collabId} compact />
+                  </div>
                   <div style={{ ...appCard, padding: 18 }}>
                     <div style={sectionLabel}>Colaborador externo</div>
                     <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6, color: "#0f172a", letterSpacing: -0.3 }}>
@@ -715,6 +741,23 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                     }}
                   >
                     <Icon name="clipboard" /> Abrir Lousa de Serviços
+                  </button>
+
+                  <button
+                    data-testid="open-cadastro-rede-btn"
+                    onClick={() => setScreen("cto-cadastro")}
+                    style={{
+                      width: "100%", height: 52, borderRadius: 12,
+                      border: "1px solid #bfdbfe",
+                      background: "linear-gradient(135deg,#1d4ed8,#2563eb)",
+                      color: "white", fontWeight: 700, fontSize: 14,
+                      marginBottom: 10,
+                      cursor: "pointer", letterSpacing: 0.2,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      boxShadow: "0 4px 12px rgba(37,99,235,.25)",
+                    }}
+                  >
+                    📡 Cadastro Rede (CTO / CE / Cabo)
                   </button>
 
                   {/* Resumo do último serviço */}
@@ -757,6 +800,10 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             // Layout CLT padrão (com bater ponto)
             return (
             <div data-testid="screen-home">
+              <div style={{ display: "flex", justifyContent: "flex-end",
+                              marginBottom: 8 }}>
+                <OfflineQueueBadge collabId={collabId} compact />
+              </div>
               <div style={{ ...appCard, padding: 18 }}>
                 <div style={sectionLabel}>Próximo ponto</div>
                 <div style={{ fontSize: 30, fontWeight: 800, marginTop: 6, color: "#0f172a", letterSpacing: -0.5 }}>{today.next_expected}</div>
@@ -788,6 +835,24 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 }}
               >
                 <Icon name="clipboard" /> Lousa de Serviços
+              </button>
+
+              <button
+                data-testid="open-cadastro-rede-btn-clt"
+                onClick={() => setScreen("cto-cadastro")}
+                style={{
+                  width: "100%", height: 44, marginTop: 6, marginBottom: 4,
+                  background: "linear-gradient(135deg,#1d4ed8,#2563eb)",
+                  border: 0,
+                  borderRadius: 12,
+                  color: "white",
+                  fontWeight: 700, fontSize: 13,
+                  cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  boxShadow: "0 4px 12px rgba(37,99,235,.25)",
+                }}
+              >
+                📡 Cadastro Rede (CTO / CE / Cabo)
               </button>
 
 
@@ -964,6 +1029,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
             <LousaMobile collaboratorId={collabId}
                           isAdminTest={isAdminTest}
                           onOpenCTO={() => setScreen("cto-cadastro")}
+                          onOpenRedeMap={() => setScreen("rede-map")}
                           onBack={() => setScreen("home")} />
           )}
 
@@ -973,11 +1039,14 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
               onClose={() => setScreen("home")}
               onCreated={(cto) => {
                 // exibe receipt simples e volta para home
+                const isOffline = !!cto?._offline;
                 setReceipt({
                   ok: true,
                   ts: Date.now(),
-                  type: "CTO",
-                  message: `CTO ${cto?.name} enviada para validação.`,
+                  type: isOffline ? "CTO (offline)" : "CTO",
+                  message: isOffline
+                    ? `📤 ${cto?.name || "Cadastro"} salvo na fila offline. Envia automaticamente quando voltar a internet.`
+                    : `CTO ${cto?.name} enviada para validação.`,
                 });
                 setScreen("home");
               }}
@@ -1003,7 +1072,9 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
           )}
 
           {screen === "rede-map" && (
-            <RedeIaMapMobile onBack={() => setScreen("home")} />
+            <RedeIaMapMobile onBack={() => setScreen("home")}
+                                technician={{ id: collabId,
+                                              name: (collabs.find((c) => c.id === collabId) || {}).name }} />
           )}
 
           {/* Modal: Saída com bolhas em aberto */}
@@ -1135,7 +1206,7 @@ function parseDevice(ua) {
 }
 
 
-function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, onOpenHistory, onOpenAssets, onOpenHolerites, onOpenQrScanner, onOpenRedeMap }) {
+function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, onOpenHistory, onOpenAssets, onOpenHolerites, onOpenQrScanner, onOpenRedeMap, onOpenCadastroRede }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
 
@@ -1154,11 +1225,14 @@ function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, 
   if (onOpenQrScanner) {
     items.push({ key: "qr-scanner", label: "Ler QR Code da CTO", icon: "camera", onClick: () => { onOpenQrScanner(); setOpen(false); } });
   }
+  if (onOpenCadastroRede) {
+    items.push({ key: "cadastro-rede", label: "Cadastrar nova CTO (Rede)", icon: "map", onClick: () => { onOpenCadastroRede(); setOpen(false); } });
+  }
   if (onOpenHolerites) {
     items.push({ key: "holerites", label: "Meus holerites", icon: "receipt", onClick: () => { onOpenHolerites(); setOpen(false); } });
   }
   if (onOpenAssets) {
-    items.push({ key: "assets", label: "Meus itens em custódia", icon: "boxes", onClick: () => { onOpenAssets(); setOpen(false); } });
+    items.push({ key: "assets", label: "Meu estoque", icon: "boxes", onClick: () => { onOpenAssets(); setOpen(false); } });
   }
   if (forcedCollabId && onLogoutGoogle) {
     items.push({ key: "logout", label: "Sair da conta Google", icon: "logout", onClick: () => { onLogoutGoogle(); setOpen(false); } });
@@ -1227,6 +1301,10 @@ function CollabLoginScreen({ onSuccess, isAdminTest, collabs, setCollabId, appCa
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
+  // Quando admin/gestor/auditor loga e não tem colaborador vinculado,
+  // mostramos um picker para ele escolher qualquer técnico (modo gestor).
+  const [adminPickerMode, setAdminPickerMode] = useState(false);
+  const [loggedUser, setLoggedUser] = useState(null);
 
   const submit = async (e) => {
     e?.preventDefault?.();
@@ -1237,7 +1315,7 @@ function CollabLoginScreen({ onSuccess, isAdminTest, collabs, setCollabId, appCa
     setLoading(true); setErr(null);
     try {
       // Usa o endpoint padrão /auth/login (mesmo que o gestor)
-      const r = await api.client.post("/auth/login", {
+      const r = await api._client.post("/auth/login", {
         email: email.trim().toLowerCase(),
         password,
       });
@@ -1258,12 +1336,25 @@ function CollabLoginScreen({ onSuccess, isAdminTest, collabs, setCollabId, appCa
       // 3. fallback: API dedicada (pode existir endpoint /collaborators/me)
       if (!cid) {
         try {
-          const me = await api.client.get("/collaborators/me");
+          const me = await api._client.get("/collaborators/me");
           cid = me?.data?.id || null;
         } catch { /* ignora */ }
       }
 
       if (!cid) {
+        // Se for admin/gestor/auditor/super_admin → libera picker de colaborador
+        const role = String(user?.role || "").toLowerCase();
+        const isPrivileged = (
+          role === "administrador" || role === "admin" ||
+          role === "gestor" || role === "auditor" ||
+          role === "gestor_rede" || user?.is_super_admin
+        );
+        if (isPrivileged) {
+          setLoggedUser(user);
+          setAdminPickerMode(true);
+          setLoading(false);
+          return;
+        }
         setErr("Login OK, mas seu colaborador não está vinculado. Peça pro gestor.");
         setLoading(false);
         return;
@@ -1279,7 +1370,48 @@ function CollabLoginScreen({ onSuccess, isAdminTest, collabs, setCollabId, appCa
 
   return (
     <div data-testid="screen-collab-login" style={{ ...appCard, padding: 28 }}>
-      <div style={{ textAlign: "center", marginBottom: 18 }}>
+      {adminPickerMode && (
+        <div data-testid="admin-picker-mode" style={{
+          marginBottom: 16, padding: 14, borderRadius: 12,
+          background: "linear-gradient(135deg,#ecfeff,#cffafe)",
+          border: "1.5px solid #06b6d4",
+        }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: "#0e7490", marginBottom: 4 }}>
+            🔓 Acesso administrativo liberado
+          </div>
+          <div style={{ fontSize: 11, color: "#155e75", marginBottom: 10 }}>
+            Olá <strong>{loggedUser?.name || loggedUser?.email}</strong> · você tem
+            acesso de gestor. Selecione qual colaborador você quer visualizar:
+          </div>
+          <select
+            data-testid="admin-login-collab-picker"
+            onChange={(e) => { const v = e.target.value; if (v) onSuccess(v); }}
+            defaultValue=""
+            style={{
+              width: "100%", padding: "12px 14px", borderRadius: 10,
+              border: "1.5px solid #0891b2", background: "white",
+              fontSize: 14, fontWeight: 700, color: "#0f172a", cursor: "pointer",
+            }}>
+            <option value="" disabled>Selecione um colaborador…</option>
+            {collabs.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} {c.role ? `· ${c.role}` : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            data-testid="admin-picker-back"
+            onClick={() => { setAdminPickerMode(false); setLoggedUser(null); }}
+            style={{
+              marginTop: 8, fontSize: 11, padding: "6px 10px",
+              background: "transparent", border: "1px solid #67e8f9",
+              borderRadius: 8, color: "#0e7490", cursor: "pointer",
+            }}>
+            ← Voltar ao login
+          </button>
+        </div>
+      )}      <div style={{ textAlign: "center", marginBottom: 18 }}>
         <div style={{
           width: 56, height: 56, borderRadius: 14, margin: "0 auto 12px",
           background: "linear-gradient(135deg, #1e40af, #3b82f6)",

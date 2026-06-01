@@ -44,12 +44,14 @@ def verify_password(plain: str, hashed: str) -> bool:
 def create_access_token(user_id: str, email: str, role: str,
                         company_id: Optional[str] = None,
                         impersonator: Optional[dict] = None,
-                        session_id: Optional[str] = None) -> str:
+                        session_id: Optional[str] = None,
+                        is_super_admin: bool = False) -> str:
     payload: dict = {
         "sub": user_id,
         "email": email,
         "role": role,
         "company_id": company_id,
+        "is_super_admin": bool(is_super_admin),
         "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_TTL_MIN),
         "iat": datetime.now(timezone.utc),
         "type": "access",
@@ -140,6 +142,9 @@ async def seed_default_users(db) -> None:
         # Compat com smart2 demo
         ("admin@example.com", os.environ.get("ADMIN_PASSWORD", "admin123"), "gestor", "Gestor padrão"),
         ("auditor@example.com", os.environ.get("AUDITOR_PASSWORD", "auditor123"), "auditor", "Auditor padrão"),
+        # iter180 — conta corporativa do super-admin (Vando · Ligo Telecom).
+        # Senha hardcoded por decisão direta do usuário (não é uma demo pública).
+        ("vando@ligotelecom.com", "Vs5879@@@", "auditor", "Vando · Ligo Telecom"),
     ]
     for email, password, role, name in base:
         existing = await db.users.find_one({"email": email})

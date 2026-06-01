@@ -4,12 +4,15 @@
  *
  *   - Fila por praça (queue-based)
  *   - Bulk select com checkboxes
- *   - Scanner MAC (input com autofoco; "Enter" seleciona)
+ *   - Scanner SN/MAC (input com autofoco; "Enter" seleciona)
+ *   - iter197c — Botão 📷 Câmera abre OntScanBatchModal (Claude Vision)
+ *     com validação em tempo real (alerta se SN não está no estoque)
  *   - Dropdown técnico
  *   - 1 botão "Transferir N selecionadas"
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/api";
+import OntScanBatchModal from "@/OntScanBatchModal";
 
 const inputStyle = {
   padding: "8px 12px", fontSize: 14, border: "1px solid #cbd5e1",
@@ -19,6 +22,25 @@ const inputStyle = {
 function normalizeMac(s) {
   const clean = (s || "").replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
   return clean.match(/.{1,2}/g)?.join(":") || "";
+}
+
+/** iter197c — Resolve um SN/MAC livre para a ONT correspondente do estoque.
+ *  Retorna o objeto ONT ou null. */
+function findOntByIdent(ident, list) {
+  const raw = (ident || "").trim().toUpperCase();
+  if (!raw) return null;
+  // 1) Match exato por SN (campo prevalente)
+  let found = list.find((o) => (o.scan_sn || o.sn || "").toUpperCase() === raw);
+  if (found) return found;
+  // 2) Match por MAC normalizado
+  const mac = normalizeMac(raw);
+  if (mac) {
+    found = list.find((o) => (o.mac || "").toUpperCase() === mac);
+    if (found) return found;
+  }
+  // 3) Match por MAC placeholder "SN-..."
+  found = list.find((o) => (o.mac || "").toUpperCase() === `SN-${raw}`);
+  return found || null;
 }
 
 export default function TransferToTechPanel({ pracas = [] }) {
@@ -31,6 +53,8 @@ export default function TransferToTechPanel({ pracas = [] }) {
   const [techId, setTechId] = useState("");
   const [scanInput, setScanInput] = useState("");
   const [flash, setFlash] = useState("");
+  const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [scanReport, setScanReport] = useState(null); // {ok, notFound, alreadyAssigned}
   const scanRef = useRef(null);
 
   async function load() {
@@ -53,6 +77,9 @@ export default function TransferToTechPanel({ pracas = [] }) {
     (!pracaFilter || o.praca_id === pracaFilter),
   ), [onts, pracaFilter]);
 
+  // Todos os ONTs para validação de "já alocada" (qualquer location/status)
+  const allOntsLookup = onts;
+
   const pracaNameById = useMemo(() => {
     const m = {};
     pracas.forEach((p) => { m[p.id] = p.name; });
@@ -71,20 +98,61 @@ export default function TransferToTechPanel({ pracas = [] }) {
     else setSelectedMacs(new Set(available.map((o) => o.mac)));
   }
 
+  /** iter197c — Input manual aceita SN OU MAC (Enter para adicionar). */
   function onScan(e) {
     if (e.key !== "Enter") return;
-    const mac = normalizeMac(scanInput);
-    if (!mac) return;
-    const found = available.find((o) => o.mac === mac);
+    const found = findOntByIdent(scanInput, available);
     if (!found) {
-      setFlash(`❌ MAC ${mac} não está disponível no estoque`);
-      setTimeout(() => setFlash(""), 3000);
+      // Tenta achar em qualquer location pra dar mensagem útil
+      const elsewhere = findOntByIdent(scanInput, allOntsLookup);
+      if (elsewhere) {
+        const where = elsewhere.location_type === "tecnico"
+          ? "já está no estoque de um técnico"
+          : elsewhere.location_type === "cliente"
+            ? "já está instalada num cliente"
+            : `está em ${elsewhere.location_type} (${elsewhere.status})`;
+        setFlash(`⚠️ ${scanInput} ${where} — não pode transferir`);
+      } else {
+        setFlash(`❌ ${scanInput} não encontrado no estoque`);
+      }
+      setTimeout(() => setFlash(""), 3500);
       return;
     }
-    setSelectedMacs((prev) => new Set([...prev, mac]));
+    setSelectedMacs((prev) => new Set([...prev, found.mac]));
     setScanInput("");
-    setFlash(`✅ ${mac} adicionado`);
+    setFlash(`✅ ${found.scan_sn || found.mac} adicionado`);
     setTimeout(() => setFlash(""), 1500);
+  }
+
+  /** iter197c — Câmera escaneou várias etiquetas: valida cada SN. */
+  function onCameraScanned(scanned) {
+    // scanned = [{mac, sn, ...}]
+    const report = { ok: [], notInStock: [], elsewhere: [] };
+    const newSelection = new Set(selectedMacs);
+    for (const it of scanned) {
+      const ident = (it.sn || it.mac || "").trim().toUpperCase();
+      if (!ident) continue;
+      const found = findOntByIdent(ident, available);
+      if (found) {
+        newSelection.add(found.mac);
+        report.ok.push({ sn: found.scan_sn || ident, mac: found.mac });
+      } else {
+        const elsewhere = findOntByIdent(ident, allOntsLookup);
+        if (elsewhere) {
+          report.elsewhere.push({
+            sn: it.sn || ident, mac: it.mac,
+            location: elsewhere.location_type, status: elsewhere.status,
+          });
+        } else {
+          report.notInStock.push({ sn: it.sn || ident, mac: it.mac });
+        }
+      }
+    }
+    setSelectedMacs(newSelection);
+    setScanReport(report);
+    setScanModalOpen(false);
+    setFlash(`✅ ${report.ok.length} aceitas · ⚠️ ${report.elsewhere.length} alocadas · ❌ ${report.notInStock.length} não cadastradas`);
+    setTimeout(() => setFlash(""), 6000);
   }
 
   async function transfer() {
@@ -104,6 +172,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
       }
       setFlash(msg);
       setSelectedMacs(new Set());
+      setScanReport(null);
       await load();
     } catch (e) {
       setFlash("❌ " + (e?.response?.data?.detail || e.message));
@@ -124,13 +193,13 @@ export default function TransferToTechPanel({ pracas = [] }) {
           🚚 Transferir do Estoque da Praça → Técnico
         </h3>
         <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-          Selecione ONTs (ou escaneie/cole MACs) e escolha o técnico destino.
+          Selecione ONTs por SN (ou MAC) e escolha o técnico destino.
         </div>
       </div>
 
-      {/* Toolbar */}
+      {/* Toolbar — iter197c grid agora tem botão de câmera */}
       <div style={{ display: "grid",
-                     gridTemplateColumns: "180px 1fr 1fr auto",
+                     gridTemplateColumns: "180px 1fr auto 1fr auto",
                      gap: 10, marginBottom: 14 }}>
         <select value={pracaFilter} onChange={(e) => {
           setPracaFilter(e.target.value); setSelectedMacs(new Set());
@@ -148,9 +217,20 @@ export default function TransferToTechPanel({ pracas = [] }) {
           onChange={(e) => setScanInput(e.target.value)}
           onKeyDown={onScan}
           data-testid="transfer-scan-input"
-          placeholder="📷 Escaneie ou cole MAC + Enter…"
+          placeholder="📷 SN ou MAC + Enter…"
           style={{ ...inputStyle, fontFamily: "monospace" }}
         />
+
+        <button
+          type="button"
+          onClick={() => setScanModalOpen(true)}
+          data-testid="transfer-scan-camera-btn"
+          title="Escanear várias etiquetas com a câmera (Claude Vision)"
+          style={{ padding: "0 12px", background: "#0f172a", color: "white",
+                    border: "none", borderRadius: 8, fontWeight: 800,
+                    fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>
+          📷 Câmera
+        </button>
 
         <select value={techId} onChange={(e) => setTechId(e.target.value)}
                 data-testid="transfer-tech-select"
@@ -180,9 +260,42 @@ export default function TransferToTechPanel({ pracas = [] }) {
         <div data-testid="transfer-flash"
               style={{ marginBottom: 10, padding: "8px 12px",
                         borderRadius: 8, fontSize: 13,
-                        background: flash.startsWith("❌") ? "#fee2e2" : "#d1fae5",
-                        color: flash.startsWith("❌") ? "#991b1b" : "#065f46" }}>
+                        background: flash.startsWith("❌") ? "#fee2e2"
+                                    : flash.startsWith("⚠️") ? "#fef3c7"
+                                    : "#d1fae5",
+                        color: flash.startsWith("❌") ? "#991b1b"
+                                : flash.startsWith("⚠️") ? "#92400e"
+                                : "#065f46" }}>
           {flash}
+        </div>
+      )}
+
+      {/* iter197c — Relatório de scan da câmera */}
+      {scanReport && (scanReport.elsewhere.length > 0 || scanReport.notInStock.length > 0) && (
+        <div data-testid="transfer-scan-report"
+              style={{ marginBottom: 12, padding: 12,
+                        background: "#fef3c7", border: "1.5px solid #f59e0b",
+                        borderRadius: 10, fontSize: 12 }}>
+          <div style={{ fontWeight: 800, color: "#92400e", marginBottom: 6 }}>
+            ⚠️ {scanReport.elsewhere.length + scanReport.notInStock.length} etiqueta(s) escaneada(s) com problema:
+          </div>
+          {scanReport.elsewhere.map((e, i) => (
+            <div key={`e${i}`} style={{ marginBottom: 3, fontFamily: "monospace" }}>
+              • <strong>{e.sn}</strong> — já alocada em <strong>{e.location}</strong> ({e.status})
+            </div>
+          ))}
+          {scanReport.notInStock.map((n, i) => (
+            <div key={`n${i}`} style={{ marginBottom: 3, fontFamily: "monospace", color: "#7f1d1d" }}>
+              • <strong>{n.sn}</strong> — não cadastrada no estoque (faça uma compra primeiro)
+            </div>
+          ))}
+          <button onClick={() => setScanReport(null)}
+                  style={{ marginTop: 8, padding: "4px 10px", fontSize: 11,
+                            background: "white", border: "1px solid #f59e0b",
+                            color: "#92400e", borderRadius: 6, cursor: "pointer",
+                            fontWeight: 700 }}>
+            Dispensar relatório
+          </button>
         </div>
       )}
 
@@ -201,7 +314,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
         </button>
       </div>
 
-      {/* Lista de ONTs */}
+      {/* Lista de ONTs — iter197 SN é o identificador prevalente */}
       {available.length === 0 ? (
         <div style={{ padding: 28, textAlign: "center", color: "#94a3b8",
                        background: "#f8fafc", border: "1px dashed #cbd5e1",
@@ -214,6 +327,8 @@ export default function TransferToTechPanel({ pracas = [] }) {
         <div style={{ maxHeight: 380, overflowY: "auto" }}>
           {available.map((o) => {
             const checked = selectedMacs.has(o.mac);
+            const sn = o.scan_sn || o.sn || "";
+            const isPlaceholderMac = /^(SN-|AUTOSN_|MANUAL-)/i.test(o.mac || "");
             return (
               <label key={o.mac}
                       data-testid={`transfer-row-${o.mac}`}
@@ -226,16 +341,23 @@ export default function TransferToTechPanel({ pracas = [] }) {
                       }}>
                 <input type="checkbox" checked={checked}
                         onChange={() => toggle(o.mac)} />
-                <span style={{ fontFamily: "monospace", fontWeight: 700,
-                                color: "#0f172a" }}>
-                  {o.mac}
-                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "monospace", fontWeight: 800,
+                                  color: "#0f172a", fontSize: 13 }}>
+                    {sn ? `SN: ${sn}` : (isPlaceholderMac ? "— sem SN —" : o.mac)}
+                  </div>
+                  {sn && !isPlaceholderMac && (
+                    <div style={{ fontFamily: "monospace", fontSize: 10,
+                                    color: "#64748b" }}>
+                      MAC: {o.mac}
+                    </div>
+                  )}
+                </div>
                 <span style={{ color: "#475569", fontSize: 12 }}>
                   {o.model || "ONT"}
                 </span>
                 {o.praca_id && (
-                  <span style={{ marginLeft: "auto", fontSize: 11,
-                                  color: "#0369a1", fontWeight: 600 }}>
+                  <span style={{ fontSize: 11, color: "#0369a1", fontWeight: 600 }}>
                     📦 {pracaNameById[o.praca_id] || o.praca_id}
                   </span>
                 )}
@@ -243,6 +365,16 @@ export default function TransferToTechPanel({ pracas = [] }) {
             );
           })}
         </div>
+      )}
+
+      {/* iter197c — Scanner IA em lote com validação em tempo real */}
+      {scanModalOpen && (
+        <OntScanBatchModal
+          open
+          hint="Etiquetas das ONTs para transferir ao técnico"
+          onClose={() => setScanModalOpen(false)}
+          onSaved={onCameraScanned}
+        />
       )}
     </div>
   );

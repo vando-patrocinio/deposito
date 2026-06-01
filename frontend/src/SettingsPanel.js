@@ -9,6 +9,8 @@ import MotorIaCard from "@/MotorIaCard";
 import ConnectionsCard from "@/ConnectionsCard";
 import PublicAccessPanel from "@/PublicAccessPanel";
 import AiConfigCard from "@/AiConfigCard";
+import RetiradaTemplateCard from "@/RetiradaTemplateCard";
+import OsValidationTogglesCard from "@/OsValidationTogglesCard";
 
 export default function SettingsPanel() {
   const [s, setS] = useState(null);
@@ -555,6 +557,8 @@ export default function SettingsPanel() {
 
       <BrandingCard />
       <MotorIaCard />
+      <RetiradaTemplateCard />
+      <OsValidationTogglesCard />
       <PublicAccessPanel />
       <ConnectionsCard />
       <AtlazIntegrationCard />

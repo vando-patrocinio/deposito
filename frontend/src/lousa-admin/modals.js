@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/api";
 import { Button } from "@/ui";
 import { TYPE_LABELS, aiScoreColor } from "./_constants";
-import { fmtAddress, fmtPhone, fmtName, fmtPraca, fmtRelato, safeText } from "@/utils/format";
+import { fmtAddress, fmtPhone, fmtName, fmtPraca, fmtRelato, safeText, ontLabel, ontSecondary, isPlaceholderMac } from "@/utils/format";
 
 /* =============================================================
    AiDetailModal — exibe avaliação IA de um serviço fechado.
@@ -77,6 +77,25 @@ function Section({ label, children }) {
 export function ClosedTicketDetailModal({ ticket, onClose }) {
   const [full, setFull] = useState(ticket);
   const [loading, setLoading] = useState(false);
+  // iter198 — guard contra fechar com o 2º click do dblclick:
+  //   1) ignora qualquer click nos primeiros 350ms após abrir (consome o
+  //      "afterClick" residual do dblclick que abriu o modal)
+  //   2) só fecha pelo backdrop se o MOUSEDOWN também foi no backdrop
+  //      (evita fechar quando o usuário arrasta texto pra fora do modal)
+  const [openedAt] = useState(() => Date.now());
+  const mouseDownOnBackdropRef = useRef(false);
+
+  const tryClose = useCallback(() => {
+    if (Date.now() - openedAt < 350) return; // ignora propagação do dblclick
+    onClose?.();
+  }, [openedAt, onClose]);
+
+  // ESC fecha (UX padrão)
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") tryClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [tryClose]);
 
   // Recarrega o ticket completo (lousa público pode ter completion_data)
   useEffect(() => {
@@ -110,13 +129,26 @@ export function ClosedTicketDetailModal({ ticket, onClose }) {
   }).filter((f) => f.dataUrl);
 
   return (
-    <div onClick={onClose}
-          data-testid="closed-ticket-detail-modal"
+    <div data-testid="closed-ticket-detail-modal"
+          onMouseDown={(e) => {
+            // Marca se o "press" começou no backdrop (vs dentro do modal)
+            mouseDownOnBackdropRef.current = e.target === e.currentTarget;
+          }}
+          onMouseUp={(e) => {
+            // Só fecha se pressionou E soltou no backdrop
+            // (evita fechar ao arrastar seleção de texto pra fora)
+            if (mouseDownOnBackdropRef.current && e.target === e.currentTarget) {
+              tryClose();
+            }
+            mouseDownOnBackdropRef.current = false;
+          }}
           style={{ position: "fixed", inset: 0, zIndex: 9999,
                     background: "rgba(15,23,42,0.7)",
                     display: "flex", alignItems: "center",
                     justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()}
+      <div onMouseDown={(e) => e.stopPropagation()}
+            onMouseUp={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
             style={{ background: "#fff", borderRadius: 12,
                       width: "min(95vw, 720px)", maxHeight: "92vh",
                       display: "flex", flexDirection: "column",
@@ -162,7 +194,7 @@ export function ClosedTicketDetailModal({ ticket, onClose }) {
               );
             })()}
           </div>
-          <button onClick={onClose}
+          <button onClick={tryClose}
                   data-testid="closed-detail-close"
                   style={{ background: "transparent", border: 0, fontSize: 22,
                             cursor: "pointer", color: "#64748b" }}>×</button>
@@ -444,23 +476,107 @@ export function AutoReschedConfigModal({ initial, onClose, onSaved }) {
  * AdminFinalizeModal — gestor finaliza OS no lugar do técnico,
  * com mesmas regras (drop, esticadores, sinal, observações).
  * Aplica os mesmos hooks no backend (signal snapshot, auto-resched).
+ * iter195 — Para tipo=retirada: o equipamento do cliente é
+ * transferido para o estoque do técnico automaticamente.
  * ============================================================= */
 export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
-  const [form, setForm] = useState({ sinal: "", observacoes: "" });
+  const isRetirada = ticket?.type === "retirada";
+  const isInstall = ticket?.type === "instalacao" || ticket?.type === "troca";
+  const [form, setForm] = useState({
+    sinal: "", observacoes: "",
+    ont: "", ont_sn: "",
+    is_defective: false, defective_reason: "",
+    cto_id: "", cto_name: "", cto_port_number: "",
+  });
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
+  const [clientOnt, setClientOnt] = useState(null); // ONT detectada no cliente
+  const [ontLoading, setOntLoading] = useState(false);
+  const [techStock, setTechStock] = useState([]);  // Estoque do técnico (install)
+  const [techStockLoading, setTechStockLoading] = useState(false);
+  const [ctos, setCtos] = useState([]);            // Lista de CTOs (install)
+  const [ctoSearch, setCtoSearch] = useState("");
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const cname = ticket?.client_snapshot?.name || ticket?.id;
+
+  // Para Retirada: tenta detectar a ONT atualmente vinculada ao cliente
+  // (lookup em stok_onts via service.client_id) para pré-preencher MAC/SN.
+  useEffect(() => {
+    if (!isRetirada || !ticket?.id) return;
+    let alive = true;
+    setOntLoading(true);
+    api._client.get(`/lousa/tickets/${ticket.id}/client-current-ont`)
+      .then((r) => {
+        if (!alive) return;
+        const ont = r.data || null;
+        setClientOnt(ont);
+        if (ont) {
+          setForm((f) => ({
+            ...f,
+            ont: ont.mac && !String(ont.mac).startsWith("AUTOSN_")
+                  && !String(ont.mac).startsWith("SN-")
+                  ? ont.mac : f.ont,
+            ont_sn: ont.scan_sn || f.ont_sn,
+          }));
+        }
+      })
+      .catch(() => { /* silent — campo segue editável */ })
+      .finally(() => { if (alive) setOntLoading(false); });
+    return () => { alive = false; };
+  }, [isRetirada, ticket?.id]);
+
+  // iter196 — Para Instalação/Troca: carrega estoque do técnico + lista de CTOs
+  useEffect(() => {
+    if (!isInstall || !ticket?.id) return;
+    let alive = true;
+    setTechStockLoading(true);
+    api._client.get(`/lousa/tickets/${ticket.id}/tech-stock`)
+      .then((r) => { if (alive) setTechStock(r.data?.items || []); })
+      .catch(() => { if (alive) setTechStock([]); })
+      .finally(() => { if (alive) setTechStockLoading(false); });
+    api.redeIaCtosList({ limit: 200 })
+      .then((r) => {
+        if (!alive) return;
+        const list = Array.isArray(r) ? r : (r?.items || []);
+        setCtos(list);
+      })
+      .catch(() => { if (alive) setCtos([]); });
+    return () => { alive = false; };
+  }, [isInstall, ticket?.id]);
 
   const submit = async () => {
     if (form.sinal === "" || Number.isNaN(Number(form.sinal))) {
       window.alert("Informe o sinal óptico final (dBm).");
       return;
     }
+    if (isRetirada && !form.ont_sn && !form.ont) {
+      const proceed = await window.confirm(
+        "Nenhum SN/MAC informado.\n\n" +
+        "O SN é o identificador principal da ONT. Sem ele, " +
+        "o equipamento NÃO será transferido para o estoque do técnico — " +
+        "apenas a nota será fechada.\n\n" +
+        "Quer prosseguir mesmo assim?");
+      if (!proceed) return;
+    }
+    if (isRetirada && form.is_defective && !form.defective_reason.trim()) {
+      window.alert("Informe o motivo do defeito (será gravado no histórico).");
+      return;
+    }
+    if (isInstall) {
+      if (!form.ont) {
+        window.alert("Escolha a ONT do estoque do técnico para esta instalação (identificada pelo SN).");
+        return;
+      }
+      if (!form.cto_id || !form.cto_port_number) {
+        const ok = await window.confirm(
+          "CTO ou porta não informadas.\n\n" +
+          "Sem CTO+porta, a ONT será baixada do estoque mas a porta da " +
+          "CTO NÃO será marcada como ocupada. Confirma assim?");
+        if (!ok) return;
+      }
+    }
     setBusy(true);
     try {
-      // Fechamento interno (gestor/auditor): NÃO consome insumos nem ONT.
-      // Apenas registra sinal final do cliente + observações + justificativa.
       const cd = {
         sinal: Number(form.sinal),
         qtd_drop: 0,
@@ -468,10 +584,20 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
         conectores_fast: 0,
         cabo_rede: 0,
         conectores_rede: 0,
-        ont: null,
+        ont: (isRetirada || isInstall) ? (form.ont || null) : null,
+        ont_sn: isRetirada ? (form.ont_sn || null) : null,
+        is_defective: isRetirada ? form.is_defective : false,
+        defective_reason: isRetirada && form.is_defective
+          ? form.defective_reason.trim() || null : null,
+        cto_id: isInstall ? (form.cto_id || null) : null,
+        cto_name: isInstall ? (form.cto_name || null) : null,
+        cto_port_number: isInstall && form.cto_port_number
+          ? Number(form.cto_port_number) : null,
         observacoes: form.observacoes || null,
         closed_by_admin: true,
-        internal_close: true,
+        // Quando há transferência real (retirada/instalação) NÃO é fechamento
+        // interno puro — o backend faz a baixa de fato no estoque.
+        internal_close: !(isRetirada || isInstall),
       };
       await onSubmit(cd, notes);
     } catch (e) {
@@ -496,23 +622,273 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
                       maxHeight: "90vh", overflowY: "auto" }}>
         <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800,
                         color: "#0f172a" }}>
-          🏁 Finalizar OS no lugar do técnico
+          {isRetirada
+            ? "📦 Finalizar Retirada no lugar do técnico"
+            : isInstall
+              ? "🔧 Finalizar Instalação no lugar do técnico"
+              : "🏁 Finalizar OS no lugar do técnico"}
         </h3>
         <p style={{ fontSize: 11, color: "#64748b", marginBottom: 12 }}>
           Cliente: <strong>{cname}</strong>
           {ticket.assigned_collaborator_id && (
             <span> · técnico: {ticket.collaborator_name || ticket.assigned_collaborator_id}</span>
           )}
-          <br/>Fechamento <strong>interno</strong>: registra apenas o sinal
-          final do cliente e a descrição. <strong>Não consome insumos nem
-          ONT</strong> (técnico não esteve no local).
+          {!isRetirada && !isInstall && (
+            <>
+              <br/>Fechamento <strong>interno</strong>: registra apenas o sinal
+              final do cliente e a descrição. <strong>Não consome insumos nem
+              ONT</strong> (técnico não esteve no local).
+            </>
+          )}
         </p>
+
+        {/* iter195 — Banner Retirada com info de transferência automática */}
+        {isRetirada && (
+          <div data-testid="adm-fin-retirada-banner"
+                style={{ background: "linear-gradient(135deg,#ecfdf5,#d1fae5)",
+                          border: "1.5px solid #10b981", borderRadius: 10,
+                          padding: 12, marginBottom: 14, fontSize: 12,
+                          color: "#065f46", lineHeight: 1.5 }}>
+            <strong>✅ Transferência automática de equipamento</strong><br/>
+            Ao finalizar, a ONT vinculada ao cliente será movida para o
+            estoque do <strong>{ticket.collaborator_name || "técnico atribuído"}</strong>,
+            como se ele tivesse feito a retirada presencial. Também serão
+            enviados o comprovante WhatsApp e a remoção no SmartOLT.
+            {clientOnt && (
+              <div style={{ marginTop: 8, padding: 8,
+                              background: "rgba(255,255,255,.7)",
+                              borderRadius: 6, fontSize: 11,
+                              fontFamily: "monospace" }}>
+                <div><strong>ONT detectada no cliente:</strong></div>
+                <div data-testid="adm-fin-retirada-ont-label"
+                      style={{ fontSize: 14, fontWeight: 800, color: "#065f46" }}>
+                  SN: {ontLabel(clientOnt)}
+                </div>
+                {ontSecondary(clientOnt) && (
+                  <div style={{ fontSize: 10, opacity: 0.7 }}>
+                    MAC: {ontSecondary(clientOnt)}
+                  </div>
+                )}
+                {clientOnt.model && (
+                  <div style={{ fontSize: 10, opacity: 0.7 }}>
+                    Modelo: {clientOnt.model}
+                  </div>
+                )}
+              </div>
+            )}
+            {ontLoading && (
+              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
+                🔍 Buscando ONT atual do cliente…
+              </div>
+            )}
+            {!ontLoading && !clientOnt && (
+              <div style={{ marginTop: 6, fontSize: 11, color: "#92400e" }}>
+                ⚠️ Nenhuma ONT registrada no estoque deste cliente. Informe
+                MAC/SN manualmente para registrar a retirada.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* iter196 — Banner Instalação com info de baixa+vínculo */}
+        {isInstall && (
+          <div data-testid="adm-fin-install-banner"
+                style={{ background: "linear-gradient(135deg,#eff6ff,#dbeafe)",
+                          border: "1.5px solid #3b82f6", borderRadius: 10,
+                          padding: 12, marginBottom: 14, fontSize: 12,
+                          color: "#1e3a8a", lineHeight: 1.5 }}>
+            <strong>🔧 Baixa de estoque + vínculo automático</strong><br/>
+            Ao finalizar, a ONT escolhida do estoque do <strong>
+            {ticket.collaborator_name || "técnico atribuído"}</strong> será
+            baixada e <strong>vinculada ao cliente</strong>. A porta da CTO
+            informada também será marcada como ocupada.
+          </div>
+        )}
 
         <div style={{ marginBottom: 10 }}>
           <FieldNum label="Sinal final (dBm) *" testid="adm-fin-sinal"
                       step="0.1" value={form.sinal}
                       onChange={(v) => setF("sinal", v)} required />
         </div>
+
+        {/* iter197 — SN prevalente: ordem invertida (SN à esquerda, MAC secundário) */}
+        {isRetirada && (
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr",
+                          gap: 10, marginBottom: 10 }}>
+            <label style={{ display: "block" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#065f46",
+                              textTransform: "uppercase", letterSpacing: 0.4,
+                              marginBottom: 3 }}>
+                SN da ONT * <span style={{ color: "#64748b", fontWeight: 500 }}>(identificador principal)</span>
+              </div>
+              <input data-testid="adm-fin-ont-sn"
+                      value={form.ont_sn}
+                      onChange={(e) => setF("ont_sn", e.target.value.toUpperCase())}
+                      placeholder="HWTC12345678"
+                      style={{ width: "100%", padding: "8px 10px",
+                                fontFamily: "monospace", fontSize: 14, fontWeight: 700,
+                                border: "2px solid #10b981", borderRadius: 6,
+                                background: form.ont_sn ? "#ecfdf5" : "white" }} />
+            </label>
+            <label style={{ display: "block" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8",
+                              textTransform: "uppercase", letterSpacing: 0.4,
+                              marginBottom: 3 }}>
+                MAC <span style={{ fontWeight: 500 }}>(opcional)</span>
+              </div>
+              <input data-testid="adm-fin-ont-mac"
+                      value={form.ont}
+                      onChange={(e) => setF("ont", e.target.value.toUpperCase())}
+                      placeholder="AA:BB:CC:DD:EE:FF"
+                      style={{ width: "100%", padding: "6px 8px",
+                                fontFamily: "monospace", fontSize: 12,
+                                border: "1px solid #cbd5e1", borderRadius: 6 }} />
+            </label>
+          </div>
+        )}
+
+        {/* iter195 — Defeituoso? (Retirada) */}
+        {isRetirada && (
+          <div style={{ marginBottom: 10, padding: 10,
+                          background: form.is_defective ? "#fef2f2" : "#f8fafc",
+                          border: `1px solid ${form.is_defective ? "#fca5a5" : "#e2e8f0"}`,
+                          borderRadius: 8 }}>
+            <label style={{ display: "flex", gap: 8, alignItems: "center",
+                              cursor: "pointer", fontSize: 12, fontWeight: 700,
+                              color: form.is_defective ? "#991b1b" : "#475569" }}>
+              <input type="checkbox" data-testid="adm-fin-defective"
+                      checked={form.is_defective}
+                      onChange={(e) => setF("is_defective", e.target.checked)} />
+              ⚠️ Equipamento retirado está DEFEITUOSO (devolver à empresa)
+            </label>
+            {form.is_defective && (
+              <textarea data-testid="adm-fin-defective-reason"
+                          value={form.defective_reason}
+                          onChange={(e) => setF("defective_reason", e.target.value)}
+                          placeholder="Motivo do defeito (ex: porta ETH queimada, não liga, etc.)"
+                          style={{ width: "100%", padding: 8, fontSize: 12,
+                                    minHeight: 50, borderRadius: 6,
+                                    border: "1px solid #fca5a5",
+                                    marginTop: 8, fontFamily: "inherit" }} />
+            )}
+          </div>
+        )}
+
+        {/* iter196 — Instalação: seleção da ONT do estoque do técnico (SN prevalente iter197) */}
+        {isInstall && (
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700,
+                              color: "#1e40af", textTransform: "uppercase",
+                              letterSpacing: 0.5, marginBottom: 4 }}>
+              ONT do estoque do técnico * <span style={{ color: "#64748b", fontWeight: 500, textTransform: "none" }}>(identificada por SN)</span>
+            </label>
+            {techStockLoading ? (
+              <div style={{ padding: 10, fontSize: 12, color: "#64748b",
+                              background: "#f8fafc", borderRadius: 6 }}>
+                🔍 Carregando estoque do técnico…
+              </div>
+            ) : techStock.length === 0 ? (
+              <div data-testid="adm-fin-stock-empty"
+                    style={{ padding: 10, fontSize: 12, color: "#92400e",
+                              background: "#fef3c7", borderRadius: 6,
+                              border: "1px solid #fcd34d" }}>
+                ⚠️ Nenhuma ONT disponível no estoque deste técnico.
+                Cadastre uma transferência antes de instalar.
+              </div>
+            ) : (
+              <select data-testid="adm-fin-ont-select"
+                        value={form.ont}
+                        onChange={(e) => setF("ont", e.target.value)}
+                        style={{ width: "100%", padding: 8, fontSize: 13,
+                                  fontWeight: 700,
+                                  border: "2px solid #3b82f6", borderRadius: 6,
+                                  fontFamily: "monospace",
+                                  background: form.ont ? "#eff6ff" : "white" }}>
+                <option value="">— Escolher por SN ({techStock.length} disponíveis) —</option>
+                {techStock.map((o) => {
+                  const sn = (o.scan_sn || o.sn || "").trim();
+                  const macReal = !isPlaceholderMac(o.mac) ? o.mac : "";
+                  const label = sn || macReal || o.mac;
+                  const suffix = [
+                    o.model,
+                    macReal && sn ? `MAC ${macReal}` : null,
+                    o.source === "retirada" && o.withdrawn_from_client_name
+                      ? `ex: ${o.withdrawn_from_client_name}` : null,
+                  ].filter(Boolean).join(" · ");
+                  return (
+                    <option key={o.mac} value={o.mac}>
+                      SN {label}{suffix ? ` · ${suffix}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            )}
+          </div>
+        )}
+
+        {/* iter196 — Instalação: seleção da CTO + porta */}
+        {isInstall && (
+          <div style={{ marginBottom: 10, padding: 10,
+                          background: "#f8fafc", borderRadius: 8,
+                          border: "1px solid #e2e8f0" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#475569",
+                            textTransform: "uppercase", letterSpacing: 0.4,
+                            marginBottom: 6 }}>
+              CTO + Porta (será marcada como ocupada)
+            </div>
+            <input data-testid="adm-fin-cto-search"
+                    value={ctoSearch}
+                    onChange={(e) => setCtoSearch(e.target.value)}
+                    placeholder="🔍 Filtrar CTO por nome…"
+                    style={{ width: "100%", padding: 8, fontSize: 12,
+                              border: "1px solid #cbd5e1", borderRadius: 6,
+                              marginBottom: 6 }} />
+            <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr",
+                            gap: 8 }}>
+              <select data-testid="adm-fin-cto-select"
+                        value={form.cto_id}
+                        onChange={(e) => {
+                          const c = ctos.find((x) => x.id === e.target.value);
+                          setForm((f) => ({ ...f,
+                            cto_id: e.target.value,
+                            cto_name: c?.name || "" }));
+                        }}
+                        style={{ width: "100%", padding: 8, fontSize: 12,
+                                  border: "1px solid #cbd5e1", borderRadius: 6,
+                                  background: form.cto_id ? "#ecfdf5" : "white" }}>
+                <option value="">— Escolher CTO —</option>
+                {ctos
+                  .filter((c) => {
+                    if (!ctoSearch) return true;
+                    const q = ctoSearch.toLowerCase();
+                    return (c.name || "").toLowerCase().includes(q);
+                  })
+                  .slice(0, 200)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name || c.id}
+                      {c.total_ports ? ` (${c.total_ports}p)` : ""}
+                    </option>
+                  ))}
+              </select>
+              <input data-testid="adm-fin-cto-port" type="number"
+                      min="1" step="1"
+                      value={form.cto_port_number}
+                      onChange={(e) => setF("cto_port_number", e.target.value)}
+                      placeholder="Nº porta"
+                      style={{ width: "100%", padding: 8, fontSize: 12,
+                                border: "1px solid #cbd5e1", borderRadius: 6,
+                                fontFamily: "monospace",
+                                background: form.cto_port_number ? "#ecfdf5" : "white" }} />
+            </div>
+            {form.cto_id && form.cto_name && (
+              <div style={{ marginTop: 6, fontSize: 10, color: "#475569" }}>
+                Selecionado: <strong>{form.cto_name}</strong>
+                {form.cto_port_number && <> · Porta {form.cto_port_number}</>}
+              </div>
+            )}
+          </div>
+        )}
 
         <label style={{ display: "block", fontSize: 11, fontWeight: 700,
                           color: "#475569", textTransform: "uppercase",
@@ -553,12 +929,23 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
           <button onClick={submit}
                     data-testid="adm-fin-submit"
                     disabled={busy}
-                    style={{ padding: "8px 18px", background: "#0f766e",
+                    style={{ padding: "8px 18px",
+                              background: isRetirada
+                                ? "linear-gradient(135deg,#10b981,#0d9488)"
+                                : isInstall
+                                  ? "linear-gradient(135deg,#3b82f6,#1d4ed8)"
+                                  : "#0f766e",
                               color: "white", border: "none",
                               borderRadius: 6, fontWeight: 700, fontSize: 12,
                               cursor: busy ? "wait" : "pointer",
                               opacity: busy ? 0.7 : 1 }}>
-            {busy ? "Finalizando..." : "✓ Finalizar OS"}
+            {busy
+              ? "Finalizando..."
+              : isRetirada
+                ? "✓ Finalizar Retirada e transferir equipamento"
+                : isInstall
+                  ? "✓ Finalizar Instalação e baixar ONT"
+                  : "✓ Finalizar OS"}
           </button>
         </div>
       </div>

@@ -61,12 +61,14 @@ import DialogHost from "@/dialog";
 import DialogHistoryPanel from "@/DialogHistoryPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
 import EstoquePanel from "@/EstoquePanel";
+import PropostasPanel from "@/PropostasPanel";
 import CentralComprasPanel from "@/CentralComprasPanel";
 import AICenterPanel from "@/AICenterPanel";
 import AiRankingPanel from "@/AiRankingPanel";
 import AiCorrectionsPanel from "@/AiCorrectionsPanel";
 import AIHubPanel from "@/AIHubPanel";
 import CentralIaDashboard from "@/CentralIaDashboard";
+import NeoChatFab from "@/NeoChatFab";
 import NotificationsBell from "@/NotificationsBell";
 import OfflineTimeBanner from "@/OfflineTimeBanner";
 import ServerClock from "@/ServerClock";
@@ -196,9 +198,7 @@ const NAV_GROUPS = [
     items: [
       { id: "dashboard", icon: BarChart3, label: "Painel", roles: ["gestor", "auditor", "administrador"] },
       { id: "lousa", icon: Layout, label: "Chamados", roles: ["administrador"] },
-      { id: "estoque", icon: Boxes, label: "Movimento", roles: ["gestor", "administrador"] },
-      { id: "central-compras", icon: ShoppingCart, label: "Central de Compras",
-        roles: ["gestor", "administrador", "colaborador"] },
+      { id: "estoque", icon: Boxes, label: "Estoque", roles: ["gestor", "administrador"] },
       { id: "projects", icon: Trello, label: "Acompanhamento",
         roles: ["gestor", "administrador", "auditor"] },
       { id: "radius", icon: Boxes, label: "RADIUS / PPPoE",
@@ -216,6 +216,17 @@ const NAV_GROUPS = [
     items: [
       { id: "fleet", icon: Car, label: "Gestão de Frota",
         roles: ["gestor", "administrador", "auditor"] },
+    ],
+  },
+  {
+    label: "Projetos",
+    items: [
+      { id: "projetos", icon: FileText, label: "Projetos",
+        roles: ["gestor", "auditor", "administrador", "colaborador"],
+        children: [
+          { id: "propostas", label: "Propostas (IA)" },
+        ],
+      },
     ],
   },
   {
@@ -812,6 +823,8 @@ function AppShell({ view, setView, children }) {
           {children}
         </div>
       </main>
+      {/* NEO Chat FAB — visível em todas as telas para gestores/admin/auditor */}
+      {hasRole(user, "gestor", "admin", "administrador", "auditor") && <NeoChatFab />}
     </div>
   );
 }
@@ -954,6 +967,21 @@ function AppContent() {
 
   // Reforça view=lousa quando entra em modo público (caso o localStorage tenha
   // resíduo de uma sessão anterior).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (e) => {
+      const v = e?.detail?.view;
+      if (!v) return;
+      setView(v);
+      // Se a view tiver sub-tab, salva pra leitura no componente filho
+      if (e.detail.sub) {
+        try { window.sessionStorage.setItem(`subtab:${v}`, e.detail.sub); } catch {}
+      }
+    };
+    window.addEventListener("ponto:navigate", handler);
+    return () => window.removeEventListener("ponto:navigate", handler);
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const hasPtoken = !!window.localStorage.getItem("smartprov_public_token");
@@ -1143,6 +1171,7 @@ function AppContent() {
           {view === "estoque" && <EstoquePanel currentUser={user} />}
           {view === "central-compras" && <CentralComprasPanel currentUser={user} />}
           {view === "projects" && <ProjectsPanel currentUser={user} />}
+          {(view === "projetos" || view === "propostas") && <PropostasPanel currentUser={user} />}
           {view === "ai-ranking" && <AiRankingPanel />}
           {view === "ai-corrections" && <AiCorrectionsPanel />}
           {view === "central-ia" && <CentralIaDashboard />}

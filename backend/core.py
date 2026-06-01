@@ -44,7 +44,8 @@ def is_super_admin(user: dict) -> bool:
 
 # Email com poder de conceder/revogar super_admin para outros usuários.
 # Hardcoded por decisão de produto (resp. único: Vando).
-SUPER_ADMIN_GRANTOR_EMAIL = "vando@example.com"
+# iter180 — migrado para conta corporativa @ligotelecom.com.
+SUPER_ADMIN_GRANTOR_EMAIL = "vando@ligotelecom.com"
 
 
 def can_grant_super_admin(user: dict) -> bool:
@@ -203,6 +204,28 @@ def today_str() -> str:
 def now_hhmm() -> str:
     """Hora HH:MM no FUSO LOCAL DO APP — bate com o ServerClock exibido no app."""
     return datetime.now(APP_TZ).strftime("%H:%M")
+
+
+def fmt_br_dt(iso: Optional[str], fmt: str = "%d/%m/%Y %H:%M") -> str:
+    """Converte ISO 8601 (UTC) → string formatada NO FUSO LOCAL do app.
+
+    Garante que TODOS os relatórios/PDFs/exports mostrem horário BR (UTC-3),
+    nunca UTC. Crítico para romaneios, holerites, relatório de ponto, etc.
+
+    Aceita ISO com 'Z' ou '+00:00'. Se a string já vier sem timezone,
+    assume que é UTC (comportamento da maioria do código antigo).
+    """
+    if not iso:
+        return "—"
+    try:
+        s = str(iso).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        # Se vier "naive" (sem tz), assume UTC pra não distorcer
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(APP_TZ).strftime(fmt)
+    except Exception:
+        return str(iso)[:16] if iso else "—"
 
 
 def strip_data_url(b64: str) -> tuple[str, str]:

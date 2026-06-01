@@ -1,160 +1,145 @@
 {
-  "project_context": {
-    "name": "SmartProv Landing Page",
-    "domain": "Internet Service Provider (Fiber Optic)",
-    "target_audience": "Brazilian residential users, 35+ years, classes B/C/D",
-    "objective": "High-conversion, award-winning marketing page to capture leads and WhatsApp contacts"
-  },
-  "design_direction": {
-    "theme": "Light",
-    "archetype": "4 (Swiss & High-Contrast)",
-    "mood": "Fast, Reliable, Trustworthy, Modern, Premium",
-    "color_palette": {
-      "primary": "#4F46E5",
-      "primary_hover": "#4338CA",
-      "accent": "#06B6D4",
-      "whatsapp": "#25D366",
-      "whatsapp_hover": "#20BD5A",
-      "background": "#FAFAFA",
-      "surface": "#FFFFFF",
-      "text_primary": "#0F172A",
-      "text_secondary": "#475569",
-      "border": "#E2E8F0"
+  "theme": "LIGHT",
+  "archetype": "Archetype 4 (Swiss & High-Contrast / Tactical Utility)",
+  "rationale": "Field service app for telecom technicians (Lousa Mobile). Requires extreme clarity, large touch targets, high contrast for outdoor visibility, and thumb-zone ergonomics for one-handed operation. Color semantics use slate/sky/amber/emerald.",
+  "colors": {
+    "base": {
+      "background": "bg-slate-50",
+      "surface": "bg-white",
+      "border": "border-slate-200"
     },
-    "typography": {
-      "headings_font": "Outfit",
-      "body_font": "DM Sans",
-      "hierarchy": {
-        "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tighter font-black text-text_primary",
-        "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight font-bold text-text_primary",
-        "h3": "text-xl sm:text-2xl font-bold text-text_primary",
-        "body": "text-base leading-relaxed text-text_secondary",
-        "label": "text-xs tracking-[0.2em] uppercase font-bold text-primary"
-      }
+    "text": {
+      "primary": "text-slate-900",
+      "secondary": "text-slate-500",
+      "tertiary": "text-slate-400"
     },
-    "visual_principles": [
-      "Clarity-first minimalist layout focused on conversion.",
-      "Trust-first design: transparent pricing, local availability proof, genuine testimonials.",
-      "Mobile-native interactions: sticky CTAs, easy-to-tap plan cards.",
-      "Fiber-optic visual motifs: subtle gradients, glowing accents, clean geometric shapes.",
-      "Use 'Generous Spacing Philosophy': p-6 to p-12 for containers, letting content breathe."
-    ]
-  },
-  "layout_structure": [
-    {
-      "section": "Header",
-      "layout": "Sticky top, z-50, crystal glassmorphism (backdrop-blur-xl bg-white/80 border-b border-border/40). Flex container.",
-      "content": "Logo 'SmartProv', Navigation (Planos, Combos, Benefícios), Primary CTA 'Assine Já', WhatsApp icon link."
-    },
-    {
-      "section": "Hero",
-      "layout": "Grid cols-1 lg:grid-cols-2 gap-12 items-center min-h-[80vh] pt-24 pb-12 px-6 lg:px-12 relative overflow-hidden",
-      "content": "Left: Strong claim 'Sua casa na velocidade da luz.' Subtitle emphasizing fiber for family/streaming. CEP Checker Input + Button (Check Viabilidade). Right: Image of Brazilian family bonding, layered with subtle fiber optic glowing graphic/gradient floating behind.",
-      "microinteractions": "Fade-in up for text, slide-in for image. CEP button shows loading spinner on click."
-    },
-    {
-      "section": "Plan Comparison",
-      "layout": "Bento Grid strategy or flex wrap. Container py-24 bg-surface. Grid cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 px-6 lg:px-12",
-      "content": "Section Title: 'Escolha a velocidade ideal'. 4 Plan Cards (500, 1000, 2000, 5000 mega). Card 1000 or 2000 Mega must have 'MAIS VENDIDO' badge and primary color border/shadow. Cards fetch from /api/site/plans (mocked nicely if API missing). Price prominent, features in list. CTA 'Assinar Plano'.",
-      "microinteractions": "Hover: Slight lift (-translate-y-2) and shadow-xl for cards. 'Mais Vendido' card pulses subtly."
-    },
-    {
-      "section": "Visual Calculator (What fits in X Mega)",
-      "layout": "Grid cols-1 md:grid-cols-2 gap-12 py-24 px-6 lg:px-12 bg-slate-50 items-center",
-      "content": "Interactive slider or tabs to select '500 Mega', '1000 Mega', etc. Visual output shows icons/text: 'X TVs 4K Simultâneas', 'Ping para Jogos: < 10ms', 'Vídeochamadas: Liso'. Right side: Image of person on video call smiling.",
-      "microinteractions": "When selecting a different speed, the icons and numbers animate (count up) and image slightly scales."
-    },
-    {
-      "section": "Combos Carousel",
-      "layout": "Full width overflow-hidden py-24 bg-primary text-white text-center px-6",
-      "content": "Title 'Ainda melhor com seus streamings favoritos'. Endless marquee or Swiper carousel showing logos (Disney+, HBO Max, Globoplay, Deezer, Sky+). Include mention of Landline & Mobile combos.",
-      "microinteractions": "Smooth auto-scroll marquee for logos."
-    },
-    {
-      "section": "Why Choose SmartProv",
-      "layout": "Grid cols-1 md:grid-cols-3 gap-8 py-24 px-6 lg:px-12",
-      "content": "3-4 differentiators: 100% Fiber Optic to the home (FTTH), 24/7 Support, Ultra-fast installation. Use Lucide icons (Zap, ShieldCheck, Clock) in large glowing circles.",
-      "microinteractions": "Hovering over a feature card slightly illuminates the icon (glow effect)."
-    },
-    {
-      "section": "Testimonials",
-      "layout": "Masonry or horizontal flex scrolling. py-24 bg-slate-50",
-      "content": "Real-looking testimonials. Photo, Name, Bairro (Neighborhood) - crucial for local ISP trust. 5-star ratings.",
-      "microinteractions": "Drag to scroll on mobile, soft hover state on cards."
-    },
-    {
-      "section": "App Showcase",
-      "layout": "Grid cols-1 lg:grid-cols-2 items-center py-24 px-6 lg:px-12 bg-surface",
-      "content": "Left: Text 'Controle tudo na palma da mão'. Features: emit 2nd copy of bill, check speed, request support. Right: 3D Smartphone mockup showing the SmartProv app.",
-      "microinteractions": "Parallax effect on scroll for the mobile mockup."
-    },
-    {
-      "section": "FAQ",
-      "layout": "Max-w-3xl mx-auto py-24 px-6",
-      "content": "Accordion (Shadcn) with 5 common questions (installation time, fidelity, equipment included, etc).",
-      "microinteractions": "Smooth open/close accordion with chevron rotation."
-    },
-    {
-      "section": "Floating Actions",
-      "layout": "Fixed bottom-right z-50 flex flex-col gap-4 p-4",
-      "content": "WhatsApp floating button (vibrant green, pulse animation). Form trigger button 'Precisa de ajuda?'."
-    },
-    {
-      "section": "Lead Capture Modal",
-      "layout": "Shadcn Dialog or Sheet",
-      "content": "Elegant form (Name, Phone, Address/CEP, Plan interested). Submits to /api/site/leads.",
-      "microinteractions": "Success state (checkmark animation) instead of just closing."
-    },
-    {
-      "section": "Footer",
-      "layout": "Grid cols-1 md:grid-cols-4 py-12 px-6 lg:px-12 bg-slate-900 text-slate-300 text-sm",
-      "content": "Logo, CNPJ, ANATEL licensing mention (vital for trust), quick links, social media icons."
+    "semantic": {
+      "primary": "bg-sky-600 text-white hover:bg-sky-700",
+      "secondary": "bg-slate-100 text-slate-700 hover:bg-slate-200",
+      "success": "bg-emerald-600 text-white hover:bg-emerald-700",
+      "success_subtle": "bg-emerald-50 text-emerald-700 border-emerald-200",
+      "warning": "bg-amber-500 text-white hover:bg-amber-600",
+      "warning_subtle": "bg-amber-50 text-amber-700 border-amber-200",
+      "error": "bg-rose-600 text-white hover:bg-rose-700",
+      "error_subtle": "bg-rose-50 text-rose-700 border-rose-200",
+      "action_accent": "bg-orange-500 text-white hover:bg-orange-600"
     }
-  ],
-  "components_to_use": [
-    "shadcn/ui Button (customized with rounded-full or heavy rounded-lg)",
-    "shadcn/ui Card (for plans, features)",
-    "shadcn/ui Accordion (for FAQ)",
-    "shadcn/ui Dialog (for Lead capture modal)",
-    "shadcn/ui Input (for CEP and Forms)",
-    "shadcn/ui Badge (for 'Mais Vendido')",
-    "lucide-react (icons)",
-    "framer-motion (for page transitions, hover states, marquee)",
-    "react-fast-marquee (for streaming logos combo section)"
-  ],
-  "media_assets": [
-    {
-      "category": "Hero Section - Family Bonding",
-      "url": "https://images.pexels.com/photos/8949350/pexels-photo-8949350.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "description": "Father and daughter bonding using a laptop on couch, representing happy residential users."
+  },
+  "typography": {
+    "headings": "font-sans font-bold tracking-tight text-slate-900 text-[18px]",
+    "body": "text-[14px] sm:text-[15px] leading-relaxed text-slate-700",
+    "captions": "text-[11px] sm:text-[12px] font-medium tracking-wide uppercase text-slate-500",
+    "data_values": "font-mono text-[14px] text-slate-800"
+  },
+  "spacing_and_layout": {
+    "cards": "rounded-[12px] bg-white border border-slate-200 shadow-sm p-[12px] sm:p-[14px] flex flex-col gap-[8px] sm:gap-[12px]",
+    "tap_targets": "min-h-[44px] min-w-[44px] flex items-center justify-center",
+    "container": "w-full max-w-[420px] mx-auto pb-[90px]",
+    "padding": "px-4 py-4"
+  },
+  "components": {
+    "StepIndicator": {
+      "description": "Fixed top bar indicating progress.",
+      "styles": "sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex flex-col gap-2",
+      "structure": "Text 'Etapa X de N · [Nome]' (font-medium text-slate-900 text-[13px]) + thin progress bar (h-1.5 w-full bg-slate-100 rounded-full, inner bar bg-sky-600 rounded-full transition-all duration-300)"
     },
-    {
-      "category": "Hero Section - Abstract Background Texture",
-      "url": "https://images.unsplash.com/photo-1604869515882-4d10fa4b0492?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwyfHxmaWJlciUyMG9wdGljJTIwY2FibGUlMjBnbG93aW5nJTIwZmFzdCUyMGludGVybmV0fGVufDB8fHx8MTc3OTU3MzQyNHww&ixlib=rb-4.1.0&q=85",
-      "description": "Subtle blue fiber optic glow to use as low-opacity background behind the hero or why-choose section."
+    "StickyCTABar": {
+      "description": "Thumb-zone sticky bottom bar for primary navigation.",
+      "styles": "fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 p-4 shadow-[0_-8px_16px_rgba(0,0,0,0.04)] max-w-[420px] mx-auto flex gap-3 pb-[max(1rem,env(safe-area-inset-bottom))]",
+      "structure": "Secondary 'Voltar' button (w-1/3 min-h-[48px] bg-slate-100 text-slate-700 rounded-lg font-medium) + Primary 'Próximo'/'Finalizar' button (w-2/3 min-h-[48px] bg-sky-600 text-white rounded-lg font-bold shadow-sm)"
     },
-    {
-      "category": "Visual Calculator - Video Call",
-      "url": "https://images.unsplash.com/photo-1758521541324-d304c5303fe5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHwxfHxwZXJzb24lMjBvbiUyMHZpZGVvJTIwY2FsbCUyMHNtaWxpbmclMjBob21lfGVufDB8fHx8MTc3OTU3MzQyNHww&ixlib=rb-4.1.0&q=85",
-      "description": "Young woman waving during a seamless video call."
+    "SectionCard": {
+      "description": "Uniform card wrapper for inputs and content.",
+      "styles": "bg-white border border-slate-200 rounded-[12px] p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)] mb-4 flex flex-col gap-4"
     },
-    {
-      "category": "App Showcase - Mobile Mockup",
-      "url": "https://static.prod-images.emergentagent.com/jobs/0f7afc70-e3c4-4925-8f2c-a35d20f80a39/images/1a0d4489bc4a26c2996824d43d00e18620e173b08aed3be3123db9623fe4e8d0.png",
-      "description": "3D smartphone mockup showing an internet provider app dashboard."
+    "FieldStockBadge": {
+      "description": "Badge showing delta/stock info inline above or beside numerical inputs.",
+      "styles": "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200"
     }
-  ],
-  "testing": {
-    "data_testid_rules": "All interactive elements (buttons, inputs, links, plan cards, accordion triggers) MUST have a data-testid attribute in kebab-case representing their role. Examples: data-testid='check-cep-input', data-testid='plan-card-1000', data-testid='whatsapp-floating-btn', data-testid='lead-form-submit'."
+  },
+  "views_blueprint": {
+    "Header": {
+      "description": "Dark header showing ticket summary. Preserved from original but visually refined.",
+      "styles": "bg-slate-900 text-white p-5 rounded-b-[16px] mb-5 shadow-md flex flex-col gap-2",
+      "elements": ["Client Name (text-lg font-bold)", "Address & GPS link (text-sky-300 text-sm flex items-center gap-1)", "Phone (text-slate-300 text-sm)", "Live Signal Indicator (SmartOLT badge style)"]
+    },
+    "Step_1_ONT": {
+      "title": "Sinal & Equipamento",
+      "layout": "Large unified SectionCard acting as a hub for the ONT data capture to remove the 'empty' feeling.",
+      "elements": [
+        "Title: 'Identificação do Equipamento' (text-slate-900 font-semibold)",
+        "Empty State/Current Data: Bold display of MAC/SN if available (bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col items-center justify-center min-h-[100px] mb-2)",
+        "Action Group (Stacked full-width for large tap targets):",
+        "1. LER ETIQUETA (IA Vision) - Primary action, bg-sky-600 text-white min-h-[48px] rounded-lg flex items-center justify-center gap-2",
+        "2. DIGITAR MANUAL - Secondary, bg-slate-100 text-slate-700 border border-slate-200 min-h-[48px] rounded-lg",
+        "3. SELECIONAR DO ESTOQUE - Secondary, bg-slate-100 text-slate-700 border border-slate-200 min-h-[48px] rounded-lg"
+      ]
+    },
+    "Step_2_OsCtoPicker": {
+      "title": "CTO Mapa",
+      "layout": "Full-width map interface integrated smoothly.",
+      "elements": [
+        "Leaflet Map container (rounded-[12px] overflow-hidden border border-slate-200 h-[350px] w-full z-10 relative shadow-sm)",
+        "Blue map pins for existing CTOs",
+        "Floating Action Button (FAB) or prominent CTA placed immediately below the map: 'Cadastrar CTO/CE/Cabo na Rede' (bg-orange-500 text-white font-semibold min-h-[48px] rounded-lg mt-4 w-full shadow-sm flex items-center justify-center gap-2)"
+      ]
+    },
+    "Step_3_CTO_Portas": {
+      "title": "Porta CTO",
+      "layout": "Dense grid of ports with clear status colors.",
+      "elements": [
+        "Header: 'Selecione a Porta Livre'",
+        "Grid layout for ports (grid-cols-4 sm:grid-cols-5 gap-2)",
+        "Available Port: border border-sky-200 bg-sky-50 text-sky-700 font-mono text-center rounded-md py-3 min-h-[44px]",
+        "Occupied Port: border border-slate-200 bg-slate-50 text-slate-400 font-mono text-center rounded-md py-3 min-h-[44px] opacity-70 cursor-not-allowed"
+      ]
+    },
+    "Step_4_Insumos": {
+      "title": "Finalização",
+      "layout": "Collapsible Shadcn Accordions to manage cognitive load.",
+      "sections": [
+        {
+          "name": "Troca ONT",
+          "content": "Auto-fill removed MAC (read-only field, bg-slate-50 text-slate-500) + Select new MAC from stock. Inner padding reduced to p-4 (removing old 80px)."
+        },
+        {
+          "name": "Fotos (Wizard)",
+          "content": "3 mandatory photos (CTO, Equip, SN). Transitioned from error language (red) to pending/warning language (bg-amber-50 border-amber-200 text-amber-800). Shows green check (bg-emerald-50 text-emerald-700) when AI validates."
+        },
+        {
+          "name": "Insumos FTTH",
+          "content": "Grid layout (grid-cols-2 gap-4) for numerical inputs (Drop, Esticador, Fast, Cabo, Conector Rede). Each input is stacked vertically: Label -> FieldStockBadge -> Input(type='number', min-h-[44px])."
+        },
+        {
+          "name": "Observações",
+          "content": "Full width textarea (min-h-[100px] border-slate-200 rounded-lg p-3)."
+        }
+      ]
+    },
+    "PreSubmissionSummary": {
+      "description": "Final review block shown at the end of Step 4 before 'Finalizar nota'.",
+      "elements": [
+        "Title: 'Resumo da OS' (text-lg font-bold text-slate-900 mb-3)",
+        "Read-only list (flex flex-col gap-2 text-[13px] bg-slate-50 p-4 rounded-xl border border-slate-200)",
+        "Row format: flex justify-between items-center. Label (text-slate-500) | Value (text-slate-900 font-medium)",
+        "Visual confirmation of 3/3 photos attached (emerald checkmarks)",
+        "Total materials used summary"
+      ]
+    }
+  },
+  "interactions": {
+    "toast": "Use Sonner for inline notifications. Success (emerald), Info (sky), Warning (amber). Replace intrusive red banners.",
+    "loading": "Inline spinners (lucide Loader2 animate-spin) inside buttons (e.g. while IA reads photo) or skeleton blocks (animate-pulse bg-slate-200) for loading CTO data.",
+    "transitions": "Subtle fade-in for step content. Avoid heavy horizontal slides to prevent jank on low-end mobile devices."
   },
   "instructions_to_main_agent": [
-    "Create the app under /app/frontend.",
-    "The route for the landing page is /provedor, but you can build this as the main view in the app (e.g., App.js) assuming the routing will handle it, or explicitly use React Router.",
-    "API Integrations: Plans should ideally be fetched from /api/site/plans (mock this endpoint with a hardcoded fetch fallback if it fails, ensuring 500, 1000, 2000, 5000 mega plans exist). Leads form must POST to /api/site/leads.",
-    "WhatsApp buttons MUST open 'https://wa.me/{phone}?text={encoded_message}' where {phone} is a placeholder or env variable (e.g., 5511999999999).",
-    "Streaming logos (Disney+, HBO Max, etc.) should be implemented using simple text or SVG icons if real logos are unavailable, but position them in a continuous marquee.",
-    "Ensure high contrast ratios (APCA/WCAG). Use text-slate-900 for dark text and text-white on primary colored backgrounds.",
-    "Do NOT use pure Inter or Roboto for headings. Use the designated Google Fonts.",
-    "For the plans comparison, ensure the 'MAIS VENDIDO' card is visually popped out (e.g. scale-105 on md+ screens, glowing border)."
+    "Do NOT modify existing logic, state management, or API calls.",
+    "Apply Tailwind classes to existing `.js` components.",
+    "Preserve inline `style={...}` where refactoring is too complex, just append tailwind classes using template literals `className={`... ${...}`}`.",
+    "Ensure `data-testid` is added to all interactive elements (buttons, inputs, accordions).",
+    "Use standard Radix/Shadcn Accordion structure for Step 4.",
+    "Use Lucide-react for icons.",
+    "Always apply min-h-[44px] for all tappable elements to ensure mobile accessibility.",
+    "Maintain the layout strictly within max-w-[420px] mx-auto for desktop viewing consistency of the PWA."
   ]
 }

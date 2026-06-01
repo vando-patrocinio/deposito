@@ -199,6 +199,9 @@ class CompletionData(BaseModel):
     cabo_rede: float
     conectores_rede: int
     ont: Optional[str] = None
+    # iter174 — SN da ONT como alternativa ao MAC para RETIRADA. Se o OCR
+    # detectar SN mas não MAC, o backend usa SN para localizar a ONT.
+    ont_sn: Optional[str] = None
     fotos: List[Any] = Field(default_factory=list)  # str (data url) ou dict {kind, dataUrl}
     observacoes: Optional[str] = None
     # Vínculo cliente ↔ CTO/porta (todos os tipos de OS)
@@ -219,6 +222,17 @@ class CompletionData(BaseModel):
     old_ont_sn: Optional[str] = None
     new_ont_mac: Optional[str] = None
     new_ont_sn: Optional[str] = None
+    # Motivo do cancelamento (categoria) — preenchido SOMENTE em OS de retirada.
+    # Usado pelo KPI de retenção e pelo dashboard de churn.
+    # Valores aceitos: preco | atendimento | qualidade | mudanca | concorrente
+    #                  | financeiro | nao_usa | outros
+    cancel_reason_category: Optional[str] = None
+    # Retirada: equipamento com defeito? Quando true, a ONT NÃO volta como
+    # "retirada_com_tecnico" (reaproveitável). Em vez disso, é marcada como
+    # "defeito_devolver_empresa" e fica bloqueada para reinstalar. Pedido
+    # do user 28/05/2026.
+    is_defective: Optional[bool] = False
+    defective_reason: Optional[str] = None  # opcional, texto livre do técnico
 
 
 class TicketIn(BaseModel):
@@ -2978,6 +2992,38 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
                     "ports.$.connected_via_ticket": ticket_id,
                 }},
             )
+            # iter183 — Sync Base de Portas após vínculo
+            try:
+                from routes.cto_ports_base import sync_port_from_cto
+                await sync_port_from_cto(company_id, cd.cto_id, cd.cto_port_number)
+            except Exception as _e:
+                logger.warning("[lousa] sync cto_ports falhou cto=%s p=%s: %s",
+                                  cd.cto_id, cd.cto_port_number, _e)
+            # iter163 — registra evento de vínculo de porta no histórico do cliente
+            if cs.get("id"):
+                try:
+                    cto_doc = await db.ctos.find_one(
+                        {"id": cd.cto_id, "company_id": company_id},
+                        {"_id": 0, "name": 1})
+                    coll_doc = await db.collaborators.find_one(
+                        {"id": cid}, {"_id": 0, "name": 1, "email": 1}) or {}
+                    from services import client_equipment_history as _ceh
+                    await _ceh.log_event(
+                        company_id=company_id,
+                        client_id=cs.get("id"),
+                        client_name=cs.get("name"),
+                        action="port_link",
+                        cto_id=cd.cto_id,
+                        cto_name=(cto_doc or {}).get("name"),
+                        cto_port_number=cd.cto_port_number,
+                        actor_id=cid,
+                        actor_name=coll_doc.get("name"),
+                        actor_email=coll_doc.get("email"),
+                        ticket_id=ticket_id,
+                        notes="Vínculo na finalização da OS",
+                    )
+                except Exception as _e:
+                    logger.warning("[lousa] ceh port_link falhou: %s", _e)
         except Exception as e:
             logger.warning("[lousa] vínculo CTO porta falhou: %s", e)
     # Background: análise IA da foto da CTO (se houver foto tirada nesta OS)
@@ -3091,6 +3137,34 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
         await _maybe_auto_resched_degraded(ticket_id, company_id)
     except Exception as e:
         logger.warning("[lousa] auto-resched degraded falhou: %s", e)
+
+    # === Workflow específico de RETIRADA ===
+    # 1) Envia "COMPROVANTE DE DEVOLUÇÃO DE EQUIPAMENTO" via WhatsApp
+    # 2) Solicita remoção da ONU no SmartOLT (best-effort)
+    if t.get("type") == "retirada" and background_tasks is not None:
+        try:
+            from services.retirada_workflow import (
+                send_retirada_comprovante,
+                request_smartolt_remove,
+            )
+            full_ticket = await db.tickets.find_one(
+                {"id": ticket_id}, {"_id": 0})
+            background_tasks.add_task(
+                send_retirada_comprovante,
+                company_id=company_id,
+                ticket=full_ticket,
+                technician_name=coll_name,
+                ont_mac_sn=cd.ont,
+            )
+            if is_smartolt_client:
+                background_tasks.add_task(
+                    request_smartolt_remove,
+                    company_id=company_id,
+                    ticket=full_ticket,
+                    smartolt_onu=smartolt_onu,
+                )
+        except Exception as e:
+            logger.warning("[lousa] retirada workflow agendamento falhou: %s", e)
 
     result = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
     # Anexa warnings pra exibir no app
@@ -3491,6 +3565,80 @@ async def notify_backoffice(ticket_id: str, user: dict = Depends(get_current_use
 # -------------------------------------------------------------------------
 # Backoffice / Gestor — encerrar / reagendar / cancelar
 # -------------------------------------------------------------------------
+@router.get("/lousa/tickets/{ticket_id}/client-current-ont")
+async def get_client_current_ont(ticket_id: str,
+                                 user: dict = Depends(require_role("gestor"))):
+    """iter195 — Para o gestor visualizar a ONT atualmente instalada no cliente
+    ao finalizar uma Retirada pelo painel admin. Retorna {mac, scan_sn, model}
+    da ONT vinculada (location_type='cliente') ou 404 se nada encontrado.
+    """
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    cid = t.get("company_id") or DEMO_COMPANY_ID
+    # Tenta via service ativo (mais confiável — tem o client_id explícito)
+    svc = await db.stok_services.find_one(
+        {"ticket_id": ticket_id, "company_id": cid, "status": "ativo"},
+        {"_id": 0, "client_id": 1},
+    )
+    client_id = (svc or {}).get("client_id")
+    if not client_id:
+        # Fallback: tenta pelo subscriber via pppoe do client_snapshot
+        cs = t.get("client_snapshot") or {}
+        pppoe = (cs.get("pppoe") or cs.get("login") or cs.get("pppoe_user")
+                 or "").strip().lower()
+        if pppoe:
+            sub = await db.subscribers.find_one(
+                {"company_id": cid,
+                 "$or": [{"pppoe_user": pppoe}, {"username": pppoe}]},
+                {"_id": 0, "id": 1},
+            )
+            client_id = (sub or {}).get("id")
+    if not client_id:
+        raise HTTPException(404, "Cliente não localizado para este ticket")
+    ont = await db.stok_onts.find_one(
+        {"company_id": cid, "location_type": "cliente", "location_id": client_id},
+        {"_id": 0, "mac": 1, "scan_sn": 1, "model": 1, "status": 1},
+    )
+    if not ont:
+        raise HTTPException(404, "Cliente sem ONT registrada no estoque")
+    # iter197 — expõe `sn` (canonical) no nível raiz para o frontend
+    ont["sn"] = ont.get("scan_sn") or None
+    return ont
+
+
+@router.get("/lousa/tickets/{ticket_id}/tech-stock")
+async def get_ticket_tech_stock(ticket_id: str,
+                                user: dict = Depends(require_role("gestor"))):
+    """iter196 — Lista ONTs no estoque do técnico atribuído ao ticket, para o
+    gestor escolher ao finalizar uma Instalação/Troca pelo painel admin.
+    Exclui ONTs marcadas como defeituosas (devolver à empresa).
+    """
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    tech_id = t.get("assigned_collaborator_id")
+    if not tech_id:
+        raise HTTPException(404, "Ticket sem técnico atribuído")
+    cid = t.get("company_id") or DEMO_COMPANY_ID
+    items = await db.stok_onts.find(
+        {"company_id": cid, "location_type": "tecnico", "location_id": tech_id,
+         "status": {"$ne": "defeito_devolver_empresa"}},
+        {"_id": 0, "mac": 1, "model": 1, "scan_sn": 1, "status": 1,
+         "source": 1, "withdrawn_from_client_name": 1, "created_at": 1},
+    ).sort("created_at", -1).to_list(500)
+    # iter197 — expõe `sn` (canonical) e ordena: ONTs com SN primeiro
+    for o in items:
+        o["sn"] = o.get("scan_sn") or None
+    items.sort(key=lambda x: (0 if x.get("sn") else 1, x.get("created_at") or ""))
+    return {
+        "technician_id": tech_id,
+        "technician_name": t.get("collaborator_name"),
+        "items": items,
+        "total": len(items),
+    }
+
+
 @router.post("/lousa/tickets/{ticket_id}/admin-close")
 async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
                              user: dict = Depends(require_role("gestor"))):
@@ -3505,6 +3653,9 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
         "outcome": "informada",
         "closed_at": now_iso(),
         "closed_by": user["id"],
+        "closed_by_name": user.get("name") or user.get("email"),
+        "closed_by_email": user.get("email"),
+        "closed_by_role": user.get("role"),
         "admin_action": payload.action,
         "admin_notes": payload.notes,
     }
@@ -3580,6 +3731,179 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
             await _maybe_auto_resched_degraded(ticket_id, company_id)
         except Exception as e:
             logger.warning("[lousa] admin-close hooks falharam: %s", e)
+
+    # iter195 — RETIRADA fechada pelo gestor: transfere o equipamento do
+    # cliente para o estoque do técnico, como se o técnico tivesse feito
+    # toda a retirada (auto_close_service_from_ticket + workflow de comprovante).
+    # Pedido do usuário 10/02/2026: "o gestor pode finalizar e o equipamento
+    # dado retirada do cliente e transferido para o estoque do tecnico
+    # automaticamente como se fosse ele ter feito todo o processo de retirada".
+    if (payload.action == "encerrar"
+            and t.get("type") == "retirada"
+            and payload.completion_data is not None):
+        try:
+            company_id = t.get("company_id") or DEMO_COMPANY_ID
+            cd = dict(payload.completion_data or {})
+            # Auto-resolve MAC/SN da ONT instalada no cliente quando o gestor
+            # não informou. Lookup em stok_services -> client_id -> stok_onts.
+            if not cd.get("ont") and not cd.get("ont_sn"):
+                svc = await db.stok_services.find_one(
+                    {"ticket_id": ticket_id, "company_id": company_id,
+                     "status": "ativo"},
+                    {"_id": 0, "client_id": 1},
+                )
+                if svc and svc.get("client_id"):
+                    cur_ont = await db.stok_onts.find_one(
+                        {"company_id": company_id,
+                         "location_type": "cliente",
+                         "location_id": svc["client_id"]},
+                        {"_id": 0, "mac": 1, "scan_sn": 1},
+                    )
+                    if cur_ont:
+                        if cur_ont.get("mac") and not str(
+                                cur_ont["mac"]).startswith(("AUTOSN_", "SN-")):
+                            cd["ont"] = cur_ont["mac"]
+                        if cur_ont.get("scan_sn"):
+                            cd["ont_sn"] = cur_ont["scan_sn"]
+            # Marca o ator (gestor) para auditoria do withdraw
+            cd.setdefault("closed_by_email", user.get("email"))
+            # Só dispara o move se temos algum identificador
+            if cd.get("ont") or cd.get("ont_sn"):
+                from routes.stok import auto_close_service_from_ticket
+                tech_id = t.get("assigned_collaborator_id")
+                tech_name = t.get("collaborator_name") or "técnico"
+                close_result = await auto_close_service_from_ticket(
+                    ticket_id=ticket_id,
+                    company_id=company_id,
+                    completion_data=cd,
+                    technician_id=tech_id,
+                    technician_name=tech_name,
+                )
+                logger.info("[lousa] admin retirada auto-close: %s",
+                            close_result)
+                # Workflow de retirada: comprovante WhatsApp + remoção SmartOLT
+                try:
+                    from services.retirada_workflow import (
+                        send_retirada_comprovante,
+                        request_smartolt_remove,
+                    )
+                    full_t = await db.tickets.find_one(
+                        {"id": ticket_id}, {"_id": 0})
+                    # Best-effort sem BackgroundTasks (admin endpoint não tem o
+                    # parâmetro; chamamos diretamente em fire-and-forget).
+                    import asyncio as _aio
+                    _aio.create_task(send_retirada_comprovante(
+                        company_id=company_id,
+                        ticket=full_t,
+                        technician_name=tech_name,
+                        ont_mac_sn=cd.get("ont") or cd.get("ont_sn"),
+                    ))
+                    _aio.create_task(request_smartolt_remove(
+                        company_id=company_id,
+                        ticket=full_t,
+                        smartolt_onu=None,
+                    ))
+                except Exception as e:
+                    logger.warning(
+                        "[lousa] admin retirada workflow falhou: %s", e)
+            else:
+                logger.info(
+                    "[lousa] admin retirada SEM MAC/SN — ONT não foi movida "
+                    "(cliente provavelmente sem ONT registrada no estoque).")
+        except Exception as e:
+            logger.warning("[lousa] admin retirada auto-transfer falhou: %s", e)
+
+    # iter196 — INSTALAÇÃO/TROCA fechada pelo gestor: baixa ONT do estoque
+    # do técnico, vincula ao cliente, e marca a porta da CTO como ocupada.
+    # Pedido do usuário 10/02/2026: "faça isso também em instalação, o gestor
+    # também pode fechar uma OS de instalação, aparece a opção do estoque do
+    # técnico a ser escolhido, ao ser escolhido o estoque dele é dado baixa
+    # e transferido para o cliente, e se pergunta a porta e registra o
+    # cliente, ONT, CTO e porta da CTO".
+    if (payload.action == "encerrar"
+            and t.get("type") in ("instalacao", "troca")
+            and payload.completion_data is not None):
+        try:
+            company_id = t.get("company_id") or DEMO_COMPANY_ID
+            cd = dict(payload.completion_data or {})
+            cd.setdefault("closed_by_email", user.get("email"))
+            tech_id = t.get("assigned_collaborator_id")
+            tech_name = t.get("collaborator_name") or "técnico"
+            # iter197 — SN prevalente: dispara o move se SN OU MAC informado.
+            # auto_close_service_from_ticket repassa ambos via completion_data
+            # e _move_ont_for_install busca primeiro por scan_sn.
+            if cd.get("ont") or cd.get("ont_sn"):
+                from routes.stok import auto_close_service_from_ticket
+                close_result = await auto_close_service_from_ticket(
+                    ticket_id=ticket_id,
+                    company_id=company_id,
+                    completion_data=cd,
+                    technician_id=tech_id,
+                    technician_name=tech_name,
+                )
+                logger.info("[lousa] admin instalacao auto-close: %s",
+                            close_result)
+            # Vincula porta da CTO ao cliente (mesma lógica de
+            # public_finalize_ticket lines 2977-3024).
+            cto_id = cd.get("cto_id")
+            cto_port = cd.get("cto_port_number")
+            if cto_id and cto_port:
+                try:
+                    cs = t.get("client_snapshot") or {}
+                    await db.ctos.update_one(
+                        {
+                            "id": cto_id,
+                            "company_id": company_id,
+                            "ports.number": int(cto_port),
+                        },
+                        {"$set": {
+                            "ports.$.status": "used",
+                            "ports.$.client_subscriber_id": cs.get("id"),
+                            "ports.$.client_name": cs.get("name"),
+                            "ports.$.client_pppoe": (cs.get("pppoe_user")
+                                                     or t.get("pppoe_user")),
+                            "ports.$.connected_at": now_iso(),
+                            "ports.$.connected_via_ticket": ticket_id,
+                        }},
+                    )
+                    try:
+                        from routes.cto_ports_base import sync_port_from_cto
+                        await sync_port_from_cto(company_id, cto_id, int(cto_port))
+                    except Exception as _e:
+                        logger.warning(
+                            "[lousa] sync cto_ports admin falhou: %s", _e)
+                    if cs.get("id"):
+                        try:
+                            cto_doc = await db.ctos.find_one(
+                                {"id": cto_id, "company_id": company_id},
+                                {"_id": 0, "name": 1})
+                            from services import client_equipment_history as _ceh
+                            await _ceh.log_event(
+                                company_id=company_id,
+                                client_id=cs.get("id"),
+                                client_name=cs.get("name"),
+                                action="port_link",
+                                cto_id=cto_id,
+                                cto_name=(cto_doc or {}).get("name"),
+                                cto_port_number=int(cto_port),
+                                actor_id=user.get("id"),
+                                actor_name=(user.get("name")
+                                            or user.get("email")),
+                                actor_email=user.get("email"),
+                                ticket_id=ticket_id,
+                                notes=("Vínculo na finalização da OS pelo "
+                                       "gestor (admin-close)"),
+                            )
+                        except Exception as _e:
+                            logger.warning(
+                                "[lousa] ceh port_link admin falhou: %s", _e)
+                except Exception as e:
+                    logger.warning(
+                        "[lousa] vínculo CTO porta admin falhou: %s", e)
+        except Exception as e:
+            logger.warning(
+                "[lousa] admin instalacao auto-transfer falhou: %s", e)
+
     return await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
 
 
@@ -4077,6 +4401,77 @@ async def public_check_auth_status(req_id: str):
 class OcrSnIn(BaseModel):
     image_base64: str  # data URL ou raw base64
     hint: Optional[str] = None  # "SN", "MAC", "ONT" — guia a IA
+
+
+# ============================================================================
+# iter176 — Métricas de qualidade do OCR
+# ============================================================================
+class OcrCorrectionIn(BaseModel):
+    """Reporta uma correção manual do técnico após a leitura da IA."""
+    ticket_id: Optional[str] = None
+    collaborator_id: Optional[str] = None
+    original_mac: Optional[str] = None   # detectado pela IA
+    original_sn: Optional[str] = None    # detectado pela IA
+    corrected_mac: Optional[str] = None  # valor após edição manual
+    corrected_sn: Optional[str] = None
+    ont_model: Optional[str] = None
+    confidence: Optional[str] = None     # confiança reportada pela IA
+
+
+@router.post("/lousa/public/ocr-correction")
+async def public_ocr_correction(payload: OcrCorrectionIn):
+    """Registra uma correção manual após o OCR. Endpoint público (chamado
+    diretamente pelo LousaMobile que opera com `cid=` em vez de JWT).
+    Best-effort: erros são silenciados pois é só métrica.
+    """
+    try:
+        # Normaliza valores p/ comparação
+        def _norm(s: Optional[str]) -> Optional[str]:
+            if not s:
+                return None
+            return s.strip().upper().replace(":", "").replace("-", "")
+        orig_mac_n = _norm(payload.original_mac)
+        corr_mac_n = _norm(payload.corrected_mac)
+        orig_sn_n = _norm(payload.original_sn)
+        corr_sn_n = _norm(payload.corrected_sn)
+        changed_mac = (orig_mac_n != corr_mac_n) and bool(corr_mac_n)
+        changed_sn = (orig_sn_n != corr_sn_n) and bool(corr_sn_n)
+        if not changed_mac and not changed_sn:
+            return {"ok": True, "logged": False, "reason": "no_change"}
+
+        # Tenta resolver company_id via collaborator/ticket
+        cid = DEMO_COMPANY_ID
+        if payload.collaborator_id:
+            col = await db.collaborators.find_one(
+                {"id": payload.collaborator_id}, {"_id": 0, "company_id": 1})
+            if col:
+                cid = col.get("company_id", cid)
+        elif payload.ticket_id:
+            tk = await db.tickets.find_one(
+                {"id": payload.ticket_id}, {"_id": 0, "company_id": 1})
+            if tk:
+                cid = tk.get("company_id", cid)
+
+        await db.stok_ocr_corrections.insert_one({
+            "id": f"ocr-corr-{uuid.uuid4().hex[:10]}",
+            "company_id": cid,
+            "ticket_id": payload.ticket_id,
+            "collaborator_id": payload.collaborator_id,
+            "original_mac": payload.original_mac,
+            "original_sn": payload.original_sn,
+            "corrected_mac": payload.corrected_mac,
+            "corrected_sn": payload.corrected_sn,
+            "changed_mac": changed_mac,
+            "changed_sn": changed_sn,
+            "ont_model": (payload.ont_model or "").strip()[:120] or None,
+            "confidence": payload.confidence,
+            "created_at": now_iso(),
+        })
+        return {"ok": True, "logged": True,
+                  "changed_mac": changed_mac, "changed_sn": changed_sn}
+    except Exception as e:
+        logger.warning("[ocr-correction] insert falhou: %s", e)
+        return {"ok": False, "error": str(e)[:100]}
 
 
 @router.post("/lousa/public/ocr-sn")
@@ -5522,6 +5917,9 @@ async def lousa_bulk_action(payload: BulkActionIn,
             "outcome": "informada",
             "closed_at": now_iso(),
             "closed_by": user["id"],
+            "closed_by_name": user.get("name") or user.get("email"),
+            "closed_by_email": user.get("email"),
+            "closed_by_role": user.get("role"),
             "admin_action": payload.action,
             "admin_notes": payload.notes,
         }
@@ -6442,3 +6840,110 @@ async def create_new_ticket_from_callback(
                     "até você decidir o que fazer com ela "
                     "(fechar improdutiva ou liberar de volta)."),
     }
+
+
+# ---------------------------------------------------------------------------
+# Teste IPv6 obrigatório na finalização de OS
+# ---------------------------------------------------------------------------
+class TicketIpv6TestIn(BaseModel):
+    score: int = Field(..., ge=0, le=10)
+    ipv4_reachable: bool = False
+    ipv6_reachable: bool = False
+    dual_stack_ok: bool = False
+    mtu_ok: bool = False
+    dns_ipv6_ok: bool = False
+    v4_addr: Optional[str] = None
+    v6_addr: Optional[str] = None
+    isp: Optional[str] = None
+    latency_v4_ms: Optional[float] = None
+    latency_v6_ms: Optional[float] = None
+    raw_results: Optional[Dict[str, Any]] = None
+
+
+@router.post("/lousa/tickets/{ticket_id}/ipv6-test")
+async def save_ticket_ipv6_test(ticket_id: str, payload: TicketIpv6TestIn,
+                                       user: dict = Depends(get_current_user)):
+    """Persiste o resultado do Teste IPv6 no ticket (completion_data.ipv6_test).
+
+    Chamado pelo app do colaborador na finalização. Marca
+    `ipv6_inconsistente=True` se score < 8 (regra acordada).
+    """
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0, "id": 1,
+                                                          "completion_data": 1,
+                                                          "company_id": 1})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    inconsistent = payload.score < 8
+    ipv6_test_doc = {
+        "score": payload.score,
+        "max_score": 10,
+        "ipv4_reachable": payload.ipv4_reachable,
+        "ipv6_reachable": payload.ipv6_reachable,
+        "dual_stack_ok": payload.dual_stack_ok,
+        "mtu_ok": payload.mtu_ok,
+        "dns_ipv6_ok": payload.dns_ipv6_ok,
+        "v4_addr": payload.v4_addr,
+        "v6_addr": payload.v6_addr,
+        "isp": payload.isp,
+        "latency_v4_ms": payload.latency_v4_ms,
+        "latency_v6_ms": payload.latency_v6_ms,
+        "ipv6_inconsistente": inconsistent,
+        "tested_at": now_iso(),
+        "tested_by_id": user.get("id"),
+        "tested_by_name": user.get("name") or user.get("email"),
+        "raw_results": payload.raw_results or {},
+    }
+    cd = t.get("completion_data") or {}
+    cd["ipv6_test"] = ipv6_test_doc
+    if inconsistent:
+        cd["ipv6_inconsistente"] = True
+    await db.tickets.update_one(
+        {"id": ticket_id},
+        {"$set": {"completion_data": cd, "updated_at": now_iso()}},
+    )
+    return {"ok": True, "ipv6_inconsistente": inconsistent,
+             "ipv6_test": ipv6_test_doc}
+
+
+class TicketPingAutoIn(BaseModel):
+    host: str
+    port: int = 80
+    packets: int = 10
+    success: int = 0
+    loss_pct: float = 0
+    avg_ms: Optional[float] = None
+    raw_results: Optional[List[Dict[str, Any]]] = None
+
+
+@router.post("/lousa/tickets/{ticket_id}/ping-auto")
+async def save_ticket_ping_auto(ticket_id: str, payload: TicketPingAutoIn,
+                                       user: dict = Depends(get_current_user)):
+    """Persiste resultado do ping automático (10 pacotes para 8.8.8.8:80)
+    em `completion_data.ping_auto`."""
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0, "id": 1,
+                                                          "completion_data": 1})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    ping_doc = {
+        "host": payload.host,
+        "port": payload.port,
+        "packets": payload.packets,
+        "success": payload.success,
+        "loss_pct": payload.loss_pct,
+        "avg_ms": payload.avg_ms,
+        "tested_at": now_iso(),
+        "tested_by_id": user.get("id"),
+        "tested_by_name": user.get("name") or user.get("email"),
+        "raw_results": (payload.raw_results or [])[:30],
+    }
+    cd = t.get("completion_data") or {}
+    cd["ping_auto"] = ping_doc
+    if payload.loss_pct > 30:
+        cd["ping_inconsistente"] = True
+    await db.tickets.update_one(
+        {"id": ticket_id},
+        {"$set": {"completion_data": cd, "updated_at": now_iso()}},
+    )
+    return {"ok": True, "ping_auto": ping_doc,
+             "ping_inconsistente": payload.loss_pct > 30}
+

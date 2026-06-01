@@ -27,7 +27,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 import cargo as cargo_mod
@@ -58,6 +58,8 @@ class PurchaseItem(BaseModel):
     unit_price: Optional[float] = None
     type: Optional[str] = None  # ont|insumo|equipamento|outros (por item)
     macs: Optional[List[str]] = None  # se tipo=ont, MACs
+    sns: Optional[List[str]] = None   # iter197 — SNs (prevalente sobre MAC)
+    insumo_id: Optional[str] = None   # iter200 — bate com INSUMO_CATALOG
 
 
 class PurchaseCreate(BaseModel):
@@ -174,6 +176,86 @@ async def list_purchases(
         "is_warehouse_keeper": user_praca is not None,
         "user_praca_id": user_praca,
     }
+
+
+@router.get("/by-invoice")
+async def list_by_invoice(user: dict = Depends(get_current_user),
+                           limit: int = Query(60, ge=1, le=300)) -> Dict[str, Any]:
+    """iter203 — Agrupa compras pelo par (supplier_name, invoice_number).
+
+    Útil para conciliação fiscal: uma única NF pode ter virado N lançamentos
+    (multi-tipo iter202). Esta rota devolve cada NF como um card único com:
+      - lista de lançamentos (purchase IDs)
+      - total consolidado (soma dos lançamentos)
+      - breakdown por tipo (ont/insumo/ferramenta/equipamento/outros)
+      - status global (mais "atrasado" entre os lançamentos)
+    """
+    _require_purchase_access(user)
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    pipeline = [
+        {"$match": {"company_id": cid}},
+        {"$sort": {"created_at": -1}},
+        {"$group": {
+            "_id": {
+                "supplier": {"$ifNull": ["$supplier_name", "—"]},
+                "invoice":  {"$ifNull": ["$invoice_number", "—"]},
+            },
+            "purchases": {"$push": {
+                "id": "$id",
+                "type": "$type",
+                "status": "$status",
+                "total_value": "$total_value",
+                "invoice_date": "$invoice_date",
+                "file_name": "$file_name",
+                "praca_id": "$praca_id",
+                "responsible_collaborator_id": "$responsible_collaborator_id",
+                "items_count": {"$size": {"$ifNull": ["$items", []]}},
+                "notes": "$notes",
+                "created_at": "$created_at",
+                "confirmed_at": "$confirmed_at",
+            }},
+            "total":      {"$sum": {"$ifNull": ["$total_value", 0]}},
+            "count":      {"$sum": 1},
+            "last_date":  {"$max": "$created_at"},
+            "invoice_date": {"$max": "$invoice_date"},
+        }},
+        {"$sort": {"last_date": -1}},
+        {"$limit": limit},
+    ]
+    rows = await db.purchases.aggregate(pipeline).to_list(limit)
+
+    # Resolve nomes de praça/responsável uma vez (cache)
+    pracas = {p["id"]: p["name"] for p in await db.pracas.find(
+        {"company_id": cid}, {"_id": 0, "id": 1, "name": 1}).to_list(500)}
+    colls = {c["id"]: c["name"] for c in await db.collaborators.find(
+        {"company_id": cid}, {"_id": 0, "id": 1, "name": 1}).to_list(500)}
+
+    items: List[Dict[str, Any]] = []
+    for r in rows:
+        types_summary: Dict[str, int] = {}
+        statuses: set[str] = set()
+        for p in r["purchases"]:
+            t = p.get("type") or "outros"
+            types_summary[t] = types_summary.get(t, 0) + (p.get("items_count") or 0)
+            statuses.add(p.get("status") or "")
+            # enriquece com nomes
+            p["praca_name"] = pracas.get(p.get("praca_id"))
+            p["responsible_name"] = colls.get(p.get("responsible_collaborator_id"))
+        # status global: pending > received > confirmed (worst-first)
+        order = ["pending", "received", "confirmed"]
+        global_status = next((s for s in order if s in statuses), "confirmed")
+        items.append({
+            "supplier_name": r["_id"]["supplier"],
+            "invoice_number": r["_id"]["invoice"],
+            "invoice_date": r.get("invoice_date"),
+            "total_value": round(r["total"] or 0, 2),
+            "count": r["count"],
+            "purchases": r["purchases"],
+            "types_summary": types_summary,
+            "global_status": global_status,
+            "last_date": r["last_date"],
+        })
+    return {"items": items, "total": len(items)}
 
 
 @router.get("/refs")
@@ -387,22 +469,45 @@ async def upload_extract(
             "  \"invoice_date\": \"YYYY-MM-DD\",\n"
             "  \"total_value\": 1234.56,\n"
             "  \"type\": \"ont\"|\"insumo\"|\"equipamento\"|\"ferramenta\"|\"outros\",\n"
+            "    // TIPO DOMINANTE da nota (o que mais aparece)\n"
             "  \"items\": [{\n"
             "      \"description\": \"...\",\n"
             "      \"quantity\": 1,\n"
-            "      \"unit\": \"un|m|cx\",\n"
+            "      \"unit\": \"un|m|cx|pç\",\n"
             "      \"unit_price\": 0.0,\n"
             "      \"type\": \"ont\"|\"insumo\"|\"equipamento\"|\"ferramenta\"|\"outros\",\n"
-            "        // CLASSIFIQUE CADA ITEM: ferramenta = alicate, chave,\n"
-            "        // OTDR, decapador, máquina de fusão, escada, etc.\n"
-            "        // insumo = splitter, conector, cordão, drop, CTO sem\n"
-            "        // splitter, adaptador. ont = modem/roteador/cliente.\n"
-            "        // equipamento = OLT, switch, rack, nobreak.\n"
-            "      \"macs\": [\"...\"]  // se ONT, MACs identificados\n"
+            "        // CLASSIFIQUE CADA ITEM:\n"
+            "        // - ferramenta: alicate, chave, OTDR, decapador, máquina\n"
+            "        //   de fusão, escada, multímetro, power meter etc.\n"
+            "        // - insumo: splitter, conector, cordão óptico, drop,\n"
+            "        //   cabo de rede, esticador, fibra (06FO/12FO/24FO),\n"
+            "        //   adaptador, CTO sem splitter.\n"
+            "        // - ont: ONU/ONT cliente (Huawei HG6145D, ZTE F660,\n"
+            "        //   Fiberhome, Intelbras, Nokia G-1425G, etc.).\n"
+            "        // - equipamento: OLT, switch, rack, nobreak, servidor.\n"
+            "      \"insumo_id\": null,\n"
+            "        // SE for INSUMO, mapeie ao catálogo do sistema usando\n"
+            "        // EXATAMENTE um destes IDs (ou null se não bater):\n"
+            "        // 'drop' (cabo óptico drop FTTH, unit=m),\n"
+            "        // 'cabo_rede' (cabo de rede UTP/Cat5e/Cat6, unit=m),\n"
+            "        // 'conector_fast' (conector fast SC/APC ou SC/UPC),\n"
+            "        // 'conector_fibra' (conector de fibra qualquer),\n"
+            "        // 'esticador' (alça pré-formada/esticador de drop),\n"
+            "        // 'conector_rede' (conector RJ45),\n"
+            "        // 'fibra_06fo', 'fibra_12fo', 'fibra_24fo'\n"
+            "        //   (cabo óptico backbone de 6/12/24 fibras).\n"
+            "      \"sns\": [\"...\"],  // se ONT, SNs identificados (PRINCIPAL)\n"
+            "      \"macs\": [\"...\"]  // se ONT, MACs identificados (opcional)\n"
             "  }],\n"
             "  \"confidence\": 0.0-1.0,\n"
-            "  \"reason\": \"breve explicação PT-BR\"\n"
+            "  \"reason\": \"breve explicação PT-BR do que extraiu\"\n"
             "}\n\n"
+            "REGRAS IMPORTANTES:\n"
+            "1. Se houver itens de tipos diferentes, escolha o TYPE dominante.\n"
+            "2. NUNCA invente SN/MAC — só liste se estiver explícito.\n"
+            "3. Para insumos, SEMPRE tente mapear ao catálogo (insumo_id).\n"
+            "4. Quantidade deve ser numérica (1, 100, 305, 1000, etc.).\n"
+            "5. unit_price = preço UNITÁRIO (não o total da linha).\n\n"
         )
         if text_content:
             prompt += f"TEXTO EXTRAÍDO:\n{text_content[:8000]}"
@@ -430,12 +535,71 @@ async def upload_extract(
         logger.exception("[purchases] upload-extract falhou: %s", e)
         draft = {"confidence": 0.0, "reason": f"erro: {e!s}"}
 
+    # iter202 — Multi-lançamento: agrupa items por TYPE em drafts separados
+    # (uma única NF pode virar 2-3 lançamentos: ONTs + insumos + ferramentas
+    # cada um indo pra sua coleção correta no estoque).
+    drafts = _split_draft_by_type(draft) if isinstance(draft, dict) else [draft]
+
     return {
         "ok": True,
         "file_name": file.filename,
-        "draft": draft,
+        "draft": drafts[0] if drafts else draft,  # compat: 1º draft no campo antigo
+        "drafts": drafts,                          # iter202 — todos os drafts
+        "draft_count": len(drafts),
         "raw_text_preview": text_content[:500] if text_content else None,
     }
+
+
+def _split_draft_by_type(draft: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """iter202 — Quebra 1 draft de extração da IA em N drafts (um por tipo).
+
+    Estratégia:
+      - Itens sem `type` herdam o `type` dominante do draft.
+      - Items são agrupados por type → cada grupo vira um draft com:
+        - mesmos metadados (fornecedor, NF, data, file_name)
+        - `type` = type do grupo
+        - `items` = só os items daquele tipo
+        - `total_value` proporcional (soma dos unit_price × quantity do grupo).
+      - Order: ont → insumo → ferramenta → equipamento → outros.
+    """
+    items = draft.get("items") or []
+    if not items:
+        return [draft]
+    dominant_type = draft.get("type") or "outros"
+    # 1) Agrupa por type efetivo
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for it in items:
+        t = (it.get("type") or dominant_type or "outros").lower()
+        groups.setdefault(t, []).append(it)
+    # 2) Se só há 1 grupo, devolve draft original (sem ruído de split)
+    if len(groups) <= 1:
+        return [draft]
+    # 3) Ordem fixa (ont primeiro pois é o mais "frágil" no fluxo)
+    order = ["ont", "insumo", "equipamento", "ferramenta", "outros"]
+    sorted_types = sorted(groups.keys(),
+                          key=lambda x: order.index(x) if x in order else 99)
+    # 4) Constrói N drafts
+    base_meta = {
+        k: draft.get(k) for k in
+        ("supplier_name", "invoice_number", "invoice_date",
+         "confidence", "reason")
+    }
+    result: List[Dict[str, Any]] = []
+    for t in sorted_types:
+        group_items = groups[t]
+        group_total = sum(
+            float(i.get("unit_price") or 0) * float(i.get("quantity") or 1)
+            for i in group_items
+        )
+        result.append({
+            **base_meta,
+            "type": t,
+            "items": group_items,
+            "total_value": round(group_total, 2) if group_total else None,
+            "split_from_invoice": True,
+            "split_part": f"{len(result) + 1}/{len(groups)}",
+        })
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -463,63 +627,148 @@ async def confirm_purchase(
     notes: List[str] = []
 
     if p["type"] == "ont":
-        # Coleta MACs únicos de todos os items
-        all_macs: List[str] = []
+        # iter197 — SN é o identificador prevalente. Aceita SN sozinho (gera
+        # MAC placeholder "SN-..."), MAC sozinho, ou ambos pareados por índice.
+        # Coleta pares (mac, sn) deduplicados por SN preferencialmente, MAC senão.
+        seen_sns: set[str] = set()
+        seen_macs: set[str] = set()
+        pairs: List[Dict[str, Optional[str]]] = []  # [{mac, sn}]
         for it in (p.get("items") or []):
-            for m in (it.get("macs") or []):
-                mn = _normalize_mac(m)
-                if mn and mn not in all_macs:
-                    all_macs.append(mn)
-        if all_macs:
-            # Filtra MACs já cadastrados
-            existing = await db.stok_onts.find(
-                {"company_id": cid, "mac": {"$in": all_macs}},
-                {"_id": 0, "mac": 1},
-            ).to_list(5000)
-            existing_set = {e["mac"] for e in existing}
-            new_macs = [m for m in all_macs if m not in existing_set]
-            # Modelo: usa description do primeiro item ou "ONT"
-            model = (p.get("items") or [{}])[0].get(
-                "description") or "ONT"
-            docs = [{
-                "company_id": cid, "mac": m, "model": model[:120],
-                "location_type": "empresa", "location_id": "empresa",
-                "praca_id": p.get("praca_id"),
-                "warehouse_responsible_id":
-                    p.get("responsible_collaborator_id"),
-                "purchase_id": purchase_id,
-                "client_name": None, "status": "disponivel",
-                "created_by": user.get("email", "?"),
-                "created_at": now_iso(),
-            } for m in new_macs]
+            macs_list = list(it.get("macs") or [])
+            sns_list = list(it.get("sns") or [])
+            n = max(len(macs_list), len(sns_list))
+            for i in range(n):
+                mac_raw = macs_list[i] if i < len(macs_list) else None
+                sn_raw = sns_list[i] if i < len(sns_list) else None
+                mac = _normalize_mac(mac_raw) if mac_raw else None
+                sn = (sn_raw or "").strip().upper() or None
+                if not mac and not sn:
+                    continue
+                if sn and sn in seen_sns:
+                    continue
+                if mac and mac in seen_macs:
+                    continue
+                if sn:
+                    seen_sns.add(sn)
+                if mac:
+                    seen_macs.add(mac)
+                pairs.append({"mac": mac, "sn": sn})
+        if pairs:
+            # Filtra os que já existem (por SN ou MAC real)
+            sns_list = [p_["sn"] for p_ in pairs if p_.get("sn")]
+            macs_list = [p_["mac"] for p_ in pairs if p_.get("mac")]
+            q_or: List[Dict[str, Any]] = []
+            if sns_list:
+                q_or.append({"scan_sn": {"$in": sns_list}})
+            if macs_list:
+                q_or.append({"mac": {"$in": macs_list}})
+            existing_keys_sn: set[str] = set()
+            existing_keys_mac: set[str] = set()
+            if q_or:
+                async for ex in db.stok_onts.find(
+                    {"company_id": cid, "$or": q_or},
+                    {"_id": 0, "mac": 1, "scan_sn": 1},
+                ):
+                    if ex.get("scan_sn"):
+                        existing_keys_sn.add(ex["scan_sn"])
+                    if ex.get("mac"):
+                        existing_keys_mac.add(ex["mac"])
+            new_pairs = [pr for pr in pairs
+                         if (pr.get("sn") not in existing_keys_sn or not pr.get("sn"))
+                         and (pr.get("mac") not in existing_keys_mac or not pr.get("mac"))]
+            model = (p.get("items") or [{}])[0].get("description") or "ONT"
+            docs = []
+            for pr in new_pairs:
+                # MAC placeholder quando só tem SN (segue convenção SN-... iter174)
+                final_mac = pr.get("mac") or (f"SN-{pr['sn']}" if pr.get("sn") else None)
+                if not final_mac:
+                    continue
+                docs.append({
+                    "company_id": cid, "mac": final_mac, "model": model[:120],
+                    "scan_sn": pr.get("sn"),
+                    "location_type": "empresa", "location_id": "empresa",
+                    "praca_id": p.get("praca_id"),
+                    "warehouse_responsible_id":
+                        p.get("responsible_collaborator_id"),
+                    "purchase_id": purchase_id,
+                    "client_name": None, "status": "disponivel",
+                    "source": "compra",
+                    "created_by": user.get("email", "?"),
+                    "created_at": now_iso(),
+                })
             if docs:
                 await db.stok_onts.insert_many([dict(d) for d in docs])
             items_imported = len(docs)
-            macs_imported = new_macs
-            if existing_set:
+            macs_imported = [d["mac"] for d in docs]
+            skipped = (len(existing_keys_sn) + len(existing_keys_mac))
+            if skipped:
                 notes.append(
-                    f"{len(existing_set)} MAC(s) já cadastrados — ignorados")
+                    f"{skipped} ONT(s) já cadastradas (SN/MAC) — ignoradas")
 
     elif p["type"] == "insumo":
-        # Incrementa o estoque por insumo na praça (collection stok_stock)
+        # Importa catálogo + helper de histórico do módulo stok
+        from routes.stok import (
+            CONSUMABLE_CATALOG, CONSUMABLE_BY_ID, _add_history,
+        )
+
+        def _match_consumable(desc: str) -> Optional[Dict[str, Any]]:
+            """Tenta casar a descrição da compra com um item do catálogo."""
+            d = (desc or "").lower()
+            # 1) match direto pelo nome do catálogo
+            for c in CONSUMABLE_CATALOG:
+                if c["name"].lower() in d:
+                    return c
+            # 2) fallback por palavras-chave
+            if "drop" in d:
+                return CONSUMABLE_BY_ID.get("drop")
+            if "fast" in d:
+                return CONSUMABLE_BY_ID.get("conector_fast")
+            if "conector" in d and "fibra" in d:
+                return CONSUMABLE_BY_ID.get("conector_fibra")
+            if "conector" in d and ("rede" in d or "rj45" in d or "rj-45" in d):
+                return CONSUMABLE_BY_ID.get("conector_rede")
+            if "esticador" in d:
+                return CONSUMABLE_BY_ID.get("esticador")
+            if "cabo" in d and "rede" in d:
+                return CONSUMABLE_BY_ID.get("cabo_rede")
+            if "06fo" in d or "6fo" in d or "6 fo" in d:
+                return CONSUMABLE_BY_ID.get("fibra_06fo")
+            if "12fo" in d or "12 fo" in d:
+                return CONSUMABLE_BY_ID.get("fibra_12fo")
+            if "24fo" in d or "24 fo" in d:
+                return CONSUMABLE_BY_ID.get("fibra_24fo")
+            return None
+
+        # Incrementa o estoque DA EMPRESA (location='empresa') usando o
+        # schema correto (fields-as-keys), e gera evento `entrada_insumo`
+        # em stok_history no formato que o dashboard/balanço entende.
         for it in (p.get("items") or []):
             desc = (it.get("description") or "").strip()
             qty = float(it.get("quantity") or 0)
             if not desc or qty <= 0:
                 continue
-            # Tenta casar com catálogo de insumo
-            key = re.sub(r"[^a-z]", "", desc.lower())[:30] or desc.lower()
+            match = _match_consumable(desc)
+            if not match:
+                notes.append(f"Item ignorado (não casou com catálogo): {desc}")
+                continue
+            cons_id = match["id"]
+            cons_name = match["name"]
+            cons_unit = match["unit"]
+            qty_fmt = int(qty) if float(qty).is_integer() else qty
+
             await db.stok_stock.update_one(
-                {"company_id": cid, "praca_id": p.get("praca_id"),
-                  "insumo_key": key},
-                {"$inc": {"quantity": qty},
-                  "$set": {"insumo_label": desc,
-                            "updated_at": now_iso()},
-                  "$setOnInsert": {"created_at": now_iso(),
-                                      "company_id": cid,
-                                      "praca_id": p.get("praca_id"),
-                                      "insumo_key": key}},
+                {"company_id": cid, "location": "empresa"},
+                {"$inc": {cons_id: qty_fmt},
+                  "$setOnInsert": {"company_id": cid, "location": "empresa"}},
                 upsert=True,
+            )
+            await _add_history(
+                "entrada_insumo",
+                (f"Entrada via Central de Compras #{purchase_id[:8]} de "
+                 f"{cons_name}: {qty_fmt} {cons_unit}"),
+                user.get("name") or user.get("email") or "?",
+                "compra",
+                cid,
             )
             items_imported += 1
 
@@ -548,16 +797,170 @@ async def confirm_purchase(
 @router.delete("/{purchase_id}")
 async def delete_purchase(
     purchase_id: str,
-    user: dict = Depends(require_role("gestor")),
+    user: dict = Depends(require_role("auditor")),
 ) -> Dict[str, Any]:
+    """iter177 — Apaga uma compra. Apenas AUDITOR pode executar (acima de
+    gestor/administrador). Se a compra estava `confirmed`, REVERTE o
+    impacto no estoque:
+      - ONTs: apaga `stok_onts` que ainda estão `disponivel` na empresa
+        com `purchase_id` correspondente. ONTs já em uso (cliente/técnico)
+        permanecem (não destrutivo).
+      - Insumos: decrementa `stok_stock.empresa` e grava `entrada_insumo_reversao`
+        em `stok_history`.
+    Tudo é logado em `purchases_deletion_audit` para rastreabilidade.
+    """
     cid = user.get("company_id") or DEMO_COMPANY_ID
     p = await db.purchases.find_one({"id": purchase_id, "company_id": cid},
-                                          {"_id": 0, "status": 1})
+                                          {"_id": 0})
     if not p:
         raise HTTPException(404, "Compra não encontrada")
-    if p.get("status") == "confirmed":
-        raise HTTPException(400, "Compra já confirmada — não pode ser "
-                                   "deletada. Faça lançamento reverso no "
-                                   "estoque se necessário.")
+
+    reverted_summary = await _revert_purchase_stock_impact(cid, p, user)
+
     await db.purchases.delete_one({"id": purchase_id, "company_id": cid})
-    return {"ok": True}
+    await db.purchases_deletion_audit.insert_one({
+        "id": f"pda-{uuid.uuid4().hex[:12]}",
+        "company_id": cid,
+        "deleted_purchase_id": purchase_id,
+        "deleted_purchase_snapshot": p,
+        "deleted_by_email": user.get("email"),
+        "deleted_by_name": user.get("name"),
+        "deleted_by_role": user.get("role"),
+        "deleted_at": now_iso(),
+        "reverted_summary": reverted_summary,
+    })
+    return {
+        "ok": True,
+        "purchase_id": purchase_id,
+        "reverted": reverted_summary,
+    }
+
+
+class BatchDeleteIn(BaseModel):
+    ids: List[str]
+
+
+@router.post("/batch-delete")
+async def batch_delete_purchases(
+    payload: BatchDeleteIn,
+    user: dict = Depends(require_role("auditor")),
+) -> Dict[str, Any]:
+    """iter177 — Apaga várias compras em lote (auditor). Retorna resumo
+    por id (sucesso/erro). Idêntico a `DELETE /{id}` por id, mas atômico
+    em um único request para o frontend.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    results: List[Dict[str, Any]] = []
+    for pid in (payload.ids or []):
+        try:
+            p = await db.purchases.find_one({"id": pid, "company_id": cid},
+                                                  {"_id": 0})
+            if not p:
+                results.append({"id": pid, "ok": False, "error": "not_found"})
+                continue
+            reverted = await _revert_purchase_stock_impact(cid, p, user)
+            await db.purchases.delete_one({"id": pid, "company_id": cid})
+            await db.purchases_deletion_audit.insert_one({
+                "id": f"pda-{uuid.uuid4().hex[:12]}",
+                "company_id": cid,
+                "deleted_purchase_id": pid,
+                "deleted_purchase_snapshot": p,
+                "deleted_by_email": user.get("email"),
+                "deleted_by_name": user.get("name"),
+                "deleted_by_role": user.get("role"),
+                "deleted_at": now_iso(),
+                "reverted_summary": reverted,
+                "batch": True,
+            })
+            results.append({"id": pid, "ok": True, "reverted": reverted})
+        except Exception as e:
+            logger.warning("[batch_delete] %s falhou: %s", pid, e)
+            results.append({"id": pid, "ok": False, "error": str(e)[:200]})
+    return {
+        "processed": len(payload.ids or []),
+        "succeeded": sum(1 for r in results if r["ok"]),
+        "failed": sum(1 for r in results if not r["ok"]),
+        "results": results,
+    }
+
+
+async def _revert_purchase_stock_impact(cid: str, p: Dict[str, Any],
+                                            user: dict) -> Dict[str, Any]:
+    """Reverte o impacto de uma compra confirmada no estoque. Não destrutivo:
+    ONTs já em uso por cliente/técnico PERMANECEM (apenas o vínculo
+    `purchase_id` é mantido para histórico, mas a compra é apagada)."""
+    summary = {"onts_deleted": 0, "onts_skipped_in_use": 0,
+                  "insumos_reverted": []}
+    if p.get("status") != "confirmed":
+        return {**summary, "skipped": "purchase_not_confirmed"}
+
+    ptype = p.get("type")
+    pid = p["id"]
+    if ptype == "ont":
+        # Apaga ONTs disponíveis com este purchase_id
+        in_use = await db.stok_onts.count_documents({
+            "company_id": cid, "purchase_id": pid,
+            "location_type": {"$ne": "empresa"},
+        })
+        summary["onts_skipped_in_use"] = in_use
+        res = await db.stok_onts.delete_many({
+            "company_id": cid, "purchase_id": pid,
+            "location_type": "empresa", "status": "disponivel",
+        })
+        summary["onts_deleted"] = res.deleted_count
+    elif ptype == "insumo":
+        from routes.stok import (
+            CONSUMABLE_CATALOG, CONSUMABLE_BY_ID, _add_history,
+        )
+
+        def _match(desc: str):
+            d = (desc or "").lower()
+            for c in CONSUMABLE_CATALOG:
+                if c["name"].lower() in d:
+                    return c
+            if "drop" in d:
+                return CONSUMABLE_BY_ID.get("drop")
+            if "fast" in d:
+                return CONSUMABLE_BY_ID.get("conector_fast")
+            if "conector" in d and "fibra" in d:
+                return CONSUMABLE_BY_ID.get("conector_fibra")
+            if "conector" in d and ("rede" in d or "rj45" in d):
+                return CONSUMABLE_BY_ID.get("conector_rede")
+            if "esticador" in d:
+                return CONSUMABLE_BY_ID.get("esticador")
+            if "cabo" in d and "rede" in d:
+                return CONSUMABLE_BY_ID.get("cabo_rede")
+            if "06fo" in d or "6fo" in d:
+                return CONSUMABLE_BY_ID.get("fibra_06fo")
+            if "12fo" in d:
+                return CONSUMABLE_BY_ID.get("fibra_12fo")
+            if "24fo" in d:
+                return CONSUMABLE_BY_ID.get("fibra_24fo")
+            return None
+
+        for it in (p.get("items") or []):
+            desc = (it.get("description") or "").strip()
+            qty = float(it.get("quantity") or 0)
+            if not desc or qty <= 0:
+                continue
+            m = _match(desc)
+            if not m:
+                continue
+            cons_id = m["id"]
+            qty_fmt = int(qty) if float(qty).is_integer() else qty
+            await db.stok_stock.update_one(
+                {"company_id": cid, "location": "empresa"},
+                {"$inc": {cons_id: -qty_fmt}},
+            )
+            await _add_history(
+                "entrada_insumo_reversao",
+                (f"REVERSÃO — Compra apagada pelo auditor "
+                 f"{user.get('name') or user.get('email')} · "
+                 f"{m['name']}: -{qty_fmt} {m['unit']}"),
+                user.get("name") or user.get("email") or "?",
+                "estorno",
+                cid,
+            )
+            summary["insumos_reverted"].append({
+                "consumable_id": cons_id, "qty": qty_fmt})
+    return summary

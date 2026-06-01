@@ -2,3 +2,19 @@
 .App {
   min-height: 100vh;
 }
+
+/* iter149 — Label flutuante de cabos no mapa interativo
+   Remove o background/borda padrão do tooltip do react-leaflet para
+   que apareça apenas nosso badge custom (pill com borda colorida). */
+.leaflet-tooltip.cable-label-tooltip {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  color: inherit !important;
+}
+.leaflet-tooltip.cable-label-tooltip::before,
+.leaflet-tooltip.cable-label-tooltip::after {
+  display: none !important;
+}
+

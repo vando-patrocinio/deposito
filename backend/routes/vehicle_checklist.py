@@ -795,13 +795,9 @@ def _build_damage_pages(story: list, doc: dict, cm, styles, ParagraphStyle,
 
 
 def _br_date(iso: Optional[str]) -> str:
-    if not iso:
-        return "—"
-    try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        return dt.astimezone(timezone.utc).strftime("%d/%m/%Y %H:%M")
-    except Exception:
-        return iso[:10]
+    # iter183 — usa helper global pra converter UTC → America/Sao_Paulo
+    from core import fmt_br_dt
+    return fmt_br_dt(iso, "%d/%m/%Y %H:%M") if iso else "—"
 
 
 def _fmt_km(v) -> str:

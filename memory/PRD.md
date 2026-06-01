@@ -1,3 +1,278 @@
+✅ **iter197c — Scanner IA de SN em Transferir para Técnico** (10/02/2026):
+- Pedido do usuário: aceitou sugestão da iter197b — botão 📷 também no painel "Transferir do Estoque da Praça → Técnico" com validação anti-erro em tempo real.
+- **Frontend `TransferToTechPanel.js` (rewrite):**
+  - Input manual agora aceita **SN OU MAC** (Enter para adicionar). Helper `findOntByIdent` busca por SN primeiro, depois MAC, depois MAC placeholder `SN-...`.
+  - Validação contextual: se o SN/MAC não está no estoque da praça mas está em outro lugar (técnico/cliente), a mensagem é explícita: "⚠️ {SN} já está no estoque de um técnico — não pode transferir" em vez de só "não encontrado".
+  - **Novo botão 📷 Câmera** ao lado do input: abre `OntScanBatchModal` (mesma UX da Central de Compras).
+  - **Relatório de scan em lote** (`scanReport` state): após escanear N etiquetas, mostra card amarelo listando `✅ N aceitas · ⚠️ N alocadas · ❌ N não cadastradas`. Cada problema é detalhado: "{SN} — já alocada em tecnico (disponivel)" ou "{SN} — não cadastrada no estoque (faça uma compra primeiro)".
+  - **Lista de ONTs** reorganizada: SN em negrito grande (linha 1), MAC pequeno em segunda linha; placeholders `SN-...`/`AUTOSN_...` exibem como "— sem SN —".
+- **Validação E2E:**
+  - ✅ Criadas 3 ONTs no DB: uma `disponivel/empresa` com MAC real, uma `disponivel/empresa` SN-only, uma `disponivel/tecnico` (já alocada).
+  - ✅ Screenshot confirmou: lista mostra apenas as 2 do estoque empresa (SN em destaque, MAC secundário). A 3ª (já no técnico) NÃO aparece, comportamento esperado.
+  - ✅ Botão 📷 Câmera + Botão **Escanear** na Central de Compras renderizam corretamente no novo layout.
+  - ✅ Lint JS limpo.
+- **Anti-erro em tempo real**: agora é IMPOSSÍVEL transferir uma ONT que está em outro estoque/já vendida — o scanner identifica imediatamente e alerta visualmente.
+- ⚠️ **Produção (`ligo.system`)**: salvar no GitHub + redeploy.
+
+---
+
+
+✅ **iter197b — Scanner IA de SN na Central de Compras** (10/02/2026):
+- Pedido do usuário: "EM CENTRAL DE COMPRAS, CRIE ESSE BOTÃO PARA O SCANNER" (sugestão da iter197).
+- **Backend `routes/purchases.py`** · `PurchaseItem` ganhou campo `sns: Optional[List[str]]`. Endpoint `/api/purchases/{id}/confirm` reescrito para:
+  - Aceitar items com `sns` sozinho, `macs` sozinho ou ambos pareados.
+  - Cria ONTs com `scan_sn` preenchido + MAC placeholder `SN-...` quando só SN é informado (convenção iter174).
+  - Dedup por SN/MAC (evita duplicatas se a IA leu a mesma etiqueta 2x).
+  - Source = `compra` (rastreável).
+- **Frontend `CentralComprasPanel.js`:**
+  - Item type=ont agora mostra grid: **SNs** (campo principal, fonte monospace, borda verde 2px) | **📷 Escanear** (botão preto destacado) | **MACs** (opcional, fonte 11px cinza).
+  - Botão "📷 Escanear" abre `OntScanBatchModal` (reaproveitado): técnico/gestor aponta câmera para várias etiquetas em sequência, Claude 4.6 Vision lê o SN, lote é adicionado ao input.
+  - On save do scanner: SNs e MACs são acumulados (dedup), `quantity` é ajustada automaticamente para casar com a leitura, toast verde "✅ N ONTs escaneadas".
+- **Validação E2E** (curl + DB inspect):
+  - Compra de 3 ONTs criadas **só com SN** (sem MAC) → confirma → 3 ONTs em estoque com `scan_sn=TEST197-SN001/002/003`, MAC placeholder `SN-...`, location=empresa, status=disponivel ✓.
+  - Lint Python (ruff) + JS (eslint) limpos ✓.
+- **Fluxo completo agora 100% SN-first:**
+  1. Almoxarife pega caixa nova → clica **📷 Escanear** → aponta câmera nas 50 etiquetas → IA lê todos os SNs → quantidade preenchida automaticamente → Lançar compra → Confirmar entrada (gestor) → 50 ONTs no estoque com SN.
+  2. Almoxarife transfere para técnico (estoque do técnico) — SN exibido em destaque na lista.
+  3. Técnico instala no cliente — só precisa do SN (MAC herdado automaticamente). 
+  4. Cliente cancela → Retirada → SN volta pro estoque do técnico.
+- ⚠️ **Produção:** Save to GitHub + redeploy.
+
+---
+
+
+✅ **iter197 — SN como identificador prevalente em TODO o ciclo de vida da ONT/ONU** (10/02/2026):
+- Pedido do usuário: "TODA A PREVALÊNCIA DE REGISTRO DAS ONT/ONU TEM QUE SER O SN (SERIAL NUMBER), da entrada em estoque até a instalação do cliente e vice-versa tem que ser o SN" (opção A — SN prioritário, sem migração de DB).
+- **Helper compartilhado** `/app/frontend/src/utils/format.js`:
+  - `ontLabel(o)` → retorna SN se preenchido, MAC só como fallback (ignora placeholders `SN-/AUTOSN_/MANUAL-`).
+  - `ontSecondary(o)` → MAC quando SN é o primário.
+  - `isPlaceholderMac(mac)` → detecta MACs sintéticos gerados pelo sistema.
+- **Backend (lookups SN-first):**
+  - `_move_ont_for_install` (stok.py): aceita SN como entrada principal (busca `scan_sn` primeiro, herda MAC do doc se necessário). Antes exigia MAC obrigatório.
+  - `auto_close_service_from_ticket` (stok.py): instalação/troca agora aceita SN OU MAC (não só MAC). Repassa `ont_sn` para o service.
+  - `admin_close_ticket` (lousa.py): dispara `auto_close` quando `cd.ont_sn` está presente mesmo sem MAC. Endpoints `tech-stock` e `client-current-ont` expõem `sn` como campo canônico de nível raiz.
+  - `stok/public/collaborator/{id}/stock`: agora retorna `sn` no objeto da ONT (PWA do técnico).
+  - `stok_transfers.list_tech_onts` e `list_client_onts`: incluem `sn` canonical.
+- **Frontend — TODAS as telas reorganizadas:**
+  - **EstoquePanel (tabela principal admin)**: coluna virou "SN · MAC" — SN grande em negrito, MAC pequeno embaixo. Filtro de busca passa a procurar por SN primeiro. Placeholder "Buscar SN, MAC, modelo ou cliente…".
+  - **MyAssetsModal (estoque que o técnico vê)**: cards de ONT mostram **SN em destaque**, MAC pequeno em segunda linha, badge "— sem SN —" quando há só placeholder.
+  - **OntScanModal (resultado da câmera IA)**: SN em fonte 22px destacado em verde no topo, MAC pequeno e secundário abaixo. Subtítulo do modal mudou para "Claude 4.6 lê SN (e MAC quando visível)".
+  - **OntScanBatchModal (scan em lote)**: cada item mostra "SN: ..." em destaque, "MAC: ..." pequeno embaixo. Modo edição: input SN em primeiro (verde, fonte 14px), MAC abaixo (opcional, fonte 11px).
+  - **LousaMobile (finalização da OS pelo técnico)**: rótulo "📡 SN da ONT — identificador principal". Inputs do OCR: SN primeiro com borda verde 2px e fundo verde quando preenchido, MAC abaixo (opcional, cinza). Placeholders atualizados para "HWTC12345678 (SN)" em vez de "ALCLFC090E99".
+  - **AdminFinalizeModal (lousa-admin/modals.js)**: Retirada → SN grande à esquerda (borda verde 2px), MAC pequeno à direita (opcional). Banner mostra "SN: ..." em destaque. Instalação → dropdown reescrito: "Escolher por SN (N disponíveis)", cada opção mostra "SN HWTC... · modelo · MAC AA:BB... · ex: cliente". Validação de submit: SN é o campo principal exigido (não mais MAC).
+- **Política de exibição**: MACs placeholder (`SN-...`, `AUTOSN_...`, `MANUAL-...`) NUNCA são exibidos como label primário — caem como "— sem SN —" ou ficam ocultos.
+- **Validação E2E:**
+  - ✅ Admin-close instalação SÓ-COM-SN (sem MAC no payload): ONT movida `tecnico → cliente`, status `disponivel → instalada`, MAC herdado automaticamente do registro do estoque, auditoria completa.
+  - ✅ Tech-stock endpoint retorna `sn` canônico ordenado (com-SN primeiro).
+  - ✅ Lint Python (ruff) + JS (eslint) limpos em todos os arquivos tocados.
+  - ✅ Smoke test do frontend OK (app continua funcional).
+- **DB inalterado**: zero migração — `mac` segue como chave de armazenamento, mas SN passa a ser o protagonista em toda interação com o usuário (display + busca + lookup).
+- ⚠️ **Produção (`ligo.system`)**: salvar no GitHub + redeploy.
+
+---
+
+
+✅ **iter196 — Admin Finalize Instalação: baixa de estoque do técnico + vínculo CTO** (10/02/2026):
+- Pedido do usuário: "faça isso também em instalação, o gestor também pode fechar uma OS de instalação, aparece a opção do estoque do técnico a ser escolhido, ao ser escolhido o estoque dele é dado baixa e transferido para o cliente, e se pergunta a porta e registra o cliente, ONT, CTO e porta da CTO".
+- Backend `routes/lousa.py · admin_close_ticket`:
+  - Quando `action=encerrar` e `ticket.type ∈ {instalacao, troca}` e `completion_data.ont` informado: dispara `auto_close_service_from_ticket()` → move ONT do estoque do técnico para o cliente via `_move_ont_for_install` (validação SmartOLT habilitada — se MAC não bate, cria `pending_transfer` aguardando aprovação, mesmo comportamento do técnico via PWA).
+  - Quando `completion_data.cto_id` + `cto_port_number` informados: marca a porta da CTO como `used` com `client_subscriber_id`, `client_name`, `client_pppoe`, `connected_at`, `connected_via_ticket`. Sincroniza Base de Portas e registra `port_link` no histórico do cliente.
+  - Auditoria: o ator do withdraw/install é o gestor (`actor_email=gestor`), mas o `installed_by_name` continua sendo o técnico atribuído ao ticket (mesma lógica do fluxo presencial).
+- Novo endpoint `GET /api/lousa/tickets/{id}/tech-stock` (gestor+): retorna `{technician_id, technician_name, items: [{mac, model, scan_sn, source, withdrawn_from_client_name, status}], total}` — exclui ONTs com `status=defeito_devolver_empresa`.
+- Frontend `lousa-admin/modals.js · AdminFinalizeModal`:
+  - Detecta `ticket.type ∈ {instalacao, troca}` e troca o título para "🔧 Finalizar Instalação no lugar do técnico".
+  - Banner azul informativo: "🔧 Baixa de estoque + vínculo automático" explica o efeito.
+  - Dropdown "ONT do estoque do técnico" (auto-fetch via `/tech-stock`) — mostra MAC + modelo + (se retirada anterior) cliente de origem; bloqueia submit se vazio.
+  - Bloco "CTO + Porta" com filtro de busca + select de CTOs (`api.redeIaCtosList`) + input numérico da porta. Confirm() permite prosseguir sem CTO/porta como fallback (apenas baixa ONT sem vincular porta).
+  - CTA muda para "✓ Finalizar Instalação e baixar ONT" (gradiente azul-índigo).
+- Validado E2E via curl + DB inspect:
+  - **Caminho feliz** (SmartOLT confirma): ONT movida tecnico→cliente, `status=instalada`, `client_name` setado, `installed_via_ticket`, porta CTO marcada `used` com client_pppoe ✓
+  - **Caminho pending** (SmartOLT sem registro): ONT marcada `pendente_aprovacao_gestor`, `pending_transfer` criado, porta CTO ainda vinculada (não bloqueia o vínculo da porta) ✓
+  - Histórico do cliente registra `port_link` com o gestor como actor ✓
+- Lint Python (ruff) + JS (eslint) limpos ✓.
+- ⚠️ **Produção (`ligo.system`)**: salvar no GitHub + redeploy para ativar.
+
+---
+
+
+✅ **iter195b — Admin Finalize Retirada: transferência automática de equipamento** (10/02/2026):
+- Pedido do usuário: "na finalização da OS, o gestor pode finalizar e o equipamento dado retirada do cliente e transferido para o estoque do técnico automaticamente como se fosse ele ter feito todo o processo de retirada".
+- Backend `routes/lousa.py` · `admin_close_ticket`:
+  - Quando `action=encerrar` e `ticket.type=retirada`, dispara `auto_close_service_from_ticket()` (mesmo helper usado pelo técnico em campo) → move `stok_onts` do cliente para o estoque do técnico atribuído (`location_type: cliente → tecnico`, `status: instalada → retirada_com_tecnico`).
+  - Auditoria registra `withdrawn_by_email=<gestor>`, `withdrawn_by_name=<técnico atribuído>`, `withdrawn_via_ticket`.
+  - **Auto-detecção de MAC/SN**: quando o gestor não informa, o backend busca a ONT atualmente vinculada ao cliente (`stok_onts where location_type=cliente AND location_id=service.client_id`) e usa esse MAC/SN automaticamente.
+  - Workflow completo disparado: WhatsApp "Comprovante de Devolução" + remoção no SmartOLT (best-effort).
+- Novo endpoint `GET /api/lousa/tickets/{id}/client-current-ont` (gestor+): devolve `{mac, scan_sn, model, status}` da ONT atualmente no cliente — usado pelo modal para mostrar a ONT detectada antes do gestor confirmar.
+- Frontend `lousa-admin/modals.js` · `AdminFinalizeModal`:
+  - Detecta `ticket.type=retirada` e troca o título para "📦 Finalizar Retirada no lugar do técnico".
+  - Banner verde "✅ Transferência automática de equipamento" explica o efeito + mostra a ONT detectada (MAC/SN/modelo) ou avisa "⚠️ cliente sem ONT registrada" se não houver.
+  - Campos editáveis MAC + SN da ONT (pré-preenchidos via fetch automático).
+  - Checkbox "⚠️ Equipamento DEFEITUOSO" + textarea de motivo (gera `is_defective=true` e marca a ONT como `defeito_devolver_empresa`).
+  - Botão CTA muda para "✓ Finalizar Retirada e transferir equipamento" (gradiente verde-teal).
+- Validado E2E (curl + DB inspect): com MAC explícito ✓ · com auto-detecção (gestor não informa) ✓ · ONT corretamente movida + auditoria completa + service marcado `fechado` · `ticket_finalized=true` · lint limpo ✓.
+- ⚠️ **Produção (`ligo.system`)**: salvar no GitHub + redeploy para ativar.
+
+---
+
+
+- Sintoma reportado: "verificar esse erro" — durante a Retirada, mesmo com SN/MAC bem visível na etiqueta, o app mostrava **"não autenticado"** ao acionar o botão 🤖 IA.
+✅ **iter195 — Fix: Scan de ONT na Retirada via PWA do técnico (auth bug)** (10/02/2026):
+- Root cause: `OntScanModal` e `OntScanBatchModal` chamavam `POST /api/stok/retirada/scan-ont`, que usa `Depends(get_current_user)` (JWT `ponto_token`). Mas o técnico, logado na PWA via Google (Emergent Auth), só possui `pp_collab_token` (session_token de `collaborator_sessions`), e o interceptor do `api.js` injeta apenas `ponto_token` como Bearer → 401 “Não autenticado”.
+- Fix backend `/app/backend/routes/ont_scan.py`: extraída a lógica de OCR Claude Sonnet 4.6 para `_do_scan_ont()` e criada uma rota pública `POST /api/stok/retirada/public/scan-ont` (sem `Depends`, mesmo prompt, idêntico resultado). Endpoint protegido permanece para callers admin/web.
+- Fix frontend `/app/frontend/src/api.js`: `api.scanOntLabel` agora aponta para `/stok/retirada/public/scan-ont` — segue o padrão já usado por `/api/lousa/public/ocr-sn`.
+- Validado E2E via curl com imagem PNG sintética contendo `MAC: AA:BB:CC:DD:EE:FF / S/N: HWTC12345678` → resposta `{ok:true, mac, sn, confidence:0.99}` ✓ · lint limpo (ruff + eslint) ✓.
+- ⚠️ **Atenção:** o bug foi reportado na PRODUÇÃO (`ligo.system`). É necessário salvar no GitHub e re-deploy para o fix chegar lá. No Preview já está corrigido.
+
+---
+
+
+✅ **iter172 — Retiradas em Lote: detalhamento por ONT com status atual + PPPoE** (28/05/2026):
+- Pedido: "ATUALISE: TODA RETIRADA ENTRA, NOME DE QUEM RETIROU, NOME DE QUEM AGENDOU, SE ESTA EM ESTOQUE OU JA FOI INSTALADO, SE INSTALADO, PPOE DO CLIENTE INSTALADO".
+- Backend `routes/ont_scan.py`: lote agora grava `id=batch-{uuid}` + lista `onts[{mac,sn,op}]` no `stok_batch_log`.
+- Novo endpoint `GET /api/stok/retirada/batch-history/{batch_id}/items` resolve para cada ONT: `status_current` ∈ {instalada/em_estoque/defeito/removida_smartolt}, `pppoe_user`, `current_client_name`, `installed_by`, `installed_at`. Faz lookup em lote (1 query subscribers) para PPPoE.
+- Frontend `OntBatchHistoryPanel.js`: colunas renomeadas ("Retirado por (Técnico)" / "Agendado por (Operador)"); linhas clicáveis com seta ▸/▾; detalhe expansível com mini-resumo (4 tags coloridas) + tabela por ONT (SN/MAC/Status/Cliente+PPPoE/Instalado por/Quando). PPPoE em verde-cyan monospace.
+- Validado E2E com 3 ONTs sintéticas (todos 4 status) · summary correto · lint limpo ✓.
+
+---
+
+
+✅ **iter170 — Retirada Manual (sem OS) na aba SmartOLT** (28/05/2026):
+- Pedido: "botão para informar uma retirada manual, com a opção de escolher o colaborador para que seja inserido ao seu estoque a retirada, e registrar o nome do gestor".
+- Backend `POST /api/stok/clientes/manual-withdraw` (gestor+) — body com technician_id + client_name|client_id + ont_mac|ont_sn + notes + is_defective.
+- Efeitos: cria/atualiza `stok_onts` com `location_id=technician_id`, libera porta CTO, loga `withdraw` em `client_equipment_history` com gestor como actor + notes "RETIRADA MANUAL pelo gestor X", cria notification `manual_withdraw`.
+- Resolve `client_id` quando só veio o nome (via porta CTO ou subscribers). Cria ONT do zero quando MAC/SN inexistente.
+- Frontend `ManualWithdrawDialog.js`: card com dados do cliente · select de técnicos · checkbox DEFEITUOSO + motivo · textarea de notas · banner amarelo "Registrado por: {gestor logado}" · botão gradient vermelho com confirm.
+- `EstoquePanel.js · ClientesSection`: coluna "Histórico" virou "Ações" com botão "📦 Retirar" ao lado do "Ver".
+- Validado: 422/400/404/200 (normal) e 200 (defeito) ✓ · lint limpo ✓.
+
+---
+
+
+✅ **iter169 — Compra Rápida (1 clique) na aba Insumos** (28/05/2026):
+- Pedido: "botão 'Registrar compra rápida' na aba Insumos (atalho da Empresa) com presets".
+- Frontend `EstoquePanel.js`: novo `QuickPurchaseDialog` com grid responsivo + 1 card por insumo + 3 botões pré-configurados (`+1/+2/+5` da embalagem padrão). Mostra a conversão para unidades (ex.: "1 Bobina · 1000 m").
+- Estado visual: card destacado em azul durante a chamada, banner verde de sucesso (auto-some em 2.5s).
+- Botão "⚡ Compra Rápida" (gradient verde) no header da seção Insumos ao lado do "+ Compra" tradicional.
+- Backend reaproveitado (`POST /api/stok/consumables/purchase`).
+- Validado E2E: +2 bobinas drop → +2000m no estoque Empresa ✓ · lint limpo ✓.
+
+---
+
+
+✅ **iter168 — Estoque permite SALDO NEGATIVO (quebra visível) + reprocessador de OSs travadas** (28/05/2026):
+- Pedido: "o estoque de insumos por colaborador esta funcionando? · tambem tudo 0 · tem que entrar no negativo tambem".
+- Diagnóstico: 21 OSs em `erro_estoque` bloqueando o consumo + 0 compras registradas — saldo aparecia 0 em tudo.
+- `routes/stok.py · _check_tech_has_stock`: NÃO levanta mais HTTPException — retorna `shortages[]` para auditoria. `_decrement_tech_stock` decrementa direto (vai para negativo via `$inc`).
+- Notificação automática para gestor (`type=stok_negative_balance`) quando há quebra. Histórico ganha "⚠️ QUEBRA: …".
+- Novo endpoint `POST /api/stok/services/reprocess-erro-estoque?limit=N` reprocessa OSs travadas e registra o consumo retroativo.
+- Health Dashboard estendido com 2 KPIs (`erro_estoque_count`, `negative_stock.count`) + 2 penalidades no score + ação priorizada com botão "Reprocessar".
+- Frontend `EstoquePanel.js`: células de saldo negativo em vermelho com fundo claro + ícone ⚠ + tooltip explicando quebra.
+- Frontend `StokHealthDashboard.js`: novo `ReprocessCard` (gradient vermelho) aparece quando há erro_estoque > 0; mostra resultado do backfill (processadas/sucesso/falharam).
+- Validado: 2 OSs reprocessadas com sucesso · saldos negativos visíveis (DIOGO/VANDO) · score caiu para 46 (crítico) refletindo o estado real · lint limpo ✓.
+
+---
+
+
+✅ **iter167 — Presets "Modo Rigoroso" / "Modo Relaxado" em OsValidationTogglesCard** (28/05/2026):
+- Pedido: "wizard 'Modo Rigoroso' no painel — 1 clique liga IPv6 + Foto CTO + Validar MAC simultaneamente (e outro 'Modo Relaxado' desliga tudo)".
+- Frontend `OsValidationTogglesCard.js`: nova função `applyPreset(preset)` envia 1 PUT batch; 2 botões com gradient (🔒 vermelho / 🌿 verde) acima dos switches; `window.confirm` de segurança; botão correspondente ao estado atual fica cinza + "(ativo)".
+- Backend não alterado (endpoint PUT já aceita N chaves).
+- Validado: PUT batch all-true → reflete · PUT reset all-false → reflete · lint limpo ✓.
+
+---
+
+
+✅ **iter166 — GAP 4: Toggles "Foto da CTO obrigatória" + "Validar MAC contra SmartOLT"** (28/05/2026):
+- Pedido: GAP 4 — Mais toggles em OsValidationTogglesCard.js (Foto CTO obrigatória, Validar MAC na instalação).
+- Backend `os_validation_toggles.py` ganhou 2 chaves novas (`cto_photo_required`, `mac_validation_required`) com defaults `false`.
+- `routes/stok.py` `_move_ont_for_install`: quando `mac_validation_required` ligado e MAC do estoque difere do SmartOLT (ou SmartOLT sem registro), levanta `HTTPException(400)` ao invés de criar `pending_transfer` — força sincronização estrita.
+- Frontend `OsValidationTogglesCard.js`: 2 novos cards com ícones 📸/🔒, descrições e switches.
+- Frontend `LousaMobile.js`: leitura unificada dos 3 toggles em 1 chamada; aplica `ctoPhotoPending` na lógica do botão Finalizar (mensagem "📷 Foto da CTO" quando faltar `fotos[kind=cto]`).
+- Validado E2E: GET defaults · PUT ativando · GET refletindo · PUT reset · lint limpo ✓.
+
+---
+
+
+✅ **iter165 — Dashboard de Saúde do Estoque** (28/05/2026):
+- Pedido: "Dashboard de 'Saúde do Estoque' consolidando: defeituosas pendentes + ONTs duplicadas críticas + auditoria de SN divergentes + retiradas com inconsistência. Tudo em uma única tela executiva pro gestor".
+- Endpoint `GET /api/stok/health-dashboard` em `routes/stok.py`: 4 consultas em paralelo (`asyncio.gather`) + health score composto 0-100 + lista `actions[]` priorizadas com `deeplink_tab`.
+- Frontend `StokHealthDashboard.js`: gauge SVG (160px) + 4 KPIs clicáveis com hover lift + card de ações priorizadas (cores por severidade) + tabela "Top técnicos com divergências".
+- Integrado como subtab **📊 Saúde** em Estoque (posição 2). KPIs e ações navegam via `setTab` para `defeitos`, `duplicados` ou `audit-sn`.
+- Validado: score=74 (atenção), 3 mismatches SN 7d, 2 retiradas inconsistentes — ações renderizadas corretamente ✓. Lint limpo.
+
+---
+
+
+✅ **iter164 — Detector de ONT Duplicada ("ONT Pirata")** (28/05/2026):
+- Pedido: "💡 Alerta de ONT duplicada — detecta quando o mesmo SN/MAC é instalado em clientes diferentes em curto espaço de tempo".
+- Novo serviço `services/ont_duplicate_detector.py` plugado em `_move_ont_for_install` (chamado após sucesso). Janela padrão: 30 dias. Descarta casos legítimos (retirada registrada antes do novo install).
+- Nova coleção `ont_duplicate_alerts` com `conflicts[]`, severidade automática (`critical` ≥2 conflitos, senão `warning`).
+- Notificação automática para `audience_role=gestor` com type=`ont_duplicate_alert`.
+- Endpoints: `GET /api/stok/ont-duplicate-alerts?status=open|resolved|all` · `POST .../{id}/resolve` com classificação (ok_legitimo, retirada_nao_registrada, clonagem, erro_cadastro, outro) + notas.
+- Frontend: novo `OntDuplicateAlertsPanel.js` integrado como subtab **🚨 ONTs Duplicadas** em Estoque, com KPIs (Abertos, Críticos, Total), cards de alerta detalhados e modal de resolução.
+- Validado: 3 cenários sintéticos (sem retirada → alerta; com retirada → sem alerta; install >30d → sem alerta) ✓ · GET + POST resolve via curl ✓ · Lint limpo.
+
+---
+
+
+✅ **iter163 — Histórico de Equipamento por Cliente (Estoque · SmartOLT)** (28/05/2026):
+- Pedido: "estoque nos clientes que estão no smartolt e pra pegar o numero de serie do equipamento, cada cliente tem 1 equipamento em seu estoque 'cliente (Smartolt)' na aba estoque, se conectou ao smartolt, a sub aba 'clientes (SmartOLT)' grava o numero de serie, grava tambem quem instalou, grava tambem que retirou, grava em qual porta da CTO, ou mudança de porta".
+- **Nova coleção `client_equipment_history`** + serviço `services/client_equipment_history.py` (`log_event`, `list_events`, `get_current_summary`).
+- **`stok_onts` agora persiste**: `installed_by_name`, `installed_by_email`, `installed_by_id`, `installed_via_ticket/_service`, `withdrawn_by_name`, `withdrawn_via_ticket/_service`.
+- **Helpers `_occupy_cto_port` / `_free_cto_port`** automaticamente gravam `port_link`, `port_swap`, `port_release` no histórico (com `prev_*`).
+- **`auto_close_service_from_ticket` + `close_service`** propagam `installer_name`/`withdrawer_email` p/ os helpers.
+- **`/api/stok/clientes` enriquecido**: `installed_by`, `installed_at`, `withdrawn_by`, `withdrawn_at`, `cto_id`, `cto_name`, `cto_port_number`, `port_changes`, `client_id`.
+- **Novos endpoints**: `GET /api/stok/clientes/{client_id}/history` e `GET /api/stok/clientes/by-name/{name}/history`.
+- **Frontend `EstoquePanel · ClientesSection`** redesenhada com colunas Porta CTO (+badge "Nx trocada"), Instalado por, Retirado por, Histórico. **Modal `ClientEquipmentHistoryModal.js`** com 3 cards de resumo + timeline vertical colorida por ação.
+- Validado E2E: 4 eventos sintéticos (install→port_link→port_swap→withdraw) refletem corretamente em `/clientes` (port_changes=1) e em `/by-name/.../history` (summary completo, eventos DESC).
+
+---
+
+
+✅ **3 ajustes UX no fluxo de finalização** (28/05/2026):
+1. **GPS auto-bairro/endereço** (`CtoInlineFlow.js`): reverse-geocode já popula rua/bairro/cidade/estado/número via OSM (Nominatim). Campo "Número" agora aparece SÓ se GPS não detectou. Banner verde "✓ Detectado automaticamente: Nº X · Cidade/UF" confirma o que veio do GPS.
+2. **Removido título "📋 Finalizar serviço"** (LousaMobile.js) — poluía a tela.
+3. **Card "🔗 Vínculo de rede"** (LousaMobile.js): mostra Porta OLT, VLAN, CTO número e — em caso de troca — SN/MAC em monospace. Gradient azul-marinho, aparece somente quando há vínculo (`ticket.network_link` ou `live_signal`).
+
+
+✅ **Input "Nº da CTO" no fluxo de criação + tratamento de duplicidade 409** (28/05/2026):
+- Pedido: "vc tem que perguntar qual o numero da caixa, a IA não vai deixar criar outra caixa com o mesmo nome".
+- Backend `rede_ia.py`: `CTOCreateIn` ganhou `cto_number: Optional[int]`. Endpoint público `/rede-ia/public/ctos/{collab_id}` agora dá precedência ao `cto_number` (sobre `suggested_name`). Validação de duplicidade já existente retorna HTTP 409 com `{msg, suggested_number, suggested_name}`.
+- Frontend `CtoInlineFlow.js` tela B:
+  - Novo `<input data-testid="cto-inline-number-input">` antes de "Quantas portas", placeholder "Deixe em branco para auto-numerar".
+  - Submit envia `cto_number: state.ctoNumber ? Number(...) : null`.
+  - Handler de erro 409 mostra mensagem + auto-preenche o campo com `suggested_number` (técnico só aperta "Criar" de novo).
+- Validado E2E: 1ª criação CTO 042 → 200 OK + nome "CTO 042_313_VIL" ✓ · 2ª tentativa duplicada → 409 + suggested_number ✓.
+
+
+✅ **Foto do equipamento/CTO obrigatória — conjugada no botão "Próximo"** (28/05/2026):
+- Pedido: "colocar a opção de tirar foto da cto obrigatorio · recrie a opção de foto conjugada no botão, e reconecte nos kpis".
+- Frontend `LousaMobile.js` (step 1, NÃO-retirada):
+  - Sem foto: botão azul gradient "📸 Tirar foto do equipamento e continuar →" — 1 toque abre câmera (`capture=environment`)
+  - Após captura: imagem comprimida (max 1280px, JPEG 78%), salva em `form.fotos[{kind:"cto", dataUrl}]`, mostra preview verde "Foto do equipamento capturada · será anexada à OS" com botão "↺ Refazer"
+  - Botão muda para dark "Próximo: Localização da CTO →" — 2º toque avança step
+  - Modo Full Unlock bypassa
+- Frontend: payload `fotos` agora vai como `[{kind,dataUrl}]` (não achatado pra string) — preserva o `kind` no backend.
+- Backend já filtra `kind == "cto"` em `cto_get_photos` → foto aparece na galeria de fotos da CTO no mapa interativo.
+- Lint OK, smoke screenshot 0 pageerrors.
+
+
+✅ **Diálogo de Troca de Porta (cliente já cadastrado em outra porta)** (28/05/2026):
+- Frontend `CtoInlineFlow.js`: `useEffect` busca `redeIaClientCurrentPort` quando o cliente é conhecido. Porta atual destacada teal "ATUAL". Ao clicar em porta diferente, abre modal "Trocar porta do cliente?" com mensagem clara, badge azul se cadastro vier do SmartOLT, e botões Não/Trocar.
+- Backend `rede_ia.py` novos endpoints públicos:
+  - `GET /api/rede-ia/public/client-current-port/{collab_id}?subscriber_id=X` → `{found, current:{cto_id, cto_name, port_number, from_smartolt}}`
+  - `POST /api/rede-ia/public/swap-client-port/{collab_id}` body `{subscriber_id, cto_id, new_port}` → libera porta antiga, ocupa nova preservando origin/from_smartolt, audita em `cto_port_swaps`, sincroniza com SmartOLT via `/onu/edit/{ext_id}` se origem for SmartOLT.
+- E2E curl validado: GET porta 3 → swap → GET porta 5 + from_smartolt preservado ✓.
+
+
+✅ **Retirada · v3 — Motivo obrigatório + Sinal removido + KPI de Churn** (28/05/2026):
+- Frontend `LousaMobile.js`: campo Sinal só renderiza fora de retirada. Novo `<select>` categoria (8 opções) + textarea obrigatória ≥10 chars. Validações no botão "Finalizar Retirada".
+- Backend `lousa.py`: `CompletionData` ganhou `cancel_reason_category`.
+- Backend `kpi_churn.py` NOVO: `GET /api/kpis/churn-reasons?period_days=N` → total, coverage_pct, categories[], top_category, daily[], recent_details[].
+- Frontend `ChurnReasonsKpiCard.js` NOVO: 4-tile + barras + detalhes recentes + seletor 7d/30d/90d/180d. Renderizado no Dashboard após IPv6 quality.
+- Curl OK, lint OK, 0 pageerrors.
+
+
 # SmartProv (ex-PontoIA) — PRD (Product Requirements)
 
 ## Visão
@@ -1970,4 +2245,117 @@ praça e DRE de compras mensal.
   - `testing_agent_v3_fork` iteration_115: bug Leaflet detectado.
   - `testing_agent_v3_fork` iteration_116: bug corrigido — clicks reais com timer abrem lightbox; Esc fecha; click lento (>350ms) NÃO abre (timer reseta corretamente).
   - Regressão zero: 6/6 pytests passando.
+
+
+
+✅ **PingAutoStep: probe real até 8.8.8.8 (Google) na finalização de OS** (28/05/2026):
+- **Pedido do usuário** (PT-BR, com 5 screenshots): "adiciona ping 8.8.8.8 na porta 80, 10x" abaixo do teste de IPv6.
+- **Frontend** (`PingAutoStep.js`):
+  - Alvo principal mudou de `${BACKEND}/api/network/echo` para `https://8.8.8.8/` via `fetch(mode:'no-cors')` — 10 amostras sequenciais, mede TCP+TLS RTT real até Google DNS.
+  - Como a página é HTTPS, plain HTTP:80 é bloqueado por mixed-content; usamos 443 (o cert do Google cobre o IP 8.8.8.8 no SAN).
+  - Warmup inicial decide se Google é alcançável; se não, faz fallback automático pro backend echo (etiquetado "(fallback)" na UI).
+  - Payload persistido no ticket: `{host:"8.8.8.8", port:443, target_used:"8.8.8.8"|"backend-echo", packets, success, loss_pct, avg_ms, min_ms, max_ms, jitter_ms, raw_results}`.
+  - Header da seção: "🛰 Teste de Latência · 8.8.8.8 (Google) · 10 pings".
+- **Layout** (`LousaMobile.js` linha 2117): `<PingAutoStep>` permanece abaixo do `<Ipv6TestStep>` no step final de Insumos.
+- **Validação**: lint ESLint passou, backend `/api/network/echo` segue funcional como fallback (curl 200 OK).
+- **Foto do equipamento** já estava removida em sessão anterior (LousaMobile.js linha 1460, sem bloqueio).
+- **Botão manual de Ping antigo** já removido (LousaMobile.js linha 2288 comentário).
+- **Pendente**: bug "veja porque não funcionou" do último screenshot — aguardando clarificação do usuário.
+
+✅ **Fix: `ReferenceError: onOpenRedeMap is not defined` no SmartOltDetailBlock** (28/05/2026):
+- **Bug** (mostrado pelo usuário via print): `Uncaught ReferenceError: onOpenRedeMap is not defined at SmartOltDetailBlock` — crashava a tela ao abrir qualquer ticket com `live_signal`.
+- **Causa**: `function SmartOltDetailBlock({ ls })` (LousaMobile.js:2640) usava `onOpenRedeMap` no JSX (linha 2778) mas nunca recebia como prop. A função pai `LousaMobile` recebe `onOpenRedeMap` mas não passava pro filho.
+- **Fix**: removido o botão "🗺 Mapa de Rede" interno do bloco azul do SmartOLT — era redundante (já existe botão de Mapa de Rede na home do colaborador e via kebab menu), elimina o crash e atende o pedido do usuário de remover botão redundante.
+- **Validação**: lint passou, screenshot do app renderiza com 0 pageerrors.
+
+✅ **UX cleanup adicional + Modo Full Unlock para super_admin** (28/05/2026):
+- **Pedido do usuário** (3 screenshots): (1) "retira esta poluindo" zoom dos botões câmera verde (📸 OCR file) e azul (📷 QR), (2) "pode retirar esta poluindo" — dots de progresso do step indicator, (3) "quando for o colaborador vando esse e de teste, pode tudo, nada travado, modo full" — Vando é super_admin de teste, libera tudo.
+- **Frontend** (`LousaMobile.js` TicketDetail):
+  - **Botões câmera verde/azul removidos** (linhas 1798-1820): a IA 🤖 (Claude 4.6 vision) já cobre OCR e leitura de QR/etiqueta — os outros 2 botões eram redundantes.
+  - **Dots de progresso removidos** (linhas 1601-1632): a navegação por step ficou implícita pelo conteúdo da tela.
+  - **`isFullUnlock` detect** (linha 1224): lê JWT do localStorage e checa `payload.is_super_admin === true` OR `payload.email === "vando@example.com"`. Quando true:
+    - `adminBlocks = false` — botão "Finalizar nota" fica habilitado mesmo com `isAdminTest=true`.
+    - `Ipv6TestStep` e `PingAutoStep` NÃO renderizam (`!isFullUnlock`).
+    - `ipv6Required = false` no disabled-check do botão.
+    - `goToStep2()` early-return ignorando MAC obrigatório, foto da etiqueta, MAC mismatch.
+    - `submit()` early-return chama `onFinalize` direto sem prompts de confirmação de SmartOLT/saldo.
+- **Validação**: lint ESLint passou, screenshot home 0 pageerrors.
+
+✅ **Modo Teste: foto da CTO também opcional** (28/05/2026):
+- **Pedido**: "no usuario de teste a foto não e obrigatorio".
+- **Frontend** (`CtoInlineFlow.js`): nova prop `isFullUnlock`. Quando true:
+  - `submitCreate()` pula o throw `"Foto da CTO é obrigatória"`.
+  - Botão "Continuar →" da tela A (criar nova CTO) libera mesmo sem foto/VLAN.
+  - Bloco vermelho "Tirar foto da CTO (obrigatório)" da tela B (CTO existente) deixa de renderizar.
+- **Frontend** (`LousaMobile.js`): passa `isFullUnlock={isFullUnlock}` para os 2 `<CtoInlineFlow>` (tela A e tela B).
+- **Lint**: ESLint passou.
+
+✅ **Modo Teste: Scan IA auto-preenche MAC/SN quando confiança 0%** (28/05/2026):
+- **Pedido**: "no usuario vando que e de teste informe a informação necessaria para a foto aceitar e liberar o fluxo, apenas para usuario de testes" — print mostrava OntScanModal travado em "Não consegui ler com clareza · — não lido · Confiança 0%".
+- **Frontend** (`OntScanModal.js`): novas props `isFullUnlock` e `expectedMac`. Lógica em `readWithAI()`:
+  - Se IA retornar sem mac+sn E `isFullUnlock` → fallback automático para `expectedMac.toUpperCase()` (ou `"TESTMAC000001"` se vazio), `confidence: 1`, `auto_filled_test: true`.
+  - Se a chamada à IA der erro de rede E `isFullUnlock` → mesmo fallback (não trava o tester).
+- Badge dourado "🔓 Modo Teste · auto-preenchido" aparece na tela de resultado quando o auto-fill foi acionado.
+- Botão "Confirmar e usar" fica habilitado porque agora há `result.mac` válido.
+- **Frontend** (`LousaMobile.js`): passa `isFullUnlock={isFullUnlock}` + `expectedMac={clientSmart?.mac_expected || ticket?.live_signal?.sn || ""}` (reaproveita o MAC do SmartOLT como dado realista).
+- **Lint**: ESLint passou nos dois arquivos, screenshot home 0 pageerrors.
+
+✅ **Modo Demo: botão "⚡ Pular p/ Finalizar" no badge dourado** (28/05/2026):
+- **Pedido**: agilizar demo (super_admin/Vando), pular direto pro último step da OS com tudo pré-preenchido.
+- **Frontend** (`LousaMobile.js`): adicionado `<button data-testid="demo-finalize-fast">` dentro do badge dourado (só visível em `isFullUnlock`). Ao clicar:
+  - Preenche `form` (sinal=-25 dBm, drop=10m, esticadores=2, conector_fast=2, cabo_rede=5m, conector_rede=2, fibras=0, MAC=`expectedMac`/`TESTMAC000001`, observações="OS de teste (Modo Demo)").
+  - Preenche `ctoFlowState` com GPS demo (Rio: -22.9, -43.2), endereço demo, VLAN 313.
+  - `ipv6Result` setado pra `{score:10, has_ipv6:true, test:"demo"}` (já era irrelevante em modo full, mas garante UI verde).
+  - `setStep(insumosStepNum)` — pula direto pro step de Insumos onde está o botão "Finalizar nota".
+- **Lint**: ESLint passou, screenshot home 0 pageerrors.
+
+✅ **Modo Teste: admin@empresa.com agora também é Full Unlock** (28/05/2026):
+- **Pedido**: "admin@empresa.com libere tudo para esse usuario nada e obrigatorio, comandos full".
+- **Causa raiz**: o JWT criado pelo `create_access_token` não incluía a flag `is_super_admin`, então o check do frontend `payload?.is_super_admin` sempre era undefined — só o fallback hardcoded `email === "vando@example.com"` funcionava.
+- **Backend** (`auth.py`):
+  - `create_access_token` ganhou parâmetro `is_super_admin: bool = False` e injeta no payload do JWT.
+- **Backend** (`routes/users.py:79`):
+  - Endpoint `/api/auth/login` agora calcula `is_super_admin(user)` e passa pro token. Validado via curl: payload do JWT contém `"is_super_admin": true` para admin@empresa.com.
+- **Frontend** (`LousaMobile.js`): além do claim do JWT, mantém fallback hardcoded `SUPER_ADMIN_EMAILS = {"vando@example.com", "admin@empresa.com"}` pra cobrir tokens antigos (compat).
+- **Resultado**: admin@empresa.com / 123456 agora tem todos os comandos liberados: badge "🔓 Modo Teste", IPv6/Ping não renderizam, foto não obrigatória, MAC scanner auto-preenche, botão "⚡ Pular p/ Finalizar" disponível.
+- **Lint**: Python (ruff) + JS (ESLint) passaram, backend reiniciado e validado via curl.
+
+✅ **Fluxo de retirada simplificado + Comprovante WhatsApp + Card de Template editável** (28/05/2026):
+- **Pedido**: (1) remover info card "Cliente encontrado no SmartOLT" das retiradas, (2) pular CTO steps em retirada (vai direto pra finalizar), (3) enviar WhatsApp "COMPROVANTE DE DEVOLUÇÃO DE EQUIPAMENTO" ao finalizar, (4) apagar cadastro no SmartOLT se o cliente estiver lá, (5) criar card para editar a mensagem.
+- **Backend** (`services/retirada_workflow.py` NOVO):
+  - `send_retirada_comprovante()` → renderiza template com `{cliente} {endereco} {equipamento} {sn} {data} {tecnico} {empresa}`, normaliza phone p/ E.164 BR, envia via `_sidecar_post_silent("/send")` (Baileys), espelha em `aihub_wa_messages`.
+  - `request_smartolt_remove()` → chama `POST /onu/delete/{external_id}` do SmartOLT (best-effort). Quando falha ou SmartOLT desabilitado, persiste em nova coleção `smartolt_pending_removals` pra gestor processar manual.
+  - Template padrão hardcoded; helpers `get_template`/`set_template` leem/persistem em `aihub_settings.key="retirada_comprovante_template"`.
+- **Backend** (`routes/retirada_template.py` NOVO): 3 endpoints: `GET/PUT/POST /api/settings/retirada-template[/reset]`. Validação garante que pelo menos uma variável seja usada no template. Acesso restrito a admin/gestor/super_admin.
+- **Backend** (`routes/lousa.py:3094`): hook no close handler — quando `ticket.type === "retirada"`, dispara via `background_tasks` o envio do comprovante + remoção SmartOLT (sem bloquear o close).
+- **Backend** (`server.py`): import + `app.include_router(routes_retirada_template.router)`.
+- **Frontend** (`LousaMobile.js:1487`): em `goToStep2()`, retiradas pulam para `insumosStepNum` (step final) direto — sem CTO steps. Info card SmartOLT removido das retiradas.
+- **Frontend** (`RetiradaTemplateCard.js` NOVO): card em Configurações com textarea editável (mono 12px), 7 pills clicáveis pra inserir variáveis, badge "Personalizado" quando diferente do padrão, botões "↺ Restaurar padrão" + "Salvar". Mensagens de feedback ok/err.
+- **Frontend** (`SettingsPanel.js`): import + renderização do `<RetiradaTemplateCard />` após `<MotorIaCard />`.
+- **Validação**:
+  - Curl E2E: GET retorna template padrão + 7 vars → PUT custom template OK → GET retorna `is_default:false` → POST `/reset` OK → GET retorna `is_default:true`.
+  - Lint Python + JS passou em todos os arquivos novos.
+  - Screenshot app mobile 0 pageerrors.
+- **Comportamento real**: ao finalizar uma OS de retirada com `phone` no client_snapshot, o cliente recebe instantaneamente o comprovante via WhatsApp. Se o cliente estava no SmartOLT, a ONU é deletada (ou enfileirada em `smartolt_pending_removals` se SmartOLT estiver off).
+
+✅ **CORREÇÃO: Retirada agora finaliza DENTRO da primeira tela** (28/05/2026):
+- **Bug**: o usuário pediu "a primeira tela com o card de informações do cliente e o lancamento do amc ou sn analizado por ia, retira todas as outras teleas, coloca pra finalizar". Eu havia implementado apenas pulando pra step 4 (Insumos) — ainda existia outra tela. Pedido era ter SÓ a primeira tela.
+- **Fix** (`LousaMobile.js`):
+  - Botão "Próximo: Localização da CTO →" agora só aparece quando NÃO é retirada.
+  - Novo bloco `{step === 1 && isWithdraw && <>}` renderiza diretamente na primeira tela: textarea de Observações + botão `data-testid="finalize-btn-withdraw"` "Finalizar Retirada".
+  - O onClick do botão roda inline as mesmas validações do `goToStep2` (MAC obrigatório, mismatch, foto SN obrigatória) e chama `submit()` direto — sem `setStep(...)`.
+  - `isFullUnlock` continua bypassando tudo (Vando/admin@empresa.com).
+- **Comportamento atual**:
+  1. Técnico abre OS de retirada → vê SÓ a tela 1 (sinal + MAC/SN + obs + Finalizar)
+  2. Tira foto via 🤖 IA → MAC auto-preenchido
+  3. Clica "Finalizar Retirada" → backend envia WhatsApp + remove SmartOLT
+- **Lint**: ESLint passou, screenshot home 0 pageerrors.
+
+
+
+
+
+
+
+
 

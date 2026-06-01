@@ -11,6 +11,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/api";
 import TransferToTechPanel from "@/TransferToTechPanel";
+import InvoiceConsolidatedPanel from "@/InvoiceConsolidatedPanel";
 
 const TYPE_META = {
   ont: { label: "ONT", emoji: "📡", color: "#0ea5e9" },
@@ -636,6 +637,11 @@ export default function CentralComprasPanel({ currentUser }) {
 
       {/* Transferência praça → técnico (visível para gestores/admin) */}
       {canConfirm && <TransferToTechPanel pracas={refs.pracas || []} />}
+
+      {/* iter203 — Visão consolidada por Nota Fiscal */}
+      <div style={{ marginTop: 22 }}>
+        <InvoiceConsolidatedPanel />
+      </div>
     </div>
   );
 }

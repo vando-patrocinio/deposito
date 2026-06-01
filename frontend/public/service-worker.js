@@ -14,10 +14,31 @@
  *
  *   - /api/...                         → NUNCA cacheia
  *
+ *   - tiles OSM/Mapbox (z/x/y png)     → STALE-WHILE-REVALIDATE
+ *       Cache separado "smartprov-tiles" com TTL longo. Permite mapas
+ *       offline pro técnico que cadastra CTO/CE/Cabo no campo sem
+ *       internet. Tile fica disponível depois que foi visto 1x online.
+ *
  * Ao publicar uma versão NOVA, basta bumpar o CACHE_NAME abaixo. O
  * `activate` deleta caches antigos automaticamente.
  */
-const CACHE_NAME = "smartprov-v3-2026-05-21";
+const CACHE_NAME = "smartprov-v4-2026-05-30";
+const TILE_CACHE = "smartprov-tiles-v1";
+// Hosts considerados "tiles de mapa" (cache long-term)
+const TILE_HOSTS = [
+  "tile.openstreetmap.org",
+  "a.tile.openstreetmap.org",
+  "b.tile.openstreetmap.org",
+  "c.tile.openstreetmap.org",
+  "tiles.openfreemap.org",
+  "tile.openfreemap.org",
+  "tile.opentopomap.org",
+  "a.basemaps.cartocdn.com",
+  "b.basemaps.cartocdn.com",
+  "c.basemaps.cartocdn.com",
+  "d.basemaps.cartocdn.com",
+  "server.arcgisonline.com",
+];
 
 self.addEventListener("install", (event) => {
   // Ativa imediatamente sem esperar abas antigas fecharem
@@ -32,10 +53,11 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      // Limpa caches antigos
+      // Limpa caches antigos (mas preserva o de tiles, exceto se mudar versão)
       const keys = await caches.keys();
       await Promise.all(
-        keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+        keys.filter((k) => k !== CACHE_NAME && k !== TILE_CACHE)
+              .map((k) => caches.delete(k))
       );
       // Toma controle das abas abertas imediatamente
       await self.clients.claim();
@@ -57,6 +79,24 @@ self.addEventListener("fetch", (event) => {
 
   // Nunca cacheia chamadas de API
   if (url.pathname.startsWith("/api/")) return;
+
+  // Tiles de mapas → STALE-WHILE-REVALIDATE (cache long-term)
+  if (TILE_HOSTS.includes(url.hostname)) {
+    event.respondWith(
+      caches.open(TILE_CACHE).then(async (cache) => {
+        const cached = await cache.match(req);
+        const fetchPromise = fetch(req).then((res) => {
+          if (res && res.status === 200) {
+            cache.put(req, res.clone()).catch(() => {});
+          }
+          return res;
+        }).catch(() => cached);
+        // Retorna o cache imediatamente se houver, mas faz revalidate
+        return cached || fetchPromise;
+      })
+    );
+    return;
+  }
 
   // Navegação / index.html → NETWORK-FIRST
   // (qualquer request de documento HTML, ou path raiz, ou index.html direto)

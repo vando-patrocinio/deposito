@@ -110,3 +110,32 @@ export function safeText(v) {
   }
   return String(v);
 }
+
+/** ONT/ONU — Identificador prevalente é SN (Serial Number).
+ *  Política iter197 (10/02/2026): SN > MAC para exibição em todas as telas.
+ *  Use `ontLabel(o)` para o texto principal; `ontSecondary(o)` para o secundário.
+ */
+export function ontLabel(o) {
+  if (!o) return "";
+  const sn = (o.sn || o.scan_sn || "").toString().trim();
+  if (sn) return sn;
+  const mac = (o.mac || "").toString().trim();
+  // MACs placeholder (SN-..., AUTOSN_..., MANUAL-...) NUNCA são exibidos como label.
+  if (mac && !/^(SN-|AUTOSN_|MANUAL-)/i.test(mac)) return mac;
+  return "—";
+}
+
+/** Identificador secundário (info técnica) — MAC quando o primário foi SN. */
+export function ontSecondary(o) {
+  if (!o) return "";
+  const sn = (o.sn || o.scan_sn || "").toString().trim();
+  const mac = (o.mac || "").toString().trim();
+  if (sn && mac && !/^(SN-|AUTOSN_|MANUAL-)/i.test(mac)) return mac;
+  return "";
+}
+
+/** Boolean — esse 'mac' é só um placeholder gerado pelo sistema (não é MAC real)? */
+export function isPlaceholderMac(mac) {
+  return !!mac && /^(SN-|AUTOSN_|MANUAL-)/i.test(String(mac));
+}
+

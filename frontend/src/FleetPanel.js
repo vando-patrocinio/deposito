@@ -3,10 +3,11 @@ import { api } from "@/api";
 import {
   Car, Camera, Fuel, ArrowRightLeft, Activity, Plus,
   CheckCircle2, AlertTriangle, RefreshCw, Search, Trash2,
-  X, Loader2,
+  X, Loader2, Route,
 } from "lucide-react";
 import SignatureCanvas from "@/fleet/SignatureCanvas";
 import TicketLogImporter from "@/fleet/TicketLogImporter";
+import FleetTrailAuditPanel from "@/FleetTrailAuditPanel";
 
 /* =============================================================
    FleetPanel — Gestão de Frota.
@@ -64,6 +65,8 @@ export default function FleetPanel() {
           { id: "inspections", label: "Vistorias", icon: Camera },
           { id: "transfers", label: "Romaneio", icon: ArrowRightLeft },
           { id: "fuel", label: "Combustível", icon: Fuel },
+          { id: "odometer", label: "Odômetro", icon: Activity },
+          { id: "trails", label: "Trajetos", icon: Route },
           { id: "kpis", label: "KPIs", icon: Activity },
         ].map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
@@ -86,6 +89,8 @@ export default function FleetPanel() {
       {tab === "inspections" && <InspectionsTab />}
       {tab === "transfers" && <TransfersTab />}
       {tab === "fuel" && <FuelTab />}
+      {tab === "odometer" && <OdometerTab />}
+      {tab === "trails" && <FleetTrailAuditPanel />}
       {tab === "kpis" && <KpisTab kpis={kpis} />}
     </div>
   );
@@ -1598,3 +1603,264 @@ function CheckRow({ label, checked, onChange }) {
     </label>
   );
 }
+
+
+// =============================================================
+// iter189 — OdometerTab: leituras semanais + KPIs por técnico/carro
+// KPIs aplicados (literatura ISP 2025):
+//   • km_total por técnico no período
+//   • km/nota (km ÷ OS executadas)
+//   • R$/OS e R$/km (combinado com combustível)
+//   • Consumo médio km/l
+// =============================================================
+function OdometerTab() {
+  const [days, setDays] = useState(30);
+  const [data, setData] = useState(null);
+  const [readings, setReadings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [viewPhoto, setViewPhoto] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [k, r] = await Promise.all([
+        api.fleetOdomKpis(days),
+        api.fleetOdomReadings({}),
+      ]);
+      setData(k);
+      setReadings(r.items || []);
+    } finally { setLoading(false); }
+  }, [days]);
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return (
+    <div style={{ padding: 20, color: "var(--text-muted)" }}>
+      Carregando KPIs de odômetro...
+    </div>
+  );
+  const s = data?.summary || {};
+  const list = data?.by_collab || [];
+
+  const fmt = (v, suf = "") => v != null ?
+    `${Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}${suf}` : "—";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Filtro período */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          Período:
+        </span>
+        {[7, 14, 30, 60, 90].map((d) => (
+          <button key={d} onClick={() => setDays(d)}
+            style={{
+              padding: "6px 12px", borderRadius: 8, fontSize: 12,
+              border: days === d ? "2px solid #0d9488" : "1px solid #cbd5e1",
+              background: days === d ? "#ccfbf1" : "#fff",
+              color: days === d ? "#0d9488" : "#475569",
+              fontWeight: 700, cursor: "pointer",
+            }}>{d}d</button>
+        ))}
+      </div>
+
+      {/* KPI cards gerais */}
+      <div style={{ display: "grid", gap: 10,
+                          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+        <KpiCard label="🚗 KM rodados (total)" value={fmt(s.total_km, " km")}
+                    color="#0d9488" />
+        <KpiCard label="📋 OS executadas" value={fmt(s.total_os_executadas)}
+                    color="#7c3aed" />
+        <KpiCard label="📏 km / nota" value={fmt(s.km_por_nota_geral, " km")}
+                    color="#f59e0b" />
+        <KpiCard label="💰 R$ / nota" value={fmt(s.custo_por_nota_geral, "")}
+                    prefix="R$ " color="#dc2626" />
+        <KpiCard label="⛽ Consumo médio" value={fmt(s.media_km_l_geral, " km/l")}
+                    color="#16a34a" />
+        <KpiCard label="💸 R$ / km" value={fmt(s.custo_por_km_geral, "")}
+                    prefix="R$ " color="#0ea5e9" />
+      </div>
+
+      {/* Tabela por colaborador */}
+      <div style={{ background: "var(--bg-elevated, #fff)", borderRadius: 12,
+                          padding: 14, border: "1px solid var(--border-default, #e2e8f0)" }}>
+        <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 10px" }}>
+          Performance por técnico/veículo
+        </h3>
+        {list.length === 0 && (
+          <div style={{ padding: 20, textAlign: "center",
+                              color: "var(--text-muted)" }}>
+            Nenhuma leitura de odômetro nos últimos {days} dias.
+          </div>
+        )}
+        {list.length > 0 && (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid #e2e8f0",
+                                  textAlign: "left", color: "#64748b" }}>
+                  <th style={{ padding: "8px 6px" }}>Técnico</th>
+                  <th style={{ padding: "8px 6px" }}>Placa</th>
+                  <th style={{ padding: "8px 6px", textAlign: "right" }}>KM</th>
+                  <th style={{ padding: "8px 6px", textAlign: "right" }}>OS</th>
+                  <th style={{ padding: "8px 6px", textAlign: "right" }}>km/OS</th>
+                  <th style={{ padding: "8px 6px", textAlign: "right" }}>Litros</th>
+                  <th style={{ padding: "8px 6px", textAlign: "right" }}>R$ Comb.</th>
+                  <th style={{ padding: "8px 6px", textAlign: "right" }}>R$/OS</th>
+                  <th style={{ padding: "8px 6px", textAlign: "right" }}>km/L</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((r) => (
+                  <tr key={r.collab_id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <td style={{ padding: "8px 6px", fontWeight: 700 }}>
+                      {r.collab_name}
+                    </td>
+                    <td style={{ padding: "8px 6px", fontFamily: "monospace" }}>
+                      {r.vehicle_plate || "—"}
+                    </td>
+                    <td style={{ padding: "8px 6px", textAlign: "right",
+                                          fontWeight: 700, color: "#0d9488" }}>
+                      {fmt(r.km_total)}
+                    </td>
+                    <td style={{ padding: "8px 6px", textAlign: "right" }}>
+                      {r.os_executadas}
+                    </td>
+                    <td style={{ padding: "8px 6px", textAlign: "right" }}>
+                      {fmt(r.km_por_nota)}
+                    </td>
+                    <td style={{ padding: "8px 6px", textAlign: "right" }}>
+                      {fmt(r.litros)}
+                    </td>
+                    <td style={{ padding: "8px 6px", textAlign: "right" }}>
+                      R$ {fmt(r.valor_combustivel)}
+                    </td>
+                    <td style={{ padding: "8px 6px", textAlign: "right",
+                                          color: "#dc2626", fontWeight: 700 }}>
+                      R$ {fmt(r.custo_por_nota)}
+                    </td>
+                    <td style={{ padding: "8px 6px", textAlign: "right" }}>
+                      {fmt(r.media_km_l)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Últimas leituras (gallery) */}
+      <div style={{ background: "var(--bg-elevated, #fff)", borderRadius: 12,
+                          padding: 14, border: "1px solid var(--border-default, #e2e8f0)" }}>
+        <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 10px" }}>
+          Últimas leituras ({readings.length})
+        </h3>
+        <div style={{ display: "grid", gap: 10,
+                            gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
+          {readings.slice(0, 24).map((r) => (
+            <button key={r.id} onClick={() => setViewPhoto(r)}
+              style={{
+                background: r.kind === "start" ? "#fffbeb" : "#fef2f2",
+                border: `1px solid ${r.kind === "start" ? "#fbbf24" : "#ef4444"}`,
+                borderRadius: 10, padding: 10, textAlign: "left",
+                cursor: "pointer",
+              }}>
+              <div style={{ aspectRatio: "1", borderRadius: 6,
+                                  overflow: "hidden", marginBottom: 6,
+                                  background: "#0f172a" }}>
+                {r.photo_data_url && (
+                  <img src={r.photo_data_url} alt="" style={{
+                    width: "100%", height: "100%", objectFit: "cover",
+                  }} />
+                )}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 800 }}>
+                {r.km_final?.toLocaleString("pt-BR") || "—"} km
+              </div>
+              <div style={{ fontSize: 10, color: "#64748b" }}>
+                {r.collab_name}
+              </div>
+              <div style={{ fontSize: 9, color: "#94a3b8" }}>
+                {r.captured_at?.slice(0, 10)}
+                {" · "}{r.kind === "start" ? "🌅" : "🌙"}
+                {" "}IA {r.ai_confidence || 0}%
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Modal visualização foto */}
+      {viewPhoto && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 1000, padding: 20,
+        }} onClick={() => setViewPhoto(null)}>
+          <div style={{ maxWidth: 720, width: "100%",
+                                background: "#fff", borderRadius: 14,
+                                overflow: "hidden", maxHeight: "90vh",
+                                display: "flex", flexDirection: "column" }}
+                  onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: 14, borderBottom: "1px solid #e2e8f0",
+                              display: "flex", justifyContent: "space-between",
+                              alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>
+                  {viewPhoto.km_final?.toLocaleString("pt-BR")} km
+                </div>
+                <div style={{ fontSize: 11, color: "#64748b" }}>
+                  {viewPhoto.collab_name} · {viewPhoto.vehicle_plate || "—"}
+                  {" · "}{viewPhoto.captured_at?.slice(0, 16).replace("T", " ")}
+                </div>
+              </div>
+              <button onClick={() => setViewPhoto(null)} style={{
+                background: "#f1f5f9", border: 0, padding: 10, borderRadius: 8,
+                fontSize: 16, fontWeight: 800, cursor: "pointer",
+              }}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+              <img src={viewPhoto.photo_data_url} alt="" style={{
+                width: "100%", borderRadius: 10,
+              }} />
+              <div style={{ marginTop: 10, padding: 10,
+                                  background: "#f1f5f9", borderRadius: 8,
+                                  fontSize: 12 }}>
+                <strong>Confiança IA:</strong> {viewPhoto.ai_confidence}%
+                <br />
+                <strong>IA leu:</strong> {viewPhoto.km_ai} km
+                {viewPhoto.km_ai !== viewPhoto.km_final && (
+                  <> (sobrescrito manualmente para {viewPhoto.km_final})</>
+                )}
+                {viewPhoto.ai_reasoning && (
+                  <>
+                    <br /><strong>Razão:</strong> {viewPhoto.ai_reasoning}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KpiCard({ label, value, prefix = "", color = "#0ea5e9" }) {
+  return (
+    <div style={{
+      background: "var(--bg-elevated, #fff)",
+      border: `2px solid ${color}33`,
+      borderRadius: 12, padding: 14,
+    }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700,
+                          textTransform: "uppercase", letterSpacing: 0.4 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 900, color, marginTop: 4 }}>
+        {prefix}{value}
+      </div>
+    </div>
+  );
+}
+

@@ -14,7 +14,11 @@ root.render(
 // Detecta SW novo, instala em background e quando "activated", recarrega
 // automaticamente — assim o usuário vê a versão nova logo após o redeploy,
 // sem precisar dar Ctrl+Shift+R.
-if ("serviceWorker" in navigator && process.env.NODE_ENV === "production") {
+// iter183 — Habilita SW em prod E em dev quando REACT_APP_ENABLE_SW=1 está
+// setado. Útil para validar offline-first (tile cache) no preview.
+if ("serviceWorker" in navigator
+      && (process.env.NODE_ENV === "production"
+            || process.env.REACT_APP_ENABLE_SW === "1")) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/service-worker.js")

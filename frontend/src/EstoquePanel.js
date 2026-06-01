@@ -4,18 +4,35 @@ import { Card } from "@/ui";
 import PracaStockCard from "@/PracaStockCard";
 import BalancoTab from "@/BalancoTab";
 import { GranularResetButton, ShrinkageReportCard } from "@/StokAuditCards";
+import CentralComprasPanel from "@/CentralComprasPanel";
+import OntBatchHistoryPanel from "@/OntBatchHistoryPanel";
+import StokTransfersPanel from "@/StokTransfersPanel";
+import DefectiveOntsPanel from "@/DefectiveOntsPanel";
+import WithdrawSnAuditPanel from "@/WithdrawSnAuditPanel";
+import ClientEquipmentHistoryModal from "@/ClientEquipmentHistoryModal";
+import OntTraceabilityModal from "@/OntTraceabilityModal";
+import ManualWithdrawDialog from "@/ManualWithdrawDialog";
+import OntDuplicateAlertsPanel from "@/OntDuplicateAlertsPanel";
+import StokHealthDashboard from "@/StokHealthDashboard";
 
 // ============================================================
 // Helpers visuais
 // ============================================================
 const SUB_TABS = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "saude", label: "📊 Saúde" },
   { id: "onts", label: "ONTs" },
   { id: "insumos", label: "Insumos" },
   { id: "clientes", label: "Clientes (SmartOLT)" },
   { id: "servicos", label: "Ordens de serviço" },
   { id: "balanco", label: "📊 Balanço" },
   { id: "historico", label: "Histórico" },
+  { id: "transfers", label: "🔄 Transferências" },
+  { id: "defeitos", label: "⚠️ Defeitos" },
+  { id: "duplicados", label: "🚨 ONTs Duplicadas" },
+  { id: "audit-sn", label: "🔍 Auditoria SN" },
+  { id: "lotes", label: "📋 Retiradas em Lote" },
+  { id: "compras", label: "🛒 Central de Compras" },
 ];
 
 const STATUS_COLORS = {
@@ -28,6 +45,9 @@ const STATUS_COLORS = {
   fechado: { bg: "#e2e8f0", color: "#475569", label: "Fechado" },
   cancelado: { bg: "#fee2e2", color: "#991b1b", label: "Cancelado" },
   erro_estoque: { bg: "#fee2e2", color: "#991b1b", label: "⚠ Erro estoque" },
+  defeito_devolver_empresa: { bg: "#fee2e2", color: "#7f1d1d", label: "⚠ Defeito · devolver" },
+  defeito_em_analise: { bg: "#fef3c7", color: "#854d0e", label: "🔬 Em análise" },
+  sucateada: { bg: "#e2e8f0", color: "#475569", label: "🗑 Sucateada" },
 };
 
 function StatusPill({ status }) {
@@ -910,18 +930,88 @@ function OntsSection({ onts, technicians, reload }) {
   const [filter, setFilter] = useState("");
   const [locFilter, setLocFilter] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
-  const [showTransfer, setShowTransfer] = useState(false);
+  // Modo seleção pra transferência em lote
+  const [transferMode, setTransferMode] = useState(false);
+  const [selectedMacs, setSelectedMacs] = useState({});
+  const [bulkTechId, setBulkTechId] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  // iter201 — Rastreabilidade ponta a ponta (SN → NF de origem)
+  const [traceIdent, setTraceIdent] = useState(null);
 
   const filtered = useMemo(() => {
     const q = filter.toLowerCase();
     return onts.filter((o) => {
-      const txt = !q || o.mac.toLowerCase().includes(q) || (o.model || "").toLowerCase().includes(q) || (o.client_name || "").toLowerCase().includes(q);
+      // iter197 — busca por SN primeiro (campo prevalente), depois MAC/modelo/cliente
+      const sn = (o.scan_sn || o.sn || "").toLowerCase();
+      const txt = !q || sn.includes(q) || o.mac.toLowerCase().includes(q)
+        || (o.model || "").toLowerCase().includes(q)
+        || (o.client_name || "").toLowerCase().includes(q);
       const loc = locFilter === "all" || o.location_type === locFilter;
       return txt && loc;
     });
   }, [onts, filter, locFilter]);
 
   const techMap = useMemo(() => Object.fromEntries(technicians.map((t) => [t.id, t.name])), [technicians]);
+
+  const selectableMacs = useMemo(
+    () => filtered.filter((o) => o.location_type === "empresa").map((o) => o.mac),
+    [filtered],
+  );
+  const selectedCount = Object.values(selectedMacs).filter(Boolean).length;
+  const allSelected = selectableMacs.length > 0
+    && selectableMacs.every((m) => selectedMacs[m]);
+
+  const toggleMac = (mac) =>
+    setSelectedMacs((s) => ({ ...s, [mac]: !s[mac] }));
+  const toggleAll = () => {
+    if (allSelected) setSelectedMacs({});
+    else {
+      const next = {};
+      selectableMacs.forEach((m) => { next[m] = true; });
+      setSelectedMacs(next);
+    }
+  };
+
+  const startTransferMode = () => {
+    setTransferMode(true);
+    setSelectedMacs({});
+    setBulkTechId(technicians[0]?.id || "");
+  };
+  const cancelTransferMode = () => {
+    setTransferMode(false);
+    setSelectedMacs({});
+  };
+
+  const confirmBulkTransfer = async () => {
+    const macs = Object.entries(selectedMacs).filter(([, v]) => v).map(([m]) => m);
+    if (!macs.length) {
+      await window.alert("Selecione pelo menos uma ONT.");
+      return;
+    }
+    if (!bulkTechId) {
+      await window.alert("Selecione o técnico de destino.");
+      return;
+    }
+    const techName = techMap[bulkTechId] || "técnico";
+    if (!await window.confirm(
+      `Transferir ${macs.length} ONT(s) para ${techName}?`)) return;
+    setBulkBusy(true);
+    try {
+      const results = await Promise.allSettled(
+        macs.map((mac) => api.stokOntTransfer(mac, bulkTechId)),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const fail = results.length - ok;
+      await window.alert(
+        `✓ ${ok} ONT(s) transferida(s)` + (fail ? ` · ${fail} falha(s)` : ""));
+      cancelTransferMode();
+      await reload();
+    } catch (e) {
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const editModel = asyncCall(async (mac, current) => {
     const novo = await window.prompt("Novo modelo:", current);
@@ -939,8 +1029,25 @@ function OntsSection({ onts, technicians, reload }) {
       title={`ONTs (${onts.length})`}
       action={
         <div style={{ display: "flex", gap: 8 }}>
-          <button data-testid="ont-add-btn" style={btnPrimary} onClick={() => setShowAdd(true)}>+ Adicionar ONTs</button>
-          <button data-testid="ont-transfer-btn" style={btnSec} onClick={() => setShowTransfer(true)}>↗ Transferir</button>
+          {!transferMode ? (
+            <>
+              <button data-testid="ont-add-btn" style={btnPrimary} onClick={() => setShowAdd(true)}>+ Adicionar ONTs</button>
+              <button data-testid="ont-transfer-btn" style={btnSec} onClick={startTransferMode}>↗ Transferir</button>
+            </>
+          ) : (
+            <>
+              <span data-testid="ont-bulk-counter" style={{
+                padding: "8px 14px", borderRadius: 10, background: "#dbeafe",
+                color: "#1e40af", fontWeight: 800, fontSize: 13,
+              }}>
+                {selectedCount} selecionada(s)
+              </span>
+              <button data-testid="ont-bulk-cancel" style={btnSec}
+                       onClick={cancelTransferMode} disabled={bulkBusy}>
+                ✕ Cancelar
+              </button>
+            </>
+          )}
         </div>
       }
     >
@@ -948,7 +1055,7 @@ function OntsSection({ onts, technicians, reload }) {
         <input
           data-testid="ont-filter-input"
           style={{ ...inputStyle, flex: 1, minWidth: 220 }}
-          placeholder="Buscar MAC, modelo ou cliente…"
+          placeholder="Buscar SN, MAC, modelo ou cliente…"
           value={filter} onChange={(e) => setFilter(e.target.value)}
         />
         <select data-testid="ont-loc-filter" style={{ ...inputStyle, width: 200 }} value={locFilter} onChange={(e) => setLocFilter(e.target.value)}>
@@ -959,11 +1066,38 @@ function OntsSection({ onts, technicians, reload }) {
         </select>
       </div>
 
+      {transferMode && (
+        <div data-testid="ont-bulk-banner" style={{
+          marginBottom: 12, padding: "10px 14px", borderRadius: 10,
+          background: "#eff6ff", border: "1px solid #bfdbfe",
+          color: "#1e40af", fontSize: 12, fontWeight: 600,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          gap: 10, flexWrap: "wrap",
+        }}>
+          <span>
+            ↗ Marque as ONTs disponíveis pra transferir.{" "}
+            {selectableMacs.length > 0 && (
+              <button onClick={toggleAll}
+                       data-testid="ont-bulk-toggle-all"
+                       style={{
+                         marginLeft: 8, padding: "2px 8px", borderRadius: 6,
+                         background: "white", border: "1px solid #93c5fd",
+                         color: "#1e40af", fontWeight: 700, fontSize: 11,
+                         cursor: "pointer",
+                       }}>
+                {allSelected ? "Desmarcar tudo" : "Marcar todas as disponíveis"}
+              </button>
+            )}
+          </span>
+        </div>
+      )}
+
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-              <th style={{ padding: 10 }}>MAC</th>
+              {transferMode && <th style={{ padding: 10, width: 36 }}></th>}
+              <th style={{ padding: 10 }}>SN <span style={{ fontSize: 9, fontWeight: 500, color: "#64748b" }}>· MAC</span></th>
               <th style={{ padding: 10 }}>Modelo</th>
               <th style={{ padding: 10 }}>Local</th>
               <th style={{ padding: 10 }}>Status</th>
@@ -972,23 +1106,71 @@ function OntsSection({ onts, technicians, reload }) {
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: 24, textAlign: "center", color: "#64748b" }}>Nenhuma ONT encontrada.</td></tr>
+              <tr><td colSpan={transferMode ? 6 : 5} style={{ padding: 24, textAlign: "center", color: "#64748b" }}>Nenhuma ONT encontrada.</td></tr>
             ) : filtered.map((o) => {
+              const isSelectable = o.location_type === "empresa";
+              const isChecked = !!selectedMacs[o.mac];
               const localLabel = o.location_type === "empresa" ? "Empresa"
                 : o.location_type === "tecnico" ? (techMap[o.location_id] || "Técnico desconhecido")
                 : o.location_type === "cliente" ? `Cliente: ${o.client_name || o.location_id}`
                 : o.location_type;
               return (
-                <tr key={o.mac} style={{ borderTop: "1px solid #e2e8f0" }} data-testid={`ont-row-${o.mac}`}>
-                  <td style={{ padding: 10, fontFamily: "monospace", fontWeight: 700 }}>{o.mac}</td>
+                <tr key={o.mac}
+                     style={{ borderTop: "1px solid #e2e8f0",
+                                background: transferMode && isChecked ? "#eff6ff" : undefined,
+                                cursor: transferMode && isSelectable ? "pointer" : undefined }}
+                     onClick={transferMode && isSelectable ? () => toggleMac(o.mac) : undefined}
+                     data-testid={`ont-row-${o.mac}`}>
+                  {transferMode && (
+                    <td style={{ padding: 10, textAlign: "center" }}>
+                      {isSelectable ? (
+                        <input type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleMac(o.mac)}
+                                onClick={(e) => e.stopPropagation()}
+                                data-testid={`ont-checkbox-${o.mac}`}
+                                style={{ width: 18, height: 18, cursor: "pointer" }} />
+                      ) : (
+                        <span style={{ color: "#cbd5e1", fontSize: 14 }}>—</span>
+                      )}
+                    </td>
+                  )}
+                  {/* iter197 — SN prevalente (MAC pequeno em segunda linha) */}
+                  <td style={{ padding: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div data-testid={`ont-sn-${o.mac}`}
+                            style={{ fontFamily: "monospace", fontSize: 13, fontWeight: 800, color: "#0f172a" }}>
+                        {o.scan_sn || o.sn || (
+                          /^(SN-|AUTOSN_|MANUAL-)/i.test(o.mac || "")
+                            ? <span style={{ color: "#dc2626" }}>— sem SN —</span>
+                            : <span style={{ color: "#94a3b8", fontStyle: "italic" }}>SN não informado</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        title="Rastreabilidade: ver de qual nota fiscal esta ONT veio"
+                        data-testid={`trace-btn-${o.mac}`}
+                        onClick={() => setTraceIdent(o.scan_sn || o.mac)}
+                        style={{ background: "none", border: 0, cursor: "pointer",
+                                  padding: 2, fontSize: 14, opacity: 0.6 }}>
+                        🔍
+                      </button>
+                    </div>
+                    {!/^(SN-|AUTOSN_|MANUAL-)/i.test(o.mac || "") && o.mac && (
+                      <div style={{ fontFamily: "monospace", fontSize: 10,
+                                      color: "#64748b", marginTop: 1 }}>
+                        MAC: {o.mac}
+                      </div>
+                    )}
+                  </td>
                   <td style={{ padding: 10 }}>{o.model}</td>
                   <td style={{ padding: 10 }}>{localLabel}</td>
                   <td style={{ padding: 10 }}><StatusPill status={o.status} /></td>
                   <td style={{ padding: 10, textAlign: "right" }}>
-                    {o.location_type === "empresa" && (
+                    {!transferMode && o.location_type === "empresa" && (
                       <button style={btnGhost} onClick={() => editModel(o.mac, o.model)} data-testid={`ont-edit-${o.mac}`}>✏️ Editar</button>
                     )}
-                    {o.location_type === "tecnico" && (
+                    {!transferMode && o.location_type === "tecnico" && (
                       <button style={btnGhost} onClick={() => returnToCompany(o.mac)} data-testid={`ont-return-${o.mac}`}>↩ Devolver</button>
                     )}
                   </td>
@@ -999,8 +1181,46 @@ function OntsSection({ onts, technicians, reload }) {
         </table>
       </div>
 
+      {transferMode && (
+        <div data-testid="ont-bulk-actionbar" style={{
+          position: "sticky", bottom: 0, marginTop: 12,
+          padding: 14, background: "white",
+          border: "1px solid #cbd5e1", borderRadius: 12,
+          boxShadow: "0 -4px 14px rgba(0,0,0,0.06)",
+          display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+        }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <label style={{ fontSize: 11, color: "#64748b", fontWeight: 700,
+                              textTransform: "uppercase", letterSpacing: 0.4 }}>
+              Transferir para o técnico:
+            </label>
+            <select data-testid="ont-bulk-tech-select"
+                      value={bulkTechId}
+                      onChange={(e) => setBulkTechId(e.target.value)}
+                      style={{ ...inputStyle, marginTop: 4 }}>
+              <option value="">— Selecione um técnico —</option>
+              {technicians.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          <button data-testid="ont-bulk-confirm" style={{
+            ...btnPrimary, padding: "14px 22px", fontSize: 14,
+            opacity: (bulkBusy || selectedCount === 0) ? 0.5 : 1,
+          }} disabled={bulkBusy || selectedCount === 0}
+              onClick={confirmBulkTransfer}>
+            {bulkBusy ? "Transferindo…" : `↗ Transferir ${selectedCount} ONT(s)`}
+          </button>
+        </div>
+      )}
+
       <AddOntsDialog open={showAdd} onClose={() => setShowAdd(false)} onDone={reload} />
-      <TransferOntDialog open={showTransfer} onClose={() => setShowTransfer(false)} onDone={reload} technicians={technicians} />
+
+      {/* iter201 — Modal de Rastreabilidade (SN → NF de origem + histórico) */}
+      {traceIdent && (
+        <OntTraceabilityModal ident={traceIdent}
+                                onClose={() => setTraceIdent(null)} />
+      )}
     </Card>
   );
 }
@@ -1069,18 +1289,117 @@ function TransferOntDialog({ open, onClose, onDone, technicians }) {
 // ============================================================
 function InsumosSection({ consumables, technicians, stock, reload }) {
   const [showPurchase, setShowPurchase] = useState(false);
-  const [showTransfer, setShowTransfer] = useState(false);
+  const [showQuickPurchase, setShowQuickPurchase] = useState(false);
+  const [transferMode, setTransferMode] = useState(false);
+  const [bulkTechId, setBulkTechId] = useState("");
+  const [bulkQty, setBulkQty] = useState({}); // {consumable_id: qty}
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const startTransferMode = () => {
+    setTransferMode(true);
+    setBulkQty({});
+    setBulkTechId(technicians[0]?.id || "");
+  };
+  const cancelTransferMode = () => {
+    setTransferMode(false);
+    setBulkQty({});
+  };
+  const setQty = (cid, v) =>
+    setBulkQty((s) => ({ ...s, [cid]: v }));
+
+  const itemsToTransfer = Object.entries(bulkQty)
+    .filter(([, q]) => parseInt(q, 10) > 0)
+    .map(([cid, q]) => ({ cid, qty: parseInt(q, 10) }));
+  const totalItems = itemsToTransfer.reduce((s, it) => s + it.qty, 0);
+
+  const confirmBulkTransfer = async () => {
+    if (itemsToTransfer.length === 0) {
+      await window.alert("Informe ao menos 1 item.");
+      return;
+    }
+    if (!bulkTechId) {
+      await window.alert("Selecione o técnico.");
+      return;
+    }
+    // Valida estoque empresa
+    const tooMuch = itemsToTransfer.find(
+      (it) => it.qty > (stock.empresa?.[it.cid] || 0),
+    );
+    if (tooMuch) {
+      const cName = consumables.find((c) => c.id === tooMuch.cid)?.name || tooMuch.cid;
+      await window.alert(`Estoque insuficiente de ${cName} (${stock.empresa?.[tooMuch.cid] || 0} disp.)`);
+      return;
+    }
+    const techName = technicians.find((t) => t.id === bulkTechId)?.name || "técnico";
+    if (!await window.confirm(
+      `Transferir ${itemsToTransfer.length} insumos (${totalItems} unidades) para ${techName}?`,
+    )) return;
+    setBulkBusy(true);
+    try {
+      const results = await Promise.allSettled(
+        itemsToTransfer.map((it) =>
+          api.stokConsumableTransfer(it.cid, it.qty, bulkTechId),
+        ),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const fail = results.length - ok;
+      await window.alert(
+        `✓ ${ok} insumo(s) transferido(s)` + (fail ? ` · ${fail} falha(s)` : ""));
+      cancelTransferMode();
+      await reload();
+    } catch (e) {
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   return (
     <Card
       title="Insumos (consumíveis)"
       action={
         <div style={{ display: "flex", gap: 8 }}>
-          <button data-testid="cons-purchase-btn" style={btnPrimary} onClick={() => setShowPurchase(true)}>+ Compra</button>
-          <button data-testid="cons-transfer-btn" style={btnSec} onClick={() => setShowTransfer(true)}>↗ Transferir</button>
+          {!transferMode ? (
+            <>
+              <button data-testid="cons-quick-purchase-btn"
+                       style={{ ...btnPrimary,
+                                  background: "linear-gradient(135deg,#16a34a,#15803d)",
+                                  marginRight: 6 }}
+                       title="1 clique compra a embalagem padrão de qualquer insumo"
+                       onClick={() => setShowQuickPurchase(true)}>⚡ Compra Rápida</button>
+              <button data-testid="cons-purchase-btn" style={btnPrimary}
+                       onClick={() => setShowPurchase(true)}>+ Compra</button>
+              <button data-testid="cons-transfer-btn" style={btnSec}
+                       onClick={startTransferMode}>↗ Transferir</button>
+            </>
+          ) : (
+            <>
+              <span data-testid="cons-bulk-counter" style={{
+                padding: "8px 14px", borderRadius: 10, background: "#dbeafe",
+                color: "#1e40af", fontWeight: 800, fontSize: 13,
+              }}>
+                {itemsToTransfer.length} itens · {totalItems} unid.
+              </span>
+              <button data-testid="cons-bulk-cancel" style={btnSec}
+                       onClick={cancelTransferMode} disabled={bulkBusy}>
+                ✕ Cancelar
+              </button>
+            </>
+          )}
         </div>
       }
     >
+      {transferMode && (
+        <div data-testid="cons-bulk-banner" style={{
+          marginBottom: 12, padding: "10px 14px", borderRadius: 10,
+          background: "#eff6ff", border: "1px solid #bfdbfe",
+          color: "#1e40af", fontSize: 12, fontWeight: 600,
+        }}>
+          ↗ Informe a quantidade na linha <strong>🏢 Empresa</strong>{" "}
+          para cada insumo a transferir.
+        </div>
+      )}
+
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
@@ -1092,31 +1411,190 @@ function InsumosSection({ consumables, technicians, stock, reload }) {
           <tbody>
             <tr style={{ borderTop: "1px solid #e2e8f0", background: "#f1f5f9" }}>
               <td style={{ padding: 10, fontWeight: 800 }}>🏢 Empresa</td>
-              {consumables.map((c) => (
-                <td key={c.id} style={{ padding: 10, textAlign: "right", fontFamily: "monospace", fontWeight: 700 }}>
-                  {stock.empresa?.[c.id] || 0}
-                </td>
-              ))}
+              {consumables.map((c) => {
+                const avail = stock.empresa?.[c.id] || 0;
+                return (
+                  <td key={c.id} style={{ padding: 10, textAlign: "right",
+                                              fontFamily: "monospace" }}>
+                    {transferMode ? (
+                      <div style={{ display: "flex", alignItems: "center",
+                                       justifyContent: "flex-end", gap: 6 }}>
+                        <span style={{ fontSize: 10, color: "#64748b" }}>
+                          disp {avail}
+                        </span>
+                        <input
+                          type="number" min="0" max={avail}
+                          data-testid={`cons-bulk-qty-${c.id}`}
+                          value={bulkQty[c.id] || ""}
+                          onChange={(e) => setQty(c.id, e.target.value)}
+                          style={{
+                            width: 70, padding: "6px 8px",
+                            borderRadius: 6, border: "1px solid #cbd5e1",
+                            fontFamily: "monospace", fontSize: 13,
+                            textAlign: "right",
+                            background: bulkQty[c.id] > 0 ? "#dbeafe" : "white",
+                          }}
+                          placeholder="0"
+                        />
+                      </div>
+                    ) : (
+                      <span style={{ fontWeight: 700 }}>{avail}</span>
+                    )}
+                  </td>
+                );
+              })}
             </tr>
             {technicians.map((t) => (
-              <tr key={t.id} style={{ borderTop: "1px solid #e2e8f0" }}>
-                <td style={{ padding: 10 }}>👷 {t.name}</td>
-                {consumables.map((c) => (
-                  <td key={c.id} style={{ padding: 10, textAlign: "right", fontFamily: "monospace" }}>
-                    {stock[t.id]?.[c.id] || 0}
-                  </td>
-                ))}
+              <tr key={t.id} style={{ borderTop: "1px solid #e2e8f0",
+                                          background: transferMode && t.id === bulkTechId ? "#ecfdf5" : undefined }}>
+                <td style={{ padding: 10 }}>
+                  {transferMode && t.id === bulkTechId && <span>📥 </span>}
+                  👷 {t.name}
+                </td>
+                {consumables.map((c) => {
+                  const v = stock[t.id]?.[c.id] || 0;
+                  const isNeg = v < 0;
+                  return (
+                    <td key={c.id}
+                          data-testid={`cons-cell-${t.id}-${c.id}`}
+                          style={{ padding: 10, textAlign: "right",
+                                       fontFamily: "monospace",
+                                       fontWeight: isNeg ? 800 : 400,
+                                       color: isNeg ? "#dc2626" : undefined,
+                                       background: isNeg ? "#fef2f2" : undefined }}
+                          title={isNeg ? `Quebra: ${Math.abs(v)} ${c.unit} consumidos além do saldo` : undefined}>
+                      {v}
+                      {isNeg && <span style={{ fontSize: 9, marginLeft: 2 }}>⚠</span>}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
+      {transferMode && (
+        <div data-testid="cons-bulk-actionbar" style={{
+          position: "sticky", bottom: 0, marginTop: 12,
+          padding: 14, background: "white",
+          border: "1px solid #cbd5e1", borderRadius: 12,
+          boxShadow: "0 -4px 14px rgba(0,0,0,0.06)",
+          display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+        }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <label style={{ fontSize: 11, color: "#64748b", fontWeight: 700,
+                              textTransform: "uppercase", letterSpacing: 0.4 }}>
+              Transferir para o técnico:
+            </label>
+            <select data-testid="cons-bulk-tech-select"
+                      value={bulkTechId}
+                      onChange={(e) => setBulkTechId(e.target.value)}
+                      style={{ ...inputStyle, marginTop: 4 }}>
+              <option value="">— Selecione um técnico —</option>
+              {technicians.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          <button data-testid="cons-bulk-confirm" style={{
+            ...btnPrimary, padding: "14px 22px", fontSize: 14,
+            opacity: (bulkBusy || itemsToTransfer.length === 0) ? 0.5 : 1,
+          }} disabled={bulkBusy || itemsToTransfer.length === 0}
+              onClick={confirmBulkTransfer}>
+            {bulkBusy ? "Transferindo…" : `↗ Transferir ${totalItems} unid.`}
+          </button>
+        </div>
+      )}
+
       <ConsumablePurchaseDialog open={showPurchase} onClose={() => setShowPurchase(false)} onDone={reload} consumables={consumables} />
-      <ConsumableTransferDialog open={showTransfer} onClose={() => setShowTransfer(false)} onDone={reload} consumables={consumables} technicians={technicians} />
+      <QuickPurchaseDialog open={showQuickPurchase}
+                              onClose={() => setShowQuickPurchase(false)}
+                              onDone={reload} consumables={consumables} />
     </Card>
   );
 }
+
+function QuickPurchaseDialog({ open, onClose, onDone, consumables }) {
+  const [busy, setBusy] = useState(false);
+  const [pendingId, setPendingId] = useState(null);
+  const [msg, setMsg] = useState(null);
+
+  const buy = async (item, packs) => {
+    if (busy) return;
+    setBusy(true); setPendingId(item.id); setMsg(null);
+    try {
+      await api.stokConsumablePurchase(item.id, packs);
+      const total = packs * item.pack_qty;
+      setMsg({ type: "ok", text: `+${packs} ${item.pack_label}(s) = ${total} ${item.unit} de ${item.name}` });
+      onDone?.();
+      setTimeout(() => setMsg(null), 2500);
+    } catch (e) {
+      setMsg({ type: "err", text: e?.response?.data?.detail || e.message });
+    } finally { setBusy(false); setPendingId(null); }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose}
+           title="⚡ Compra Rápida — 1 clique"
+           data-testid="quick-purchase-dialog"
+           footer={<button style={btnSec} onClick={onClose}>Fechar</button>}>
+      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+        Cada botão registra a compra da embalagem padrão direto no estoque <strong>Empresa</strong>.
+        Use quando o saldo dos técnicos está zerado/negativo e você precisa repor rápido.
+      </div>
+      {msg && (
+        <div style={{
+          padding: "8px 12px", borderRadius: 8, marginBottom: 12,
+          fontSize: 12, fontWeight: 600,
+          background: msg.type === "ok" ? "#dcfce7" : "#fee2e2",
+          color: msg.type === "ok" ? "#166534" : "#991b1b",
+          border: `1px solid ${msg.type === "ok" ? "#86efac" : "#fca5a5"}`,
+        }}>{msg.text}</div>
+      )}
+      <div style={{ display: "grid",
+                       gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                       gap: 10 }}>
+        {consumables.map((c) => (
+          <div key={c.id} data-testid={`quick-row-${c.id}`}
+                style={{
+                  border: "1px solid #e2e8f0", borderRadius: 10, padding: 12,
+                  background: pendingId === c.id ? "#dbeafe" : "#f8fafc",
+                }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+              {c.name}
+            </div>
+            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>
+              {c.pack_label} = {c.pack_qty} {c.unit}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {[1, 2, 5].map((n) => (
+                <button key={n} type="button" disabled={busy}
+                        data-testid={`quick-buy-${c.id}-${n}`}
+                        onClick={() => buy(c, n)}
+                        style={{
+                          flex: 1, minWidth: 56, padding: "8px 6px",
+                          borderRadius: 8, border: 0,
+                          background: busy && pendingId === c.id
+                            ? "#94a3b8"
+                            : "linear-gradient(135deg,#16a34a,#15803d)",
+                          color: "#fff", fontSize: 12, fontWeight: 700,
+                          cursor: busy ? "wait" : "pointer",
+                        }}>
+                  +{n} {n === 1 ? c.pack_label : c.pack_label + "s"}
+                  <div style={{ fontSize: 9, fontWeight: 500, opacity: 0.85 }}>
+                    {n * c.pack_qty} {c.unit}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
 
 function ConsumablePurchaseDialog({ open, onClose, onDone, consumables }) {
   const [cid, setCid] = useState("");
@@ -1305,16 +1783,42 @@ function CloseServiceDialog({ service, onClose, onDone, consumables }) {
   const [mac, setMac] = useState("");
   const [items, setItems] = useState({});
   const [tag, setTag] = useState("instalacao");
+  const [portInfo, setPortInfo] = useState(null); // { current_port, free_ports_same_cto, service_type }
+  const [portSwap, setPortSwap] = useState(false);
+  const [newPort, setNewPort] = useState("");
 
-  useEffect(() => { setMac(""); setItems({}); setTag(service?.type || "instalacao"); }, [service]);
+  useEffect(() => {
+    setMac(""); setItems({}); setTag(service?.type || "instalacao");
+    setPortInfo(null); setPortSwap(false); setNewPort("");
+    if (!service?.id) return;
+    let cancelled = false;
+    api.stokClientCtoPort(service.id)
+      .then((d) => { if (!cancelled) setPortInfo(d); })
+      .catch(() => { /* opcional — segue sem porta */ });
+    return () => { cancelled = true; };
+  }, [service]);
 
   if (!service) return null;
   const needsMac = ["instalacao", "troca", "retirada"].includes(service.type);
+  const hasCurrentPort = !!portInfo?.current_port;
+  const isRetirada = service.type === "retirada";
+  const isInstallOrMaint = ["instalacao", "reparo", "troca", "ponto_adicional"].includes(service.type);
 
   const submit = asyncCall(async () => {
     const used_items = Object.entries(items).filter(([, q]) => +q > 0).map(([consumable_id, q]) => ({ consumable_id, quantity: parseInt(q, 10) }));
     if (needsMac && !mac.trim()) return await window.alert("Informe o MAC da ONT.");
-    await api.stokServiceClose(service.id, { ont_mac: mac.trim() || null, used_items, tag: tag || service.type });
+    if (isInstallOrMaint && hasCurrentPort && portSwap && !newPort) {
+      return await window.alert("Selecione a nova porta da CTO.");
+    }
+    const payload = {
+      ont_mac: mac.trim() || null,
+      used_items,
+      tag: tag || service.type,
+      port_swap: !!(isInstallOrMaint && hasCurrentPort && portSwap),
+      new_port_number: (isInstallOrMaint && hasCurrentPort && portSwap && newPort)
+        ? parseInt(newPort, 10) : null,
+    };
+    await api.stokServiceClose(service.id, payload);
     onClose();
   }, onDone, "Erro ao fechar OS");
 
@@ -1332,6 +1836,60 @@ function CloseServiceDialog({ service, onClose, onDone, consumables }) {
           </div>
         </div>
       )}
+
+      {/* Porta da CTO — só aparece se cliente já tem porta vinculada */}
+      {hasCurrentPort && (
+        <div data-testid="svc-close-cto-port" style={{
+          marginBottom: 12, padding: 12, borderRadius: 10,
+          background: isRetirada ? "#fef3c7" : "#f1f5f9",
+          border: "1px solid " + (isRetirada ? "#fbbf24" : "#cbd5e1"),
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
+            📍 Cliente já vinculado à porta <strong>{portInfo.current_port.port_number}</strong>{" "}
+            da CTO <strong>{portInfo.current_port.cto_name}</strong>
+          </div>
+          {isRetirada && (
+            <div data-testid="svc-close-port-release-note" style={{ fontSize: 12, color: "#92400e" }}>
+              ⚠️ Esta porta será <strong>liberada automaticamente</strong> ao concluir a retirada.
+            </div>
+          )}
+          {isInstallOrMaint && (
+            <>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#0f172a", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  data-testid="svc-close-port-swap-toggle"
+                  checked={portSwap}
+                  onChange={(e) => { setPortSwap(e.target.checked); if (!e.target.checked) setNewPort(""); }}
+                />
+                Houve troca de porta?
+              </label>
+              {portSwap && (
+                <div style={{ marginTop: 10 }}>
+                  <label style={labelStyle}>Nova porta (livres na mesma CTO)</label>
+                  <select
+                    data-testid="svc-close-port-swap-select"
+                    style={inputStyle}
+                    value={newPort}
+                    onChange={(e) => setNewPort(e.target.value)}
+                  >
+                    <option value="">Selecione…</option>
+                    {(portInfo.free_ports_same_cto || []).map((p) => (
+                      <option key={p.number} value={p.number}>Porta {p.number}</option>
+                    ))}
+                  </select>
+                  {(portInfo.free_ports_same_cto || []).length === 0 && (
+                    <div style={{ fontSize: 11, color: "#991b1b", marginTop: 4 }}>
+                      Nenhuma porta livre nesta CTO. Libere uma porta primeiro.
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div style={{ marginBottom: 12 }}>
         <label style={labelStyle}>Tag</label>
         <input data-testid="svc-close-tag" style={inputStyle} value={tag} onChange={(e) => setTag(e.target.value)} placeholder="instalacao, reparo, etc." />
@@ -1495,6 +2053,10 @@ function ClientesSection() {
   const [filter, setFilter] = useState("");
   const [manufFilter, setManufFilter] = useState("all");
   const [identifying, setIdentifying] = useState(false);
+  // iter163 — modal de histórico do equipamento
+  const [historyClient, setHistoryClient] = useState(null);
+  // iter170 — modal de retirada manual
+  const [manualWithdrawClient, setManualWithdrawClient] = useState(null);
 
   const reload = useCallback(async () => {
     setLoading(true); setErr("");
@@ -1601,11 +2163,13 @@ function ClientesSection() {
               <tr style={{ background: "var(--bg-surface-2)" }}>
                 <th style={_th}>Cliente</th>
                 <th style={_th}>Número de série</th>
-                <th style={_th}>MAC</th>
-                <th style={_th}>Marca / Fabricante</th>
+                <th style={_th}>Marca / Modelo</th>
                 <th style={_th}>OLT / Slot / PON</th>
                 <th style={_th}>Sinal</th>
-                <th style={_th}>Autorização</th>
+                <th style={_th}>Porta CTO</th>
+                <th style={_th}>Instalado por</th>
+                <th style={_th}>Retirado por</th>
+                <th style={_th}>Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -1618,9 +2182,9 @@ function ClientesSection() {
                       data-testid={`cliente-row-${it.sn || it.mac}`}>
                     <td style={_td}>
                       <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>{it.client_name}</div>
+                      {it.mac && <div className="mono" data-mono style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>MAC: {it.mac}</div>}
                     </td>
                     <td style={_td} className="mono" data-mono>{it.sn || "—"}</td>
-                    <td style={_td} className="mono" data-mono>{it.mac || "—"}</td>
                     <td style={_td}>
                       <span className={`pill pill--${ident ? "accent" : "neutral"}`}
                             style={{ fontWeight: 600 }}>
@@ -1637,7 +2201,73 @@ function ClientesSection() {
                         {it.signal_text || "—"}
                       </span>
                     </td>
-                    <td style={_td} className="mono" data-mono>{it.authorization_date || "—"}</td>
+                    <td style={_td}>
+                      {it.cto_name ? (
+                        <div>
+                          <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                            {it.cto_name}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                            porta {it.cto_port_number}
+                            {it.port_changes > 0 && (
+                              <span className="pill pill--warning"
+                                    style={{ marginLeft: 6, fontSize: 9, padding: "1px 6px" }}
+                                    title={`${it.port_changes} mudança(s) de porta no histórico`}>
+                                {it.port_changes}× trocada
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : <span style={{ color: "var(--text-muted)" }}>—</span>}
+                    </td>
+                    <td style={_td}>
+                      {it.installed_by ? (
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{it.installed_by}</div>
+                          {it.installed_at && (
+                            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                              {new Date(it.installed_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                            </div>
+                          )}
+                        </div>
+                      ) : <span style={{ color: "var(--text-muted)" }}>—</span>}
+                    </td>
+                    <td style={_td}>
+                      {it.withdrawn_by ? (
+                        <div>
+                          <div style={{ fontWeight: 600, color: "#b91c1c" }}>{it.withdrawn_by}</div>
+                          {it.withdrawn_at && (
+                            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                              {new Date(it.withdrawn_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                            </div>
+                          )}
+                        </div>
+                      ) : <span style={{ color: "var(--text-muted)" }}>—</span>}
+                    </td>
+                    <td style={_td}>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        <button className="btn btn-secondary btn-sm"
+                                  data-testid={`cliente-history-btn-${it.sn || it.mac}`}
+                                  onClick={() => setHistoryClient({
+                                    client_id: it.client_id,
+                                    client_name: it.client_name,
+                                  })}>
+                          Ver
+                        </button>
+                        <button className="btn btn-sm"
+                                  data-testid={`cliente-manual-withdraw-btn-${it.sn || it.mac}`}
+                                  title="Registrar retirada manual (sem OS)"
+                                  onClick={() => setManualWithdrawClient(it)}
+                                  style={{
+                                    background: "linear-gradient(135deg,#dc2626,#991b1b)",
+                                    color: "#fff", border: 0, padding: "4px 10px",
+                                    borderRadius: 6, fontSize: 11, fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}>
+                          📦 Retirar
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -1650,6 +2280,17 @@ function ClientesSection() {
           )}
         </div>
       </Card>
+      {historyClient && (
+        <ClientEquipmentHistoryModal
+          client={historyClient}
+          onClose={() => setHistoryClient(null)} />
+      )}
+      {manualWithdrawClient && (
+        <ManualWithdrawDialog
+          client={manualWithdrawClient}
+          onClose={() => setManualWithdrawClient(null)}
+          onDone={() => { setManualWithdrawClient(null); reload(); }} />
+      )}
     </>
   );
 }
@@ -1830,7 +2471,17 @@ function AuditorResetButton({ onDone }) {
 // Painel principal
 // ============================================================
 export default function EstoquePanel({ currentUser }) {
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTab] = useState(() => {
+    try {
+      const ss = typeof window !== "undefined"
+        ? window.sessionStorage.getItem("subtab:estoque") : null;
+      if (ss) {
+        window.sessionStorage.removeItem("subtab:estoque");
+        return ss;
+      }
+    } catch {}
+    return "dashboard";
+  });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [data, setData] = useState({ onts: [], technicians: [], services: [], history: [], stock: {}, dashboard: null, consumables: [], pracas: [] });
@@ -1838,12 +2489,35 @@ export default function EstoquePanel({ currentUser }) {
   const reload = useCallback(async () => {
     setLoading(true); setErr("");
     try {
-      const [onts, technicians, services, history, stock, dashboard, catalog, pracas] = await Promise.all([
-        api.stokOnts(), api.stokTechnicians(), api.stokServices(), api.stokHistory(), api.stokStock(),
-        api.stokDashboard(), api.stokCatalog(),
-        api.finFiliaisList(true).catch(() => []),
+      // Promise.allSettled garante que 1 endpoint falhando não derruba
+      // toda a UI; cada resultado é tratado individualmente.
+      const results = await Promise.allSettled([
+        api.stokOnts(), api.stokTechnicians(), api.stokServices(),
+        api.stokHistory(), api.stokStock(), api.stokDashboard(),
+        api.stokCatalog(), api.finFiliaisList(true),
       ]);
-      setData({ onts, technicians, services, history, stock, dashboard, consumables: catalog.consumables, pracas: pracas || [] });
+      const [onts, technicians, services, history, stock, dashboard, catalog, pracas] =
+        results.map((r) => (r.status === "fulfilled" ? r.value : null));
+      // Coleta erros mas filtra 403 (gate de role) — esses não devem
+      // poluir a UI dos non-auditors.
+      const errors = results
+        .filter((r) => r.status === "rejected")
+        .map((r) => r.reason)
+        .filter((e) => e?.response?.status !== 403);
+      if (errors.length) {
+        const first = errors[0];
+        setErr(first?.response?.data?.detail || first?.message || "");
+      }
+      setData({
+        onts: onts || [],
+        technicians: technicians || [],
+        services: services || [],
+        history: history || [],
+        stock: stock || {},
+        dashboard: dashboard || null,
+        consumables: catalog?.consumables || [],
+        pracas: pracas || [],
+      });
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
     } finally { setLoading(false); }
@@ -1892,7 +2566,9 @@ export default function EstoquePanel({ currentUser }) {
         ))}
       </div>
 
-      {err && <Card><div style={{ color: "#dc2626" }}>Erro: {err}</div></Card>}
+      {err && !/auditor/i.test(err) && (
+        <Card><div style={{ color: "#dc2626" }}>Erro: {err}</div></Card>
+      )}
 
       {tab === "dashboard" && (
         <>
@@ -1912,6 +2588,13 @@ export default function EstoquePanel({ currentUser }) {
         consumablesCatalog={data.consumables}
         currentUser={currentUser} />}
       {tab === "historico" && <HistoricoSection history={data.history} reload={reload} />}
+      {tab === "transfers" && <StokTransfersPanel />}
+      {tab === "defeitos" && <DefectiveOntsPanel />}
+      {tab === "duplicados" && <OntDuplicateAlertsPanel />}
+      {tab === "saude" && <StokHealthDashboard onNavigate={setTab} />}
+      {tab === "audit-sn" && <WithdrawSnAuditPanel />}
+      {tab === "lotes" && <OntBatchHistoryPanel />}
+      {tab === "compras" && <CentralComprasPanel currentUser={currentUser} embedded />}
     </div>
   );
 }

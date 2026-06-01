@@ -1695,3 +1695,371 @@ async def delete_transfer(tx_id: str,
         {"id": tx_id, "company_id": cid})
     return {"ok": True}
 
+
+
+# =============================================================================
+# iter189 — Odômetro Semanal (Bolhas de Frota)
+# =============================================================================
+# Coleta foto do velocímetro/hodômetro do veículo do técnico nos dias
+# configurados (default: segunda = primeira bolha do dia, sábado = última
+# bolha do dia). Claude Sonnet 4.5 Vision lê o km. Permite calcular:
+#   • km rodado entre leituras (sábado anterior → próxima segunda → próximo sábado)
+#   • km/nota = km_total / OS executadas no período
+#   • R$/km, R$/nota — combinado com combustível mensal
+# =============================================================================
+
+from datetime import date as _date
+
+WEEKDAYS_PT = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]
+
+
+class OdomConfigIn(BaseModel):
+    enabled: bool = True
+    # Dias da semana (0=seg ... 6=dom). Default: segunda (0) e sábado (5)
+    weekdays_start: List[int] = Field(default_factory=lambda: [0])
+    weekdays_end: List[int] = Field(default_factory=lambda: [5])
+    vehicle_plate: Optional[str] = None
+    vehicle_model: Optional[str] = None
+
+
+@router.get("/odometer/config/{collab_id}")
+async def odometer_config_get(collab_id: str,
+                                 user: dict = Depends(get_current_user)):
+    cid = _cid(user)
+    doc = await db.fleet_odometer_config.find_one(
+        {"company_id": cid, "collab_id": collab_id}, {"_id": 0},
+    )
+    if not doc:
+        return {
+            "enabled": False, "weekdays_start": [0], "weekdays_end": [5],
+            "vehicle_plate": None, "vehicle_model": None,
+        }
+    return doc
+
+
+@router.put("/odometer/config/{collab_id}")
+async def odometer_config_set(collab_id: str, body: OdomConfigIn,
+                                 user: dict = Depends(get_current_user)):
+    _require_manager(user)
+    cid = _cid(user)
+    payload = body.model_dump()
+    payload["company_id"] = cid
+    payload["collab_id"] = collab_id
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    payload["updated_by"] = user.get("name")
+    await db.fleet_odometer_config.update_one(
+        {"company_id": cid, "collab_id": collab_id},
+        {"$set": payload},
+        upsert=True,
+    )
+    return payload
+
+
+def _odom_should_show_today(cfg: dict,
+                                 today: _date) -> Optional[str]:
+    """Retorna 'start' se hoje é dia de leitura de início,
+    'end' se é dia de leitura de fim, ou None."""
+    if not cfg or not cfg.get("enabled"):
+        return None
+    wd = today.weekday()  # 0=seg ... 6=dom
+    if wd in (cfg.get("weekdays_start") or []):
+        return "start"
+    if wd in (cfg.get("weekdays_end") or []):
+        return "end"
+    return None
+
+
+@router.get("/public/odometer/today/{collab_id}")
+async def odometer_today(collab_id: str):
+    """Retorna estado da bolha de odômetro para o técnico HOJE.
+    Inclui: deve aparecer? já tirou foto hoje? tipo (start/end)?"""
+    coll = await db.collaborators.find_one(
+        {"id": collab_id}, {"_id": 0, "company_id": 1},
+    )
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado")
+    cid = coll.get("company_id")
+    cfg = await db.fleet_odometer_config.find_one(
+        {"company_id": cid, "collab_id": collab_id}, {"_id": 0},
+    )
+    today = datetime.now(timezone.utc).date()
+    kind = _odom_should_show_today(cfg or {}, today)
+    if not kind:
+        return {"show": False, "reason": "not_scheduled_today"}
+    # Já tirou foto hoje?
+    iso_start = datetime(
+        today.year, today.month, today.day, tzinfo=timezone.utc,
+    ).isoformat()
+    existing = await db.fleet_odometer_readings.find_one(
+        {"company_id": cid, "collab_id": collab_id,
+         "captured_at": {"$gte": iso_start},
+         "kind": kind},
+        {"_id": 0},
+    )
+    return {
+        "show": True,
+        "kind": kind,  # "start" (segunda) | "end" (sábado)
+        "already_done_today": bool(existing),
+        "vehicle_plate": cfg.get("vehicle_plate"),
+        "vehicle_model": cfg.get("vehicle_model"),
+        "current_reading": existing,
+    }
+
+
+class OdomReadingIn(BaseModel):
+    kind: str = Field(..., description="'start' (segunda) | 'end' (sábado)")
+    photo_data_url: str
+    vehicle_plate: Optional[str] = None
+    manual_km: Optional[int] = None  # fallback se IA falhar
+
+
+async def _ai_read_odometer(photo_b64: str) -> dict:
+    """Claude Sonnet 4.5 Vision lê o km do velocímetro/hodômetro."""
+    try:
+        from emergentintegrations.llm.chat import (
+            LlmChat, UserMessage, ImageContent,
+        )
+        from core import EMERGENT_LLM_KEY
+        if not EMERGENT_LLM_KEY:
+            return {"km": None, "confidence": 0, "reasoning": "Sem LLM key"}
+        sys_msg = (
+            "Você é um analista de leitura de odômetros de veículos. "
+            "Analise a foto e extraia EXATAMENTE o valor numérico mostrado "
+            "no hodômetro (km total rodado). Responda em JSON: "
+            '{"km": <numero_inteiro>, "confidence": 0-100, '
+            '"reasoning": "<por quê>"}\n'
+            "Se a foto estiver ilegível ou não for um odômetro, retorne "
+            '{"km": null, "confidence": 0, "reasoning": "..."}'
+        )
+        user_txt = (
+            "Leia o número do hodômetro (km total) deste velocímetro. "
+            "Retorne JSON válido com o número inteiro."
+        )
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"odom-{uuid.uuid4().hex[:8]}",
+            system_message=sys_msg,
+        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+        msg = UserMessage(
+            text=user_txt,
+            file_contents=[ImageContent(image_base64=photo_b64)],
+        )
+        out = await chat.send_message(msg)
+        out = str(out).strip()
+        import json as _json
+        import re as _re
+        m = _re.search(r"\{[\s\S]*\}", out)
+        if not m:
+            return {"km": None, "confidence": 0, "reasoning": out[:200]}
+        parsed = _json.loads(m.group(0))
+        km = parsed.get("km")
+        if km is not None:
+            try:
+                km = int(km)
+            except Exception:
+                km = None
+        return {
+            "km": km,
+            "confidence": int(parsed.get("confidence") or 0),
+            "reasoning": parsed.get("reasoning") or "",
+        }
+    except Exception as e:
+        logger.warning("[odom-ai] falha: %s", e)
+        return {"km": None, "confidence": 0, "reasoning": str(e)[:200]}
+
+
+@router.post("/public/odometer/reading/{collab_id}")
+async def odometer_submit_reading(collab_id: str, body: OdomReadingIn):
+    coll = await db.collaborators.find_one(
+        {"id": collab_id}, {"_id": 0, "company_id": 1, "name": 1},
+    )
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado")
+    cid = coll.get("company_id")
+
+    photo = body.photo_data_url or ""
+    if not photo.startswith("data:image"):
+        raise HTTPException(400, "Foto inválida (esperado data URL base64)")
+    try:
+        b64 = photo.split(",", 1)[1]
+    except Exception:
+        raise HTTPException(400, "Foto inválida")
+
+    ai = await _ai_read_odometer(b64)
+    km = body.manual_km if body.manual_km is not None else ai.get("km")
+    rid = f"odom-{uuid.uuid4().hex[:10]}"
+    doc = {
+        "id": rid,
+        "company_id": cid,
+        "collab_id": collab_id,
+        "collab_name": coll.get("name"),
+        "kind": body.kind,
+        "photo_data_url": photo,
+        "vehicle_plate": body.vehicle_plate,
+        "km_ai": ai.get("km"),
+        "ai_confidence": ai.get("confidence"),
+        "ai_reasoning": ai.get("reasoning"),
+        "km_final": km,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.fleet_odometer_readings.insert_one(doc)
+    return {"id": rid, "km_ai": ai.get("km"),
+                "ai_confidence": ai.get("confidence"),
+                "ai_reasoning": ai.get("reasoning"),
+                "km_final": km}
+
+
+@router.get("/odometer/readings")
+async def odometer_list_readings(
+    collab_id: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    cid = _cid(user)
+    q: dict = {"company_id": cid}
+    if collab_id:
+        q["collab_id"] = collab_id
+    items = await db.fleet_odometer_readings.find(
+        q, {"_id": 0},
+    ).sort("captured_at", -1).limit(500).to_list(500)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/odometer/kpis")
+async def odometer_kpis(
+    days: int = Query(30, ge=7, le=180),
+    user: dict = Depends(get_current_user),
+):
+    """KPIs de gestão de frota (baseado em literatura ISP/field service 2025):
+       • km_total por técnico no período
+       • OS executadas no período
+       • km/nota (km ÷ OS)
+       • R$/km e R$/nota (combinado com fleet_fuel_entries)
+       • consumo médio km/l
+    """
+    cid = _cid(user)
+    cutoff = (datetime.now(timezone.utc)
+              - timedelta(days=days)).isoformat()
+
+    # 1) Leituras agrupadas por colaborador
+    readings = await db.fleet_odometer_readings.find(
+        {"company_id": cid, "captured_at": {"$gte": cutoff},
+         "km_final": {"$ne": None}},
+        {"_id": 0, "collab_id": 1, "collab_name": 1, "kind": 1,
+         "km_final": 1, "captured_at": 1, "vehicle_plate": 1},
+    ).sort("captured_at", 1).to_list(2000)
+
+    by_collab: dict = {}
+    for r in readings:
+        cid_k = r["collab_id"]
+        by_collab.setdefault(cid_k, {
+            "collab_id": cid_k,
+            "collab_name": r.get("collab_name"),
+            "vehicle_plate": r.get("vehicle_plate"),
+            "readings": [],
+        })
+        by_collab[cid_k]["readings"].append(r)
+
+    # 2) OS executadas (lousa.lousa_appointments completados)
+    finished_status = ["executada", "executado", "finalizado", "finished",
+                          "completed", "done", "concluido", "concluído"]
+    os_pipeline = [
+        {"$match": {
+            "company_id": cid,
+            "updated_at": {"$gte": cutoff},
+            "status": {"$in": finished_status},
+            "technician_id": {"$exists": True, "$ne": None},
+        }},
+        {"$group": {
+            "_id": "$technician_id",
+            "count": {"$sum": 1},
+        }},
+    ]
+    os_by_collab = {}
+    try:
+        async for r in db.lousa_appointments.aggregate(os_pipeline):
+            os_by_collab[r["_id"]] = r["count"]
+    except Exception as e:
+        logger.warning("[odom-kpi] os pipeline: %s", e)
+
+    # 3) Combustível no período
+    fuel_pipeline = [
+        {"$match": {
+            "company_id": cid,
+            "created_at": {"$gte": cutoff},
+        }},
+        {"$group": {
+            "_id": "$collaborator_id",
+            "litros": {"$sum": {"$ifNull": ["$litros", 0]}},
+            "valor": {"$sum": {"$ifNull": ["$valor", 0]}},
+        }},
+    ]
+    fuel_by_collab = {}
+    try:
+        async for r in db.fleet_fuel_entries.aggregate(fuel_pipeline):
+            fuel_by_collab[r["_id"]] = {
+                "litros": float(r.get("litros") or 0),
+                "valor": float(r.get("valor") or 0),
+            }
+    except Exception as e:
+        logger.warning("[odom-kpi] fuel: %s", e)
+
+    # 4) Calcula KPIs por colaborador
+    out = []
+    for ck, data in by_collab.items():
+        rs = sorted(data["readings"], key=lambda x: x["captured_at"])
+        km_first = rs[0]["km_final"] if rs else None
+        km_last = rs[-1]["km_final"] if rs else None
+        km_total = max(0, (km_last or 0) - (km_first or 0))
+        os_count = os_by_collab.get(ck, 0)
+        fuel = fuel_by_collab.get(ck, {"litros": 0, "valor": 0})
+        km_por_nota = (km_total / os_count) if os_count > 0 else None
+        custo_por_nota = ((fuel["valor"] / os_count)
+                          if os_count > 0 else None)
+        custo_por_km = ((fuel["valor"] / km_total)
+                          if km_total > 0 else None)
+        media_km_l = ((km_total / fuel["litros"])
+                          if fuel["litros"] > 0 else None)
+        out.append({
+            "collab_id": ck,
+            "collab_name": data["collab_name"],
+            "vehicle_plate": data["vehicle_plate"],
+            "km_first": km_first,
+            "km_last": km_last,
+            "km_total": km_total,
+            "os_executadas": os_count,
+            "litros": fuel["litros"],
+            "valor_combustivel": fuel["valor"],
+            "km_por_nota": (round(km_por_nota, 2)
+                                if km_por_nota is not None else None),
+            "custo_por_nota": (round(custo_por_nota, 2)
+                                if custo_por_nota is not None else None),
+            "custo_por_km": (round(custo_por_km, 2)
+                                if custo_por_km is not None else None),
+            "media_km_l": (round(media_km_l, 2)
+                                if media_km_l is not None else None),
+            "readings_count": len(rs),
+        })
+    out.sort(key=lambda x: x["km_total"], reverse=True)
+
+    # 5) KPIs gerais (total da frota)
+    total_km = sum(x["km_total"] for x in out)
+    total_os = sum(x["os_executadas"] for x in out)
+    total_combustivel = sum(x["valor_combustivel"] for x in out)
+    total_litros = sum(x["litros"] for x in out)
+    summary = {
+        "total_km": total_km,
+        "total_os_executadas": total_os,
+        "total_combustivel": round(total_combustivel, 2),
+        "total_litros": round(total_litros, 2),
+        "km_por_nota_geral": (round(total_km / total_os, 2)
+                                if total_os > 0 else None),
+        "custo_por_nota_geral": (round(total_combustivel / total_os, 2)
+                                if total_os > 0 else None),
+        "custo_por_km_geral": (round(total_combustivel / total_km, 2)
+                                if total_km > 0 else None),
+        "media_km_l_geral": (round(total_km / total_litros, 2)
+                                if total_litros > 0 else None),
+        "days": days,
+    }
+    return {"by_collab": out, "summary": summary}
+

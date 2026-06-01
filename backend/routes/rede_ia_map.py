@@ -241,15 +241,91 @@ async def _cto_health(company_id: str, cto: Dict[str, Any]) -> Dict[str, Any]:
 async def get_map_data(user: dict = Depends(get_current_user)):
     """Retorna tudo necessário para renderizar o mapa Leaflet."""
     cid = _company(user)
+    return await _collect_map_data(cid)
 
-    ctos_raw = await db.ctos.find(
-        {"company_id": cid, "status": {"$in": ["approved", "pending_validation"]}},
+
+@router.get("/public/map/data/{collab_id}")
+async def get_map_data_public(collab_id: str,
+                                  lat: Optional[float] = None,
+                                  lng: Optional[float] = None,
+                                  radius_km: float = 5.0):
+    """iter156 — Mapa público para o app do técnico (sem JWT).
+
+    Resolve a company a partir do colaborador e devolve as MESMAS CTOs/CEs/
+    cabos do mapa interativo. Quando `lat` e `lng` são informados, filtra
+    elementos dentro de `radius_km` (default 5 km) — útil pra mobile.
+    """
+    from math import asin, cos, radians, sin, sqrt
+    coll = await db.collaborators.find_one(
+        {"id": collab_id}, {"_id": 0, "company_id": 1},
+    )
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado")
+    cid = coll.get("company_id")
+    if not cid:
+        raise HTTPException(404, "Colaborador sem empresa")
+    data = await _collect_map_data(cid)
+    # Filtragem por raio (Haversine simples; suficiente <100 km)
+    if lat is not None and lng is not None and radius_km > 0:
+        def in_range(d_lat: Optional[float], d_lng: Optional[float]) -> bool:
+            if d_lat is None or d_lng is None:
+                return False
+            φ1, φ2 = radians(lat), radians(d_lat)
+            dφ = radians(d_lat - lat)
+            dλ = radians(d_lng - lng)
+            a = sin(dφ / 2) ** 2 + cos(φ1) * cos(φ2) * sin(dλ / 2) ** 2
+            km = 2 * 6371 * asin(sqrt(a))
+            return km <= radius_km
+        data["ctos"] = [c for c in data.get("ctos", [])
+                          if in_range(c.get("lat"), c.get("lng"))]
+        data["ces"] = [c for c in data.get("ces", [])
+                         if in_range(c.get("lat"), c.get("lng"))]
+        # Cabos: mantém se ALGUM endpoint do segmento está no raio
+        kept_cables = []
+        for cab in data.get("cables", []):
+            segs = cab.get("segments") or []
+            if any(in_range(s.get("lat"), s.get("lng")) for s in segs):
+                kept_cables.append(cab)
+        data["cables"] = kept_cables
+        data["filter_radius_km"] = radius_km
+        data["filter_origin"] = {"lat": lat, "lng": lng}
+    return data
+
+
+async def _collect_map_data(cid: str) -> Dict[str, Any]:
+    """Função interna que coleta os dados do mapa para uma company.
+
+    Extraída para ser reutilizada pelo endpoint mobile do colaborador
+    (mesmas CTOs/CEs/cabos do mapa interativo).
+
+    A partir do iter148, elementos cadastrados pelo wizard mobile
+    (`element_type` ∈ {"cto","ce","cabo"}) saem todos da collection
+    `ctos`. Particionamos por tipo para alimentar arrays distintos no
+    front (ctos puros vs CEs vs cabos).
+    """
+    ctos_raw_all = await db.ctos.find(
+        {"company_id": cid,
+         "status": {"$in": ["approved", "pending_validation", "cabo_solto"]}},
         {"_id": 0},
-    ).to_list(1000)
+    ).to_list(2000)
+
+    # Particiona por element_type — docs antigos sem o campo viram CTO
+    ctos_raw = []
+    ce_wizard_raw = []
+    cabo_wizard_raw = []
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for c in ctos_raw_all:
+        by_id[c.get("id")] = c
+        et = (c.get("element_type") or "cto").lower()
+        if et == "ce":
+            ce_wizard_raw.append(c)
+        elif et == "cabo":
+            cabo_wizard_raw.append(c)
+        else:
+            ctos_raw.append(c)
+
     ces = await db.network_ces.find({"company_id": cid}, {"_id": 0}).to_list(500)
     cables = await db.network_cables.find({"company_id": cid}, {"_id": 0}).to_list(2000)
-
-    # Aplica overrides de posição manual
     overrides = await db.network_positions.find({"company_id": cid}, {"_id": 0}).to_list(2000)
     pos_map = {f"{o['entity_type']}:{o['entity_id']}": (o["lat"], o["lng"]) for o in overrides}
 
@@ -308,6 +384,111 @@ async def get_map_data(user: dict = Depends(get_current_user)):
             ce["moved_manually"] = False
         ces_out.append(ce)
 
+    # iter148 — CEs cadastradas via wizard mobile (em db.ctos com element_type=ce)
+    for ce in ce_wizard_raw:
+        gps = ce.get("gps") or {}
+        key = f"ce:{ce['id']}"
+        if key in pos_map:
+            lat, lng = pos_map[key]
+            moved = True
+        else:
+            lat, lng = gps.get("lat"), gps.get("lng")
+            moved = False
+        if lat is None or lng is None:
+            continue
+        ces_out.append({
+            "id": ce["id"],
+            "name": ce.get("name") or "CE",
+            "lat": lat, "lng": lng,
+            "capacity_fo": ce.get("bandejas_total"),
+            "type": ce.get("ce_install_type") or "aerea",
+            "address": ce.get("address"),
+            "status": ce.get("status"),
+            "vlan": ce.get("vlan"),
+            "sigla": ce.get("sigla"),
+            "moved_manually": moved,
+            "source": "wizard_mobile",
+            "photo_thumb": bool(ce.get("photo_data_url")),
+        })
+
+    # iter148 — CABOs cadastrados via wizard mobile (db.ctos element_type=cabo)
+    # Cada cabo tem from_element_id e to_element_id apontando para outros
+    # docs em db.ctos (CTO ou CE). Resolvemos os GPS dos endpoints para
+    # desenhar a polyline.
+    for cabo in cabo_wizard_raw:
+        f_id = cabo.get("from_element_id")
+        t_id = cabo.get("to_element_id")
+        f_doc = by_id.get(f_id) or {}
+        t_doc = by_id.get(t_id) or {}
+        f_gps = f_doc.get("gps") or {}
+        t_gps = t_doc.get("gps") or {}
+        # Aplica overrides quando existirem
+        fkey_t = (f_doc.get("element_type") or "cto").lower()
+        tkey_t = (t_doc.get("element_type") or "cto").lower()
+        fkey = f"{fkey_t}:{f_id}" if f_id else None
+        tkey = f"{tkey_t}:{t_id}" if t_id else None
+        f_lat, f_lng = (pos_map[fkey] if fkey in pos_map
+                          else (f_gps.get("lat"), f_gps.get("lng")))
+        t_lat, t_lng = (pos_map[tkey] if tkey in pos_map
+                          else (t_gps.get("lat"), t_gps.get("lng")))
+
+        # iter186 — Cabo solto (sem from/to vinculado): usa primeira/última
+        # coord do route_geometry como pontas; ou cabo.gps + cabo.to_gps.
+        geom = cabo.get("route_geometry") or []
+        if (f_lat is None or f_lng is None) and len(geom) > 0:
+            f_lat, f_lng = geom[0][0], geom[0][1]
+        elif (f_lat is None or f_lng is None) and cabo.get("gps"):
+            f_lat, f_lng = cabo["gps"].get("lat"), cabo["gps"].get("lng")
+        if (t_lat is None or t_lng is None) and len(geom) > 0:
+            t_lat, t_lng = geom[-1][0], geom[-1][1]
+        elif (t_lat is None or t_lng is None) and cabo.get("to_gps"):
+            t_lat, t_lng = cabo["to_gps"].get("lat"), cabo["to_gps"].get("lng")
+
+        if (f_lat is None or f_lng is None
+            or t_lat is None or t_lng is None):
+            continue
+        # Mapeia cable_type lógico (drop/distribuicao/backbone) para
+        # capacidade legada (drop/12fo/24fo) para reuso do estilo do mapa
+        ct_logical = (cabo.get("cable_type") or "").lower()
+        type_legacy = {
+            "drop": "drop",
+            "distribuicao": "12fo",
+            "backbone": "24fo",
+        }.get(ct_logical, "12fo")
+        # Capacidade real (fibras_total) sobrepõe o tipo legado se grande
+        ft = cabo.get("fibras_total") or 0
+        if ft >= 48:
+            type_legacy = "48fo"
+        elif ft >= 96:
+            type_legacy = "96fo"
+        # iter186 — Segments: prioriza route_geometry (trajeto real pelas
+        # ruas) sobre a reta from→to.
+        if len(geom) >= 2:
+            segments = [{"lat": p[0], "lng": p[1]} for p in geom]
+        else:
+            segments = [
+                {"lat": f_lat, "lng": f_lng},
+                {"lat": t_lat, "lng": t_lng},
+            ]
+        cables.append({
+            "id": cabo["id"],
+            "name": cabo.get("name"),
+            "type": type_legacy,
+            "fo_count": ft,
+            "fibras_ocupadas": cabo.get("fibras_ocupadas") or 0,
+            "cable_type_logical": ct_logical or None,
+            "from_id": f_id, "from_type": fkey_t if f_id else None,
+            "to_id": t_id, "to_type": tkey_t if t_id else None,
+            "segments": segments,
+            "status": cabo.get("status"),
+            "is_loose": bool(cabo.get("is_loose"))
+                or cabo.get("status") == "cabo_solto",
+            "total_length_m": cabo.get("total_length_m"),
+            "source": "wizard_mobile",
+            "photo_thumb": bool(cabo.get("photo_extra_data_url")
+                                  or cabo.get("photo_data_url")),
+        })
+
     # Estatísticas agregadas por VLAN para o painel lateral
     vlans: Dict[int, Dict[str, Any]] = {}
     for c in ctos:
@@ -318,6 +499,8 @@ async def get_map_data(user: dict = Depends(get_current_user)):
             "vlan": v, "sigla": c.get("sigla"), "cto_count": 0,
             "critical": 0, "warning": 0, "ok": 0,
             "avg_score": 0, "scores": [],
+            "subscriber_count": 0, "avg_signal_dbm": None,
+            "source": "ctos",
         })
         bucket["cto_count"] += 1
         bucket["scores"].append(c["health"].get("score", 100))
@@ -328,11 +511,148 @@ async def get_map_data(user: dict = Depends(get_current_user)):
         scores = b.pop("scores")
         b["avg_score"] = round(sum(scores) / len(scores)) if scores else 100
 
+    # iter180 — adiciona VLANs detectadas pelo SmartOLT (via subscribers
+    # com current_vlan e ONUs Online) que ainda não têm CTO cadastrada.
+    # Assim a "Média de sinal por VLAN (vinda do SmartOLT)" mostra TODAS
+    # as VLANs ativas no provedor — não só as já mapeadas no rede_IA.
+    sub_pipeline = [
+        {"$match": {"company_id": cid,
+                      "current_vlan": {"$ne": None}}},
+        {"$group": {"_id": "$current_vlan", "count": {"$sum": 1}}},
+    ]
+    async for row in db.subscribers.aggregate(sub_pipeline):
+        v = row.get("_id")
+        if v is None:
+            continue
+        bucket = vlans.setdefault(v, {
+            "vlan": v, "sigla": None, "cto_count": 0,
+            "critical": 0, "warning": 0, "ok": 0,
+            "avg_score": 0,
+            "subscriber_count": 0, "avg_signal_dbm": None,
+            "source": "smartolt_only",
+        })
+        bucket["subscriber_count"] = row["count"]
+
+    # iter181 — Conta clientes com PORTA CTO DESIGNADA por VLAN.
+    # Cada CTO tem ports[].client_subscriber_id preenchido quando a porta
+    # está ocupada por um cliente. Agrupa por VLAN da CTO.
+    cto_assigned_pipeline = [
+        {"$match": {"company_id": cid, "vlan": {"$ne": None}}},
+        {"$project": {"_id": 0, "vlan": 1, "ports": 1}},
+        {"$unwind": {"path": "$ports", "preserveNullAndEmptyArrays": False}},
+        {"$match": {"ports.client_subscriber_id": {"$nin": [None, ""]}}},
+        {"$group": {"_id": "$vlan", "count": {"$sum": 1}}},
+    ]
+    async for row in db.ctos.aggregate(cto_assigned_pipeline):
+        v = row.get("_id")
+        if v is None:
+            continue
+        bucket = vlans.setdefault(v, {
+            "vlan": v, "sigla": None, "cto_count": 0,
+            "critical": 0, "warning": 0, "ok": 0,
+            "avg_score": 0, "subscriber_count": 0,
+            "avg_signal_dbm": None, "source": "ctos",
+        })
+        bucket["cto_assigned_count"] = row["count"]
+
+    # Sinal médio (1490 nm — RX da OLT no cliente) por VLAN, somente
+    # ONUs online. Tipicamente: -20 dBm é ótimo, < -28 dBm é crítico.
+    signal_pipeline = [
+        {"$match": {"company_id": cid, "status": "Online"}},
+        {"$project": {"_id": 0, "service_ports": 1, "signal_1490": 1,
+                        "olt_name": 1}},
+    ]
+    sig_acc: Dict[int, list] = {}
+    # iter180 — agrupamento por OLT para o card "VLANs por OLT".
+    # vlans_by_olt[olt_name][vlan] = {onus, signals[]}
+    olt_acc: Dict[str, Dict[int, Dict[str, Any]]] = {}
+    async for o in db.smartolt_onus.aggregate(signal_pipeline):
+        sig = o.get("signal_1490")
+        olt = o.get("olt_name") or "Desconhecida"
+        try:
+            sig_f = float(sig) if sig is not None else None
+        except Exception:
+            sig_f = None
+        for sp in (o.get("service_ports") or []):
+            vv = (sp or {}).get("vlan")
+            if vv in (None, "", "0"):
+                continue
+            try:
+                vv = int(str(vv).strip())
+            except Exception:
+                continue
+            if sig_f is not None:
+                sig_acc.setdefault(vv, []).append(sig_f)
+            ob = olt_acc.setdefault(olt, {})
+            vb = ob.setdefault(vv, {"vlan": vv, "onu_count": 0, "signals": []})
+            vb["onu_count"] += 1
+            if sig_f is not None:
+                vb["signals"].append(sig_f)
+    for vv, arr in sig_acc.items():
+        if not arr:
+            continue
+        avg = round(sum(arr) / len(arr), 1)
+        bucket = vlans.setdefault(vv, {
+            "vlan": vv, "sigla": None, "cto_count": 0,
+            "critical": 0, "warning": 0, "ok": 0,
+            "avg_score": 0, "subscriber_count": 0,
+            "source": "smartolt_only",
+        })
+        bucket["avg_signal_dbm"] = avg
+        bucket["onu_online_count"] = len(arr)
+        # Calcula score derivado do sinal (apenas se a VLAN não vier de
+        # CTOs cadastradas). Range: 0..100 → -28 dBm = 0%, -20 dBm = 100%.
+        if bucket["source"] == "smartolt_only":
+            score = max(0, min(100, round((avg + 28) * 12.5)))
+            bucket["avg_score"] = score
+            if score < 50:
+                bucket["critical"] += 1
+            elif score < 75:
+                bucket["warning"] += 1
+            else:
+                bucket["ok"] += 1
+
+    # Ordena por subscriber_count + cto_count desc
+    vlan_list = sorted(
+        list(vlans.values()),
+        key=lambda x: (x.get("subscriber_count", 0) + x.get("cto_count", 0) * 10),
+        reverse=True,
+    )
+
+    # iter180 — Agrupamento final por OLT (para o card "VLANs por OLT")
+    vlans_by_olt: List[Dict[str, Any]] = []
+    for olt_name, vmap in olt_acc.items():
+        olt_vlans = []
+        total_onus = 0
+        total_signals = []
+        for vv, vb in vmap.items():
+            sigs = vb["signals"]
+            avg = round(sum(sigs) / len(sigs), 1) if sigs else None
+            olt_vlans.append({
+                "vlan": vv,
+                "onu_count": vb["onu_count"],
+                "avg_signal_dbm": avg,
+            })
+            total_onus += vb["onu_count"]
+            total_signals.extend(sigs)
+        olt_vlans.sort(key=lambda x: x["onu_count"], reverse=True)
+        olt_avg = (round(sum(total_signals) / len(total_signals), 1)
+                   if total_signals else None)
+        vlans_by_olt.append({
+            "olt_name": olt_name,
+            "vlans": olt_vlans,
+            "vlan_count": len(olt_vlans),
+            "onu_count": total_onus,
+            "avg_signal_dbm": olt_avg,
+        })
+    vlans_by_olt.sort(key=lambda x: x["onu_count"], reverse=True)
+
     return {
         "ctos": ctos,
         "ces": ces_out,
         "cables": cables,
-        "vlans": list(vlans.values()),
+        "vlans": vlan_list,
+        "vlans_by_olt": vlans_by_olt,
         "center": _compute_center(ctos),
     }
 

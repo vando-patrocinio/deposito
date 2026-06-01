@@ -267,3 +267,28 @@ async def unbind_device(cid: str):
         raise HTTPException(404, "Colaborador não encontrado")
     deleted = await db.collaborator_sessions.delete_many({"collaborator_id": cid})
     return {"ok": True, "sessions_invalidated": deleted.deleted_count}
+
+
+# ---------------------------------------------------------------------------
+# Mapa da Rede para o app mobile do colaborador
+# Sincroniza com o mesmo endpoint /api/rede-ia/map/data usado no painel
+# interativo, mas autenticado via session do colaborador.
+# ---------------------------------------------------------------------------
+@router.get("/rede-map/data")
+async def collab_rede_map_data(
+    request: Request,
+    collaborator_session: Optional[str] = Cookie(default=None),
+    authorization: Optional[str] = Header(default=None),
+):
+    """Retorna CTOs/CEs/cabos/VLANs igual ao painel interativo do gestor,
+    porém autenticado pela sessão do colaborador (cookie ou Bearer).
+    """
+    coll, _sess = await _current_collaborator(
+        request, collaborator_session, authorization)
+    cid = coll.get("company_id")
+    if not cid:
+        raise HTTPException(400, "Colaborador sem company_id")
+    # Reutiliza a função do módulo de mapa do painel
+    from routes.rede_ia_map import _collect_map_data  # noqa: PLC0415
+    return await _collect_map_data(cid)
+

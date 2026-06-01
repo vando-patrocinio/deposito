@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from core import DEMO_COMPANY_ID, now_iso, require_role
+from core import DEMO_COMPANY_ID, now_iso, require_role, fmt_br_dt
 from database import db
 from routes.branding import get_branding
 
@@ -302,13 +302,10 @@ async def public_sign(payload: SignIn):
 # PDF Romaneio
 # ---------------------------------------------------------------------------
 def _pt_br_date(iso: Optional[str]) -> str:
-    if not iso:
-        return "—"
-    try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        return dt.astimezone(timezone.utc).strftime("%d/%m/%Y %H:%M")
-    except Exception:
-        return iso[:10]
+    """iter183 — BUG FIX: estava convertendo para UTC (mostrava 3h adiantado).
+    Delega para `fmt_br_dt` global do core que converte para America/Sao_Paulo.
+    """
+    return fmt_br_dt(iso, "%d/%m/%Y %H:%M") if iso else "—"
 
 
 async def _collect_extra_custody(company_id: str, collaborator_id: str) -> List[dict]:
@@ -326,7 +323,10 @@ async def _collect_extra_custody(company_id: str, collaborator_id: str) -> List[
         {"company_id": company_id,
          "location_type": "tecnico",
          "location_id": collaborator_id},
-        {"_id": 0, "mac": 1, "model": 1, "status": 1, "created_at": 1},
+        {"_id": 0, "mac": 1, "model": 1, "status": 1, "created_at": 1,
+         "source": 1, "scan_confidence": 1, "scan_sn": 1,
+         "withdrawn_from_client_id": 1, "withdrawn_from_client_name": 1,
+         "withdrawn_by_email": 1, "withdrawn_at": 1},
     )
     async for o in onts_cur:
         items.append({
@@ -337,6 +337,14 @@ async def _collect_extra_custody(company_id: str, collaborator_id: str) -> List[
             "tamanho": None,
             "qty": 1,
             "serial": o.get("mac"),  # MAC = identificação única
+            "mac": o.get("mac"),
+            "source": o.get("source"),
+            "scan_sn": o.get("scan_sn"),
+            "scan_confidence": o.get("scan_confidence"),
+            "withdrawn_from_client_id": o.get("withdrawn_from_client_id"),
+            "withdrawn_from_client_name": o.get("withdrawn_from_client_name"),
+            "withdrawn_by_email": o.get("withdrawn_by_email"),
+            "withdrawn_at": o.get("withdrawn_at"),
             "delivered_at": o.get("created_at"),
             "status": o.get("status") or "ativo",
         })

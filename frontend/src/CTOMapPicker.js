@@ -16,15 +16,39 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { getBestPosition } from "@/utils/geo";
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse";
+const NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search";
 
 async function reverseGeocode(lat, lng) {
   const url = `${NOMINATIM_URL}?lat=${lat}&lon=${lng}&format=json&zoom=18`
             + `&addressdetails=1&accept-language=pt-BR`;
   const r = await fetch(url, { headers: { "Accept": "application/json" } });
   if (!r.ok) throw new Error("Nominatim falhou");
-  return r.json();
+  const j = await r.json();
+  // iter183 — Confiamos APENAS no `address.house_number` retornado pela
+  // Nominatim. Removemos:
+  //   1. regex sobre display_name (capturava o CEP por engano, ex: "57036")
+  //   2. busca pelo número mais próximo da mesma rua (retornava nº de
+  //      outra quadra como se fosse o do local).
+  // Se o pino caiu numa via/área verde sem nº oficial, deixa em branco
+  // pra o técnico digitar manualmente — preferimos vazio a um número errado.
+  const a = j.address || {};
+  // Sanity: descarta valores que pareçam CEP (5+ dígitos contínuos sem
+  // hífen, ou padrão XXXXX-XXX). Casa coberta porque Nominatim devolve
+  // o nº em `house_number` separado do `postcode`, mas defesa em
+  // profundidade não custa.
+  if (a.house_number) {
+    const hn = String(a.house_number).trim();
+    const looksLikeCEP = /^\d{5}(-?\d{3})?$/.test(hn)
+                            || (a.postcode && hn === String(a.postcode).replace(/-/g, ""));
+    if (looksLikeCEP) {
+      delete a.house_number;
+    }
+  }
+  j.address = a;
+  return j;
 }
 
 function MoveListener({ onIdle }) {
@@ -97,8 +121,12 @@ export default function CTOMapPicker({
   const [loading, setLoading] = useState(false);
   const [lastAddr, setLastAddr] = useState(null);
   const [ctosNearby, setCtosNearby] = useState([]);
+  const [radiusInfo, setRadiusInfo] = useState(null); // {radius_km, filtered_out, shown}
   const lastReqRef = useRef(0);
   const watchIdRef = useRef(null);
+  // iter183 — flag pra carregar CTOs próximas só UMA vez (no primeiro fix
+  // de GPS). Sem isso, watchPosition disparava re-fetch a cada 5s.
+  const ctosLoadedRef = useRef(false);
 
   // Carrega CTOs já cadastradas para mostrar no mapa
   useEffect(() => {
@@ -106,36 +134,58 @@ export default function CTOMapPicker({
       setCtosNearby(existingCtos);
       return;
     }
+    // Aguarda GPS antes de chamar a API — para que o backend aplique o
+    // filtro de raio (5km default) baseado na posição atual do técnico.
+    // Sem GPS o backend retorna lista completa (não bloqueia o fluxo).
+    if (collabId && !gpsPos) return;
+    if (ctosLoadedRef.current) return;
+    ctosLoadedRef.current = true;
     // fetch automático via API
     (async () => {
       try {
         const { api } = await import("@/api");
+        const params = gpsPos ? { lat: gpsPos.lat, lng: gpsPos.lng } : {};
         const r = collabId
-          ? await api.redeIaCtosListPublic?.(collabId)
+          ? await api.redeIaCtosListPublic?.(collabId, params)
           : await api.redeIaCtosList?.({ status: "approved" });
         const items = (r?.items || []).filter(
           (c) => (c?.gps?.lat || c?.lat) && (c?.gps?.lng || c?.lng),
         );
         setCtosNearby(items);
+        if (r?.role_filter_applied) {
+          setRadiusInfo({
+            radius_km: r.radius_km,
+            filtered_out: r.filtered_out_count || 0,
+            shown: items.length,
+          });
+        }
       } catch (e) {
-        // silencioso - falha em carregar CTOs não bloqueia o fluxo
+        ctosLoadedRef.current = false;  // permite retry se falhou
       }
     })();
-  }, [existingCtos, collabId]);
+  }, [existingCtos, collabId, gpsPos]);
 
-  // Solicita GPS (alta acurácia). Retorna Promise com a position.
+  // iter182 — Estratégia híbrida GPS + REDE TELEFÔNICA (best practice):
+  //  1. dispara request COARSE (rede/wifi/torre) — rápido (~2s)
+  //  2. em paralelo, dispara HIGH-ACCURACY (GPS satélite) — preciso
+  //     mas pode levar até 15s
+  //  3. se a coarse responder antes do GPS, usa-a TEMPORARIAMENTE pra
+  //     centrar o mapa; ao GPS chegar, sobrescreve com posição precisa
+  //  4. se nenhum chegar em 20s, erro
+  // iter183 — usa helper global `getBestPosition`: dispara GPS (high acc) +
+  // rede (low acc) em paralelo; resolve com o primeiro fix <= 25m, ou o
+  // melhor disponível no timeout. Substitui a implementação manual.
   const requestGps = useCallback(() => {
-    return new Promise((resolve, reject) => {
-      if (typeof navigator === "undefined" || !navigator.geolocation) {
-        reject(new Error("Geolocalização não suportada neste dispositivo"));
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (pos) => resolve(pos),
-        (err) => reject(err),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-      );
-    });
+    return getBestPosition({ cutoffM: 25, timeoutMs: 20000, maxAgeMs: 0 })
+      .then((fix) => ({
+        coords: {
+          latitude: fix.lat,
+          longitude: fix.lng,
+          accuracy: fix.accuracy,
+        },
+        _source: fix.source,
+        _elapsed_ms: fix.elapsed_ms,
+      }));
   }, []);
 
   // Captura inicial: tenta GPS e centra o mapa nele
@@ -196,8 +246,11 @@ export default function CTOMapPicker({
   }, []);
 
   // Reverse geocode após cada moveend
+  // iter183 — NÃO chamamos setCenter aqui. O mapa já está na nova posição
+  // após o drag do usuário; setar `center` dispararia o <Recenter> a
+  // chamar map.setView() de volta, causando um loop que travava o drag e,
+  // em alguns casos, derrubava o wizard pra step 1.
   const handleIdle = useCallback(async (lat, lng) => {
-    setCenter([lat, lng]);
     const reqId = Date.now();
     lastReqRef.current = reqId;
     setLoading(true);
@@ -390,6 +443,10 @@ export default function CTOMapPicker({
           <span>Buscando localização...</span>
         </div>
       )}
+
+      {/* iter183 — Badge "Raio X km · N CTO(s) próxima(s)" removido a pedido
+          do usuário. Mantemos o estado `radiusInfo` para uso interno do
+          filtro, mas não exibimos o pill. */}
 
       {/* Botão flutuante "Minha localização" */}
       <button

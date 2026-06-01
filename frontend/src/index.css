@@ -694,3 +694,17 @@ body.aihub-wa-fullscreen [data-testid="wa-chat-layout"] {
   body.lousa-printing .no-print * { display: none !important; }
   @page { size: A4 landscape; margin: 10mm; }
 }
+
+/* iter186 — pulse das pontas soltas de cabos */
+@keyframes looseEndPulse {
+  0% { transform: scale(0.6); opacity: 0.7; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+/* iter187 — polyline arrastável estilo Google Maps */
+.track-polyline-clickable {
+  cursor: grab !important;
+}
+.track-polyline-clickable:active {
+  cursor: grabbing !important;
+}

@@ -14,6 +14,7 @@ import MotorIaUsageCard from "@/MotorIaUsageCard";
 import AtlazSubPanel from "@/AtlazSubPanel";
 import AiTrainingPanel from "@/AiTrainingPanel";
 import IsabellaSubPanel from "@/IsabellaSubPanel";
+import NeoReportsPanel from "@/NeoReportsPanel";
 import { DollarSign, Coins, ChevronDown, ChevronUp } from "lucide-react";
 
 /* =============================================================
@@ -120,12 +121,15 @@ export default function CentralIaDashboard() {
                     icon={TrendingDown} label="Churn" testId="subtab-churn" />
         <SubTabBtn active={section === "atlaz"} onClick={() => setSection("atlaz")}
                     icon={Database} label="Atlaz" testId="subtab-atlaz" />
+        <SubTabBtn active={section === "neo-reports"} onClick={() => setSection("neo-reports")}
+                    icon={Clock} label="Relatórios" testId="subtab-neo-reports" />
       </div>
 
       {section === "isabella" ? <IsabellaSubPanel /> :
        section === "smartolt" ? <SmartOltAiPanel /> :
        section === "churn" ? <ChurnDashboardPanel /> :
-       section === "atlaz" ? <AtlazSubPanel /> : (
+       section === "atlaz" ? <AtlazSubPanel /> :
+       section === "neo-reports" ? <NeoReportsPanel /> : (
       <>
 
       {/* Header + period toggle */}

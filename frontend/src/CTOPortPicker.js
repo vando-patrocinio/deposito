@@ -41,22 +41,34 @@ export default function CTOPortPicker({
   const [selectedCto, setSelectedCto] = useState(null);
   const [selectedPort, setSelectedPort] = useState(null);
   const [center, setCenter] = useState(initialCenter);
+  const [gpsPos, setGpsPos] = useState(null);
+  const [gpsReady, setGpsReady] = useState(false);
 
-  // Tenta usar GPS do dispositivo
+  // Tenta usar GPS do dispositivo (necessário pro filtro 5km no backend)
   useEffect(() => {
     if (typeof navigator !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => setCenter([pos.coords.latitude, pos.coords.longitude]),
-        () => { /* silent */ },
+        (pos) => {
+          const lat = pos.coords.latitude, lng = pos.coords.longitude;
+          setCenter([lat, lng]);
+          setGpsPos({ lat, lng });
+          setGpsReady(true);
+        },
+        () => { setGpsReady(true); /* segue sem GPS */ },
         { enableHighAccuracy: true, timeout: 8000 },
       );
+    } else {
+      setGpsReady(true);
     }
   }, []);
 
-  // Carrega CTOs da empresa
+  // Carrega CTOs da empresa (aguarda GPS p/ aplicar filtro 5km)
   useEffect(() => {
+    if (!gpsReady) return;
     setLoading(true);
-    api.redeIaCtosListPublic(collabId, { status: "approved" })
+    const params = { status: "approved" };
+    if (gpsPos) { params.lat = gpsPos.lat; params.lng = gpsPos.lng; }
+    api.redeIaCtosListPublic(collabId, params)
       .then((r) => {
         const items = (r?.items || []).filter(
           (c) => (c?.gps?.lat || c?.lat) && (c?.gps?.lng || c?.lng),
@@ -65,7 +77,7 @@ export default function CTOPortPicker({
       })
       .catch(() => setCtos([]))
       .finally(() => setLoading(false));
-  }, [collabId]);
+  }, [collabId, gpsReady, gpsPos]);
 
   const freePortsCount = useMemo(() => {
     if (!selectedCto) return 0;

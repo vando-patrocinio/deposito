@@ -69,6 +69,9 @@ export default function AnalyticsChart() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [chartType, setChartType] = useState("line"); // 'line' | 'area'
+  // iter180 — botão de sync manual do Atlaz dentro do próprio gráfico
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
 
   async function reload() {
     setLoading(true);
@@ -98,6 +101,28 @@ export default function AnalyticsChart() {
   }
   useEffect(() => { reload(); }, [range, period, customFrom, customTo]); // eslint-disable-line
 
+  // iter180 — Sync manual de pagamentos do Atlaz (sem sair da tela).
+  async function syncFromAtlaz() {
+    if (syncing) return;
+    setSyncing(true); setSyncMsg("");
+    try {
+      const r = await api._client.post(
+        "/atlaz-financeiro/sync-now?days_back=30&days_forward=15",
+      ).then((r) => r.data);
+      const ins = r?.inserted || 0;
+      const upd = r?.updated || 0;
+      setSyncMsg(`✓ ${ins} novas · ${upd} atualizadas`);
+      // Recarrega o gráfico depois do sync (pagamentos novos podem mudar o range)
+      await reload();
+    } catch (e) {
+      setSyncMsg(`Falha: ${e?.response?.data?.detail || e.message}`);
+    } finally {
+      setSyncing(false);
+      // Limpa mensagem depois de 6s
+      setTimeout(() => setSyncMsg(""), 6000);
+    }
+  }
+
   // Auto-ajusta period se range for muito longo/curto
   useEffect(() => {
     if (["1d", "7d"].includes(range) && period !== "day") setPeriod("day");
@@ -111,10 +136,41 @@ export default function AnalyticsChart() {
 
   return (
     <Card title="Análise Recebimentos vs Despesas">
-      <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 14px" }}>
-        Compare a regularidade dos recebimentos (lançamentos manuais +
-        faturas pagas dos assinantes via Atlaz) contra as despesas operacionais.
-      </p>
+      <div style={{ display: "flex", justifyContent: "space-between",
+                       alignItems: "flex-start", gap: 12, flexWrap: "wrap",
+                       margin: "0 0 14px" }}>
+        <p style={{ color: "#64748b", fontSize: 13, margin: 0, flex: 1,
+                       minWidth: 240 }}>
+          Compare a regularidade dos recebimentos (lançamentos manuais +
+          faturas pagas dos assinantes via Atlaz) contra as despesas operacionais.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column",
+                          alignItems: "flex-end", gap: 4 }}>
+          <button data-testid="atlaz-sync-now-btn"
+                  onClick={syncFromAtlaz}
+                  disabled={syncing}
+                  style={{
+                    padding: "8px 14px", borderRadius: 8,
+                    background: syncing ? "#94a3b8" : "#0e7490",
+                    color: "#fff", border: "none",
+                    fontSize: 12, fontWeight: 700, cursor: syncing ? "wait" : "pointer",
+                    display: "flex", alignItems: "center", gap: 6,
+                    whiteSpace: "nowrap",
+                  }}>
+            <span style={{ fontSize: 14, lineHeight: 1 }}>
+              {syncing ? "⟳" : "⤓"}
+            </span>
+            {syncing ? "Sincronizando..." : "Atualizar do Atlaz"}
+          </button>
+          {syncMsg && (
+            <span data-testid="atlaz-sync-msg"
+                  style={{ fontSize: 11, color: syncMsg.startsWith("Falha")
+                                ? "#dc2626" : "#16a34a", fontWeight: 600 }}>
+              {syncMsg}
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Controles */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16,

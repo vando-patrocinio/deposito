@@ -15,10 +15,11 @@ app do técnico.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer, TileLayer, useMap, CircleMarker, Marker,
-  Polyline, Popup, Tooltip,
+  Polyline, Popup, Tooltip, Circle,
 } from "react-leaflet";
 import L from "leaflet";
 import { api } from "@/api";
+import { getBestPosition } from "@/utils/geo";
 import { Crosshair, Layers, Search, X, RefreshCw, MapPin } from "lucide-react";
 import CTOInteractionModal from "@/CTOInteractionModal";
 
@@ -66,46 +67,164 @@ function Recenter({ position }) {
   return null;
 }
 
-export default function RedeIaMapMobile({ onBack }) {
+export default function RedeIaMapMobile({ onBack, technician }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [activeCto, setActiveCto] = useState(null);
   const [myPos, setMyPos] = useState(null);
+  // iter157 — accuracy real do GPS + trail do dia
+  const [myAccuracy, setMyAccuracy] = useState(null);
+  const [trail, setTrail] = useState({ points: [], distance_m: 0,
+                                              first: null, last: null });
+  const [showTrail, setShowTrail] = useState(true);
   const [forceCenter, setForceCenter] = useState(null);
   const [layerCe, setLayerCe] = useState(true);
   const [layerCabos, setLayerCabos] = useState(true);
   const [bairroFilter, setBairroFilter] = useState(null);
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  // iter156 — raio de busca (km). 0 = sem filtro.
+  const [radiusKm, setRadiusKm] = useState(5);
   const watchRef = useRef(null);
 
-  const load = async () => {
+  const collabId = technician?.id || null;
+
+  const load = async (gpsPos = null) => {
     setLoading(true); setErr("");
     try {
-      const r = await api.redeIaMapData();
+      let r = null;
+      // 1ª tentativa: endpoint público com collab_id + raio (app do técnico)
+      if (collabId) {
+        try {
+          const opts = {};
+          if (gpsPos && radiusKm > 0) {
+            opts.lat = gpsPos[0];
+            opts.lng = gpsPos[1];
+            opts.radius_km = radiusKm;
+          }
+          r = await api.redeIaMapDataPublic(collabId, opts);
+        } catch (e0) {
+          // fallback pros endpoints autenticados (admin testando)
+          r = null;
+        }
+      }
+      if (!r) {
+        try {
+          r = await api.collabRedeMapData();
+        } catch (e1) {
+          if (e1?.response?.status === 401 || e1?.response?.status === 404) {
+            r = await api.redeIaMapData();
+          } else {
+            throw e1;
+          }
+        }
+      }
       setData(r);
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message || "Erro");
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  // Carrega inicial; recarrega quando GPS chega ou raio muda
+  useEffect(() => { load(myPos); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myPos && Math.round(myPos[0] * 1000), myPos && Math.round(myPos[1] * 1000), radiusKm, collabId]);
 
-  // Watch GPS continuamente quando o componente está ativo
+  // 🌐 Auto-centralizar no GPS+rede do dispositivo ao abrir o mapa.
+  // iter183 — usa `getBestPosition` (helper híbrido): dispara GPS (alta) +
+  // rede (rápido) em paralelo, resolve com o primeiro fix < 25m ou melhor
+  // disponível no timeout. Garante que mesmo em prédio/sombra o mapa
+  // abre na localização real do técnico em vez de cair no fallback do dataset
+  // (que era o Rio de Janeiro por causa das CTOs de teste lá).
+  useEffect(() => {
+    let cancelled = false;
+    getBestPosition({ cutoffM: 50, timeoutMs: 15000 })
+      .then((fix) => {
+        if (cancelled) return;
+        const p = [fix.lat, fix.lng];
+        setMyPos(p);
+        setMyAccuracy(fix.accuracy || null);
+        setForceCenter(p);
+        setTimeout(() => setForceCenter(null), 1500);
+      })
+      .catch(() => { /* sem GPS+rede: cai pro center default do dataset */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Watch GPS contínuo + envio de pings ao backend (rastro do dia).
+  // iter157 — Geolocation API com enableHighAccuracy + maximumAge=0
+  // amostra direto do chip GPS; filtramos amostras com accuracy > 100m
+  // (provavelmente fix por celular/wifi).
   useEffect(() => {
     if (!navigator.geolocation) return;
+    let lastPingAt = 0;
+    let lastPingPos = null;
     watchRef.current = navigator.geolocation.watchPosition(
-      (pos) => setMyPos([pos.coords.latitude, pos.coords.longitude]),
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const acc = pos.coords.accuracy || null;
+        setMyPos([lat, lng]);
+        setMyAccuracy(acc);
+        // Envia ping ao backend (bg, fire-and-forget)
+        if (!collabId) return;
+        if (acc && acc > 100) return; // descarta low-precision
+        const now = Date.now();
+        // Throttle: 1 ping por 3 segundos OU se andou > 8m
+        let dist = 0;
+        if (lastPingPos) {
+          const R = 6371000;
+          const φ1 = lastPingPos[0] * Math.PI / 180;
+          const φ2 = lat * Math.PI / 180;
+          const dφ = (lat - lastPingPos[0]) * Math.PI / 180;
+          const dλ = (lng - lastPingPos[1]) * Math.PI / 180;
+          const a = Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
+          dist = 2 * R * Math.asin(Math.sqrt(a));
+        }
+        const tooSoon = (now - lastPingAt) < 3000;
+        const tooClose = dist < 8 && lastPingPos;
+        if (tooSoon && tooClose) return;
+        lastPingAt = now; lastPingPos = [lat, lng];
+        try {
+          await api._client.post(
+            `/tech-tracking/public/ping/${collabId}`,
+            { lat, lng, accuracy: acc,
+              speed: pos.coords.speed, heading: pos.coords.heading });
+        } catch { /* ignora — offline ou backend down */ }
+      },
       () => {},
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
     );
     return () => {
       if (watchRef.current != null) {
         try { navigator.geolocation.clearWatch(watchRef.current); } catch { /* */ }
       }
     };
-  }, []);
+  }, [collabId]);
+
+  // Carrega o trail (rastro) do dia com snap-to-road (OSRM)
+  useEffect(() => {
+    if (!collabId) return;
+    let alive = true;
+    const fetchTrail = async () => {
+      try {
+        // iter158 — endpoint /snap retorna trail + geometria casada nas vias
+        const r = await api._client.get(
+          `/tech-tracking/public/trail/${collabId}/snap`);
+        if (alive) setTrail(r.data || { points: [], distance_m: 0 });
+      } catch {
+        // fallback: trail bruto (sem snap-to-road)
+        try {
+          const r = await api._client.get(
+            `/tech-tracking/public/trail/${collabId}`);
+          if (alive) setTrail(r.data || { points: [], distance_m: 0 });
+        } catch { /* sem trail */ }
+      }
+    };
+    fetchTrail();
+    const tm = setInterval(fetchTrail, 20000);
+    return () => { alive = false; clearInterval(tm); };
+  }, [collabId]);
 
   const bairros = useMemo(() => {
     const set = new Set();
@@ -146,20 +265,17 @@ export default function RedeIaMapMobile({ onBack }) {
   }, [data]);
 
   const goToMyLocation = async () => {
-    if (!navigator.geolocation) {
-      await window.alert("Geolocalização não suportada.");
-      return;
+    try {
+      // iter183 — Helper híbrido (GPS+rede). Cutoff mais generoso (60m)
+      // pra responder rápido mesmo em prédio/sombra.
+      const fix = await getBestPosition({ cutoffM: 60, timeoutMs: 12000 });
+      const p = [fix.lat, fix.lng];
+      setMyPos(p);
+      setForceCenter(p);
+      setTimeout(() => setForceCenter(null), 1000);
+    } catch (e) {
+      await window.alert("Não foi possível obter GPS: " + (e.message || e));
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const p = [pos.coords.latitude, pos.coords.longitude];
-        setMyPos(p);
-        setForceCenter(p);
-        setTimeout(() => setForceCenter(null), 1000);
-      },
-      async (e) => await window.alert("Não foi possível obter GPS: " + e.message),
-      { enableHighAccuracy: true, timeout: 15000 },
-    );
   };
 
   const center = forceCenter || myPos
@@ -199,8 +315,19 @@ export default function RedeIaMapMobile({ onBack }) {
           <div style={{ fontSize: 10.5, color: "#94a3b8" }}>
             {stats.total} CTOs · {stats.ativas} ativas
             {stats.pendentes ? ` · ${stats.pendentes} pendente(s)` : ""}
+            {radiusKm > 0 && myPos ? ` · raio ${radiusKm}km` : ""}
+            {myAccuracy ? ` · GPS ±${Math.round(myAccuracy)}m` : ""}
+            {trail.distance_m > 0 ? ` · trilha ${(trail.distance_m/1000).toFixed(2)}km` : ""}
           </div>
         </div>
+        <button onClick={() => load(myPos)}
+                  data-testid="rede-mobile-reload"
+                  style={{
+                    padding: 6, border: 0, background: "transparent",
+                    color: "#cbd5e1", cursor: "pointer",
+                  }}>
+          {loading ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+        </button>
         <button onClick={() => setShowSearch((v) => !v)}
                   data-testid="rede-mobile-search-toggle"
                   style={{
@@ -208,13 +335,45 @@ export default function RedeIaMapMobile({ onBack }) {
                     background: showSearch ? "#7c3aed" : "transparent",
                     color: "#cbd5e1", borderRadius: 6, cursor: "pointer",
                   }}><Search size={16} /></button>
-        <button onClick={load}
-                  data-testid="rede-mobile-reload"
-                  style={{
-                    padding: 6, border: 0, background: "transparent",
-                    color: "#cbd5e1", cursor: "pointer",
-                  }}>
-          {loading ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+      </div>
+
+      {/* iter156 — Chips de raio (3 / 5 / 10 km / Sem limite) */}
+      <div data-testid="rede-mobile-radius-chips" style={{
+        padding: "6px 10px", background: "#0f172a",
+        borderBottom: "1px solid #1e293b",
+        display: "flex", gap: 5, overflowX: "auto", flexShrink: 0,
+      }}>
+        {[
+          { v: 3, label: "3km" },
+          { v: 5, label: "5km" },
+          { v: 10, label: "10km" },
+          { v: 0, label: "Tudo" },
+        ].map((opt) => (
+          <button key={opt.v}
+                    data-testid={`rede-mobile-radius-${opt.v}`}
+                    onClick={() => setRadiusKm(opt.v)}
+                    style={{
+                      padding: "5px 12px", borderRadius: 999, border: 0,
+                      background: radiusKm === opt.v ? "#7c3aed" : "#1e293b",
+                      color: radiusKm === opt.v ? "#fff" : "#cbd5e1",
+                      fontSize: 11, fontWeight: 700, cursor: "pointer",
+                      whiteSpace: "nowrap", flexShrink: 0,
+                    }}>
+            {opt.label}
+          </button>
+        ))}
+        {/* iter157 — toggle do trail */}
+        <button data-testid="rede-mobile-trail-toggle"
+                   onClick={() => setShowTrail((v) => !v)}
+                   style={{
+                     padding: "5px 12px", borderRadius: 999, border: 0,
+                     background: showTrail ? "#7c3aed" : "#1e293b",
+                     color: showTrail ? "#fff" : "#cbd5e1",
+                     fontSize: 11, fontWeight: 700, cursor: "pointer",
+                     whiteSpace: "nowrap", flexShrink: 0,
+                     marginLeft: "auto",
+                   }}>
+          🛣 Trilha {trail.points?.length || 0}
         </button>
       </div>
 
@@ -335,9 +494,50 @@ export default function RedeIaMapMobile({ onBack }) {
             );
           })}
 
-          {/* Posição do técnico (azul pulsante) */}
+          {/* iter157/158 — Trail (rastro) do dia: usa snap-to-road do OSM
+              quando disponível (trail.snapped); cai pro polyline reto dos
+              pings GPS quando o snap não estiver pronto. */}
+          {showTrail && (trail.snapped?.length > 1
+            || (trail.points && trail.points.length > 1)) && (
+            <Polyline
+              positions={
+                trail.snapped && trail.snapped.length > 1
+                  ? trail.snapped
+                  : trail.points.map((p) => [p.lat, p.lng])
+              }
+              pathOptions={{
+                color: "#7c3aed",
+                weight: 5,
+                opacity: 0.8,
+                dashArray: trail.snapped ? null : "1 6",
+                lineCap: "round",
+                lineJoin: "round",
+              }}
+            >
+              <Tooltip sticky>
+                <div style={{ fontSize: 11 }}>
+                  <strong>Trajeto de hoje</strong><br />
+                  {trail.points.length} pontos · {(trail.distance_m / 1000).toFixed(2)} km
+                  {trail.snapped ? (
+                    <><br/><span style={{ color: "#7c3aed" }}>✓ Casado nas ruas (OSM)</span></>
+                  ) : null}
+                </div>
+              </Tooltip>
+            </Polyline>
+          )}
+
+          {/* Posição do técnico (azul pulsante) + círculo de accuracy */}
           {myPos && (
             <>
+              {/* iter157 — círculo real de accuracy do GPS (raio em metros).
+                  Mostra a precisão real do fix, em vez de raio fixo. */}
+              {myAccuracy && myAccuracy < 200 && (
+                <Circle center={myPos} radius={myAccuracy}
+                          pathOptions={{
+                            color: "#3b82f6", fillColor: "#3b82f6",
+                            fillOpacity: 0.08, weight: 1, opacity: 0.4,
+                          }} />
+              )}
               <CircleMarker center={myPos} radius={14}
                                pathOptions={{
                                  color: "#3b82f6",

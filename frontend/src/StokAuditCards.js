@@ -211,16 +211,59 @@ export function ShrinkageReportCard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearText, setClearText] = useState("");
+  const [clearReason, setClearReason] = useState("Ajuste auditor");
+  const [clearing, setClearing] = useState(false);
+
+  const [forbidden, setForbidden] = useState(false);
+
   const reload = async () => {
     setLoading(true); setErr("");
     try {
       const r = await api.stokShrinkageReport();
       setData(r);
     } catch (e) {
-      setErr(e?.response?.data?.detail || e.message);
+      const status = e?.response?.status;
+      // Para non-auditors o backend retorna 403. Não vazamos info nem
+      // exibimos erro — apenas escondemos o card silenciosamente.
+      if (status === 403) {
+        setForbidden(true);
+      } else {
+        setErr(e?.response?.data?.detail || e.message);
+      }
     } finally { setLoading(false); }
   };
   useEffect(() => { reload(); }, []);
+
+  // Se não tem permissão (403), não renderiza nada — o gate visual fica
+  // 100% do lado do EstoquePanel via role check, mas adicionamos defesa
+  // em profundidade aqui também.
+  if (forbidden) return null;
+
+  const onClearShrinkage = async () => {
+    if (clearText.trim().toUpperCase() !== "ZERAR QUEBRA") {
+      alert("Digite exatamente: ZERAR QUEBRA");
+      return;
+    }
+    setClearing(true);
+    try {
+      const r = await api.stokClearShrinkage({
+        confirm: "ZERAR QUEBRA",
+        include_onts: true,
+        include_consumables: true,
+        reason: clearReason || "Ajuste auditor",
+      });
+      alert(`Quebra zerada!\n· Insumos compensados: ${r.consumables_adjustments?.length || 0}\n· Unidades: ${r.consumables_total_units || 0}\n· ONTs: ${r.onts_compensated || 0}`);
+      setShowClearModal(false);
+      setClearText("");
+      reload();
+    } catch (e) {
+      alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setClearing(false);
+    }
+  };
 
   const consumables = data?.consumables || [];
   const totals = data?.consumables_totals || {};
@@ -250,6 +293,17 @@ export function ShrinkageReportCard() {
                   onClick={reload} disabled={loading}
                   style={btnSec}>
           {loading ? "Carregando…" : "⟳ Recarregar"}
+        </button>
+        <button data-testid="clear-shrinkage-btn"
+                  onClick={() => setShowClearModal(true)}
+                  disabled={loading || (data && (data.consumables_totals?.shrinkage || 0) === 0 && (data.onts?.shrinkage || 0) === 0)}
+                  style={{
+                    padding: "8px 14px", borderRadius: 8, border: 0,
+                    background: "linear-gradient(135deg,#dc2626,#b91c1c)",
+                    color: "#fff", fontWeight: 700, fontSize: 12,
+                    cursor: "pointer",
+                  }}>
+          ⚠ Zerar Quebra
         </button>
       </div>
 
@@ -341,6 +395,93 @@ export function ShrinkageReportCard() {
             </div>
           )}
         </>
+      )}
+
+      {/* Modal: Zerar Quebra */}
+      {showClearModal && (
+        <div data-testid="clear-shrinkage-modal" style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(15,23,42,.55)",
+          display: "grid", placeItems: "center", padding: 16,
+        }}>
+          <div style={{
+            background: "white", borderRadius: 14, padding: 22,
+            maxWidth: 480, width: "100%",
+            boxShadow: "0 20px 50px rgba(0,0,0,.25)",
+          }}>
+            <div style={{ fontWeight: 800, fontSize: 17, color: "#0f172a", marginBottom: 6 }}>
+              ⚠ Zerar Quebra de Estoque
+            </div>
+            <p style={{ fontSize: 13, color: "#475569", marginBottom: 12, lineHeight: 1.5 }}>
+              Esta ação <strong>compensa</strong> toda a quebra atual com
+              lançamentos de ajuste em <code>stok_history</code>. O histórico
+              original é <strong>preservado</strong>, e o ajuste fica registrado
+              em <code>stok_admin_log</code> com seu e-mail e data.
+            </p>
+            {data && (
+              <div style={{
+                background: "#fef2f2", border: "1px solid #fecaca",
+                borderRadius: 8, padding: 10, fontSize: 12, color: "#7f1d1d",
+                marginBottom: 12,
+              }}>
+                <div><strong>Quebra atual:</strong></div>
+                <div>· Insumos: <strong>{data.consumables_totals?.shrinkage || 0}</strong> unidades</div>
+                <div>· ONTs: <strong>{data.onts?.shrinkage || 0}</strong> ONTs</div>
+              </div>
+            )}
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#475569" }}>
+              Motivo (opcional, vai pro log)
+            </label>
+            <input
+              data-testid="clear-shrinkage-reason"
+              value={clearReason}
+              onChange={(e) => setClearReason(e.target.value)}
+              placeholder="Ex: Conferência mensal — perda confirmada"
+              style={{
+                width: "100%", padding: "8px 10px", marginBottom: 10,
+                border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13,
+              }}
+            />
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#7f1d1d" }}>
+              Digite exatamente <code>ZERAR QUEBRA</code> para confirmar:
+            </label>
+            <input
+              data-testid="clear-shrinkage-confirm"
+              value={clearText}
+              onChange={(e) => setClearText(e.target.value)}
+              placeholder="ZERAR QUEBRA"
+              style={{
+                width: "100%", padding: "10px 12px", marginBottom: 14,
+                border: "1.5px solid #dc2626", borderRadius: 8,
+                fontSize: 14, fontWeight: 700, textTransform: "uppercase",
+              }}
+            />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button data-testid="clear-shrinkage-cancel"
+                      onClick={() => { setShowClearModal(false); setClearText(""); }}
+                      style={{
+                        padding: "9px 14px", borderRadius: 8,
+                        border: "1px solid #e2e8f0", background: "white",
+                        color: "#0f172a", fontSize: 13, cursor: "pointer",
+                      }}>
+                Cancelar
+              </button>
+              <button data-testid="clear-shrinkage-confirm-btn"
+                      disabled={clearing || clearText.trim().toUpperCase() !== "ZERAR QUEBRA"}
+                      onClick={onClearShrinkage}
+                      style={{
+                        padding: "9px 16px", borderRadius: 8, border: 0,
+                        background: (clearing || clearText.trim().toUpperCase() !== "ZERAR QUEBRA")
+                          ? "#94a3b8"
+                          : "linear-gradient(135deg,#dc2626,#b91c1c)",
+                        color: "#fff", fontWeight: 800, fontSize: 13,
+                        cursor: clearing ? "wait" : "pointer",
+                      }}>
+                {clearing ? "Zerando…" : "Confirmar Zerar"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

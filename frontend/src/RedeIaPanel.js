@@ -26,11 +26,13 @@ import { KpiCard, AlertCard } from "@/components/Dashboard2026";
 const TABS = [
   { id: "overview", label: "Painel" },
   { id: "ctos", label: "CTOs" },
+  { id: "ports_base", label: "🔌 Base de Portas" },
   { id: "occupancy", label: "📊 Ocupação" },
   { id: "pendencies", label: "Pendências" },
   { id: "map", label: "Mapa interativo" },
   { id: "reconcile", label: "🔍 Conciliação" },
   { id: "bairros", label: "Bairros / VLAN" },
+  { id: "orphan_cables", label: "🧵 Cabos órfãos" },
   { id: "history", label: "Histórico" },
   { id: "diretrizes", label: "Diretrizes" },
   { id: "audit", label: "🛡 Auditoria", auditorOnly: true },
@@ -45,6 +47,15 @@ const STATUS_BADGE = {
 
 export default function RedeIaPanel({ currentUser }) {
   const [tab, setTab] = useState("overview");
+  // iter186 — escuta evento global pra mudar de tab (do RedeIaMap)
+  useEffect(() => {
+    const handler = (e) => {
+      const t = e?.detail?.tab;
+      if (t) setTab(t);
+    };
+    window.addEventListener("rede-ia-navigate", handler);
+    return () => window.removeEventListener("rede-ia-navigate", handler);
+  }, []);
   const isAuditor = !!currentUser
     && (currentUser.is_super_admin
         || (currentUser.role || "").toLowerCase() === "auditor");
@@ -189,13 +200,20 @@ export default function RedeIaPanel({ currentUser }) {
 
       {tab === "overview" && <Overview />}
       {tab === "ctos" && <CTOsList />}
+      {tab === "ports_base" && <PortBaseTab />}
       {tab === "pendencies" && <Pendencies />}
       {tab === "occupancy" && <CTOOccupancyPanel />}
       {tab === "map" && <RedeIaMap />}
       {tab === "reconcile" && <ReconcileAuditPanel />}
       {tab === "bairros" && <BairrosManager />}
+      {tab === "orphan_cables" && <OrphanCablesPanel />}
       {tab === "history" && <HistoryList />}
-      {tab === "diretrizes" && <DiretrizesEditor />}
+      {tab === "diretrizes" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <DiretrizesEditor />
+          <CableSlackEditor />
+        </div>
+      )}
       {tab === "audit" && isAuditor && <AuditCables currentUser={currentUser} />}
     </div>
   );
@@ -394,6 +412,15 @@ function Overview() {
             ))}
           </div>
         )}
+
+        {/* iter180 — sync VLAN do SmartOLT → subscribers */}
+        <SmartoltVlanSyncCard />
+
+        {/* iter181 — Sentinela IA: threshold de aprovação ajustável */}
+        <SentinelaThresholdCard />
+
+        {/* iter182 — Alertas de degradação de sinal */}
+        <SignalDegradationCard />
       </Card>
 
       {/* CTOs por Técnico + Filial */}
@@ -401,32 +428,175 @@ function Overview() {
                       period={statsPeriod}
                       onChangePeriod={setStatsPeriod} />
 
-      {/* Saúde por VLAN */}
+      {/* iter180 — Sinal por VLAN agrupado por OLT */}
+      {mapData.vlans_by_olt && mapData.vlans_by_olt.length > 0 && (
+        <div data-testid="vlans-by-olt-grid" style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
+          gap: 12,
+        }}>
+          {mapData.vlans_by_olt.map((olt) => {
+            const oltDbm = olt.avg_signal_dbm;
+            const hasDbm = typeof oltDbm === "number";
+            const sigStatus = hasDbm
+              ? (oltDbm >= -20 ? "ok" : oltDbm >= -25 ? "warning" : "critical")
+              : "neutral";
+            const headerBg = sigStatus === "critical" ? "#fee2e2"
+              : sigStatus === "warning" ? "#fef3c7"
+              : sigStatus === "ok" ? "#dcfce7" : "#e0e7ff";
+            const headerFg = sigStatus === "critical" ? "#991b1b"
+              : sigStatus === "warning" ? "#92400e"
+              : sigStatus === "ok" ? "#166534" : "#3730a3";
+            return (
+              <Card key={olt.olt_name}
+                    data-testid={`olt-vlans-card-${olt.olt_name}`}
+                    style={{ padding: 0, overflow: "hidden" }}>
+                <div style={{
+                  padding: "12px 16px", background: headerBg, color: headerFg,
+                  display: "flex", alignItems: "center", gap: 12,
+                  borderBottom: `1px solid ${headerFg}33`,
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14,
+                                      fontFamily: "monospace" }}>
+                      🛰 {olt.olt_name}
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>
+                      {olt.vlan_count} VLANs · {olt.onu_count} ONUs online
+                    </div>
+                  </div>
+                  <div style={{ minWidth: 92, textAlign: "center",
+                                    padding: "6px 10px", borderRadius: 8,
+                                    background: "rgba(255,255,255,0.5)" }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1 }}>
+                      {hasDbm ? oltDbm.toFixed(1) : "—"}
+                    </div>
+                    <div style={{ fontSize: 9, letterSpacing: 1,
+                                      opacity: 0.8, marginTop: 1 }}>
+                      dBm méd
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ maxHeight: 360, overflowY: "auto", padding: 8 }}>
+                  {olt.vlans.map((v) => {
+                    const dbm = v.avg_signal_dbm;
+                    const hd = typeof dbm === "number";
+                    const st = hd ? (dbm >= -20 ? "ok"
+                      : dbm >= -25 ? "warning" : "critical") : "neutral";
+                    const bg = st === "critical" ? "#fee2e2"
+                      : st === "warning" ? "#fef3c7"
+                      : st === "ok" ? "#dcfce7" : "#f1f5f9";
+                    const fg = st === "critical" ? "#991b1b"
+                      : st === "warning" ? "#92400e"
+                      : st === "ok" ? "#166534" : "#475569";
+                    return (
+                      <div key={v.vlan}
+                           data-testid={`olt-${olt.olt_name}-vlan-${v.vlan}`}
+                           style={{
+                             display: "flex", alignItems: "center", gap: 10,
+                             padding: "6px 10px", marginBottom: 4,
+                             borderRadius: 6, background: bg,
+                             border: `1px solid ${fg}22`,
+                           }}>
+                        <div style={{
+                          fontFamily: "monospace", fontWeight: 800,
+                          fontSize: 12, color: fg, minWidth: 70,
+                        }}>VLAN {v.vlan}</div>
+                        <div style={{
+                          fontSize: 11, color: fg, flex: 1, opacity: 0.85,
+                        }}>{v.onu_count} ONUs</div>
+                        <div style={{
+                          minWidth: 70, textAlign: "right",
+                          fontFamily: "monospace", fontWeight: 800,
+                          fontSize: 13, color: fg,
+                        }}>
+                          {hd ? `${dbm.toFixed(1)}` : "—"}
+                          <span style={{ fontSize: 9, marginLeft: 2,
+                                            opacity: 0.7 }}>dBm</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Saúde por VLAN (consolidado — todas as VLANs do provedor) */}
       {mapData.vlans && mapData.vlans.length > 0 && (
         <Card style={{ padding: 16 }}>
-          <h3 style={{ margin: "0 0 12px", fontSize: 15 }}>
+          <h3 style={{ margin: "0 0 6px", fontSize: 15 }}>
             📡 Média de sinal por VLAN (vinda do SmartOLT)
           </h3>
+          <p style={{ margin: "0 0 12px", fontSize: 11.5,
+                          color: "var(--text-muted)", lineHeight: 1.4 }}>
+            Sinal RX médio em 1490 nm extraído das ONUs online.
+            Ótimo ≥ -20 dBm · Atenção -20 a -25 · Crítico &lt; -25 dBm.
+          </p>
           <div style={{ display: "grid", gap: 8 }}>
             {mapData.vlans.map((v) => {
-              const status = v.avg_score < 50 ? "critical"
-                : v.avg_score < 75 ? "warning" : "ok";
-              const bg = status === "critical" ? "#fee2e2"
-                : status === "warning" ? "#fef3c7" : "#dcfce7";
-              const fg = status === "critical" ? "#991b1b"
-                : status === "warning" ? "#92400e" : "#166534";
+              const dbm = v.avg_signal_dbm;
+              const hasDbm = typeof dbm === "number";
+              // iter180 — Cor por faixa de dBm (quando temos sinal real),
+              // fallback no score quando não temos.
+              let sig_status;
+              if (hasDbm) {
+                sig_status = dbm >= -20 ? "ok"
+                  : dbm >= -25 ? "warning" : "critical";
+              } else {
+                sig_status = v.avg_score < 50 ? "critical"
+                  : v.avg_score < 75 ? "warning" : "ok";
+              }
+              const smartoltOnly = v.source === "smartolt_only";
+              const bg = sig_status === "critical" ? "#fee2e2"
+                : sig_status === "warning" ? "#fef3c7"
+                : sig_status === "ok" ? "#dcfce7" : "#f1f5f9";
+              const fg = sig_status === "critical" ? "#991b1b"
+                : sig_status === "warning" ? "#92400e"
+                : sig_status === "ok" ? "#166534" : "#475569";
               return (
                 <div key={v.vlan} style={{
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "10px 14px", borderRadius: 10,
                   background: bg, border: `1px solid ${fg}33`,
                 }}>
-                  <div style={{ fontWeight: 800, fontSize: 14, color: fg, minWidth: 130 }}>
-                    VLAN {v.vlan} ({v.sigla})
+                  <div style={{ fontWeight: 800, fontSize: 14, color: fg,
+                                  minWidth: 130, display: "flex",
+                                  alignItems: "center", gap: 6 }}>
+                    VLAN {v.vlan}
+                    {smartoltOnly && (
+                      <span style={{ fontSize: 9, padding: "1px 5px",
+                                        borderRadius: 4,
+                                        background: "rgba(0,0,0,0.10)",
+                                        fontWeight: 700 }}>
+                        sem CTO
+                      </span>
+                    )}
                   </div>
+
+                  {/* iter180 — Sinal médio em dBm: número primário */}
+                  <div data-testid={`vlan-${v.vlan}-dbm`} style={{
+                    minWidth: 120, textAlign: "center",
+                    padding: "6px 10px", borderRadius: 8,
+                    background: hasDbm ? `${fg}1a` : "rgba(0,0,0,0.06)",
+                    color: fg, fontWeight: 800,
+                  }}>
+                    <div style={{ fontSize: 18, lineHeight: 1.1 }}>
+                      {hasDbm ? dbm.toFixed(1) : "—"}
+                    </div>
+                    <div style={{ fontSize: 9, opacity: 0.8,
+                                      letterSpacing: 1, marginTop: 1 }}>
+                      {hasDbm ? "dBm RX" : "sem dado"}
+                    </div>
+                  </div>
+
+                  {/* Barra de score auxiliar */}
                   <div style={{ flex: 1 }}>
                     <div style={{
-                      height: 8, borderRadius: 99,
+                      height: 6, borderRadius: 99,
                       background: "rgba(0,0,0,0.08)",
                       overflow: "hidden",
                     }}>
@@ -435,22 +605,48 @@ function Overview() {
                         background: fg, transition: "width .3s",
                       }} />
                     </div>
+                    <div style={{ fontSize: 10, color: fg, marginTop: 2,
+                                      opacity: 0.8 }}>
+                      score {v.avg_score}%
+                    </div>
                   </div>
-                  <div style={{ fontSize: 13, color: fg, fontWeight: 700,
-                                  minWidth: 56, textAlign: "right" }}>
-                    {v.avg_score}%
-                  </div>
-                  <div style={{ fontSize: 11, color: fg, minWidth: 120 }}>
-                    {v.cto_count} CTOs · {v.critical || 0}🔴 {v.warning || 0}🟡 {v.ok || 0}🟢
+
+                  <div style={{ fontSize: 11, color: fg, minWidth: 180,
+                                  textAlign: "right" }}>
+                    {v.cto_count > 0 && (
+                      <span>{v.cto_count} CTOs · </span>
+                    )}
+                    {v.subscriber_count > 0 && (
+                      <strong>{v.subscriber_count} assin.</strong>
+                    )}
+                    {/* iter181 — clientes com porta CTO designada (≠ total
+                        assinantes; mostra cobertura de mapeamento físico) */}
+                    {v.cto_assigned_count > 0 && (
+                      <span title="Clientes com porta CTO designada nesta VLAN"
+                            data-testid={`vlan-${v.vlan}-cto-assigned`}
+                            style={{ marginLeft: 4, padding: "1px 6px",
+                                       borderRadius: 6,
+                                       background: `${fg}22`,
+                                       fontWeight: 700, fontSize: 10.5 }}>
+                        🔌 {v.cto_assigned_count} c/ porta
+                      </span>
+                    )}
+                    {v.onu_online_count > 0 && (
+                      <span> · {v.onu_online_count} ONUs</span>
+                    )}
+                    {v.cto_count > 0 && (
+                      <div style={{ marginTop: 2 }}>
+                        {v.critical || 0}🔴 {v.warning || 0}🟡 {v.ok || 0}🟢
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
           <p style={{ marginTop: 10, fontSize: 11, color: "var(--text-muted)" }}>
-            ℹ️ A rede_IA consulta o SmartOLT em tempo real para calcular a saúde média
-            das CTOs por VLAN. CTOs sem ONUs detectadas pelo SmartOLT são contabilizadas
-            como "sem dados" e não influenciam a média.
+            ℹ️ Para atualizar o dado, use o card "🛜 Sincronizar VLAN do SmartOLT"
+            logo acima. O worker automático também roda a cada 1h em background.
           </p>
         </Card>
       )}
@@ -1032,12 +1228,16 @@ function Pendencies() {
   const [mapModal, setMapModal] = useState(null); // {item}
   const [photoLightbox, setPhotoLightbox] = useState(null); // {url, cto, pendencyId}
   const [comment, setComment] = useState("");
+  // iter180 — filtro Sentinela IA: mostrar só pendências com score < 85
+  const [onlyLowScore, setOnlyLowScore] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await api.redeIaPendencies();
+    const r = await api.redeIaPendencies(
+      onlyLowScore ? { min_score: 85 } : {},
+    );
     setItems(r.items || []);
     setLoading(false);
-  }, []);
+  }, [onlyLowScore]);
   useEffect(() => { load(); }, [load]);
   const submit = async () => {
     try {
@@ -1051,11 +1251,28 @@ function Pendencies() {
   return (
     <Card style={{ padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between",
-                       alignItems: "center", marginBottom: 12 }}>
+                       alignItems: "center", marginBottom: 12, gap: 10,
+                       flexWrap: "wrap" }}>
         <h3 style={{ margin: 0, fontSize: 16 }}>Pendências de validação</h3>
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          {loading ? "Carregando..." : `${items.length} aguardando`}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* iter180 — filtro Sentinela IA */}
+          <label data-testid="sentinela-low-score-filter"
+                 style={{ display: "flex", alignItems: "center", gap: 6,
+                            fontSize: 12, cursor: "pointer", userSelect: "none",
+                            padding: "5px 10px", borderRadius: 999,
+                            border: "1px solid var(--border-default)",
+                            background: onlyLowScore ? "#fee2e2" : "transparent",
+                            color: onlyLowScore ? "#b91c1c" : "var(--text-muted)",
+                            fontWeight: 700 }}>
+            <input type="checkbox" checked={onlyLowScore}
+                   onChange={(e) => setOnlyLowScore(e.target.checked)}
+                   style={{ accentColor: "#b91c1c" }} />
+            🤖 Só score &lt; 85
+          </label>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {loading ? "Carregando..." : `${items.length} aguardando`}
+          </span>
+        </div>
       </div>
       {items.length === 0 && !loading && (
         <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)" }}>
@@ -1084,6 +1301,10 @@ function Pendencies() {
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
                     Técnico: {p.technician_name || "—"} · {new Date(p.created_at).toLocaleString("pt-BR")}
                   </div>
+                  {/* iter180 — Badge Sentinela IA */}
+                  {p.sentinela && (
+                    <SentinelaBadge sentinela={p.sentinela} pendencyId={p.id} />
+                  )}
                   {p.smartolt_hints && p.smartolt_hints.matched > 0 && (
                     <div data-testid={`smartolt-hints-${p.id}`} style={{
                       marginTop: 10, padding: "8px 10px", borderRadius: 6,
@@ -1205,6 +1426,1140 @@ function Pendencies() {
 
 /* PhotoLightbox — modal full-screen pra ampliar foto da CTO.
    Pedido do usuário: 'com 2 clics posso abrir a foto'. */
+// =============================================================================
+// SentinelaBadge — iter180. Badge compacto + tooltip com detalhes da
+// Sentinela IA (score, ação sugerida, dedupe, GPS, visão do Claude 4.5).
+// =============================================================================
+function SmartoltVlanSyncCard() {
+  const [cov, setCov] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    try { setCov(await api.redeIaSmartoltVlanCoverage()); } catch (e) { /* silent */ }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function doDryRun() {
+    setBusy(true); setResult(null);
+    try {
+      const r = await api.redeIaSmartoltSyncVlan(true);
+      setPreview(r);
+    } catch (e) {
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally { setBusy(false); }
+  }
+  async function doApply() {
+    if (!window.confirm(
+      "Aplicar a atualização da VLAN em " + (preview?.updated || "?")
+      + " assinantes?")) return;
+    setBusy(true);
+    try {
+      const r = await api.redeIaSmartoltSyncVlan(false);
+      setResult(r); setPreview(null);
+      load();
+    } catch (e) {
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div data-testid="smartolt-vlan-sync-card" style={{
+      marginTop: 14, padding: 12,
+      background: "var(--bg-surface-2)", borderRadius: 10,
+      border: "1px solid var(--border-default)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10,
+                       flexWrap: "wrap" }}>
+        <span style={{ fontSize: 14, fontWeight: 800 }}>
+          🛜 Sincronizar VLAN do SmartOLT
+        </span>
+        {cov && (
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            cobertura: <strong>{cov.with_vlan}/{cov.total}</strong>
+            {" "}({cov.coverage_pct}%)
+          </span>
+        )}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button data-testid="smartolt-vlan-sync-dryrun" onClick={doDryRun}
+                  disabled={busy}
+                  style={{
+                    padding: "6px 12px", borderRadius: 8,
+                    background: busy ? "#94a3b8" : "#0e7490",
+                    color: "#fff", border: 0, fontSize: 12, fontWeight: 700,
+                    cursor: busy ? "wait" : "pointer",
+                  }}>
+            {busy && !preview ? "Analisando..." : "Pré-visualizar"}
+          </button>
+          {preview && (
+            <button data-testid="smartolt-vlan-sync-apply" onClick={doApply}
+                    disabled={busy}
+                    style={{
+                      padding: "6px 12px", borderRadius: 8,
+                      background: "#16a34a", color: "#fff", border: 0,
+                      fontSize: 12, fontWeight: 700,
+                      cursor: busy ? "wait" : "pointer",
+                    }}>
+              Aplicar {preview.updated}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <p style={{ marginTop: 6, fontSize: 11, color: "var(--text-muted)",
+                     lineHeight: 1.5 }}>
+        Lê <code>service_ports[].vlan</code> de cada ONU online do SmartOLT
+        e grava em <code>subscribers.current_vlan</code> usando match por
+        PPPoE → nome da ONU → SN.
+      </p>
+
+      {preview && (
+        <div data-testid="smartolt-vlan-sync-preview" style={{
+          marginTop: 8, padding: 8, background: "#fff",
+          borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 11.5,
+        }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12,
+                          fontWeight: 700, marginBottom: 6 }}>
+            <span>📡 {preview.scanned} ONUs</span>
+            <span>· {preview.with_vlan} c/ VLAN</span>
+            <span style={{ color: "#16a34a" }}>
+              → {preview.updated} atualizar
+            </span>
+            <span style={{ color: "#475569" }}>
+              · {preview.unchanged} já ok
+            </span>
+            <span style={{ color: "#b45309" }}>
+              · {preview.no_subscriber} sem assinante
+            </span>
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+            Match: pppoe={preview.matched_by_pppoe} · nome={preview.matched_by_name}
+            · sn={preview.matched_by_sn}
+          </div>
+          {/* iter181 — Fallback VLAN 1: alerta de degradação se muito alto */}
+          {(preview.default_vlan_1_applied > 0
+            || preview.default_vlan_1_skipped_instalacao > 0) && (() => {
+              const matched = (preview.matched_by_pppoe || 0)
+                + (preview.matched_by_name || 0)
+                + (preview.matched_by_sn || 0);
+              const def1 = preview.default_vlan_1_applied || 0;
+              const total = matched + def1;
+              const pctDef = total > 0
+                ? Math.round((def1 / total) * 100) : 0;
+              // Degradação SmartOLT se >40% dos clientes caem em VLAN 1
+              const degraded = pctDef > 40;
+              const palette = degraded
+                ? { bg: "#fee2e2", fg: "#991b1b", bd: "#fca5a5" }
+                : { bg: "#fef3c7", fg: "#92400e", bd: "#fcd34d" };
+              return (
+                <div data-testid="smartolt-vlan-default-alert" style={{
+                  marginTop: 6, padding: "6px 10px", borderRadius: 8,
+                  background: palette.bg, color: palette.fg,
+                  border: `1px solid ${palette.bd}`,
+                  fontSize: 11, lineHeight: 1.5,
+                }}>
+                  <div style={{ fontWeight: 800, fontSize: 11.5 }}>
+                    {degraded ? "⚠️ SmartOLT degradado" : "📥 Default VLAN 1"}
+                    <span style={{ marginLeft: 6, fontWeight: 700 }}>
+                      {def1} clientes → VLAN 1 ({pctDef}%)
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 10.5, marginTop: 2 }}>
+                    Match SmartOLT: <strong>{matched}</strong> · Sem match
+                    (default): <strong>{def1}</strong>
+                    {preview.default_vlan_1_skipped_instalacao > 0 && (
+                      <> · 🏗️ {preview.default_vlan_1_skipped_instalacao}
+                        {" "}pulados (instalação ativa)</>
+                    )}
+                  </div>
+                  {degraded && (
+                    <div style={{ fontSize: 10, marginTop: 3, opacity: 0.85 }}>
+                      Mais de 40% dos clientes não foram encontrados na
+                      SmartOLT. Verifique se PPPoE/SN estão sincronizados.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          {(preview.samples || []).length > 0 && (
+            <table style={{ marginTop: 6, width: "100%", fontSize: 10.5,
+                              borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "#f1f5f9" }}>
+                  <th style={{ textAlign: "left", padding: 4 }}>Assinante</th>
+                  <th style={{ padding: 4 }}>De</th>
+                  <th style={{ padding: 4 }}>Para</th>
+                  <th style={{ padding: 4 }}>OLT/PON</th>
+                  <th style={{ padding: 4 }}>Match</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.samples.map((s, i) => (
+                  <tr key={i}>
+                    <td style={{ padding: 4 }}>{s.subscriber_name}</td>
+                    <td style={{ padding: 4, textAlign: "center" }}>
+                      {s.previous_vlan ?? "—"}
+                    </td>
+                    <td style={{ padding: 4, textAlign: "center",
+                                   fontWeight: 700, color: "#0e7490" }}>
+                      {s.new_vlan}
+                    </td>
+                    <td style={{ padding: 4, fontFamily: "monospace",
+                                   fontSize: 10 }}>{s.olt || "—"}{s.pon ? `·${s.pon}` : ""}</td>
+                    <td style={{ padding: 4 }}>{s.match}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {result && (
+        <div data-testid="smartolt-vlan-sync-result" style={{
+          marginTop: 8, padding: 8, background: "#dcfce7",
+          color: "#166534", borderRadius: 8, fontSize: 12, fontWeight: 700,
+        }}>
+          ✓ {result.updated} assinantes atualizados via SmartOLT
+          {result.default_vlan_1_applied > 0 && (
+            <span style={{ marginLeft: 6, color: "#92400e" }}>
+              · 📥 {result.default_vlan_1_applied} → VLAN 1 (default)
+            </span>
+          )}
+          {result.default_vlan_1_skipped_instalacao > 0 && (
+            <span style={{ marginLeft: 6, color: "#475569",
+                             fontWeight: 600 }}>
+              · 🏗️ {result.default_vlan_1_skipped_instalacao}
+              {" "}pulados (instalação ativa)
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// SentinelaThresholdCard — iter181. Seletor de qualidade mínima exigida da
+// Sentinela IA (foto de CTO/CE/OS). Default 69, podendo ir até 85 (rigoroso).
+// =============================================================================
+function SentinelaThresholdCard() {
+  const [config, setConfig] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const [savedMsg, setSavedMsg] = React.useState(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    api._client.get("/rede-ia/sentinela/config")
+      .then((r) => { if (alive) setConfig(r.data); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const save = async (value) => {
+    if (!config || busy) return;
+    setBusy(true); setSavedMsg(null);
+    try {
+      await api._client.patch("/rede-ia/sentinela/config",
+        { sentinela_min_score: value });
+      setConfig({ ...config, sentinela_min_score: value });
+      setSavedMsg({ kind: "ok", text: `Mínimo atualizado para ${value}/100` });
+      setTimeout(() => setSavedMsg(null), 3000);
+    } catch (e) {
+      setSavedMsg({ kind: "err",
+                       text: e?.response?.data?.detail || "Falhou" });
+    } finally { setBusy(false); }
+  };
+
+  if (!config) {
+    return (
+      <div style={{ marginTop: 12, padding: 12, borderRadius: 10,
+                      background: "#f8fafc", border: "1px solid #e2e8f0",
+                      fontSize: 12, color: "#64748b" }}>
+        Carregando config da Sentinela IA…
+      </div>
+    );
+  }
+
+  const current = config.sentinela_min_score;
+  return (
+    <div data-testid="sentinela-threshold-card" style={{
+      marginTop: 12, padding: 12, borderRadius: 10,
+      background: "linear-gradient(135deg,#fef3c7,#fde68a)",
+      border: "1px solid #f59e0b",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8,
+                      marginBottom: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 17 }}>🛡️</span>
+        <strong style={{ fontSize: 13, color: "#78350f" }}>
+          Sentinela IA — Qualidade mínima da foto
+        </strong>
+        <span data-testid="sentinela-threshold-value" style={{
+          marginLeft: "auto", padding: "3px 9px", borderRadius: 999,
+          background: "#92400e", color: "#fff",
+          fontWeight: 800, fontSize: 12,
+        }}>{current}/100</span>
+      </div>
+
+      <p style={{ margin: "0 0 8px", fontSize: 11.5, color: "#78350f",
+                    lineHeight: 1.4 }}>
+        Score mínimo exigido pra aprovar foto de CTO/CE/OS. Fotos abaixo
+        desse limite pedem novo clique. Default da plataforma: <strong>69</strong>.
+      </p>
+
+      {/* Slider rápido */}
+      <input data-testid="sentinela-threshold-slider"
+        type="range" min={30} max={95} step={1} value={current}
+        disabled={busy}
+        onChange={(e) => setConfig({
+          ...config, sentinela_min_score: parseInt(e.target.value, 10) })}
+        onMouseUp={(e) => save(parseInt(e.target.value, 10))}
+        onTouchEnd={(e) => save(parseInt(e.target.value, 10))}
+        style={{ width: "100%", accentColor: "#92400e" }} />
+
+      {/* Presets */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap",
+                      marginTop: 6 }}>
+        {(config.presets || []).map((p) => {
+          const active = current === p.value;
+          return (
+            <button key={p.value}
+              data-testid={`sentinela-preset-${p.value}`}
+              onClick={() => save(p.value)} disabled={busy}
+              title={p.desc}
+              style={{
+                flex: "1 1 calc(50% - 6px)", minWidth: 120,
+                padding: "6px 10px", borderRadius: 8,
+                background: active ? "#92400e" : "#fff7ed",
+                color: active ? "#fff" : "#78350f",
+                border: `1px solid ${active ? "#92400e" : "#fcd34d"}`,
+                fontSize: 11, fontWeight: 700, cursor: "pointer",
+                textAlign: "left",
+              }}>
+              <div style={{ fontSize: 12 }}>
+                {p.label} · {p.value}
+              </div>
+              <div style={{ fontSize: 9.5, fontWeight: 500, opacity: 0.85,
+                              marginTop: 1 }}>
+                {p.desc}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {savedMsg && (
+        <div data-testid="sentinela-threshold-msg" style={{
+          marginTop: 8, padding: "4px 8px", borderRadius: 6,
+          fontSize: 11, fontWeight: 700,
+          background: savedMsg.kind === "ok" ? "#dcfce7" : "#fee2e2",
+          color: savedMsg.kind === "ok" ? "#166534" : "#991b1b",
+        }}>
+          {savedMsg.kind === "ok" ? "✓ " : "✗ "}{savedMsg.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// SignalDegradationCard — iter182. Card de alertas de ONUs com degradação
+// de sinal detectada nas últimas 24h (delta ≥ 3 dBm pior que a média).
+// Atualiza automaticamente sempre que o worker SmartOLT rodar (15min).
+// =============================================================================
+function SignalDegradationCard() {
+  const [items, setItems] = React.useState([]);
+  const [busy, setBusy] = React.useState(true);
+  const [showAll, setShowAll] = React.useState(false);
+
+  React.useEffect(() => {
+    let alive = true;
+    api._client.get("/smartolt/signal-degradation?status=active&limit=50")
+      .then((r) => { if (alive) setItems(r.data.items || []); })
+      .catch(() => {})
+      .finally(() => { if (alive) setBusy(false); });
+    return () => { alive = false; };
+  }, []);
+
+  if (busy) {
+    return (
+      <div style={{ marginTop: 12, padding: 10, borderRadius: 10,
+                      background: "#f8fafc", border: "1px solid #e2e8f0",
+                      fontSize: 11.5, color: "#64748b" }}>
+        Carregando alertas de degradação…
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div data-testid="signal-degradation-card-empty" style={{
+        marginTop: 12, padding: 10, borderRadius: 10,
+        background: "#f0fdf4", border: "1px solid #86efac",
+        fontSize: 11.5, color: "#15803d", fontWeight: 700,
+      }}>
+        ✓ Nenhuma ONU em degradação no momento
+      </div>
+    );
+  }
+
+  const visible = showAll ? items : items.slice(0, 10);
+  // ordena pelo pior delta (mais negativo primeiro)
+  const sorted = [...visible].sort(
+    (a, b) => (a.delta_dbm || 0) - (b.delta_dbm || 0));
+
+  return (
+    <div data-testid="signal-degradation-card" style={{
+      marginTop: 12, padding: 12, borderRadius: 10,
+      background: "linear-gradient(135deg,#fef2f2,#fee2e2)",
+      border: "1px solid #f87171",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8,
+                      marginBottom: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 17 }}>🚨</span>
+        <strong style={{ fontSize: 13, color: "#991b1b" }}>
+          ONUs degradando ({items.length})
+        </strong>
+        <span style={{ marginLeft: "auto", fontSize: 10.5,
+                        color: "#7f1d1d" }}>
+          Δ ≥ -3 dBm em 24h
+        </span>
+      </div>
+
+      <p style={{ margin: "0 0 8px", fontSize: 11.5, color: "#7f1d1d",
+                    lineHeight: 1.4 }}>
+        Sinal piorou comparado à média das últimas 24h. Pode ser chuva,
+        splitter sujo, fibra dobrada ou ONT com problema.
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 5,
+                      maxHeight: 320, overflowY: "auto" }}>
+        {sorted.map((a) => (
+          <div key={a.unique_external_id}
+            data-testid={`signal-deg-${a.unique_external_id}`}
+            style={{ padding: "7px 9px", borderRadius: 7,
+                       background: "#fff", border: "1px solid #fca5a5",
+                       display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700,
+                              color: "#0f172a",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap" }}>
+                {a.name || a.unique_external_id}
+              </div>
+              <div style={{ fontSize: 10, color: "#64748b",
+                              marginTop: 1 }}>
+                {a.olt_name || "—"} ·{" "}
+                <span style={{ fontFamily: "monospace" }}>
+                  {a.current_rx_dbm} dBm
+                </span>{" "}
+                <span style={{ color: "#94a3b8" }}>
+                  (média 24h: {a.avg_24h_rx_dbm})
+                </span>
+              </div>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 800,
+                            padding: "3px 8px", borderRadius: 999,
+                            background: a.delta_dbm <= -5
+                              ? "#7f1d1d" : "#dc2626",
+                            color: "#fff" }}>
+              {a.delta_dbm > 0 ? "+" : ""}{a.delta_dbm} dB
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {items.length > 10 && (
+        <button data-testid="signal-deg-toggle-all"
+          onClick={() => setShowAll((v) => !v)}
+          style={{ marginTop: 8, padding: "5px 10px", borderRadius: 6,
+                     background: "transparent", border: "1px solid #f87171",
+                     color: "#991b1b", fontSize: 11, fontWeight: 700,
+                     cursor: "pointer", width: "100%" }}>
+          {showAll ? "▲ Mostrar só top 10"
+                   : `▼ Ver todos os ${items.length} alertas`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+
+
+// =============================================================================
+// PortBaseSearchCard — iter182. Busca global na Base de Portas.
+// Usuário digita MAC, SN, PPPoE, nome do cliente ou nome da CTO e o sistema
+// retorna em <1s qual CTO+Porta o cliente está ocupando, com status, sinal
+// e VLAN. Usa o endpoint /api/cto-ports?q=...
+// =============================================================================
+function PortBaseSearchCard() {
+  const [query, setQuery] = React.useState("");
+  const [items, setItems] = React.useState([]);
+  const [busy, setBusy] = React.useState(false);
+  const [stats, setStats] = React.useState(null);
+
+  // Carrega stats no mount
+  React.useEffect(() => {
+    api._client.get("/cto-ports/stats")
+      .then((r) => setStats(r.data))
+      .catch(() => {});
+  }, []);
+
+  // Debounce search
+  React.useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setItems([]); return; }
+    let cancelled = false;
+    setBusy(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await api._client.get(
+          `/cto-ports/?q=${encodeURIComponent(q)}&limit=20`,
+        ).then((x) => x.data);
+        if (cancelled) return;
+        setItems(r.items || []);
+      } catch { /* silent */ }
+      finally { if (!cancelled) setBusy(false); }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [query]);
+
+  const statusColor = (s) => s === "occupied" ? "#16a34a"
+    : s === "defective" ? "#dc2626" : "#94a3b8";
+  const statusLabel = (s) => s === "occupied" ? "Ocupada"
+    : s === "defective" ? "Defeito" : "Livre";
+
+  return (
+    <div data-testid="port-base-search-card" style={{
+      marginTop: 12, padding: 12, borderRadius: 10,
+      background: "linear-gradient(135deg,#ecfeff,#cffafe)",
+      border: "1px solid #06b6d4",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8,
+                      marginBottom: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 17 }}>🔍</span>
+        <strong style={{ fontSize: 13, color: "#155e75" }}>
+          Base de Portas — busca global
+        </strong>
+        {stats && (
+          <span style={{ marginLeft: "auto", fontSize: 11,
+                          color: "#0e7490" }}>
+            {stats.total} portas · {stats.occupied} ocupadas
+            {" "}· {stats.free} livres · {stats.occupancy_rate}%
+          </span>
+        )}
+      </div>
+
+      <p style={{ margin: "0 0 8px", fontSize: 11.5, color: "#155e75",
+                    lineHeight: 1.4 }}>
+        Digite <strong>MAC, SN, PPPoE, nome do cliente</strong> ou nome
+        da CTO. Resultado em &lt;1s.
+      </p>
+
+      <input data-testid="port-base-search-input"
+        value={query} onChange={(e) => setQuery(e.target.value)}
+        placeholder="Ex.: ALCLFC090E99 · CTO_301_001 · José Silva"
+        style={{ width: "100%", padding: "10px 12px", borderRadius: 8,
+                   border: "1px solid #06b6d4",
+                   fontSize: 13, boxSizing: "border-box",
+                   background: "#fff", color: "#0f172a" }} />
+
+      {busy && (
+        <div style={{ marginTop: 6, fontSize: 11, color: "#0e7490" }}>
+          Buscando…
+        </div>
+      )}
+
+      {!busy && query.trim().length >= 2 && items.length === 0 && (
+        <div data-testid="port-base-search-empty" style={{
+          marginTop: 8, padding: "8px 10px", borderRadius: 8,
+          background: "#fff", color: "#64748b", fontSize: 11.5,
+        }}>
+          Nenhuma porta encontrada para "{query}".
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div data-testid="port-base-search-results" style={{
+          marginTop: 8, display: "flex", flexDirection: "column",
+          gap: 6, maxHeight: 380, overflowY: "auto",
+        }}>
+          {items.map((p) => (
+            <div key={p.id} data-testid={`port-${p.id}`} style={{
+              padding: "8px 10px", borderRadius: 8, background: "#fff",
+              border: "1px solid #e2e8f0",
+              display: "flex", alignItems: "center", gap: 10,
+              flexWrap: "wrap",
+            }}>
+              <span style={{ padding: "2px 7px", borderRadius: 999,
+                              background: statusColor(p.status),
+                              color: "#fff", fontSize: 9.5,
+                              fontWeight: 800,
+                              textTransform: "uppercase",
+                              letterSpacing: 0.4 }}>
+                {statusLabel(p.status)}
+              </span>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700,
+                                color: "#0f172a" }}>
+                  {p.cto_name} <span style={{ color: "#06b6d4" }}>·</span>{" "}
+                  porta <strong>{p.port_number}</strong>
+                  {p.vlan != null && (
+                    <span style={{ marginLeft: 6, fontSize: 10,
+                                     padding: "1px 5px", borderRadius: 4,
+                                     background: "#f1f5f9", color: "#475569",
+                                     fontWeight: 600 }}>
+                      VLAN {p.vlan}
+                    </span>
+                  )}
+                </div>
+                {(p.subscriber_name || p.pppoe_user) && (
+                  <div style={{ fontSize: 11, color: "#475569",
+                                  marginTop: 2 }}>
+                    👤 {p.subscriber_name || "—"}
+                    {p.pppoe_user && (
+                      <span style={{ marginLeft: 6,
+                                       fontFamily: "monospace",
+                                       fontSize: 10.5,
+                                       color: "#0e7490" }}>
+                        {p.pppoe_user}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {(p.mac || p.sn) && (
+                  <div style={{ fontSize: 10, marginTop: 2,
+                                  fontFamily: "monospace",
+                                  color: "#94a3b8" }}>
+                    {p.mac && <span>MAC: {p.mac}</span>}
+                    {p.mac && p.sn && " · "}
+                    {p.sn && <span>SN: {p.sn}</span>}
+                  </div>
+                )}
+              </div>
+              {p.signal_dbm != null && (
+                <div style={{ fontSize: 11, fontWeight: 800,
+                                padding: "3px 8px", borderRadius: 999,
+                                color: p.signal_dbm > -25 ? "#15803d"
+                                  : p.signal_dbm > -28 ? "#b45309"
+                                  : "#991b1b",
+                                background: p.signal_dbm > -25 ? "#dcfce7"
+                                  : p.signal_dbm > -28 ? "#fef3c7"
+                                  : "#fee2e2" }}>
+                  {Number(p.signal_dbm).toFixed(1)} dBm
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// =============================================================================
+// PortBaseTab — iter182. Sub-aba dedicada à Base de Portas.
+// Contém a busca global + lista agrupada por CTO (visão de mapa de calor)
+// com filtros por status.
+// =============================================================================
+function PortBaseTab() {
+  const [stats, setStats] = React.useState(null);
+  const [ctos, setCtos] = React.useState([]);
+  const [filter, setFilter] = React.useState("all");
+  const [busy, setBusy] = React.useState(false);
+  const [resyncBusy, setResyncBusy] = React.useState(false);
+  const [resyncMsg, setResyncMsg] = React.useState(null);
+
+  const loadAll = React.useCallback(async () => {
+    setBusy(true);
+    try {
+      const [s, list] = await Promise.all([
+        api._client.get("/cto-ports/stats").then((r) => r.data),
+        api._client.get("/cto-ports/?limit=500").then((r) => r.data),
+      ]);
+      setStats(s);
+      const grouped = {};
+      for (const p of (list.items || [])) {
+        if (!grouped[p.cto_id]) {
+          grouped[p.cto_id] = {
+            cto_id: p.cto_id, cto_name: p.cto_name,
+            olt_name: p.olt_name, vlan: p.vlan,
+            neighborhood: p.neighborhood,
+            technician_name: p.cto_technician_name,
+            ports: [],
+          };
+        }
+        grouped[p.cto_id].ports.push(p);
+      }
+      const arr = Object.values(grouped);
+      arr.forEach((c) => c.ports.sort(
+        (a, b) => (a.port_number || 0) - (b.port_number || 0)));
+      arr.sort((a, b) => (a.cto_name || "").localeCompare(b.cto_name || ""));
+      setCtos(arr);
+    } catch (e) {
+      console.error("[port-base-tab] load fail", e);
+    } finally { setBusy(false); }
+  }, []);
+
+  React.useEffect(() => { loadAll(); }, [loadAll]);
+
+  const doResync = async () => {
+    if (resyncBusy) return;
+    setResyncBusy(true); setResyncMsg(null);
+    try {
+      const r = await api._client.post(
+        "/cto-ports/sync", {}).then((x) => x.data);
+      setResyncMsg({ ok: true,
+        text: `✓ ${r.ports_synced} portas re-sincronizadas`
+          + ` (${r.ctos_synced} CTOs)` });
+      await loadAll();
+    } catch (e) {
+      setResyncMsg({ ok: false,
+        text: e?.response?.data?.detail || "Falhou" });
+    } finally {
+      setResyncBusy(false);
+      setTimeout(() => setResyncMsg(null), 4000);
+    }
+  };
+
+  // iter182 — Backfill: importa em massa vínculos legados de subscribers
+  const doBackfill = async () => {
+    if (resyncBusy) return;
+    // DRY-RUN primeiro pra mostrar preview
+    setResyncBusy(true); setResyncMsg(null);
+    try {
+      const dry = await api._client.post(
+        "/cto-ports/backfill-from-subscribers",
+        { dry_run: true }).then((x) => x.data);
+      if (dry.linked === 0) {
+        setResyncMsg({ ok: true,
+          text: `Nenhum vínculo legado para importar. Escaneados: `
+            + `${dry.scanned} subscribers.` });
+        return;
+      }
+      const ok = window.confirm(
+        `📥 Importar ${dry.linked} vínculo(s) cliente↔porta?\n\n`
+        + `Escaneados: ${dry.scanned}\n`
+        + `A serem vinculados: ${dry.linked}\n`
+        + `Pulados (sem CTO): ${dry.skipped_no_cto}\n`
+        + `Pulados (porta ocupada): ${dry.skipped_port_occupied}\n`
+        + `Pulados (porta inexistente): ${dry.skipped_port_not_found}\n\n`
+        + `Primeiros 5:\n`
+        + (dry.samples || []).slice(0, 5).map((s) =>
+            `  • ${s.subscriber_name} → ${s.cto_name} P${s.port_number}`)
+          .join("\n"));
+      if (!ok) {
+        setResyncMsg({ ok: true, text: "Importação cancelada." });
+        return;
+      }
+      const r = await api._client.post(
+        "/cto-ports/backfill-from-subscribers",
+        { dry_run: false }).then((x) => x.data);
+      setResyncMsg({ ok: true,
+        text: `✓ ${r.linked} vínculos importados`
+          + ` de ${r.scanned} subscribers escaneados.` });
+      await loadAll();
+    } catch (e) {
+      setResyncMsg({ ok: false,
+        text: e?.response?.data?.detail || "Falhou" });
+    } finally {
+      setResyncBusy(false);
+      setTimeout(() => setResyncMsg(null), 8000);
+    }
+  };
+
+  const statusColor = (s) => s === "occupied" ? "#16a34a"
+    : s === "defective" ? "#dc2626" : "#cbd5e1";
+  const portTitle = (p) => {
+    if (p.status === "occupied") {
+      return `Porta ${p.port_number} · ${p.subscriber_name || "(sem nome)"}`
+        + (p.pppoe_user ? ` · ${p.pppoe_user}` : "")
+        + (p.signal_dbm != null
+            ? ` · ${Number(p.signal_dbm).toFixed(1)} dBm` : "");
+    }
+    if (p.status === "defective") return `Porta ${p.port_number} · DEFEITO`;
+    return `Porta ${p.port_number} · LIVRE`;
+  };
+
+  const shouldShowPort = (p) => filter === "all" || p.status === filter;
+  const shouldShowCto = (c) => filter === "all"
+    || c.ports.some(shouldShowPort);
+
+  // iter182 — Ações destrutivas: liberar porta / apagar CTO inteira
+  const releasePort = async (port) => {
+    if (port.status !== "occupied") {
+      window.alert("Porta já está livre.");
+      return;
+    }
+    const ok = window.confirm(
+      `Liberar a porta ${port.port_number} da ${port.cto_name}?\n\n`
+      + `Cliente atual: ${port.subscriber_name || "(sem nome)"}\n\n`
+      + `O vínculo do cliente com esta porta será REMOVIDO. `
+      + `O cliente em si NÃO será apagado.`);
+    if (!ok) return;
+    try {
+      await api._client.post(
+        `/cto-ports/${port.cto_id}/port/${port.port_number}/release`,
+        { reason: "manual_admin_ui" });
+      await loadAll();
+    } catch (e) {
+      window.alert("Falhou: " + (e?.response?.data?.detail || "erro"));
+    }
+  };
+
+  const deleteCto = async (cto) => {
+    const occ = cto.ports.filter((p) => p.status === "occupied").length;
+    if (occ > 0) {
+      window.alert(
+        `Não dá pra apagar ${cto.cto_name}: tem ${occ} porta(s) ocupada(s).\n\n`
+        + `Libere as portas primeiro (clique no quadradinho verde, ou use `
+        + `"Liberar TODAS" se for migração).`);
+      return;
+    }
+    const ok = window.confirm(
+      `Apagar a CTO ${cto.cto_name} permanentemente?\n\n`
+      + `Esta ação NÃO pode ser desfeita. Todas as ${cto.ports.length} `
+      + `portas serão removidas da base.`);
+    if (!ok) return;
+    try {
+      await api._client.delete(`/cto-ports/cto/${cto.cto_id}`);
+      await loadAll();
+    } catch (e) {
+      window.alert("Falhou: " + (e?.response?.data?.detail || "erro"));
+    }
+  };
+
+  // iter182 — Libera TODAS as portas ocupadas de uma CTO de uma vez.
+  // Confirmação DUPLA pra evitar acidente.
+  const releaseAllPorts = async (cto) => {
+    const occupied = cto.ports.filter((p) => p.status === "occupied");
+    if (occupied.length === 0) {
+      window.alert("Nenhuma porta ocupada para liberar.");
+      return;
+    }
+    const clientList = occupied.slice(0, 5)
+      .map((p) => `  • P${p.port_number} → ${p.subscriber_name || "(sem nome)"}`)
+      .join("\n");
+    const more = occupied.length > 5
+      ? `\n  ... e mais ${occupied.length - 5} cliente(s)` : "";
+    // CONFIRM 1 — visão geral
+    const ok1 = window.confirm(
+      `🚨 LIBERAR TODAS as ${occupied.length} portas ocupadas da `
+      + `${cto.cto_name}?\n\n`
+      + `Clientes que serão DESVINCULADOS:\n${clientList}${more}\n\n`
+      + `Isto é normalmente usado em migração de provedor ou desativação. `
+      + `Os clientes em si não serão apagados.\n\nContinuar?`);
+    if (!ok1) return;
+    // CONFIRM 2 — exige digitar o nome da CTO
+    const typed = window.prompt(
+      `⚠️ CONFIRMAÇÃO FINAL\n\nDigite o nome da CTO para confirmar:\n`
+      + `  ${cto.cto_name}`, "");
+    if (typed !== cto.cto_name) {
+      if (typed != null) {
+        window.alert("Nome digitado não confere. Operação CANCELADA.");
+      }
+      return;
+    }
+    try {
+      const r = await api._client.post(
+        `/cto-ports/cto/${cto.cto_id}/release-all`,
+        { reason: "bulk_admin_ui" }).then((x) => x.data);
+      window.alert(`✓ ${r.released_count} portas liberadas.`);
+      await loadAll();
+    } catch (e) {
+      window.alert("Falhou: " + (e?.response?.data?.detail || "erro"));
+    }
+  };
+
+  return (
+    <div data-testid="port-base-tab" style={{ display: "flex",
+                                                 flexDirection: "column",
+                                                 gap: 12 }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap",
+                      alignItems: "center" }}>
+        {stats && (
+          <div data-testid="port-base-stats-strip" style={{
+            display: "flex", gap: 8, flexWrap: "wrap", flex: 1,
+            minWidth: 280,
+          }}>
+            <StatPill label="Total" value={stats.total}
+                       color="#0f172a" bg="#f1f5f9" />
+            <StatPill label="Ocupadas" value={stats.occupied}
+                       color="#15803d" bg="#dcfce7" />
+            <StatPill label="Livres" value={stats.free}
+                       color="#475569" bg="#e2e8f0" />
+            <StatPill label="Defeito" value={stats.defective}
+                       color="#991b1b" bg="#fee2e2" />
+            <StatPill label="Ocupação"
+                       value={`${stats.occupancy_rate}%`}
+                       color="#0e7490" bg="#cffafe" />
+          </div>
+        )}
+        <button data-testid="port-base-resync-btn"
+          onClick={doResync} disabled={resyncBusy}
+          title="Re-sincronizar a base de portas a partir de ctos.ports[]"
+          style={{
+            padding: "8px 14px", borderRadius: 10,
+            background: resyncBusy ? "#94a3b8" : "#0ea5e9",
+            color: "#fff", border: 0, fontSize: 12, fontWeight: 700,
+            cursor: resyncBusy ? "wait" : "pointer",
+          }}>
+          {resyncBusy ? "Re-sincronizando…" : "🔄 Re-sincronizar"}
+        </button>
+        <button data-testid="port-base-backfill-btn"
+          onClick={doBackfill} disabled={resyncBusy}
+          title="Importa em massa vínculos de subscribers (legado) para a Base de Portas"
+          style={{
+            padding: "8px 14px", borderRadius: 10,
+            background: resyncBusy ? "#94a3b8" : "#8b5cf6",
+            color: "#fff", border: 0, fontSize: 12, fontWeight: 700,
+            cursor: resyncBusy ? "wait" : "pointer",
+          }}>
+          📥 Importar vínculos
+        </button>
+      </div>
+
+      {resyncMsg && (
+        <div data-testid="port-base-resync-msg" style={{
+          padding: "8px 12px", borderRadius: 8, fontSize: 12,
+          background: resyncMsg.ok ? "#dcfce7" : "#fee2e2",
+          color: resyncMsg.ok ? "#166534" : "#991b1b", fontWeight: 700,
+        }}>{resyncMsg.text}</div>
+      )}
+
+      <PortBaseSearchCard />
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center",
+                      flexWrap: "wrap" }}>
+        <strong style={{ fontSize: 13 }}>📋 Mapa de portas por CTO</strong>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          {["all", "occupied", "free", "defective"].map((f) => (
+            <button key={f}
+              data-testid={`port-base-filter-${f}`}
+              onClick={() => setFilter(f)}
+              style={{
+                padding: "5px 10px", borderRadius: 999,
+                background: filter === f ? "#0f172a" : "#fff",
+                color: filter === f ? "#fff" : "#475569",
+                border: `1px solid ${filter === f
+                  ? "#0f172a" : "#cbd5e1"}`,
+                fontSize: 11, fontWeight: 700, cursor: "pointer",
+              }}>
+              {f === "all" ? "Todas"
+                : f === "occupied" ? "Ocupadas"
+                : f === "free" ? "Livres" : "Defeito"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {busy && ctos.length === 0 && (
+        <div style={{ padding: 20, textAlign: "center",
+                        color: "#64748b", fontSize: 12 }}>
+          Carregando base de portas…
+        </div>
+      )}
+
+      {!busy && ctos.length === 0 && (
+        <div style={{ padding: 20, textAlign: "center",
+                        color: "#64748b", fontSize: 12 }}>
+          Nenhuma CTO encontrada. Clique em "Re-sincronizar" para popular.
+        </div>
+      )}
+
+      <div data-testid="port-base-cto-grid" style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+        gap: 12,
+      }}>
+        {ctos.filter(shouldShowCto).map((c) => {
+          const occ = c.ports.filter((p) => p.status === "occupied").length;
+          const tot = c.ports.length;
+          const pct = tot ? Math.round((occ / tot) * 100) : 0;
+          return (
+            <div key={c.cto_id}
+              data-testid={`port-base-cto-${c.cto_id}`}
+              style={{ padding: 12, borderRadius: 12, background: "#fff",
+                          border: "1px solid #e2e8f0" }}>
+              <div style={{ display: "flex", alignItems: "center",
+                              gap: 8, marginBottom: 8 }}>
+                <strong style={{ fontSize: 12.5, color: "#0f172a",
+                                  flex: 1, minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap" }}>
+                  {c.cto_name || c.cto_id}
+                </strong>
+                <span style={{ fontSize: 11, fontWeight: 700,
+                                color: pct >= 80 ? "#dc2626"
+                                  : pct >= 50 ? "#b45309" : "#16a34a" }}>
+                  {occ}/{tot} ({pct}%)
+                </span>
+                {occ > 0 && (
+                  <button
+                    data-testid={`port-base-release-all-${c.cto_id}`}
+                    onClick={() => releaseAllPorts(c)}
+                    title={`Liberar TODAS as ${occ} portas ocupadas`
+                      + ` (migração / desativação)`}
+                    style={{
+                      background: "#fef3c7", color: "#92400e",
+                      border: 0, borderRadius: 6, padding: "3px 6px",
+                      fontSize: 11, fontWeight: 700, cursor: "pointer",
+                    }}>
+                    ⚡
+                  </button>
+                )}
+                <button
+                  data-testid={`port-base-delete-cto-${c.cto_id}`}
+                  onClick={() => deleteCto(c)}
+                  disabled={occ > 0}
+                  title={occ > 0
+                    ? `Libere as ${occ} porta(s) ocupada(s) antes de apagar`
+                    : `Apagar CTO ${c.cto_name} permanentemente`}
+                  style={{
+                    background: occ > 0 ? "#f1f5f9" : "#fee2e2",
+                    color: occ > 0 ? "#94a3b8" : "#991b1b",
+                    border: 0, borderRadius: 6, padding: "3px 6px",
+                    fontSize: 11, fontWeight: 700,
+                    cursor: occ > 0 ? "not-allowed" : "pointer",
+                  }}>
+                  🗑
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 6, fontSize: 9.5,
+                              color: "#64748b", marginBottom: 8,
+                              flexWrap: "wrap" }}>
+                {c.olt_name && <span>📡 {c.olt_name}</span>}
+                {c.vlan != null && <span>· VLAN {c.vlan}</span>}
+                {c.technician_name && (
+                  <span data-testid={`cto-tech-${c.cto_id}`}
+                        style={{ color: "#0e7490", fontWeight: 700 }}>
+                    · 👷 {c.technician_name}
+                  </span>
+                )}
+                {c.neighborhood && <span>· {c.neighborhood}</span>}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns:
+                              "repeat(auto-fill, minmax(36px, 1fr))",
+                              gap: 4 }}>
+                {c.ports.filter(shouldShowPort).map((p) => (
+                  <div key={p.id}
+                    title={p.status === "occupied"
+                      ? `${portTitle(p)}\n\n(clique pra LIBERAR a porta)`
+                      : portTitle(p)}
+                    data-testid={`port-cell-${p.id}`}
+                    onClick={() => {
+                      if (p.status === "occupied") releasePort(p);
+                    }}
+                    style={{
+                      aspectRatio: "1", borderRadius: 6,
+                      background: statusColor(p.status),
+                      color: "#fff", display: "flex",
+                      alignItems: "center", justifyContent: "center",
+                      fontSize: 11, fontWeight: 800,
+                      border: p.status === "free"
+                        ? "1px solid #cbd5e1" : "none",
+                      cursor: p.status === "occupied"
+                        ? "pointer" : "default",
+                    }}>{p.port_number}</div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap",
+                      fontSize: 10.5, color: "#64748b",
+                      marginTop: 4 }}>
+        <span>🟩 Ocupada</span>
+        <span style={{ color: "#94a3b8" }}>⬜ Livre</span>
+        <span style={{ color: "#dc2626" }}>🟥 Defeito</span>
+      </div>
+    </div>
+  );
+}
+
+function StatPill({ label, value, color, bg }) {
+  return (
+    <div style={{
+      padding: "8px 14px", borderRadius: 10, background: bg,
+      display: "flex", flexDirection: "column", minWidth: 78,
+    }}>
+      <span style={{ fontSize: 9.5, fontWeight: 700, color,
+                       textTransform: "uppercase", letterSpacing: 0.5,
+                       opacity: 0.7 }}>
+        {label}
+      </span>
+      <strong style={{ fontSize: 16, color }}>{value}</strong>
+    </div>
+  );
+}
+
+
+
+// =============================================================================
+// SentinelaBadge — iter180. Badge compacto + tooltip com detalhes da
+// Sentinela IA (score, ação sugerida, dedupe, GPS, visão do Claude 4.5).
+// =============================================================================
+function SentinelaBadge({ sentinela, pendencyId }) {
+  const score = sentinela.score ?? 0;
+  const action = sentinela.action || "—";
+  const palette = score >= 85
+    ? { bg: "#dcfce7", fg: "#166534", bd: "#86efac" }
+    : score >= 60
+      ? { bg: "#fef3c7", fg: "#92400e", bd: "#fcd34d" }
+      : { bg: "#fee2e2", fg: "#991b1b", bd: "#fca5a5" };
+  const cond = (sentinela.vision || {}).condition || "—";
+  const dupOf = (sentinela.dedupe || {}).duplicate_of;
+  const gpsDist = (sentinela.gps_check || {}).distance_m;
+  return (
+    <div data-testid={`sentinela-badge-${pendencyId}`} style={{
+      marginTop: 8, padding: "6px 10px", borderRadius: 8,
+      background: palette.bg, color: palette.fg,
+      border: `1px solid ${palette.bd}`,
+      fontSize: 11, lineHeight: 1.45,
+      display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center",
+    }}>
+      <span style={{ fontWeight: 800, fontSize: 12 }}>
+        🤖 Sentinela {score}/100
+      </span>
+      <span style={{ opacity: 0.6 }}>·</span>
+      <span style={{ fontWeight: 700, textTransform: "uppercase",
+                       letterSpacing: 0.4 }}>{action}</span>
+      {cond && cond !== "ok" && cond !== "—" && (
+        <>
+          <span style={{ opacity: 0.6 }}>·</span>
+          <span style={{ fontWeight: 700 }}>
+            CTO {cond.replace("_", " ")}
+          </span>
+        </>
+      )}
+      {dupOf && (
+        <>
+          <span style={{ opacity: 0.6 }}>·</span>
+          <span>⚠️ duplicada</span>
+        </>
+      )}
+      {typeof gpsDist === "number" && gpsDist > 0 && (
+        <>
+          <span style={{ opacity: 0.6 }}>·</span>
+          <span>📍 {gpsDist}m do pino</span>
+        </>
+      )}
+      {sentinela.vision?.reasoning && (
+        <div style={{ width: "100%", marginTop: 4, opacity: 0.85,
+                          fontStyle: "italic" }}>
+          “{sentinela.vision.reasoning}”
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function PhotoLightbox({ url, ctoName, uploadedByName, onClose }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -1405,10 +2760,20 @@ function OnusByVlanModal({ vlan, bairro, onClose }) {
               {data && (
                 <> · {data.count} ONUs encontradas na SmartOLT
                   <span style={{ marginLeft: 8, fontSize: 10, padding: "2px 6px",
-                                  background: "#dcfce7", color: "#166534",
+                                  background: data.source === "smartolt_cache"
+                                                ? "#fef3c7" : "#dcfce7",
+                                  color: data.source === "smartolt_cache"
+                                           ? "#92400e" : "#166534",
                                   borderRadius: 999, fontWeight: 700 }}>
-                    LIVE
+                    {data.source === "smartolt_cache" ? "CACHE" : "LIVE"}
                   </span>
+                  {data.cache_warning && (
+                    <span style={{ display: "block", marginTop: 4,
+                                       fontSize: 10, color: "#92400e",
+                                       fontStyle: "italic" }}>
+                      ⚠️ {data.cache_warning}
+                    </span>
+                  )}
                 </>
               )}
             </p>
@@ -1918,6 +3283,882 @@ function DiretrizesEditor() {
         </div>
       )}
     </Card>
+  );
+}
+
+
+/* ============================================================
+ * ORPHAN CABLES PANEL — Cabos com pontas soltas (iter186)
+ * Lista, sugestões com IA heurística, vinculação 1-clique.
+ * ============================================================ */
+function OrphanCablesPanel() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [suggestions, setSuggestions] = useState([]);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [elements, setElements] = useState([]); // CTOs/CEs pra vincular
+  const [linking, setLinking] = useState(null); // {cable_id, end} em curso
+  const [linkModal, setLinkModal] = useState(null);
+  // iter186 — Modal "Confiança visual" + auto-vision
+  const [visualReview, setVisualReview] = useState(null);
+  const [pendingReviews, setPendingReviews] = useState([]);
+  const [autoCfg, setAutoCfg] = useState(null);
+  const [autoSaving, setAutoSaving] = useState(false);
+  // {cable, end} → abre picker
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [orph, mapData, pending, cfg] = await Promise.all([
+        api.redeIaCablesOrphan(),
+        api.redeIaMapData().catch(() => ({ ctos: [], ces: [] })),
+        api.redeIaVisionPendingReview().catch(() => ({ items: [] })),
+        api.redeIaVisionAutoConfig().catch(() => null),
+      ]);
+      setItems(orph.items || []);
+      setPendingReviews(pending.items || []);
+      setAutoCfg(cfg);
+      // Constrói lista de elementos vinculáveis (CTOs + CEs)
+      const els = [
+        ...(mapData.ctos || []).map((c) => ({
+          id: c.id, name: c.name, type: "cto", lat: c.lat, lng: c.lng,
+          bairro: (c.address || {}).bairro, vlan: c.vlan, sigla: c.sigla,
+        })),
+        ...(mapData.ces || []).map((c) => ({
+          id: c.id, name: c.name, type: "ce", lat: c.lat, lng: c.lng,
+          bairro: (c.address || {}).bairro, vlan: c.vlan, sigla: c.sigla,
+        })),
+      ];
+      setElements(els);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const runAiSuggest = async () => {
+    setAnalyzing(true);
+    try {
+      const r = await api.redeIaCablesOrphanSuggest();
+      setSuggestions(r.items || []);
+    } catch (e) {
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const runVisionSuggest = async () => {
+    setAnalyzing(true);
+    try {
+      const r = await api.redeIaCablesOrphanSuggestVision();
+      setSuggestions(r.items || []);
+      if ((r.items || []).length === 0) {
+        await window.alert(
+          "🤖 Vision IA: nenhuma sugestão encontrada.\n\n"
+          + "Verifique se os cabos têm foto da plaqueta legível "
+          + "e se há CTOs/CEs com nomes correspondentes na rede.",
+        );
+      }
+    } catch (e) {
+      await window.alert("Erro IA Visão: "
+        + (e?.response?.data?.detail || e.message));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const link = async (cableId, endpoint, elementId) => {
+    setLinking({ cable_id: cableId, end: endpoint });
+    try {
+      await api.redeIaCableLinkEndpoint(cableId, endpoint, elementId);
+      // Remove sugestão e cabo da lista se ficou completo
+      setSuggestions((prev) => prev.filter(
+        (s) => !(s.cable_id === cableId && s.end === endpoint),
+      ));
+      await reload();
+    } catch (e) {
+      await window.alert(
+        "Erro ao vincular: " + (e?.response?.data?.detail || e.message),
+      );
+    } finally { setLinking(null); }
+  };
+
+  const saveAutoCfg = async (next) => {
+    setAutoSaving(true);
+    try {
+      const r = await api.redeIaVisionAutoConfigUpdate(next);
+      setAutoCfg(r);
+    } catch (e) {
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally { setAutoSaving(false); }
+  };
+
+  const runAutoNow = async () => {
+    setAnalyzing(true);
+    try {
+      const r = await api.redeIaVisionAutoRunNow();
+      await reload();
+      await window.alert(
+        `Scan executado:\n• ${r.scanned} cabos órfãos analisados\n`
+        + `• ${r.auto_linked} auto-vinculados (≥${autoCfg?.auto_link_threshold || 90}%)\n`
+        + `• ${r.pending_review} aguardando revisão\n`
+        + `• ${r.skipped} ignorados (sem foto ou sem match)`,
+      );
+    } catch (e) {
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    } finally { setAnalyzing(false); }
+  };
+
+  const approveReview = async (rid) => {
+    await api.redeIaVisionReviewApprove(rid);
+    await reload();
+  };
+  const rejectReview = async (rid) => {
+    await api.redeIaVisionReviewReject(rid);
+    await reload();
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card style={{ padding: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between",
+                          alignItems: "center", gap: 10, marginBottom: 10,
+                          flexWrap: "wrap" }}>
+          <div>
+            <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>
+              🧵 Cabos órfãos
+            </h3>
+            <p style={{ fontSize: 12, color: "var(--text-muted)",
+                              margin: 0 }}>
+              Cabos lançados sem origem ou destino vinculados ({items.length}
+              {" "}total). Aparecem em <strong>laranja tracejado</strong> no
+              mapa principal.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button data-testid="orphan-ai-suggest" onClick={runAiSuggest}
+                       disabled={analyzing || items.length === 0}
+                       style={btnSm("#7c3aed")}>
+              {analyzing ? "Analisando..." : "📐 Heurística (geo)"}
+            </button>
+            <button data-testid="orphan-vision-suggest" onClick={runVisionSuggest}
+                       disabled={analyzing || items.length === 0}
+                       style={btnSm("#0d9488")}>
+              {analyzing ? "Analisando..." : "🤖 Vision IA (lê plaqueta)"}
+            </button>
+          </div>
+        </div>
+
+        {loading && (
+          <div style={{ padding: 20, textAlign: "center",
+                            color: "var(--text-muted)" }}>
+            Carregando cabos...
+          </div>
+        )}
+
+        {!loading && items.length === 0 && (
+          <div style={{ padding: 20, textAlign: "center",
+                            color: "var(--text-muted)", background: "#f8fafc",
+                            borderRadius: 10, border: "1px dashed #cbd5e1" }}>
+            ✅ Nenhum cabo órfão na rede. Todos têm origem e destino vinculados.
+          </div>
+        )}
+
+        {/* Sugestões da IA */}
+        {suggestions.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700,
+                              color: "#5b21b6", marginBottom: 8 }}>
+              {suggestions.length} sugestão(ões) de vínculo
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {suggestions.map((s, idx) => {
+                const isLinking = linking?.cable_id === s.cable_id
+                    && linking?.end === s.end;
+                const confColor = s.confidence >= 70 ? "#16a34a"
+                  : s.confidence >= 40 ? "#ea580c" : "#dc2626";
+                return (
+                  <div key={`${s.cable_id}-${s.end}-${idx}`}
+                          onClick={() => s.source === "vision_ai"
+                            && setVisualReview(s)}
+                          style={{
+                            display: "flex", gap: 10, padding: 10,
+                            background: "#fff",
+                            border: "1px solid #c4b5fd",
+                            borderRadius: 10, alignItems: "center",
+                            flexWrap: "wrap",
+                            cursor: s.source === "vision_ai"
+                              ? "pointer" : "default",
+                          }}>
+                    <div style={{
+                      width: 42, textAlign: "center", color: confColor,
+                      fontWeight: 900, fontSize: 18,
+                    }}>{s.confidence}%</div>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700,
+                                        color: "var(--text-primary)" }}>
+                        {s.cable_name}
+                        {" "}<span style={{ color: "#94a3b8" }}>
+                          ({s.end === "from" ? "Origem" : "Destino"})
+                        </span>
+                        {" → "}<strong>{s.suggested_element_name}</strong>
+                        {s.source === "vision_ai" && (
+                          <span style={{
+                            marginLeft: 6, fontSize: 9, fontWeight: 800,
+                            padding: "2px 6px", borderRadius: 4,
+                            background: "#ccfbf1", color: "#0d9488",
+                          }}>VISION IA</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)",
+                                       marginTop: 3 }}>
+                        {(s.reasons || []).join(" · ")}
+                        {s.source === "vision_ai" && (
+                          <span style={{ color: "#0d9488", marginLeft: 6,
+                                            fontWeight: 700 }}>
+                            👁️ clique para revisar visualmente
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button data-testid={`suggest-accept-${s.cable_id}-${s.end}`}
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  link(s.cable_id, s.end,
+                                       s.suggested_element_id);
+                                }}
+                                disabled={!!linking}
+                                style={btnSm("#16a34a")}>
+                      {isLinking ? "Vinculando..." : "✓ Vincular"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Lista de cabos órfãos */}
+        {!loading && items.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {items.map((cab) => (
+              <div key={cab.id} style={{
+                padding: 12, background: "#fff8f1",
+                border: "1px solid #fed7aa", borderRadius: 10,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between",
+                                  alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 800,
+                                       color: "var(--text-primary)" }}>
+                      {cab.name}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)",
+                                     marginTop: 3 }}>
+                      {cab.total_length_m ? `${Math.round(cab.total_length_m)}m`
+                        : "—"}
+                      {" · "}{cab.fo_count || "—"}FO
+                      {" · VLAN "}{cab.vlan || "—"}
+                      {" · "}{cab.technician_name || "—"}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, padding: "3px 8px",
+                    borderRadius: 999, background: "#fed7aa",
+                    color: "#9a3412", textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}>cabo solto</span>
+                </div>
+                <div style={{ marginTop: 10, display: "flex", gap: 8,
+                                  flexWrap: "wrap" }}>
+                  {cab.loose_ends.map((ep) => (
+                    <button
+                      key={`${cab.id}-${ep.end}`}
+                      data-testid={`orphan-link-${cab.id}-${ep.end}`}
+                      onClick={() => setLinkModal({ cable: cab, end: ep })}
+                      style={{
+                        padding: "8px 12px", borderRadius: 8,
+                        border: "1px solid #ea580c", background: "#fff",
+                        color: "#9a3412", fontSize: 12, fontWeight: 700,
+                        cursor: "pointer",
+                      }}>
+                      🔗 Vincular {ep.end === "from" ? "Origem" : "Destino"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Modal de vínculo manual */}
+      {linkModal && (
+        <LinkEndpointModal
+          cable={linkModal.cable}
+          end={linkModal.end}
+          elements={elements}
+          onClose={() => setLinkModal(null)}
+          onConfirm={async (elementId) => {
+            await link(linkModal.cable.id, linkModal.end.end, elementId);
+            setLinkModal(null);
+          }} />
+      )}
+
+      {/* ======== AUTO-VINCULAÇÃO VISION IA (cron noturno) ======== */}
+      {autoCfg && (
+        <Card style={{ padding: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between",
+                            alignItems: "center", gap: 8, flexWrap: "wrap",
+                            marginBottom: 10 }}>
+            <div>
+              <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>
+                🌙 Auto-vínculo noturno (Vision IA)
+              </h3>
+              <p style={{ fontSize: 12, color: "var(--text-muted)",
+                                margin: 0, lineHeight: 1.45 }}>
+                Cron diário às {String(autoCfg.run_hour_utc).padStart(2, "0")}h
+                UTC ({((autoCfg.run_hour_utc - 3 + 24) % 24)}h BRT) lê plaquetas
+                de cabos órfãos com Claude Sonnet 4.5 e auto-vincula quando
+                confiança ≥ {autoCfg.auto_link_threshold}%.
+              </p>
+            </div>
+            <button data-testid="auto-vision-run-now" onClick={runAutoNow}
+                       disabled={analyzing}
+                       style={btnSm("#0d9488")}>
+              {analyzing ? "..." : "▶ Rodar agora"}
+            </button>
+          </div>
+          <div style={{ display: "grid", gap: 10,
+                            gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
+            <label style={{ display: "flex", flexDirection: "column",
+                                gap: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>
+                Ativo
+              </span>
+              <input type="checkbox" data-testid="auto-vision-enabled"
+                        checked={!!autoCfg.enabled}
+                        disabled={autoSaving}
+                        onChange={(e) => saveAutoCfg({
+                          ...autoCfg, enabled: e.target.checked,
+                        })}
+                        style={{ width: 20, height: 20 }} />
+            </label>
+            <NumField testid="auto-vision-threshold"
+              label="Auto-vincular (%)"
+              help="Confiança ≥ X vincula sem revisão"
+              value={autoCfg.auto_link_threshold} min={50} max={100}
+              onChange={(v) => saveAutoCfg({
+                ...autoCfg, auto_link_threshold: v,
+              })} />
+            <NumField testid="auto-vision-review"
+              label="Revisar (%)"
+              help="Confiança entre review e auto vai pra revisão manual"
+              value={autoCfg.review_threshold} min={0} max={99}
+              onChange={(v) => saveAutoCfg({
+                ...autoCfg, review_threshold: v,
+              })} />
+            <NumField testid="auto-vision-hour"
+              label="Hora UTC do scan"
+              help="0-23 (default 6h UTC = 3h BRT)"
+              value={autoCfg.run_hour_utc} min={0} max={23}
+              onChange={(v) => saveAutoCfg({
+                ...autoCfg, run_hour_utc: v,
+              })} />
+          </div>
+        </Card>
+      )}
+
+      {/* ======== REVISÃO MANUAL (confiança média) ======== */}
+      {pendingReviews.length > 0 && (
+        <Card style={{ padding: 16 }}>
+          <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>
+            👁️ {pendingReviews.length} sugestão(ões) IA aguardando revisão
+          </h3>
+          <p style={{ fontSize: 12, color: "var(--text-muted)",
+                            margin: "0 0 12px" }}>
+            Cabos cuja Vision IA detectou plaqueta mas com confiança
+            intermediária ({autoCfg?.review_threshold || 50}% a
+            {" "}{(autoCfg?.auto_link_threshold || 90) - 1}%) — revisar manualmente.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {pendingReviews.map((r) => (
+              <div key={r.id} style={{
+                padding: 10, background: "#fffbeb",
+                border: "1px solid #fde68a", borderRadius: 10,
+                display: "flex", gap: 10, alignItems: "center",
+                flexWrap: "wrap",
+              }}>
+                <div style={{
+                  width: 42, textAlign: "center",
+                  color: r.confidence >= 70 ? "#16a34a" : "#ea580c",
+                  fontWeight: 900, fontSize: 18,
+                }}>{r.confidence}%</div>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>
+                    {r.cable_name}
+                    {" "}<span style={{ color: "#94a3b8" }}>
+                      ({r.end === "from" ? "Origem" : "Destino"})
+                    </span>
+                    {" → "}<strong>{r.suggested_element_name}</strong>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#92400e", marginTop: 3 }}>
+                    IA leu: <strong>"{r.extracted_text}"</strong>
+                    {" · "}{r.distance_m}m
+                  </div>
+                </div>
+                <button onClick={() => setVisualReview({
+                          ...r, source: "vision_ai",
+                        })}
+                        style={btnSm("#7c3aed")}>👁️ Ver</button>
+                <button onClick={() => approveReview(r.id)}
+                        style={btnSm("#16a34a")}>✓</button>
+                <button onClick={() => rejectReview(r.id)}
+                        style={btnSm("#dc2626")}>✕</button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* ======== MODAL CONFIANÇA VISUAL ======== */}
+      {visualReview && (
+        <VisualReviewModal
+          item={visualReview}
+          onClose={() => setVisualReview(null)}
+          onAccept={async () => {
+            await link(visualReview.cable_id, visualReview.end,
+                        visualReview.suggested_element_id);
+            setVisualReview(null);
+            setSuggestions((prev) => prev.filter(
+              (s) => !(s.cable_id === visualReview.cable_id
+                       && s.end === visualReview.end),
+            ));
+          }} />
+      )}
+    </div>
+  );
+}
+
+function VisualReviewModal({ item, onClose, onAccept }) {
+  const [linking, setLinking] = useState(false);
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      zIndex: 1100, padding: 16,
+    }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{
+        background: "#fff", borderRadius: 16, maxWidth: 720, width: "100%",
+        maxHeight: "90vh", display: "flex", flexDirection: "column",
+        overflow: "hidden",
+      }}>
+        {/* Header */}
+        <div style={{ padding: "14px 18px",
+                          borderBottom: "1px solid #e2e8f0",
+                          display: "flex", justifyContent: "space-between",
+                          alignItems: "center", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 11, color: "#0d9488", fontWeight: 800,
+                              textTransform: "uppercase", letterSpacing: 0.6 }}>
+              👁️ Confiança visual — Vision IA
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 800, marginTop: 2 }}>
+              {item.cable_name}
+              {" "}<span style={{ color: "#94a3b8", fontWeight: 500 }}>
+                ({item.end === "from" ? "Origem" : "Destino"})
+              </span>
+              {" → "}<span style={{ color: "#0d9488" }}>
+                {item.suggested_element_name}
+              </span>
+            </div>
+          </div>
+          <button onClick={onClose}
+                       style={{ background: "#f1f5f9", border: 0, padding: 10,
+                                    borderRadius: 8, cursor: "pointer",
+                                    fontSize: 16, fontWeight: 800 }}>
+            ✕
+          </button>
+        </div>
+
+        {/* Conteúdo */}
+        <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
+          {/* Confidence badge */}
+          <div style={{ display: "flex", gap: 12, alignItems: "center",
+                            marginBottom: 14 }}>
+            <div style={{
+              width: 78, height: 78, borderRadius: "50%",
+              background: item.confidence >= 70 ? "#dcfce7"
+                : item.confidence >= 40 ? "#fed7aa" : "#fee2e2",
+              color: item.confidence >= 70 ? "#16a34a"
+                : item.confidence >= 40 ? "#ea580c" : "#dc2626",
+              display: "grid", placeItems: "center",
+              fontSize: 24, fontWeight: 900,
+              border: "4px solid",
+              borderColor: item.confidence >= 70 ? "#16a34a"
+                : item.confidence >= 40 ? "#ea580c" : "#dc2626",
+            }}>
+              {item.confidence}%
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>
+                Confiança da Vision IA
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b",
+                                  lineHeight: 1.5 }}>
+                {item.ai_reasoning || item.reasoning || "—"}
+              </div>
+            </div>
+          </div>
+
+          {/* Foto + OCR lado a lado */}
+          <div style={{ display: "grid", gap: 12,
+                            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" }}>
+            {item.photo_url && (
+              <div style={{ background: "#0f172a", borderRadius: 12,
+                                  overflow: "hidden", aspectRatio: "1",
+                                  display: "grid", placeItems: "center" }}>
+                <img src={item.photo_url} alt="plaqueta"
+                          style={{ maxWidth: "100%", maxHeight: "100%",
+                                       objectFit: "contain" }} />
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ background: "#f1f5f9", padding: 12,
+                                  borderRadius: 10 }}>
+                <div style={{ fontSize: 10, color: "#64748b", fontWeight: 800,
+                                    textTransform: "uppercase",
+                                    letterSpacing: 0.5, marginBottom: 4 }}>
+                  Texto extraído pela IA
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 900,
+                                    fontFamily: "monospace", color: "#0f172a" }}>
+                  "{item.extracted_text || "—"}"
+                </div>
+                {item.raw_text && item.raw_text !== item.extracted_text && (
+                  <div style={{ fontSize: 11, color: "#475569",
+                                      marginTop: 6, fontStyle: "italic" }}>
+                    Texto bruto OCR: "{item.raw_text}"
+                  </div>
+                )}
+              </div>
+              <div style={{ background: "#ecfeff", padding: 12,
+                                  borderRadius: 10 }}>
+                <div style={{ fontSize: 10, color: "#0e7490", fontWeight: 800,
+                                    textTransform: "uppercase",
+                                    letterSpacing: 0.5, marginBottom: 4 }}>
+                  GPS da ponta solta
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 700,
+                                    color: "#0f172a", fontFamily: "monospace" }}>
+                  {item.end_lat?.toFixed?.(6)}, {item.end_lng?.toFixed?.(6)}
+                </div>
+                <a href={`https://www.google.com/maps?q=${item.end_lat},${item.end_lng}`}
+                        target="_blank" rel="noreferrer"
+                        style={{ fontSize: 11, color: "#0e7490",
+                                       textDecoration: "underline",
+                                       marginTop: 4, display: "block" }}>
+                  Ver no Google Maps ↗
+                </a>
+              </div>
+              <div style={{ background: "#fef3c7", padding: 12,
+                                  borderRadius: 10 }}>
+                <div style={{ fontSize: 10, color: "#92400e", fontWeight: 800,
+                                    textTransform: "uppercase",
+                                    letterSpacing: 0.5, marginBottom: 4 }}>
+                  Distância CTO/CE candidata
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 900,
+                                    color: "#7c2d12" }}>
+                  {item.distance_m}m
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: 14, borderTop: "1px solid #e2e8f0",
+                          display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onClose}
+                       style={btnSm("#64748b")}>Cancelar</button>
+          <button data-testid="visual-review-accept"
+                       disabled={linking}
+                       onClick={async () => {
+                         setLinking(true);
+                         try { await onAccept(); } finally { setLinking(false); }
+                       }}
+                       style={btnSm("#16a34a")}>
+            {linking ? "Vinculando..." : "✓ Confirmar vínculo"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LinkEndpointModal({ cable, end, elements, onClose, onConfirm }) {
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState(null);
+
+  // Ordena por proximidade
+  const sorted = useMemo(() => {
+    const hav = (a, b, c, d) => {
+      const R = 6371000;
+      const toRad = (x) => x * Math.PI / 180;
+      const dla = toRad(c - a); const dlo = toRad(d - b);
+      const la1 = toRad(a); const la2 = toRad(c);
+      const aa = Math.sin(dla / 2) ** 2
+          + Math.cos(la1) * Math.cos(la2) * Math.sin(dlo / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(aa));
+    };
+    return (elements || [])
+      .filter((e) => e.lat != null && e.lng != null)
+      .map((e) => ({
+        ...e,
+        dist: hav(end.lat, end.lng, e.lat, e.lng),
+      }))
+      .filter((e) => {
+        if (!query) return true;
+        const q = query.toLowerCase();
+        return (e.name || "").toLowerCase().includes(q)
+            || (e.bairro || "").toLowerCase().includes(q)
+            || String(e.vlan || "").includes(q);
+      })
+      .sort((a, b) => a.dist - b.dist);
+  }, [elements, end, query]);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      zIndex: 1000, padding: 16,
+    }}>
+      <div style={{
+        background: "#fff", borderRadius: 14, maxWidth: 540, width: "100%",
+        maxHeight: "85vh", display: "flex", flexDirection: "column",
+        overflow: "hidden",
+      }}>
+        <div style={{ padding: 14, borderBottom: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>
+            Vincular {end.end === "from" ? "Origem" : "Destino"} do cabo
+          </div>
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>
+            {cable.name} · GPS da ponta: {end.lat.toFixed(5)},
+            {" "}{end.lng.toFixed(5)}
+          </div>
+        </div>
+        <div style={{ padding: 12 }}>
+          <input value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Buscar CTO/CE por nome, bairro, VLAN..."
+                    data-testid="link-modal-search"
+                    style={{
+                      width: "100%", padding: "10px 12px", fontSize: 14,
+                      borderRadius: 8, border: "1px solid #cbd5e1",
+                      boxSizing: "border-box",
+                    }} />
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 12px" }}>
+          {sorted.slice(0, 50).map((el) => (
+            <button key={el.id}
+                       data-testid={`link-modal-item-${el.id}`}
+                       onClick={() => setSelected(el)}
+                       style={{
+                         display: "flex", width: "100%", padding: 10,
+                         marginBottom: 6, gap: 10, alignItems: "center",
+                         border: selected?.id === el.id
+                            ? "2px solid #10b981"
+                            : "1px solid #e2e8f0",
+                         background: selected?.id === el.id
+                            ? "#ecfdf5" : "#fff",
+                         borderRadius: 10, cursor: "pointer",
+                         textAlign: "left",
+                       }}>
+              <span style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: el.type === "ce" ? "#ede9fe" : "#e0f2fe",
+                color: el.type === "ce" ? "#7c3aed" : "#0ea5e9",
+                display: "grid", placeItems: "center",
+                fontSize: 11, fontWeight: 800,
+              }}>{el.type.toUpperCase()}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700,
+                                 color: "#0f172a" }}>{el.name}</div>
+                <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                  {el.bairro || "—"} · VLAN {el.vlan || "—"}
+                  {" · "}<strong>{Math.round(el.dist)}m</strong>
+                </div>
+              </span>
+            </button>
+          ))}
+        </div>
+        <div style={{ padding: 12, borderTop: "1px solid #e2e8f0",
+                          display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onClose}
+                       style={btnSm("#64748b")}>Cancelar</button>
+          <button data-testid="link-modal-confirm"
+                       disabled={!selected}
+                       onClick={() => selected && onConfirm(selected.id)}
+                       style={{ ...btnSm("#10b981"),
+                                opacity: selected ? 1 : 0.5 }}>
+            Vincular {selected ? selected.name : ""}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+/* ============================================================
+ * CABLE SLACK CONFIG — sobras técnicas no lançamento de cabo
+ * Card aparece na aba "Diretrizes" (Rede IA admin).
+ * ============================================================ */
+function CableSlackEditor() {
+  const [cfg, setCfg] = useState({
+    slack_start_m: 10, slack_end_m: 10,
+    gps_min_distance_m: 5, gps_interval_seconds: 3,
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    api.redeIaCableSlackGet()
+      .then((r) => setCfg({
+        slack_start_m: Number(r.slack_start_m) || 10,
+        slack_end_m: Number(r.slack_end_m) || 10,
+        gps_min_distance_m: Number(r.gps_min_distance_m) || 5,
+        gps_interval_seconds: Number(r.gps_interval_seconds) || 3,
+      }))
+      .catch(() => { /* mantém defaults */ })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true); setErr("");
+    try {
+      await api.redeIaCableSlackUpdate(cfg);
+      setSavedAt(new Date());
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Erro ao salvar");
+    } finally { setSaving(false); }
+  };
+
+  const upd = (k, v) => setCfg((p) => ({ ...p, [k]: v }));
+
+  if (loading) {
+    return (
+      <Card style={{ padding: 16 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
+          Carregando configuração de sobras...
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={{ padding: 16 }}>
+      <h3 style={{ margin: "0 0 6px", fontSize: 16 }}>
+        Sobras técnicas — Lançamento de cabo
+      </h3>
+      <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14,
+                       lineHeight: 1.45 }}>
+        Define a metragem adicionada automaticamente no início e no fim de
+        cada cabo cadastrado pelo técnico (reserva para emenda/manobra).
+        Os parâmetros de GPS controlam a precisão da gravação de trajeto.
+      </p>
+
+      <div style={{ display: "grid", gap: 14,
+                          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
+        <NumField
+          testid="slack-start"
+          label="Sobra início (m)"
+          help="Reserva técnica antes da Origem"
+          value={cfg.slack_start_m}
+          min={0} max={200}
+          onChange={(v) => upd("slack_start_m", v)} />
+        <NumField
+          testid="slack-end"
+          label="Sobra fim (m)"
+          help="Reserva técnica depois do Destino"
+          value={cfg.slack_end_m}
+          min={0} max={200}
+          onChange={(v) => upd("slack_end_m", v)} />
+        <NumField
+          testid="slack-gps-distance"
+          label="GPS — distância mín. (m)"
+          help="Ignora amostras mais próximas que isso"
+          value={cfg.gps_min_distance_m}
+          min={1} max={50} step={0.5}
+          onChange={(v) => upd("gps_min_distance_m", v)} />
+        <NumField
+          testid="slack-gps-interval"
+          label="GPS — intervalo mín. (s)"
+          help="Tempo entre amostras consecutivas"
+          value={cfg.gps_interval_seconds}
+          min={1} max={30} step={0.5}
+          onChange={(v) => upd("gps_interval_seconds", v)} />
+      </div>
+
+      <div style={{ marginTop: 14, padding: 12, background: "#ecfeff",
+                          border: "1px solid #67e8f9", borderRadius: 10,
+                          fontSize: 12, color: "#155e75" }}>
+        💡 Total adicionado por cabo: <strong>
+          {Number(cfg.slack_start_m) + Number(cfg.slack_end_m)}m
+        </strong> {" "}(={cfg.slack_start_m}m início + {cfg.slack_end_m}m fim)
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between",
+                          alignItems: "center", marginTop: 12, gap: 10,
+                          flexWrap: "wrap" }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          {savedAt
+            ? `Salvo às ${savedAt.toLocaleTimeString("pt-BR")}`
+            : "Será aplicado nos próximos cadastros de cabo"}
+        </div>
+        <button data-testid="slack-save" onClick={save}
+                       disabled={saving} style={btnSm("#0d9488")}>
+          {saving ? "Salvando..." : "Salvar sobras"}
+        </button>
+      </div>
+      {err && (
+        <div style={{ marginTop: 10, color: "#dc2626", fontSize: 12 }}>
+          {err}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function NumField({ testid, label, help, value, onChange,
+                       min = 0, max = 999, step = 1 }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span style={{ fontSize: 12, fontWeight: 700,
+                         color: "var(--text-primary)" }}>{label}</span>
+      <input
+        data-testid={testid}
+        type="number" inputMode="decimal"
+        min={min} max={max} step={step}
+        value={value}
+        onChange={(e) => {
+          const n = Number(e.target.value);
+          if (!Number.isNaN(n)) onChange(n);
+        }}
+        style={{
+          padding: "8px 10px", borderRadius: 8,
+          border: "1px solid var(--border-default)", fontSize: 14,
+        }} />
+      {help && (
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{help}</span>
+      )}
+    </label>
   );
 }
 

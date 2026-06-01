@@ -522,6 +522,8 @@ export const api = {
   purchasesRefs: () => client.get(`/purchases/refs`).then((r) => r.data),
   purchasesList: (params = {}) =>
     client.get(`/purchases`, { params }).then((r) => r.data),
+  purchasesByInvoice: (params = {}) =>
+    client.get(`/purchases/by-invoice`, { params }).then((r) => r.data),
   purchasesCreate: (payload) =>
     client.post(`/purchases`, payload).then((r) => r.data),
   purchasesUploadExtract: (file) => {

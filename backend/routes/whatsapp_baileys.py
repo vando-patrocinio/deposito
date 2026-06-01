@@ -389,18 +389,27 @@ async def send_message(payload: SendIn,
     """Envio manual de mensagem. Persistimos no histórico SEMPRE, mas o
     `delivery_status` reflete o que o sidecar Baileys realmente confirmou.
 
+    iter183 — Toda msg enviada pelo painel manual (atendente humano) é
+    prefixada com "Atendente Ligo {primeiro_nome}: " para identificar quem
+    está falando. Aparece no WhatsApp do cliente E no histórico do gestor.
+
     Se o sidecar falhar (socket zumbi, timeout, desconectado), retornamos
     HTTP 502 com `delivery_status=failed` no doc — para o frontend mostrar
     erro pro usuário em vez de assumir entrega.
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
+    first_name = ((user.get("name") or "").strip().split() or [""])[0]
+    if first_name:
+        text_to_send = f"Atendente Ligo {first_name}: {payload.text}"
+    else:
+        text_to_send = payload.text
     send_ok = False
     send_error: Optional[str] = None
     out: Dict[str, Any] = {}
     try:
         async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=20.0) as cli:
             r = await cli.post(f"{SIDECAR_BASE}/send",
-                                json={"phone": payload.phone, "text": payload.text})
+                                json={"phone": payload.phone, "text": text_to_send})
             try:
                 out = r.json()
             except Exception:
@@ -419,12 +428,14 @@ async def send_message(payload: SendIn,
         "company_id": cid,
         "direction": "outbound",
         "phone": payload.phone,
-        "text": payload.text,
+        "text": text_to_send,
         "channel": "baileys",
         "message_id": out.get("message_id"),
         "created_at": now_iso(),
         "actor_user": user.get("email") or user.get("id"),
         "sent_by_user_id": user.get("id"),
+        "sent_by_user_name": user.get("name"),
+        "agent_tag": "atendente_ligo",
         "auto_reply": False,
         "polished_by_ai": bool(payload.polished_by_ai),
         "delivery_status": "sent" if send_ok else "failed",
@@ -1629,6 +1640,27 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
     conv = await db.wa_conversations.find_one(
         {"company_id": cid, "phone": phone}, {"_id": 0}
     )
+    # iter183 — Se um técnico (PWA) está conversando com o cliente,
+    # PAUSA a IA. Janela: 4h desde a última msg do técnico. Quando o
+    # técnico envia algo novo, a janela é renovada via upsert no
+    # public_tech_send. Comportamento: NÃO é falha — IA simplesmente
+    # silencia para não atropelar a conversa do técnico.
+    if conv and conv.get("has_tech_conversation"):
+        last_tech_at = conv.get("last_tech_msg_at")
+        if last_tech_at:
+            try:
+                t = datetime.fromisoformat(last_tech_at.replace("Z", "+00:00"))
+                age = (datetime.now(timezone.utc) - t).total_seconds()
+                if age < 4 * 3600:  # 4h
+                    logger.info(
+                        "[wa-baileys] auto-reply pulado — técnico %s ativo (%s, idade=%.0fs)",
+                        conv.get("last_tech_collab_name") or "?",
+                        phone, age,
+                    )
+                    return None
+            except Exception:
+                pass
+
     if conv and conv.get("assignee_role") == "human" and conv.get("status") != "closed":
         # Verifica última msg outbound DO HUMANO atendente (ignora handover automatic).
         last_human_msg = await db.aihub_wa_messages.find_one(
@@ -1641,7 +1673,6 @@ async def _maybe_auto_reply(cid: str, phone: str, user_text: str,
         IDLE_LIMIT_MIN = 30
         idle_too_long = False
         try:
-            from datetime import datetime, timezone, timedelta
             ref_iso = (last_human_msg or {}).get("created_at") \
                        or conv.get("assignee_assigned_at") \
                        or conv.get("updated_at")
@@ -3654,6 +3685,7 @@ async def _bucket_for_conversation(conv: dict, company_id: str = "") -> str:
 
     Buckets:
     - "grupo": JID termina em @g.us
+    - "tecnico": conversa onde o técnico (via app PWA) trocou mensagens
     - "automatico": atualmente sendo respondida pela IA
     - "manual": atribuída a um humano
     - "aguardando": sem resposta humana há mais de 5min (e sem auto-reply)
@@ -3661,6 +3693,10 @@ async def _bucket_for_conversation(conv: dict, company_id: str = "") -> str:
     """
     if conv.get("is_group"):
         return "grupo"
+    # iter183 — Conv. Técnico: qualquer conversa com mensagens enviadas pelo
+    # técnico via PWA (source=tech_pwa) entra neste bucket prioritário.
+    if conv.get("has_tech_conversation"):
+        return "tecnico"
     assignee_role = conv.get("assignee_role")
     if assignee_role == "ai":
         return "automatico"
@@ -3916,6 +3952,10 @@ async def list_conversations(user: dict = Depends(require_role("gestor"))):
             # Lead tag — phone desconhecido aguardando identificação
             "lead_tag": conv.get("lead_tag"),
             "is_unknown_lead": conv.get("is_unknown_lead", False),
+            # iter183 — Conv. Técnico (mensagens enviadas pelo técnico via PWA)
+            "has_tech_conversation": conv.get("has_tech_conversation", False),
+            "last_tech_msg_at": conv.get("last_tech_msg_at"),
+            "last_tech_collab_name": conv.get("last_tech_collab_name"),
         }
         bucket = await _bucket_for_conversation(conv_view, cid)
         conv_view["bucket"] = bucket
@@ -4957,3 +4997,164 @@ async def list_phone_conflicts(
         })
 
     return {"total_conflicts": len(conflicts), "conflicts": conflicts}
+
+
+
+# ---------------------------------------------------------------------------
+# iter183 — Endpoints PÚBLICOS para chat do técnico no app PWA
+# Acesso via collaborator_id (sem JWT). Permitem ao técnico abrir o chat
+# do cliente diretamente no card da OS na Lousa Mobile.
+# ---------------------------------------------------------------------------
+
+async def _company_for_collaborator_wa(collab_id: str) -> str:
+    coll = await db.collaborators.find_one(
+        {"id": collab_id}, {"_id": 0, "company_id": 1, "id": 1},
+    )
+    if not coll:
+        raise HTTPException(404, "Colaborador não encontrado")
+    return coll.get("company_id") or DEMO_COMPANY_ID
+
+
+def _normalize_phone(phone: str) -> str:
+    """Normaliza telefone para formato e164 só dígitos."""
+    digits = re.sub(r"\D", "", phone or "")
+    # Garante DDI 55 (Brasil) se não veio
+    if digits and not digits.startswith("55") and len(digits) in (10, 11):
+        digits = "55" + digits
+    return digits
+
+
+@router.get("/public/conversations/{collab_id}/{phone}/messages")
+async def public_tech_get_messages(collab_id: str, phone: str,
+                                       limit: int = 100):
+    """Lista últimas mensagens (asc). Disponível para o técnico no PWA."""
+    cid = await _company_for_collaborator_wa(collab_id)
+    phone_norm = _normalize_phone(phone)
+    capped = max(1, min(limit, 500))
+    # Aceita ambas variações (com/sem 55) para compat com históricos antigos
+    docs = await db.aihub_wa_messages.find(
+        {"company_id": cid,
+         "phone": {"$in": [phone_norm, phone, phone_norm.lstrip("55")]}},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(capped).to_list(capped)
+    docs.reverse()
+    return {"items": docs, "phone": phone_norm, "count": len(docs)}
+
+
+class PublicTechSendIn(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4096)
+
+
+@router.post("/public/conversations/{collab_id}/{phone}/send")
+async def public_tech_send(collab_id: str, phone: str,
+                              payload: PublicTechSendIn):
+    """Envia mensagem em nome do técnico. Mesmo fluxo do /send admin, mas
+    sem exigir JWT — autenticado via collab_id válido.
+
+    iter183 — Prefixa com "Técnico Ligo {primeiro_nome}: " para identificar
+    quem está falando no WhatsApp do cliente.
+    """
+    cid = await _company_for_collaborator_wa(collab_id)
+    phone_norm = _normalize_phone(phone)
+    if not phone_norm:
+        raise HTTPException(400, "Telefone inválido")
+    coll = await db.collaborators.find_one(
+        {"id": collab_id}, {"_id": 0, "name": 1, "email": 1},
+    ) or {}
+    first_name = ((coll.get("name") or "").strip().split() or [""])[0]
+    if first_name:
+        text_to_send = f"Técnico Ligo {first_name}: {payload.text}"
+    else:
+        text_to_send = payload.text
+    send_ok = False
+    send_error: Optional[str] = None
+    out: Dict[str, Any] = {}
+    try:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=20.0) as cli:
+            r = await cli.post(f"{SIDECAR_BASE}/send",
+                                json={"phone": phone_norm, "text": text_to_send})
+            try:
+                out = r.json()
+            except Exception:
+                out = {"raw": r.text}
+            if r.status_code < 400 and out.get("ok"):
+                send_ok = True
+            else:
+                send_error = (out.get("error")
+                              or f"HTTP {r.status_code}")
+    except httpx.HTTPError as e:
+        logger.warning("[wa-baileys/tech] sidecar /send falhou: %s", e)
+        send_error = str(e)
+
+    await db.aihub_wa_messages.insert_one({
+        "id": f"wam-{uuid.uuid4().hex[:10]}",
+        "company_id": cid,
+        "direction": "outbound",
+        "phone": phone_norm,
+        "text": text_to_send,
+        "channel": "baileys",
+        "message_id": out.get("message_id"),
+        "created_at": now_iso(),
+        "actor_user": coll.get("email") or collab_id,
+        "sent_by_collaborator_id": collab_id,
+        "sent_by_collaborator_name": coll.get("name"),
+        "source": "tech_pwa",
+        "agent_tag": "tecnico_ligo",
+        "auto_reply": False,
+        "delivery_status": "sent" if send_ok else "failed",
+        "delivery_error": send_error,
+    })
+    # iter183 — Marca a conversa como "Conv. Técnico" no painel WhatsApp
+    if send_ok:
+        await db.wa_conversations.update_one(
+            {"company_id": cid, "phone": phone_norm},
+            {"$set": {
+                "has_tech_conversation": True,
+                "last_tech_msg_at": now_iso(),
+                "last_tech_collab_id": collab_id,
+                "last_tech_collab_name": coll.get("name"),
+            },
+             "$setOnInsert": {
+                 "company_id": cid,
+                 "phone": phone_norm,
+                 "created_at": now_iso(),
+            }},
+            upsert=True,
+        )
+    if not send_ok:
+        raise HTTPException(
+            status_code=502,
+            detail=f"WhatsApp não confirmou entrega: {send_error or 'erro desconhecido'}",
+        )
+    return {"ok": True, "phone": phone_norm}
+
+
+
+@router.get("/public/conversations/{collab_id}/{phone}/presence")
+async def public_tech_presence(collab_id: str, phone: str):
+    """iter183.3 — Presença do cliente (composing/recording/available)
+    pra mostrar "escrevendo…" no chat do técnico no PWA. Inscreve em
+    presence updates do Baileys (idempotente) + lê do cache.
+    """
+    await _company_for_collaborator_wa(collab_id)
+    phone_norm = _normalize_phone(phone)
+    out = {"phone": phone_norm, "presence": "unknown", "last_seen": None}
+    if not phone_norm:
+        return out
+    try:
+        async with httpx.AsyncClient(headers=_sidecar_headers(), timeout=5.0) as cli:
+            # Fire-and-forget subscribe (sidecar ignora se já subscrito)
+            try:
+                await cli.post(f"{SIDECAR_BASE}/presence-subscribe",
+                                json={"phone": phone_norm})
+            except Exception:
+                pass
+            r = await cli.get(f"{SIDECAR_BASE}/contact-profile",
+                              params={"phone": phone_norm})
+            if r.status_code == 200:
+                d = r.json()
+                out["presence"] = d.get("presence") or "unknown"
+                out["last_seen"] = d.get("last_seen")
+    except Exception as e:
+        logger.debug("[wa-baileys/tech] presence fetch falhou: %s", e)
+    return out

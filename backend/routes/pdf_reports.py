@@ -268,7 +268,8 @@ async def lousa_tickets_report_data(
     rows = await db.tickets.find(
         query,
         {"_id": 0, "id": 1, "client_snapshot": 1, "type": 1, "priority": 1,
-         "closed_at": 1, "closed_by": 1, "outcome": 1, "status": 1,
+         "closed_at": 1, "closed_by": 1, "closed_by_name": 1,
+         "closed_by_role": 1, "outcome": 1, "status": 1,
          "completion_data": 1, "admin_action": 1,
          "assigned_collaborator_id": 1, "scheduled_time": 1,
          "created_at": 1, "scheduled_date": 1},
@@ -284,6 +285,16 @@ async def lousa_tickets_report_data(
             {"id": {"$in": list(coll_ids)}}, {"_id": 0, "id": 1, "name": 1},
         ):
             coll_map[c["id"]] = c.get("name") or "—"
+    # Mapa de usuários (gestores) — closed_by para admin_action='encerrar'
+    # vem do users collection, não collaborators
+    user_ids = {r.get("closed_by") for r in rows
+                if r.get("admin_action") == "encerrar" and r.get("closed_by")}
+    user_map: Dict[str, str] = {}
+    if user_ids:
+        async for u in db.users.find(
+            {"id": {"$in": list(user_ids)}}, {"_id": 0, "id": 1, "name": 1, "email": 1},
+        ):
+            user_map[u["id"]] = u.get("name") or u.get("email") or "—"
 
     types_count: Dict[str, int] = {}
     internal_close_count = 0
@@ -394,7 +405,8 @@ async def closed_tickets_pdf(
                                   "$lt": d_end.isoformat()}}),
         },
         {"_id": 0, "id": 1, "client_snapshot": 1, "type": 1, "priority": 1,
-         "closed_at": 1, "closed_by": 1, "outcome": 1, "status": 1,
+         "closed_at": 1, "closed_by": 1, "closed_by_name": 1, "outcome": 1,
+         "status": 1,
          "completion_data": 1, "admin_action": 1,
          "assigned_collaborator_id": 1, "scheduled_time": 1,
          "created_at": 1, "scheduled_date": 1},
@@ -411,6 +423,15 @@ async def closed_tickets_pdf(
             {"id": {"$in": list(coll_ids)}}, {"_id": 0, "id": 1, "name": 1},
         ):
             coll_map[c["id"]] = c.get("name", "—")
+    # Mapa de usuários (gestores) que fecharam admin_action='encerrar'
+    user_ids = {r.get("closed_by") for r in rows
+                if r.get("admin_action") == "encerrar" and r.get("closed_by")}
+    user_map: Dict[str, str] = {}
+    if user_ids:
+        async for u in db.users.find(
+            {"id": {"$in": list(user_ids)}}, {"_id": 0, "id": 1, "name": 1, "email": 1},
+        ):
+            user_map[u["id"]] = u.get("name") or u.get("email") or "—"
 
     # Agregações
     types_count: Dict[str, int] = {}
@@ -570,7 +591,18 @@ async def closed_tickets_pdf(
                     if outcome: done_parts.append(f"<b>Result:</b> {outcome[:30]}")
                     if not done_parts: done_parts.append("—")
 
-                    origem = "🛡 Gestor" if r.get("admin_action") == "encerrar" else "👷 Técnico"
+                    origem_str = "👷 Técnico"
+                    if r.get("admin_action") == "encerrar":
+                        gname = (r.get("closed_by_name")
+                                  or user_map.get(r.get("closed_by"))
+                                  or coll_map.get(r.get("closed_by"))
+                                  or "")
+                        if gname:
+                            origem_str = (f"🛡 Gestor<br/>"
+                                           f"<font size='6.5' color='#475569'>{gname[:24]}</font>")
+                        else:
+                            origem_str = "🛡 Gestor"
+                    origem = Paragraph(origem_str, styles["body"])
 
                     body.append([
                         str(i), closed_at, (cs.get("name") or "—")[:30],
@@ -583,7 +615,7 @@ async def closed_tickets_pdf(
             if is_open:
                 col_widths = [7*mm, 24*mm, 24*mm, 38*mm, 18*mm, 14*mm, 22*mm, 100*mm]
             else:
-                col_widths = [7*mm, 24*mm, 38*mm, 18*mm, 16*mm, 28*mm, 100*mm, 20*mm]
+                col_widths = [7*mm, 24*mm, 38*mm, 18*mm, 16*mm, 28*mm, 92*mm, 28*mm]
             table = Table(body, colWidths=col_widths, repeatRows=1)
             ts = [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),

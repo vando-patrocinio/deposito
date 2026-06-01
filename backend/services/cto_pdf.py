@@ -162,7 +162,8 @@ def build_cto_pdf(cto: Dict[str, Any], qr_token: str,
     when = ""
     if approved_at:
         try:
-            when = datetime.fromisoformat(approved_at.replace("Z", "+00:00")).strftime("%d/%m/%Y às %H:%M")
+            from core import fmt_br_dt
+            when = fmt_br_dt(approved_at, "%d/%m/%Y às %H:%M")
         except Exception:
             when = approved_at
     footer_rows = [

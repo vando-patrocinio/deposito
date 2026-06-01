@@ -16,6 +16,7 @@ import CentralOntPanel from "./lousa/CentralOntPanel";
 import GestaoMetasPanel from "./lousa/GestaoMetasPanel";
 import LousaQualityNotesPanel from "./LousaQualityNotesPanel";
 import LousaServicesMap from "./LousaServicesMap";
+import { styleForQuality } from "@/signalQuality";
 import ManagerCallbacksPanel from "./ManagerCallbacksPanel";
 import {
   AiDetailModal,
@@ -98,10 +99,24 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
     if (!isAuditor) return;
     api.lousaAutoReschedGet().then(setAutoReschedCfg).catch(() => {});
   }, [isAuditor]);
+
+  // Atualiza badge de transferências pendentes a cada 30s
+  useEffect(() => {
+    let mounted = true;
+    const fetchPending = () => {
+      api.stokPendingTransfers("pending").then((r) => {
+        if (mounted) setPendingTransfersCount(r?.items?.length || 0);
+      }).catch(() => {});
+    };
+    fetchPending();
+    const id = setInterval(fetchPending, 30000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
   const { user } = useAuth();
   const [grid, setGrid] = useState({ columns: [], sla_blink_when_overdue: true, sla_warning_pct: 80 });
   const [collabs, setCollabs] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [createDefaults, setCreateDefaults] = useState(null);
   const [editingTicket, setEditingTicket] = useState(null);
   const [reschedTicket, setReschedTicket] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -110,6 +125,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [activeSubTab, setActiveSubTab] = useState("board"); // board | central_ont
   const [sentinelaCount, setSentinelaCount] = useState(0);
   const [pendingCallbacksCount, setPendingCallbacksCount] = useState(0);
+  const [pendingTransfersCount, setPendingTransfersCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -489,6 +505,30 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 }}>{sentinelaCount}</span>
               )}
             </ToolbarBtn>
+            {/* Pendentes de transferência ONT */}
+            {pendingTransfersCount > 0 && (
+              <ToolbarBtn
+                onClick={() => {
+                  // Tenta navegar para Estoque > Transferências
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("ponto:navigate",
+                      { detail: { view: "estoque", sub: "transfers" } }));
+                  }
+                }}
+                data-testid="open-pending-transfers-btn"
+                title="Transferências ONT aguardando aprovação"
+                accent="danger"
+              >
+                <span style={{ fontSize: 13 }}>🔄</span>
+                <span>Transferências</span>
+                <span data-testid="pending-transfers-badge" style={{
+                  marginLeft: 2, padding: "1px 6px", borderRadius: 999,
+                  background: "#dc2626", color: "#fff",
+                  fontSize: 10, fontWeight: 800,
+                  fontFamily: "ui-monospace, monospace",
+                }}>{pendingTransfersCount}</span>
+              </ToolbarBtn>
+            )}
             <div style={{ display: "flex", alignItems: "center" }}>
               <DateNavigator
                 selectedDate={selectedDate}
@@ -918,6 +958,11 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               selectMode={selectMode}
               selectedIds={selectedIds}
               onToggleSelect={toggleTicketSelected}
+              onEmptySlotDblClick={(techId, slotHour) => {
+                const dt = `${selectedDate}T${slotHour}`;
+                setCreateDefaults({ assigned_collaborator_id: techId, scheduled_time: dt });
+                setShowCreate(true);
+              }}
             />
           ) : (
             <TechColumn
@@ -941,6 +986,16 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               selectMode={selectMode}
               selectedIds={selectedIds}
               onToggleSelect={toggleTicketSelected}
+              onEmptySlotDblClick={(techId, slotHour) => {
+                // Constrói datetime-local YYYY-MM-DDTHH:MM com base no
+                // selectedDate (já no formato YYYY-MM-DD) e no slotHour HH:MM
+                const dt = `${selectedDate}T${slotHour}`;
+                setCreateDefaults({
+                  assigned_collaborator_id: techId,
+                  scheduled_time: dt,
+                });
+                setShowCreate(true);
+              }}
               wide={!!focusTechId}
             />
           );
@@ -954,8 +1009,9 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       {showCreate && (
         <CreateTicketModal
           collabs={collabs}
-          onClose={() => setShowCreate(false)}
-          onCreated={() => { setShowCreate(false); refresh(); }}
+          defaults={createDefaults}
+          onClose={() => { setShowCreate(false); setCreateDefaults(null); }}
+          onCreated={() => { setShowCreate(false); setCreateDefaults(null); refresh(); }}
         />
       )}
       {editingTicket && (
@@ -1086,7 +1142,7 @@ function OptimizeRouteButton({ collaboratorId }) {
 }
 
 
-function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, maxPerSlot, onSlotDrop, selectMode, selectedIds, onToggleSelect, wide }) {
+function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeave, onDrop, onDragStart, onDragEnd, draggingId, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, maxPerSlot, onSlotDrop, selectMode, selectedIds, onToggleSelect, onEmptySlotDblClick, wide }) {
   const c = column.collaborator;
   const state = column.clock_state;
   const slots = column.slots || [];
@@ -1217,6 +1273,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
             selectMode={selectMode}
             selectedIds={selectedIds}
             onToggleSelect={onToggleSelect}
+            onEmptySlotDblClick={onEmptySlotDblClick}
           />
         ))}
         {unscheduled.length > 0 && (
@@ -1254,7 +1311,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
   );
 }
 
-function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart, onDragEnd, blinkOverdue, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, selectedIds, onToggleSelect }) {
+function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart, onDragEnd, blinkOverdue, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, selectedIds, onToggleSelect, onEmptySlotDblClick }) {
   const [over, setOver] = useState(false);
   const isFull = slot.full;
   const tickets = slot.tickets || [];
@@ -1274,6 +1331,15 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
         setOver(false);
         if (!isFull) onSlotDrop(techId, slot.slot);
       }}
+      onDoubleClick={(e) => {
+        // Só dispara o "Nova OS" se o slot está VAZIO. Se já tem bolhas,
+        // o duplo clique nelas é tratado pelo card (abrir detalhes).
+        if (isEmpty && onEmptySlotDblClick) {
+          e.stopPropagation();
+          onEmptySlotDblClick(techId, slot.slot);
+        }
+      }}
+      title={isEmpty ? "Duplo clique pra criar Nova OS neste horário" : undefined}
       data-testid={`slot-${techId}-${slot.slot}`}
       style={{
         background: over ? "#bfdbfe" : isFull ? "#fef3c7" : isEmpty ? "white" : "#f8fafc",
@@ -1544,15 +1610,9 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
             marginTop: 6, padding: "2px 8px", borderRadius: 999,
             fontSize: 10, fontWeight: 800, fontFamily: "monospace",
             border: "1px solid",
-            background: ticket.live_signal.quality === "good" ? "#dcfce7"
-              : ticket.live_signal.quality === "warn" ? "#fef3c7"
-              : ticket.live_signal.quality === "bad" ? "#fee2e2" : "#f1f5f9",
-            color: ticket.live_signal.quality === "good" ? "#15803d"
-              : ticket.live_signal.quality === "warn" ? "#a16207"
-              : ticket.live_signal.quality === "bad" ? "#b91c1c" : "#475569",
-            borderColor: ticket.live_signal.quality === "good" ? "#86efac"
-              : ticket.live_signal.quality === "warn" ? "#fde68a"
-              : ticket.live_signal.quality === "bad" ? "#fca5a5" : "#cbd5e1",
+            background: styleForQuality(ticket.live_signal.quality).bg,
+            color: styleForQuality(ticket.live_signal.quality).fg,
+            borderColor: styleForQuality(ticket.live_signal.quality).border,
           }}
         >
           📶 {ticket.live_signal.rx_dbm != null ? `${ticket.live_signal.rx_dbm.toFixed(1)} dBm` : "—"}
@@ -2748,7 +2808,7 @@ function overflowItemStyle(color) {
 
 function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId,
   onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, onReschedule,
-  busy, selectMode, selectedIds, onToggleSelect }) {
+  busy, selectMode, selectedIds, onToggleSelect, onEmptySlotDblClick }) {
   const c = column.collaborator;
   const state = column.clock_state;
   const slots = column.slots || [];
@@ -2836,6 +2896,7 @@ function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId
               selectMode={selectMode}
               selectedIds={selectedIds}
               onToggleSelect={onToggleSelect}
+              onEmptySlotDblClick={onEmptySlotDblClick}
             />
           ))}
 
@@ -2927,7 +2988,7 @@ function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId
 
 function TimelineSlot({ slot, isCurrentHour, techId, maxPerSlot, onSlotDrop, draggingId,
   onDragStart, onDragEnd, blinkOverdue, onAdminClose, onAdminOpen, onEdit, onReschedule,
-  busy, selectMode, selectedIds, onToggleSelect }) {
+  busy, selectMode, selectedIds, onToggleSelect, onEmptySlotDblClick }) {
   const [over, setOver] = useState(false);
   const isFull = slot.full;
   const tickets = slot.tickets || [];
@@ -2942,6 +3003,13 @@ function TimelineSlot({ slot, isCurrentHour, techId, maxPerSlot, onSlotDrop, dra
         setOver(false);
         if (!isFull) onSlotDrop(techId, slot.slot);
       }}
+      onDoubleClick={(e) => {
+        if (isEmpty && onEmptySlotDblClick) {
+          e.stopPropagation();
+          onEmptySlotDblClick(techId, slot.slot);
+        }
+      }}
+      title={isEmpty ? "Duplo clique pra criar Nova OS neste horário" : undefined}
       data-testid={`timeline-slot-${techId}-${slot.slot}`}
       style={{
         flex: "0 0 160px",

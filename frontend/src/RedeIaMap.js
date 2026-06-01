@@ -128,6 +128,17 @@ function FitBounds({ ctos }) {
   return null;
 }
 
+// iter180 — Helper: voa até o elemento destacado pela busca
+function FlyToHighlight({ highlight }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!highlight || !highlight.lat || !highlight.lng) return;
+    map.flyTo([highlight.lat, highlight.lng], Math.max(map.getZoom(), 19),
+              { duration: 0.7 });
+  }, [highlight, map]);
+  return null;
+}
+
 // Camada Heatmap: pesos baseados em score de saúde (quanto pior, mais quente)
 function HeatLayer({ ctos, enabled }) {
   const map = useMap();
@@ -170,8 +181,14 @@ export default function RedeIaMap() {
   const [loading, setLoading] = useState(false);
   const [vlanFilter, setVlanFilter] = useState("");
   const [healthFilter, setHealthFilter] = useState("");
+  // iter149 — filtro de cabos por tipo lógico (drop/distribuicao/backbone)
+  // ou capacidade legada (6/12/24/48/96fo). "all" mostra todos.
+  const [cableFilter, setCableFilter] = useState("all");
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState("view"); // view | drag | add-cable | add-ce | draw-cable
+  // iter183 — modal lateral de detalhes do cabo (double-click na polyline)
+  const [activeCableDetail, setActiveCableDetail] = useState(null);
+  const [vlanStats, setVlanStats] = useState(null);
   const [photoLightbox, setPhotoLightbox] = useState(null); // {url, ctoName, uploadedByName}
   const [cableDraft, setCableDraft] = useState({
     from: null,           // { id, type, lat, lng, name }
@@ -188,6 +205,10 @@ export default function RedeIaMap() {
   const [signalLoading, setSignalLoading] = useState(false);
   // CTO ativa no modal de interação (clientes + cadastro)
   const [activeCto, setActiveCto] = useState(null);
+  // iter180 — busca rápida por nome (CTO_301_004, CE_00001, CABO_301_002…)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHighlight, setSearchHighlight] = useState(null);
+  // searchHighlight = { id, kind: "cto"|"ce"|"cable", lat, lng, name }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -242,6 +263,41 @@ export default function RedeIaMap() {
     }
   }
 
+  // iter180 — Busca por nome (CTO_301_004, CE_00001, CABO_301_002 ou trecho)
+  const searchMatches = useMemo(() => {
+    const q = (searchQuery || "").trim().toUpperCase();
+    if (q.length < 2) return [];
+    const out = [];
+    (data.ctos || []).forEach((c) => {
+      const name = (c.name || "").toUpperCase();
+      const legacy = (c.name_legacy || "").toUpperCase();
+      if (name.includes(q) || legacy.includes(q)) {
+        out.push({ id: c.id, name: c.name, kind: "cto",
+                     lat: c.lat, lng: c.lng });
+      }
+    });
+    (data.ces || []).forEach((ce) => {
+      const name = (ce.name || "").toUpperCase();
+      const legacy = (ce.name_legacy || "").toUpperCase();
+      if (name.includes(q) || legacy.includes(q)) {
+        out.push({ id: ce.id, name: ce.name, kind: "ce",
+                     lat: ce.lat, lng: ce.lng });
+      }
+    });
+    (data.cables || []).forEach((cab) => {
+      const name = (cab.name || "").toUpperCase();
+      const legacy = (cab.name_legacy || "").toUpperCase();
+      if (name.includes(q) || legacy.includes(q)) {
+        // cabo: usa ponto médio dos waypoints (ou origem)
+        const wps = cab.waypoints || [];
+        const mid = wps[Math.floor(wps.length / 2)] || wps[0];
+        if (mid) out.push({ id: cab.id, name: cab.name, kind: "cable",
+                              lat: mid.lat, lng: mid.lng });
+      }
+    });
+    return out.slice(0, 12);
+  }, [searchQuery, data.ctos, data.ces, data.cables]);
+
   const filteredCtos = useMemo(() => {
     return data.ctos.filter((c) => {
       if (vlanFilter && String(c.vlan) !== String(vlanFilter)) return false;
@@ -249,6 +305,32 @@ export default function RedeIaMap() {
       return true;
     });
   }, [data.ctos, vlanFilter, healthFilter]);
+
+  // iter149 — filtragem de cabos por tipo + VLAN (via endpoint from)
+  const filteredCables = useMemo(() => {
+    const ctosByIdLocal = new Map();
+    (data.ctos || []).forEach((c) => ctosByIdLocal.set(c.id, c));
+    return (data.cables || []).filter((cab) => {
+      // Filtro por tipo
+      if (cableFilter !== "all") {
+        const logical = (cab.cable_type_logical || "").toLowerCase();
+        const t = (cab.type || "").toLowerCase();
+        const isLogical = ["drop", "distribuicao", "backbone"].includes(cableFilter);
+        if (isLogical) {
+          if (logical !== cableFilter && t !== cableFilter) return false;
+        } else {
+          // Capacidade legada (6fo/12fo/24fo/48fo/96fo)
+          if (t !== cableFilter) return false;
+        }
+      }
+      // Filtro por VLAN — usa endpoint origem para deduzir
+      if (vlanFilter) {
+        const from = ctosByIdLocal.get(cab.from_id);
+        if (!from || String(from.vlan) !== String(vlanFilter)) return false;
+      }
+      return true;
+    });
+  }, [data.cables, data.ctos, cableFilter, vlanFilter]);
 
   const ctosById = useMemo(() => {
     const m = new Map();
@@ -396,7 +478,15 @@ export default function RedeIaMap() {
     } finally { setBusy(false); }
   };
 
-  // Atualiza waypoints de um cabo existente após drag (modo drag)
+  // iter183 — carrega stats da VLAN ao abrir o modal de cabo
+  useEffect(() => {
+    if (!activeCableDetail) { setVlanStats(null); return; }
+    const v = activeCableDetail.vlan;
+    if (!v) { setVlanStats(null); return; }
+    api.redeIaVlanStats(v)
+      .then((r) => setVlanStats(r))
+      .catch(() => setVlanStats(null));
+  }, [activeCableDetail]);
   const updateCableWaypoint = useCallback(async (cableId, idx, latlng) => {
     const cable = data.cables.find((c) => c.id === cableId);
     if (!cable) return;
@@ -506,6 +596,78 @@ export default function RedeIaMap() {
         borderBottom: "1px solid var(--border-default)",
         flexWrap: "wrap",
       }}>
+        {/* iter180 — busca rápida por nome */}
+        <div style={{ position: "relative" }}>
+          <input data-testid="map-search-input"
+            type="search" value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setSearchQuery(""); setSearchHighlight(null);
+              } else if (e.key === "Enter" && searchMatches.length > 0) {
+                const m = searchMatches[0];
+                setSearchHighlight(m); setSearchQuery(m.name);
+              }
+            }}
+            placeholder="🔎 CTO_301_004, CE_00001…"
+            style={{
+              ...selectStyle, width: 220, paddingLeft: 12,
+              fontFamily: "monospace",
+              borderColor: searchHighlight ? "#06b6d4" : undefined,
+            }} />
+          {searchQuery && (
+            <button data-testid="map-search-clear"
+                    onClick={() => { setSearchQuery(""); setSearchHighlight(null); }}
+                    style={{
+                      position: "absolute", right: 6, top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "transparent", border: 0,
+                      fontSize: 14, cursor: "pointer", color: "#94a3b8",
+                      padding: "2px 6px",
+                    }}>✕</button>
+          )}
+          {searchMatches.length > 0
+            && !(searchHighlight && searchQuery === searchHighlight.name) && (
+            <div data-testid="map-search-results" style={{
+              position: "absolute", top: "100%", left: 0,
+              marginTop: 4, background: "#fff",
+              border: "1px solid var(--border-default)",
+              borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+              zIndex: 1000, minWidth: 260, maxHeight: 320,
+              overflowY: "auto",
+            }}>
+              {searchMatches.map((m) => (
+                <button key={`${m.kind}-${m.id}`}
+                        data-testid={`map-search-hit-${m.id}`}
+                        onClick={() => {
+                          setSearchHighlight(m);
+                          setSearchQuery(m.name);
+                        }}
+                        style={{
+                          display: "block", width: "100%",
+                          padding: "8px 12px", textAlign: "left",
+                          background: "transparent", border: 0,
+                          cursor: "pointer", fontSize: 12.5,
+                          borderBottom: "1px solid #f1f5f9",
+                          fontFamily: "monospace",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                  <span style={{
+                    display: "inline-block", padding: "1px 6px", borderRadius: 4,
+                    marginRight: 8, fontSize: 9, fontWeight: 800,
+                    background: m.kind === "cto" ? "#dbeafe"
+                                : m.kind === "ce" ? "#fef3c7" : "#fed7aa",
+                    color: m.kind === "cto" ? "#1e40af"
+                            : m.kind === "ce" ? "#92400e" : "#9a3412",
+                  }}>{m.kind.toUpperCase()}</span>
+                  {m.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <select data-testid="map-filter-vlan" value={vlanFilter}
           onChange={(e) => setVlanFilter(e.target.value)}
           style={selectStyle}>
@@ -524,6 +686,20 @@ export default function RedeIaMap() {
           <option value="warning">🟡 Atenção</option>
           <option value="ok">🟢 Saudável</option>
           <option value="no_data">⚫ Sem dados</option>
+        </select>
+        <select data-testid="map-filter-cable" value={cableFilter}
+          onChange={(e) => setCableFilter(e.target.value)}
+          style={selectStyle}
+          title="Filtra os cabos exibidos no mapa">
+          <option value="all">Todos os cabos</option>
+          <option value="drop">🔵 Drop (cliente)</option>
+          <option value="distribuicao">🟧 Distribuição</option>
+          <option value="backbone">🔴 Backbone</option>
+          <option value="6fo">6FO</option>
+          <option value="12fo">12FO</option>
+          <option value="24fo">24FO</option>
+          <option value="48fo">48FO</option>
+          <option value="96fo">96FO</option>
         </select>
         <button data-testid="map-refresh" onClick={load}
                 style={tbBtn("#0f172a")}>
@@ -639,6 +815,7 @@ export default function RedeIaMap() {
             maxZoom={19}
           />
           <FitBounds ctos={filteredCtos} />
+          <FlyToHighlight highlight={searchHighlight} />
           <HeatLayer ctos={filteredCtos} enabled={showHeatmap} />
           <MapClickHandler
             enabled={mode === "add-ce" || mode === "draw-cable"}
@@ -692,27 +869,94 @@ export default function RedeIaMap() {
           )}
 
           {/* Cabos */}
-          {data.cables.map((cab) => {
+          {filteredCables.map((cab) => {
             const path = buildCablePath(cab);
             if (!path) return null;
+            // iter149 — label flutuante no ponto médio do cabo
+            const mid = path[Math.floor(path.length / 2)];
+            const occPct = (cab.fo_count && cab.fibras_ocupadas != null)
+              ? Math.round((cab.fibras_ocupadas / cab.fo_count) * 100) : null;
+            const occColor = occPct == null ? "#64748b"
+              : occPct >= 80 ? "#dc2626"
+              : occPct >= 50 ? "#ea580c" : "#16a34a";
             return (
               <React.Fragment key={cab.id}>
                 <Polyline positions={path}
+                  eventHandlers={{
+                    dblclick: () => setActiveCableDetail?.(cab),
+                  }}
                   pathOptions={{
-                    color: CABLE_COLORS[cab.type] || "#64748b",
-                    weight: CABLE_WIDTHS[cab.type] || 3,
-                    opacity: 0.85,
-                    dashArray: cab.type === "drop" ? "6 6" : null,
+                    // iter186 — cabo solto (sem from/to vinculado) é laranja
+                    color: cab.status === "cabo_solto"
+                      ? "#ea580c"
+                      : (CABLE_COLORS[cab.type] || "#64748b"),
+                    // iter183 — espessura proporcional ao FO
+                    weight: cab.fo_count
+                      ? Math.max(3, Math.min(10, Math.log2(cab.fo_count) + 1))
+                      : (CABLE_WIDTHS[cab.type] || 3),
+                    opacity: cab.status === "cabo_solto" ? 0.95 : 0.85,
+                    dashArray: cab.status === "cabo_solto"
+                      ? "8 6"
+                      : (cab.type === "drop" ? "6 6" : null),
                   }}>
+                  <Tooltip permanent direction="center"
+                             offset={[0, -8]} className="cable-label-tooltip">
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      padding: "2px 7px",
+                      background: "rgba(255,255,255,0.96)",
+                      border: `1px solid ${CABLE_COLORS[cab.type] || "#64748b"}`,
+                      borderRadius: 999,
+                      fontSize: 10, fontWeight: 700, color: "#0f172a",
+                      whiteSpace: "nowrap",
+                      boxShadow: "0 1px 4px rgba(15,23,42,0.18)",
+                    }}>
+                      {cab.name || (cab.type || "").toUpperCase()}
+                      <span style={{
+                        color: CABLE_COLORS[cab.type] || "#64748b",
+                        fontWeight: 800,
+                      }}>· {cab.fo_count || cab.type?.replace("fo", "")}FO</span>
+                      {occPct != null && (
+                        <span style={{
+                          color: occColor, fontWeight: 800,
+                        }}>· {occPct}%</span>
+                      )}
+                    </span>
+                  </Tooltip>
                   <Popup>
-                    <div style={{ minWidth: 220 }}>
+                    <div style={{ minWidth: 240 }}>
                       <div style={{ fontWeight: 800, marginBottom: 4 }}>
-                        Cabo {cab.type.toUpperCase()}
+                        {cab.name || `Cabo ${cab.type.toUpperCase()}`}
                       </div>
                       <div style={{ fontSize: 12, color: "#64748b" }}>
-                        {cab.fo_count} fibras · {cab.length_m
-                          ? `${Math.round(cab.length_m)}m` : "comprimento ?"}
+                        <strong>{cab.fo_count || 0} FO</strong>
+                        {cab.total_length_m
+                          ? <> · <strong>{Math.round(cab.total_length_m)}m</strong> total</>
+                          : cab.length_m
+                          ? <> · {Math.round(cab.length_m)}m</>
+                          : null}
+                        {cab.route_distance_m && (
+                          <span> ({Math.round(cab.route_distance_m)}m trajeto + {cab.extra_margin_m || 20}m sobra)</span>
+                        )}
+                        {occPct != null && (
+                          <span> · <strong style={{ color: occColor }}>
+                            {cab.fibras_ocupadas}/{cab.fo_count} ocupadas ({occPct}%)
+                          </strong></span>
+                        )}
                       </div>
+                      {cab.cable_brand && (
+                        <div style={{ fontSize: 11, marginTop: 3, color: "#475569" }}>
+                          Marca: <strong>{cab.cable_brand}</strong>
+                          {cab.cable_serial && <> · NS: <code>{cab.cable_serial}</code></>}
+                        </div>
+                      )}
+                      {(cab.cable_type_logical || cab.cable_type) && (
+                        <div style={{ fontSize: 11, marginTop: 3,
+                                        color: "#475569",
+                                        textTransform: "capitalize" }}>
+                          Tipo: <strong>{cab.cable_type_logical || cab.cable_type}</strong>
+                        </div>
+                      )}
                       {cab.created_by && (
                         <div style={{ fontSize: 11, marginTop: 4,
                                         color: "#475569" }}>
@@ -720,32 +964,95 @@ export default function RedeIaMap() {
                           {cab.created_at && ` · ${new Date(cab.created_at).toLocaleString("pt-BR", {day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"})}`}
                         </div>
                       )}
-                      {cab.stok_debit && (
-                        <div style={{ marginTop: 6, padding: "5px 8px",
-                                        background: "#f0fdf4",
-                                        border: "1px solid #bbf7d0",
-                                        borderRadius: 6, fontSize: 11,
-                                        color: "#065f46" }}>
-                          📦 Estoque: <strong>{Math.abs(cab.stok_debit.meters_signed)}m</strong>
-                          {" "}de <strong>{cab.stok_debit.consumable_id.replace("fibra_","").toUpperCase()}</strong>
-                          {" "}debitados de <strong>{cab.stok_debit.location === "empresa" ? "Empresa" : "Técnico"}</strong>
-                        </div>
-                      )}
-                      {cab.notes && (
-                        <div style={{ fontSize: 11, marginTop: 6, color: "#475569" }}>
-                          {cab.notes}
-                        </div>
-                      )}
-                      <button onClick={() => removeCable(cab.id)}
-                        style={{ marginTop: 8, padding: "4px 10px", border: 0,
-                                  background: "#dc2626", color: "#fff",
-                                  borderRadius: 6, fontSize: 11, cursor: "pointer",
-                                  fontWeight: 700 }}>
-                        Excluir cabo
-                      </button>
+                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                        <button onClick={() => setActiveCableDetail?.(cab)}
+                          style={{ padding: "4px 10px", border: 0,
+                                    background: "#0d9488", color: "#fff",
+                                    borderRadius: 6, fontSize: 11, cursor: "pointer",
+                                    fontWeight: 700, flex: 1 }}>
+                          Ver detalhes completos
+                        </button>
+                        <button onClick={() => removeCable(cab.id)}
+                          style={{ padding: "4px 10px", border: 0,
+                                    background: "#dc2626", color: "#fff",
+                                    borderRadius: 6, fontSize: 11, cursor: "pointer",
+                                    fontWeight: 700 }}>
+                          Excluir
+                        </button>
+                      </div>
                     </div>
                   </Popup>
                 </Polyline>
+                {/* iter186 — Pinos laranja pulsantes nas pontas SOLTAS */}
+                {cab.is_loose && (cab.segments || []).length >= 2 && (
+                  <>
+                    {!cab.from_id && (
+                      <Marker
+                        position={[cab.segments[0].lat, cab.segments[0].lng]}
+                        icon={L.divIcon({
+                          className: "loose-end-pin",
+                          html: `
+                            <div style="position:relative;width:28px;height:28px;">
+                              <div style="position:absolute;inset:0;border-radius:50%;
+                                background:#ea580c;opacity:0.4;
+                                animation:looseEndPulse 1.5s ease-out infinite;"></div>
+                              <div style="position:absolute;top:6px;left:6px;
+                                width:16px;height:16px;border-radius:50%;
+                                background:#ea580c;border:3px solid #fff;
+                                box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>
+                            </div>`,
+                          iconSize: [28, 28],
+                          iconAnchor: [14, 14],
+                        })}
+                        eventHandlers={{
+                          click: () => setActiveCableDetail?.({
+                            ...cab, _loose_end: "from",
+                            _loose_lat: cab.segments[0].lat,
+                            _loose_lng: cab.segments[0].lng,
+                          }),
+                        }}>
+                        <Tooltip direction="top" offset={[0, -12]}>
+                          🧵 <strong>{cab.name}</strong>
+                          <br />Ponta solta (Origem) — clique para vincular
+                        </Tooltip>
+                      </Marker>
+                    )}
+                    {!cab.to_id && (
+                      <Marker
+                        position={[
+                          cab.segments[cab.segments.length - 1].lat,
+                          cab.segments[cab.segments.length - 1].lng,
+                        ]}
+                        icon={L.divIcon({
+                          className: "loose-end-pin",
+                          html: `
+                            <div style="position:relative;width:28px;height:28px;">
+                              <div style="position:absolute;inset:0;border-radius:50%;
+                                background:#ea580c;opacity:0.4;
+                                animation:looseEndPulse 1.5s ease-out infinite;"></div>
+                              <div style="position:absolute;top:6px;left:6px;
+                                width:16px;height:16px;border-radius:50%;
+                                background:#ea580c;border:3px solid #fff;
+                                box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>
+                            </div>`,
+                          iconSize: [28, 28],
+                          iconAnchor: [14, 14],
+                        })}
+                        eventHandlers={{
+                          click: () => setActiveCableDetail?.({
+                            ...cab, _loose_end: "to",
+                            _loose_lat: cab.segments[cab.segments.length - 1].lat,
+                            _loose_lng: cab.segments[cab.segments.length - 1].lng,
+                          }),
+                        }}>
+                        <Tooltip direction="top" offset={[0, -12]}>
+                          🧵 <strong>{cab.name}</strong>
+                          <br />Ponta solta (Destino) — clique para vincular
+                        </Tooltip>
+                      </Marker>
+                    )}
+                  </>
+                )}
                 {/* Waypoints intermediários (índices 1..n-2 — exclui pontas) */}
                 {mode === "drag" && (cab.segments || []).map((seg, idx) => {
                   if (idx === 0 || idx === (cab.segments.length - 1)) return null;
@@ -774,20 +1081,30 @@ export default function RedeIaMap() {
 
           {/* CEs */}
           {data.ces.map((ce) => (
-            <Marker key={ce.id} position={[ce.lat, ce.lng]}
-              icon={makeCeIcon(ce)}
-              draggable={mode === "drag"}
-              eventHandlers={{
-                dragend: (e) => handleDragEnd("ce", ce.id, e.target.getLatLng()),
-                click: (e) => {
-                  if (mode === "add-cable" || mode === "draw-cable") {
-                    e.originalEvent?.stopPropagation();
-                    handleEntityClick({ id: ce.id, type: "ce",
-                                         lat: ce.lat, lng: ce.lng, name: ce.name });
-                    e.target.closePopup();
-                  }
-                },
-              }}>
+            <React.Fragment key={ce.id}>
+              {/* iter180 — anel de busca */}
+              {searchHighlight?.id === ce.id && (
+                <CircleMarker center={[ce.lat, ce.lng]}
+                  radius={36}
+                  pathOptions={{
+                    color: "#06b6d4", fillColor: "#06b6d4",
+                    fillOpacity: 0.18, weight: 3,
+                  }} />
+              )}
+              <Marker position={[ce.lat, ce.lng]}
+                icon={makeCeIcon(ce)}
+                draggable={mode === "drag"}
+                eventHandlers={{
+                  dragend: (e) => handleDragEnd("ce", ce.id, e.target.getLatLng()),
+                  click: (e) => {
+                    if (mode === "add-cable" || mode === "draw-cable") {
+                      e.originalEvent?.stopPropagation();
+                      handleEntityClick({ id: ce.id, type: "ce",
+                                           lat: ce.lat, lng: ce.lng, name: ce.name });
+                      e.target.closePopup();
+                    }
+                  },
+                }}>
               <Tooltip direction="top" offset={[0, -15]}>
                 <strong>{ce.name}</strong>
               </Tooltip>
@@ -821,6 +1138,7 @@ export default function RedeIaMap() {
                 </div>
               </Popup>
             </Marker>
+            </React.Fragment>
           ))}
 
           {/* CTOs */}
@@ -833,6 +1151,15 @@ export default function RedeIaMap() {
                                 : photoSev >= 15 ? "#ca8a04" : null;
             return (
               <React.Fragment key={c.id}>
+                {/* iter180 — anel de busca destacando o elemento encontrado */}
+                {searchHighlight?.id === c.id && (
+                  <CircleMarker center={[c.lat, c.lng]}
+                    radius={36}
+                    pathOptions={{
+                      color: "#06b6d4", fillColor: "#06b6d4",
+                      fillOpacity: 0.18, weight: 3,
+                    }} />
+                )}
                 {/* halo saúde física via IA (anel externo) */}
                 {photoColor && (
                   <CircleMarker center={[c.lat, c.lng]}
@@ -1235,6 +1562,14 @@ export default function RedeIaMap() {
           ctoId={activeCto.id}
           ctoMeta={activeCto}
           onClose={() => setActiveCto(null)}
+        />
+      )}
+      {/* iter183 — Modal lateral de detalhes do cabo */}
+      {activeCableDetail && (
+        <CableDetailDrawer
+          cable={activeCableDetail}
+          vlanStats={vlanStats}
+          onClose={() => setActiveCableDetail(null)}
         />
       )}
       {photoLightbox && (
@@ -1806,5 +2141,205 @@ function KmzControls({ vlanFilter, onImported }) {
         style={{ display: "none" }}
       />
     </>
+  );
+}
+
+
+// ============================================================================
+// iter183 — Drawer lateral com detalhes do cabo
+// ============================================================================
+function CableDetailDrawer({ cable, vlanStats, onClose }) {
+  const c = cable || {};
+  const occPct = c.fo_count && c.fibras_ocupadas != null
+    ? Math.round((c.fibras_ocupadas / c.fo_count) * 100) : null;
+  return (
+    <div data-testid="cable-detail-drawer"
+         style={{ position: "fixed", inset: 0, zIndex: 1000,
+                    background: "rgba(15,23,42,0.4)",
+                    display: "flex", justifyContent: "flex-end" }}
+         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: "white", width: "100%", maxWidth: 420,
+                      height: "100%", padding: 20, overflowY: "auto",
+                      boxShadow: "-10px 0 30px rgba(0,0,0,0.2)" }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700,
+                            textTransform: "uppercase", letterSpacing: 0.5 }}>
+              Detalhes do cabo
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a",
+                            marginTop: 2 }}>
+              {c.name || "Cabo s/ nome"}
+            </div>
+          </div>
+          <button onClick={onClose} data-testid="cable-detail-close"
+                  style={{ background: "#f1f5f9", border: 0, padding: 10,
+                             borderRadius: 8, cursor: "pointer",
+                             fontSize: 16, fontWeight: 800 }}>
+            ✕
+          </button>
+        </div>
+
+        {/* iter186 — Vincular ponta solta */}
+        {c._loose_end && (
+          <div style={{ padding: 14, background: "#fff7ed",
+                            border: "1px solid #fed7aa",
+                            borderRadius: 12, marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#9a3412",
+                              marginBottom: 6, textTransform: "uppercase",
+                              letterSpacing: 0.5 }}>
+              🧵 Ponta solta — {c._loose_end === "from" ? "Origem" : "Destino"}
+            </div>
+            <div style={{ fontSize: 12, color: "#7c2d12", marginBottom: 10,
+                              lineHeight: 1.45 }}>
+              GPS: {c._loose_lat?.toFixed(5)}, {c._loose_lng?.toFixed(5)}
+              <br />Clique numa ação:
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button data-testid="loose-link-existing"
+                          onClick={() => {
+                            onClose();
+                            window.dispatchEvent(new CustomEvent(
+                              "rede-ia-navigate",
+                              { detail: { tab: "orphan_cables" } },
+                            ));
+                          }}
+                          style={{ flex: 1, padding: "10px 12px",
+                                       borderRadius: 8, border: "1px solid #ea580c",
+                                       background: "#fff", color: "#9a3412",
+                                       fontWeight: 700, fontSize: 12,
+                                       cursor: "pointer" }}>
+                🔗 Ir para Cabos Órfãos
+              </button>
+              <button data-testid="loose-cadastrar-aqui"
+                          onClick={() => {
+                            const u = new URL(window.location.href);
+                            u.searchParams.set("cadastrar_aqui",
+                              `${c._loose_lat},${c._loose_lng}`);
+                            window.location.href = u.toString();
+                          }}
+                          style={{ flex: 1, padding: "10px 12px",
+                                       borderRadius: 8, border: "1px solid #ea580c",
+                                       background: "#ea580c", color: "#fff",
+                                       fontWeight: 700, fontSize: 12,
+                                       cursor: "pointer" }}>
+                + Cadastrar CTO aqui
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Card principal */}
+        <div style={{ padding: 14, background: "#f8fafc",
+                        borderRadius: 12, marginBottom: 14 }}>
+          <Row label="FO (fibras)"   value={c.fo_count ? `${c.fo_count} FO` : "—"} />
+          <Row label="Marca"          value={c.cable_brand || "—"} />
+          <Row label="Nº de série"   value={c.cable_serial || "—"} mono />
+          <Row label="Tipo"            value={(c.cable_type_logical || c.cable_type || "—").toString().toUpperCase()} />
+          <Row label="VLAN"            value={c.vlan ? `VLAN ${c.vlan}` : "—"} />
+        </div>
+
+        {/* Métricas de comprimento */}
+        <div style={{ padding: 14, background: "linear-gradient(135deg,#0d9488,#06b6d4)",
+                        color: "#fff", borderRadius: 12, marginBottom: 14 }}>
+          <div style={{ fontSize: 10, opacity: 0.85, textTransform: "uppercase",
+                          letterSpacing: 0.5, fontWeight: 700, marginBottom: 6 }}>
+            📏 Comprimento deste cabo
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 900 }}>
+            {c.total_length_m
+              ? `${Math.round(c.total_length_m)} m`
+              : c.length_m ? `${Math.round(c.length_m)} m` : "—"}
+          </div>
+          {c.route_distance_m && (
+            <div style={{ fontSize: 11, marginTop: 4, opacity: 0.9 }}>
+              {Math.round(c.route_distance_m)}m trajeto + {c.extra_margin_m || 20}m sobra
+            </div>
+          )}
+        </div>
+
+        {/* Ocupação */}
+        {occPct != null && (
+          <div style={{ padding: 14, background: "#fef3c7",
+                          borderRadius: 12, marginBottom: 14,
+                          border: "1px solid #fde68a" }}>
+            <div style={{ fontSize: 10, color: "#92400e", fontWeight: 700,
+                            textTransform: "uppercase", letterSpacing: 0.5,
+                            marginBottom: 4 }}>
+              Ocupação de fibras
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#78350f" }}>
+              {c.fibras_ocupadas} / {c.fo_count} ({occPct}%)
+            </div>
+            <div style={{ height: 6, background: "#fef9c3", borderRadius: 3,
+                            marginTop: 8, overflow: "hidden" }}>
+              <div style={{ width: `${occPct}%`, height: "100%",
+                              background: occPct > 80 ? "#dc2626"
+                                : occPct > 60 ? "#f59e0b" : "#16a34a" }} />
+            </div>
+          </div>
+        )}
+
+        {/* Stats da VLAN */}
+        {vlanStats && (
+          <div style={{ padding: 14, background: "#f0f9ff",
+                          borderRadius: 12, marginBottom: 14,
+                          border: "1px solid #bae6fd" }}>
+            <div style={{ fontSize: 10, color: "#0369a1", fontWeight: 700,
+                            textTransform: "uppercase", letterSpacing: 0.5,
+                            marginBottom: 6 }}>
+              📡 VLAN {vlanStats.vlan} — totais
+            </div>
+            <Row label="Total de cabo"
+                 value={`${Math.round(vlanStats.total_cable_m || 0).toLocaleString("pt-BR")} m`} />
+            <Row label="Cabos"      value={vlanStats.cables_count} />
+            <Row label="CTOs"       value={vlanStats.ctos_count} />
+            <Row label="CEs"        value={vlanStats.ces_count} />
+            <Row label="Portas"
+                 value={`${vlanStats.ports_used}/${vlanStats.ports_total} (${vlanStats.occupancy_pct}%)`} />
+          </div>
+        )}
+
+        {/* Origem / Destino */}
+        <div style={{ padding: 14, background: "#fafafa",
+                        border: "1px dashed #e2e8f0",
+                        borderRadius: 12, marginBottom: 14 }}>
+          <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700,
+                          textTransform: "uppercase", letterSpacing: 0.5,
+                          marginBottom: 6 }}>
+            Origem → Destino
+          </div>
+          <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.6 }}>
+            <strong>{c.from_element_name || c.from_element_id || "Ponto livre"}</strong>
+            <br />↓<br />
+            <strong>{c.to_element_name || c.to_element_id || "Ponto livre"}</strong>
+          </div>
+        </div>
+
+        {c.created_by && (
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 16,
+                          paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
+            Lançado por <strong>{c.created_by}</strong>
+            {c.created_at && (
+              <> em {new Date(c.created_at).toLocaleString("pt-BR")}</>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value, mono = false }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between",
+                    padding: "5px 0", fontSize: 13,
+                    borderBottom: "1px solid rgba(0,0,0,0.04)" }}>
+      <span style={{ color: "#64748b" }}>{label}</span>
+      <span style={{ color: "#0f172a", fontWeight: 700,
+                       fontFamily: mono ? "monospace" : "inherit" }}>
+        {value}
+      </span>
+    </div>
   );
 }

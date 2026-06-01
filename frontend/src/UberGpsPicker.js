@@ -28,11 +28,25 @@ async function reverseGeocode(lat, lng) {
   if (!res.ok) throw new Error("Falha no reverse geocode");
   const data = await res.json();
   const a = data.address || {};
+  // Tenta várias chaves do Nominatim que podem conter o bairro;
+  // se nada bater, faz fallback pra extrair do display_name (segundo token).
+  let bairro = a.suburb || a.neighbourhood || a.quarter
+    || a.city_district || a.district || a.borough
+    || a.residential || a.hamlet || a.locality || "";
+  if (!bairro && data.display_name) {
+    // display_name padrão BR: "Rua X, 123, Bairro Y, Cidade Z, Estado, CEP, País"
+    const parts = String(data.display_name).split(",").map((s) => s.trim()).filter(Boolean);
+    // O bairro normalmente é o 2º ou 3º (depende de ter número ou não)
+    if (parts.length >= 3) {
+      // Se o 2º for um número curto (house number), pula
+      const candidate = (/^\d+$/.test(parts[1] || "") ? parts[2] : parts[1]) || "";
+      bairro = candidate;
+    }
+  }
   return {
     rua: a.road || a.pedestrian || a.path || "",
     numero: a.house_number || "",
-    bairro: a.suburb || a.neighbourhood || a.quarter
-      || a.city_district || a.district || "",
+    bairro,
     cidade: a.city || a.town || a.village || a.municipality || "",
     estado: a.state_code || a.state || "",
     cep: a.postcode || "",

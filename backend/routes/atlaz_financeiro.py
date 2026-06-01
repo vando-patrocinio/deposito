@@ -226,7 +226,7 @@ async def sync_now(
     days_back: int = Query(15, ge=1, le=365),
     days_forward: int = Query(15, ge=0, le=365),
     enrich_clients: bool = Query(True),
-    user: dict = Depends(require_role("administrador")),
+    user: dict = Depends(require_role("administrador", "gestor", "auditor", "financeiro")),
 ):
     """Pull manual de faturas do Atlaz V2 → `subscriber_invoices`.
 

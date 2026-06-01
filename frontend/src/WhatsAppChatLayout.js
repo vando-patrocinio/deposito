@@ -37,6 +37,7 @@ const BUCKETS = [
   { id: "aguardando",  label: "Aguardando",              icon: Clock,     color: "#f59e0b" },
   { id: "fora_de_hora",label: "Fora de hora",            icon: MoonStar,  color: "#6366f1" },
   { id: "manual",      label: "Atendimento Especializado", icon: Hand,    color: "#0ea5e9" },
+  { id: "tecnico",     label: "Conv. Técnico",           icon: UserCheck, color: "#16a34a" },
   { id: "grupo",       label: "Grupo",                   icon: Users,     color: "#94a3b8" },
 ];
 
@@ -911,6 +912,27 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
                 }}
               >
                 {conv.lead_tag}
+              </div>
+            )}
+            {/* iter183 — Tag "Técnico: NOME" quando a conversa tem
+                interação do técnico via PWA */}
+            {conv.has_tech_conversation && conv.last_tech_collab_name && (
+              <div
+                data-testid={`wa-tech-tag-${conv.phone}`}
+                title={`Técnico ${conv.last_tech_collab_name} está conversando com o cliente · IA pausada`}
+                style={{
+                  marginTop: 3, display: "inline-flex", alignItems: "center",
+                  gap: 4, padding: "2px 7px", borderRadius: 4,
+                  background: "#dcfce7", color: "#15803d",
+                  fontSize: 10, fontWeight: 700,
+                  border: "1px solid #86efac",
+                  width: "fit-content",
+                  maxWidth: "100%",
+                  overflow: "hidden", textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                🔧 {conv.last_tech_collab_name}
               </div>
             )}
           </div>

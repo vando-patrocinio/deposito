@@ -12,7 +12,7 @@ import { api } from "@/api";
 import { Field, inputStyle } from "@/ui";
 import {
   X, Users, Plus, Signal, MapPin, Loader2, CheckCircle2,
-  AlertCircle, Search, Camera,
+  AlertCircle, Search, Camera, ArrowLeftRight,
 } from "lucide-react";
 
 function statusColor(s) {
@@ -92,6 +92,7 @@ export default function CTOInteractionModal({ ctoId, ctoMeta, onClose }) {
           {[
             { id: "clients", label: "Clientes ligados", icon: Users },
             { id: "photos",  label: "Histórico de fotos", icon: Camera },
+            { id: "swaps",   label: "Trocas de porta", icon: ArrowLeftRight },
             { id: "new",     label: "Cadastrar novo cliente", icon: Plus },
           ].map((t) => {
             const Icon = t.icon;
@@ -131,6 +132,8 @@ export default function CTOInteractionModal({ ctoId, ctoMeta, onClose }) {
             <ClientsList data={data} />
           ) : tab === "photos" ? (
             <CTOPhotosTab ctoId={ctoId} />
+          ) : tab === "swaps" ? (
+            <CTOPortSwapsTab ctoId={ctoId} />
           ) : (
             <ProvisionForm cto={data?.cto} ctoId={ctoId}
                               freeSlots={data?.free_slots || []}
@@ -699,6 +702,164 @@ function ProvisionForm({ cto, ctoId, freeSlots, onCreated }) {
           {submitting ? "Cadastrando…" : "Cadastrar ONU"}
         </button>
       </div>
+    </div>
+  );
+}
+
+
+function CTOPortSwapsTab({ ctoId }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true); setErr("");
+      try {
+        const r = await api.redeIaCtoPortSwaps(ctoId, 50);
+        if (alive) setData(r);
+      } catch (e) {
+        if (alive) setErr(e?.response?.data?.detail || e.message || "Erro");
+      } finally { if (alive) setLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [ctoId]);
+
+  if (loading) {
+    return (
+      <div style={{ padding: 24, textAlign: "center", color: "#64748b" }}>
+        <Loader2 size={16} className="animate-spin" /> Carregando histórico…
+      </div>
+    );
+  }
+  if (err) {
+    return (
+      <div style={{ padding: 12, background: "#fef2f2", color: "#991b1b",
+                      borderRadius: 8, fontSize: 12 }}>{err}</div>
+    );
+  }
+  const swaps = data?.swaps || [];
+  if (!swaps.length) {
+    return (
+      <div data-testid="cto-swaps-empty"
+            style={{ padding: 24, textAlign: "center", color: "#94a3b8",
+                      fontSize: 13 }}>
+        Nenhuma troca de porta registrada nesta CTO.
+        <div style={{ fontSize: 11, marginTop: 6 }}>
+          O histórico aparece aqui quando técnicos confirmam trocas de porta
+          durante a finalização de uma OS.
+        </div>
+      </div>
+    );
+  }
+
+  // KPI rápido: total + % com sync no SmartOLT + último técnico
+  const total = swaps.length;
+  const olt = swaps.filter((s) => s.from_smartolt).length;
+  const synced = swaps.filter((s) => s.from_smartolt && s.smartolt_synced).length;
+
+  return (
+    <div data-testid="cto-swaps-tab">
+      <div style={{ display: "grid",
+                       gridTemplateColumns: "repeat(3, 1fr)",
+                       gap: 8, marginBottom: 14 }}>
+        <KpiMini label="Total" value={total} color="#0f172a" />
+        <KpiMini label="Origem SmartOLT" value={olt}
+                  hint={olt ? `${synced} sync OK` : "—"}
+                  color="#0891b2" />
+        <KpiMini label="Última troca"
+                  value={swaps[0]?.at
+                            ? new Date(swaps[0].at).toLocaleDateString("pt-BR")
+                            : "—"}
+                  hint={swaps[0]?.technician_name || ""}
+                  color="#7c3aed" />
+      </div>
+
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#475569",
+                       textTransform: "uppercase", letterSpacing: 0.5,
+                       marginBottom: 8 }}>
+        Trocas recentes (mais novas primeiro)
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {swaps.map((s, idx) => {
+          const when = s.at ? new Date(s.at) : null;
+          return (
+            <div key={idx}
+                    data-testid={`cto-swap-row-${idx}`}
+                    style={{
+                      padding: 12, border: "1px solid #e2e8f0",
+                      borderRadius: 10, background: "#fafafa",
+                    }}>
+              <div style={{ display: "flex", alignItems: "center",
+                                 justifyContent: "space-between",
+                                 marginBottom: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                  {s.client_name}
+                </div>
+                {s.from_smartolt && (
+                  <span title={s.smartolt_synced
+                                  ? "Sync no SmartOLT confirmado"
+                                  : "Pendente sync no SmartOLT"}
+                          style={{
+                            fontSize: 9, fontWeight: 800, letterSpacing: 0.5,
+                            padding: "2px 6px", borderRadius: 999,
+                            background: s.smartolt_synced ? "#dcfce7" : "#fef3c7",
+                            color:      s.smartolt_synced ? "#166534" : "#92400e",
+                            textTransform: "uppercase",
+                          }}>
+                    {s.smartolt_synced ? "SmartOLT ✓" : "SmartOLT ⏳"}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8,
+                                 fontSize: 16, fontWeight: 800 }}>
+                <span style={{
+                  width: 36, height: 36, borderRadius: 8,
+                  background: "#fee2e2", color: "#991b1b",
+                  display: "grid", placeItems: "center",
+                }}>{s.from_port}</span>
+                <ArrowLeftRight size={20} color="#0d9488" />
+                <span style={{
+                  width: 36, height: 36, borderRadius: 8,
+                  background: "#dcfce7", color: "#15803d",
+                  display: "grid", placeItems: "center",
+                }}>{s.to_port}</span>
+                <div style={{ fontSize: 11, color: "#64748b",
+                                   marginLeft: "auto", textAlign: "right" }}>
+                  {when ? when.toLocaleString("pt-BR") : "—"}
+                  <br />
+                  <span style={{ fontWeight: 700, color: "#475569" }}>
+                    {s.technician_name}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function KpiMini({ label, value, hint, color }) {
+  return (
+    <div style={{
+      padding: 10, borderRadius: 8, background: "#f8fafc",
+      border: "1px solid #e2e8f0",
+    }}>
+      <div style={{
+        fontSize: 9, fontWeight: 700, color: "#94a3b8",
+        textTransform: "uppercase", letterSpacing: 0.5,
+      }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 800, color, lineHeight: 1.1,
+                       marginTop: 2 }}>{value}</div>
+      {hint && (
+        <div style={{ fontSize: 10, color: "#64748b",
+                          marginTop: 2 }}>{hint}</div>
+      )}
     </div>
   );
 }

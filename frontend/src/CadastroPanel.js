@@ -7,6 +7,7 @@ import {
   cargoLabel, cargoEmoji,
 } from "@/cargo";
 import { AvatarZoomModal, Button, Card, Field, Icon, inputStyle, Row, StatusBadge } from "@/ui";
+import OdometerConfigCard from "@/OdometerConfigCard";
 import GeofenceMap from "@/GeofenceMap";
 import useEventStream from "@/useEventStream";
 import AssetsSection from "@/AssetsSection";
@@ -1021,6 +1022,11 @@ export default function CadastroPanel() {
               </div>
             );
           })()}
+
+          {/* iter189 — Card de Odômetro Semanal */}
+          {editing !== "new" && (
+            <OdometerConfigCard collabId={editing} />
+          )}
 
           <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
             <Button onClick={save} disabled={busy} data-testid="save-collab-btn">{busy ? "Salvando..." : "Salvar"}</Button>
