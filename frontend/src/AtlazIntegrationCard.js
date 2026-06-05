@@ -110,6 +110,45 @@ export default function AtlazIntegrationCard() {
     setBusy(false);
   }
 
+  // iter211z — Backfill da data ORIGINAL Atlaz nos tickets existentes
+  async function runBackfillDates(dryRun) {
+    const msgBase = dryRun
+      ? "Pré-visualizar quais bolhas serão corrigidas (sem alterar nada)?"
+      : "Corrigir a data ORIGINAL do Atlaz nas bolhas existentes? Bolhas sem 'scheduled_time' serão reposicionadas para o dia em que foram criadas no Atlaz (não mais o dia da importação).";
+    if (!await window.confirm(msgBase)) return;
+    setBusy(true); setMsg("");
+    try {
+      const r = await api.atlazBackfillDates(dryRun);
+      const verb = dryRun ? "Pré-visualização" : "Backfill";
+      setMsg(
+        `✓ ${verb} concluído: ${r.scanned} bolhas escaneadas, `
+        + `${r.matched_in_atlaz_recent || 0} casadas no Atlaz, `
+        + `${r.updated} atualizadas.`
+      );
+    } catch (e) { setMsg("Erro: " + (e?.response?.data?.detail || e.message)); }
+    setBusy(false);
+  }
+
+  // iter211aa — Redistribui bolhas com horários duplicados pelos slots livres
+  async function runRedistribute(dryRun) {
+    const msgBase = dryRun
+      ? "Pré-visualizar quais bolhas com horário duplicado serão movidas?"
+      : "Redistribuir bolhas Atlaz com horário duplicado pelos próximos slots livres? Mantém o ORIGINAL no atlaz_slot_original (auditoria) — apenas o scheduled_time é deslocado.";
+    if (!await window.confirm(msgBase)) return;
+    setBusy(true); setMsg("");
+    try {
+      const r = await api.atlazRedistributeSlots(dryRun);
+      const verb = dryRun ? "Pré-visualização" : "Redistribuição";
+      setMsg(
+        `✓ ${verb}: ${r.scanned} bolhas escaneadas, `
+        + `${r.conflicts_found} slots em conflito, `
+        + `${r.moved || r.would_move} bolhas ${dryRun ? "seriam movidas" : "movidas"}.`
+      );
+    } catch (e) { setMsg("Erro: " + (e?.response?.data?.detail || e.message)); }
+    setBusy(false);
+  }
+
+
   async function loadLogs() {
     try {
       const r = await api.atlazSyncLogs(30);
@@ -313,6 +352,26 @@ export default function AtlazIntegrationCard() {
           style={{ background: "#fae8ff", border: "1px solid #f0abfc", color: "#86198f" }}
           title="Re-resolve o técnico de todas as bolhas Atlaz pendentes baseado no mapping atual">
           🔁 Reatribuir bolhas existentes
+        </Button>
+        <Button variant="soft" onClick={() => runBackfillDates(true)} disabled={busy} data-testid="atlaz-backfill-dry-btn"
+          style={{ background: "#dbeafe", border: "1px solid #93c5fd", color: "#1e3a8a" }}
+          title="Pré-visualiza quais bolhas serão reposicionadas para o dia ORIGINAL do Atlaz">
+          🔍 Pré-visualizar correção de datas
+        </Button>
+        <Button variant="soft" onClick={() => runBackfillDates(false)} disabled={busy} data-testid="atlaz-backfill-btn"
+          style={{ background: "#cffafe", border: "1px solid #67e8f9", color: "#155e75" }}
+          title="Reposiciona bolhas Atlaz para o dia ORIGINAL em que foram criadas no Atlaz (não no dia da importação)">
+          📅 Corrigir datas das bolhas (Atlaz)
+        </Button>
+        <Button variant="soft" onClick={() => runRedistribute(true)} disabled={busy} data-testid="atlaz-redistribute-dry-btn"
+          style={{ background: "#fef9c3", border: "1px solid #fde047", color: "#854d0e" }}
+          title="Pré-visualiza quais bolhas com horário duplicado serão movidas pra slots livres">
+          🔍 Pré-visualizar redistribuição
+        </Button>
+        <Button variant="soft" onClick={() => runRedistribute(false)} disabled={busy} data-testid="atlaz-redistribute-btn"
+          style={{ background: "#fed7aa", border: "1px solid #fdba74", color: "#9a3412" }}
+          title="Distribui bolhas Atlaz com horário duplicado (mais de 2 no mesmo slot) pelos próximos horários livres">
+          📐 Redistribuir bolhas duplicadas
         </Button>
         <Button variant="soft" onClick={loadLogs} data-testid="atlaz-logs-btn">📋 Ver logs</Button>
         {msg && <span style={{ color: msg.startsWith("✓") ? "#166534" : "#be123c", fontWeight: 700, fontSize: 13 }}>{msg}</span>}

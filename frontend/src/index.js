@@ -2,11 +2,75 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "@/index.css";
 import App from "@/App";
+import FleetPortalApp from "@/fleet/FleetPortalApp";
+import SecurityPortalApp from "@/security/SecurityPortalApp";
+import PartnerPortalApp from "@/parceria/PartnerPortalApp";
+import ClientPortalApp from "@/parceria/ClientPortalApp";
+import ParceriaPublicPage from "@/parceria/ParceriaPublicPage";
+import PartnerDetailPage from "@/parceria/PartnerDetailPage";
+import ParceiroPWA from "@/parceria/ParceiroPWA";
+import SejaParceiroLanding from "@/parceria/SejaParceiroLanding";
+import ReferralLandingPage from "@/ReferralLandingPage";
+import ClienteIndicaApp from "@/cliente/ClienteIndicaApp";
+import WifiCaptivePortal from "@/WifiCaptivePortal";
+import WifiShowcasePage from "@/WifiShowcasePage";
+
+// iter212a — Roteamento standalone do portal white-label (Fleet)
+// Aciona com `?portal=fleet` OU pathname iniciado em `/fleet-portal`.
+const _params = new URLSearchParams(window.location.search);
+const _isReferralLanding = window.location.pathname.startsWith("/r/");
+const _isClienteIndica = _params.get("portal") === "cliente-indica"
+  || window.location.pathname === "/cliente"
+  || window.location.pathname.startsWith("/cliente/");
+const _refCode = _isReferralLanding
+  ? window.location.pathname.replace("/r/", "").split("/")[0] : "";
+const _isFleetPortal = _params.get("portal") === "fleet"
+  || window.location.pathname.startsWith("/fleet-portal");
+const _isSecurityPortal = _params.get("portal") === "security"
+  || window.location.pathname.startsWith("/security-portal");
+const _isPartnerPortal = _params.get("portal") === "parceiro"
+  || window.location.pathname.startsWith("/parceiro-portal");
+const _isClientPortal = _params.get("portal") === "cliente"
+  || window.location.pathname.startsWith("/cliente-portal");
+const _isShowcase = _params.get("showcase") === "parcerias"
+  || window.location.pathname.startsWith("/parcerias");
+// iter235 — Landing comercial pra captação de novos parceiros
+const _isSejaParceiro = window.location.pathname === "/seja-parceiro"
+  || window.location.pathname === "/seja-parceiro/"
+  || window.location.pathname === "/parcerias/seja-parceiro";
+// iter230 — App PWA do parceiro comercial (magic link). Aciona em
+// /parceiro/{token} quando o segmento tem >=30 chars (magic_token).
+// O PartnerDetailPage continua atendendo slugs curtos (/parceiro/pizza-bella).
+const _parceiroSegment = window.location.pathname.startsWith("/parceiro/")
+  ? window.location.pathname.replace("/parceiro/", "").split("/")[0]
+  : "";
+const _isParceiroPWA = _parceiroSegment.length >= 30;
+const _isPartnerDetail = !_isParceiroPWA
+  && (!!_params.get("parceiro")
+       || !!_params.get("p")
+       || window.location.pathname.startsWith("/parceiro/"));
+const _isWifiCaptive = window.location.pathname.startsWith("/wifi/");
+// Vitrine pública dos hotspots WiFi Ligo
+const _isWifiShowcase = _params.get("showcase") === "wifi"
+  || window.location.pathname === "/wifi-vitrine"
+  || window.location.pathname === "/wifi-vitrine/";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
-    <App />
+    {_isReferralLanding ? <ReferralLandingPage code={_refCode} />
+      : _isWifiCaptive ? <WifiCaptivePortal />
+        : _isWifiShowcase ? <WifiShowcasePage />
+          : _isClienteIndica ? <ClienteIndicaApp />
+            : _isParceiroPWA ? <ParceiroPWA magicToken={_parceiroSegment} />
+              : _isSejaParceiro ? <SejaParceiroLanding />
+                : _isPartnerDetail ? <PartnerDetailPage />
+                  : _isFleetPortal ? <FleetPortalApp />
+                    : _isSecurityPortal ? <SecurityPortalApp />
+                      : _isPartnerPortal ? <PartnerPortalApp />
+                        : _isClientPortal ? <ClientPortalApp />
+                          : _isShowcase ? <ParceriaPublicPage />
+                            : <App />}
   </React.StrictMode>,
 );
 

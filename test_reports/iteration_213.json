@@ -1,0 +1,43 @@
+{
+  "summary": "SecurityHome MVP fully validated end-to-end. 18/18 backend pytest cases pass: admin auth + CRUD on sites/tenants/sensors, arm/disarm (admin & portal) with persistence in security_arm_states and pending entry in security_panel_commands, Contact ID ingest (auth check, code 130 creates alarm + sets sensor zone 1 state=triggered, code 402 updates arm_state), alarm list & ack, portal login with type=security_portal JWT, portal /me + /sites + /sensors + arm/disarm/panic (panic creates critical alarm with origin=portal), portal tenant isolation (cliente@teste.com from fleet portal correctly rejected with 401 in security portal). Frontend portal at /?portal=security renders login (data-testid security-portal-login), cliente@casa.com/123456 logs into dashboard (data-testid security-portal-dashboard), arm-away button changes site state to 🔴 Armado total within polling window, logout returns to login. Admin panel under Frota → Segurança Residencial renders security-home-page testid, lists seed site 'Casa Principal - Rua Teste 123' with Armar/Parcial/Desarmar/Sensores buttons; Sensores modal shows the 3 seed sensors with Porta de entrada flagged 'triggered'; Alarmes tab visible with 5 alarmes ativos KPI. No blocking defects.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "CONTACT_ID_MAP", "issue": "Duplicate key 441 declared twice in dict (lines 230-231 in /app/backend/routes/security_home.py). Harmless (second one overrides identically) but confusing."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Painel (dashboard charts)", "issues": ["Multiple recharts console warnings 'width(-1) height(-1)' on initial mount — pre-existing on demo dashboard, unrelated to SecurityHome module but worth fixing to clean console."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_security_home_mvp.py",
+    "/app/test_reports/pytest/security_home_mvp.xml"
+  ],
+  "action_items": [
+    "Optional: dedupe Contact ID code 441 in CONTACT_ID_MAP",
+    "Optional: portal dashboard could show a loading skeleton instead of 'Meus imóveis (0)' while GET /sites is in-flight (visible briefly right after login)"
+  ],
+  "critical_code_review_comments": [
+    "security_home.py is 714 lines — borderline acceptable, but admin/portal/ingest could be split into 3 files for future maintainability.",
+    "INGEST_TOKEN is read at module import time. If env changes, server must be restarted (consistent with rest of codebase, acceptable).",
+    "_check_ingest_token() permits empty token bypass when INGEST_TOKEN unset — defensive default OK but log a warning at startup if missing.",
+    "Portal token TTL = 30 days with no refresh path — acceptable for MVP but document as a follow-up.",
+    "Good: MongoDB _id excluded everywhere via projection {'_id': 0}.",
+    "Good: tenant isolation enforced via _portal_tenant_q on every portal endpoint.",
+    "Good: all interactive UI elements expose data-testid (security-portal-login, security-portal-dashboard, security-portal-arm-away-{sid}, security-portal-disarm-{sid}, security-portal-panic-{sid}, security-portal-logout, security-home-page)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_security_home_mvp.py (new)"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100% (portal + admin flows green)"},
+  "test_credentials": "admin@empresa.com/123456 (main app, super_admin); cliente@casa.com/123456 (security portal); SECURITY_INGEST_TOKEN read from /app/backend/.env",
+  "seed_data_creation": "Used existing seed: tenant 'Residencial Modelo' (st-*), site 'Casa Principal - Rua Teste 123' (sh-94c73f851b5e, panel_id 1234), 3 sensors zones 1/2/3. Tests created and cleaned up TEST_ prefixed sites/tenants/sensors/portal-users.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "SecurityHome MVP is stable. Pytest suite at /app/backend/tests/test_security_home_mvp.py covers admin CRUD, ingest, portal flows, tenant isolation, panic and ack. Run as: pytest /app/backend/tests/test_security_home_mvp.py -v. Frontend uses ?portal=security route. Note: Code 441 duplicated in CONTACT_ID_MAP (cosmetic). The 'Meus imóveis (0)' briefly displayed after portal login is a render race — sites populate via subsequent fetch and arm/disarm/panic work end-to-end.",
+  "rca of the issue": "N/A — no defects requiring RCA. All requested features verified."
+}

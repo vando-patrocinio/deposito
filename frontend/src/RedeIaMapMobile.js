@@ -168,7 +168,7 @@ export default function RedeIaMapMobile({ onBack, technician }) {
         setMyAccuracy(acc);
         // Envia ping ao backend (bg, fire-and-forget)
         if (!collabId) return;
-        if (acc && acc > 100) return; // descarta low-precision
+        if (acc && acc > 400) return; // iter226 — relaxado de 100→400m
         const now = Date.now();
         // Throttle: 1 ping por 3 segundos OU se andou > 8m
         let dist = 0;

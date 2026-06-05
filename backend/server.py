@@ -89,6 +89,11 @@ from routes import (
     payment_charges as routes_payment_charges,
     provider_site as routes_provider_site,
     fleet as routes_fleet,
+    fleet_tracking as routes_fleet_tracking,
+    fleet_portal as routes_fleet_portal,
+    security_home as routes_security_home,
+    parceria as routes_parceria,
+    referrals as routes_referrals,
     churn as routes_churn,
     subscribers as routes_subscribers,
     branding as routes_branding,
@@ -118,6 +123,9 @@ from routes import (
     financeiro_reports as routes_financeiro_reports,
     atlaz_financeiro as routes_atlaz_financeiro,
     alvaro as routes_alvaro,
+    alvaro_os_summary as routes_alvaro_os_summary,
+    gps_vlan_suggest as routes_gps_vlan_suggest,
+    smartolt_push_ctos as routes_smartolt_push_ctos,
     whatsapp_config as routes_whatsapp_config,
     mass_messaging as routes_mass_messaging,
     disparo_ia as routes_disparo_ia,
@@ -135,6 +143,7 @@ from routes import (
     disparo_promo as routes_disparo_promo,
     bank_import as routes_bank_import,
     wifi as routes_wifi,
+    wifi_hotspot as routes_wifi_hotspot,
     billing as routes_billing,
     retirada_template as routes_retirada_template,
     os_validation_toggles as routes_os_validation_toggles,
@@ -397,6 +406,18 @@ async def _startup() -> None:
     await ensure_indexes()
     await ensure_auth_indexes(db)
     await ensure_push_indexes(db)
+    # iter212a — TTL + indexes do Fleet Tracking
+    try:
+        from routes.fleet_tracking import ensure_indexes as _ft_idx
+        from routes.fleet_portal import ensure_indexes as _fp_idx
+        from routes.security_home import ensure_indexes as _sh_idx
+        from routes.parceria import ensure_indexes as _pa_idx
+        await _ft_idx()
+        await _fp_idx()
+        await _sh_idx()
+        await _pa_idx()
+    except Exception as _e:
+        logger.warning("[startup] fleet/security/parceria indexes falhou: %s", _e)
     # Migrations aditivas (idempotentes — só adicionam campos/índices,
     # nunca apagam). Ver /app/memory/DATA_PERSISTENCE.md.
     try:
@@ -410,6 +431,25 @@ async def _startup() -> None:
                             result["failed"])
     except Exception as e:
         logger.exception("[startup] erro ao rodar migrations: %s", e)
+    # iter211v — Paridade NAV_GROUPS ↔ access_tags catálogo
+    try:
+        from nav_tabs_registry import audit_against_catalog
+        from access_tags import TAGS as _AT_TAGS
+        _audit = audit_against_catalog([t["key"] for t in _AT_TAGS])
+        if not _audit["in_sync"]:
+            logger.warning(
+                "[startup] iter211v — abas em NAV_GROUPS sem tag em "
+                "access_tags.py: %s. Adicione em /app/backend/access_tags.py.",
+                _audit["missing_in_catalog"],
+            )
+        else:
+            logger.info(
+                "[startup] iter211v — paridade NAV↔access_tags OK "
+                "(%d abas mapeadas, %d tags extra/legacy)",
+                _audit["nav_total"], len(_audit["extra_in_catalog"]),
+            )
+    except Exception as e:
+        logger.warning("[startup] iter211v — falha no audit de tags: %s", e)
     await routes_saas.ensure_demo_company()
     await seed_default_users(db)
     await get_or_create_vapid(db)
@@ -440,6 +480,15 @@ async def _startup() -> None:
                       id="location_cleanup", replace_existing=True)
     scheduler.add_job(dwell_push_job, "interval", minutes=2,
                       id="dwell_push", replace_existing=True)
+    # iter216b — WiFi Hotspot: marca sessões pending_whatsapp expiradas
+    # (>2min) como abandoned + retarget WhatsApp 48h depois
+    from routes.wifi_hotspot import (
+        mark_abandoned_sessions_job, retarget_abandoned_sessions_job,
+    )
+    scheduler.add_job(mark_abandoned_sessions_job, "interval", minutes=2,
+                      id="wifi_mark_abandoned", replace_existing=True)
+    scheduler.add_job(retarget_abandoned_sessions_job, "interval", hours=1,
+                      id="wifi_retarget_48h", replace_existing=True)
     # Atlaz: sync de assinantes diário às 22h00 (America/Sao_Paulo)
     scheduler.add_job(routes_atlaz.nightly_customers_sync_job,
                       CronTrigger(hour=22, minute=0),
@@ -458,6 +507,15 @@ async def _startup() -> None:
     scheduler.add_job(baileys_nightly_restart_job,
                       CronTrigger(hour=4, minute=0),
                       id="baileys_nightly_restart", replace_existing=True)
+    # iter205c — Backup diário do MongoDB 03:00 UTC, rotação 7 últimos
+    from routes.backup import daily_backup_job, weekly_migrate_job
+    scheduler.add_job(daily_backup_job,
+                      CronTrigger(hour=3, minute=0),
+                      id="mongo_daily_backup", replace_existing=True)
+    # iter205g — Migração automática semanal PROD → este ambiente (domingo 04:00 UTC)
+    scheduler.add_job(weekly_migrate_job,
+                      CronTrigger(day_of_week="sun", hour=4, minute=0),
+                      id="mongo_weekly_migrate", replace_existing=True)
     asyncio.create_task(holidays_refresh_job())
     asyncio.create_task(location_logs_cleanup_job())
     routes_atlaz.start_worker()
@@ -478,6 +536,9 @@ async def _startup() -> None:
     start_sentinela_lousa()
     from services.lousa_ai_triagem import start_worker as start_lousa_ai
     start_lousa_ai()
+    # iter211bd — Worker que empurra CTOs locais para o SmartOLT
+    # (chama add_zone) — só atua em CTOs marcadas smartolt_eligible=True.
+    routes_smartolt_push_ctos.start_worker()
     # Lousa Map — geocoding noturno de tickets sem coordenadas
     await routes_lousa_map.start_worker()
     # Outage Detector — detecta rupturas em massa e abre bolha automática
@@ -642,6 +703,9 @@ app.include_router(routes_clock.router)
 app.include_router(routes_locations.router)
 app.include_router(routes_dashboard.router)
 app.include_router(routes_admin.router)
+# iter205 — Backup MongoDB endpoints (super-admin only)
+from routes import backup as routes_backup  # noqa: E402
+app.include_router(routes_backup.router)
 app.include_router(routes_ai_config.router)
 app.include_router(routes_push.router)
 app.include_router(routes_collab_auth.router)
@@ -652,9 +716,13 @@ app.include_router(routes_events.router)
 app.include_router(routes_saas.router)
 app.include_router(routes_saas.webhook_router)
 app.include_router(routes_stok.router)
+# iter211ac — ErrorBoundary log endpoint (client crashes)
+from routes import client_errors as routes_client_errors  # noqa: E402
+app.include_router(routes_client_errors.router)
 app.include_router(routes_balanco.router)
 app.include_router(routes_projects.router)
 app.include_router(routes_wifi.router)
+app.include_router(routes_wifi_hotspot.router)
 app.include_router(routes_billing.router)
 app.include_router(routes_pdf_reports.router)
 app.include_router(routes_smartolt.router)
@@ -684,6 +752,15 @@ app.include_router(routes_lousa_map.router)
 app.include_router(routes_payment_charges.router)
 app.include_router(routes_provider_site.router)
 app.include_router(routes_fleet.router)
+app.include_router(routes_fleet_tracking.router)
+app.include_router(routes_fleet_portal.router)
+app.include_router(routes_fleet_portal.admin_router)
+app.include_router(routes_security_home.router)
+app.include_router(routes_security_home.portal_router)
+app.include_router(routes_parceria.router)
+app.include_router(routes_parceria.partner_router)
+app.include_router(routes_parceria.client_router)
+app.include_router(routes_referrals.router)
 app.include_router(routes_budget.router)
 app.include_router(routes_churn.router)
 app.include_router(routes_subscribers.router)
@@ -709,6 +786,9 @@ app.include_router(routes_financeiro_analytics.router)
 app.include_router(routes_financeiro_reports.router)
 app.include_router(routes_atlaz_financeiro.router)
 app.include_router(routes_alvaro.router)
+app.include_router(routes_alvaro_os_summary.router)
+app.include_router(routes_gps_vlan_suggest.router)
+app.include_router(routes_smartolt_push_ctos.router)
 app.include_router(routes_whatsapp_config.router)
 app.include_router(routes_wa_channels.router)
 app.include_router(routes_mass_messaging.router)

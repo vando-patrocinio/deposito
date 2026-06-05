@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -57,13 +57,23 @@ async def post_location(p: LocationPing):
 @router.get("/live")
 async def live_locations(active_minutes: int = 360,
                          user: dict = Depends(get_current_user)):
-    """Última posição de cada colaborador nos últimos N minutos (default 6h)."""
+    """Última posição de cada colaborador nos últimos N minutos (default 6h).
+
+    iter225 — agora consulta TANTO `location_logs` (legado) QUANTO
+    `tech_locations` (PWA tech-tracking). Antes só lia o primeiro, o
+    que fazia o LiveMap aparecer "parado" quando o técnico usava o
+    PWA — todos os pings dele iam para `tech_locations` e o LiveMap
+    ficava em branco. Mesclamos por colaborador e usamos o ping mais
+    recente.
+    """
     since = (datetime.now(timezone.utc) - timedelta(minutes=active_minutes)).isoformat()
     # Limita aos colaboradores do tenant
     cids: list[str] = []
     if not is_super_admin(user):
         async for c in db.collaborators.find(tenant_filter(user), {"_id": 0, "id": 1}):
             cids.append(c["id"])
+
+    # ---- 1) location_logs ----
     match: dict = {"recorded_at": {"$gte": since}}
     if cids:
         match["collaborator_id"] = {"$in": cids}
@@ -73,11 +83,40 @@ async def live_locations(active_minutes: int = 360,
         {"$group": {"_id": "$collaborator_id", "doc": {"$first": "$$ROOT"}}},
         {"$replaceRoot": {"newRoot": "$doc"}},
     ]
-    out = []
+    by_cid: dict[str, dict] = {}
     async for d in db.location_logs.aggregate(pipeline):
         d.pop("_id", None)
-        out.append(d)
-    return out
+        by_cid[d.get("collaborator_id")] = d
+
+    # ---- 2) tech_locations (PWA tech-tracking) ----
+    tmatch: dict = {"captured_at": {"$gte": since}}
+    if cids:
+        tmatch["collab_id"] = {"$in": cids}
+    tpipeline = [
+        {"$match": tmatch},
+        {"$sort": {"captured_at": -1}},
+        {"$group": {"_id": "$collab_id", "doc": {"$first": "$$ROOT"}}},
+        {"$replaceRoot": {"newRoot": "$doc"}},
+    ]
+    async for d in db.tech_locations.aggregate(tpipeline):
+        d.pop("_id", None)
+        cid = d.get("collab_id")
+        # Normaliza pro formato do LiveMap (mesmas chaves)
+        norm = {
+            "collaborator_id": cid,
+            "lat": d.get("lat"),
+            "lng": d.get("lng"),
+            "accuracy": d.get("accuracy"),
+            "speed": d.get("speed"),
+            "heading": d.get("heading"),
+            "recorded_at": d.get("captured_at"),
+            "source": "tech_pwa",
+        }
+        existing = by_cid.get(cid)
+        if (not existing) or (norm["recorded_at"] > existing.get("recorded_at", "")):
+            by_cid[cid] = norm
+
+    return list(by_cid.values())
 
 
 @router.get("/dwell-analysis")
@@ -195,15 +234,164 @@ async def dwell_analysis(hours: int = 8, radius_m: float = 60.0, min_dur_min: in
     }
 
 
-@router.get("/{cid}/track")
-async def track_collaborator(cid: str, hours: int = 24):
-    """Trajeto de um colaborador nas últimas N horas (default 24h)."""
-    since = (datetime.now(timezone.utc) - timedelta(hours=int(hours))).isoformat()
+# iter215 — Limiares para limpeza do trajeto antes de plotar:
+#  • Pings com accuracy pior que MAX_ACC_M são descartados (GPS preso em
+#    prédio dá pontos "atravessando quarteirões"). 80m descarta WiFi
+#    location mas mantém GPS razoável.
+#  • Gap > GAP_S entre pings consecutivos → quebra em segmento novo
+#    (evita reta voando entre dois pontos quando o tracker ficou off).
+#  • Distância > DIST_M entre 2 pings consecutivos (independente do gap
+#    temporal) → também quebra em segmento (salta sem trajetória real).
+TRAIL_MAX_ACC_M = 150.0  # iter224 — relaxado de 80→150m no LiveMap
+TRAIL_GAP_S = 300        # 5 min
+TRAIL_JUMP_M = 400.0     # 4 quadras
+
+import logging as _logging
+_trail_logger = _logging.getLogger("ponto.locations.trail")
+
+
+def _haversine_m(a_lat: float, a_lng: float,
+                  b_lat: float, b_lng: float) -> float:
+    from math import asin, cos, radians, sin, sqrt
+    f1, f2 = radians(a_lat), radians(b_lat)
+    df = radians(b_lat - a_lat)
+    dl = radians(b_lng - a_lng)
+    a = sin(df / 2) ** 2 + cos(f1) * cos(f2) * sin(dl / 2) ** 2
+    return 2 * 6371000 * asin(sqrt(a))
+
+
+def _clean_and_split_trail(docs: List[Dict[str, Any]]
+                            ) -> List[List[Dict[str, Any]]]:
+    """Limpa e quebra um trail em segmentos contínuos.
+
+    - Descarta pings com `accuracy > TRAIL_MAX_ACC_M`.
+    - Inicia novo segmento quando gap temporal > TRAIL_GAP_S
+      OU distância entre pings consecutivos > TRAIL_JUMP_M.
+    Retorna apenas segmentos com >= 2 pontos.
+    """
+    sessions: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+    last_dt = None
+    last_pt = None
+    for d in docs:
+        acc = d.get("accuracy")
+        if acc is not None and acc > TRAIL_MAX_ACC_M:
+            continue
+        try:
+            cur_dt = datetime.fromisoformat(
+                d["recorded_at"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        break_seg = False
+        if last_dt is not None and last_pt is not None:
+            dt_s = (cur_dt - last_dt).total_seconds()
+            try:
+                dist = _haversine_m(last_pt["lat"], last_pt["lng"],
+                                       d["lat"], d["lng"])
+            except Exception:
+                dist = 0
+            if dt_s > TRAIL_GAP_S or dist > TRAIL_JUMP_M:
+                break_seg = True
+        if break_seg and len(current) >= 2:
+            sessions.append(current)
+            current = []
+        elif break_seg:
+            current = []
+        current.append({"lat": d["lat"], "lng": d["lng"],
+                          "recorded_at": d["recorded_at"]})
+        last_dt = cur_dt
+        last_pt = d
+    if len(current) >= 2:
+        sessions.append(current)
+    return sessions
+
+
+async def _fetch_merged_track(cid: str, since: str) -> List[Dict[str, Any]]:
+    """iter225 — Mescla pings de `location_logs` (legado) + `tech_locations`
+    (PWA tech-tracking). Devolve ordenado por timestamp ascendente, com
+    todas as chaves usadas pelo frontend (`lat`, `lng`, `accuracy`,
+    `recorded_at`).
+    """
     docs = await db.location_logs.find(
         {"collaborator_id": cid, "recorded_at": {"$gte": since}},
         {"_id": 0},
     ).sort("recorded_at", 1).to_list(10000)
+    tdocs = await db.tech_locations.find(
+        {"collab_id": cid, "captured_at": {"$gte": since}},
+        {"_id": 0},
+    ).sort("captured_at", 1).to_list(10000)
+    for d in tdocs:
+        docs.append({
+            "collaborator_id": cid,
+            "lat": d.get("lat"),
+            "lng": d.get("lng"),
+            "accuracy": d.get("accuracy"),
+            "speed": d.get("speed"),
+            "heading": d.get("heading"),
+            "recorded_at": d.get("captured_at"),
+            "source": "tech_pwa",
+        })
+    docs.sort(key=lambda x: x.get("recorded_at") or "")
     return docs
+
+
+@router.get("/{cid}/track")
+async def track_collaborator(cid: str, hours: int = 24):
+    """Trajeto de um colaborador nas últimas N horas (default 24h).
+
+    iter225 — agora mescla `location_logs` + `tech_locations`.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(hours=int(hours))).isoformat()
+    return await _fetch_merged_track(cid, since)
+
+
+@router.get("/{cid}/track/snap")
+async def track_collaborator_snap(cid: str, hours: int = 24):
+    """iter215 — Trajeto "colado" nas vias do OSM via OSRM match.
+
+    Higieniza o trail antes de plotar (descarta pings imprecisos,
+    quebra em segmentos quando há gap temporal/jump espacial) — assim o
+    traço para de "voar quadras" quando o GPS perdeu sinal. Em seguida
+    chama OSRM Match por sessão e devolve `segments_snapped`. Quando o
+    OSRM falha pra um segmento, o frontend faz fallback pro polyline
+    reto (mas só dentro daquele segmento, sem atravessar gaps).
+
+    iter225 — agora mescla `location_logs` + `tech_locations` (PWA).
+    """
+    from routes.tech_tracking import _snap_to_road
+
+    since = (datetime.now(timezone.utc) - timedelta(hours=int(hours))).isoformat()
+    docs = await _fetch_merged_track(cid, since)
+
+    sessions = _clean_and_split_trail(docs)
+
+    # Chama OSRM Match pra cada sessão. Em paralelo.
+    import asyncio
+    snapped_segments = await asyncio.gather(
+        *[_snap_to_road(seg) for seg in sessions],
+        return_exceptions=False,
+    )
+    fallbacks = sum(1 for s in snapped_segments if not s)
+    if sessions and fallbacks:
+        _trail_logger.info(
+            "[trail/snap] cid=%s sessions=%d snap_failed=%d (frontend fallback)",
+            cid, len(sessions), fallbacks,
+        )
+    # Pontos brutos por segmento (frontend usa quando o snap volta vazio).
+    segments_raw = [[{"lat": p["lat"], "lng": p["lng"]} for p in seg]
+                       for seg in sessions]
+    snapped_segments = [s if s else [] for s in snapped_segments]
+    return {
+        "points": docs,
+        "segments_raw": segments_raw,
+        "segments_snapped": snapped_segments,
+        "filtered": {
+            "max_accuracy_m": TRAIL_MAX_ACC_M,
+            "gap_s": TRAIL_GAP_S,
+            "jump_m": TRAIL_JUMP_M,
+            "kept_segments": len(sessions),
+        },
+    }
 
 
 @router.delete("/{cid}")

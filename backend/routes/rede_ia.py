@@ -156,6 +156,11 @@ class BairroIn(BaseModel):
     cidade: str = ""
     estado: str = ""
     regiao: str = ""
+    # iter211be — Nome da OLT SmartOLT que atende este bairro (opcional).
+    # CTOs criadas com a VLAN deste bairro vão ser marcadas
+    # `smartolt_eligible=True` quando este campo estiver preenchido.
+    # Exemplos: RIO_HUAWEI, MAGE_ZTE, PENHA_HUAWEI, RESENDE_ZTE.
+    olt_name: Optional[str] = None
 
 
 class CTOPortIn(BaseModel):
@@ -255,6 +260,21 @@ async def list_bairros(user: dict = Depends(get_current_user)):
     return {"items": items, "total": len(items)}
 
 
+@router.get("/olt-names")
+async def list_olt_names(user: dict = Depends(get_current_user)):
+    """iter211be — OLTs únicas em smartolt_onus, pra dropdown de bairros."""
+    cid = _user_company(user)
+    names = set()
+    pipe = [
+        {"$match": {"company_id": cid}},
+        {"$group": {"_id": "$olt_name"}},
+    ]
+    async for r in db.smartolt_onus.aggregate(pipe):
+        if r.get("_id"):
+            names.add(r["_id"])
+    return {"items": sorted(names)}
+
+
 @router.post("/bairros")
 async def create_bairro(body: BairroIn,
                         user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
@@ -275,6 +295,8 @@ async def create_bairro(body: BairroIn,
         "cidade": body.cidade.strip(),
         "estado": body.estado.strip().upper(),
         "regiao": body.regiao.strip(),
+        # iter211be — vincula bairro a uma OLT SmartOLT (opcional)
+        "olt_name": (body.olt_name or "").strip().upper() or None,
         "created_at": now_iso(),
     }
     await db.bairros_vlan_map.insert_one(doc)
@@ -293,6 +315,7 @@ async def update_bairro(bid: str, body: BairroIn,
         "cidade": body.cidade.strip(),
         "estado": body.estado.strip().upper(),
         "regiao": body.regiao.strip(),
+        "olt_name": (body.olt_name or "").strip().upper() or None,
     }
     r = await db.bairros_vlan_map.update_one(
         {"id": bid, "company_id": cid}, {"$set": upd}
@@ -681,6 +704,43 @@ async def create_cto(body: CTOCreateIn,
     except Exception as _e:
         logger.warning("[rede-ia] sync_cto_all_ports falhou na criação cto=%s: %s",
                           cto_id, _e)
+
+    # iter211bc — Classifica elegibilidade SmartOLT:
+    # CTOs com VLAN que pertença a alguma OLT SmartOLT (RIO_HUAWEI etc) são
+    # marcadas pra sync futuro. CTOs em VLAN "1" ou fora do mapa SmartOLT
+    # ficam apenas na Base de Portas local.
+    try:
+        cto_vlan = int(doc.get("vlan") or 0)
+        smartolt_eligible = False
+        olt_name = None
+        if cto_vlan > 0:
+            # Verifica se existe algum bairro cadastrado com essa VLAN e olt_name
+            bairro_olt = await db.bairros_vlan_map.find_one(
+                {"company_id": cid, "vlan": cto_vlan,
+                  "olt_name": {"$exists": True, "$nin": [None, ""]}},
+                {"_id": 0, "olt_name": 1, "sigla": 1, "bairro": 1},
+            )
+            if bairro_olt and bairro_olt.get("olt_name"):
+                smartolt_eligible = True
+                olt_name = bairro_olt["olt_name"]
+        await db.ctos.update_one(
+            {"id": cto_id, "company_id": cid},
+            {"$set": {
+                "smartolt_eligible": smartolt_eligible,
+                "smartolt_olt_name": olt_name,
+                "smartolt_sync_pending": smartolt_eligible,
+            }},
+        )
+        doc["smartolt_eligible"] = smartolt_eligible
+        doc["smartolt_olt_name"] = olt_name
+        if smartolt_eligible:
+            logger.info("[rede-ia] CTO %s marcada smartolt_eligible (OLT=%s, VLAN=%s)",
+                         cto_id, olt_name, cto_vlan)
+        else:
+            logger.info("[rede-ia] CTO %s ficará SÓ na Base de Portas (VLAN=%s sem OLT)",
+                         cto_id, cto_vlan)
+    except Exception as _e:
+        logger.warning("[rede-ia] classify smartolt_eligible falhou: %s", _e)
 
     # Validation pending entry — pular para cabo_solto (já é "auto-aprovado",
     # válido no mapa em laranja tracejado até o técnico vincular pontas)
@@ -2168,6 +2228,23 @@ async def public_ensure_bairro_from_field(collab_id: str, body: BairroEnsureIn):
     }
 
 
+@router.get("/public/ctos/by-id/{cto_id}")
+async def public_cto_by_id(cto_id: str, collab_id: Optional[str] = Query(default=None)):
+    """iter211bg — Endpoint público para o LousaMobile polling do status
+    de sincronia SmartOLT após criar uma CTO. Sem auth, só requer cto_id.
+    """
+    cto = await db.ctos.find_one(
+        {"id": cto_id},
+        {"_id": 0, "id": 1, "name": 1, "vlan": 1,
+          "smartolt_eligible": 1, "smartolt_olt_name": 1,
+          "smartolt_sync_pending": 1, "smartolt_synced_at": 1,
+          "smartolt_zone_name": 1, "smartolt_last_error": 1},
+    )
+    if not cto:
+        raise HTTPException(404, "CTO não encontrada")
+    return cto
+
+
 @router.get("/public/ctos/{cto_id}/recent-status")
 async def public_cto_recent_status(cto_id: str,
                                      window_days: int = Query(5, ge=0, le=90)):
@@ -2664,6 +2741,34 @@ async def public_create_cto(collab_id: str, body: CTOCreateIn):
     except Exception as _e:
         logger.warning("[rede-ia/public] sync_cto_all_ports falhou cto=%s: %s",
                           cto_id, _e)
+
+    # iter211bc — Classifica elegibilidade SmartOLT (idêntico ao endpoint
+    # autenticado). CTOs em VLAN que pertence a SmartOLT serão sincronizadas.
+    try:
+        cto_vlan2 = int(doc.get("vlan") or 0)
+        smartolt_eligible2 = False
+        olt_name2 = None
+        if cto_vlan2 > 0:
+            bairro_olt2 = await db.bairros_vlan_map.find_one(
+                {"company_id": cid, "vlan": cto_vlan2,
+                  "olt_name": {"$exists": True, "$nin": [None, ""]}},
+                {"_id": 0, "olt_name": 1},
+            )
+            if bairro_olt2 and bairro_olt2.get("olt_name"):
+                smartolt_eligible2 = True
+                olt_name2 = bairro_olt2["olt_name"]
+        await db.ctos.update_one(
+            {"id": cto_id, "company_id": cid},
+            {"$set": {
+                "smartolt_eligible": smartolt_eligible2,
+                "smartolt_olt_name": olt_name2,
+                "smartolt_sync_pending": smartolt_eligible2,
+            }},
+        )
+        doc["smartolt_eligible"] = smartolt_eligible2
+        doc["smartolt_olt_name"] = olt_name2
+    except Exception as _e:
+        logger.warning("[rede-ia/public] classify smartolt_eligible falhou: %s", _e)
 
     await db.cto_validations.insert_one({
         "id": _new_id("val"), "company_id": cid, "cto_id": cto_id,
@@ -3510,25 +3615,81 @@ class LinkEndpointIn(BaseModel):
     element_id: str = Field(..., description="ID da CTO/CE para vincular")
 
 
-def _cable_loose_endpoints(cab: dict) -> List[Dict[str, Any]]:
+def _cable_loose_endpoints(cab: dict,
+                            existing_ids: Optional[set] = None) -> List[Dict[str, Any]]:
     """Retorna lista de pontas SOLTAS do cabo, com lat/lng deduzido.
-    Cada item: {"end": "from"|"to", "lat": float, "lng": float}
+
+    Uma ponta é considerada SOLTA quando:
+      - `*_element_id` está em null/vazio, OU
+      - `*_element_id` aponta para um ID que NÃO existe mais (zumbi) —
+        só detectado se `existing_ids` for fornecido.
+
+    Cada item: {"end": "from"|"to", "lat": float, "lng": float,
+                "zombie_id": str|None}  (`zombie_id` preenchido se zumbi)
     """
     out = []
     geom = cab.get("route_geometry") or []
-    if not cab.get("from_element_id"):
+    from_id = cab.get("from_element_id")
+    to_id = cab.get("to_element_id")
+    from_zombie = bool(from_id) and (existing_ids is not None and from_id not in existing_ids)
+    to_zombie = bool(to_id) and (existing_ids is not None and to_id not in existing_ids)
+
+    if not from_id or from_zombie:
         if geom:
-            out.append({"end": "from", "lat": geom[0][0], "lng": geom[0][1]})
+            out.append({"end": "from", "lat": geom[0][0], "lng": geom[0][1],
+                         "zombie_id": from_id if from_zombie else None})
         elif (cab.get("gps") or {}).get("lat") is not None:
             g = cab["gps"]
-            out.append({"end": "from", "lat": g["lat"], "lng": g["lng"]})
-    if not cab.get("to_element_id"):
+            out.append({"end": "from", "lat": g["lat"], "lng": g["lng"],
+                         "zombie_id": from_id if from_zombie else None})
+    if not to_id or to_zombie:
         if geom:
-            out.append({"end": "to", "lat": geom[-1][0], "lng": geom[-1][1]})
+            out.append({"end": "to", "lat": geom[-1][0], "lng": geom[-1][1],
+                         "zombie_id": to_id if to_zombie else None})
         elif (cab.get("to_gps") or {}).get("lat") is not None:
             g = cab["to_gps"]
-            out.append({"end": "to", "lat": g["lat"], "lng": g["lng"]})
+            out.append({"end": "to", "lat": g["lat"], "lng": g["lng"],
+                         "zombie_id": to_id if to_zombie else None})
     return out
+
+
+async def _get_existing_element_ids(cid: str) -> set:
+    """iter209 — Conjunto de IDs ativos de CTO/CE (não-cabos) na empresa.
+
+    Usado para detectar cabos com `from_element_id`/`to_element_id` apontando
+    para elementos que foram deletados ("órfãos zumbi").
+    """
+    ids: set = set()
+    async for doc in db.ctos.find(
+        {"company_id": cid,
+         "element_type": {"$in": ["cto", "ce"]}},
+        {"_id": 0, "id": 1},
+    ):
+        if doc.get("id"):
+            ids.add(doc["id"])
+    return ids
+
+
+async def _is_orphan_cable(cab: dict, existing_ids: set) -> bool:
+    """Decisão centralizada: cabo é órfão?
+
+    Por:
+      - status `cabo_solto`
+      - flag `is_loose=True`
+      - alguma ponta `*_element_id` em null
+      - alguma ponta aponta para CTO/CE que NÃO existe mais (zumbi)
+    """
+    if cab.get("status") == "cabo_solto":
+        return True
+    if cab.get("is_loose"):
+        return True
+    fid = cab.get("from_element_id")
+    tid = cab.get("to_element_id")
+    if not fid or not tid:
+        return True
+    if fid not in existing_ids or tid not in existing_ids:
+        return True
+    return False
 
 
 @router.get("/cables/orphan")
@@ -3537,21 +3698,20 @@ async def list_orphan_cables(
         "tecnico", "gestor", "administrador",
         "auditor", "gestor_rede")),
 ):
-    """Lista todos cabos com pelo menos uma ponta solta (cabo_solto)."""
+    """Lista todos cabos com pelo menos uma ponta solta (inclui zumbis)."""
     cid = _user_company(user)
-    cursor = db.ctos.find(
-        {"company_id": cid, "element_type": "cabo",
-         "$or": [
-             {"status": "cabo_solto"},
-             {"is_loose": True},
-             {"from_element_id": None},
-             {"to_element_id": None},
-         ]},
-        {"_id": 0},
-    )
+    existing_ids = await _get_existing_element_ids(cid)
+    # Pega TODOS os cabos da empresa e filtra em memória (mongodb não consegue
+    # checar "id não existe em outra coleção" sem $lookup pesado).
     items = []
-    async for cab in cursor:
-        endpoints = _cable_loose_endpoints(cab)
+    async for cab in db.ctos.find(
+        {"company_id": cid, "element_type": "cabo"},
+        {"_id": 0},
+    ):
+        if not await _is_orphan_cable(cab, existing_ids):
+            continue
+        endpoints = _cable_loose_endpoints(cab, existing_ids)
+        zombies = [e for e in endpoints if e.get("zombie_id")]
         items.append({
             "id": cab.get("id"),
             "name": cab.get("name"),
@@ -3564,6 +3724,7 @@ async def list_orphan_cables(
             "from_element_id": cab.get("from_element_id"),
             "to_element_id": cab.get("to_element_id"),
             "loose_ends": endpoints,
+            "zombie_count": len(zombies),  # iter209
             "route_source": cab.get("route_source"),
             "technician_name": cab.get("technician_name"),
             "created_at": cab.get("created_at"),
@@ -3598,21 +3759,116 @@ async def public_orphan_cables_near(
     return await _orphan_near_impl(cid, lat, lng, radius_m)
 
 
+@router.get("/cables/audit-orphans")
+async def audit_orphans(
+    user: dict = Depends(require_role(
+        "gestor", "administrador", "auditor", "gestor_rede")),
+):
+    """iter209 — Auditoria detalhada das pontas órfãs.
+
+    Retorna contagem por critério (cabo_solto, is_loose, null, zombie) para
+    super-admin/auditor entender o estado da rede.
+    """
+    cid = _user_company(user)
+    existing_ids = await _get_existing_element_ids(cid)
+    counts = {"cabo_solto": 0, "is_loose": 0,
+              "from_null": 0, "to_null": 0,
+              "from_zombie": 0, "to_zombie": 0,
+              "total_orphans": 0, "total_cables": 0}
+    zombie_ids: set = set()
+    async for cab in db.ctos.find(
+        {"company_id": cid, "element_type": "cabo"},
+        {"_id": 0, "id": 1, "name": 1, "status": 1, "is_loose": 1,
+         "from_element_id": 1, "to_element_id": 1},
+    ):
+        counts["total_cables"] += 1
+        is_orphan = False
+        if cab.get("status") == "cabo_solto":
+            counts["cabo_solto"] += 1
+            is_orphan = True
+        if cab.get("is_loose"):
+            counts["is_loose"] += 1
+            is_orphan = True
+        fid = cab.get("from_element_id")
+        tid = cab.get("to_element_id")
+        if not fid:
+            counts["from_null"] += 1
+            is_orphan = True
+        elif fid not in existing_ids:
+            counts["from_zombie"] += 1
+            zombie_ids.add(fid)
+            is_orphan = True
+        if not tid:
+            counts["to_null"] += 1
+            is_orphan = True
+        elif tid not in existing_ids:
+            counts["to_zombie"] += 1
+            zombie_ids.add(tid)
+            is_orphan = True
+        if is_orphan:
+            counts["total_orphans"] += 1
+    return {
+        "counts": counts,
+        "zombie_target_ids": sorted(zombie_ids),
+        "existing_elements_count": len(existing_ids),
+    }
+
+
+@router.post("/cables/audit-orphans/repair")
+async def audit_orphans_repair(
+    user: dict = Depends(require_role(
+        "gestor", "administrador", "auditor", "gestor_rede")),
+):
+    """iter209 — Limpa referências zumbi e marca cabos como `is_loose=true`.
+
+    Cabos com `from_element_id`/`to_element_id` apontando para CTO/CE que não
+    existem mais são corrigidos: o campo é setado para `null` + flag
+    `is_loose=true` + `status="cabo_solto"`. Idempotente.
+    """
+    cid = _user_company(user)
+    existing_ids = await _get_existing_element_ids(cid)
+    repaired = 0
+    details: List[Dict[str, Any]] = []
+    async for cab in db.ctos.find(
+        {"company_id": cid, "element_type": "cabo"},
+        {"_id": 0},
+    ):
+        fid = cab.get("from_element_id")
+        tid = cab.get("to_element_id")
+        upd: Dict[str, Any] = {}
+        if fid and fid not in existing_ids:
+            upd["from_element_id"] = None
+            details.append({"cable_id": cab.get("id"),
+                             "end": "from", "removed_zombie": fid})
+        if tid and tid not in existing_ids:
+            upd["to_element_id"] = None
+            details.append({"cable_id": cab.get("id"),
+                             "end": "to", "removed_zombie": tid})
+        if upd:
+            upd["is_loose"] = True
+            upd["status"] = "cabo_solto"
+            upd["updated_at"] = now_iso()
+            await db.ctos.update_one(
+                {"id": cab["id"], "company_id": cid},
+                {"$set": upd},
+            )
+            await _audit("update", cab["id"], cab, {**cab, **upd}, user,
+                         "iter209 cleanup: zombies removidos")
+            repaired += 1
+    return {"repaired_cables": repaired, "details": details[:50]}
+
+
 async def _orphan_near_impl(cid: str, lat: float, lng: float,
                                   radius_m: float) -> Dict[str, Any]:
-    cursor = db.ctos.find(
-        {"company_id": cid, "element_type": "cabo",
-         "$or": [
-             {"status": "cabo_solto"},
-             {"is_loose": True},
-             {"from_element_id": None},
-             {"to_element_id": None},
-         ]},
-        {"_id": 0},
-    )
+    existing_ids = await _get_existing_element_ids(cid)
     candidates = []
-    async for cab in cursor:
-        for ep in _cable_loose_endpoints(cab):
+    async for cab in db.ctos.find(
+        {"company_id": cid, "element_type": "cabo"},
+        {"_id": 0},
+    ):
+        if not await _is_orphan_cable(cab, existing_ids):
+            continue
+        for ep in _cable_loose_endpoints(cab, existing_ids):
             d = _haversine_m(lat, lng, ep["lat"], ep["lng"])
             if d <= radius_m:
                 candidates.append({
@@ -3626,6 +3882,7 @@ async def _orphan_near_impl(cid: str, lat: float, lng: float,
                     "end_lat": ep["lat"],
                     "end_lng": ep["lng"],
                     "distance_m": round(d, 1),
+                    "zombie_id": ep.get("zombie_id"),  # iter209
                 })
     candidates.sort(key=lambda x: x["distance_m"])
     return {"items": candidates, "total": len(candidates)}

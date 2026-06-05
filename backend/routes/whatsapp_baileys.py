@@ -1173,6 +1173,15 @@ async def inbound_webhook(payload: InboundIn,
             except Exception:
                 pass
 
+    # iter216b — WiFi Hotspot anti-bloqueio: se a msg contém código de
+    # liberação WIFI-XXXXXX, libera a sessão pendente desse phone.
+    try:
+        from routes.wifi_hotspot import try_unlock_session_from_whatsapp
+        await try_unlock_session_from_whatsapp(
+            effective_phone, payload.text or "")
+    except Exception as e:
+        logger.warning("[wa-baileys] wifi unlock check falhou: %s", e)
+
     subscriber_id = None
     subscriber_ctx = None
     # Quando o phone está vinculado a 2+ subscribers, a IA NÃO pode chamar

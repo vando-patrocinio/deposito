@@ -6,6 +6,68 @@ import WhatsAppShareCard from "@/WhatsAppShareCard";
 import Ipv6QualityCard from "@/Ipv6QualityCard";
 import ChurnReasonsKpiCard from "@/ChurnReasonsKpiCard";
 
+// iter211bh — Card de saúde SmartOLT
+function SmartOltHealthCard() {
+  const [h, setH] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    let alive = true;
+    api._client.get("/smartolt-push-ctos/health")
+      .then((r) => { if (alive) setH(r.data); })
+      .catch((e) => { if (alive) setErr(e?.response?.data?.detail || e.message); });
+    return () => { alive = false; };
+  }, []);
+  if (err) return null; // silencioso (não polui se usuário sem permissão)
+  if (!h) return null;
+  const pct = h.eligible > 0 ? h.sync_pct : null;
+  const pctColor = pct === null ? "#64748b"
+                    : pct >= 95 ? "#16a34a"
+                    : pct >= 70 ? "#ca8a04" : "#dc2626";
+  return (
+    <Card data-testid="smartolt-health-card" style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14,
+                       flexWrap: "wrap" }}>
+        <div style={{ display: "grid", placeItems: "center",
+                        width: 64, height: 64, borderRadius: 16,
+                        background: pctColor + "22", color: pctColor,
+                        fontWeight: 800, fontSize: 18 }}>
+          {pct !== null ? `${pct}%` : "—"}
+        </div>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 2 }}>
+            📡 Saúde SmartOLT
+          </div>
+          <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>
+            {h.eligible > 0
+              ? <>
+                  <strong>{h.synced}</strong> de <strong>{h.eligible}</strong> CTOs
+                  elegíveis sincronizadas no SmartOLT.
+                  {h.pending > 0 && <> · 🟡 {h.pending} aguardando.</>}
+                  {h.failing > 0 && <> · ❌ {h.failing} com erros recorrentes.</>}
+                  {h.orphans > 0 && <> · 📁 {h.orphans} só na Base de Portas (sem OLT).</>}
+                </>
+              : <>Nenhuma CTO em VLAN vinculada a SmartOLT.
+                  {h.orphans > 0 && <> {h.orphans} CTOs ficam só na Base de Portas.</>}
+                  {" "}Vincule a OLT aos bairros em <strong>Configurações → Bairros</strong>.</>}
+          </div>
+        </div>
+        <a href="#smartolt-push"
+            onClick={(e) => {
+              e.preventDefault();
+              window.dispatchEvent(new CustomEvent("smartprov:nav",
+                                                       { detail: "smartolt-push" }));
+            }}
+            data-testid="smartolt-health-link"
+            style={{ padding: "8px 14px", background: "#0f172a", color: "#fff",
+                       borderRadius: 8, fontSize: 12, fontWeight: 700,
+                       textDecoration: "none" }}>
+          Ver fila →
+        </a>
+      </div>
+    </Card>
+  );
+}
+
 function brl(v) { return `R$ ${(v || 0).toFixed(2).replace(".", ",")}`; }
 function hours(min) { return ((min || 0) / 60).toFixed(1); }
 
@@ -102,6 +164,9 @@ export default function DashboardPanel() {
       </div>
 
       <Ipv6QualityCard />
+
+      {/* iter211bh — Saúde SmartOLT (% de CTOs sincronizadas) */}
+      <SmartOltHealthCard />
 
       <ChurnReasonsKpiCard />
 

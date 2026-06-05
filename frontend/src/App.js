@@ -16,9 +16,11 @@ import {
   FileSpreadsheet, History as HistoryIcon, Settings as SettingsIcon,
   Building2, Eye, EyeOff, Sun, Moon, Bot, UserCircle, MessageCircle, Cpu,
   Receipt, CalendarDays, Wand2, DollarSign, Megaphone, Calculator,
-  ShoppingCart, Trello, FileText, CreditCard, Globe, Car,
+  ShoppingCart, Trello, FileText, CreditCard, Globe, Car, Database,
+  Wifi,
 } from "lucide-react";
 import CollaboratorApp from "@/CollaboratorApp";
+import VersionBadge from "@/VersionBadge";
 import CadastroPanel from "@/CadastroPanel";
 import ProjectsPanel from "@/ProjectsPanel";
 import LeaderboardMural from "@/LeaderboardMural";
@@ -38,6 +40,11 @@ import RedeIaPanel from "@/RedeIaPanel";
 import RadiusPanel from "@/RadiusPanel";
 import PaymentsPanel from "@/PaymentsPanel";
 import FleetPanel from "@/FleetPanel";
+import FleetTrackingPage from "@/fleet/FleetTrackingPage";
+import SecurityHomePage from "@/security/SecurityHomePage";
+import ParceriaAdminPage from "@/parceria/ParceriaAdminPage";
+import ReferralsAdminPanel from "@/ReferralsAdminPanel";
+import WifiHotspotPanel from "@/WifiHotspotPanel";
 import SitePanel from "@/SitePanel";
 import ContractsPanel from "@/ContractsPanel";
 import ClientsSegmentPanel from "@/ClientsSegmentPanel";
@@ -55,8 +62,13 @@ import UsersPanel from "@/UsersPanel";
 import DashboardPanel from "@/DashboardPanel";
 import PracasPanel from "@/PracasPanel";
 import LogsPanel from "@/LogsPanel";
+import ClientErrorsPanel from "@/ClientErrorsPanel";
+import SmartOltPushPanel from "@/SmartOltPushPanel";
+import GlobalToast from "@/GlobalToast";
 import PlatformAdminPanel from "@/PlatformAdminPanel";
+import BackupPanel from "@/BackupPanel";
 import BlockedPage from "@/BlockedPage";
+import ErrorBoundary from "@/ErrorBoundary";
 import DialogHost from "@/dialog";
 import DialogHistoryPanel from "@/DialogHistoryPanel";
 import LousaAdminPanel from "@/LousaAdminPanel";
@@ -151,46 +163,28 @@ function useTheme() {
    Navegação — nomenclatura alinhada com o padrão ISP (Atlaz/Voalle/SGP)
    ============================================================ */
 
-// Mapa tab.id → tag de acesso (definida em backend/access_tags.py)
-// Se um item NÃO tem mapeamento, é considerado "sempre visível" (ex.: Configurações)
-const TAB_TO_TAG = {
-  dashboard: "painel",
-  lousa: "lousa",
-  estoque: "estoque",
-  "central-compras": "central_compras",
-  "projects": "projetos",
-  "radius": "rede_ia",
-  "contracts": "subscribers",
-  "contracts-disabled": "subscribers",
-  "clients-recent": "subscribers",
-  "clients-overdue": "subscribers",
-  "clients-blocked": "subscribers",
-  "clients-no-charges": "subscribers",
-  "clients-connected": "subscribers",
-  "clients-disconnected": "subscribers",
-  "clients-attempts": "subscribers",
-  "clients-no-contract": "subscribers",
-  "rede-ia": "rede_ia",
-  atendimento: "atendimento_wa",
-  "ai-ranking": "ia_avaliacao",
-  "ai-corrections": "ia_avaliacao",
-  "central-ia": "ia_avaliacao",
-  "alvaro-ia": "ia_avaliacao",
-  "mass-messaging": "atendimento_wa",
-  "sales-funnel": "atendimento_wa",
-  cadastro: "colaboradores",
-  clientes: "clientes",
-  subscribers: "clientes",
-  plans: "clientes",
-  pracas: "pracas",
-  manager: "auditoria",
-  logs: "logs",
-  espelho: "ponto",
-  sheet: "ponto",
-  holerite: "holerite",
-  feriados: "feriados",
-  financeiro: "financeiro",
+// iter211v — Mapa tab.id → tag de acesso. Por convenção atual, a `tag`
+// é IGUAL ao `tab.id`. Só mantemos aliases legados pra retro-compat com
+// usuários que tinham tags antigas salvas no DB. A regra de catálogo
+// está em /app/backend/access_tags.py — toda nova aba/sub-aba criada
+// no sidebar DEVE ter sua tag declarada lá (cuidam disso PRD.md/CR).
+const LEGACY_TAG_ALIASES = {
+  painel: "dashboard",
+  central_compras: "central-compras",
+  atendimento_wa: "atendimento",
+  ia_avaliacao: "ai-ranking",
+  ponto: "sheet",
+  auditoria: "manager",
 };
+function tagForTab(id) {
+  return id;  // identidade. Restrições reais ficam no backend.
+}
+function userHasTag(userTags, requiredTag) {
+  if (!Array.isArray(userTags)) return true;
+  if (userTags.includes(requiredTag)) return true;
+  // Aceita aliases legados (ex.: "painel" no DB ⇢ tab "dashboard")
+  return userTags.some((t) => (LEGACY_TAG_ALIASES[t] || t) === requiredTag);
+}
 
 const NAV_GROUPS = [
   {
@@ -216,6 +210,10 @@ const NAV_GROUPS = [
     items: [
       { id: "fleet", icon: Car, label: "Gestão de Frota",
         roles: ["gestor", "administrador", "auditor"] },
+      { id: "fleet-tracking", icon: Car, label: "Rastreamento (GPS)",
+        roles: ["gestor", "administrador", "auditor"] },
+      { id: "security-home", icon: Car, label: "Segurança Residencial",
+        roles: ["gestor", "administrador", "auditor"] },
     ],
   },
   {
@@ -236,6 +234,7 @@ const NAV_GROUPS = [
       { id: "ai-corrections", icon: Wand2, label: "Correções IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "central-ia", icon: Brain, label: "Central IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "rede-ia", icon: Brain, label: "Rede IA", roles: ["gestor", "auditor", "administrador", "gestor_rede"] },
+      { id: "smartolt-push", icon: Brain, label: "Fila SmartOLT", roles: ["gestor", "administrador", "gestor_rede"] },
       { id: "atendimento", icon: MessageCircle, label: "Atendimento IA", roles: ["gestor", "auditor", "administrador", "colaborador"], requires: "can_attend_whatsapp" },
       { id: "alvaro-ia", icon: Brain, label: "Alvaro IA", roles: ["gestor", "auditor", "administrador"] },
       { id: "mass-messaging", icon: Megaphone, label: "Disparo em Massa", roles: ["gestor", "auditor", "administrador"] },
@@ -274,6 +273,8 @@ const NAV_GROUPS = [
     items: [
       { id: "manager", icon: ClipboardList, label: "Auditoria", roles: ["auditor", "administrador"] },
       { id: "logs", icon: HistoryIcon, label: "Logs", roles: ["gestor", "auditor", "administrador"] },
+      { id: "client-errors", icon: HistoryIcon, label: "Crashes Frontend",
+        roles: ["gestor", "auditor", "administrador"] },
     ],
   },
   {
@@ -311,6 +312,12 @@ const NAV_GROUPS = [
     items: [
       { id: "budget", icon: Calculator, label: "Orçamento",
         roles: ["administrador", "gestor", "financeiro"] },
+      { id: "parcerias", icon: Calculator, label: "Parcerias",
+        roles: ["administrador", "gestor", "financeiro"] },
+      { id: "referrals-admin", icon: Calculator, label: "Indique e Ganhe",
+        roles: ["administrador", "gestor", "financeiro"] },
+      { id: "wifi-hotspot", icon: Wifi, label: "WiFi Hotspot",
+        roles: ["administrador", "gestor"] },
     ],
   },
   {
@@ -320,6 +327,7 @@ const NAV_GROUPS = [
       { id: "motor-ia", icon: Cpu, label: "Motor IA", roles: ["administrador"] },
       { id: "settings", icon: SettingsIcon, label: "Configurações", roles: ["auditor", "administrador"] },
       { id: "platform", icon: Building2, label: "Plataforma", roles: ["auditor", "administrador"] },
+      { id: "backup", icon: Database, label: "Backup DB", roles: ["auditor", "administrador"], superAdminOnly: true },
     ],
   },
 ];
@@ -761,9 +769,9 @@ function AppShell({ view, setView, children }) {
     // Auditor/Admin sempre passam. Para os demais, se a tab tem mapeamento
     // de tag E o user tem `access_tags` definido, exige que a tag esteja lá.
     if (user && user.role !== "administrador" && user.role !== "auditor") {
-      const tagNeeded = TAB_TO_TAG[t.id];
+      const tagNeeded = tagForTab(t.id);
       const userTags = Array.isArray(user.access_tags) ? user.access_tags : null;
-      if (tagNeeded && userTags && !userTags.includes(tagNeeded)) {
+      if (tagNeeded && userTags && !userHasTag(userTags, tagNeeded)) {
         return false;
       }
     }
@@ -881,9 +889,9 @@ function AppContent() {
     }
     // RBAC granular por tag de acesso
     if (user && user.role !== "administrador" && user.role !== "auditor") {
-      const tagNeeded = TAB_TO_TAG[t.id];
+      const tagNeeded = tagForTab(t.id);
       const userTags = Array.isArray(user.access_tags) ? user.access_tags : null;
-      if (tagNeeded && userTags && !userTags.includes(tagNeeded)) {
+      if (tagNeeded && userTags && !userHasTag(userTags, tagNeeded)) {
         return false;
       }
     }
@@ -979,7 +987,16 @@ function AppContent() {
       }
     };
     window.addEventListener("ponto:navigate", handler);
-    return () => window.removeEventListener("ponto:navigate", handler);
+    // iter211bh — alias mais curto pra navegação inter-componentes
+    const altHandler = (e) => {
+      const v = typeof e?.detail === "string" ? e.detail : e?.detail?.view;
+      if (v) setView(v);
+    };
+    window.addEventListener("smartprov:nav", altHandler);
+    return () => {
+      window.removeEventListener("ponto:navigate", handler);
+      window.removeEventListener("smartprov:nav", altHandler);
+    };
   }, []);
 
   useEffect(() => {
@@ -1165,7 +1182,8 @@ function AppContent() {
       {!allowed ? (
         <BlockedPage tabLabel={activeTab?.label || "esta seção"} />
       ) : (
-        <>
+        <ErrorBoundary key={view} name={view || "view"} variant="fullscreen">
+          <>
           {view === "dashboard" && <DashboardPanel />}
           {view === "lousa" && <LousaAdminPanel systemStatus={systemStatus} currentUser={user} />}
           {view === "estoque" && <EstoquePanel currentUser={user} />}
@@ -1189,9 +1207,15 @@ function AppContent() {
           {view === "budget" && <BudgetPanel />}
           {view === "billing" && <BillingPanel />}
           {view === "rede-ia" && <RedeIaPanel currentUser={user} />}
+          {view === "smartolt-push" && <SmartOltPushPanel />}
           {view === "radius" && <RadiusPanel currentUser={user} />}
           {view === "payments" && <PaymentsPanel />}
           {view === "fleet" && <FleetPanel />}
+          {view === "fleet-tracking" && <FleetTrackingPage />}
+          {view === "security-home" && <SecurityHomePage />}
+          {view === "parcerias" && <ParceriaAdminPage />}
+          {view === "referrals-admin" && <ReferralsAdminPanel />}
+          {view === "wifi-hotspot" && <WifiHotspotPanel />}
           {view === "site" && <SitePanel />}
           {view === "contracts" && <ContractsPanel currentUser={user} />}
           {view === "contracts-disabled" &&
@@ -1216,6 +1240,7 @@ function AppContent() {
           {view === "mass-messaging" && <MassMessagingPanel />}
           {view === "sales-funnel" && <SalesFunnelPanel />}
           {view === "logs" && <LogsPanel />}
+          {view === "client-errors" && <ClientErrorsPanel />}
           {view === "settings" && <SettingsPanel />}
           {view === "motor-ia" && (
             <div style={{ padding: "0 4px", display: "grid", gap: 16 }}>
@@ -1231,7 +1256,9 @@ function AppContent() {
             </div>
           )}
           {view === "platform" && <PlatformAdminPanel />}
-        </>
+          {view === "backup" && <BackupPanel />}
+          </>
+        </ErrorBoundary>
       )}
     </AppShell>
   );
@@ -1250,6 +1277,7 @@ export default function App() {
         fontFamily: "system-ui", color: "#64748b",
       }}>Carregando mapa…</div>}>
         <PublicMapPage />
+        <VersionBadge />
       </React.Suspense>
     );
   }
@@ -1258,6 +1286,8 @@ export default function App() {
       <AppContent />
       <DialogHost />
       <DialogHistoryGate />
+      <GlobalToast />
+      <VersionBadge />
     </AuthProvider>
   );
 }

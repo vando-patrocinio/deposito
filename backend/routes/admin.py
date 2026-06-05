@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 import httpx
 import resend
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
 from core import (
@@ -302,3 +302,76 @@ async def list_alerts(limit: int = 50):
 @router.get("/")
 async def root():
     return {"ok": True, "service": "Ponto do Colaborador", "version": "2.0"}
+
+
+# -------------------------------------------------------------------------
+# iter206 — Auth Recovery (master key) — emergência: usuário travado em prod
+# -------------------------------------------------------------------------
+class AuthRecoveryPayload(BaseModel):
+    master_key: str = Field(..., min_length=8)
+    email: str = Field(..., min_length=3)
+    new_password: str = Field(..., min_length=6)
+
+
+@router.post("/auth-recovery")
+async def auth_recovery(payload: AuthRecoveryPayload, request: Request):
+    """Reseta senha + libera lock de brute-force + reativa conta.
+
+    Sem JWT — usa `master_key` validada contra `AUTH_RECOVERY_KEY` no .env
+    (ou contra o `JWT_SECRET` como fallback, já que quem tem acesso ao deploy
+    tem o JWT_SECRET).
+
+    Logs: IP + email + timestamp em `auth_recovery_log`.
+    """
+    from auth import hash_password
+    expected = (os.environ.get("AUTH_RECOVERY_KEY") or
+                os.environ.get("JWT_SECRET") or "")
+    if not expected or len(expected) < 8:
+        raise HTTPException(503,
+            "AUTH_RECOVERY_KEY/JWT_SECRET não configurados.")
+    if not _constant_time_eq(payload.master_key, expected):
+        raise HTTPException(403, "Master key inválida.")
+
+    ip = (request.client.host if request.client else "?") or "?"
+    user = await db.users.find_one({"email": payload.email.lower().strip()})
+    if not user:
+        # Não revela existência de email — mas loga tentativa
+        await _log_auth_recovery(payload.email, ip, "user-not-found")
+        raise HTTPException(404, "Usuário não encontrado.")
+
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {
+            "password_hash": hash_password(payload.new_password),
+            "active": True,
+            "locked_until": None,
+            "failed_attempts": 0,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    # Limpa logs de brute-force separados (best-effort)
+    for coll in ("auth_failed_attempts", "auth_locks"):
+        try:
+            await db[coll].delete_many({"email": payload.email})
+        except Exception:
+            pass
+    await _log_auth_recovery(payload.email, ip, "success")
+    return {"ok": True, "email": payload.email, "reset": True}
+
+
+def _constant_time_eq(a: str, b: str) -> bool:
+    """Compara strings em tempo constante (anti-timing-attack)."""
+    import hmac
+    return hmac.compare_digest(str(a).encode(), str(b).encode())
+
+
+async def _log_auth_recovery(email: str, ip: str, status: str) -> None:
+    try:
+        await db.auth_recovery_log.insert_one({
+            "email": email,
+            "ip": ip,
+            "status": status,
+            "at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass

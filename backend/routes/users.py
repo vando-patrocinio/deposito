@@ -302,6 +302,31 @@ async def access_tags_catalog(user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/access-tags/audit")
+async def access_tags_audit(user: dict = Depends(require_role("auditor"))):
+    """iter211v — REGRA DE PARIDADE: toda aba/sub-aba declarada em
+    `NAV_GROUPS` (frontend) precisa ter tag correspondente em
+    `access_tags.py` (backend). Este endpoint expõe a divergência em
+    tempo real para auditores.
+
+    Resposta:
+        nav_total:        total de ids únicos em NAV_GROUPS
+        catalog_total:    total de tags no catálogo
+        missing_in_catalog: ids do sidebar que NÃO existem como tag
+                            (precisa adicionar em access_tags.py).
+        extra_in_catalog:  tags sem aba no sidebar (legado/sub-painel —
+                            geralmente OK).
+        in_sync:           True se nenhuma aba está faltando tag.
+    """
+    from nav_tabs_registry import audit_against_catalog, parse_nav_tabs
+    audit = audit_against_catalog([t["key"] for t in ACCESS_TAGS_CATALOG])
+    audit["nav_groups"] = {
+        label: [{"id": tid, "parent_id": pid} for tid, pid in entries]
+        for label, entries in parse_nav_tabs().items()
+    }
+    return audit
+
+
 @router.post("/users")
 async def create_user(payload: UserIn, user: dict = Depends(require_role("auditor"))):
     if payload.role not in ("gestor", "auditor"):

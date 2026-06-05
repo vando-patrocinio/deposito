@@ -173,10 +173,13 @@ export default function CTOMapPicker({
   //     centrar o mapa; ao GPS chegar, sobrescreve com posição precisa
   //  4. se nenhum chegar em 20s, erro
   // iter183 — usa helper global `getBestPosition`: dispara GPS (high acc) +
-  // rede (low acc) em paralelo; resolve com o primeiro fix <= 25m, ou o
-  // melhor disponível no timeout. Substitui a implementação manual.
+  // rede (low acc) em paralelo; resolve com o primeiro fix <= 50m, ou o
+  // melhor disponível no timeout. iter211ap — aumentado timeoutMs pra 30s
+  // e cutoffM afrouxado pra 50m: em campo (área rural, dentro de prédio,
+  // celular antigo) o fix demora mais. Aceitar accuracy maior evita o
+  // overlay amarelo "Sem GPS nem rede".
   const requestGps = useCallback(() => {
-    return getBestPosition({ cutoffM: 25, timeoutMs: 20000, maxAgeMs: 0 })
+    return getBestPosition({ cutoffM: 50, timeoutMs: 30000, maxAgeMs: 0 })
       .then((fix) => ({
         coords: {
           latitude: fix.lat,
@@ -199,16 +202,42 @@ export default function CTOMapPicker({
         setGpsPos({ lat, lng, accuracy: pos.coords.accuracy });
         setCenter([lat, lng]);
         setGpsError(null);
+        // iter211ap — salva último fix bem-sucedido pra usar como fallback
+        // quando o próximo pedido demorar/falhar (modo "última posição").
+        try {
+          localStorage.setItem("smartprov:last-gps", JSON.stringify({
+            lat, lng, accuracy: pos.coords.accuracy, ts: Date.now(),
+          }));
+        } catch { /* quota cheio, ignora */ }
       })
       .catch((err) => {
         if (cancelled) return;
+        // iter211ap — fallback: tenta usar último GPS salvo (até 24h).
+        let usedCache = false;
+        try {
+          const raw = localStorage.getItem("smartprov:last-gps");
+          if (raw) {
+            const last = JSON.parse(raw);
+            const ageH = (Date.now() - (last.ts || 0)) / 3600000;
+            if (last?.lat && last?.lng && ageH < 24) {
+              setGpsPos({ lat: last.lat, lng: last.lng,
+                            accuracy: last.accuracy || 1000 });
+              setCenter([last.lat, last.lng]);
+              setGpsError(`📍 Usando última localização conhecida (${ageH < 1
+                ? Math.round(ageH * 60) + " min"
+                : Math.round(ageH) + "h"} atrás). Toque em ◎ para atualizar.`);
+              usedCache = true;
+            }
+          }
+        } catch { /* JSON inválido, ignora */ }
+        if (usedCache) return;
         const msg = err?.code === 1
           ? "Permissão de localização negada. Toque em 🔒 na barra do navegador → permita Localização."
           : err?.code === 2
           ? "Sinal de GPS fraco. Vá para uma área aberta e toque em ◎ para tentar de novo."
           : err?.code === 3
           ? "Tempo esgotado ao obter GPS. Toque em ◎ para tentar de novo."
-          : `GPS indisponível: ${err?.message || err}`;
+          : "GPS+rede sem resposta. Verifique se a localização está ativa e toque em ◎.";
         setGpsError(msg);
         onError?.(msg);
       })
@@ -290,10 +319,16 @@ export default function CTOMapPicker({
       const lat = pos.coords.latitude, lng = pos.coords.longitude;
       setGpsPos({ lat, lng, accuracy: pos.coords.accuracy });
       setCenter([lat, lng]);
+      // iter211ap — atualiza cache de última posição
+      try {
+        localStorage.setItem("smartprov:last-gps", JSON.stringify({
+          lat, lng, accuracy: pos.coords.accuracy, ts: Date.now(),
+        }));
+      } catch { /* */ }
     } catch (err) {
       const msg = err?.code === 1
         ? "Permissão de localização negada."
-        : "Não foi possível obter a localização.";
+        : "Não foi possível obter a localização. Tente novamente em área aberta.";
       setGpsError(msg);
       onError?.(msg);
     } finally {
@@ -428,12 +463,23 @@ export default function CTOMapPicker({
         )}
       </div>
 
-      {/* Banner de erro GPS — só aparece se há falha */}
+      {/* Banner de erro GPS — só aparece se há falha.
+          iter211ap — clicável: toca pra tentar de novo (mais rápido que
+          procurar o botão ◎). */}
       {gpsError && (
-        <div data-testid="cto-gps-error" style={gpsErrorBanner}>
+        <button data-testid="cto-gps-error"
+                type="button"
+                onClick={recenterOnMe}
+                disabled={requestingGps}
+                style={{ ...gpsErrorBanner, cursor: "pointer",
+                          fontFamily: "inherit", textAlign: "left",
+                          width: "calc(100% - 20px)" }}>
           <span style={{ fontSize: 14 }}>📡</span>
-          <span>{gpsError}</span>
-        </div>
+          <span style={{ flex: 1 }}>{gpsError}</span>
+          <span style={{ fontSize: 10, fontWeight: 800, opacity: 0.7 }}>
+            {requestingGps ? "⌛" : "↻"}
+          </span>
+        </button>
       )}
 
       {/* Indicador "Buscando GPS..." durante o request inicial */}

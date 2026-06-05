@@ -120,8 +120,9 @@ function OntsTab() {
   async function bulk() {
     setBusy(true); setErr("");
     try {
-      const macs = macsText.split(/[\s,;]+/).map((m) => m.trim()).filter(Boolean);
-      await api.stokOntsBulk(model, macs);
+      const list = macsText.split(/[\s,;]+/).map((m) => m.trim()).filter(Boolean);
+      // iter211h — base obrigatória pelo SN
+      await api.stokOntsBulk(model, list.map((sn) => ({ sn: sn.toUpperCase() })));
       setMacsText(""); setModel("");
       await reload();
     } catch (e) { setErr(e?.response?.data?.detail || e.message); }

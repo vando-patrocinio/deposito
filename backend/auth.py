@@ -132,8 +132,16 @@ async def ensure_auth_indexes(db) -> None:
 
 async def seed_default_users(db) -> None:
     """Garante que existam contas iniciais NA EMPRESA DEMO + um colaborador
-    de exemplo vinculado a um usuário 'colaborador@empresa.com'."""
+    de exemplo vinculado a um usuário 'colaborador@empresa.com'.
+
+    iter206 — Para a conta do dono (`vando@ligotelecom.com`), faz reseed FORÇADO
+    da senha em todo startup + limpa lock de brute-force + reativa. Isso garante
+    que o usuário NUNCA fique trancado fora do app em produção depois de um
+    deploy ou reset acidental.
+    """
     DEMO = "co-demo"
+    OWNER_EMAIL = "vando@ligotelecom.com"
+    OWNER_PASSWORD = "Vs5879@@@"
     base = [
         ("admin@empresa.com", "123456", "administrador", "Administrador"),
         ("gestor@empresa.com", "123456", "gestor", "Gestor"),
@@ -144,7 +152,7 @@ async def seed_default_users(db) -> None:
         ("auditor@example.com", os.environ.get("AUDITOR_PASSWORD", "auditor123"), "auditor", "Auditor padrão"),
         # iter180 — conta corporativa do super-admin (Vando · Ligo Telecom).
         # Senha hardcoded por decisão direta do usuário (não é uma demo pública).
-        ("vando@ligotelecom.com", "Vs5879@@@", "auditor", "Vando · Ligo Telecom"),
+        (OWNER_EMAIL, OWNER_PASSWORD, "auditor", "Vando · Ligo Telecom"),
     ]
     for email, password, role, name in base:
         existing = await db.users.find_one({"email": email})
@@ -160,6 +168,33 @@ async def seed_default_users(db) -> None:
             await db.users.insert_one(doc)
         elif not existing.get("company_id"):
             await db.users.update_one({"id": existing["id"]}, {"$set": {"company_id": DEMO}})
+
+    # iter206 — Reset forçado do owner em TODO startup (idempotente).
+    # Cobre cenários: deploy novo, banco com hash bcrypt antigo/quebrado,
+    # conta com lock de brute-force, conta desativada acidentalmente.
+    owner = await db.users.find_one({"email": OWNER_EMAIL})
+    if owner:
+        await db.users.update_one(
+            {"email": OWNER_EMAIL},
+            {"$set": {
+                "password_hash": hash_password(OWNER_PASSWORD),
+                "active": True,
+                "is_super_admin": True,
+                "role": "auditor",
+                "locked_until": None,
+                "failed_attempts": 0,
+                "updated_at": _now_iso(),
+            }},
+        )
+        # Limpa registros de brute-force se existirem em coleções separadas
+        try:
+            await db.auth_failed_attempts.delete_many({"email": OWNER_EMAIL})
+        except Exception:
+            pass
+        try:
+            await db.auth_locks.delete_one({"email": OWNER_EMAIL})
+        except Exception:
+            pass
 
     # Vincula colaborador@empresa.com ao colaborador demo (col-demo-001)
     user_colab = await db.users.find_one({"email": "colaborador@empresa.com"}, {"_id": 0, "id": 1, "collaborator_id": 1})

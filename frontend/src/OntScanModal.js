@@ -16,7 +16,8 @@ import { Camera, CheckCircle2, X, RefreshCw, Loader2 } from "lucide-react";
 import { api } from "@/api";
 
 export default function OntScanModal({ open, onScanned, onClose, hint,
-                                       isFullUnlock = false, expectedMac = "" }) {
+                                       isFullUnlock = false, expectedMac = "",
+                                       usePublic = false }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
@@ -92,7 +93,13 @@ export default function OntScanModal({ open, onScanned, onClose, hint,
   const readWithAI = async () => {
     setStage("reading"); setErr("");
     try {
-      const r = await api.scanOntLabel({ image_base64: imgB64, hint });
+      // iter221 — quando o modal está no PWA do colaborador (Google
+      // session token, sem JWT), usa a rota pública /public/scan-ont —
+      // senão devolveria 401 "Não autenticado" mesmo o usuário estando
+      // logado no PWA. Mesma lógica do /api/lousa/public/ocr-sn.
+      const r = await (usePublic
+        ? api.scanOntLabelPublic({ image_base64: imgB64, hint })
+        : api.scanOntLabel({ image_base64: imgB64, hint }));
       // Modo Teste (Vando/super_admin): se a IA falhou (sem MAC/SN), auto-preenche
       // com o MAC esperado (vindo do SmartOLT) ou um mock TEST-XXXX para liberar o fluxo.
       if (isFullUnlock && !r?.mac && !r?.sn) {

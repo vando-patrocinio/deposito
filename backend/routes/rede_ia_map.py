@@ -48,10 +48,13 @@ CE_TYPES = ("primaria", "secundaria", "terciaria", "emenda_aerea", "emenda_subte
 
 # Mapeia tipo de cabo (mapa) → ID do insumo (stok). Apenas estes geram
 # auto-baixa de estoque ao serem lançados no mapa interativo.
+# iter211f — incluído 48fo/96fo (catálogo de estoque já suporta).
 _CABLE_TYPE_TO_STOK_ID = {
     "6fo":  "fibra_06fo",
     "12fo": "fibra_12fo",
     "24fo": "fibra_24fo",
+    "48fo": "fibra_48fo",
+    "96fo": "fibra_96fo",
 }
 
 
@@ -98,7 +101,8 @@ async def _debit_fiber_for_cable(
     # Histórico
     cons_label = {
         "fibra_06fo": "Fibra 06FO", "fibra_12fo": "Fibra 12FO",
-        "fibra_24fo": "Fibra 24FO",
+        "fibra_24fo": "Fibra 24FO", "fibra_48fo": "Fibra 48FO",
+        "fibra_96fo": "Fibra 96FO",
     }[cons_id]
     verb = "Baixa" if action == "create" else "Devolução" if action == "delete" else "Ajuste"
     await db.stok_history.insert_one({
@@ -141,13 +145,20 @@ class CableSegment(BaseModel):
 
 class CableIn(BaseModel):
     type: str = "12fo"  # drop | 6fo | 12fo | 24fo | 48fo | 96fo
-    from_id: str  # ce-xxx ou cto-xxx
-    from_type: str  # "ce" | "cto"
-    to_id: str
-    to_type: str
+    # iter211c — from/to opcionais: cabo pode começar/terminar "no ar"
+    # (cabo solto). Quando faltar uma das pontas, salva como `cabo_solto`.
+    from_id: Optional[str] = None
+    from_type: Optional[str] = None
+    to_id: Optional[str] = None
+    to_type: Optional[str] = None
     segments: List[CableSegment] = []
     length_m: Optional[float] = None
     notes: str = ""
+    # iter211e — Rastreabilidade do cabo: SN do fabricante + NF da compra.
+    # Obrigatório para 6fo/12fo/24fo/48fo/96fo (não para drop).
+    cable_serial: Optional[str] = None
+    invoice_number: Optional[str] = None
+    purchase_id: Optional[str] = None  # link opcional à compra na DB
 
 
 class PositionIn(BaseModel):
@@ -737,6 +748,16 @@ async def create_cable(body: CableIn,
                         user: dict = Depends(require_role("administrador", "gestor", "gestor_rede"))):
     if body.type not in CABLE_TYPES:
         raise HTTPException(400, f"Tipo inválido. Use: {CABLE_TYPES}")
+    # iter211e — SN e NF obrigatórios para cabos de fibra (não-drop)
+    if body.type != "drop":
+        if not (body.cable_serial or "").strip():
+            raise HTTPException(400,
+                "SN do cabo é obrigatório para cabos de fibra "
+                f"({body.type.upper()}).")
+        if not (body.invoice_number or "").strip():
+            raise HTTPException(400,
+                "Nota fiscal é obrigatória para cabos de fibra "
+                f"({body.type.upper()}).")
     cid = _company(user)
     fo_map = {"drop": 1, "6fo": 6, "12fo": 12, "24fo": 24, "48fo": 48, "96fo": 96}
     segments = [s.model_dump() for s in body.segments]
@@ -754,7 +775,14 @@ async def create_cable(body: CableIn,
         "segments": segments,
         "length_m": length_m,
         "notes": body.notes,
-        "status": "active",
+        # iter211e — Rastreabilidade
+        "cable_serial": (body.cable_serial or "").strip() or None,
+        "invoice_number": (body.invoice_number or "").strip() or None,
+        "purchase_id": body.purchase_id,
+        # iter211c — cabo sem from/to vira `cabo_solto`
+        "status": ("cabo_solto"
+                    if not body.from_id or not body.to_id else "active"),
+        "is_loose": (not body.from_id) or (not body.to_id),
         "created_at": now_iso(), "updated_at": now_iso(),
         "created_by": user.get("name"),
     }
@@ -768,12 +796,16 @@ async def create_cable(body: CableIn,
             {"id": doc["id"]}, {"$set": {"stok_debit": debit}})
         doc["stok_debit"] = debit
     # Notifica gestores de rede
+    def _peer_label(_id, _type):
+        if not _id or not _type:
+            return "ponta solta"
+        return f"{_type.upper()} {_id[:8]}"
     await _notify_managers(cid, {
         "event": "cable_created",
         "title": f"Novo cabo {body.type.upper()} criado",
         "message": (f"{user.get('name','Alguém')} criou um cabo {body.type.upper()} de "
-                     f"{round(length_m)}m entre {body.from_type.upper()} {body.from_id[:8]} "
-                     f"e {body.to_type.upper()} {body.to_id[:8]}."),
+                     f"{round(length_m or 0)}m entre {_peer_label(body.from_id, body.from_type)} "
+                     f"e {_peer_label(body.to_id, body.to_type)}."),
         "ref_id": doc["id"], "ref_type": "cable",
         "actor": user.get("name"),
     })

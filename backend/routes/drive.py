@@ -50,7 +50,15 @@ SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 def _flow() -> Flow:
     client_id = os.environ.get("GOOGLE_CLIENT_ID")
     client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
-    redirect_uri = os.environ.get("GOOGLE_DRIVE_REDIRECT_URI")
+    # iter208 — Redirect URI dinâmico: prioriza PUBLIC_BACKEND_URL (injetado pelo
+    # Emergent no deploy) em vez de hardcoded. Isso permite preview e prod usarem
+    # o mesmo .env sem conflito de OAuth.
+    redirect_uri = (
+        os.environ.get("GOOGLE_DRIVE_REDIRECT_URI") or
+        (os.environ.get("PUBLIC_BACKEND_URL", "").rstrip("/")
+         + "/api/oauth/drive/callback"
+         if os.environ.get("PUBLIC_BACKEND_URL") else None)
+    )
     if not (client_id and client_secret and redirect_uri):
         raise HTTPException(500, "Google OAuth não configurado no servidor (.env).")
     return Flow.from_client_config(

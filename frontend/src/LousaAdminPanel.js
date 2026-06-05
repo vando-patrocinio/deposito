@@ -1249,6 +1249,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
         <ClosedTicketDetailModal
           ticket={closedDetailTicket}
           onClose={() => setClosedDetailTicket(null)}
+          onReopened={() => { setClosedDetailTicket(null); window.location.reload(); }}
         />
       )}
 
@@ -1453,6 +1454,10 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
         ticket.client_snapshot.address ? `End.: ${fmtAddress(ticket.client_snapshot.address)}` : null,
         ticket.client_snapshot.neighborhood ? `Bairro: ${safeText(ticket.client_snapshot.neighborhood)}` : null,
         ticket.scheduled_time ? `Horário: ${ticket.scheduled_time.substr(11, 5)}` : null,
+        ticket.atlaz_slot_original && ticket.scheduled_time
+          && ticket.atlaz_slot_original !== ticket.scheduled_time
+          ? `⏰ Atlaz original: ${ticket.atlaz_slot_original.substr(11, 5)} (slot cheio — movida)`
+          : null,
         ticket.client_snapshot.relato ? `\nRelato:\n${fmtRelato(ticket.client_snapshot.relato)}` : null,
         ai.score != null ? `\nIA: ${ai.score.toFixed(1)}/10 (${ai.label || ""})` : null,
         ticket.in_execution ? "\n▶ Em execução pelo técnico" : null,
@@ -1565,6 +1570,27 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
               background: "#f1f5f9", padding: "2px 7px", borderRadius: 999,
               border: "1px solid #e2e8f0",
             }}>{ticket.scheduled_time.substr(11, 5)}</span>
+          )}
+          {/* iter211aa — Badge "movida" quando atlaz_slot_original difere
+              do scheduled_time atual. Indica que essa bolha foi deslocada
+              da hora real do Atlaz porque o slot estava cheio. */}
+          {ticket.atlaz_slot_original
+            && ticket.scheduled_time
+            && ticket.atlaz_slot_original !== ticket.scheduled_time && (
+            <span data-testid={`bubble-displaced-${ticket.id}`}
+                  style={{
+                    fontSize: 9, fontWeight: 800, color: "#9a3412",
+                    background: "#fed7aa", padding: "2px 7px",
+                    borderRadius: 999, border: "1px solid #fb923c",
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                  }} title={
+              `Atlaz original: ${ticket.atlaz_slot_original.substr(11, 5)}`
+              + ` (${ticket.atlaz_slot_original.substr(0, 10)})`
+              + `\nMovida automaticamente para ${ticket.scheduled_time.substr(11, 5)} `
+              + `porque o slot original estava cheio.`
+            }>
+              ⏰ era {ticket.atlaz_slot_original.substr(11, 5)}
+            </span>
           )}
         </div>
         <span style={{
@@ -1723,6 +1749,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
         <ClosedTicketDetailModal
           ticket={ticket}
           onClose={() => setShowDetails(false)}
+          onReopened={() => { setShowDetails(false); window.location.reload(); }}
         />
       )}
     </div>
@@ -2980,6 +3007,7 @@ function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId
         <ClosedTicketDetailModal
           ticket={closedDetailTicket}
           onClose={() => setClosedDetailTicket(null)}
+          onReopened={() => { setClosedDetailTicket(null); window.location.reload(); }}
         />
       )}
     </div>

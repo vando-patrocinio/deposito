@@ -18,8 +18,9 @@ GET  /api/tech-tracking/trail/{collab_id}?date=YYYY-MM-DD  (autenticado)
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
@@ -30,10 +31,45 @@ from database import db
 logger = logging.getLogger("ponto.tech_tracking")
 router = APIRouter(prefix="/api/tech-tracking", tags=["tech-tracking"])
 
+# iter211j — Cache in-process do OSRM Match (snap-to-road).
+# Key = hash MD5 dos pontos arredondados; value = (timestamp, segments).
+# TTL 1h (3600s): GPS bom não muda significativamente em escala de minutos.
+_SNAP_CACHE: Dict[str, Tuple[float, List[List[float]]]] = {}
+_SNAP_TTL: float = 3600.0
+# iter211k — Cache persistente em MongoDB (`db.osrm_snap_cache`).
+# TTL 7 dias via índice nativo do MongoDB. Sobrevive a reinícios do
+# backend, importante em deploys frequentes. O índice é criado de
+# forma idempotente na primeira chamada.
+_MONGO_SNAP_TTL_S: int = 7 * 24 * 3600  # 7 dias
+_mongo_snap_index_ready: bool = False
+
+
+async def _ensure_snap_cache_index() -> None:
+    """Cria o TTL index uma vez por processo (idempotente).
+
+    O Mongo TTL monitor remove docs automaticamente quando
+    `created_at` + 7d < agora.
+    """
+    global _mongo_snap_index_ready
+    if _mongo_snap_index_ready:
+        return
+    try:
+        await db.osrm_snap_cache.create_index(
+            "created_at", expireAfterSeconds=_MONGO_SNAP_TTL_S,
+            name="osrm_snap_ttl",
+        )
+        await db.osrm_snap_cache.create_index("sig", unique=True)
+        _mongo_snap_index_ready = True
+    except Exception as e:  # noqa: BLE001
+        logger.debug("[tech-tracking] TTL index osrm_snap_cache: %s", e)
+        # Não bloqueia — cache ainda funciona em memória.
+        _mongo_snap_index_ready = True
+
 
 # Accuracy: descarta amostras ruins. Mobile com GPS chega <20m, WiFi 30-100m,
-# Cell tower 500-2000m. 100m é um bom corte para não poluir.
-MAX_ACCURACY_M = 100.0
+# Cell tower 500-2000m. iter226 — relaxado de 100→400m: técnico em
+# movimento (carro/moto) tem accuracy oscilando, antes ele NUNCA pingava.
+MAX_ACCURACY_M = 400.0
 # Distância mínima entre pings para considerar um novo registro (m).
 # Evita "engasgo" parado no mesmo lugar enchendo banco. 8m ~= largura de rua.
 MIN_DISTANCE_M = 8.0
@@ -187,13 +223,91 @@ async def admin_trail(collab_id: str,
 async def admin_trail_snapped(collab_id: str,
                                   date: Optional[str] = Query(None),
                                   user: dict = Depends(get_current_user)):
-    """Trail casado nas vias (auditoria do gestor)."""
+    """Trail casado nas vias (auditoria do gestor).
+
+    iter215 — Higieniza o trail antes de plotar: descarta pings com
+    accuracy > 80m (GPS impreciso causa o "voo entre quadras") e
+    quebra em segmentos quando há gap > 5min OU jump > 400m entre
+    pings consecutivos. Devolve `segments_snapped` + `segments_raw`
+    para o frontend renderizar como polylines separadas em vez de uma
+    reta única atravessando quarteirões.
+    """
     coll = await _resolve_company(collab_id)
     trail = await _load_trail(coll.get("company_id"), collab_id, date)
     if not trail.get("points"):
-        return {**trail, "snapped": None}
-    snapped = await _snap_to_road(trail["points"])
-    return {**trail, "snapped": snapped}
+        return {**trail, "snapped": None,
+                "segments_snapped": [], "segments_raw": []}
+
+    sessions = _clean_and_split_points(trail["points"])
+    import asyncio
+    snapped_segments = await asyncio.gather(
+        *[_snap_to_road(seg) for seg in sessions],
+        return_exceptions=False,
+    )
+    fallbacks = sum(1 for s in snapped_segments if not s)
+    if sessions and fallbacks:
+        logger.info(
+            "[trail/snap] collab=%s sessions=%d snap_failed=%d (fallback)",
+            collab_id, len(sessions), fallbacks,
+        )
+    segments_raw = [[[p["lat"], p["lng"]] for p in seg] for seg in sessions]
+    segments_snapped = [s if s else [] for s in snapped_segments]
+    # Mantém `snapped` (legado) = concat das sessões snappeds — usado
+    # por consumidores antigos. Novo frontend usa `segments_snapped`.
+    legacy_snapped = [pt for seg in segments_snapped for pt in seg] or None
+    return {**trail,
+            "snapped": legacy_snapped,
+            "segments_snapped": segments_snapped,
+            "segments_raw": segments_raw,
+            "filtered": {
+                "max_accuracy_m": _TRAIL_MAX_ACC_M,
+                "gap_s": _TRAIL_GAP_S,
+                "jump_m": _TRAIL_JUMP_M,
+                "kept_segments": len(sessions),
+            }}
+
+
+# iter215 — Limpeza do trail (mesma semântica do locations.py)
+_TRAIL_MAX_ACC_M = 80.0
+_TRAIL_GAP_S = 300
+_TRAIL_JUMP_M = 400.0
+
+
+def _clean_and_split_points(pts: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
+    sessions: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+    last_dt = None
+    last_pt = None
+    for p in pts:
+        acc = p.get("accuracy")
+        if acc is not None and acc > _TRAIL_MAX_ACC_M:
+            continue
+        try:
+            cur_dt = datetime.fromisoformat(
+                str(p.get("captured_at")).replace("Z", "+00:00"))
+        except Exception:
+            continue
+        break_seg = False
+        if last_dt is not None and last_pt is not None:
+            dt_s = (cur_dt - last_dt).total_seconds()
+            try:
+                dist = _haversine_m(last_pt["lat"], last_pt["lng"],
+                                       p["lat"], p["lng"])
+            except Exception:
+                dist = 0
+            if dt_s > _TRAIL_GAP_S or dist > _TRAIL_JUMP_M:
+                break_seg = True
+        if break_seg:
+            if len(current) >= 2:
+                sessions.append(current)
+            current = []
+        current.append({"lat": p["lat"], "lng": p["lng"],
+                          "captured_at": p.get("captured_at")})
+        last_dt = cur_dt
+        last_pt = p
+    if len(current) >= 2:
+        sessions.append(current)
+    return sessions
 
 
 @router.get("/fleet/day")
@@ -278,22 +392,42 @@ async def fleet_day_summary(date: Optional[str] = Query(None),
 async def _snap_to_road(points: List[Dict[str, Any]]) -> Optional[List[List[float]]]:
     """Chama OSRM match para "colar" pontos GPS nas vias do OSM.
 
-    Retorna lista de pares [lat, lng] formando a geometria casada na rede
-    viária. None se falhar ou não tiver pontos suficientes.
-
-    Limites:
-    - OSRM público aceita até 100 coords por request.
-    - Damos um timeout curto (5s) — se OSRM estiver lento, o frontend
-      cai pro polyline reto (sem perda funcional).
+    iter211j — Cache in-process por hash dos pontos (TTL 1h). O LiveMap
+    chama esse helper a cada refresh do mapa; sem cache, OSRM público
+    receberia centenas de requests redundantes por hora (rate-limited).
     """
     if len(points) < 2:
         return None
+    # Hash determinístico dos coords (4 casas decimais ~ 10m de precisão).
+    # Pequenas mudanças em GPS (ex: 5ª casa) NÃO invalidam o cache.
+    import hashlib
+    sig = hashlib.md5(
+        ";".join(f"{p['lat']:.4f},{p['lng']:.4f}" for p in points).encode()
+    ).hexdigest()
+    cached = _SNAP_CACHE.get(sig)
+    now = time.time()
+    if cached and (now - cached[0]) < _SNAP_TTL:
+        return cached[1]
+    # iter211k — fallback: Mongo persistente. Útil quando o backend
+    # reiniciou recentemente (deploy) — evita refazer OSRM pra trajetos
+    # que já snapeamos nos últimos 7 dias.
+    await _ensure_snap_cache_index()
+    try:
+        doc = await db.osrm_snap_cache.find_one({"sig": sig}, {"_id": 0})
+        if doc and isinstance(doc.get("segments"), list):
+            seg = doc["segments"]
+            _SNAP_CACHE[sig] = (now, seg)  # aquece o in-process
+            return seg
+    except Exception as e:  # noqa: BLE001
+        logger.debug("[tech-tracking] mongo snap-cache miss: %s", e)
+    # GC leve: limpa entradas antigas (mantém cache pequeno)
+    if len(_SNAP_CACHE) > 500:
+        for k in [k for k, v in _SNAP_CACHE.items()
+                  if (now - v[0]) >= _SNAP_TTL]:
+            _SNAP_CACHE.pop(k, None)
     import httpx
-    # OSRM público (Project-OSRM). Substitua por instance própria para
-    # produção com alto volume.
     base = "https://router.project-osrm.org/match/v1/driving/"
     snapped: List[List[float]] = []
-    # Chunks de até 100 pts (max OSRM)
     CHUNK = 100
     async with httpx.AsyncClient(timeout=5.0) as cli:
         for start in range(0, len(points), CHUNK - 1):
@@ -301,8 +435,6 @@ async def _snap_to_road(points: List[Dict[str, Any]]) -> Optional[List[List[floa
             if len(chunk) < 2:
                 break
             coords = ";".join(f"{p['lng']:.6f},{p['lat']:.6f}" for p in chunk)
-            # radiuses ajuda OSRM com pontos imprecisos. OSRM público
-            # rejeita > 25m — usamos 25 fixo (suficiente p/ pings de GPS bons)
             radiuses = ";".join("25" for _ in chunk)
             url = (f"{base}{coords}?overview=full&geometries=geojson"
                    f"&radiuses={radiuses}&tidy=true&gaps=ignore")
@@ -320,7 +452,21 @@ async def _snap_to_road(points: List[Dict[str, Any]]) -> Optional[List[List[floa
             except Exception as e:  # noqa: BLE001
                 logger.debug("[tech-tracking] snap-to-road falhou: %s", e)
                 return None
-    return snapped or None
+    result = snapped or None
+    if result is not None:
+        _SNAP_CACHE[sig] = (now, result)
+        # iter211k — persiste em Mongo (best-effort, não bloqueia)
+        try:
+            await db.osrm_snap_cache.update_one(
+                {"sig": sig},
+                {"$set": {"sig": sig, "segments": result,
+                            "created_at": datetime.now(timezone.utc),
+                            "points_count": len(points)}},
+                upsert=True,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[tech-tracking] mongo snap-cache write: %s", e)
+    return result
 
 
 @router.get("/public/trail/{collab_id}/snap")

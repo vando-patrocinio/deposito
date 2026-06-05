@@ -61,6 +61,9 @@ export default function CtoInlineFlow({
   onSkipFromA, onAdvanceFromA, onBackFromB, onCreated,
   onSelectExistingCto,
   isFullUnlock = false,
+  // iter211am — toggle global (Configurações > Validações da OS).
+  // Quando DESLIGADO, o passo de foto da CTO é totalmente removido.
+  ctoPhotoRequired = true,
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -132,7 +135,7 @@ export default function CtoInlineFlow({
   async function submitCreate() {
     setBusy(true); setErr("");
     try {
-      if (!state.photo && !isFullUnlock) throw new Error("Foto da CTO é obrigatória.");
+      if (!state.photo && !isFullUnlock && ctoPhotoRequired) throw new Error("Foto da CTO é obrigatória.");
       if (!state.clientPort) throw new Error("Selecione a porta do cliente.");
 
       // Modo "usar CTO existente" — não cria nova; só vincula via OS
@@ -163,8 +166,15 @@ export default function CtoInlineFlow({
       }
       if (!state.capacity) throw new Error("Selecione a quantidade de portas.");
       if (!state.networkType) throw new Error("Selecione o tipo de rede.");
-      if (state.networkType === "desbalanceada" && !state.splitter) {
-        throw new Error("Selecione o splitter (rede desbalanceada).");
+      // iter211ar — splitter agora é selecionado nos 2 tipos de rede.
+      if (!state.splitter) {
+        throw new Error("Selecione o splitter (ou 'Sem splitter').");
+      }
+      // iter211aq — Nº da CTO agora é obrigatório (sem auto-numeração).
+      // Backend continua bloqueando duplicidade no bairro/VLAN (409).
+      const ctoNum = parseInt(state.ctoNumber, 10);
+      if (!ctoNum || ctoNum < 1 || ctoNum > 9999) {
+        throw new Error("Digite o nº da CTO (1 a 9999).");
       }
 
       // Garante que o bairro está cadastrado (cria se não existir)
@@ -176,10 +186,10 @@ export default function CtoInlineFlow({
         estado: (state.address.estado_detected || "").toUpperCase(),
       }).catch(() => { /* já existe — ok */ });
 
-      // Cria a CTO via endpoint público (auto-vincula cliente à porta)
-      const splitterValue = state.networkType === "desbalanceada"
-        ? state.splitter : (state.splitter && !state.splitter.startsWith("Sem")
-            ? state.splitter : null);
+      // Cria a CTO via endpoint público (auto-vincula cliente à porta).
+      // iter211ar — "Sem splitter" vira null no payload (em qualquer tipo).
+      const splitterValue = (state.splitter && !state.splitter.startsWith("Sem"))
+        ? state.splitter : null;
 
       const r = await api.redeIaCtoCreatePublic(collabId, {
         rua: state.address.endereco,
@@ -207,13 +217,13 @@ export default function CtoInlineFlow({
       onCreated?.({ cto: r, port_number: state.clientPort });
     } catch (e) {
       const d = e?.response?.data?.detail;
-      // Erro 409 = duplicidade. d é objeto com suggested_number.
+      // Erro 409 = duplicidade. iter211aq — NÃO auto-preenche o sugerido:
+      // técnico tem que digitar manualmente. Só mostra a sugestão na msg.
       if (e?.response?.status === 409 && d && d.suggested_number) {
         setErr(
-          `${d.msg || "CTO já existe"}. Próximo número livre: ${d.suggested_number}.`,
+          `❌ ${d.msg || "Esta CTO já existe neste bairro/VLAN."} `
+          + `Próximo número livre: ${d.suggested_number}. Digite outro número.`,
         );
-        // Auto-preenche o sugerido pro técnico só apertar Criar de novo
-        setState((s) => ({ ...s, ctoNumber: String(d.suggested_number) }));
       } else {
         setErr(typeof d === "string" ? d : (d?.msg || e.message || "Falha ao criar CTO."));
       }
@@ -388,7 +398,7 @@ export default function CtoInlineFlow({
                     if (!state.vlan && !isFullUnlock) {
                       setErr("Informe a VLAN."); return;
                     }
-                    if (!state.photo && !isFullUnlock) {
+                    if (!state.photo && !isFullUnlock && ctoPhotoRequired) {
                       // Abre câmera; o handler onPhotoChange salva no state.
                       // O técnico clica Continuar novamente após capturar.
                       fileInputRef.current?.click();
@@ -398,11 +408,11 @@ export default function CtoInlineFlow({
                     onAdvanceFromA?.();
                   }}
                   style={{ flex: 2, padding: "14px 14px", borderRadius: 10,
-                            background: (state.photo || isFullUnlock) ? C_PRIMARY : "#0f172a",
+                            background: (state.photo || isFullUnlock || !ctoPhotoRequired) ? C_PRIMARY : "#0f172a",
                             border: 0,
                             color: "#fff", fontWeight: 700, fontSize: 14,
                             cursor: "pointer" }}>
-            {(state.photo || isFullUnlock) ? "Continuar →" : "📸 Tirar foto da CTO e continuar →"}
+            {(state.photo || isFullUnlock || !ctoPhotoRequired) ? "Continuar →" : "📸 Tirar foto da CTO e continuar →"}
           </button>
         </div>
       </div>
@@ -414,8 +424,9 @@ export default function CtoInlineFlow({
   return (
     <div data-testid="cto-inline-screen-b">
 
-      {/* Foto OBRIGATÓRIA também no modo CTO existente — exceto Modo Teste */}
-      {isExistingMode && !isFullUnlock && (
+      {/* Foto OBRIGATÓRIA também no modo CTO existente — exceto Modo Teste
+          iter211am — respeita toggle global cto_photo_required */}
+      {isExistingMode && !isFullUnlock && ctoPhotoRequired && (
         <>
           <label style={{ ...labelStyle, marginTop: 4 }}>
             Foto da CTO <span style={{ color: "#dc2626" }}>*</span>
@@ -461,21 +472,56 @@ export default function CtoInlineFlow({
         </>
       )}
 
-      {/* Nº da CTO — técnico informa manualmente; backend valida unicidade */}
+      {/* iter211au — Quando a CTO já está cadastrada, NÃO mostramos
+          os campos "Quantas portas", "Rede", "Splitter" e nem o "Nº da CTO".
+          Mostramos apenas um card com a NOMENCLATURA da CTO (CTO_VLAN_NÚMERO)
+          e a porta a selecionar. Toda info de capacity/rede/splitter já vem
+          do cadastro da CTO (puxada no state via LousaMobile linha 3060+).
+          O card abaixo aparece SÓ no modo existente. */}
+      {isExistingMode && (
+        <div data-testid="cto-inline-existing-summary" style={{
+          marginBottom: 12, padding: "12px 14px", borderRadius: 12,
+          background: "linear-gradient(135deg,#ecfdf5,#d1fae5)",
+          border: "1px solid #6ee7b7",
+        }}>
+          <div style={{ fontSize: 10, color: "#065f46", fontWeight: 800,
+                          textTransform: "uppercase", letterSpacing: 0.6,
+                          marginBottom: 4 }}>
+            ✓ CTO já cadastrada
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#064e3b",
+                          fontFamily: "monospace", letterSpacing: 1 }}>
+            {state.ctoName
+             || (state.vlan && state.ctoNumber
+                  ? `CTO_${state.vlan}_${String(state.ctoNumber).padStart(4, "0")}`
+                  : "—")}
+          </div>
+          <div style={{ fontSize: 11, color: "#047857", marginTop: 4 }}>
+            {state.capacity ? `${state.capacity} portas` : ""}
+            {state.capacity && state.networkType ? " · " : ""}
+            {state.networkType === "balanceada" ? "Rede balanceada"
+              : state.networkType === "desbalanceada" ? "Rede desbalanceada"
+              : ""}
+            {state.splitter ? ` · Splitter ${state.splitter}` : ""}
+          </div>
+        </div>
+      )}
+
+      {/* Nº da CTO — só aparece pra CADASTRO de CTO nova
+          (modo existente já mostra a nomenclatura no card acima) */}
       {!isExistingMode && (
         <>
           <label style={{ ...labelStyle, marginTop: 4 }}>
-            Nº da CTO <span style={{ color: "#64748b", fontWeight: 500 }}>
-              (ex: 1, 2, 15 — único por bairro/VLAN)
-            </span>
+            Nº da CTO <span style={{ color: "#dc2626" }}>*</span>
           </label>
           <input
             type="number"
             inputMode="numeric"
             min="1" max="9999"
+            required
             data-testid="cto-inline-number-input"
             value={state.ctoNumber || ""}
-            placeholder="Deixe em branco para auto-numerar"
+            placeholder="Digite o número (ex: 27)"
             onChange={(e) => setState((s) => ({ ...s,
                 ctoNumber: e.target.value.replace(/\D/g, "") }))}
             style={{
@@ -487,23 +533,25 @@ export default function CtoInlineFlow({
         </>
       )}
 
-      {/* Quantidade de portas — readonly em modo existente */}
+      {/* iter211au — "Quantas portas", "Rede (Bal/Des)" e "Splitter"
+          escondidos no modo CTO existente: dados já cadastrados, técnico
+          não precisa re-confirmar nada. */}
+      {!isExistingMode && (
+        <>
       <label style={{ ...labelStyle, marginTop: 4 }}>
         Quantas portas tem a CTO?
-        {isExistingMode && <span style={{ color: "#3b82f6", marginLeft: 6, fontSize: 9 }}>(já cadastrado)</span>}
       </label>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
-                      gap: 8, marginBottom: 6, opacity: isExistingMode ? 0.65 : 1 }}>
+                      gap: 8, marginBottom: 6 }}>
         {[4, 8, 16].map((cap) => (
           <button key={cap} data-testid={`cto-inline-cap-${cap}`}
-                  disabled={isExistingMode}
                   onClick={() => setState((s) => ({ ...s, capacity: cap,
                                                      clientPort: (s.clientPort && s.clientPort <= cap) ? s.clientPort : null }))}
                   style={{ padding: "16px 0", borderRadius: 10,
                             border: `1.5px solid ${state.capacity === cap ? C_PRIMARY : C_BORDER}`,
                             background: state.capacity === cap ? C_PRIMARY_LIGHT : "#fff",
                             color: C_TEXT, fontSize: 16, fontWeight: 700,
-                            cursor: isExistingMode ? "default" : "pointer" }}>
+                            cursor: "pointer" }}>
             {cap} portas
           </button>
         ))}
@@ -512,20 +560,17 @@ export default function CtoInlineFlow({
       {/* Tipo de rede */}
       <label style={{ ...labelStyle }}>
         Rede (Bal/Des)
-        {isExistingMode && <span style={{ color: "#3b82f6", marginLeft: 6, fontSize: 9 }}>(já cadastrado)</span>}
       </label>
       {[
         { v: "balanceada", l: "Rede balanceada", d: "Sinal igual em todas as portas", icon: "⚖️" },
         { v: "desbalanceada", l: "Rede desbalanceada", d: "Sinal varia por porta (splitter)", icon: "⚙️" },
       ].map((opt) => (
         <button key={opt.v} data-testid={`cto-inline-net-${opt.v.slice(0,3)}`}
-                disabled={isExistingMode}
                 onClick={() => setState((s) => ({ ...s, networkType: opt.v,
-                                                   splitter: opt.v === "balanceada" ? "Sem splitter / não informado" : null }))}
+                                                   splitter: null }))}
                 style={{ ...optionCard(state.networkType === opt.v),
                           alignItems: "flex-start",
-                          opacity: isExistingMode && state.networkType !== opt.v ? 0.5 : 1,
-                          cursor: isExistingMode ? "default" : "pointer" }}>
+                          cursor: "pointer" }}>
           <span style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
             <span style={{ width: 32, height: 32, borderRadius: 8,
                             background: state.networkType === opt.v ? "#ddd6fe" : "#f1f5f9",
@@ -543,51 +588,94 @@ export default function CtoInlineFlow({
         </button>
       ))}
 
-      {/* Splitter (só se desbalanceada) */}
-      {state.networkType === "desbalanceada" && (
+      {/* Splitter — opções dependem do tipo de rede:
+          • balanceada: 1:2, 1:4, 1:8, 1:16
+          • desbalanceada: 5/95, 10/90, 20/80, 35/65, 50/50
+          Em ambos: "Outro" e "Sem splitter".  (iter211ar)
+          iter211au — Só aparece pra CADASTRO de CTO nova. */}
+      {!isExistingMode && (state.networkType === "balanceada"
+        || state.networkType === "desbalanceada") && (
         <>
           <label style={{ ...labelStyle }}>
             Splitter
-            {isExistingMode && <span style={{ color: "#3b82f6", marginLeft: 6, fontSize: 9 }}>(já cadastrado)</span>}
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
                           gap: 6, marginBottom: 4 }}>
-            {["1:2", "1:4", "1:8", "5/95", "10/90", "20/80", "35/65", "50/50", "Outro"].map((s) => (
+            {(() => {
+              const balOpts = ["1:2", "1:4", "1:8", "1:16"];
+              const desbOpts = ["5/95", "10/90", "20/80", "35/65", "50/50"];
+              const opts = state.networkType === "balanceada" ? balOpts : desbOpts;
+              return [...opts, "Outro", "Sem splitter"];
+            })().map((s) => (
               <button key={s} data-testid={`cto-inline-spl-${s.replace(/[^a-z0-9]/gi,'_')}`}
-                      disabled={isExistingMode}
                       onClick={() => setState((st) => ({ ...st, splitter: s }))}
                       style={{ padding: "10px 0", borderRadius: 8,
                                 border: `1.5px solid ${state.splitter === s ? C_PRIMARY : C_BORDER}`,
                                 background: state.splitter === s ? C_PRIMARY_LIGHT : "#fff",
                                 color: C_TEXT, fontSize: 13, fontWeight: 700,
-                                cursor: isExistingMode ? "default" : "pointer",
-                                opacity: isExistingMode && state.splitter !== s ? 0.5 : 1 }}>
+                                cursor: "pointer" }}>
                 {s}
               </button>
             ))}
           </div>
         </>
       )}
+        </>
+      )}
+      {/* /iter211au — fecha o wrapper "!isExistingMode" iniciado antes
+          de "Quantas portas". A partir daqui o conteúdo aparece em AMBOS
+          os modos (criação e CTO existente). */}
 
       {/* Porta do cliente */}
       {state.capacity && (
         <>
           <label style={{ ...labelStyle }}>Porta do cliente</label>
+          {/* iter211as — Legenda visual de status. Antes só tinha cor
+              cinza/branca, técnico não sabia que o cinza = em uso. */}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap",
+                          marginBottom: 8, fontSize: 11, color: "#475569" }}>
+            <span style={legendItem}>
+              <span style={{ ...legendDot, background: "#fff",
+                              border: "1.5px solid #cbd5e1" }} /> Livre
+            </span>
+            <span style={legendItem}>
+              <span style={{ ...legendDot, background: "#334155" }} /> Em uso (outro cliente)
+            </span>
+            <span style={legendItem}>
+              <span style={{ ...legendDot, background: "#ccfbf1",
+                              border: "1.5px solid #0d9488" }} /> Cliente atual
+            </span>
+          </div>
           <div style={{ display: "grid",
                           gridTemplateColumns: `repeat(${Math.min(state.capacity, 4)}, 1fr)`,
                           gap: 8, marginBottom: 6 }}>
             {Array.from({ length: state.capacity }, (_, i) => i + 1).map((p) => {
               const portInfo = (state.existingPorts || []).find((x) => x.number === p);
               const used = portInfo && portInfo.status !== "free";
+              // iter211as — É o mesmo cliente? Se sim, libera reuso da porta.
+              const sameClient = used && client?.id
+                && portInfo.client_subscriber_id === client.id;
               // Marca a porta atual do cliente (vinda de outra CTO ou da mesma)
-              const isClientCurrent = clientCurrentPort
+              const isClientCurrent = sameClient || (clientCurrentPort
                                        && clientCurrentPort.port_number === p
                                        && (state.existingCtoId === clientCurrentPort.cto_id
-                                            || !state.existingCtoId);
+                                            || !state.existingCtoId));
               return (
                 <button key={p} data-testid={`cto-inline-port-${p}`}
                         disabled={used && !isClientCurrent}
+                        title={used && !isClientCurrent
+                          ? `Porta ${p} está em uso por outro cliente. Selecione uma porta livre.`
+                          : used && isClientCurrent
+                          ? `Porta ${p} é a porta atual deste cliente.`
+                          : `Porta ${p} — livre`}
                         onClick={() => {
+                          // iter211as — Mesma porta + mesmo cliente: aceita
+                          // sem confirmação (caso o cliente esteja sendo
+                          // reconfirmado/refaturado no mesmo ponto físico).
+                          if (used && isClientCurrent) {
+                            setState((s) => ({ ...s, clientPort: p }));
+                            return;
+                          }
                           // Se o cliente já tem porta nesta CTO e o técnico
                           // escolheu uma porta DIFERENTE, abre o diálogo de
                           // confirmação de troca.
@@ -621,13 +709,15 @@ export default function CtoInlineFlow({
                     <span style={{ position: "absolute", bottom: 2, left: 0, right: 0,
                                     fontSize: 8, fontWeight: 800,
                                     color: "#cbd5e1", letterSpacing: 0.3 }}>
-                      CADASTRADA
+                      EM USO
                     </span>
                   )}
                   {isClientCurrent && (
                     <span style={{ position: "absolute", bottom: 2, left: 0, right: 0,
                                     fontSize: 8, fontWeight: 800,
-                                    color: "#0f766e" }}>ATUAL</span>
+                                    color: "#0f766e" }}>
+                      {sameClient ? "ESTE CLIENTE" : "ATUAL"}
+                    </span>
                   )}
                 </button>
               );
@@ -780,3 +870,12 @@ export default function CtoInlineFlow({
     </div>
   );
 }
+
+// iter211as — estilos da legenda do grid de portas
+const legendItem = {
+  display: "inline-flex", alignItems: "center", gap: 5,
+};
+const legendDot = {
+  display: "inline-block", width: 10, height: 10, borderRadius: 3,
+};
+

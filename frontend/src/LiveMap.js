@@ -106,6 +106,14 @@ export default function LiveMap() {
   const [collabs, setCollabs] = useState([]);
   const [live, setLive] = useState([]);
   const [tracks, setTracks] = useState({});
+  // iter211i — segments_snapped por colaborador (segmentos colados nas ruas)
+  const [tracksSnap, setTracksSnap] = useState({});
+  // iter215 — segments_raw (já higienizados, quebrados em gaps reais)
+  // por colaborador. Frontend usa quando o snap-to-road falha — antes
+  // fazíamos splitTrackBySessions client-side (apenas por gap temporal,
+  // o que deixava o traço cruzando quarteirões em pings com GPS ruim).
+  const [tracksRaw, setTracksRaw] = useState({});
+  const [snapToRoads, setSnapToRoads] = useState(true);
   const [hours, setHours] = useState(24);
   const [showTrack, setShowTrack] = useState({});
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -175,18 +183,43 @@ export default function LiveMap() {
 
   const reload = async () => {
     try {
-      const liveDocs = await api.liveLocations(360);
+      // iter211l — janela aumentada para 1440min (24h). Mostra carros
+      // mesmo se o último ping for de algumas horas atrás (chuva,
+      // celular bloqueado, técnico em pausa) — antes era 360min (6h) e
+      // somia tudo após esse limite.
+      const liveDocs = await api.liveLocations(1440);
       setLive(liveDocs);
       const visibleIds = liveDocs.map((d) => d.collaborator_id);
       const newTracks = { ...tracks };
+      const newSnap = { ...tracksSnap };
+      const newRaw = { ...tracksRaw };
       await Promise.all(visibleIds.map(async (cid) => {
-        if (showTrack[cid] !== false) {
-          try { newTracks[cid] = await api.trackCollaborator(cid, hours); } catch {}
+        if (showTrack[cid] === false) return;
+        // iter211i — quando snap está ativo, busca a versão snapped
+        // (best-effort: se OSRM falha, frontend continua com a reta).
+        if (snapToRoads) {
+          try {
+            const r = await api.trackCollaboratorSnap(cid, hours);
+            newTracks[cid] = r.points || [];
+            newSnap[cid] = (r.segments_snapped || []).filter((s) => s.length >= 2);
+            // iter215 — segmentos brutos já higienizados pelo backend.
+            newRaw[cid] = (r.segments_raw || []).filter((s) => s.length >= 2);
+          } catch {
+            try { newTracks[cid] = await api.trackCollaborator(cid, hours); } catch { /* */ }
+            newSnap[cid] = [];
+            newRaw[cid] = [];
+          }
+        } else {
+          try { newTracks[cid] = await api.trackCollaborator(cid, hours); } catch { /* */ }
+          newSnap[cid] = [];
+          newRaw[cid] = [];
         }
       }));
       setTracks(newTracks);
+      setTracksSnap(newSnap);
+      setTracksRaw(newRaw);
       lastFetchRef.current = Date.now();
-    } catch {}
+    } catch { /* silent */ }
   };
 
   const reloadDwell = async () => {
@@ -214,7 +247,7 @@ export default function LiveMap() {
     }
     return () => { cancelled = true; if (t1) clearInterval(t1); if (t2) clearInterval(t2); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh, hours, dwellThreshold, useAi, JSON.stringify(showTrack)]);
+  }, [autoRefresh, hours, dwellThreshold, useAi, snapToRoads, JSON.stringify(showTrack)]);
 
   useEffect(() => {
     const t = setInterval(() => setTick((x) => x + 1), 15000);
@@ -289,6 +322,12 @@ export default function LiveMap() {
             )}
           </label>
           <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, color: "#475569" }}>
+            <input type="checkbox" checked={snapToRoads}
+                    onChange={(e) => setSnapToRoads(e.target.checked)}
+                    data-testid="snap-to-roads-toggle" />
+            🛣️ Trajeto pelas ruas
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, color: "#475569" }}>
             <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} data-testid="auto-refresh" />
             Atualização automática
           </label>
@@ -348,7 +387,7 @@ export default function LiveMap() {
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 14 }}>
-          <div style={{ borderRadius: 18, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+          <div style={{ borderRadius: 18, overflow: "hidden", border: "1px solid #e2e8f0", position: "relative" }}>
             <MapContainer center={BRAZIL_CENTER} zoom={BRAZIL_ZOOM} style={{ height: 540, width: "100%" }} scrollWheelZoom zoomControl={false}>
               <ZoomControl position="topleft" zoomInTitle="Aproximar" zoomOutTitle="Afastar" />
               <TileLayer
@@ -413,17 +452,37 @@ export default function LiveMap() {
                 </Circle>
               ))}
 
-              {/* Trajetos — uma polyline por sessão (quebra em gaps > 30 min
-                  pra não ligar pontos distantes em linha reta). */}
+              {/* iter211i — Trajetos colados nas ruas (OSRM Match) quando
+                  snapToRoads está ativo. Fallback pra polyline reta nos
+                  pings quando o snap falhar ou estiver desligado.
+                  iter215 — fallback agora usa segments_raw do backend
+                  (já higienizados: descarta pings com accuracy ruim e
+                  quebra em gaps > 5min OU saltos > 400m), evitando o
+                  efeito "traço voando entre quadras". */}
               {Object.entries(tracks).map(([cid, pts]) => {
                 if (showTrack[cid] === false) return null;
                 if (!pts || pts.length < 2) return null;
                 const color = colorForId(cid);
-                const segments = splitTrackBySessions(pts);
+                const snapped = tracksSnap[cid] || [];
+                if (snapToRoads && snapped.length > 0) {
+                  // Renderiza UMA polyline por sessão snapped (cola nas ruas)
+                  return snapped.map((seg, sIdx) => (
+                    <Polyline key={`trsnap-${cid}-${sIdx}`}
+                                positions={seg}
+                                pathOptions={{ color, weight: 4, opacity: 0.85 }} />
+                  ));
+                }
+                // Fallback: segmentos brutos higienizados pelo backend
+                // (preferido) ou splitTrackBySessions client-side (legado).
+                const rawSeg = tracksRaw[cid] || [];
+                const segments = rawSeg.length > 0
+                  ? rawSeg
+                  : splitTrackBySessions(pts);
                 return segments.map((seg, sIdx) => (
                   <Polyline key={`tr-${cid}-${sIdx}`}
                               positions={seg.map((p) => [p.lat, p.lng])}
-                              pathOptions={{ color, weight: 4, opacity: 0.8 }} />
+                              pathOptions={{ color, weight: 3.5, opacity: 0.55,
+                                              dashArray: "6 4" }} />
                 ));
               })}
 
@@ -513,6 +572,47 @@ export default function LiveMap() {
                 );
               })}
             </MapContainer>
+            {/* iter211l — Banner amarelo quando nenhum carro aparece OU
+                quando os pings são todos > 1h velhos. */}
+            {(() => {
+              if (live.length === 0) {
+                return (
+                  <div data-testid="livemap-no-pings-banner" style={{
+                    position: "absolute", top: 10, left: 10, right: 10,
+                    background: "#fef3c7", border: "1px solid #fde68a",
+                    color: "#92400e", padding: "10px 14px",
+                    borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    zIndex: 800, boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                  }}>
+                    ⚠️ Nenhum técnico enviando GPS no momento. Peça pra eles
+                    abrirem o app e autorizarem a localização — os carros
+                    aparecem aqui automaticamente.
+                  </div>
+                );
+              }
+              const now = Date.now();
+              const newestAgeMin = Math.min(...live.map((d) => {
+                try {
+                  return (now - new Date(d.recorded_at).getTime()) / 60000;
+                } catch { return Infinity; }
+              }));
+              if (newestAgeMin > 60) {
+                return (
+                  <div data-testid="livemap-stale-banner" style={{
+                    position: "absolute", top: 10, left: 10, right: 10,
+                    background: "#fef3c7", border: "1px solid #fde68a",
+                    color: "#92400e", padding: "10px 14px",
+                    borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    zIndex: 800, boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                  }}>
+                    ⚠️ Mostrando última posição conhecida — ping mais recente
+                    é de <strong>{Math.round(newestAgeMin)} min atrás</strong>.
+                    Os técnicos pararam de enviar GPS?
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
 
           <div data-testid="live-collab-list" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 540, overflowY: "auto" }}>

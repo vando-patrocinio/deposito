@@ -1,4 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { stampFieldPhoto } from "@/utils/photoStamp";
+import { saveDraft, loadDraft, clearDraft, cleanupOldDrafts } from "@/utils/osDraftStorage";
+import outbox from "@/utils/offlineQueue";
 import { api } from "@/api";
 import { Button, Icon } from "@/ui";
 import QRScannerModal from "@/QRScannerModal";
@@ -18,7 +21,9 @@ import WeeklyInspectionFlow from "@/fleet/WeeklyInspectionFlow";
 import Ipv6TestStep from "@/Ipv6TestStep";
 import PingAutoStep from "@/PingAutoStep";
 import OsClientChat from "@/OsClientChat";
+import OsAlvaroSummary from "@/OsAlvaroSummary";
 import { fmtAddress, fmtPhone, fmtName, fmtRelato, safeText } from "@/utils/format";
+import ErrorBoundary from "@/ErrorBoundary";
 
 /**
  * LousaMobile — vista da Lousa (bolhas) no app do colaborador.
@@ -51,6 +56,30 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
     show_smart_route: true, show_points: true,
     enable_geofence_alerts: true,
   });
+  // iter211ae — Refs pra capturar completion_data e lat no escopo do catch
+  // (necessário pra enfileirar finalize na outbox quando der erro de rede).
+  const lastCompletionDataRef = useRef(null);
+  const lastLatRef = useRef({ lat: 0, lng: 0 });
+  // Contagem de finalizações pendentes (outbox)
+  const [pendingOfflineCount, setPendingOfflineCount] = useState(0);
+
+  // Bootstrap auto-sync da outbox + listener pra atualizar contagem
+  useEffect(() => {
+    const apiBase = process.env.REACT_APP_BACKEND_URL || "";
+    if (apiBase && outbox?.startAutoSync) outbox.startAutoSync(apiBase);
+    const refreshCount = async () => {
+      try {
+        const items = await outbox.listPending(collaboratorId);
+        setPendingOfflineCount(items.filter((i) => i.kind === "finalize"
+          && (i.status === "pending" || i.status === "failed"
+              || i.status === "sending")).length);
+      } catch { /* */ }
+    };
+    refreshCount();
+    const unsub = outbox.onChange ? outbox.onChange(refreshCount) : null;
+    const t = setInterval(refreshCount, 8000);
+    return () => { if (unsub) unsub(); clearInterval(t); };
+  }, [collaboratorId]);
 
   const refresh = useCallback(async () => {
     if (!collaboratorId) return;
@@ -285,20 +314,74 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
 
   async function handleFinalize(ticket, completionData, opts = {}) {
     setBusy(true); setErr("");
+    // iter211ae — refs pra capturar dados no escopo do catch (offline queue)
+    lastCompletionDataRef.current = completionData;
     try {
-      // Timeout de 6s no GPS — fallback (0,0). Evita travar finalize
-      // sem sinal de GPS (especialmente em prédios e headless tests).
+      // iter224 — captura GPS com high-accuracy + fallback pra última
+      // posição conhecida. Em locais sem sinal (subsolo, mata fechada),
+      // o navegador pode demorar muito ou falhar. Aceitamos
+      // `maximumAge: 5 min` (posição cacheada serve) e em último caso
+      // caímos pro lastLatRef (gravado por um watchPosition em qualquer
+      // outra ação prévia). Se ainda não temos NADA, mandamos (0,0)
+      // que vira o gatilho do offline queue do iter211ae.
       const lat = await new Promise((res) => {
-        if (!navigator.geolocation) return res({ lat: 0, lng: 0 });
+        if (!navigator.geolocation) {
+          return res(lastLatRef.current || { lat: 0, lng: 0 });
+        }
         let done = false;
         const finish = (v) => { if (done) return; done = true; res(v); };
         navigator.geolocation.getCurrentPosition(
-          (p) => finish({ lat: p.coords.latitude, lng: p.coords.longitude }),
-          () => finish({ lat: 0, lng: 0 }),
-          { timeout: 6000, maximumAge: 60000 },
+          (p) => finish({ lat: p.coords.latitude, lng: p.coords.longitude,
+                            accuracy: p.coords.accuracy }),
+          () => finish(lastLatRef.current?.lat
+                          ? { ...lastLatRef.current, _from_cache: true }
+                          : { lat: 0, lng: 0 }),
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 },
         );
-        setTimeout(() => finish({ lat: 0, lng: 0 }), 6500);
+        setTimeout(() => finish(lastLatRef.current?.lat
+                                  ? { ...lastLatRef.current, _from_cache: true }
+                                  : { lat: 0, lng: 0 }), 8500);
       });
+      lastLatRef.current = lat;
+      // iter224 — Sem sinal GPS (0,0): NÃO bate no backend (o
+      // geofence iria rejeitar com 400). Enfileira no outbox como se
+      // estivesse offline — assim que o GPS voltar, o cron envia.
+      if (!lat.lat || !lat.lng) {
+        try {
+          await outbox.enqueue({
+            kind: "finalize",
+            endpoint: `/api/lousa/public/tickets/${ticket.id}/finalize`,
+            method: "POST",
+            body: {
+              collaborator_id: collaboratorId,
+              completion_data: completionData,
+              latitude: 0, longitude: 0,
+              outcome: opts.outcome || "sucesso",
+              bad_signal_auth_id: opts.bad_signal_auth_id || null,
+              _gps_unavailable: true,
+            },
+            collab_id: collaboratorId,
+            collab_name: ticket?.collaborator_name || collaboratorId,
+            description: `Finalizar OS ${ticket.id.slice(-6)} — sem GPS (envia quando conectar)`,
+          });
+          try { clearDraft(ticket.id, collaboratorId); } catch { /* */ }
+          setOpenTicket(null);
+          setBadSignalAuth(null);
+          setErr("");
+          setTimeout(() => alert(
+            "📡 OS gravada SEM SINAL GPS!\n\n"
+            + "Sem GPS no momento. A finalização foi gravada no aparelho "
+            + "e será enviada automaticamente quando o GPS voltar.\n\n"
+            + "Você pode pegar a próxima OS."
+          ), 80);
+          await refresh();
+          setBusy(false);
+          return;
+        } catch (qe) {
+          // Falhou enfileirar — segue fluxo normal e mostra erro do backend
+          console.warn("[lousa/finalize] gps fail+queue fail:", qe);
+        }
+      }
       const r = await api.lousaPublicFinalize(ticket.id, {
         collaborator_id: collaboratorId,
         completion_data: completionData,
@@ -318,6 +401,8 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
       }
       setOpenTicket(null);
       setBadSignalAuth(null);
+      // iter211ad — Limpa draft local da OS finalizada com sucesso
+      try { clearDraft(ticket.id, collaboratorId); } catch { /* */ }
       await refresh();
     } catch (e) {
       // Backend 403 com needs_bad_signal_auth → abre modal de espera
@@ -333,10 +418,64 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
           status: "pending",
         });
         setErr("");
+      } else if (e?.response?.status === 400
+                  && detail?.code === "OUTSIDE_GEOFENCE") {
+        // iter211bj — Técnico fora do raio de 100m do endereço da OS
+        const msg = detail.message
+          || `Você está a ${detail.distance_m}m da OS (limite ${detail.radius_m}m).`;
+        setErr(msg);
+        setTimeout(() => alert(
+          "❌ FORA DA ÁREA DO SERVIÇO\n\n" + msg
+        ), 30);
       } else {
-        setErr(typeof detail === "string"
-                ? detail
-                : (detail?.message || e.message));
+        // iter211g — mensagem específica para Network Error / timeout
+        const msg = (e?.message || "").toLowerCase();
+        const code = e?.code || "";
+        const isNetwork = !e?.response
+          && (code === "ECONNABORTED" || msg.includes("network"));
+        if (isNetwork) {
+          // iter211ae — Enfileira finalize na outbox offline e libera UX
+          try {
+            const completionData = lastCompletionDataRef.current;
+            await outbox.enqueue({
+              kind: "finalize",
+              endpoint: `/api/lousa/public/tickets/${ticket.id}/finalize`,
+              method: "POST",
+              body: {
+                collaborator_id: collaboratorId,
+                completion_data: completionData,
+                latitude: lastLatRef.current?.lat || 0,
+                longitude: lastLatRef.current?.lng || 0,
+                outcome: opts.outcome || "sucesso",
+                bad_signal_auth_id: opts.bad_signal_auth_id || null,
+              },
+              collab_id: collaboratorId,
+              collab_name: ticket?.collaborator_name || collaboratorId,
+              description: `Finalizar OS ${ticket.id.slice(-6)} — ${(ticket.client_snapshot?.name || "").slice(0, 40)}`,
+            });
+            // Limpa draft local pra técnico não ver "Rascunho salvo" depois
+            try { clearDraft(ticket.id, collaboratorId); } catch { /* */ }
+            setOpenTicket(null);
+            setBadSignalAuth(null);
+            setErr("");
+            setTimeout(() => alert(
+              "✅ OS finalizada localmente!\n\n"
+              + "Sua finalização foi gravada no aparelho.\n"
+              + "Assim que a internet voltar, o app envia automaticamente "
+              + "pro servidor. Você pode pegar a próxima OS."
+            ), 100);
+            await refresh();
+          } catch (queueErr) {
+            setErr(
+              "Conexão fraca e não foi possível salvar localmente. "
+              + "Tente novamente em alguns segundos."
+            );
+          }
+        } else {
+          setErr(typeof detail === "string"
+                  ? detail
+                  : (detail?.message || e.message));
+        }
       }
     }
     setBusy(false);
@@ -496,6 +635,7 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
         isAdminTest={isAdminTest}
         onOpenCTO={onOpenCTO}
         onOpenRedeMap={onOpenRedeMap}
+        pendingOfflineCount={pendingOfflineCount}
         onRefresh={async () => {
           try {
             const fresh = await api.lousaTicket(openTicket.id);
@@ -526,9 +666,10 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
     );
   }
 
-  const state = data.clock_state;
-  const unlocked = data.lousa_unlocked;
-  const records = state.records || [];
+  const state = (data && typeof data.clock_state === "object" && data.clock_state)
+                  ? data.clock_state : { records: [] };
+  const unlocked = !!data?.lousa_unlocked;
+  const records = Array.isArray(state.records) ? state.records : [];
   const lastEvent = records.length ? records[records.length - 1] : null;
 
   // Bolhas só aparecem após bater Entrada (identificação no sistema)
@@ -589,7 +730,7 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
         >
           {refreshing ? "⏳ Atualizando..." : refreshFlash ? "✓ Atualizado" : "🔄 Atualizar"}
         </Button>
-        {!reorderMode && data.tickets.length > 1 && unlocked && (
+        {!reorderMode && Array.isArray(data?.tickets) && data.tickets.length > 1 && unlocked && (
           <Button
             variant="soft"
             onClick={enterReorder}
@@ -603,16 +744,31 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
       </div>
       <h2 style={{ marginTop: 14, marginBottom: 4 }}>📋 Lousa de Serviços</h2>
       <p style={{ color: "#64748b", fontSize: 12, margin: 0 }}>
-        {data.tickets.length} serviço(s) — {unlocked ? "🔓 lousa liberada" : "🔒 lousa travada"}
+        {(Array.isArray(data?.tickets) ? data.tickets.length : 0)} serviço(s) — {unlocked ? "🔓 lousa liberada" : "🔒 lousa travada"}
         {reorderMode && <span style={{ marginLeft: 8, color: "#5b21b6", fontWeight: 700 }}>· ↕ modo reordenar</span>}
       </p>
 
-      {dashCfg.show_performance && <PerformanceCard perf={perf}
-                                                          showPoints={dashCfg.show_points} />}
-      {dashCfg.show_achievements && <AchievementsCard collaboratorId={collaboratorId} compact />}
+      {/* iter211af — Cards wrappados em ErrorBoundary individuais pra que
+          falhas isoladas (perf, conquistas, rota IA) não derrubem a Lousa. */}
+      {dashCfg.show_performance && (
+        <ErrorBoundary name="lousa-perf-card" variant="card"
+          fallbackText="Não foi possível carregar seu painel de desempenho.">
+          <PerformanceCard perf={perf} showPoints={dashCfg.show_points} />
+        </ErrorBoundary>
+      )}
+      {dashCfg.show_achievements && (
+        <ErrorBoundary name="lousa-achievements-card" variant="card"
+          fallbackText="Não foi possível carregar suas conquistas.">
+          <AchievementsCard collaboratorId={collaboratorId} compact />
+        </ErrorBoundary>
+      )}
       {dashCfg.show_smart_route && (
-        <SmartRouteCard collaboratorId={collaboratorId} onApplied={refresh}
-                         enabled={data.tickets.some((t) => t.priority === "normal")} />
+        <ErrorBoundary name="lousa-smart-route-card" variant="card"
+          fallbackText="Não foi possível calcular a rota inteligente.">
+          <SmartRouteCard collaboratorId={collaboratorId} onApplied={refresh}
+                           enabled={Array.isArray(data?.tickets)
+                             && data.tickets.some((t) => t?.priority === "normal")} />
+        </ErrorBoundary>
       )}
 
       {reorderMode && (
@@ -659,7 +815,7 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
       {err && <Banner color="#fee2e2" border="#dc2626" icon="!" text={err} />}
 
       <div style={{ marginTop: 14 }}>
-        {data.tickets.length === 0 && (
+        {(!Array.isArray(data?.tickets) || data.tickets.length === 0) && (
           <div style={{ background: "white", border: "1px dashed #cbd5e1", borderRadius: 16, padding: 20, textAlign: "center", color: "#94a3b8" }}>
             Nenhuma nota atribuída ainda.
           </div>
@@ -670,30 +826,36 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
             onClick={() => setShowOdomModal(true)} />
         )}
         {(reorderMode
-          ? orderedIds.map((id) => data.tickets.find((t) => t.id === id)).filter(Boolean)
-          : data.tickets
+          ? orderedIds.map((id) => (data?.tickets || []).find((t) => t.id === id)).filter(Boolean)
+          : (data?.tickets || [])
         ).map((t, idx, arr) => (
           <React.Fragment key={t.id}>
             {idx > 0 && lastEvent && idx === Math.floor(arr.length / 2) && !reorderMode && (
               <BetweenBubblesInfo records={records} />
             )}
-            <Bubble
-              ticket={t}
-              onClick={() => handleOpen(t)}
-              disabled={busy}
-              reorderMode={reorderMode}
-              isFirst={idx === 0}
-              isLast={idx === arr.length - 1}
-              locked={isLockedTicket(t)}
-              onMoveUp={() => moveTicket(t.id, -1)}
-              onMoveDown={() => moveTicket(t.id, 1)}
-              isDragging={dragId === t.id}
-              isDragOver={dragOverId === t.id}
-              onDragStart={() => handleDragStart(t.id)}
-              onDragOver={(e) => handleDragOver(e, t.id)}
-              onDrop={() => handleDrop(t.id)}
-              onDragEnd={() => { setDragId(null); setDragOverId(null); }}
-            />
+            {/* iter211af — Cada bolha em seu próprio ErrorBoundary pra que um
+                ticket com dados malformados (ex: client_snapshot=null vindo do
+                Atlaz) não derrube a lousa inteira. */}
+            <ErrorBoundary name={`bubble-${t.id}`} variant="card"
+              fallbackText={`OS ${String(t.id || "").slice(-6)} com dados inválidos — pule esta e continue. (Avise o gestor)`}>
+              <Bubble
+                ticket={t}
+                onClick={() => handleOpen(t)}
+                disabled={busy}
+                reorderMode={reorderMode}
+                isFirst={idx === 0}
+                isLast={idx === arr.length - 1}
+                locked={isLockedTicket(t)}
+                onMoveUp={() => moveTicket(t.id, -1)}
+                onMoveDown={() => moveTicket(t.id, 1)}
+                isDragging={dragId === t.id}
+                isDragOver={dragOverId === t.id}
+                onDragStart={() => handleDragStart(t.id)}
+                onDragOver={(e) => handleDragOver(e, t.id)}
+                onDrop={() => handleDrop(t.id)}
+                onDragEnd={() => { setDragId(null); setDragOverId(null); }}
+              />
+            </ErrorBoundary>
           </React.Fragment>
         ))}
         {/* iter189 — Bolha de odômetro de FIM (sábado) */}
@@ -819,6 +981,20 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
                  onDragStart, onDragOver, onDrop, onDragEnd }) {
   const isResolved = ticket.admin_resolved || ticket.status === "finalizada";
   const isOpen = ticket.status === "aberta" || ticket.status === "aguardando_atendimento";
+  // iter211af — Guards defensivos: tickets vindos do Atlaz ou de seeds antigos
+  // podem ter `client_snapshot=null` ou campos faltando. Renderização nunca pode
+  // crashar — usa fallback "—".
+  const cs = (ticket && typeof ticket.client_snapshot === "object"
+              && ticket.client_snapshot) || {};
+  const csName = typeof cs.name === "string" ? cs.name : "";
+  const csNeighborhood = typeof cs.neighborhood === "string" ? cs.neighborhood : "";
+  const csRelato = typeof cs.relato === "string" ? cs.relato : "";
+  const csPhone = typeof cs.phone === "string" ? cs.phone : "";
+  const csAddress = typeof cs.address === "string" ? cs.address : "";
+  const ticketType = typeof ticket?.type === "string" ? ticket.type : "";
+  const schedTime = typeof ticket?.scheduled_time === "string"
+                    && ticket.scheduled_time.length >= 16
+                      ? ticket.scheduled_time : "";
   const priorityColors = {
     urgente: {
       bg: "linear-gradient(135deg,#fee2e2,#fecaca)",
@@ -842,16 +1018,16 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
   };
   const c = priorityColors[ticket.priority] || priorityColors.normal;
   const opacity = ticket.locked || disabled ? 0.55 : 1;
-  const typeIcon = TYPE_ICONS_M[ticket.type] || "📋";
-  const typeLabel = (ticket.type || "").replace(/_/g, " ");
+  const typeIcon = TYPE_ICONS_M[ticketType] || "📋";
+  const typeLabel = ticketType.replace(/_/g, " ");
   const tooltipText = [
     `${typeLabel.toUpperCase()}`,
-    `Cliente: ${fmtName(ticket.client_snapshot.name)}`,
-    ticket.client_snapshot.phone ? `Tel: ${fmtPhone(ticket.client_snapshot.phone)}` : null,
-    ticket.client_snapshot.address ? `End.: ${fmtAddress(ticket.client_snapshot.address)}` : null,
-    ticket.client_snapshot.neighborhood ? `Bairro: ${safeText(ticket.client_snapshot.neighborhood)}` : null,
-    ticket.scheduled_time ? `Horário: ${ticket.scheduled_time.substr(11, 5)}` : null,
-    ticket.client_snapshot.relato ? `\nRelato:\n${fmtRelato(ticket.client_snapshot.relato)}` : null,
+    `Cliente: ${fmtName(csName)}`,
+    csPhone ? `Tel: ${fmtPhone(csPhone)}` : null,
+    csAddress ? `End.: ${fmtAddress(csAddress)}` : null,
+    csNeighborhood ? `Bairro: ${safeText(csNeighborhood)}` : null,
+    schedTime ? `Horário: ${schedTime.substr(11, 5)}` : null,
+    csRelato ? `\nRelato:\n${fmtRelato(csRelato)}` : null,
   ].filter(Boolean).join("\n");
 
   // Em modo reorder, a bolha vira um container drag-handle (não clica para abrir)
@@ -908,9 +1084,9 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
               display: "inline-block",
             }}>{c.icon} {c.label}</div>
           )}
-          <div style={{ fontSize: 14, fontWeight: 800 }}>{fmtName(ticket.client_snapshot.name)}</div>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>{fmtName(csName)}</div>
           <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-            {ticket.type.toUpperCase()} · {safeText(ticket.client_snapshot.neighborhood)}
+            {ticketType.toUpperCase()} · {safeText(csNeighborhood)}
           </div>
         </div>
       </div>
@@ -964,12 +1140,12 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
             background: c.accent, color: "white",
           }}>{c.icon} {c.label}</span>
         )}
-        {ticket.scheduled_time && (
+        {schedTime && (
           <span style={{
             fontSize: 10, fontWeight: 800, color: "#475569",
             background: "#f1f5f9", padding: "2px 7px", borderRadius: 999,
             border: "1px solid #e2e8f0",
-          }}>{ticket.scheduled_time.substr(11, 5)}</span>
+          }}>{schedTime.substr(11, 5)}</span>
         )}
       </div>
 
@@ -987,15 +1163,15 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
             fontSize: 14.5, fontWeight: 800, lineHeight: 1.2,
             color: c.text, letterSpacing: -0.1,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>{fmtName(ticket.client_snapshot.name)}</div>
+          }}>{fmtName(csName)}</div>
           <div style={{
             fontSize: 11, color: "#64748b", marginTop: 2,
             textTransform: "uppercase", letterSpacing: 0.4,
             fontWeight: 700,
           }}>{typeLabel}</div>
-          {ticket.client_snapshot.neighborhood && (
+          {csNeighborhood && (
             <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
-              📍 {safeText(ticket.client_snapshot.neighborhood)}
+              📍 {safeText(csNeighborhood)}
             </div>
           )}
         </div>
@@ -1017,13 +1193,20 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
             })(),
           }}
         >
-          📶 {ticket.live_signal.rx_dbm != null ? `${ticket.live_signal.rx_dbm.toFixed(1)} dBm` : "—"}
+          📶 {(() => {
+            // iter211af — guard: rx_dbm pode vir como string ("-25") ou null
+            const rx = ticket.live_signal.rx_dbm;
+            const n = typeof rx === "number" ? rx
+                    : (typeof rx === "string" && rx.trim() !== "" && !isNaN(Number(rx)))
+                      ? Number(rx) : null;
+            return n != null ? `${n.toFixed(1)} dBm` : "—";
+          })()}
           {ticket.live_signal.status === "Online" ? "🟢" : ticket.live_signal.status ? "🔴" : ""}
         </div>
       )}
 
       {/* Relato em footer separado — toque para copiar texto completo */}
-      {ticket.client_snapshot.relato && (
+      {csRelato && (
         <button
           type="button"
           data-testid={`bubble-relato-copy-${ticket.id}`}
@@ -1031,7 +1214,7 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
             e.stopPropagation();
             const btn = e.currentTarget;
             try {
-              const txt = String(ticket.client_snapshot.relato || "");
+              const txt = String(csRelato || "");
               if (navigator.clipboard && window.isSecureContext) {
                 await navigator.clipboard.writeText(txt);
               } else {
@@ -1059,9 +1242,9 @@ function Bubble({ ticket, onClick, disabled, reorderMode, isFirst, isLast, locke
                             letterSpacing: 0.5, textTransform: "uppercase" }}>
             📋 Relato · toque p/ copiar
           </span>
-          {ticket.client_snapshot.relato.length > 90
-            ? ticket.client_snapshot.relato.substring(0, 90) + "…"
-            : ticket.client_snapshot.relato}
+          {csRelato.length > 90
+            ? csRelato.substring(0, 90) + "…"
+            : csRelato}
         </button>
       )}
 
@@ -1392,7 +1575,8 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                           badSignalThreshold = -27, collaboratorId = null,
                           collaboratorName = "",
                           isAdminTest = false, onOpenCTO = null,
-                          onOpenRedeMap = null }) {
+                          onOpenRedeMap = null,
+                          pendingOfflineCount = 0 }) {
   // Modo "full unlock" — super_admin (Vando, admin@empresa.com) testando em modo
   // admin pode finalizar OS sem nenhuma trava (IPv6, sinal ruim, MAC, foto SN, etc).
   // Lê o JWT pra detectar `is_super_admin === true` ou email super admin conhecido.
@@ -1492,9 +1676,30 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   const initialSinal = ticket?.live_signal?.rx_dbm != null
     ? Number(ticket.live_signal.rx_dbm.toFixed(1))
     : -25;
-  const [form, setForm] = useState({
-    // iter182 — Insumos começam ZERADOS (decisão do gestor).
-    // O técnico preenche somente o que efetivamente consumiu.
+  // iter211ad — Auto-save de draft local pra não perder dados se app crashar/recarregar.
+  // Restaura draft salvo no localStorage se houver pra este ticket+colaborador.
+  const draftKey = `${ticket?.id}::${collaboratorId}`;
+  const initialForm = React.useMemo(() => {
+    if (!ticket?.id) return null;
+    const draft = loadDraft(ticket.id, collaboratorId);
+    if (draft?.form) {
+      // eslint-disable-next-line no-console
+      console.log("[LousaMobile] draft restaurado de", draft.savedAt,
+                  draft._droppedPhotos ? "(sem fotos)" : "");
+      return draft.form;
+    }
+    return {
+      sinal: initialSinal, qtd_drop: 0, esticadores: 0, conectores_fast: 0,
+      cabo_rede: 0, conectores_rede: 0,
+      fibra_06fo: 0, fibra_12fo: 0, fibra_24fo: 0,
+      ont: "", observacoes: "",
+      ont_sn: "",
+      fotos: [],
+      isSwap: false, old_ont_mac: "", new_ont_mac: "",
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+  const [form, setForm] = useState(() => initialForm || {
     sinal: initialSinal, qtd_drop: 0, esticadores: 0, conectores_fast: 0,
     cabo_rede: 0, conectores_rede: 0,
     fibra_06fo: 0, fibra_12fo: 0, fibra_24fo: 0,
@@ -1504,6 +1709,19 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     // Troca de ONT/ONU em reparo
     isSwap: false, old_ont_mac: "", new_ont_mac: "",
   });
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
+
+  // Auto-save com debounce 600ms via osDraftStorage
+  React.useEffect(() => {
+    if (!ticket?.id) return;
+    saveDraft(ticket.id, collaboratorId, form);
+    setDraftSavedAt(new Date());
+  }, [form, ticket?.id, collaboratorId]);
+
+  // Cleanup periódico de drafts > 7 dias (1× por mount)
+  React.useEffect(() => {
+    try { cleanupOldDrafts(); } catch { /* */ }
+  }, []);
   // Ref do input file pra captura sequencial das 3 fotos no step final
   // (CTO + Equipamento + MAC/SN). O kind é definido dinamicamente em
   // `_kind` antes de abrir a câmera. Consolidação 28/05/2026.
@@ -1513,6 +1731,16 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   const [sinalFromOlt, setSinalFromOlt] = useState(
     ticket?.live_signal?.rx_dbm != null,
   );
+
+  // iter211x — Carrega cardápio dinâmico de fotos obrigatórias por OS
+  const [photoReqs, setPhotoReqs] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    api.lousaPhotoReqs?.()
+      .then((r) => { if (alive) setPhotoReqs(r?.items || []); })
+      .catch(() => { if (alive) setPhotoReqs([]); });
+    return () => { alive = false; };
+  }, []);
 
   // Sincroniza se o ticket atualizar (poll) e o usuário ainda não digitou
   React.useEffect(() => {
@@ -1685,6 +1913,32 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     });
   }
 
+  // iter211g — Comprime DataURL pra evitar payloads >10MB que estouram
+  // o gateway (causa do "Network Error" ao finalizar nota com fotos
+  // diretas da câmera). Redimensiona pro maior lado = 1280px e JPEG 0.78.
+  // Em conexões 4G fracas reduz ~20× o body.
+  async function compressDataUrl(dataUrl, maxSide = 1280, quality = 0.78) {
+    return new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          const w = img.naturalWidth, h = img.naturalHeight;
+          const scale = Math.min(1, maxSide / Math.max(w, h));
+          const nw = Math.round(w * scale), nh = Math.round(h * scale);
+          const canvas = document.createElement("canvas");
+          canvas.width = nw; canvas.height = nh;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, nw, nh);
+          try {
+            resolve(canvas.toDataURL("image/jpeg", quality));
+          } catch (_) { resolve(dataUrl); }
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      } catch (_) { resolve(dataUrl); }
+    });
+  }
+
   // iter153 — divergência cruzada entre o MAC selecionado do estoque
   // (técnico escolheu uma ONT específica para instalar/substituir) e o
   // MAC que a IA leu da etiqueta na 3ª foto. Quando diferentes, exibe
@@ -1702,7 +1956,11 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       // Guarda o MAC selecionado do estoque ANTES do OCR rodar para
       // permitir comparação cruzada após detecção.
       const macBefore = (form.ont || "").trim().toUpperCase();
-      const dataUrl = await readFileAsDataURL(file);
+      const rawUrl = await readFileAsDataURL(file);
+      // iter211g — comprime a foto da etiqueta SN antes de embarcar no
+      // form e enviar pro OCR; ainda fica grande o bastante pra leitura
+      // de IA, mas evita "Network Error" no finalize.
+      const dataUrl = await compressDataUrl(rawUrl, 1280, 0.78);
       setForm((f) => ({
         ...f,
         fotos: [...f.fotos.filter((p) => p.kind !== "sn"),
@@ -1892,18 +2150,43 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     // de rede (troca de conector na CTO), independente do tipo da OS.
     // iter199 — PULA a foto da CTO quando ela foi cadastrada há < 5 dias
     // (já foi fotografada no cadastro recente; evita re-trabalho).
+    // iter211aj — Respeita toggles globais cto_photo_required e
+    // mac_validation_required quando o cardápio dinâmico não estiver
+    // configurado (photoReqs vazio).
     const usedNetworkConnector = Number(form.conectores_rede) > 0;
     const photoRequired = isInstall || isRepair || usedNetworkConnector;
     const skipCtoPhoto = !!ctoRecentInfo?.is_recent;
     if (!isFullUnlock && photoRequired) {
       const fotos = form.fotos || [];
       const missing = [];
-      if (!skipCtoPhoto && !fotos.some((p) => p.kind === "cto")) missing.push("CTO");
-      // Equipamento e MAC/SN só são obrigatórios em instalação/reparo
-      // (não em "troca de conector na CTO" que pode ser visita pontual).
-      if (isInstall || isRepair) {
-        if (!fotos.some((p) => p.kind === "equipamento")) missing.push("Equipamento (ONT/ONU)");
-        if (!fotos.some((p) => p.kind === "sn")) missing.push("MAC/SN da etiqueta");
+      // iter211x — Consulta cardápio dinâmico (Configurações > Fotos da OS).
+      // Se config disponível: valida cada item com required=true e ticket_types
+      // contendo o tipo desta OS. Senão: cai no comportamento hardcoded legado
+      // (agora também respeitando os toggles globais).
+      const ttype = ticket?.type;
+      if (Array.isArray(photoReqs) && photoReqs.length > 0) {
+        photoReqs.forEach((req) => {
+          if (!req.required) return;
+          const types = req.ticket_types || [];
+          if (types.length > 0 && !types.includes(ttype)) return;
+          // CTO recém-cadastrada dispensa só a foto "cto"
+          if (req.id === "cto" && skipCtoPhoto) return;
+          if (!fotos.some((p) => p.kind === req.id)) {
+            missing.push(`${req.icon || "📷"} ${req.label}`);
+          }
+        });
+      } else {
+        // iter211aj — só exige se o toggle estiver ligado
+        if (ctoPhotoRequired && !skipCtoPhoto
+            && !fotos.some((p) => p.kind === "cto")) {
+          missing.push("CTO");
+        }
+        // Equipamento e MAC/SN só são obrigatórios em instalação/reparo
+        // (não em "troca de conector na CTO" que pode ser visita pontual).
+        if ((isInstall || isRepair) && macValidationRequired) {
+          if (!fotos.some((p) => p.kind === "equipamento")) missing.push("Equipamento (ONT/ONU)");
+          if (!fotos.some((p) => p.kind === "sn")) missing.push("MAC/SN da etiqueta");
+        }
       }
       if (missing.length > 0) {
         const ctx = usedNetworkConnector && !(isInstall || isRepair)
@@ -2069,7 +2352,13 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         padding: 16, borderRadius: 14, marginTop: 14,
       }}>
         <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 700, marginBottom: 4 }}>
-          {ticket.type.toUpperCase()} · {ticket.priority}
+          {ticket.type.toUpperCase()}
+          {/* iter211ax — Mostra o HORÁRIO agendado (hh:mm) ao invés do label
+              "HORARIO"/priority. Se não tiver scheduled_time, esconde. */}
+          {typeof ticket.scheduled_time === "string"
+           && ticket.scheduled_time.length >= 16
+            ? ` · ${ticket.scheduled_time.substr(11, 5)}`
+            : ""}
         </div>
         <button
           type="button"
@@ -2138,7 +2427,40 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         <strong>📝 Relato:</strong> {ticket.client_snapshot.relato}
       </div>
 
+      {/* iter211ay — Resumo Álvaro IA do atendimento (gerado a partir do
+          relato + histórico WhatsApp do cliente nas últimas 48h). */}
+      <OsAlvaroSummary ticketId={ticket.id} />
+
       {/* Indicador de progresso removido a pedido do usuário (28/05/2026) */}
+
+      {/* iter211ad — Indicador "💾 Rascunho salvo" pra técnico saber que
+          mesmo se app crashar/recarregar, os dados estão preservados.
+          iter211aw — Removido (poluindo a tela). Autosave continua
+          funcionando silenciosamente em background. */}
+
+      {/* iter211ae — Badge fila offline (finalizações aguardando reenvio) */}
+      {pendingOfflineCount > 0 && (
+        <div data-testid="offline-queue-badge"
+              style={{
+                marginTop: 8, padding: "8px 12px",
+                background: "linear-gradient(135deg,#fef3c7,#fde68a)",
+                border: "1.5px solid #f59e0b",
+                borderRadius: 10, fontSize: 12, color: "#78350f",
+                fontWeight: 700, display: "flex", alignItems: "center",
+                gap: 8,
+              }}
+              title="Você finalizou OS sem internet. O app vai enviar pro servidor assim que a conexão voltar — não precisa fazer nada.">
+          <span style={{ fontSize: 16 }}>📡</span>
+          <span>
+            {pendingOfflineCount} finalização{pendingOfflineCount > 1 ? "ões" : ""} aguardando reenvio
+          </span>
+          <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.85,
+                          background: "rgba(255,255,255,0.6)",
+                          padding: "2px 8px", borderRadius: 999 }}>
+            auto-sync ativo
+          </span>
+        </div>
+      )}
 
       {/* iter182 — StepIndicator reintroduzido com design Swiss/High-Contrast
           (best practice 2026: progressive disclosure + thumb-zone). Mostra
@@ -2160,11 +2482,13 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
             step={displayStep}
             totalSteps={3}
             variant="full"
-            // Voltar a etapa: do 3 (insumos) volta pra step 3 (porta);
-            // do step 3 (porta) volta pra step 1 (equipamento+CTO).
+            // iter211av — só volta pra Step 3 (Porta CTO) se houver CTO
+            // selecionada. Senão volta direto pra Step 1 (não passa por
+            // tela de criação que não existe mais no fluxo OS).
             onStepBack={displayStep > 1 ? () => {
-              if (step === insumosStepNum) setStep(3);
-              else if (step === 3) setStep(1);
+              if (step === insumosStepNum) {
+                setStep(ctoFlowState.existingCtoId ? 3 : 1);
+              } else if (step === 3) setStep(1);
             } : null}
             // Sobreescreve label dinâmico
             // (variant "full" usa o mapping interno; passo via prop)
@@ -2796,6 +3120,10 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                           networkType: c.network_type || null,
                           splitter: c.splitter || null,
                           clientPort: null,
+                          // iter211au — preserva nomenclatura/identificação
+                          // da CTO existente pra exibir em destaque no Step 3.
+                          ctoName: c.name || c.nome || null,
+                          ctoNumber: c.number || c.cto_number || null,
                         }));
                         setCtoSelected(c);
                         setExistingCtoPick(null);
@@ -2814,8 +3142,23 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         </div>
       )}
 
-      {/* ============ STEP 3 — Portas + Tipo + Porta do cliente ============ */}
-      {step === 3 && (
+      {/* ============ STEP 3 — Porta do cliente (CTO EXISTENTE) ============
+          iter211av — Esta tela só aparece quando o técnico selecionou
+          uma CTO EXISTENTE no mapa (Step 1). Não há mais fluxo de cadastro
+          de CTO dentro da OS — cadastro só pelo módulo Rede no Início da
+          Lousa. Se chegar aqui sem CTO selecionada, redireciona pra
+          Finalização (não bloqueia o técnico). */}
+      {step === 3 && !ctoFlowState.existingCtoId && (() => {
+        // useEffect síncrono no render — chama setStep no próximo tick
+        setTimeout(() => setStep(insumosStepNum), 0);
+        return (
+          <div style={{ padding: 24, textAlign: "center", color: "#64748b",
+                          fontSize: 13 }}>
+            Pulando seleção de CTO…
+          </div>
+        );
+      })()}
+      {step === 3 && ctoFlowState.existingCtoId && (
         <CtoInlineFlow
           screen="B"
           state={ctoFlowState}
@@ -2826,20 +3169,21 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
           technician={{ id: collaboratorId,
                           name: ticket?.client_snapshot?.collaborator_name }}
           isFullUnlock={isFullUnlock}
+          ctoPhotoRequired={ctoPhotoRequired}
           onBackFromB={() => setStep(2)}
-          onCreated={({ cto, port_number, photo }) => {
+          onCreated={async ({ cto, port_number, photo }) => {
             // Modo "CTO existente": ctoSelected já está setado
-            // Modo "CTO nova": atualiza ctoSelected
             if (cto && cto.id && !ctoSelected) {
               setCtoSelected(cto);
             }
             setCtoPortSelected(port_number);
             // Adiciona a foto da CTO ao laudo de fotos do completion
             if (photo) {
+              const compPhoto = await compressDataUrl(photo, 1280, 0.78);
               setForm((f) => ({
                 ...f,
                 fotos: [...(f.fotos || []),
-                          { kind: "cto", dataUrl: photo }],
+                          { kind: "cto", dataUrl: compPhoto }],
               }));
             }
             setStep(insumosStepNum);
@@ -2988,29 +3332,42 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
               instalação ou reparo. Foto 1 = CTO, Foto 2 = Equipamento
               ONT/ONU, Foto 3 = etiqueta MAC/SN do equipamento.
               Consolida toda a captura num único botão sequencial.
-              Pedido do user 28/05/2026. */}
-          {(isInstall || isRepair) && (() => {
+              Pedido do user 28/05/2026.
+              iter211aj — Respeita toggles `cto_photo_required` e
+              `mac_validation_required`. Se ambos OFF, card some. */}
+          {(isInstall || isRepair)
+           && (ctoPhotoRequired || macValidationRequired) && (() => {
             const fotos = form.fotos || [];
+            const needCto = !!ctoPhotoRequired;
+            const needEquip = !!macValidationRequired;
+            const needSn = !!macValidationRequired;
             const hasCto = fotos.some((p) => p.kind === "cto");
             const hasEquip = fotos.some((p) => p.kind === "equipamento");
             const hasSn = fotos.some((p) => p.kind === "sn");
             // iter199 — CTO recém-cadastrada (< 5 dias) dispensa a foto
             const ctoRecent = !!ctoRecentInfo?.is_recent;
-            const stages = [
+            const stagesAll = [
               { key: "cto", label: "Foto da CTO",
+                enabled: needCto,
                 hint: ctoRecent
                   ? `✅ CTO cadastrada há ${Math.round(ctoRecentInfo.days_since)} dia(s) — foto dispensada.`
                   : "Tire uma foto da caixa CTO onde o cliente foi conectado.",
                 icon: "📦", done: hasCto || ctoRecent,
                 skipped: ctoRecent && !hasCto },
               { key: "equipamento", label: "Foto do Equipamento",
+                enabled: needEquip,
                 hint: "Tire uma foto do equipamento (ONT/ONU) instalado no cliente.",
                 icon: "📡", done: hasEquip },
               { key: "sn", label: "Foto do MAC/SN",
+                enabled: needSn,
                 hint: "Tire uma foto da etiqueta com MAC/SN do equipamento (leitura por IA).",
                 icon: "🏷️", done: hasSn },
             ];
-            const allDone = (hasCto || ctoRecent) && hasEquip && hasSn;
+            const stages = stagesAll.filter((s) => s.enabled);
+            if (stages.length === 0) return null;
+            const totalNeeded = stages.length;
+            const doneCount = stages.filter((s) => s.done).length;
+            const allDone = doneCount === totalNeeded;
             // Próxima foto a capturar (a primeira não tirada e não skipped)
             const nextStage = stages.find((s) => !s.done && !s.skipped);
             return (
@@ -3028,8 +3385,8 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                     <div style={{ fontSize: 13, fontWeight: 800,
                                       color: allDone ? "#166534" : "#92400e" }}>
                       {allDone
-                        ? "Fotos completas (3/3)"
-                        : `Fotos pendentes (${stages.filter((s)=>s.done).length}/3)`}
+                        ? `Fotos completas (${doneCount}/${totalNeeded})`
+                        : `Fotos pendentes (${doneCount}/${totalNeeded})`}
                     </div>
                     <div style={{ fontSize: 11,
                                       color: allDone ? "#15803d" : "#78350f",
@@ -3037,7 +3394,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                       {allDone
                         ? "Todas as fotos foram capturadas. Você já pode finalizar a OS."
                         : (nextStage?.hint
-                          || "Capture as 3 fotos antes de finalizar.")}
+                          || `Capture as ${totalNeeded} foto(s) antes de finalizar.`)}
                     </div>
                   </div>
                 </div>
@@ -3086,6 +3443,25 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                       await captureSnPhoto(f);
                       return;
                     }
+                    // iter211y v2 — foto-first UX: comprime e salva a foto crua
+                    // IMEDIATAMENTE (não trava no fetch Nominatim). O selo é
+                    // aplicado em background com timeout de 7s e substitui a
+                    // dataUrl quando pronto.
+                    const reqItem = (photoReqs || []).find((r) => r.id === kindToSet);
+                    const shouldStamp = reqItem
+                      ? !!reqItem.stamp_location
+                      : (kindToSet === "cto" || kindToSet === "ce");
+                    let gpsForStamp = null;
+                    if (shouldStamp && navigator.geolocation) {
+                      gpsForStamp = await new Promise((res) => {
+                        navigator.geolocation.getCurrentPosition(
+                          (p) => res({ lat: p.coords.latitude,
+                                        lng: p.coords.longitude }),
+                          () => res(null),
+                          { enableHighAccuracy: true, timeout: 4500, maximumAge: 15000 },
+                        );
+                      });
+                    }
                     const reader = new FileReader();
                     reader.onload = () => {
                       const img = new Image();
@@ -3099,16 +3475,47 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                         const ctx = canvas.getContext("2d");
                         ctx.drawImage(img, 0, 0, w, h);
                         const dataUrl = canvas.toDataURL("image/jpeg", 0.78);
-                        setForm((s) => ({
+                        // Salva foto crua imediatamente
+                        const setRawPhoto = (url) => setForm((s) => ({
                           ...s,
                           fotos: [
                             ...(s.fotos || []).filter((p) => p.kind !== kindToSet),
-                            { kind: kindToSet, dataUrl },
+                            { kind: kindToSet, dataUrl: url },
                           ],
                         }));
+                        setRawPhoto(dataUrl);
+                        // Aplica selo em background (best-effort, com timeout 7s)
+                        if (shouldStamp) {
+                          const stampLabel = reqItem
+                            ? `${reqItem.icon || "📷"} ${reqItem.label || ""}`.trim()
+                            : (kindToSet === "cto" ? "📦 FOTO CTO" : "🏢 FOTO CE");
+                          // iter211az — colaborador + nomenclatura da CTO/CE
+                          const collabName = data?.collaborator?.name || "";
+                          const elementName = ctoSelected?.name
+                                                || ctoFlowState?.ctoName
+                                                || (ctoSelected?.vlan && ctoSelected?.number
+                                                      ? `CTO_${ctoSelected.vlan}_${String(ctoSelected.number).padStart(4, "0")}`
+                                                      : "");
+                          const stampPromise = stampFieldPhoto(dataUrl, {
+                            lat: gpsForStamp?.lat,
+                            lng: gpsForStamp?.lng,
+                            label: stampLabel,
+                            collaborator: collabName,
+                            element: elementName,
+                          });
+                          const timeoutPromise = new Promise((resolve) =>
+                            setTimeout(() => resolve(dataUrl), 7000));
+                          Promise.race([stampPromise, timeoutPromise])
+                            .then((stamped) => {
+                              if (stamped && stamped !== dataUrl) setRawPhoto(stamped);
+                            })
+                            .catch(() => { /* silencioso */ });
+                        }
                       };
+                      img.onerror = () => { /* swallow */ };
                       img.src = reader.result;
                     };
+                    reader.onerror = () => { /* swallow */ };
                     reader.readAsDataURL(f);
                   }}
                 />
@@ -3515,7 +3922,8 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                                        "reparo", "ponto_adicional"].includes(ticket.type)
                                        && !isFullUnlock;
               const ipv6Pending = ipv6Required && !ipv6Result;
-              const ontPhotoPending = !isFullUnlock && (isInstall || isRepair)
+              const ontPhotoPending = !isFullUnlock && macValidationRequired
+                && (isInstall || isRepair)
                 && !(form.fotos || []).some((p) => p.kind === "equipamento");
               // iter166 — Foto da CTO obrigatória (toggle empresa-wide)
               // iter199 — Pula se CTO < 5 dias de cadastro
@@ -3578,21 +3986,25 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       {/* Scan IA: Claude 4.6 lê MAC/SN da etiqueta com viewfinder */}
       <OntScanModal
         open={showOntScan}
+        usePublic={true}
         hint={ticket?.client_snapshot?.ont_model || ticket?.ont_model || ""}
         isFullUnlock={isFullUnlock}
         expectedMac={clientSmart?.mac_expected || clientSmart?.sn_expected
                       || ticket?.live_signal?.sn || ""}
         onClose={() => setShowOntScan(false)}
-        onScanned={(data) => {
+        onScanned={async (data) => {
           const chosen = data.mac || data.sn;
           if (chosen) {
+            // iter211g — comprime a foto antes de embarcar no form
+            const rawUrl = `data:image/jpeg;base64,${data.image_base64}`;
+            const compUrl = await compressDataUrl(rawUrl, 1280, 0.78);
             setForm((f) => ({
               ...f,
               ont: chosen.toUpperCase(),
               // Guarda a foto da etiqueta como prova
               fotos: [
                 ...(f.fotos || []).filter((p) => p.kind !== "sn"),
-                { kind: "sn", dataUrl: `data:image/jpeg;base64,${data.image_base64}` },
+                { kind: "sn", dataUrl: compUrl },
               ],
             }));
             setOcrResult({

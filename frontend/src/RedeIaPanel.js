@@ -230,12 +230,25 @@ function Overview() {
   const [fiberKpi, setFiberKpi] = useState(null);
   const [fiberKpiDays, setFiberKpiDays] = useState(30);
   const [fiberAlerts, setFiberAlerts] = useState({ alerts: [], threshold: 200 });
+  // iter211f — estoque total de fibras (empresa + técnicos) por tipo
+  const [fiberStock, setFiberStock] = useState(null);
   useEffect(() => {
     api.redeIaCtosList().then((r) => setCtos(r.items || []));
     api.redeIaPendencies().then((r) => setPend(r.items || []));
     api.redeIaBairros().then((r) => setBairros(r.items || []));
     api.redeIaMapData().then((r) => setMapData(r)).catch(() => {});
     api.redeIaFiberAlerts(200).then(setFiberAlerts).catch(() => {});
+    // Estoque de fibras agregado (empresa + todos os técnicos)
+    api.stokStock().then((stock) => {
+      const totals = { fibra_06fo: 0, fibra_12fo: 0, fibra_24fo: 0,
+                        fibra_48fo: 0, fibra_96fo: 0 };
+      Object.values(stock || {}).forEach((loc) => {
+        Object.keys(totals).forEach((k) => {
+          totals[k] += Number(loc?.[k] || 0);
+        });
+      });
+      setFiberStock(totals);
+    }).catch(() => {});
   }, []);
   useEffect(() => {
     api.redeIaFiberKpi(fiberKpiDays).then(setFiberKpi).catch(() => {});
@@ -368,6 +381,97 @@ function Overview() {
             hint={`${fiberKpi.cables_count} cabo(s) · 6FO ${fiberKpi.by_type["6fo"]}m · 12FO ${fiberKpi.by_type["12fo"]}m · 24FO ${fiberKpi.by_type["24fo"]}m`} />
         )}
       </div>
+
+      {/* iter211f — Card de estoque atual de fibras (agregado) */}
+      {fiberStock && (
+        <Card data-testid="rede-ia-fiber-stock" style={{ padding: 16 }}>
+          <div style={{ display: "flex", alignItems: "center",
+                          justifyContent: "space-between", marginBottom: 12 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800,
+                              color: "#0f172a" }}>📦 Estoque de Fibras</h3>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                Saldo agregado (empresa + técnicos). Atualizado quando um cabo
+                é lançado no mapa.
+              </div>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 700,
+                              padding: "3px 8px", borderRadius: 999,
+                              background: "#dbeafe", color: "#1e40af" }}>
+              auto-baixa ativa
+            </span>
+          </div>
+          <div style={{ display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))",
+                          gap: 10 }}>
+            {[
+              { key: "fibra_06fo", label: "6 FO", color: "#facc15" },
+              { key: "fibra_12fo", label: "12 FO", color: "#fb923c" },
+              { key: "fibra_24fo", label: "24 FO", color: "#ef4444" },
+              { key: "fibra_48fo", label: "48 FO", color: "#8b5cf6" },
+              { key: "fibra_96fo", label: "96 FO", color: "#0f172a" },
+            ].map((it) => {
+              const meters = fiberStock[it.key] || 0;
+              const isLow = meters < 200 && meters >= 0;
+              const isNeg = meters < 0;
+              const valueLabel = Math.abs(meters) >= 1000
+                ? `${(meters / 1000).toFixed(2)} km`
+                : `${meters} m`;
+              return (
+                <div key={it.key}
+                  data-testid={`fiber-stock-${it.key}`}
+                  style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    border: "1px solid " + (isNeg ? "#fecaca"
+                                              : isLow ? "#fde68a" : "#e2e8f0"),
+                    background: isNeg ? "#fef2f2"
+                                  : isLow ? "#fffbeb" : "#fff",
+                  }}>
+                  <div style={{ display: "flex", alignItems: "center",
+                                  gap: 8, marginBottom: 6 }}>
+                    <span style={{
+                      display: "inline-block", width: 14, height: 14,
+                      borderRadius: 4, background: it.color,
+                      border: "2px solid #fff",
+                      boxShadow: "0 0 0 1px rgba(0,0,0,0.08)",
+                    }} />
+                    <span style={{ fontSize: 12, fontWeight: 800,
+                                      color: "#475569",
+                                      textTransform: "uppercase",
+                                      letterSpacing: 0.5 }}>{it.label}</span>
+                  </div>
+                  <div style={{
+                    fontSize: 22, fontWeight: 800,
+                    fontVariantNumeric: "tabular-nums",
+                    color: isNeg ? "#dc2626"
+                              : isLow ? "#d97706" : "#0f172a",
+                    lineHeight: 1,
+                  }}>{valueLabel}</div>
+                  {isNeg && (
+                    <div style={{ fontSize: 10, fontWeight: 700,
+                                    color: "#dc2626", marginTop: 4 }}>
+                      ⚠️ saldo negativo
+                    </div>
+                  )}
+                  {isLow && !isNeg && (
+                    <div style={{ fontSize: 10, fontWeight: 700,
+                                    color: "#d97706", marginTop: 4 }}>
+                      ⚠️ saldo baixo
+                    </div>
+                  )}
+                  {!isLow && !isNeg && (
+                    <div style={{ fontSize: 10, color: "#64748b",
+                                    marginTop: 4 }}>
+                      em estoque
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       {/* Gráfico temporal de fibra lançada + alertas de saldo */}
       {fiberKpi && (
@@ -2622,12 +2726,18 @@ const btnSm = (color) => ({
 function BairrosManager() {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({ bairro: "", sigla: "", vlan: "",
-                                          cidade: "", estado: "", regiao: "" });
+                                          cidade: "", estado: "", regiao: "",
+                                          olt_name: "" });
+  const [oltNames, setOltNames] = useState([]); // iter211be
   const [err, setErr] = useState("");
   const [onusModal, setOnusModal] = useState(null); // {vlan, bairro}
   const load = useCallback(async () => {
-    const r = await api.redeIaBairros();
+    const [r, o] = await Promise.all([
+      api.redeIaBairros(),
+      api.redeIaOltNames().catch(() => ({ items: [] })),
+    ]);
     setItems(r.items || []);
+    setOltNames(o.items || []);
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -2637,7 +2747,8 @@ function BairrosManager() {
       await api.redeIaBairroCreate({
         ...form, vlan: parseInt(form.vlan, 10),
       });
-      setForm({ bairro: "", sigla: "", vlan: "", cidade: "", estado: "", regiao: "" });
+      setForm({ bairro: "", sigla: "", vlan: "", cidade: "", estado: "",
+                  regiao: "", olt_name: "" });
       load();
     } catch (e) {
       setErr(e?.response?.data?.detail || "Erro ao salvar.");
@@ -2654,8 +2765,11 @@ function BairrosManager() {
       <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>
         Cadastre os bairros atendidos. A sigla e a VLAN são usadas pela rede_IA para gerar
         nomenclaturas padronizadas das CTOs (ex: <code>CTO 001_301_COR</code>).
+        Vincule à <strong>OLT SmartOLT</strong> caso o bairro seja atendido por uma —
+        assim as CTOs criadas com essa VLAN serão automaticamente registradas no SmartOLT.
       </p>
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr auto",
+      <div style={{ display: "grid",
+                       gridTemplateColumns: "2fr 1fr 1fr 1fr 0.7fr 1.2fr auto",
                        gap: 8, marginBottom: 14, alignItems: "end" }}>
         <Field l="Bairro" v={form.bairro} on={(v) => setForm({ ...form, bairro: v })}
                 tid="bairro-input" />
@@ -2665,6 +2779,23 @@ function BairrosManager() {
                 tid="vlan-input" type="number" />
         <Field l="Cidade" v={form.cidade} on={(v) => setForm({ ...form, cidade: v })} />
         <Field l="UF" v={form.estado} on={(v) => setForm({ ...form, estado: v.toUpperCase() })} />
+        <div>
+          <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)",
+                          fontWeight: 600, marginBottom: 3 }}>
+            OLT (SmartOLT)
+          </label>
+          <select data-testid="bairro-olt-select"
+                  value={form.olt_name || ""}
+                  onChange={(e) => setForm({ ...form, olt_name: e.target.value })}
+                  style={{ width: "100%", padding: "7px 9px",
+                            border: "1px solid var(--border-default)",
+                            borderRadius: 6, fontSize: 12, background: "white" }}>
+            <option value="">— sem SmartOLT —</option>
+            {oltNames.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
         <button data-testid="bairro-save" onClick={save} style={btnSm("#0f172a")}>
           Adicionar
         </button>
@@ -2676,7 +2807,7 @@ function BairrosManager() {
         <thead>
           <tr style={{ borderBottom: "2px solid var(--border-default)" }}>
             <th style={th}>Bairro</th><th style={th}>Sigla</th><th style={th}>VLAN</th>
-            <th style={th}>Cidade/UF</th><th style={th}></th>
+            <th style={th}>Cidade/UF</th><th style={th}>OLT</th><th style={th}></th>
           </tr>
         </thead>
         <tbody>
@@ -2686,6 +2817,17 @@ function BairrosManager() {
               <td style={td}><strong>{b.sigla}</strong></td>
               <td style={td}>{b.vlan}</td>
               <td style={td}>{b.cidade}{b.estado ? `/${b.estado}` : ""}</td>
+              <td style={td}>
+                {b.olt_name
+                  ? <span style={{ padding: "2px 8px", fontSize: 11,
+                                     background: "#ecfdf5", color: "#065f46",
+                                     border: "1px solid #6ee7b7",
+                                     borderRadius: 999, fontWeight: 700,
+                                     fontFamily: "monospace" }}>
+                      📡 {b.olt_name}
+                    </span>
+                  : <span style={{ color: "#94a3b8", fontSize: 11 }}>—</span>}
+              </td>
               <td style={td}>
                 <button onClick={() => setOnusModal({ vlan: b.vlan, bairro: b.bairro })}
                         style={{ ...btnSm("#0ea5e9"), padding: "4px 10px",
@@ -2701,7 +2843,7 @@ function BairrosManager() {
             </tr>
           ))}
           {items.length === 0 && (
-            <tr><td colSpan="5" style={{ ...td, textAlign: "center", padding: 20,
+            <tr><td colSpan="6" style={{ ...td, textAlign: "center", padding: 20,
                                             color: "var(--text-muted)" }}>
               Nenhum bairro cadastrado. Adicione o primeiro acima.
             </td></tr>

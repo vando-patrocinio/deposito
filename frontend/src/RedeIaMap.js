@@ -55,6 +55,34 @@ const CABLE_WIDTHS = {
   drop: 1.5, "6fo": 2.5, "12fo": 3.5, "24fo": 4.5, "48fo": 5.5, "96fo": 6.5,
 };
 
+const CABLE_TYPE_LABEL = {
+  drop: "Drop (1FO)",
+  "6fo": "6 FO",
+  "12fo": "12 FO",
+  "24fo": "24 FO",
+  "48fo": "48 FO",
+  "96fo": "96 FO",
+};
+
+// iter211d — Haversine para somar distância dos segmentos OSRM
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function segmentLengthM(geom) {
+  let total = 0;
+  for (let i = 1; i < geom.length; i++) {
+    total += haversineM(geom[i - 1][0], geom[i - 1][1],
+                         geom[i][0], geom[i][1]);
+  }
+  return total;
+}
+
 const STATUS_LABEL = {
   ok: "Saudável", warning: "Atenção", critical: "Crítico",
   no_data: "Sem dados", unknown: "Desconhecido",
@@ -101,8 +129,6 @@ function makeCeIcon(ce) {
 
 // Camada que captura clique no mapa (modos add-ce / draw-cable)
 function MapClickHandler({ enabled, onClick }) {
-  // Refs garantem que o handler do useMapEvents sempre veja valor atual,
-  // sem precisar re-bindar listeners.
   const enabledRef = useRef(enabled);
   const onClickRef = useRef(onClick);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
@@ -133,7 +159,9 @@ function FlyToHighlight({ highlight }) {
   const map = useMap();
   useEffect(() => {
     if (!highlight || !highlight.lat || !highlight.lng) return;
-    map.flyTo([highlight.lat, highlight.lng], Math.max(map.getZoom(), 19),
+    // iter210 — para endereços, zoom menor (rua) em vez de CTO (19)
+    const targetZoom = highlight.kind === "address" ? 17 : 19;
+    map.flyTo([highlight.lat, highlight.lng], Math.max(map.getZoom(), targetZoom),
               { duration: 0.7 });
   }, [highlight, map]);
   return null;
@@ -175,6 +203,165 @@ function HeatLayer({ ctos, enabled }) {
   return null;
 }
 
+// iter211e — Modal de SN do cabo + NF (obrigatórios em cabos de fibra)
+function CableSerialModal({ open, type, totalM, hasDestination, onCancel, onConfirm }) {
+  const [serial, setSerial] = useState("");
+  const [invoice, setInvoice] = useState("");
+  const [purchases, setPurchases] = useState([]);
+  const [pickedPurchaseId, setPickedPurchaseId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setSerial(""); setInvoice(""); setPickedPurchaseId(""); setErr("");
+    // Carrega NFs (compras) confirmadas para autocompletar
+    (async () => {
+      try {
+        const r = await api.purchasesList({ limit: 50 });
+        const items = Array.isArray(r) ? r : (r?.items || []);
+        // Filtra só compras confirmadas que tenham invoice_number preenchido
+        setPurchases(items.filter((p) => p.invoice_number));
+      } catch (_) { /* silencia */ }
+    })();
+  }, [open]);
+
+  if (!open) return null;
+
+  function handlePickPurchase(pid) {
+    setPickedPurchaseId(pid);
+    const p = purchases.find((x) => x.id === pid);
+    if (p) setInvoice(p.invoice_number || "");
+  }
+
+  async function handleConfirm() {
+    if (!serial.trim()) { setErr("Informe o SN do cabo."); return; }
+    if (!invoice.trim()) { setErr("Informe o número da NF."); return; }
+    setBusy(true);
+    setErr("");
+    try {
+      await onConfirm({
+        cable_serial: serial.trim(),
+        invoice_number: invoice.trim(),
+        purchase_id: pickedPurchaseId || null,
+      });
+    } catch (e) {
+      setErr(e?.message || "Erro ao salvar.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div data-testid="cable-serial-modal" style={{
+      position: "fixed", inset: 0, zIndex: 9000,
+      display: "grid", placeItems: "center",
+      background: "rgba(15, 23, 42, 0.62)",
+      backdropFilter: "blur(2px)",
+    }}>
+      <div style={{
+        background: "#fff", width: 460, maxWidth: "92vw",
+        borderRadius: 12, padding: 22,
+        boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+        fontFamily: "system-ui, sans-serif",
+      }}>
+        <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a",
+                        marginBottom: 4 }}>
+          🏷️ Identificação do cabo
+        </div>
+        <div style={{ fontSize: 13, color: "#475569", marginBottom: 16 }}>
+          Cabo <strong>{type.toUpperCase()}</strong> · {totalM >= 1000
+            ? (totalM / 1000).toFixed(2) + " km" : Math.round(totalM) + " m"}
+          {!hasDestination && (
+            <span style={{ marginLeft: 6, color: "#ea580c", fontWeight: 600 }}>
+              · será salvo como cabo solto
+            </span>
+          )}
+          <div style={{ marginTop: 6, padding: "6px 8px", fontSize: 11,
+                          background: "#fef3c7", color: "#92400e",
+                          borderRadius: 6, lineHeight: 1.4 }}>
+            📦 Ao salvar, <strong>{Math.round(totalM)} m</strong> de fibra
+            {" "}<strong>{type.toUpperCase()}</strong> serão automaticamente
+            baixados do estoque.
+          </div>
+        </div>
+
+        <label style={{ display: "block", fontSize: 12, fontWeight: 700,
+                          color: "#334155", marginBottom: 4 }}>
+          NF (Nota Fiscal) <span style={{ color: "#dc2626" }}>*</span>
+        </label>
+        {purchases.length > 0 && (
+          <select data-testid="cable-serial-purchase"
+            value={pickedPurchaseId}
+            onChange={(e) => handlePickPurchase(e.target.value)}
+            style={{
+              width: "100%", padding: 8, borderRadius: 6,
+              border: "1px solid #cbd5e1", fontSize: 13, marginBottom: 6,
+            }}>
+            <option value="">— selecione uma NF existente —</option>
+            {purchases.map((p) => (
+              <option key={p.id} value={p.id}>
+                NF {p.invoice_number} · {p.supplier_name || "fornecedor"}
+                {p.total_value
+                  ? ` · R$ ${Number(p.total_value).toFixed(2)}` : ""}
+              </option>
+            ))}
+          </select>
+        )}
+        <input data-testid="cable-serial-invoice"
+          type="text" value={invoice}
+          onChange={(e) => { setInvoice(e.target.value);
+                              setPickedPurchaseId(""); }}
+          placeholder="Ex.: 12345"
+          style={{
+            width: "100%", padding: 8, borderRadius: 6,
+            border: "1px solid #cbd5e1", fontSize: 13,
+            marginBottom: 14, boxSizing: "border-box",
+          }} />
+
+        <label style={{ display: "block", fontSize: 12, fontWeight: 700,
+                          color: "#334155", marginBottom: 4 }}>
+          SN do cabo (Serial Number) <span style={{ color: "#dc2626" }}>*</span>
+        </label>
+        <input data-testid="cable-serial-input"
+          type="text" value={serial}
+          onChange={(e) => setSerial(e.target.value.toUpperCase())}
+          autoFocus
+          placeholder="Ex.: ABCD1234567890"
+          style={{
+            width: "100%", padding: 8, borderRadius: 6,
+            border: "1px solid #cbd5e1", fontSize: 13,
+            fontFamily: "monospace",
+            marginBottom: 16, boxSizing: "border-box",
+          }} />
+
+        {err && (
+          <div style={{ color: "#dc2626", fontSize: 12, marginBottom: 12,
+                          padding: 8, background: "#fee2e2", borderRadius: 6 }}>
+            ⚠️ {err}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button data-testid="cable-serial-cancel"
+            onClick={onCancel} disabled={busy}
+            style={{
+              padding: "8px 14px", background: "#f1f5f9",
+              color: "#475569", border: 0, borderRadius: 6,
+              fontSize: 13, fontWeight: 600, cursor: "pointer",
+            }}>Cancelar</button>
+          <button data-testid="cable-serial-confirm"
+            onClick={handleConfirm} disabled={busy}
+            style={{
+              padding: "8px 14px", background: "#16a34a",
+              color: "#fff", border: 0, borderRadius: 6,
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              opacity: busy ? 0.6 : 1,
+            }}>{busy ? "Salvando…" : "Salvar cabo"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RedeIaMap() {
   const [data, setData] = useState({ ctos: [], ces: [], cables: [], vlans: [],
                                           center: { lat: -22.9068, lng: -43.1729 } });
@@ -194,7 +381,15 @@ export default function RedeIaMap() {
     from: null,           // { id, type, lat, lng, name }
     waypoints: [],        // [{lat,lng}] intermediários do draw-cable
     cableType: "12fo",
+    routedSegments: [],   // iter211 — [[lat,lng], ...] geometria OSRM de cada trecho fixado
   });
+  // iter211 — Modo "Google Maps" no draw-cable: cada CLIQUE adiciona um
+  // ponto e o trecho desde o último ponto é roteado pelas ruas (OSRM).
+  // Sem preview seguindo mouse — só cliques.
+  const [followMouse, setFollowMouse] = useState(true);
+  // iter211e — modal de SN/NF antes de salvar cabo de fibra (não-drop)
+  const [serialModal, setSerialModal] = useState(null);
+  // serialModal = { endEntity: null|entity, type: "6fo"|..., totalM: number }
   const [newCe, setNewCe] = useState(null); // { lat, lng } pendente nome
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [legendOpen, setLegendOpen] = useState(true);
@@ -209,6 +404,15 @@ export default function RedeIaMap() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHighlight, setSearchHighlight] = useState(null);
   // searchHighlight = { id, kind: "cto"|"ce"|"cable", lat, lng, name }
+
+  // iter210 — busca por ENDEREÇO via Nominatim (OSM, gratuito).
+  // Usado pra centralizar o mapa em uma rua/cidade que ainda não tem CTO.
+  const [addrQuery, setAddrQuery] = useState("");
+  const [addrResults, setAddrResults] = useState([]);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const [addrPin, setAddrPin] = useState(null);
+  // addrPin = { lat, lng, label }
+  const addrDebounceRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -261,6 +465,60 @@ export default function RedeIaMap() {
     } finally {
       setSignalLoading(false);
     }
+  }
+
+  // iter210 — Busca endereço via Nominatim (OSM público).
+  // Debounce 500ms para evitar flood (policy do Nominatim: ≤1 req/seg).
+  async function searchAddress(q) {
+    const qt = (q || "").trim();
+    if (qt.length < 4) {
+      setAddrResults([]);
+      return;
+    }
+    setAddrLoading(true);
+    try {
+      // countrycodes=br para priorizar resultados no Brasil. Limit 6.
+      const url = "https://nominatim.openstreetmap.org/search"
+        + "?format=json&addressdetails=1&limit=6&countrycodes=br"
+        + "&q=" + encodeURIComponent(qt);
+      const r = await fetch(url, {
+        headers: { "Accept-Language": "pt-BR" },
+      });
+      const arr = await r.json();
+      setAddrResults((arr || []).map((it) => ({
+        lat: parseFloat(it.lat),
+        lng: parseFloat(it.lon),
+        label: it.display_name,
+        type: it.type,
+      })));
+    } catch (e) {
+      console.warn("[addr-search]", e);
+      setAddrResults([]);
+    } finally {
+      setAddrLoading(false);
+    }
+  }
+
+  function onAddrChange(v) {
+    setAddrQuery(v);
+    if (addrDebounceRef.current) clearTimeout(addrDebounceRef.current);
+    addrDebounceRef.current = setTimeout(() => searchAddress(v), 500);
+  }
+
+  function pickAddress(r) {
+    setAddrPin({ lat: r.lat, lng: r.lng, label: r.label });
+    setAddrQuery(r.label);
+    setAddrResults([]);
+    // Reusa o highlight pra voar o mapa pra lá
+    setSearchHighlight({ id: "addr", kind: "address",
+                          lat: r.lat, lng: r.lng, name: r.label });
+  }
+
+  function clearAddress() {
+    setAddrQuery("");
+    setAddrResults([]);
+    setAddrPin(null);
+    if (searchHighlight?.kind === "address") setSearchHighlight(null);
   }
 
   // iter180 — Busca por nome (CTO_301_004, CE_00001, CABO_301_002 ou trecho)
@@ -343,6 +601,13 @@ export default function RedeIaMap() {
     return m;
   }, [data.ces]);
 
+  // iter211d — distância total acumulada do cabo em desenho
+  const draftTotalM = useMemo(() => {
+    if (!cableDraft.from) return 0;
+    return cableDraft.routedSegments.reduce(
+      (acc, seg) => acc + segmentLengthM(seg), 0);
+  }, [cableDraft.from, cableDraft.routedSegments]);
+
   const handleDragEnd = useCallback(async (entity_type, entity_id, latlng) => {
     try {
       await api.redeIaPositionSave({
@@ -374,18 +639,57 @@ export default function RedeIaMap() {
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
   // Handler: clique no mapa (modos add-ce / draw-cable waypoint)
-  const handleMapClick = useCallback((latlng) => {
+  // iter211 — em draw-cable, calcula rota OSRM do último ponto até o clique
+  // e adiciona o segmento à `routedSegments`.
+  // iter211c — 1º clique no mapa vazio cria PONTO LIVRE como origem (cabo solto).
+  const handleMapClick = useCallback(async (latlng) => {
     const m = modeRef.current;
     const draft = cableDraftRef.current;
     if (m === "add-ce") {
       setNewCe({ lat: latlng.lat, lng: latlng.lng });
-    } else if (m === "draw-cable" && draft.from) {
+      return;
+    }
+    if (m !== "draw-cable") return;
+
+    // iter211c — Se não tem `from` ainda, o 1º clique vira o ponto inicial
+    // (cabo começa "no ar" — sem CTO/CE de origem).
+    if (!draft.from) {
       setCableDraft((d) => ({
         ...d,
-        waypoints: [...d.waypoints, { lat: latlng.lat, lng: latlng.lng }],
+        from: { id: null, type: null, lat: latlng.lat, lng: latlng.lng,
+                  name: "Ponto inicial", kind: "freehand" },
+        waypoints: [],
+        routedSegments: [],
       }));
+      return;
     }
-  }, []);
+
+    // Origem do trecho: último waypoint OU o "from"
+    const last = draft.waypoints.length > 0
+      ? draft.waypoints[draft.waypoints.length - 1]
+      : { lat: draft.from.lat, lng: draft.from.lng };
+    const wp = { lat: latlng.lat, lng: latlng.lng };
+    let segGeom = [[last.lat, last.lng], [wp.lat, wp.lng]];
+    if (followMouse) {
+      try {
+        const r = await api.redeIaCableRoute({
+          from_lat: last.lat, from_lng: last.lng,
+          to_lat: wp.lat, to_lng: wp.lng,
+          profile: "foot",
+        });
+        if (Array.isArray(r?.geometry) && r.geometry.length >= 2) {
+          segGeom = r.geometry;
+        }
+      } catch (e) {
+        console.warn("[draw-cable] osrm falhou, usando reta:", e);
+      }
+    }
+    setCableDraft((d) => ({
+      ...d,
+      waypoints: [...d.waypoints, wp],
+      routedSegments: [...d.routedSegments, segGeom],
+    }));
+  }, [followMouse]);
 
   // Confirma criação da CE (modal/prompt)
   const confirmCreateCe = useCallback(async (name, type, capacity) => {
@@ -438,33 +742,116 @@ export default function RedeIaMap() {
     }
     if (m === "draw-cable") {
       if (!draft.from) {
-        setCableDraft((d) => ({ ...d, from: entity, waypoints: [] }));
+        setCableDraft((d) => ({ ...d, from: entity, waypoints: [],
+                                  routedSegments: [] }));
         return true;
       }
       if (draft.from.id === entity.id) return true;
-      try {
-        const segs = [
-          { lat: draft.from.lat, lng: draft.from.lng },
-          ...draft.waypoints,
-          { lat: entity.lat, lng: entity.lng },
-        ];
-        await api.redeIaCableCreate({
-          type: draft.cableType,
-          from_id: draft.from.id, from_type: draft.from.type,
-          to_id: entity.id, to_type: entity.type,
-          segments: segs,
-          length_m: null,
-          notes: `Desenhado com ${draft.waypoints.length} pontos intermediários`,
-        });
-        setCableDraft((d) => ({ ...d, from: null, waypoints: [] }));
-        load();
-      } catch (e) {
-        await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
-      }
+      // Finaliza usando a entidade clicada como destino
+      await finalizeDrawCable(entity);
       return true;
     }
     return false;
   }, [load]);
+
+  // iter211c — Finaliza o desenho. Se `endEntity` for fornecida, usa como
+  // destino (CTO/CE). Caso contrário, salva como CABO SOLTO (sem to).
+  // iter211e — Para cabos de fibra (não-drop), abre modal pedindo SN + NF.
+  const finalizeDrawCable = useCallback(async (endEntity, extras = null) => {
+    const draft = cableDraftRef.current;
+    if (!draft.from) return;
+    // Precisamos de pelo menos UM trecho desenhado para salvar.
+    if (!endEntity && draft.waypoints.length === 0) {
+      await window.alert("Adicione pelo menos um ponto antes de finalizar.");
+      return;
+    }
+    // iter211e — Cabos de fibra exigem SN + NF. Abre modal se ainda não tem.
+    if (draft.cableType !== "drop" && !extras) {
+      // calcula distância total estimada (inclui o último trecho até endEntity)
+      let estTotal = draft.routedSegments.reduce(
+        (acc, seg) => acc + segmentLengthM(seg), 0);
+      if (endEntity) {
+        const last = draft.waypoints.length > 0
+          ? draft.waypoints[draft.waypoints.length - 1]
+          : { lat: draft.from.lat, lng: draft.from.lng };
+        estTotal += haversineM(last.lat, last.lng, endEntity.lat, endEntity.lng);
+      }
+      setSerialModal({
+        endEntity,
+        type: draft.cableType,
+        totalM: estTotal,
+      });
+      return;
+    }
+    try {
+      let lastSeg = null;
+      if (endEntity) {
+        const last = draft.waypoints.length > 0
+          ? draft.waypoints[draft.waypoints.length - 1]
+          : { lat: draft.from.lat, lng: draft.from.lng };
+        lastSeg = [[last.lat, last.lng], [endEntity.lat, endEntity.lng]];
+        if (followMouse) {
+          try {
+            const r = await api.redeIaCableRoute({
+              from_lat: last.lat, from_lng: last.lng,
+              to_lat: endEntity.lat, to_lng: endEntity.lng,
+              profile: "foot",
+            });
+            if (Array.isArray(r?.geometry) && r.geometry.length >= 2) {
+              lastSeg = r.geometry;
+            }
+          } catch (_) { /* fallback reta */ }
+        }
+      }
+      const allSegs = lastSeg
+        ? [...draft.routedSegments, lastSeg]
+        : draft.routedSegments;
+      const segments = [];
+      if (allSegs.length === 0) {
+        segments.push({ lat: draft.from.lat, lng: draft.from.lng });
+        draft.waypoints.forEach((w) => segments.push({ lat: w.lat, lng: w.lng }));
+      } else {
+        allSegs.forEach((g, idx) => {
+          g.forEach((pt, i) => {
+            if (idx > 0 && i === 0) return;
+            segments.push({ lat: pt[0], lng: pt[1] });
+          });
+        });
+      }
+      // Calcula length_m via Haversine sobre os segments finais
+      let totalLengthM = 0;
+      for (let i = 1; i < segments.length; i++) {
+        totalLengthM += haversineM(segments[i - 1].lat, segments[i - 1].lng,
+                                    segments[i].lat, segments[i].lng);
+      }
+      const isFreehand = draft.from.kind === "freehand";
+      const payload = {
+        type: draft.cableType,
+        from_id: isFreehand ? null : draft.from.id,
+        from_type: isFreehand ? null : draft.from.type,
+        to_id: endEntity ? endEntity.id : null,
+        to_type: endEntity ? endEntity.type : null,
+        segments,
+        length_m: Math.round(totalLengthM),
+        notes: followMouse
+          ? `Desenhado seguindo ruas (OSRM) · ${draft.waypoints.length + (endEntity ? 1 : 0)} pontos`
+          : `Desenhado · ${draft.waypoints.length + (endEntity ? 1 : 0)} pontos`,
+      };
+      // iter211e — Anexa SN/NF se foram fornecidos via modal
+      if (extras) {
+        payload.cable_serial = extras.cable_serial;
+        payload.invoice_number = extras.invoice_number;
+        payload.purchase_id = extras.purchase_id || null;
+      }
+      await api.redeIaCableCreate(payload);
+      setCableDraft((d) => ({ ...d, from: null, waypoints: [],
+                                routedSegments: [] }));
+      setSerialModal(null);
+      load();
+    } catch (e) {
+      await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
+    }
+  }, [followMouse, load]);
 
   const autoGenerate = async () => {
     if (!await window.confirm("rede_IA vai agrupar CTOs próximas em CEs e criar cabos 24FO automaticamente. Continuar?")) return;
@@ -668,6 +1055,81 @@ export default function RedeIaMap() {
           )}
         </div>
 
+        {/* iter210 — Busca por ENDEREÇO (Nominatim/OSM) */}
+        <div style={{ position: "relative" }}>
+          <input data-testid="map-addr-input"
+            type="search" value={addrQuery}
+            onChange={(e) => onAddrChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") clearAddress();
+              else if (e.key === "Enter" && addrResults.length > 0) {
+                pickAddress(addrResults[0]);
+              }
+            }}
+            placeholder="📍 Endereço, bairro, cidade…"
+            style={{
+              ...selectStyle, width: 260, paddingLeft: 12,
+              borderColor: addrPin ? "#0ea5e9" : undefined,
+            }} />
+          {addrQuery && (
+            <button data-testid="map-addr-clear"
+                    onClick={clearAddress}
+                    style={{
+                      position: "absolute", right: 6, top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "transparent", border: 0,
+                      fontSize: 14, cursor: "pointer", color: "#94a3b8",
+                      padding: "2px 6px",
+                    }}>✕</button>
+          )}
+          {(addrLoading || addrResults.length > 0)
+            && !(addrPin && addrQuery === addrPin.label) && (
+            <div data-testid="map-addr-results" style={{
+              position: "absolute", top: "100%", left: 0,
+              marginTop: 4, background: "#fff",
+              border: "1px solid var(--border-default)",
+              borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+              zIndex: 1000, minWidth: 320, maxWidth: 460, maxHeight: 320,
+              overflowY: "auto",
+            }}>
+              {addrLoading && (
+                <div style={{ padding: 10, fontSize: 12, color: "#64748b" }}>
+                  Buscando endereço…
+                </div>
+              )}
+              {!addrLoading && addrResults.length === 0
+                && addrQuery.trim().length >= 4 && (
+                <div style={{ padding: 10, fontSize: 12, color: "#64748b" }}>
+                  Nenhum resultado encontrado.
+                </div>
+              )}
+              {addrResults.map((r, i) => (
+                <button key={`${r.lat}-${r.lng}-${i}`}
+                        data-testid={`map-addr-hit-${i}`}
+                        onClick={() => pickAddress(r)}
+                        style={{
+                          display: "block", width: "100%",
+                          padding: "8px 12px", textAlign: "left",
+                          background: "transparent", border: 0,
+                          cursor: "pointer", fontSize: 12.5,
+                          borderBottom: "1px solid #f1f5f9",
+                          lineHeight: 1.4,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f9ff")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                  <span style={{
+                    display: "inline-block", padding: "1px 6px", borderRadius: 4,
+                    marginRight: 8, fontSize: 9, fontWeight: 800,
+                    background: "#dbeafe", color: "#1e40af",
+                    textTransform: "uppercase",
+                  }}>📍 {(r.type || "lugar").replace("_", " ")}</span>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <select data-testid="map-filter-vlan" value={vlanFilter}
           onChange={(e) => setVlanFilter(e.target.value)}
           style={selectStyle}>
@@ -817,13 +1279,76 @@ export default function RedeIaMap() {
           <FitBounds ctos={filteredCtos} />
           <FlyToHighlight highlight={searchHighlight} />
           <HeatLayer ctos={filteredCtos} enabled={showHeatmap} />
+
+          {/* iter210 — Marker do endereço pesquisado */}
+          {addrPin && (
+            <>
+              <CircleMarker
+                center={[addrPin.lat, addrPin.lng]}
+                radius={14}
+                pathOptions={{
+                  color: "#0ea5e9",
+                  fillColor: "#0ea5e9",
+                  fillOpacity: 0.25,
+                  weight: 2,
+                }}
+              />
+              <CircleMarker
+                center={[addrPin.lat, addrPin.lng]}
+                radius={6}
+                pathOptions={{
+                  color: "#fff",
+                  fillColor: "#0ea5e9",
+                  fillOpacity: 1,
+                  weight: 2,
+                }}
+              >
+                <Tooltip permanent direction="top" offset={[0, -8]}>
+                  <span style={{ fontSize: 11, fontWeight: 600 }}>
+                    📍 {addrPin.label.split(",").slice(0, 2).join(",")}
+                  </span>
+                </Tooltip>
+              </CircleMarker>
+            </>
+          )}
           <MapClickHandler
             enabled={mode === "add-ce" || mode === "draw-cable"}
             onClick={handleMapClick}
           />
 
-          {/* Prévia do cabo em desenho (modo draw-cable) */}
-          {mode === "draw-cable" && cableDraft.from && (
+          {/* iter211c — Marker do ponto inicial quando origem é "freehand" */}
+          {mode === "draw-cable" && cableDraft.from
+            && cableDraft.from.kind === "freehand" && (
+            <CircleMarker
+              center={[cableDraft.from.lat, cableDraft.from.lng]}
+              radius={8}
+              pathOptions={{
+                color: "#fff",
+                fillColor: CABLE_COLORS[cableDraft.cableType] || "#7c3aed",
+                fillOpacity: 1, weight: 3,
+              }}
+            >
+              <Tooltip permanent direction="top" offset={[0, -8]}>
+                <span style={{ fontSize: 10, fontWeight: 700 }}>1</span>
+              </Tooltip>
+            </CircleMarker>
+          )}
+
+          {/* iter211 — Trechos FIXADOS via OSRM (sólidos) */}
+          {mode === "draw-cable" && cableDraft.from
+            && cableDraft.routedSegments.map((seg, i) => (
+            <Polyline
+              key={`fixed-seg-${i}`}
+              positions={seg}
+              pathOptions={{
+                color: CABLE_COLORS[cableDraft.cableType] || "#7c3aed",
+                weight: 5, opacity: 0.85,
+              }}
+            />
+          ))}
+
+          {/* Fallback: prévia em LINHA RETA quando followMouse está OFF */}
+          {mode === "draw-cable" && cableDraft.from && !followMouse && (
             <Polyline
               positions={[
                 [cableDraft.from.lat, cableDraft.from.lng],
@@ -836,25 +1361,32 @@ export default function RedeIaMap() {
             />
           )}
           {/* Waypoints da prévia */}
-          {mode === "draw-cable" && cableDraft.waypoints.map((w, i) => (
-            <CircleMarker key={`wp-${i}`} center={[w.lat, w.lng]}
-              radius={6}
-              pathOptions={{
-                color: "#7c3aed", fillColor: "#fff",
-                fillOpacity: 1, weight: 3,
-              }}
-              eventHandlers={{
-                click: () => {
-                  // remove waypoint clicado
-                  setCableDraft((d) => ({
-                    ...d,
-                    waypoints: d.waypoints.filter((_, idx) => idx !== i),
-                  }));
-                },
-              }}>
-              <Tooltip>{`Ponto ${i + 1} · clique para remover`}</Tooltip>
-            </CircleMarker>
-          ))}
+          {mode === "draw-cable" && cableDraft.waypoints.map((w, i) => {
+            const isLast = i === cableDraft.waypoints.length - 1;
+            return (
+              <CircleMarker key={`wp-${i}`} center={[w.lat, w.lng]}
+                radius={isLast ? 7 : 5}
+                pathOptions={{
+                  color: isLast ? "#dc2626" : "#7c3aed",
+                  fillColor: "#fff",
+                  fillOpacity: 1, weight: isLast ? 3 : 2,
+                }}
+                eventHandlers={{
+                  click: () => {
+                    // iter211 — Trunca: remove este waypoint E todos depois.
+                    setCableDraft((d) => ({
+                      ...d,
+                      waypoints: d.waypoints.slice(0, i),
+                      routedSegments: d.routedSegments.slice(0, i),
+                    }));
+                  },
+                }}>
+                <Tooltip>{isLast
+                  ? `Último ponto · clique para desfazer`
+                  : `Ponto ${i + 1} · clique para desfazer até aqui`}</Tooltip>
+              </CircleMarker>
+            );
+          })}
 
           {/* CE preview (modo add-ce) */}
           {newCe && (
@@ -1491,28 +2023,47 @@ export default function RedeIaMap() {
         }}>
           <button data-testid="map-mode-view"
             onClick={() => { setMode("view");
-                              setCableDraft({ ...cableDraft, from: null, waypoints: [] });
+                              setCableDraft({ ...cableDraft, from: null, waypoints: [], routedSegments: [] });
                               setNewCe(null); }}
             style={modeBtn(mode === "view")}>👁 Ver</button>
           <button data-testid="map-mode-drag"
             onClick={() => { setMode("drag");
-                              setCableDraft({ ...cableDraft, from: null, waypoints: [] });
+                              setCableDraft({ ...cableDraft, from: null, waypoints: [], routedSegments: [] });
                               setNewCe(null); }}
             style={modeBtn(mode === "drag")}>✋ Mover/Curvar</button>
           <button data-testid="map-mode-add-ce"
             onClick={() => { setMode("add-ce");
-                              setCableDraft({ ...cableDraft, from: null, waypoints: [] }); }}
+                              setCableDraft({ ...cableDraft, from: null, waypoints: [], routedSegments: [] }); }}
             style={modeBtn(mode === "add-ce")}>📍 Criar CE</button>
           <button data-testid="map-mode-cable"
             onClick={() => { setMode("add-cable");
-                              setCableDraft({ ...cableDraft, from: null, waypoints: [] });
+                              setCableDraft({ ...cableDraft, from: null, waypoints: [], routedSegments: [] });
                               setNewCe(null); }}
             style={modeBtn(mode === "add-cable")}>➕ Cabo reto</button>
           <button data-testid="map-mode-draw-cable"
             onClick={() => { setMode("draw-cable");
-                              setCableDraft({ ...cableDraft, from: null, waypoints: [] });
+                              setCableDraft({ ...cableDraft, from: null, waypoints: [],
+                                                routedSegments: [] });
                               setNewCe(null); }}
             style={modeBtn(mode === "draw-cable")}>✏️ Desenhar cabo</button>
+          {mode === "draw-cable" && (
+            <label data-testid="map-follow-mouse-toggle"
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "4px 6px", borderRadius: 6,
+                background: followMouse ? "#dbeafe" : "#f1f5f9",
+                cursor: "pointer", fontSize: 11, fontWeight: 600,
+                color: followMouse ? "#1e40af" : "#475569",
+                border: "1px solid " + (followMouse ? "#3b82f6" : "#cbd5e1"),
+              }}>
+              <input type="checkbox" checked={followMouse}
+                onChange={(e) => {
+                  setFollowMouse(e.target.checked);
+                }}
+                style={{ margin: 0 }} />
+              🗺️ Seguir ruas (OSRM)
+            </label>
+          )}
           {(mode === "add-cable" || mode === "draw-cable") && (
             <select data-testid="map-cable-type"
               value={cableDraft.cableType}
@@ -1544,11 +2095,67 @@ export default function RedeIaMap() {
         )}
         {mode === "draw-cable" && (
           <div data-testid="draw-cable-instructions" style={instructionsBanner("#0ea5e9")}>
-            {!cableDraft.from
-              ? "✏️ Modo desenhar · Clique na CTO/CE de ORIGEM"
-              : cableDraft.waypoints.length === 0
-                ? `✅ ${cableDraft.from.name} · Agora clique no mapa para criar pontos (curvas) · depois clique na CTO/CE de destino`
-                : `${cableDraft.waypoints.length} ponto${cableDraft.waypoints.length>1?"s":""} adicionados · Clique no mapa para mais OU na CTO/CE de destino para finalizar`}
+            <div style={{ display: "flex", alignItems: "center", gap: 10,
+                            flexWrap: "wrap" }}>
+              {/* Seletor de tipo de cabo SEMPRE visível durante o desenho */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6,
+                              padding: "3px 8px",
+                              background: "rgba(255,255,255,0.18)",
+                              borderRadius: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700,
+                                  textTransform: "uppercase",
+                                  letterSpacing: 0.4 }}>Tipo:</span>
+                <select data-testid="draw-cable-type-banner"
+                  value={cableDraft.cableType}
+                  onChange={(e) => setCableDraft({ ...cableDraft,
+                                                     cableType: e.target.value })}
+                  style={{
+                    padding: "3px 6px", borderRadius: 5,
+                    border: "1px solid rgba(255,255,255,0.4)",
+                    background: "#fff", color: "#0f172a",
+                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  }}>
+                  {Object.entries(CABLE_TYPE_LABEL).map(([k, lbl]) => (
+                    <option key={k} value={k}>{lbl}</option>
+                  ))}
+                </select>
+                {/* Bolinha colorida pra dar referência visual */}
+                <span style={{
+                  display: "inline-block", width: 12, height: 12,
+                  borderRadius: 99,
+                  background: CABLE_COLORS[cableDraft.cableType] || "#7c3aed",
+                  border: "2px solid #fff",
+                }} />
+              </div>
+
+              <span style={{ flex: 1, minWidth: 200 }}>
+                {!cableDraft.from
+                  ? `✏️ ${followMouse ? "🗺️ Modo seguir ruas (OSRM)" : "Modo reta"} · Clique no mapa para começar (ou clique em uma CTO/CE)`
+                  : cableDraft.waypoints.length === 0
+                    ? `✅ Ponto inicial fixado · Continue clicando no mapa pra adicionar trechos`
+                    : `${cableDraft.waypoints.length + 1} pontos · 📏 ${draftTotalM >= 1000 ? (draftTotalM / 1000).toFixed(2) + " km" : draftTotalM.toFixed(0) + " m"} de cabo · Continue clicando OU clique numa CTO/CE pra fechar`}
+              </span>
+
+              {cableDraft.from && cableDraft.waypoints.length > 0 && (
+                <button data-testid="draw-cable-finalize"
+                  onClick={() => finalizeDrawCable(null)}
+                  style={{
+                    padding: "5px 10px", background: "#16a34a",
+                    color: "#fff", border: 0, borderRadius: 6,
+                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  }}>✅ Finalizar (cabo solto)</button>
+              )}
+              {cableDraft.from && (
+                <button data-testid="draw-cable-cancel"
+                  onClick={() => setCableDraft({ ...cableDraft, from: null,
+                                                  waypoints: [], routedSegments: [] })}
+                  style={{
+                    padding: "5px 10px", background: "#dc2626",
+                    color: "#fff", border: 0, borderRadius: 6,
+                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  }}>✕ Cancelar</button>
+              )}
+            </div>
           </div>
         )}
         {mode === "add-ce" && (
@@ -1576,6 +2183,17 @@ export default function RedeIaMap() {
         <PhotoLightbox {...photoLightbox}
                         onClose={() => setPhotoLightbox(null)} />
       )}
+      {/* iter211e — Modal pra capturar SN + NF antes de salvar cabo de fibra */}
+      <CableSerialModal
+        open={!!serialModal}
+        type={serialModal?.type || "12fo"}
+        totalM={serialModal?.totalM || 0}
+        hasDestination={!!serialModal?.endEntity}
+        onCancel={() => setSerialModal(null)}
+        onConfirm={async (extras) => {
+          await finalizeDrawCable(serialModal?.endEntity || null, extras);
+        }}
+      />
     </Card>
   );
 }

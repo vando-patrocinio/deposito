@@ -1227,13 +1227,16 @@ function OntsSection({ onts, technicians, reload }) {
 
 function AddOntsDialog({ open, onClose, onDone }) {
   const [model, setModel] = useState("");
-  const [macs, setMacs] = useState("");
+  const [snsText, setSnsText] = useState("");
   const submit = asyncCall(async () => {
-    const list = macs.split(/[\s,;\n]+/).map((s) => s.trim()).filter(Boolean);
+    const list = snsText.split(/[\s,;\n]+/).map((s) => s.trim()).filter(Boolean);
     if (!model.trim()) return await window.alert("Informe o modelo.");
-    if (list.length === 0) return await window.alert("Informe pelo menos 1 MAC.");
-    await api.stokOntsBulk(model.trim(), list);
-    setModel(""); setMacs(""); onClose();
+    if (list.length === 0) return await window.alert("Informe pelo menos 1 SN.");
+    // iter211h — base obrigatória pelo SN. Backend aceita cada string
+    // como SN no formato legado, ou items: [{sn, mac?}] preferido.
+    await api.stokOntsBulk(model.trim(),
+                             list.map((sn) => ({ sn: sn.toUpperCase() })));
+    setModel(""); setSnsText(""); onClose();
   }, onDone, "Erro ao cadastrar ONTs");
   return (
     <Modal open={open} onClose={onClose} title="Adicionar ONTs" data-testid="ont-add-dialog"
@@ -1247,8 +1250,12 @@ function AddOntsDialog({ open, onClose, onDone }) {
         <input data-testid="ont-add-model" style={inputStyle} value={model} onChange={(e) => setModel(e.target.value)} placeholder="ZTE F670L, Huawei HG8245H, etc." />
       </div>
       <div>
-        <label style={labelStyle}>MACs (1 por linha ou separados por vírgula)</label>
-        <textarea data-testid="ont-add-macs" style={{ ...inputStyle, height: 140, fontFamily: "monospace" }} value={macs} onChange={(e) => setMacs(e.target.value)} placeholder="AA:BB:CC:DD:EE:01&#10;AA:BB:CC:DD:EE:02" />
+        <label style={labelStyle}>SN — Número de Série (1 por linha)</label>
+        <textarea data-testid="ont-add-macs" style={{ ...inputStyle, height: 140, fontFamily: "monospace" }} value={snsText} onChange={(e) => setSnsText(e.target.value)} placeholder="HUAW48F1AB2C3D&#10;ZTEG48F1ABCD01" />
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+          🏷️ A base é obrigatória pelo SN (impresso na etiqueta). O MAC
+          é preenchido automaticamente quando o SmartOLT aprovisionar.
+        </div>
       </div>
     </Modal>
   );

@@ -24,7 +24,14 @@ export default function useGlobalTechTracking(collabId) {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         const acc = pos.coords.accuracy || null;
-        if (acc && acc > 100) return; // low precision: skip
+        // iter226 — em carro em movimento (especialmente sob 5G/WiFi
+        // indoor) accuracy oscila muito e passava de 100m com frequência,
+        // fazendo o tracker NUNCA enviar ping. Subimos pra 400m e
+        // marcamos o ping como "low_accuracy" — assim o backend ainda
+        // grava e o LiveMap mostra (mesmo que com indicador de baixa
+        // precisão). Acima de 400m provavelmente é geoloc por torre
+        // celular e ai sim descartamos.
+        if (acc && acc > 400) return;
         const now = Date.now();
         let dist = 0;
         if (lastPingRef.current.pos) {

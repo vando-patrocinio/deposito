@@ -100,14 +100,18 @@ def _today_br_iso() -> str:
 def _ticket_day_iso(ticket: dict) -> str:
     """Dia do calendário (BR) do ticket, no formato YYYY-MM-DD.
 
-    Prioridade dos campos:
-      1. scheduled_time (data de serviço efetiva — usada no reagendamento)
+    Prioridade dos campos (iter211z — Atlaz date preservation):
+      1. scheduled_time (data de serviço efetiva — visit_date do Atlaz quando
+         disponível, senão data de criação Atlaz preenchida por _resolve_schedule)
       2. opened_at (quando começou)
-      3. created_at (quando foi criada)
+      3. atlaz_created_at (data ORIGINAL do chamado no Atlaz — evita que
+         bolhas importadas hoje caiam em "hoje" quando o Atlaz não enviou
+         visit_date)
+      4. created_at (quando foi criada localmente — fallback final)
     Retorna string vazia se nenhum disponível ou inválido.
     """
     raw = (ticket.get("scheduled_time") or ticket.get("opened_at")
-           or ticket.get("created_at"))
+           or ticket.get("atlaz_created_at") or ticket.get("created_at"))
     if not raw:
         return ""
     try:
@@ -1420,6 +1424,8 @@ async def lousa_ping_quality_report(
     tickets = await db.tickets.find(
         {"assigned_collaborator_id": {"$in": cids},
          "status": "finalizada",
+         # iter211bj — exclui OSs fechadas fora do raio do endereço
+         "exclude_from_kpis": {"$ne": True},
          "closed_at": {"$gte": since}},
         {"_id": 0, "id": 1, "assigned_collaborator_id": 1,
          "closed_at": 1, "completion_data.ping_summary": 1},
@@ -1583,6 +1589,8 @@ async def closure_quality_report(days_back: int = 7,
     cid = user.get("company_id") or DEMO_COMPANY_ID
     since = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
     q = {"company_id": cid, "status": "finalizada",
+         # iter211bj — exclui OSs fechadas fora da área do cliente
+         "exclude_from_kpis": {"$ne": True},
          "closed_at": {"$gte": since}}
     tickets = await db.tickets.find(
         q,
@@ -1658,6 +1666,7 @@ async def closure_quality_analyze(payload: ClosureQualityAnalyzeIn,
               - timedelta(days=payload.days_back)).isoformat()
     tickets = await db.tickets.find(
         {"company_id": cid, "status": "finalizada",
+         "exclude_from_kpis": {"$ne": True},  # iter211bj
          "closed_at": {"$gte": since}},
         {"_id": 0},
     ).sort("closed_at", -1).limit(2000).to_list(2000)
@@ -2174,6 +2183,511 @@ async def delete_ticket(ticket_id: str, user: dict = Depends(require_role("gesto
     if res.deleted_count == 0:
         raise HTTPException(404, "Nota não encontrada")
     return {"ok": True}
+
+
+# =============================================================================
+# iter211x — Cardápio de fotos obrigatórias por tipo de OS
+# =============================================================================
+# Catálogo configurável: cada item define UMA exigência de foto (CTO, ONT,
+# etiqueta SN, comprovante, etc.) que se aplica a um ou mais tipos de OS.
+# Substitui o hardcode antigo de 3 fotos. Gestor pode desligar, editar e
+# ADICIONAR novas exigências de foto pelo painel de Configurações.
+PHOTO_REQ_VALID_TICKET_TYPES = [
+    "instalacao", "troca", "reparo", "retirada",
+    "prioridade", "preventiva", "venda",
+]
+DEFAULT_PHOTO_REQUIREMENTS: List[Dict[str, Any]] = [
+    {
+        "id": "cto", "label": "Foto da CTO", "icon": "📦",
+        "instruction": "Tire uma foto da caixa CTO onde o cliente foi conectado.",
+        "ticket_types": ["instalacao", "troca", "reparo", "preventiva"],
+        "required": True, "is_default": True, "sort_order": 1,
+        "stamp_location": True,
+    },
+    {
+        "id": "equipamento", "label": "Foto do Equipamento (ONT/ONU)", "icon": "📡",
+        "instruction": "Tire uma foto do equipamento ligado no cliente.",
+        "ticket_types": ["instalacao", "troca", "reparo"],
+        "required": True, "is_default": True, "sort_order": 2,
+        "stamp_location": False,
+    },
+    {
+        "id": "sn", "label": "Foto do MAC/SN da etiqueta", "icon": "🏷️",
+        "instruction": "Tire uma foto da etiqueta com MAC/SN (a IA lê automaticamente).",
+        "ticket_types": ["instalacao", "troca", "reparo"],
+        "required": True, "is_default": True, "sort_order": 3,
+        "stamp_location": False,
+    },
+]
+
+
+class PhotoRequirementIn(BaseModel):
+    id: str = Field(..., min_length=2, max_length=40,
+                    pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    label: str = Field(..., min_length=2, max_length=80)
+    icon: str = Field(default="📷", max_length=4)
+    instruction: str = Field(default="", max_length=300)
+    ticket_types: List[str] = Field(default_factory=list)
+    required: bool = True
+    sort_order: int = 100
+    stamp_location: bool = False  # iter211y — carimba data/hora/endereço/dispositivo
+
+
+class PhotoRequirementsIn(BaseModel):
+    items: List[PhotoRequirementIn]
+
+
+def _norm_photo_req(item: Dict[str, Any]) -> Dict[str, Any]:
+    types = [t for t in (item.get("ticket_types") or [])
+             if t in PHOTO_REQ_VALID_TICKET_TYPES]
+    return {
+        "id": (item.get("id") or "").strip().lower(),
+        "label": (item.get("label") or "").strip(),
+        "icon": item.get("icon") or "📷",
+        "instruction": (item.get("instruction") or "").strip(),
+        "ticket_types": types,
+        "required": bool(item.get("required", True)),
+        "is_default": bool(item.get("is_default", False)),
+        "sort_order": int(item.get("sort_order") or 100),
+        "stamp_location": bool(item.get("stamp_location", False)),
+    }
+
+
+async def _get_or_seed_photo_reqs(company_id: str) -> List[Dict[str, Any]]:
+    doc = await db.lousa_photo_requirements.find_one(
+        {"company_id": company_id}, {"_id": 0})
+    if not doc:
+        items = [_norm_photo_req(it) for it in DEFAULT_PHOTO_REQUIREMENTS]
+        await db.lousa_photo_requirements.update_one(
+            {"company_id": company_id},
+            {"$set": {"company_id": company_id, "items": items,
+                       "updated_at": now_iso(), "seeded_at": now_iso()}},
+            upsert=True,
+        )
+        return items
+    items = [_norm_photo_req(it) for it in (doc.get("items") or [])]
+    items.sort(key=lambda x: (x["sort_order"], x["id"]))
+    return items
+
+
+@router.get("/lousa/photo-requirements")
+async def list_photo_requirements(user: dict = Depends(get_current_user)):
+    """Lista as exigências de foto configuradas para esta empresa.
+    Auto-seed com 3 defaults (cto/equipamento/sn) na primeira chamada.
+    Aberto para qualquer usuário autenticado (lousa mobile consome)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    items = await _get_or_seed_photo_reqs(cid)
+    return {
+        "items": items,
+        "valid_ticket_types": PHOTO_REQ_VALID_TICKET_TYPES,
+    }
+
+
+@router.put("/lousa/photo-requirements")
+async def update_photo_requirements(
+    payload: PhotoRequirementsIn,
+    user: dict = Depends(require_role("gestor")),
+):
+    """Substitui a lista de exigências de foto. Ids devem ser únicos e
+    em lowercase. Preserva flag `is_default` para os 3 originais (não
+    podem ser excluídos, apenas desligados via `required=false`)."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    items: List[Dict[str, Any]] = []
+    seen_ids = set()
+    default_ids = {it["id"] for it in DEFAULT_PHOTO_REQUIREMENTS}
+    found_defaults = set()
+    for raw in payload.items:
+        norm = _norm_photo_req(raw.model_dump())
+        if not norm["id"] or not norm["label"]:
+            continue
+        if norm["id"] in seen_ids:
+            raise HTTPException(400, f"ID de foto duplicado: {norm['id']}")
+        seen_ids.add(norm["id"])
+        if norm["id"] in default_ids:
+            norm["is_default"] = True
+            found_defaults.add(norm["id"])
+        items.append(norm)
+    # Garante que os 3 defaults nunca somem (auto-reanexa desligados).
+    for d in DEFAULT_PHOTO_REQUIREMENTS:
+        if d["id"] not in found_defaults:
+            items.append({**_norm_photo_req(d), "required": False})
+    items.sort(key=lambda x: (x["sort_order"], x["id"]))
+    await db.lousa_photo_requirements.update_one(
+        {"company_id": cid},
+        {"$set": {"company_id": cid, "items": items,
+                   "updated_at": now_iso(),
+                   "updated_by": user.get("email") or user.get("name")}},
+        upsert=True,
+    )
+    return {"ok": True, "items": items}
+
+
+# iter211w — Reabrir OS finalizada/encerrada
+class ReopenIn(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+    keep_technician: bool = True  # se True, mantém o mesmo técnico atribuído
+
+
+async def _revert_ticket_side_effects(ticket: dict, actor: dict) -> Dict[str, Any]:
+    """iter211w — Reverte TODOS os efeitos colaterais de um fechamento de OS:
+      • ONT volta para o estoque do técnico (instalação) ou para o cliente (retirada)
+      • Porta da CTO volta para `free`
+      • Consumíveis (drop, esticadores, conectores) recreditados no técnico
+      • stok_services volta para `ativo` (auto-reabertura junto da nota)
+      • Vínculos `cto_ports_base` ressincronizados
+      • Eventos `client_equipment_history` (port_release, install/withdraw reversa)
+    Retorna um summary por componente para mostrar no log e na UI.
+    Tudo é best-effort: cada componente é envolvido em try/except próprio
+    para que falha parcial não impeça a reabertura da nota.
+    """
+    company_id = ticket.get("company_id") or DEMO_COMPANY_ID
+    ticket_id = ticket["id"]
+    ttype = ticket.get("type")
+    cd = ticket.get("completion_data") or {}
+    cs = ticket.get("client_snapshot") or {}
+    summary: Dict[str, Any] = {
+        "ont_reverted": None,
+        "cto_port_freed": None,
+        "consumables_recredited": None,
+        "stok_service_reactivated": None,
+        "errors": [],
+    }
+
+    # 1) Buscar service de estoque vinculado (se existir).
+    service = None
+    try:
+        service = await db.stok_services.find_one(
+            {"ticket_id": ticket_id, "company_id": company_id,
+             "status": {"$in": ["fechado", "erro_estoque"]}},
+            {"_id": 0},
+        )
+    except Exception as e:
+        summary["errors"].append(f"stok_services lookup: {e}")
+
+    # 2) Reverter ONT (instalação/retirada/troca).
+    try:
+        if ttype in ("instalacao", "troca"):
+            # ONT que foi movida para o cliente via este ticket.
+            ont = await db.stok_onts.find_one(
+                {"company_id": company_id,
+                 "installed_via_ticket": ticket_id},
+                {"_id": 0},
+            )
+            if ont:
+                tech_id = (ont.get("installed_by_id")
+                           or (service or {}).get("technician_id")
+                           or ticket.get("assigned_collaborator_id"))
+                if tech_id:
+                    await db.stok_onts.update_one(
+                        {"company_id": company_id, "mac": ont["mac"]},
+                        {"$set": {
+                            "location_type": "tecnico",
+                            "location_id": tech_id,
+                            "client_name": None,
+                            "status": "disponivel",
+                        },
+                         "$unset": {
+                            "installed_at": "", "installed_by_id": "",
+                            "installed_by_name": "", "installed_by_email": "",
+                            "installed_via_ticket": "", "installed_via_service": "",
+                            "pending_install_to_client": "",
+                            "pending_install_service_id": "",
+                            "pending_transfer_id": "",
+                        }},
+                    )
+                    summary["ont_reverted"] = {
+                        "action": "uninstall",
+                        "mac": ont.get("mac"),
+                        "sn": ont.get("scan_sn"),
+                        "back_to_tech": tech_id,
+                    }
+                    if cs.get("id"):
+                        try:
+                            from services import client_equipment_history as _ceh
+                            await _ceh.log_event(
+                                company_id=company_id,
+                                client_id=cs.get("id"),
+                                client_name=cs.get("name"),
+                                action="withdraw",  # operação reversa
+                                ont_mac=ont.get("mac"),
+                                ont_sn=ont.get("scan_sn"),
+                                actor_id=actor.get("id"),
+                                actor_name=actor.get("name") or actor.get("email"),
+                                actor_email=actor.get("email"),
+                                ticket_id=ticket_id,
+                                notes="↻ Reabertura de OS — ONT devolvida ao estoque do técnico",
+                            )
+                        except Exception as _e:
+                            summary["errors"].append(f"ceh uninstall: {_e}")
+        elif ttype == "retirada":
+            # ONT que foi retirada do cliente via este ticket → volta pro cliente.
+            ont = await db.stok_onts.find_one(
+                {"company_id": company_id,
+                 "withdrawn_via_ticket": ticket_id},
+                {"_id": 0},
+            )
+            if ont:
+                cli_id = (ont.get("withdrawn_from_client_id")
+                          or (service or {}).get("client_id")
+                          or cs.get("id"))
+                cli_name = (ont.get("withdrawn_from_client_name")
+                            or (service or {}).get("client_name")
+                            or cs.get("name"))
+                if cli_id:
+                    await db.stok_onts.update_one(
+                        {"company_id": company_id, "mac": ont["mac"]},
+                        {"$set": {
+                            "location_type": "cliente",
+                            "location_id": cli_id,
+                            "client_name": cli_name,
+                            "status": "instalada",
+                        },
+                         "$unset": {
+                            "withdrawn_from_client_id": "",
+                            "withdrawn_from_client_name": "",
+                            "withdrawn_by_email": "",
+                            "withdrawn_by_name": "",
+                            "withdrawn_via_ticket": "",
+                            "withdrawn_via_service": "",
+                            "withdrawn_at": "",
+                            "source": "",
+                            "withdraw_inconsistency": "",
+                            "withdraw_inconsistency_note": "",
+                        }},
+                    )
+                    summary["ont_reverted"] = {
+                        "action": "uninwithdraw",
+                        "mac": ont.get("mac"),
+                        "sn": ont.get("scan_sn"),
+                        "back_to_client": cli_id,
+                    }
+                    try:
+                        from services import client_equipment_history as _ceh
+                        await _ceh.log_event(
+                            company_id=company_id,
+                            client_id=cli_id,
+                            client_name=cli_name,
+                            action="install",  # operação reversa
+                            ont_mac=ont.get("mac"),
+                            ont_sn=ont.get("scan_sn"),
+                            actor_id=actor.get("id"),
+                            actor_name=actor.get("name") or actor.get("email"),
+                            actor_email=actor.get("email"),
+                            ticket_id=ticket_id,
+                            notes="↻ Reabertura de OS — ONT religada ao cliente (retirada desfeita)",
+                        )
+                    except Exception as _e:
+                        summary["errors"].append(f"ceh reinstall: {_e}")
+    except Exception as e:
+        summary["errors"].append(f"ONT revert: {e}")
+
+    # 3) Liberar porta da CTO (instalação).
+    try:
+        cto_id = cd.get("cto_id") or cd.get("cto") or None
+        cto_port = cd.get("cto_port_number") or cd.get("cto_port") or None
+        if not cto_id or not cto_port:
+            # busca a porta diretamente pela referência ao ticket
+            cto_doc = await db.ctos.find_one(
+                {"company_id": company_id,
+                 "ports.connected_via_ticket": ticket_id},
+                {"_id": 0, "id": 1, "name": 1, "ports": 1},
+            )
+            if cto_doc:
+                cto_id = cto_doc["id"]
+                for p in (cto_doc.get("ports") or []):
+                    if p.get("connected_via_ticket") == ticket_id:
+                        cto_port = p.get("number")
+                        break
+        if cto_id and cto_port:
+            await db.ctos.update_one(
+                {"id": cto_id, "company_id": company_id,
+                 "ports.number": int(cto_port)},
+                {"$set": {"ports.$.status": "free"},
+                 "$unset": {
+                    "ports.$.client_subscriber_id": "",
+                    "ports.$.client_name": "",
+                    "ports.$.client_pppoe": "",
+                    "ports.$.connected_at": "",
+                    "ports.$.connected_via_ticket": "",
+                }},
+            )
+            summary["cto_port_freed"] = {"cto_id": cto_id, "port": int(cto_port)}
+            try:
+                from routes.cto_ports_base import sync_port_from_cto
+                await sync_port_from_cto(company_id, cto_id, int(cto_port))
+            except Exception as _e:
+                summary["errors"].append(f"sync_port_from_cto: {_e}")
+            if cs.get("id"):
+                try:
+                    from services import client_equipment_history as _ceh
+                    await _ceh.log_event(
+                        company_id=company_id,
+                        client_id=cs.get("id"),
+                        client_name=cs.get("name"),
+                        action="port_release",
+                        cto_id=cto_id,
+                        cto_port_number=int(cto_port),
+                        actor_id=actor.get("id"),
+                        actor_name=actor.get("name") or actor.get("email"),
+                        actor_email=actor.get("email"),
+                        ticket_id=ticket_id,
+                        notes="↻ Reabertura de OS — porta liberada",
+                    )
+                except Exception as _e:
+                    summary["errors"].append(f"ceh port_release: {_e}")
+    except Exception as e:
+        summary["errors"].append(f"CTO port revert: {e}")
+
+    # 4) Re-creditar consumíveis (drop, esticadores, conectores) no estoque do técnico.
+    try:
+        used = (service or {}).get("auto_closed_used_items") or []
+        if used and (service or {}).get("technician_id"):
+            inc: Dict[str, int] = {}
+            for ui in used:
+                qty = int(ui.get("quantity") or 0)
+                cid_ = ui.get("consumable_id")
+                if cid_ and qty > 0:
+                    inc[cid_] = inc.get(cid_, 0) + qty
+            if inc:
+                await db.stok_stock.update_one(
+                    {"company_id": company_id,
+                     "location": service["technician_id"]},
+                    {"$inc": inc},
+                    upsert=True,
+                )
+                summary["consumables_recredited"] = inc
+    except Exception as e:
+        summary["errors"].append(f"consumables revert: {e}")
+
+    # 5) Reativar stok_service (volta para `ativo`).
+    try:
+        if service:
+            await db.stok_services.update_one(
+                {"id": service["id"], "company_id": company_id},
+                {"$set": {"status": "ativo"},
+                 "$unset": {
+                    "closed_at": "", "ticket_finalized": "",
+                    "ticket_finalized_at": "", "auto_closed": "",
+                    "auto_closed_used_items": "", "auto_closed_ont_mac": "",
+                    "smartolt_validation": "", "error_reason": "",
+                    "auto_close_attempted_at": "",
+                }},
+            )
+            summary["stok_service_reactivated"] = service["id"]
+    except Exception as e:
+        summary["errors"].append(f"stok_service revert: {e}")
+
+    return summary
+
+
+@router.post("/lousa/tickets/{ticket_id}/reopen")
+async def reopen_ticket(ticket_id: str, payload: ReopenIn,
+                        user: dict = Depends(require_role("gestor"))):
+    """Reabre uma OS encerrada/finalizada — volta para 'pendente' e desfaz
+    TODOS os efeitos colaterais do fechamento (iter211w++ 02/06/2026):
+
+      • Lançamento de estoque (ONT no cliente → estoque do técnico)
+      • Lançamento de caixa/consumíveis (drop, esticadores, conectores recreditados)
+      • Lançamento de porta da CTO (porta volta para `free`)
+      • Fotos do fechamento limpas (técnico precisa tirar tudo de novo)
+      • completion_data inteiro arquivado em `previous_completions[]` para auditoria
+
+    O fechamento anterior NÃO é apagado — é arquivado integralmente para
+    permitir investigação posterior.
+
+    Body:
+      reason: str (mín 3 chars) — justificativa de auditoria.
+      keep_technician: bool — se True (default), mantém o
+                       assigned_collaborator_id; se False, deixa em aberto
+                       para reatribuir.
+    """
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    if t.get("company_id") and t.get("company_id") != cid and user.get("role") != "auditor":
+        raise HTTPException(403, "Nota de outra empresa")
+    cur_status = t.get("status")
+    if cur_status not in ("finalizada", "encerrada", "cancelada", "reagendada"):
+        raise HTTPException(
+            409,
+            f"Nota não está fechada (status atual: {cur_status}). "
+            "Apenas notas finalizadas/encerradas/canceladas/reagendadas podem ser reabertas.",
+        )
+
+    # 1) Reverte efeitos colaterais ANTES de mudar o status (precisamos do
+    # completion_data ainda intacto para localizar CTO/ONT).
+    revert_summary = await _revert_ticket_side_effects(t, user)
+
+    # 2) Arquiva o fechamento atual em previous_completions[] para auditoria
+    archived = {
+        "archived_at": now_iso(),
+        "archived_by": user.get("email") or user.get("name") or "?",
+        "reason": payload.reason.strip(),
+        "previous_status": cur_status,
+        "previous_completion_data": t.get("completion_data"),
+        "previous_closed_at": t.get("closed_at"),
+        "previous_closed_by": t.get("closed_by"),
+        "previous_finalized_at": t.get("finalized_at"),
+        "previous_outcome": t.get("outcome"),
+        "previous_admin_action": t.get("admin_action"),
+        "revert_summary": revert_summary,
+    }
+
+    unset_fields: Dict[str, str] = {
+        "closed_at": "", "closed_by": "", "finalized_at": "",
+        "completion_data": "", "outcome": "", "admin_action": "",
+        "signal_at_close": "", "duration_minutes": "",
+        "ai_score": "", "ai_verdict": "", "ai_method": "",
+        "ai_summary": "", "ai_recommendations": "", "ai_evaluated_at": "",
+        "opened_at": "",  # técnico precisa abrir do zero
+        "close_location": "",
+        "smartolt_managed": "",
+        "equipment_swap": "",
+        "central_ont": "",
+        "signal_at_open": "",
+    }
+    set_fields: Dict[str, Any] = {
+        "status": "pendente",
+        "reopened_at": now_iso(),
+        "reopened_by": user.get("email") or user.get("name") or "?",
+        "reopen_count": int(t.get("reopen_count") or 0) + 1,
+    }
+    if not payload.keep_technician:
+        unset_fields["assigned_collaborator_id"] = ""
+
+    await db.tickets.update_one(
+        {"id": ticket_id},
+        {
+            "$set": set_fields,
+            "$unset": unset_fields,
+            "$push": {"previous_completions": archived},
+        },
+    )
+
+    # Log estruturado (auditoria) — usa o mesmo formato dos outros action logs
+    try:
+        await _log_ticket_action(
+            ticket_id=ticket_id,
+            company_id=t.get("company_id") or cid,
+            actor_id=user.get("id") or user.get("email") or "?",
+            actor_name=user.get("name") or user.get("email") or "?",
+            actor_role=user.get("role") or "?",
+            action="reaberta",
+            details=(
+                f"De {cur_status} → pendente. Motivo: {payload.reason.strip()}"
+                + (" (técnico mantido)" if payload.keep_technician else " (técnico desvinculado)")
+                + f" · revert: {revert_summary}"
+            ),
+        )
+    except Exception as e:
+        logger.warning("[reopen] não foi possível gravar log: %s", e)
+
+    fresh = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    out = _normalize_ticket(fresh) if fresh else {"ok": True}
+    if isinstance(out, dict):
+        out["revert_summary"] = revert_summary
+    return out
 
 
 @router.get("/lousa/quality-notes/technicians-ranking")
@@ -2781,6 +3295,88 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
 
     company_id = t.get("company_id") or DEMO_COMPANY_ID
 
+    # ============================================================
+    # iter211bj — GEOFENCE configurável (default 100m) do endereço do cliente
+    # ------------------------------------------------------------
+    # Regra: técnico SÓ pode finalizar a OS estando a até GEOFENCE_RADIUS_M
+    # do endereço cadastrado do cliente. Admin/gestor pula essa regra
+    # (mas a OS finalizada por gestor recebe flag `closed_outside_geofence`
+    # e fica excluída dos KPIs do técnico).
+    # iter223 — raio agora é configurável por empresa via
+    # db.settings.geofence_radius_m (admin pode subir/descer).
+    # ============================================================
+    _settings_geo = await db.settings.find_one(
+        {"id": company_id}, {"_id": 0, "geofence_radius_m": 1}) or {}
+    try:
+        GEOFENCE_RADIUS_M = int(_settings_geo.get("geofence_radius_m") or 100)
+    except (TypeError, ValueError):
+        GEOFENCE_RADIUS_M = 100
+    GEOFENCE_RADIUS_M = max(20, min(GEOFENCE_RADIUS_M, 5000))
+    snap_for_geo = t.get("client_snapshot") or {}
+    client_lat = snap_for_geo.get("lat") or snap_for_geo.get("latitude")
+    client_lng = snap_for_geo.get("lng") or snap_for_geo.get("longitude")
+    tech_lat = payload.latitude
+    tech_lng = payload.longitude
+    closed_outside_geofence = False
+    geofence_distance_m = None
+    if (not is_admin_test and client_lat is not None and client_lng is not None
+        and tech_lat is not None and tech_lng is not None):
+        try:
+            import math
+            R = 6371000.0  # raio da Terra em metros
+            la1, lo1 = math.radians(float(client_lat)), math.radians(float(client_lng))
+            la2, lo2 = math.radians(float(tech_lat)), math.radians(float(tech_lng))
+            dla = la2 - la1
+            dlo = lo2 - lo1
+            a = (math.sin(dla / 2) ** 2
+                 + math.cos(la1) * math.cos(la2) * math.sin(dlo / 2) ** 2)
+            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+            geofence_distance_m = R * c
+            if geofence_distance_m > GEOFENCE_RADIUS_M:
+                tech_first_name = (t.get("assigned_collaborator_name") or "").split(" ")[0] or "Técnico"
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "OUTSIDE_GEOFENCE",
+                        "message": (
+                            f"❌ Você está a {int(geofence_distance_m)}m do endereço "
+                            f"da OS (limite: {GEOFENCE_RADIUS_M}m).\n\n"
+                            f"Vá até o endereço do cliente para finalizar.\n\n"
+                            f"Se o serviço foi executado em outro local, peça ao "
+                            f"gestor para finalizar a OS manualmente."
+                        ),
+                        "distance_m": int(geofence_distance_m),
+                        "radius_m": GEOFENCE_RADIUS_M,
+                        "technician_first_name": tech_first_name,
+                    },
+                )
+        except HTTPException:
+            raise
+        except Exception as _ge:
+            # Se haversine falhar por dados inválidos, NÃO bloqueia — apenas loga
+            logger.warning("[lousa/geofence] cálculo falhou: %s", _ge)
+            geofence_distance_m = None
+
+    # Quando admin finaliza (is_admin_test=True) e o técnico estava FORA da área,
+    # marca a OS pra exclusão dos KPIs (não conta como serviço realizado pelo técnico).
+    if is_admin_test and client_lat is not None and client_lng is not None \
+        and tech_lat is not None and tech_lng is not None:
+        try:
+            import math
+            R = 6371000.0
+            la1, lo1 = math.radians(float(client_lat)), math.radians(float(client_lng))
+            la2, lo2 = math.radians(float(tech_lat)), math.radians(float(tech_lng))
+            dla = la2 - la1
+            dlo = lo2 - lo1
+            a = (math.sin(dla / 2) ** 2
+                 + math.cos(la1) * math.cos(la2) * math.sin(dlo / 2) ** 2)
+            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+            geofence_distance_m = R * c
+            if geofence_distance_m > GEOFENCE_RADIUS_M:
+                closed_outside_geofence = True
+        except Exception:
+            pass
+
     # === SmartOLT awareness ===
     # Cliente cadastrado na SmartOLT? Regras dependentes do SmartOLT
     # (bloqueio de sinal ruim, sn_mismatch, snapshot, detecção de swap)
@@ -2955,6 +3551,18 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
         cd_dump["new_ont_mac"] = equipment_swap.get("new_mac")
         cd_dump["new_ont_sn"]  = equipment_swap.get("new_sn")
 
+    # iter211bj — Quando admin/gestor finalizou OS com técnico fora do raio,
+    # marca a OS pra exclusão dos KPIs do técnico e adiciona a observação
+    # padronizada.
+    tech_first = (t.get("assigned_collaborator_name") or "").split(" ")[0] or "Técnico"
+    geofence_note = (f"O técnico {tech_first} não estava na região "
+                       f"em que foi executado o serviço.")
+    obs_atual = (cd_dump.get("observacoes") or "").strip()
+    if closed_outside_geofence:
+        cd_dump["observacoes"] = (geofence_note + (
+            f"\n\n— Observação do técnico: {obs_atual}" if obs_atual else ""
+        ))
+
     await db.tickets.update_one(
         {"id": ticket_id},
         {"$set": {
@@ -2964,6 +3572,12 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             "completion_data": cd_dump,
             "smartolt_managed": is_smartolt_client,
             "equipment_swap": equipment_swap,  # null quando não houve troca
+            # iter211bj — flags geofence
+            "geofence_distance_m": (int(geofence_distance_m)
+                                       if geofence_distance_m is not None else None),
+            "closed_outside_geofence": closed_outside_geofence,
+            "exclude_from_kpis": closed_outside_geofence,
+            "geofence_note": (geofence_note if closed_outside_geofence else None),
             "central_ont": {
                 "sinal": cd.sinal,
                 "is_bad_signal": is_bad_signal,
@@ -4198,6 +4812,54 @@ async def put_central_ont_settings(
     return {"ok": True}
 
 
+# iter223 — Geofence radius configurável por empresa
+class GeofenceSettingsIn(BaseModel):
+    geofence_radius_m: int = Field(default=100, ge=20, le=5000)
+
+
+@router.get("/lousa/geofence/settings")
+async def get_geofence_settings(
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    """Lê o raio de geofence (em metros) usado pra bloquear finalização
+    de OS fora do endereço do cliente. Default 100m."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    doc = await db.settings.find_one(
+        {"id": cid}, {"_id": 0, "geofence_radius_m": 1,
+                       "geofence_updated_at": 1,
+                       "geofence_updated_by": 1}) or {}
+    try:
+        radius = int(doc.get("geofence_radius_m") or 100)
+    except (TypeError, ValueError):
+        radius = 100
+    return {
+        "geofence_radius_m": max(20, min(radius, 5000)),
+        "updated_at": doc.get("geofence_updated_at"),
+        "updated_by": doc.get("geofence_updated_by"),
+        "min_m": 20, "max_m": 5000, "default_m": 100,
+    }
+
+
+@router.put("/lousa/geofence/settings")
+async def put_geofence_settings(
+    payload: GeofenceSettingsIn,
+    user: dict = Depends(require_role("administrador", "gestor")),
+):
+    """Atualiza o raio de geofence. Aceita 20–5000m."""
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    await db.settings.update_one(
+        {"id": cid},
+        {"$set": {
+            "id": cid,
+            "geofence_radius_m": int(payload.geofence_radius_m),
+            "geofence_updated_at": now_iso(),
+            "geofence_updated_by": user.get("email") or user.get("id"),
+        }},
+        upsert=True,
+    )
+    return {"ok": True, "geofence_radius_m": payload.geofence_radius_m}
+
+
 @router.get("/lousa/central-ont/report")
 async def central_ont_report(
     days: int = Query(default=30, ge=1, le=365),
@@ -4224,6 +4886,7 @@ async def central_ont_report(
     # Buscar todas as finalizações
     cur = db.tickets.find(
         {"company_id": cid, "status": "finalizada",
+         "exclude_from_kpis": {"$ne": True},  # iter211bj
          "closed_at": {"$gte": cutoff}},
         {"_id": 0, "id": 1, "closed_at": 1, "closed_by": 1,
          "assigned_collaborator_id": 1, "client_snapshot": 1,

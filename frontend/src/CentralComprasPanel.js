@@ -95,26 +95,57 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
     setUploading(true); setErr(""); setAiNote("");
     try {
       const r = await api.purchasesUploadExtract(file);
-      const d = r.draft || {};
+      // iter204 — Merge TODOS os drafts (multi-tipo) em uma única form.
+      // O backend retorna `drafts[]` (1 por tipo) + `draft` (dominante).
+      // Antes usávamos só `r.draft` e perdíamos itens de outros tipos.
+      const allDrafts = (r.drafts && r.drafts.length) ? r.drafts : [r.draft || {}];
+      const meta = r.draft || allDrafts[0] || {};
       const next = { ...form };
-      if (d.type) next.type = d.type;
-      if (d.supplier_name) next.supplier_name = d.supplier_name;
-      if (d.invoice_number) next.invoice_number = d.invoice_number;
-      if (d.invoice_date) next.invoice_date = d.invoice_date;
-      if (d.total_value) next.total_value = d.total_value;
-      if (d.items && d.items.length) {
-        next.items = d.items.map((it) => ({
-          description: it.description || "",
-          quantity: it.quantity || 1,
-          unit: it.unit || "un",
-          unit_price: it.unit_price || "",
-          macs: (it.macs || []).join(", "),
-          type: it.type || d.type || next.type || "outros",
-        }));
+      if (meta.type) next.type = meta.type;
+      if (meta.supplier_name) next.supplier_name = meta.supplier_name;
+      if (meta.invoice_number) next.invoice_number = meta.invoice_number;
+      if (meta.invoice_date) next.invoice_date = meta.invoice_date;
+      // Soma os total_value de TODOS os drafts (NF completa)
+      const totalSum = allDrafts.reduce(
+        (s, d) => s + (parseFloat(d.total_value) || 0), 0);
+      if (totalSum > 0) next.total_value = totalSum;
+      else if (meta.total_value) next.total_value = meta.total_value;
+      // Mescla itens de TODOS os drafts, preservando o type de cada item
+      const allItems = [];
+      const typeCounts = {};
+      for (const d of allDrafts) {
+        const items = (d.items || []);
+        for (const it of items) {
+          const t = it.type || d.type || "outros";
+          typeCounts[t] = (typeCounts[t] || 0) + 1;
+          allItems.push({
+            description: it.description || "",
+            quantity: it.quantity || 1,
+            unit: it.unit || "un",
+            unit_price: it.unit_price || "",
+            macs: (it.macs || []).join(", "),
+            // iter211s — preservar SNs detectados pela IA + Vision pass + regex
+            sns: (it.sns || []).filter(Boolean),
+            type: t,
+          });
+        }
       }
+      if (allItems.length) next.items = allItems;
       next.file_name = r.file_name || file.name;
       setForm(next);
-      setAiNote(`✅ IA extraiu (conf ${Math.round((d.confidence || 0) * 100)}%): ${d.reason || ""}`);
+      // Mensagem detalhada: quantos itens e quantos lançamentos serão criados
+      const conf = Math.round((meta.confidence || 0) * 100);
+      const breakdown = Object.entries(typeCounts)
+        .map(([t, n]) => `${n} ${t}`).join(" · ");
+      const nDrafts = allDrafts.length;
+      const lancamentos = nDrafts > 1
+        ? ` → ${nDrafts} lançamentos automáticos (1 por tipo)`
+        : "";
+      setAiNote(
+        `✅ IA extraiu (conf ${conf}%): ${allItems.length} item(ns)` +
+        (breakdown ? ` [${breakdown}]` : "") + lancamentos +
+        (meta.reason ? ` · ${meta.reason}` : "")
+      );
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
     } finally {
@@ -139,29 +170,57 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
       }
 
       // 1) Compras de insumos/ONT/equipamento/outros → fluxo padrão de compras
+      //    iter204 — Agrupa itens por TYPE e cria 1 lançamento por grupo.
+      //    Ex: NF com 10 ONTs + 50m drop + 5 splitters → 2 lançamentos
+      //    (1 tipo=ont com as ONTs, 1 tipo=insumo com drop+splitters).
+      let createdPurchases = 0;
       if (stockItems.length > 0) {
-        const payload = {
-          // Tipo "dominante" da nota (compatibilidade): primeiro item
-          type: stockItems[0].type || form.type,
-          praca_id: form.praca_id,
-          responsible_collaborator_id: form.responsible_collaborator_id,
-          supplier_name: form.supplier_name || null,
-          invoice_number: form.invoice_number || null,
-          invoice_date: form.invoice_date || null,
-          total_value: form.total_value ? parseFloat(form.total_value) : null,
-          notes: form.notes || null,
-          file_name: form.file_name || null,
-          items: stockItems.map((it) => ({
-            description: it.description,
-            quantity: parseFloat(it.quantity) || 1,
-            unit: it.unit || null,
-            unit_price: it.unit_price ? parseFloat(it.unit_price) : null,
-            type: it.type || null,
-            macs: it.type === "ont" && it.macs
-              ? it.macs.split(/[\s,;]+/).filter(Boolean) : null,
-          })),
-        };
-        await api.purchasesCreate(payload);
+        const groups = {};
+        for (const it of stockItems) {
+          const t = (it.type || form.type || "outros");
+          (groups[t] = groups[t] || []).push(it);
+        }
+        const groupTypes = Object.keys(groups);
+        for (const t of groupTypes) {
+          const groupItems = groups[t];
+          // Total proporcional: soma dos (quantity × unit_price) deste grupo
+          let groupTotal = 0;
+          for (const it of groupItems) {
+            const q = parseFloat(it.quantity) || 0;
+            const p = parseFloat(it.unit_price) || 0;
+            groupTotal += q * p;
+          }
+          const payload = {
+            type: t,
+            praca_id: form.praca_id,
+            responsible_collaborator_id: form.responsible_collaborator_id,
+            supplier_name: form.supplier_name || null,
+            invoice_number: form.invoice_number || null,
+            invoice_date: form.invoice_date || null,
+            // Se a NF tinha 1 só tipo, usa o total da form; senão proporcional
+            total_value: groupTypes.length === 1
+              ? (form.total_value ? parseFloat(form.total_value) : null)
+              : (groupTotal > 0 ? Math.round(groupTotal * 100) / 100 : null),
+            notes: (form.notes || "") +
+              (groupTypes.length > 1
+                ? ` · split ${createdPurchases + 1}/${groupTypes.length} (auto-iter204)`
+                : ""),
+            file_name: form.file_name || null,
+            items: groupItems.map((it) => ({
+              description: it.description,
+              quantity: parseFloat(it.quantity) || 1,
+              unit: it.unit || null,
+              unit_price: it.unit_price ? parseFloat(it.unit_price) : null,
+              type: it.type || null,
+              macs: it.type === "ont" && it.macs
+                ? it.macs.split(/[\s,;]+/).filter(Boolean) : null,
+              // iter211s — propaga SNs lidos pela IA pra criação de ONTs
+              sns: it.type === "ont" ? (it.sns || []) : null,
+            })),
+          };
+          await api.purchasesCreate(payload);
+          createdPurchases += 1;
+        }
       }
 
       // 2) Ferramentas → cria asset por item para o técnico (gera custódia)
@@ -186,8 +245,10 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
       }
 
       setForm({ ...EMPTY_FORM, praca_id: form.praca_id });
-      const stockMsg = stockItems.length > 0
-        ? `${stockItems.length} item(ns) lançado(s) em estoque`
+      const stockMsg = createdPurchases > 0
+        ? (createdPurchases === 1
+            ? `${stockItems.length} item(ns) em 1 lançamento de estoque`
+            : `${stockItems.length} item(ns) em ${createdPurchases} lançamentos (split por tipo)`)
         : "";
       const toolMsg = createdToolsCount > 0
         ? `${createdToolsCount} ferramenta(s) transferida(s) ao técnico · romaneio aberto p/ assinatura`
@@ -375,10 +436,46 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
                       onChange={(e) => setItem(i, "unit_price", e.target.value)}
                       style={inputStyle} placeholder="R$" />
               {isOnt && (
-                <input value={it.macs}
-                        onChange={(e) => setItem(i, "macs", e.target.value)}
-                        placeholder="MACs separados por vírgula"
-                        style={inputStyle} />
+                <div style={{ display: "flex", flexDirection: "column",
+                                gap: 4 }}>
+                  <input value={it.macs}
+                          onChange={(e) => setItem(i, "macs", e.target.value)}
+                          placeholder="MACs (opcional)"
+                          style={{ ...inputStyle, fontSize: 11 }} />
+                  {/* iter211s — mostra SNs detectados pela IA */}
+                  {(it.sns || []).length > 0 && (
+                    <details style={{ fontSize: 10 }}>
+                      <summary style={{
+                        cursor: "pointer", color: "#16a34a",
+                        fontWeight: 700, fontSize: 11,
+                      }}>
+                        🏷️ {(it.sns || []).length} SN(s) lido(s) pela IA
+                      </summary>
+                      <div style={{
+                        marginTop: 4, padding: 6,
+                        background: "#f0fdf4", border: "1px solid #86efac",
+                        borderRadius: 4, maxHeight: 130, overflowY: "auto",
+                        fontFamily: "monospace", fontSize: 10,
+                        color: "#14532d", lineHeight: 1.5,
+                      }}>
+                        {(it.sns || []).map((sn, j) => (
+                          <div key={j}>
+                            <span style={{ color: "#64748b" }}>
+                              {String(j + 1).padStart(2, "0")}.
+                            </span>{" "}{sn}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                  {isOnt && (it.sns || []).length === 0 && (
+                    <div style={{ fontSize: 10, color: "#ef4444",
+                                    fontWeight: 700 }}>
+                      ⚠️ Nenhum SN detectado — anexe foto melhor ou
+                      use 🔄 Reprocessar SNs após salvar
+                    </div>
+                  )}
+                </div>
               )}
               <button onClick={() => removeItem(i)}
                       style={{ ...btnSecondary, padding: "4px 6px" }}>×</button>
@@ -474,7 +571,24 @@ function PurchasesList({ data, canConfirm, onReload }) {
   const [busy, setBusy] = useState("");
 
   async function confirm(id) {
-    if (!window.confirm("Confirmar entrada no estoque? Isso gera as ONTs/insumos automaticamente.")) return;
+    // iter211u — Resumo claro do que vai virar estoque
+    const p = data.items.find((x) => x.id === id);
+    let prompt_msg = "Confirmar entrada no estoque?";
+    if (p && p.type === "ont") {
+      const sns_total = (p.items || []).reduce(
+        (acc, it) => acc + (it.sns?.length || 0), 0);
+      const qty_total = (p.items || []).reduce(
+        (acc, it) => acc + (parseInt(it.quantity, 10) || 0), 0);
+      prompt_msg = `Confirmar entrada no estoque?\n\n`
+        + `Esta compra vai cadastrar ${sns_total} ONT(s) com SN no estoque `
+        + `da empresa, disponíveis para transferir aos colaboradores.`;
+      if (sns_total < qty_total) {
+        prompt_msg += `\n\n⚠️ ATENÇÃO: a NF declara ${qty_total} unidades, mas `
+          + `só ${sns_total} têm SN preenchido. As ${qty_total - sns_total} `
+          + `restantes ficarão sem SN — você pode editar depois.`;
+      }
+    }
+    if (!window.confirm(prompt_msg)) return;
     setBusy(id);
     try {
       const r = await api.purchasesConfirm(id);
@@ -539,8 +653,81 @@ function PurchasesList({ data, canConfirm, onReload }) {
           {p.items?.length > 0 && (
             <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
               {p.items.map((it, i) =>
-                `${it.quantity}× ${it.description}${it.macs ? ` (${it.macs.length} MACs)` : ""}`
+                `${it.quantity}× ${it.description}${it.sns?.length ? ` (${it.sns.length} SNs)` : (it.macs?.length ? ` (${it.macs.length} MACs)` : "")}`
               ).join(" · ")}
+            </div>
+          )}
+          {/* iter211u — Antes da confirmação, mostra lista completa de SNs/ONTs */}
+          {p.type === "ont" && p.status === "pending"
+            && (p.items || []).some((it) => (it.sns || []).length > 0) && (
+            <details open data-testid={`purchase-sns-preview-${p.id}`}
+                       style={{ marginTop: 8 }}>
+              <summary style={{
+                cursor: "pointer", fontSize: 12, fontWeight: 800,
+                color: "#16a34a", padding: "6px 8px",
+                background: "#f0fdf4", border: "1px solid #86efac",
+                borderRadius: 6, listStyle: "none",
+              }}>
+                ▼ 🏷️ ONTs a serem cadastradas ({(p.items || [])
+                  .reduce((acc, it) => acc + (it.sns?.length || 0), 0)})
+              </summary>
+              <div style={{
+                marginTop: 6, padding: 10,
+                background: "#f0fdf4", border: "1px solid #86efac",
+                borderRadius: 6, maxHeight: 240, overflowY: "auto",
+              }}>
+                {(p.items || []).map((it, i) => {
+                  if (!(it.sns || []).length) return null;
+                  return (
+                    <div key={i} style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700,
+                                      color: "#14532d", marginBottom: 4 }}>
+                        📦 {it.description} · {it.sns.length} unidade(s)
+                      </div>
+                      <div style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+                        gap: 4, fontFamily: "monospace", fontSize: 10,
+                        color: "#0f172a",
+                      }}>
+                        {it.sns.map((sn, j) => (
+                          <div key={j} style={{
+                            padding: "3px 6px", background: "#fff",
+                            border: "1px solid #d1fae5", borderRadius: 4,
+                          }}>
+                            <span style={{ color: "#64748b" }}>
+                              {String(j + 1).padStart(2, "0")}
+                            </span>{" "}
+                            <strong>{sn}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{
+                  marginTop: 8, padding: 6, background: "#fef3c7",
+                  borderRadius: 4, fontSize: 11, color: "#92400e",
+                  fontWeight: 600,
+                }}>
+                  ⚠️ Confirme só se todos os SNs estiverem corretos.
+                  Após confirmar, cada SN vira uma ONT no estoque.
+                </div>
+              </div>
+            </details>
+          )}
+          {p.type === "ont" && p.status === "pending"
+            && !(p.items || []).some((it) => (it.sns || []).length > 0) && (
+            <div data-testid={`purchase-no-sns-${p.id}`}
+                  style={{
+                    marginTop: 8, padding: 8,
+                    background: "#fef2f2", border: "1px solid #fca5a5",
+                    borderRadius: 6, fontSize: 11, color: "#991b1b",
+                    fontWeight: 600,
+                  }}>
+              ⚠️ Esta compra de ONT está SEM SNs detectados.
+              Confirme só se quiser cadastrar manualmente depois — ou
+              clique em "📸 Reler NF (foto)" abaixo.
             </div>
           )}
           {p.notes && <div style={{ fontSize: 11, color: "#475569", marginTop: 4, fontStyle: "italic" }}>{p.notes}</div>}
@@ -549,7 +736,7 @@ function PurchasesList({ data, canConfirm, onReload }) {
               ✅ {p.items_imported} item(s) gravados no estoque
             </div>
           )}
-          <div style={{ marginTop: 8, display: "flex", gap: 6, justifyContent: "flex-end" }}>
+          <div style={{ marginTop: 8, display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
             {p.status === "pending" && canConfirm && (
               <button onClick={() => confirm(p.id)}
                       disabled={busy === p.id}
@@ -557,6 +744,81 @@ function PurchasesList({ data, canConfirm, onReload }) {
                       style={{ ...btnPrimary, padding: "4px 12px", fontSize: 11 }}>
                 {busy === p.id ? "..." : "✓ Confirmar entrada no estoque"}
               </button>
+            )}
+            {/* iter211o — Reprocessar SNs (anexar SNs faltantes) */}
+            {p.type === "ont" && canConfirm && (
+              <>
+                <button data-testid={`purchase-reprocess-img-${p.id}`}
+                  onClick={() => {
+                    const inp = document.createElement("input");
+                    inp.type = "file";
+                    inp.accept = "image/*";
+                    inp.capture = "environment";
+                    inp.onchange = async (ev) => {
+                      const f = ev.target.files?.[0];
+                      if (!f) return;
+                      try {
+                        const r = await api.purchasesReprocessFromImage(p.id, f);
+                        await window.alert(
+                          r.message
+                          + `\n\nSNs encontrados: ${r.candidates_found || 0}`
+                          + `\nAdicionados: ${r.inserted}`
+                          + `\nJá existiam: ${r.already_existed || 0}`,
+                        );
+                        onReload?.();
+                      } catch (e) {
+                        await window.alert("Erro: "
+                          + (e?.response?.data?.detail || e.message));
+                      }
+                    };
+                    inp.click();
+                  }}
+                  style={{
+                    padding: "4px 10px", fontSize: 11, fontWeight: 700,
+                    background: "#2563eb", color: "#fff",
+                    border: 0, borderRadius: 6, cursor: "pointer",
+                  }}>
+                  📸 Reler NF (foto)
+                </button>
+                <button data-testid={`purchase-reprocess-${p.id}`}
+                  onClick={async () => {
+                    const raw = await window.prompt(
+                      "Cole aqui os SNs que faltam — um por linha "
+                      + "(ou vírgula). Se não passar nada, o sistema usa "
+                      + "regex no texto da NF.",
+                      "");
+                    if (raw === null || raw === undefined) return;
+                    // iter211t — window.prompt pode ser sobrescrito por
+                    // dialog custom que devolve objeto. Coage pra string.
+                    const rawStr = typeof raw === "string"
+                      ? raw
+                      : (raw && typeof raw === "object" && "value" in raw
+                          ? String(raw.value || "")
+                          : String(raw || ""));
+                    const extra_sns = rawStr
+                      .split(/[\s,;\n]+/)
+                      .map((s) => s.trim().toUpperCase())
+                      .filter(Boolean);
+                    try {
+                      const r = await api.purchasesReprocessSns(p.id,
+                        extra_sns.length ? { extra_sns } : {});
+                      await window.alert(
+                        `${r.inserted} ONT(s) adicionadas. `
+                        + `${r.already_existed || 0} já existiam.`);
+                      onReload?.();
+                    } catch (e) {
+                      await window.alert("Erro: "
+                        + (e?.response?.data?.detail || e.message));
+                    }
+                  }}
+                  style={{
+                    padding: "4px 10px", fontSize: 11, fontWeight: 700,
+                    background: "#fbbf24", color: "#78350f",
+                    border: 0, borderRadius: 6, cursor: "pointer",
+                  }}>
+                  🔄 Reprocessar SNs
+                </button>
+              </>
             )}
             {p.status === "pending" && (
               <button onClick={() => del(p.id)}

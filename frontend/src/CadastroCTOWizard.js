@@ -25,6 +25,7 @@ import { api } from "@/api";
 import CTOMapPicker from "@/CTOMapPicker";
 import outbox from "@/utils/offlineQueue";
 import { getBestPosition } from "@/utils/geo";
+import { stampFieldPhoto } from "@/utils/photoStamp";
 
 // Paleta sóbria/corporate — slate/indigo
 const C_BG = "#f8fafc";
@@ -1408,6 +1409,9 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
   // iter183 — Número sequencial da CTO (editável; default = sugerido).
   // Compõe a nomenclatura: CTO_{vlan}_{ctoNumber 4 dígitos}
   const [ctoNumber, setCtoNumber] = useState("");
+  // iter211ba — input digitado da VLAN; quando bate com um bairro cadastrado,
+  // atualiza `bairroSelected`. Sem bairro válido, o Continuar fica disabled.
+  const [typedVlan, setTypedVlan] = useState(null);
 
   // ----- CE-specific -----
   const [bandejasTotal, setBandejasTotal] = useState(null);
@@ -1445,6 +1449,9 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
   const collabId = technician?.id || null;
   const useApi = useMemo(() => ({
     bairros: () => collabId ? api.redeIaBairrosPublic(collabId) : api.redeIaBairros(),
+    ensureBairro: (data) => collabId
+      ? api.redeIaBairroEnsureFromFieldPublic(collabId, data)
+      : api.redeIaBairroEnsureFromField(data),
     suggest: (sigla, vlan, num, elemT) => {
       const elt = elemT || "cto";
       return collabId
@@ -1480,13 +1487,48 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
         canvas.width = w; canvas.height = h;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, w, h);
-        setter(canvas.toDataURL("image/jpeg", 0.78));
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.78);
+        // iter211y/v2 — foto-first UX: salva a foto crua AGORA pra não
+        // travar o fluxo (Android + Nominatim lento causava tela branca
+        // intermitente). O selo é aplicado em background e substitui
+        // a dataUrl quando pronto, sem bloquear o usuário.
+        setter(dataUrl);
         setError("");
+        // iter211az — Stamp aplicado a CTO, CE E CABO (antes só cto/ce).
+        // O selo é uma prova de campo, então faz sentido em todos eles.
+        if (elementType === "cto" || elementType === "ce"
+            || elementType === "cabo") {
+          // iter211az — inclui colaborador + nomenclatura sugerida do elemento.
+          const elementName = suggested?.name
+            || (elementType === "cto" && bairroSelected?.vlan && ctoNumber
+                  ? `CTO_${bairroSelected.vlan}_${String(parseInt(ctoNumber, 10) || 0).padStart(4, "0")}`
+                  : "");
+          const stampPromise = stampFieldPhoto(dataUrl, {
+            lat: gps?.lat, lng: gps?.lng,
+            label: elementType === "cto" ? "📦 FOTO CTO"
+                    : elementType === "ce" ? "🏢 FOTO CE" : "🔌 FOTO CABO",
+            collaborator: technician?.name || "",
+            element: elementName,
+          });
+          const timeoutPromise = new Promise((resolve) =>
+            setTimeout(() => resolve(dataUrl), 7000));
+          Promise.race([stampPromise, timeoutPromise])
+            .then((stamped) => {
+              if (stamped && stamped !== dataUrl) setter(stamped);
+            })
+            .catch(() => { /* silencioso */ });
+        }
+      };
+      img.onerror = () => {
+        setError("Não foi possível ler a foto. Tente novamente.");
       };
       img.src = reader.result;
     };
+    reader.onerror = () => {
+      setError("Erro ao ler arquivo.");
+    };
     reader.readAsDataURL(file);
-  }, []);
+  }, [elementType, gps]);
 
   const onPhotoChange = useCallback((e) => {
     handlePhotoUpload(e.target.files?.[0], setPhoto);
@@ -1570,6 +1612,36 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
     }).catch(() => setCableRoute(null))
       .finally(() => setRoutingCable(false));
   }, [elementType, caboFrom, caboTo, collabId]);
+
+  // iter211bb — Auto-sugere VLAN baseada no GPS quando entra no step 7.
+  // Chama /api/rede-ia/public/suggest-vlan-from-gps que descobre a OLT
+  // que atende essa região (RIO_HUAWEI / MAGE_ZTE / PENHA_HUAWEI / ...)
+  // e retorna a VLAN do bairro cadastrado pra essa OLT (ou 1 como fallback).
+  const [gpsVlanSuggestion, setGpsVlanSuggestion] = useState(null);
+  useEffect(() => {
+    if (step !== 7 || !gps?.lat || !gps?.lng || typedVlan != null
+        || elementType !== "cto") return;
+    const base = process.env.REACT_APP_BACKEND_URL;
+    if (!base) return;
+    fetch(`${base}/api/rede-ia/public/suggest-vlan-from-gps`
+          + `?lat=${gps.lat}&lng=${gps.lng}`
+          + (collabId ? `&collab_id=${collabId}` : ""))
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j || j.suggested_vlan == null) return;
+        setGpsVlanSuggestion(j);
+        // Auto-preenche o input com a VLAN sugerida
+        const v = String(j.suggested_vlan);
+        setTypedVlan(v);
+        const b = bairros.find((x) => Number(x.vlan) === Number(j.suggested_vlan));
+        if (b) {
+          setBairroSelected(b);
+          setCtoNumber("");
+        }
+      })
+      .catch(() => { /* silencioso — usuário pode digitar manualmente */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, gps?.lat, gps?.lng, elementType]);
   useEffect(() => {
     if (bairroSelected && elementType !== "cabo") {
       useApi.suggest(bairroSelected.sigla, bairroSelected.vlan, undefined, elementType)
@@ -1577,10 +1649,9 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
           setSuggested({
             name: r.suggested_name, number: r.suggested_number,
           });
-          // iter183 — pré-preenche ctoNumber com o próximo livre (se ainda vazio)
-          if (elementType === "cto" && r.suggested_number) {
-            setCtoNumber((prev) => prev === "" ? String(r.suggested_number) : prev);
-          }
+          // iter211aq — Pré-preenchimento automático do ctoNumber removido.
+          // O técnico deve digitar o número manualmente. A sugestão fica
+          // apenas como dica visual (suggested.number) se o usuário quiser.
         })
         .catch(() => setSuggested({ name: "", number: null }));
     }
@@ -1802,9 +1873,10 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
           ce_install_type: ceInstallType,
         };
       } else {
-        // CTO — iter178: VLAN removida do fluxo, splitter pode ser "Não Informado"
+        // CTO — iter211ar: "Sem splitter" e "Outro" viram null no payload
+        // (backend já interpreta como "sem informação útil").
         const splitterValue = (splitter && !splitter.startsWith("Sem")
-                                  && !splitter.startsWith("Não"))
+                                  && splitter !== "Outro")
           ? splitter : null;
         payload = {
           element_type: "cto",
@@ -1822,10 +1894,11 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
           // enviamos vlan do bairro como fallback p/ não quebrar API existente.
           vlan: bairroSelected.vlan || null,
           suggested_name: suggested.name,
-          // iter183 — número da CTO editado pelo técnico tem precedência
+          // iter211aq — Nº da CTO agora é OBRIGATÓRIO, sem fallback pra
+          // suggested.number. Backend rejeita duplicidade no bairro/VLAN.
           cto_number: ctoNumber && parseInt(ctoNumber, 10) > 0
                         ? parseInt(ctoNumber, 10)
-                        : (suggested.number || null),
+                        : null,
           technician_id: collabId,
           technician_name: technician?.name || "",
           photo_data_url: photo || null,
@@ -1870,6 +1943,52 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
         }
       }
       onCreated?.(r);
+      // iter211bg — feedback SmartOLT pro técnico após criar a CTO.
+      // Se a CTO foi marcada smartolt_eligible, mostra toast informativo.
+      try {
+        if (r && r.smartolt_eligible && r.smartolt_olt_name) {
+          window.dispatchEvent(new CustomEvent("smartprov:toast", {
+            detail: {
+              kind: "info",
+              icon: "📡",
+              title: "Sincronizando com SmartOLT…",
+              message: `CTO ${r.name || ""} será registrada em ${r.smartolt_olt_name}.`,
+              durationMs: 8000,
+            },
+          }));
+          // Polling pra detectar quando o sync completar (a cada 20s, max 3min)
+          // — o worker roda a cada 60s, então normalmente bate no 2º poll.
+          const ctoId = r.id;
+          const base = process.env.REACT_APP_BACKEND_URL;
+          const collabId = window.__currentCollabId || null;
+          if (ctoId && base && collabId) {
+            let tries = 0;
+            const maxTries = 9; // ~3min
+            const poll = async () => {
+              tries += 1;
+              try {
+                const u = await fetch(
+                  `${base}/api/rede-ia/public/ctos/by-id/${ctoId}?collab_id=${collabId}`,
+                ).then((x) => x.json()).catch(() => null);
+                if (u && u.smartolt_synced_at) {
+                  window.dispatchEvent(new CustomEvent("smartprov:toast", {
+                    detail: {
+                      kind: "success",
+                      icon: "✅",
+                      title: "CTO sincronizada no SmartOLT",
+                      message: `Zone "${u.smartolt_zone_name || u.name}" criada em ${u.smartolt_olt_name}.`,
+                      durationMs: 6000,
+                    },
+                  }));
+                  return;
+                }
+              } catch { /* */ }
+              if (tries < maxTries) setTimeout(poll, 20000);
+            };
+            setTimeout(poll, 15000);
+          }
+        }
+      } catch { /* noop */ }
     } catch (e) {
       // iter183 — Network error (TypeError "Failed to fetch") OU 5xx → enfileira
       const isNetErr = e?.name === "TypeError"
@@ -2497,14 +2616,14 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
         )}
 
         {step === 6 && (() => {
-          // iter179 — opções de splitter condicionadas ao tipo de rede:
+          // iter211ar — opções de splitter condicionadas ao tipo de rede:
           // • balanceada: 1:2, 1:4, 1:8, 1:16
           // • desbalanceada: 5/95, 10/90, 20/80, 35/65, 50/50
-          // Em ambos os casos: "Sem splitter" e "Não informado".
+          // Em ambos os casos: "Outro" e "Sem splitter".
           const balOpts = ["1:2", "1:4", "1:8", "1:16"];
           const desbOpts = ["5/95", "10/90", "20/80", "35/65", "50/50"];
           const baseOpts = networkType === "desbalanceada" ? desbOpts : balOpts;
-          const opts = [...baseOpts, "Sem splitter", "Não informado"];
+          const opts = [...baseOpts, "Outro", "Sem splitter"];
           return (
           <div>
             <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 4px",
@@ -2528,7 +2647,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                     background: splitter === s ? "#ddd6fe" : "#f1f5f9",
                     color: C_PRIMARY, display: "grid", placeItems: "center",
                     fontSize: 18, fontWeight: 800,
-                  }}>{s.startsWith("Sem") || s.startsWith("Não") ? "—" : "▣"}</span>
+                  }}>{s.startsWith("Sem") || s === "Outro" ? "—" : "▣"}</span>
                   <span style={{ fontSize: 15, fontWeight: 700 }}>{s}</span>
                 </span>
                 <span style={checkBox(splitter === s)}>
@@ -2547,66 +2666,94 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
           );
         })()}
 
-        {step === 7 && (
+        {step === 7 && (() => {
+          // iter211ba — VLAN agora é digitada.
+          // iter216a — Se a VLAN digitada não tem bairro mapeado, NÃO bloqueia
+          // mais o fluxo. A gente registra automaticamente ao clicar em
+          // Continuar (ensure-from-field), usando o bairro detectado pelo GPS.
+          const vlanNum = parseInt(typedVlan || bairroSelected?.vlan || 0, 10);
+          const ctoNum = parseInt(ctoNumber, 10);
+          const previewName = (vlanNum > 0 && ctoNum > 0)
+            ? `CTO_${vlanNum}_${String(ctoNum).padStart(4, "0")}`
+            : "";
+          const vlanInputVal = bairroSelected?.vlan ? String(bairroSelected.vlan) : "";
+          const vlanTyped = (typedVlan == null) ? vlanInputVal : typedVlan;
+          const vlanTypedNum = parseInt(vlanTyped, 10);
+          const vlanMatchedBairro = bairros.find((b) => Number(b.vlan) === vlanTypedNum);
+          // VLAN nova (>= 2): vai ser auto-cadastrada — feedback informativo.
+          const vlanWillBeCreated = vlanTyped && !vlanMatchedBairro
+            && vlanTypedNum >= 2 && vlanTypedNum <= 4094;
+          return (
           <div>
-            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "4px 0 4px",
-                           letterSpacing: -0.3 }}>
-              VLAN e Número da CTO
-            </h2>
-            <p style={{ color: C_MUTED, fontSize: 13, marginBottom: 18,
-                          lineHeight: 1.45 }}>
-              Confirme/escolha a VLAN e informe o número desta CTO. A
-              nomenclatura final é montada automaticamente.
-            </p>
-
+            {/* iter211at — Tela enxuta: só VLAN + Nº CTO + preview.
+                iter211ba — VLAN passou a ser INPUT digitado. */}
             <label style={labelStyle}>
               VLAN da CTO <span style={{ color: "#dc2626" }}>*</span>
             </label>
-            <select data-testid="cto-vlan-select"
-              value={bairroSelected?.sigla || ""}
+            <input
+              data-testid="cto-vlan-input"
+              type="number" inputMode="numeric" min="1" max="4094"
+              value={vlanTyped}
+              placeholder="Digite a VLAN (ex: 301)"
               onChange={(e) => {
-                const sigla = e.target.value;
-                const b = bairros.find((x) => x.sigla === sigla);
+                const v = e.target.value.replace(/[^0-9]/g, "");
+                setTypedVlan(v);
+                // Se bater com um bairro cadastrado, ativa
+                const b = bairros.find((x) => Number(x.vlan) === parseInt(v, 10));
                 if (b) {
                   setBairroSelected(b);
-                  // Reseta o ctoNumber pra forçar buscar próximo livre na nova VLAN
                   setCtoNumber("");
+                } else {
+                  setBairroSelected(null);
                 }
               }}
-              style={{ ...inputBase, fontSize: 15, fontWeight: 700,
-                       cursor: "pointer", appearance: "menulist" }}>
-              <option value="" disabled>Selecione uma VLAN cadastrada…</option>
-              {bairros
-                .slice()
-                .sort((a, b) => (a.vlan || 0) - (b.vlan || 0))
-                .map((b) => (
-                  <option key={b.sigla} value={b.sigla}>
-                    VLAN {b.vlan} · {b.sigla} — {b.bairro}
-                  </option>
-                ))}
-            </select>
-            {bairros.length === 0 && (
-              <div style={{ marginTop: 8, fontSize: 12, color: "#dc2626" }}>
-                Nenhuma VLAN cadastrada. Peça ao gestor para cadastrar bairros
-                e VLANs antes de continuar.
+              style={{ ...inputBase, fontSize: 22, fontWeight: 800,
+                       fontFamily: "monospace", letterSpacing: 1 }} />
+            {/* iter211bb — Indicador da sugestão automática de VLAN via GPS/OLT */}
+            {gpsVlanSuggestion && gpsVlanSuggestion.matched_olt && (
+              <div data-testid="cto-vlan-gps-hint" style={{
+                marginTop: 6, padding: "8px 10px", borderRadius: 8,
+                background: "#ecfdf5", border: "1px solid #6ee7b7",
+                fontSize: 11, color: "#065f46",
+              }}>
+                📡 OLT detectada pelo GPS: <strong>{gpsVlanSuggestion.matched_olt}</strong>
+                {gpsVlanSuggestion.bairro_match
+                  ? ` · Bairro ${gpsVlanSuggestion.bairro_match.bairro} (VLAN ${gpsVlanSuggestion.suggested_vlan})`
+                  : ` · sem bairro cadastrado nessa OLT — usando VLAN 1`}
+              </div>
+            )}
+            {gpsVlanSuggestion && !gpsVlanSuggestion.matched_olt && (
+              <div data-testid="cto-vlan-gps-nomatch" style={{
+                marginTop: 6, padding: "8px 10px", borderRadius: 8,
+                background: "#fef3c7", border: "1px solid #fcd34d",
+                fontSize: 11, color: "#78350f",
+              }}>
+                ℹ️ Localização não atendida por nenhuma SmartOLT — usando VLAN 1.
+                Você pode editar manualmente.
+              </div>
+            )}
+            {vlanWillBeCreated && (
+              <div data-testid="cto-vlan-autocreate-hint" style={{
+                marginTop: 6, padding: "8px 10px", borderRadius: 8,
+                background: "#ecfdf5", border: "1px solid #6ee7b7",
+                fontSize: 11.5, color: "#065f46", fontWeight: 600,
+                lineHeight: 1.45,
+              }}>
+                ✨ VLAN {vlanTypedNum} ainda não existe — vou cadastrá-la
+                automaticamente no bairro <b>{address.bairro_detected || "atual"}</b>{" "}
+                quando você clicar em Continuar.
               </div>
             )}
 
             <label style={{ ...labelStyle, marginTop: 22 }}>
               Nº da CTO <span style={{ color: "#dc2626" }}>*</span>
             </label>
-            <p style={{ fontSize: 12, color: C_MUTED, margin: "0 0 8px" }}>
-              Sistema sugeriu{" "}
-              <strong>{suggested.number || "—"}</strong> (próximo livre na VLAN
-              selecionada), mas você pode editar.
-            </p>
             <input data-testid="cto-sequence-number"
               type="number" inputMode="numeric" min="1" max="9999"
               value={ctoNumber}
               onChange={(e) => {
                 const v = e.target.value.replace(/[^0-9]/g, "");
                 setCtoNumber(v);
-                // Atualiza nomenclatura localmente (4 dígitos)
                 const n = parseInt(v, 10);
                 if (n > 0 && bairroSelected?.vlan) {
                   setSuggested({
@@ -2618,53 +2765,71 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
               style={{ ...inputBase, fontSize: 22, fontWeight: 800,
                        fontFamily: "monospace", letterSpacing: 1,
                        textAlign: "center" }}
-              placeholder={String(suggested.number || 1).padStart(4, "0")} />
+              placeholder="Digite o número" />
 
-            <div data-testid="cto-name-preview"
-                 style={{ marginTop: 14, padding: "12px 14px",
-                          background: "#f0f9ff",
-                          border: `1px solid #bae6fd`, borderRadius: 10 }}>
-              <div style={{ fontSize: 10, color: "#0369a1", fontWeight: 700,
-                            textTransform: "uppercase", letterSpacing: 0.5,
-                            marginBottom: 4 }}>
-                Nomenclatura final
+            {/* iter211ba — Preview da nomenclatura final, antes do Continuar */}
+            {previewName && (
+              <div data-testid="cto-name-preview" style={{
+                marginTop: 18, padding: "12px 14px", borderRadius: 10,
+                background: "linear-gradient(135deg,#eff6ff,#dbeafe)",
+                border: "1px solid #93c5fd",
+              }}>
+                <div style={{ fontSize: 10, color: "#1e40af", fontWeight: 800,
+                                textTransform: "uppercase", letterSpacing: 0.6,
+                                marginBottom: 4 }}>
+                  Nomenclatura final
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#0c4a6e",
+                                fontFamily: "monospace", letterSpacing: 1 }}>
+                  {previewName}
+                </div>
               </div>
-              <div style={{ fontSize: 18, fontWeight: 800,
-                            fontFamily: "monospace", color: "#0c4a6e",
-                            letterSpacing: 1 }}>
-                {(() => {
-                  const n = parseInt(ctoNumber || suggested.number || 0, 10);
-                  const v = bairroSelected?.vlan;
-                  if (!n || !v) return "—";
-                  return `CTO_${v}_${String(n).padStart(4, "0")}`;
-                })()}
-              </div>
-            </div>
-
-            <label style={{ ...labelStyle, marginTop: 22 }}>
-              Nº da caixa no campo (etiqueta física — opcional)
-            </label>
-            <input data-testid="cto-box-number"
-              type="text" inputMode="text" maxLength={32}
-              value={boxNumber}
-              onChange={(e) => setBoxNumber(e.target.value)}
-              style={{ ...inputBase, fontSize: 16, fontWeight: 600,
-                       fontFamily: "monospace", letterSpacing: 1 }}
-              placeholder="Ex: 042 ou A-12" />
+            )}
 
             <div style={{ marginTop: 24 }}>
               <button data-testid="cto-step7-continue"
-                      onClick={() => setStep(8)}
-                      disabled={!ctoNumber || parseInt(ctoNumber, 10) < 1
-                                  || !bairroSelected}
+                      onClick={async () => {
+                        // iter216a — Auto-cadastro de VLAN quando o
+                        // técnico digita uma VLAN que ainda não existe.
+                        if (!vlanMatchedBairro && vlanTypedNum >= 2
+                            && vlanTypedNum <= 4094) {
+                          try {
+                            setEnsuringBairro(true);
+                            const r = await useApi.ensureBairro({
+                              bairro: address.bairro_detected || "Bairro " + vlanTypedNum,
+                              vlan: vlanTypedNum,
+                              cidade: address.cidade_detected || "",
+                              estado: address.estado_detected || "",
+                            });
+                            setBairroSelected(r.bairro);
+                            if (r.created) {
+                              setBairros((prev) => [...prev, r.bairro]);
+                            }
+                          } catch (e) {
+                            setError(e?.response?.data?.detail
+                              || "Falha ao cadastrar a VLAN. Tente de novo.");
+                            setEnsuringBairro(false);
+                            return;
+                          }
+                          setEnsuringBairro(false);
+                        }
+                        setStep(8);
+                      }}
+                      disabled={ensuringBairro || !ctoNumber || ctoNum < 1
+                        || !(vlanTypedNum >= 1 && vlanTypedNum <= 4094)}
                       style={{ ...primaryBtn,
-                               opacity: (!ctoNumber || parseInt(ctoNumber, 10) < 1
-                                          || !bairroSelected) ? 0.5 : 1 }}>
-                Continuar
+                               opacity: (ensuringBairro || !ctoNumber
+                                          || ctoNum < 1
+                                          || !(vlanTypedNum >= 1 && vlanTypedNum <= 4094))
+                                          ? 0.5 : 1 }}>
+                {ensuringBairro
+                  ? "Cadastrando VLAN..."
+                  : (vlanWillBeCreated ? "Cadastrar VLAN e continuar" : "Continuar")}
               </button>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* === CTO Step 8 — Summary === */}
         {step === 8 && (

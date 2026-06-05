@@ -21,20 +21,25 @@ export default function CentralOntPanel() {
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [days, setDays] = useState(30);
+  // iter223 — geofence radius configurável
+  const [geo, setGeo] = useState(null);
+  const [savingGeo, setSavingGeo] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, r, ar] = await Promise.all([
+      const [s, r, ar, geo] = await Promise.all([
         api._client.get("/lousa/central-ont/settings").then((x) => x.data),
         api._client.get(`/lousa/central-ont/report?days=${days}`)
                     .then((x) => x.data),
         api._client.get("/lousa/central-ont/auth-requests?status=pending")
                     .then((x) => x.data),
+        api._client.get("/lousa/geofence/settings").then((x) => x.data),
       ]);
       setSettings(s);
       setReport(r);
       setAuthReqs(ar.items || []);
+      setGeo(geo);
     } catch (e) {
       console.error("[CentralOnt] load", e);
     } finally {
@@ -69,6 +74,22 @@ export default function CentralOntPanel() {
       await window.alert("Falha ao salvar: " + (e?.response?.data?.detail || e.message));
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const saveGeoRadius = async (radius_m) => {
+    const val = Math.max(20, Math.min(5000, parseInt(radius_m, 10) || 100));
+    setSavingGeo(true);
+    try {
+      await api._client.put("/lousa/geofence/settings", {
+        geofence_radius_m: val,
+      });
+      setGeo((g) => ({ ...g, geofence_radius_m: val }));
+    } catch (e) {
+      await window.alert("Falha ao salvar raio: " +
+        (e?.response?.data?.detail || e.message));
+    } finally {
+      setSavingGeo(false);
     }
   };
 
@@ -171,6 +192,78 @@ export default function CentralOntPanel() {
               Acima desse valor (mais negativo = pior) considera-se sinal ruim.
               Padrão -27 dBm.
             </span>
+          </div>
+        </div>
+      </Card>
+
+      {/* iter223 — GEOFENCE RADIUS */}
+      <Card>
+        <div style={{ padding: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between",
+                          alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a",
+                              display: "inline-flex", alignItems: "center",
+                              gap: 6 }}>
+                <Radio size={16} color="#7c3aed" />
+                Raio de geofence (finalização da OS)
+              </div>
+              <p style={{ margin: "3px 0 0", fontSize: 11, color: "#64748b" }}>
+                O técnico só pode finalizar a OS quando estiver dentro
+                desse raio do endereço cadastrado do cliente. Aumente se
+                houver imprecisão de geocoding ou serviços executados em
+                pontos próximos. Aceita 20m – 5000m.
+              </p>
+            </div>
+            <div style={{ display: "inline-flex", alignItems: "center",
+                            gap: 8 }}>
+              <input type="number" min={20} max={5000} step={10}
+                      data-testid="geofence-radius-input"
+                      value={geo?.geofence_radius_m ?? 100}
+                      disabled={savingGeo}
+                      onChange={(e) => setGeo((g) => ({
+                        ...g,
+                        geofence_radius_m: parseInt(e.target.value, 10) || 0,
+                      }))}
+                      onBlur={(e) => saveGeoRadius(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveGeoRadius(e.target.value);
+                      }}
+                      style={{ padding: "8px 12px", borderRadius: 8,
+                                border: "1px solid #cbd5e1", fontSize: 14,
+                                width: 110, fontFamily: "monospace",
+                                fontWeight: 800, textAlign: "right" }} />
+              <span style={{ fontSize: 13, color: "#475569", fontWeight: 700 }}>
+                metros
+              </span>
+            </div>
+          </div>
+          <div style={{ marginTop: 12, display: "flex", gap: 8,
+                          flexWrap: "wrap" }}>
+            {[100, 200, 500, 1000].map((preset) => (
+              <button key={preset} type="button"
+                  data-testid={`geofence-preset-${preset}`}
+                  onClick={() => saveGeoRadius(preset)}
+                  disabled={savingGeo}
+                  style={{
+                    padding: "6px 14px", borderRadius: 999,
+                    border: `1.5px solid ${geo?.geofence_radius_m === preset
+                      ? "#7c3aed" : "#cbd5e1"}`,
+                    background: geo?.geofence_radius_m === preset
+                      ? "#ede9fe" : "white",
+                    color: geo?.geofence_radius_m === preset
+                      ? "#5b21b6" : "#475569",
+                    fontSize: 12, fontWeight: 800,
+                    cursor: savingGeo ? "wait" : "pointer",
+                  }}>{preset}m</button>
+            ))}
+            {geo?.updated_at && (
+              <span style={{ marginLeft: "auto", fontSize: 10.5,
+                              color: "#94a3b8", alignSelf: "center" }}>
+                atualizado por {geo.updated_by} ·{" "}
+                {new Date(geo.updated_at).toLocaleString("pt-BR")}
+              </span>
+            )}
           </div>
         </div>
       </Card>

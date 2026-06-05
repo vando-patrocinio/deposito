@@ -74,9 +74,14 @@ function Section({ label, children }) {
    ClosedTicketDetailModal — visualização read-only de uma nota
    finalizada/encerrada (cliente, sinal, CTO, insumos, fotos, etc.).
 ============================================================= */
-export function ClosedTicketDetailModal({ ticket, onClose }) {
+export function ClosedTicketDetailModal({ ticket, onClose, onReopened }) {
   const [full, setFull] = useState(ticket);
   const [loading, setLoading] = useState(false);
+  // iter211w — UI de reabertura
+  const [reopenOpen, setReopenOpen] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
+  const [reopenKeepTech, setReopenKeepTech] = useState(true);
+  const [reopenBusy, setReopenBusy] = useState(false);
   // iter198 — guard contra fechar com o 2º click do dblclick:
   //   1) ignora qualquer click nos primeiros 350ms após abrir (consome o
   //      "afterClick" residual do dblclick que abriu o modal)
@@ -305,6 +310,120 @@ export function ClosedTicketDetailModal({ ticket, onClose }) {
             </div>
           )}
         </div>
+
+        {/* iter211w — Footer com botão "Reabrir OS" (só se fechada) */}
+        {["finalizada", "encerrada", "cancelada", "reagendada"].includes(full?.status) && (
+          <div data-testid="closed-detail-footer"
+                style={{ borderTop: "1px solid #e2e8f0", padding: 12,
+                          background: "#fafbfc" }}>
+            {!reopenOpen ? (
+              <div style={{ display: "flex", justifyContent: "space-between",
+                              alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 11, color: "#64748b", flex: 1, minWidth: 0 }}>
+                  {full.reopen_count > 0 && (
+                    <span style={{ background: "#fef3c7", color: "#92400e",
+                                    padding: "2px 8px", borderRadius: 999,
+                                    fontWeight: 700, marginRight: 6 }}>
+                      ↻ Reaberta {full.reopen_count}× anteriormente
+                    </span>
+                  )}
+                  Reabrir desfaz tudo: ONT, porta da CTO, materiais e fotos voltam ao início.
+                </div>
+                <button data-testid="reopen-os-btn"
+                        onClick={() => setReopenOpen(true)}
+                        style={{ padding: "8px 16px",
+                                  background: "linear-gradient(135deg,#f59e0b,#d97706)",
+                                  color: "white", border: "none", borderRadius: 8,
+                                  fontWeight: 800, fontSize: 12, cursor: "pointer",
+                                  display: "inline-flex", alignItems: "center",
+                                  gap: 6, boxShadow: "0 2px 8px rgba(217,119,6,.3)" }}>
+                  ↻ Reabrir OS
+                </button>
+              </div>
+            ) : (
+              <div data-testid="reopen-os-form" style={{ display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#7c2d12" }}>
+                  ⚠️ Reabrir esta OS?
+                </div>
+                <div style={{ fontSize: 11, color: "#475569", lineHeight: 1.5,
+                                background: "#fffbeb", padding: 8, borderRadius: 6,
+                                border: "1px solid #fcd34d" }}>
+                  A nota volta para <strong>pendente</strong> como se nunca tivesse sido fechada.
+                  <br /><strong>Tudo é desfeito automaticamente:</strong>
+                  <ul style={{ margin: "4px 0 0 18px", padding: 0 }}>
+                    <li>📦 ONT volta para o estoque do técnico (instalação) ou para o cliente (retirada)</li>
+                    <li>🔌 Porta da CTO volta para <strong>livre</strong></li>
+                    <li>🧰 Drop, esticadores e conectores são <strong>recreditados</strong> no estoque</li>
+                    <li>📷 Fotos, sinal e observações são limpos — técnico tira tudo do zero</li>
+                    <li>📋 Fechamento anterior fica arquivado em <code>previous_completions</code> para auditoria</li>
+                  </ul>
+                </div>
+                <label style={{ display: "block" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#7c2d12",
+                                  textTransform: "uppercase", letterSpacing: 0.4,
+                                  marginBottom: 4 }}>
+                    Motivo da reabertura (obrigatório) *
+                  </div>
+                  <textarea data-testid="reopen-os-reason"
+                              value={reopenReason}
+                              onChange={(e) => setReopenReason(e.target.value)}
+                              placeholder="Ex: cliente reclamou que o serviço não foi concluído; técnico abriu chamado errado; sinal ainda está ruim."
+                              style={{ width: "100%", minHeight: 60, padding: 8,
+                                        fontSize: 12, borderRadius: 6,
+                                        border: "1px solid #fcd34d",
+                                        background: "#fffbeb",
+                                        fontFamily: "inherit" }} />
+                </label>
+                <label data-testid="reopen-keep-tech-label"
+                        style={{ display: "flex", gap: 8, alignItems: "center",
+                                  cursor: "pointer", fontSize: 12, color: "#475569" }}>
+                  <input type="checkbox" data-testid="reopen-keep-tech"
+                          checked={reopenKeepTech}
+                          onChange={(e) => setReopenKeepTech(e.target.checked)} />
+                  Manter o mesmo técnico atribuído ({full.collaborator_name || "—"})
+                </label>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button data-testid="reopen-os-cancel"
+                          onClick={() => { setReopenOpen(false); setReopenReason(""); }}
+                          disabled={reopenBusy}
+                          style={{ padding: "8px 14px", background: "white",
+                                    border: "1px solid #cbd5e1", borderRadius: 6,
+                                    fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                    Cancelar
+                  </button>
+                  <button data-testid="reopen-os-confirm"
+                          disabled={reopenBusy || reopenReason.trim().length < 3}
+                          onClick={async () => {
+                            if (reopenReason.trim().length < 3) return;
+                            setReopenBusy(true);
+                            try {
+                              const updated = await api.lousaReopenTicket(full.id, {
+                                reason: reopenReason.trim(),
+                                keep_technician: reopenKeepTech,
+                              });
+                              onReopened?.(updated);
+                              onClose?.();
+                            } catch (e) {
+                              window.alert("Erro ao reabrir: " + (e?.response?.data?.detail || e.message));
+                            } finally {
+                              setReopenBusy(false);
+                            }
+                          }}
+                          style={{ padding: "8px 16px",
+                                    background: reopenReason.trim().length < 3
+                                      ? "#cbd5e1"
+                                      : "linear-gradient(135deg,#f59e0b,#d97706)",
+                                    color: "white", border: "none", borderRadius: 6,
+                                    fontWeight: 800, fontSize: 12,
+                                    cursor: reopenBusy ? "wait" : "pointer",
+                                    opacity: reopenBusy ? 0.7 : 1 }}>
+                    {reopenBusy ? "Reabrindo..." : "✓ Confirmar reabertura"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

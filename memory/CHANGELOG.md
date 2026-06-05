@@ -1,6 +1,228 @@
 # PontoIA — Changelog
 
 
+## 2026-06-04 — iter212d: Portal Cliente Redesenhado (dark mode premium)
+
+### Pedido do usuário
+> "Página do rastreador GPS: https://...?portal=fleet — vá na internet e veja páginas internacionais de rastreamento de carro, caminhão, moto"
+
+### Pesquisa
+Pesquisei Samsara, Verizon Connect, Geotab, Wialon. Padrões adotados:
+- **Dark mode default** (operacional, mapa-heavy)
+- **Map-first**: tela inicial é o mapa em foco máximo
+- **KPI strip** clicável (Frota / Movimento / Parados / Offline / Alertas)
+- **Asset list lateral compacta** com busca + filtro de status
+- **Drill-down rápido** no painel de detalhe
+- **Tabs** Map / History / Alerts (sem reload)
+- **Responsivo** com drawers em mobile
+
+### Implementação (`FleetPortalApp.js` + `fleet-portal.css`)
+- **Top bar premium**: logo gradient azul, nome do tenant + tagline, chip do usuário com avatar gradient roxo, toggle tema 🌞/🌙, sair (⎋)
+- **5 KPI cards** clicáveis para filtrar (Frota/Movimento/Parados/Offline/Alertas)
+- **Mapa CartoDB dark/light** + Esri satélite via switcher no canto
+- **Marcador**: círculo com borda branca + label da placa abaixo em monospace
+- **Asset list** com card colorido por status, velocidade em destaque (18px) + km/h pequeno, "tempo desde última posição"
+- **Detail drawer**: placa em JetBrains Mono, banner colorido por status, grid 2×2 (Velocidade/Direção/Ignição/Última posição), GPS + Google Maps, CTA "Ver histórico"
+- **History view**: dropdown de veículo + date picker + stats inline (km, max km/h, pontos) + Polyline azul 5px com markers verde "▶" / vermelho "■"
+- **Alerts view**: cards grandes com ícone gigante + título + meta line + clique vai pro mapa do veículo
+- **Empty states**: ilustração + texto amigável
+- **Theme toggle persistente** em localStorage (`fleet_portal_theme`)
+
+### Responsividade
+- ≥1280 grid 3 col 300/flex/340
+- 1024-1280 grid 260/flex/300
+- <1024 detail vira drawer fixed direito
+- <768 mobile menu lateral com botão "☰ Veículos" sobre o mapa, KPI scroll horizontal, top bar reduzido, detail 92vw, stats 1 col
+- <480 muito compacto
+
+### Credenciais de teste criadas
+- Tenant `TenantTesteSP` (ID `ft-462187066935`)
+- Portal user `cliente@teste.com` / `123456` (nome "Cliente Teste")
+- Veículo `TESTE001` vinculado ao tenant (visível só pra esse cliente)
+
+### Validação
+- Screenshot do login dark com gradient azul + logo "TrackPro"
+- Screenshot do dashboard com TESTE001 selecionado mostrando todos os componentes (top bar, KPI, mapa dark CartoDB com marker rotulado, detail drawer com banner status + 2×2 stats + GPS + ações)
+
+
+
+
+## 2026-06-04 — iter212c: Redesign do Fleet Tracking (UI moderna + responsiva)
+
+### Pedido do usuário
+> "CRIE NO USUARIO DO SISTEMA O BOTÃO PARA LIGAR/DESLIGAR O RSTREADOR GPS, PARA ACESSAR. ATUALISE A PAGINA, VA NA INTERNET E VEJA AS MELHORES PAGINAS DE RASTREAMNETO INTERNACIONAIS, SE INSPIRE E APLIQUE, FAÇA UM BOM TRABALHO, ELA TAMBEM TEM QUE SE MOLDAR AS TELAS, DISPOSITIVOS"
+
+### 1) Toggle por usuário (já existia, validado)
+- O sistema já tinha `access_tags` por usuário
+- O catálogo (`/api/access-tags/catalog`) já expõe as tags `fleet` (🚗 Gestão de Frota) e `fleet-tracking` (📡 Rastreamento (GPS)) adicionadas no iter212a
+- O admin abre o usuário, vê o picker de tags e marca/desmarca para ligar/desligar acesso a cada módulo. Total: 52 tags no catálogo.
+
+### 2) Redesign completo (`FleetTrackingPage.js` + novo `fleet-tracking.css`)
+Inspirado em **Wialon**, **Samsara**, **Geotab** (pesquisado online).
+
+**Layout desktop (≥ 1280px):**
+- Header com título + subtítulo + botões "🚨 Emergência" (gradiente vermelho pulsante) e "+ Cadastrar veículo"
+- **KPI strip** clicável (5 cards): Total · Movimento · Parados · Offline · Excesso — clica para filtrar a lista
+- Tabs com ícones (Tempo Real / Histórico / Cercas / Alertas / Relatórios / Clientes)
+- **Grid 3 colunas:** asset list (280px) | mapa (flex) | inspector (320px)
+- Asset list: busca em tempo real (placa/modelo), card por veículo com barra de status vertical colorida e "tempo desde última atualização"
+- Mapa Leaflet com CartoDB (light/dark) + Esri Imagery (satélite) — switcher 🌞 🌙 🛰️
+- Marcadores customizados: círculo grande com seta direcional + label da placa abaixo
+- **Inspector** (direita): placa monoespaçada grande, banner colorido de status, grid 2×2 (Velocidade/Ignição/Última atualização/Limite), GPS + link Google Maps, botões "Ver histórico/Bloquear/Editar"
+- "Voar até" (`map.flyTo`) automático quando seleciona veículo
+
+**Responsividade:**
+- `≤ 1280px`: grid encolhe (240px | flex | 280px)
+- `≤ 1024px`: inspector vira drawer fixo direito 320px com shadow
+- `≤ 768px`: 
+  - Title encolhe, subtitle some, label dos botões some (só ícone)
+  - KPI strip vira scroll horizontal
+  - Asset list vira drawer lateral esquerdo com botão hamburger "☰ Veículos (N)" sobre o mapa
+  - Inspector grid 2×2 vira 1 coluna
+- `≤ 480px`: KPIs e tabs ainda mais compactos
+
+**Acessibilidade & UX:**
+- Animações suaves (`transition: transform .12s`)
+- Estados ativos sempre claros (border colorido nos KPI selecionados)
+- Tema dark do mapa altera também o painel inteiro (`.ft-theme-dark`)
+- Todos elementos críticos têm `data-testid` para testes E2E
+
+### Validação visual
+- ✅ Desktop 1920×900: KPI strip + asset list + map + inspector renderizam, label da placa visível no marker
+- ✅ Tablet 1024×768: inspector vira drawer flutuante
+- ✅ Mobile 414×896: sidebar colapsada do app + KPI strip horizontal scroll + grid 1 coluna
+
+### Veículo de teste criado
+- `TESTE001` (Onix Prata 2023, IMEI 1234567890123) com 5 posições simuladas em Av. Paulista, SP
+- Speed 35–55 km/h, ignição ligada — visível no mapa para validação de UI/UX
+
+
+
+
+## 2026-06-04 — iter212a/212b: Fleet Tracking Phase 2 (Geofence Editor + Portal White-Label + TTL)
+
+### Pedido do usuário
+> "Editor visual de geofence direto no mapa (desenho com mouse) — Fase 2 / Portal white-label do cliente final (login isolado por tenant) — Fase 2 / TTL index em fleet_orphan_positions (cleanup 30d)"
+
+### 1) Editor visual de geofence no mapa (`FleetGeofenceMapEditor.js`)
+- Modal com `MapContainer` Leaflet em tela cheia
+- Modo **Círculo**: clica no mapa = define centro · slider 50m–5000m define raio
+- Modo **Polígono**: clica para adicionar vértices · botão "↶ Desfazer ponto" / "🗑️ Limpar"
+- Pré-visualização ao vivo do `<Circle>` / `<Polygon>` durante desenho
+- Multi-select de veículos afetados + alerta entry/exit/both
+- Botão "🗺️ Desenhar no mapa" adicionado no topo do `FleetGeofencesTab`
+- Sem deps externas (zero `leaflet-draw` etc) — usa apenas `useMapEvents` do react-leaflet
+
+### 2) Portal White-Label do cliente final
+- **Novo módulo backend** `/app/backend/routes/fleet_portal.py`:
+  - `POST /api/fleet-portal/auth/login` (email+password → JWT type=`fleet_portal`)
+  - `GET /api/fleet-portal/me`, `/vehicles`, `/positions/live`, `/positions/{vid}/history`, `/events`
+  - Todos filtrados por `fleet_tenant_id` do token — isolamento garantido (verificado nos 20/20 testes)
+  - Admin endpoints (no app principal): `POST/GET /api/fleet-tracking/tenants/{tid}/portal-users` + `DELETE /api/fleet-tracking/portal-users/{uid}`
+- **Frontend standalone** `/app/frontend/src/fleet/FleetPortalApp.js`:
+  - Rota ativada por `?portal=fleet` ou `/fleet-portal/*` (em `index.js` antes de renderizar `<App>`)
+  - Tela de login dedicada com gradiente azul, branding "Portal de Rastreamento"
+  - Após login: header com nome do tenant + usuário + Sair; 3 tabs (Tempo Real, Histórico, Alertas)
+  - Mapa Leaflet com polling 5s, lista lateral, histórico replay por dia
+  - JWT salvo em `localStorage` (`fleet_portal_token`) com TTL 30d
+- **Modal de gestão** `FleetTenantPortalUsersModal.js` (acessível via botão "👤 Usuários do portal" em cada tenant):
+  - Cria usuários do portal (email + senha + nome)
+  - Mostra URL pronta para enviar ao cliente + botão "📋 Copiar credenciais"
+  - Lista acessos ativos com botão remover
+
+### 3) TTL index em `fleet_orphan_positions`
+- Hook `ensure_indexes()` chamado no startup do server
+- `received_at_dt` (datetime BSON, não string ISO) é gravado ao receber posição de IMEI desconhecido
+- `db.fleet_orphan_positions.create_index("received_at_dt", expireAfterSeconds=2592000)` — MongoDB apaga automaticamente após 30 dias
+- Também cria índices auxiliares: `fleet_positions(vehicle_id,ts)`, `fleet_vehicles_tracking(imei UNIQUE)`, `fleet_events(company_id,ts)`, `fleet_portal_users(email UNIQUE)`
+
+### Validação (iter212)
+- 20/20 backend pytest (`/app/backend/tests/test_iter212_fleet_phase2.py`)
+- Frontend E2E smoke OK: portal renderiza, login funciona, dashboard mostra header+tabs+map+sidebar, logout limpa localStorage
+
+### Notas técnicas / não-bloqueantes
+- `fleet_portal_users.email` é UNIQUE globalmente (sem `company_id`). Em multi-SaaS futuro precisa virar índice composto.
+- Editor visual: para mover o centro do círculo basta clicar de novo no mapa — UX simples e funciona
+
+
+
+
+## 2026-06-04 — iter212a: Fleet Tracking Phase 1 MVP (Rastreamento Veicular)
+
+### Pedido do usuário
+> "A IDEIA SERIA VENDER ISSO PARA OS NOSSOS CLIENTES, PRIMEIRO VALIDARIAS COM OS NOSSOS CARROS E DEPOIS MAIS MADURO AI SIM VENDERIAMOS ESSE SERVIÇOS AO NOSSOS CLIENTES, MAS TEM QUE SER UM SISTEMA ROBUSTO"
+> Decisões: rastreadores TK103/TK303 (TCP), escala 10-50 carros próprios → centenas para revenda, multi-tenant white-label dia 1, integração com técnicos + painel standalone.
+
+### Arquitetura
+```
+[TK103 no carro] ──TCP cru──▶ [Gateway TCP em VPS pública] ──HTTPS──▶ [Backend FastAPI] ──▶ MongoDB
+                                                                            ▲
+                                                                            └─ polling 5s ─── Frontend Leaflet
+```
+
+Como Emergent/Kubernetes só expõe HTTP/HTTPS, o Gateway TCP roda em VPS barata (~$5/mês) e repassa as posições via HTTPS para o backend usando `FLEET_INGEST_TOKEN`.
+
+### O que foi entregue
+- **Backend** (`/app/backend/routes/fleet_tracking.py` — 701 linhas):
+  - `POST /api/fleet-tracking/ingest` (auth via Bearer token) — recebe posição do Gateway
+  - `GET /api/fleet-tracking/commands/{imei}` + `POST .../commands/{id}/ack` — gateway puxa/confirma comandos
+  - CRUD `/api/fleet-tracking/vehicles` com IMEI único global (409 em duplicata)
+  - `GET /api/fleet-tracking/positions/live` — última posição de cada veículo (online se last_seen < 5min)
+  - `GET /api/fleet-tracking/positions/{vid}/history` — replay + stats (km, moving_min, stops)
+  - CRUD `/api/fleet-tracking/geofences` (círculo + polígono) com avaliação automática entry/exit
+  - `POST /api/fleet-tracking/vehicles/{vid}/command` — enfileira block/unblock/locate/audio/speed_limit/reset
+  - CRUD `/api/fleet-tracking/tenants` (clientes white-label)
+  - `GET /api/fleet-tracking/events` — alertas (geofence, speed, panic, sos, low_battery)
+  - `GET /api/fleet-tracking/reports/summary?days=N` — relatórios agregados
+- **Multi-tenant**: campo `fleet_tenant_id` em veículos; `_fleet_tenant_filter` aplica em todas as queries quando user tem `fleet_tenant_id` próprio
+- **Alertas automáticos**: speed (acima do `speed_limit_kmh`) e geofence transitions (in→out e out→in) são detectados a cada ingest e persistidos em `fleet_events`
+- **Gateway TCP standalone** (`/app/fleet_gateway/`):
+  - `tk103_parser.py` — parser do protocolo TK103 (regex GPRMC-like, conversão NMEA→decimal, ACC bit)
+  - `tcp_listener.py` — asyncio server (stdlib pura, sem deps externas) + command poller
+  - `Dockerfile` + `README.md` com tutorial de deploy em VPS/systemd/docker
+- **Frontend** (`/app/frontend/src/fleet/`):
+  - `FleetTrackingPage.js` — dashboard principal com 6 tabs e mapa Leaflet real-time
+  - `FleetVehicleForm.js` — modal cadastro/edição/exclusão
+  - `FleetGeofencesTab.js` — CRUD geofences (círculo por coordenadas / polígono por texto)
+  - `FleetEventsTab.js` — lista filtrável de alertas
+  - `FleetReportsTab.js` — tabela de km/horas/paradas por veículo
+  - `FleetTenantsTab.js` — CRUD clientes white-label
+  - `FleetHistoryTab.js` — replay de rota num dia (Polyline)
+  - Polling 5s para `/positions/live`; marcadores coloridos por estado (verde=movimento, amarelo=parado, cinza=offline, vermelho=excesso)
+  - Botões Bloquear/Liberar diretos no popup do marcador
+- **Sidebar** — novo item "Rastreamento (GPS)" no grupo Frota; access_tag `fleet-tracking` + roles gestor/admin/auditor
+- **Coleções MongoDB criadas**:
+  - `fleet_vehicles_tracking` (placa, imei único, tracker config, last_position, last_seen_at)
+  - `fleet_positions` (histórico ts+vehicle_id; usado em live + history + reports)
+  - `fleet_geofences` (círculo/polígono, vehicle_ids[], alert_on entry/exit/both)
+  - `fleet_geofence_state` (estado in/out por par veículo+geofence, p/ detectar transição)
+  - `fleet_commands` (kind, status pending/ack/failed, payload)
+  - `fleet_events` (kind, payload, ts, acked)
+  - `fleet_tenants` (white-label revenda)
+  - `fleet_orphan_positions` (posições de IMEIs não cadastrados — admin pode vincular depois)
+
+### Testes (iter151)
+- 22/22 backend pytest (`/app/backend/tests/test_iter151_fleet_tracking_full.py`)
+- 3/3 unit tests (`/app/backend/tests/test_fleet_tracking.py`)
+- Frontend E2E: login, navegação sidebar, abertura de todas as 6 tabs, modal de cadastro, mapa Leaflet — zero JS pageerrors
+
+### Pendente (Phase 2 e melhorias do code review)
+- Editor visual de geofence direto no mapa (desenho com mouse)
+- TTL index em `fleet_orphan_positions` (cleanup automático após 30d)
+- Aggregation pipeline em reports/summary para escala >100 carros
+- Endpoint UI para atribuir usuário a `fleet_tenant_id` (white-label portal)
+- Tela "Comando audio_listen" precisa de campo phone — atualmente envia frame inválido se phone vazio
+- Trail de áudio/SOS/pânico (depende do firmware do tracker)
+
+### Pré-requisitos para o cliente usar em produção
+1. Provisionar VPS barata (Contabo/Hostinger ~R$10/mês) com IP fixo + 1 porta TCP aberta (sugestão `5023`)
+2. Copiar `/app/fleet_gateway/` para a VPS, rodar `python tcp_listener.py` (ou systemd/docker)
+3. Configurar `BACKEND_URL` + `FLEET_INGEST_TOKEN` (mesmo do `/app/backend/.env`) na VPS
+4. Em cada TK103, configurar via SMS: `adminip<senha> <IP_VPS> <PORTA>`, `timer<senha> 30`, `gprs<senha>`
+
+
+
+
 ## 2026-05-29 — iter180: Conta corporativa Super-Admin Vando @ ligotelecom.com
 
 ### Pedido do usuário

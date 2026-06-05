@@ -3,6 +3,7 @@ import { api } from "@/api";
 import SelfieCamera from "@/SelfieCamera";
 import LousaMobile from "@/LousaMobile";
 import CadastroCTOWizard from "@/CadastroCTOWizard";
+import ErrorBoundary from "@/ErrorBoundary";
 import QrScanner from "@/QrScanner";
 import RedeIaMapMobile from "@/RedeIaMapMobile";
 import MyAssetsModal from "@/MyAssetsModal";
@@ -253,6 +254,8 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
     // mesmo se a chamada listCollaborators falhar (link público / sem auth).
     if (forcedCollabId) {
       setCollabId(forcedCollabId);
+      // iter211bg — expõe collabId global pra polling do SmartOLT sync
+      try { window.__currentCollabId = forcedCollabId; } catch { /* */ }
     }
     api.listCollaborators().then((cs) => {
       setCollabs(cs);
@@ -1026,15 +1029,18 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
           )}
 
           {screen === "lousa" && (
-            <LousaMobile collaboratorId={collabId}
-                          isAdminTest={isAdminTest}
-                          onOpenCTO={() => setScreen("cto-cadastro")}
-                          onOpenRedeMap={() => setScreen("rede-map")}
-                          onBack={() => setScreen("home")} />
+            <ErrorBoundary name="lousa-mobile" variant="fullscreen">
+              <LousaMobile collaboratorId={collabId}
+                            isAdminTest={isAdminTest}
+                            onOpenCTO={() => setScreen("cto-cadastro")}
+                            onOpenRedeMap={() => setScreen("rede-map")}
+                            onBack={() => setScreen("home")} />
+            </ErrorBoundary>
           )}
 
           {screen === "cto-cadastro" && (
-            <CadastroCTOWizard
+            <ErrorBoundary name="cto-cadastro-wizard" variant="fullscreen">
+              <CadastroCTOWizard
               technician={collab}
               onClose={() => setScreen("home")}
               onCreated={(cto) => {
@@ -1051,6 +1057,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                 setScreen("home");
               }}
             />
+            </ErrorBoundary>
           )}
 
           {screen === "qr-scanner" && (
@@ -1225,9 +1232,8 @@ function KebabMenu({ isAdminTest, forcedCollabId, onLogoutGoogle, onExitMobile, 
   if (onOpenQrScanner) {
     items.push({ key: "qr-scanner", label: "Ler QR Code da CTO", icon: "camera", onClick: () => { onOpenQrScanner(); setOpen(false); } });
   }
-  if (onOpenCadastroRede) {
-    items.push({ key: "cadastro-rede", label: "Cadastrar nova CTO (Rede)", icon: "map", onClick: () => { onOpenCadastroRede(); setOpen(false); } });
-  }
+  // iter211ao — "Cadastrar nova CTO (Rede)" removido do menu de 3 pontinhos
+  // a pedido do gestor. Cadastro de CTO continua acessível pelo Mapa da Rede.
   if (onOpenHolerites) {
     items.push({ key: "holerites", label: "Meus holerites", icon: "receipt", onClick: () => { onOpenHolerites(); setOpen(false); } });
   }

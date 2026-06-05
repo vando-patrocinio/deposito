@@ -142,6 +142,25 @@ export default function FleetTrailAuditPanel() {
     return [];
   }, [trail]);
 
+  // iter215 — Quando o backend devolve `segments_snapped` /
+  // `segments_raw` (trail higienizado), preferimos renderizar
+  // múltiplas polylines em vez de uma única conectando todos os pontos.
+  // Isso elimina o "traço voando entre quadras" causado por gaps de
+  // GPS (técnico entrou em prédio / perdeu sinal) ou pings imprecisos
+  // (>80m de accuracy).
+  const segments = useMemo(() => {
+    if (!trail) return [];
+    const snapped = (trail.segments_snapped || [])
+      .filter((s) => Array.isArray(s) && s.length >= 2);
+    if (snapped.length > 0) return { mode: "snapped", list: snapped };
+    const raw = (trail.segments_raw || [])
+      .filter((s) => Array.isArray(s) && s.length >= 2);
+    if (raw.length > 0) return { mode: "raw", list: raw };
+    return positions.length > 1
+      ? { mode: "legacy", list: [positions] }
+      : { mode: "empty", list: [] };
+  }, [trail, positions]);
+
   const handlePrint = () => {
     document.body.classList.add("fleet-print-mode");
     window.print();
@@ -327,25 +346,35 @@ export default function FleetTrailAuditPanel() {
                   <TileLayer
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     attribution="&copy; OpenStreetMap" />
-                  {positions.length > 1 && (
-                    <Polyline positions={positions}
+                  {segments.list.map((seg, idx) => (
+                    <Polyline key={`seg-${idx}`} positions={seg}
                                 pathOptions={{
-                                  color: COLORS.trail, weight: 5,
+                                  color: COLORS.trail,
+                                  weight: 5,
                                   opacity: 0.85,
-                                  dashArray: trail?.snapped ? null : "1 6",
+                                  // dashed quando NÃO é snapped (raw/legacy)
+                                  dashArray: segments.mode === "snapped"
+                                    ? null : "1 6",
                                   lineCap: "round", lineJoin: "round",
                                 }}>
                       <Tooltip sticky>
                         <div style={{ fontSize: 11 }}>
                           <strong>{selected.name}</strong><br />
                           {selected.count} pings · {fmtKm(selected.distance_m)}
-                          {trail?.snapped && (
+                          {segments.mode === "snapped" && (
                             <><br/>✓ Casado nas ruas (OSM)</>
+                          )}
+                          {segments.mode === "raw" && (
+                            <><br/>↳ Pings brutos (OSRM indisponível)</>
+                          )}
+                          {trail?.filtered?.kept_segments > 1 && (
+                            <><br/>{trail.filtered.kept_segments} trechos
+                              (gap GPS detectado)</>
                           )}
                         </div>
                       </Tooltip>
                     </Polyline>
-                  )}
+                  ))}
                   {trail?.points?.length > 0 && (
                     <>
                       <CircleMarker

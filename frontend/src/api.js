@@ -61,6 +61,11 @@ client.interceptors.response.use(
 
 export const api = {
   _client: client,
+  // Public Referral Landing (/r/{code}) — usado por ReferralLandingPage
+  publicReferralInfo: (code) =>
+    client.get(`/r/${code}/info`).then((r) => r.data),
+  publicReferralSubmit: (code, form) =>
+    client.post(`/r/${code}/submit`, form).then((r) => r.data),
   // Colaboradores
   listCollaborators: () => client.get("/collaborators").then((r) => r.data),
   getCollaborator: (id) => client.get(`/collaborators/${id}`).then((r) => r.data),
@@ -148,6 +153,8 @@ export const api = {
   postLocation: (data) => client.post("/locations", data).then((r) => r.data),
   liveLocations: (activeMinutes = 360) => client.get("/locations/live", { params: { active_minutes: activeMinutes } }).then((r) => r.data),
   trackCollaborator: (cid, hours = 8) => client.get(`/locations/${cid}/track`, { params: { hours } }).then((r) => r.data),
+  // iter211i — trajeto "colado" nas ruas via OSRM Match (segments_snapped)
+  trackCollaboratorSnap: (cid, hours = 8) => client.get(`/locations/${cid}/track/snap`, { params: { hours }, timeout: 30000 }).then((r) => r.data),
   dwellAnalysis: (params = {}) => client.get(`/locations/dwell-analysis`, { params }).then((r) => r.data),
   overtimeRange: (yearFrom, monthFrom, yearTo, monthTo, mode = "monthly") =>
     client.get(`/dashboard/overtime/range`, { params: { year_from: yearFrom, month_from: monthFrom, year_to: yearTo, month_to: monthTo, mode } }).then((r) => r.data),
@@ -207,12 +214,39 @@ export const api = {
   lousaTicket: (tid) => client.get(`/lousa/tickets/${tid}`).then((r) => r.data),
   lousaCreateTicket: (data) => client.post(`/lousa/tickets`, data).then((r) => r.data),
   lousaDeleteTicket: (tid) => client.delete(`/lousa/tickets/${tid}`).then((r) => r.data),
+  // iter211w — reabre uma OS fechada (gestor/auditor)
+  lousaReopenTicket: (tid, data) => client.post(`/lousa/tickets/${tid}/reopen`, data).then((r) => r.data),
+  // iter211x — Cardápio de fotos obrigatórias por tipo de OS
+  lousaPhotoReqs: () => client.get(`/lousa/photo-requirements`).then((r) => r.data),
+  lousaSavePhotoReqs: (items) => client.put(`/lousa/photo-requirements`, { items }).then((r) => r.data),
   lousaTransferTicket: (tid, data) => client.post(`/lousa/tickets/${tid}/transfer`, data).then((r) => r.data),
   lousaEditTicket: (tid, data) => client.patch(`/lousa/tickets/${tid}`, data).then((r) => r.data),
   lousaAdminOpen: (tid) => client.post(`/lousa/tickets/${tid}/admin-open`).then((r) => r.data),
   serverTime: () => client.get(`/server-time`).then((r) => r.data),
   lousaPublicOpen: (tid, cid) => client.post(`/lousa/public/tickets/${tid}/open`, { collaborator_id: cid }).then((r) => r.data),
-  lousaPublicFinalize: (tid, data) => client.post(`/lousa/public/tickets/${tid}/finalize`, data).then((r) => r.data),
+  // iter211g — timeout estendido (180s) e retry pra evitar "Network Error"
+  // em 4G fraco; também marca a tentativa pra cair no fallback se falhar.
+  lousaPublicFinalize: async (tid, data) => {
+    const post = () => client.post(
+      `/lousa/public/tickets/${tid}/finalize`,
+      data,
+      { timeout: 180000 },
+    ).then((r) => r.data);
+    try {
+      return await post();
+    } catch (e) {
+      const msg = (e?.message || "").toLowerCase();
+      const code = e?.code || "";
+      const isNetwork = !e?.response
+        && (code === "ECONNABORTED" || msg.includes("network"));
+      if (isNetwork) {
+        // Espera 1.2s e tenta UMA vez. Em 4G fraco, salva o dia.
+        await new Promise((r) => setTimeout(r, 1200));
+        return post();
+      }
+      throw e;
+    }
+  },
   lousaPublicExitResolve: (cid) => client.post(`/lousa/public/exit-resolve`, { collaborator_id: cid }).then((r) => r.data),
   lousaPublicReorder: (cid, items) => client.post(`/lousa/public/reorder`, { collaborator_id: cid, items }).then((r) => r.data),
   lousaAdminClose: (tid, data) => client.post(`/lousa/tickets/${tid}/admin-close`, data).then((r) => r.data),
@@ -382,6 +416,12 @@ export const api = {
   atlazTestConnection: () => client.post(`/atlaz/test-connection`).then((r) => r.data),
   atlazSyncNow: () => client.post(`/atlaz/sync-now`).then((r) => r.data),
   atlazSyncTechnicians: () => client.post(`/atlaz/sync-technicians`).then((r) => r.data),
+  // iter211z — backfill da data original Atlaz nos tickets existentes
+  atlazBackfillDates: (dryRun = false) =>
+    client.post(`/atlaz/backfill-dates`, null, { params: { dry_run: dryRun } }).then((r) => r.data),
+  // iter211aa — distribui bolhas Atlaz com horário duplicado pelos slots livres
+  atlazRedistributeSlots: (dryRun = false) =>
+    client.post(`/atlaz/redistribute-slots`, null, { params: { dry_run: dryRun } }).then((r) => r.data),
   atlazReassignExisting: () => client.post(`/atlaz/reassign-existing`).then((r) => r.data),
   atlazSyncLogs: (limit = 30) => client.get(`/atlaz/sync-logs`, { params: { limit } }).then((r) => r.data),
   lousaBriefing: (useAi = true) => client.get(`/lousa/briefing`, { params: { use_ai: useAi } }).then((r) => r.data),
@@ -399,7 +439,27 @@ export const api = {
   stokDashboard: () => client.get(`/stok/dashboard`).then((r) => r.data),
   stokTechnicians: () => client.get(`/stok/technicians`).then((r) => r.data),
   stokOnts: () => client.get(`/stok/onts`).then((r) => r.data),
-  stokOntsBulk: (model, macs) => client.post(`/stok/onts/bulk`, { model, macs }).then((r) => r.data),
+  // iter211h — Aceita SN obrigatório. Forma preferida: items=[{sn, mac?}].
+  // Compat: aceita também `macs: [str]` (cada string tratada como SN no backend).
+  stokOntsBulk: (model, snsOrItems) => {
+    const body = { model };
+    if (Array.isArray(snsOrItems)
+          && snsOrItems.length
+          && typeof snsOrItems[0] === "object") {
+      body.items = snsOrItems;
+    } else {
+      // legado: passa como `macs` mas o backend interpreta cada string como SN
+      body.macs = snsOrItems;
+    }
+    return client.post(`/stok/onts/bulk`, body).then((r) => r.data);
+  },
+  // iter211m — Define/corrige o SN de uma ONT (legada ou nova)
+  stokOntSetSn: (macOrSn, scan_sn) =>
+    client.post(`/stok/onts/${encodeURIComponent(macOrSn)}/set-sn`,
+                  { scan_sn }).then((r) => r.data),
+  // iter211m — Migração massa: popula scan_sn com placeholder AUTOSN_*
+  stokOntsMigrateFillSn: () =>
+    client.post(`/stok/onts/migrate-fill-sn`).then((r) => r.data),
   stokOntEdit: (mac, model) => client.patch(`/stok/onts/${mac}`, { model }).then((r) => r.data),
   stokOntTransfer: (mac, technician_id) => client.post(`/stok/onts/transfer-to-tech`, { mac, technician_id }).then((r) => r.data),
   stokOntReturn: (mac) => client.post(`/stok/onts/${mac}/return-to-company`).then((r) => r.data),
@@ -418,15 +478,6 @@ export const api = {
     client.post(`/stok/admin/reset-granular`, data).then((r) => r.data),
   stokShrinkageReport: () =>
     client.get(`/stok/admin/shrinkage-report`).then((r) => r.data),
-  // Transferências pendentes (gestor aprova/rejeita ONTs marcadas como instaladas pelo técnico)
-  stokPendingTransfers: (status = "pending") =>
-    client.get(`/stok/pending-transfers`, { params: { status } }).then((r) => r.data),
-  stokApproveTransfer: (pt_id, note = "") =>
-    client.post(`/stok/pending-transfers/${pt_id}/approve`, { note }).then((r) => r.data),
-  stokRejectTransfer: (pt_id, note = "") =>
-    client.post(`/stok/pending-transfers/${pt_id}/reject`, { note }).then((r) => r.data),
-  stokTransferKpis: (days = 30) =>
-    client.get(`/stok/transfers/kpis`, { params: { days } }).then((r) => r.data),
   // Lookup público: cliente do ticket está no SmartOLT?
   publicClientByTicket: (ticket_id) =>
     client.get(`/smartolt/public/client-by-ticket/${ticket_id}`).then((r) => r.data),
@@ -527,6 +578,44 @@ export const api = {
     client.patch(`/users/${userId}/super-admin`,
       { is_super_admin: isSuperAdmin }).then((r) => r.data),
 
+  // ========= Backups MongoDB (iter205) =========
+  backupList: () =>
+    client.get(`/admin/backup/list`).then((r) => r.data),
+  backupCreate: () =>
+    client.post(`/admin/backup/create`, null, { timeout: 900000 }).then((r) => r.data),
+  backupDelete: (filename) =>
+    client.delete(`/admin/backup/${filename}`).then((r) => r.data),
+  backupDriveStatus: () =>
+    client.get(`/admin/backup/drive-status`).then((r) => r.data),
+  backupUploadDrive: (filename) =>
+    client.post(`/admin/backup/upload-drive/${filename}`,
+                null, { timeout: 600000 }).then((r) => r.data),
+  backupRestore: (file, dropExisting) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("drop_existing", dropExisting ? "true" : "false");
+    fd.append("confirm", "RESTORE");
+    return client.post(`/admin/backup/restore`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 1800000,
+    }).then((r) => r.data);
+  },
+  backupMigrateFromRemote: (sourceUrl, sourceToken, dropExisting) =>
+    client.post(`/admin/backup/migrate-from-remote`, {
+      source_url: sourceUrl,
+      source_token: sourceToken,
+      drop_existing: !!dropExisting,
+    }, { timeout: 1800000 }).then((r) => r.data),
+  backupMigrateConfigGet: () =>
+    client.get(`/admin/backup/migrate-config`).then((r) => r.data),
+  backupMigrateConfigSet: (enabled, sourceUrl, sourceToken, dropExisting) =>
+    client.post(`/admin/backup/migrate-config`, {
+      enabled: !!enabled,
+      source_url: sourceUrl,
+      source_token: sourceToken,
+      drop_existing: !!dropExisting,
+    }).then((r) => r.data),
+
   // ========= Central de Compras =========
   purchasesRefs: () => client.get(`/purchases/refs`).then((r) => r.data),
   purchasesList: (params = {}) =>
@@ -545,6 +634,23 @@ export const api = {
   },
   purchasesConfirm: (purchaseId) =>
     client.post(`/purchases/${purchaseId}/confirm`).then((r) => r.data),
+  // iter211o — reprocessa SNs de uma compra ONT (anexa SNs faltantes
+  // que a IA não detectou) e cria as `stok_onts` no estoque da empresa.
+  // payload: { extra_sns?: string[], item_index?: number, model?: string }
+  purchasesReprocessSns: (purchaseId, payload = {}) =>
+    client.post(`/purchases/${purchaseId}/reprocess-sns`, payload)
+      .then((r) => r.data),
+  // iter211r — Reprocessa SNs anexando UMA FOTO DA NF (Vision + regex).
+  // Útil quando a NF foi importada antes de iter211q. Idempotente.
+  purchasesReprocessFromImage: (purchaseId, file, itemIndex = 0) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return client.post(
+      `/purchases/${purchaseId}/reprocess-from-image?item_index=${itemIndex}`,
+      fd,
+      { headers: { "Content-Type": "multipart/form-data" }, timeout: 120000 },
+    ).then((r) => r.data);
+  },
   purchasesDelete: (purchaseId) =>
     client.delete(`/purchases/${purchaseId}`).then((r) => r.data),
 
@@ -1331,12 +1437,225 @@ export const api = {
 
   // ===== Rede IA =====
   redeIaBairros: () => client.get(`/rede-ia/bairros`).then((r) => r.data),
+  redeIaOltNames: () => client.get(`/rede-ia/olt-names`).then((r) => r.data),
   redeIaFiberKpi: (days = 7) =>
     client.get(`/rede-ia/map/fiber-kpi`, { params: { days } }).then((r) => r.data),
   redeIaFiberAlerts: (threshold_m = 200) =>
     client.get(`/rede-ia/map/fiber-alerts`, { params: { threshold_m } }).then((r) => r.data),
   redeIaCableBulkDelete: (data) =>
     client.post(`/rede-ia/cables/bulk-delete`, data).then((r) => r.data),
+  // iter207 — Orphan cables (faltavam handlers de API, causavam runtime error)
+  redeIaCablesOrphan: () =>
+    client.get(`/rede-ia/cables/orphan`).then((r) => r.data),
+  redeIaCablesOrphanNear: (lat, lng, radius_m = 30) =>
+    client.get(`/rede-ia/cables/orphan-near`,
+      { params: { lat, lng, radius_m } }).then((r) => r.data),
+  redeIaCablesOrphanNearPublic: (collab_id, lat, lng, radius_m = 30) =>
+    client.get(`/rede-ia/public/cables/orphan-near/${collab_id}`,
+      { params: { lat, lng, radius_m } }).then((r) => r.data),
+  redeIaCablesOrphanSuggest: () =>
+    client.post(`/rede-ia/cables/orphan-suggest`).then((r) => r.data),
+  redeIaCablesOrphanSuggestVision: () =>
+    client.post(`/rede-ia/cables/orphan-suggest-with-vision`,
+                null, { timeout: 300000 }).then((r) => r.data),
+
+  // ========= iter207 — Funções faltantes detectadas em runtime =========
+  collabRedeMapData: () =>
+    client.get(`/collaborator-auth/rede-map/data`).then((r) => r.data),
+  finReportsAging: (params = {}) =>
+    client.get(`/financeiro/reports/aging-payable`, { params }).then((r) => r.data),
+  fleetOdomConfigGet: (collabId) =>
+    client.get(`/fleet/odometer/config/${collabId}`).then((r) => r.data),
+  fleetOdomConfigSet: (collabId, cfg) =>
+    client.put(`/fleet/odometer/config/${collabId}`, cfg).then((r) => r.data),
+  fleetOdomKpis: (days = 30) =>
+    client.get(`/fleet/odometer/kpis`, { params: { days } }).then((r) => r.data),
+  fleetOdomReadings: (params = {}) =>
+    client.get(`/fleet/odometer/readings`, { params }).then((r) => r.data),
+  fleetOdomSubmitPublic: (collabId, data) =>
+    client.post(`/fleet/public/odometer/submit/${collabId}`, data).then((r) => r.data),
+  fleetOdomTodayPublic: (collabId) =>
+    client.get(`/fleet/public/odometer/today/${collabId}`).then((r) => r.data),
+  // Neo (briefing + chat + reports)
+  neoBriefingActivate: (cfg) =>
+    client.post(`/neo-reports/briefing/activate`, cfg || {}).then((r) => r.data),
+  neoBriefingDeactivate: () =>
+    client.post(`/neo-reports/briefing/deactivate`).then((r) => r.data),
+  neoBriefingStatus: () =>
+    client.get(`/neo-reports/briefing/status`).then((r) => r.data),
+  neoChatAsk: (data) =>
+    client.post(`/neo-chat/ask`, data, { timeout: 120000 }).then((r) => r.data),
+  neoChatHistory: (sessionId, limit = 50) =>
+    client.get(`/neo-chat/history`,
+      { params: { session_id: sessionId, limit } }).then((r) => r.data),
+  neoReportHistory: (limit = 20) =>
+    client.get(`/neo-reports/history`, { params: { limit } }).then((r) => r.data),
+  neoReportTypes: () =>
+    client.get(`/neo-reports/report-types`).then((r) => r.data),
+  neoReportSchedules: () =>
+    client.get(`/neo-reports/schedules`).then((r) => r.data),
+  neoReportScheduleCreate: (payload) =>
+    client.post(`/neo-reports/schedules`, payload).then((r) => r.data),
+  neoReportScheduleUpdate: (id, payload) =>
+    client.put(`/neo-reports/schedules/${id}`, payload).then((r) => r.data),
+  neoReportScheduleDelete: (id) =>
+    client.delete(`/neo-reports/schedules/${id}`).then((r) => r.data),
+  neoReportScheduleRun: (id) =>
+    client.post(`/neo-reports/schedules/${id}/run`,
+                null, { timeout: 180000 }).then((r) => r.data),
+  // Network diagnostics
+  networkMyIp: () =>
+    client.get(`/network/myip`).then((r) => r.data),
+  networkIpv6Quality: (period = "24h") =>
+    client.get(`/network/ipv6-quality`, { params: { period } }).then((r) => r.data),
+  networkIpv6Test: (payload) =>
+    client.post(`/network/ipv6-test`, payload, { timeout: 60000 }).then((r) => r.data),
+  // ONT duplicate alerts
+  ontDuplicateAlertsList: (status) =>
+    client.get(`/stok/ont-duplicate-alerts`,
+      { params: status ? { status } : {} }).then((r) => r.data),
+  ontDuplicateAlertResolve: (alertId, data) =>
+    client.post(`/stok/ont-duplicate-alerts/${alertId}/resolve`, data).then((r) => r.data),
+  // Propostas comerciais
+  propostasList: (params = {}) =>
+    client.get(`/propostas`, { params }).then((r) => r.data),
+  propostasCreate: (data) =>
+    client.post(`/propostas`, data, { timeout: 180000 }).then((r) => r.data),
+  propostaDelete: (id) =>
+    client.delete(`/propostas/${id}`).then((r) => r.data),
+  propostaPdf: (id) =>
+    client.get(`/propostas/${id}/pdf`,
+      { responseType: "blob", timeout: 60000 }).then((r) => r.data),
+  propostasRegenerate: (id, data) =>
+    client.post(`/propostas/${id}/regenerate-ai`,
+                data, { timeout: 180000 }).then((r) => r.data),
+  // Rede IA — cables/route + slack + link-endpoint
+  redeIaCableLinkEndpoint: (cableId, endpoint, elementId) =>
+    client.post(`/rede-ia/cables/${cableId}/link-endpoint`,
+                { endpoint, element_id: elementId }).then((r) => r.data),
+  redeIaCableRoute: (body) =>
+    client.post(`/rede-ia/cables/route`, body, { timeout: 60000 }).then((r) => r.data),
+  redeIaCableRoutePublic: (collabId, body) =>
+    client.post(`/rede-ia/public/cables/route/${collabId}`,
+                body, { timeout: 60000 }).then((r) => r.data),
+  redeIaCableSlackGet: () =>
+    client.get(`/rede-ia/settings/cable-slack`).then((r) => r.data),
+  redeIaCableSlackUpdate: (cfg) =>
+    client.put(`/rede-ia/settings/cable-slack`, cfg).then((r) => r.data),
+  redeIaCableSlackPublic: (collabId) =>
+    client.get(`/rede-ia/public/settings/cable-slack/${collabId}`).then((r) => r.data),
+  // Rede IA — public
+  redeIaClientCurrentPort: (collabId, clientId) =>
+    client.get(`/rede-ia/public/client-current-port/${collabId}`,
+      { params: { client_id: clientId } }).then((r) => r.data),
+  redeIaMapDataPublic: (collabId, params = {}) =>
+    client.get(`/rede-ia/public/map/data/${collabId}`,
+      { params }).then((r) => r.data),
+  redeIaSwapClientPort: (collabId, data) =>
+    client.post(`/rede-ia/public/swap-client-port/${collabId}`, data).then((r) => r.data),
+  redeIaPhotoValidatePublic: (collabId, data) =>
+    client.post(`/rede-ia/public/photo-validate/${collabId}`,
+                data, { timeout: 120000 }).then((r) => r.data),
+  redeIaPhotoOpenTicketPublic: (collabId, data) =>
+    client.post(`/rede-ia/public/photo-validate/${collabId}/open-ticket`,
+                data).then((r) => r.data),
+  // Rede IA — CTO port swaps + VLAN
+  redeIaCtoPortSwaps: (ctoId, limit = 50) =>
+    client.get(`/rede-ia/ctos/${ctoId}/port-swaps`,
+      { params: { limit } }).then((r) => r.data),
+  redeIaVlanStats: (vlan) =>
+    client.get(`/rede-ia/vlans/${vlan}/stats`).then((r) => r.data),
+  redeIaSmartoltSyncVlan: (apply = false) =>
+    client.post(`/rede-ia/smartolt/sync-vlan-to-subscribers`,
+                null, { params: { apply }, timeout: 300000 }).then((r) => r.data),
+  redeIaSmartoltVlanCoverage: () =>
+    client.get(`/rede-ia/smartolt/vlan-coverage`).then((r) => r.data),
+  // Rede IA — Auto-vision (cables linker)
+  redeIaVisionAutoConfig: () =>
+    client.get(`/rede-ia/cables/auto-vision/config`).then((r) => r.data),
+  redeIaVisionAutoConfigUpdate: (cfg) =>
+    client.put(`/rede-ia/cables/auto-vision/config`, cfg).then((r) => r.data),
+  redeIaVisionAutoRunNow: () =>
+    client.post(`/rede-ia/cables/auto-vision/run-now`,
+                null, { timeout: 600000 }).then((r) => r.data),
+  redeIaVisionPendingReview: () =>
+    client.get(`/rede-ia/cables/auto-vision/pending-review`).then((r) => r.data),
+  redeIaVisionReviewApprove: (reviewId) =>
+    client.post(`/rede-ia/cables/auto-vision/${reviewId}/approve`).then((r) => r.data),
+  redeIaVisionReviewReject: (reviewId) =>
+    client.post(`/rede-ia/cables/auto-vision/${reviewId}/reject`).then((r) => r.data),
+  // Stok — Scan ONT batch
+  scanOntLabel: (data) =>
+    client.post(`/stok/retirada/scan-ont`,
+                data, { timeout: 90000 }).then((r) => r.data),
+  // iter221 — versão pública (sem JWT) usada pelo PWA do colaborador
+  // que autentica via session token Google. Mesmo OCR, sem auth.
+  scanOntLabelPublic: (data) =>
+    client.post(`/stok/retirada/public/scan-ont`,
+                data, { timeout: 90000 }).then((r) => r.data),
+  scanOntBatchCommit: (data) =>
+    client.post(`/stok/retirada/scan-batch-commit`,
+                data, { timeout: 60000 }).then((r) => r.data),
+  scanOntBatchHistory: (params = {}) =>
+    client.get(`/stok/retirada/batch-history`, { params }).then((r) => r.data),
+  scanOntBatchHistoryPdf: (params = {}) =>
+    client.get(`/stok/retirada/batch-history/pdf`,
+      { params, responseType: "blob", timeout: 60000 }).then((r) => r.data),
+  // Stok — Transfers
+  stokPendingTransfers: (status = "pending") =>
+    client.get(`/stok/pending-transfers`, { params: { status } }).then((r) => r.data),
+  stokApproveTransfer: (id) =>
+    client.post(`/stok/pending-transfers/${id}/approve`).then((r) => r.data),
+  stokRejectTransfer: (id, note) =>
+    client.post(`/stok/pending-transfers/${id}/reject`,
+                { note: note || null }).then((r) => r.data),
+  stokTransferKpis: (days = 30) =>
+    client.get(`/stok/transfers/kpis`, { params: { days } }).then((r) => r.data),
+  // Stok — Cliente history + ONTs
+  stokClientCtoPort: (serviceId) =>
+    client.get(`/stok/services/${serviceId}/client-cto-port`).then((r) => r.data),
+  stokClientOnts: (clientId) =>
+    client.get(`/stok/client/${clientId}/onts`).then((r) => r.data),
+  stokClienteHistory: (clientId) =>
+    client.get(`/stok/clientes/${clientId}/history`).then((r) => r.data),
+  stokClienteHistoryByName: (clientName) =>
+    client.get(`/stok/clientes/by-name/${encodeURIComponent(clientName)}/history`).then((r) => r.data),
+  stokTechOnts: (techId) =>
+    client.get(`/stok/tech/${techId}/onts`).then((r) => r.data),
+  stokOntTraceability: (ident) =>
+    client.get(`/stok/onts/traceability/${encodeURIComponent(ident)}`).then((r) => r.data),
+  stokHealthDashboard: () =>
+    client.get(`/stok/health-dashboard`).then((r) => r.data),
+  // Stok — Defective ONTs
+  stokDefectiveOnts: (params = {}) =>
+    client.get(`/stok/defective-onts`, { params }).then((r) => r.data),
+  stokDefectiveOntConfirmReturn: (mac, notes) =>
+    client.post(`/stok/defective-onts/${mac}/confirm-return`,
+                { notes: notes || null }).then((r) => r.data),
+  stokDefectiveOntRevert: (mac) =>
+    client.post(`/stok/defective-onts/${mac}/revert`).then((r) => r.data),
+  stokDefectiveOntScrap: (mac) =>
+    client.post(`/stok/defective-onts/${mac}/scrap`).then((r) => r.data),
+  // Stok — Admin
+  stokClearShrinkage: (data) =>
+    client.post(`/stok/admin/clear-shrinkage`, data).then((r) => r.data),
+  stokReprocessErroEstoque: (limit = 200) =>
+    client.post(`/stok/services/reprocess-erro-estoque`,
+                null, { params: { limit }, timeout: 180000 }).then((r) => r.data),
+  // Tickets (Lousa)
+  ticketSaveIpv6Test: (ticketId, data) =>
+    client.post(`/lousa/tickets/${ticketId}/ipv6-test`, data).then((r) => r.data),
+  ticketSavePingAuto: (ticketId, data) =>
+    client.post(`/lousa/tickets/${ticketId}/ping-auto`, data).then((r) => r.data),
+  // WhatsApp Baileys público (técnico)
+  waBaileysPublicMessages: (collabId, phone, limit = 20) =>
+    client.get(`/whatsapp-baileys/public/conversations/${collabId}/${encodeURIComponent(phone)}/messages`,
+      { params: { limit } }).then((r) => r.data),
+  waBaileysPublicPresence: (collabId, phone) =>
+    client.get(`/whatsapp-baileys/public/conversations/${collabId}/${encodeURIComponent(phone)}/presence`).then((r) => r.data),
+  waBaileysPublicSend: (collabId, phone, text) =>
+    client.post(`/whatsapp-baileys/public/conversations/${collabId}/${encodeURIComponent(phone)}/send`,
+                { text }).then((r) => r.data),
   // Auto-reschedule on degraded signal (controlado pelo auditor)
   lousaAutoReschedGet: () =>
     client.get(`/lousa/auto-resched-config`).then((r) => r.data),

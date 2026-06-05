@@ -448,6 +448,47 @@ async def upload_extract(
     except Exception as e:
         logger.warning("[purchases] extract falhou: %s", e)
 
+    # iter211q — Pré-OCR Vision para IMAGENS (1ª camada).
+    # Antes da IA estruturar o JSON, peça SÓ a transcrição bruta do texto
+    # da imagem. Vai alimentar:
+    #   (a) Prompt principal (mais contexto)
+    #   (b) text_content para o regex final
+    #   (c) raw_text_preview salvo na compra (para reprocess futuro)
+    if is_img and image_b64 and not text_content:
+        try:
+            from emergentintegrations.llm.chat import (
+                ImageContent as _Img, LlmChat as _Llm,
+                UserMessage as _Msg,
+            )
+            from services.ai_keys import resolve_keys as _resolve
+            _keys = await _resolve(cid)
+            _ak = (_keys.get("anthropic") or _keys.get("openai")
+                       or _keys.get("gemini"))
+            if _ak:
+                ocr_prompt = (
+                    "Transcreva TODO o texto visível desta nota fiscal/"
+                    "recibo, linha por linha, preservando a ordem "
+                    "vertical. NÃO interprete nem traduza. Inclua TODOS "
+                    "os números de série (Nº Série/SN/S/N) na íntegra, "
+                    "mesmo se forem dezenas. NÃO use markdown. NÃO use "
+                    "JSON. Apenas o TEXTO BRUTO transcrito."
+                )
+                _ocr_chat = _Llm(
+                    api_key=_ak,
+                    session_id=f"ocr-{cid}-{uuid.uuid4().hex[:6]}",
+                    system_message="Você transcreve texto de imagens fielmente.",
+                ).with_model("anthropic", "claude-sonnet-4-5")
+                ocr_resp = await _ocr_chat.send_message(_Msg(
+                    text=ocr_prompt,
+                    file_contents=[_Img(image_base64=image_b64)],
+                ))
+                text_content = (ocr_resp or "").strip()
+                logger.info(
+                    "[purchases iter211q] OCR Vision: %d chars",
+                    len(text_content))
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[purchases iter211q] pré-OCR falhou: %s", e)
+
     # Chama Claude Sonnet 4.5 para estruturar
     try:
         from emergentintegrations.llm.chat import (
@@ -483,8 +524,11 @@ async def upload_extract(
             "        //   cabo de rede, esticador, fibra (06FO/12FO/24FO),\n"
             "        //   adaptador, CTO sem splitter.\n"
             "        // - ont: ONU/ONT cliente (Huawei HG6145D, ZTE F660,\n"
-            "        //   Fiberhome, Intelbras, Nokia G-1425G, etc.).\n"
-            "        // - equipamento: OLT, switch, rack, nobreak, servidor.\n"
+            "        //   Fiberhome, Intelbras, Nokia G-1425G, FIBERHOME AC1200,\n"
+            "        //   qualquer item com 'ONT', 'ONU', 'GPON', 'AC1200' OU\n"
+            "        //   código de modelo (HG6145D, F660, F670L, G-1425G).\n"
+            "        // - equipamento: OLT, switch, rack, nobreak, servidor,\n"
+            "        //   GBIC/SFP, módulo BIDI, transceiver.\n"
             "      \"insumo_id\": null,\n"
             "        // SE for INSUMO, mapeie ao catálogo do sistema usando\n"
             "        // EXATAMENTE um destes IDs (ou null se não bater):\n"
@@ -496,7 +540,7 @@ async def upload_extract(
             "        // 'conector_rede' (conector RJ45),\n"
             "        // 'fibra_06fo', 'fibra_12fo', 'fibra_24fo'\n"
             "        //   (cabo óptico backbone de 6/12/24 fibras).\n"
-            "      \"sns\": [\"...\"],  // se ONT, SNs identificados (PRINCIPAL)\n"
+            "      \"sns\": [\"...\"],  // se ONT/EQUIPAMENTO, TODOS os SNs visíveis\n"
             "      \"macs\": [\"...\"]  // se ONT, MACs identificados (opcional)\n"
             "  }],\n"
             "  \"confidence\": 0.0-1.0,\n"
@@ -507,7 +551,29 @@ async def upload_extract(
             "2. NUNCA invente SN/MAC — só liste se estiver explícito.\n"
             "3. Para insumos, SEMPRE tente mapear ao catálogo (insumo_id).\n"
             "4. Quantidade deve ser numérica (1, 100, 305, 1000, etc.).\n"
-            "5. unit_price = preço UNITÁRIO (não o total da linha).\n\n"
+            "5. unit_price = preço UNITÁRIO (não o total da linha).\n"
+            "6. **CRÍTICO**: liste EM `items[]` TODAS as linhas da NF "
+            "individualmente — NUNCA consolide ou agrupe itens. Se a NF "
+            "tem 5 linhas (ex: ONT + cabo drop + conectores + alicate + "
+            "splitter), o array `items` deve ter EXATAMENTE 5 entradas. "
+            "O sistema cria automaticamente 1 lançamento por TIPO; quanto "
+            "mais detalhado, melhor o estoque fica.\n"
+            "7. **MUITO IMPORTANTE — SNs MÚLTIPLOS NO MESMO ITEM**: É comum "
+            "1 LINHA da NF ter quantidade > 1 e vários SNs listados em "
+            "sequência (vertical ou separados por vírgula). Exemplo real:\n"
+            "   'FIBERHOME ONT AC1200 GPON HG6145D\n"
+            "    Nº Série: FHTTC250CE0B, FHTTC250CE0C, FHTTC250CE14,\n"
+            "    FHTTC250D38F, FHTTC250D394, FHTTC250D499, FHTTC250D4F7,\n"
+            "    FHTTC250DAA5, FHTTC250DED9, FHTTC250DEF5    Qtd: 10'\n"
+            "   → ISSO É **1 ITEM** com quantity=10 e sns=[10 SNs]. NÃO "
+            "agrupe nem ignore os SNs! Cada SN abaixo de 'Nº Série:' é "
+            "uma ONT física do mesmo modelo.\n"
+            "8. Padrões de SN comuns: 'FHTT...', 'HUAW...', 'ZTEG...', "
+            "'INVR...', 'ASTT...', 'ITBS...' (12-20 chars alfanuméricos). "
+            "Capture TODOS no array `sns`.\n"
+            "9. Se quantity=10 mas você só consegue ler 7 SNs nítidos por "
+            "borrão da foto, retorne os 7 que conseguiu — NUNCA invente "
+            "os 3 restantes. O sistema avisa o usuário.\n\n"
         )
         if text_content:
             prompt += f"TEXTO EXTRAÍDO:\n{text_content[:8000]}"
@@ -517,6 +583,15 @@ async def upload_extract(
             system_message="Você responde APENAS em JSON válido.",
         ).with_model("anthropic", "claude-sonnet-4-5")
         msg_args: Dict[str, Any] = {"text": prompt}
+        # iter211q — Quando temos texto OCR pré-extraído (camada 1),
+        # passa junto no prompt como referência — a IA tende a errar
+        # menos os SNs longos quando vê a transcrição literal.
+        if text_content:
+            msg_args["text"] = (
+                prompt
+                + f"\n\nTEXTO BRUTO TRANSCRITO DA NF (para referência — "
+                f"use isso para extrair SNs):\n```\n{text_content[:4000]}\n```"
+            )
         if image_b64:
             msg_args["file_contents"] = [ImageContent(image_base64=image_b64)]
         resp = await chat.send_message(UserMessage(**msg_args))
@@ -535,6 +610,122 @@ async def upload_extract(
         logger.exception("[purchases] upload-extract falhou: %s", e)
         draft = {"confidence": 0.0, "reason": f"erro: {e!s}"}
 
+    # iter211n — Reconciliação de SNs: se a IA disse "ONT qty=10 sns=[3]",
+    # extrai SNs no texto bruto via regex e enriquece o item. Padrões comuns
+    # de SN em NF (Fiberhome FHTTC..., Huawei HUAW..., ZTE ZTEG..., etc.).
+    # iter211p — Para IMAGENS, faz 2ª chamada Vision focada SÓ em SNs quando
+    # algum item ONT está com `quantity > len(sns)`.
+    needs_sn_pass = False
+    if isinstance(draft, dict):
+        for it in (draft.get("items") or []):
+            if (it.get("type") or "").lower() == "ont":
+                qty = int(it.get("quantity") or 0)
+                if qty > len(it.get("sns") or []):
+                    needs_sn_pass = True
+                    break
+
+    if needs_sn_pass and image_b64:
+        try:
+            sn_prompt = (
+                "Olhe esta NOTA FISCAL e extraia APENAS os números de série "
+                "(SN) das ONTs/ONUs/equipamentos. Os SNs costumam:\n"
+                "- Aparecer abaixo do nome do produto (Nº Série / SN /  S/N)\n"
+                "- Listados verticalmente, um por linha, separados por "
+                "vírgula ou ponto-e-vírgula\n"
+                "- Padrões comuns: FHTT*, HUAW*, ZTEG*, INVR*, ASTT*, "
+                "ITBS*, GPON*, SHTL*, FBHM*, INTB*\n"
+                "- 10-20 caracteres alfanuméricos MAIÚSCULOS\n\n"
+                "Responda APENAS JSON: {\"sns\": [\"FHTTC250CE0B\", ...]}\n"
+                "Liste TODOS os SNs visíveis na imagem, mesmo que parciais."
+                " NÃO invente.")
+            sn_chat = LlmChat(
+                api_key=ai_key,
+                session_id=f"purchase-snpass-{cid}-{uuid.uuid4().hex[:6]}",
+                system_message="Você responde APENAS em JSON válido.",
+            ).with_model("anthropic", "claude-sonnet-4-5")
+            sn_resp = await sn_chat.send_message(UserMessage(
+                text=sn_prompt,
+                file_contents=[ImageContent(image_base64=image_b64)],
+            ))
+            sn_text = (sn_resp or "").strip()
+            if sn_text.startswith("```"):
+                sn_text = re.sub(r"^```(?:json)?\s*|\s*```$", "", sn_text,
+                                   flags=re.MULTILINE)
+            sn_obj = json.loads(sn_text)
+            extra = [str(s).strip().upper()
+                       for s in (sn_obj.get("sns") or []) if s]
+            if extra:
+                # Anexa ao primeiro item ONT incompleto
+                for it in (draft.get("items") or []):
+                    if (it.get("type") or "").lower() != "ont":
+                        continue
+                    qty = int(it.get("quantity") or 0)
+                    cur = [s.upper() for s in (it.get("sns") or []) if s]
+                    if qty <= len(cur):
+                        continue
+                    seen = set(cur)
+                    for sn in extra:
+                        if sn not in seen:
+                            cur.append(sn)
+                            seen.add(sn)
+                    it["sns"] = cur
+                    logger.info(
+                        "[purchases iter211p] 2ª pass Vision capturou %s SNs "
+                        "(item '%s')", len(extra),
+                        (it.get("description") or "")[:40])
+                    break
+                # Também alimenta text_content pra o regex pegar embaixo
+                text_content = (text_content or "") + "\nSN_PASS: " \
+                    + " ".join(extra)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[purchases iter211p] 2ª pass SN falhou: %s", e)
+
+    if isinstance(draft, dict) and text_content:
+        try:
+            import re as _re
+            # Pega "blocos" de SN consecutivos (>= 6 chars de A-Z+0-9, sem
+            # espaços). Filtra os que parecem MAC ou data.
+            SN_RE = _re.compile(r"\b[A-Z]{2,6}[A-Z0-9]{6,20}\b")
+            STOPWORDS = {"CNPJ", "RUA", "AVENIDA", "CEP", "RECIBO",
+                          "ORDEM", "FORNECEDOR", "CLIENTE", "TELEFONE",
+                          "ITAU", "GPON", "WIFI", "AC1200", "BIDI"}
+            # Lista de SNs candidatos no texto inteiro
+            all_candidates = []
+            for m in SN_RE.finditer((text_content or "").upper()):
+                tok = m.group(0)
+                if tok in STOPWORDS:
+                    continue
+                # Descarta tokens "modelo" típicos (HG6145D, F670L etc).
+                if len(tok) <= 8:
+                    continue
+                all_candidates.append(tok)
+            # Para cada item ONT com qty > len(sns), tenta enriquecer
+            for it in (draft.get("items") or []):
+                if (it.get("type") or "").lower() != "ont":
+                    continue
+                qty = int(it.get("quantity") or 0)
+                cur_sns = [s for s in (it.get("sns") or []) if s]
+                missing = max(0, qty - len(cur_sns))
+                if missing <= 0:
+                    continue
+                # Sugere candidates que ainda não estão no item
+                seen = {s.upper() for s in cur_sns}
+                for cand in all_candidates:
+                    if cand in seen:
+                        continue
+                    cur_sns.append(cand)
+                    seen.add(cand)
+                    if len(cur_sns) >= qty:
+                        break
+                it["sns"] = cur_sns
+                if missing > 0 and len(it["sns"]) > len(seen) - missing:
+                    logger.info(
+                        "[purchases iter211n] regex enriqueceu SNs do item "
+                        "'%s' — qty=%s sns=%s",
+                        (it.get("description") or "")[:40], qty, len(it["sns"]))
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[purchases iter211n] regex enrich falhou: %s", e)
+
     # iter202 — Multi-lançamento: agrupa items por TYPE em drafts separados
     # (uma única NF pode virar 2-3 lançamentos: ONTs + insumos + ferramentas
     # cada um indo pra sua coleção correta no estoque).
@@ -546,7 +737,7 @@ async def upload_extract(
         "draft": drafts[0] if drafts else draft,  # compat: 1º draft no campo antigo
         "drafts": drafts,                          # iter202 — todos os drafts
         "draft_count": len(drafts),
-        "raw_text_preview": text_content[:500] if text_content else None,
+        "raw_text_preview": text_content[:3000] if text_content else None,
     }
 
 
@@ -791,6 +982,280 @@ async def confirm_purchase(
         "items_imported": items_imported,
         "macs_imported": len(macs_imported),
         "notes": notes,
+    }
+
+
+@router.post("/{purchase_id}/reprocess-from-image")
+async def reprocess_from_image(
+    purchase_id: str,
+    file: UploadFile = File(...),
+    item_index: int = 0,
+    user: dict = Depends(require_role("gestor")),
+) -> Dict[str, Any]:
+    """iter211r — Recebe a FOTO da NF novamente e roda a pipeline completa:
+       1) Pré-OCR Vision (transcrição literal)
+       2) Regex de padrões de SN no texto OCR
+       3) Cria as `stok_onts` faltantes
+
+    Útil quando a NF foi importada antes de iter211q e os SNs ficaram
+    incompletos. Idempotente: SNs já cadastrados são ignorados.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    p = await db.purchases.find_one(
+        {"id": purchase_id, "company_id": cid}, {"_id": 0})
+    if not p:
+        raise HTTPException(404, "Compra não encontrada.")
+    if (p.get("type") or "").lower() != "ont":
+        raise HTTPException(400,
+            "Reprocessamento por imagem só faz sentido para compras de ONT.")
+
+    raw = await file.read()
+    if len(raw) > 15 * 1024 * 1024:
+        raise HTTPException(413, "Imagem muito grande (>15MB).")
+    fname = (file.filename or "").lower()
+    if not any(fname.endswith(e) for e in (".jpg", ".jpeg", ".png", ".webp")):
+        raise HTTPException(415, "Envie uma imagem (JPG/PNG/WEBP).")
+
+    image_b64 = base64.b64encode(raw).decode()
+    text_content = ""
+
+    # 1) Pré-OCR Vision (transcrição literal)
+    try:
+        from emergentintegrations.llm.chat import (
+            ImageContent, LlmChat, UserMessage,
+        )
+        from services.ai_keys import resolve_keys
+        keys = await resolve_keys(cid)
+        ai_key = (keys.get("anthropic") or keys.get("openai")
+                       or keys.get("gemini"))
+        if not ai_key:
+            raise HTTPException(503,
+                "IA não configurada. Use o botão 🔄 Reprocessar SNs e cole "
+                "os SNs manualmente.")
+        ocr_prompt = (
+            "Transcreva TODO o texto visível desta nota fiscal/recibo, "
+            "linha por linha, preservando a ordem vertical. NÃO interprete "
+            "nem traduza. Inclua TODOS os números de série (Nº Série/SN/S/N) "
+            "na íntegra, mesmo se forem dezenas. NÃO use markdown. "
+            "NÃO use JSON. Apenas o TEXTO BRUTO transcrito.")
+        chat = LlmChat(
+            api_key=ai_key,
+            session_id=f"reproc-ocr-{cid}-{uuid.uuid4().hex[:6]}",
+            system_message="Você transcreve texto de imagens fielmente.",
+        ).with_model("anthropic", "claude-sonnet-4-5")
+        ocr_resp = await chat.send_message(UserMessage(
+            text=ocr_prompt,
+            file_contents=[ImageContent(image_base64=image_b64)],
+        ))
+        text_content = (ocr_resp or "").strip()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("[purchases iter211r] OCR Vision falhou: %s", e)
+        raise HTTPException(500, f"OCR falhou: {e!s}")
+
+    # 2) Regex de SNs
+    import re as _re
+    SN_RE = _re.compile(r"\b[A-Z]{2,6}[A-Z0-9]{6,20}\b")
+    STOPWORDS = {"CNPJ", "RUA", "AVENIDA", "CEP", "RECIBO",
+                  "ORDEM", "FORNECEDOR", "CLIENTE", "TELEFONE",
+                  "ITAU", "GPON", "WIFI", "AC1200", "BIDI"}
+    candidates: List[str] = []
+    for m in SN_RE.finditer((text_content or "").upper()):
+        tok = m.group(0)
+        if tok in STOPWORDS or len(tok) <= 8:
+            continue
+        if tok not in candidates:
+            candidates.append(tok)
+    if not candidates:
+        return {"ok": False, "inserted": 0,
+                 "message": "Nenhum SN reconhecido na imagem. "
+                              "Tente uma foto mais nítida.",
+                 "ocr_chars": len(text_content)}
+
+    # 3) Reaproveita lógica do reprocess-sns (insere candidates como SNs)
+    items = p.get("items") or [{}]
+    if item_index >= len(items):
+        item_index = 0
+    item = items[item_index]
+    existing = set()
+    async for ex in db.stok_onts.find(
+        {"company_id": cid, "scan_sn": {"$in": candidates}},
+        {"_id": 0, "scan_sn": 1},
+    ):
+        if ex.get("scan_sn"):
+            existing.add(ex["scan_sn"])
+    new_sns = [sn for sn in candidates if sn not in existing]
+    if not new_sns:
+        return {"ok": True, "inserted": 0,
+                 "already_existed": len(existing),
+                 "candidates_found": len(candidates),
+                 "message": (f"{len(candidates)} SN(s) extraídos da foto, "
+                              "mas todos já estão no estoque.")}
+    model = (item.get("description") or "ONT")[:120]
+    docs = []
+    for sn in new_sns:
+        docs.append({
+            "company_id": cid,
+            "mac": f"SN-{sn}",
+            "scan_sn": sn,
+            "model": model,
+            "location_type": "empresa", "location_id": "empresa",
+            "praca_id": p.get("praca_id"),
+            "warehouse_responsible_id": p.get("responsible_collaborator_id"),
+            "purchase_id": purchase_id,
+            "client_name": None, "status": "disponivel",
+            "source": "reprocess-image",
+            "created_by": user.get("email", "?"),
+            "created_at": now_iso(),
+        })
+    await db.stok_onts.insert_many([dict(d) for d in docs])
+    cur_sns = list(item.get("sns") or [])
+    for sn in new_sns:
+        if sn not in cur_sns:
+            cur_sns.append(sn)
+    items[item_index]["sns"] = cur_sns
+    await db.purchases.update_one(
+        {"id": purchase_id, "company_id": cid},
+        {"$set": {"items": items,
+                    "raw_text_preview": text_content[:3000],
+                    "reprocess_at": now_iso(),
+                    "reprocess_by": user.get("email")}},
+    )
+    return {
+        "ok": True,
+        "inserted": len(new_sns),
+        "already_existed": len(existing),
+        "candidates_found": len(candidates),
+        "sns": new_sns,
+        "message": (f"{len(new_sns)} ONT(s) adicionadas ao estoque "
+                      f"a partir da foto."),
+    }
+
+
+class PurchaseReprocessIn(BaseModel):
+    """iter211o — entrada do reprocessamento de SNs.
+
+    Se `extra_sns` for fornecido, ANEXA esses SNs ao item ONT da compra
+    (útil quando o usuário tem a foto/texto da NF e quer digitar/colar
+    manualmente os SNs que faltaram). Se vazio, usa o regex no
+    raw_text_preview já armazenado.
+    """
+    extra_sns: Optional[List[str]] = None
+    item_index: Optional[int] = None  # qual item da compra anexar (default 0)
+    model: Optional[str] = None        # opcional: força o modelo da ONT
+
+
+@router.post("/{purchase_id}/reprocess-sns")
+async def reprocess_purchase_sns(
+    purchase_id: str,
+    body: PurchaseReprocessIn = PurchaseReprocessIn(),
+    user: dict = Depends(require_role("gestor")),
+) -> Dict[str, Any]:
+    """iter211o — Reprocessa SNs de uma compra ONT já lançada.
+
+    Caso de uso real (NF Baixadanet #284306 do recibo Fiberhome):
+      - A IA inicial perdeu os 10 SNs verticalmente listados.
+      - Compra confirmada com 0 ONTs no estoque.
+      - Usuário chama este endpoint passando `extra_sns: [10 SNs]`.
+      - Sistema cria as 10 stok_onts no estoque da empresa, vinculadas
+        ao purchase_id pra rastreabilidade.
+
+    Idempotente: se um SN já existe no `stok_onts`, é ignorado (não duplica).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    p = await db.purchases.find_one(
+        {"id": purchase_id, "company_id": cid}, {"_id": 0})
+    if not p:
+        raise HTTPException(404, "Compra não encontrada.")
+    if (p.get("type") or "").lower() != "ont":
+        raise HTTPException(400,
+            "Reprocessamento de SNs só faz sentido para compras de ONT.")
+
+    items = p.get("items") or [{}]
+    idx = body.item_index if body.item_index is not None else 0
+    if idx >= len(items):
+        raise HTTPException(400, f"item_index={idx} inválido (items={len(items)}).")
+    item = items[idx]
+
+    # Colete SNs candidatos:
+    candidates: List[str] = []
+    # 1) Vindos no body
+    for s in (body.extra_sns or []):
+        sv = (s or "").strip().upper()
+        if sv and sv not in candidates:
+            candidates.append(sv)
+    # 2) Regex no raw_text_preview se nada veio no body
+    if not candidates and p.get("raw_text_preview"):
+        import re as _re
+        SN_RE = _re.compile(r"\b[A-Z]{2,6}[A-Z0-9]{6,20}\b")
+        STOPWORDS = {"CNPJ", "RUA", "AVENIDA", "CEP", "RECIBO",
+                      "ORDEM", "FORNECEDOR", "CLIENTE", "TELEFONE",
+                      "ITAU", "GPON", "WIFI", "AC1200", "BIDI"}
+        for m in SN_RE.finditer(p["raw_text_preview"].upper()):
+            tok = m.group(0)
+            if tok in STOPWORDS or len(tok) <= 8:
+                continue
+            if tok not in candidates:
+                candidates.append(tok)
+
+    if not candidates:
+        raise HTTPException(400,
+            "Nenhum SN para processar. Forneça `extra_sns` ou garanta que "
+            "a NF tem texto OCR.")
+
+    # Filtra SNs já cadastrados na empresa
+    existing = set()
+    async for ex in db.stok_onts.find(
+        {"company_id": cid, "scan_sn": {"$in": candidates}},
+        {"_id": 0, "scan_sn": 1},
+    ):
+        if ex.get("scan_sn"):
+            existing.add(ex["scan_sn"])
+    new_sns = [sn for sn in candidates if sn not in existing]
+
+    if not new_sns:
+        return {"ok": True, "inserted": 0,
+                 "already_existed": len(existing),
+                 "message": "Todos os SNs já estão no estoque."}
+
+    model = (body.model or item.get("description") or "ONT")[:120]
+    docs = []
+    for sn in new_sns:
+        docs.append({
+            "company_id": cid,
+            "mac": f"SN-{sn}",  # placeholder estável até SmartOLT aprovisionar
+            "scan_sn": sn,
+            "model": model,
+            "location_type": "empresa", "location_id": "empresa",
+            "praca_id": p.get("praca_id"),
+            "warehouse_responsible_id": p.get("responsible_collaborator_id"),
+            "purchase_id": purchase_id,
+            "client_name": None, "status": "disponivel",
+            "source": "compra-reprocess",
+            "created_by": user.get("email", "?"),
+            "created_at": now_iso(),
+        })
+    await db.stok_onts.insert_many([dict(d) for d in docs])
+
+    # Atualiza a purchase com os SNs anexados
+    cur_sns = list(item.get("sns") or [])
+    for sn in new_sns:
+        if sn not in cur_sns:
+            cur_sns.append(sn)
+    items[idx]["sns"] = cur_sns
+    await db.purchases.update_one(
+        {"id": purchase_id, "company_id": cid},
+        {"$set": {"items": items,
+                    "reprocess_at": now_iso(),
+                    "reprocess_by": user.get("email")}},
+    )
+    return {
+        "ok": True,
+        "inserted": len(new_sns),
+        "already_existed": len(existing),
+        "sns": new_sns,
+        "message": f"{len(new_sns)} ONT(s) adicionadas ao estoque da empresa.",
     }
 
 

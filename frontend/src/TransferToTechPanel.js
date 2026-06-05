@@ -188,13 +188,58 @@ export default function TransferToTechPanel({ pracas = [] }) {
     <div data-testid="transfer-to-tech-panel"
           style={{ background: "white", border: "1px solid #e2e8f0",
                     borderRadius: 14, padding: 22, marginTop: 22 }}>
-      <div style={{ marginBottom: 16 }}>
-        <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
-          🚚 Transferir do Estoque da Praça → Técnico
-        </h3>
-        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-          Selecione ONTs por SN (ou MAC) e escolha o técnico destino.
+      <div style={{ marginBottom: 16, display: "flex",
+                       alignItems: "flex-start", justifyContent: "space-between",
+                       gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
+            🚚 Transferir do Estoque da Praça → Técnico
+          </h3>
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+            Base é por <strong>SN</strong>. Use o scanner ou digite o SN.
+          </div>
         </div>
+        {/* iter211m — atalho de migração quando há ONTs sem SN real */}
+        {(() => {
+          const semSn = available.filter((o) => {
+            const sn = (o.scan_sn || o.sn || "");
+            return !sn || /^(AUTOSN_|MANUAL-|SN-)/i.test(sn);
+          }).length;
+          if (semSn === 0) return null;
+          return (
+            <div style={{
+              padding: "8px 12px", background: "#fef3c7",
+              border: "1px solid #fcd34d", borderRadius: 10,
+              fontSize: 12, color: "#92400e", fontWeight: 600,
+              display: "flex", gap: 10, alignItems: "center",
+            }}>
+              <span>⚠️ {semSn} ONT(s) sem SN real</span>
+              <button
+                data-testid="transfer-migrate-sn-btn"
+                onClick={async () => {
+                  if (!window.confirm(
+                    "Vai gerar SN placeholder (AUTOSN_*) para todas as ONTs "
+                    + "sem SN. Depois você pode editar cada uma com o SN real. "
+                    + "Continuar?")) return;
+                  try {
+                    const r = await api.stokOntsMigrateFillSn();
+                    await load();
+                    await window.alert(r.message || "Migração concluída.");
+                  } catch (e) {
+                    await window.alert("Erro: "
+                      + (e?.response?.data?.detail || e.message));
+                  }
+                }}
+                style={{
+                  padding: "5px 10px", background: "#f59e0b", color: "#fff",
+                  border: 0, borderRadius: 6, fontSize: 11, fontWeight: 800,
+                  cursor: "pointer",
+                }}>
+                🔧 Gerar SNs placeholder
+              </button>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Toolbar — iter197c grid agora tem botão de câmera */}
@@ -328,14 +373,19 @@ export default function TransferToTechPanel({ pracas = [] }) {
           {available.map((o) => {
             const checked = selectedMacs.has(o.mac);
             const sn = o.scan_sn || o.sn || "";
+            const isAutoSn = /^(AUTOSN_|MANUAL-|SN-)/i.test(sn);
             const isPlaceholderMac = /^(SN-|AUTOSN_|MANUAL-)/i.test(o.mac || "");
+            // iter211m — Display SN-first, em destaque, com botão de edição
+            // quando SN é placeholder ou está faltando.
+            const needsRealSn = !sn || isAutoSn;
             return (
               <label key={o.mac}
                       data-testid={`transfer-row-${o.mac}`}
                       style={{
                         display: "flex", alignItems: "center", gap: 10,
                         padding: "8px 10px",
-                        background: checked ? "#dbeafe" : "white",
+                        background: checked ? "#dbeafe"
+                                      : needsRealSn ? "#fef9c3" : "white",
                         borderBottom: "1px solid #f1f5f9",
                         cursor: "pointer", fontSize: 13,
                       }}>
@@ -343,16 +393,44 @@ export default function TransferToTechPanel({ pracas = [] }) {
                         onChange={() => toggle(o.mac)} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontFamily: "monospace", fontWeight: 800,
-                                  color: "#0f172a", fontSize: 13 }}>
-                    {sn ? `SN: ${sn}` : (isPlaceholderMac ? "— sem SN —" : o.mac)}
+                                  color: needsRealSn ? "#a16207" : "#0f172a",
+                                  fontSize: 13 }}>
+                    🏷️ SN: {sn || "— vazio —"}
                   </div>
-                  {sn && !isPlaceholderMac && (
-                    <div style={{ fontFamily: "monospace", fontSize: 10,
-                                    color: "#64748b" }}>
-                      MAC: {o.mac}
-                    </div>
-                  )}
+                  <div style={{ fontFamily: "monospace", fontSize: 10,
+                                  color: "#64748b" }}>
+                    MAC: {isPlaceholderMac ? "(placeholder)" : (o.mac || "—")}
+                  </div>
                 </div>
+                {needsRealSn && (
+                  <button
+                    data-testid={`row-set-sn-${o.mac}`}
+                    type="button"
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const novo = window.prompt(
+                        `SN real (escaneie a etiqueta).\nAtual: ${sn || "(vazio)"}\n\nMAC: ${o.mac}`,
+                        isAutoSn ? "" : sn,
+                      );
+                      const v = (novo || "").trim().toUpperCase();
+                      if (!v) return;
+                      try {
+                        await api.stokOntSetSn(o.mac, v);
+                        await load();
+                      } catch (err) {
+                        await window.alert("Erro: "
+                          + (err?.response?.data?.detail || err.message));
+                      }
+                    }}
+                    style={{
+                      padding: "4px 8px", fontSize: 11, fontWeight: 700,
+                      background: "#facc15", color: "#78350f",
+                      border: 0, borderRadius: 6, cursor: "pointer",
+                    }}>
+                    ✏️ Definir SN
+                  </button>
+                )}
                 <span style={{ color: "#475569", fontSize: 12 }}>
                   {o.model || "ONT"}
                 </span>

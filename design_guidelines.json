@@ -1,145 +1,107 @@
 {
-  "theme": "LIGHT",
-  "archetype": "Archetype 4 (Swiss & High-Contrast / Tactical Utility)",
-  "rationale": "Field service app for telecom technicians (Lousa Mobile). Requires extreme clarity, large touch targets, high contrast for outdoor visibility, and thumb-zone ergonomics for one-handed operation. Color semantics use slate/sky/amber/emerald.",
-  "colors": {
-    "base": {
-      "background": "bg-slate-50",
-      "surface": "bg-white",
-      "border": "border-slate-200"
-    },
-    "text": {
-      "primary": "text-slate-900",
-      "secondary": "text-slate-500",
-      "tertiary": "text-slate-400"
-    },
-    "semantic": {
-      "primary": "bg-sky-600 text-white hover:bg-sky-700",
-      "secondary": "bg-slate-100 text-slate-700 hover:bg-slate-200",
-      "success": "bg-emerald-600 text-white hover:bg-emerald-700",
-      "success_subtle": "bg-emerald-50 text-emerald-700 border-emerald-200",
-      "warning": "bg-amber-500 text-white hover:bg-amber-600",
-      "warning_subtle": "bg-amber-50 text-amber-700 border-amber-200",
-      "error": "bg-rose-600 text-white hover:bg-rose-700",
-      "error_subtle": "bg-rose-50 text-rose-700 border-rose-200",
-      "action_accent": "bg-orange-500 text-white hover:bg-orange-600"
-    }
-  },
+  "theme": "Custom Ligo Premium",
+  "archetype": "Luxury & Vibrant Play Hybrid",
   "typography": {
-    "headings": "font-sans font-bold tracking-tight text-slate-900 text-[18px]",
-    "body": "text-[14px] sm:text-[15px] leading-relaxed text-slate-700",
-    "captions": "text-[11px] sm:text-[12px] font-medium tracking-wide uppercase text-slate-500",
-    "data_values": "font-mono text-[14px] text-slate-800"
-  },
-  "spacing_and_layout": {
-    "cards": "rounded-[12px] bg-white border border-slate-200 shadow-sm p-[12px] sm:p-[14px] flex flex-col gap-[8px] sm:gap-[12px]",
-    "tap_targets": "min-h-[44px] min-w-[44px] flex items-center justify-center",
-    "container": "w-full max-w-[420px] mx-auto pb-[90px]",
-    "padding": "px-4 py-4"
-  },
-  "components": {
-    "StepIndicator": {
-      "description": "Fixed top bar indicating progress.",
-      "styles": "sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex flex-col gap-2",
-      "structure": "Text 'Etapa X de N · [Nome]' (font-medium text-slate-900 text-[13px]) + thin progress bar (h-1.5 w-full bg-slate-100 rounded-full, inner bar bg-sky-600 rounded-full transition-all duration-300)"
-    },
-    "StickyCTABar": {
-      "description": "Thumb-zone sticky bottom bar for primary navigation.",
-      "styles": "fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 p-4 shadow-[0_-8px_16px_rgba(0,0,0,0.04)] max-w-[420px] mx-auto flex gap-3 pb-[max(1rem,env(safe-area-inset-bottom))]",
-      "structure": "Secondary 'Voltar' button (w-1/3 min-h-[48px] bg-slate-100 text-slate-700 rounded-lg font-medium) + Primary 'Próximo'/'Finalizar' button (w-2/3 min-h-[48px] bg-sky-600 text-white rounded-lg font-bold shadow-sm)"
-    },
-    "SectionCard": {
-      "description": "Uniform card wrapper for inputs and content.",
-      "styles": "bg-white border border-slate-200 rounded-[12px] p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)] mb-4 flex flex-col gap-4"
-    },
-    "FieldStockBadge": {
-      "description": "Badge showing delta/stock info inline above or beside numerical inputs.",
-      "styles": "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200"
+    "heading_font": "Sora, sans-serif",
+    "body_font": "Inter, sans-serif",
+    "rules": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter text-white",
+      "h2": "text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900",
+      "inline_highlight": "text-[#FF6A1A]",
+      "body": "text-base font-medium text-slate-600",
+      "pills": "uppercase text-xs font-bold tracking-[0.2em]"
     }
   },
-  "views_blueprint": {
-    "Header": {
-      "description": "Dark header showing ticket summary. Preserved from original but visually refined.",
-      "styles": "bg-slate-900 text-white p-5 rounded-b-[16px] mb-5 shadow-md flex flex-col gap-2",
-      "elements": ["Client Name (text-lg font-bold)", "Address & GPS link (text-sky-300 text-sm flex items-center gap-1)", "Phone (text-slate-300 text-sm)", "Live Signal Indicator (SmartOLT badge style)"]
+  "colors": {
+    "primary_purple": "#3a0f8a",
+    "purple_gradient": "bg-gradient-to-b from-[#5b21b6] via-[#3a0f8a] to-[#2e0b70]",
+    "purple_radial": "bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-pink-500/30 via-[#3a0f8a] to-[#2e0b70]",
+    "accent_orange": "#FF6A1A",
+    "accent_orange_hover": "#e55d12",
+    "status_green": "#22c55e",
+    "surface_white": "#ffffff",
+    "surface_glass": "bg-white/10"
+  },
+  "effects": {
+    "glassmorphism": "bg-white/10 backdrop-blur-[18px] border border-white/15",
+    "sheet_shadow": "shadow-[0_24px_60px_rgba(20,8,60,0.25)]",
+    "card_radius": "rounded-[24px]",
+    "button_radius": "rounded-full"
+  },
+  "layout_spacing": {
+    "container": "w-full max-w-[460px] md:max-w-[800px] mx-auto min-h-screen relative overflow-x-hidden bg-slate-50",
+    "section_gap": "gap-8",
+    "card_padding": "p-6 sm:p-8",
+    "hub_grid": "grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6",
+    "overlap_margin": "-mt-16 sm:-mt-24 relative z-10"
+  },
+  "motion": {
+    "slide_up": {
+      "initial": { "opacity": 0, "y": 40 },
+      "animate": { "opacity": 1, "y": 0 },
+      "transition": { "type": "spring", "damping": 20, "stiffness": 100 }
     },
-    "Step_1_ONT": {
-      "title": "Sinal & Equipamento",
-      "layout": "Large unified SectionCard acting as a hub for the ONT data capture to remove the 'empty' feeling.",
-      "elements": [
-        "Title: 'Identificação do Equipamento' (text-slate-900 font-semibold)",
-        "Empty State/Current Data: Bold display of MAC/SN if available (bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col items-center justify-center min-h-[100px] mb-2)",
-        "Action Group (Stacked full-width for large tap targets):",
-        "1. LER ETIQUETA (IA Vision) - Primary action, bg-sky-600 text-white min-h-[48px] rounded-lg flex items-center justify-center gap-2",
-        "2. DIGITAR MANUAL - Secondary, bg-slate-100 text-slate-700 border border-slate-200 min-h-[48px] rounded-lg",
-        "3. SELECIONAR DO ESTOQUE - Secondary, bg-slate-100 text-slate-700 border border-slate-200 min-h-[48px] rounded-lg"
-      ]
+    "stagger_children": {
+      "animate": { "transition": { "staggerChildren": 0.1 } }
     },
-    "Step_2_OsCtoPicker": {
-      "title": "CTO Mapa",
-      "layout": "Full-width map interface integrated smoothly.",
-      "elements": [
-        "Leaflet Map container (rounded-[12px] overflow-hidden border border-slate-200 h-[350px] w-full z-10 relative shadow-sm)",
-        "Blue map pins for existing CTOs",
-        "Floating Action Button (FAB) or prominent CTA placed immediately below the map: 'Cadastrar CTO/CE/Cabo na Rede' (bg-orange-500 text-white font-semibold min-h-[48px] rounded-lg mt-4 w-full shadow-sm flex items-center justify-center gap-2)"
-      ]
+    "tap_scale": {
+      "whileTap": { "scale": 0.98 }
     },
-    "Step_3_CTO_Portas": {
-      "title": "Porta CTO",
-      "layout": "Dense grid of ports with clear status colors.",
-      "elements": [
-        "Header: 'Selecione a Porta Livre'",
-        "Grid layout for ports (grid-cols-4 sm:grid-cols-5 gap-2)",
-        "Available Port: border border-sky-200 bg-sky-50 text-sky-700 font-mono text-center rounded-md py-3 min-h-[44px]",
-        "Occupied Port: border border-slate-200 bg-slate-50 text-slate-400 font-mono text-center rounded-md py-3 min-h-[44px] opacity-70 cursor-not-allowed"
-      ]
-    },
-    "Step_4_Insumos": {
-      "title": "Finalização",
-      "layout": "Collapsible Shadcn Accordions to manage cognitive load.",
-      "sections": [
-        {
-          "name": "Troca ONT",
-          "content": "Auto-fill removed MAC (read-only field, bg-slate-50 text-slate-500) + Select new MAC from stock. Inner padding reduced to p-4 (removing old 80px)."
-        },
-        {
-          "name": "Fotos (Wizard)",
-          "content": "3 mandatory photos (CTO, Equip, SN). Transitioned from error language (red) to pending/warning language (bg-amber-50 border-amber-200 text-amber-800). Shows green check (bg-emerald-50 text-emerald-700) when AI validates."
-        },
-        {
-          "name": "Insumos FTTH",
-          "content": "Grid layout (grid-cols-2 gap-4) for numerical inputs (Drop, Esticador, Fast, Cabo, Conector Rede). Each input is stacked vertically: Label -> FieldStockBadge -> Input(type='number', min-h-[44px])."
-        },
-        {
-          "name": "Observações",
-          "content": "Full width textarea (min-h-[100px] border-slate-200 rounded-lg p-3)."
-        }
-      ]
-    },
-    "PreSubmissionSummary": {
-      "description": "Final review block shown at the end of Step 4 before 'Finalizar nota'.",
-      "elements": [
-        "Title: 'Resumo da OS' (text-lg font-bold text-slate-900 mb-3)",
-        "Read-only list (flex flex-col gap-2 text-[13px] bg-slate-50 p-4 rounded-xl border border-slate-200)",
-        "Row format: flex justify-between items-center. Label (text-slate-500) | Value (text-slate-900 font-medium)",
-        "Visual confirmation of 3/3 photos attached (emerald checkmarks)",
-        "Total materials used summary"
-      ]
+    "hover_lift": {
+      "whileHover": { "y": -4 }
     }
   },
-  "interactions": {
-    "toast": "Use Sonner for inline notifications. Success (emerald), Info (sky), Warning (amber). Replace intrusive red banners.",
-    "loading": "Inline spinners (lucide Loader2 animate-spin) inside buttons (e.g. while IA reads photo) or skeleton blocks (animate-pulse bg-slate-200) for loading CTO data.",
-    "transitions": "Subtle fade-in for step content. Avoid heavy horizontal slides to prevent jank on low-end mobile devices."
+  "views": {
+    "Login": {
+      "background": "Fullscreen min-h-screen flex flex-col justify-center bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-pink-500/20 via-[#3a0f8a] to-[#2e0b70] p-6",
+      "elements": [
+        "Ligo logo (white) animated scale-in at top center",
+        "Heading: 'Bem-vindo de volta' in white, massive text",
+        "CPF Input: border-b-2 border-white/30 bg-white/5 backdrop-blur-md rounded-xl p-4 text-white placeholder-white/50 text-2xl tracking-widest text-center focus:border-[#FF6A1A] outline-none",
+        "CTA Button: Large, #FF6A1A orange, full width, rounded-full py-4 text-white font-bold text-lg flex justify-center items-center 'Entrar →'",
+        "Footer hint: 'Só pra clientes Ligo ativos' text-white/60 text-sm text-center mt-6"
+      ],
+      "test_ids": ["cliente-login-cpf-input", "cliente-login-submit-btn"]
+    },
+    "Hub": {
+      "header": "Rich purple gradient (min-h-[300px]) with 'OLÁ, [Nome] 👋' in white + 'O que você quer fazer <span class=\"text-[#FF6A1A]\">hoje?</span>'. Top-right has 'Sair' pill button (glassmorphism).",
+      "sheet_card": "White background, rounded-[24px], overlapping header by -mt-16. Contains Profile Avatar (Purple Circle + Initials), Masked CPF, Plano Contratado row (Blue square icon, 'Fibra 1 Giga', price), and Filial row.",
+      "actions": "2 large cards stacked on mobile, side-by-side on desktop. Card A: Indique e Ganhe (Purple Glass, 🎁). Card B: Minha Ligo (Purple Glass with Orange accent, 📡). Both use glassmorphism effects on top of the base app background.",
+      "test_ids": ["hub-card-indique", "hub-card-minha-ligo", "hub-btn-sair", "hub-profile-sheet"]
+    },
+    "IndiqueEGanhe": {
+      "hero": "Purple glass card. Top pill: '● PROGRAMA INDIQUE E GANHE'. Huge text: 'Indique um amigo e <span class=\"text-[#FF6A1A]\">ganhe R$ 50 no PIX</span>'. Info box with ☀️ emoji. 3 Step horizontal flow: INDICA → INSTALA → PIX (Pix step has solid orange bg).",
+      "share_card": "White sheet card. Contains referral URL, Copy btn, huge WhatsApp share btn, and 'Mostrar QR' toggle.",
+      "kpis": "Grid of 4 stats (Indicados, Instalados, Saldo R$, Total ganho) - large numbers, elegant typography.",
+      "tiers": "Gamified progress bar (Bronze, Prata, Ouro, Diamante) with animated shimmer fill via Framer Motion.",
+      "leaderboard": "Anonymous top-5 list + user's rank highlighted.",
+      "referrals": "List of friends with status pills (Pendente, Instalado, etc).",
+      "pix_checkout": "Form with PIX key input, Amount input, Method toggle (PIX/Desconto), 'Solicitar' button.",
+      "test_ids": ["indique-back-btn", "indique-share-whatsapp", "indique-copy-link", "indique-qr-toggle", "indique-pix-key-input", "indique-pix-submit-btn"]
+    },
+    "MinhaLigo": {
+      "hero": "Matches screenshot #1. Top pill '● MINHA LIGO' with orange dot. Huge text 'Olá, <span class=\"text-[#FF6A1A]\">[Nome]!</span>'. Subtitle 'Você está com o <span class=\"text-[#FF6A1A]\">Ligo 1 Giga</span>'. Green '● Ativo' pill.",
+      "sub_cards": "Grid of 2 sub-cards: DOCUMENTO (ID badge emoji, masked CPF) and TELEFONE (Phone emoji, formatted phone).",
+      "invoices": "List of invoices (Próxima fatura / Histórico). Placeholder empty states styled beautifully if no data.",
+      "support": "Huge WhatsApp CTA button for support.",
+      "test_ids": ["minha-ligo-back-btn", "minha-ligo-doc-card", "minha-ligo-phone-card", "minha-ligo-whatsapp-btn"]
+    }
   },
   "instructions_to_main_agent": [
-    "Do NOT modify existing logic, state management, or API calls.",
-    "Apply Tailwind classes to existing `.js` components.",
-    "Preserve inline `style={...}` where refactoring is too complex, just append tailwind classes using template literals `className={`... ${...}`}`.",
-    "Ensure `data-testid` is added to all interactive elements (buttons, inputs, accordions).",
-    "Use standard Radix/Shadcn Accordion structure for Step 4.",
-    "Use Lucide-react for icons.",
-    "Always apply min-h-[44px] for all tappable elements to ensure mobile accessibility.",
-    "Maintain the layout strictly within max-w-[420px] mx-auto for desktop viewing consistency of the PWA."
-  ]
+    "Build the complete UI in /app/frontend/src/cliente/ClienteIndicaApp.js using functional React components and Tailwind CSS.",
+    "Do NOT change backend endpoints or token logic. Integrate smoothly with the provided FastAPI routes.",
+    "Use Framer Motion (`framer-motion`) for all animations: slide-ups on mount, staggered list items, tap scaling, and the shimmering progress bar.",
+    "Typography is CRITICAL: Emulate Sora/Bricolage Grotesque by using tight tracking (`tracking-tighter`) and bold weights (`font-black`) for headings. Inject a Google Font link for 'Sora' dynamically in the component if possible, or stick to robust sans-serif stacks with customized letter-spacing.",
+    "Layout Architecture: The Hub, Indique, and Minha Ligo screens share a 'Layered Header' approach. The top background is a deep purple gradient. The content is wrapped in a white 'Sheet Card' (`bg-white rounded-[32px] shadow-2xl -mt-16 z-10 relative`) that overlaps the header. This creates the signature depth the user requested.",
+    "Emojis: Use standard emojis (👋 🎁 📡 💸 🏠 ☀️ 💳) to replicate the 3D tactile feel requested. Wrap them in accessible spans.",
+    "Glassmorphism: Strictly follow the `effects.glassmorphism` utility for the 'Indique e Ganhe' hero card and Hub cards when they are overlaid on the purple gradient.",
+    "Ensure all elements listed in 'test_ids' arrays are explicitly added to the components as `data-testid` attributes."
+  ],
+  "image_urls": {
+    "logo": {
+      "url": "/ligo-logo-white.png",
+      "fallback_url": "/ligo-logo.svg",
+      "description": "Ligo Fibra logo for the login screen and header"
+    }
+  }
 }

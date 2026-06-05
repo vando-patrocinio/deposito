@@ -354,44 +354,174 @@ async def _resolve_collaborator(
     return None
 
 
+async def _next_available_slot(
+    company_id: str,
+    technician_id: Optional[str],
+    target_iso: str,
+    *,
+    exclude_ticket_id: Optional[str] = None,
+) -> str:
+    """iter211aa — Distribui bolhas dentro dos horários disponíveis quando o
+    slot pedido já está cheio (max_per_slot por horário, default 2).
+
+    Regras:
+      • Procura no MESMO dia, partindo do horário pedido, andando 1 slot
+        pra frente até achar um slot com `count < max_per_slot`.
+      • Se chegou no fim do expediente (grid_end_hour) e tudo está cheio,
+        rola pro próximo DIA ÚTIL no MESMO horário original (3a).
+      • Tickets sem `technician_id` (inbox) não competem por slot — retorna
+        o ISO original.
+
+    Retorna o ISO UTC do slot escolhido.
+    """
+    if not target_iso or not technician_id:
+        return target_iso
+    try:
+        target_dt = datetime.fromisoformat(target_iso.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return target_iso
+    if target_dt.tzinfo is None:
+        target_dt = target_dt.replace(tzinfo=timezone.utc)
+
+    settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
+    max_per_slot = int(settings.get("lousa_grid_max_per_slot", 2))
+    grid_end = int(settings.get("lousa_grid_end_hour", 18))
+    slot_minutes = int(settings.get("lousa_grid_slot_minutes", 60)) or 60
+
+    try:
+        from zoneinfo import ZoneInfo
+        tz_br = ZoneInfo("America/Sao_Paulo")
+    except Exception:
+        tz_br = timezone(timedelta(hours=-3))
+
+    async def _count_at(dt_local: datetime, *, ignore_id: Optional[str] = None) -> int:
+        day_str = dt_local.strftime("%Y-%m-%d")
+        slot_str = dt_local.strftime("%H:%M")
+        q = {
+            "company_id": company_id,
+            "assigned_collaborator_id": technician_id,
+            "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]},
+        }
+        if ignore_id or exclude_ticket_id:
+            q["id"] = {"$ne": ignore_id or exclude_ticket_id}
+        candidates = await db.tickets.find(
+            q, {"_id": 0, "id": 1, "scheduled_time": 1, "opened_at": 1,
+                  "atlaz_created_at": 1, "created_at": 1},
+        ).to_list(500)
+        n = 0
+        for t in candidates:
+            raw = (t.get("scheduled_time") or t.get("opened_at")
+                   or t.get("atlaz_created_at") or t.get("created_at"))
+            if not raw:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                local = dt.astimezone(tz_br)
+                if local.strftime("%Y-%m-%d") != day_str:
+                    continue
+                minutes = (local.hour * 60 + local.minute) // slot_minutes * slot_minutes
+                hh, mm = minutes // 60, minutes % 60
+                if f"{hh:02d}:{mm:02d}" == slot_str:
+                    n += 1
+            except (ValueError, TypeError):
+                continue
+        return n
+
+    local_target = target_dt.astimezone(tz_br)
+    minutes = (local_target.hour * 60 + local_target.minute) // slot_minutes * slot_minutes
+    local_target = local_target.replace(hour=minutes // 60, minute=minutes % 60,
+                                          second=0, microsecond=0)
+    target_hour = local_target.hour
+
+    # Tenta MESMO dia primeiro: do horário pedido até grid_end
+    cur = local_target
+    safety = 24
+    while safety > 0 and cur.hour < grid_end:
+        cnt = await _count_at(cur)
+        if cnt < max_per_slot:
+            return cur.astimezone(timezone.utc).isoformat()
+        cur = cur + timedelta(minutes=slot_minutes)
+        safety -= 1
+
+    # Mesmo dia lotado → próximo DIA ÚTIL no MESMO horário original (regra 3a)
+    next_day = local_target + timedelta(days=1)
+    for _ in range(14):
+        if next_day.weekday() < 5:  # 0..4 = seg..sex
+            anchor = next_day.replace(hour=target_hour, minute=0,
+                                        second=0, microsecond=0)
+            cnt = await _count_at(anchor)
+            if cnt < max_per_slot:
+                return anchor.astimezone(timezone.utc).isoformat()
+        next_day = next_day + timedelta(days=1)
+
+    return target_iso
+
+
+
 def _resolve_schedule(chamado: Dict[str, Any], visit_tz: str = "America/Sao_Paulo") -> tuple:
     """A partir do chamado Atlaz, decide priority/position/scheduled_time da bolha.
 
-    - Se o Atlaz informou `visit_date` (formato 'YYYY-MM-DD HH:MM:SS' sem tz),
-      a bolha entra como `priority='horario'` e `position` recebe o epoch UTC
-      da visita. Resultado: bolhas com agendamento ficam ordenadas
-      automaticamente pelo horário do reparo dentro da coluna do técnico.
-    - O fuso assumido para strings sem tz é `visit_tz` (default 'America/Sao_Paulo';
-      configurável via `AtlazConfig.atlaz_visit_date_tz` quando o painel Atlaz
-      retornar em UTC ou outro fuso).
-    - Sem `visit_date` válido, a bolha permanece `priority='normal'`.
+    iter211z — Ordem de fallback (do mais específico para o mais genérico):
+      1. `visit_date` / `data_visita` (agendamento explícito do técnico) → HORARIO
+      2. `data_marcada` / `data_agendamento` (agendamento alternativo) → HORARIO
+      3. `data_criacao` / `data_abertura` / `criado_em` (data de abertura
+         do chamado no Atlaz) → NORMAL, mas com a data preservada no
+         `scheduled_time` para que `_ticket_day_iso` enxergue a data correta.
+
+    Sem nenhum desses, retorna ("normal", 0, None) — o ticket vai cair em
+    `created_at` local (dia da importação) como último recurso.
 
     Retorna (priority, position, scheduled_time_iso_or_raw).
     """
-    raw = chamado.get("visit_date") or chamado.get("data_visita")
-    if not raw:
-        return "normal", 0, None
-    raw_str = str(raw).strip()
-    if not raw_str:
-        return "normal", 0, None
-    # Resolve tz alvo
+    # Resolve tz alvo (uma vez)
     try:
         from zoneinfo import ZoneInfo
         tzinfo = ZoneInfo(visit_tz) if visit_tz != "UTC" else timezone.utc
     except Exception:
         tzinfo = timezone.utc
-    # Tenta vários formatos: ISO ou "YYYY-MM-DD HH:MM:SS"
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M",
-                "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S%z"):
-        try:
-            dt = datetime.strptime(raw_str, fmt)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=tzinfo)
-            return "horario", int(dt.timestamp()), dt.astimezone(timezone.utc).isoformat()
-        except ValueError:
-            continue
-    # Não conseguiu parsear — preserva string crua sem reposicionar
-    return "normal", 0, raw_str
+
+    def _try_parse(raw):
+        if not raw:
+            return None
+        raw_str = str(raw).strip()
+        if not raw_str:
+            return None
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M",
+                    "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S%z",
+                    "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M",
+                    "%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                dt = datetime.strptime(raw_str, fmt)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=tzinfo)
+                # Quando só veio data sem hora, ancora em 09:00 local
+                # (horário comercial padrão de visita técnica).
+                if fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+                    dt = dt.replace(hour=9, minute=0, second=0)
+                return dt
+            except ValueError:
+                continue
+        return None
+
+    # 1) Agendamento explícito → HORARIO (ordena na coluna por hora)
+    dt = _try_parse(chamado.get("visit_date") or chamado.get("data_visita")
+                    or chamado.get("data_marcada")
+                    or chamado.get("data_agendamento"))
+    if dt:
+        return "horario", int(dt.timestamp()), dt.astimezone(timezone.utc).isoformat()
+
+    # 2) Sem agendamento — usa data de criação do chamado no Atlaz como
+    # `scheduled_time` (NORMAL), pra que a bolha caia no dia ORIGINAL
+    # do Atlaz, não no dia da importação local.
+    dt = _try_parse(chamado.get("data_criacao") or chamado.get("data_abertura")
+                    or chamado.get("criado_em") or chamado.get("created_at")
+                    or chamado.get("data"))
+    if dt:
+        return "normal", 0, dt.astimezone(timezone.utc).isoformat()
+
+    return "normal", 0, None
 
 
 async def _import_one(
@@ -458,6 +588,22 @@ async def _import_one(
     sched_priority, sched_position, sched_iso = _resolve_schedule(
         chamado, cfg.atlaz_visit_date_tz or "America/Sao_Paulo",
     )
+    # iter211aa — Distribui bolhas dentro dos horários disponíveis. Se 2 OS
+    # vierem do Atlaz no MESMO slot do mesmo técnico, a segunda é empurrada
+    # pro próximo horário livre. Mantém `atlaz_visit_date` original
+    # (auditoria) — apenas `scheduled_time` é deslocado.
+    original_sched_iso = sched_iso
+    if sched_priority == "horario" and sched_iso and assigned:
+        adjusted = await _next_available_slot(
+            company_id, assigned, sched_iso,
+        )
+        if adjusted != sched_iso:
+            sched_iso = adjusted
+            try:
+                _dt = datetime.fromisoformat(sched_iso.replace("Z", "+00:00"))
+                sched_position = int(_dt.timestamp())
+            except (ValueError, TypeError):
+                pass
 
     doc = {
         "id": f"tkt-{uuid.uuid4().hex[:10]}",
@@ -501,6 +647,19 @@ async def _import_one(
         "atlaz_id_assinante": assinante.get("id_assinante"),
         "atlaz_id_ponto": ponto.get("id_ponto"),
         "atlaz_visit_date": chamado.get("visit_date"),  # raw — usado em reassign-existing
+        # iter211aa — Quando o slot foi deslocado por estar cheio, guarda
+        # o ISO original do Atlaz para auditoria.
+        "atlaz_slot_original": (original_sched_iso
+                                 if original_sched_iso != sched_iso else None),
+        # iter211z — Data ORIGINAL do chamado no Atlaz (não o created_at local).
+        # Usado pelo `_ticket_day_iso` (lousa.py) como fallback quando não há
+        # `scheduled_time`, garantindo que a bolha caia no dia que veio do Atlaz
+        # e não no dia da importação local.
+        "atlaz_created_at": (
+            chamado.get("data_criacao") or chamado.get("data_abertura")
+            or chamado.get("criado_em") or chamado.get("created_at")
+            or chamado.get("data")
+        ),
         "atlaz_synced_at": now_iso(),
         "atlaz_unassigned": is_unassigned,
     }
@@ -673,6 +832,229 @@ async def _run_tech_sync_internal(company_id: str, cfg: AtlazConfig) -> Dict[str
 # A API Atlaz V2 NÃO permite fechar/cancelar/reagendar via REST.
 async def push_close(*_args, **_kwargs) -> Dict[str, Any]:
     return {"ok": False, "reason": "atlaz_api_v2_not_supported"}
+
+
+# iter211z — Backfill da data ORIGINAL Atlaz nos tickets já importados.
+# Roda uma nova sincronização SÓ pra ler o campo `data_criacao` (ou similar)
+# do Atlaz e salvar como `atlaz_created_at` + reposicionar `scheduled_time`
+# quando o ticket ainda não tinha. Sem efeito destrutivo: nunca sobrescreve
+# scheduled_time existente.
+@router.post("/backfill-dates")
+async def atlaz_backfill_dates(
+    user: dict = Depends(require_role("gestor")),
+    dry_run: bool = False,
+):
+    """Reprocessa tickets Atlaz sem `atlaz_created_at` ou sem `scheduled_time`,
+    puxando a data original do chamado direto da API do Atlaz e preenchendo
+    os campos. Útil pra corrigir bolhas que caíram em "hoje" depois de uma
+    importação onde o Atlaz não retornou `visit_date`.
+
+    Query:
+      dry_run=true → apenas conta o que seria atualizado, sem alterar nada.
+
+    Retorna:
+      {scanned, would_update, updated, samples: [...]}
+    """
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    cfg = await _get_config(company_id)
+    if not cfg or not cfg.enabled or not cfg.api_key:
+        raise HTTPException(400, "Atlaz não configurado para esta empresa.")
+
+    # Busca todos os tickets Atlaz que precisam de correção: ou sem
+    # atlaz_created_at, ou com scheduled_time None (caíram no created_at local).
+    cursor = db.tickets.find(
+        {"company_id": company_id,
+         "atlaz_external_id": {"$exists": True, "$ne": None},
+         "$or": [{"atlaz_created_at": {"$exists": False}},
+                  {"atlaz_created_at": None},
+                  {"scheduled_time": None}]},
+        {"_id": 0, "id": 1, "atlaz_external_id": 1,
+         "scheduled_time": 1, "atlaz_visit_date": 1},
+    )
+    pending = await cursor.to_list(5000)
+
+    scanned = len(pending)
+    updated = 0
+    samples: List[Dict[str, Any]] = []
+
+    if scanned == 0:
+        return {"scanned": 0, "would_update": 0, "updated": 0, "samples": []}
+
+    # Não há endpoint Atlaz de "buscar 1 chamado por ID" garantido na v2.
+    # Estratégia: roda uma `listar_chamados` recente e casa por
+    # `atlaz_external_id`. Pra ambientes onde isso não é suficiente,
+    # o gestor pode pedir um sync completo pelo endpoint normal.
+    try:
+        chamados = await _fetch_chamados(cfg)
+    except Exception as e:
+        raise HTTPException(502, f"Falha ao consultar Atlaz: {e}")
+    by_ext = {str(c.get("id")): c for c in chamados if c.get("id") is not None}
+
+    pending_by_ext = {str(t["atlaz_external_id"]): t for t in pending}
+    matched = [ext for ext in pending_by_ext if ext in by_ext]
+
+    for ext_id in matched:
+        chamado = by_ext[ext_id]
+        ticket = pending_by_ext[ext_id]
+        # Decide o novo scheduled_time/priority com _resolve_schedule
+        priority, position, sched_iso = _resolve_schedule(
+            chamado, cfg.atlaz_visit_date_tz or "America/Sao_Paulo",
+        )
+        atlaz_created = (
+            chamado.get("data_criacao") or chamado.get("data_abertura")
+            or chamado.get("criado_em") or chamado.get("created_at")
+            or chamado.get("data")
+        )
+        update_set: Dict[str, Any] = {}
+        # Nunca sobrescreve scheduled_time já preenchido (preserva
+        # reagendamentos manuais feitos pelo gestor).
+        if not ticket.get("scheduled_time") and sched_iso:
+            update_set["scheduled_time"] = sched_iso
+            update_set["position"] = position
+            update_set["priority"] = priority
+        if atlaz_created:
+            update_set["atlaz_created_at"] = atlaz_created
+        if chamado.get("visit_date") and not ticket.get("atlaz_visit_date"):
+            update_set["atlaz_visit_date"] = chamado["visit_date"]
+        if not update_set:
+            continue
+        if len(samples) < 6:
+            samples.append({
+                "id": ticket["id"],
+                "atlaz_external_id": ext_id,
+                "set": update_set,
+            })
+        if not dry_run:
+            await db.tickets.update_one({"id": ticket["id"]},
+                                          {"$set": update_set})
+            updated += 1
+
+    return {
+        "scanned": scanned,
+        "matched_in_atlaz_recent": len(matched),
+        "would_update": len(samples) if dry_run else updated,
+        "updated": updated,
+        "samples": samples,
+        "dry_run": dry_run,
+    }
+
+
+# iter211aa — Redistribui bolhas Atlaz já importadas que tenham horários
+# duplicados (mesmo técnico + mesmo slot). Útil pra arrumar o backlog
+# existente depois do deploy do iter211aa.
+@router.post("/redistribute-slots")
+async def atlaz_redistribute_slots(
+    user: dict = Depends(require_role("gestor")),
+    dry_run: bool = False,
+):
+    """Varre todas as bolhas Atlaz ativas (pendente/aberta/aguardando) com
+    `priority='horario'`, agrupa por (técnico, dia, slot), e desloca as
+    excedentes (após o `max_per_slot`) para o próximo slot livre. Preserva
+    `atlaz_visit_date` para auditoria.
+
+    Query:
+      dry_run=true → conta o que seria atualizado, sem alterar nada.
+
+    Retorna:
+      {scanned, conflicts_found, would_move, moved, samples}
+    """
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+
+    settings = await db.settings.find_one({"id": company_id}, {"_id": 0}) or {}
+    max_per_slot = int(settings.get("lousa_grid_max_per_slot", 2))
+    slot_minutes = int(settings.get("lousa_grid_slot_minutes", 60)) or 60
+
+    try:
+        from zoneinfo import ZoneInfo
+        tz_br = ZoneInfo("America/Sao_Paulo")
+    except Exception:
+        tz_br = timezone(timedelta(hours=-3))
+
+    cursor = db.tickets.find(
+        {"company_id": company_id,
+         "atlaz_external_id": {"$exists": True, "$ne": None},
+         "priority": "horario",
+         "status": {"$in": ["pendente", "aberta", "aguardando_atendimento"]},
+         "assigned_collaborator_id": {"$ne": None},
+         "scheduled_time": {"$ne": None}},
+        {"_id": 0, "id": 1, "assigned_collaborator_id": 1,
+         "scheduled_time": 1, "atlaz_external_id": 1,
+         "client_snapshot.name": 1},
+    )
+    tickets = await cursor.to_list(5000)
+
+    # Agrupa por (technician_id, dia_local, slot_local)
+    groups: Dict[tuple, List[dict]] = {}
+    for t in tickets:
+        try:
+            dt = datetime.fromisoformat(t["scheduled_time"].replace("Z", "+00:00"))
+        except (ValueError, TypeError, KeyError):
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        local = dt.astimezone(tz_br)
+        minutes = (local.hour * 60 + local.minute) // slot_minutes * slot_minutes
+        slot_key = (
+            t["assigned_collaborator_id"],
+            local.strftime("%Y-%m-%d"),
+            f"{minutes // 60:02d}:{minutes % 60:02d}",
+        )
+        groups.setdefault(slot_key, []).append({
+            **t,
+            "_dt_utc": dt.astimezone(timezone.utc),
+        })
+
+    conflicts: List[tuple] = [k for k, v in groups.items() if len(v) > max_per_slot]
+    moved = 0
+    samples: List[Dict[str, Any]] = []
+
+    for key in conflicts:
+        members = sorted(groups[key],
+                          key=lambda x: x["_dt_utc"])  # mais antigo fica no slot
+        # Os primeiros `max_per_slot` permanecem; os demais são deslocados.
+        for excess in members[max_per_slot:]:
+            new_iso = await _next_available_slot(
+                company_id, excess["assigned_collaborator_id"],
+                excess["scheduled_time"],
+                exclude_ticket_id=excess["id"],
+            )
+            if new_iso == excess["scheduled_time"]:
+                continue  # já é o melhor possível
+            try:
+                _dt = datetime.fromisoformat(new_iso.replace("Z", "+00:00"))
+                new_pos = int(_dt.timestamp())
+            except (ValueError, TypeError):
+                new_pos = 0
+            if len(samples) < 8:
+                samples.append({
+                    "id": excess["id"],
+                    "atlaz_external_id": excess.get("atlaz_external_id"),
+                    "client": (excess.get("client_snapshot") or {}).get("name"),
+                    "from": excess["scheduled_time"],
+                    "to": new_iso,
+                })
+            if not dry_run:
+                await db.tickets.update_one(
+                    {"id": excess["id"]},
+                    {"$set": {
+                        "scheduled_time": new_iso,
+                        "position": new_pos,
+                        "atlaz_slot_original": (
+                            excess.get("atlaz_slot_original")
+                            or excess["scheduled_time"]
+                        ),
+                    }},
+                )
+                moved += 1
+
+    return {
+        "scanned": len(tickets),
+        "conflicts_found": len(conflicts),
+        "would_move": len(samples) if dry_run else moved,
+        "moved": moved,
+        "samples": samples,
+        "dry_run": dry_run,
+    }
 
 
 # -------------------------------------------------------------------------

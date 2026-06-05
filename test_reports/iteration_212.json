@@ -1,0 +1,37 @@
+{
+  "summary": "iter212a/212b Fleet Phase 2 (geofence map editor, portal white-label, TTL orphan): 20/20 backend tests passing + frontend portal smoke verified (login → dashboard with tenant header, 3 tabs, vehicle list, Leaflet map, logout clears localStorage).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter212_fleet_phase2.py",
+    "/app/test_reports/pytest/iter212_phase2.xml"
+  ],
+  "what_was_tested": [
+    "POST/GET /api/fleet-tracking/tenants/{tid}/portal-users (create OK, duplicate email -> 409, list never exposes password_hash)",
+    "POST /api/fleet-portal/auth/login: invalid email/password -> 401, valid -> {access_token,user,tenant}",
+    "GET /api/fleet-portal/me: no token -> 401, normal app token -> 403 (type guard), portal token -> 200",
+    "Tenant isolation: GET /api/fleet-portal/vehicles, /positions/live, /positions/{vid}/history, /events return ONLY veículos cujo fleet_tenant_id == user.fleet_tenant_id (veículo de frota própria com fleet_tenant_id=null NÃO aparece; history de outro veículo -> 404)",
+    "Geofence create: circle com center+radius OK; polygon com 2 pontos -> 400; polygon com 3 pontos -> 200 (validações cobrem o que o editor visual envia)",
+    "TTL: POST /api/fleet-tracking/ingest com IMEI desconhecido grava em fleet_orphan_positions com received_at_dt como datetime BSON (validado via motor + listIndexes confirmando expireAfterSeconds=2592000 no campo received_at_dt)",
+    "Cleanup: DELETE /api/fleet-tracking/portal-users/{uid} e /tenants/{tid} retornam 200",
+    "Frontend portal smoke (/?portal=fleet): renderiza FleetPortalApp com login screen → após credenciais válidas vai para dashboard com header tenant+user+Sair, tabs Tempo Real/Histórico/Alertas, lista lateral 'Meus veículos (0)', mapa Leaflet com tiles e zoom controls. Token gravado em localStorage. Logout limpa token e volta pra tela de login."
+  ],
+  "critical_code_review_comments": [
+    "fleet_portal.py: bem isolado, JWT type='fleet_portal' garante separação correta do JWT principal. Funciona como esperado.",
+    "fleet_tracking.py ingest_position grava both received_at (string ISO p/ display) e received_at_dt (datetime BSON p/ TTL) — necessário porque MongoDB TTL exige Date BSON, não string. Está correto.",
+    "fleet_portal.py admin endpoints reusam get_current_user e _require_manager local — coerente com o resto. Apenas observação: ao criar portal user, password é hash via auth.hash_password (bcrypt) — bom.",
+    "Pequena observação não-bloqueante: ensure_indexes do fleet_portal cria index único em email globalmente (sem company_id). Se múltiplos company_ids usarem o mesmo e-mail futuramente isso vai colidir. Para fase atual (single SaaS owner) é OK."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter212_fleet_phase2.py"],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% (smoke do portal OK)"},
+  "test_credentials": "admin@empresa.com / 123456 (super admin); portal users são criados/destruídos dinamicamente nos testes",
+  "seed_data_creation": "Toda data de teste criada (tenant TEST_*, portal user, veículos, geofences, orphan position) é deletada no teardown. Usuário e tenant usados na automação manual de UI também foram deletados.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "iter212a/212b cobre 3 features Phase 2: (1) FleetGeofenceMapEditor — backend create circle/polygon validado, UI do botão Desenhar no mapa não foi automatizada (requer fluxo com login admin completo + Cercas tab), mas o endpoint POST /api/fleet-tracking/geofences que ele consome está OK; (2) Portal white-label totalmente validado (auth+isolation+UI smoke); (3) TTL index em fleet_orphan_positions confirmado via index_information() motor — received_at_dt é datetime BSON e expireAfterSeconds=2592000 (30d).",
+  "rca of the issue": "N/A — nada falhou."
+}

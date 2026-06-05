@@ -46,6 +46,9 @@ CONSUMABLE_CATALOG = [
     {"id": "fibra_06fo", "name": "Fibra 06FO", "unit": "m", "pack_label": "Bobina", "pack_qty": 2000, "category": "rede"},
     {"id": "fibra_12fo", "name": "Fibra 12FO", "unit": "m", "pack_label": "Bobina", "pack_qty": 2000, "category": "rede"},
     {"id": "fibra_24fo", "name": "Fibra 24FO", "unit": "m", "pack_label": "Bobina", "pack_qty": 2000, "category": "rede"},
+    # iter211f — fibras de alta capacidade (backbone)
+    {"id": "fibra_48fo", "name": "Fibra 48FO", "unit": "m", "pack_label": "Bobina", "pack_qty": 2000, "category": "rede"},
+    {"id": "fibra_96fo", "name": "Fibra 96FO", "unit": "m", "pack_label": "Bobina", "pack_qty": 2000, "category": "rede"},
 ]
 CONSUMABLE_IDS = {c["id"] for c in CONSUMABLE_CATALOG}
 CONSUMABLE_BY_ID: Dict[str, Dict[str, Any]] = {c["id"]: c for c in CONSUMABLE_CATALOG}
@@ -54,9 +57,19 @@ CONSUMABLE_BY_ID: Dict[str, Dict[str, Any]] = {c["id"]: c for c in CONSUMABLE_CA
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+class OntBulkItem(BaseModel):
+    """iter211h — SN agora é OBRIGATÓRIO (chave primária). MAC opcional
+    (preenchido pelo SmartOLT depois de aprovisionar)."""
+    sn: str
+    mac: Optional[str] = None
+
+
 class OntBulkIn(BaseModel):
     model: str
-    macs: List[str]
+    # iter211h — backward-compat: ainda aceita `macs: List[str]` (legado),
+    # mas o caminho recomendado é `items: [{sn, mac?}]`.
+    macs: Optional[List[str]] = None
+    items: Optional[List[OntBulkItem]] = None
 
 
 class OntEditIn(BaseModel):
@@ -556,25 +569,66 @@ async def create_onts_bulk(payload: OntBulkIn, user: dict = Depends(require_role
     model = payload.model.strip()
     if not model:
         raise HTTPException(400, "Informe o modelo da ONT.")
-    macs = [normalize_mac(m) for m in payload.macs if m.strip()]
-    if not macs:
-        raise HTTPException(400, "Informe pelo menos um MAC.")
-    macs_unique = list(dict.fromkeys(macs))
+    # iter211h — base agora é SN (obrigatório). Aceita 2 formatos:
+    #   1) items: [{sn, mac?}]   ← preferido
+    #   2) macs: [str]           ← legado (cada str é um SN, MAC vazio)
+    items = []
+    if payload.items:
+        items = [{"sn": (it.sn or "").strip().upper(),
+                   "mac": (it.mac or "").strip().upper() or None}
+                  for it in payload.items if (it.sn or "").strip()]
+    elif payload.macs:
+        # Compat: trata cada string como SN (era assim que o frontend velho
+        # mandava). Se a string for um MAC válido, mantém como MAC também.
+        for raw in payload.macs:
+            raw = (raw or "").strip().upper()
+            if not raw:
+                continue
+            macn = normalize_mac(raw)
+            items.append({"sn": raw, "mac": macn if macn else None})
+
+    if not items:
+        raise HTTPException(400,
+            "Informe pelo menos um SN (base obrigatória). "
+            "Use o campo 'items' [{sn, mac?}] ou 'macs' (legado).")
+
+    # Deduplicação por SN
+    seen_sn, dedup = set(), []
+    for it in items:
+        if it["sn"] in seen_sn:
+            continue
+        seen_sn.add(it["sn"])
+        dedup.append(it)
+
+    sns = [it["sn"] for it in dedup]
     existing = await db.stok_onts.find(
-        {"company_id": cid, "mac": {"$in": macs_unique}}, {"mac": 1, "_id": 0},
+        {"company_id": cid, "scan_sn": {"$in": sns}},
+        {"scan_sn": 1, "_id": 0},
     ).to_list(5000)
     if existing:
-        raise HTTPException(400, f"MAC já cadastrado: {existing[0]['mac']}")
-    docs = [{
-        "company_id": cid, "mac": mac, "model": model,
-        "location_type": "empresa", "location_id": "empresa",
-        "client_name": None, "status": "disponivel",
-        "created_by": user.get("email", "?"), "created_at": now_iso(),
-    } for mac in macs_unique]
+        raise HTTPException(400, f"SN já cadastrado: {existing[0]['scan_sn']}")
+
+    docs = []
+    for it in dedup:
+        # Quando não tem MAC ainda, usa placeholder `SN-{sn}` pra manter a
+        # constraint de unicidade (legado) sem bloquear o cadastro.
+        mac_final = it["mac"] or f"SN-{it['sn']}"
+        docs.append({
+            "company_id": cid,
+            "scan_sn": it["sn"],
+            "mac": mac_final,
+            "model": model,
+            "location_type": "empresa", "location_id": "empresa",
+            "client_name": None, "status": "disponivel",
+            "created_by": user.get("email", "?"), "created_at": now_iso(),
+        })
     await db.stok_onts.insert_many([dict(d) for d in docs])
-    await _add_history("entrada_ont", f"Entrada de {len(docs)} ONT(s) modelo {model} no estoque empresa",
-                       user.get("name", "?"), "compra", cid)
-    return {"inserted": len(docs), "macs": macs_unique}
+    await _add_history("entrada_ont",
+                        f"Entrada de {len(docs)} ONT(s) modelo {model} no estoque empresa",
+                        user.get("name", "?"), "compra", cid)
+    return {"inserted": len(docs),
+             "sns": sns,
+             "macs": [d["mac"] for d in docs]}
 
 
 @router.patch("/onts/{mac}")
@@ -592,6 +646,100 @@ async def edit_ont(mac: str, payload: OntEditIn, user: dict = Depends(require_ro
     await _add_history("edicao_ont", f"Modelo do MAC {mac_n} alterado para {payload.model}",
                        user.get("name", "?"), "correcao", cid)
     return {"ok": True}
+
+
+class OntSetSnIn(BaseModel):
+    """iter211m — Define ou corrige o SN de uma ONT legada."""
+    scan_sn: str
+
+
+@router.post("/onts/{mac_or_sn}/set-sn")
+async def set_ont_sn(mac_or_sn: str, payload: OntSetSnIn,
+                       user: dict = Depends(require_role("gestor"))):
+    """Define o SN de uma ONT que está sem SN (legada).
+    Pode ser identificada pelo MAC ou pelo SN atual (caso queira corrigir).
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    new_sn = (payload.scan_sn or "").strip().upper()
+    if not new_sn:
+        raise HTTPException(400, "Informe o novo SN.")
+    # Busca por MAC normalizado OU por scan_sn exato (case-insensitive)
+    mac_n = normalize_mac(mac_or_sn)
+    ont = None
+    if mac_n:
+        ont = await db.stok_onts.find_one(
+            {"company_id": cid, "mac": mac_n}, {"_id": 0})
+    if not ont:
+        ont = await db.stok_onts.find_one(
+            {"company_id": cid,
+              "scan_sn": (mac_or_sn or "").strip().upper()},
+            {"_id": 0})
+    if not ont:
+        raise HTTPException(404, "ONT não encontrada.")
+    # Confere unicidade
+    dup = await db.stok_onts.find_one(
+        {"company_id": cid, "scan_sn": new_sn, "mac": {"$ne": ont.get("mac")}},
+        {"_id": 0})
+    if dup:
+        raise HTTPException(400, f"SN '{new_sn}' já está usado por outra ONT.")
+    await db.stok_onts.update_one(
+        {"company_id": cid, "mac": ont["mac"]},
+        {"$set": {"scan_sn": new_sn,
+                    "sn_updated_at": now_iso(),
+                    "sn_updated_by": user.get("email")}},
+    )
+    await _add_history("set_sn",
+                        f"SN definido para ONT (MAC {ont.get('mac')}): {new_sn}",
+                        user.get("name", "?"), "correcao", cid)
+    return {"ok": True, "scan_sn": new_sn,
+             "previous_sn": ont.get("scan_sn")}
+
+
+@router.post("/onts/migrate-fill-sn")
+async def migrate_fill_sn(user: dict = Depends(require_role("administrador"))):
+    """iter211m — Para ONTs sem SN, popular `scan_sn` a partir do MAC
+    (apenas como placeholder identificador único). Útil para migração
+    de bases antigas. Idempotente.
+    """
+    cid = user.get("company_id") or DEMO_COMPANY_ID
+    cursor = db.stok_onts.find(
+        {"company_id": cid,
+          "$or": [{"scan_sn": {"$exists": False}},
+                    {"scan_sn": None},
+                    {"scan_sn": ""}]},
+        {"_id": 0, "mac": 1},
+    )
+    updated = 0
+    async for d in cursor:
+        mac = d.get("mac") or ""
+        # Gera SN com prefixo SN-{ultimos 6 chars do MAC sem :}
+        clean = mac.replace(":", "").replace("-", "").upper()
+        if not clean:
+            continue
+        placeholder = f"AUTOSN_{clean[-8:]}" if len(clean) >= 8 else f"AUTOSN_{clean}"
+        # Evita conflito com outro placeholder
+        dup = await db.stok_onts.find_one(
+            {"company_id": cid, "scan_sn": placeholder,
+              "mac": {"$ne": mac}}, {"_id": 0})
+        if dup:
+            # Adiciona random suffix se colidiu
+            import uuid
+            placeholder = f"{placeholder}_{uuid.uuid4().hex[:4].upper()}"
+        await db.stok_onts.update_one(
+            {"company_id": cid, "mac": mac},
+            {"$set": {"scan_sn": placeholder,
+                        "sn_auto_generated": True,
+                        "sn_updated_at": now_iso()}},
+        )
+        updated += 1
+    if updated:
+        await _add_history(
+            "migrate_sn",
+            f"Migração: {updated} ONT(s) tiveram SN placeholder gerado (AUTOSN_*).",
+            user.get("name", "?"), "migracao", cid)
+    return {"updated": updated,
+             "message": (f"{updated} ONT(s) receberam SN placeholder. "
+                          "Substitua pelo SN real escaneando a etiqueta.")}
 
 
 @router.post("/onts/transfer-to-tech")
@@ -986,19 +1134,41 @@ async def _move_ont_for_install(company_id: str, service: dict, mac_input: Optio
     """
     sn_input = (service.get("ont_sn") or "").strip().upper() or None
     if not mac_input and not sn_input:
-        raise HTTPException(400, "Para instalação/troca, informe o SN (preferido) ou o MAC da ONT.")
+        raise HTTPException(400, "Para instalação/troca, informe o SN da ONT (obrigatório).")
     # iter197 — busca por SN PRIMEIRO; se achou e ainda não temos MAC, herda do doc
+    # iter211h — busca tolerante: normaliza SN (sem hífens/espaços/dois-pontos)
+    # e cai pra busca parcial quando exact match falha. Isso resolve casos
+    # em que o OCR detecta SN com caracteres a mais/menos.
     ont = None
+    sn_norm = None
     if sn_input:
+        sn_norm = sn_input.replace("-", "").replace(":", "").replace(" ", "")
+        # 1) Match exato (case já está upper)
         ont = await db.stok_onts.find_one(
             {"company_id": company_id, "scan_sn": sn_input}, {"_id": 0})
+        # 2) Match normalizado (compara sem separadores)
+        if not ont and sn_norm != sn_input:
+            ont = await db.stok_onts.find_one(
+                {"company_id": company_id, "scan_sn": sn_norm}, {"_id": 0})
+        # 3) Match por sufixo (últimos 8+ chars) — útil quando OCR comeu prefixo
+        if not ont and len(sn_norm) >= 8:
+            tail = sn_norm[-8:]
+            ont = await db.stok_onts.find_one(
+                {"company_id": company_id,
+                  "scan_sn": {"$regex": f"{tail}$", "$options": "i"}},
+                {"_id": 0})
     mac_n = normalize_mac(mac_input) if mac_input else None
     if not ont and mac_n:
         ont = await db.stok_onts.find_one(
             {"company_id": company_id, "mac": mac_n}, {"_id": 0})
     if not ont:
         ident = sn_input or mac_n
-        raise HTTPException(404, f"ONT não encontrada (busca por SN/MAC: {ident}).")
+        raise HTTPException(
+            404,
+            f"ONT com SN '{ident}' não encontrada no estoque. "
+            "Cadastre a ONT em Estoque › Equipamentos antes de finalizar. "
+            "A base é obrigatória pelo SN."
+        )
     # Garante mac_n preenchido para os updates subsequentes
     if not mac_n:
         mac_n = ont.get("mac")
@@ -1128,7 +1298,7 @@ async def _move_ont_for_withdraw(company_id: str, service: dict, tech_name: str,
     """
     sn_input = (service.get("ont_sn") or "").strip().upper() or None
     if not mac_input and not sn_input:
-        raise HTTPException(400, "Para retirada, informe o MAC OU o SN da ONT retirada.")
+        raise HTTPException(400, "Para retirada, informe o SN da ONT retirada (base obrigatória).")
     mac_n = normalize_mac(mac_input) if mac_input else None
     # Equipamento marcado como defeituoso (iter153) — fica bloqueado para
     # reinstalar em outro cliente; volta direto pro estoque "empresa" como
@@ -1148,19 +1318,31 @@ async def _move_ont_for_withdraw(company_id: str, service: dict, tech_name: str,
         extra_fields["defective_marked_by"] = actor_email
         if defective_reason:
             extra_fields["defective_reason"] = defective_reason
-    # iter174 — busca ONT por MAC OU por SN
+    # iter211h — busca por SN PRIMEIRO (base obrigatória), MAC só como fallback
     ont = None
-    if mac_n:
-        ont = await db.stok_onts.find_one(
-            {"company_id": company_id, "mac": mac_n}, {"_id": 0})
-    if not ont and sn_input:
+    if sn_input:
+        # 1) Match exato
         ont = await db.stok_onts.find_one(
             {"company_id": company_id, "scan_sn": sn_input}, {"_id": 0})
-        # Se achou via SN mas faltava MAC, usa o MAC da ONT existente
+        # 2) Match normalizado (sem separadores)
+        sn_norm = sn_input.replace("-", "").replace(":", "").replace(" ", "")
+        if not ont and sn_norm != sn_input:
+            ont = await db.stok_onts.find_one(
+                {"company_id": company_id, "scan_sn": sn_norm}, {"_id": 0})
+        # 3) Match por sufixo (últimos 8+ chars) — tolerante a OCR ruim
+        if not ont and len(sn_norm) >= 8:
+            tail = sn_norm[-8:]
+            ont = await db.stok_onts.find_one(
+                {"company_id": company_id,
+                  "scan_sn": {"$regex": f"{tail}$", "$options": "i"}},
+                {"_id": 0})
         if ont and not mac_n:
             mac_n = ont.get("mac")
-    # Identificador a exibir nas mensagens (preferência: MAC, fallback SN)
-    ident = mac_n or sn_input
+    if not ont and mac_n:
+        ont = await db.stok_onts.find_one(
+            {"company_id": company_id, "mac": mac_n}, {"_id": 0})
+    # Identificador a exibir nas mensagens (preferência: SN, fallback MAC)
+    ident = sn_input or mac_n
     if not ont:
         # ONT não cadastrada — cria registro novo já no estoque do técnico
         # com origem `ai_scan_retirada` (técnico fotografou e IA leu).
