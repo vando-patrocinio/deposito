@@ -418,6 +418,15 @@ export const api = {
     client.post(`/stok/admin/reset-granular`, data).then((r) => r.data),
   stokShrinkageReport: () =>
     client.get(`/stok/admin/shrinkage-report`).then((r) => r.data),
+  // Transferências pendentes (gestor aprova/rejeita ONTs marcadas como instaladas pelo técnico)
+  stokPendingTransfers: (status = "pending") =>
+    client.get(`/stok/pending-transfers`, { params: { status } }).then((r) => r.data),
+  stokApproveTransfer: (pt_id, note = "") =>
+    client.post(`/stok/pending-transfers/${pt_id}/approve`, { note }).then((r) => r.data),
+  stokRejectTransfer: (pt_id, note = "") =>
+    client.post(`/stok/pending-transfers/${pt_id}/reject`, { note }).then((r) => r.data),
+  stokTransferKpis: (days = 30) =>
+    client.get(`/stok/transfers/kpis`, { params: { days } }).then((r) => r.data),
   // Lookup público: cliente do ticket está no SmartOLT?
   publicClientByTicket: (ticket_id) =>
     client.get(`/smartolt/public/client-by-ticket/${ticket_id}`).then((r) => r.data),
