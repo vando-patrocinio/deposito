@@ -60,11 +60,11 @@ export default function OfflineTimeBanner({ onStatusChange }) {
 
   const conf = offline ? {
     bg: "#dc2626", text: "white",
-    icon: "⚠️",
+    icon: "️",
     msg: "Dispositivo OFFLINE — a lousa está trancada. Reconecte para continuar.",
   } : driftBlocked ? {
     bg: "#dc2626", text: "white",
-    icon: "🕐",
+    icon: "",
     msg: `Relógio dessincronizado (${drift > 0 ? "+" : ""}${drift}s de diferença) — ações bloqueadas. Sincronize o horário do dispositivo.`,
   } : {
     bg: "#f59e0b", text: "white",

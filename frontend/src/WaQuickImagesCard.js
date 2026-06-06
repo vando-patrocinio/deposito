@@ -77,7 +77,7 @@ export default function WaQuickImagesCard() {
           </h3>
           <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>
             Imagens prontas para o atendente enviar com um clique pelo ícone{" "}
-            <strong>"Imagens Rápidas"</strong> no cabeçalho do chat.
+            <strong>“Imagens Rápidas”</strong> no cabeçalho do chat.
           </p>
         </div>
       </div>

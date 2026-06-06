@@ -224,7 +224,7 @@ export default function ChatTopologyMap() {
                 {IA_NODE_IDS.has(n.id) && (
                   <g transform="translate(15, -18)">
                     <circle r="8" fill="white" stroke={fill} strokeWidth="1.5" />
-                    <text textAnchor="middle" y="3" fontSize="9" fill={fill}>⚙</text>
+                    <text textAnchor="middle" y="3" fontSize="9" fill={fill}></text>
                   </g>
                 )}
               </g>
@@ -538,8 +538,8 @@ const EXTERNAL_NODE_INFO = {
 
 function iconForKind(kind) {
   return {
-    endpoint: "📱", channel: "📡", core: "⚙",
-    storage: "🗄", ai: "🧠", agent: "✦", data: "📊",
+    endpoint: "", channel: "", core: "",
+    storage: "", ai: "", agent: "✦", data: "",
   }[kind] || "•";
 }
 

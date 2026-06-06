@@ -19,10 +19,10 @@ const PILL_STATUS = {
 };
 
 const ACTION_LABELS = {
-  install: "🔧 Instalação",
-  withdraw: "📦 Retirada",
-  swap: "🔄 Troca",
-  port_link: "🔌 Porta CTO vinculada",
+  install: "Instalação",
+  withdraw: "Retirada",
+  swap: "Troca",
+  port_link: "Porta CTO vinculada",
   port_unlink: "❌ Porta CTO desvinculada",
 };
 
@@ -107,7 +107,7 @@ export default function OntTraceabilityModal({ ident, onClose }) {
             <div style={{ fontSize: 10, fontWeight: 700,
                             textTransform: "uppercase", letterSpacing: 0.6,
                             opacity: 0.7, marginBottom: 4 }}>
-              🔍 Rastreabilidade da ONT
+              Rastreabilidade da ONT
             </div>
             <div style={{ fontSize: 20, fontWeight: 900, fontFamily: "monospace" }}>
               {ont?.sn || ident}
@@ -161,7 +161,7 @@ export default function OntTraceabilityModal({ ident, onClose }) {
                 cursor: "pointer", display: "inline-flex", gap: 6,
                 alignItems: "center",
               }}>
-              📥 Exportar relatório PDF
+              Exportar relatório PDF
             </button>
           </div>
         )}
@@ -201,9 +201,9 @@ export default function OntTraceabilityModal({ ident, onClose }) {
                 <Field label="Modelo">{ont.model || "—"}</Field>
                 <Field label="Localização">
                   <strong>{
-                    ont.location_type === "empresa" ? "📦 Estoque da empresa"
-                    : ont.location_type === "tecnico" ? `👷 ${ont.location_name || "Técnico"}`
-                    : ont.location_type === "cliente" ? `👤 ${ont.location_name || ont.withdrawn_from_client_name || "Cliente"}`
+                    ont.location_type === "empresa" ? "Estoque da empresa"
+                    : ont.location_type === "tecnico" ? `${ont.location_name || "Técnico"}`
+                    : ont.location_type === "cliente" ? `${ont.location_name || ont.withdrawn_from_client_name || "Cliente"}`
                     : ont.location_type || "—"
                   }</strong>
                 </Field>
@@ -241,7 +241,7 @@ export default function OntTraceabilityModal({ ident, onClose }) {
                     </Field>
                     {purchase.file_name && (
                       <Field label="Arquivo" colSpan={2}>
-                        📎 {purchase.file_name}
+                        {purchase.file_name}
                       </Field>
                     )}
                     {purchase.notes && (
@@ -261,7 +261,7 @@ export default function OntTraceabilityModal({ ident, onClose }) {
                       style={{ background: "#fef3c7", border: "1px solid #fde68a",
                                 color: "#92400e", padding: 12, borderRadius: 10,
                                 fontSize: 13 }}>
-                  ⚠️ Esta ONT não foi vinculada a nenhuma nota fiscal
+                  ️ Esta ONT não foi vinculada a nenhuma nota fiscal
                   (cadastrada manualmente em massa ou vinda de migração).
                 </div>
               )}

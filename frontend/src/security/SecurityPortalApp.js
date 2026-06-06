@@ -18,9 +18,9 @@ const API = `${BACKEND_URL}/api/security-portal`;
 const LS_KEY = "security_portal_token";
 
 const ARM_INFO = {
-  armed_away: { icon: "🔴", label: "Armado total", color: "#dc2626" },
-  armed_stay: { icon: "🟠", label: "Armado parcial", color: "#f59e0b" },
-  disarmed: { icon: "🟢", label: "Desarmado", color: "#10b981" },
+  armed_away: { icon: "", label: "Armado total", color: "#dc2626" },
+  armed_stay: { icon: "", label: "Armado parcial", color: "#f59e0b" },
+  disarmed: { icon: "", label: "Desarmado", color: "#10b981" },
 };
 
 export default function SecurityPortalApp() {
@@ -84,7 +84,7 @@ function Login({ onLogged }) {
 
         <div className="sp-hero-content">
           <div className="sp-brand-row">
-            <div className="sp-shield">🛡️</div>
+            <div className="sp-shield">️</div>
             <div>
               <h1 className="sp-brand-name">Smart<span>Home</span></h1>
               <div className="sp-brand-tag">Security Suite · Powered by SmartProv</div>
@@ -104,7 +104,7 @@ function Login({ onLogged }) {
 
           <div className="sp-trust">
             <div className="sp-trust-pill">
-              <span className="ic">🛰️</span>
+              <span className="ic">️</span>
               <span>Resposta &lt; 30s</span>
             </div>
             <div className="sp-trust-pill">
@@ -112,11 +112,11 @@ function Login({ onLogged }) {
               <span>Pânico em 1 toque</span>
             </div>
             <div className="sp-trust-pill">
-              <span className="ic">📡</span>
+              <span className="ic"></span>
               <span>Central monitorada</span>
             </div>
             <div className="sp-trust-pill">
-              <span className="ic">🔐</span>
+              <span className="ic"></span>
               <span>Conexão criptografada</span>
             </div>
           </div>
@@ -137,7 +137,7 @@ function Login({ onLogged }) {
         <form onSubmit={submit} className="sp-card">
           <div className="sp-card-mob-brand">
             <div className="sp-shield" style={{ width: 40, height: 40,
-                                                   fontSize: 20 }}>🛡️</div>
+                                                   fontSize: 20 }}>️</div>
             <h1>Smart<span>Home</span></h1>
           </div>
 
@@ -167,13 +167,13 @@ function Login({ onLogged }) {
               <button type="button" className="sp-pwd-toggle"
                        onClick={() => setShowPwd((p) => !p)}
                        aria-label="Mostrar senha">
-                {showPwd ? "🙈" : "👁"}
+                {showPwd ? "" : ""}
               </button>
             </div>
           </label>
 
           {err && <div className="sp-err" data-testid="sec-portal-err">
-            ⚠ {err}
+            {err}
           </div>}
 
           <button type="submit" disabled={busy} className="sp-submit"
@@ -186,7 +186,7 @@ function Login({ onLogged }) {
               e.preventDefault();
               alert("Entre em contato com o suporte da sua central.");
             }}>Esqueci a senha</a>
-            <span className="sp-secure">🔒 SSL · Conexão segura</span>
+            <span className="sp-secure">SSL · Conexão segura</span>
           </div>
 
           <div className="sp-foot">
@@ -253,7 +253,7 @@ function Dashboard({ token, meta, onLogout }) {
     setBusy(sid);
     try {
       await axios.post(`${API}/sites/${sid}/panic`, {}, { headers });
-      setConfirmation("🚨 PÂNICO ACIONADO · central avisada");
+      setConfirmation("PÂNICO ACIONADO · central avisada");
       reload();
     } catch (e) { alert(e?.response?.data?.detail || e.message); }
     setBusy(null);
@@ -265,7 +265,7 @@ function Dashboard({ token, meta, onLogout }) {
       <header className="fp-topbar">
         <div className="fp-topbar-left">
           <div className="fp-brand">
-            <span className="fp-brand-icon">🏠</span>
+            <span className="fp-brand-icon"></span>
             <div>
               <div className="fp-brand-name">
                 {meta.tenant?.name || "SmartHome"}
@@ -351,7 +351,7 @@ function Dashboard({ token, meta, onLogout }) {
                          disabled={busy === s.id}
                          className="fp-btn fp-btn-danger"
                          data-testid={`security-portal-arm-away-${s.id}`}>
-                  🔴 Armar Total
+                  Armar Total
                 </button>
                 <button onClick={() => arm(s.id, "stay")}
                          disabled={busy === s.id}
@@ -359,13 +359,13 @@ function Dashboard({ token, meta, onLogout }) {
                          style={{ background:
                                     "linear-gradient(135deg,#f59e0b,#d97706)",
                                    color: "white" }}>
-                  🟠 Armar Parcial
+                  Armar Parcial
                 </button>
                 <button onClick={() => disarm(s.id)}
                          disabled={busy === s.id}
                          className="fp-btn fp-btn-success"
                          data-testid={`security-portal-disarm-${s.id}`}>
-                  🟢 Desarmar
+                  Desarmar
                 </button>
                 <button onClick={() => panic(s.id)}
                          disabled={busy === s.id}
@@ -382,7 +382,7 @@ function Dashboard({ token, meta, onLogout }) {
                                     boxShadow:
                                       "0 4px 14px rgba(239,68,68,.5)",
                                     animation: "fp-cmd-pop .3s ease-out" }}>
-                  🚨 PÂNICO
+                  PÂNICO
                 </button>
               </div>
             </div>
@@ -407,10 +407,10 @@ function Dashboard({ token, meta, onLogout }) {
                                             alignItems: "center" }}>
                 <div style={{ fontSize: 22 }}>
                   {a.kind === "panic" ? "🆘"
-                    : a.kind?.includes("burglary") ? "🚪"
-                      : a.kind === "fire" ? "🔥"
-                        : a.kind === "flood" ? "💧"
-                          : "⚠"}
+                    : a.kind?.includes("burglary") ? ""
+                      : a.kind === "fire" ? ""
+                        : a.kind === "flood" ? ""
+                          : ""}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700,

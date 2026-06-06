@@ -252,7 +252,7 @@ function Hero() {
               Vantagens de parceiros
             </div>
             <h3 style={{ margin: "4px 0 16px", fontSize: 26, fontWeight: 900 }}>
-              Promoções 🎁
+              Promoções 
             </h3>
             <div style={{ display: "grid", gap: 10 }}>
               {[
@@ -606,19 +606,19 @@ function Testimonials() {
       q: "Em 2 meses dobrei o movimento nas terças à noite. Cliente Ligo virou freguês.",
       n: "Antônio Carvalho",
       r: "Pizzaria Bella Italia · Lavras",
-      avatar: "🍕",
+      avatar: "",
     },
     {
       q: "O cliente já chega com o QR aberto no celular. É só passar o leitor e pronto. Sem papelada.",
       n: "Daniela Souza",
       r: "Drogaria Norte · Itumirim",
-      avatar: "💊",
+      avatar: "",
     },
     {
       q: "Não paguei nada pra começar. Em 1 mês fiz 47 atendimentos só por causa do cupom Ligo.",
       n: "Roberto Lima",
       r: "Auto Center Lima · Lavras",
-      avatar: "🔧",
+      avatar: "",
     },
   ];
   return (
@@ -646,7 +646,7 @@ function Testimonials() {
               boxShadow: "0 12px 28px rgba(58,15,138,.06)",
             }}>
               <div style={{ fontSize: 22, color: COLORS.brand,
-                                lineHeight: 1, marginBottom: 10 }}>"</div>
+                                lineHeight: 1, marginBottom: 10 }}>“</div>
               <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55,
                               color: COLORS.ink, fontWeight: 500 }}>{t.q}</p>
               <div style={{ marginTop: 18, display: "flex",

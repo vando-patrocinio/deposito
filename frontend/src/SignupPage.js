@@ -74,7 +74,7 @@ export default function SignupPage({ onSuccess, onBack, defaultPlan = "trial" })
             background: "linear-gradient(135deg,#10b981,#059669)",
             display: "grid", placeItems: "center", fontSize: 22,
             boxShadow: "0 14px 30px rgba(16,185,129,.3)",
-          }}>📍</div>
+          }}></div>
           <h1 style={{ margin: 0, color: "white", fontSize: 30, fontWeight: 850, letterSpacing: "-0.02em" }}>Criar conta da empresa</h1>
           <p style={{ marginTop: 10, color: "#94a3b8", fontSize: 14, lineHeight: 1.5 }}>
             {plan === "free"

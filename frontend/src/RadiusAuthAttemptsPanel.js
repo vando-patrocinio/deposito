@@ -74,7 +74,7 @@ export default function RadiusAuthAttemptsPanel() {
       <div style={{ marginBottom: 14 }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800,
                         color: "#0f172a" }}>
-          🔌 Tentativas de conexão
+          Tentativas de conexão
         </h2>
         <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>
           Feed ao vivo de tentativas de autenticação PPPoE recebidas pelo
@@ -99,8 +99,8 @@ export default function RadiusAuthAttemptsPanel() {
             {f === "all"
               ? `Todos (${counts.total})`
               : f === "accept"
-              ? `🟢 Aceitos (${counts.accept})`
-              : `🔴 Rejeitados (${counts.reject})`}
+              ? `Aceitos (${counts.accept})`
+              : `Rejeitados (${counts.reject})`}
           </button>
         ))}
         <span style={{
@@ -134,7 +134,7 @@ export default function RadiusAuthAttemptsPanel() {
                     background: "#f1f5f9", color: "#0f172a",
                     border: "1px solid #cbd5e1", fontSize: 12,
                     fontWeight: 700, cursor: "pointer",
-                  }}>🔄</button>
+                  }}></button>
       </div>
 
       {loading && (

@@ -143,7 +143,7 @@ export default function PingAutoStep({ ticketId, onResult, autoRun = true }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: "#0c4a6e",
                           letterSpacing: 0.5, textTransform: "uppercase" }}>
-            🛰 Teste de Latência · 8.8.8.8 (Google) · 10 pings
+            Teste de Latência · 8.8.8.8 (Google) · 10 pings
           </div>
           {phase === "done" && (
             <>
@@ -190,7 +190,7 @@ export default function PingAutoStep({ ticketId, onResult, autoRun = true }) {
                       border: "1px solid #cbd5e1", background: "white",
                       fontSize: 11, fontWeight: 700, cursor: "pointer",
                     }}>
-            🔁 Re-testar
+            Re-testar
           </button>
         )}
       </div>
@@ -208,7 +208,7 @@ export default function PingAutoStep({ ticketId, onResult, autoRun = true }) {
           background: "#fef3c7", border: "1px solid #fbbf24",
           fontSize: 11, color: "#78350f", fontWeight: 600,
         }}>
-          ⚠️ Perda de pacotes acima do tolerável. Verifique cabo/conector antes de finalizar.
+          ️ Perda de pacotes acima do tolerável. Verifique cabo/conector antes de finalizar.
         </div>
       )}
     </div>

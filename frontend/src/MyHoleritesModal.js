@@ -79,7 +79,7 @@ export default function MyHoleritesModal({ collaboratorId, onClose }) {
             background: "white", borderRadius: 14,
             border: "1px solid #f1f5f9",
           }}>
-            <div style={{ fontSize: 36, marginBottom: 8, opacity: .35 }}>📄</div>
+            <div style={{ fontSize: 36, marginBottom: 8, opacity: .35 }}></div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
               Nenhum holerite disponível
             </div>
@@ -431,7 +431,7 @@ function SignWithGovBrModal({ doc, collaboratorId, onClose, onSuccess }) {
                 />
                 {file ? (
                   <div style={{ fontSize: 13, color: "#15803d", fontWeight: 700 }}>
-                    📄  {file.name}
+                     {file.name}
                     <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 3 }}>
                       {(file.size / 1024).toFixed(0)} KB
                     </div>

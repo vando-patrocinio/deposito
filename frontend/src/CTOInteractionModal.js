@@ -245,10 +245,10 @@ function CTOPhotosTab({ ctoId }) {
                 {fmt(p.captured_at)}
               </div>
               {p.technician_name && (
-                <div>👷 {p.technician_name}</div>
+                <div>{p.technician_name}</div>
               )}
               {p.client_name && (
-                <div>👤 {p.client_name}</div>
+                <div>{p.client_name}</div>
               )}
             </div>
           </div>
@@ -279,8 +279,8 @@ function CTOPhotosTab({ ctoId }) {
                 {fmt(zoom.captured_at)}
               </div>
               <div style={{ marginTop: 4 }}>
-                {zoom.technician_name && <span>👷 {zoom.technician_name}</span>}
-                {zoom.client_name && <span> · 👤 {zoom.client_name}</span>}
+                {zoom.technician_name && <span>{zoom.technician_name}</span>}
+                {zoom.client_name && <span> · {zoom.client_name}</span>}
                 {zoom.ticket_id && <span> · OS {zoom.ticket_id.slice(0, 8)}</span>}
               </div>
             </div>
@@ -308,7 +308,7 @@ function CTOPhotosTab({ ctoId }) {
                                   cursor: "pointer",
                                   display: "inline-flex", justifyContent: "center",
                                   alignItems: "center", gap: 8 }}>
-                  🤖 Analisar foto com IA (Gemini Vision)
+                  Analisar foto com IA (Gemini Vision)
                 </button>
               )}
               {analyzing && (
@@ -328,7 +328,7 @@ function CTOPhotosTab({ ctoId }) {
                                   alignItems: "center", marginBottom: 8 }}>
                     <div style={{ fontWeight: 800, fontSize: 13, color: "#0f172a",
                                     display: "flex", alignItems: "center", gap: 6 }}>
-                      🤖 Análise da IA
+                      Análise da IA
                       {analysis.cached && (
                         <span style={{ fontSize: 9, padding: "2px 6px",
                                         borderRadius: 999, background: "#e0e7ff",
@@ -534,7 +534,7 @@ function ProvisionForm({ cto, ctoId, freeSlots, onCreated }) {
       <div style={{ padding: 10,
                       background: "#eef2ff", borderRadius: 8,
                       fontSize: 11.5, color: "#3730a3" }}>
-        💡 <strong>CTO:</strong> {cto?.name} · Slots livres: {freeSlots.length}
+        <strong>CTO:</strong> {cto?.name} · Slots livres: {freeSlots.length}
         {freeSlots.length > 0 && (
           <div style={{ marginTop: 4, fontSize: 10.5 }}>
             Próximos: {freeSlots.slice(0, 10).join(", ")}
@@ -670,7 +670,7 @@ function ProvisionForm({ cto, ctoId, freeSlots, onCreated }) {
             {!result.smartolt_synced && (
               <span style={{ marginLeft: "auto", fontSize: 11,
                               color: "#92400e", fontWeight: 600 }}>
-                ⚠️ SmartOLT pendente
+                ️ SmartOLT pendente
               </span>
             )}
           </div>

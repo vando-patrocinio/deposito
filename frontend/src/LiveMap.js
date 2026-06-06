@@ -28,6 +28,24 @@ function colorForId(id) {
 const RISK_COLOR = { alto: "#dc2626", medio: "#f59e0b", baixo: "#16a34a" };
 const RISK_LABEL = { alto: "ALTO", medio: "MÉDIO", baixo: "BAIXO" };
 
+// Helpers para o label de precisão do GPS reportado pelo app
+function accuracyEmoji(label) {
+  switch (label) {
+    case "exata": return "";
+    case "aproximada": return "";
+    case "imprecisa": return "️";
+    default: return "";
+  }
+}
+function accuracyColor(label) {
+  switch (label) {
+    case "exata": return "#059669";       // verde
+    case "aproximada": return "#D97706";  // amarelo
+    case "imprecisa": return "#DC2626";   // vermelho
+    default: return "#94a3b8";
+  }
+}
+
 // Quando dois pings consecutivos do mesmo colaborador têm um intervalo maior
 // que isso, quebramos a polyline em segmentos separados (evita "teleporte"
 // no mapa quando o GPS ficou off por horas e voltou em outro município).
@@ -325,7 +343,7 @@ export default function LiveMap() {
             <input type="checkbox" checked={snapToRoads}
                     onChange={(e) => setSnapToRoads(e.target.checked)}
                     data-testid="snap-to-roads-toggle" />
-            🛣️ Trajeto pelas ruas
+            ️ Trajeto pelas ruas
           </label>
           <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, color: "#475569" }}>
             <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} data-testid="auto-refresh" />
@@ -340,7 +358,7 @@ export default function LiveMap() {
                 title={pushState.subscribed ? "Desativar notificações" : "Receber alertas mesmo com a aba fechada"}
                 style={{ fontSize: 12 }}
               >
-                {pushState.subscribed ? "🔔 Notificações: ON" : "🔕 Ativar notificações"}
+                {pushState.subscribed ? "Notificações: ON" : "Ativar notificações"}
               </Button>
               {pushState.subscribed && (
                 <Button onClick={testPush} variant="secondary" data-testid="test-push-btn" style={{ fontSize: 12 }} title="Enviar push de teste">
@@ -415,7 +433,7 @@ export default function LiveMap() {
                           data-testid={`livemap-cto-${c.id}`}>
                   <LTooltip direction="top" offset={[0, -6]}>
                     <span style={{ fontWeight: 700, fontSize: 11 }}>
-                      📦 {c.name}
+                      {c.name}
                       {c.sigla && (
                         <span style={{ color: "#0d9488", marginLeft: 4 }}>
                           · {c.sigla}
@@ -427,7 +445,7 @@ export default function LiveMap() {
                     <div style={{ fontSize: 12, minWidth: 180 }}>
                       <div style={{ fontWeight: 800, color: "#0f766e",
                                        marginBottom: 4 }}>
-                        📦 {c.name}
+                        {c.name}
                       </div>
                       {c.address && (
                         <div style={{ color: "#475569", marginBottom: 4 }}>
@@ -478,12 +496,24 @@ export default function LiveMap() {
                 const segments = rawSeg.length > 0
                   ? rawSeg
                   : splitTrackBySessions(pts);
-                return segments.map((seg, sIdx) => (
-                  <Polyline key={`tr-${cid}-${sIdx}`}
-                              positions={seg.map((p) => [p.lat, p.lng])}
-                              pathOptions={{ color, weight: 3.5, opacity: 0.55,
-                                              dashArray: "6 4" }} />
-                ));
+                return segments.map((seg, sIdx) => {
+                  // Sanitiza: descarta pontos com lat/lng inválido
+                  // (defesa contra NaN/null que silenciosamente quebra
+                  // o renderer do Leaflet Polyline).
+                  const positions = seg
+                    .map((p) => [Number(p.lat), Number(p.lng)])
+                    .filter(([la, ln]) => Number.isFinite(la)
+                                            && Number.isFinite(ln)
+                                            && Math.abs(la) > 0.001
+                                            && Math.abs(ln) > 0.001);
+                  if (positions.length < 2) return null;
+                  return (
+                    <Polyline key={`tr-${cid}-${sIdx}`}
+                                positions={positions}
+                                pathOptions={{ color, weight: 3.5, opacity: 0.55,
+                                                dashArray: "6 4" }} />
+                  );
+                });
               })}
 
               {/* Estadias longas (dwell) - círculos com tempo
@@ -543,13 +573,13 @@ export default function LiveMap() {
                         <strong>{c?.name || d.collaborator_id}</strong><br />
                         {fmtElapsed(d.recorded_at)}<br />
                         Lat {d.lat.toFixed(5)}, Lng {d.lng.toFixed(5)}<br />
-                        {d.accuracy && <>Precisão: {Math.round(d.accuracy)} m<br /></>}
-                        Status: {stale ? "⚪ Inativo (>5 min)" : "🟢 Ativo"}<br />
+                        {d.accuracy && <>Precisão: {Math.round(d.accuracy)} m {accuracyEmoji(item?.current_location?.accuracy_label)} {item?.current_location?.accuracy_label || ""}<br /></>}
+                        Status: {stale ? "Inativo (>5 min)" : "Ativo"}<br />
                         {item && item.current_dwell_min >= dwellThreshold && (
                           <>⏱️ <strong>Parado há {fmtDur(item.current_dwell_min)}</strong><br /></>
                         )}
                         {item && item.out_of_fence && (
-                          <>🚧 <strong>Fora da cerca</strong>
+                          <><strong>Fora da cerca</strong>
                             {item.nearest_fence_distance_m != null && <> ({Math.round(item.nearest_fence_distance_m)} m)</>}<br />
                           </>
                         )}
@@ -584,7 +614,7 @@ export default function LiveMap() {
                     borderRadius: 8, fontSize: 12, fontWeight: 600,
                     zIndex: 800, boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
                   }}>
-                    ⚠️ Nenhum técnico enviando GPS no momento. Peça pra eles
+                    ️ Nenhum técnico enviando GPS no momento. Peça pra eles
                     abrirem o app e autorizarem a localização — os carros
                     aparecem aqui automaticamente.
                   </div>
@@ -605,7 +635,7 @@ export default function LiveMap() {
                     borderRadius: 8, fontSize: 12, fontWeight: 600,
                     zIndex: 800, boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
                   }}>
-                    ⚠️ Mostrando última posição conhecida — ping mais recente
+                    ️ Mostrando última posição conhecida — ping mais recente
                     é de <strong>{Math.round(newestAgeMin)} min atrás</strong>.
                     Os técnicos pararam de enviar GPS?
                   </div>
@@ -622,7 +652,7 @@ export default function LiveMap() {
                 <span style={{ marginLeft: 6, color: "#b91c1c", fontWeight: 800 }}>· {alerts.length} alerta(s)</span>
               )}
               <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 4 }}>
-                🟢 ativo (até 5 min) • ⚪ inativo (mais de 5 min)
+                ativo (até 5 min) • inativo (mais de 5 min)
               </div>
               {lastFetchRef.current > 0 && (
                 <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 2 }}>
@@ -663,7 +693,7 @@ export default function LiveMap() {
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       <strong style={{ fontSize: 14 }}>{c.name}</strong>
                       <span style={{ fontSize: 11, color: stale ? "#94a3b8" : "#16a34a", fontWeight: 700 }}>
-                        {d ? (stale ? "⚪ inativo" : "🟢 ativo") : "○ sem dados"}
+                        {d ? (stale ? "inativo" : "ativo") : "○ sem dados"}
                       </span>
                       {item?.out_of_fence && (
                         <span data-testid={`badge-fence-${c.id}`} style={{ fontSize: 10, fontWeight: 900, background: "#fee2e2", color: "#991b1b", padding: "2px 6px", borderRadius: 8 }}>
@@ -684,10 +714,19 @@ export default function LiveMap() {
                     <div style={{ fontSize: 12, color: "#64748b" }}>
                       {d ? fmtElapsed(d.recorded_at) : "Nenhum ping recebido"}
                       {d?.accuracy && ` • ±${Math.round(d.accuracy)}m`}
+                      {item?.current_location?.accuracy_label && (
+                        <> · <span style={{
+                          color: accuracyColor(item.current_location.accuracy_label),
+                          fontWeight: 700,
+                        }} title="Tipo de localização reportada pelo app do colaborador">
+                          {accuracyEmoji(item.current_location.accuracy_label)}{" "}
+                          {item.current_location.accuracy_label}
+                        </span></>
+                      )}
                     </div>
                     {item?.ai_evaluation?.summary && (
                       <div style={{ fontSize: 11, color: "#475569", marginTop: 3, fontStyle: "italic" }}>
-                        💡 {item.ai_evaluation.summary}
+                        {item.ai_evaluation.summary}
                       </div>
                     )}
                     <div style={{ fontSize: 11, color: "#94a3b8" }}>{trackPoints} ponto(s) no trajeto</div>

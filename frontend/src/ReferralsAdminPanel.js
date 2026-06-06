@@ -100,7 +100,7 @@ export default function ReferralsAdminPanel() {
             }}
             title="Abre o app do cliente em uma nova aba"
           >
-            👀 Ver app do cliente
+            Ver app do cliente
           </a>
           <div>
             <div style={{ fontSize: 11, color: "#64748b" }}>Pendente</div>
@@ -123,7 +123,7 @@ export default function ReferralsAdminPanel() {
       }} data-testid="blast-block">
         <div style={{ flex: 1, minWidth: 280 }}>
           <div style={{ fontWeight: 700, color: "#065f46", marginBottom: 4 }}>
-            🚀 Convidar todos os assinantes ATIVOS
+            Convidar todos os assinantes ATIVOS
           </div>
           <div style={{ fontSize: 12, color: "#047857" }}>
             Dispara uma mensagem WhatsApp pra cada assinante apresentando o
@@ -152,7 +152,7 @@ export default function ReferralsAdminPanel() {
             fontSize: 13, fontWeight: 700, cursor: "pointer",
             boxShadow: "0 4px 12px rgba(13,148,136,.3)",
           }}>
-          {blasting ? "Disparando…" : "📲 Disparar convite"}
+          {blasting ? "Disparando…" : "Disparar convite"}
         </button>
         <button
           data-testid="blast-invite-force-btn"
@@ -308,7 +308,7 @@ function DashboardCards({ d }) {
           label="Indicações (30d)"
           value={fmt(d.indications.current)}
           delta={d.indications.growth_pct}
-          icon="🚀"
+          icon=""
           tooltip={`vs ${d.indications.previous} no período anterior`}
         />
         <KpiCard
@@ -323,14 +323,14 @@ function DashboardCards({ d }) {
           label="Conversão (30d)"
           value={`${d.conversion_pct_30d}%`}
           delta={null}
-          icon="🎯"
+          icon=""
           tooltip="Instalações ÷ Indicações"
         />
         <KpiCard
           label="Indicadores ativos"
           value={fmt(d.active_referrers.current)}
           delta={d.active_referrers.growth_pct}
-          icon="👥"
+          icon=""
           tooltip="Clientes únicos que indicaram nos últimos 30d"
         />
       </div>
@@ -341,13 +341,13 @@ function DashboardCards({ d }) {
         gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
         gap: 12, marginBottom: 12,
       }}>
-        <KpiCard label="Total pago" value={brl(d.totals_all_time.paid_brl)} icon="💸" />
-        <KpiCard label="Saldo disponível" value={brl(d.totals_all_time.available_brl)} icon="💰" />
+        <KpiCard label="Total pago" value={brl(d.totals_all_time.paid_brl)} icon="" />
+        <KpiCard label="Saldo disponível" value={brl(d.totals_all_time.available_brl)} icon="" />
         <KpiCard label="A aprovar" value={brl(d.totals_all_time.pending_brl)} icon="⏳" />
         <KpiCard
           label="Adesão ao programa"
           value={`${d.base.penetration_pct}%`}
-          icon="📈"
+          icon=""
           tooltip={`${d.base.eligible_referrers} de ${d.base.active_subscribers} ativos`}
         />
       </div>
@@ -414,7 +414,7 @@ function SparklineCard({ data }) {
                       marginBottom: 8 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b",
                         letterSpacing: 1, textTransform: "uppercase" }}>
-          📊 Últimos 30 dias
+          Últimos 30 dias
         </div>
         <div style={{ display: "flex", gap: 10, fontSize: 11 }}>
           <span style={{ color: "#0d9488" }}>● Indicações</span>
@@ -453,7 +453,7 @@ function TopPerformersCard({ top }) {
       <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b",
                       letterSpacing: 1, textTransform: "uppercase",
                       marginBottom: 10 }}>
-        🏆 Top indicadores (30d)
+        Top indicadores (30d)
       </div>
       {top.length === 0 ? (
         <div style={{ padding: 14, color: "#94a3b8", fontSize: 13,
@@ -470,7 +470,7 @@ function TopPerformersCard({ top }) {
             <span style={{
               fontSize: 18, width: 26, textAlign: "center",
             }}>
-              {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
+              {i === 0 ? "" : i === 1 ? "" : i === 2 ? "" : `#${i + 1}`}
             </span>
             <span style={{ flex: 1, fontSize: 13, color: "#0f172a",
                             whiteSpace: "nowrap", overflow: "hidden",
@@ -577,7 +577,7 @@ function CampaignConfigCard() {
         <div>
           <div style={{ fontSize: 11, fontWeight: 800, color: "#6B2BFB",
                           letterSpacing: 1.5, textTransform: "uppercase" }}>
-            🎨 CAMPANHA DE INDICAÇÃO
+            CAMPANHA DE INDICAÇÃO
           </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a",
                           marginTop: 2 }}>
@@ -585,7 +585,7 @@ function CampaignConfigCard() {
           </div>
           <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
             Esta mensagem + imagem aparecem no app do cliente quando ele clica
-            em "Compartilhar no WhatsApp".
+            em “Compartilhar no WhatsApp”.
             {cfg?.updated_at && (
               <> · Atualizado em <b>{new Date(cfg.updated_at).toLocaleString("pt-BR")}</b>
               {cfg.updated_by && ` por ${cfg.updated_by}`}</>
@@ -650,7 +650,7 @@ function CampaignConfigCard() {
                   padding: "8px 10px", borderRadius: 8,
                   fontSize: 12, fontWeight: 700,
                 }}>
-                📷 Trocar imagem
+                Trocar imagem
               </label>
               <input
                 id="campaign-img-file" type="file" accept="image/*"
@@ -688,7 +688,7 @@ function CampaignConfigCard() {
               onChange={(e) => setMessage(e.target.value)}
               rows={8}
               maxLength={2000}
-              placeholder="Ex.: Eu já sou cliente LIGO e indico! 💜🧡..."
+              placeholder="Ex.: Eu já sou cliente LIGO e indico! ..."
               style={{
                 width: "100%", boxSizing: "border-box",
                 border: "1px solid #cbd5e1", borderRadius: 10,
@@ -703,7 +703,7 @@ function CampaignConfigCard() {
               marginTop: 6,
             }}>
               <span>
-                💡 O link de indicação do cliente é anexado automaticamente
+                O link de indicação do cliente é anexado automaticamente
                 no final da mensagem.
               </span>
               <span>{message.length}/2000</span>
@@ -743,7 +743,7 @@ function CampaignConfigCard() {
             boxShadow: (saving || !isDirty || !message.trim())
               ? "none" : "0 4px 12px rgba(107,43,251,.3)",
           }}>
-          {saving ? "Salvando…" : "💾 Salvar campanha"}
+          {saving ? "Salvando…" : "Salvar campanha"}
         </button>
       </div>
     </div>

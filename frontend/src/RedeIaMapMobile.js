@@ -130,7 +130,7 @@ export default function RedeIaMapMobile({ onBack, technician }) {
   useEffect(() => { load(myPos); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myPos && Math.round(myPos[0] * 1000), myPos && Math.round(myPos[1] * 1000), radiusKm, collabId]);
 
-  // 🌐 Auto-centralizar no GPS+rede do dispositivo ao abrir o mapa.
+  // Auto-centralizar no GPS+rede do dispositivo ao abrir o mapa.
   // iter183 — usa `getBestPosition` (helper híbrido): dispara GPS (alta) +
   // rede (rápido) em paralelo, resolve com o primeiro fix < 25m ou melhor
   // disponível no timeout. Garante que mesmo em prédio/sombra o mapa
@@ -373,7 +373,7 @@ export default function RedeIaMapMobile({ onBack, technician }) {
                      whiteSpace: "nowrap", flexShrink: 0,
                      marginLeft: "auto",
                    }}>
-          🛣 Trilha {trail.points?.length || 0}
+          Trilha {trail.points?.length || 0}
         </button>
       </div>
 
@@ -434,7 +434,7 @@ export default function RedeIaMapMobile({ onBack, technician }) {
           style={{ height: "100%", width: "100%" }}
           zoomControl={true}
           attributionControl={false}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
           <Recenter position={forceCenter} />
 
           {/* Cabos (linhas) */}

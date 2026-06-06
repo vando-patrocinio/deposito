@@ -63,7 +63,7 @@ export function extractErrorMessage(e) {
 export const BLANK_AGENT = {
   name: "",
   description: "",
-  initial_message: "Olá! Como posso te ajudar hoje? 😊",
+  initial_message: "Olá! Como posso te ajudar hoje? ",
   system_prompt: "Você é uma assistente virtual cordial e objetiva. Use português do Brasil, no máximo 4 frases curtas, com emojis sutis quando fizer sentido.",
   model_provider: "deepseek",
   model_name: "deepseek-v3.1-terminus",
@@ -708,7 +708,7 @@ function WhatsAppSection({ autoReply, reload }) {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ padding: 14, background: "#dcfce7", color: "#166534",
                           borderRadius: 10, fontSize: 13, fontWeight: 700, flex: 1, minWidth: 250 }}>
-            ✅ WhatsApp conectado. Configure ou ative o auto-reply em <strong>"Auto-reply / Ativação"</strong>.
+            ✅ WhatsApp conectado. Configure ou ative o auto-reply em <strong>“Auto-reply / Ativação”</strong>.
           </div>
           <button onClick={logout} disabled={busy}
                   data-testid="agent-config-wa-logout"
@@ -848,7 +848,7 @@ function TwilioSection() {
     const url = cfg?.webhook_url;
     if (url) {
       navigator.clipboard?.writeText(url);
-      setFlash("📋 URL do webhook copiada.");
+      setFlash("URL do webhook copiada.");
       setTimeout(() => setFlash(""), 2500);
     }
   }
@@ -915,7 +915,7 @@ function TwilioSection() {
           padding: 12, borderRadius: 10, background: "#fef3c7",
           border: "1px solid #fde68a", fontSize: 12, color: "#92400e",
         }}>
-          <strong>⚙️ Configure no Twilio Console</strong>
+          <strong>️ Configure no Twilio Console</strong>
           <div style={{ marginTop: 4, lineHeight: 1.55 }}>
             No painel da Twilio (Messaging → WhatsApp → Senders → seu número → A message comes in):
             cole essa URL como webhook do WhatsApp (POST):
@@ -965,7 +965,7 @@ function TwilioSection() {
 
         <Field label="From Number (WhatsApp aprovado)" required
                 hint="Formato E.164. Sandbox usa +14155238886.">
-          <input data-testid="twilio-field-from" type="tel"
+          <input data-testid="twilio-field-from " type="tel"
                   value={fromNumber} onChange={(e) => setFromNumber(e.target.value)}
                   placeholder="+5521998176526"
                   style={inputStyle()} disabled={busy} />
@@ -1048,7 +1048,7 @@ function MetaCloudSection() {
 
   const [testTo, setTestTo] = useState("");
   const [testPlatform, setTestPlatform] = useState("whatsapp_cloud");
-  const [testText, setTestText] = useState("🚀 Teste SmartProv via Meta Cloud API");
+  const [testText, setTestText] = useState("Teste SmartProv via Meta Cloud API");
   const [messages, setMessages] = useState([]);
   const [showSecrets, setShowSecrets] = useState(false);
 
@@ -1132,7 +1132,7 @@ function MetaCloudSection() {
   function copy(text, label = "Copiado") {
     if (text) {
       navigator.clipboard?.writeText(text);
-      setFlash(`📋 ${label}`);
+      setFlash(`${label}`);
       setTimeout(() => setFlash(""), 2000);
     }
   }
@@ -1142,7 +1142,7 @@ function MetaCloudSection() {
     setBusy(true);
     try {
       await api.metaRotateVerifyToken();
-      setFlash("🔁 Verify Token rotacionado. Atualize no Meta.");
+      setFlash("Verify Token rotacionado. Atualize no Meta.");
       await reload();
       setTimeout(() => setFlash(""), 4000);
     } catch (e) {
@@ -1370,7 +1370,7 @@ function MetaCloudSection() {
         padding: 14, borderRadius: 10, border: "1px solid var(--border-default)",
         background: "var(--bg-surface)", display: "grid", gap: 10,
       }}>
-        <strong style={{ fontSize: 13 }}>🧪 Enviar mensagem de teste</strong>
+        <strong style={{ fontSize: 13 }}>Enviar mensagem de teste</strong>
         <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 10 }}>
           <Field label="Plataforma">
             <select value={testPlatform}
@@ -1613,7 +1613,7 @@ function AutoReplySection({ draft, patch, autoReply, onToggle, busy, isNew }) {
         fontSize: 12, color: "var(--text-secondary)",
         lineHeight: 1.55,
       }}>
-        🕒 <strong style={{ color: "var(--text-primary)" }}>Horário comercial</strong>{" "}
+        <strong style={{ color: "var(--text-primary)" }}>Horário comercial</strong>{" "}
         configurável em <em>Atendimento IA → Configuração → Horário de Atendimento</em>.
         A IA usa essa janela pra responder coerentemente quando cliente
         pede humano fora do expediente.

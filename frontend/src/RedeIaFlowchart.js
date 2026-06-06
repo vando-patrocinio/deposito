@@ -47,7 +47,7 @@ function buildLayout(raw) {
     nodes.push({
       id: b.id,
       type: "default",
-      data: { label: <div><strong>📡 {b.data.label}</strong></div> },
+      data: { label: <div><strong>{b.data.label}</strong></div> },
       position: { x: 50, y: 50 + i * 260 },
       style: nodeStyle("bairro"),
       sourcePosition: Position.Right,
@@ -108,7 +108,7 @@ function buildLayout(raw) {
       nodes.push({
         id: cli.id,
         type: "default",
-        data: { label: <div>👤 {cli.data.label}<div style={{ fontSize: 10, opacity: 0.7 }}>P{cli.data.port}</div></div> },
+        data: { label: <div>{cli.data.label}<div style={{ fontSize: 10, opacity: 0.7 }}>P{cli.data.port}</div></div> },
         position: { x: ctoNode.position.x + 220, y: ctoNode.position.y + idx * 40 },
         style: { ...nodeStyle("client"), minWidth: 100, fontSize: 11 },
         sourcePosition: Position.Right,

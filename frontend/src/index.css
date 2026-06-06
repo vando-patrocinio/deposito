@@ -24,42 +24,49 @@
   --border-strong: #cbd5e1;
   --border-sidebar: #1f2a3a;
 
-  /* Text */
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
+  /* Text — Grafite escuro (manual 2026-06) */
+  --text-primary: #1f2933;
+  --text-secondary: #5f6b7a;
+  --text-muted: #8a94a3;
   --text-onDark: #e2e8f0;
   --text-onDark-muted: #94a3b8;
 
-  /* Brand & accents — SmartProv Azure Blue */
-  --brand-primary: #020617;          /* ink */
-  --brand-ink: #020617;
-  --accent: #0055ff;                 /* SmartProv Azure */
-  --accent-hover: #0044cc;
-  --accent-bright: #00c2ff;          /* cyan accent */
-  --accent-soft: #dbe6ff;            /* azure-50 */
-  --accent-soft-fg: #003db3;         /* azure-700 */
+  /* Brand & accents — SmartProv Institutional (manual 2026-06)
+     Roxo institucional profundo (primário) + Laranja institucional moderado
+     (secundário). Azure mantido como helper p/ links/ações neutras. */
+  --brand-primary: #4b1d7a;          /* roxo institucional */
+  --brand-primary-hover: #3b1661;
+  --brand-ink: #1f2933;              /* grafite escuro (texto principal) */
+  --accent: #4b1d7a;                 /* alias institucional */
+  --accent-hover: #3b1661;
+  --accent-bright: #6d28d9;
+  --accent-soft: #f3eafd;            /* roxo-50 */
+  --accent-soft-fg: #4b1d7a;
+  --secondary: #f28c28;              /* laranja institucional moderado */
+  --secondary-hover: #d97816;
+  --secondary-soft: #fef3e2;
+  --secondary-soft-fg: #b46314;
 
-  /* Status */
-  --success: #10b981;
-  --success-soft: #d1fae5;
-  --success-soft-fg: #047857;
-  --warning: #f59e0b;
-  --warning-soft: #fef3c7;
-  --warning-soft-fg: #92400e;
-  --danger: #ef4444;
-  --danger-soft: #fee2e2;
-  --danger-soft-fg: #b91c1c;
-  --info: #0369a1;
-  --info-soft: #e0f2fe;
-  --info-soft-fg: #075985;
+  /* Status — corporate muted (manual 2026-06) */
+  --success: #237a4b;
+  --success-soft: #dcf2e4;
+  --success-soft-fg: #166534;
+  --warning: #9a6700;
+  --warning-soft: #fff4d6;
+  --warning-soft-fg: #854d0e;
+  --danger: #b42318;
+  --danger-soft: #fde8e6;
+  --danger-soft-fg: #991b1b;
+  --info: #1d4ed8;
+  --info-soft: #eaf0ff;
+  --info-soft-fg: #1e40af;
 
-  /* Shadows */
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 12px 28px -10px rgba(15, 23, 42, 0.10);
-  --shadow-brand: 0 10px 30px -10px rgba(0, 85, 255, 0.35);
+  /* Shadows — corporate refinement (sutil, não exagerado) */
+  --shadow-xs: 0 1px 2px rgba(31, 41, 51, 0.04);
+  --shadow-sm: 0 1px 3px rgba(31, 41, 51, 0.06), 0 1px 2px rgba(31, 41, 51, 0.04);
+  --shadow-md: 0 4px 12px rgba(31, 41, 51, 0.06);
+  --shadow-lg: 0 12px 28px -10px rgba(31, 41, 51, 0.10);
+  --shadow-brand: 0 10px 30px -10px rgba(75, 29, 122, 0.32);
 
   /* Radius scale */
   --radius-sm: 6px;
@@ -67,32 +74,33 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
 
-  /* shadcn tokens (HSL) — mapped to SmartProv palette */
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
+  /* shadcn tokens (HSL) — Mapped to Institutional palette (manual 2026-06)
+     Primary = Roxo institucional #4b1d7a (≈275° 61% 30%) */
+  --background: 218 18% 98%;
+  --foreground: 217 18% 17%;
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
+  --card-foreground: 217 18% 17%;
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --primary: 222 47% 11%;
+  --popover-foreground: 217 18% 17%;
+  --primary: 275 61% 30%;            /* roxo institucional */
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  --accent: 222 100% 50%;         /* SmartProv Azure */
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 217 18% 17%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 215 14% 47%;
+  --accent: 275 61% 30%;             /* roxo (alias) */
   --accent-foreground: 0 0% 100%;
-  --destructive: 0 84% 60%;
+  --destructive: 4 76% 40%;
   --destructive-foreground: 0 0% 100%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 222 100% 50%;
-  --chart-1: 222 100% 50%;
-  --chart-2: 194 100% 50%;
-  --chart-3: 38 92% 50%;
-  --chart-4: 142 71% 45%;
-  --chart-5: 0 84% 60%;
-  --radius: 0.5rem;
+  --border: 220 13% 88%;
+  --input: 220 13% 88%;
+  --ring: 275 61% 30%;
+  --chart-1: 275 61% 30%;            /* roxo */
+  --chart-2: 26 89% 55%;             /* laranja */
+  --chart-3: 217 81% 49%;            /* azul */
+  --chart-4: 145 53% 32%;            /* verde */
+  --chart-5: 4 76% 40%;              /* vermelho */
+  --radius: 10px;
 }
 
 .dark {
@@ -114,14 +122,14 @@
   --danger-soft-fg: #f87171;
   --info-soft: rgba(3, 105, 161, 0.22);
   --info-soft-fg: #7dd3fc;
-  --accent-soft: rgba(0, 85, 255, 0.18);
-  --accent-soft-fg: #60a5fa;
+  --accent-soft: rgba(75, 29, 122, 0.20);
+  --accent-soft-fg: #c4b5fd;
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.40);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.30);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.55);
-  --shadow-brand: 0 10px 30px -10px rgba(0, 85, 255, 0.50);
+  --shadow-brand: 0 10px 30px -10px rgba(75, 29, 122, 0.50);
 
   --background: 222 47% 4%;
   --foreground: 210 20% 95%;
@@ -135,13 +143,13 @@
   --secondary-foreground: 210 20% 95%;
   --muted: 222 25% 14%;
   --muted-foreground: 215 16% 64%;
-  --accent: 222 100% 60%;
+  --accent: 275 61% 50%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 62% 45%;
   --destructive-foreground: 0 0% 100%;
   --border: 222 25% 18%;
   --input: 222 25% 18%;
-  --ring: 222 100% 60%;
+  --ring: 275 61% 50%;
 }
 
 /* Dark-mode adaptors for surfaces that hardcode #fff/#f8fafc backgrounds */
@@ -165,11 +173,12 @@ body {
   line-height: 1.5;
 }
 
-/* Display headings use Space Grotesk for SmartProv brand identity */
+/* Headings & display — Inter (manual 2026-06 exige UMA fonte só).
+   Antes usava Space Grotesk; agora tudo Inter pra atender consistência. */
 h1, h2, h3,
 .sp-display,
 .app-sidebar__brand-name {
-  font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+  font-family: "Inter", "Manrope", system-ui, sans-serif;
   letter-spacing: -0.02em;
 }
 
@@ -178,9 +187,9 @@ code, pre, .mono, [data-mono] {
   font-feature-settings: "zero", "ss02";
 }
 
-/* Headings — tight, distinctive */
+/* Headings — tight, distinctive (manual 2026-06: Inter unificado) */
 h1, h2, h3, h4, h5 {
-  font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
+  font-family: "Inter", "Manrope", system-ui, sans-serif;
   letter-spacing: -0.022em;
   color: var(--text-primary);
   font-weight: 600;
@@ -197,9 +206,9 @@ h1, h2, h3, h4, h5 {
 }
 *::-webkit-scrollbar-thumb:hover { background: rgba(15, 23, 42, 0.22); background-clip: padding-box; border: 2px solid transparent; }
 
-/* Selection — força contraste legível em qualquer tema */
-::selection { background: #2563eb !important; color: #fff !important; }
-::-moz-selection { background: #2563eb !important; color: #fff !important; }
+/* Selection — corporate brand selection */
+::selection { background: var(--brand-primary) !important; color: #fff !important; }
+::-moz-selection { background: var(--brand-primary) !important; color: #fff !important; }
 
 /* Quando .dark ativo, mas o componente tem fundo BRANCO hardcoded
    (inline style="background: #fff" / "background: white"),
@@ -298,7 +307,7 @@ h1, h2, h3, h4, h5 {
 .input:focus, input.input:focus, select.input:focus, textarea.input:focus,
 .input:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(0, 85, 255, 0.18);
+  box-shadow: 0 0 0 3px rgba(75, 29, 122, 0.16);
 }
 textarea.input { height: auto; min-height: 80px; padding: 10px 12px; resize: vertical; }
 
@@ -379,9 +388,9 @@ textarea.input { height: auto; min-height: 80px; padding: 10px 12px; resize: ver
   background: #fff;
   display: grid; place-items: center; color: var(--brand-ink); font-weight: 700; font-size: 14px;
   letter-spacing: -0.04em;
-  font-family: "Space Grotesk", "Inter", sans-serif;
+  font-family: "Inter", "Manrope", sans-serif;
 }
-.app-sidebar__brand-name { font-weight: 600; font-size: 15px; letter-spacing: -0.018em; color: #fff; font-family: "Space Grotesk", "Inter", sans-serif; }
+.app-sidebar__brand-name { font-weight: 600; font-size: 15px; letter-spacing: -0.018em; color: #fff; font-family: "Inter", "Manrope", sans-serif; }
 .app-sidebar__brand-tag { font-size: 11px; color: var(--text-onDark-muted); }
 .app-sidebar__nav { padding: 12px 10px 24px; flex: 1; }
 .app-sidebar__group { margin-top: 16px; }
@@ -413,7 +422,7 @@ textarea.input { height: auto; min-height: 80px; padding: 10px 12px; resize: ver
 .app-sidebar__link.is-active {
   background: var(--bg-sidebar-active);
   color: #fff;
-  border-color: rgba(0, 85, 255, 0.4);
+  border-color: rgba(75, 29, 122, 0.50);
   box-shadow: inset 2px 0 0 0 var(--accent);
 }
 .app-sidebar__link svg { width: 16px; height: 16px; flex-shrink: 0; }
@@ -515,7 +524,7 @@ body.aihub-wa-fullscreen [data-testid="wa-chat-layout"] {
 .stat-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
 .stat-card__label { font-size: 11px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.06em; text-transform: uppercase; }
 .stat-card__value {
-  font-family: "Space Grotesk", "Inter", sans-serif;
+  font-family: "Inter", "Manrope", sans-serif;
   font-size: 28px; font-weight: 600; color: var(--text-primary);
   letter-spacing: -0.03em; line-height: 1; margin-top: 4px;
 }
@@ -525,7 +534,9 @@ body.aihub-wa-fullscreen [data-testid="wa-chat-layout"] {
    Display utility — Space Grotesk wordmark/heading
    Used globally (Cards, modals, hero, etc.) — matches landing.
    ============================================================ */
-.sp-display { font-family: "Space Grotesk", "Inter", sans-serif !important; letter-spacing: -0.022em; }
+/* Display utility — kept for backwards compat; mantém Inter pra
+   atender a regra de UMA fonte só (manual 2026-06). */
+.sp-display { font-family: "Inter", "Manrope", sans-serif !important; letter-spacing: -0.022em; }
 .sp-mono { font-family: "JetBrains Mono", monospace; }
 
 /* ============================================================

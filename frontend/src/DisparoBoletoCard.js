@@ -238,13 +238,13 @@ export default function DisparoBoletoCard() {
         <button onClick={doPreview} disabled={loadingPreview}
                  data-testid="dispboleto-preview-btn"
                  style={btnSecondary}>
-          {loadingPreview ? "Calculando..." : "🔍 Recalcular Preview"}
+          {loadingPreview ? "Calculando..." : "Recalcular Preview"}
         </button>
         <button onClick={() => { setDryRun(true); setConfirmOpen(true); }}
                  disabled={!preview?.total_clientes || sending}
                  data-testid="dispboleto-dryrun-btn"
                  style={btnGhost}>
-          🧪 Simular (sem enviar)
+          Simular (sem enviar)
         </button>
         <button onClick={() => { setDryRun(false); setConfirmOpen(true); }}
                  disabled={!preview?.total_clientes || sending}
@@ -426,7 +426,7 @@ export default function DisparoBoletoCard() {
         <details style={{ marginTop: 14 }}>
           <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer",
                               color: "var(--text-secondary)" }}>
-            📜 Histórico de disparos ({history.length})
+            Histórico de disparos ({history.length})
           </summary>
           <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
             {history.map((h) => (
@@ -440,7 +440,7 @@ export default function DisparoBoletoCard() {
                     }}>
                 <span title={h.id}>
                   {new Date(h.started_at).toLocaleString("pt-BR")}
-                  {h.dry_run && " 🧪"}
+                  {h.dry_run && " "}
                 </span>
                 <span style={{ color: "#15803d", fontWeight: 700 }}>
                   ✓ {h.sent || 0}

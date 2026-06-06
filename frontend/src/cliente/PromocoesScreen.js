@@ -84,7 +84,7 @@ export default function PromocoesScreen({ onBack, onLogout, me }) {
       <HeaderHero
         greeting="Suas"
         greetingName="Vantagens"
-        greetingEmoji="🎁"
+        greetingEmoji=""
         subtitle="Descontos exclusivos só pra clientes Ligo."
         onBack={onBack}
         onLogout={onLogout}

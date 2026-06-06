@@ -95,7 +95,7 @@ export default function PaymentsPanel() {
                   ✓ Asaas configurado ({asaas.env})
                 </span>
               : <span style={{ color: "#b45309", marginLeft: 6 }}>
-                  ⚠ Asaas não configurado — adicione ASAAS_API_KEY em /app/backend/.env
+                  Asaas não configurado — adicione ASAAS_API_KEY em /app/backend/.env
                 </span>}
           </div>
         </div>
@@ -331,7 +331,7 @@ function ChargeCreateModal({ onClose, onCreated }) {
         boxShadow: "0 20px 60px rgba(0,0,0,.35)",
       }}>
         <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800 }}>
-          💳 Emitir cobrança via Asaas
+          Emitir cobrança via Asaas
         </h3>
         <p style={{ fontSize: 11, color: "#64748b", marginBottom: 14 }}>
           Cria o cliente no Asaas (se ainda não existir) e emite boleto/Pix.
@@ -409,7 +409,7 @@ function ChargeCreateModal({ onClose, onCreated }) {
             marginTop: 10, padding: 9, borderRadius: 7,
             background: "#fef2f2", color: "#991b1b", fontSize: 12,
             border: "1px solid #fecaca",
-          }}>⚠ {err}</div>
+          }}>{err}</div>
         )}
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end",

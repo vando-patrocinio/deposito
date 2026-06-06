@@ -1296,8 +1296,13 @@ async def sync_customers(user: dict = Depends(require_role("gestor"))):
         "access_points_synced": 0,
         "branch_derived": 0,
         "branch_not_found": 0,
+        "snapshot_deactivated": 0,    # iter215 — clientes que sumiram do Atlaz
+        "snapshot_reactivated": 0,    # iter215 — voltaram após snapshot diff
         "plans_referenced": set(),
     }
+    # iter215 — Snapshot Diff: coleta TODOS atlaz_ids vistos nesse sync.
+    # No final, marca como INATIVO os que sumiram da listagem do Atlaz.
+    seen_atlaz_ids: set[str] = set()
     started = datetime.now(timezone.utc)
     # Carrega filiais 1x (não muda durante o sync)
     branches = await _build_branch_index(company_id)
@@ -1446,6 +1451,14 @@ async def sync_customers(user: dict = Depends(require_role("gestor"))):
 
                 if match:
                     sid = match["id"]
+                    # iter215 — Snapshot reactivation: se estava INATIVO e
+                    # voltou na listagem, reativa.
+                    if match.get("status") == "INATIVO" and \
+                       match.get("deactivation_reason") == "atlaz_snapshot_diff":
+                        payload.pop("status", None)  # mantém status do payload (ATIVO/etc)
+                        payload["deactivation_date"] = None
+                        payload["deactivation_reason"] = None
+                        stats["snapshot_reactivated"] += 1
                     await db.subscribers.update_one(
                         {"id": sid}, {"$set": payload}
                     )
@@ -1459,6 +1472,8 @@ async def sync_customers(user: dict = Depends(require_role("gestor"))):
                     await db.subscribers.insert_one(payload)
                     payload.pop("_id", None)
                     stats["inserted"] += 1
+                if ext_id:
+                    seen_atlaz_ids.add(str(ext_id))
 
                 # ===== PERSISTIR endereços ALSO em coleção dedicada =====
                 # A listagem (`/subscribers`) lê dessa coleção, não do array
@@ -1557,6 +1572,34 @@ async def sync_customers(user: dict = Depends(require_role("gestor"))):
         logger.exception("[atlaz] sync_customers falhou: %s", e)
         stats["errors"] += 1
         stats["fatal_error"] = str(e)
+
+    # iter215 — Snapshot Diff: marca como INATIVO subscribers que existem
+    # no DB com `external_code=ATLAZ-*` mas NÃO apareceram nessa sync.
+    # Só executa se sync foi bem-sucedido (>= 5 itens vistos pra evitar
+    # disparar mass-deactivation em sync vazio/quebrado).
+    if stats["items_seen"] >= 5 and not stats.get("fatal_error"):
+        seen_codes = {f"ATLAZ-{aid}" for aid in seen_atlaz_ids}
+        now_iso = datetime.now(timezone.utc).isoformat()
+        # Query: do tenant, vieram do Atlaz, ainda não-inativos, mas
+        # NÃO apareceram nesse sync. Bulk update.
+        result = await db.subscribers.update_many(
+            {
+                "company_id": company_id,
+                "external_code": {
+                    "$regex": "^ATLAZ-",
+                    "$nin": list(seen_codes),
+                },
+                "status": {"$nin": ["INATIVO", "CANCELADO"]},
+            },
+            {"$set": {
+                "status": "INATIVO",
+                "deactivation_date": now_iso,
+                "deactivation_reason": "atlaz_snapshot_diff",
+                "cancellation_reason": "Removido do Atlaz",
+                "updated_at": now_iso,
+            }},
+        )
+        stats["snapshot_deactivated"] = result.modified_count
 
     stats["duration_s"] = round((datetime.now(timezone.utc) - started).total_seconds(), 1)
     stats["finished_at"] = datetime.now(timezone.utc).isoformat()

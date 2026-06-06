@@ -26,7 +26,7 @@ export default function QRScannerModal({ onClose, onScan }) {
         const cams = await Html5Qrcode.getCameras();
         if (!mounted) return;
         if (!cams || cams.length === 0) {
-          setErr("Nenhuma câmera detectada. Use o botão 📷 Galeria abaixo.");
+          setErr("Nenhuma câmera detectada. Use o botão Galeria abaixo.");
           return;
         }
         setCameras(cams);
@@ -109,7 +109,7 @@ export default function QRScannerModal({ onClose, onScan }) {
 
         {err && (
           <div data-testid="qr-error" style={{ marginTop: 10, padding: 10, background: "#fee2e2", color: "#7f1d1d", borderRadius: 10, fontSize: 12 }}>
-            ⚠ {err}
+            {err}
           </div>
         )}
 
@@ -133,12 +133,12 @@ export default function QRScannerModal({ onClose, onScan }) {
         {/* Fallback galeria */}
         <label data-testid="qr-gallery-input"
                style={{ display: "block", marginTop: 12, padding: 10, background: "#1e293b", borderRadius: 10, fontSize: 12, textAlign: "center", cursor: "pointer", border: "1px dashed #334155" }}>
-          📁 Selecionar foto da galeria (fallback)
+          Selecionar foto da galeria (fallback)
           <input type="file" accept="image/*" onChange={onPickFile} style={{ display: "none" }} />
         </label>
 
         <div style={{ fontSize: 10, color: "#64748b", marginTop: 8, textAlign: "center" }}>
-          {scanning ? "🟢 Câmera ativa · alinhe o código no quadro" : "Iniciando câmera…"}
+          {scanning ? "Câmera ativa · alinhe o código no quadro" : "Iniciando câmera…"}
         </div>
       </div>
     </div>

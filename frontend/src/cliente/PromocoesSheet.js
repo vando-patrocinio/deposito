@@ -88,7 +88,7 @@ export default function PromocoesSheet({ marginTop = -60, onShowQR, onViewAll })
                 fontSize: 13.5, fontWeight: 700, color: COLORS.slate900,
                 textAlign: "left", fontFamily: "inherit",
               }}>
-              <span style={{ fontSize: 18 }}>📱</span>
+              <span style={{ fontSize: 18 }}></span>
               Meu QR Code de cliente
             </button>
           </div>
@@ -99,7 +99,7 @@ export default function PromocoesSheet({ marginTop = -60, onShowQR, onViewAll })
       <div style={{ display: "flex", alignItems: "center", gap: 10,
                        paddingRight: 50 }}>
         <span aria-hidden style={{ fontSize: 22,
-          filter: "drop-shadow(0 6px 14px rgba(252,211,77,.45))" }}>🎁</span>
+          filter: "drop-shadow(0 6px 14px rgba(252,211,77,.45))" }}></span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{
             fontSize: 11, fontWeight: 800, letterSpacing: 2.4,

@@ -212,7 +212,7 @@ export default function OnboardingWizard({ user, onDone }) {
                 color: "white", fontSize: 36, fontWeight: 900,
                 display: "grid", placeItems: "center",
                 boxShadow: "0 18px 40px rgba(16,185,129,.4)",
-              }}>🎉</div>
+              }}></div>
               <h2 style={{ margin: "0 0 8px", color: "white", fontSize: 28, fontWeight: 850, letterSpacing: "-0.02em" }}>Tudo pronto, {(user?.name || "gestor").split(" ")[0]}!</h2>
               <p style={{ color: "#94a3b8", fontSize: 14.5, lineHeight: 1.55, marginTop: 0 }}>
                 Sua empresa está configurada. Agora é hora de:
@@ -220,9 +220,9 @@ export default function OnboardingWizard({ user, onDone }) {
 
               <div style={{ display: "grid", gap: 10, margin: "22px 0", textAlign: "left" }}>
                 {[
-                  { ic: "📍", t: "Definir cercas virtuais", d: "Em Cadastro → editar colaborador → adicionar cerca por endereço" },
-                  { ic: "📸", t: "Fazer foto de referência", d: "Em Cadastro → editar colaborador → tirar foto de cadastro" },
-                  { ic: "📱", t: "Compartilhar o app", d: "Envie o link da página inicial para o time bater ponto pelo celular" },
+                  { ic: "", t: "Definir cercas virtuais", d: "Em Cadastro → editar colaborador → adicionar cerca por endereço" },
+                  { ic: "", t: "Fazer foto de referência", d: "Em Cadastro → editar colaborador → tirar foto de cadastro" },
+                  { ic: "", t: "Compartilhar o app", d: "Envie o link da página inicial para o time bater ponto pelo celular" },
                 ].map((it, i) => (
                   <div key={i} style={{
                     display: "flex", gap: 12, alignItems: "flex-start",

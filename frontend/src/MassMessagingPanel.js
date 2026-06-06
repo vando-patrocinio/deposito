@@ -304,14 +304,14 @@ function MessagePreview({ text }) {
         fontSize: 10, fontWeight: 700, color: "#1e40af",
         letterSpacing: 1, textTransform: "uppercase", marginBottom: 8,
       }}>
-        <span>👁  Preview ao vivo (exemplo)</span>
+        <span> Preview ao vivo (exemplo)</span>
         {hasMissing && (
           <span style={{
             background: "#fef3c7", color: "#92400e",
             padding: "2px 8px", borderRadius: 999,
             fontSize: 9, fontWeight: 700,
           }}>
-            ⚠ variáveis não mapeadas
+            variáveis não mapeadas
           </span>
         )}
       </div>
@@ -442,7 +442,7 @@ function VariablesReference({ onInsert }) {
             marginTop: 4, fontSize: 11, color: "#94a3b8",
             borderTop: "1px dashed #e2e8f0", paddingTop: 8,
           }}>
-            💡 Dica: nomes de variáveis aceitos são <b>case-insensitive</b> e
+            Dica: nomes de variáveis aceitos são <b>case-insensitive</b> e
             seguem o cabeçalho do CSV. Se sua coluna for chamada
             <code style={{ background: "#fff", padding: "1px 5px", borderRadius: 3, marginLeft: 4 }}>cidade</code>,
             use <code style={{ background: "#fff", padding: "1px 5px", borderRadius: 3 }}>{`{{cidade}}`}</code> no
@@ -560,7 +560,7 @@ function CampaignCreateModal({ onClose, onCreated }) {
               <option key={ch.id} value={ch.id}>
                 {ch.channel_name}
                 {ch.phone_number ? ` · +${ch.phone_number}` : ""}
-                {ch.is_default_outbound ? " ★" : ""}
+                {ch.is_default_outbound ? " " : ""}
                 {ch.live_connected ? "" : " (offline)"}
               </option>
             ))}
@@ -793,7 +793,7 @@ function CampaignDetail({ camp, onBack }) {
                                      background: "#fff", borderRadius: 6,
                                      border: "1px solid #e2e8f0" }}>
                 <div style={{ fontSize: 11, color: "#64748b" }}>
-                  📱 {s.phone} · {s.name || ""}
+                  {s.phone} · {s.name || ""}
                 </div>
                 <div style={{ marginTop: 4, fontSize: 13,
                               whiteSpace: "pre-wrap" }}>

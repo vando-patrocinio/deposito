@@ -257,7 +257,7 @@ export default function ManagerPanel() {
                   padding: 10, background: "#fef3c7", border: "1px solid #fde68a",
                   borderRadius: 10, fontSize: 13, color: "#78350f", marginBottom: 10,
                 }}>
-                  <strong>🔴 Top prioridade · {fleetInsights.ai.top_priority.plate}:</strong>{" "}
+                  <strong>Top prioridade · {fleetInsights.ai.top_priority.plate}:</strong>{" "}
                   {fleetInsights.ai.top_priority.reason}
                 </div>
               )}

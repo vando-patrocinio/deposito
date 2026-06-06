@@ -72,13 +72,13 @@ export default function MinhaLigoScreen({ me, onBack, onLogout }) {
           }}>
             <SubCard
               testid="minha-ligo-doc-card"
-              icon="🪪"
+              icon=""
               label="Documento"
               value={maskCPF(cpfFromDoc) || "—"}
             />
             <SubCard
               testid="minha-ligo-phone-card"
-              icon="📱"
+              icon=""
               label="Telefone"
               value={formatPhone(me?.phone) || "—"}
             />
@@ -91,7 +91,7 @@ export default function MinhaLigoScreen({ me, onBack, onLogout }) {
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.6,
             textTransform: "uppercase", color: COLORS.orange,
             marginBottom: 8 }}>
-            🧾 Próxima fatura
+            Próxima fatura
           </div>
           <div style={{
             display: "flex", alignItems: "center",
@@ -111,7 +111,7 @@ export default function MinhaLigoScreen({ me, onBack, onLogout }) {
                 Em breve você verá seus boletos e 2ª via aqui.
               </div>
             </div>
-            <span style={{ fontSize: 30 }}>🎯</span>
+            <span style={{ fontSize: 30 }}></span>
           </div>
         </WhiteCard>
 
@@ -120,7 +120,7 @@ export default function MinhaLigoScreen({ me, onBack, onLogout }) {
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.6,
             textTransform: "uppercase", color: COLORS.orange,
             marginBottom: 8 }}>
-            💬 Precisa de ajuda?
+            Precisa de ajuda?
           </div>
           <p style={{ fontSize: 14, color: COLORS.slate700,
             lineHeight: 1.55, marginTop: 0, marginBottom: 14 }}>

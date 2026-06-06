@@ -50,7 +50,7 @@ export default function AiRankingPanel() {
               {d}d
             </button>
           ))}
-          <Button variant="soft" onClick={load} data-testid="ai-rank-refresh-btn">🔄 Atualizar</Button>
+          <Button variant="soft" onClick={load} data-testid="ai-rank-refresh-btn">Atualizar</Button>
         </div>
       </div>
 
@@ -111,7 +111,7 @@ function RankingRow({ item, position }) {
         fontSize: 14, fontWeight: 900, textAlign: "center",
         color: position === 1 ? "#92400e" : position === 2 ? "#475569" : position === 3 ? "#9a3412" : "#64748b",
       }}>
-        {position === 1 ? "🥇" : position === 2 ? "🥈" : position === 3 ? "🥉" : `#${position}`}
+        {position === 1 ? "" : position === 2 ? "" : position === 3 ? "" : `#${position}`}
       </span>
       <div style={{
         width: 44, height: 44, borderRadius: "50%",
@@ -126,14 +126,14 @@ function RankingRow({ item, position }) {
           {item.is_motorista_mes && (
             <span
               data-testid={`motorista-mes-badge-${item.collaborator_id}`}
-              title="🏆 Motorista do mês — vistorias semanais com IA ≥ 90"
+              title="Motorista do mês — vistorias semanais com IA ≥ 90"
               style={{
                 fontSize: 10, fontWeight: 900, padding: "2px 7px",
                 borderRadius: 999, background: "linear-gradient(135deg,#fbbf24,#f59e0b)",
                 color: "white", letterSpacing: 0.5,
                 boxShadow: "0 2px 6px rgba(245,158,11,0.4)",
               }}>
-              🏆 MOTORISTA DO MÊS
+              MOTORISTA DO MÊS
             </span>
           )}
           {!item.is_motorista_mes && item.fleet_score != null && (
@@ -148,7 +148,7 @@ function RankingRow({ item, position }) {
                 color: item.fleet_score >= 90 ? "#166534"
                   : item.fleet_score >= 70 ? "#1e40af" : "#991b1b",
               }}>
-              🚗 {item.fleet_score}
+              {item.fleet_score}
             </span>
           )}
         </div>
@@ -188,12 +188,12 @@ function RankingRow({ item, position }) {
       <div style={{ fontSize: 11, color: "#475569" }}>
         {item.worst_ticket && (
           <div title={item.worst_ticket.client}>
-            🔴 <strong>{item.worst_ticket.score?.toFixed(1)}</strong> {item.worst_ticket.client?.substring(0, 18)}
+            <strong>{item.worst_ticket.score?.toFixed(1)}</strong> {item.worst_ticket.client?.substring(0, 18)}
           </div>
         )}
         {item.best_ticket && (
           <div title={item.best_ticket.client}>
-            🟢 <strong>{item.best_ticket.score?.toFixed(1)}</strong> {item.best_ticket.client?.substring(0, 18)}
+            <strong>{item.best_ticket.score?.toFixed(1)}</strong> {item.best_ticket.client?.substring(0, 18)}
           </div>
         )}
       </div>

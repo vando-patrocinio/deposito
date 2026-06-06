@@ -112,7 +112,7 @@ export function BillsTab() {
     let deleteFuture = false;
     if (b.installment_group_id && b.installment_total > 1) {
       deleteFuture = await window.confirm(
-        `📋 Esta conta faz parte de um parcelamento (${b.installment_index}/${b.installment_total}).\n\n` +
+        `Esta conta faz parte de um parcelamento (${b.installment_index}/${b.installment_total}).\n\n` +
         `Deseja APAGAR TAMBÉM as parcelas futuras ainda não pagas?\n\n` +
         `• OK → apaga essa parcela + todas as outras pendentes do grupo\n` +
         `• Cancelar → apaga só essa parcela (as outras permanecem)`,
@@ -178,9 +178,9 @@ export function BillsTab() {
               }}
               title="Filtrar por filial"
             >
-              <option value="">🏢 Todas filiais</option>
+              <option value="">Todas filiais</option>
               {refs.filiais.map((f) => (
-                <option key={f.id} value={f.id}>🏢 {f.name}</option>
+                <option key={f.id} value={f.id}>{f.name}</option>
               ))}
               <option value="__none__">⊘ Sem filial</option>
             </select>
@@ -201,7 +201,7 @@ export function BillsTab() {
       }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: "#475569",
                           textTransform: "uppercase", letterSpacing: 0.5 }}>
-          📅 Vencimento
+          Vencimento
         </span>
         {[
           { v: "month", l: "Por mês" },
@@ -356,7 +356,7 @@ function BillsTable({ items, refs, onEdit, onPay, onDelete }) {
                     fontSize: 10, fontWeight: 700,
                     fontFamily: "ui-monospace, monospace",
                   }} title="Conta parcelada">
-                    📋 {b.installment_index}/{b.installment_total}
+                    {b.installment_index}/{b.installment_total}
                   </span>
                 )}
               </td>
@@ -373,7 +373,7 @@ function BillsTable({ items, refs, onEdit, onPay, onDelete }) {
                     padding: "2px 8px", borderRadius: 999,
                     background: "#e0f2fe", color: "#075985",
                     fontSize: 11, fontWeight: 600,
-                  }}>🏢 {filById[b.filial_id]}</span>
+                  }}>{filById[b.filial_id]}</span>
                 ) : (
                   <span style={{ color: "#cbd5e1", fontSize: 11 }}>—</span>
                 )}
@@ -617,7 +617,7 @@ function BillForm({ initial, refs, onClose, onSaved, onRefsChanged }) {
                   data-testid="bill-fld-filial">
             <option value="">— Sem filial —</option>
             {(refs.filiais || []).map((f) => (
-              <option key={f.id} value={f.id}>🏢 {f.name}</option>
+              <option key={f.id} value={f.id}>{f.name}</option>
             ))}
           </select>
           <button type="button"
@@ -641,7 +641,7 @@ function BillForm({ initial, refs, onClose, onSaved, onRefsChanged }) {
               borderRadius: 7, fontSize: 11, color: "#047857",
               display: "inline-flex", alignItems: "center", gap: 6,
             }}>
-              <span>🏢→👤</span>
+              <span>→</span>
               <span><strong>Técnico padrão</strong>: {techName}</span>
             </div>
           );
@@ -961,7 +961,7 @@ export function CashFlowTab() {
                   gap: 10, marginBottom: 12,
                 }}>
                   {negativeBalance && (
-                    <AlertCard tone="bad" icon="⛔"
+                    <AlertCard tone="bad" icon=""
                       testId="cashflow-alert-negative-balance"
                       title="Saldo negativo no caixa"
                       detail={`Saldo atual: ${fmtMoney(data.current_balance)}`} />
@@ -973,13 +973,13 @@ export function CashFlowTab() {
                       detail="O saldo atual cobre menos de 15 dias no ritmo atual." />
                   )}
                   {negativeResult && (
-                    <AlertCard tone="warn" icon="⚠"
+                    <AlertCard tone="warn" icon=""
                       testId="cashflow-alert-negative-result"
                       title="Resultado negativo no período"
                       detail={`Saídas superaram entradas em ${fmtMoney(Math.abs(data.totals.net))}.`} />
                   )}
                   {expenseSpike && (
-                    <AlertCard tone="warn" icon="📈"
+                    <AlertCard tone="warn" icon=""
                       testId="cashflow-alert-expense-spike"
                       title={`Saídas subiram ${dExpense}% vs período anterior`}
                       detail="Revise as despesas maiores do período." />
@@ -1616,7 +1616,7 @@ function MarkInvoicePaidModal({ invoice, onClose, onSaved }) {
             ) : result.atlaz_push?.attempted ? (
               <>✓ Pago localmente · Atlaz <strong>não confirmou</strong> a baixa
                 ({result.atlaz_push.total_attempts || 0} endpoints testados,
-                nenhum retornou success=true). A fatura voltará a "open"
+                nenhum retornou success=true). A fatura voltará a “open”
                 no próximo sync se o Atlaz não tiver registrado o pagamento.</>
             ) : (
               <>✓ Pago localmente (push para Atlaz desativado ou sem token).</>

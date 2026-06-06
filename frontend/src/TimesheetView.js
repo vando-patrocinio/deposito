@@ -498,7 +498,7 @@ export default function TimesheetView() {
           }}>
             <strong>Nenhum colaborador habilitado para bater ponto.</strong><br />
             Vá em <strong>Cadastro → Colaboradores</strong>, edite o colaborador
-            desejado e marque a opção <em>"Habilitado para bater ponto"</em>.
+            desejado e marque a opção <em>“Habilitado para bater ponto”</em>.
           </div>
         ) : (
           <>

@@ -83,7 +83,7 @@ export default function WithdrawSnAuditPanel() {
         <div>
           <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800,
                             color: COLORS.text, letterSpacing: -0.2 }}>
-            🔍 Auditoria · Validações SN da Retirada
+            Auditoria · Validações SN da Retirada
           </h3>
           <p style={{ margin: "4px 0 0", fontSize: 12, color: COLORS.muted }}>
             Histórico das tentativas de validar o SN escaneado contra o
@@ -114,7 +114,7 @@ export default function WithdrawSnAuditPanel() {
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Kpi label="Total" value={data.total} icon="📊" color="#0f172a" />
+        <Kpi label="Total" value={data.total} icon="" color="#0f172a" />
         <Kpi label="Match (OK)" value={data.total_match}
                 icon="✓" color={COLORS.match} />
         <Kpi label="Divergentes" value={data.total_mismatch}
@@ -147,7 +147,7 @@ export default function WithdrawSnAuditPanel() {
                   border: flagged ? "1px solid #fca5a5" : "1px solid transparent",
                 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text }}>
-                    {flagged && <span style={{ marginRight: 6 }}>⚠️</span>}
+                    {flagged && <span style={{ marginRight: 6 }}>️</span>}
                     {bt.technician_name}
                   </div>
                   <div style={{ fontSize: 11, color: COLORS.muted }}>

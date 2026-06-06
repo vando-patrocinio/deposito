@@ -15,9 +15,9 @@ import { api } from "@/api";
 const ACTION_META = {
   install: { label: "Instalação", icon: "⬇️", color: "#16a34a" },
   withdraw: { label: "Retirada", icon: "⬆️", color: "#dc2626" },
-  port_link: { label: "Vínculo Porta CTO", icon: "🔌", color: "#0284c7" },
-  port_swap: { label: "Troca de Porta", icon: "🔁", color: "#d97706" },
-  port_release: { label: "Liberação Porta", icon: "🔓", color: "#64748b" },
+  port_link: { label: "Vínculo Porta CTO", icon: "", color: "#0284c7" },
+  port_swap: { label: "Troca de Porta", icon: "", color: "#d97706" },
+  port_release: { label: "Liberação Porta", icon: "", color: "#64748b" },
 };
 
 function fmtDateTime(iso) {

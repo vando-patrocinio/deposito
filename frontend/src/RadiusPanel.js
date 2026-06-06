@@ -2,10 +2,10 @@
  * RadiusPanel — Painel administrativo do módulo RADIUS / PPPoE (MVP).
  *
  * 4 sub-abas:
- *   - 📊 Dashboard   — KPIs (sessões ativas, auth 24h, top rejeições)
- *   - 🟢 Sessões     — sessões ativas com filtro + botão CoA Disconnect
- *   - 📜 Histórico   — sessões encerradas (24h default)
- *   - 🛰️ NAS         — gerenciamento de roteadores/concentradores
+ *   - Dashboard   — KPIs (sessões ativas, auth 24h, top rejeições)
+ *   - Sessões     — sessões ativas com filtro + botão CoA Disconnect
+ *   - Histórico   — sessões encerradas (24h default)
+ *   - ️ NAS         — gerenciamento de roteadores/concentradores
  */
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "@/api";
@@ -37,7 +37,7 @@ export default function RadiusPanel() {
     <div data-testid="radius-panel" style={{ padding: 18 }}>
       <h2 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a",
                       marginBottom: 4 }}>
-        🛰️ RADIUS / PPPoE
+        ️ RADIUS / PPPoE
       </h2>
       <p style={{ color: "#64748b", fontSize: 13, marginBottom: 14 }}>
         Autenticação, accounting e desconexão (CoA) de sessões PPPoE.
@@ -47,10 +47,10 @@ export default function RadiusPanel() {
       <div style={{ display: "flex", gap: 4,
                       borderBottom: "1px solid #e2e8f0", marginBottom: 14 }}>
         {[
-          { id: "dashboard", label: "📊 Dashboard" },
-          { id: "active", label: "🟢 Sessões Ativas" },
-          { id: "history", label: "📜 Histórico" },
-          { id: "nas", label: "🛰️ NAS" },
+          { id: "dashboard", label: "Dashboard" },
+          { id: "active", label: "Sessões Ativas" },
+          { id: "history", label: "Histórico" },
+          { id: "nas", label: "️ NAS" },
         ].map((t) => (
           <button key={t.id} data-testid={`radius-tab-${t.id}`}
                     onClick={() => setTab(t.id)}
@@ -101,18 +101,18 @@ function DashboardTab() {
           style={{ display: "grid",
                     gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))",
                     gap: 12 }}>
-      <KpiCard label="🟢 Sessões Ativas" value={data.active_sessions}
+      <KpiCard label="Sessões Ativas" value={data.active_sessions}
                 color="#16a34a" />
-      <KpiCard label="📥 Encerradas hoje" value={data.closed_today}
+      <KpiCard label="Encerradas hoje" value={data.closed_today}
                 color="#64748b" />
-      <KpiCard label="🔑 Auths 24h" value={data.auth_24h} color="#0ea5e9" />
+      <KpiCard label="Auths 24h" value={data.auth_24h} color="#0ea5e9" />
       <KpiCard label="❌ Rejeitadas 24h" value={data.reject_24h}
                 color="#dc2626" />
       <KpiCard label="✅ Taxa de aceite"
                 value={data.accept_rate != null
                   ? `${data.accept_rate}%` : "—"}
                 color="#10b981" />
-      <KpiCard label="🛰️ NAS cadastrados" value={data.nas_count}
+      <KpiCard label="️ NAS cadastrados" value={data.nas_count}
                 color="#7c3aed" />
 
       {(data.top_reject_reasons || []).length > 0 && (
@@ -121,7 +121,7 @@ function DashboardTab() {
                         padding: 14 }}>
           <div style={{ fontWeight: 800, color: "#7f1d1d",
                           marginBottom: 8 }}>
-            🚨 Top motivos de rejeição (24h)
+            Top motivos de rejeição (24h)
           </div>
           <div style={{ display: "grid", gap: 6 }}>
             {data.top_reject_reasons.map((r) => (
@@ -216,7 +216,7 @@ function ActiveSessionsTab() {
                   fontSize: 13, outline: "none",
                 }} />
         <button data-testid="radius-active-refresh" onClick={load}
-                  style={refBtn}>🔄 Atualizar</button>
+                  style={refBtn}>Atualizar</button>
         <span style={{ color: "#64748b", fontSize: 12, marginLeft: "auto" }}>
           {loading ? "⏳" : ""} {items.length} sessões ativas
           {" · auto-refresh 20s"}
@@ -262,14 +262,14 @@ function ActiveSessionsTab() {
               </div>
               <div style={{ display: "flex", gap: 14, flexWrap: "wrap",
                               fontSize: 12, color: "#475569" }}>
-                {s.framed_ip && <span>📍 <b>{s.framed_ip}</b></span>}
-                {s.nas_ip && <span>🛰️ NAS {s.nas_ip}</span>}
+                {s.framed_ip && <span><b>{s.framed_ip}</b></span>}
+                {s.nas_ip && <span>️ NAS {s.nas_ip}</span>}
                 {s.calling_station_id && (
-                  <span>📱 {s.calling_station_id}</span>
+                  <span>{s.calling_station_id}</span>
                 )}
                 <span>⏱ {fmtUptime(s.uptime_seconds || s.session_time)}</span>
-                <span>📥 {s.bytes_in_human}</span>
-                <span>📤 {s.bytes_out_human}</span>
+                <span>{s.bytes_in_human}</span>
+                <span>{s.bytes_out_human}</span>
                 <span style={{ color: "#94a3b8" }}>
                   desde {fmtDateBr(s.started_at)}
                 </span>
@@ -338,7 +338,7 @@ function HistoryTab() {
           <option value={168}>7 dias</option>
         </select>
         <button data-testid="radius-history-refresh" onClick={load}
-                  style={refBtn}>🔄</button>
+                  style={refBtn}></button>
         <span style={{ color: "#64748b", fontSize: 12 }}>
           {loading ? "⏳" : ""} {items.length} sessões
         </span>
@@ -372,7 +372,7 @@ function HistoryTab() {
               ⏱ {fmtUptime(s.session_time)}
             </div>
             <div style={{ color: "#475569" }}>
-              📥 {s.bytes_in_human} · 📤 {s.bytes_out_human}
+              {s.bytes_in_human} · {s.bytes_out_human}
             </div>
             <div style={{ color: "#94a3b8", fontSize: 11,
                             textAlign: "right" }}>
@@ -429,7 +429,7 @@ function NasTab() {
                   }}>
           ➕ Adicionar NAS
         </button>
-        <button onClick={load} style={refBtn}>🔄 Atualizar</button>
+        <button onClick={load} style={refBtn}>Atualizar</button>
       </div>
 
       {items.length === 0 && !loading && (
@@ -474,8 +474,8 @@ function NasTab() {
               )}
               <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
                 {n.last_seen_at
-                  ? `🟢 visto em ${fmtDateBr(n.last_seen_at)}`
-                  : "⚪ ainda não recebeu pacote"}
+                  ? `visto em ${fmtDateBr(n.last_seen_at)}`
+                  : "ainda não recebeu pacote"}
               </div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
@@ -486,7 +486,7 @@ function NasTab() {
                           background: "#ecfdf5", color: "#065f46",
                           border: "1px solid #6ee7b7", fontSize: 11,
                           fontWeight: 700, cursor: "pointer",
-                        }}>🧪 Testar</button>
+                        }}>Testar</button>
               <button data-testid={`nas-edit-${n.id}`}
                         onClick={() => { setEditing(n); setShowForm(true); }}
                         style={{
@@ -502,7 +502,7 @@ function NasTab() {
                           background: "#fef2f2", color: "#991b1b",
                           border: "1px solid #fecaca", fontSize: 11,
                           fontWeight: 700, cursor: "pointer",
-                        }}>🗑️ Remover</button>
+                        }}>️ Remover</button>
             </div>
           </div>
         ))}
@@ -626,7 +626,7 @@ function NasFormModal({ initial, onClose, onSaved }) {
             fontSize: 11, color: "#1e3a8a", lineHeight: 1.5,
           }}>
             <div style={{ fontWeight: 800, marginBottom: 4 }}>
-              💡 Cisco ASR 1002-X — configuração no equipamento
+              Cisco ASR 1002-X — configuração no equipamento
             </div>
             <div>
               No ASR rode os comandos abaixo (substitua IPs/secret):
@@ -675,7 +675,7 @@ policy-map PMAP_OUT_30720K
                               border: 0, fontSize: 12, fontWeight: 700,
                               cursor: "pointer",
                               opacity: busy ? 0.5 : 1 }}>
-            {busy ? "Salvando…" : "💾 Salvar"}
+            {busy ? "Salvando…" : "Salvar"}
           </button>
         </div>
       </div>
@@ -761,7 +761,7 @@ function NasTestModal({ nas, onClose }) {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10,
                         marginBottom: 6 }}>
-          <span style={{ fontSize: 22 }}>🧪</span>
+          <span style={{ fontSize: 22 }}></span>
           <div style={{ flex: 1 }}>
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800,
                           color: "#0f172a" }}>
@@ -818,7 +818,7 @@ function NasTestModal({ nas, onClose }) {
           <div style={{ padding: 10, borderRadius: 7, marginBottom: 10,
                           background: "#fef2f2", color: "#991b1b",
                           fontSize: 12, border: "1px solid #fecaca" }}>
-            ⚠ {err}
+            {err}
           </div>
         )}
 
@@ -889,7 +889,7 @@ function NasTestModal({ nas, onClose }) {
               </div>
               {result.diagnostics?.errors?.length > 0 && (
                 <div style={{ marginTop: 8, fontSize: 11, color: "#991b1b" }}>
-                  ⚠ {result.diagnostics.errors.join(" · ")}
+                  {result.diagnostics.errors.join(" · ")}
                 </div>
               )}
             </div>
@@ -914,7 +914,7 @@ function NasTestModal({ nas, onClose }) {
                       {Array.isArray(v) ? (
                         <>[<br/>{v.map((vv, i) => (
                           <span key={i}>
-                            &nbsp;&nbsp;"{vv}"{i < v.length - 1 ? "," : ""}<br/>
+                            &nbsp;&nbsp;“{vv}”{i < v.length - 1 ? "," : ""}<br/>
                           </span>
                         ))}]</>
                       ) : (

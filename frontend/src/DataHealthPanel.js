@@ -3,8 +3,8 @@ import { api } from "@/api";
 
 const TONES = {
   ok: { bg: "#d1fae5", fg: "#065f46", border: "#10b981", icon: "✅" },
-  warn: { bg: "#fef3c7", fg: "#92400e", border: "#f59e0b", icon: "⚠️" },
-  critical: { bg: "#fee2e2", fg: "#991b1b", border: "#ef4444", icon: "🔴" },
+  warn: { bg: "#fef3c7", fg: "#92400e", border: "#f59e0b", icon: "️" },
+  critical: { bg: "#fee2e2", fg: "#991b1b", border: "#ef4444", icon: "" },
 };
 
 function StatusBanner({ overall, checkedAt }) {
@@ -116,7 +116,7 @@ function MigrationsCard({ migrations, onRun, runningMigrations }) {
       {migrations.pending?.length > 0 && (
         <div style={{ marginTop: 10, padding: 8, background: "#fef3c7",
                        borderRadius: 6, fontSize: 11 }}>
-          ⚠️ Pendentes: {migrations.pending.join(", ")}
+          ️ Pendentes: {migrations.pending.join(", ")}
           <button
             onClick={onRun}
             disabled={runningMigrations}
@@ -135,7 +135,7 @@ function MigrationsCard({ migrations, onRun, runningMigrations }) {
       {migrations.orphan?.length > 0 && (
         <div style={{ marginTop: 10, padding: 8, background: "#fee2e2",
                        borderRadius: 6, fontSize: 11, color: "#991b1b" }}>
-          🔴 Drift: {migrations.orphan.join(", ")} — código sumiu mas
+          Drift: {migrations.orphan.join(", ")} — código sumiu mas
           ficaram registradas no banco
         </div>
       )}
@@ -307,7 +307,7 @@ export default function DataHealthPanel() {
             fontSize: 13, fontWeight: 600,
           }}
         >
-          🔄 Atualizar
+          Atualizar
         </button>
       </div>
 
@@ -337,7 +337,7 @@ export default function DataHealthPanel() {
         borderRadius: 10, fontSize: 12, color: "#475569",
         lineHeight: 1.6,
       }}>
-        <strong>💡 Política de persistência:</strong> Nada acima é apagado
+        <strong>Política de persistência:</strong> Nada acima é apagado
         em deploy. Seeds são idempotentes. Migrations são aditivas. Para
         agendar backup automatizado em produção:{" "}
         <code style={{ background: "white", padding: "2px 6px",

@@ -1,7 +1,7 @@
 /**
  * Retirada Manual — iter170.
  *
- * Modal acionado pelo botão "📦 Retirar" na linha do cliente SmartOLT.
+ * Modal acionado pelo botão "Retirar" na linha do cliente SmartOLT.
  * Permite ao gestor registrar a retirada do equipamento (sem OS aberta),
  * escolhendo o técnico que receberá o equipamento em seu estoque.
  *
@@ -92,7 +92,7 @@ export default function ManualWithdrawDialog({ client, onClose, onDone }) {
            }}>
         <div style={{ fontSize: 17, fontWeight: 800,
                           color: "#dc2626", marginBottom: 4 }}>
-          📦 Retirada Manual
+          Retirada Manual
         </div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
           Registra a retirada do equipamento <strong>sem OS aberta</strong>.
@@ -201,7 +201,7 @@ export default function ManualWithdrawDialog({ client, onClose, onDone }) {
                     color: "#fff", fontSize: 13, fontWeight: 700,
                     cursor: busy ? "wait" : "pointer",
                   }}>
-            {busy ? "Registrando…" : "📦 Confirmar Retirada"}
+            {busy ? "Registrando…" : "Confirmar Retirada"}
           </button>
         </div>
       </div>

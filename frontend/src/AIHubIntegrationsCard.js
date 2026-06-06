@@ -219,7 +219,7 @@ function WebhookHint() {
       marginTop: 10, padding: 10, background: "var(--info-soft)",
       color: "var(--info-soft-fg)", borderRadius: 6, fontSize: 11,
     }}>
-      <div style={{ fontWeight: 700, marginBottom: 4 }}>📌 URL de webhook (cole no Meta):</div>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>URL de webhook (cole no Meta):</div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <code className="mono" style={{ flex: 1, fontSize: 10, wordBreak: "break-all" }}>{url}</code>
         <button onClick={copy} className="btn btn-ghost btn-sm" title="Copiar">

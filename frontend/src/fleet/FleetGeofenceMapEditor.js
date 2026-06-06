@@ -139,7 +139,7 @@ export default function FleetGeofenceMapEditor({ onClose, onSaved, vehicles }) {
                      style={miniBtn}
                      data-testid="fleet-gf-editor-undo">↶ Desfazer ponto</button>
             <button onClick={() => setPolygon([])} style={miniBtn}>
-              🗑️ Limpar
+              ️ Limpar
             </button>
           </div>
         )}
@@ -149,7 +149,7 @@ export default function FleetGeofenceMapEditor({ onClose, onSaved, vehicles }) {
                        marginBottom: 10 }}>
           <MapContainer center={mapCenter} zoom={13} style={{ height: 380 }}>
             <TileLayer attribution='&copy; OpenStreetMap'
-                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
             <MapClickHandler onClick={onMapClick} />
             {kind === "circle" && center && (
               <>
@@ -180,7 +180,7 @@ export default function FleetGeofenceMapEditor({ onClose, onSaved, vehicles }) {
                           background: "rgba(255,255,255,.95)",
                           padding: "6px 10px", borderRadius: 6,
                           fontSize: 12, color: "#475569", pointerEvents: "none" }}>
-            👆 {kind === "circle"
+            {kind === "circle"
               ? "Clique no mapa para definir o centro · use o slider acima para o raio"
               : "Clique no mapa para adicionar vértices (mínimo 3) · use 'Desfazer' se errar"}
           </div>
@@ -209,7 +209,7 @@ export default function FleetGeofenceMapEditor({ onClose, onSaved, vehicles }) {
           </button>
           <button onClick={save} disabled={busy} style={primaryBtn}
                    data-testid="fleet-gf-editor-save">
-            {busy ? "Salvando…" : "💾 Salvar cerca"}
+            {busy ? "Salvando…" : "Salvar cerca"}
           </button>
         </div>
       </div>

@@ -68,7 +68,7 @@ export default function AccessTagsPicker({
     <div data-testid="access-tags-picker" style={{ marginTop: 4 }}>
       {isAllGranted ? (
         <div style={infoBox}>
-          🔑 Usuários com papel <strong>{role}</strong> recebem
+          Usuários com papel <strong>{role}</strong> recebem
           automaticamente acesso a <strong>todos</strong> os módulos. Não é
           necessário (e nem é permitido) restringir tags aqui.
         </div>
@@ -125,7 +125,7 @@ export default function AccessTagsPicker({
           </div>
 
           <div style={hintBox}>
-            💡 Clique em qualquer tag para alternar entre <strong>liberada</strong>
+            Clique em qualquer tag para alternar entre <strong>liberada</strong>
             e <strong>não liberada</strong>. As tags controlam quais módulos
             aparecem na barra lateral do usuário.
           </div>

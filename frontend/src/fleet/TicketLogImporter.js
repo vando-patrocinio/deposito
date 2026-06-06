@@ -41,7 +41,7 @@ export default function TicketLogImporter({ onClose, onSuccess }) {
     if (!window.confirm(
       `Confirmar importação de ${preview.total_entries_to_create} lançamento(s) ` +
       `(${preview.total_rows_parsed} transações da TicketLog)?\n\n` +
-      `⚠ Lançamentos serão criados agrupados por veículo × mês.`
+      `Lançamentos serão criados agrupados por veículo × mês.`
     )) return;
     setBusy(true); setErr("");
     try {
@@ -99,7 +99,7 @@ export default function TicketLogImporter({ onClose, onSuccess }) {
               <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe",
                               padding: 12, borderRadius: 10, marginBottom: 14,
                               fontSize: 13, color: "#1e40af", lineHeight: 1.5 }}>
-                <strong>📋 Como obter o CSV:</strong><br/>
+                <strong>Como obter o CSV:</strong><br/>
                 1. Acesse <a href="https://plataforma.ticketlog.com.br/home"
                               target="_blank" rel="noreferrer"
                               style={{ color: "#1d4ed8", fontWeight: 700 }}>
@@ -205,7 +205,7 @@ export default function TicketLogImporter({ onClose, onSuccess }) {
                                   marginBottom: 8 }}>
                     <AlertTriangle size={16} style={{ color: "#dc2626" }} />
                     <strong style={{ color: "#991b1b", fontSize: 14 }}>
-                      🚨 {preview.anomalies.total_flagged} transação(ões) suspeita(s) detectada(s)
+                      {preview.anomalies.total_flagged} transação(ões) suspeita(s) detectada(s)
                     </strong>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap",
@@ -217,9 +217,9 @@ export default function TicketLogImporter({ onClose, onSuccess }) {
                         border: "1px solid #fecaca", color: "#991b1b",
                       }}>
                         {{
-                          preco_alto: "💸 Preço alto",
-                          volume_alto: "⛽ Volume alto",
-                          abastecimento_duplo: "🔁 Duplo mesmo dia",
+                          preco_alto: "Preço alto",
+                          volume_alto: "Volume alto",
+                          abastecimento_duplo: "Duplo mesmo dia",
                           km_retrograde: "↩️ KM regrediu",
                         }[k] || k}: {v}
                       </span>
@@ -278,7 +278,7 @@ export default function TicketLogImporter({ onClose, onSuccess }) {
                   </details>
                   <div style={{ marginTop: 8, fontSize: 11, color: "#7f1d1d",
                                   fontStyle: "italic" }}>
-                    💡 Estes alertas não bloqueiam a importação — investigue depois
+                    Estes alertas não bloqueiam a importação — investigue depois
                     no histórico de combustível.
                   </div>
                 </div>

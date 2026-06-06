@@ -24,7 +24,7 @@ export function OdometerBubble({ odom, onClick }) {
         background: done ? "#10b981" : (isStart ? "#f59e0b" : "#ef4444"),
         color: "#fff", fontSize: 28, fontWeight: 800,
         display: "grid", placeItems: "center", flexShrink: 0,
-      }}>{done ? "✓" : "🚗"}</div>
+      }}>{done ? "✓" : ""}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>
           {done ? (
@@ -36,8 +36,8 @@ export function OdometerBubble({ odom, onClick }) {
             </>
           ) : (
             <>
-              {isStart ? "🌅 Foto do velocímetro — INÍCIO da semana"
-                       : "🌙 Foto do velocímetro — FIM da semana"}
+              {isStart ? "Foto do velocímetro — INÍCIO da semana"
+                       : "Foto do velocímetro — FIM da semana"}
             </>
           )}
         </div>
@@ -101,8 +101,8 @@ export function OdometerCaptureModal({
         <div>
           <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 700,
                             textTransform: "uppercase", letterSpacing: 0.5 }}>
-            {odom?.kind === "start" ? "🌅 Início da semana"
-                                     : "🌙 Fim da semana"}
+            {odom?.kind === "start" ? "Início da semana"
+                                     : "Fim da semana"}
           </div>
           <div style={{ fontSize: 17, fontWeight: 800, marginTop: 2 }}>
             Foto do velocímetro
@@ -141,7 +141,7 @@ export function OdometerCaptureModal({
                 background: "#fbbf24", color: "#0f172a",
                 padding: "4px 10px", borderRadius: 6,
                 fontSize: 11, fontWeight: 800, whiteSpace: "nowrap",
-              }}>📍 ENQUADRE O HODÔMETRO AQUI</div>
+              }}>ENQUADRE O HODÔMETRO AQUI</div>
             </div>
             <div style={{ color: "#94a3b8", fontSize: 13, textAlign: "center",
                               padding: "0 20px" }}>
@@ -220,7 +220,7 @@ export function OdometerCaptureModal({
                 background: "#0d9488", color: "#fff", border: 0,
                 fontSize: 15, fontWeight: 800, cursor: "pointer",
               }}>
-              📸 Abrir câmera
+              Abrir câmera
             </button>
           )}
           {photo && !ai && (

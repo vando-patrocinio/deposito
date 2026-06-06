@@ -8,12 +8,12 @@ const STATUS_LABEL = {
   aguardando_atendimento: { label: "⏸ Aguardando", color: "#f59e0b", bg: "#fef3c7" },
   finalizada: { label: "✓ Finalizada", color: "#10b981", bg: "#dcfce7" },
   encerrada: { label: "■ Encerrada", color: "#475569", bg: "#e2e8f0" },
-  reagendada: { label: "📅 Reagendada", color: "#3b82f6", bg: "#dbeafe" },
+  reagendada: { label: "Reagendada", color: "#3b82f6", bg: "#dbeafe" },
   cancelada: { label: "✗ Cancelada", color: "#dc2626", bg: "#fee2e2" },
 };
 const TYPE_LABELS = {
-  reparo: "🔧 Reparo", instalacao: "📡 Instalação", retirada: "📦 Retirada",
-  prioridade: "🚨 Prioridade", preventiva: "🛡️ Preventiva", venda: "💼 Venda",
+  reparo: "Reparo", instalacao: "Instalação", retirada: "Retirada",
+  prioridade: "Prioridade", preventiva: "️ Preventiva", venda: "Venda",
 };
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -126,7 +126,7 @@ export default function LousaHistoryModal({ onClose }) {
         maxWidth: 1500, width: "100%", maxHeight: "96vh", display: "flex", flexDirection: "column",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 19 }}>📚 Lousa Histórica · {range.label}</h2>
+          <h2 style={{ margin: 0, fontSize: 19 }}>Lousa Histórica · {range.label}</h2>
           <Button variant="soft" onClick={onClose} data-testid="history-close-btn">Fechar</Button>
         </div>
 
@@ -134,10 +134,10 @@ export default function LousaHistoryModal({ onClose }) {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
           <div style={{ display: "flex", gap: 4, padding: 4, background: "#f1f5f9", borderRadius: 12 }}>
             {[
-              { v: "day", l: "📅 Dia" },
-              { v: "week", l: "📆 Semana" },
-              { v: "month", l: "🗓️ Mês" },
-              { v: "year", l: "🏷️ Ano" },
+              { v: "day", l: "Dia" },
+              { v: "week", l: "Semana" },
+              { v: "month", l: "️ Mês" },
+              { v: "year", l: "️ Ano" },
               { v: "range", l: "↔ Período" },
             ].map((opt) => (
               <button key={opt.v}
@@ -166,14 +166,14 @@ export default function LousaHistoryModal({ onClose }) {
           )}
           {granularity === "range" && (
             <>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} max={today} style={inputCss} data-testid="history-date-from" />
+              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} max={today} style={inputCss} data-testid="history-date-from " />
               <span style={{ color: "#94a3b8" }}>→</span>
               <input type="date" value={to} onChange={(e) => setTo(e.target.value)} max={today} style={inputCss} data-testid="history-date-to" />
             </>
           )}
 
           <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
-            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 14, pointerEvents: "none" }}>🔍</span>
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 14, pointerEvents: "none" }}></span>
             <input
               data-testid="history-search"
               type="text"
@@ -260,7 +260,7 @@ function HistBubble({ ticket }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 4 }}>
         <span style={{ fontSize: 9, fontWeight: 800, color: st.color, background: "white", padding: "1px 6px", borderRadius: 6 }}>{st.label}</span>
         {ticket.duration_minutes != null && (
-          <span style={{ fontSize: 10, fontWeight: 800, color: "#0f172a", background: "white", padding: "1px 6px", borderRadius: 6 }}>🕐 {fmtDuration(ticket.duration_minutes)}</span>
+          <span style={{ fontSize: 10, fontWeight: 800, color: "#0f172a", background: "white", padding: "1px 6px", borderRadius: 6 }}>{fmtDuration(ticket.duration_minutes)}</span>
         )}
       </div>
       <div style={{ fontSize: 13, fontWeight: 800, marginTop: 4, color: "#0f172a" }}>{cs.name}</div>
@@ -269,7 +269,7 @@ function HistBubble({ ticket }) {
         <div style={{ fontSize: 11, color: "#475569", marginTop: 3 }}>{cs.relato.substring(0, 80)}{cs.relato.length > 80 ? "..." : ""}</div>
       )}
       {ticket.admin_notes && (
-        <div style={{ fontSize: 10, color: "#dc2626", marginTop: 4, fontStyle: "italic" }}>📝 {ticket.admin_notes.substring(0, 100)}</div>
+        <div style={{ fontSize: 10, color: "#dc2626", marginTop: 4, fontStyle: "italic" }}>{ticket.admin_notes.substring(0, 100)}</div>
       )}
       {(() => {
         const cd = ticket.completion_data || {};
@@ -290,7 +290,7 @@ function HistBubble({ ticket }) {
           const absOpen = Math.abs(sigOpen);
           const absClose = Math.abs(sigClose);
           if (absClose > absOpen) {
-            cmpLabel = "⚠ Sinal Degradado";
+            cmpLabel = "Sinal Degradado";
             cmpColor = "#991b1b"; cmpBg = "#fef2f2";
           } else if (absClose < absOpen) {
             cmpLabel = "✓ Atualização do Sinal com Sucesso";
@@ -318,7 +318,7 @@ function HistBubble({ ticket }) {
                         borderRadius: 4, fontWeight: 700,
                         fontFamily: "ui-monospace,monospace",
                       }}>
-                📥 {sigOpen} dBm
+                {sigOpen} dBm
               </span>
             )}
             {hasClose && (
@@ -331,7 +331,7 @@ function HistBubble({ ticket }) {
                         borderRadius: 4, fontWeight: 700,
                         fontFamily: "ui-monospace,monospace",
                       }}>
-                📤 {sigClose} dBm
+                {sigClose} dBm
               </span>
             )}
             {cmpLabel && (
@@ -362,14 +362,14 @@ function HistBubble({ ticket }) {
                         textOverflow: "ellipsis", minWidth: 0,
                       }}
                       title={cd.ping_summary}>
-                🛰 {cd.ping_summary.split("\n")[0].substring(0, 50)}
+                {cd.ping_summary.split("\n")[0].substring(0, 50)}
               </span>
             )}
           </div>
         );
       })()}
       {ticket.scheduled_time && (
-        <div style={{ fontSize: 10, color: "#3b82f6", marginTop: 3 }}>📅 {new Date(ticket.scheduled_time).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</div>
+        <div style={{ fontSize: 10, color: "#3b82f6", marginTop: 3 }}>{new Date(ticket.scheduled_time).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</div>
       )}
     </div>
   );

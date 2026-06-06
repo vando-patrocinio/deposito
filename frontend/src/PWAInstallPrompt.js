@@ -184,7 +184,7 @@ export default function PWAInstallPrompt() {
                   width: 16, height: 16, border: "1.5px solid #475569",
                   borderRadius: 4, position: "relative", top: -1, marginRight: 2,
                 }}/>{" "}
-                e escolha <strong>"Adicionar à Tela de Início"</strong>
+                e escolha <strong>“Adicionar à Tela de Início”</strong>
               </div>
             </div>
           </div>

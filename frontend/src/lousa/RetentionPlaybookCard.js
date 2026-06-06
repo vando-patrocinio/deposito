@@ -96,7 +96,7 @@ export default function RetentionPlaybookCard() {
       <div style={{ display: "flex", alignItems: "center",
                       justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 26 }}>🛟</span>
+          <span style={{ fontSize: 26 }}></span>
           <div>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1,
                             color: "#fca5a5", textTransform: "uppercase" }}>
@@ -117,7 +117,7 @@ export default function RetentionPlaybookCard() {
           <input type="checkbox" checked={!!draft.enabled}
                   onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
                   style={{ width: 18, height: 18 }} />
-          {draft.enabled ? "✅ Ativado" : "⛔ Desativado"}
+          {draft.enabled ? "✅ Ativado" : "Desativado"}
         </label>
       </div>
 
@@ -202,12 +202,12 @@ export default function RetentionPlaybookCard() {
                  variant="primary"
                  style={{ background: dirty ? "#10b981" : "#475569",
                             color: "white" }}>
-          {saving ? "Salvando..." : (dirty ? "💾 Salvar regras" : "✓ Sem mudanças")}
+          {saving ? "Salvando..." : (dirty ? "Salvar regras" : "✓ Sem mudanças")}
         </Button>
         <Button onClick={() => setTriggerOpen(true)}
                  data-testid="retention-manual-trigger-btn"
                  style={{ background: "#a78bfa", color: "#1c1917" }}>
-          ⚡ Disparar manual
+          Disparar manual
         </Button>
         {dirty && (
           <button onClick={() => setDraft(cfg)}
@@ -224,7 +224,7 @@ export default function RetentionPlaybookCard() {
         <div style={{ fontSize: 11, fontWeight: 800, color: "#fca5a5",
                         textTransform: "uppercase", letterSpacing: 1,
                         marginBottom: 8 }}>
-          🚨 Mural de Retenção — {mural.length} caso(s)
+          Mural de Retenção — {mural.length} caso(s)
         </div>
         {mural.length === 0 ? (
           <div style={{ padding: 14, textAlign: "center",
@@ -250,7 +250,7 @@ export default function RetentionPlaybookCard() {
             background: "white", padding: 20, borderRadius: 14,
             color: "#0f172a", width: 360, maxWidth: "90vw",
           }} data-testid="retention-trigger-modal">
-            <h3 style={{ marginTop: 0 }}>⚡ Disparar retenção</h3>
+            <h3 style={{ marginTop: 0 }}>Disparar retenção</h3>
             <Field label="Telefone (DDD + número)" dark>
               <input data-testid="trigger-phone" value={tPhone}
                       onChange={(e) => setTPhone(e.target.value)}
@@ -328,12 +328,12 @@ function MuralRow({ m, onStatus }) {
             </span>
           </div>
           <div style={{ fontSize: 11, color: "#fee2e2", marginTop: 2 }}>
-            📞 {m.phone} · {m.discount_pct}% off · WA: {m.whatsapp_status}
+            {m.phone} · {m.discount_pct}% off · WA: {m.whatsapp_status}
           </div>
           {m.risk_reason && (
             <div style={{ fontSize: 10, color: "#fecaca", marginTop: 2,
                             fontStyle: "italic" }}>
-              "{m.risk_reason}"
+              “{m.risk_reason}”
             </div>
           )}
         </div>

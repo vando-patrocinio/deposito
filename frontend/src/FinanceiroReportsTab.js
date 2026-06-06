@@ -117,7 +117,7 @@ function ReportsHeader({ month, setMonth }) {
           Relatórios Financeiros
         </div>
         <div style={{ fontSize: 18, fontWeight: 800, marginTop: 1 }}>
-          📊 {fmtMonth(month)}
+          {fmtMonth(month)}
         </div>
       </div>
       <div style={{ display: "flex", gap: 6 }}>
@@ -261,7 +261,7 @@ function DreCard({ dre }) {
   if (!dre) return <Card title="DRE — Demonstração de Resultado">Carregando...</Card>;
   return (
     <Card title={<span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      📈 DRE — Demonstração de Resultado
+      DRE — Demonstração de Resultado
     </span>}>
       <div data-testid="reports-dre" style={{
         background: "white", padding: 12, borderRadius: 10,
@@ -424,7 +424,7 @@ function TopSuppliersCard({ data }) {
   const max = Math.max(...rows.map((r) => r.total), 1);
   return (
     <Card title={<span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      🏆 Top Fornecedores do Período
+      Top Fornecedores do Período
     </span>}>
       {rows.length === 0 ? (
         <div style={{ padding: 24, textAlign: "center", color: "#94a3b8",

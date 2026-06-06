@@ -84,7 +84,7 @@ export default function PropostasPanel({ currentUser }) {
       return;
     }
     setBusy(true);
-    setMsg({ type: "info", text: form.run_ai ? "🤖 Claude 4.6 está gerando a copy…" : "Salvando…" });
+    setMsg({ type: "info", text: form.run_ai ? "Claude 4.6 está gerando a copy…" : "Salvando…" });
     try {
       const r = await api.propostasCreate({
         ...form,
@@ -105,7 +105,7 @@ export default function PropostasPanel({ currentUser }) {
   const onRegenerate = async () => {
     if (!selected?.id) return;
     setBusy(true);
-    setMsg({ type: "info", text: "🤖 Re-gerando copy com Claude 4.6…" });
+    setMsg({ type: "info", text: "Re-gerando copy com Claude 4.6…" });
     try {
       const r = await api.propostasRegenerate(selected.id, { ai_tone: form.ai_tone });
       setSelected(r);
@@ -181,7 +181,7 @@ export default function PropostasPanel({ currentUser }) {
         <div data-testid="propostas-form" style={cardBox}>
           <div style={{ fontSize: 13, fontWeight: 800, color: PURPLE_DARK,
                           marginBottom: 12, letterSpacing: 0.3, textTransform: "uppercase" }}>
-            📝 Dados da Proposta
+            Dados da Proposta
           </div>
 
           <div style={{ marginBottom: 10 }}>
@@ -261,7 +261,7 @@ export default function PropostasPanel({ currentUser }) {
               <input data-testid="propostas-use-ai"
                        type="checkbox" checked={form.run_ai}
                        onChange={(e) => setF("run_ai", e.target.checked)} />
-              🤖 Usar Claude 4.6 para variar o informativo
+              Usar Claude 4.6 para variar o informativo
             </label>
           </div>
 
@@ -391,12 +391,12 @@ export default function PropostasPanel({ currentUser }) {
                 <button data-testid="propostas-pdf-btn"
                           onClick={() => onDownloadPdf(selected.id)}
                           style={btnOrange}>
-                  📄 Baixar PDF
+                  Baixar PDF
                 </button>
                 <button data-testid="propostas-regenerate-btn"
                           onClick={onRegenerate} disabled={busy}
                           style={btnSec}>
-                  🤖 Regenerar texto (IA)
+                  Regenerar texto (IA)
                 </button>
               </div>
               <div style={{ marginTop: 10, fontSize: 10, color: "#64748b" }}>
@@ -457,7 +457,7 @@ export default function PropostasPanel({ currentUser }) {
                       <button data-testid={`propostas-row-pdf-${it.id}`}
                                 onClick={() => onDownloadPdf(it.id)}
                                 style={{ ...btnSec, padding: "6px 10px", marginRight: 4 }}>
-                        📄 PDF
+                        PDF
                       </button>
                       <button data-testid={`propostas-row-del-${it.id}`}
                                 onClick={() => onDelete(it.id)}

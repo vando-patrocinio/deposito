@@ -437,7 +437,7 @@ export default function NeoReportsPanel() {
           </div>
         ) : schedules.length === 0 ? (
           <div data-testid="neo-empty-state" style={{ padding: 24, textAlign: "center", color: "var(--text-muted)" }}>
-            Nenhum agendamento ainda. Clique em "Novo Agendamento" para começar.
+            Nenhum agendamento ainda. Clique em “Novo Agendamento” para começar.
           </div>
         ) : (
           <div style={{ display: "grid", gap: 8 }}>

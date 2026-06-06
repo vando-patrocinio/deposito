@@ -223,7 +223,7 @@ export default function CTOMapPicker({
               setGpsPos({ lat: last.lat, lng: last.lng,
                             accuracy: last.accuracy || 1000 });
               setCenter([last.lat, last.lng]);
-              setGpsError(`📍 Usando última localização conhecida (${ageH < 1
+              setGpsError(`Usando última localização conhecida (${ageH < 1
                 ? Math.round(ageH * 60) + " min"
                 : Math.round(ageH) + "h"} atrás). Toque em ◎ para atualizar.`);
               usedCache = true;
@@ -232,7 +232,7 @@ export default function CTOMapPicker({
         } catch { /* JSON inválido, ignora */ }
         if (usedCache) return;
         const msg = err?.code === 1
-          ? "Permissão de localização negada. Toque em 🔒 na barra do navegador → permita Localização."
+          ? "Permissão de localização negada. Toque em na barra do navegador → permita Localização."
           : err?.code === 2
           ? "Sinal de GPS fraco. Vá para uma área aberta e toque em ◎ para tentar de novo."
           : err?.code === 3
@@ -441,7 +441,7 @@ export default function CTOMapPicker({
       <div style={addrChip}>
         {loading ? (
           <span style={{ fontSize: 11, color: "#475569" }}>
-            🔄 Detectando endereço...
+            Detectando endereço...
           </span>
         ) : lastAddr ? (
           <>
@@ -474,7 +474,7 @@ export default function CTOMapPicker({
                 style={{ ...gpsErrorBanner, cursor: "pointer",
                           fontFamily: "inherit", textAlign: "left",
                           width: "calc(100% - 20px)" }}>
-          <span style={{ fontSize: 14 }}>📡</span>
+          <span style={{ fontSize: 14 }}></span>
           <span style={{ flex: 1 }}>{gpsError}</span>
           <span style={{ fontSize: 10, fontWeight: 800, opacity: 0.7 }}>
             {requestingGps ? "⌛" : "↻"}

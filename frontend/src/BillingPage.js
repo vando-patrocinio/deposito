@@ -51,7 +51,7 @@ export function BillingBanner() {
         border: "1px solid rgba(16,185,129,.2)",
       }}>
         <span>
-          ⚡ Você está no <strong>{co.plan_name}</strong> · {co.collaborators_count}/{co.max_collaborators || 3} colaboradores ·
+          Você está no <strong>{co.plan_name}</strong> · {co.collaborators_count}/{co.max_collaborators || 3} colaboradores ·
           <span style={{ color: "#94a3b8", marginLeft: 6 }}>upgrade pro Pro = mais 22 vagas + IA + mapa ao vivo</span>
         </span>
         <button
@@ -64,7 +64,7 @@ export function BillingBanner() {
             fontWeight: 800, cursor: busy ? "wait" : "pointer",
           }}
         >{busy ? "..." : "Upgrade pro Pro"}</button>
-        {err && <div style={{ width: "100%", marginTop: 4, fontSize: 11, color: "#fecaca" }}>⚠ {err}</div>}
+        {err && <div style={{ width: "100%", marginTop: 4, fontSize: 11, color: "#fecaca" }}>{err}</div>}
       </div>
     );
   }
@@ -85,14 +85,14 @@ export function BillingBanner() {
     }}>
       <div>
         <strong style={{ fontSize: 14 }}>
-          {isPastDue ? "🚨 Sua assinatura expirou" : `⏳ Trial: ${co.days_left ?? 0} dia(s) restantes`}
+          {isPastDue ? "Sua assinatura expirou" : `⏳ Trial: ${co.days_left ?? 0} dia(s) restantes`}
         </strong>
         <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
           {isPastDue
             ? "Para continuar usando, ative sua assinatura mensal."
             : `Assine o ${co.plan_name} (R$ ${(co.plan_price_brl || 99).toFixed(0)}/mês) para garantir o serviço.`}
         </div>
-        {err && <div style={{ marginTop: 6, fontSize: 11, color: "#fecaca" }}>⚠ {err}</div>}
+        {err && <div style={{ marginTop: 6, fontSize: 11, color: "#fecaca" }}>{err}</div>}
       </div>
       <button
         onClick={startCheckout}
@@ -173,7 +173,7 @@ export function BillingSuccessPage({ sessionId, onDone }) {
         )}
         {status === "paid" && (
           <>
-            <div style={{ fontSize: 56, marginBottom: 14 }}>🎉</div>
+            <div style={{ fontSize: 56, marginBottom: 14 }}></div>
             <h2 style={{ color: "white", margin: 0 }}>Pagamento confirmado!</h2>
             <p style={{ color: "#94a3b8", marginTop: 10, fontSize: 14 }}>
               Sua assinatura SmartProv Pro está ativa por 30 dias.
@@ -208,7 +208,7 @@ export function BillingSuccessPage({ sessionId, onDone }) {
         )}
         {status === "error" && (
           <>
-            <div style={{ fontSize: 48 }}>⚠️</div>
+            <div style={{ fontSize: 48 }}>️</div>
             <h2 style={{ color: "white", margin: 0 }}>Erro ao verificar</h2>
             <p style={{ color: "#fca5a5", marginTop: 10, fontSize: 13 }}>{error}</p>
             <button onClick={onDone} style={{ marginTop: 22, padding: "12px 22px", borderRadius: 12, background: "white", color: "#0a1322", border: 0, fontWeight: 700, cursor: "pointer" }}>Voltar</button>
@@ -232,7 +232,7 @@ export function BillingCancelPage({ onDone }) {
         background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)",
         borderRadius: 22, padding: "40px 30px",
       }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>👋</div>
+        <div style={{ fontSize: 48, marginBottom: 12 }}></div>
         <h2 style={{ color: "white", margin: 0 }}>Pagamento cancelado</h2>
         <p style={{ color: "#94a3b8", marginTop: 10, fontSize: 14 }}>Tudo bem, seu trial continua. Você pode assinar a qualquer momento pelo painel.</p>
         <button onClick={onDone} style={{ marginTop: 22, padding: "13px 22px", borderRadius: 12, background: ACCENT, color: "#050b16", border: 0, fontWeight: 800, cursor: "pointer" }}>Voltar ao painel</button>

@@ -244,7 +244,7 @@ export default function TabPermissionsCard({ data, setData }) {
 
       <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "12px 0 0",
                   lineHeight: 1.6 }}>
-        💡 <strong>Total de {ALL_TAB_IDS.length} abas</strong> disponíveis.{" "}
+        <strong>Total de {ALL_TAB_IDS.length} abas</strong> disponíveis.{" "}
         Perfis específicos como <em>gestor_rede</em> e <em>financeiro</em>{" "}
         usam permissões hardcoded no App.js (não controlados por este card).
       </p>

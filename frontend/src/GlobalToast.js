@@ -81,5 +81,5 @@ const style = (kind) => {
   };
 };
 const iconFor = (k) => ({
-  info: "ℹ️", success: "✅", warn: "⚠️", error: "❌",
+  info: "ℹ️", success: "✅", warn: "️", error: "❌",
 }[k] || "ℹ️");

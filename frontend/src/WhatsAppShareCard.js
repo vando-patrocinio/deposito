@@ -15,7 +15,7 @@ export default function WhatsAppShareCard() {
   const [savedPhone, setSavedPhone] = useState(false);
   const [copied, setCopied] = useState(false);
   const [text, setText] = useState(
-    "Olá! Quero saber mais sobre a Ligo 🚀",
+    "Olá! Quero saber mais sobre a Ligo ",
   );
 
   const load = useCallback(async () => {

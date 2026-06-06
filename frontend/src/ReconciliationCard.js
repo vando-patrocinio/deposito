@@ -108,7 +108,7 @@ export default function ReconciliationCard({ period = 30 }) {
         gap: 10,
       }}>
         <ReconBlock
-          label="🏦 Banco" total={bank} count={data.bank.count}
+          label="Banco" total={bank} count={data.bank.count}
           color="#0ea5e9"
           breakdown={[
             { label: "Sicoob", v: data.bank.sicoob.total,
@@ -118,7 +118,7 @@ export default function ReconciliationCard({ period = 30 }) {
           ]}
           testId="recon-bank" />
         <ReconBlock
-          label="🔌 Atlaz" total={atlaz} count={data.atlaz.count}
+          label="Atlaz" total={atlaz} count={data.atlaz.count}
           color="#10b981"
           testId="recon-atlaz" />
         <ReconBlock

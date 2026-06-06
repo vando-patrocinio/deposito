@@ -87,7 +87,7 @@ export default function PublicMapPage() {
   if (err) {
     return (
       <div style={errorPage}>
-        <div style={{ fontSize: 56, marginBottom: 10 }}>🔒</div>
+        <div style={{ fontSize: 56, marginBottom: 10 }}></div>
         <h1 style={{ fontSize: 22, margin: "0 0 8px", color: "#0f172a" }}>
           Acesso negado
         </h1>
@@ -149,7 +149,7 @@ export default function PublicMapPage() {
           style={{ height: "100%", width: "100%" }}>
           <TileLayer
             attribution='&copy; OpenStreetMap'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={19} />
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" maxZoom={19} />
           <FitBounds ctos={data.ctos} />
 
           {/* Cabos */}

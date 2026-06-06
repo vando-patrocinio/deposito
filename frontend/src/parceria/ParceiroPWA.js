@@ -23,6 +23,48 @@ const BACKEND = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND}/api/parceiro-portal`;
 const LS_TOKEN = "ligo_parceiro_token";
 
+/* ─────────────────── Feedback sonoro/tátil ───────────────────
+   Beep curto via Web Audio (sem precisar de asset) + vibração
+   curta. Útil pra confirmar leitura do QR sem o parceiro precisar
+   olhar a tela em ambiente barulhento (caixa de loja). */
+let _audioCtx = null;
+function _ensureAudioCtx() {
+  if (typeof window === "undefined") return null;
+  if (_audioCtx) return _audioCtx;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    _audioCtx = new Ctx();
+  } catch { _audioCtx = null; }
+  return _audioCtx;
+}
+function _beep(freq, durMs, vol = 0.18) {
+  const ctx = _ensureAudioCtx();
+  if (!ctx) return;
+  try {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine"; osc.frequency.value = freq;
+    gain.gain.value = vol;
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + durMs / 1000);
+    // fade out pra evitar click
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001, ctx.currentTime + durMs / 1000);
+  } catch { /* */ }
+}
+function playSuccessFeedback() {
+  // 2 beeps ascendentes (Ré → Lá) + vibração curta
+  _beep(587, 120);                       // D5
+  setTimeout(() => _beep(880, 160), 140); // A5
+  try { navigator.vibrate && navigator.vibrate([60, 40, 80]); } catch { /* */ }
+}
+function playErrorFeedback() {
+  // 1 beep grave + vibração padrão de erro
+  _beep(220, 280, 0.22);                 // A3
+  try { navigator.vibrate && navigator.vibrate([180, 60, 180]); } catch { /* */ }
+}
+
 const COLORS = {
   // iter232 — tema claro (era dark slate). Mantém purple + orange Ligo
   // como destaque sobre fundo claro pra ficar coerente com /cliente.
@@ -255,6 +297,18 @@ function HubScreen({ me, token, onEditPromo, onNewPromo, onScan,
   onRedemptions, onEditProfile, onLogout, refresh }) {
   const [promos, setPromos] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Live stats do dia (gamificação): atualizado via polling + após cada scan
+  const [todayStats, setTodayStats] = useState({
+    today_count: 0, today_due: 0, pending_count: 0, pending_due: 0,
+  });
+
+  const fetchStats = useCallback(() => {
+    if (!token) return;
+    axios.get(`${API}/today-stats`,
+      { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => setTodayStats(r.data))
+      .catch(() => {});
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
@@ -262,7 +316,11 @@ function HubScreen({ me, token, onEditPromo, onNewPromo, onScan,
       { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => setPromos(r.data || []))
       .catch(() => setPromos([]));
-  }, [token]);
+    fetchStats();
+    // polling a cada 30s pra refletir scans feitos em outros dispositivos
+    const iv = setInterval(fetchStats, 30000);
+    return () => clearInterval(iv);
+  }, [token, fetchStats]);
 
   const p = me?.partner || {};
 
@@ -307,12 +365,49 @@ function HubScreen({ me, token, onEditPromo, onNewPromo, onScan,
       />
 
       <div style={{ padding: 18 }}>
+        {/* Live counter do dia (gamificação) */}
+        {todayStats.today_count > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            data-testid="parceiro-today-ribbon"
+            style={{
+              padding: "14px 16px", borderRadius: 14, marginBottom: 14,
+              background: "linear-gradient(120deg, #10B981, #059669)",
+              color: "white", display: "flex", alignItems: "center",
+              justifyContent: "space-between", gap: 12,
+              boxShadow: "0 12px 28px rgba(16,185,129,.28)",
+            }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, opacity: .85,
+                letterSpacing: 1.4, textTransform: "uppercase" }}>
+                Hoje no caixa
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 900,
+                marginTop: 2, letterSpacing: "-.01em" }}>
+                {todayStats.today_count} resgate{todayStats.today_count !== 1 ? "s" : ""}
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 11, fontWeight: 800, opacity: .85,
+                letterSpacing: 1.4, textTransform: "uppercase" }}>
+                A receber
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 900,
+                marginTop: 2, letterSpacing: "-.01em" }}>
+                R$ {Number(todayStats.today_due).toFixed(2).replace(".", ",")}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
                          gap: 10 }}>
-          <StatBox label="Resgates pendentes" value={me?.pending_count || 0} />
+          <StatBox label="Resgates pendentes"
+            value={todayStats.pending_count || me?.pending_count || 0} />
           <StatBox label="A receber"
-            value={`R$ ${Number(me?.pending_payout || 0).toFixed(2).replace(".", ",")}`} />
+            value={`R$ ${Number(todayStats.pending_due || me?.pending_payout || 0).toFixed(2).replace(".", ",")}`} />
         </div>
 
         {/* Promoções */}
@@ -332,7 +427,7 @@ function HubScreen({ me, token, onEditPromo, onNewPromo, onScan,
             <div className="pp-card" style={{ padding: 18, textAlign: "center",
                                                   color: COLORS.muted, fontSize: 13 }}>
               Você ainda não cadastrou promoções.
-              <br />Toque em "Nova" para começar.
+              <br />Toque em “Nova” para começar.
             </div>
           )}
           {promos.map((promo) => (
@@ -723,6 +818,14 @@ function ScanScreen({ token, me, onBack, onSuccess }) {
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState("");
+  // Flash visual no scanner: "ok" (verde) | "err" (vermelho) | null
+  const [flash, setFlash] = useState(null);
+  // Ref pro Html5Qrcode (precisamos retomar leitura após erro)
+  const readerRef = React.useRef(null);
+  const triggerFlash = (kind) => {
+    setFlash(kind);
+    setTimeout(() => setFlash(null), 450);
+  };
 
   useEffect(() => {
     axios.get(`${API}/promotions`,
@@ -736,15 +839,38 @@ function ScanScreen({ token, me, onBack, onSuccess }) {
     let stop = null; let ignore = false;
     (async () => {
       try {
-        const { Html5Qrcode } = await import("html5-qrcode");
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import("html5-qrcode");
         const elId = "parceiro-scanner-box";
         await new Promise((res) => setTimeout(res, 100));
         if (ignore) return;
-        const reader = new Html5Qrcode(elId);
-        stop = () => reader.stop().then(() => reader.clear()).catch(() => {});
+        const reader = new Html5Qrcode(elId, {
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          verbose: false,
+        });
+        readerRef.current = reader;
+        stop = () => {
+          readerRef.current = null;
+          return reader.stop().then(() => reader.clear()).catch(() => {});
+        };
         await reader.start(
           { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 240, height: 240 } },
+          {
+            fps: 15,
+            // Mantém o frame de scan QUADRADO proporcional ao menor lado
+            // do viewfinder — corrige enquadramento esticado em retrato.
+            qrbox: (vw, vh) => {
+              const m = Math.min(vw, vh);
+              const side = Math.max(180, Math.floor(m * 0.78));
+              return { width: side, height: side };
+            },
+            aspectRatio: 1.0,
+            disableFlip: false,
+            videoConstraints: {
+              facingMode: "environment",
+              focusMode: "continuous",
+              advanced: [{ focusMode: "continuous" }],
+            },
+          },
           async (text) => {
             try { await reader.pause(true); } catch { /* */ }
             handleQr(text);
@@ -761,27 +887,76 @@ function ScanScreen({ token, me, onBack, onSuccess }) {
 
   const handleQr = async (raw) => {
     setScanning(true); setErr(""); setResult(null);
+    const rawTrim = (raw || "").trim();
     try {
-      // Aceita JSON do QR (cliente Ligo) ou string crua "LIGO:xxxx"
-      let qr_token = raw;
-      try {
-        const obj = JSON.parse(raw);
-        if (obj.token) qr_token = obj.token;
-        else if (obj.sid) qr_token = `LIGO:${obj.sid}`;
-        else if (obj.cpf) qr_token = `LIGO:${obj.cpf.replace(/\D/g, "")}`;
-      } catch { /* não é JSON, usa raw mesmo */ }
+      // Aceita JSON do QR (cliente Ligo) ou string crua "LIGO:xxxx".
+      // Também aceita URL completa caso o QR tenha encodado um link.
+      let qr_token = rawTrim;
+      let extra = null;   // dados auxiliares para o backend (nome, CPF…)
+      // PRIORIDADE: token criptografado V2 — opaco, só backend decifra
+      if (rawTrim.startsWith("LIGO2:")) {
+        qr_token = rawTrim;
+      } else {
+        try {
+          const obj = JSON.parse(rawTrim);
+          // ordem de preferência: token aleatório → subscriber_id → CPF
+          if (obj.token) qr_token = obj.token;
+          else if (obj.sid) qr_token = `LIGO:${obj.sid}`;
+          else if (obj.id) qr_token = `LIGO:${obj.id}`;
+          else if (obj.subscriber_id) qr_token = `LIGO:${obj.subscriber_id}`;
+          else if (obj.cpf) qr_token = `LIGO:CPF:${String(obj.cpf).replace(/\D/g, "")}`;
+          else if (obj.name) qr_token = `LIGO:NAME:${obj.name}`;
+          // sempre envia o JSON original como contexto extra
+          extra = obj;
+        } catch { /* não é JSON */ }
+      }
+      // Se vier como URL, pega o último segmento (?qr=xxx ou /q/xxx)
+      if (qr_token.startsWith("http")) {
+        try {
+          const u = new URL(qr_token);
+          qr_token = u.searchParams.get("qr")
+            || u.searchParams.get("token")
+            || u.pathname.split("/").filter(Boolean).pop()
+            || qr_token;
+        } catch { /* */ }
+      }
       const r = await axios.post(`${API}/scan`,
-        { qr_token, promotion_id: pickedPromo.id },
+        { qr_token, promotion_id: pickedPromo.id, qr_payload: extra },
         { headers: { Authorization: `Bearer ${token}` } });
       if (r.data.ok) {
+        playSuccessFeedback();
+        triggerFlash("ok");
         setResult(r.data);
         onSuccess && onSuccess();
+        // Sucesso: mantém pausado, o ScanResultCard assume.
       } else {
+        playErrorFeedback();
+        triggerFlash("err");
         setErr("Cliente não elegível: " + (r.data.reason || ""));
+        // Cliente não elegível: retoma leitura após 2.5s pra evitar
+        // ficar com a tela congelada ("Scanner paused").
+        scheduleResume();
       }
     } catch (e) {
-      setErr(e?.response?.data?.detail || "QR inválido ou cliente não encontrado.");
+      playErrorFeedback();
+      triggerFlash("err");
+      const detail = e?.response?.data?.detail || "QR inválido ou cliente não encontrado.";
+      const preview = rawTrim.length > 40 ? rawTrim.slice(0, 40) + "…" : rawTrim;
+      setErr(`${detail}\nLido: ${preview || "(vazio)"}`);
+      scheduleResume();
     } finally { setScanning(false); }
+  };
+
+  // Retoma a câmera após 2.5s pra evitar "Scanner paused" travado.
+  const scheduleResume = () => {
+    setTimeout(() => {
+      try {
+        if (readerRef.current && !result) {
+          readerRef.current.resume();
+          setErr("");      // limpa erro pro próximo tentativa
+        }
+      } catch { /* */ }
+    }, 2500);
   };
 
   const submitManual = (e) => {
@@ -840,12 +1015,39 @@ function ScanScreen({ token, me, onBack, onSuccess }) {
               </button>
             </div>
 
-            <div id="parceiro-scanner-box"
-                data-testid="parceiro-scanner-box" style={{
-              width: "100%", aspectRatio: "1/1", borderRadius: 18,
-              overflow: "hidden", background: "black",
-              border: `1px solid ${COLORS.line}`,
-            }} />
+            <div style={{ position: "relative" }}>
+              <div id="parceiro-scanner-box"
+                  data-testid="parceiro-scanner-box" style={{
+                width: "100%", aspectRatio: "1/1", borderRadius: 18,
+                overflow: "hidden", background: "black",
+                border: `1px solid ${COLORS.line}`,
+              }} />
+              <AnimatePresence>
+                {flash && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: .18 }}
+                    data-testid={`scan-flash-${flash}`}
+                    style={{
+                      position: "absolute", inset: 0, borderRadius: 18,
+                      pointerEvents: "none",
+                      background: flash === "ok"
+                        ? "rgba(16,185,129,.55)"
+                        : "rgba(239,68,68,.55)",
+                      boxShadow: flash === "ok"
+                        ? "inset 0 0 0 6px #10B981, 0 0 36px rgba(16,185,129,.5)"
+                        : "inset 0 0 0 6px #EF4444, 0 0 36px rgba(239,68,68,.5)",
+                      display: "grid", placeItems: "center",
+                    }}>
+                    {flash === "ok"
+                      ? <Check size={96} color="white" strokeWidth={3} />
+                      : <X size={96} color="white" strokeWidth={3} />}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             <form onSubmit={submitManual} style={{ display: "flex", gap: 8 }}>
               <input className="pp-input" placeholder="Ou cole o código aqui"
@@ -891,6 +1093,23 @@ function ScanResultCard({ result, promo, onReset }) {
       <div style={{ fontSize: 13, opacity: .85, marginTop: 6 }}>
         Voucher: <b>{result.voucher_code}</b>
       </div>
+      {result.client?.is_vip && (
+        <div data-testid="vip-banner" style={{
+          marginTop: 12, padding: "10px 14px", borderRadius: 14,
+          background: "linear-gradient(135deg,#fbbf24,#f59e0b)",
+          color: "#7c2d12", fontWeight: 900, fontSize: 13,
+          boxShadow: "0 4px 16px rgba(251,191,36,0.6)",
+          animation: "vipPulse 1.6s ease-in-out infinite",
+        }}>
+          Cliente VIP Ligo!
+          <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3,
+                            opacity: 0.85 }}>
+            Há {Math.floor(result.client.tenure_years)} {Math.floor(result.client.tenure_years) === 1 ? "ano" : "anos"} conosco
+            — ofereça uma atenção especial 
+          </div>
+          <style>{`@keyframes vipPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}`}</style>
+        </div>
+      )}
       <div style={{ marginTop: 16, padding: 14, borderRadius: 12,
                        background: "rgba(0,0,0,.25)", textAlign: "left" }}>
         <Row k="Cliente" v={result.client?.name} />
@@ -1029,17 +1248,17 @@ function errBox() {
 
 /* iter231 — Picker de categoria do produto/serviço */
 const PRODUCT_CATEGORIES = [
-  { label: "Alimentação", emoji: "🍽️" },
-  { label: "Bebidas", emoji: "🍺" },
-  { label: "Sobremesa", emoji: "🍰" },
-  { label: "Saúde", emoji: "💊" },
-  { label: "Beleza", emoji: "💅" },
-  { label: "Automotivo", emoji: "🚗" },
-  { label: "Mercado", emoji: "🛒" },
-  { label: "Pet", emoji: "🐾" },
-  { label: "Vestuário", emoji: "👕" },
-  { label: "Lazer", emoji: "🎉" },
-  { label: "Serviço", emoji: "🛠️" },
+  { label: "Alimentação", emoji: "️" },
+  { label: "Bebidas", emoji: "" },
+  { label: "Sobremesa", emoji: "" },
+  { label: "Saúde", emoji: "" },
+  { label: "Beleza", emoji: "" },
+  { label: "Automotivo", emoji: "" },
+  { label: "Mercado", emoji: "" },
+  { label: "Pet", emoji: "" },
+  { label: "Vestuário", emoji: "" },
+  { label: "Lazer", emoji: "" },
+  { label: "Serviço", emoji: "️" },
   { label: "Outros", emoji: "✨" },
 ];
 

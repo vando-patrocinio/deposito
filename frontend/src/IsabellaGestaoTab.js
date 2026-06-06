@@ -301,7 +301,7 @@ function FragmentsManager() {
         ))}
         {items.length === 0 && (
           <div style={{ padding: 30, textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}>
-            Nenhum módulo cadastrado. Clique em "Novo módulo" pra criar.
+            Nenhum módulo cadastrado. Clique em “Novo módulo” pra criar.
           </div>
         )}
       </div>
@@ -427,11 +427,11 @@ function FragmentForm({ initial, onSave, onCancel, inline = false }) {
             fontSize: 12,
           }}
         >
-          <option value="vendas">🛒 Vendas</option>
-          <option value="promocao">🎯 Promoção</option>
-          <option value="upgrade">📈 Upgrade</option>
+          <option value="vendas">Vendas</option>
+          <option value="promocao">Promoção</option>
+          <option value="upgrade">Upgrade</option>
           <option value="novidade">✨ Novidade</option>
-          <option value="custom">🔧 Customizado</option>
+          <option value="custom">Customizado</option>
         </select>
         <input
           value={title}
@@ -1075,7 +1075,7 @@ function SyncAgentsCard() {
         <div style={{ marginTop: 10, padding: 8, borderRadius: 6,
                        background: "rgba(255,255,255,.6)",
                        fontSize: 11, color: "#78350f" }}>
-          ⚠️ Vai sobrescrever <b>system_prompt</b>, <b>modelo</b> e{" "}
+          ️ Vai sobrescrever <b>system_prompt</b>, <b>modelo</b> e{" "}
           <b>parâmetros</b> dos 4 agentes nesta empresa. Idempotente
           (pode rodar de novo se algo der errado).
         </div>
@@ -1107,7 +1107,7 @@ function SyncAgentsCard() {
               <div>✅ <b>Criados:</b> {created.join(", ")}</div>
             )}
             {updated.length > 0 && (
-              <div>🔄 <b>Atualizados:</b> {updated.join(", ")}</div>
+              <div><b>Atualizados:</b> {updated.join(", ")}</div>
             )}
             {created.length === 0 && updated.length === 0 && (
               <div style={{ color: "#92400e" }}>
@@ -1116,7 +1116,7 @@ function SyncAgentsCard() {
             )}
             {errors.length > 0 && (
               <div style={{ color: "#991b1b" }}>
-                ⚠️ <b>Erros:</b> {errors.join("; ")}
+                ️ <b>Erros:</b> {errors.join("; ")}
               </div>
             )}
             <div style={{ fontSize: 10, color: "var(--text-muted)",
@@ -1287,7 +1287,7 @@ function WhatsAppHealthCard() {
         <div style={{ marginTop: 10, padding: 6, fontSize: 11,
                        background: "rgba(255,255,255,.7)",
                        color: "#7f1d1d", borderRadius: 4 }}>
-          ⚠️ {err}
+          ️ {err}
         </div>
       )}
     </div>

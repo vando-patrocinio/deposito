@@ -65,10 +65,10 @@ export default function FleetHistoryTab({ vehicles }) {
         {data?.stats && (
           <div style={{ display: "flex", gap: 16, marginLeft: 16,
                           fontSize: 13 }}>
-            <span>📏 <b>{data.stats.total_km}</b> km</span>
+            <span><b>{data.stats.total_km}</b> km</span>
             <span>⏱️ <b>{data.stats.moving_minutes}</b> min em movimento</span>
-            <span>🛑 <b>{data.stats.stops}</b> paradas</span>
-            <span>📍 <b>{data.stats.total_points}</b> pontos</span>
+            <span><b>{data.stats.stops}</b> paradas</span>
+            <span><b>{data.stats.total_points}</b> pontos</span>
           </div>
         )}
       </div>
@@ -86,8 +86,8 @@ export default function FleetHistoryTab({ vehicles }) {
           <MapContainer center={start || [-15.78, -47.93]} zoom={14}
                           style={{ height: 500 }}
                           bounds={path.length ? L.latLngBounds(path) : undefined}>
-            <TileLayer attribution='&copy; OpenStreetMap'
-                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <TileLayer attribution='Mapa &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contribuidores &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
             <Polyline positions={path}
                        pathOptions={{ color: "#2563eb", weight: 4 }} />
             {start && <Marker position={start} icon={startIcon}>

@@ -501,7 +501,7 @@ export default function SoftphoneSection() {
             • Asterisk/MagnusBilling com <strong>chan_pjsip</strong> e <code style={{ background: "#f1f5f9", padding: "1px 4px", borderRadius: 3 }}>transport-wss</code> ativo (porta padrão <strong>8089</strong>)<br />
             • Endpoint pjsip do ramal com <code style={{ background: "#f1f5f9", padding: "1px 4px", borderRadius: 3 }}>webrtc=yes</code>, <code style={{ background: "#f1f5f9", padding: "1px 4px", borderRadius: 3 }}>ice_support=yes</code>, <code style={{ background: "#f1f5f9", padding: "1px 4px", borderRadius: 3 }}>media_encryption=dtls</code><br />
             • HTTPS habilitado em <code style={{ background: "#f1f5f9", padding: "1px 4px", borderRadius: 3 }}>http.conf</code> com certificado válido<br />
-            • Se WSS estiver em outra porta/path, ajuste em "Configurações avançadas".
+            • Se WSS estiver em outra porta/path, ajuste em “Configurações avançadas”.
           </div>
         </Card>
       </div>

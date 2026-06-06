@@ -295,7 +295,7 @@ function makeSearchPinIcon() {
         <circle cx="17" cy="17" r="6" fill="#fff"/>
         <text x="17" y="21" text-anchor="middle"
               font-size="11" font-weight="900" fill="#0ea5e9"
-              font-family="system-ui">🔍</text>
+              font-family="system-ui"></text>
       </svg>
     </div>`,
     iconSize: [42, 52],
@@ -536,7 +536,7 @@ export default function LousaServicesMap({ onClose }) {
                      padding: "10px 16px", background: "#fff",
                      borderBottom: "1px solid #e2e8f0" }}>
         <span style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>
-          🗺️ Mapa de Serviços
+          ️ Mapa de Serviços
         </span>
         <span style={{ fontSize: 12, color: "#64748b" }}>
           {data?.stats
@@ -683,7 +683,7 @@ export default function LousaServicesMap({ onClose }) {
                     background: "#0ea5e9", color: "#fff", border: 0,
                     opacity: signalLoading ? 0.5 : 1,
                   }}>
-            ⚡ +40 ({signalStats.without_coords})
+            +40 ({signalStats.without_coords})
           </button>
         )}
 
@@ -697,7 +697,7 @@ export default function LousaServicesMap({ onClose }) {
                     color: "#fff", border: 0,
                   }}>
             {geocodingNow ? "⏳ Geocodificando 60 (~1min)…"
-                          : "⚡ Geocodificar próximos 60"}
+                          : "Geocodificar próximos 60"}
           </button>
         )}
 
@@ -715,7 +715,7 @@ export default function LousaServicesMap({ onClose }) {
                      borderBottom: "1px solid #e2e8f0",
                      position: "relative" }}>
         <span style={{ fontSize: 13, color: "#475569", fontWeight: 600 }}>
-          🔍 Pesquisar endereço:
+          Pesquisar endereço:
         </span>
         <div style={{ flex: 1, maxWidth: 520, position: "relative" }}>
           <input
@@ -784,7 +784,7 @@ export default function LousaServicesMap({ onClose }) {
                           e.currentTarget.style.background = "transparent";
                         }}>
                   <div style={{ fontWeight: 700, color: "#0f172a" }}>
-                    📍 {it.label}
+                    {it.label}
                   </div>
                   <div style={{ fontSize: 11, color: "#64748b",
                                  marginTop: 2 }}>
@@ -820,7 +820,7 @@ export default function LousaServicesMap({ onClose }) {
           <div style={{ display: "flex", justifyContent: "space-between",
                          alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontWeight: 800, color: "#0f172a" }}>
-              👥 Técnicos
+              Técnicos
             </span>
             <button onClick={toggleAll} data-testid="map-toggle-all-collabs"
                     style={{ fontSize: 10, color: "#0369a1",
@@ -884,7 +884,7 @@ export default function LousaServicesMap({ onClose }) {
                              borderRadius: 7, fontSize: 11 }}>
                 <div style={{ fontWeight: 800, color: "#0f172a",
                                marginBottom: 6 }}>
-                  🎨 Tonalidade do pino
+                  Tonalidade do pino
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center",
                                marginBottom: 4 }}>
@@ -951,7 +951,7 @@ export default function LousaServicesMap({ onClose }) {
               data-testid="map-container">
               <TileLayer
                 attribution='&copy; OpenStreetMap'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
               />
               <MapAutoFit pins={visiblePins} />
               <MapFlyTo target={searchPin} />
@@ -967,7 +967,7 @@ export default function LousaServicesMap({ onClose }) {
                         background: "#0ea5e9", color: "#fff",
                         fontWeight: 700, borderRadius: "5px 5px 0 0",
                       }}>
-                        🔍 Resultado da pesquisa
+                        Resultado da pesquisa
                       </div>
                       <div style={{ fontWeight: 700, color: "#0f172a",
                                      marginBottom: 4 }}>
@@ -980,7 +980,7 @@ export default function LousaServicesMap({ onClose }) {
                       )}
                       <div style={{ marginTop: 8, fontSize: 11,
                                      color: "#94a3b8" }}>
-                        📍 {searchPin.lat.toFixed(5)}, {searchPin.lng.toFixed(5)}
+                        {searchPin.lat.toFixed(5)}, {searchPin.lng.toFixed(5)}
                       </div>
                     </div>
                   </Popup>
@@ -1026,7 +1026,7 @@ export default function LousaServicesMap({ onClose }) {
                       </div>
                       {ce.address && (
                         <div style={{ color: "#475569", fontSize: 11 }}>
-                          📍 {fmtAddress(ce.address)}
+                          {fmtAddress(ce.address)}
                         </div>
                       )}
                     </div>
@@ -1071,7 +1071,7 @@ export default function LousaServicesMap({ onClose }) {
                       {c.address && (
                         <div style={{ color: "#475569", marginBottom: 4,
                                        fontSize: 11 }}>
-                          📍 {fmtAddress(c.address)}
+                          {fmtAddress(c.address)}
                         </div>
                       )}
                       <div style={{ display: "flex", gap: 6,
@@ -1131,7 +1131,7 @@ export default function LousaServicesMap({ onClose }) {
                             color: color, textTransform: "uppercase",
                             letterSpacing: 0.5,
                           }}>
-                            {isCritical ? "🔴 CRITICAL" : "🟠 WARNING"}
+                            {isCritical ? "CRITICAL" : "WARNING"}
                           </b>
                           <br/>
                           <span style={{ fontWeight: 700 }}>{p.name}</span>
@@ -1155,7 +1155,7 @@ export default function LousaServicesMap({ onClose }) {
                             <>
                               <br/>
                               <span style={{ color: "#dc2626", fontWeight: 700 }}>
-                                ⚡ OFFLINE
+                                OFFLINE
                               </span>
                             </>
                           )}
@@ -1188,7 +1188,7 @@ export default function LousaServicesMap({ onClose }) {
                         </b>
                       </div>
                       <div style={{ color: "#475569", marginBottom: 6 }}>
-                        📍 {fmtAddress(p.address)}{p.neighborhood
+                        {fmtAddress(p.address)}{p.neighborhood
                           ? ` · ${p.neighborhood}` : ""}
                       </div>
                       <div style={{ display: "flex", gap: 6,

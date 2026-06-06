@@ -1,7 +1,7 @@
 /* IndiqueScreen — tela completa do programa Indique e Ganhe.
  *
  * Estrutura (scroll vertical):
- *   1. HeaderHero "OLÁ, Maria 👋" + "Bem-vindo ao Indique & Ganhe da Ligo"
+ *   1. HeaderHero "OLÁ, Maria " + "Bem-vindo ao Indique & Ganhe da Ligo"
  *   2. ProfileSheet (avatar + nome + CPF + plano + filial)
  *   3. Hero card "● PROGRAMA INDIQUE E GANHE" com headline gigante +
  *      info box + 3 steps INDICA → INSTALA → PIX
@@ -55,11 +55,11 @@ export default function IndiqueScreen({ token, me, setMe, onBack, onLogout }) {
       <HeaderHero
         greeting="Olá,"
         greetingName={firstName}
-        greetingEmoji="👋"
+        greetingEmoji=""
         subtitle={<>Bem-vindo ao{" "}
           <span style={{ color: "#FFB070", fontWeight: 900 }}>
             Indique & Ganhe
-          </span>{" "}da Ligo 💸</>}
+          </span>{" "}da Ligo </>}
         onBack={onBack}
         onLogout={onLogout}
         height={290}
@@ -179,7 +179,7 @@ function ProgramHeroCard() {
         borderRadius: 18, fontSize: 14, lineHeight: 1.5,
         color: "rgba(255,255,255,.95)", fontWeight: 500,
       }}>
-        <span style={{ fontSize: 16 }}>☀️</span>{" "}
+        <span style={{ fontSize: 16 }}>️</span>{" "}
         Compartilhe seu link agora e ganhe seu{" "}
         <b style={{ color: "#FFB070" }}>primeiro R$ 50</b>{" "}
         quando um amigo instalar.
@@ -191,11 +191,11 @@ function ProgramHeroCard() {
         gridTemplateColumns: "1fr 22px 1fr 22px 1fr",
         gap: 0, alignItems: "stretch",
       }}>
-        <StepTile emoji="📱" label="INDICA" />
+        <StepTile emoji="" label="INDICA" />
         <Arrow />
-        <StepTile emoji="🏠" label="INSTALA" />
+        <StepTile emoji="" label="INSTALA" />
         <Arrow />
-        <StepTile emoji="💸" label="PIX" highlight />
+        <StepTile emoji="" label="PIX" highlight />
       </div>
     </motion.div>
   );
@@ -286,7 +286,7 @@ function InviteLinkCard({ inviteUrl, code }) {
     } catch { /* ignore */ }
   };
 
-  const msg = `Oi! 🌐 Tô usando a Ligo Fibra e indicando pra você. `
+  const msg = `Oi! Tô usando a Ligo Fibra e indicando pra você. `
     + `Internet rápida, estável, atendimento de verdade. `
     + `Cadastra teus dados aqui que a equipe te chama: ${inviteUrl}`;
   const wa = `https://wa.me/?text=${encodeURIComponent(msg)}`;
@@ -296,7 +296,7 @@ function InviteLinkCard({ inviteUrl, code }) {
       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.6,
         textTransform: "uppercase", color: COLORS.orange,
         marginBottom: 10 }}>
-        🔗 Seu link de indicação
+        Seu link de indicação
       </div>
 
       <div style={{
@@ -549,7 +549,7 @@ function ProjectionCard({ p }) {
       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.6,
         textTransform: "uppercase", color: COLORS.orange,
         marginBottom: 6 }}>
-        📈 Projeção 30 dias
+        Projeção 30 dias
       </div>
       <div style={{
         fontSize: 36, fontWeight: 900, letterSpacing: "-.02em",
@@ -572,7 +572,7 @@ function LeaderboardCard({ board }) {
         alignItems: "center", marginBottom: 12 }}>
         <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.6,
           textTransform: "uppercase", color: COLORS.orange }}>
-          🥇 Ranking do mês
+          Ranking do mês
         </div>
         {board.my_rank && (
           <span style={{ fontSize: 11.5, color: COLORS.orange,
@@ -637,7 +637,7 @@ function ReferralsListCard({ items }) {
     return (
       <WhiteCard testid="indique-refs-empty">
         <div style={{ textAlign: "center", padding: "16px 4px" }}>
-          <div style={{ fontSize: 40, marginBottom: 6 }}>🎯</div>
+          <div style={{ fontSize: 40, marginBottom: 6 }}></div>
           <div style={{ fontWeight: 900, fontSize: 17,
             color: COLORS.slate900, fontFamily: FONT_DISPLAY }}>
             Você ainda não indicou ninguém
@@ -657,7 +657,7 @@ function ReferralsListCard({ items }) {
       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.6,
         textTransform: "uppercase", color: COLORS.orange,
         marginBottom: 12 }}>
-        👥 Suas indicações ({items.length})
+        Suas indicações ({items.length})
       </div>
       {items.map((r, idx) => {
         const s = STATUS_LABEL[r.status] || {
@@ -745,7 +745,7 @@ function PixPayoutCard({ token, me, setMe, stats, onAfter }) {
         <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.6,
           textTransform: "uppercase", color: COLORS.orange,
           marginBottom: 10 }}>
-          💳 Sua chave PIX
+          Sua chave PIX
         </div>
         <div style={{ display: "grid",
           gridTemplateColumns: "130px 1fr", gap: 8 }}>
@@ -776,7 +776,7 @@ function PixPayoutCard({ token, me, setMe, stats, onAfter }) {
         <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.6,
           textTransform: "uppercase", color: COLORS.orange,
           marginBottom: 10 }}>
-          🎉 Solicitar saque
+          Solicitar saque
         </div>
         <div style={{
           display: "flex", justifyContent: "space-between",
@@ -802,11 +802,11 @@ function PixPayoutCard({ token, me, setMe, stats, onAfter }) {
         }}>
           <button onClick={() => setMethod("pix")}
             data-testid="indique-method-pix"
-            style={methodBtn(method === "pix")}>💸 PIX</button>
+            style={methodBtn(method === "pix")}>PIX</button>
           <button onClick={() => setMethod("invoice_discount")}
             data-testid="indique-method-invoice"
             style={methodBtn(method === "invoice_discount")}>
-            🧾 Desconto fatura
+            Desconto fatura
           </button>
         </div>
 

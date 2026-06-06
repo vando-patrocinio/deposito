@@ -115,7 +115,7 @@ export default function ReadjustmentTab() {
       await loadDue();
       await window.alert(
         `✅ Aplicado em ${r.applied} cliente(s)\n` +
-        `💰 Aumento total mensal: ${fmtMoney(r.total_revenue_increase)}`
+        `Aumento total mensal: ${fmtMoney(r.total_revenue_increase)}`
       );
     } catch (e) {
       await window.alert("Erro: " + (e?.response?.data?.detail || e.message));
@@ -127,7 +127,7 @@ export default function ReadjustmentTab() {
   return (
     <div data-testid="fin-readjustment-tab" style={{ display: "grid", gap: 16 }}>
       {/* Cards dos índices oficiais */}
-      <Card title="📈 Índices Oficiais — Banco Central / IBGE / FGV">
+      <Card title="Índices Oficiais — Banco Central / IBGE / FGV">
         <div style={{
           display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
           gap: 12,
@@ -176,7 +176,7 @@ export default function ReadjustmentTab() {
           <span>
             <Cake size={14} style={{
               display: "inline", marginRight: 6, color: "#a855f7" }} />
-            🎂 Trilha de Aniversário — {cohort.total_tracked} clientes ativos
+            Trilha de Aniversário — {cohort.total_tracked} clientes ativos
           </span>
         }>
           <div style={{
@@ -219,7 +219,7 @@ export default function ReadjustmentTab() {
                       background: "#fef3c7", color: "#92400e",
                       fontSize: 9, fontWeight: 700,
                     }}>
-                      🔔 {c.due_this_month} aniv.
+                      {c.due_this_month} aniv.
                     </div>
                   )}
                   <div style={{ fontSize: 10, color: "#16a34a",
@@ -258,7 +258,7 @@ export default function ReadjustmentTab() {
               <span>
                 <TrendingDown size={14} style={{
                   display: "inline", marginRight: 6, color: "#0ea5e9" }} />
-                📉 Curva de Retenção · base {retention.base_year_0} cliente(s)
+                Curva de Retenção · base {retention.base_year_0} cliente(s)
               </span>
               {churnPeak && churnPeak.churn_pct_from_prev > 0 && (
                 <span style={{

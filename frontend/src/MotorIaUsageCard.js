@@ -27,10 +27,10 @@ const SERVICE_COLOR = {
   tts:    "linear-gradient(90deg, #ec4899, #f43f5e)",
 };
 const SERVICE_ICON = {
-  text:   "💬",
-  vision: "👁️",
-  stt:    "🎤",
-  tts:    "🔊",
+  text:   "",
+  vision: "️",
+  stt:    "",
+  tts:    "",
 };
 const SERVICE_LABEL_SHORT = {
   text:   "Texto",
@@ -189,7 +189,7 @@ export default function MotorIaUsageCard() {
                fontSize: 12.5, color: "#7f1d1d",
              }}>
           <span aria-hidden style={{ fontSize: 18 }}>
-            {todayStatus.alerts.some((a) => a.status === "exceeded") ? "🚨" : "⚠️"}
+            {todayStatus.alerts.some((a) => a.status === "exceeded") ? "" : "️"}
           </span>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, marginBottom: 2 }}>
@@ -227,7 +227,7 @@ export default function MotorIaUsageCard() {
                background: "var(--surface-2, #f1f5f9)", borderRadius: 8,
                fontSize: 11.5, color: "var(--text-muted, #64748b)",
              }}>
-          <span aria-hidden>📅</span>
+          <span aria-hidden></span>
           <div style={{ flex: 1 }}>
             Hoje: <strong style={{ color: "var(--text-primary, #0f172a)" }}>
               {fmtUSD(todayStatus.total_spent_usd)}
@@ -271,7 +271,7 @@ export default function MotorIaUsageCard() {
                           gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
                           gap: 10 }}>
             {[
-              { k: "daily_limit_usd", label: "Total diário", icon: "💰" },
+              { k: "daily_limit_usd", label: "Total diário", icon: "" },
               { k: "text",   label: "Texto",          icon: SERVICE_ICON.text },
               { k: "vision", label: "Visão",          icon: SERVICE_ICON.vision },
               { k: "stt",    label: "STT (Whisper)",  icon: SERVICE_ICON.stt },
@@ -376,7 +376,7 @@ export default function MotorIaUsageCard() {
                                   display: "flex", alignItems: "center", gap: 4 }}
                        title={a.label}>
                     <span aria-hidden style={{ fontSize: 12 }}>
-                      {SERVICE_ICON[svc] || "💬"}
+                      {SERVICE_ICON[svc] || ""}
                     </span>
                     {a.label}
                   </div>
@@ -438,7 +438,7 @@ export default function MotorIaUsageCard() {
                                 textTransform: "uppercase",
                                 letterSpacing: 0.3 }}>
                   <span aria-hidden style={{ marginRight: 4 }}>
-                    {SERVICE_ICON[s.service] || "💬"}
+                    {SERVICE_ICON[s.service] || ""}
                   </span>
                   {s.label}
                 </div>

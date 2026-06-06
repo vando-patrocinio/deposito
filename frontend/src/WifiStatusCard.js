@@ -146,21 +146,21 @@ function StatusBar({
   // Pill de status
   const pillColor = onu?.is_online ? "#15803d" :
                      onu?.status ? "#dc2626" : "#94a3b8";
-  const pillText  = onu?.is_online ? "🟢 Online" :
-                     onu?.status   ? `❌ ${onu.status}` : "📡 Sem ONU";
+  const pillText  = onu?.is_online ? "Online" :
+                     onu?.status   ? `❌ ${onu.status}` : "Sem ONU";
 
   if (state === "no_onu") {
     return (
       <div data-testid="wifi-state-no_onu">
         <div style={{ fontSize: 13, color: "#64748b", marginBottom: 8 }}>
-          📡 <b>Sem ONU SmartOLT vinculada.</b> Para liberar diagnóstico de
+          <b>Sem ONU SmartOLT vinculada.</b> Para liberar diagnóstico de
           sinal, reboot e troca de Wi-Fi self-service, vincule uma ONU.
         </div>
         {canManage && (
           <div style={{ display: "flex", gap: 8 }}>
             <button data-testid="wifi-auto-match-btn" className="btn btn-primary"
                     disabled={busy} onClick={onAutoMatch} style={{ fontSize: 13 }}>
-              {busy ? "Buscando..." : "🔍 Tentar auto-vinculação"}
+              {busy ? "Buscando..." : "Tentar auto-vinculação"}
             </button>
           </div>
         )}
@@ -179,7 +179,7 @@ function StatusBar({
         </span>
         {onu?.model && (
           <span title="Modelo da ONU"
-                style={{ color: "#475569" }}>📟 {onu.model}</span>
+                style={{ color: "#475569" }}>{onu.model}</span>
         )}
         {onu?.rx_dbm != null && (
           <span title="Sinal óptico RX"
@@ -211,7 +211,7 @@ function StatusBar({
         }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b",
                           textTransform: "uppercase", letterSpacing: 0.4 }}>
-            📡 Rede Wi-Fi atual
+            Rede Wi-Fi atual
           </span>
           {onu.wifi_ssid_24 && (
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -235,7 +235,7 @@ function StatusBar({
           )}
           <span style={{ fontSize: 10, color: "#94a3b8" }}
                 title="Senha não é exposta por questão de segurança — TR-069 só permite escrita, não leitura. Para ver/trocar, use o botão 'Trocar Wi-Fi'.">
-            🔒 senha protegida
+            senha protegida
           </span>
         </div>
       )}
@@ -246,7 +246,7 @@ function StatusBar({
           style={{ marginTop: 10, padding: 10, background: "#eff6ff",
                     border: "1px solid #bfdbfe", borderRadius: 8,
                     fontSize: 12, color: "#1e40af" }}>
-          🔧 <b>Atendimento humano:</b> você pode trocar o Wi-Fi mesmo o plano
+          <b>Atendimento humano:</b> você pode trocar o Wi-Fi mesmo o plano
           não sendo Premium. O cliente só não consegue trocar sozinho via WhatsApp.
         </div>
       )}
@@ -255,7 +255,7 @@ function StatusBar({
         <div style={{ marginTop: 10, padding: 10, background: "#fef9c3",
                        border: "1px solid #fde047", borderRadius: 8,
                        fontSize: 12, color: "#713f12" }}>
-          💎 <b>Troca de Wi-Fi self-service: disponível no Plano Premium.</b>{" "}
+          <b>Troca de Wi-Fi self-service: disponível no Plano Premium.</b>{" "}
           Faça upgrade pra liberar troca via WhatsApp e atendente.
           {canManage && onOfferUpgrade && (
             <button data-testid="wifi-offer-upgrade-btn"
@@ -293,7 +293,7 @@ function StatusBar({
           {state === "ready" && (
             <button data-testid="wifi-change-btn" className="btn btn-primary"
                     onClick={onTrocarWifi} style={{ fontSize: 12 }}>
-              📡 Trocar Wi-Fi
+              Trocar Wi-Fi
             </button>
           )}
           {(state === "ready" || state === "rate_limited") && (
@@ -301,7 +301,7 @@ function StatusBar({
                     className="btn btn-secondary"
                     onClick={onTrocarWifi} style={{ fontSize: 12 }}
                     title="Forçar troca pelo atendente (ignora rate limit)">
-              📡 Trocar Wi-Fi (Force)
+              Trocar Wi-Fi (Force)
             </button>
           )}
           {onu?.external_id && (
@@ -309,7 +309,7 @@ function StatusBar({
                     className="btn btn-secondary"
                     disabled={busy} onClick={onRebootOnu}
                     style={{ fontSize: 12 }}>
-              🔁 Reboot ONU
+              Reboot ONU
             </button>
           )}
           {onu?.external_id && onu?.is_online && (
@@ -319,13 +319,13 @@ function StatusBar({
                     title="Lê SSID + senha ao vivo da ONU (LGPD: ação auditada)"
                     style={{ fontSize: 12,
                              borderColor: "#0ea5e9", color: "#0369a1" }}>
-              🔍 Ler Wi-Fi ao Vivo
+              Ler Wi-Fi ao Vivo
             </button>
           )}
           <button data-testid="wifi-logs-btn"
                   className="btn btn-secondary"
                   onClick={onShowLogs} style={{ fontSize: 12 }}>
-            📜 Logs
+            Logs
           </button>
           {onu?.external_id && (
             <button data-testid="wifi-unlink-btn"
@@ -401,7 +401,7 @@ function WifiChangeModal({ subscriberId, subscriberName, currentSsid24,
                      width: 480, maxWidth: "95vw",
                      boxShadow: "0 20px 50px rgba(0,0,0,.25)" }}>
         <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 700 }}>
-          📡 Trocar Wi-Fi
+          Trocar Wi-Fi
         </h3>
         <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: 12 }}>
           {subscriberName} · O roteador vai reiniciar em ~30s após salvar.
@@ -448,7 +448,7 @@ function WifiChangeModal({ subscriberId, subscriberName, currentSsid24,
                style={{ marginTop: 12, padding: 8, background: "#fef2f2",
                          border: "1px solid #fecaca", borderRadius: 6,
                          fontSize: 12, color: "#7f1d1d" }}>
-            ⚠️ {err}
+            ️ {err}
           </div>
         )}
         <div style={{ display: "flex", gap: 8, marginTop: 16,
@@ -499,7 +499,7 @@ function WifiLogsModal({ subscriberId, subscriberName, onClose }) {
         <div style={{ display: "flex", justifyContent: "space-between",
                        alignItems: "center", marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
-            📜 Histórico Wi-Fi · {subscriberName}
+            Histórico Wi-Fi · {subscriberName}
           </h3>
           <button className="btn btn-ghost" onClick={onClose}
                   data-testid="wifi-logs-close">×</button>
@@ -609,7 +609,7 @@ function WifiReadLiveModal({ subscriberId, subscriberName, onClose }) {
         <div style={{ display: "flex", justifyContent: "space-between",
                        alignItems: "center", marginBottom: 6 }}>
           <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>
-            🔍 Wi-Fi ao Vivo
+            Wi-Fi ao Vivo
           </h3>
           <button className="btn btn-ghost" onClick={onClose}
                   data-testid="wifi-read-live-close">×</button>
@@ -641,11 +641,11 @@ function WifiReadLiveModal({ subscriberId, subscriberName, onClose }) {
                style={{ padding: 14, background: "#fef9c3",
                          border: "1px solid #fde047", borderRadius: 8,
                          color: "#713f12", fontSize: 13 }}>
-            ⚠️ Não foi possível ler ao vivo: {data.error || "erro desconhecido"}
+            ️ Não foi possível ler ao vivo: {data.error || "erro desconhecido"}
             <div style={{ marginTop: 6, fontSize: 11, color: "#92651b" }}>
               Algumas ONUs (Nokia, Fiberhome antigos) bloqueiam leitura
               por TR-069. Você ainda pode <b>trocar</b> a senha normalmente
-              pelo botão "📡 Trocar Wi-Fi".
+              pelo botão “Trocar Wi-Fi”.
             </div>
           </div>
         )}
@@ -666,7 +666,7 @@ function WifiReadLiveModal({ subscriberId, subscriberName, onClose }) {
                            justifyContent: "space-between",
                            marginBottom: 8 }}>
               <span style={{ fontWeight: 700, fontSize: 13 }}>
-                📶 {w.band === "5" ? "5 GHz" : "2.4 GHz"}
+                {w.band === "5" ? "5 GHz" : "2.4 GHz"}
               </span>
               <span style={{ fontSize: 10, color: "#94a3b8",
                               textTransform: "uppercase",
@@ -692,7 +692,7 @@ function WifiReadLiveModal({ subscriberId, subscriberName, onClose }) {
                       data-testid={`wifi-read-copy-ssid-${w.band}`}
                       onClick={() => copy(`ssid-${w.band}`, w.ssid)}
                       style={{ fontSize: 11, padding: "4px 8px" }}>
-                {copied === `ssid-${w.band}` ? "✓ copiado" : "📋"}
+                {copied === `ssid-${w.band}` ? "✓ copiado" : ""}
               </button>
             </div>
 
@@ -720,20 +720,20 @@ function WifiReadLiveModal({ subscriberId, subscriberName, onClose }) {
                           title={showPwd[w.band]
                             ? "Ocultar (auto-oculta em 60s)" : "Mostrar"}
                           style={{ fontSize: 11, padding: "4px 8px" }}>
-                    {showPwd[w.band] ? "🙈" : "👁️"}
+                    {showPwd[w.band] ? "" : "️"}
                   </button>
                   <button className="btn btn-ghost"
                           data-testid={`wifi-read-copy-pwd-${w.band}`}
                           onClick={() => copy(`pwd-${w.band}`, w.password)}
                           style={{ fontSize: 11, padding: "4px 8px" }}>
-                    {copied === `pwd-${w.band}` ? "✓" : "📋"}
+                    {copied === `pwd-${w.band}` ? "✓" : ""}
                   </button>
                 </>
               ) : (
                 <span style={{ flex: 1, color: "#94a3b8",
                                 fontSize: 12, fontStyle: "italic" }}>
-                  🔒 senha não exposta por esta ONU (vendor/firmware
-                  restrito) — use "📡 Trocar Wi-Fi" para definir nova
+                  senha não exposta por esta ONU (vendor/firmware
+                  restrito) — use “Trocar Wi-Fi” para definir nova
                 </span>
               )}
             </div>
@@ -744,7 +744,7 @@ function WifiReadLiveModal({ subscriberId, subscriberName, onClose }) {
           <div style={{ marginTop: 8, fontSize: 11, color: "#94a3b8",
                          textAlign: "right" }}>
             ⏱️ resposta SmartOLT em {data.smartolt_response_time_ms}ms
-            {data.onu_model && <> · 📟 {data.onu_model}</>}
+            {data.onu_model && <> · {data.onu_model}</>}
           </div>
         )}
 

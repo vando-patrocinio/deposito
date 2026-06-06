@@ -1,7 +1,7 @@
 /* HubScreen — Após login.
  *
  * iter229 — Layout pedido pelo usuário:
- *   1) Header roxo gradient com "OLÁ, [Nome] 👋"
+ *   1) Header roxo gradient com "OLÁ, [Nome] "
  *   2) Sheet branco PROMOÇÕES (substitui o ProfileSheet) — vitrine de
  *      parceiros + 3 pontinhos no canto direito que abrem o QR modal
  *      com infos do cliente (nome/CPF/plano/status).
@@ -27,7 +27,7 @@ export default function HubScreen({ me, onOpenIndique, onOpenMinhaLigo,
       <HeaderHero
         greeting="Olá,"
         greetingName={firstName}
-        greetingEmoji="👋"
+        greetingEmoji=""
         subtitle={<>O que você quer fazer{" "}
           <span style={{ color: "#FFB070", fontWeight: 800 }}>hoje?</span>
         </>}
@@ -91,7 +91,7 @@ export default function HubScreen({ me, onOpenIndique, onOpenMinhaLigo,
             pillLabel="● PROGRAMA INDIQUE E GANHE"
             title="Indique e Ganhe"
             subtagline="Ganhe R$ 50 a cada amigo que instalar"
-            tagline={<>Convide amigos<br/>e <span style={{color:"#FF8A3B"}}>ganhe PIX</span> 💸</>}
+            tagline={<>Convide amigos<br/>e <span style={{color:"#FF8A3B"}}>ganhe PIX</span> </>}
             accent={COLORS.orange}
             // gradiente "aurora" mais quente — laranja + rosa girando sobre roxo escuro
             auroraA="rgba(255,138,59,.55)"
@@ -108,7 +108,7 @@ export default function HubScreen({ me, onOpenIndique, onOpenMinhaLigo,
             title="Minha Ligo"
             subtagline="Acompanhe seu plano, baixe boletos, peça desbloqueio e veja seu histórico."
             tagline={<><span style={{fontSize:"1.45em"}}>2ª via</span>
-              <span style={{display:"block",fontSize:"0.5em",opacity:.85,
+              <span style={{display: "block",fontSize:"0.5em",opacity:.85,
                 marginTop:6,fontWeight:600}}>rápida e segura</span></>}
             accent="#C4B5FD"
             // gradiente roxo claro tipo o screenshot de referência
@@ -161,7 +161,7 @@ function HubCard({ testid, pillLabel, title, tagline, subtagline, accent,
         "--aurora-c": auroraC,
         "--aurora-veil": auroraVeil,
       }}>
-      {/* Ícone decorativo grande no canto direito (✓ shield ou 💸) */}
+      {/* Ícone decorativo grande no canto direito (✓ shield ou ) */}
       {decorIcon === "check" && (
         <svg aria-hidden viewBox="0 0 100 110" style={{
           position: "absolute", top: 18, right: -14,
@@ -182,7 +182,7 @@ function HubCard({ testid, pillLabel, title, tagline, subtagline, accent,
           fontSize: 56, zIndex: 2,
           opacity: .45, pointerEvents: "none",
           filter: "drop-shadow(0 8px 18px rgba(255,106,26,.55))",
-        }}>💸</span>
+        }}></span>
       )}
       {decorIcon === "promo" && (
         <span aria-hidden style={{
@@ -190,7 +190,7 @@ function HubCard({ testid, pillLabel, title, tagline, subtagline, accent,
           fontSize: 56, zIndex: 2,
           opacity: .55, pointerEvents: "none",
           filter: "drop-shadow(0 8px 18px rgba(252,211,77,.55))",
-        }}>🎁</span>
+        }}></span>
       )}
 
       <div style={{

@@ -15,9 +15,9 @@ import { api } from "@/api";
 import { toast } from "sonner";
 
 const SCOPES = [
-  { id: "empresa", label: "Empresa (estoque geral)", icon: "🏢" },
-  { id: "praca", label: "Praça/Filial", icon: "📦" },
-  { id: "tecnico", label: "Técnico", icon: "👤" },
+  { id: "empresa", label: "Empresa (estoque geral)", icon: "" },
+  { id: "praca", label: "Praça/Filial", icon: "" },
+  { id: "tecnico", label: "Técnico", icon: "" },
 ];
 
 const STATUS_META = {
@@ -152,7 +152,7 @@ function NewBalancoWizard({ pracas, techs, onCreated, onCancel }) {
                         cursor: "pointer", fontWeight: 700, fontSize: 12,
                         textAlign: "left",
                       }}>
-              <div style={{ fontSize: 14 }}>🙈 Cego</div>
+              <div style={{ fontSize: 14 }}>Cego</div>
               <div style={{ fontSize: 10, opacity: 0.85, marginTop: 2,
                               fontWeight: 500 }}>
                 Não revela saldo esperado durante a contagem (best practice)
@@ -169,7 +169,7 @@ function NewBalancoWizard({ pracas, techs, onCreated, onCancel }) {
                         cursor: "pointer", fontWeight: 700, fontSize: 12,
                         textAlign: "left",
                       }}>
-              <div style={{ fontSize: 14 }}>👀 Aberto</div>
+              <div style={{ fontSize: 14 }}>Aberto</div>
               <div style={{ fontSize: 10, opacity: 0.85, marginTop: 2,
                               fontWeight: 500 }}>
                 Mostra esperado vs contado em tempo real
@@ -295,7 +295,7 @@ function CountingScreen({ session, onUpdate, currentUser, consumablesCatalog }) 
         setFeedback({
           type: r.matched ? "ok" : "extra",
           mac,
-          text: r.matched ? "✅ Esperado · OK" : "⚠️ Não estava na lista esperada",
+          text: r.matched ? "✅ Esperado · OK" : "️ Não estava na lista esperada",
         });
       }
       setMacInput("");
@@ -351,7 +351,7 @@ function CountingScreen({ session, onUpdate, currentUser, consumablesCatalog }) 
         <div>
           <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700,
                           letterSpacing: ".05em" }}>
-            BALANÇO {session.id} · {isBlind ? "🙈 CEGO" : "👀 ABERTO"}
+            BALANÇO {session.id} · {isBlind ? "CEGO" : "ABERTO"}
           </div>
           <h3 style={{ margin: "4px 0 0", fontSize: 16, fontWeight: 800,
                           color: "#0f172a" }}>
@@ -489,7 +489,7 @@ function CountingScreen({ session, onUpdate, currentUser, consumablesCatalog }) 
                                       padding: "1px 6px", borderRadius: 4,
                                       background: matched ? "#dcfce7" : "#fee2e2",
                                       color: matched ? "#065f46" : "#991b1b" }}>
-                      {matched ? "✓ ESPERADO" : "⚠ EXTRA"}
+                      {matched ? "✓ ESPERADO" : "EXTRA"}
                     </span>
                   )}
                 </div>
@@ -660,7 +660,7 @@ function ReviewScreen({ session, onUpdate, currentUser }) {
             {(variance.missing || []).length}
           </div>
           <div style={{ fontSize: 10, color: "#991b1b", fontWeight: 700 }}>
-            ⚠️ FALTANTES
+            ️ FALTANTES
           </div>
         </div>
         <div style={{ background: "#fef3c7", border: "1px solid #fcd34d",
@@ -763,7 +763,7 @@ function ReviewScreen({ session, onUpdate, currentUser }) {
         <div style={{ padding: 10, background: "#fef3c7",
                           border: "1px solid #fcd34d", borderRadius: 6,
                           fontSize: 11, color: "#92400e", marginBottom: 10 }}>
-          ⚠️ Apenas <strong>administrador</strong> ou <strong>super admin</strong> podem aprovar este balanço
+          ️ Apenas <strong>administrador</strong> ou <strong>super admin</strong> podem aprovar este balanço
           (separation of duties — best practice de auditoria).
         </div>
       )}
@@ -1056,7 +1056,7 @@ export default function BalancoTab({ pracas = [], techs = [],
                        alignItems: "center", marginBottom: 14 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>
-            📊 Balanço de Estoque
+            Balanço de Estoque
           </h2>
           <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
             Cycle counting com modo cego, reconciliação de variância e auditoria completa

@@ -21,8 +21,8 @@ const STATUS_META = {
 };
 
 const SEVERITY_META = {
-  critical: { icon: "🚨", color: "#dc2626", bg: "#fee2e2" },
-  warning: { icon: "⚠️", color: "#d97706", bg: "#fef3c7" },
+  critical: { icon: "", color: "#dc2626", bg: "#fee2e2" },
+  warning: { icon: "️", color: "#d97706", bg: "#fef3c7" },
   info: { icon: "ℹ️", color: "#0284c7", bg: "#dbeafe" },
   ok: { icon: "✅", color: "#16a34a", bg: "#dcfce7" },
 };
@@ -279,7 +279,7 @@ function ReprocessCard({ count, onDone }) {
 
   return (
     <div style={{ marginTop: 14 }}>
-      <Card title="🔁 Reprocessar OSs travadas em erro_estoque"
+      <Card title="Reprocessar OSs travadas em erro_estoque"
             data-testid="reprocess-erro-estoque-card"
             subtitle={`Existem ${count} OSs que falharam por falta de saldo. Agora que o saldo negativo é permitido, podemos reprocessá-las para registrar o consumo (e a QUEBRA correspondente).`}>
         <button onClick={run} disabled={busy}
@@ -290,7 +290,7 @@ function ReprocessCard({ count, onDone }) {
                   color: "#fff", fontSize: 13, fontWeight: 700,
                   cursor: busy ? "wait" : "pointer",
                 }}>
-          {busy ? "Reprocessando…" : `🔁 Reprocessar ${count} OS(s)`}
+          {busy ? "Reprocessando…" : `Reprocessar ${count} OS(s)`}
         </button>
         {err && <div style={{ marginTop: 10, color: "#dc2626", fontSize: 12 }}>Erro: {err}</div>}
         {result && (

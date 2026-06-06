@@ -322,7 +322,7 @@ export default function MotorIaCard() {
               textDecoration: "underline" }}>
             platform.openai.com/api-keys
           </a>
-          {" "}→ <em>"+ Create new secret key"</em> → cola aqui.
+          {" "}→ <em>“+ Create new secret key”</em> → cola aqui.
           <br />
           <strong>Custo aproximado:</strong> ~$0.05 por chamada de 3 minutos
           (Whisper $0.006/min + TTS $15/M chars). Adicione crédito em{" "}
@@ -409,7 +409,7 @@ export default function MotorIaCard() {
                 </div>
                 <div style={{ marginTop: 4, fontFamily: "ui-monospace, monospace",
                                 color: "var(--text-muted)" }}>
-                  Resposta: "{testResult.sample}"
+                  Resposta: “{testResult.sample}”
                 </div>
               </>
             ) : (

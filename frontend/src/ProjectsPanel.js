@@ -343,14 +343,14 @@ function ProjectCard({ p, draggable, onOpen }) {
                       color: overdue ? "#b91c1c" : "#94a3b8",
                       fontWeight: overdue ? 700 : 500 }}>
         <span>
-          {p.start_date ? `📅 ${p.start_date.slice(5)}` : ""}
+          {p.start_date ? `${p.start_date.slice(5)}` : ""}
           {p.start_date && p.end_date ? " → " : ""}
           {p.end_date ? p.end_date.slice(5) : ""}
         </span>
         <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          {p.files_count > 0 && <span>📎 {p.files_count}</span>}
+          {p.files_count > 0 && <span>{p.files_count}</span>}
           {(p.assignees || []).length > 0 &&
-            <span>👤 {p.assignees.length}</span>}
+            <span>{p.assignees.length}</span>}
         </span>
       </div>
     </div>
@@ -376,7 +376,7 @@ function ListView({ items, onOpen }) {
           <th style={th}>Prioridade</th>
           <th style={th}>Início</th>
           <th style={th}>Término</th>
-          <th style={th}>📎</th>
+          <th style={th}></th>
         </tr>
       </thead>
       <tbody>
@@ -765,7 +765,7 @@ function ProjectDetailModal({ projectId, canManage, onClose, onChanged }) {
         <div style={{ display: "flex", justifyContent: "space-between",
                         alignItems: "center", marginBottom: 8 }}>
           <strong style={{ fontSize: 13, color: "#92400e" }}>
-            📎 Laudo Fotográfico / Documentos
+            Laudo Fotográfico / Documentos
           </strong>
           {canManage && (
             <>
@@ -839,7 +839,7 @@ function ProjectDetailModal({ projectId, canManage, onClose, onChanged }) {
           <button data-testid="project-delete-btn"
                     onClick={remove}
                     style={{ ...btnSec, color: "#dc2626" }}>
-            🗑 Excluir
+            Excluir
           </button>
         )}
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
@@ -891,7 +891,7 @@ function ActivityTimeline({ projectId, reloadKey }) {
                       cursor: "pointer", userSelect: "none" }}
             onClick={() => setCollapsed((c) => !c)}>
         <strong style={{ fontSize: 13, color: "#5b21b6" }}>
-          📜 Timeline de Execução · {items.length}
+          Timeline de Execução · {items.length}
         </strong>
         <span style={{ fontSize: 13, color: "#7c3aed",
                           transform: collapsed ? "rotate(-90deg)" : "rotate(0)",
@@ -967,14 +967,14 @@ function activityColor(t) {
 function activityIcon(t) {
   switch (t) {
     case "created":          return "✨";
-    case "status_changed":   return "🔁";
+    case "status_changed":   return "";
     case "edited":           return "✏️";
     case "checklist_added":  return "➕";
     case "checklist_done":   return "✅";
     case "checklist_undone": return "↩️";
-    case "checklist_removed":return "🗑";
-    case "file_uploaded":    return "📎";
-    case "file_removed":     return "🗑";
+    case "checklist_removed":return "";
+    case "file_uploaded":    return "";
+    case "file_removed":     return "";
     default:                  return "•";
   }
 }
@@ -1055,7 +1055,7 @@ function ChecklistSection({ projectId, items, progress, canManage, onChanged }) 
         <div style={{ color: "#1d4ed8", fontSize: 12,
                         marginBottom: canManage ? 10 : 0 }}>
           Nenhuma subtarefa. Adicione passos como
-          "Autorização → Splice → Certificação → Ativação".
+          “Autorização → Splice → Certificação → Ativação”.
         </div>
       )}
       {items.length > 0 && (
@@ -1137,11 +1137,11 @@ function ChecklistSection({ projectId, items, progress, canManage, onChanged }) 
 
 
 function fileIcon(mime) {
-  if ((mime || "").startsWith("image/")) return "🖼";
-  if ((mime || "").includes("pdf")) return "📄";
+  if ((mime || "").startsWith("image/")) return "";
+  if ((mime || "").includes("pdf")) return "";
   if ((mime || "").includes("word") || (mime || "").includes("officedocument"))
-    return "📝";
-  return "📎";
+    return "";
+  return "";
 }
 
 

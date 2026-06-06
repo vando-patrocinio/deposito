@@ -148,7 +148,7 @@ export default class ErrorBoundary extends React.Component {
                 border: "1.5px solid #fed7aa",
                 boxShadow: "0 8px 24px rgba(217,119,6,0.12)",
               }}>
-          <div style={{ fontSize: 48, marginBottom: 4 }}>⚠️</div>
+          <div style={{ fontSize: 48, marginBottom: 4 }}>️</div>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: "#7c2d12",
                          margin: "0 0 6px" }}>
             Algo deu errado nesta tela
@@ -198,7 +198,7 @@ ${(this.state.componentStack || "—").slice(0, 800)}`}
                       color: this.state._copied ? "#166534" : "#1e3a8a",
                       fontWeight: 800,
                     }}>
-              {this.state._copied ? "✓ Copiado!" : "📋 Copiar diagnóstico"}
+              {this.state._copied ? "✓ Copiado!" : "Copiar diagnóstico"}
             </button>
             <button data-testid="error-boundary-back"
                     onClick={this.goBack}
@@ -208,7 +208,7 @@ ${(this.state.componentStack || "—").slice(0, 800)}`}
             <button data-testid="error-boundary-hard-reload"
                     onClick={this.hardReload}
                     style={btnSecondary}>
-              🔄 Recarregar página
+              Recarregar página
             </button>
             <button data-testid="error-boundary-clean-reload"
                     onClick={this.cleanReload}
@@ -219,7 +219,7 @@ ${(this.state.componentStack || "—").slice(0, 800)}`}
                       borderColor: "#fca5a5",
                       color: "#991b1b",
                     }}>
-              🧹 Limpar dados locais e recarregar
+              Limpar dados locais e recarregar
             </button>
           </div>
         </div>

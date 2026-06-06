@@ -256,7 +256,7 @@ function SuggestionRow({ sug, onOpen }) {
           {sug.rationale}
         </div>
         <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
-          🎯 {sug.audience_preview?.size ?? 0} destinatário(s) ·
+          {sug.audience_preview?.size ?? 0} destinatário(s) ·
           {sug.priority && (
             <span style={{
               marginLeft: 6,
@@ -398,7 +398,7 @@ function SuggestionDetailModal({ suggestion, onClose, onChange }) {
         </Section>
 
         {/* Briefing da Isabella */}
-        <Section title="🎓 Briefing para Isabella IA (tom + objeções + escalada)">
+        <Section title="Briefing para Isabella IA (tom + objeções + escalada)">
           <textarea value={briefing} onChange={(e) => setBriefing(e.target.value)}
                      disabled={!isPending || busy}
                      data-testid="disparo-briefing-edit"

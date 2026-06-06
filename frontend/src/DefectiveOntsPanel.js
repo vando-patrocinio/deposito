@@ -42,7 +42,7 @@ function StatusBadge({ returned }) {
       fontSize: 10, fontWeight: 800, textTransform: "uppercase",
       letterSpacing: 0.5,
     }}>
-      {returned ? "🔬 Em análise" : "⏳ Aguardando devolução"}
+      {returned ? "Em análise" : "⏳ Aguardando devolução"}
     </span>
   );
 }
@@ -151,7 +151,7 @@ function OntRow({ item, onConfirmReturn, onScrap, onRevert }) {
                               border: "1px solid #fee2e2",
                               fontSize: 11.5, color: "#7f1d1d",
                               lineHeight: 1.5 }}>
-              <strong>⚠️ Defeito reportado:</strong> {item.defective_reason}
+              <strong>️ Defeito reportado:</strong> {item.defective_reason}
             </div>
           )}
           {item.returned && (
@@ -162,7 +162,7 @@ function OntRow({ item, onConfirmReturn, onScrap, onRevert }) {
               )}
               {item.returned_notes && (
                 <div style={{ marginTop: 4, fontStyle: "italic" }}>
-                  "{item.returned_notes}"
+                  “{item.returned_notes}”
                 </div>
               )}
             </div>
@@ -193,7 +193,7 @@ function OntRow({ item, onConfirmReturn, onScrap, onRevert }) {
                       fontSize: 12, fontWeight: 800, cursor: "pointer",
                       opacity: busy ? 0.5 : 1, whiteSpace: "nowrap",
                     }}>
-            🗑 Sucatear
+            Sucatear
           </button>
           {item.returned && (
             <button data-testid={`defective-revert-${item.mac}`}
@@ -269,7 +269,7 @@ export default function DefectiveOntsPanel() {
       <div style={{ marginBottom: 12 }}>
         <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800,
                          color: COLORS.text }}>
-          ⚠️ ONTs Defeituosas — devolução obrigatória à empresa
+          ️ ONTs Defeituosas — devolução obrigatória à empresa
         </h3>
         <p style={{ margin: 0, fontSize: 12, color: COLORS.muted }}>
           Equipamentos marcados pelos técnicos como defeituosos durante a
@@ -281,9 +281,9 @@ export default function DefectiveOntsPanel() {
                        flexWrap: "wrap" }}>
         <KpiCard icon="⏳" label="Aguardando devolução"
                     value={data.pending_return || 0} color="#dc2626" />
-        <KpiCard icon="🔬" label="Em análise na empresa"
+        <KpiCard icon="" label="Em análise na empresa"
                     value={data.in_analysis || 0} color="#ca8a04" />
-        <KpiCard icon="📊" label="Total registrado"
+        <KpiCard icon="" label="Total registrado"
                     value={data.total || 0} color="#0f172a" />
       </div>
 
@@ -292,9 +292,9 @@ export default function DefectiveOntsPanel() {
         {[
           { id: "pending", label: "⏳ Pendentes",
             count: data.pending_return || 0 },
-          { id: "analysis", label: "🔬 Em análise",
+          { id: "analysis", label: "Em análise",
             count: data.in_analysis || 0 },
-          { id: "all", label: "📊 Todos", count: data.total || 0 },
+          { id: "all", label: "Todos", count: data.total || 0 },
         ].map((t) => (
           <button key={t.id}
                     data-testid={`defective-tab-${t.id}`}
@@ -360,7 +360,7 @@ export default function DefectiveOntsPanel() {
           color: COLORS.muted,
         }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>
-            {filter === "pending" ? "✅" : "📭"}
+            {filter === "pending" ? "✅" : ""}
           </div>
           <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.text }}>
             {filter === "pending"

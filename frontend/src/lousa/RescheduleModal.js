@@ -34,7 +34,7 @@ export default function RescheduleModal({ ticket, onClose, onConfirm, busy }) {
         background: "white", borderRadius: 18, padding: 22, maxWidth: 440, width: "100%",
         maxHeight: "92vh", overflowY: "auto",
       }}>
-        <h2 style={{ margin: "0 0 4px", fontSize: 18 }}>📅 Reagendar serviço</h2>
+        <h2 style={{ margin: "0 0 4px", fontSize: 18 }}>Reagendar serviço</h2>
         <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 14px" }}>
           Cliente: <strong>{clientName}</strong>
         </p>

@@ -224,7 +224,7 @@ export default function AnalyticsChart() {
             </span>
             <input type="date" value={customFrom} max={customTo}
               onChange={(e) => setCustomFrom(e.target.value)}
-              data-testid="analytics-custom-from"
+              data-testid="analytics-custom-from "
               style={{
                 padding: "8px 10px", borderRadius: 8,
                 border: "1px solid #cbd5e1", fontSize: 13,
@@ -319,7 +319,7 @@ export default function AnalyticsChart() {
                 <span style={{ fontSize: 11,
                                 color: data.totals.net >= 0 ? "#16a34a" : "#dc2626",
                                 fontWeight: 600 }}>
-                  {data.totals.net >= 0 ? "🟢 Positivo" : "🔴 Negativo"}
+                  {data.totals.net >= 0 ? "Positivo" : "Negativo"}
                 </span>
               }
               icon={Activity}

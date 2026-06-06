@@ -35,16 +35,16 @@ function SmartOltHealthCard() {
         </div>
         <div style={{ flex: 1, minWidth: 240 }}>
           <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 2 }}>
-            📡 Saúde SmartOLT
+            Saúde SmartOLT
           </div>
           <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>
             {h.eligible > 0
               ? <>
                   <strong>{h.synced}</strong> de <strong>{h.eligible}</strong> CTOs
                   elegíveis sincronizadas no SmartOLT.
-                  {h.pending > 0 && <> · 🟡 {h.pending} aguardando.</>}
+                  {h.pending > 0 && <> · {h.pending} aguardando.</>}
                   {h.failing > 0 && <> · ❌ {h.failing} com erros recorrentes.</>}
-                  {h.orphans > 0 && <> · 📁 {h.orphans} só na Base de Portas (sem OLT).</>}
+                  {h.orphans > 0 && <> · {h.orphans} só na Base de Portas (sem OLT).</>}
                 </>
               : <>Nenhuma CTO em VLAN vinculada a SmartOLT.
                   {h.orphans > 0 && <> {h.orphans} CTOs ficam só na Base de Portas.</>}
@@ -329,7 +329,7 @@ export default function DashboardPanel() {
       {/* Top débito */}
       <Card title={view === "trend" ? "Top 5 — Colaboradores em débito (mês atual)" : `Top 5 — Colaboradores em débito (${MONTH_LABEL[pickM - 1]}/${pickY})`}>
         {(trend?.top_debit || []).length === 0 ? (
-          <p style={{ color: "#64748b", margin: 0 }}>Ninguém com saldo negativo este mês 🎉</p>
+          <p style={{ color: "#64748b", margin: 0 }}>Ninguém com saldo negativo este mês </p>
         ) : (
           <div data-testid="top-debit-list">
             {trend.top_debit.map((r, i) => (
@@ -535,7 +535,7 @@ function DrillModal({ drill, year, month, onClose }) {
                         <span style={{ fontSize: 13, fontWeight: 800, color: "#dc2626" }}>{fmtMin(s.duration_min)}</span>
                       </div>
                       <div style={{ fontSize: 12, color: "#64748b" }}>
-                        📍 <strong>{s.praca_name}</strong> · {startTime} → {endTime} · {s.points} ping(s)
+                        <strong>{s.praca_name}</strong> · {startTime} → {endTime} · {s.points} ping(s)
                       </div>
                       <div style={{ marginTop: 6, fontSize: 11, color: "#94a3b8" }}>
                         Centro: {s.center_lat.toFixed(5)}, {s.center_lng.toFixed(5)} ·{" "}
@@ -562,8 +562,8 @@ const TYPE_COLORS_STATS = {
   prioridade: "#dc2626", preventiva: "#0d9488", venda: "#06b6d4",
 };
 const TYPE_LABELS_STATS = {
-  reparo: "🔧 Reparo", instalacao: "📡 Instalação", retirada: "📦 Retirada",
-  prioridade: "🚨 Prioridade", preventiva: "🛡️ Preventiva", venda: "💼 Venda",
+  reparo: "Reparo", instalacao: "Instalação", retirada: "Retirada",
+  prioridade: "Prioridade", preventiva: "️ Preventiva", venda: "Venda",
 };
 
 function ServiceStatsSection() {
@@ -618,7 +618,7 @@ function ServiceStatsSection() {
               color: briefingBusy ? "#0d9488" : "white",
             }}
           >
-            🤖 {briefingBusy ? "Gerando..." : "Briefing IA"}
+            {briefingBusy ? "Gerando..." : "Briefing IA"}
           </button>
           {[7, 30, 90].map((n) => (
             <button
@@ -726,12 +726,12 @@ function BriefingModal({ briefing, onClose }) {
 
         {sd.top_collaborator && (
           <div style={{ background: "#dcfce7", padding: 10, borderRadius: 10, marginBottom: 10, fontSize: 13 }}>
-            🏆 <strong>Top técnico:</strong> {sd.top_collaborator.name} — {sd.top_collaborator.count} finalizadas
+            <strong>Top técnico:</strong> {sd.top_collaborator.name} — {sd.top_collaborator.count} finalizadas
           </div>
         )}
         {sd.worst_score_ticket && (
           <div style={{ background: "#fee2e2", padding: 10, borderRadius: 10, marginBottom: 10, fontSize: 13 }}>
-            ⚠️ <strong>Pior score IA:</strong> {sd.worst_score_ticket.client} ({sd.worst_score_ticket.type}) — {sd.worst_score_ticket.score}/10 ({sd.worst_score_ticket.label})
+            ️ <strong>Pior score IA:</strong> {sd.worst_score_ticket.client} ({sd.worst_score_ticket.type}) — {sd.worst_score_ticket.score}/10 ({sd.worst_score_ticket.label})
           </div>
         )}
         {sd.top3_services?.length > 0 && (
@@ -789,7 +789,7 @@ function WifiPremiumWidget() {
                     border: "1px solid #ddd6fe" }}
           data-testid="dashboard-wifi-premium-widget">
       <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
-        <div style={{ fontSize: 36 }}>💎</div>
+        <div style={{ fontSize: 36 }}></div>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed",
                          textTransform: "uppercase", letterSpacing: 0.5 }}>
@@ -872,7 +872,7 @@ function ManagementKpisSection() {
               background: insightsBusy ? "#cffafe" : "linear-gradient(135deg,#06b6d4,#0891b2)",
               color: insightsBusy ? "#0e7490" : "white",
             }}
-          >🤖 {insightsBusy ? "Analisando..." : "Insights IA"}</button>
+          >{insightsBusy ? "Analisando..." : "Insights IA"}</button>
           {[7, 30, 90].map((n) => (
             <button key={n} data-testid={`mgmt-days-${n}`} onClick={() => setDays(n)} style={{
               padding: "6px 12px", borderRadius: 10, fontSize: 12, fontWeight: 700,
@@ -952,7 +952,7 @@ function ManagementInsightsModal({ insights, onClose }) {
 
         {i.priority_action && (
           <div style={{ background: "linear-gradient(135deg,#ecfeff,#cffafe)", border: "1px solid #67e8f9", borderRadius: 12, padding: 14, marginBottom: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: "#0e7490", textTransform: "uppercase", marginBottom: 4 }}>⚡ Ação prioritária</div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#0e7490", textTransform: "uppercase", marginBottom: 4 }}>Ação prioritária</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#155e75" }}>{i.priority_action}</div>
           </div>
         )}
@@ -968,7 +968,7 @@ function ManagementInsightsModal({ insights, onClose }) {
             <h4 style={{ margin: "0 0 6px", fontSize: 13 }}>Pontos de atenção</h4>
             {i.red_flags.map((f, idx) => (
               <div key={idx} style={{ background: "#fee2e2", color: "#7f1d1d", padding: 8, borderRadius: 8, fontSize: 12, marginBottom: 4 }}>
-                ⚠ {f}
+                {f}
               </div>
             ))}
           </div>

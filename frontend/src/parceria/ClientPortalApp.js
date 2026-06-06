@@ -68,7 +68,7 @@ function Login({ onLogged }) {
                         maxWidth: 420, width: "100%",
                         boxShadow: "0 30px 80px rgba(0,0,0,.5)" }}>
         <div style={{ textAlign: "center", marginBottom: 18 }}>
-          <div style={{ fontSize: 38 }}>🎁</div>
+          <div style={{ fontSize: 38 }}></div>
           <h1 style={{ fontSize: 24, fontWeight: 800,
                          margin: "6px 0 4px",
                          letterSpacing: "-.02em",
@@ -108,7 +108,7 @@ function Login({ onLogged }) {
                             color: "#fca5a5", borderRadius: 8,
                             padding: "9px 12px",
                             fontSize: 12, fontWeight: 700 }}
-                  data-testid="client-portal-err">⚠ {err}</div>
+                  data-testid="client-portal-err">{err}</div>
           )}
           <button type="submit" disabled={busy}
                    data-testid="client-portal-login-btn"
@@ -150,7 +150,7 @@ function Dashboard({ token, me, reloadMe, onLogout }) {
     <div className="pa-client" data-testid="client-portal-dashboard">
       <header className="pa-client-topbar">
         <div className="pa-c-brand">
-          <span style={{ fontSize: 26 }}>🎁</span>
+          <span style={{ fontSize: 26 }}></span>
           <div>
             <div className="pa-c-brand-name">Cliente Ligo</div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>
@@ -173,11 +173,11 @@ function Dashboard({ token, me, reloadMe, onLogout }) {
           </button>
           <button className="pa-c-menu-item"
                    onClick={() => { setTab("history"); setMenu(false); }}>
-            <span>📜</span> Meu histórico
+            <span></span> Meu histórico
           </button>
           <button className="pa-c-menu-item"
                    onClick={() => { setTab("promos"); setMenu(false); }}>
-            <span>🎁</span> Promoções
+            <span></span> Promoções
           </button>
           <div className="pa-c-menu-divider" />
           <button className="pa-c-menu-item danger"
@@ -225,7 +225,7 @@ function Dashboard({ token, me, reloadMe, onLogout }) {
                   <div className="pa-c-promo-partner">
                     {p.partner_name} · {p.partner_category}
                   </div>
-                  <div className="pa-c-promo-offer">🎯 {p.offer_summary}</div>
+                  <div className="pa-c-promo-offer">{p.offer_summary}</div>
                 </div>
               </article>
             ))}
@@ -286,7 +286,7 @@ function QrModal({ qrPayload, name, pppoe, onClose, onRotate }) {
           PPPoE: <b>{pppoe || "—"}</b>
         </div>
         <button className="pa-qr-rotate" onClick={onRotate}>
-          🔄 Renovar QR (segurança)
+          Renovar QR (segurança)
         </button>
       </div>
     </div>
@@ -350,7 +350,7 @@ function RedemptionCard({ r, token, onRated }) {
             {Array.from({ length: 5 }, (_, i) => (
               <span key={i} style={{ fontSize: 18,
                 color: i < rating ? "#f59e0b" : "rgba(255,255,255,.2)" }}>
-                ★
+                
               </span>
             ))}
           </div>
@@ -383,7 +383,7 @@ function RedemptionCard({ r, token, onRated }) {
                                ? "#f59e0b" : "rgba(255,255,255,.22)",
                              transition: "all .12s",
                            }}>
-                    ★
+                    
                   </button>
                 );
               })}

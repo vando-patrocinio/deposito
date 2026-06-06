@@ -273,7 +273,7 @@ export default function GeofenceMap({ initial, onSubmit, onCancel, submitLabel =
                   {searchHint === "rate" ? (
                     <>⏳ Muitas buscas em sequência. Aguarde 2 segundos e tente novamente.</>
                   ) : (
-                    <>🔍 Nenhum resultado para <strong>{addressInput}</strong>. Tente adicionar a cidade/estado (ex.: <em>"Rua Augusta 100, São Paulo, SP"</em>).</>
+                    <>Nenhum resultado para <strong>{addressInput}</strong>. Tente adicionar a cidade/estado (ex.: <em>“Rua Augusta 100, São Paulo, SP”</em>).</>
                   )}
                 </div>
               )}
@@ -329,12 +329,12 @@ export default function GeofenceMap({ initial, onSubmit, onCancel, submitLabel =
         </MapContainer>
         {!position && (
           <div style={{ position: "absolute", top: 12, right: 12, background: "white", padding: "8px 12px", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 20px rgba(0,0,0,.08)", fontSize: 12, color: "#475569", maxWidth: 240, zIndex: 500 }}>
-            💡 Digite um endereço, use o GPS, ou <strong>clique no mapa</strong> para posicionar o pino
+            Digite um endereço, use o GPS, ou <strong>clique no mapa</strong> para posicionar o pino
           </div>
         )}
         {position && (
           <div style={{ position: "absolute", bottom: 12, left: 12, background: "white", padding: "6px 10px", borderRadius: 999, border: "1px solid #e2e8f0", boxShadow: "0 4px 10px rgba(0,0,0,.08)", fontSize: 11, color: "#475569", zIndex: 500 }}>
-            🖱️ Clique no mapa para mover • arraste o pino para ajuste fino
+            ️ Clique no mapa para mover • arraste o pino para ajuste fino
           </div>
         )}
       </div>
@@ -359,9 +359,9 @@ export default function GeofenceMap({ initial, onSubmit, onCancel, submitLabel =
 
       {position && (
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, fontSize: 13, color: "#475569", marginBottom: 10 }}>
-          <strong>📍 Posição:</strong> {position[0].toFixed(6)}, {position[1].toFixed(6)}<br />
+          <strong>Posição:</strong> {position[0].toFixed(6)}, {position[1].toFixed(6)}<br />
           <strong>Endereço:</strong> {resolvedAddress || addressInput || "—"}<br />
-          <span style={{ color: "#94a3b8", fontSize: 12 }}>💡 Você pode arrastar o pino no mapa para ajustar a posição exata.</span>
+          <span style={{ color: "#94a3b8", fontSize: 12 }}>Você pode arrastar o pino no mapa para ajustar a posição exata.</span>
         </div>
       )}
 
@@ -377,12 +377,12 @@ export default function GeofenceMap({ initial, onSubmit, onCancel, submitLabel =
         {onCancel && <Button variant="secondary" onClick={onCancel}>Cancelar</Button>}
         {!position && (
           <span style={{ color: "#94a3b8", fontSize: 13 }}>
-            ⚠️ Posicione no mapa primeiro (clique, GPS, ou endereço)
+            ️ Posicione no mapa primeiro (clique, GPS, ou endereço)
           </span>
         )}
         {position && !name.trim() && (
           <span style={{ color: "#92400e", fontSize: 13, fontWeight: 700, background: "#fef3c7", padding: "4px 10px", borderRadius: 999 }}>
-            ⚠️ Preencha o nome
+            ️ Preencha o nome
           </span>
         )}
         {position && name.trim() && (

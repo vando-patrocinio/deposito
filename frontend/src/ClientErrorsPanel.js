@@ -87,7 +87,7 @@ export default function ClientErrorsPanel() {
         <h1 style={{ fontSize: 24, fontWeight: 700,
                        color: "var(--text-primary)",
                        letterSpacing: "-0.02em", margin: 0 }}>
-          ⚠️ Crashes do Frontend
+          ️ Crashes do Frontend
         </h1>
         <span style={{ color: "#64748b", fontSize: 13 }}>
           Erros capturados pelos ErrorBoundaries do React. Útil pra rastrear
@@ -122,14 +122,14 @@ export default function ClientErrorsPanel() {
         <button onClick={reload} disabled={loading}
                 data-testid="client-errors-reload"
                 style={btnPrimary}>
-          {loading ? "⏳ Carregando…" : "🔄 Atualizar"}
+          {loading ? "⏳ Carregando…" : "Atualizar"}
         </button>
         <button onClick={clearAll}
                 data-testid="client-errors-clear-all"
                 title="Apaga TODOS os logs (super admin)"
                 style={{ ...btnSecondary, color: "#991b1b",
                           borderColor: "#fca5a5", background: "#fee2e2" }}>
-          🗑️ Limpar tudo
+          ️ Limpar tudo
         </button>
       </div>
 
@@ -184,7 +184,7 @@ export default function ClientErrorsPanel() {
                                       padding: "2px 8px", borderRadius: 6,
                                       fontFamily: "monospace" }}
                           title="ID do ticket extraído do nome do boundary">
-                      🎯 OS …{tid.slice(-8)}
+                      OS …{tid.slice(-8)}
                     </span>
                   )}
                   <span style={{ flex: 1, color: "#475569",
@@ -202,7 +202,7 @@ export default function ClientErrorsPanel() {
                           title="Apagar logs deste boundary"
                           style={{ ...pillBtnStyle, color: "#991b1b",
                                     borderColor: "#fca5a5" }}>
-                    🗑️
+                    ️
                   </button>
                 </div>
               );
@@ -211,7 +211,7 @@ export default function ClientErrorsPanel() {
         ) : (
           <div style={{ padding: 20, textAlign: "center", color: "#94a3b8",
                           fontSize: 13 }}>
-            Nenhum crash registrado nos últimos {days} dia(s). 🎉
+            Nenhum crash registrado nos últimos {days} dia(s). 
           </div>
         )}
       </div>
@@ -271,7 +271,7 @@ export default function ClientErrorsPanel() {
                                         background: "#ffedd5",
                                         padding: "2px 8px", borderRadius: 6,
                                         fontFamily: "monospace" }}>
-                        🎯 OS …{tid.slice(-8)}
+                        OS …{tid.slice(-8)}
                       </span>
                     )}
                     <span style={{ flex: 1, color: "#0f172a",

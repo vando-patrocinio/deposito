@@ -127,7 +127,7 @@ function Login({ onLogged }) {
                             color: "#991B1B", borderRadius: 10,
                             padding: "9px 12px",
                             fontSize: 12, fontWeight: 700 }}
-                  data-testid="partner-portal-err">⚠ {err}</div>
+                  data-testid="partner-portal-err">{err}</div>
           )}
           <button type="submit" disabled={busy}
                    data-testid="partner-portal-login-btn"
@@ -196,7 +196,7 @@ function Dashboard({ token, me, reload, onLogout }) {
       <header className="pa-p-topbar">
         <div>
           <div style={{ fontSize: 17, fontWeight: 800 }}>
-            🏪 {me.partner?.name || me.user.name}
+            {me.partner?.name || me.user.name}
           </div>
           <div style={{ fontSize: 11,
                           color: "rgba(255,255,255,.5)" }}>
@@ -256,14 +256,14 @@ function Dashboard({ token, me, reload, onLogout }) {
               <button onClick={() => setShowScanner(true)}
                        data-testid="partner-open-scanner"
                        className="pa-p-cta">
-                📷 Abrir Scanner
+                Abrir Scanner
               </button>
             </>
           )}
         </div>
 
         <div className="pa-p-list">
-          <h4>📜 Últimas redenções</h4>
+          <h4>Últimas redenções</h4>
           {!reds.length && (
             <div style={{ color: "rgba(255,255,255,.4)",
                             fontSize: 12, padding: 18,
@@ -340,7 +340,7 @@ function ScannerOverlay({ onResult, onClose }) {
   return (
     <div className="pa-scan-overlay" data-testid="partner-scanner">
       <div className="pa-scan-header">
-        <div style={{ fontWeight: 800 }}>📷 Escanear QR Ligo</div>
+        <div style={{ fontWeight: 800 }}>Escanear QR Ligo</div>
         <button onClick={close}
                  data-testid="partner-scanner-close"
                  style={{ background: "transparent",
@@ -368,7 +368,7 @@ function ResultOverlay({ r, onClose }) {
       <div className={`pa-result ${isOk ? "ok" : "fail"}`}
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 420, width: "calc(100% - 28px)" }}>
-        <h2>{isOk ? "✅ Promoção aplicada!" : "⚠ Não foi possível aplicar"}</h2>
+        <h2>{isOk ? "✅ Promoção aplicada!" : "Não foi possível aplicar"}</h2>
         {r.client && <div className="name">{r.client.name}</div>}
         {r.client?.pppoe && (
           <div className="why">PPPoE: {r.client.pppoe}</div>

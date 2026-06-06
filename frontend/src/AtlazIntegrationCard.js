@@ -101,7 +101,7 @@ export default function AtlazIntegrationCard() {
   }
 
   async function runReassign() {
-    if (!await window.confirm("Re-resolver técnico de TODAS as bolhas Atlaz pendentes? Bolhas sem técnico no Atlaz serão movidas para a coluna '📥 Sem técnico (Atlaz)' na Lousa, onde você pode arrastar para o técnico real.")) return;
+    if (!await window.confirm("Re-resolver técnico de TODAS as bolhas Atlaz pendentes? Bolhas sem técnico no Atlaz serão movidas para a coluna 'Sem técnico (Atlaz)' na Lousa, onde você pode arrastar para o técnico real.")) return;
     setBusy(true); setMsg("");
     try {
       const r = await api.atlazReassignExisting();
@@ -182,7 +182,7 @@ export default function AtlazIntegrationCard() {
           Importa chamados abertos do Atlaz (<code>app.atlaz.com.br/api/v2</code>) como bolhas na Lousa.
           <br />
           <small style={{ color: "#dc2626", fontWeight: 600 }}>
-            ⚠ A API Atlaz V2 só permite LER chamados. Para fechar/cancelar, use o painel web do Atlaz após terminar aqui.
+            A API Atlaz V2 só permite LER chamados. Para fechar/cancelar, use o painel web do Atlaz após terminar aqui.
           </small>
         </p>
         {statusBadge}
@@ -223,7 +223,7 @@ export default function AtlazIntegrationCard() {
           style={inputStyle}
         />
         <small style={{ color: "#94a3b8", fontSize: 11 }}>
-          Usado para gerar o link <strong>"🔗 Abrir no Atlaz"</strong> direto da bolha (chamados sincronizados ganham atalho rápido para fechar manualmente lá).
+          Usado para gerar o link <strong>“Abrir no Atlaz”</strong> direto da bolha (chamados sincronizados ganham atalho rápido para fechar manualmente lá).
         </small>
       </Field>
 
@@ -287,7 +287,7 @@ export default function AtlazIntegrationCard() {
         border: "1px solid #6ee7b7", borderRadius: 12,
       }}>
         <div style={{ fontWeight: 800, fontSize: 13, color: "#064e3b", marginBottom: 6 }}>
-          🔄 Atualizações automáticas
+          Atualizações automáticas
         </div>
         <p style={{ fontSize: 11, color: "#065f46", margin: "0 0 10px" }}>
           O sistema sincroniza automaticamente em segundo plano enquanto a integração estiver ativa.
@@ -296,7 +296,7 @@ export default function AtlazIntegrationCard() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div style={{ background: "white", padding: 10, borderRadius: 10, border: "1px solid #a7f3d0" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 12, color: "#065f46" }}>
-              <span>📋 Bolhas (Lousa)</span>
+              <span>Bolhas (Lousa)</span>
             </label>
             <div style={{ fontSize: 10, color: "#047857", marginTop: 4 }}>
               A cada <strong>{form.sync_interval_seconds || 30}s</strong>
@@ -310,7 +310,7 @@ export default function AtlazIntegrationCard() {
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 12, color: "#065f46", cursor: "pointer" }}>
               <input data-testid="atlaz-auto-sync-tec" type="checkbox" checked={!!form.auto_sync_technicians}
                 onChange={(e) => setForm({ ...form, auto_sync_technicians: e.target.checked })} />
-              <span>👷 Técnicos (Cadastro)</span>
+              <span>Técnicos (Cadastro)</span>
             </label>
             {form.auto_sync_technicians ? (
               <>
@@ -331,7 +331,7 @@ export default function AtlazIntegrationCard() {
               </>
             ) : (
               <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4, fontStyle: "italic" }}>
-                Desligado — use o botão "Sincronizar técnicos" manualmente.
+                Desligado — use o botão “Sincronizar técnicos” manualmente.
               </div>
             )}
           </div>
@@ -340,40 +340,40 @@ export default function AtlazIntegrationCard() {
 
       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <Button onClick={save} disabled={busy} data-testid="atlaz-save-btn">
-          {busy ? "Salvando…" : "💾 Salvar"}
+          {busy ? "Salvando…" : "Salvar"}
         </Button>
-        <Button variant="soft" onClick={runTest} disabled={busy} data-testid="atlaz-test-btn">🔌 Testar conexão</Button>
-        <Button variant="soft" onClick={runSync} disabled={busy} data-testid="atlaz-sync-btn">🔄 Sincronizar agora</Button>
+        <Button variant="soft" onClick={runTest} disabled={busy} data-testid="atlaz-test-btn">Testar conexão</Button>
+        <Button variant="soft" onClick={runSync} disabled={busy} data-testid="atlaz-sync-btn">Sincronizar agora</Button>
         <Button variant="soft" onClick={runSyncTec} disabled={busy} data-testid="atlaz-sync-tec-btn"
           style={{ background: "#fef3c7", border: "1px solid #fcd34d", color: "#78350f" }}>
-          👷 Sincronizar técnicos → Cadastro
+          Sincronizar técnicos → Cadastro
         </Button>
         <Button variant="soft" onClick={runReassign} disabled={busy} data-testid="atlaz-reassign-btn"
           style={{ background: "#fae8ff", border: "1px solid #f0abfc", color: "#86198f" }}
           title="Re-resolve o técnico de todas as bolhas Atlaz pendentes baseado no mapping atual">
-          🔁 Reatribuir bolhas existentes
+          Reatribuir bolhas existentes
         </Button>
         <Button variant="soft" onClick={() => runBackfillDates(true)} disabled={busy} data-testid="atlaz-backfill-dry-btn"
           style={{ background: "#dbeafe", border: "1px solid #93c5fd", color: "#1e3a8a" }}
           title="Pré-visualiza quais bolhas serão reposicionadas para o dia ORIGINAL do Atlaz">
-          🔍 Pré-visualizar correção de datas
+          Pré-visualizar correção de datas
         </Button>
         <Button variant="soft" onClick={() => runBackfillDates(false)} disabled={busy} data-testid="atlaz-backfill-btn"
           style={{ background: "#cffafe", border: "1px solid #67e8f9", color: "#155e75" }}
           title="Reposiciona bolhas Atlaz para o dia ORIGINAL em que foram criadas no Atlaz (não no dia da importação)">
-          📅 Corrigir datas das bolhas (Atlaz)
+          Corrigir datas das bolhas (Atlaz)
         </Button>
         <Button variant="soft" onClick={() => runRedistribute(true)} disabled={busy} data-testid="atlaz-redistribute-dry-btn"
           style={{ background: "#fef9c3", border: "1px solid #fde047", color: "#854d0e" }}
           title="Pré-visualiza quais bolhas com horário duplicado serão movidas pra slots livres">
-          🔍 Pré-visualizar redistribuição
+          Pré-visualizar redistribuição
         </Button>
         <Button variant="soft" onClick={() => runRedistribute(false)} disabled={busy} data-testid="atlaz-redistribute-btn"
           style={{ background: "#fed7aa", border: "1px solid #fdba74", color: "#9a3412" }}
           title="Distribui bolhas Atlaz com horário duplicado (mais de 2 no mesmo slot) pelos próximos horários livres">
-          📐 Redistribuir bolhas duplicadas
+          Redistribuir bolhas duplicadas
         </Button>
-        <Button variant="soft" onClick={loadLogs} data-testid="atlaz-logs-btn">📋 Ver logs</Button>
+        <Button variant="soft" onClick={loadLogs} data-testid="atlaz-logs-btn">Ver logs</Button>
         {msg && <span style={{ color: msg.startsWith("✓") ? "#166534" : "#be123c", fontWeight: 700, fontSize: 13 }}>{msg}</span>}
       </div>
 
@@ -431,7 +431,7 @@ export default function AtlazIntegrationCard() {
         }}>
           {syncTec.ok ? (
             <>
-              <strong>👷 Técnicos sincronizados</strong> — total Atlaz: <strong>{syncTec.total_atlaz_technicians}</strong>,
+              <strong>Técnicos sincronizados</strong> — total Atlaz: <strong>{syncTec.total_atlaz_technicians}</strong>,
               {" "}criados: <strong>{syncTec.created}</strong>,
               {" "}já existentes: <strong>{syncTec.matched_existing}</strong>
               {syncTec.items_created?.length > 0 && (
@@ -493,7 +493,7 @@ function FilialMapper({ filiais, mapping, collabs, onChange }) {
       borderRadius: 12, padding: 12,
     }}>
       <div style={{ fontWeight: 700, fontSize: 13, color: "#0c4a6e", marginBottom: 6 }}>
-        🏢 Mapeamento Filial → Técnico padrão
+        Mapeamento Filial → Técnico padrão
       </div>
       <p style={{ color: "#0369a1", fontSize: 11, margin: "0 0 10px" }}>
         Usado quando o chamado Atlaz não tem técnico atribuído.
@@ -531,7 +531,7 @@ function TecnicoMapper({ technicians, mapping, collabs, onChange }) {
         marginTop: 10, background: "#fef3c7", border: "1px dashed #fde68a",
         borderRadius: 12, padding: 12, fontSize: 12, color: "#78350f",
       }}>
-        💡 Clique em <strong>🔌 Testar conexão</strong> para listar os técnicos do Atlaz e mapeá-los aos colaboradores locais.
+        Clique em <strong>Testar conexão</strong> para listar os técnicos do Atlaz e mapeá-los aos colaboradores locais.
       </div>
     );
   }
@@ -541,7 +541,7 @@ function TecnicoMapper({ technicians, mapping, collabs, onChange }) {
       borderRadius: 12, padding: 12,
     }}>
       <div style={{ fontWeight: 700, fontSize: 13, color: "#713f12", marginBottom: 6 }}>
-        👷 Mapeamento Técnico Atlaz → Colaborador local (prioridade máxima)
+        Mapeamento Técnico Atlaz → Colaborador local (prioridade máxima)
       </div>
       <p style={{ color: "#854d0e", fontSize: 11, margin: "0 0 10px" }}>
         Quando o chamado Atlaz vem com técnico atribuído, esse mapeamento é usado.

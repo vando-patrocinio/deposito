@@ -42,7 +42,7 @@ export function AiDetailModal({ detail, onClose }) {
                   background: s.level === "critical" ? "#fee2e2" : s.level === "warning" ? "#fef3c7" : "#dcfce7",
                   color: s.level === "critical" ? "#7f1d1d" : s.level === "warning" ? "#78350f" : "#166534",
                 }}>
-                  {s.level === "critical" ? "🔴" : s.level === "warning" ? "🟡" : "🟢"} {s.msg}
+                  {s.level === "critical" ? "" : s.level === "warning" ? "" : ""} {s.msg}
                 </div>
               ))}
             </div>
@@ -170,7 +170,7 @@ export function ClosedTicketDetailModal({ ticket, onClose, onReopened }) {
                 <>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b",
                                   textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    {isClosed ? "✓ Nota finalizada" : "🟡 Nota em andamento"} ·{" "}
+                    {isClosed ? "✓ Nota finalizada" : "Nota em andamento"} ·{" "}
                     {TYPE_LABELS[full.type] || full.type}
                   </div>
                   <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a",
@@ -191,7 +191,7 @@ export function ClosedTicketDetailModal({ ticket, onClose, onReopened }) {
                       <span style={{ marginLeft: 6, padding: "2px 7px",
                                       background: "#fef3c7", color: "#92400e",
                                       borderRadius: 999, fontSize: 9, fontWeight: 800 }}>
-                        🛡 Fechado pelo gestor
+                        Fechado pelo gestor
                       </span>
                     )}
                   </div>
@@ -214,10 +214,10 @@ export function ClosedTicketDetailModal({ ticket, onClose, onReopened }) {
 
           {/* Endereço */}
           {cs.address && (
-            <Section label="📍 Endereço">{fmtAddress(cs.address)}</Section>
+            <Section label="Endereço">{fmtAddress(cs.address)}</Section>
           )}
           {cs.phone && (
-            <Section label="📞 Telefone">
+            <Section label="Telefone">
               <a href={`tel:${fmtPhone(cs.phone)}`} style={{ color: "#0891b2",
                           textDecoration: "none", fontWeight: 700 }}>
                 {fmtPhone(cs.phone)}
@@ -225,7 +225,7 @@ export function ClosedTicketDetailModal({ ticket, onClose, onReopened }) {
             </Section>
           )}
           {(cs.relato || full.notes) && (
-            <Section label="📋 Relato / Notas">
+            <Section label="Relato / Notas">
               <div style={{ whiteSpace: "pre-wrap" }}>
                 {fmtRelato(cs.relato) || safeText(full.notes)}
               </div>
@@ -234,15 +234,15 @@ export function ClosedTicketDetailModal({ ticket, onClose, onReopened }) {
 
           {/* Sinal */}
           {cd.sinal != null && (
-            <Section label="📡 Sinal medido">
+            <Section label="Sinal medido">
               <strong>{Number(cd.sinal).toFixed(1)} dBm</strong>
             </Section>
           )}
-          {cd.ont && <Section label="🔌 ONT">{cd.ont}</Section>}
+          {cd.ont && <Section label="ONT">{cd.ont}</Section>}
 
           {/* CTO + porta + splitter + VLAN */}
           {(cd.cto_name || cd.cto_port_number) && (
-            <Section label="🗺 Vínculo na Rede IA">
+            <Section label="Vínculo na Rede IA">
               {cd.cto_name}
               {cd.cto_port_number && ` · Porta ${cd.cto_port_number}`}
               {cd.cto_splitter && ` · Splitter ${cd.cto_splitter}`}
@@ -253,7 +253,7 @@ export function ClosedTicketDetailModal({ ticket, onClose, onReopened }) {
 
           {/* Insumos */}
           {(cd.drop || cd.backbone || cd.esticador || cd.conectores) && (
-            <Section label="🧰 Insumos utilizados">
+            <Section label="Insumos utilizados">
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {cd.drop && <li>Drop: <strong>{cd.drop}m</strong></li>}
                 {cd.backbone && <li>Backbone: <strong>{cd.backbone}m</strong></li>}
@@ -265,7 +265,7 @@ export function ClosedTicketDetailModal({ ticket, onClose, onReopened }) {
 
           {/* Ping */}
           {cd.ping_summary && (
-            <Section label="📶 Teste de Ping">
+            <Section label="Teste de Ping">
               <pre style={{ background: "#f8fafc",
                               padding: 10, borderRadius: 6, fontSize: 11,
                               whiteSpace: "pre-wrap" }}>{cd.ping_summary}</pre>
@@ -274,14 +274,14 @@ export function ClosedTicketDetailModal({ ticket, onClose, onReopened }) {
 
           {/* Observações */}
           {cd.observacoes && (
-            <Section label="📝 Observações do técnico">
+            <Section label="Observações do técnico">
               <div style={{ whiteSpace: "pre-wrap" }}>{cd.observacoes}</div>
             </Section>
           )}
 
           {/* Fotos */}
           {fotosObjs.length > 0 && (
-            <Section label={`📷 Fotos (${fotosObjs.length})`}>
+            <Section label={`Fotos (${fotosObjs.length})`}>
               <div style={{ display: "grid",
                               gridTemplateColumns:
                                 "repeat(auto-fill, minmax(120px, 1fr))",
@@ -343,7 +343,7 @@ export function ClosedTicketDetailModal({ ticket, onClose, onReopened }) {
             ) : (
               <div data-testid="reopen-os-form" style={{ display: "grid", gap: 10 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#7c2d12" }}>
-                  ⚠️ Reabrir esta OS?
+                  ️ Reabrir esta OS?
                 </div>
                 <div style={{ fontSize: 11, color: "#475569", lineHeight: 1.5,
                                 background: "#fffbeb", padding: 8, borderRadius: 6,
@@ -351,11 +351,11 @@ export function ClosedTicketDetailModal({ ticket, onClose, onReopened }) {
                   A nota volta para <strong>pendente</strong> como se nunca tivesse sido fechada.
                   <br /><strong>Tudo é desfeito automaticamente:</strong>
                   <ul style={{ margin: "4px 0 0 18px", padding: 0 }}>
-                    <li>📦 ONT volta para o estoque do técnico (instalação) ou para o cliente (retirada)</li>
-                    <li>🔌 Porta da CTO volta para <strong>livre</strong></li>
-                    <li>🧰 Drop, esticadores e conectores são <strong>recreditados</strong> no estoque</li>
-                    <li>📷 Fotos, sinal e observações são limpos — técnico tira tudo do zero</li>
-                    <li>📋 Fechamento anterior fica arquivado em <code>previous_completions</code> para auditoria</li>
+                    <li>ONT volta para o estoque do técnico (instalação) ou para o cliente (retirada)</li>
+                    <li>Porta da CTO volta para <strong>livre</strong></li>
+                    <li>Drop, esticadores e conectores são <strong>recreditados</strong> no estoque</li>
+                    <li>Fotos, sinal e observações são limpos — técnico tira tudo do zero</li>
+                    <li>Fechamento anterior fica arquivado em <code>previous_completions</code> para auditoria</li>
                   </ul>
                 </div>
                 <label style={{ display: "block" }}>
@@ -475,7 +475,7 @@ export function AutoReschedConfigModal({ initial, onClose, onSaved }) {
                       boxShadow: "0 20px 50px rgba(0,0,0,.3)" }}>
         <h3 style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 800,
                         color: "#0f172a" }}>
-          🟢 Auto-reagendar OS com sinal degradado
+          Auto-reagendar OS com sinal degradado
         </h3>
         <p style={{ fontSize: 12, color: "var(--text-muted)",
                       marginBottom: 16 }}>
@@ -496,7 +496,7 @@ export function AutoReschedConfigModal({ initial, onClose, onSaved }) {
           <div>
             <div style={{ fontWeight: 700, fontSize: 13,
                               color: cfg.enabled ? "#065f46" : "#475569" }}>
-              {cfg.enabled ? "🟢 Ligado" : "⚪ Desligado"}
+              {cfg.enabled ? "Ligado" : "Desligado"}
             </div>
             <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
               {cfg.enabled
@@ -561,7 +561,7 @@ export function AutoReschedConfigModal({ initial, onClose, onSaved }) {
             <div style={{ fontSize: 10, color: "#92400e",
                             background: "#fffbeb", padding: "5px 8px",
                             borderRadius: 4, marginTop: 6, border: "1px solid #fcd34d" }}>
-              ⚠ Nenhum colaborador com cargo/role contendo &quot;rede&quot;.
+              Nenhum colaborador com cargo/role contendo &quot;rede&quot;.
               Cadastre técnicos de rede no painel de Colaboradores.
             </div>
           )}
@@ -742,10 +742,10 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
         <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800,
                         color: "#0f172a" }}>
           {isRetirada
-            ? "📦 Finalizar Retirada no lugar do técnico"
+            ? "Finalizar Retirada no lugar do técnico"
             : isInstall
-              ? "🔧 Finalizar Instalação no lugar do técnico"
-              : "🏁 Finalizar OS no lugar do técnico"}
+              ? "Finalizar Instalação no lugar do técnico"
+              : "Finalizar OS no lugar do técnico"}
         </h3>
         <p style={{ fontSize: 11, color: "#64748b", marginBottom: 12 }}>
           Cliente: <strong>{cname}</strong>
@@ -797,12 +797,12 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
             )}
             {ontLoading && (
               <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
-                🔍 Buscando ONT atual do cliente…
+                Buscando ONT atual do cliente…
               </div>
             )}
             {!ontLoading && !clientOnt && (
               <div style={{ marginTop: 6, fontSize: 11, color: "#92400e" }}>
-                ⚠️ Nenhuma ONT registrada no estoque deste cliente. Informe
+                ️ Nenhuma ONT registrada no estoque deste cliente. Informe
                 MAC/SN manualmente para registrar a retirada.
               </div>
             )}
@@ -816,7 +816,7 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
                           border: "1.5px solid #3b82f6", borderRadius: 10,
                           padding: 12, marginBottom: 14, fontSize: 12,
                           color: "#1e3a8a", lineHeight: 1.5 }}>
-            <strong>🔧 Baixa de estoque + vínculo automático</strong><br/>
+            <strong>Baixa de estoque + vínculo automático</strong><br/>
             Ao finalizar, a ONT escolhida do estoque do <strong>
             {ticket.collaborator_name || "técnico atribuído"}</strong> será
             baixada e <strong>vinculada ao cliente</strong>. A porta da CTO
@@ -878,7 +878,7 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
               <input type="checkbox" data-testid="adm-fin-defective"
                       checked={form.is_defective}
                       onChange={(e) => setF("is_defective", e.target.checked)} />
-              ⚠️ Equipamento retirado está DEFEITUOSO (devolver à empresa)
+              ️ Equipamento retirado está DEFEITUOSO (devolver à empresa)
             </label>
             {form.is_defective && (
               <textarea data-testid="adm-fin-defective-reason"
@@ -904,14 +904,14 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
             {techStockLoading ? (
               <div style={{ padding: 10, fontSize: 12, color: "#64748b",
                               background: "#f8fafc", borderRadius: 6 }}>
-                🔍 Carregando estoque do técnico…
+                Carregando estoque do técnico…
               </div>
             ) : techStock.length === 0 ? (
               <div data-testid="adm-fin-stock-empty"
                     style={{ padding: 10, fontSize: 12, color: "#92400e",
                               background: "#fef3c7", borderRadius: 6,
                               border: "1px solid #fcd34d" }}>
-                ⚠️ Nenhuma ONT disponível no estoque deste técnico.
+                ️ Nenhuma ONT disponível no estoque deste técnico.
                 Cadastre uma transferência antes de instalar.
               </div>
             ) : (
@@ -958,7 +958,7 @@ export function AdminFinalizeModal({ ticket, onClose, onSubmit }) {
             <input data-testid="adm-fin-cto-search"
                     value={ctoSearch}
                     onChange={(e) => setCtoSearch(e.target.value)}
-                    placeholder="🔍 Filtrar CTO por nome…"
+                    placeholder="Filtrar CTO por nome…"
                     style={{ width: "100%", padding: 8, fontSize: 12,
                               border: "1px solid #cbd5e1", borderRadius: 6,
                               marginBottom: 6 }} />

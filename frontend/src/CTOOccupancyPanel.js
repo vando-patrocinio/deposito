@@ -47,7 +47,7 @@ export default function CTOOccupancyPanel() {
       }}>
         <div>
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#0f172a" }}>
-            📊 Mapa de Ocupação por CTO
+            Mapa de Ocupação por CTO
           </h3>
           <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
             Identifica CTOs próximas da capacidade total para planejar expansão.
@@ -89,7 +89,7 @@ export default function CTOOccupancyPanel() {
                     style={{ ...btnGhost, background: "#0f172a", color: "#fff",
                               borderColor: "#0f172a", fontSize: 12,
                               cursor: "pointer" }}>
-            📄 PDF
+            PDF
           </button>
         </div>
       </div>
@@ -185,7 +185,7 @@ export default function CTOOccupancyPanel() {
                         })}
                         data-testid={`cto-occ-map-${c.id}`}
                         style={mapBtn} title="Ver no mapa">
-                🗺
+                
               </button>
             )}
           </div>

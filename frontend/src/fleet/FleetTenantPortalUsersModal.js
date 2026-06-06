@@ -1,5 +1,5 @@
 /* FleetTenantPortalUsersModal.js — Gerencia usuários do portal de
- * um cliente (fleet_tenant). Acessível via "👤 Usuários do portal" no
+ * um cliente (fleet_tenant). Acessível via "Usuários do portal" no
  * FleetTenantsTab. */
 import React, { useEffect, useState } from "react";
 import { api } from "@/api";
@@ -100,7 +100,7 @@ export default function FleetTenantPortalUsersModal({ tenant, onClose }) {
             }}
                      style={{ ...primaryBtn, marginLeft: 8, padding: "4px 10px",
                                 fontSize: 11 }}>
-              📋 Copiar credenciais
+              Copiar credenciais
             </button>
           </div>
         )}

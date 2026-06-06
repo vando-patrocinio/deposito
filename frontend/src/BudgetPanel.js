@@ -160,7 +160,7 @@ export default function BudgetPanel() {
         }}>
           <Calculator size={40} strokeWidth={1.5} style={{ opacity: 0.4 }} />
           <p style={{ marginTop: 12, fontSize: 13 }}>
-            Nenhum orçamento criado ainda. Clique em "Novo orçamento" para começar.
+            Nenhum orçamento criado ainda. Clique em “Novo orçamento” para começar.
           </p>
         </div>
       ) : (
@@ -467,7 +467,7 @@ function BudgetDrawer({ budget: initial, onClose, onChanged, token }) {
                   title="Sobe CSV, PDF, DOCX ou foto/print de orçamento — extrai itens E preços automaticamente">
             <Upload size={14} />
             {busy ? "Processando..." :
-              `📤 Importar pronto (PDF/imagem/CSV)${itemCount > 0 ? " · substituir" : ""}`}
+              `Importar pronto (PDF/imagem/CSV)${itemCount > 0 ? " · substituir" : ""}`}
           </button>
           <button onClick={handleAnalyze}
                   disabled={analyzing || itemCount === 0}

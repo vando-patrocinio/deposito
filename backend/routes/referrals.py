@@ -891,6 +891,9 @@ def _customer_profile_dict(sub: Dict[str, Any], code: str) -> Dict[str, Any]:
             or sub.get("cpf_cnpj") or sub.get("tax_id"),
         "filial_name": sub.get("filial_name") or sub.get("branch_name")
             or sub.get("filial"),
+        # iter215 — pra exibir "tempo de cliente" no ClientQRModal
+        "installation_date": sub.get("installation_date")
+            or sub.get("activation_date") or sub.get("created_at"),
     }
 
 

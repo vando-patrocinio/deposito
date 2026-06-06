@@ -2,7 +2,7 @@
 UberGpsPicker.js — Picker de localização tipo Uber.
 
 Comportamento:
-  - Botão "📍 Usar minha localização" usa Geolocation API
+  - Botão "Usar minha localização" usa Geolocation API
   - Mapa Leaflet centrado no ponto, com pin FIXO no centro do mapa
   - Usuário arrasta o mapa pra reposicionar o pin (estilo Uber/iFood)
   - A cada movimento, faz reverse geocode via Nominatim (OSM) — gratuito
@@ -178,7 +178,7 @@ export default function UberGpsPicker({
           zoomControl={false}
           attributionControl={false}>
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
           />
           <MapMoveTracker onMove={onMove} />
           {forceCenter && <MapRecenter center={forceCenter} />}
@@ -256,7 +256,7 @@ export default function UberGpsPicker({
           </>
         ) : resolveErr ? (
           <div style={{ fontSize: 12.5, color: "#be123c" }}>
-            ⚠️ {resolveErr}
+            ️ {resolveErr}
           </div>
         ) : (
           <div style={{ fontSize: 12.5, color: "#64748b" }}>

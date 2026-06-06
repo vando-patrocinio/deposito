@@ -11,17 +11,17 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { api } from "./api";
 
 const COLORS = {
-  hot: { bg: "#fef2f2", border: "#dc2626", text: "#991b1b", icon: "🔥" },
-  warm: { bg: "#fef3c7", border: "#f59e0b", text: "#92400e", icon: "🌡️" },
+  hot: { bg: "#fef2f2", border: "#dc2626", text: "#991b1b", icon: "" },
+  warm: { bg: "#fef3c7", border: "#f59e0b", text: "#92400e", icon: "️" },
   cold: { bg: "#dbeafe", border: "#3b82f6", text: "#1e40af", icon: "❄️" },
-  none: { bg: "#f1f5f9", border: "#94a3b8", text: "#475569", icon: "💤" },
+  none: { bg: "#f1f5f9", border: "#94a3b8", text: "#475569", icon: "" },
 };
 
 const TABS = [
-  { id: "pipeline", label: "🎯 Pipeline" },
-  { id: "wifi-premium", label: "📡 Wi-Fi Premium" },
-  { id: "reativacao", label: "♻️ Reativação" },
-  { id: "dashboard", label: "📊 Dashboard" },
+  { id: "pipeline", label: "Pipeline" },
+  { id: "wifi-premium", label: "Wi-Fi Premium" },
+  { id: "reativacao", label: "️ Reativação" },
+  { id: "dashboard", label: "Dashboard" },
 ];
 
 export default function SalesFunnelPanel() {
@@ -30,7 +30,7 @@ export default function SalesFunnelPanel() {
     <div data-testid="sales-funnel-panel" style={{ padding: 18 }}>
       <div style={{ marginBottom: 12 }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a" }}>
-          💼 Funil de Vendas · WhatsApp
+          Funil de Vendas · WhatsApp
         </h2>
         <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
           Leads classificados por intenção em tempo real. Converta hot leads em
@@ -129,7 +129,7 @@ function WifiPremiumTab() {
                      marginBottom: 14 }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: "#92400e",
                        marginBottom: 4 }}>
-          📡 Funil Wi-Fi Self-Service (Premium)
+          Funil Wi-Fi Self-Service (Premium)
         </div>
         <div style={{ fontSize: 12, color: "#78350f" }}>
           Quando cliente não-Premium pede troca de senha do Wi-Fi pelo
@@ -145,10 +145,10 @@ function WifiPremiumTab() {
         <Kpi label="Total" value={data.total || 0} color="#0f172a" />
         <Kpi label="🆕 Novos" value={totalKpis.new || 0} color="#0ea5e9" />
         <Kpi label="✅ Contatados" value={totalKpis.contacted || 0} color="#15803d" />
-        <Kpi label="💎 Convertidos" value={totalKpis.converted || 0} color="#7c3aed" />
+        <Kpi label="Convertidos" value={totalKpis.converted || 0} color="#7c3aed" />
         <Kpi label="❌ Send Failed" value={totalKpis.send_failed || 0} color="#dc2626" />
         <Kpi label="⏰ Cooldown" value={totalKpis.deduplicated_cooldown || 0} color="#94a3b8" />
-        <Kpi label="🕒 Stale" value={totalKpis.stale_needs_human_review || 0} color="#a16207" />
+        <Kpi label="Stale" value={totalKpis.stale_needs_human_review || 0} color="#a16207" />
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
@@ -159,7 +159,7 @@ function WifiPremiumTab() {
         <button data-testid="plans-auto-mark-premium"
                 className="btn btn-secondary" disabled={busy}
                 onClick={autoMarkPremium}>
-          ⚡ Auto-mark planos ≥ 1000Mbps Premium
+          Auto-mark planos ≥ 1000Mbps Premium
         </button>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
                 style={{ padding: "6px 10px", borderRadius: 6,
@@ -173,7 +173,7 @@ function WifiPremiumTab() {
           <option value="deduplicated_cooldown">Cooldown</option>
           <option value="stale_needs_human_review">Stale</option>
         </select>
-        <button className="btn btn-ghost" onClick={refresh}>🔄</button>
+        <button className="btn btn-ghost" onClick={refresh}></button>
       </div>
 
       <div style={{ overflowX: "auto", border: "1px solid #e2e8f0",
@@ -219,11 +219,11 @@ function StatusBadge({ status }) {
   const colors = {
     new: ["#0ea5e9", "Novo"],
     contacted: ["#15803d", "✅ Contatado"],
-    converted: ["#7c3aed", "💎 Convertido"],
+    converted: ["#7c3aed", "Convertido"],
     send_failed: ["#dc2626", "❌ Falha"],
     deduplicated_cooldown: ["#94a3b8", "⏰ Cooldown"],
-    stale_needs_human_review: ["#a16207", "🕒 Stale"],
-    invalid_no_phone: ["#7c2d12", "⚠️ Sem phone"],
+    stale_needs_human_review: ["#a16207", "Stale"],
+    invalid_no_phone: ["#7c2d12", "️ Sem phone"],
   };
   const [bg, label] = colors[status] || ["#475569", status || "?"];
   return (
@@ -367,8 +367,8 @@ function PipelineTab() {
                 onChange={(e) => setFilter(e.target.value)}
                 style={selectStyle}>
           <option value="">Todos ({(data.items || []).length})</option>
-          <option value="hot">🔥 Hot ({counts.hot})</option>
-          <option value="warm">🌡️ Warm ({counts.warm})</option>
+          <option value="hot">Hot ({counts.hot})</option>
+          <option value="warm">️ Warm ({counts.warm})</option>
           <option value="cold">❄️ Cold ({counts.cold})</option>
         </select>
         <select value={days}
@@ -399,7 +399,7 @@ function PipelineTab() {
           {(data.items || []).length === 0 && !loading && (
             <div style={{ padding: 30, textAlign: "center", color: "#94a3b8",
                             background: "#f8fafc", borderRadius: 10 }}>
-              Nenhum lead nesse filtro 🍃
+              Nenhum lead nesse filtro 
             </div>
           )}
         </div>
@@ -442,7 +442,7 @@ function LeadCard({ lead, selected, onClick }) {
         {lead.last_text || "(sem texto)"}
       </div>
       <div style={{ fontSize: 10, opacity: 0.65, marginTop: 4 }}>
-        📱 {lead.phone}
+        {lead.phone}
         {lead.unread_count > 0 && ` · ${lead.unread_count} não lidas`}
       </div>
     </button>
@@ -551,9 +551,9 @@ function LeadDetailPanel({ lead, onClose, onConverted }) {
 // REATIVAÇÃO
 // ============================================================
 const REACTIVATE_TEMPLATE = (
-  "Oi! 👋 Vi que você se interessou pelos nossos planos de fibra " +
+  "Oi! Vi que você se interessou pelos nossos planos de fibra " +
   "há alguns dias. Liberei um cupom especial para você: 30% OFF nos " +
-  "3 primeiros meses se fechar até sexta-feira 🚀\n\n" +
+  "3 primeiros meses se fechar até sexta-feira \n\n" +
   "Posso te enviar a simulação?"
 );
 
@@ -673,7 +673,7 @@ function ReactivationTab() {
                   color: "#fff", fontSize: 13, fontWeight: 800,
                   cursor: (busy || selected.size === 0) ? "not-allowed" : "pointer",
                 }}>
-          {busy ? "Enfileirando…" : `📨 Disparar para ${selected.size} leads`}
+          {busy ? "Enfileirando…" : `Disparar para ${selected.size} leads`}
         </button>
         {result && (
           <div style={{ marginTop: 8, padding: 10, borderRadius: 6,
@@ -714,9 +714,9 @@ function DashboardTab() {
                       gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
                       gap: 10 }}>
         <Kpi label="Leads no período" value={data.leads_total} color="#3b82f6" />
-        <Kpi label="🔥 Hot leads" value={data.hot_leads} color="#dc2626" />
+        <Kpi label="Hot leads" value={data.hot_leads} color="#dc2626" />
         <Kpi label="✅ Vendas agendadas" value={data.sales_agreed} color="#10b981" />
-        <Kpi label="📦 Convertidos em OS" value={data.converted_to_install} color="#8b5cf6" />
+        <Kpi label="Convertidos em OS" value={data.converted_to_install} color="#8b5cf6" />
         <Kpi label="% Conversão" value={`${data.conversion_rate}%`} color="#f59e0b" />
       </div>
     </>

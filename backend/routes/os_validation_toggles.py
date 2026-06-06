@@ -30,6 +30,10 @@ DEFAULTS = {
     "cto_photo_required": False,
     # iter166 — Validar MAC contra SmartOLT na instalação
     "mac_validation_required": False,
+    # iter215z — Porta da CTO obrigatória em OS de instalação E reparo
+    # (regra global pedida pelo user 2026-06). Bloqueia finalização se
+    # cto_id ou cto_port_number ausentes. Default LIGADO.
+    "cto_port_required": True,
 }
 
 
@@ -37,6 +41,7 @@ class OsValidationTogglesIn(BaseModel):
     ipv6_test_required: bool | None = None
     cto_photo_required: bool | None = None
     mac_validation_required: bool | None = None
+    cto_port_required: bool | None = None
 
 
 def _can_edit(user: Dict[str, Any]) -> bool:

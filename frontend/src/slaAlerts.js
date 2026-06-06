@@ -11,7 +11,10 @@ const STORAGE_KEY = "sla_alerts_enabled";
 
 export function isAlertsEnabled() {
   if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(STORAGE_KEY) === "1";
+  // iter215aj — Alertas LIGADOS por padrão. Só fica desligado se o user
+  // explicitamente clicou em "Mudo" (chave armazenada como "0").
+  const v = window.localStorage.getItem(STORAGE_KEY);
+  return v !== "0";  // default true; "0" = desligado pelo user
 }
 
 export function setAlertsEnabled(on) {
@@ -59,7 +62,7 @@ export function notifyOverdue(count) {
   if (typeof Notification === "undefined") return;
   if (Notification.permission !== "granted") return;
   try {
-    new Notification("⚠ Bolha ATRASADA na lousa", {
+    new Notification("Bolha ATRASADA na lousa", {
       body: `${count} bolha(s) com SLA estourado. Verifique o painel.`,
       tag: "lousa-sla-overdue",
       renotify: true,

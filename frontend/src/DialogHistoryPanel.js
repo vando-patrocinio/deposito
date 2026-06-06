@@ -43,7 +43,7 @@ function ResponsePill({ kind, response }) {
   if (response === "cancel") return <span style={pillStyle("#64748b", "#f1f5f9")}>✕ Cancelou</span>;
   return (
     <span style={pillStyle("#0f172a", "#e2e8f0")} title={String(response)}>
-      ✎ "{String(response).slice(0, 24)}{String(response).length > 24 ? "…" : ""}"
+      ✎ “{String(response).slice(0, 24)}{String(response).length > 24 ? "…" : ""}”
     </span>
   );
 }

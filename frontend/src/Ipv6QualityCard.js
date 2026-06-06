@@ -7,7 +7,7 @@ import { api } from "@/api";
 const fmtScore = (s) =>
   s >= 9 ? { color: "#15803d", bg: "#dcfce7", emoji: "✓" } :
   s >= 7 ? { color: "#16a34a", bg: "#ecfdf5", emoji: "✓" } :
-  s >= 4 ? { color: "#b45309", bg: "#fef3c7", emoji: "⚠" } :
+  s >= 4 ? { color: "#b45309", bg: "#fef3c7", emoji: "" } :
   { color: "#991b1b", bg: "#fee2e2", emoji: "✕" };
 
 function MiniTable({ title, rows, keyName }) {
@@ -106,7 +106,7 @@ export default function Ipv6QualityCard() {
         <div>
           <div style={{ fontSize: 11, fontWeight: 800, color: "#1e3a8a",
                           textTransform: "uppercase", letterSpacing: 0.4 }}>
-            🌐 Qualidade IPv6 da Rede
+            Qualidade IPv6 da Rede
           </div>
           <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>
             Indicadores por Bairro e CTO
@@ -174,8 +174,8 @@ export default function Ipv6QualityCard() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <MiniTable title="🏘 Pior média por bairro" rows={data?.by_bairro} keyName="bairro" />
-        <MiniTable title="📡 Pior média por CTO" rows={data?.by_cto} keyName="cto" />
+        <MiniTable title="Pior média por bairro" rows={data?.by_bairro} keyName="bairro" />
+        <MiniTable title="Pior média por CTO" rows={data?.by_cto} keyName="cto" />
       </div>
     </div>
   );

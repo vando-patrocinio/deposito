@@ -16,12 +16,12 @@ import { api } from "@/api";
 
 
 const STATE_STYLE = {
-  ATIVO: { bg: "#dcfce7", fg: "#14532d", icon: "🟢", label: "Ativo" },
+  ATIVO: { bg: "#dcfce7", fg: "#14532d", icon: "", label: "Ativo" },
   GRACE: { bg: "#fef9c3", fg: "#854d0e", icon: "⏳", label: "Tolerância" },
-  REDUZIDO: { bg: "#fef3c7", fg: "#92400e", icon: "🟠", label: "Reduzido" },
-  WALLED_GARDEN: { bg: "#fee2e2", fg: "#991b1b", icon: "🔒", label: "Wall Garden" },
-  SUSPENSO: { bg: "#fecaca", fg: "#7f1d1d", icon: "🔴", label: "Suspenso" },
-  CANCELADO: { bg: "#e2e8f0", fg: "#334155", icon: "⚫", label: "Cancelado" },
+  REDUZIDO: { bg: "#fef3c7", fg: "#92400e", icon: "", label: "Reduzido" },
+  WALLED_GARDEN: { bg: "#fee2e2", fg: "#991b1b", icon: "", label: "Wall Garden" },
+  SUSPENSO: { bg: "#fecaca", fg: "#7f1d1d", icon: "", label: "Suspenso" },
+  CANCELADO: { bg: "#e2e8f0", fg: "#334155", icon: "", label: "Cancelado" },
 };
 
 
@@ -119,7 +119,7 @@ export default function ContractsPanel() {
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: "#0f172a",
                           marginBottom: 4 }}>
-            📋 Contratos
+            Contratos
           </h2>
           <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>
             Política de aging RADIUS por contrato. Define quantos dias após o
@@ -136,7 +136,7 @@ export default function ContractsPanel() {
                       cursor: agingRunning ? "wait" : "pointer",
                       opacity: agingRunning ? 0.5 : 1,
                     }}>
-            {agingRunning ? "⏳ Sincronizando…" : "⚡ Sincronizar inadimplentes"}
+            {agingRunning ? "⏳ Sincronizando…" : "Sincronizar inadimplentes"}
           </button>
           <button data-testid="contracts-add-btn"
                     onClick={() => { setEditing(null); setShowCreate(true); }}
@@ -307,9 +307,9 @@ function ContractRow({ c, onEdit, onChanged }) {
         </div>
         <div style={{ display: "flex", gap: 12, fontSize: 11,
                         color: "#475569", flexWrap: "wrap" }}>
-          {c.pppoe_user && <span>🔑 <code>{c.pppoe_user}</code></span>}
-          <span>📦 {c.plan_name}</span>
-          <span>💰 {fmtBRL(c.monthly_value)}/mês · vence dia {c.due_day}</span>
+          {c.pppoe_user && <span><code>{c.pppoe_user}</code></span>}
+          <span>{c.plan_name}</span>
+          <span>{fmtBRL(c.monthly_value)}/mês · vence dia {c.due_day}</span>
         </div>
         {c.radius_state_reason && c.radius_state !== "ATIVO" && (
           <div style={{ marginTop: 4, fontSize: 11, color: "#64748b",
@@ -321,7 +321,7 @@ function ContractRow({ c, onEdit, onChanged }) {
       {/* Aging policy resumo */}
       <div style={{ fontSize: 11, color: "#475569", lineHeight: 1.6 }}>
         <div style={{ fontWeight: 700, marginBottom: 2 }}>
-          📅 Aging Policy
+          Aging Policy
         </div>
         <div>Tolerância: <b>{ap.grace_days}d</b></div>
         <div>Reduzir: <b>{ap.reduce_days}d</b></div>
@@ -344,20 +344,20 @@ function ContractRow({ c, onEdit, onChanged }) {
                   onClick={applyNow} disabled={busy}
                   title="Recalcula estado agora (mesmo que o worker faz a cada 15min)"
                   style={mini("#dbeafe", "#1e40af")}>
-          🔄 Recalcular
+          Recalcular
         </button>
         {canSuspend && (
           <button data-testid={`contract-suspend-${c.id}`}
                     onClick={suspend} disabled={busy}
                     style={mini("#fee2e2", "#991b1b")}>
-            🔴 Suspender
+            Suspender
           </button>
         )}
         {canReactivate && (
           <button data-testid={`contract-reactivate-${c.id}`}
                     onClick={reactivate} disabled={busy}
                     style={mini("#dcfce7", "#14532d")}>
-            🟢 Reativar
+            Reativar
           </button>
         )}
       </div>
@@ -546,7 +546,7 @@ function ContractFormModal({ initial, onClose, onSaved }) {
                       onChange={(e) => setAging("grace_days", e.target.value)}
                       style={inp} />
             </Field>
-            <Field label="🟠 Reduzir velocidade" half>
+            <Field label="Reduzir velocidade" half>
               <input data-testid="ct-aging-reduce" type="number" min={0} max={60}
                       value={form.aging_policy.reduce_days}
                       onChange={(e) => setAging("reduce_days", e.target.value)}
@@ -554,13 +554,13 @@ function ContractFormModal({ initial, onClose, onSaved }) {
             </Field>
           </Row>
           <Row>
-            <Field label="🔒 Wall Garden" half>
+            <Field label="Wall Garden" half>
               <input data-testid="ct-aging-wg" type="number" min={0} max={90}
                       value={form.aging_policy.wall_garden_days}
                       onChange={(e) => setAging("wall_garden_days", e.target.value)}
                       style={inp} />
             </Field>
-            <Field label="🔴 Suspender total" half>
+            <Field label="Suspender total" half>
               <input data-testid="ct-aging-suspend" type="number" min={0} max={180}
                       value={form.aging_policy.suspend_days}
                       onChange={(e) => setAging("suspend_days", e.target.value)}
@@ -593,7 +593,7 @@ function ContractFormModal({ initial, onClose, onSaved }) {
                               border: 0, fontSize: 12, fontWeight: 700,
                               cursor: "pointer",
                               opacity: busy ? 0.5 : 1 }}>
-            {busy ? "Salvando…" : "💾 Salvar"}
+            {busy ? "Salvando…" : "Salvar"}
           </button>
         </div>
       </div>

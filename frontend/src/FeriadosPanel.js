@@ -286,7 +286,7 @@ function FeriadoRow({ item, pracas, onEdit, onDelete }) {
             fontSize: 10, fontWeight: 700,
           }}
                 title={linkedPracaNames.join(", ") || "Aplica a todos"}>
-            🎯 {aplica}
+            {aplica}
           </span>
           {item.observacao && (
             <span style={{ fontStyle: "italic", maxWidth: 280,
@@ -451,7 +451,7 @@ function FeriadoModal({ item, pracas, onClose, onSaved }) {
                                     background: "#dcfce7", padding: 6,
                                     borderRadius: 6, marginBottom: 6,
                                     fontWeight: 700 }}>
-                    🌍 Aplica para TODOS os colaboradores (nenhuma praça marcada)
+                    Aplica para TODOS os colaboradores (nenhuma praça marcada)
                   </div>
                 )}
                 {pracas.map((p) => (
@@ -473,7 +473,7 @@ function FeriadoModal({ item, pracas, onClose, onSaved }) {
             )}
             <p style={{ fontSize: 10, color: "var(--text-muted)",
                           margin: "4px 0 0" }}>
-              💡 Marque praças específicas pra feriados estaduais/municipais —
+              Marque praças específicas pra feriados estaduais/municipais —
               só colaboradores destas praças terão o dia como feriado.
               Deixe vazio pra valer pra todos.
             </p>

@@ -185,7 +185,7 @@ export default function OntScanBatchModal({ open, onSaved, onClose, hint }) {
                 marginTop: 12, textAlign: "center", color: "#fff",
                 fontSize: 13, fontWeight: 700, textShadow: "0 1px 3px rgba(0,0,0,.8)",
               }}>
-                📍 Encaixe a etiqueta da ONT aqui · foto {items.length + 1}
+                Encaixe a etiqueta da ONT aqui · foto {items.length + 1}
               </div>
             </div>
           </div>
@@ -273,7 +273,7 @@ export default function OntScanBatchModal({ open, onSaved, onClose, hint }) {
             padding: 12, marginBottom: 12, color: "#fff",
           }}>
             <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>
-              📋 {items.length} foto(s) capturada(s)
+              {items.length} foto(s) capturada(s)
             </div>
             <div style={{ fontSize: 11, opacity: 0.8, display: "flex", gap: 12, flexWrap: "wrap" }}>
               <span>✓ {okCount} lidas com sucesso</span>

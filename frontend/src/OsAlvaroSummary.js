@@ -1,7 +1,7 @@
 /*
 OsAlvaroSummary.js — iter211ay
 
-Card que aparece logo abaixo do "📝 Relato" da OS, mostrando o resumo
+Card que aparece logo abaixo do "Relato" da OS, mostrando o resumo
 gerado pelo agente Álvaro IA:
   • Entendimento (frase curta)
   • Procedimentos já feitos
@@ -38,7 +38,7 @@ export default function OsAlvaroSummary({ ticketId }) {
     return (
       <div data-testid="os-alvaro-loading"
             style={{ ...wrapStyle, color: "#475569", fontStyle: "italic" }}>
-        <span style={titleStyle}>🤖 Álvaro analisando atendimento…</span>
+        <span style={titleStyle}>Álvaro analisando atendimento…</span>
       </div>
     );
   }
@@ -58,7 +58,7 @@ export default function OsAlvaroSummary({ ticketId }) {
       <button type="button"
               onClick={() => setExpanded((v) => !v)}
               style={headerBtnStyle}>
-        <span style={titleStyle}>🤖 Álvaro entendeu</span>
+        <span style={titleStyle}>Álvaro entendeu</span>
         <span style={{ fontSize: 10, color: "#64748b" }}>
           {expanded ? "▲ ocultar" : "▼ ver detalhes"}
         </span>

@@ -95,7 +95,7 @@ export default function WaBusinessHoursCard() {
           </h3>
           <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>
             Mensagens recebidas fora do horário caem no bucket{" "}
-            <strong>"Fora de hora"</strong> automaticamente.
+            <strong>“Fora de hora”</strong> automaticamente.
           </p>
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: 8,
@@ -198,7 +198,7 @@ export default function WaBusinessHoursCard() {
           <label style={{ fontSize: 12, fontWeight: 700, color: "#475569",
                            letterSpacing: 0.5, textTransform: "uppercase",
                            display: "block", marginBottom: 6 }}>
-            Mensagem automática "fora do horário" (opcional)
+            Mensagem automática “fora do horário” (opcional)
           </label>
           <textarea
             data-testid="wa-bh-message"

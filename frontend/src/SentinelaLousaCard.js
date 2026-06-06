@@ -276,16 +276,16 @@ function AlertRow({ alert, onAck, onDismiss }) {
           <div style={{ fontSize: 11, color: "var(--text-muted)",
                             display: "flex", alignItems: "center", gap: 8,
                             flexWrap: "wrap" }}>
-            {d.client_name && <span>👤 {d.client_name}</span>}
-            {d.phone && <span style={{ fontFamily: "ui-monospace, monospace" }}>📞 {d.phone}</span>}
-            {d.type && <span>⚙️ {d.type}</span>}
-            {d.status && <span>📍 {d.status}</span>}
+            {d.client_name && <span>{d.client_name}</span>}
+            {d.phone && <span style={{ fontFamily: "ui-monospace, monospace" }}>{d.phone}</span>}
+            {d.type && <span>️ {d.type}</span>}
+            {d.status && <span>{d.status}</span>}
             {d.hours_idle != null && <span>⏱️ {d.hours_idle}h parado</span>}
-            {d.hours_in_field != null && <span>🚐 {d.hours_in_field}h em campo</span>}
-            {d.minutes_overdue != null && <span>🔥 {d.minutes_overdue}min atrasado</span>}
+            {d.hours_in_field != null && <span>{d.hours_in_field}h em campo</span>}
+            {d.minutes_overdue != null && <span>{d.minutes_overdue}min atrasado</span>}
             {d.remaining_minutes != null && <span>⏰ {d.remaining_minutes}min restantes</span>}
-            {d.active_tickets != null && <span>📊 {d.active_tickets} tickets ativos</span>}
-            {d.count != null && d.related_tickets && <span>🔁 {d.count} tickets em 24h</span>}
+            {d.active_tickets != null && <span>{d.active_tickets} tickets ativos</span>}
+            {d.count != null && d.related_tickets && <span>{d.count} tickets em 24h</span>}
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>

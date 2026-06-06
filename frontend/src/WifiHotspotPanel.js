@@ -85,7 +85,7 @@ function Header() {
           fontWeight: 800, fontSize: 13, textDecoration: "none",
           boxShadow: "0 4px 12px rgba(107,43,251,.08)",
         }}>
-        🌐 Ver vitrine pública
+        Ver vitrine pública
       </a>
     </div>
   );
@@ -209,7 +209,7 @@ function VenuesTab() {
       </div>
 
       {items.length === 0 ? (
-        <Empty icon="📍" text="Nenhum espaço cadastrado ainda."
+        <Empty icon="" text="Nenhum espaço cadastrado ainda."
           hint="Clique em 'Novo espaço' pra criar o primeiro." />
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
@@ -308,9 +308,9 @@ function VenueCard({ venue, onEdit, onChanged }) {
       </div>
 
       <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {venue.require_phone && <Pill>📱 Telefone</Pill>}
-        {venue.require_email && <Pill>📧 E-mail</Pill>}
-        {venue.require_cpf && <Pill>🪪 CPF</Pill>}
+        {venue.require_phone && <Pill>Telefone</Pill>}
+        {venue.require_email && <Pill>E-mail</Pill>}
+        {venue.require_cpf && <Pill>CPF</Pill>}
       </div>
     </div>
   );
@@ -413,7 +413,7 @@ function VenueEditModal({ venue, onClose, onSaved }) {
         }}>
           <div style={{ display: "flex", alignItems: "center",
             gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 22 }}>🛡️</span>
+            <span style={{ fontSize: 22 }}>️</span>
             <div>
               <div style={{ fontSize: 13, fontWeight: 900,
                 color: "#9a3412" }}>
@@ -488,10 +488,10 @@ function VisitorsTab() {
   return (
     <div data-testid="wifi-hotspot-visitors">
       <input value={search} onChange={(e) => setSearch(e.target.value)}
-        placeholder="🔍 Buscar por nome, telefone, e-mail…"
+        placeholder="Buscar por nome, telefone, e-mail…"
         data-testid="wifi-hotspot-visitors-search"
         style={{ ...inp(), marginBottom: 14 }} />
-      {items.length === 0 ? <Empty icon="👥" text="Nenhum visitante ainda." /> : (
+      {items.length === 0 ? <Empty icon="" text="Nenhum visitante ainda." /> : (
         <div style={{ background: "white", border: "1px solid #e2e8f0",
           borderRadius: 14, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -542,7 +542,7 @@ function SessionsTab() {
           data-testid="wifi-hotspot-only-active" />
         Apenas sessões ativas
       </label>
-      {items.length === 0 ? <Empty icon="📶" text="Nenhuma sessão." /> : (
+      {items.length === 0 ? <Empty icon="" text="Nenhuma sessão." /> : (
         <div style={{ background: "white", border: "1px solid #e2e8f0",
           borderRadius: 14, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -598,7 +598,7 @@ function CampaignsTab() {
           <Plus size={16} /> Nova campanha
         </button>
       </div>
-      {items.length === 0 ? <Empty icon="📣" text="Nenhuma campanha cadastrada." /> : (
+      {items.length === 0 ? <Empty icon="" text="Nenhuma campanha cadastrada." /> : (
         <div style={{ display: "grid", gap: 10 }}>
           {items.map((c) => (
             <CampaignRow key={c.id} c={c}

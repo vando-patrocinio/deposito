@@ -142,7 +142,7 @@ export default function CadastroPanel() {
   useEventStream({
     onEvent: (name, data) => {
       if (name === "atlaz_technicians_synced" && data?.created_count > 0) {
-        setAtlazFlash(`👷 ${data.created_count} novo(s) técnico(s) sincronizado(s) do Atlaz`);
+        setAtlazFlash(`${data.created_count} novo(s) técnico(s) sincronizado(s) do Atlaz`);
         reload();
         setTimeout(() => setAtlazFlash(""), 6000);
       }
@@ -655,7 +655,7 @@ export default function CadastroPanel() {
                 onChange={(e) => setForm({ ...form, praca_id: e.target.value })}
               >
                 <option value="">— Selecione a praça —</option>
-                <option value="NOTA">📍 Endereço da Nota (cerca dinâmica)</option>
+                <option value="NOTA">Endereço da Nota (cerca dinâmica)</option>
                 {pracas.map((p) => (
                   <option key={p.id} value={p.id}>{p.city}/{p.state} — {p.name}</option>
                 ))}
@@ -663,7 +663,7 @@ export default function CadastroPanel() {
             )}
             {form.praca_id === "NOTA" && (
               <div style={{ marginTop: 6, padding: 10, background: "#e0f2fe", border: "1px solid #0ea5e9", borderRadius: 10, fontSize: 12, color: "#075985" }}>
-                <strong>📍 Praça Nota:</strong> este colaborador pode bater ponto direto no endereço do cliente
+                <strong>Praça Nota:</strong> este colaborador pode bater ponto direto no endereço do cliente
                 (cerca virtual gerada automaticamente no endereço da bolha aberta ou da próxima pendente).
                 Útil para técnicos que vão direto ao cliente sem passar na empresa, economizando tempo.
                 O raio da cerca é configurado em <strong>Configurações → Tempos de Referência</strong>.
@@ -687,7 +687,7 @@ export default function CadastroPanel() {
                       background: "#ecfdf5", border: "1px solid #86efac",
                       color: "#065f46", fontSize: 12, fontWeight: 600,
                     }}>
-                      📍 {p.city}/{p.state} — {p.name}
+                      {p.city}/{p.state} — {p.name}
                       <button
                         type="button"
                         onClick={() => setForm({
@@ -749,7 +749,7 @@ export default function CadastroPanel() {
               />
               <div>
                 <strong style={{ color: form.clock_in_enabled ? "#0369a1" : "#9a3412" }}>
-                  {form.clock_in_enabled ? "🕐 CLT — bate ponto" : "🚫 Não bate ponto (terceirizado/MEI)"}
+                  {form.clock_in_enabled ? "CLT — bate ponto" : "Não bate ponto (terceirizado/MEI)"}
                 </strong>
                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
                   {form.clock_in_enabled
@@ -777,12 +777,12 @@ export default function CadastroPanel() {
               />
               <div>
                 <strong style={{ color: form.is_test_mode ? "#0d9488" : "#0f172a" }}>
-                  🧪 Modo Teste (Admin)
+                  Modo Teste (Admin)
                 </strong>
                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
                   Quando ativado, este colaborador pode bater ponto em <strong>qualquer localização</strong> e
                   com <strong>qualquer selfie</strong> — útil para demos e validação. Os registros ficam
-                  marcados com 🧪 na auditoria.
+                  marcados com na auditoria.
                 </div>
               </div>
             </label>
@@ -805,7 +805,7 @@ export default function CadastroPanel() {
               />
               <div>
                 <strong style={{ color: form.active === false ? "#991b1b" : "#166534" }}>
-                  {form.active === false ? "🚫 Inativo (desligado/desativado)" : "✅ Ativo"}
+                  {form.active === false ? "Inativo (desligado/desativado)" : "✅ Ativo"}
                 </strong>
                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
                   Ao desativar, o colaborador <strong>não bate mais ponto</strong> e some das listas operacionais.
@@ -833,7 +833,7 @@ export default function CadastroPanel() {
               />
               <div>
                 <strong style={{ color: form.requires_vehicle ? "#9a3412" : "#0f172a" }}>
-                  🚗 {form.requires_vehicle ? "Opera veículo da empresa" : "Não opera veículo"}
+                  {form.requires_vehicle ? "Opera veículo da empresa" : "Não opera veículo"}
                 </strong>
                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
                   Quando marcado, o colaborador <strong>fará vistoria semanal</strong> obrigatória do veículo
@@ -866,17 +866,17 @@ export default function CadastroPanel() {
                                        ? "#1e3a8a" : "#475569",
                                        display: "inline-flex",
                                        alignItems: "center", gap: 6 }}>
-                    💬 Pode abrir o Atendimento WhatsApp
+                    Pode abrir o Atendimento WhatsApp
                     <span style={{
                       background: "#fef3c7", color: "#92400e",
                       fontSize: 9.5, fontWeight: 800,
                       padding: "1px 6px", borderRadius: 999,
                       marginLeft: 4,
-                    }}>🔒 AUDITOR</span>
+                    }}>AUDITOR</span>
                   </strong>
                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 4,
                                   lineHeight: 1.4 }}>
-                    Quando marcado, o menu <strong>"Atendimento IA"</strong> aparece
+                    Quando marcado, o menu <strong>“Atendimento IA”</strong> aparece
                     na sidebar deste colaborador e ele pode assumir conversas que
                     a Isabella escalou. Esse acesso é uma decisão de
                     <strong> conformidade/auditoria</strong> — por isso só o
@@ -894,7 +894,7 @@ export default function CadastroPanel() {
                 borderRadius: 10, padding: 10, marginTop: 10, marginBottom: 6,
                 fontSize: 12, color: "#1e3a8a",
               }}>
-                💬 Este colaborador <strong>tem acesso ao Atendimento WhatsApp</strong>.
+                Este colaborador <strong>tem acesso ao Atendimento WhatsApp</strong>.
                 {" "}<span style={{ color: "#64748b" }}>
                   Apenas auditor pode revogar.
                 </span>
@@ -983,7 +983,7 @@ export default function CadastroPanel() {
                 borderRadius: 12, padding: 12, marginTop: 14, marginBottom: 6,
               }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#075985", marginBottom: 4 }}>
-                  📋 Reaproveitar cercas já cadastradas
+                  Reaproveitar cercas já cadastradas
                 </div>
                 <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>
                   Marque para clonar para este colaborador ao salvar (mantém o original intacto).
@@ -1213,7 +1213,7 @@ function GeofencesModal({ collaboratorId, collaborator, allCollaborators = [], o
               {loading && <div style={{ color: "#64748b", padding: 12 }}>Carregando…</div>}
               {!loading && fences.length === 0 && (
                 <div style={{ background: "#fffbeb", border: "1px dashed #fde68a", color: "#92400e", padding: 18, borderRadius: 14, textAlign: "center" }}>
-                  Nenhuma cerca para <strong>{collaborator?.name}</strong>. Clique em <strong>"+ Nova cerca"</strong> para adicionar — múltiplas permitidas.
+                  Nenhuma cerca para <strong>{collaborator?.name}</strong>. Clique em <strong>“+ Nova cerca”</strong> para adicionar — múltiplas permitidas.
                 </div>
               )}
               {!loading && fences.map((f) => (
@@ -1245,7 +1245,7 @@ function GeofencesModal({ collaboratorId, collaborator, allCollaborators = [], o
                           title={otherCollabs.length === 0 ? "Cadastre outros colaboradores para duplicar" : "Clonar esta cerca para outros colaboradores"}
                           data-testid={`dup-fence-${f.id}`}
                         >
-                          📋 Duplicar para…
+                          Duplicar para…
                         </Button>
                         <Button variant="secondary" onClick={() => { setEditing(f); setMode("edit"); }} data-testid={`edit-fence-${f.id}`}>Editar</Button>
                         <Button variant="danger" onClick={() => setConfirmId(f.id)} data-testid={`rm-fence-${f.id}`}><Icon name="trash" /></Button>
@@ -1259,7 +1259,7 @@ function GeofencesModal({ collaboratorId, collaborator, allCollaborators = [], o
                       borderRadius: 12, padding: 12,
                     }}>
                       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#075985" }}>
-                        Selecione colaboradores que receberão uma cópia de "<strong>{f.name}</strong>":
+                        Selecione colaboradores que receberão uma cópia de “<strong>{f.name}</strong>”:
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 6, marginBottom: 10, maxHeight: 220, overflowY: "auto" }}>
                         {otherCollabs.length === 0 && (
@@ -1339,10 +1339,10 @@ function ClockHistoryModal({ collaborator, onClose }) {
   const sortedDates = Object.keys(byDate).sort().reverse();
 
   const typeIcon = {
-    "Entrada": "🚪",
-    "Início intervalo": "🍽️",
-    "Fim intervalo": "🔄",
-    "Saída": "🏁",
+    "Entrada": "",
+    "Início intervalo": "️",
+    "Fim intervalo": "",
+    "Saída": "",
   };
 
   return (
@@ -1462,7 +1462,7 @@ function CollabShareLink({ collaborator }) {
       transition: "background-color .25s, border-color .25s",
     }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#475569", flexShrink: 0 }}>🔗 Link</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#475569", flexShrink: 0 }}>Link</span>
         <input
           data-testid={`collab-share-url-${collaborator.id}`}
           readOnly
@@ -1486,7 +1486,7 @@ function CollabShareLink({ collaborator }) {
             boxShadow: "0 2px 4px rgba(15,23,42,.1)",
           }}
         >
-          {copied ? "✓ Copiado!" : "📋 Copiar"}
+          {copied ? "✓ Copiado!" : "Copiar"}
         </button>
         {waUrl && (
           <a
@@ -1501,7 +1501,7 @@ function CollabShareLink({ collaborator }) {
               boxShadow: "0 2px 4px rgba(15,23,42,.1)",
             }}
           >
-            💬 WhatsApp
+            WhatsApp
           </a>
         )}
         <GrantMobileAccessButton collaborator={collaborator} />
@@ -1629,7 +1629,7 @@ function AvatarUploader({ collaboratorId, currentUrl, name, onUpdated }) {
         {error && (
           <div style={{ marginTop: 6, fontSize: 11, color: "#dc2626",
                           fontWeight: 700 }}>
-            ⚠ {error}
+            {error}
           </div>
         )}
       </div>
@@ -1929,7 +1929,7 @@ function GrantMobileAccessButton({ collaborator }) {
           boxShadow: "0 2px 4px rgba(15,23,42,.1)",
         }}
       >
-        {busy ? "..." : (has ? "🔑 Resetar" : "🔑 Cadastrar acesso")}
+        {busy ? "..." : (has ? "Resetar" : "Cadastrar acesso")}
       </button>
 
       {err && (
@@ -1940,7 +1940,7 @@ function GrantMobileAccessButton({ collaborator }) {
           boxShadow: "0 4px 12px rgba(0,0,0,.15)",
           maxWidth: 320,
         }} onClick={() => setErr(null)}>
-          ⚠️ {err}
+          ️ {err}
         </div>
       )}
 
@@ -2002,7 +2002,7 @@ function GrantMobileAccessButton({ collaborator }) {
               borderRadius: 8, padding: 10, fontSize: 11, color: "#78350f",
               marginBottom: 14, lineHeight: 1.5,
             }}>
-              ⚠️ Anote ou envie agora — por segurança, a senha não é exibida novamente.
+              ️ Anote ou envie agora — por segurança, a senha não é exibida novamente.
               O técnico pode alterar depois do primeiro login.
             </div>
 
@@ -2015,7 +2015,7 @@ function GrantMobileAccessButton({ collaborator }) {
                         color: "white", border: 0,
                         fontSize: 13, fontWeight: 700, cursor: "pointer",
                       }}>
-                {copied ? "✓ Copiado!" : "📋 Copiar credenciais"}
+                {copied ? "✓ Copiado!" : "Copiar credenciais"}
               </button>
               {waUrl && (
                 <a href={waUrl} target="_blank" rel="noopener noreferrer"
@@ -2026,7 +2026,7 @@ function GrantMobileAccessButton({ collaborator }) {
                      fontSize: 13, fontWeight: 700, textAlign: "center",
                      textDecoration: "none",
                    }}>
-                  💬 Enviar pelo WhatsApp
+                  Enviar pelo WhatsApp
                 </a>
               )}
             </div>

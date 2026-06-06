@@ -324,7 +324,7 @@ function SetupWizard({ didNumber, sipUsername }) {
           <strong>Webhook de eventos</strong> (importante!): em{" "}
           <span className="mono" style={pillTagStyle}>Clientes → Contas SIP</span>,
           edite a conta da Jerusa e cole no campo{" "}
-          <em>"URL notificações de eventos"</em> a URL abaixo:
+          <em>“URL notificações de eventos”</em> a URL abaixo:
           <div style={{
             marginTop: 6, display: "flex", alignItems: "center", gap: 6,
             padding: "8px 10px", border: "1px solid var(--border-default)",

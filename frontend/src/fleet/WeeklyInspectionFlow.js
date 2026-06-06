@@ -10,9 +10,9 @@ import VehicleCameraOverlay from "@/fleet/VehicleCameraOverlay";
  * Soft block (escolha 2c): apenas avisa, não trava operação.
  */
 const POSITIONS = [
-  { key: "km", label: "Odômetro (KM)", icon: "📊", needsKm: true },
-  { key: "frente", label: "Frente", icon: "🚗" },
-  { key: "traseira", label: "Traseira", icon: "🔙" },
+  { key: "km", label: "Odômetro (KM)", icon: "", needsKm: true },
+  { key: "frente", label: "Frente", icon: "" },
+  { key: "traseira", label: "Traseira", icon: "" },
   { key: "lat_dir", label: "Lateral direita", icon: "➡️" },
   { key: "lat_esq", label: "Lateral esquerda", icon: "⬅️" },
 ];
@@ -97,7 +97,7 @@ export default function WeeklyInspectionFlow({ onClose, onDefer }) {
         </h2>
         <p style={{ color: "#475569", fontSize: 14, lineHeight: 1.5 }}>
           A IA está revisando suas fotos. Você poderá ver o resultado em alguns
-          minutos. Boa rota! 🚗
+          minutos. Boa rota! 
         </p>
         <button
           data-testid="inspection-done-btn"
@@ -123,7 +123,7 @@ export default function WeeklyInspectionFlow({ onClose, onDefer }) {
       }}>
         <h2 style={{ fontSize: 19, fontWeight: 700, margin: 0,
                        color: "#0f172a", flex: 1 }}>
-          🚗 Vistoria semanal do veículo
+          Vistoria semanal do veículo
         </h2>
         {onDefer && (
           <button

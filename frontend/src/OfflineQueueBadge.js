@@ -227,7 +227,7 @@ export default function OfflineQueueBadge({ collabId, compact = false }) {
                           fontSize: 11, color: "#92400e" }}>
             <AlertTriangle size={14} />
             <span>
-              {failed.length} item(s) com erro. Toque em "Sincronizar agora"
+              {failed.length} item(s) com erro. Toque em “Sincronizar agora”
               para tentar novamente.
             </span>
           </div>

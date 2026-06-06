@@ -206,7 +206,7 @@ export default function OntScanModal({ open, onScanned, onClose, hint,
                 marginTop: 12, textAlign: "center", color: "#fff",
                 fontSize: 13, fontWeight: 700, textShadow: "0 1px 3px rgba(0,0,0,.8)",
               }}>
-                📍 Encaixe a etiqueta da ONT aqui
+                Encaixe a etiqueta da ONT aqui
               </div>
             </div>
           </div>
@@ -278,7 +278,7 @@ export default function OntScanModal({ open, onScanned, onClose, hint,
                 <><Loader2 size={14} className="animate-spin" style={{ display: "inline", marginRight: 6, verticalAlign: -2 }} />
                   Lendo com IA…</>
               ) : (
-                <>🤖 Ler MAC/SN com IA</>
+                <>Ler MAC/SN com IA</>
               )}
             </button>
           </div>
@@ -294,7 +294,7 @@ export default function OntScanModal({ open, onScanned, onClose, hint,
           {result.ok ? (
             <CheckCircle2 size={56} color="#22c55e" />
           ) : (
-            <div style={{ fontSize: 48 }}>⚠️</div>
+            <div style={{ fontSize: 48 }}>️</div>
           )}
           <div style={{ color: "#fff", fontSize: 18, fontWeight: 800, textAlign: "center" }}>
             {result.ok ? "Leitura concluída" : "Não consegui ler com clareza"}
@@ -306,7 +306,7 @@ export default function OntScanModal({ open, onScanned, onClose, hint,
               fontSize: 10, fontWeight: 800, letterSpacing: 0.5,
               textTransform: "uppercase",
             }}>
-              🔓 Modo Teste · auto-preenchido
+              Modo Teste · auto-preenchido
             </div>
           )}
           <div style={{

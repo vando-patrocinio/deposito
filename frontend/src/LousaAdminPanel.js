@@ -5,6 +5,7 @@ import { Button, Icon } from "@/ui";
 import { useAuth } from "@/AuthContext";
 import EditTicketModal from "./lousa/EditTicketModal";
 import CreateTicketModal from "./lousa/CreateTicketModal";
+import LousaTvLinkModal from "./lousa/LousaTvLinkModal";
 import RescheduleModal from "./lousa/RescheduleModal";
 import LousaHistoryModal from "./lousa/LousaHistoryModal";
 import BulkActionsBar from "./lousa/BulkActionsBar";
@@ -27,34 +28,120 @@ import {
 import { ClosedNotesPdfPopover } from "./lousa-admin/report";
 
 const TYPE_LABELS = {
-  reparo: "🔧 Reparo",
-  instalacao: "📡 Instalação",
-  retirada: "📦 Retirada",
-  prioridade: "🚨 Prioridade",
-  preventiva: "🛡️ Preventiva",
-  venda: "💼 Venda",
-  alerta_geofence: "⚠️ ALERTA GEOFENCE",
+  reparo: "Reparo",
+  instalacao: "Instalação",
+  retirada: "Retirada",
+  prioridade: "Prioridade",
+  preventiva: "️ Preventiva",
+  venda: "Venda",
+  rompimento: "Rompimento",
+  alerta_geofence: "️ ALERTA GEOFENCE",
 };
 
 const TYPE_ICONS = {
-  instalacao: "🔧",
-  retirada: "📦",
-  visita_tecnica: "🛠️",
-  manutencao: "🔩",
+  instalacao: "",
+  retirada: "",
+  visita_tecnica: "️",
+  manutencao: "",
   upgrade: "⬆️",
   downgrade: "⬇️",
-  troca_endereco: "🏠",
-  troca_titularidade: "👤",
-  cancelamento: "🚫",
-  outros: "📋",
-  venda: "💼",
+  troca_endereco: "",
+  troca_titularidade: "",
+  cancelamento: "",
+  outros: "",
+  venda: "",
 };
+
+// ─────────── Áudio de alerta na SmarTV (iter237) ───────────
+// Beep via Web Audio API — não precisa de asset mp3.
+// IMPORTANTE: browsers exigem 1ª interação do usuário antes de tocar.
+// Ligamos via click no toggle "Som ligado" no header da Lousa.
+let _lousaAudio = null;
+function _ensureLousaAudio() {
+  if (typeof window === "undefined") return null;
+  if (_lousaAudio) return _lousaAudio;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    _lousaAudio = new Ctx();
+  } catch { _lousaAudio = null; }
+  return _lousaAudio;
+}
+function _tone(freq, startOffset, durMs, vol = 0.22) {
+  const ctx = _ensureLousaAudio();
+  if (!ctx) return;
+  try {
+    const t0 = ctx.currentTime + startOffset / 1000;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine"; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.001, t0);
+    gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+    gain.gain.setValueAtTime(vol, t0 + (durMs - 50) / 1000);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + durMs / 1000);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + durMs / 1000);
+  } catch { /* */ }
+}
+// Som PRETA — SLA overdue do técnico em campo: 5 toques graves
+// alternados ao longo de 5s (lembra "tic-tac-tic-tac" de cronômetro).
+function playBlackAlert() {
+  for (let i = 0; i < 5; i++) {
+    _tone(i % 2 === 0 ? 220 : 180, i * 1000, 400, 0.24);
+  }
+}
+// Som VERMELHA — alerta de cerca/frota: sirene aguda urgente
+// (intercala 880↔660Hz por 5s, igual sirene de ambulância).
+function playRedAlert() {
+  for (let i = 0; i < 10; i++) {
+    _tone(i % 2 === 0 ? 880 : 660, i * 500, 450, 0.20);
+  }
+}
+
+// TTS (Text-to-Speech) em PT-BR — anuncia o cliente da bolha.
+// Roda DEPOIS do beep (delay de 1s pra não sobrepor o som).
+function speakAnnouncement(text) {
+  try {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "pt-BR";
+    u.rate = 0.95;
+    u.pitch = 1.0;
+    u.volume = 0.9;
+    // Tenta pegar uma voz brasileira (se disponível)
+    const voices = window.speechSynthesis.getVoices();
+    const ptBr = voices.find((v) => v.lang === "pt-BR")
+                    || voices.find((v) => v.lang.startsWith("pt"));
+    if (ptBr) u.voice = ptBr;
+    setTimeout(() => window.speechSynthesis.speak(u), 1000);
+  } catch { /* */ }
+}
+// Constrói o texto do anúncio a partir da bolha
+function buildAnnouncement(ticket, kind) {
+  const cs = ticket.client_snapshot || {};
+  const name = (cs.client_name || cs.name || ticket.client_name
+                  || ticket.title || "cliente").split(/\s+/).slice(0, 2).join(" ");
+  const hora = ticket.scheduled_time
+    ? (ticket.scheduled_time + "").substring(0, 5).replace(":", " e ")
+    : "";
+  if (kind === "red") {
+    if (ticket.type === "alerta_geofence") {
+      return `Atenção! Alerta de cerca. ${name} está fora da área autorizada.`;
+    }
+    if (ticket.type === "frota_alerta") {
+      return `Atenção! Alerta de frota. ${name}.`;
+    }
+    return `Atenção! Alerta urgente. ${name}.`;
+  }
+  // Preta = SLA estourado em OS aberta
+  return `Atenção! Ordem de serviço atrasada. Cliente ${name}${hora ? ", agendada para " + hora + " horas" : ""}.`;
+}
 
 const PRIORITY_COLORS = {
   prioridade: {
     bg: "#fff7f7",
-    accent: "#dc2626", border: "#fecaca", text: "#991b1b",
-    label: "PRIORIDADE", icon: "",
+    accent: "#dc2626", border: "#fecaca", text: "#991b1b",    label: "PRIORIDADE", icon: "",
   },
   horario: {
     bg: "#fffbeb",
@@ -71,7 +158,7 @@ const PRIORITY_COLORS = {
 const STATUS_LABEL = {
   pendente: { label: "Pendente", color: "#64748b" },
   aberta: { label: "▶ Em campo", color: "#10b981" },
-  aguardando_atendimento: { label: "⚠ Aguarda gestor", color: "#f59e0b" },
+  aguardando_atendimento: { label: "Aguarda gestor", color: "#f59e0b" },
   finalizada: { label: "✓ Finalizada", color: "#10b981" },
   encerrada: { label: "Encerrada", color: "#94a3b8" },
   reagendada: { label: "Reagendada", color: "#3b82f6" },
@@ -83,8 +170,8 @@ const ACTION_LABEL = {
   aberta: { icon: "▶", color: "#10b981", label: "Iniciada" },
   finalizada: { icon: "✓", color: "#10b981", label: "Finalizada" },
   encerrar: { icon: "✕", color: "#94a3b8", label: "Encerrada (gestor)" },
-  reagendar: { icon: "📅", color: "#3b82f6", label: "Reagendada" },
-  cancelar: { icon: "🚫", color: "#dc2626", label: "Cancelada" },
+  reagendar: { icon: "", color: "#3b82f6", label: "Reagendada" },
+  cancelar: { icon: "", color: "#dc2626", label: "Cancelada" },
   transferida: { icon: "↔", color: "#0d9488", label: "Transferida" },
 };
 
@@ -130,6 +217,17 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [logs, setLogs] = useState([]);
+  // iter237 — Filtro por agente IA (Isabella/Álvaro/Camila/Gestor/Sistema)
+  const [agentFilter, setAgentFilter] = useState("all");
+  // iter237 — Áudio de alerta na TV (modo SmarTV).
+  // Toca 5s quando uma bolha começa a pulsar:
+  //   • PRETA (SLA overdue + status "aberta") → som grave alternado
+  //   • VERMELHA (alerta_geofence) → sirene aguda urgente
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    try { return localStorage.getItem("lousa_tv_sound") !== "off"; }
+    catch { return true; }
+  });
+  const lastAlertRef = useRef(new Set()); // ticket_ids que já tocaram
   const [tick, setTick] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFlash, setRefreshFlash] = useState(false);
@@ -165,6 +263,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [showPdfPopover, setShowPdfPopover] = useState(false);
   const [showServicesMap, setShowServicesMap] = useState(false);
+  const [showTvLink, setShowTvLink] = useState(false);
   // Visualização dentro do focus mode: "grid" (coluna vertical clássica)
   // ou "timeline" (slots horizontais estilo Google Calendar / Asana).
   const [focusView, setFocusView] = useState(() => {
@@ -257,17 +356,64 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
 
   useEffect(() => {
     refresh();
-    const t1 = setInterval(refresh, 30000);  // refresh dados
+    // iter237 — Sincronização Lousa Admin ↔ Lousa Mobile:
+    // baixamos o intervalo de refresh de 30s → 8s pra que, quando um técnico
+    // abrir/fechar uma bolha no celular, o admin veja a mudança ("▶ Em campo"
+    // verde, ou movida pra "Encerrados (24h)") em até 8 segundos. A SSE
+    // logo abaixo já força refresh imediato em eventos do worker Atlaz.
+    const t1 = setInterval(refresh, 8000);  // refresh dados (sync c/ mobile)
     const t2 = setInterval(() => setTick((x) => x + 1), 5000);  // re-render p/ animação SLA
     return () => { clearInterval(t1); clearInterval(t2); };
   }, [refresh]);
+
+  // iter237 — SmarTV alert sound: detecta bolhas que ACABARAM de começar
+  // a pulsar e toca o som correspondente (preta vs vermelha).
+  // Roda toda vez que `grid` muda (a cada refresh de 8s).
+  useEffect(() => {
+    if (!soundEnabled) return;
+    const tickets = [];
+    for (const col of grid.columns || []) {
+      for (const t of col.tickets || []) tickets.push(t);
+    }
+    const seen = lastAlertRef.current;
+    let blackTriggered = false;
+    let redTriggered = false;
+    const stillAlive = new Set();
+    for (const t of tickets) {
+      const id = t.id;
+      const isBlack = (t.sla?.status === "overdue"
+        && t.status === "aberta"
+        && t.priority !== "horario");
+      const isRed = (t.type === "alerta_geofence"
+        || t.type === "frota_alerta");
+      if (isBlack || isRed) {
+        stillAlive.add(id);
+        if (!seen.has(id)) {
+          if (isRed && !redTriggered) {
+            playRedAlert();
+            speakAnnouncement(buildAnnouncement(t, "red"));
+            redTriggered = true;
+          } else if (isBlack && !blackTriggered) {
+            playBlackAlert();
+            speakAnnouncement(buildAnnouncement(t, "black"));
+            blackTriggered = true;
+          }
+          seen.add(id);
+        }
+      }
+    }
+    // Remove tickets que pararam de pulsar (foram resolvidos)
+    for (const id of seen) {
+      if (!stillAlive.has(id)) seen.delete(id);
+    }
+  }, [grid, soundEnabled]);
 
   // SSE: refresh imediato quando o worker Atlaz cria novas bolhas
   const [atlazFlash, setAtlazFlash] = useState("");
   useEventStream({
     onEvent: (name, data) => {
       if (name === "atlaz_bubbles_synced" && data?.created > 0) {
-        setAtlazFlash(`🔗 ${data.created} nova(s) bolha(s) sincronizada(s) do Atlaz`);
+        setAtlazFlash(`${data.created} nova(s) bolha(s) sincronizada(s) do Atlaz`);
         refresh();
         setTimeout(() => setAtlazFlash(""), 6000);
       }
@@ -441,13 +587,13 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
 
   return (
     <div data-testid="lousa-admin-panel">
-      {/* Animação CSS do piscar */}
+      {/* Animação CSS do piscar — agora preto */}
       <style>{`
-        @keyframes pulseRed {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); border-color: #dc2626; }
-          50% { box-shadow: 0 0 0 12px rgba(220, 38, 38, 0); border-color: #b91c1c; }
+        @keyframes pulseBlack {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(15, 23, 42, 0.6); border-color: #0f172a; }
+          50% { box-shadow: 0 0 0 12px rgba(15, 23, 42, 0); border-color: #1f2937; }
         }
-        .sla-overdue { animation: pulseRed 1.4s ease-in-out infinite; }
+        .sla-overdue { animation: pulseBlack 1.4s ease-in-out infinite; }
       `}</style>
 
       <div className="page-header" style={{ marginTop: 0, paddingTop: 0 }}>
@@ -494,7 +640,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               title="Alertas da Sentinela Lousa AI"
               accent={sentinelaCount > 0 ? "danger" : "success"}
             >
-              <span style={{ fontSize: 13 }}>🛡</span>
+              <span style={{ fontSize: 13 }}></span>
               <span>Sentinela</span>
               {sentinelaCount > 0 && (
                 <span data-testid="sentinela-badge" style={{
@@ -519,7 +665,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 title="Transferências ONT aguardando aprovação"
                 accent="danger"
               >
-                <span style={{ fontSize: 13 }}>🔄</span>
+                <span style={{ fontSize: 13 }}></span>
                 <span>Transferências</span>
                 <span data-testid="pending-transfers-badge" style={{
                   marginLeft: 2, padding: "1px 6px", borderRadius: 999,
@@ -585,7 +731,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                   }
                   return (
                     <>
-                      <span style={{ fontSize: 13 }}>👥</span>
+                      <span style={{ fontSize: 13 }}></span>
                       <span style={{ flex: 1, textAlign: "left" }}>Todos os técnicos</span>
                     </>
                   );
@@ -655,7 +801,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               title={selectMode ? "Sair do modo seleção" : "Selecionar várias bolhas para ação coletiva"}
               accent={selectMode ? "primary" : "neutral"}
             >
-              <span style={{ fontSize: 13 }}>{selectMode ? "✕" : "☐"}</span>
+              <span style={{ fontSize: 13 }}>{selectMode ? "✕" : ""}</span>
               <span>{selectMode ? "Sair seleção" : "Selecionar"}</span>
             </ToolbarBtn>
             {selectMode && (
@@ -666,7 +812,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 accent="danger"
                 disabled={overdueCount === 0}
               >
-                <span style={{ fontSize: 13 }}>⚠</span>
+                <span style={{ fontSize: 13 }}></span>
                 <span>Atrasadas · {overdueCount}</span>
               </ToolbarBtn>
             )}
@@ -677,7 +823,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 title="Mostrar apenas alertas de Frota (vistoria recusada pela IA)"
                 accent={onlyFleetAlerts ? "warning" : "neutral"}
               >
-                <span style={{ fontSize: 13 }}>🚗</span>
+                <span style={{ fontSize: 13 }}></span>
                 <span>{onlyFleetAlerts ? "Só Frota" : "Frota"} · {fleetAlertCount}</span>
               </ToolbarBtn>
             )}
@@ -687,7 +833,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               title="Histórico completo de notas (dia/mês/ano/período)"
               accent="neutral"
             >
-              <span style={{ fontSize: 13 }}>📚</span>
+              <span style={{ fontSize: 13 }}></span>
               <span>Histórico</span>
             </ToolbarBtn>
           </ToolbarGroup>
@@ -700,7 +846,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               title={alertsOn ? "Alertas sonoros ativos — clique para desligar" : "Ativar alertas sonoros para serviços atrasados"}
               accent={alertsOn ? "success" : "neutral"}
             >
-              <span style={{ fontSize: 13 }}>{alertsOn ? "🔔" : "🔕"}</span>
+              <span style={{ fontSize: 13 }}>{alertsOn ? "" : ""}</span>
               <span>{alertsOn ? "Alertas" : "Mudo"}</span>
             </ToolbarBtn>
             <ToolbarBtn
@@ -710,16 +856,92 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               accent={refreshFlash ? "success" : "neutral"}
               style={{ transition: "background-color .25s, color .25s" }}
             >
-              <span style={{ fontSize: 13 }}>{refreshing ? "⏳" : refreshFlash ? "✓" : "🔄"}</span>
+              <span style={{ fontSize: 13 }}>{refreshing ? "⏳" : refreshFlash ? "✓" : ""}</span>
               <span>{refreshing ? "Atualizando" : refreshFlash ? "Atualizado" : "Atualizar"}</span>
             </ToolbarBtn>
+            <ToolbarBtn
+              onClick={async () => {
+                if (!window.confirm("Distribuir bolhas pendentes na grade de horário?\n\n• HORÁRIO/PRIORIDADE/URGENTE mantêm seu slot.\n• Normais são alocadas no slot livre mais próximo do GPS do técnico.\n• Se faltar slot, permite 2 por horário."))
+                  return;
+                try {
+                  const r = await api.lousaAutoDistribute({
+                    slot_minutes: 60, work_start_hour: 8, work_end_hour: 18,
+                    allow_double_per_slot: true,
+                  });
+                  const total = (r.details || []).reduce((acc, d) => acc + (d.moved || 0), 0);
+                  alert(`✅ ${total} bolha(s) distribuída(s) em ${r.collaborators_processed} técnico(s).`);
+                  await refresh();
+                } catch (e) {
+                  alert(`Erro ao otimizar: ${e?.response?.data?.detail || e.message}`);
+                }
+              }}
+              data-testid="lousa-auto-distribute-btn"
+              title="Distribuir bolhas pendentes na grade de horário automaticamente (logística por GPS)"
+              accent="info"
+            >
+              <span style={{ fontSize: 13 }}></span>
+              <span>Otimizar grade</span>
+            </ToolbarBtn>
+            <ToolbarBtn
+              onClick={() => {
+                // 1ª interação do usuário libera o AudioContext.
+                _ensureLousaAudio()?.resume?.();
+                // Pre-carrega vozes do TTS PT-BR (browsers carregam async)
+                try { window.speechSynthesis?.getVoices(); } catch { /* */ }
+                const next = !soundEnabled;
+                setSoundEnabled(next);
+                try { localStorage.setItem("lousa_tv_sound", next ? "on" : "off"); }
+                catch { /* */ }
+                if (next) {
+                  // Beep + TTS curto pra confirmar que tudo funciona
+                  _tone(660, 0, 200, 0.18);
+                  speakAnnouncement("Som da Lousa ativado.");
+                }
+              }}
+              data-testid="lousa-tv-sound-toggle"
+              title={soundEnabled
+                ? "Sons de alerta ligados (modo SmarTV). Clique para silenciar."
+                : "Sons de alerta desligados. Clique para ativar (essencial pra usar na TV)."}
+              accent={soundEnabled ? "success" : "neutral"}
+            >
+              <span style={{ fontSize: 13 }}>{soundEnabled ? "" : ""}</span>
+              <span>{soundEnabled ? "Som TV" : "Som off"}</span>
+            </ToolbarBtn>
+            {/* Filtro rápido por agente IA */}
+            <div data-testid="lousa-agent-filter" style={{
+              display: "inline-flex", gap: 4, marginLeft: 6,
+              padding: 2, background: "white", borderRadius: 8,
+              border: "1px solid #e2e8f0",
+            }}>
+              {[
+                { id: "all",      lbl: "Todos",    color: "#64748b" },
+                { id: "isabella", lbl: "Isabella", color: "#a855f7" },
+                { id: "alvaro",   lbl: "Álvaro",   color: "#0ea5e9" },
+                { id: "camila",   lbl: "Camila",   color: "#10b981" },
+                { id: "sistema",  lbl: "Sistema",  color: "#3b82f6" },
+                { id: "gestor",   lbl: "Gestor",   color: "#475569" },
+              ].map((f) => (
+                <button key={f.id}
+                  data-testid={`lousa-agent-filter-${f.id}`}
+                  onClick={() => setAgentFilter(f.id)}
+                  style={{
+                    padding: "4px 10px", borderRadius: 6,
+                    border: "none", cursor: "pointer",
+                    fontSize: 11, fontWeight: 800, fontFamily: "inherit",
+                    letterSpacing: 0.2,
+                    background: agentFilter === f.id ? f.color : "transparent",
+                    color: agentFilter === f.id ? "white" : f.color,
+                    transition: "all .15s",
+                  }}>{f.lbl}</button>
+              ))}
+            </div>
             <ToolbarBtn
               onClick={() => setShowReleaseStuck(true)}
               data-testid="lousa-release-stuck-btn"
               title="EMERGÊNCIA — libera bolha presa do técnico (ação auditada)"
               accent="danger"
             >
-              <span style={{ fontSize: 13 }}>🚨</span>
+              <span style={{ fontSize: 13 }}></span>
               <span>Liberar bolha</span>
             </ToolbarBtn>
             {isAuditor && (
@@ -732,7 +954,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 accent={autoReschedCfg?.enabled ? "success" : "neutral"}
               >
                 <span style={{ fontSize: 13 }}>
-                  {autoReschedCfg?.enabled ? "🟢" : "⚪"}
+                  {autoReschedCfg?.enabled ? "" : ""}
                 </span>
                 <span>
                   Auto-rede {autoReschedCfg?.enabled ? "ON" : "OFF"}
@@ -746,7 +968,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                 title="Gerar relatório de notas finalizadas/abertas (hoje/ontem/7 dias/período)"
                 accent="neutral"
               >
-                <span style={{ fontSize: 13 }}>📄</span>
+                <span style={{ fontSize: 13 }}></span>
                 <span>Relatório</span>
               </ToolbarBtn>
               {showPdfPopover && (
@@ -759,8 +981,17 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               title="Visualiza no mapa todas as bolhas com pinos coloridos por técnico"
               accent="neutral"
             >
-              <span style={{ fontSize: 13 }}>🗺️</span>
+              <span style={{ fontSize: 13 }}>️</span>
               <span>Mapa</span>
+            </ToolbarBtn>
+            <ToolbarBtn
+              onClick={() => setShowTvLink(true)}
+              data-testid="lousa-tv-link-btn"
+              title="Abre o link público da Lousa para exibir em SmartTV (somente leitura)"
+              accent="neutral"
+            >
+              <span style={{ fontSize: 13 }}></span>
+              <span>TV</span>
             </ToolbarBtn>
           </ToolbarGroup>
 
@@ -782,7 +1013,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
             >
               <span style={{ fontSize: 14, lineHeight: 0 }}>+</span>
-              <span>Nova nota{atlazTenantDomain ? " 🔗" : ""}</span>
+              <span>Nova nota{atlazTenantDomain ? " " : ""}</span>
             </button>
             {user?.role === "auditor" && (
               <div style={{ position: "relative" }}>
@@ -801,7 +1032,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                       onClick={async () => {
                         setOverflowOpen(false);
                         const phrase = await window.prompt(
-                          "⚠ ATENÇÃO: isto APAGA TODAS as bolhas da empresa, incluindo as em execução.\n" +
+                          "ATENÇÃO: isto APAGA TODAS as bolhas da empresa, incluindo as em execução.\n" +
                           "Ação irreversível e auditada (logs).\n\n" +
                           "Digite APAGAR TUDO para confirmar:");
                         if (phrase !== "APAGAR TUDO") return;
@@ -816,7 +1047,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
                       data-testid="lousa-wipe-all-btn"
                       style={overflowItemStyle("#dc2626")}
                     >
-                      <span style={{ fontSize: 14 }}>🗑</span>
+                      <span style={{ fontSize: 14 }}></span>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: 12.5 }}>Apagar todas as bolhas</div>
                         <div style={{ fontSize: 10.5, opacity: 0.7 }}>Ação irreversível · auditor only</div>
@@ -835,7 +1066,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           background: "#fee2e2", border: "2px solid #dc2626", borderRadius: 12,
           padding: 14, marginBottom: 14, textAlign: "center", color: "#7f1d1d", fontWeight: 700,
         }}>
-          🔒 LOUSA TRANCADA — {systemStatus.offline ? "dispositivo offline" : "horário dessincronizado"}.
+          LOUSA TRANCADA — {systemStatus.offline ? "dispositivo offline" : "horário dessincronizado"}.
           Todas as ações estão bloqueadas até a normalização.
         </div>
       )}
@@ -861,7 +1092,7 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
           display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10,
         }}>
           <div style={{ color: dateMode === "past" ? "#78350f" : "#1e40af", fontSize: 13, fontWeight: 600 }}>
-            {dateMode === "past" ? "🕐 Visualizando dia passado" : "📅 Visualizando dia futuro"}
+            {dateMode === "past" ? "Visualizando dia passado" : "Visualizando dia futuro"}
             {" — "}
             <strong>{formatBR(selectedDate)}</strong>
             {" · "}<span style={{ opacity: 0.8 }}>{totalTickets} serviço(s) neste dia</span>
@@ -878,14 +1109,14 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       <div style={{ display: "flex", gap: 4,
                       borderBottom: "1px solid #e2e8f0", marginBottom: 14 }}>
         {[
-          { id: "board", label: "📋 Quadro" },
-          { id: "insights", label: "🧠 PAINEL IA" },
-          { id: "central_ont", label: "🛰️ CENTRAL_ONT" },
-          { id: "gestao_metas", label: "📊 GESTÃO E METAS" },
-          { id: "quality_notes", label: "📶 NOTAS DE QUALIDADE" },
+          { id: "board", label: "Quadro" },
+          { id: "insights", label: "PAINEL IA" },
+          { id: "central_ont", label: "️ CENTRAL_ONT" },
+          { id: "gestao_metas", label: "GESTÃO E METAS" },
+          { id: "quality_notes", label: "NOTAS DE QUALIDADE" },
           { id: "callbacks", label: (
             <>
-              📞 AGUARDANDO CONTATO
+              AGUARDANDO CONTATO
               {pendingCallbacksCount > 0 && (
                 <span data-testid="callbacks-badge" style={{
                   marginLeft: 6, background: "#dc2626", color: "#fff",
@@ -935,10 +1166,35 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
               : grid.columns)
         ).map((origCol) => {
           // Filtro "Só Frota": esconde bolhas que não são frota_alerta
-          const col = onlyFleetAlerts
+          let col = onlyFleetAlerts
             ? { ...origCol, tickets: (origCol.tickets || [])
                 .filter((t) => t.type === "frota_alerta") }
             : origCol;
+          // Filtro por agente IA (origin_source ou created_by)
+          if (agentFilter !== "all") {
+            const ISABELLA = new Set(["isabella_ai", "isabella_route_support",
+              "isabella_viability", "isabella_vision"]);
+            const ALVARO = new Set(["alvaro_diagnose", "alvaro_ai"]);
+            const CAMILA = new Set(["camila_billing", "camila_ai", "camila_cobranca"]);
+            const matchAgent = (t) => {
+              const src = t.origin_source || t.created_by || "";
+              if (agentFilter === "isabella") return ISABELLA.has(src);
+              if (agentFilter === "alvaro") return ALVARO.has(src);
+              if (agentFilter === "camila") return CAMILA.has(src);
+              if (agentFilter === "gestor") {
+                const ai = new Set([...ISABELLA, ...ALVARO, ...CAMILA]);
+                return !ai.has(src) && !["alerta_geofence", "frota_alerta",
+                  "alerta_ia", "signal_callback", "auto_retargeting"]
+                  .includes(t.type);
+              }
+              if (agentFilter === "sistema") {
+                return ["alerta_geofence", "frota_alerta", "alerta_ia",
+                  "signal_callback", "auto_retargeting"].includes(t.type);
+              }
+              return true;
+            };
+            col = { ...col, tickets: (col.tickets || []).filter(matchAgent) };
+          }
           return focusTechId && focusView === "timeline" ? (
             <TechTimeline
               key={col.collaborator.id + tick}
@@ -1033,6 +1289,9 @@ export default function LousaAdminPanel({ systemStatus = { offline: false, drift
       {showHistory && <LousaHistoryModal onClose={() => setShowHistory(false)} />}
       {showServicesMap && (
         <LousaServicesMap onClose={() => setShowServicesMap(false)} />
+      )}
+      {showTvLink && (
+        <LousaTvLinkModal onClose={() => setShowTvLink(false)} />
       )}
       {showReleaseStuck && (
         <ReleaseStuckBubbleModal
@@ -1137,7 +1396,7 @@ function OptimizeRouteButton({ collaboratorId }) {
         padding: "4px 8px", fontSize: 10, fontWeight: 700,
         cursor: busy ? "wait" : "pointer", flexShrink: 0,
       }}
-    >{busy ? "..." : "🗺️ Rota"}</button>
+    >{busy ? "..." : "️ Rota"}</button>
   );
 }
 
@@ -1208,7 +1467,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
             background: r.type === "Entrada" ? "#dcfce7" : r.type === "Saída" ? "#fee2e2" : "#fef3c7",
             color: r.type === "Entrada" ? "#166534" : r.type === "Saída" ? "#7f1d1d" : "#78350f",
           }}>
-            {r.type === "Entrada" ? "🚪" : r.type === "Início intervalo" ? "🍽️" : r.type === "Fim intervalo" ? "🔄" : "🏁"} {r.time}
+            {r.type === "Entrada" ? "" : r.type === "Início intervalo" ? "️" : r.type === "Fim intervalo" ? "" : ""} {r.time}
           </span>
         ))}
       </div>
@@ -1219,16 +1478,19 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
           marginTop: 10, padding: "6px 8px", background: "#f8fafc", border: "1px dashed #cbd5e1",
           borderRadius: 8, fontSize: 10, color: "#475569",
         }}>
-          <div style={{ fontWeight: 700, marginBottom: 4, color: "#0f172a" }}>📒 Encerrados (24h)</div>
+          <div style={{ fontWeight: 700, marginBottom: 4, color: "#0f172a" }}>Encerrados (24h)</div>
           {recentResolved.map((t) => (
             <div key={t.id}
                   data-testid={`recent-closed-row-${t.id}`}
-                  onDoubleClick={() => setClosedDetailTicket(t)}
-                  title="Duplo-clique para abrir os detalhes da finalização"
+                  onClick={() => setClosedDetailTicket(
+                    closedDetailTicket?.id === t.id ? null : t)}
+                  title="Clique para abrir os detalhes — clique novamente ou fora pra fechar"
                   style={{ marginBottom: 4, cursor: "pointer",
-                            borderRadius: 5, padding: "2px 4px" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "#eef2f7"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                            borderRadius: 5, padding: "2px 4px",
+                            background: closedDetailTicket?.id === t.id
+                              ? "#eef2f7" : "transparent" }}
+                  onMouseEnter={(e) => { if (closedDetailTicket?.id !== t.id) e.currentTarget.style.background = "#eef2f7"; }}
+                  onMouseLeave={(e) => { if (closedDetailTicket?.id !== t.id) e.currentTarget.style.background = "transparent"; }}>
               {t.gap_minutes_to_prev != null && (
                 <div style={{ fontStyle: "italic", color: "#94a3b8", padding: "2px 0" }}>
                   ⏱ {fmtGap(t.gap_minutes_to_prev)} entre o serviço anterior e este
@@ -1237,7 +1499,7 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
               <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
                 <span><strong>{TYPE_LABELS[t.type] || t.type}</strong> · {t.client_snapshot?.name}</span>
                 <span style={{ color: "#0f172a", fontWeight: 700 }}>
-                  {t.duration_minutes != null ? `🕐 ${fmtDuration(t.duration_minutes)}` : ""}
+                  {t.duration_minutes != null ? `${fmtDuration(t.duration_minutes)}` : ""}
                 </span>
               </div>
             </div>
@@ -1277,36 +1539,8 @@ function TechColumn({ column, isDropTarget, blinkOverdue, onDragOver, onDragLeav
             onEmptySlotDblClick={onEmptySlotDblClick}
           />
         ))}
-        {unscheduled.length > 0 && (
-          <div style={{ marginTop: 6 }}>
-            <div style={{
-              fontSize: 10, fontWeight: 800, color: "#64748b", padding: "3px 8px",
-              background: "#e2e8f0", borderRadius: 6, marginBottom: 4,
-            }}>📋 Sem horário ({unscheduled.length})</div>
-            <div data-testid={`unscheduled-bubbles-${c.id}`}
-                 style={{ display: "flex", gap: 6, alignItems: "stretch", width: "100%" }}>
-              {unscheduled.map((t) => (
-                <div key={t.id} style={{ flex: "1 1 0", minWidth: 0, display: "flex" }}>
-                  <BubbleCard
-                    ticket={t}
-                    blinkOverdue={blinkOverdue}
-                    isDragging={draggingId === t.id}
-                    onDragStart={() => onDragStart(t.id)}
-                    onDragEnd={onDragEnd}
-                    onAdminClose={onAdminClose}
-                    onAdminOpen={onAdminOpen}
-                    onEdit={onEdit}
-                    onReschedule={onReschedule}
-                    busy={busy}
-                    selectMode={selectMode}
-                    isSelected={selectedIds?.includes(t.id)}
-                    onToggleSelect={onToggleSelect}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* "Sem horário" REMOVIDO (iter215): toda bolha agora cai num slot da
+              grade (09:00–18:00) — clampada se horário fora do range. */}
       </div>
     </div>
   );
@@ -1355,9 +1589,9 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
         fontSize: 10, fontWeight: 800, color: isFull ? "#92400e" : "#475569",
         marginBottom: isEmpty ? 0 : 4, display: "flex", justifyContent: "space-between",
       }}>
-        <span>🕐 {slot.slot}</span>
+        <span>{slot.slot}</span>
         <span style={{ fontSize: 9 }}>
-          {tickets.length}/{maxPerSlot}{isFull && " 🔒 cheio"}
+          {tickets.length}/{maxPerSlot}{isFull && " cheio"}
         </span>
       </div>
       {isEmpty && (
@@ -1401,6 +1635,37 @@ function SlotRow({ slot, techId, maxPerSlot, onSlotDrop, draggingId, onDragStart
   );
 }
 
+function AgentBadge({ ticket }) {
+  // Mapeia agente IA → { label, cor, tooltip } a partir do origin_source
+  // ou created_by da bolha. Mostra um avatar circular 14px com a letra do
+  // agente — pro gestor identificar rápido quem abriu a OS.
+  const src = ticket.origin_source || ticket.created_by || "";
+  const map = {
+    isabella_ai:            { letter: "I", color: "#a855f7", title: "Isabella · IA do cliente (WhatsApp)" },
+    isabella_route_support: { letter: "I", color: "#a855f7", title: "Isabella · roteado pra suporte" },
+    isabella_viability:     { letter: "I", color: "#a855f7", title: "Isabella · viabilidade agendada" },
+    isabella_vision:        { letter: "I", color: "#a855f7", title: "Isabella · análise de imagem" },
+    alvaro_diagnose:        { letter: "A", color: "#0ea5e9", title: "Álvaro · diagnóstico técnico" },
+    alvaro_ai:              { letter: "A", color: "#0ea5e9", title: "Álvaro · diagnóstico IA" },
+    camila_billing:         { letter: "C", color: "#10b981", title: "Camila · cobrança IA" },
+    camila_ai:              { letter: "C", color: "#10b981", title: "Camila · cobrança IA" },
+    camila_cobranca:        { letter: "C", color: "#10b981", title: "Camila · cobrança IA" },
+  };
+  const cfg = map[src];
+  if (!cfg) return null;
+  return (
+    <span title={cfg.title}
+      data-testid={`bubble-agent-${ticket.id}`}
+      style={{
+        width: 16, height: 16, borderRadius: "50%",
+        background: cfg.color, color: "white",
+        display: "inline-grid", placeItems: "center",
+        fontSize: 9, fontWeight: 900, letterSpacing: 0,
+        flexShrink: 0, boxShadow: `0 1px 3px ${cfg.color}66`,
+      }}>{cfg.letter}</span>
+  );
+}
+
 function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, onDragEnd, onAdminClose, onAdminOpen, onEdit, onReschedule, busy, selectMode, isSelected, onToggleSelect, forceExpanded }) {
   const c = PRIORITY_COLORS[ticket.priority] || PRIORITY_COLORS.normal;
   const st = STATUS_LABEL[ticket.status] || { label: ticket.status, color: "#64748b" };
@@ -1408,6 +1673,57 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
   const ai = ticket.ai_score || {};
   const slaColor = sla.status === "overdue" ? "#dc2626" : sla.status === "warning" ? "#f59e0b" : "#10b981";
   const isOverdue = sla.status === "overdue";
+  // iter237 — Regras solicitadas pelo Vando:
+  //  • Pulse PRETO (não vermelho), e SOMENTE quando:
+  //    – ticket.status === "aberta" (técnico iniciou e está demorando)
+  //    – priority !== "horario" (HORÁRIO fixo nunca pulsa — só borda laranja)
+  //    – SLA overdue + blinkOverdue ligado nas settings
+  //  Bolhas PENDENTES atrasadas NÃO pulsam mais — só ficam com borda preta estática.
+  const shouldPulse = isOverdue
+    && blinkOverdue
+    && ticket.status === "aberta"
+    && ticket.priority !== "horario";
+
+  // Origem da bolha (define cor da borda quando NÃO atrasada):
+  //  • CLIENTE (verde): bolha foi gerada por um AGENTE DE IA que atende o
+  //    cliente final — Isabella (WhatsApp), Álvaro (diagnóstico técnico),
+  //    Camila (cobrança). Esses agentes representam a vontade do cliente
+  //    pedindo abertura de chamado.
+  //  • SISTEMA (azul): bolha foi gerada por um worker automático SEM
+  //    interação direta com o cliente — alerta de cerca, frota_alerta,
+  //    rede_ia outage, ai_preventive, etc.
+  //  • GESTOR (padrão): operador humano abriu via painel admin.
+  const CLIENT_AI_AGENTS = new Set([
+    "isabella_ai", "isabella_route_support", "isabella_viability",
+    "alvaro_diagnose", "alvaro_ai",
+    "camila_billing", "camila_ai", "camila_cobranca",
+  ]);
+  const SYSTEM_TYPES = new Set([
+    "alerta_geofence", "frota_alerta",
+    "alerta_ia", "signal_callback", "auto_retargeting",
+  ]);
+  const isFromClient = ticket.origin === "cliente"
+    || CLIENT_AI_AGENTS.has(ticket.origin_source)
+    || CLIENT_AI_AGENTS.has(ticket.created_by)
+    || ticket.opened_via === "client_whatsapp"
+    || ticket.client_initiated === true;
+  const isFromSystem = !isFromClient && (
+    SYSTEM_TYPES.has(ticket.type)
+    || ticket.origin === "sistema"
+    || (ticket.origin_source
+      && !["gestor", "manual", "operator"].includes(ticket.origin_source))
+  );
+  // Cor da borda (prioridade: pulse preto > selecionado azul > overdue preto >
+  //                          horário laranja > sistema azul > cliente verde > padrão)
+  let borderColor = c.border;
+  if (ticket.type === "alerta_geofence") borderColor = "#0f172a";
+  else if (ticket.type === "frota_alerta") borderColor = "#f59e0b";
+  else if (isSelected) borderColor = "#3b82f6";
+  else if (isOverdue && ticket.status === "aberta") borderColor = "#0f172a";
+  else if (ticket.priority === "horario") borderColor = c.border; // laranja padrão
+  else if (isFromSystem) borderColor = "#3b82f6";
+  else if (isFromClient) borderColor = "#10b981";
+
   const [showActions, setShowActions] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -1461,11 +1777,11 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
         ticket.client_snapshot.relato ? `\nRelato:\n${fmtRelato(ticket.client_snapshot.relato)}` : null,
         ai.score != null ? `\nIA: ${ai.score.toFixed(1)}/10 (${ai.label || ""})` : null,
         ticket.in_execution ? "\n▶ Em execução pelo técnico" : null,
-        ticket.atlaz_external_id ? `\n🔗 Atlaz #${ticket.atlaz_external_id}` : null,
+        ticket.atlaz_external_id ? `\nAtlaz #${ticket.atlaz_external_id}` : null,
         "\n— Duplo-clique para editar",
       ].filter(Boolean).join("\n");
 
-  const typeIcon = TYPE_ICONS[ticket.type] || "📋";
+  const typeIcon = TYPE_ICONS[ticket.type] || "";
 
   return (
     <div
@@ -1485,7 +1801,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
       className={
         (ticket.type === "alerta_geofence" ? "lousa-alert-blink " : "")
         + (ticket.type === "frota_alerta" ? "lousa-fleet-glow " : "")
-        + (isOverdue && blinkOverdue ? "sla-overdue" : "")
+        + (shouldPulse ? "sla-overdue" : "")
       }
       style={{
         background: ticket.type === "alerta_geofence"
@@ -1493,11 +1809,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
           : ticket.type === "frota_alerta"
           ? "linear-gradient(135deg,#fef3c7,#fde68a)"
           : c.bg,
-        border: `${(ticket.type === "alerta_geofence" || ticket.type === "frota_alerta") ? 2 : 1}px solid ${
-          ticket.type === "alerta_geofence" ? "#dc2626"
-          : ticket.type === "frota_alerta" ? "#f59e0b"
-          : isSelected ? "#3b82f6"
-          : isOverdue ? "#dc2626" : c.border}`,
+        border: `${(ticket.type === "alerta_geofence" || ticket.type === "frota_alerta") ? 2 : (isFromSystem || isFromClient ? 2 : 1)}px solid ${borderColor}`,
         borderRadius: 14, padding: "6px 10px 6px 12px",
         marginBottom: 0, position: "relative",
         width: "100%", minWidth: 0, boxSizing: "border-box",
@@ -1540,7 +1852,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
         </div>
       )}
 
-      {/* HEADER: badge prioridade · status · horário */}
+      {/* HEADER: badge prioridade · agente IA · status · horário */}
       <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center", marginBottom: 6 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 0 }}>
           {c.label && (
@@ -1550,6 +1862,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
               background: c.accent, color: "white",
             }}>{c.icon} {c.label}</span>
           )}
+          <AgentBadge ticket={ticket} />
           {/* Horário da grade (slotHour) — refere-se à célula onde a bolha
               está, não ao scheduled_time original. Se houver discrepância
               (ticket reagendado p/ outro horário), mostra ambos. */}
@@ -1561,7 +1874,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
             }} title={ticket.scheduled_time
               ? `Slot ${slotHour} · Agendado p/ ${ticket.scheduled_time.substr(11,5)}`
               : `Slot ${slotHour}`}>
-              🕐 {slotHour}
+              {slotHour}
             </span>
           )}
           {!slotHour && ticket.scheduled_time && (
@@ -1641,9 +1954,9 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
             borderColor: styleForQuality(ticket.live_signal.quality).border,
           }}
         >
-          📶 {ticket.live_signal.rx_dbm != null ? `${ticket.live_signal.rx_dbm.toFixed(1)} dBm` : "—"}
-          {ticket.live_signal.status === "Online" && <span style={{ fontSize: 8 }}>🟢</span>}
-          {ticket.live_signal.status && ticket.live_signal.status !== "Online" && <span style={{ fontSize: 8 }}>🔴</span>}
+          {ticket.live_signal.rx_dbm != null ? `${ticket.live_signal.rx_dbm.toFixed(1)} dBm` : "—"}
+          {ticket.live_signal.status === "Online" && <span style={{ fontSize: 8 }}></span>}
+          {ticket.live_signal.status && ticket.live_signal.status !== "Online" && <span style={{ fontSize: 8 }}></span>}
         </div>
       )}
 
@@ -1673,7 +1986,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
                 display: "inline-flex", alignItems: "center", gap: 4,
                 marginLeft: "auto",
               }}
-            >🤖 {ai.score.toFixed(1)}</span>
+            >{ai.score.toFixed(1)}</span>
           )}
         </div>
       )}
@@ -1686,7 +1999,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
           background: "rgba(255,255,255,.85)", padding: "1px 6px",
           borderRadius: 6, border: "1px solid #e2e8f0",
         }}>
-          🕐 {fmtDuration(ticket.duration_minutes)}
+          {fmtDuration(ticket.duration_minutes)}
         </div>
       )}
 
@@ -1705,7 +2018,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
         </div>
       )}
       {ticket.locked && !ticket.in_execution && (
-        <span style={{ position: "absolute", top: 8, right: 8, fontSize: 14, zIndex: 2 }}>🔒</span>
+        <span style={{ position: "absolute", top: 8, right: 8, fontSize: 14, zIndex: 2 }}></span>
       )}
       {ticket.atlaz_external_id && (
         <span data-testid={`atlaz-badge-${ticket.id}`}
@@ -1715,7 +2028,7 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
             background: "rgba(219,234,254,.95)", border: "1px solid #93c5fd",
             padding: "1px 6px", borderRadius: 999,
           }}>
-          🔗 Atlaz
+          Atlaz
         </span>
       )}
       {!selectMode && showActions && ["pendente", "aberta", "aguardando_atendimento"].includes(ticket.status) && (
@@ -1730,14 +2043,14 @@ function BubbleCard({ ticket, slotHour, blinkOverdue, isDragging, onDragStart, o
           )}
           <button data-testid={`admin-details-${ticket.id}`}
             onClick={() => setShowDetails(true)}
-            style={btnSm("#8b5cf6")}>👁 Detalhes</button>
+            style={btnSm("#8b5cf6")}>Detalhes</button>
           <button data-testid={`ai-evaluate-${ticket.id}`} disabled={aiBusy}
             onClick={runAiAnalysis} style={btnSm("#0d9488")}>IA {aiBusy ? "..." : ""}</button>
           <button data-testid={`admin-close-${ticket.id}`} disabled={busy}
             onClick={() => onAdminClose(ticket, "encerrar")}
             style={btnSm("#64748b")}>✓ Encerrar</button>
           <button data-testid={`admin-reschedule-${ticket.id}`} disabled={busy}
-            onClick={(e) => { e.stopPropagation(); if (onReschedule) onReschedule(ticket); }} style={btnSm("#3b82f6")}>📅 Reagendar</button>
+            onClick={(e) => { e.stopPropagation(); if (onReschedule) onReschedule(ticket); }} style={btnSm("#3b82f6")}>Reagendar</button>
           <button disabled={busy}
             onClick={async () => { const n = await window.prompt("Motivo do cancelamento:"); if (n) onAdminClose(ticket.id, "cancelar", n); }} style={btnSm("#dc2626")}>✗ Cancelar</button>
         </div>
@@ -2120,7 +2433,7 @@ function PingQualityCard() {
           <div>
             <div style={{ fontWeight: 800, fontSize: 13, color: "#0c4a6e",
                            letterSpacing: "-.01em" }}>
-              🛰 Qualidade do atendimento — Teste de Ping
+              Qualidade do atendimento — Teste de Ping
             </div>
             <div style={{ fontSize: 11, color: "#0e7490", marginTop: 2 }}>
               {data.totals.with_ping} de {data.totals.finalized} bolhas finalizadas
@@ -2176,7 +2489,7 @@ function PingQualityCard() {
               {tech.without_ping > 0 && (
                 <div style={{ fontSize: 9, color: "#dc2626", marginTop: 2,
                                 fontWeight: 700 }}>
-                  ⚠️ {tech.without_ping} sem ping
+                  ️ {tech.without_ping} sem ping
                 </div>
               )}
             </div>
@@ -2247,7 +2560,7 @@ function CoachingConfigCard() {
         <div>
           <div style={{ fontWeight: 800, fontSize: 13, color: "#78350f",
                          letterSpacing: "-.01em" }}>
-            🎯 Coaching automático — Ping skip
+            Coaching automático — Ping skip
           </div>
           <div style={{ fontSize: 11, color: "#92400e", marginTop: 2 }}>
             Avisa no WhatsApp da Isabella quando alguém fecha {cfg.threshold} bolhas
@@ -2295,7 +2608,7 @@ function CoachingConfigCard() {
         <Button onClick={save} disabled={saving}
                 data-testid="coaching-save"
                 style={{ height: 38 }}>
-          {saving ? "Salvando..." : "💾 Salvar"}
+          {saving ? "Salvando..." : "Salvar"}
         </Button>
         <Button onClick={() => setExpanded((e) => !e)}
                 data-testid="coaching-history-toggle"
@@ -2310,7 +2623,7 @@ function CoachingConfigCard() {
                         padding: 10, maxHeight: 240, overflowY: "auto" }}>
           {alerts.length === 0 ? (
             <div style={{ fontSize: 12, color: "#78350f", textAlign: "center" }}>
-              Nenhum alerta nos últimos 30 dias 🎉
+              Nenhum alerta nos últimos 30 dias 
             </div>
           ) : alerts.map((a) => (
             <div key={a.id} style={{ padding: "6px 0",
@@ -2402,7 +2715,7 @@ function ClosureQualityCard() {
           <div>
             <div style={{ fontWeight: 800, fontSize: 13, color: "#4c1d95",
                             letterSpacing: "-.01em" }}>
-              🧠 Qualidade dos fechamentos — IA
+              Qualidade dos fechamentos — IA
             </div>
             <div style={{ fontSize: 11, color: "#5b21b6", marginTop: 2 }}>
               {data.totals.analyzed}/{total} fechamentos analisados ·
@@ -2425,7 +2738,7 @@ function ClosureQualityCard() {
           <Button onClick={runAnalysis} disabled={analyzing}
                   data-testid="closure-quality-analyze"
                   style={{ height: 36 }}>
-            {analyzing ? "Analisando..." : `🧪 Analisar (${data.totals.pending})`}
+            {analyzing ? "Analisando..." : `Analisar (${data.totals.pending})`}
           </Button>
         </div>
       </div>
@@ -2465,11 +2778,11 @@ function ClosureQualityCard() {
           <div style={{ fontSize: 11, fontWeight: 800, color: "#4c1d95",
                           marginBottom: 8, textTransform: "uppercase",
                           letterSpacing: ".05em" }}>
-            🚩 Fechamentos suspeitos (score &lt; 50)
+            Fechamentos suspeitos (score &lt; 50)
           </div>
           {(!data.low_score_tickets || data.low_score_tickets.length === 0) && (
             <div style={{ fontSize: 12, color: "#64748b" }}>
-              Nada suspeito. Clique em "Analisar" se houver pendentes.
+              Nada suspeito. Clique em “Analisar” se houver pendentes.
             </div>
           )}
           {(data.low_score_tickets || []).map((t) => (
@@ -2516,7 +2829,7 @@ function InsightsPanel({ onJumpTicket }) {
         color: "white",
       }}>
         <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-.02em" }}>
-          🧠 Painel IA — Qualidade de Atendimento
+          Painel IA — Qualidade de Atendimento
         </div>
         <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
           Visão consolidada do que sua operação está deixando passar: bolhas
@@ -2655,7 +2968,7 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
             borderRadius: 6, background: "#f8fafc", color: "#0f172a",
             fontSize: 11, fontWeight: 700, cursor: "pointer",
           }}>
-          {allSelected ? "☐ Desmarcar todos" : "☑ Marcar todos"}
+          {allSelected ? "Desmarcar todos" : "Marcar todos"}
         </button>
         {visibleTechIds.length > 0 && (
           <button
@@ -2688,7 +3001,7 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
           width: 24, height: 24, borderRadius: "50%",
           background: "#e2e8f0", color: "#475569",
           display: "grid", placeItems: "center", fontSize: 11, flexShrink: 0,
-        }}>👥</span>
+        }}></span>
         <span style={{ flex: 1 }}>Todos os técnicos</span>
         <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>
           {columns.length}
@@ -2708,7 +3021,7 @@ function TechFilterMenu({ columns, focusTechId, visibleTechIds = [],
       {filtered.length === 0 && (
         <div style={{ padding: "16px 10px", textAlign: "center",
                         color: "#94a3b8", fontSize: 12 }}>
-          Nenhum técnico bate com "{search}"
+          Nenhum técnico bate com “{search}”
         </div>
       )}
       {filtered.map((col) => {
@@ -2890,7 +3203,7 @@ function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId
                     background: r.type === "Entrada" ? "#dcfce7" : r.type === "Saída" ? "#fee2e2" : "#fef3c7",
                     color: r.type === "Entrada" ? "#166534" : r.type === "Saída" ? "#7f1d1d" : "#78350f",
                   }}>
-                    {r.type === "Entrada" ? "🚪" : r.type === "Início intervalo" ? "🍽️" : r.type === "Fim intervalo" ? "🔄" : "🏁"} {r.time}
+                    {r.type === "Entrada" ? "" : r.type === "Início intervalo" ? "️" : r.type === "Fim intervalo" ? "" : ""} {r.time}
                   </span>
                 ))}
               </span>
@@ -2927,42 +3240,7 @@ function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId
             />
           ))}
 
-          {/* Coluna "Sem horário" sticky no fim — drop target especial */}
-          {unscheduled.length > 0 && (
-            <div data-testid={`timeline-unscheduled-${c.id}`} style={{
-              flex: "0 0 200px",
-              background: "#fef3c7",
-              border: "1.5px dashed #f59e0b",
-              borderRadius: 10, padding: 8,
-              alignSelf: "stretch",
-            }}>
-              <div style={{ fontSize: 10.5, fontWeight: 800, color: "#92400e",
-                              marginBottom: 6, textAlign: "center",
-                              textTransform: "uppercase", letterSpacing: ".05em" }}>
-                📋 Sem horário ({unscheduled.length})
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {unscheduled.map((t) => (
-                  <BubbleCard
-                    key={t.id}
-                    ticket={t}
-                    blinkOverdue={blinkOverdue}
-                    isDragging={draggingId === t.id}
-                    onDragStart={() => onDragStart(t.id)}
-                    onDragEnd={onDragEnd}
-                    onAdminClose={onAdminClose}
-                    onAdminOpen={onAdminOpen}
-                    onEdit={onEdit}
-                    onReschedule={onReschedule}
-                    busy={busy}
-                    selectMode={selectMode}
-                    isSelected={selectedIds?.includes(t.id)}
-                    onToggleSelect={onToggleSelect}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+          {/* "Sem horário" REMOVIDO (iter215): toda bolha cai num slot da grade. */}
         </div>
       </div>
 
@@ -2974,14 +3252,15 @@ function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId
           borderRadius: 8, fontSize: 10.5, color: "#475569",
         }}>
           <div style={{ fontWeight: 700, marginBottom: 4, color: "#0f172a" }}>
-            📒 Encerrados (24h)
+            Encerrados (24h)
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {recentResolved.map((t) => (
               <div key={t.id}
                     data-testid={`recent-closed-chip-${t.id}`}
-                    onDoubleClick={() => setClosedDetailTicket(t)}
-                    title="Duplo-clique para ver os detalhes do fechamento"
+                    onClick={() => setClosedDetailTicket(
+                      closedDetailTicket?.id === t.id ? null : t)}
+                    title="Clique para ver os detalhes do fechamento — clique novamente ou fora pra fechar"
                     style={{
                 padding: "4px 8px", background: "white",
                 border: "1px solid #e2e8f0", borderRadius: 6,
@@ -2994,7 +3273,7 @@ function TechTimeline({ column, blinkOverdue, maxPerSlot, onSlotDrop, draggingId
                 {" · "}{t.client_snapshot?.name}
                 {t.duration_minutes != null && (
                   <span style={{ marginLeft: 5, color: "#0f172a", fontWeight: 700 }}>
-                    · 🕐 {fmtDuration(t.duration_minutes)}
+                    · {fmtDuration(t.duration_minutes)}
                   </span>
                 )}
               </div>
@@ -3066,7 +3345,7 @@ function TimelineSlot({ slot, isCurrentHour, techId, maxPerSlot, onSlotDrop, dra
           fontSize: 9.5, fontWeight: 600,
           color: isFull ? "#92400e" : "#94a3b8",
         }}>
-          {tickets.length}/{maxPerSlot}{isFull && " 🔒"}
+          {tickets.length}/{maxPerSlot}{isFull && " "}
         </span>
       </div>
       {isEmpty ? (

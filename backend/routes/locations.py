@@ -136,9 +136,17 @@ async def dwell_analysis(hours: int = 8, radius_m: float = 60.0, min_dur_min: in
     since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
     coll_filter: dict = {} if not company_id else {"company_id": company_id}
-    colls = await db.collaborators.find(coll_filter, {"_id": 0, "id": 1, "name": 1, "company_id": 1}).to_list(2000)
+    colls = await db.collaborators.find(
+        coll_filter,
+        {"_id": 0, "id": 1, "name": 1, "company_id": 1, "clock_in_enabled": 1},
+    ).to_list(2000)
     name_by_id = {c["id"]: c.get("name") or c["id"] for c in colls}
     company_by_id = {c["id"]: c.get("company_id") or DEMO_COMPANY_ID for c in colls}
+    # Colaborador que NÃO bate ponto (terceirizado/MEI) tem cercas salvas
+    # mas elas NÃO devem gerar alerta "fora da cerca" no LiveMap — apenas
+    # serve pra fechamento de OS. Reproduz a lógica do CadastroPanel.
+    clock_enabled_by_id = {c["id"]: bool(c.get("clock_in_enabled", True))
+                            for c in colls}
     allowed_ids = set(name_by_id.keys())
 
     match_live: dict = {"recorded_at": {"$gte": since}}
@@ -171,6 +179,22 @@ async def dwell_analysis(hours: int = 8, radius_m: float = 60.0, min_dur_min: in
         has_fences = any_fences > 0
         if not has_fences:
             out_of_fence = False
+        # Colaborador desligado de bater ponto → cercas servem só pra
+        # fechamento de OS (anti-fraude), NÃO geram alerta de geofence.
+        if not clock_enabled_by_id.get(cid, True):
+            out_of_fence = False
+
+        # Label de precisão do GPS (pro card no LiveMap)
+        # — usa o `accuracy` reportado pelo navigator.geolocation do app
+        acc = live.get("accuracy")
+        if acc is None:
+            accuracy_label = "desconhecida"
+        elif acc <= 50:
+            accuracy_label = "exata"     # GPS chip ativo
+        elif acc <= 500:
+            accuracy_label = "aproximada"  # WiFi / cell tower
+        else:
+            accuracy_label = "imprecisa"
 
         items.append({
             "collaborator_id": cid,
@@ -179,6 +203,7 @@ async def dwell_analysis(hours: int = 8, radius_m: float = 60.0, min_dur_min: in
                 "lat": float(live["lat"]), "lng": float(live["lng"]),
                 "recorded_at": live.get("recorded_at"),
                 "accuracy": live.get("accuracy"),
+                "accuracy_label": accuracy_label,
             },
             "current_dwell_min": cur_dur,
             "current_cluster_center": {"lat": current["center_lat"], "lng": current["center_lng"]} if current else None,
@@ -236,15 +261,16 @@ async def dwell_analysis(hours: int = 8, radius_m: float = 60.0, min_dur_min: in
 
 # iter215 — Limiares para limpeza do trajeto antes de plotar:
 #  • Pings com accuracy pior que MAX_ACC_M são descartados (GPS preso em
-#    prédio dá pontos "atravessando quarteirões"). 80m descarta WiFi
-#    location mas mantém GPS razoável.
+#    prédio dá pontos "atravessando quarteirões"). 400m descarta WiFi
+#    location ruim mas mantém pings WiFi razoáveis (mesma constante que o
+#    POST `/public/ping` usa pra aceitar pings em `tech_locations`).
 #  • Gap > GAP_S entre pings consecutivos → quebra em segmento novo
 #    (evita reta voando entre dois pontos quando o tracker ficou off).
 #  • Distância > DIST_M entre 2 pings consecutivos (independente do gap
 #    temporal) → também quebra em segmento (salta sem trajetória real).
-TRAIL_MAX_ACC_M = 150.0  # iter224 — relaxado de 80→150m no LiveMap
-TRAIL_GAP_S = 300        # 5 min
-TRAIL_JUMP_M = 400.0     # 4 quadras
+TRAIL_MAX_ACC_M = 1500.0  # iter215 — relaxado: GPS urbano às vezes 800–1200m
+TRAIL_GAP_S = 900         # iter215 — 15min (antes 5min era muito agressivo)
+TRAIL_JUMP_M = 2000.0     # iter215 — 2km (carro pode pular ~1.5km em 1 ping)
 
 import logging as _logging
 _trail_logger = _logging.getLogger("ponto.locations.trail")
@@ -364,6 +390,18 @@ async def track_collaborator_snap(cid: str, hours: int = 24):
     docs = await _fetch_merged_track(cid, since)
 
     sessions = _clean_and_split_trail(docs)
+
+    # iter215 — Fallback "best-effort": se o filtro descartou TUDO mas
+    # ainda temos pings brutos, devolve tudo como UM segmento contínuo.
+    # Garante que o gestor veja ALGUMA coisa em vez de tela vazia.
+    if not sessions and len(docs) >= 2:
+        sessions = [[
+            {"lat": d["lat"], "lng": d["lng"],
+             "recorded_at": d.get("recorded_at")}
+            for d in docs
+            if d.get("lat") is not None and d.get("lng") is not None
+        ]]
+        sessions = [s for s in sessions if len(s) >= 2]
 
     # Chama OSRM Match pra cada sessão. Em paralelo.
     import asyncio

@@ -4,14 +4,14 @@
 ============================================================= */
 
 export const TYPE_LABELS = {
-  reparo: "🔧 Reparo",
-  instalacao: "📡 Instalação",
-  retirada: "📦 Retirada",
-  prioridade: "🚨 Prioridade",
-  preventiva: "🛡️ Preventiva",
-  venda: "💼 Venda",
-  alerta_geofence: "⚠️ ALERTA GEOFENCE",
-  frota_alerta: "🚗 ALERTA FROTA",
+  reparo: "Reparo",
+  instalacao: "Instalação",
+  retirada: "Retirada",
+  prioridade: "Prioridade",
+  preventiva: "️ Preventiva",
+  venda: "Venda",
+  alerta_geofence: "️ ALERTA GEOFENCE",
+  frota_alerta: "ALERTA FROTA",
 };
 
 export const ACTION_LABEL = {
@@ -19,8 +19,8 @@ export const ACTION_LABEL = {
   aberta: { icon: "▶", color: "#10b981", label: "Iniciada" },
   finalizada: { icon: "✓", color: "#10b981", label: "Finalizada" },
   encerrar: { icon: "✕", color: "#94a3b8", label: "Encerrada (gestor)" },
-  reagendar: { icon: "📅", color: "#3b82f6", label: "Reagendada" },
-  cancelar: { icon: "🚫", color: "#dc2626", label: "Cancelada" },
+  reagendar: { icon: "", color: "#3b82f6", label: "Reagendada" },
+  cancelar: { icon: "", color: "#dc2626", label: "Cancelada" },
   transferida: { icon: "↔", color: "#0d9488", label: "Transferida" },
 };
 

@@ -79,12 +79,12 @@ export default function PartnerDetailPage() {
   const [editingPromo, setEditingPromo] = useState(null);
 
   if (magicBusy) {
-    return <div className="pd-loading">🔐 Autenticando…</div>;
+    return <div className="pd-loading">Autenticando…</div>;
   }
   if (err) {
     return (
       <div className="pd-error">
-        <h1>🤔 {err}</h1>
+        <h1>{err}</h1>
         <a href="/?showcase=parcerias">← Voltar para a vitrine</a>
       </div>
     );
@@ -92,7 +92,7 @@ export default function PartnerDetailPage() {
   if (!slug) {
     return (
       <div className="pd-error">
-        <h1>🔗 Link inválido</h1>
+        <h1>Link inválido</h1>
         <a href="/?showcase=parcerias">← Vitrine Ligo</a>
       </div>
     );
@@ -132,7 +132,7 @@ export default function PartnerDetailPage() {
                              setShowScan(true); setMenu(false);
                            }}
                            data-testid="pd-menu-scan">
-                    <span>📷</span> Ler QR do cliente
+                    <span></span> Ler QR do cliente
                   </button>
                   <button className="pd-menu-item"
                            onClick={() => {
@@ -157,13 +157,13 @@ export default function PartnerDetailPage() {
                              window.location.href = "/?portal=parceiro";
                            }}
                            data-testid="pd-menu-login">
-                    <span>🔐</span> Entrar como parceiro
+                    <span></span> Entrar como parceiro
                   </button>
                   <a className="pd-menu-item"
                       href={`https://api.whatsapp.com/send?phone=${
                         (partner.phone || "").replace(/\D/g, "")}`}
                       target="_blank" rel="noreferrer">
-                    <span>💬</span> Falar no WhatsApp
+                    <span></span> Falar no WhatsApp
                   </a>
                 </>
               )}
@@ -179,16 +179,16 @@ export default function PartnerDetailPage() {
                     e.currentTarget.style.display = "none";
                   }} />
           ) : (
-            <div className="pd-cover-emoji">🏪</div>
+            <div className="pd-cover-emoji"></div>
           )}
           <h1 className="pd-name">{partner.name}</h1>
           <div className="pd-meta">
-            <span>📍 {partner.neighborhood || partner.city}</span>
+            <span>{partner.neighborhood || partner.city}</span>
             <span>·</span>
             <span>{partner.category}</span>
             {partner.phone && (<>
               <span>·</span>
-              <span>📞 {partner.phone}</span>
+              <span>{partner.phone}</span>
             </>)}
           </div>
           <div className="pd-rating-row">
@@ -200,7 +200,7 @@ export default function PartnerDetailPage() {
             </span>
             <span className="pd-sep">·</span>
             <span className="pd-rating-stat">
-              🎁 {total_redemptions} resgate{total_redemptions === 1
+              {total_redemptions} resgate{total_redemptions === 1
                 ? "" : "s"}
             </span>
           </div>
@@ -210,7 +210,7 @@ export default function PartnerDetailPage() {
       {/* Owner banner */}
       {isOwner && (
         <div className="pd-owner-banner" data-testid="pd-owner-banner">
-          <span>👋 Olá, <b>{partner.name}</b>! Você está no modo
+          <span>Olá, <b>{partner.name}</b>! Você está no modo
             <b> proprietário</b>.</span>
           <button onClick={() => setShowAddItem(true)}
                    data-testid="pd-owner-add"
@@ -242,7 +242,7 @@ export default function PartnerDetailPage() {
                           style={{ background:
                             `linear-gradient(135deg, ${partner.color}26, ${partner.color}10)` }}>
                       <span style={{ fontSize: 96 }}>
-                        {CAT_EMOJI[partner.category] || "🎁"}
+                        {CAT_EMOJI[partner.category] || ""}
                       </span>
                     </div>
                   )}
@@ -261,7 +261,7 @@ export default function PartnerDetailPage() {
                 </div>
                 <div className="pd-slide-body">
                   <h3>{p.title}</h3>
-                  <p className="pd-slide-offer">🎯 {p.offer_summary}</p>
+                  <p className="pd-slide-offer">{p.offer_summary}</p>
                   {(p.original_price > 0 || p.promo_price > 0) && (
                     <div className="pd-prices">
                       {p.original_price > 0 && (
@@ -280,7 +280,7 @@ export default function PartnerDetailPage() {
                     <p className="pd-slide-desc">{p.description}</p>
                   )}
                   {p.terms && (
-                    <p className="pd-slide-terms">📋 {p.terms}</p>
+                    <p className="pd-slide-terms">{p.terms}</p>
                   )}
                   {isOwner && (
                     <div className="pd-owner-actions">
@@ -298,7 +298,7 @@ export default function PartnerDetailPage() {
                       }}
                                className="danger"
                                data-testid={`pd-del-${p.id}`}>
-                        🗑 Remover
+                        Remover
                       </button>
                     </div>
                   )}
@@ -318,7 +318,7 @@ export default function PartnerDetailPage() {
         </section>
       ) : isOwner ? (
         <div className="pd-empty-owner" data-testid="pd-empty-owner">
-          <div style={{ fontSize: 56, marginBottom: 10 }}>🎁</div>
+          <div style={{ fontSize: 56, marginBottom: 10 }}></div>
           <h3>Você ainda não publicou promoções</h3>
           <p>Cadastre sua primeira promoção pra aparecer na vitrine
             Ligo e atrair clientes.</p>
@@ -334,7 +334,7 @@ export default function PartnerDetailPage() {
       {/* Clientes beneficiados */}
       <section className="pd-section">
         <h2 className="pd-section-title">
-          <span className="ic">👥</span> Clientes Ligo que aproveitaram
+          <span className="ic"></span> Clientes Ligo que aproveitaram
         </h2>
         {recent_redemptions.length === 0 ? (
           <p className="pd-empty">
@@ -371,7 +371,7 @@ export default function PartnerDetailPage() {
                   <Stars value={r.stars} small />
                   <span className="pd-rating-name">{r.client_name}</span>
                 </div>
-                {r.comment && <p>"{r.comment}"</p>}
+                {r.comment && <p>“{r.comment}”</p>}
                 <small>
                   {r.promotion_title} ·{" "}
                   {new Date(r.created_at).toLocaleDateString("pt-BR")}
@@ -434,17 +434,17 @@ function Stars({ value = 0, small = false }) {
   const half = (v - full) >= 0.5;
   const stars = [];
   for (let i = 0; i < 5; i++) {
-    if (i < full) stars.push("★");
+    if (i < full) stars.push("");
     else if (i === full && half) stars.push("⯨");
-    else stars.push("☆");
+    else stars.push("");
   }
   return (
     <span className={`pd-stars ${small ? "sm" : ""}`}>
       {stars.map((s, i) => (
         <span key={i}
-                style={{ color: s === "★" || s === "⯨"
+                style={{ color: s === "" || s === "⯨"
                   ? "#f59e0b" : "rgba(255,255,255,.45)" }}>
-          {s === "⯨" ? "★" : s}
+          {s === "⯨" ? "" : s}
         </span>
       ))}
     </span>
@@ -452,9 +452,9 @@ function Stars({ value = 0, small = false }) {
 }
 
 const CAT_EMOJI = {
-  Pizzaria: "🍕", "Farmácia": "💊", Oficina: "🔧",
-  Restaurante: "🍔", "Padaria": "🥐", Mercado: "🛒",
-  Outros: "🎁",
+  Pizzaria: "", "Farmácia": "", Oficina: "",
+  Restaurante: "", "Padaria": "", Mercado: "",
+  Outros: "",
 };
 
 // ─── Scanner overlay ─────────────────────────────────────
@@ -502,7 +502,7 @@ function ScannerOverlay({ partner, promotions, partnerToken,
   return (
     <div className="pd-scan" data-testid="pd-scanner">
       <header>
-        <b>📷 Escanear QR Ligo · {partner.name}</b>
+        <b>Escanear QR Ligo · {partner.name}</b>
         <button onClick={close} data-testid="pd-scan-close">✕</button>
       </header>
       <div style={{ padding: 12, background: "#0f172a" }}>
@@ -537,7 +537,7 @@ function ResultOverlay({ r, onClose }) {
           data-testid="pd-result">
       <div className={`pd-result ${isOk ? "ok" : "fail"}`}
             onClick={(e) => e.stopPropagation()}>
-        <h2>{isOk ? "✅ Promoção aplicada!" : "⚠ Não foi possível"}</h2>
+        <h2>{isOk ? "✅ Promoção aplicada!" : "Não foi possível"}</h2>
         {r.client && <div className="name">{r.client.name}</div>}
         {r.promotion && (
           <div className="why">
@@ -644,7 +644,7 @@ function AddItemModal({ partnerToken, onClose, onSaved, initial }) {
         <label style={{ fontSize: 11, color: "#94a3b8",
                           display: "block", marginBottom: 8,
                           letterSpacing: .5 }}>
-          📸 Foto da promoção
+          Foto da promoção
           <div className="pd-upload-box"
                 data-testid="pd-upload-box"
                 style={{ marginTop: 6 }}>
@@ -676,10 +676,10 @@ function AddItemModal({ partnerToken, onClose, onSaved, initial }) {
                         style={{ display: "none" }}
                         data-testid="pd-upload-input" />
                 {uploading ? (
-                  <span style={{ color: "#fcd34d" }}>📤 Enviando…</span>
+                  <span style={{ color: "#fcd34d" }}>Enviando…</span>
                 ) : (
                   <>
-                    <div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
+                    <div style={{ fontSize: 28, marginBottom: 6 }}></div>
                     <div style={{ color: "white", fontWeight: 700,
                                     fontSize: 13 }}>
                       Carregar foto

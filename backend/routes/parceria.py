@@ -74,7 +74,7 @@ import logging
 import secrets
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Any, Optional, List, Literal
+from typing import Any, Optional, List, Literal, Dict
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Header
@@ -83,7 +83,6 @@ from pydantic import BaseModel, EmailStr, Field
 from auth import hash_password, verify_password, _jwt_secret
 from core import DEMO_COMPANY_ID, get_current_user, is_super_admin
 from database import db
-
 logger = logging.getLogger("ponto.parceria")
 router = APIRouter(prefix="/api/parcerias", tags=["parcerias"])
 partner_router = APIRouter(prefix="/api/parceiro-portal",
@@ -95,6 +94,56 @@ JWT_ALGO = "HS256"
 PARTNER_TTL_DAYS = 30
 CLIENT_TTL_DAYS = 30
 QR_TOKEN_PREFIX = "LIGO:"
+# QR criptografado V2 (Fernet AES-128-CBC + HMAC-SHA256 + TTL).
+# Apenas backend pode ler/escrever — nem cliente nem parceiro veem o conteúdo.
+QR_V2_PREFIX = "LIGO2:"
+QR_V2_TTL_SECONDS = 90  # token válido por 90s (anti-replay)
+
+
+# ─────────────── Fernet seguro (lazy singleton) ──────────────
+def _get_qr_fernet():
+    """Retorna instância Fernet derivada de QR_SECRET (ou JWT_SECRET).
+    Cacheado para evitar re-criação por request."""
+    global _QR_FERNET  # noqa: PLW0603
+    try:
+        return _QR_FERNET  # type: ignore[name-defined]
+    except NameError:
+        pass
+    import base64
+    import hashlib
+    import os
+    from cryptography.fernet import Fernet
+    raw = (os.environ.get("LIGO_QR_SECRET")
+           or os.environ.get("JWT_SECRET")
+           or "ligo-qr-fallback-dev-secret-do-not-use-in-prod")
+    # Fernet exige 32 bytes urlsafe-b64 — derivamos via SHA256 do secret
+    key = base64.urlsafe_b64encode(hashlib.sha256(raw.encode()).digest())
+    globals()["_QR_FERNET"] = Fernet(key)
+    return globals()["_QR_FERNET"]
+
+
+def encrypt_qr_payload(payload: dict) -> str:
+    """Criptografa o payload (CPF, sid, nome) em um token Fernet curto.
+    Retorna `LIGO2:{token}` para ser embutido no QR Code do cliente."""
+    import json
+    f = _get_qr_fernet()
+    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    return QR_V2_PREFIX + f.encrypt(raw).decode("ascii")
+
+
+def decrypt_qr_payload(token: str) -> Optional[dict]:
+    """Descriptografa um token `LIGO2:{...}` validando TTL (90s).
+    Retorna `None` se inválido/expirado — caller deve responder 404."""
+    import json
+    if not token or not token.startswith(QR_V2_PREFIX):
+        return None
+    raw_token = token[len(QR_V2_PREFIX):].encode("ascii")
+    try:
+        f = _get_qr_fernet()
+        plain = f.decrypt(raw_token, ttl=QR_V2_TTL_SECONDS)
+        return json.loads(plain.decode("utf-8"))
+    except Exception:
+        return None
 
 
 # ─────────────────────── helpers ────────────────────────
@@ -202,7 +251,13 @@ async def _check_eligibility(subscriber: dict, promotion: dict) -> dict:
     if fin in ("inadimplente", "atrasado", "bloqueado", "atraso"):
         return {"ok": False, "reason": "Cliente em débito (inadimplente)"}
 
-    act = subscriber.get("activation_date") or subscriber.get("created_at")
+    # iter215 — `installation_date` é a fonte canônica (vem do Atlaz/import).
+    # `activation_date` é alternativa. `created_at` é APENAS fallback se
+    # nenhum dos outros existir (e cuidado: created_at na nossa DB é a data
+    # de IMPORT, não de ativação — pode subestimar a antiguidade).
+    act = (subscriber.get("installation_date")
+           or subscriber.get("activation_date")
+           or subscriber.get("created_at"))
     if act:
         try:
             d = act if isinstance(act, datetime) else datetime.fromisoformat(
@@ -324,6 +379,10 @@ class ScanIn(BaseModel):
     qr_token: str
     promotion_id: str
     note: Optional[str] = ""
+    # Payload do QR — pode ser:
+    #   • dict: JSON do QR antigo (cliente Ligo v1, com sid/cpf/name)
+    #   • str:  token criptografado V2 (LIGO2:...)
+    qr_payload: Optional[Any] = None
 
 
 class ClientQuickLoginIn(BaseModel):
@@ -885,16 +944,90 @@ async def partner_promos(u: dict = Depends(get_partner_user)):
 async def partner_scan(payload: ScanIn,
                         u: dict = Depends(get_partner_user)):
     token = payload.qr_token.strip()
+    subscriber = None
+
+    # 0) PRIORIDADE MÁXIMA: token criptografado V2 (Fernet, TTL 90s).
+    #    Contém o subscriber_id em formato opaco — anti-replay.
+    if token.startswith(QR_V2_PREFIX) or (
+            payload.qr_payload
+            and isinstance(payload.qr_payload, str)
+            and payload.qr_payload.startswith(QR_V2_PREFIX)):
+        enc = token if token.startswith(QR_V2_PREFIX) \
+            else payload.qr_payload  # type: ignore[arg-type]
+        decoded = decrypt_qr_payload(enc)
+        if decoded is None:
+            raise HTTPException(400,
+                "QR expirado ou inválido. Peça pro cliente abrir o QR de novo.")
+        sid = decoded.get("sid")
+        if sid:
+            subscriber = await db.subscribers.find_one(
+                {"id": sid}, {"_id": 0})
+
+    # Remove prefixo legado LIGO: para os fallbacks abaixo
     if token.upper().startswith(QR_TOKEN_PREFIX):
         token = token[len(QR_TOKEN_PREFIX):]
-    qr = await db.client_qr_tokens.find_one({"token": token},
-                                               {"_id": 0})
-    if not qr:
-        raise HTTPException(404, "QR inválido ou não cadastrado")
-    subscriber = await db.subscribers.find_one(
-        {"id": qr["client_id"]}, {"_id": 0})
+
+    # 1) lookup por token random (caminho legado)
     if not subscriber:
-        raise HTTPException(404, "Cliente não encontrado")
+        qr = await db.client_qr_tokens.find_one({"token": token},
+                                                   {"_id": 0})
+        if qr:
+            subscriber = await db.subscribers.find_one(
+                {"id": qr["client_id"]}, {"_id": 0})
+
+    # 2) lookup direto por subscriber_id (QR JSON com `sid`)
+    if not subscriber and token and ":" not in token:
+        subscriber = await db.subscribers.find_one(
+            {"id": token}, {"_id": 0})
+
+    # 3) lookup por CPF (QR JSON sem `sid`)
+    if not subscriber and token.upper().startswith("CPF:"):
+        cpf_clean = "".join(c for c in token[4:] if c.isdigit())
+        if cpf_clean:
+            subscriber = await db.subscribers.find_one(
+                {"$or": [
+                    {"cpf": cpf_clean},
+                    {"document": cpf_clean},
+                    {"cpf_cnpj": cpf_clean},
+                ]}, {"_id": 0})
+
+    # 4) lookup por nome (QR JSON só com `name`) — restrito ao tenant
+    if not subscriber and token.upper().startswith("NAME:"):
+        name_q = token[5:].strip()
+        if name_q and u.get("company_id"):
+            subscriber = await db.subscribers.find_one(
+                {"company_id": u["company_id"],
+                 "name": {"$regex": f"^{name_q}$", "$options": "i"}},
+                {"_id": 0})
+
+    # 5) fallback final: usa o `qr_payload` JSON enviado pelo PWA
+    if not subscriber and payload.qr_payload \
+            and isinstance(payload.qr_payload, dict):
+        qp = payload.qr_payload
+        cpf_clean = "".join(c for c in str(qp.get("cpf") or "")
+                              if c.isdigit())
+        if cpf_clean:
+            subscriber = await db.subscribers.find_one(
+                {"$or": [
+                    {"cpf": cpf_clean},
+                    {"document": cpf_clean},
+                    {"cpf_cnpj": cpf_clean},
+                ]}, {"_id": 0})
+        if not subscriber and qp.get("name") and u.get("company_id"):
+            subscriber = await db.subscribers.find_one(
+                {"company_id": u["company_id"],
+                 "name": {"$regex": f"^{qp['name']}$", "$options": "i"}},
+                {"_id": 0})
+
+    if not subscriber:
+        raise HTTPException(404, "QR inválido ou não cadastrado")
+
+    # Garante que o cliente pertença à mesma empresa do parceiro
+    if subscriber.get("company_id") and \
+            u.get("company_id") and \
+            subscriber["company_id"] != u["company_id"]:
+        raise HTTPException(403,
+            "Cliente de outra operadora — não pode resgatar aqui.")
 
     promotion = await db.parcerias_promotions.find_one(
         {"id": payload.promotion_id, "partner_id": u["partner_id"],
@@ -933,11 +1066,29 @@ async def partner_scan(payload: ScanIn,
                     "total_due": promotion["reimbursement_value"]}})
     logger.info("[parcerias] scan ok partner=%s client=%s promo=%s",
                 u["partner_id"], subscriber["id"], promotion["id"])
+    # iter215 — Calcula tempo de cliente pra exibição VIP no parceiro
+    tenure_years = None
+    is_vip = False
+    inst = (subscriber.get("installation_date")
+            or subscriber.get("activation_date")
+            or subscriber.get("created_at"))
+    if inst:
+        try:
+            d = inst if isinstance(inst, datetime) else datetime.fromisoformat(
+                inst.replace("Z", "+00:00"))
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=timezone.utc)
+            tenure_years = (_now() - d).days / 365.25
+            is_vip = tenure_years >= 5
+        except Exception:
+            pass
     return {"ok": True, "voucher_code": voucher,
              "client": {"id": subscriber["id"],
                           "name": subscriber.get("name", ""),
                           "pppoe": subscriber.get("pppoe_user", ""),
-                          "city": _first_city(subscriber)},
+                          "city": _first_city(subscriber),
+                          "tenure_years": tenure_years,
+                          "is_vip": is_vip},
              "promotion": {"title": promotion["title"],
                               "offer_summary": promotion.get(
                                 "offer_summary", "")},
@@ -959,6 +1110,42 @@ async def partner_redemptions(limit: int = 200,
         {"partner_id": u["partner_id"]}, {"_id": 0}) \
         .sort("redeemed_at", -1).limit(limit)
     return await cur.to_list(limit)
+
+
+@partner_router.get("/today-stats")
+async def partner_today_stats(u: dict = Depends(get_partner_user)):
+    """KPIs do dia para gamificação no Hub do parceiro:
+    quantidade de resgates hoje + valor total a receber hoje."""
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    q = {
+        "partner_id": u["partner_id"],
+        "redeemed_at": {"$gte": start.isoformat(),
+                          "$lt": end.isoformat()},
+    }
+    count = await db.parcerias_redemptions.count_documents(q)
+    pipe = [{"$match": q},
+            {"$group": {"_id": None,
+                          "sum": {"$sum": "$reimbursement_value"}}}]
+    agg = await db.parcerias_redemptions.aggregate(pipe).to_list(1)
+    due_today = float(agg[0]["sum"]) if agg else 0.0
+    # pending = não pago ainda (lifetime)
+    pending = await db.parcerias_redemptions.count_documents({
+        "partner_id": u["partner_id"], "paid_at": None,
+    })
+    pipe2 = [{"$match": {"partner_id": u["partner_id"], "paid_at": None}},
+             {"$group": {"_id": None,
+                           "sum": {"$sum": "$reimbursement_value"}}}]
+    agg2 = await db.parcerias_redemptions.aggregate(pipe2).to_list(1)
+    pending_due = float(agg2[0]["sum"]) if agg2 else 0.0
+    return {
+        "today_count": count,
+        "today_due": round(due_today, 2),
+        "pending_count": pending,
+        "pending_due": round(pending_due, 2),
+    }
 
 
 # ─── Partner self-service: criar/editar promoções próprias ───
@@ -1172,6 +1359,35 @@ async def rotate_qr(u: dict = Depends(get_client_user)):
         {"$set": {"token": token, "last_rotated_at": _now_iso()}},
         upsert=True)
     return {"qr_token": token, "qr_payload": f"{QR_TOKEN_PREFIX}{token}"}
+
+
+@client_router.get("/qr-token")
+async def client_encrypted_qr_token(
+        u: dict = Depends(get_client_user)):
+    """Retorna um token criptografado curto (Fernet, TTL 90s) com
+    os dados do cliente. O payload É opaco pra qualquer um que escanear
+    o QR — apenas o backend Ligo consegue descriptografar via `/scan`.
+
+    Cliente deve renovar o token a cada ~60s pra evitar expiração."""
+    sub = await db.subscribers.find_one({"id": u["sub"]},
+        {"_id": 0, "id": 1, "name": 1, "cpf": 1,
+         "document": 1, "company_id": 1, "status": 1})
+    if not sub:
+        raise HTTPException(404, "Cliente não encontrado")
+    payload = {
+        "sid": sub["id"],
+        "name": sub.get("name", ""),
+        "cpf": sub.get("cpf") or sub.get("document") or "",
+        "tid": sub.get("company_id"),
+        "iat": int(datetime.now(timezone.utc).timestamp()),
+    }
+    encrypted = encrypt_qr_payload(payload)
+    return {
+        "qr_payload": encrypted,
+        "ttl_seconds": QR_V2_TTL_SECONDS,
+        "expires_at": (datetime.now(timezone.utc)
+                       + timedelta(seconds=QR_V2_TTL_SECONDS)).isoformat(),
+    }
 
 
 class RatingIn(BaseModel):

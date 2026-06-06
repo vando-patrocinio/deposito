@@ -236,7 +236,7 @@ export default function AfterHoursMetricsCard() {
                         color: "#64748b", fontSize: 13 }}>
           Nenhuma resposta automática fora do horário nos últimos{" "}
           {data.window_days} {data.window_days === 1 ? "dia" : "dias"}.
-          {" "}Quando isso acontecer, vai aparecer aqui 🌙
+          {" "}Quando isso acontecer, vai aparecer aqui 
         </div>
       )}
     </Card>

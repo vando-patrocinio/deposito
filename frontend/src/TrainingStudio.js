@@ -592,7 +592,7 @@ function TestRow({ t, isRunning, onRun, onViewLast }) {
         </div>
         <div style={{ fontSize: 11.5, color: "var(--text-muted)",
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
-          "{(t.entrada_cliente || "").slice(0, 80)}"
+          “{(t.entrada_cliente || "").slice(0, 80)}”
         </div>
       </div>
       <div style={{ display: "flex", gap: 6 }}>
@@ -673,7 +673,7 @@ function RunDetail({ run, onClose }) {
           padding: 10, borderRadius: 8, fontSize: 12.5, lineHeight: 1.5,
           background: "rgba(15,23,42,.05)", color: "var(--text-primary)",
           borderLeft: "3px solid #64748b",
-        }}>"{run.entrada_cliente}"</div>
+        }}>“{run.entrada_cliente}”</div>
       </Section>
 
       <Section title="Resposta da Isabela IA">
@@ -965,7 +965,7 @@ function HistoryTab() {
         }}>
           {items.length === 0 && (
             <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-              Nenhuma execução ainda. Execute alguns testes na aba "Testes".
+              Nenhuma execução ainda. Execute alguns testes na aba “Testes”.
             </div>
           )}
           {items.map((r) => (

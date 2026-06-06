@@ -85,7 +85,7 @@ export default function WifiCaptivePortal() {
       <Wrap brand={{ color_primary: "#6B2BFB", color_accent: "#FF6A1A" }}>
         <Card>
           <div style={{ textAlign: "center", padding: "30px 0" }}>
-            <div style={{ fontSize: 48 }}>📡</div>
+            <div style={{ fontSize: 48 }}></div>
             <h2 style={{ color: "#dc2626", marginTop: 12 }}>Ops!</h2>
             <p style={{ color: "#64748b" }}>{err}</p>
           </div>
@@ -323,7 +323,7 @@ function SuccessCard({ venue, done }) {
           border: "1px solid #86efac",
           fontSize: 12, color: "#166534",
         }}>
-          💡 <b>Dica:</b> a Ligo Fibra também oferece internet residencial
+          <b>Dica:</b> a Ligo Fibra também oferece internet residencial
           de alta velocidade. Cadastre-se na nossa lista de espera!
         </div>
       </div>
@@ -342,7 +342,7 @@ function PendingWhatsAppCard({ venue, done }) {
           boxShadow: "0 16px 40px rgba(37,211,102,.45)",
           animation: "pulse 1.6s ease-in-out infinite",
         }}>
-          <span style={{ fontSize: 40, color: "white" }}>💬</span>
+          <span style={{ fontSize: 40, color: "white" }}></span>
         </div>
         <style>{`@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }`}</style>
         <h1 style={{
@@ -384,7 +384,7 @@ function PendingWhatsAppCard({ venue, done }) {
               fontWeight: 900, fontSize: 15,
               display: "inline-flex", alignItems: "center", gap: 8,
               boxShadow: "0 14px 30px rgba(37,211,102,.45)",
-            }}>📲 Abrir WhatsApp agora</a>
+            }}>Abrir WhatsApp agora</a>
         )}
 
         <div style={{

@@ -199,7 +199,7 @@ export default function PublicAccessPanel() {
                           background: "rgba(251,191,36,0.12)",
                           color: "#78350f", fontSize: 11.5,
                           borderRadius: 6 }}>
-            ⚠️ <strong>Atenção:</strong> qualquer pessoa com o link terá poder de
+            ️ <strong>Atenção:</strong> qualquer pessoa com o link terá poder de
             administrador na empresa (criar, editar e fechar chamados). Use só com
             quem confia. Revogue quando não precisar mais.
           </div>

@@ -149,7 +149,7 @@ function drawStamp(ctx, canvasW, canvasH, lines) {
  * @param {number|null} opts.lat - latitude do GPS no momento da captura.
  * @param {number|null} opts.lng - longitude.
  * @param {string=} opts.address - endereço pronto (pula reverse-geocode).
- * @param {string=} opts.label - rótulo opcional acima dos demais (ex: "📦 FOTO CTO").
+ * @param {string=} opts.label - rótulo opcional acima dos demais (ex: "FOTO CTO").
  * @param {string=} opts.collaborator - nome do técnico que tirou a foto.
  * @param {string=} opts.element - nomenclatura do elemento de rede
  *                                  (ex: "CTO_301_0027", "CABO_LINHA_PRINCIPAL").
@@ -171,14 +171,14 @@ export async function stampFieldPhoto(dataUrl, opts = {}) {
   if (opts.label) lines.push(opts.label);
   // iter211az — elemento de rede (CTO_301_0027 / CABO_X) e colaborador
   // ficam nas duas primeiras linhas pra leitura imediata na auditoria.
-  if (opts.element) lines.push(`🔖 ${opts.element}`);
-  if (opts.collaborator) lines.push(`👷 ${opts.collaborator}`);
-  lines.push(`📅 ${fmtNow()}`);
+  if (opts.element) lines.push(`${opts.element}`);
+  if (opts.collaborator) lines.push(`${opts.collaborator}`);
+  lines.push(`${fmtNow()}`);
   if (lat != null && lng != null) {
-    lines.push(`📍 ${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`);
+    lines.push(`${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`);
   }
-  if (address) lines.push(`🏠 ${address}`);
-  lines.push(`📱 ${dev}`);
+  if (address) lines.push(`${address}`);
+  lines.push(`${dev}`);
 
   return new Promise((resolve) => {
     let settled = false;

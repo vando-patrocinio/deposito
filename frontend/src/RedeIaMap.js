@@ -265,7 +265,7 @@ function CableSerialModal({ open, type, totalM, hasDestination, onCancel, onConf
       }}>
         <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a",
                         marginBottom: 4 }}>
-          🏷️ Identificação do cabo
+          ️ Identificação do cabo
         </div>
         <div style={{ fontSize: 13, color: "#475569", marginBottom: 16 }}>
           Cabo <strong>{type.toUpperCase()}</strong> · {totalM >= 1000
@@ -278,7 +278,7 @@ function CableSerialModal({ open, type, totalM, hasDestination, onCancel, onConf
           <div style={{ marginTop: 6, padding: "6px 8px", fontSize: 11,
                           background: "#fef3c7", color: "#92400e",
                           borderRadius: 6, lineHeight: 1.4 }}>
-            📦 Ao salvar, <strong>{Math.round(totalM)} m</strong> de fibra
+            Ao salvar, <strong>{Math.round(totalM)} m</strong> de fibra
             {" "}<strong>{type.toUpperCase()}</strong> serão automaticamente
             baixados do estoque.
           </div>
@@ -336,7 +336,7 @@ function CableSerialModal({ open, type, totalM, hasDestination, onCancel, onConf
         {err && (
           <div style={{ color: "#dc2626", fontSize: 12, marginBottom: 12,
                           padding: 8, background: "#fee2e2", borderRadius: 6 }}>
-            ⚠️ {err}
+            ️ {err}
           </div>
         )}
 
@@ -664,7 +664,7 @@ export default function RedeIaMap() {
       return;
     }
 
-    // Origem do trecho: último waypoint OU o "from"
+    // Origem do trecho: último waypoint OU o "from "
     const last = draft.waypoints.length > 0
       ? draft.waypoints[draft.waypoints.length - 1]
       : { lat: draft.from.lat, lng: draft.from.lng };
@@ -996,7 +996,7 @@ export default function RedeIaMap() {
                 setSearchHighlight(m); setSearchQuery(m.name);
               }
             }}
-            placeholder="🔎 CTO_301_004, CE_00001…"
+            placeholder="CTO_301_004, CE_00001…"
             style={{
               ...selectStyle, width: 220, paddingLeft: 12,
               fontFamily: "monospace",
@@ -1066,7 +1066,7 @@ export default function RedeIaMap() {
                 pickAddress(addrResults[0]);
               }
             }}
-            placeholder="📍 Endereço, bairro, cidade…"
+            placeholder="Endereço, bairro, cidade…"
             style={{
               ...selectStyle, width: 260, paddingLeft: 12,
               borderColor: addrPin ? "#0ea5e9" : undefined,
@@ -1122,7 +1122,7 @@ export default function RedeIaMap() {
                     marginRight: 8, fontSize: 9, fontWeight: 800,
                     background: "#dbeafe", color: "#1e40af",
                     textTransform: "uppercase",
-                  }}>📍 {(r.type || "lugar").replace("_", " ")}</span>
+                  }}>{(r.type || "lugar").replace("_", " ")}</span>
                   {r.label}
                 </button>
               ))}
@@ -1144,19 +1144,19 @@ export default function RedeIaMap() {
           onChange={(e) => setHealthFilter(e.target.value)}
           style={selectStyle}>
           <option value="">Todas as saúdes</option>
-          <option value="critical">🔴 Crítico</option>
-          <option value="warning">🟡 Atenção</option>
-          <option value="ok">🟢 Saudável</option>
-          <option value="no_data">⚫ Sem dados</option>
+          <option value="critical">Crítico</option>
+          <option value="warning">Atenção</option>
+          <option value="ok">Saudável</option>
+          <option value="no_data">Sem dados</option>
         </select>
         <select data-testid="map-filter-cable" value={cableFilter}
           onChange={(e) => setCableFilter(e.target.value)}
           style={selectStyle}
           title="Filtra os cabos exibidos no mapa">
           <option value="all">Todos os cabos</option>
-          <option value="drop">🔵 Drop (cliente)</option>
-          <option value="distribuicao">🟧 Distribuição</option>
-          <option value="backbone">🔴 Backbone</option>
+          <option value="drop">Drop (cliente)</option>
+          <option value="distribuicao">Distribuição</option>
+          <option value="backbone">Backbone</option>
           <option value="6fo">6FO</option>
           <option value="12fo">12FO</option>
           <option value="24fo">24FO</option>
@@ -1170,7 +1170,7 @@ export default function RedeIaMap() {
         <button data-testid="map-auto-ces" onClick={autoGenerate} disabled={busy}
                 style={{ ...tbBtn("#7c3aed"), opacity: busy ? 0.5 : 1 }}
                 title="rede_IA agrupa CTOs próximas e cria CEs + cabos automaticamente">
-          {busy ? "Processando..." : "🤖 rede_IA gerar CEs"}
+          {busy ? "Processando..." : "rede_IA gerar CEs"}
         </button>
         <button data-testid="map-share-btn" onClick={async () => {
           const ttlInput = await window.prompt("Validade do link (dias, 1-365):", "30");
@@ -1190,7 +1190,7 @@ export default function RedeIaMap() {
           }
         }} style={tbBtn("#16a34a")}
             title="Gera link público read-only com TTL configurável">
-          🔗 Compartilhar
+          Compartilhar
         </button>
         <KmzControls vlanFilter={vlanFilter} onImported={load} />
         <button data-testid="map-toggle-signal-layer"
@@ -1205,10 +1205,10 @@ export default function RedeIaMap() {
                 }}>
           {signalLoading ? "⏳ Carregando…"
             : (showSignalLayer
-                ? `⚠️ Sinal ruim${signalStats
+                ? `️ Sinal ruim${signalStats
                     ? ` (${signalStats.with_coords}/${signalStats.total_with_issue})`
                     : ""}`
-                : "⚠️ Mostrar sinal ruim")}
+                : "️ Mostrar sinal ruim")}
         </button>
         {showSignalLayer && signalStats?.without_coords > 0 && (
           <button data-testid="map-signal-geocode-more"
@@ -1221,7 +1221,7 @@ export default function RedeIaMap() {
                     background: "#0ea5e9", color: "#fff", border: 0,
                     opacity: signalLoading ? 0.5 : 1,
                   }}>
-            ⚡ +40 ({signalStats.without_coords} restantes)
+            +40 ({signalStats.without_coords} restantes)
           </button>
         )}
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>
@@ -1229,7 +1229,7 @@ export default function RedeIaMap() {
           {" "}{data.ces.length} CEs · {data.cables.length} cabos
           {criticalCount > 0 && (
             <span style={{ color: "#dc2626", marginLeft: 8, fontWeight: 700 }}>
-              🔴 {criticalCount} críticos
+              {criticalCount} críticos
             </span>
           )}
         </span>
@@ -1273,7 +1273,7 @@ export default function RedeIaMap() {
                        zoom={14} style={{ height: "100%", width: "100%" }}>
           <TileLayer
             attribution='&copy; <a href="https://osm.org">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
             maxZoom={19}
           />
           <FitBounds ctos={filteredCtos} />
@@ -1305,7 +1305,7 @@ export default function RedeIaMap() {
               >
                 <Tooltip permanent direction="top" offset={[0, -8]}>
                   <span style={{ fontSize: 11, fontWeight: 600 }}>
-                    📍 {addrPin.label.split(",").slice(0, 2).join(",")}
+                    {addrPin.label.split(",").slice(0, 2).join(",")}
                   </span>
                 </Tooltip>
               </CircleMarker>
@@ -1538,13 +1538,13 @@ export default function RedeIaMap() {
                         })}
                         eventHandlers={{
                           click: () => setActiveCableDetail?.({
-                            ...cab, _loose_end: "from",
+                            ...cab, _loose_end: "from ",
                             _loose_lat: cab.segments[0].lat,
                             _loose_lng: cab.segments[0].lng,
                           }),
                         }}>
                         <Tooltip direction="top" offset={[0, -12]}>
-                          🧵 <strong>{cab.name}</strong>
+                          <strong>{cab.name}</strong>
                           <br />Ponta solta (Origem) — clique para vincular
                         </Tooltip>
                       </Marker>
@@ -1578,7 +1578,7 @@ export default function RedeIaMap() {
                           }),
                         }}>
                         <Tooltip direction="top" offset={[0, -12]}>
-                          🧵 <strong>{cab.name}</strong>
+                          <strong>{cab.name}</strong>
                           <br />Ponta solta (Destino) — clique para vincular
                         </Tooltip>
                       </Marker>
@@ -1649,7 +1649,7 @@ export default function RedeIaMap() {
                     {ce.type} · {ce.capacity_fo} FO
                   </div>
                   {ce.address && (
-                    <div style={{ fontSize: 11, marginTop: 6 }}>📍 {fmtAddress(ce.address)}</div>
+                    <div style={{ fontSize: 11, marginTop: 6 }}>{fmtAddress(ce.address)}</div>
                   )}
                   {ce.notes && (
                     <div style={{ fontSize: 11, marginTop: 6, fontStyle: "italic",
@@ -1760,8 +1760,8 @@ export default function RedeIaMap() {
                         fontSize: 12, fontWeight: 700, marginBottom: 8,
                       }}>
                         {c.health.status === "no_data"
-                          ? "⚫ Sem dados de sinal"
-                          : `${{ok:"🟢",warning:"🟡",critical:"🔴"}[c.health.status]} ${STATUS_LABEL[c.health.status]} · score ${c.health.score}%`}
+                          ? "Sem dados de sinal"
+                          : `${{ok:"",warning:"",critical:""}[c.health.status]} ${STATUS_LABEL[c.health.status]} · score ${c.health.score}%`}
                         {c.health.total > 0 && (
                           <div style={{ marginTop: 4, fontSize: 11, fontWeight: 500,
                                           opacity: 0.95 }}>
@@ -1783,7 +1783,7 @@ export default function RedeIaMap() {
                       </div>
                       {c.address && (
                         <div style={{ fontSize: 11, color: "#475569" }}>
-                          📍 {c.address.rua}, {c.address.numero}
+                          {c.address.rua}, {c.address.numero}
                         </div>
                       )}
                       {photoColor && (
@@ -1796,7 +1796,7 @@ export default function RedeIaMap() {
                               }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <span style={{ color: photoColor, fontWeight: 800 }}>
-                              🤖 Saúde física {photoSev}/100
+                              Saúde física {photoSev}/100
                             </span>
                           </div>
                           {c.photo_summary && (
@@ -1839,7 +1839,7 @@ export default function RedeIaMap() {
                                           textTransform: "uppercase",
                                           letterSpacing: 0.4,
                                           marginBottom: 5 }}>
-                            📸 Fotos cadastradas ({c.photos.length})
+                            Fotos cadastradas ({c.photos.length})
                           </div>
                           <div style={{ display: "grid",
                                           gridTemplateColumns: "repeat(3, 1fr)",
@@ -1877,7 +1877,7 @@ export default function RedeIaMap() {
                                   cursor: "pointer",
                                   border: 0, color: "#fff",
                                 }}>
-                                👥 Clientes / Cadastrar
+                                Clientes / Cadastrar
                               </button>
                               <a href={`${apiBase}/api/rede-ia/ctos/${c.id}/qrcode.png?t=${encodeURIComponent(tok)}`}
                                   target="_blank" rel="noreferrer"
@@ -1900,7 +1900,7 @@ export default function RedeIaMap() {
                                   border: "1px solid #fecaca",
                                   cursor: "pointer",
                                 }}>
-                                🗑 Apagar
+                                Apagar
                               </button>
                             </>
                           );
@@ -1933,7 +1933,7 @@ export default function RedeIaMap() {
                       color: color, textTransform: "uppercase",
                       letterSpacing: 0.5,
                     }}>
-                      {isCritical ? "🔴 CRITICAL" : "🟠 WARNING"}
+                      {isCritical ? "CRITICAL" : "WARNING"}
                     </b>
                     <br/>
                     <span style={{ fontWeight: 700 }}>{p.name}</span>
@@ -1957,7 +1957,7 @@ export default function RedeIaMap() {
                       <>
                         <br/>
                         <span style={{ color: "#dc2626", fontWeight: 700 }}>
-                          ⚡ OFFLINE
+                          OFFLINE
                         </span>
                       </>
                     )}
@@ -2010,7 +2010,7 @@ export default function RedeIaMap() {
             background: "rgba(255,255,255,0.96)", color: "#0f172a",
             fontSize: 12, cursor: "pointer", zIndex: 1000,
             boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-          }}>📑 Legenda</button>
+          }}>Legenda</button>
         )}
 
         {/* Modo edição */}
@@ -2025,7 +2025,7 @@ export default function RedeIaMap() {
             onClick={() => { setMode("view");
                               setCableDraft({ ...cableDraft, from: null, waypoints: [], routedSegments: [] });
                               setNewCe(null); }}
-            style={modeBtn(mode === "view")}>👁 Ver</button>
+            style={modeBtn(mode === "view")}>Ver</button>
           <button data-testid="map-mode-drag"
             onClick={() => { setMode("drag");
                               setCableDraft({ ...cableDraft, from: null, waypoints: [], routedSegments: [] });
@@ -2034,7 +2034,7 @@ export default function RedeIaMap() {
           <button data-testid="map-mode-add-ce"
             onClick={() => { setMode("add-ce");
                               setCableDraft({ ...cableDraft, from: null, waypoints: [], routedSegments: [] }); }}
-            style={modeBtn(mode === "add-ce")}>📍 Criar CE</button>
+            style={modeBtn(mode === "add-ce")}>Criar CE</button>
           <button data-testid="map-mode-cable"
             onClick={() => { setMode("add-cable");
                               setCableDraft({ ...cableDraft, from: null, waypoints: [], routedSegments: [] });
@@ -2061,7 +2061,7 @@ export default function RedeIaMap() {
                   setFollowMouse(e.target.checked);
                 }}
                 style={{ margin: 0 }} />
-              🗺️ Seguir ruas (OSRM)
+              ️ Seguir ruas (OSRM)
             </label>
           )}
           {(mode === "add-cable" || mode === "draw-cable") && (
@@ -2082,7 +2082,7 @@ export default function RedeIaMap() {
           )}
           <button data-testid="map-mode-heatmap"
             onClick={() => setShowHeatmap(!showHeatmap)}
-            style={modeBtn(showHeatmap)}>🔥 Heatmap</button>
+            style={modeBtn(showHeatmap)}>Heatmap</button>
         </div>
 
         {/* Banner instruções por modo */}
@@ -2130,10 +2130,10 @@ export default function RedeIaMap() {
 
               <span style={{ flex: 1, minWidth: 200 }}>
                 {!cableDraft.from
-                  ? `✏️ ${followMouse ? "🗺️ Modo seguir ruas (OSRM)" : "Modo reta"} · Clique no mapa para começar (ou clique em uma CTO/CE)`
+                  ? `✏️ ${followMouse ? "️ Modo seguir ruas (OSRM)" : "Modo reta"} · Clique no mapa para começar (ou clique em uma CTO/CE)`
                   : cableDraft.waypoints.length === 0
                     ? `✅ Ponto inicial fixado · Continue clicando no mapa pra adicionar trechos`
-                    : `${cableDraft.waypoints.length + 1} pontos · 📏 ${draftTotalM >= 1000 ? (draftTotalM / 1000).toFixed(2) + " km" : draftTotalM.toFixed(0) + " m"} de cabo · Continue clicando OU clique numa CTO/CE pra fechar`}
+                    : `${cableDraft.waypoints.length + 1} pontos · ${draftTotalM >= 1000 ? (draftTotalM / 1000).toFixed(2) + " km" : draftTotalM.toFixed(0) + " m"} de cabo · Continue clicando OU clique numa CTO/CE pra fechar`}
               </span>
 
               {cableDraft.from && cableDraft.waypoints.length > 0 && (
@@ -2160,7 +2160,7 @@ export default function RedeIaMap() {
         )}
         {mode === "add-ce" && (
           <div data-testid="add-ce-instructions" style={instructionsBanner("#16a34a")}>
-            📍 Clique no mapa onde a CE será instalada
+            Clique no mapa onde a CE será instalada
           </div>
         )}
       </div>
@@ -2382,7 +2382,7 @@ function PhotoLightbox({ photos, index, ctoName, onClose,
           display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
           justifyContent: "center",
         }}>
-          📸 {ctoName || "CTO"}
+          {ctoName || "CTO"}
           {current.uploaded_by_name && (
             <span style={{ opacity: 0.7, fontWeight: 500 }}>
               · {current.uploaded_by_name}
@@ -2698,10 +2698,10 @@ function KmzControls({ vlanFilter, onImported }) {
       }
       const ok = window.confirm(
         `Importar de "${file.name}"?\n\n`
-        + `📍 CTOs: ${preview.ctos_created} novas, ${preview.ctos_updated} atualizadas\n`
+        + `CTOs: ${preview.ctos_created} novas, ${preview.ctos_updated} atualizadas\n`
         + `◆ CEs:  ${preview.ces_created} novos, ${preview.ces_updated} atualizados\n`
         + `━ Cabos: ${preview.cables_created} novos, ${preview.cables_updated} atualizados\n`
-        + (preview.ignored ? `\n⚠️ ${preview.ignored} Placemarks ignorados (sem coordenadas válidas)` : "")
+        + (preview.ignored ? `\n️ ${preview.ignored} Placemarks ignorados (sem coordenadas válidas)` : "")
         + `\n\nConfirma?`
       );
       if (!ok) return;
@@ -2736,7 +2736,7 @@ function KmzControls({ vlanFilter, onImported }) {
                 background: "#0ea5e9", color: "#fff", border: 0,
                 opacity: busy ? 0.5 : 1,
               }}>
-        📥 Exportar KMZ
+        Exportar KMZ
       </button>
       <button data-testid="map-import-kmz"
               onClick={() => fileInputRef.current?.click()}
@@ -2748,7 +2748,7 @@ function KmzControls({ vlanFilter, onImported }) {
                 background: "#f59e0b", color: "#fff", border: 0,
                 opacity: busy ? 0.5 : 1,
               }}>
-        📤 Importar KMZ
+        Importar KMZ
       </button>
       <input
         ref={fileInputRef}
@@ -2806,7 +2806,7 @@ function CableDetailDrawer({ cable, vlanStats, onClose }) {
             <div style={{ fontSize: 12, fontWeight: 800, color: "#9a3412",
                               marginBottom: 6, textTransform: "uppercase",
                               letterSpacing: 0.5 }}>
-              🧵 Ponta solta — {c._loose_end === "from" ? "Origem" : "Destino"}
+              Ponta solta — {c._loose_end === "from " ? "Origem" : "Destino"}
             </div>
             <div style={{ fontSize: 12, color: "#7c2d12", marginBottom: 10,
                               lineHeight: 1.45 }}>
@@ -2827,7 +2827,7 @@ function CableDetailDrawer({ cable, vlanStats, onClose }) {
                                        background: "#fff", color: "#9a3412",
                                        fontWeight: 700, fontSize: 12,
                                        cursor: "pointer" }}>
-                🔗 Ir para Cabos Órfãos
+                Ir para Cabos Órfãos
               </button>
               <button data-testid="loose-cadastrar-aqui"
                           onClick={() => {
@@ -2862,7 +2862,7 @@ function CableDetailDrawer({ cable, vlanStats, onClose }) {
                         color: "#fff", borderRadius: 12, marginBottom: 14 }}>
           <div style={{ fontSize: 10, opacity: 0.85, textTransform: "uppercase",
                           letterSpacing: 0.5, fontWeight: 700, marginBottom: 6 }}>
-            📏 Comprimento deste cabo
+            Comprimento deste cabo
           </div>
           <div style={{ fontSize: 28, fontWeight: 900 }}>
             {c.total_length_m
@@ -2906,7 +2906,7 @@ function CableDetailDrawer({ cable, vlanStats, onClose }) {
             <div style={{ fontSize: 10, color: "#0369a1", fontWeight: 700,
                             textTransform: "uppercase", letterSpacing: 0.5,
                             marginBottom: 6 }}>
-              📡 VLAN {vlanStats.vlan} — totais
+              VLAN {vlanStats.vlan} — totais
             </div>
             <Row label="Total de cabo"
                  value={`${Math.round(vlanStats.total_cable_m || 0).toLocaleString("pt-BR")} m`} />

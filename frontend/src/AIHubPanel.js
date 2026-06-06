@@ -17,10 +17,28 @@ const BASE_TABS = [
 ];
 
 export default function AIHubPanel({ initialTab = "whatsapp_qr" }) {
-  const [tab, setTab] = useState(initialTab);
+  // iter215m — Aceita sub-tab via sessionStorage (set por `ponto:navigate`
+  // com { view: 'atendimento', sub: 'channels' }). Usado pelo modal de
+  // dispatch pra mandar o user direto pra aba Canais quando tá tudo offline.
+  const _readSub = () => {
+    try {
+      return typeof window !== "undefined"
+        ? window.sessionStorage.getItem("subtab:atendimento")
+        : null;
+    } catch { return null; }
+  };
+  const [tab, setTab] = useState(() => _readSub() || initialTab);
   const [instanceName, setInstanceName] = useState("Ligo");
   const [waConnected, setWaConnected] = useState(false);
-  useEffect(() => { setTab(initialTab); }, [initialTab]);
+  useEffect(() => {
+    const sub = _readSub();
+    if (sub) {
+      setTab(sub);
+      try { window.sessionStorage.removeItem("subtab:atendimento"); } catch {}
+    } else {
+      setTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Carrega nome customizado da instância + status de conexão
   useEffect(() => {
@@ -1065,7 +1083,7 @@ function WhatsappWebhookHint() {
       marginTop: 14, padding: 12, background: "var(--info-soft)",
       color: "var(--info-soft-fg)", borderRadius: 10, fontSize: 12,
     }}>
-      <div style={{ fontWeight: 700, marginBottom: 4 }}>📌 Webhook URL para colar no Meta:</div>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>Webhook URL para colar no Meta:</div>
       <code className="mono" style={{ fontSize: 11 }}>{webhookUrl}</code>
     </div>
   );

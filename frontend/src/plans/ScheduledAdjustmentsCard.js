@@ -87,7 +87,7 @@ export default function ScheduledAdjustmentsCard({ items, onChange }) {
                 <div style={{ fontSize: 11, color: "var(--text-muted)",
                                marginTop: 1 }}>
                   +{s.pct}% · por {s.created_by_name || s.created_by}
-                  {s.note && <> · "{s.note}"</>}
+                  {s.note && <> · “{s.note}”</>}
                 </div>
               </div>
               <span style={{

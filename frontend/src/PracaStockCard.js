@@ -82,7 +82,7 @@ function PracaDetailModal({ praca, onClose }) {
         }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>
-              📦 {praca.praca_name}
+              {praca.praca_name}
             </div>
             <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
               {praca.keepers.length > 0
@@ -113,7 +113,7 @@ function PracaDetailModal({ praca, onClose }) {
               {praca.ont_count}
             </div>
             <div style={{ fontSize: 11, color: "#065f46", fontWeight: 700 }}>
-              📡 ONTs disponíveis
+              ONTs disponíveis
             </div>
           </div>
           <div style={{ background: "#eff6ff",
@@ -123,7 +123,7 @@ function PracaDetailModal({ praca, onClose }) {
               {praca.consumables.length}
             </div>
             <div style={{ fontSize: 11, color: "#1e40af", fontWeight: 700 }}>
-              🔌 Tipos de insumo
+              Tipos de insumo
             </div>
           </div>
         </div>
@@ -194,7 +194,7 @@ function PracaDetailModal({ praca, onClose }) {
                                   padding: "2px 6px", borderRadius: 4,
                                   background: "#dbeafe", color: "#1e40af",
                                 }}>
-                            📜 {macHist.length}
+                            {macHist.length}
                           </span>
                         )}
                         <span style={{ fontSize: 10, color: "#64748b",
@@ -339,7 +339,7 @@ export default function PracaStockCard() {
         <div>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800,
                           color: "#0f172a" }}>
-            🏢 Estoque por Praça
+            Estoque por Praça
           </h3>
           <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
             Saldo de ONTs e insumos em cada filial · {data.items.length} praça(s) · clique para detalhar
@@ -352,7 +352,7 @@ export default function PracaStockCard() {
                   padding: "4px 10px", borderRadius: 999,
                   background: "#fef3c7", color: "#92400e",
                 }}>
-            ⚠️ {data.orphan_onts} ONT(s) sem praça
+            ️ {data.orphan_onts} ONT(s) sem praça
           </div>
         )}
       </div>
@@ -399,12 +399,12 @@ export default function PracaStockCard() {
                   <div style={{ fontSize: 13, fontWeight: 800,
                                   color: "#0f172a", whiteSpace: "nowrap",
                                   overflow: "hidden", textOverflow: "ellipsis" }}>
-                    📦 {p.praca_name}
+                    {p.praca_name}
                   </div>
                   {p.keepers.length > 0 ? (
                     <div style={{ fontSize: 10, color: "#475569",
                                     marginTop: 2 }}>
-                      👤 {p.keepers.map((k) => k.name).join(", ")}
+                      {p.keepers.map((k) => k.name).join(", ")}
                     </div>
                   ) : (
                     <div style={{ fontSize: 10, color: "#94a3b8",

@@ -20,24 +20,24 @@ const SEGMENT_META = {
   overdue: { icon: "⏰", title: "Em Atraso",
               desc: "Clientes com fatura(s) em aberto vencida(s)",
               color: "#f59e0b" },
-  blocked: { icon: "🔒", title: "Bloqueados",
+  blocked: { icon: "", title: "Bloqueados",
               desc: "Clientes em REDUZIDO / WALL GARDEN / SUSPENSO",
               color: "#dc2626" },
-  no_charges: { icon: "🕊️", title: "Sem cobranças futuras",
+  no_charges: { icon: "️", title: "Sem cobranças futuras",
                   desc: "Sem fatura agendada para o futuro",
                   color: "#7c3aed" },
-  connected: { icon: "🟢", title: "Conectados agora",
+  connected: { icon: "", title: "Conectados agora",
                 desc: "Com sessão PPPoE ativa no momento",
                 color: "#16a34a" },
-  disconnected: { icon: "⚫", title: "Desconectados",
+  disconnected: { icon: "", title: "Desconectados",
                     desc: "Contrato ativo mas sem sessão RADIUS",
                     color: "#64748b" },
-  no_contract: { icon: "📭", title: "Sem contratos",
+  no_contract: { icon: "", title: "Sem contratos",
                    desc: "Assinantes sem contrato vinculado",
                    color: "#ec4899" },
-  contracts: { icon: "📑", title: "Contratos ativos",
+  contracts: { icon: "", title: "Contratos ativos",
                  desc: "Lista de contratos vigentes", color: "#10b981" },
-  contracts_disabled: { icon: "🗂️", title: "Contratos desativados",
+  contracts_disabled: { icon: "️", title: "Contratos desativados",
                           desc: "Cancelados ou encerrados",
                           color: "#94a3b8" },
 };
@@ -139,7 +139,7 @@ export default function ClientsSegmentPanel({ segment = "recent" }) {
                     padding: "8px 14px", borderRadius: 8,
                     background: "#f1f5f9", border: "1px solid #cbd5e1",
                     fontSize: 12, fontWeight: 700, cursor: "pointer",
-                  }}>🔄</button>
+                  }}></button>
       </div>
 
       {/* Lista */}
@@ -150,7 +150,7 @@ export default function ClientsSegmentPanel({ segment = "recent" }) {
       {!loading && items.length === 0 && (
         <div style={{ padding: 40, textAlign: "center", color: "#64748b",
                         background: "#f8fafc", borderRadius: 10 }}>
-          🎉 Nenhum cliente nesta categoria.
+          Nenhum cliente nesta categoria.
         </div>
       )}
 
@@ -250,7 +250,7 @@ function SubscriberListTable({ items, segment }) {
                     <Td>
                       {s.active_session ? (
                         <div style={{ fontSize: 11, lineHeight: 1.4 }}>
-                          <div>📍 <b>{s.active_session.framed_ip || "—"}</b></div>
+                          <div><b>{s.active_session.framed_ip || "—"}</b></div>
                           <div style={{ color: "#64748b" }}>
                             ⏱ {fmtUptime(s.active_session.session_time)}
                           </div>

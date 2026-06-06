@@ -224,6 +224,10 @@ export const api = {
   lousaAdminOpen: (tid) => client.post(`/lousa/tickets/${tid}/admin-open`).then((r) => r.data),
   serverTime: () => client.get(`/server-time`).then((r) => r.data),
   lousaPublicOpen: (tid, cid) => client.post(`/lousa/public/tickets/${tid}/open`, { collaborator_id: cid }).then((r) => r.data),
+  // iter237 — auto-distribuir bolhas pendentes na grade de horário,
+  // respeitando bolhas fixas (urgente/horario/prioridade) e otimizando
+  // logística por nearest-neighbor do GPS do colaborador.
+  lousaAutoDistribute: (body = {}) => client.post(`/lousa/auto-distribute`, body).then((r) => r.data),
   // iter211g — timeout estendido (180s) e retry pra evitar "Network Error"
   // em 4G fraco; também marca a tentativa pra cair no fallback se falhar.
   lousaPublicFinalize: async (tid, data) => {
@@ -769,6 +773,12 @@ export const api = {
   // Lousa: sinal por ticket
   lousaTicketSignal: (tid, refresh = false) =>
     client.get(`/lousa/tickets/${tid}/signal`, { params: { refresh } }).then((r) => r.data),
+  // Lousa: sinal por ticket — variante PÚBLICA usada pelo app do colaborador
+  // (passa collaborator_id; faz refresh "Live" com force=true no backend)
+  lousaPublicTicketSignal: (tid, collaboratorId, refresh = false) =>
+    client.get(`/lousa/public/tickets/${tid}/signal`, {
+      params: { collaborator_id: collaboratorId, refresh },
+    }).then((r) => r.data),
   // AI Preventiva
   aiPrevSettings: () => client.get(`/ai/preventive/settings`).then((r) => r.data),
   aiPrevSettingsUpdate: (d) => client.put(`/ai/preventive/settings`, d).then((r) => r.data),

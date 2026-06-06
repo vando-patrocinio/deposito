@@ -125,7 +125,7 @@ export default function GestaoMetasPanel() {
                       alignItems: "flex-start", gap: 12,
                       marginBottom: 18, flexWrap: "wrap" }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 20 }}>📊 Gestão e Metas</h2>
+          <h2 style={{ margin: 0, fontSize: 20 }}>Gestão e Metas</h2>
           <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 12 }}>
             Indicadores, evolução e gamificação · Pontos: reparo 1pt · retirada 1.5pt · instalação 3pt
           </p>
@@ -134,8 +134,8 @@ export default function GestaoMetasPanel() {
                  data-testid="gestao-ia-run-btn"
                  variant="primary">
           {reportBusy
-            ? "🤖 GESTAO_IA pensando..."
-            : "🤖 Gerar análise com GESTAO_IA"}
+            ? "GESTAO_IA pensando..."
+            : "Gerar análise com GESTAO_IA"}
         </Button>
       </div>
 
@@ -154,22 +154,22 @@ export default function GestaoMetasPanel() {
         <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1,
                         color: "#64748b", textTransform: "uppercase",
                         marginBottom: 10 }}>
-          ⚙️ Cards visíveis no app do técnico
+          ️ Cards visíveis no app do técnico
         </div>
         {cfg && (
           <div style={{ display: "grid",
                             gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
                             gap: 10 }}>
             {[
-              ["show_performance", "🏆 Desempenho diário",
+              ["show_performance", "Desempenho diário",
                 "Card azul com pontos, sucesso, ranking"],
-              ["show_achievements", "🏅 Medalhas",
+              ["show_achievements", "Medalhas",
                 "Conquistas e progresso 1/11"],
-              ["show_smart_route", "🗺️ Smart Route",
+              ["show_smart_route", "️ Smart Route",
                 "Otimização de rota por GPS"],
-              ["show_points", "🎮 Pontos / Gamificação",
+              ["show_points", "Pontos / Gamificação",
                 "Mostrar pontos da gamificação"],
-              ["enable_geofence_alerts", "📍 Alerta de geofence",
+              ["enable_geofence_alerts", "Alerta de geofence",
                 "Cria bolha vermelha se técnico sair da área"],
             ].map(([key, label, hint]) => (
               <ToggleCard key={key} testid={`toggle-${key}`}
@@ -190,7 +190,7 @@ export default function GestaoMetasPanel() {
         }}>
           <div style={{ display: "flex", gap: 10, alignItems: "center",
                           marginBottom: 12 }}>
-            <span style={{ fontSize: 26 }}>🤖</span>
+            <span style={{ fontSize: 26 }}></span>
             <div>
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1,
                               color: "#67e8f9", textTransform: "uppercase" }}>
@@ -300,7 +300,7 @@ export default function GestaoMetasPanel() {
           <div style={{ fontSize: 11, fontWeight: 800, color: "#475569",
                           letterSpacing: 1, textTransform: "uppercase",
                           marginBottom: 12 }}>
-            🏆 Top técnicos por pontos (7 dias)
+            Top técnicos por pontos (7 dias)
           </div>
           <table style={{ width: "100%", fontSize: 12 }}>
             <thead>
@@ -347,7 +347,7 @@ export default function GestaoMetasPanel() {
                           alignItems: "center", marginBottom: 8 }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: "#475569",
                             letterSpacing: 1, textTransform: "uppercase" }}>
-              📈 Hoje · ranking ao vivo
+              Hoje · ranking ao vivo
             </div>
             <a href="/mural" target="_blank" rel="noreferrer"
                style={{ fontSize: 11, color: "#0ea5e9",
@@ -373,7 +373,7 @@ export default function GestaoMetasPanel() {
       {!report && (
         <div style={{ padding: 28, textAlign: "center", color: "#94a3b8",
                         background: "#f8fafc", borderRadius: 12 }}>
-          Ainda não há análise GESTAO_IA. Clique em "Gerar análise" acima.
+          Ainda não há análise GESTAO_IA. Clique em “Gerar análise” acima.
         </div>
       )}
 
@@ -386,7 +386,7 @@ export default function GestaoMetasPanel() {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10,
                         marginBottom: 12 }}>
-          <span style={{ fontSize: 24 }}>⚔️</span>
+          <span style={{ fontSize: 24 }}>️</span>
           <div>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1,
                             color: "#c4b5fd", textTransform: "uppercase" }}>
@@ -415,8 +415,8 @@ export default function GestaoMetasPanel() {
                    style={{ background: "#a78bfa", color: "#1c1917",
                               fontWeight: 800 }}>
             {swotBusy
-              ? "⚔️ Analisando concorrência..."
-              : "⚔️ Gerar SWOT competitivo"}
+              ? "️ Analisando concorrência..."
+              : "️ Gerar SWOT competitivo"}
           </Button>
           {swot?.generated_at && (
             <span style={{ fontSize: 11, color: "#c4b5fd" }}>
@@ -443,10 +443,10 @@ export default function GestaoMetasPanel() {
                             gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
                             gap: 10 }}>
               {[
-                ["forcas", "💪 FORÇAS", "#10b981"],
-                ["fraquezas", "⚠️ FRAQUEZAS", "#f59e0b"],
-                ["oportunidades", "🚀 OPORTUNIDADES", "#06b6d4"],
-                ["ameacas", "⚡ AMEAÇAS", "#ef4444"],
+                ["forcas", "FORÇAS", "#10b981"],
+                ["fraquezas", "️ FRAQUEZAS", "#f59e0b"],
+                ["oportunidades", "OPORTUNIDADES", "#06b6d4"],
+                ["ameacas", "AMEAÇAS", "#ef4444"],
               ].map(([key, label, color]) => (
                 <div key={key} style={{
                   padding: 12, borderRadius: 10,
@@ -551,7 +551,7 @@ export default function GestaoMetasPanel() {
                 background: "linear-gradient(135deg,#fbbf24,#f59e0b)",
                 color: "#1c1917", fontWeight: 700, fontSize: 13,
               }}>
-                🎯 {swot.swot_analysis.verediito_final}
+                {swot.swot_analysis.verediito_final}
               </div>
             )}
           </div>

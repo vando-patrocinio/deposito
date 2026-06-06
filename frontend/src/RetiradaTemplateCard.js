@@ -100,7 +100,7 @@ export default function RetiradaTemplateCard() {
         <div>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800,
                           color: "#0f172a" }}>
-            📤 Mensagem de Comprovante de Retirada
+            Mensagem de Comprovante de Retirada
           </h3>
           <p style={{ margin: "4px 0 0", fontSize: 12, color: "#64748b" }}>
             Enviada automaticamente via WhatsApp ao cliente quando o técnico
@@ -190,7 +190,7 @@ export default function RetiradaTemplateCard() {
                 fontSize: 13, fontWeight: 700, color: "#0d9488",
                 cursor: "pointer",
               }}>
-              👁 Pré-visualizar
+              Pré-visualizar
             </button>
             <button
               type="button"

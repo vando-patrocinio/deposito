@@ -83,7 +83,7 @@ export default function PlanEditor({ plan, onChange, onSave, onCancel }) {
                       border: "1px solid #fcd34d", borderRadius: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#713f12",
                         marginBottom: 4 }}>
-          🐢 Perfil REDUZIDO (aging RADIUS)
+          Perfil REDUZIDO (aging RADIUS)
         </div>
         <div style={{ fontSize: 11, color: "#92400e",
                         marginBottom: 10, lineHeight: 1.4 }}>
@@ -164,7 +164,7 @@ function PlanAdvancedSections({ plan, set }) {
                       border: "1px solid #fcd34d", borderRadius: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#713f12",
                         marginBottom: 8 }}>
-          ⚠️ Avançado — redução & bloqueio por atraso
+          ️ Avançado — redução & bloqueio por atraso
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
                         gap: 12 }}>
@@ -192,7 +192,7 @@ function PlanAdvancedSections({ plan, set }) {
         <div style={{ display: "flex", justifyContent: "space-between",
                         marginBottom: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: "#1e3a8a" }}>
-            📊 Avançado — Franquia de dados mensal
+            Avançado — Franquia de dados mensal
           </div>
           <label style={{ display: "flex", gap: 6, alignItems: "center",
                             fontSize: 11, color: "#1e40af" }}>
@@ -244,7 +244,7 @@ function PlanAdvancedSections({ plan, set }) {
                       border: "1px solid #c4b5fd", borderRadius: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#5b21b6",
                         marginBottom: 8 }}>
-          🎬 VOD — Pacotes de streaming inclusos no plano
+          VOD — Pacotes de streaming inclusos no plano
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
                         gap: 8 }}>
@@ -273,7 +273,7 @@ function PlanAdvancedSections({ plan, set }) {
                       border: "1px solid #fed7aa", borderRadius: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#9a3412",
                         marginBottom: 4 }}>
-          📑 NFCom — Rateio por produto
+          NFCom — Rateio por produto
         </div>
         <p style={{ fontSize: 11, color: "#7c2d12", marginTop: 0,
                       marginBottom: 8, lineHeight: 1.4 }}>
@@ -326,7 +326,7 @@ function PlanAdvancedSections({ plan, set }) {
                       border: "1px solid #e2e8f0", borderRadius: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a",
                         marginBottom: 8 }}>
-          ⚙️ Detalhes adicionais
+          ️ Detalhes adicionais
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
                         gap: 8 }}>
@@ -359,7 +359,7 @@ function PlanAdvancedSections({ plan, set }) {
                       border: "1px solid #67e8f9", borderRadius: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#155e75",
                         marginBottom: 8 }}>
-          🛰️ Mikrotik / FreeRADIUS — atributos avançados
+          ️ Mikrotik / FreeRADIUS — atributos avançados
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
                         gap: 8 }}>

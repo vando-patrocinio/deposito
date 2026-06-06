@@ -26,16 +26,16 @@ import { KpiCard, AlertCard } from "@/components/Dashboard2026";
 const TABS = [
   { id: "overview", label: "Painel" },
   { id: "ctos", label: "CTOs" },
-  { id: "ports_base", label: "🔌 Base de Portas" },
-  { id: "occupancy", label: "📊 Ocupação" },
+  { id: "ports_base", label: "Base de Portas" },
+  { id: "occupancy", label: "Ocupação" },
   { id: "pendencies", label: "Pendências" },
   { id: "map", label: "Mapa interativo" },
-  { id: "reconcile", label: "🔍 Conciliação" },
+  { id: "reconcile", label: "Conciliação" },
   { id: "bairros", label: "Bairros / VLAN" },
-  { id: "orphan_cables", label: "🧵 Cabos órfãos" },
+  { id: "orphan_cables", label: "Cabos órfãos" },
   { id: "history", label: "Histórico" },
   { id: "diretrizes", label: "Diretrizes" },
-  { id: "audit", label: "🛡 Auditoria", auditorOnly: true },
+  { id: "audit", label: "Auditoria", auditorOnly: true },
 ];
 
 const STATUS_BADGE = {
@@ -111,7 +111,7 @@ export default function RedeIaPanel({ currentUser }) {
               cursor: "pointer", fontSize: 14, fontWeight: 700,
               display: "inline-flex", alignItems: "center", gap: 8,
             }}>
-            🔔 Notificações
+            Notificações
             {notifCount > 0 && (
               <span style={{
                 background: "#fff", color: "#dc2626", borderRadius: 99,
@@ -287,20 +287,20 @@ function Overview() {
           gap: 10,
         }}>
           {noCtos && (
-            <AlertCard tone="info" icon="📭"
+            <AlertCard tone="info" icon=""
               testId="rede-ia-alert-no-ctos"
               title="Nenhuma CTO cadastrada"
               detail="Use o app do técnico para cadastrar as primeiras CTOs." />
           )}
           {criticalVlans.length > 0 && (
-            <AlertCard tone="bad" icon="🔴"
+            <AlertCard tone="bad" icon=""
               testId="rede-ia-alert-critical-vlans"
               title={`${criticalVlans.length} VLAN${criticalVlans.length !== 1 ? "s" : ""} em estado crítico`}
               detail={criticalVlans.slice(0, 3).map((v) =>
                 `VLAN ${v.vlan} (${v.avg_score}%)`).join(" · ")} />
           )}
           {warningVlans.length > 0 && criticalVlans.length === 0 && (
-            <AlertCard tone="warn" icon="🟡"
+            <AlertCard tone="warn" icon=""
               testId="rede-ia-alert-warning-vlans"
               title={`${warningVlans.length} VLAN${warningVlans.length !== 1 ? "s" : ""} em atenção`}
               detail="Sinal médio entre 50% e 75% — vale fiscalizar." />
@@ -312,7 +312,7 @@ function Overview() {
               detail="Gestor de Rede deve aprovar para sincronizar com SmartOLT." />
           )}
           {highOccupancy && (
-            <AlertCard tone="warn" icon="📶"
+            <AlertCard tone="warn" icon=""
               testId="rede-ia-alert-high-occupancy"
               title={`Taxa de ocupação ${occupancyRate}% — alta`}
               detail="Considere planejar expansão (mais portas / CTOs)." />
@@ -389,7 +389,7 @@ function Overview() {
                           justifyContent: "space-between", marginBottom: 12 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800,
-                              color: "#0f172a" }}>📦 Estoque de Fibras</h3>
+                              color: "#0f172a" }}>Estoque de Fibras</h3>
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
                 Saldo agregado (empresa + técnicos). Atualizado quando um cabo
                 é lançado no mapa.
@@ -451,13 +451,13 @@ function Overview() {
                   {isNeg && (
                     <div style={{ fontSize: 10, fontWeight: 700,
                                     color: "#dc2626", marginTop: 4 }}>
-                      ⚠️ saldo negativo
+                      ️ saldo negativo
                     </div>
                   )}
                   {isLow && !isNeg && (
                     <div style={{ fontSize: 10, fontWeight: 700,
                                     color: "#d97706", marginTop: 4 }}>
-                      ⚠️ saldo baixo
+                      ️ saldo baixo
                     </div>
                   )}
                   {!isLow && !isNeg && (
@@ -484,7 +484,7 @@ function Overview() {
       <Card style={{ padding: 16 }}>
         <h3 style={{ margin: "0 0 12px", fontSize: 15,
                        display: "flex", alignItems: "center", gap: 8 }}>
-          🛰 Integração SmartOLT IA
+          Integração SmartOLT IA
           <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)" }}>
             (rede_IA cruza CTOs com ONUs reais)
           </span>
@@ -563,7 +563,7 @@ function Overview() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 800, fontSize: 14,
                                       fontFamily: "monospace" }}>
-                      🛰 {olt.olt_name}
+                      {olt.olt_name}
                     </div>
                     <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>
                       {olt.vlan_count} VLANs · {olt.onu_count} ONUs online
@@ -633,7 +633,7 @@ function Overview() {
       {mapData.vlans && mapData.vlans.length > 0 && (
         <Card style={{ padding: 16 }}>
           <h3 style={{ margin: "0 0 6px", fontSize: 15 }}>
-            📡 Média de sinal por VLAN (vinda do SmartOLT)
+            Média de sinal por VLAN (vinda do SmartOLT)
           </h3>
           <p style={{ margin: "0 0 12px", fontSize: 11.5,
                           color: "var(--text-muted)", lineHeight: 1.4 }}>
@@ -732,7 +732,7 @@ function Overview() {
                                        borderRadius: 6,
                                        background: `${fg}22`,
                                        fontWeight: 700, fontSize: 10.5 }}>
-                        🔌 {v.cto_assigned_count} c/ porta
+                        {v.cto_assigned_count} c/ porta
                       </span>
                     )}
                     {v.onu_online_count > 0 && (
@@ -740,7 +740,7 @@ function Overview() {
                     )}
                     {v.cto_count > 0 && (
                       <div style={{ marginTop: 2 }}>
-                        {v.critical || 0}🔴 {v.warning || 0}🟡 {v.ok || 0}🟢
+                        {v.critical || 0}{v.warning || 0}{v.ok || 0}
                       </div>
                     )}
                   </div>
@@ -749,7 +749,7 @@ function Overview() {
             })}
           </div>
           <p style={{ marginTop: 10, fontSize: 11, color: "var(--text-muted)" }}>
-            ℹ️ Para atualizar o dado, use o card "🛜 Sincronizar VLAN do SmartOLT"
+            ℹ️ Para atualizar o dado, use o card “Sincronizar VLAN do SmartOLT”
             logo acima. O worker automático também roda a cada 1h em background.
           </p>
         </Card>
@@ -773,7 +773,7 @@ function CtoStatsBlock({ stats, period, onChangePeriod }) {
                        gap: 8 }}>
         <h3 style={{ margin: 0, fontSize: 15,
                        display: "flex", alignItems: "center", gap: 8 }}>
-          🏆 Ranking de CTOs · {periodLabel[period] || "Geral"}
+          Ranking de CTOs · {periodLabel[period] || "Geral"}
           <span style={{ fontSize: 11, fontWeight: 500,
                            color: "var(--text-muted)" }}>
             ({stats.total_ctos || 0} no período)
@@ -811,7 +811,7 @@ function CtoStatsBlock({ stats, period, onChangePeriod }) {
           <div style={{ fontSize: 12, fontWeight: 700,
                           color: "var(--text-muted)", marginBottom: 8,
                           textTransform: "uppercase", letterSpacing: 0.5 }}>
-            👷 Por técnico
+            Por técnico
           </div>
           {byTech.length === 0 && (
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -820,7 +820,7 @@ function CtoStatsBlock({ stats, period, onChangePeriod }) {
           )}
           <div style={{ display: "grid", gap: 6 }}>
             {byTech.map((t, idx) => {
-              const medals = ["🥇", "🥈", "🥉"];
+              const medals = ["", "", ""];
               const medalBg = ["linear-gradient(135deg,#fbbf24,#f59e0b)",
                                 "linear-gradient(135deg,#cbd5e1,#94a3b8)",
                                 "linear-gradient(135deg,#f97316,#c2410c)"];
@@ -912,7 +912,7 @@ function CtoStatsBlock({ stats, period, onChangePeriod }) {
           <div style={{ fontSize: 12, fontWeight: 700,
                           color: "var(--text-muted)", marginBottom: 8,
                           textTransform: "uppercase", letterSpacing: 0.5 }}>
-            🏢 Por filial
+            Por filial
           </div>
           {byBranch.length === 0 && (
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -1011,7 +1011,7 @@ function FiberTimelineCard({ kpi, days, onChangeDays, alerts }) {
                        gap: 8 }}>
         <div>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>
-            🧵 Curva de lançamento de fibra
+            Curva de lançamento de fibra
           </h3>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
             Metros lançados por dia · útil para forecasting de bobinas
@@ -1067,7 +1067,7 @@ function FiberTimelineCard({ kpi, days, onChangeDays, alerts }) {
                             textTransform: "uppercase",
                             color: "var(--text-secondary)",
                             letterSpacing: 0.4, marginBottom: 6 }}>
-              ⚠️ Saldo baixo (&lt; {alerts.threshold}m)
+              ️ Saldo baixo (&lt; {alerts.threshold}m)
             </div>
             <div style={{ maxHeight: 200, overflowY: "auto",
                             display: "grid", gap: 4 }}>
@@ -1211,7 +1211,7 @@ function CTOsList() {
                               title="Abrir PDF salvo no Drive"
                               style={{ ...btnSm("#0ea5e9"), textDecoration: "none",
                                         display: "inline-flex", alignItems: "center" }}>
-                            ☁
+                            
                           </a>
                         ) : (
                           <DriveResendBtn ctoId={c.id} onDone={load} />
@@ -1258,7 +1258,7 @@ function DriveResendBtn({ ctoId, onDone }) {
             onClick={send} disabled={busy}
             title="Enviar PDF para Google Drive"
             style={{ ...btnSm("#475569"), opacity: busy ? 0.5 : 1 }}>
-      {busy ? "…" : "☁+"}
+      {busy ? "…" : "+"}
     </button>
   );
 }
@@ -1371,7 +1371,7 @@ function Pendencies() {
             <input type="checkbox" checked={onlyLowScore}
                    onChange={(e) => setOnlyLowScore(e.target.checked)}
                    style={{ accentColor: "#b91c1c" }} />
-            🤖 Só score &lt; 85
+            Só score &lt; 85
           </label>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
             {loading ? "Carregando..." : `${items.length} aguardando`}
@@ -1415,10 +1415,10 @@ function Pendencies() {
                       background: "#ecfdf5", border: "1px solid #6ee7b7",
                       fontSize: 11, color: "#065f46",
                     }}>
-                      <strong>🛰 SmartOLT detectou {p.smartolt_hints.matched} ONUs</strong>
+                      <strong>SmartOLT detectou {p.smartolt_hints.matched} ONUs</strong>
                       {p.smartolt_hints.alerts > 0 && (
                         <span style={{ color: "#b91c1c", marginLeft: 6 }}>
-                          ⚠️ {p.smartolt_hints.alerts} com alerta de sinal
+                          ️ {p.smartolt_hints.alerts} com alerta de sinal
                         </span>
                       )}
                       <div style={{ marginTop: 4 }}>
@@ -1458,7 +1458,7 @@ function Pendencies() {
                     <button data-testid={`pendency-map-${p.id}`}
                             onClick={() => setMapModal({ item: p })}
                             style={btnSm("#0f766e")}>
-                      🗺 Ver no mapa
+                      Ver no mapa
                     </button>
                   )}
                   <button data-testid={`pendency-approve-${p.id}`}
@@ -1576,7 +1576,7 @@ function SmartoltVlanSyncCard() {
       <div style={{ display: "flex", alignItems: "center", gap: 10,
                        flexWrap: "wrap" }}>
         <span style={{ fontSize: 14, fontWeight: 800 }}>
-          🛜 Sincronizar VLAN do SmartOLT
+          Sincronizar VLAN do SmartOLT
         </span>
         {cov && (
           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -1624,7 +1624,7 @@ function SmartoltVlanSyncCard() {
         }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12,
                           fontWeight: 700, marginBottom: 6 }}>
-            <span>📡 {preview.scanned} ONUs</span>
+            <span>{preview.scanned} ONUs</span>
             <span>· {preview.with_vlan} c/ VLAN</span>
             <span style={{ color: "#16a34a" }}>
               → {preview.updated} atualizar
@@ -1663,7 +1663,7 @@ function SmartoltVlanSyncCard() {
                   fontSize: 11, lineHeight: 1.5,
                 }}>
                   <div style={{ fontWeight: 800, fontSize: 11.5 }}>
-                    {degraded ? "⚠️ SmartOLT degradado" : "📥 Default VLAN 1"}
+                    {degraded ? "️ SmartOLT degradado" : "Default VLAN 1"}
                     <span style={{ marginLeft: 6, fontWeight: 700 }}>
                       {def1} clientes → VLAN 1 ({pctDef}%)
                     </span>
@@ -1672,7 +1672,7 @@ function SmartoltVlanSyncCard() {
                     Match SmartOLT: <strong>{matched}</strong> · Sem match
                     (default): <strong>{def1}</strong>
                     {preview.default_vlan_1_skipped_instalacao > 0 && (
-                      <> · 🏗️ {preview.default_vlan_1_skipped_instalacao}
+                      <> · ️ {preview.default_vlan_1_skipped_instalacao}
                         {" "}pulados (instalação ativa)</>
                     )}
                   </div>
@@ -1727,13 +1727,13 @@ function SmartoltVlanSyncCard() {
           ✓ {result.updated} assinantes atualizados via SmartOLT
           {result.default_vlan_1_applied > 0 && (
             <span style={{ marginLeft: 6, color: "#92400e" }}>
-              · 📥 {result.default_vlan_1_applied} → VLAN 1 (default)
+              · {result.default_vlan_1_applied} → VLAN 1 (default)
             </span>
           )}
           {result.default_vlan_1_skipped_instalacao > 0 && (
             <span style={{ marginLeft: 6, color: "#475569",
                              fontWeight: 600 }}>
-              · 🏗️ {result.default_vlan_1_skipped_instalacao}
+              · ️ {result.default_vlan_1_skipped_instalacao}
               {" "}pulados (instalação ativa)
             </span>
           )}
@@ -1794,7 +1794,7 @@ function SentinelaThresholdCard() {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8,
                       marginBottom: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 17 }}>🛡️</span>
+        <span style={{ fontSize: 17 }}>️</span>
         <strong style={{ fontSize: 13, color: "#78350f" }}>
           Sentinela IA — Qualidade mínima da foto
         </strong>
@@ -1920,7 +1920,7 @@ function SignalDegradationCard() {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8,
                       marginBottom: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 17 }}>🚨</span>
+        <span style={{ fontSize: 17 }}></span>
         <strong style={{ fontSize: 13, color: "#991b1b" }}>
           ONUs degradando ({items.length})
         </strong>
@@ -2042,7 +2042,7 @@ function PortBaseSearchCard() {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8,
                       marginBottom: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 17 }}>🔍</span>
+        <span style={{ fontSize: 17 }}></span>
         <strong style={{ fontSize: 13, color: "#155e75" }}>
           Base de Portas — busca global
         </strong>
@@ -2080,7 +2080,7 @@ function PortBaseSearchCard() {
           marginTop: 8, padding: "8px 10px", borderRadius: 8,
           background: "#fff", color: "#64748b", fontSize: 11.5,
         }}>
-          Nenhuma porta encontrada para "{query}".
+          Nenhuma porta encontrada para “{query}”.
         </div>
       )}
 
@@ -2121,7 +2121,7 @@ function PortBaseSearchCard() {
                 {(p.subscriber_name || p.pppoe_user) && (
                   <div style={{ fontSize: 11, color: "#475569",
                                   marginTop: 2 }}>
-                    👤 {p.subscriber_name || "—"}
+                    {p.subscriber_name || "—"}
                     {p.pppoe_user && (
                       <span style={{ marginLeft: 6,
                                        fontFamily: "monospace",
@@ -2244,7 +2244,7 @@ function PortBaseTab() {
         return;
       }
       const ok = window.confirm(
-        `📥 Importar ${dry.linked} vínculo(s) cliente↔porta?\n\n`
+        `Importar ${dry.linked} vínculo(s) cliente↔porta?\n\n`
         + `Escaneados: ${dry.scanned}\n`
         + `A serem vinculados: ${dry.linked}\n`
         + `Pulados (sem CTO): ${dry.skipped_no_cto}\n`
@@ -2350,7 +2350,7 @@ function PortBaseTab() {
       ? `\n  ... e mais ${occupied.length - 5} cliente(s)` : "";
     // CONFIRM 1 — visão geral
     const ok1 = window.confirm(
-      `🚨 LIBERAR TODAS as ${occupied.length} portas ocupadas da `
+      `LIBERAR TODAS as ${occupied.length} portas ocupadas da `
       + `${cto.cto_name}?\n\n`
       + `Clientes que serão DESVINCULADOS:\n${clientList}${more}\n\n`
       + `Isto é normalmente usado em migração de provedor ou desativação. `
@@ -2358,7 +2358,7 @@ function PortBaseTab() {
     if (!ok1) return;
     // CONFIRM 2 — exige digitar o nome da CTO
     const typed = window.prompt(
-      `⚠️ CONFIRMAÇÃO FINAL\n\nDigite o nome da CTO para confirmar:\n`
+      `️ CONFIRMAÇÃO FINAL\n\nDigite o nome da CTO para confirmar:\n`
       + `  ${cto.cto_name}`, "");
     if (typed !== cto.cto_name) {
       if (typed != null) {
@@ -2410,7 +2410,7 @@ function PortBaseTab() {
             color: "#fff", border: 0, fontSize: 12, fontWeight: 700,
             cursor: resyncBusy ? "wait" : "pointer",
           }}>
-          {resyncBusy ? "Re-sincronizando…" : "🔄 Re-sincronizar"}
+          {resyncBusy ? "Re-sincronizando…" : "Re-sincronizar"}
         </button>
         <button data-testid="port-base-backfill-btn"
           onClick={doBackfill} disabled={resyncBusy}
@@ -2421,7 +2421,7 @@ function PortBaseTab() {
             color: "#fff", border: 0, fontSize: 12, fontWeight: 700,
             cursor: resyncBusy ? "wait" : "pointer",
           }}>
-          📥 Importar vínculos
+          Importar vínculos
         </button>
       </div>
 
@@ -2437,7 +2437,7 @@ function PortBaseTab() {
 
       <div style={{ display: "flex", gap: 8, alignItems: "center",
                       flexWrap: "wrap" }}>
-        <strong style={{ fontSize: 13 }}>📋 Mapa de portas por CTO</strong>
+        <strong style={{ fontSize: 13 }}>Mapa de portas por CTO</strong>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           {["all", "occupied", "free", "defective"].map((f) => (
             <button key={f}
@@ -2469,7 +2469,7 @@ function PortBaseTab() {
       {!busy && ctos.length === 0 && (
         <div style={{ padding: 20, textAlign: "center",
                         color: "#64748b", fontSize: 12 }}>
-          Nenhuma CTO encontrada. Clique em "Re-sincronizar" para popular.
+          Nenhuma CTO encontrada. Clique em “Re-sincronizar” para popular.
         </div>
       )}
 
@@ -2512,7 +2512,7 @@ function PortBaseTab() {
                       border: 0, borderRadius: 6, padding: "3px 6px",
                       fontSize: 11, fontWeight: 700, cursor: "pointer",
                     }}>
-                    ⚡
+                    
                   </button>
                 )}
                 <button
@@ -2529,18 +2529,18 @@ function PortBaseTab() {
                     fontSize: 11, fontWeight: 700,
                     cursor: occ > 0 ? "not-allowed" : "pointer",
                   }}>
-                  🗑
+                  
                 </button>
               </div>
               <div style={{ display: "flex", gap: 6, fontSize: 9.5,
                               color: "#64748b", marginBottom: 8,
                               flexWrap: "wrap" }}>
-                {c.olt_name && <span>📡 {c.olt_name}</span>}
+                {c.olt_name && <span>{c.olt_name}</span>}
                 {c.vlan != null && <span>· VLAN {c.vlan}</span>}
                 {c.technician_name && (
                   <span data-testid={`cto-tech-${c.cto_id}`}
                         style={{ color: "#0e7490", fontWeight: 700 }}>
-                    · 👷 {c.technician_name}
+                    · {c.technician_name}
                   </span>
                 )}
                 {c.neighborhood && <span>· {c.neighborhood}</span>}
@@ -2578,9 +2578,9 @@ function PortBaseTab() {
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap",
                       fontSize: 10.5, color: "#64748b",
                       marginTop: 4 }}>
-        <span>🟩 Ocupada</span>
+        <span>Ocupada</span>
         <span style={{ color: "#94a3b8" }}>⬜ Livre</span>
-        <span style={{ color: "#dc2626" }}>🟥 Defeito</span>
+        <span style={{ color: "#dc2626" }}>Defeito</span>
       </div>
     </div>
   );
@@ -2628,7 +2628,7 @@ function SentinelaBadge({ sentinela, pendencyId }) {
       display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center",
     }}>
       <span style={{ fontWeight: 800, fontSize: 12 }}>
-        🤖 Sentinela {score}/100
+        Sentinela {score}/100
       </span>
       <span style={{ opacity: 0.6 }}>·</span>
       <span style={{ fontWeight: 700, textTransform: "uppercase",
@@ -2644,13 +2644,13 @@ function SentinelaBadge({ sentinela, pendencyId }) {
       {dupOf && (
         <>
           <span style={{ opacity: 0.6 }}>·</span>
-          <span>⚠️ duplicada</span>
+          <span>️ duplicada</span>
         </>
       )}
       {typeof gpsDist === "number" && gpsDist > 0 && (
         <>
           <span style={{ opacity: 0.6 }}>·</span>
-          <span>📍 {gpsDist}m do pino</span>
+          <span>{gpsDist}m do pino</span>
         </>
       )}
       {sentinela.vision?.reasoning && (
@@ -2689,7 +2689,7 @@ function PhotoLightbox({ url, ctoName, uploadedByName, onClose }) {
           fontSize: 12, fontWeight: 700, display: "flex", gap: 10,
           alignItems: "center",
         }}>
-          📸 {ctoName || "CTO"}
+          {ctoName || "CTO"}
           {uploadedByName && (
             <span style={{ opacity: 0.7, fontWeight: 500 }}>
               · {uploadedByName}
@@ -2824,7 +2824,7 @@ function BairrosManager() {
                                      border: "1px solid #6ee7b7",
                                      borderRadius: 999, fontWeight: 700,
                                      fontFamily: "monospace" }}>
-                      📡 {b.olt_name}
+                      {b.olt_name}
                     </span>
                   : <span style={{ color: "#94a3b8", fontSize: 11 }}>—</span>}
               </td>
@@ -2834,7 +2834,7 @@ function BairrosManager() {
                                   fontSize: 11, marginRight: 6 }}
                         data-testid={`bairro-list-onus-${b.id}`}
                         title={`Buscar ONUs na SmartOLT pela VLAN ${b.vlan}`}>
-                  📡 ONUs
+                  ONUs
                 </button>
                 <button onClick={() => del(b.id)}
                         style={{ ...btnSm("#dc2626"), padding: "4px 8px", fontSize: 11 }}
@@ -2895,7 +2895,7 @@ function OnusByVlanModal({ vlan, bairro, onClose }) {
                        alignItems: "flex-start", marginBottom: 14 }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>
-              📡 ONUs autorizadas — VLAN {vlan}
+              ONUs autorizadas — VLAN {vlan}
             </h3>
             <p style={{ margin: "4px 0 0", fontSize: 12, color: "#64748b" }}>
               Bairro: <strong>{bairro}</strong>
@@ -2913,7 +2913,7 @@ function OnusByVlanModal({ vlan, bairro, onClose }) {
                     <span style={{ display: "block", marginTop: 4,
                                        fontSize: 10, color: "#92400e",
                                        fontStyle: "italic" }}>
-                      ⚠️ {data.cache_warning}
+                      ️ {data.cache_warning}
                     </span>
                   )}
                 </>
@@ -2927,7 +2927,7 @@ function OnusByVlanModal({ vlan, bairro, onClose }) {
 
         <input type="text" value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="🔎 Filtrar por nome, SN, endereço ou zona..."
+                placeholder="Filtrar por nome, SN, endereço ou zona..."
                 data-testid="onus-by-vlan-search"
                 style={{ padding: "8px 12px", borderRadius: 8,
                           border: "1px solid #cbd5e1", fontSize: 13,
@@ -2943,7 +2943,7 @@ function OnusByVlanModal({ vlan, bairro, onClose }) {
           {error && (
             <div style={{ padding: 20, background: "#fee2e2", color: "#991b1b",
                            fontSize: 13, borderRadius: 8, margin: 10 }}>
-              ⚠️ {error}
+              ️ {error}
             </div>
           )}
           {!loading && !error && data && (
@@ -3097,7 +3097,7 @@ function OnuDetailModal({ onu, onClose }) {
                        alignItems: "flex-start", marginBottom: 14 }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 17, color: "#0f172a" }}>
-              🔧 {onuLive.name || "ONU"}
+              {onuLive.name || "ONU"}
             </h3>
             <p style={{ margin: "4px 0 0", fontSize: 11, color: "#64748b" }}>
               SN: <code>{onuLive.sn || "—"}</code> · OLT {onuLive.olt_name || "—"}
@@ -3117,7 +3117,7 @@ function OnuDetailModal({ onu, onClose }) {
           <div style={{ display: "flex", justifyContent: "space-between",
                          alignItems: "center", marginBottom: 8 }}>
             <strong style={{ fontSize: 13, color: "#0f172a" }}>
-              📡 Sinal atual
+              Sinal atual
             </strong>
             <button onClick={loadSignal} disabled={sigLoading}
                      data-testid="onu-signal-refresh"
@@ -3130,7 +3130,7 @@ function OnuDetailModal({ onu, onClose }) {
           </div>
           {sigError && (
             <div style={{ padding: 8, background: "#fee2e2", color: "#991b1b",
-                           borderRadius: 6, fontSize: 12 }}>⚠️ {sigError}</div>
+                           borderRadius: 6, fontSize: 12 }}>️ {sigError}</div>
           )}
           {!sigError && (
             <div style={{ display: "grid",
@@ -3176,7 +3176,7 @@ function OnuDetailModal({ onu, onClose }) {
                          color: feedback.ok ? "#166534" : "#991b1b",
                          marginBottom: 12 }}
                data-testid="onu-action-feedback">
-            {feedback.ok ? "✓ " : "⚠️ "}{feedback.msg}
+            {feedback.ok ? "✓ " : "️ "}{feedback.msg}
           </div>
         )}
 
@@ -3184,7 +3184,7 @@ function OnuDetailModal({ onu, onClose }) {
         <div>
           <strong style={{ fontSize: 12, color: "#0f172a",
                             textTransform: "uppercase", letterSpacing: 0.6 }}>
-            🕓 Histórico de ações
+            Histórico de ações
           </strong>
           <div style={{ marginTop: 8, maxHeight: 200, overflowY: "auto",
                          border: "1px solid #e2e8f0", borderRadius: 8 }}>
@@ -3498,7 +3498,7 @@ function OrphanCablesPanel() {
       setSuggestions(r.items || []);
       if ((r.items || []).length === 0) {
         await window.alert(
-          "🤖 Vision IA: nenhuma sugestão encontrada.\n\n"
+          "Vision IA: nenhuma sugestão encontrada.\n\n"
           + "Verifique se os cabos têm foto da plaqueta legível "
           + "e se há CTOs/CEs com nomes correspondentes na rede.",
         );
@@ -3570,7 +3570,7 @@ function OrphanCablesPanel() {
                           flexWrap: "wrap" }}>
           <div>
             <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>
-              🧵 Cabos órfãos
+              Cabos órfãos
             </h3>
             <p style={{ fontSize: 12, color: "var(--text-muted)",
                               margin: 0 }}>
@@ -3583,12 +3583,12 @@ function OrphanCablesPanel() {
             <button data-testid="orphan-ai-suggest" onClick={runAiSuggest}
                        disabled={analyzing || items.length === 0}
                        style={btnSm("#7c3aed")}>
-              {analyzing ? "Analisando..." : "📐 Heurística (geo)"}
+              {analyzing ? "Analisando..." : "Heurística (geo)"}
             </button>
             <button data-testid="orphan-vision-suggest" onClick={runVisionSuggest}
                        disabled={analyzing || items.length === 0}
                        style={btnSm("#0d9488")}>
-              {analyzing ? "Analisando..." : "🤖 Vision IA (lê plaqueta)"}
+              {analyzing ? "Analisando..." : "Vision IA (lê plaqueta)"}
             </button>
           </div>
         </div>
@@ -3643,7 +3643,7 @@ function OrphanCablesPanel() {
                                         color: "var(--text-primary)" }}>
                         {s.cable_name}
                         {" "}<span style={{ color: "#94a3b8" }}>
-                          ({s.end === "from" ? "Origem" : "Destino"})
+                          ({s.end === "from " ? "Origem" : "Destino"})
                         </span>
                         {" → "}<strong>{s.suggested_element_name}</strong>
                         {s.source === "vision_ai" && (
@@ -3660,7 +3660,7 @@ function OrphanCablesPanel() {
                         {s.source === "vision_ai" && (
                           <span style={{ color: "#0d9488", marginLeft: 6,
                                             fontWeight: 700 }}>
-                            👁️ clique para revisar visualmente
+                            ️ clique para revisar visualmente
                           </span>
                         )}
                       </div>
@@ -3726,7 +3726,7 @@ function OrphanCablesPanel() {
                         color: "#9a3412", fontSize: 12, fontWeight: 700,
                         cursor: "pointer",
                       }}>
-                      🔗 Vincular {ep.end === "from" ? "Origem" : "Destino"}
+                      Vincular {ep.end === "from " ? "Origem" : "Destino"}
                     </button>
                   ))}
                 </div>
@@ -3757,7 +3757,7 @@ function OrphanCablesPanel() {
                             marginBottom: 10 }}>
             <div>
               <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>
-                🌙 Auto-vínculo noturno (Vision IA)
+                Auto-vínculo noturno (Vision IA)
               </h3>
               <p style={{ fontSize: 12, color: "var(--text-muted)",
                                 margin: 0, lineHeight: 1.45 }}>
@@ -3817,7 +3817,7 @@ function OrphanCablesPanel() {
       {pendingReviews.length > 0 && (
         <Card style={{ padding: 16 }}>
           <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>
-            👁️ {pendingReviews.length} sugestão(ões) IA aguardando revisão
+            ️ {pendingReviews.length} sugestão(ões) IA aguardando revisão
           </h3>
           <p style={{ fontSize: 12, color: "var(--text-muted)",
                             margin: "0 0 12px" }}>
@@ -3842,19 +3842,19 @@ function OrphanCablesPanel() {
                   <div style={{ fontSize: 13, fontWeight: 700 }}>
                     {r.cable_name}
                     {" "}<span style={{ color: "#94a3b8" }}>
-                      ({r.end === "from" ? "Origem" : "Destino"})
+                      ({r.end === "from " ? "Origem" : "Destino"})
                     </span>
                     {" → "}<strong>{r.suggested_element_name}</strong>
                   </div>
                   <div style={{ fontSize: 11, color: "#92400e", marginTop: 3 }}>
-                    IA leu: <strong>"{r.extracted_text}"</strong>
+                    IA leu: <strong>“{r.extracted_text}”</strong>
                     {" · "}{r.distance_m}m
                   </div>
                 </div>
                 <button onClick={() => setVisualReview({
                           ...r, source: "vision_ai",
                         })}
-                        style={btnSm("#7c3aed")}>👁️ Ver</button>
+                        style={btnSm("#7c3aed")}>️ Ver</button>
                 <button onClick={() => approveReview(r.id)}
                         style={btnSm("#16a34a")}>✓</button>
                 <button onClick={() => rejectReview(r.id)}
@@ -3905,12 +3905,12 @@ function VisualReviewModal({ item, onClose, onAccept }) {
           <div>
             <div style={{ fontSize: 11, color: "#0d9488", fontWeight: 800,
                               textTransform: "uppercase", letterSpacing: 0.6 }}>
-              👁️ Confiança visual — Vision IA
+              ️ Confiança visual — Vision IA
             </div>
             <div style={{ fontSize: 17, fontWeight: 800, marginTop: 2 }}>
               {item.cable_name}
               {" "}<span style={{ color: "#94a3b8", fontWeight: 500 }}>
-                ({item.end === "from" ? "Origem" : "Destino"})
+                ({item.end === "from " ? "Origem" : "Destino"})
               </span>
               {" → "}<span style={{ color: "#0d9488" }}>
                 {item.suggested_element_name}
@@ -3977,12 +3977,12 @@ function VisualReviewModal({ item, onClose, onAccept }) {
                 </div>
                 <div style={{ fontSize: 18, fontWeight: 900,
                                     fontFamily: "monospace", color: "#0f172a" }}>
-                  "{item.extracted_text || "—"}"
+                  “{item.extracted_text || "—"}”
                 </div>
                 {item.raw_text && item.raw_text !== item.extracted_text && (
                   <div style={{ fontSize: 11, color: "#475569",
                                       marginTop: 6, fontStyle: "italic" }}>
-                    Texto bruto OCR: "{item.raw_text}"
+                    Texto bruto OCR: “{item.raw_text}”
                   </div>
                 )}
               </div>
@@ -4085,7 +4085,7 @@ function LinkEndpointModal({ cable, end, elements, onClose, onConfirm }) {
       }}>
         <div style={{ padding: 14, borderBottom: "1px solid #e2e8f0" }}>
           <div style={{ fontSize: 15, fontWeight: 800 }}>
-            Vincular {end.end === "from" ? "Origem" : "Destino"} do cabo
+            Vincular {end.end === "from " ? "Origem" : "Destino"} do cabo
           </div>
           <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>
             {cable.name} · GPS da ponta: {end.lat.toFixed(5)},
@@ -4251,7 +4251,7 @@ function CableSlackEditor() {
       <div style={{ marginTop: 14, padding: 12, background: "#ecfeff",
                           border: "1px solid #67e8f9", borderRadius: 10,
                           fontSize: 12, color: "#155e75" }}>
-        💡 Total adicionado por cabo: <strong>
+        Total adicionado por cabo: <strong>
           {Number(cfg.slack_start_m) + Number(cfg.slack_end_m)}m
         </strong> {" "}(={cfg.slack_start_m}m início + {cfg.slack_end_m}m fim)
       </div>
@@ -4417,7 +4417,7 @@ function AuditCables({ currentUser }) {
         <div>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800,
                           color: "#7c2d12" }}>
-            🛡 Auditoria de Lançamentos
+            Auditoria de Lançamentos
           </h3>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
             Apague cabos individualmente ou em lote. Refund automático
@@ -4440,7 +4440,7 @@ function AuditCables({ currentUser }) {
                               border: "none", borderRadius: 7,
                               fontWeight: 700, fontSize: 12,
                               cursor: busy ? "wait" : "pointer" }}>
-            ⚠ Apagar TODOS (filtrados)
+            Apagar TODOS (filtrados)
           </button>
         </div>
       </div>
@@ -4598,7 +4598,7 @@ function AuditCables({ currentUser }) {
                           border: "2px solid #dc2626" }}>
             <h3 style={{ margin: "0 0 10px", color: "#7f1d1d",
                             fontSize: 17, fontWeight: 800 }}>
-              ⚠ Apagar lançamentos em massa
+              Apagar lançamentos em massa
             </h3>
             <p style={{ fontSize: 13, color: "#475569",
                           marginBottom: 12 }}>

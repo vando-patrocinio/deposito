@@ -171,21 +171,21 @@ function Login({ onLogged, theme }) {
           </p>
           <div className="fp-login-features">
             <div className="fp-feat">
-              <div className="fp-feat-ic">⚡</div>
+              <div className="fp-feat-ic"></div>
               <div>
                 <b>Tempo real</b>
                 <span>Atualização a cada 5 segundos</span>
               </div>
             </div>
             <div className="fp-feat">
-              <div className="fp-feat-ic">🛡️</div>
+              <div className="fp-feat-ic">️</div>
               <div>
                 <b>Bloqueio remoto</b>
                 <span>Em caso de roubo ou sinistro</span>
               </div>
             </div>
             <div className="fp-feat">
-              <div className="fp-feat-ic">📊</div>
+              <div className="fp-feat-ic"></div>
               <div>
                 <b>Relatórios</b>
                 <span>KM, paradas, excessos, geofences</span>
@@ -241,12 +241,12 @@ function Login({ onLogged, theme }) {
               <button type="button" className="fp-pwd-toggle"
                        onClick={() => setShowPwd((p) => !p)}
                        tabIndex={-1}>
-                {showPwd ? "🙈" : "👁"}
+                {showPwd ? "" : ""}
               </button>
             </div>
           </label>
 
-          {err && <div className="fp-err">⚠ {err}</div>}
+          {err && <div className="fp-err">{err}</div>}
 
           <button type="submit" disabled={busy}
                    className="fp-btn fp-btn-primary fp-btn-block"
@@ -258,10 +258,10 @@ function Login({ onLogged, theme }) {
 
           <div className="fp-login-help">
             <div className="fp-help-row">
-              <span>🔒</span> Conexão criptografada (TLS 1.3)
+              <span></span> Conexão criptografada (TLS 1.3)
             </div>
             <div className="fp-help-row">
-              <span>📞</span> Esqueceu o acesso? Fale com seu provedor.
+              <span></span> Esqueceu o acesso? Fale com seu provedor.
             </div>
           </div>
 
@@ -347,9 +347,9 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
       <header className="fp-topbar">
         <div className="fp-topbar-left">
           <button className="fp-mob-menu"
-                   onClick={() => setDrawerOpen(true)}>☰</button>
+                   onClick={() => setDrawerOpen(true)}></button>
           <div className="fp-brand">
-            <span className="fp-brand-icon">📡</span>
+            <span className="fp-brand-icon"></span>
             <div>
               <div className="fp-brand-name">
                 {meta.tenant?.name || "TrackPro"}
@@ -363,7 +363,7 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
                    title={theme === "dark" ? "Tema claro" : "Tema escuro"}
                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                    data-testid="fleet-portal-theme">
-            {theme === "dark" ? "🌞" : "🌙"}
+            {theme === "dark" ? "" : ""}
           </button>
           <div className="fp-user-chip">
             <div className="fp-user-avatar">
@@ -384,7 +384,7 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
 
       {/* ════ KPI STRIP ════ */}
       <div className="fp-kpi-strip" data-testid="fleet-portal-kpis">
-        <KpiCard label="Frota" value={kpis.total} icon="🚗"
+        <KpiCard label="Frota" value={kpis.total} icon=""
                   color="var(--fp-text)"
                   active={statusFilter === null}
                   onClick={() => setStatusFilter(null)} />
@@ -403,7 +403,7 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
                   active={statusFilter === "offline"}
                   onClick={() => setStatusFilter(
                     statusFilter === "offline" ? null : "offline")} />
-        <KpiCard label="Alertas" value={kpis.alerts} icon="🔔"
+        <KpiCard label="Alertas" value={kpis.alerts} icon=""
                   color="#ef4444"
                   active={view === "alerts"}
                   onClick={() => setView(view === "alerts" ? "map" : "alerts")} />
@@ -412,9 +412,9 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
       {/* ════ NAVBAR DE VISÕES ════ */}
       <nav className="fp-viewbar">
         {[
-          ["map", "🗺️", "Mapa ao vivo"],
+          ["map", "️", "Mapa ao vivo"],
           ["history", "⏱️", "Histórico"],
-          ["alerts", "🔔", "Alertas"],
+          ["alerts", "", "Alertas"],
         ].map(([id, ic, lb]) => (
           <button key={id}
                    onClick={() => setView(id)}
@@ -438,7 +438,7 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
             <div className="fp-search">
               <input value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      placeholder="🔍 Buscar placa, modelo…"
+                      placeholder="Buscar placa, modelo…"
                       data-testid="fleet-portal-search" />
             </div>
             <div className="fp-list">
@@ -510,14 +510,14 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
                          onClick={() => setMapTile(s)}
                          title={s}
                          data-testid={`fleet-portal-tile-${s}`}>
-                  {s === "dark" ? "🌙" : s === "light" ? "🌞" : "🛰️"}
+                  {s === "dark" ? "" : s === "light" ? "" : "️"}
                 </button>
               ))}
             </div>
 
             <button className="fp-mob-list-btn"
                      onClick={() => setDrawerOpen(true)}>
-              ☰ {filtered.length} veículos
+              {filtered.length} veículos
             </button>
           </main>
 
@@ -548,8 +548,8 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
                 <Stat label="Direção"
                        value={`${Math.round(selected.heading || 0)}°`} />
                 <Stat label="Ignição"
-                       value={selected.ignition === true ? "🔑 Ligada"
-                         : selected.ignition === false ? "🔌 Desligada"
+                       value={selected.ignition === true ? "Ligada"
+                         : selected.ignition === false ? "Desligada"
                            : "—"} />
                 <Stat label="Última posição"
                        value={fmtMin(selected.ts)} />
@@ -557,7 +557,7 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
               {selected.lat && (
                 <div className="fp-detail-loc">
                   <div className="fp-detail-loc-coords">
-                    📍 {selected.lat.toFixed(5)}, {selected.lng.toFixed(5)}
+                    {selected.lat.toFixed(5)}, {selected.lng.toFixed(5)}
                   </div>
                   <a target="_blank" rel="noreferrer"
                       href={`https://www.google.com/maps?q=${selected.lat},${selected.lng}`}
@@ -602,7 +602,7 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
                     disabled={cmdBusy}
                     className="fp-btn fp-btn-danger"
                     data-testid="fleet-portal-block">
-                    🔒 Bloquear
+                    Bloquear
                   </button>
                   <button
                     onClick={async () => {
@@ -622,11 +622,11 @@ function Dashboard({ token, meta, theme, setTheme, onLogout }) {
                     disabled={cmdBusy}
                     className="fp-btn fp-btn-success"
                     data-testid="fleet-portal-unblock">
-                    🔓 Liberar
+                    Liberar
                   </button>
                 </div>
                 <div className="fp-detail-cmd-hint">
-                  ⚠️ O bloqueio corta a partida do motor.
+                  ️ O bloqueio corta a partida do motor.
                   Use apenas em caso de roubo/sinistro.
                 </div>
               </div>
@@ -736,9 +736,9 @@ function History({ token, vehicles, selectedVid, setSelectedVid, theme }) {
                 className="fp-sel" />
         {stats && (
           <div className="fp-history-stats">
-            <div><span>📏</span> <b>{stats.km.toFixed(1)}</b> km</div>
-            <div><span>⚡</span> <b>{stats.maxSpeed.toFixed(0)}</b> km/h máx</div>
-            <div><span>📍</span> <b>{stats.points}</b> pontos</div>
+            <div><span></span> <b>{stats.km.toFixed(1)}</b> km</div>
+            <div><span></span> <b>{stats.maxSpeed.toFixed(0)}</b> km/h máx</div>
+            <div><span></span> <b>{stats.points}</b> pontos</div>
           </div>
         )}
       </div>
@@ -779,8 +779,8 @@ function History({ token, vehicles, selectedVid, setSelectedVid, theme }) {
 function Alerts({ events, vehicles, onSelectVehicle }) {
   const vmap = Object.fromEntries(vehicles.map((v) => [v.id, v]));
   const ICON = {
-    geofence_entry: "📍", geofence_exit: "🚪", speed: "⚡",
-    panic: "🆘", sos: "🚨", low_battery: "🪫",
+    geofence_entry: "", geofence_exit: "", speed: "",
+    panic: "🆘", sos: "", low_battery: "",
   };
   const LABEL = {
     geofence_entry: "Entrou em cerca", geofence_exit: "Saiu de cerca",
@@ -791,7 +791,7 @@ function Alerts({ events, vehicles, onSelectVehicle }) {
     <div className="fp-alerts" data-testid="fleet-portal-alerts">
       {!events.length && (
         <div className="fp-empty fp-empty-big">
-          <span style={{ fontSize: 48 }}>🎉</span>
+          <span style={{ fontSize: 48 }}></span>
           <h3>Nenhum alerta!</h3>
           <p>Sua frota está operando dentro do esperado.</p>
         </div>
@@ -801,7 +801,7 @@ function Alerts({ events, vehicles, onSelectVehicle }) {
         return (
           <div key={e.id} className="fp-alert"
                 onClick={() => v && onSelectVehicle?.(v.id)}>
-            <div className="fp-alert-icon">{ICON[e.kind] || "⚠"}</div>
+            <div className="fp-alert-icon">{ICON[e.kind] || ""}</div>
             <div className="fp-alert-body">
               <div className="fp-alert-title">
                 {LABEL[e.kind] || e.kind}

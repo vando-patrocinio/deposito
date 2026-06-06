@@ -14,11 +14,11 @@ import TransferToTechPanel from "@/TransferToTechPanel";
 import InvoiceConsolidatedPanel from "@/InvoiceConsolidatedPanel";
 
 const TYPE_META = {
-  ont: { label: "ONT", emoji: "📡", color: "#0ea5e9" },
-  insumo: { label: "Insumo", emoji: "🔌", color: "#10b981" },
-  equipamento: { label: "Equipamento", emoji: "🛠️", color: "#8b5cf6" },
-  ferramenta: { label: "Ferramenta", emoji: "🔧", color: "#f59e0b" },
-  outros: { label: "Outros", emoji: "📦", color: "#64748b" },
+  ont: { label: "ONT", emoji: "", color: "#0ea5e9" },
+  insumo: { label: "Insumo", emoji: "", color: "#10b981" },
+  equipamento: { label: "Equipamento", emoji: "️", color: "#8b5cf6" },
+  ferramenta: { label: "Ferramenta", emoji: "", color: "#f59e0b" },
+  outros: { label: "Outros", emoji: "", color: "#64748b" },
 };
 
 const EMPTY_FORM = {
@@ -273,7 +273,7 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
       <div style={{ display: "flex", justifyContent: "space-between",
                      alignItems: "baseline", marginBottom: 18 }}>
         <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
-          📥 Lançar Nova Compra
+          Lançar Nova Compra
         </h3>
         <div style={{ fontSize: 12, color: "#64748b" }}>
           Anexe NF/foto/planilha — a IA preenche, ou preencha manual.
@@ -286,7 +286,7 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
         <div style={{ display: "flex", justifyContent: "space-between",
                        alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div style={{ fontSize: 13, color: "#065f46", fontWeight: 600 }}>
-            🤖 Anexar arquivo (PDF, foto JPG/PNG, XLS, DOCX) — Claude Sonnet 4.5 lê e preenche
+            Anexar arquivo (PDF, foto JPG/PNG, XLS, DOCX) — Claude Sonnet 4.5 lê e preenche
           </div>
           <input
             ref={fileRef}
@@ -338,7 +338,7 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
             <option value="">Selecione…</option>
             {filteredCollabs.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.cargo === "almoxarife" ? "📦 " : ""}{c.name}
+                {c.cargo === "almoxarife" ? "" : ""}{c.name}
               </option>
             ))}
           </select>
@@ -449,7 +449,7 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
                         cursor: "pointer", color: "#16a34a",
                         fontWeight: 700, fontSize: 11,
                       }}>
-                        🏷️ {(it.sns || []).length} SN(s) lido(s) pela IA
+                        ️ {(it.sns || []).length} SN(s) lido(s) pela IA
                       </summary>
                       <div style={{
                         marginTop: 4, padding: 6,
@@ -471,8 +471,8 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
                   {isOnt && (it.sns || []).length === 0 && (
                     <div style={{ fontSize: 10, color: "#ef4444",
                                     fontWeight: 700 }}>
-                      ⚠️ Nenhum SN detectado — anexe foto melhor ou
-                      use 🔄 Reprocessar SNs após salvar
+                      ️ Nenhum SN detectado — anexe foto melhor ou
+                      use Reprocessar SNs após salvar
                     </div>
                   )}
                 </div>
@@ -491,7 +491,7 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
                           borderRadius: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e",
                             marginBottom: 6 }}>
-              🔧 Ferramentas detectadas — transferência para o técnico
+              Ferramentas detectadas — transferência para o técnico
             </div>
             <Field label="Técnico recebedor (gera romaneio para assinatura)">
               <select value={form.tool_recipient_collaborator_id}
@@ -501,7 +501,7 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
                 <option value="">Selecione o técnico…</option>
                 {(refs.collaborators || []).map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.cargo === "almoxarife" ? "📦 " : "👷 "}{c.name}
+                    {c.cargo === "almoxarife" ? "" : ""}{c.name}
                   </option>
                 ))}
               </select>
@@ -532,7 +532,7 @@ function PurchaseForm({ refs, isWarehouseKeeper, userPracaId, onCreated }) {
         <button onClick={submit} disabled={busy}
                 data-testid="purchase-submit"
                 style={{ ...btnPrimary, opacity: busy ? 0.6 : 1 }}>
-          {busy ? "Salvando…" : "📥 Lançar compra"}
+          {busy ? "Salvando…" : "Lançar compra"}
         </button>
       </div>
     </div>
@@ -583,7 +583,7 @@ function PurchasesList({ data, canConfirm, onReload }) {
         + `Esta compra vai cadastrar ${sns_total} ONT(s) com SN no estoque `
         + `da empresa, disponíveis para transferir aos colaboradores.`;
       if (sns_total < qty_total) {
-        prompt_msg += `\n\n⚠️ ATENÇÃO: a NF declara ${qty_total} unidades, mas `
+        prompt_msg += `\n\n️ ATENÇÃO: a NF declara ${qty_total} unidades, mas `
           + `só ${sns_total} têm SN preenchido. As ${qty_total - sns_total} `
           + `restantes ficarão sem SN — você pode editar depois.`;
       }
@@ -647,8 +647,8 @@ function PurchasesList({ data, canConfirm, onReload }) {
             )}
           </div>
           <div style={{ fontSize: 12, color: "#475569" }}>
-            📦 <strong>{p.praca_name}</strong> · 👤 {p.responsible_name}
-            {p.file_name && <> · 📎 {p.file_name}</>}
+            <strong>{p.praca_name}</strong> · {p.responsible_name}
+            {p.file_name && <> · {p.file_name}</>}
           </div>
           {p.items?.length > 0 && (
             <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
@@ -668,7 +668,7 @@ function PurchasesList({ data, canConfirm, onReload }) {
                 background: "#f0fdf4", border: "1px solid #86efac",
                 borderRadius: 6, listStyle: "none",
               }}>
-                ▼ 🏷️ ONTs a serem cadastradas ({(p.items || [])
+                ▼ ️ ONTs a serem cadastradas ({(p.items || [])
                   .reduce((acc, it) => acc + (it.sns?.length || 0), 0)})
               </summary>
               <div style={{
@@ -682,7 +682,7 @@ function PurchasesList({ data, canConfirm, onReload }) {
                     <div key={i} style={{ marginBottom: 8 }}>
                       <div style={{ fontSize: 11, fontWeight: 700,
                                       color: "#14532d", marginBottom: 4 }}>
-                        📦 {it.description} · {it.sns.length} unidade(s)
+                        {it.description} · {it.sns.length} unidade(s)
                       </div>
                       <div style={{
                         display: "grid",
@@ -710,7 +710,7 @@ function PurchasesList({ data, canConfirm, onReload }) {
                   borderRadius: 4, fontSize: 11, color: "#92400e",
                   fontWeight: 600,
                 }}>
-                  ⚠️ Confirme só se todos os SNs estiverem corretos.
+                  ️ Confirme só se todos os SNs estiverem corretos.
                   Após confirmar, cada SN vira uma ONT no estoque.
                 </div>
               </div>
@@ -725,9 +725,9 @@ function PurchasesList({ data, canConfirm, onReload }) {
                     borderRadius: 6, fontSize: 11, color: "#991b1b",
                     fontWeight: 600,
                   }}>
-              ⚠️ Esta compra de ONT está SEM SNs detectados.
+              ️ Esta compra de ONT está SEM SNs detectados.
               Confirme só se quiser cadastrar manualmente depois — ou
-              clique em "📸 Reler NF (foto)" abaixo.
+              clique em “Reler NF (foto)” abaixo.
             </div>
           )}
           {p.notes && <div style={{ fontSize: 11, color: "#475569", marginTop: 4, fontStyle: "italic" }}>{p.notes}</div>}
@@ -778,7 +778,7 @@ function PurchasesList({ data, canConfirm, onReload }) {
                     background: "#2563eb", color: "#fff",
                     border: 0, borderRadius: 6, cursor: "pointer",
                   }}>
-                  📸 Reler NF (foto)
+                  Reler NF (foto)
                 </button>
                 <button data-testid={`purchase-reprocess-${p.id}`}
                   onClick={async () => {
@@ -816,7 +816,7 @@ function PurchasesList({ data, canConfirm, onReload }) {
                     background: "#fbbf24", color: "#78350f",
                     border: 0, borderRadius: 6, cursor: "pointer",
                   }}>
-                  🔄 Reprocessar SNs
+                  Reprocessar SNs
                 </button>
               </>
             )}
@@ -872,7 +872,7 @@ export default function CentralComprasPanel({ currentUser }) {
     <div style={{ padding: 24 }} data-testid="central-compras-panel">
       <div style={{ marginBottom: 22 }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#0f172a" }}>
-          📥 Central de Compras
+          Central de Compras
         </h2>
         <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
           Fluxo: <strong>Compra → Entrada no estoque (Praça + responsável) → Técnico → Cliente</strong>
@@ -881,7 +881,7 @@ export default function CentralComprasPanel({ currentUser }) {
           <div style={{ marginTop: 10, padding: "10px 14px",
                          background: "#dbeafe", border: "1px solid #3b82f6",
                          borderRadius: 8, fontSize: 12, color: "#1e40af" }}>
-            📦 Você é almoxarife: vê e lança somente a sua praça.
+            Você é almoxarife: vê e lança somente a sua praça.
             Após lançar, um gestor precisa <strong>confirmar a entrada</strong> no estoque.
           </div>
         )}

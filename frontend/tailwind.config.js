@@ -5,7 +5,7 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Manrope', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
         mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       borderRadius: {
@@ -26,11 +26,64 @@ module.exports = {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
+        // iter215ac — Institutional palette (manual 2026-06)
+        // Cores semânticas que consomem CSS variables — IDs descritivos
+        // pra deixar fácil migrar `text-slate-700` → `text-ink` etc.
+        brand: {
+          DEFAULT: 'var(--brand-primary)',
+          hover: 'var(--brand-primary-hover)',
+          soft: 'var(--accent-soft)',
+          'soft-fg': 'var(--accent-soft-fg)',
+        },
+        brand2: {
+          DEFAULT: 'var(--secondary)',
+          hover: 'var(--secondary-hover)',
+          soft: 'var(--secondary-soft)',
+          'soft-fg': 'var(--secondary-soft-fg)',
+        },
+        ink: {
+          DEFAULT: 'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted: 'var(--text-muted)',
+        },
+        surface: {
+          DEFAULT: 'var(--bg-surface)',
+          alt: 'var(--bg-surface-2)',
+          muted: 'var(--bg-muted)',
+          app: 'var(--bg-app)',
+        },
+        success: {
+          DEFAULT: 'var(--success)',
+          soft: 'var(--success-soft)',
+          'soft-fg': 'var(--success-soft-fg)',
+        },
+        warning: {
+          DEFAULT: 'var(--warning)',
+          soft: 'var(--warning-soft)',
+          'soft-fg': 'var(--warning-soft-fg)',
+        },
+        danger: {
+          DEFAULT: 'var(--danger)',
+          soft: 'var(--danger-soft)',
+          'soft-fg': 'var(--danger-soft-fg)',
+        },
+        info: {
+          DEFAULT: 'var(--info)',
+          soft: 'var(--info-soft)',
+          'soft-fg': 'var(--info-soft-fg)',
+        },
         chart: {
           '1': 'hsl(var(--chart-1))', '2': 'hsl(var(--chart-2))',
           '3': 'hsl(var(--chart-3))', '4': 'hsl(var(--chart-4))',
           '5': 'hsl(var(--chart-5))',
         },
+      },
+      boxShadow: {
+        'xs': 'var(--shadow-xs)',
+        'sm': 'var(--shadow-sm)',
+        'md': 'var(--shadow-md)',
+        'lg': 'var(--shadow-lg)',
+        'brand': 'var(--shadow-brand)',
       },
       keyframes: {
         'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-accordion-content-height)' } },

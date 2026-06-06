@@ -128,7 +128,7 @@ export default function IsabellaSubPanel() {
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text-primary)" }}>
-            Botão "Enviar com IA"
+            Botão “Enviar com IA”
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
             {data.polish_button_enabled
@@ -400,7 +400,7 @@ function RankingCard({ items }) {
             const pct = items[0].messages
               ? Math.round((it.messages / items[0].messages) * 100)
               : 0;
-            const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+            const medal = i === 0 ? "" : i === 1 ? "" : i === 2 ? "" : null;
             return (
               <div key={it.user_id || i} data-testid={`isa-rank-${i}`}
                    style={{
@@ -451,7 +451,7 @@ function RankingCard({ items }) {
       <div style={{ marginTop: 8, fontSize: 10.5, color: "var(--text-muted)" }}>
         <Award size={10} style={{ display: "inline", marginRight: 3,
                                     verticalAlign: "middle" }} />
-        Coluna direita = % de mensagens enviadas usando o botão "Enviar com IA"
+        Coluna direita = % de mensagens enviadas usando o botão “Enviar com IA”
       </div>
     </div>
   );

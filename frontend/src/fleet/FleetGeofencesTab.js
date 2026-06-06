@@ -67,7 +67,7 @@ export default function FleetGeofencesTab({ geofences, onReload, vehicles }) {
                  style={{ padding: "8px 16px", background: "#7c3aed",
                            color: "white", border: 0, borderRadius: 6,
                            fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-          🗺️ Desenhar no mapa
+          ️ Desenhar no mapa
         </button>
       </div>
 

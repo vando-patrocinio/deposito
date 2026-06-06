@@ -301,10 +301,10 @@ function Td({ children, align = "left", style = {} }) {
 function ClientRow({ c }) {
   const cls = c.classification;
   const styleMap = {
-    persistente: { bg: "#fef2f2", color: "#dc2626", label: "🔴 Persistente" },
-    recorrente: { bg: "#fff7ed", color: "#ea580c", label: "🟠 Recorrente" },
-    esporádico: { bg: "#fefce8", color: "#ca8a04", label: "🟡 Esporádico" },
-    eventual: { bg: "#f0fdf4", color: "#16a34a", label: "🟢 Eventual" },
+    persistente: { bg: "#fef2f2", color: "#dc2626", label: "Persistente" },
+    recorrente: { bg: "#fff7ed", color: "#ea580c", label: "Recorrente" },
+    esporádico: { bg: "#fefce8", color: "#ca8a04", label: "Esporádico" },
+    eventual: { bg: "#f0fdf4", color: "#16a34a", label: "Eventual" },
   };
   const cs = styleMap[cls] || styleMap.eventual;
   const tech = c.last_technician;
@@ -458,7 +458,7 @@ function TechReincidenciaCell({ c }) {
       {critical && problematic ? (
         <div
           title={
-            `⚠ ${problematic.name} foi ${problematic.count}x neste cliente ` +
+            `${problematic.name} foi ${problematic.count}x neste cliente ` +
             `com ${problematic.unresolved_count} caso(s) não resolvido(s). ` +
             `Possível problema estrutural — considere reescalar.`
           }
@@ -470,7 +470,7 @@ function TechReincidenciaCell({ c }) {
             marginBottom: 4,
           }}
         >
-          ⚠ {problematic.name.split(" ")[0]} ×{problematic.count}
+          {problematic.name.split(" ")[0]} ×{problematic.count}
         </div>
       ) : null}
       <div style={{ fontSize: 10, color: "var(--text-secondary)",

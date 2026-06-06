@@ -107,7 +107,7 @@ export default function CTOLocationViewer({ cto, onClose }) {
         {/* Footer: coords + atalhos */}
         <div style={footer}>
           <div style={{ fontSize: 11, color: "#64748b", fontFamily: "monospace" }}>
-            📍 {lat.toFixed(6)}, {lng.toFixed(6)}
+            {lat.toFixed(6)}, {lng.toFixed(6)}
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             <a data-testid="cto-location-gmaps" href={gmapsUrl} target="_blank"

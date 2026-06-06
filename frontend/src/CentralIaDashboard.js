@@ -1828,7 +1828,7 @@ function RoutingDashboardCard() {
                   <strong style={{ fontSize: 12, minWidth: 80 }}>{a.name}</strong>
                   <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{a.model_name}</span>
                   <span style={{ flex: 1, fontSize: 11, color: a.has_routing_intent ? "var(--text-secondary)" : "#dc2626", fontStyle: a.has_routing_intent ? "normal" : "italic" }}>
-                    {a.has_routing_intent ? a.routing_intent : "⚠ Sem especialidade — não participará do roteamento multi-agente"}
+                    {a.has_routing_intent ? a.routing_intent : "Sem especialidade — não participará do roteamento multi-agente"}
                   </span>
                   <span className={`pill pill--${a.active ? "success" : "muted"}`}>
                     {a.active ? "ATIVO" : "INATIVO"}
@@ -1970,7 +1970,7 @@ function LiveCostMeter({ data, expanded, onToggle }) {
               display: "inline-flex", alignItems: "center", gap: 4,
             }}>
               {cacheHitRate.toFixed(1)}%
-              {cacheHitRate > 50 && <span style={{ fontSize: 14 }}>🔥</span>}
+              {cacheHitRate > 50 && <span style={{ fontSize: 14 }}></span>}
             </span>
             <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>
               -{fmtUSDshort(cacheSavings)} economizado

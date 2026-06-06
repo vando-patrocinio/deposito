@@ -49,12 +49,12 @@ export default function ReconcileAuditPanel() {
         <div>
           <div style={{ fontSize: 16, fontWeight: 800,
                           color: "var(--text-primary)" }}>
-            🔍 Conciliação CTO ↔ SmartOLT
+            Conciliação CTO ↔ SmartOLT
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)",
                           marginTop: 2 }}>
             Acha clientes na OLT sem vínculo em CTO (técnico esqueceu de cadastrar)
-            e portas "ocupadas" sem ONU correspondente (clientes deletados/migrados).
+            e portas “ocupadas” sem ONU correspondente (clientes deletados/migrados).
             Job noturno: 03:15.
             {s.executed_at && (
               <> · Última execução: {new Date(s.executed_at).toLocaleString("pt-BR")}</>
@@ -94,8 +94,8 @@ export default function ReconcileAuditPanel() {
       <Card style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", borderBottom: "1px solid var(--border-default)" }}>
           {[
-            { id: "orphans", label: `🟠 ONUs sem CTO (${orphans.length})` },
-            { id: "ghosts",  label: `🔴 Portas fantasmas (${ghosts.length})` },
+            { id: "orphans", label: `ONUs sem CTO (${orphans.length})` },
+            { id: "ghosts",  label: `Portas fantasmas (${ghosts.length})` },
           ].map((t) => (
             <button key={t.id} data-testid={`reconcile-tab-${t.id}`}
                     onClick={() => setTab(t.id)}

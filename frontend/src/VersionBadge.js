@@ -1,28 +1,32 @@
 /*
- * VersionBadge — iter209
- * Banner discreto no canto inferior direito mostrando a versão atualmente
- * deployada. Ajuda o usuário a confirmar que um deploy realmente entrou no
- * preview/produção (PWA Service Worker às vezes serve JS antigo).
+ * VersionBadge — iter215
+ * Pílula compacta no canto inferior direito que mostra a versão atual do
+ * build. Visível APENAS para super_admin. Mantém `window.__APP_VERSION__`
+ * acessível pra todos (usado pelo ErrorBoundary nos diagnósticos).
  *
- * Como ler a versão: definida em /app/frontend/src/version.js (constante).
- * Para atualizar a versão, basta editar version.js. Em produção, ao clicar
- * no badge é feito Hard Reload (que limpa o cache do SW).
+ * Clicar no badge dá hard-reload (limpa cache PWA) — útil pra forçar
+ * atualização quando o service worker grudou no JS antigo.
  */
 import React from "react";
 import { APP_VERSION, APP_BUILD_DATE } from "@/version";
+import { useAuth } from "@/AuthContext";
 
-// iter211ah — expõe a versão globalmente pra ErrorBoundary incluir no
-// diagnóstico copiado pelo usuário.
+// Expõe a versão globalmente para diagnóstico interno
 if (typeof window !== "undefined") {
   window.__APP_VERSION__ = `${APP_VERSION} (${APP_BUILD_DATE})`;
 }
 
 export default function VersionBadge() {
+  const auth = useAuth?.();
+  const user = auth?.user;
   const [hidden, setHidden] = React.useState(false);
+
+  // Só renderiza pra super_admin (ou se rota é portal público sem auth,
+  // não mostra). is_super_admin é a flag canônica (vide App.js).
   if (hidden) return null;
+  if (!user?.is_super_admin) return null;
 
   const onClick = () => {
-    // Hard-reload contornando PWA cache
     try {
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.getRegistrations().then((regs) => {
@@ -40,7 +44,7 @@ export default function VersionBadge() {
     <div
       data-testid="version-badge"
       onClick={onClick}
-      title="Clique para forçar atualização (limpa cache PWA)"
+      title="Clique para forçar atualização (limpa cache PWA). Visível só para super_admin."
       style={{
         position: "fixed",
         right: 180,

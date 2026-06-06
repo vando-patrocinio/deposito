@@ -15,7 +15,7 @@ const labels = {
     desc: "Quando ligado, o técnico precisa concluir o Teste IPv6 (Google "
         + "DNS + dual-stack) antes de finalizar OS de instalação, reparo, "
         + "troca, troca de endereço ou ponto adicional. Desligado por padrão.",
-    icon: "🌐",
+    icon: "",
   },
   cto_photo_required: {
     title: "Foto da CTO obrigatória",
@@ -23,7 +23,15 @@ const labels = {
         + "antes de finalizar OS de instalação, reparo, troca ou ponto "
         + "adicional. Bloqueia o botão Finalizar se a foto não estiver "
         + "presente. Desligado por padrão.",
-    icon: "📸",
+    icon: "",
+  },
+  cto_port_required: {
+    title: "Porta da CTO obrigatória",
+    desc: "REGRA GLOBAL: técnico DEVE selecionar a CTO e a porta antes de "
+        + "finalizar OS de instalação ou reparo. O cliente é registrado "
+        + "automaticamente na porta da CTO e na Base de Portas. "
+        + "Bloqueia o fechamento se faltar CTO/porta. LIGADO por padrão.",
+    icon: "",
   },
   mac_validation_required: {
     title: "Validar MAC contra SmartOLT",
@@ -31,7 +39,7 @@ const labels = {
         + "estoque se o MAC informado não bater com o MAC ativo do cliente "
         + "no cache SmartOLT (em vez de marcar como pendente). Use só em "
         + "ambientes com SmartOLT 100% sincronizado. Desligado por padrão.",
-    icon: "🔒",
+    icon: "",
   },
 };
 
@@ -110,7 +118,7 @@ export default function OsValidationTogglesCard() {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10,
                        marginBottom: 6 }}>
-        <span style={{ fontSize: 22 }}>⚙️</span>
+        <span style={{ fontSize: 22 }}>️</span>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800,
                          color: "#0f172a", letterSpacing: -0.2 }}>
           Validações da OS · Lousa
@@ -135,7 +143,7 @@ export default function OsValidationTogglesCard() {
             <div style={{ flex: "1 1 100%", fontSize: 11, fontWeight: 700,
                               color: "#64748b", textTransform: "uppercase",
                               letterSpacing: 0.5, marginBottom: 2 }}>
-              ⚡ Presets rápidos
+              Presets rápidos
             </div>
             <button type="button" disabled={busy || loading || allOn}
                     onClick={() => applyPreset("rigoroso")}
@@ -147,7 +155,7 @@ export default function OsValidationTogglesCard() {
                       cursor: busy || allOn ? "default" : "pointer",
                       opacity: allOn ? 0.7 : 1,
                     }}>
-              🔒 Modo Rigoroso {allOn && "(ativo)"}
+              Modo Rigoroso {allOn && "(ativo)"}
             </button>
             <button type="button" disabled={busy || loading || allOff}
                     onClick={() => applyPreset("relaxado")}
@@ -159,7 +167,7 @@ export default function OsValidationTogglesCard() {
                       cursor: busy || allOff ? "default" : "pointer",
                       opacity: allOff ? 0.7 : 1,
                     }}>
-              🌿 Modo Relaxado {allOff && "(ativo)"}
+              Modo Relaxado {allOff && "(ativo)"}
             </button>
             <div style={{ flex: "1 1 100%", fontSize: 11, color: "#64748b",
                               lineHeight: 1.4, marginTop: 4 }}>

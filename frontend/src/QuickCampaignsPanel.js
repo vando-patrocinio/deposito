@@ -15,7 +15,7 @@ import DisparoPromoPanel from "@/DisparoPromoPanel";
 const QUICK_CARDS = [
   {
     id: "pre_reducao",
-    icon: "⚠️",
+    icon: "️",
     color: "#f59e0b",
     title: "Aviso pré-redução de velocidade",
     subtitle: "Quem está em GRACE (1-6 dias) — antes da redução automática",
@@ -25,9 +25,9 @@ const QUICK_CARDS = [
       only_with_phone: true,
     },
     template: (
-      "Oi, {nome}! 👋\n\n"
+      "Oi, {nome}! \n\n"
       + "Vi que sua fatura de R$ {valor} está em aberto há {dias_atraso} "
-      + "dias 😔\n\n"
+      + "dias \n\n"
       + "Pra evitar a redução automática da velocidade do seu plano "
       + "{plano}, finalize o pagamento hoje. Posso te enviar o link do "
       + "PIX/boleto agora — é só responder 1️⃣"
@@ -35,14 +35,14 @@ const QUICK_CARDS = [
   },
   {
     id: "ja_reduzido",
-    icon: "🐢",
+    icon: "",
     color: "#dc2626",
     title: "Cliente JÁ está em REDUZIDO",
     subtitle: "Avisar que a velocidade caiu por inadimplência",
     audience_label: "Clientes em REDUZIDO",
     filters: { radius_states: ["REDUZIDO"], only_with_phone: true },
     template: (
-      "Olá, {nome}. 📡\n\n"
+      "Olá, {nome}. \n\n"
       + "Sua internet do plano {plano} está com velocidade reduzida "
       + "porque sua fatura de R$ {valor} venceu há {dias_atraso} dias.\n\n"
       + "Pague agora e em até 5 minutos sua velocidade volta ao normal "
@@ -51,7 +51,7 @@ const QUICK_CARDS = [
   },
   {
     id: "wall_garden",
-    icon: "🔒",
+    icon: "",
     color: "#991b1b",
     title: "Cliente em Wall Garden",
     subtitle: "Só consegue acessar portal/bancos — pedindo negociação",
@@ -61,12 +61,12 @@ const QUICK_CARDS = [
       "{nome}, sua internet foi limitada (você só consegue acessar "
       + "bancos e nosso portal de pagamento) porque a fatura está em "
       + "aberto há {dias_atraso} dias.\n\n"
-      + "Quer negociar agora? Posso te enviar opções de parcelamento. 💜"
+      + "Quer negociar agora? Posso te enviar opções de parcelamento. "
     ),
   },
   {
     id: "pre_suspensao",
-    icon: "🚨",
+    icon: "",
     color: "#7f1d1d",
     title: "URGENTE: Pré-suspensão total",
     subtitle: "Última chance antes do corte completo",
@@ -77,7 +77,7 @@ const QUICK_CARDS = [
       only_with_phone: true,
     },
     template: (
-      "⚠️ ATENÇÃO {nome}\n\n"
+      "️ ATENÇÃO {nome}\n\n"
       + "Sua internet será SUSPENSA totalmente em até 3 dias se a fatura "
       + "de R$ {valor} (vencida há {dias_atraso} dias) não for paga.\n\n"
       + "Quer evitar o corte total? Responde 1️⃣ que envio o PIX agora."
@@ -85,7 +85,7 @@ const QUICK_CARDS = [
   },
   {
     id: "boleto_chegou",
-    icon: "📨",
+    icon: "",
     color: "#0ea5e9",
     title: "Boleto disponível",
     subtitle: "Aviso pra clientes ATIVOS no início do mês",
@@ -93,7 +93,7 @@ const QUICK_CARDS = [
     filters: { radius_states: ["ATIVO"], status: ["active"],
                 only_with_phone: true },
     template: (
-      "Oi, {nome}! 💙\n\n"
+      "Oi, {nome}! \n\n"
       + "Sua fatura deste mês do plano {plano} (R$ {valor}) já está "
       + "disponível.\n\n"
       + "Quer que eu te envie o PIX/boleto agora? É só responder 1️⃣"
@@ -101,7 +101,7 @@ const QUICK_CARDS = [
   },
   {
     id: "upsell",
-    icon: "🚀",
+    icon: "",
     color: "#7c3aed",
     title: "Upsell — upgrade de plano",
     subtitle: "Pra ATIVOS há +12 meses no mesmo plano",
@@ -111,16 +111,16 @@ const QUICK_CARDS = [
       tenure_min_months: 12, only_with_phone: true,
     },
     template: (
-      "Oi, {nome}! 🎉\n\n"
+      "Oi, {nome}! \n\n"
       + "Vi que você está com a gente há mais de 1 ano no plano {plano} "
-      + "— obrigada pela parceria! 💜\n\n"
+      + "— obrigada pela parceria! \n\n"
       + "Que tal um upgrade pra 500 Megas com **R$ 10 OFF** no primeiro "
       + "mês? Responda 1️⃣ que eu te explico."
     ),
   },
   {
     id: "manutencao",
-    icon: "🛠️",
+    icon: "️",
     color: "#64748b",
     title: "Aviso de manutenção programada",
     subtitle: "Notificar todos os clientes ativos da sua cidade",
@@ -128,26 +128,26 @@ const QUICK_CARDS = [
     filters: { radius_states: ["ATIVO"], status: ["active"],
                 only_with_phone: true },
     template: (
-      "Olá, {nome}! 📡\n\n"
+      "Olá, {nome}! \n\n"
       + "Faremos uma manutenção programada HOJE das 22h às 02h. Pode "
       + "haver instabilidade no sinal nesse período.\n\n"
-      + "Agradecemos a compreensão! 💜"
+      + "Agradecemos a compreensão! "
     ),
   },
   {
     id: "retorno_inativo",
-    icon: "💔",
+    icon: "",
     color: "#ec4899",
     title: "Retorno de clientes cancelados",
     subtitle: "Campanha de reativação para ex-clientes",
     audience_label: "Clientes CANCELADOS",
     filters: { status: ["canceled"], only_with_phone: true },
     template: (
-      "Oi, {nome}! 🌷\n\n"
-      + "Sentimos sua falta! 💜 Voltamos com uma oferta especial pra te "
+      "Oi, {nome}! \n\n"
+      + "Sentimos sua falta! Voltamos com uma oferta especial pra te "
       + "trazer de volta: **1º MÊS GRÁTIS** + instalação por R$ 0 no "
       + "plano {plano}.\n\n"
-      + "Quer voltar? Responde aqui que a gente cuida de tudo 🚀"
+      + "Quer voltar? Responde aqui que a gente cuida de tudo "
     ),
   },
 ];
@@ -178,7 +178,7 @@ export default function QuickCampaignsPanel() {
             {active.icon} {active.title}
           </div>
           <div style={{ fontSize: 12, color: "#475569" }}>
-            {active.subtitle} · 🎯 <b>{active.audience_label}</b>
+            {active.subtitle} · <b>{active.audience_label}</b>
           </div>
         </div>
         <DisparoPromoPanel initialTemplate={active.template}
@@ -235,7 +235,7 @@ export default function QuickCampaignsPanel() {
                             padding: "3px 9px",
                             background: `${c.color}15`, color: c.color,
                             borderRadius: 99, fontSize: 11, fontWeight: 700 }}>
-              🎯 {c.audience_label}
+              {c.audience_label}
             </div>
             <div style={{ marginTop: 10, padding: 10,
                             background: "#f8fafc", borderRadius: 7,

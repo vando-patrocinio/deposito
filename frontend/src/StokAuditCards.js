@@ -59,7 +59,7 @@ export function GranularResetButton({ technicians, pracas,
                 cursor: "pointer", display: "inline-flex",
                 gap: 6, alignItems: "center",
               }}>
-        🎯 Zerar por escopo
+        Zerar por escopo
       </button>
       {open && (
         <div data-testid="granular-reset-modal"
@@ -76,7 +76,7 @@ export function GranularResetButton({ technicians, pracas,
           }}>
             <div style={{ fontSize: 17, fontWeight: 800, color: "#b45309",
                             marginBottom: 8 }}>
-              🎯 Zerar Estoque por Escopo
+              Zerar Estoque por Escopo
             </div>
             {!result && (
               <>
@@ -282,7 +282,7 @@ export function ShrinkageReportCard() {
         <div>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800,
                           color: "#0f172a" }}>
-            📉 Quebra de Estoque
+            Quebra de Estoque
           </h3>
           <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>
             Entradas − consumido em OS − saldo atual. Se positivo,
@@ -303,7 +303,7 @@ export function ShrinkageReportCard() {
                     color: "#fff", fontWeight: 700, fontSize: 12,
                     cursor: "pointer",
                   }}>
-          ⚠ Zerar Quebra
+          Zerar Quebra
         </button>
       </div>
 
@@ -369,7 +369,7 @@ export function ShrinkageReportCard() {
                           borderRadius: 8, fontSize: 12.5,
                           border: "1px solid #e2e8f0" }}>
             <strong style={{ color: "#0f172a", fontSize: 13 }}>
-              📦 ONTs
+              ONTs
             </strong>
             <div style={{ display: "grid",
                             gridTemplateColumns: "repeat(4, 1fr)",
@@ -389,7 +389,7 @@ export function ShrinkageReportCard() {
                               background: "#fef2f2", borderRadius: 8,
                               border: "1px solid #fecaca",
                               color: "#991b1b", fontSize: 12 }}>
-              ⚠ <strong>{withShrink.length}</strong> insumo(s) com quebra
+              <strong>{withShrink.length}</strong> insumo(s) com quebra
               detectada. Geralmente significa: lançamentos incompletos no
               fechamento de OS, ONTs/insumos não baixados, ou perda física.
             </div>
@@ -410,7 +410,7 @@ export function ShrinkageReportCard() {
             boxShadow: "0 20px 50px rgba(0,0,0,.25)",
           }}>
             <div style={{ fontWeight: 800, fontSize: 17, color: "#0f172a", marginBottom: 6 }}>
-              ⚠ Zerar Quebra de Estoque
+              Zerar Quebra de Estoque
             </div>
             <p style={{ fontSize: 13, color: "#475569", marginBottom: 12, lineHeight: 1.5 }}>
               Esta ação <strong>compensa</strong> toda a quebra atual com

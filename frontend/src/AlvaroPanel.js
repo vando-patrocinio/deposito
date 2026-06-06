@@ -120,7 +120,7 @@ export default function AlvaroPanel() {
         {running && (
           <p style={{ marginTop: 16, fontSize: 12, color: "#64748b" }}>
             Isso pode levar de 1 a 5 minutos dependendo do volume.
-            Acompanhe o status via "Atualizar" abaixo.
+            Acompanhe o status via “Atualizar” abaixo.
           </p>
         )}
         {error && (
@@ -286,7 +286,7 @@ export default function AlvaroPanel() {
 
       {/* Clientes risco crítico */}
       {report.clientes_risco_critico?.length > 0 && (
-        <Card title={`🚨 Clientes em RISCO CRÍTICO (${report.clientes_risco_critico.length})`}
+        <Card title={`Clientes em RISCO CRÍTICO (${report.clientes_risco_critico.length})`}
               titleColor="#dc2626"
               testId="alvaro-critical-list">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
@@ -348,7 +348,7 @@ export default function AlvaroPanel() {
         + (report.oportunidades_expansao?.length || 0)) > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                        gap: 16, marginTop: 20 }}>
-          <Card title="💰 Oportunidades comerciais"
+          <Card title="Oportunidades comerciais"
                 titleColor="#0e7490">
             {(report.oportunidades_comerciais || []).length === 0 ? (
               <p style={{ fontSize: 12, color: "#94a3b8" }}>Nenhuma detectada.</p>
@@ -361,7 +361,7 @@ export default function AlvaroPanel() {
               </ul>
             )}
           </Card>
-          <Card title="🗺️ Oportunidades de expansão" titleColor="#7c3aed">
+          <Card title="️ Oportunidades de expansão" titleColor="#7c3aed">
             {(report.oportunidades_expansao || []).length === 0 ? (
               <p style={{ fontSize: 12, color: "#94a3b8" }}>Nenhuma detectada.</p>
             ) : (
@@ -448,11 +448,11 @@ function Tag({ text, color }) {
 
 function setorLabel(s) {
   const m = {
-    suporte_tecnico: "🔧 Suporte Técnico",
-    comercial: "💼 Comercial",
-    financeiro: "💰 Financeiro",
-    expansao_rede: "🌐 Expansão de Rede",
-    gestao: "📊 Gestão",
+    suporte_tecnico: "Suporte Técnico",
+    comercial: "Comercial",
+    financeiro: "Financeiro",
+    expansao_rede: "Expansão de Rede",
+    gestao: "Gestão",
   };
   return m[s] || s;
 }

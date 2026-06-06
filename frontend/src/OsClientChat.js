@@ -190,7 +190,7 @@ export default function OsClientChat({
               )}
               {presence === "recording" && (
                 <>
-                  <span style={{ color: "#fbbf24" }}>🎙</span>
+                  <span style={{ color: "#fbbf24" }}></span>
                   <span style={{ fontStyle: "italic" }}>
                     gravando áudio…
                   </span>
@@ -230,7 +230,7 @@ export default function OsClientChat({
             <div style={{ textAlign: "center", color: "#64748b",
                             padding: 40, fontSize: 13,
                             maxWidth: 280, alignSelf: "center" }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>💬</div>
+              <div style={{ fontSize: 32, marginBottom: 8 }}></div>
               Envie uma mensagem pra tirar dúvidas com o cliente.
               <br />
               <span style={{ fontSize: 11, opacity: 0.7 }}>

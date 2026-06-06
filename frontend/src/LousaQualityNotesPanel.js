@@ -3,9 +3,9 @@ LousaQualityNotesPanel.js — Aba "Notas" do Lousa Admin.
 
 Lista chamados finalizados com sinal SmartOLT capturado automaticamente
 na abertura e no fechamento, e classificação automática:
-  • 🟢 BOM     — sinal estável/melhorou
-  • 🟡 REGULAR — piorou < 3 dB (tolerável)
-  • 🔴 RUIM    — piorou ≥ 3 dB ou pós-reparo em LOS
+  • BOM     — sinal estável/melhorou
+  • REGULAR — piorou < 3 dB (tolerável)
+  • RUIM    — piorou ≥ 3 dB ou pós-reparo em LOS
 
 Inclui toggle global ON/OFF da feature e ajuste de thresholds.
 */
@@ -19,9 +19,9 @@ import {
 } from "lucide-react";
 
 const GRADE_STYLE = {
-  bom:     { color: "#16a34a", bg: "#dcfce7", icon: "🟢", label: "BOM" },
-  regular: { color: "#ca8a04", bg: "#fef3c7", icon: "🟡", label: "REGULAR" },
-  ruim:    { color: "#dc2626", bg: "#fee2e2", icon: "🔴", label: "RUIM" },
+  bom:     { color: "#16a34a", bg: "#dcfce7", icon: "", label: "BOM" },
+  regular: { color: "#ca8a04", bg: "#fef3c7", icon: "", label: "REGULAR" },
+  ruim:    { color: "#dc2626", bg: "#fee2e2", icon: "", label: "RUIM" },
 };
 
 function fmtDbm(v) {
@@ -138,7 +138,7 @@ export default function LousaQualityNotesPanel() {
           padding: 14, background: "#f1f5f9", borderRadius: 8,
           fontSize: 13, color: "#475569", textAlign: "center",
         }}>
-          🔌 Serviço de notas de qualidade está <strong>desligado</strong>.
+          Serviço de notas de qualidade está <strong>desligado</strong>.
           Os tickets continuam funcionando normalmente, mas o sinal não é
           capturado automaticamente. Ative o toggle acima pra começar.
         </div>
@@ -232,7 +232,7 @@ export default function LousaQualityNotesPanel() {
             <div style={{ fontSize: 11, fontWeight: 700, color: "#b45309",
                             textTransform: "uppercase",
                             letterSpacing: 0.3 }}>
-              🏢 INTERNO
+              INTERNO
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: "#b45309" }}>
               {data.summary.internal_close || 0}
@@ -302,7 +302,7 @@ export default function LousaQualityNotesPanel() {
                                    border: "1px solid #fcd34d",
                                    letterSpacing: 0.4,
                                    textTransform: "uppercase" }}>
-                      🏢 Fechamento Interno
+                      Fechamento Interno
                     </span>
                   )}
                 </div>
@@ -326,7 +326,7 @@ export default function LousaQualityNotesPanel() {
                   </span>
                 </div>
                 <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 3 }}>
-                  💡 {r.quality_reason}
+                  {r.quality_reason}
                 </div>
               </div>
               <div style={{ fontSize: 10, color: "#64748b", textAlign: "right" }}>
@@ -455,8 +455,8 @@ function TechniciansRankingCard() {
         <div data-testid="quality-ranking-list"
               style={{ display: "grid", gap: 6 }}>
           {items.map((it, idx) => {
-            const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈"
-                            : idx === 2 ? "🥉" : `${idx + 1}.`;
+            const medal = idx === 0 ? "" : idx === 1 ? ""
+                            : idx === 2 ? "" : `${idx + 1}.`;
             const scoreColor = it.quality_score >= 70 ? "#16a34a"
                               : it.quality_score >= 50 ? "#ca8a04" : "#dc2626";
             return (
@@ -480,13 +480,13 @@ function TechniciansRankingCard() {
                     {it.total_reparos} reparo{it.total_reparos !== 1 ? "s" : ""}
                     {" · "}
                     <span style={{ color: "#16a34a", fontWeight: 700 }}>
-                      🟢 {it.bom}
+                      {it.bom}
                     </span>{" · "}
                     <span style={{ color: "#ca8a04", fontWeight: 700 }}>
-                      🟡 {it.regular}
+                      {it.regular}
                     </span>{" · "}
                     <span style={{ color: "#dc2626", fontWeight: 700 }}>
-                      🔴 {it.ruim}
+                      {it.ruim}
                     </span>
                   </div>
                   <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2,

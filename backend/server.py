@@ -681,6 +681,10 @@ async def _startup() -> None:
                       id="neo_reports_dispatcher", replace_existing=True)
     from services.drive_backup import daily_backup_worker as drive_daily_worker
     asyncio.create_task(drive_daily_worker())
+    # iter215ab — Preventive OS worker (verifica a cada minuto se é
+    # 08:30 BRT pra empresas com preventive_os.enabled=True)
+    from routes.preventive_os import preventive_os_daily_worker
+    asyncio.create_task(preventive_os_daily_worker())
     logger.info("Scheduler iniciado.")
 
 
@@ -711,6 +715,25 @@ app.include_router(routes_push.router)
 app.include_router(routes_collab_auth.router)
 app.include_router(routes_logs.router)
 app.include_router(routes_lousa.router)
+from routes import lousa_tv as routes_lousa_tv  # noqa: E402
+app.include_router(routes_lousa_tv.router)
+from routes import lousa_rompimento as routes_lousa_rompimento  # noqa: E402
+app.include_router(routes_lousa_rompimento.router)
+from routes import customer_loyalty as routes_customer_loyalty  # noqa: E402
+app.include_router(routes_customer_loyalty.router)
+from routes import loyalty_imported_db as routes_loyalty_db  # noqa: E402
+app.include_router(routes_loyalty_db.router)
+# iter215ab — Preventive OS (OS auto-criadas pra encher grade ociosa)
+from routes import preventive_os as routes_preventive_os  # noqa: E402
+app.include_router(routes_preventive_os.router)
+from routes import loyalty_ai as routes_loyalty_ai  # noqa: E402
+app.include_router(routes_loyalty_ai.router)
+from routes import loyalty_opportunities_ai as routes_loyalty_opp_ai  # noqa: E402
+app.include_router(routes_loyalty_opp_ai.router)
+from routes import loyalty_dispatch as routes_loyalty_dispatch  # noqa: E402
+app.include_router(routes_loyalty_dispatch.router)
+from routes import loyalty_insights as routes_loyalty_insights  # noqa: E402
+app.include_router(routes_loyalty_insights.router)
 app.include_router(routes_atlaz.router)
 app.include_router(routes_events.router)
 app.include_router(routes_saas.router)

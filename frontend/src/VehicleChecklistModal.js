@@ -788,7 +788,7 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
                     )}
                     {health.ai.error && (
                       <div style={{ marginTop: 10, fontSize: 12, color: "var(--danger-soft-fg)" }}>
-                        ⚠ {health.ai.error}
+                        {health.ai.error}
                       </div>
                     )}
                   </div>
@@ -819,7 +819,7 @@ export default function VehicleChecklistModal({ collaborator, onClose }) {
                     <button className="btn btn-primary"
                             onClick={applyOcrToForm}
                             data-testid="vchk-ai-ocr-apply">
-                      Aplicar à aba "Novo checklist"
+                      Aplicar à aba “Novo checklist”
                     </button>
                   )}
                 </div>

@@ -253,7 +253,7 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
 
   async function deletePermanent() {
     if (!await window.confirm(
-      "⚠️ APAGAR PERMANENTEMENTE este lançamento?\n\n" +
+      "️ APAGAR PERMANENTEMENTE este lançamento?\n\n" +
       "Esta ação não pode ser desfeita. O arquivo PDF original e qualquer " +
       "versão assinada serão removidos do servidor.\n\n" +
       "Use apenas quando o lançamento foi feito por engano."
@@ -277,7 +277,7 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
 
   const statusBadge = (() => {
     if (h.status === "revoked") return { color: "#dc2626", bg: "#fef2f2", text: "REVOGADO" };
-    if (h.status === "pending_review") return { color: "#ea580c", bg: "#fff7ed", text: "🔒 AGUARDA RH" };
+    if (h.status === "pending_review") return { color: "#ea580c", bg: "#fff7ed", text: "AGUARDA RH" };
     if (h.viewed_at) return { color: "#10b981", bg: "#dcfce7", text: "VISTO" };
     if (h.notified_at) return { color: "#0ea5e9", bg: "#dbeafe", text: "ENVIADO" };
     return { color: "#64748b", bg: "var(--bg-surface-2)", text: "PENDENTE" };
@@ -293,7 +293,7 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
         </div>
         {h.employee_phone && (
           <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
-            📱 {h.employee_phone}
+            {h.employee_phone}
           </div>
         )}
       </Td>
@@ -316,7 +316,7 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
         }}>{statusBadge.text}</span>
         {h.viewed_at && (
           <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
-            👁 {new Date(h.viewed_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+            {new Date(h.viewed_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
           </div>
         )}
         {(h.anomalies_count || 0) > 0 && (
@@ -341,7 +341,7 @@ function HoleriteRow({ h, onReload, onShowAudit }) {
       <Td align="right">
         {lastLink && (
           <button onClick={copyLink} style={{ ...btn("ghost", "xs"), marginRight: 4 }}>
-            📋 Link
+            Link
           </button>
         )}
         <button onClick={notify} disabled={busy || h.status === "revoked"}
@@ -456,7 +456,7 @@ function AnomaliesModal({ h, onClose, onReload }) {
               fontSize: 12.5, color: "#991b1b",
               display: "flex", alignItems: "flex-start", gap: 8,
             }}>
-              <span style={{ fontSize: 16 }}>🔒</span>
+              <span style={{ fontSize: 16 }}></span>
               <div>
                 <strong>Holerite bloqueado.</strong> O colaborador NÃO recebeu
                 este holerite ainda. Anomalias críticas exigem aprovação manual
@@ -473,7 +473,7 @@ function AnomaliesModal({ h, onClose, onReload }) {
             }}>
               ✓ Aprovado em {new Date(h.approved_at).toLocaleString("pt-BR")}
               {h.approved_by_name && ` por ${h.approved_by_name}`}
-              {h.approval_note && (<><br/><em>"{h.approval_note}"</em></>)}
+              {h.approval_note && (<><br/><em>“{h.approval_note}”</em></>)}
             </div>
           )}
 
@@ -1242,7 +1242,7 @@ function MatchRow({ index, m, collabs, decision, onChange }) {
         </select>
         {decision.employee_id !== (m.match?.id || null) && decision.employee_id && (
           <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 3 }}>
-            ⚠️ Match alterado manualmente
+            ️ Match alterado manualmente
           </div>
         )}
       </div>
@@ -1317,7 +1317,7 @@ function DoneStep({ result, onClose }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <AlertTriangle size={18} color={criticalAnomalies > 0 ? "#dc2626" : "#f59e0b"} />
             <strong style={{ fontSize: 14, color: criticalAnomalies > 0 ? "#991b1b" : "#92400e" }}>
-              ⚠️ {totalAnomalies} {totalAnomalies === 1 ? "anomalia detectada" : "anomalias detectadas"}
+              ️ {totalAnomalies} {totalAnomalies === 1 ? "anomalia detectada" : "anomalias detectadas"}
               {criticalAnomalies > 0 && (
                 <span style={{ marginLeft: 8, padding: "1px 8px",
                   borderRadius: 999, background: "#dc2626", color: "white",

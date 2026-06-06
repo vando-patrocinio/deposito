@@ -148,7 +148,7 @@ export default function OntBatchHistoryPanel() {
           <Layers size={24} strokeWidth={1.75} />
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontWeight: 800, fontSize: 16 }}>📋 Retiradas em Lote</div>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Retiradas em Lote</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
             Histórico de ONTs catalogadas via Scan IA Claude 4.6 — auditoria mensal de retiradas em massa.
           </div>
@@ -217,7 +217,7 @@ export default function OntBatchHistoryPanel() {
                        data-testid="filter-only-pending"
                        checked={filters.only_pending}
                        onChange={(e) => setFilters((p) => ({ ...p, only_pending: e.target.checked }))} />
-              📦 Só com ONTs no técnico
+              Só com ONTs no técnico
             </label>
           </div>
         </div>
@@ -240,7 +240,7 @@ export default function OntBatchHistoryPanel() {
         <div style={{ ...card, textAlign: "center",
                           borderLeft: "3px solid #fb923c" }}>
           <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700 }}>
-            📦 NO TÉCNICO (pendente)
+            NO TÉCNICO (pendente)
           </div>
           <div data-testid="total-pending"
                 style={{ fontSize: 28, fontWeight: 800,
@@ -322,7 +322,7 @@ export default function OntBatchHistoryPanel() {
                               background: "#fff7ed", color: "#c2410c",
                               border: "1px solid #fdba74",
                               fontSize: 10, fontWeight: 700,
-                            }}>📦 {it.pending_with_tech} no técnico</span>
+                            }}>{it.pending_with_tech} no técnico</span>
                           </div>
                         )}
                       </td>
@@ -378,9 +378,9 @@ function BatchDetail({ exp }) {
         fontSize: 11, fontWeight: 700,
       }}>
         <Tag bg="#dcfce7" color="#15803d" label={`✅ Instaladas: ${s.instaladas || 0}`} />
-        <Tag bg="#dbeafe" color="#1e40af" label={`📦 Em estoque: ${s.em_estoque || 0}`} />
-        <Tag bg="#fee2e2" color="#991b1b" label={`⚠ Defeito: ${s.defeito || 0}`} />
-        <Tag bg="#f3e8ff" color="#6b21a8" label={`🗑 Removidas: ${s.removida_smartolt || 0}`} />
+        <Tag bg="#dbeafe" color="#1e40af" label={`Em estoque: ${s.em_estoque || 0}`} />
+        <Tag bg="#fee2e2" color="#991b1b" label={`Defeito: ${s.defeito || 0}`} />
+        <Tag bg="#f3e8ff" color="#6b21a8" label={`Removidas: ${s.removida_smartolt || 0}`} />
       </div>
 
       <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>

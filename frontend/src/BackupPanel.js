@@ -126,7 +126,7 @@ export default function BackupPanel() {
     setUploadingTo(filename);
     try {
       await api.backupUploadDrive(filename);
-      setInfo(`☁ ${filename} enviado para o Google Drive.`);
+      setInfo(`${filename} enviado para o Google Drive.`);
     } catch (e) {
       setError(`Drive upload falhou: ${e?.response?.data?.detail || e.message}`);
     } finally {
@@ -144,7 +144,7 @@ export default function BackupPanel() {
       return;
     }
     if (!window.confirm(
-      `⚠️ ATENÇÃO — RESTAURAÇÃO DE BANCO\n\n` +
+      `️ ATENÇÃO — RESTAURAÇÃO DE BANCO\n\n` +
       `Arquivo: ${restoreFile.name}\n` +
       `Tamanho: ${(restoreFile.size / (1024*1024)).toFixed(1)} MB\n` +
       `Sobrescrever (drop): ${restoreDrop ? "SIM (apaga dados existentes)" : "Não (só adiciona)"}\n\n` +
@@ -175,7 +175,7 @@ export default function BackupPanel() {
       return;
     }
     if (!window.confirm(
-      `⚠️ MIGRAR de OUTRO AMBIENTE → ESTE\n\n` +
+      `️ MIGRAR de OUTRO AMBIENTE → ESTE\n\n` +
       `Origem: ${migSourceUrl}\n` +
       `Sobrescrever (drop): ${migDrop ? "SIM (apaga dados deste ambiente)" : "Não (só adiciona)"}\n\n` +
       `O processo: dump remoto → download → restore.\n` +
@@ -259,7 +259,7 @@ export default function BackupPanel() {
       URL.revokeObjectURL(url);
       const mb = (received / (1024 * 1024)).toFixed(1);
       setInfo(
-        `📥 ${filename} (${mb} MB) baixado. ` +
+        `${filename} (${mb} MB) baixado. ` +
         `Verifique a pasta Downloads do seu navegador ` +
         `(atalho Ctrl+J / Cmd+J).`
       );
@@ -277,7 +277,7 @@ export default function BackupPanel() {
     setInfo("");
     try {
       await api.backupDelete(filename);
-      setInfo(`🗑 ${filename} apagado.`);
+      setInfo(`${filename} apagado.`);
       await refresh();
     } catch (e) {
       setError(e?.response?.data?.detail || e.message);
@@ -414,13 +414,13 @@ export default function BackupPanel() {
                   <div style={{ fontWeight: 700, fontSize: 14,
                                 color: "#0f172a",
                                 wordBreak: "break-all" }}>
-                    📦 {b.filename}
+                    {b.filename}
                   </div>
                   <div style={{ fontSize: 12, color: "#64748b",
                                 marginTop: 4,
                                 display: "flex", gap: 12, flexWrap: "wrap" }}>
-                    <span>📏 {b.size_human}</span>
-                    <span>🕓 {formatRelativeDate(b.created_at)}</span>
+                    <span>{b.size_human}</span>
+                    <span>{formatRelativeDate(b.created_at)}</span>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -611,8 +611,8 @@ export default function BackupPanel() {
                                 borderRadius: 8, width: "100%",
                                 maxWidth: 540 }} />
                 <div style={{ fontSize: 11, color: "#64748b" }}>
-                  Usa a URL "<strong>{migSourceUrl}</strong>" e o checkbox
-                  "<strong>{migDrop ? "Sobrescrever" : "Não sobrescrever"}</strong>"{" "}
+                  Usa a URL “<strong>{migSourceUrl}</strong>” e o checkbox
+                  “<strong>{migDrop ? "Sobrescrever" : "Não sobrescrever"}</strong>”{" "}
                   configurados acima.
                 </div>
                 <button data-testid="migrate-auto-enable"
@@ -721,7 +721,7 @@ export default function BackupPanel() {
       <div style={{ ...card, background: "#fef9c3",
                      borderColor: "#fde047",
                      fontSize: 13, color: "#854d0e" }}>
-        <strong>💡 Dica:</strong> Para baixar o backup direto na sua VPS via
+        <strong>Dica:</strong> Para baixar o backup direto na sua VPS via
         SSH, use:
         <pre style={{ background: "rgba(0,0,0,0.05)",
                        padding: 8, borderRadius: 6, marginTop: 6,

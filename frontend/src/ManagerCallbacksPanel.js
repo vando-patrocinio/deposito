@@ -8,7 +8,7 @@
  *
  * O gestor decide um destes 3 caminhos (após contatar o cliente):
  *   1. ✅ Fechar improdutiva — fecha a OS original com outcome=informada
- *   2. 🔄 Liberar de volta    — devolve OS pro técnico (mesmo ou outro,
+ *   2. Liberar de volta    — devolve OS pro técnico (mesmo ou outro,
  *                                opcionalmente reagendada)
  *   3. 🆕 Criar nova OS       — abre OS NOVA pra continuar o serviço
  *                                (a original CONTINUA pausada — gestor
@@ -28,7 +28,7 @@ function fmtDateBr(iso) {
 function StatusBadge({ status }) {
   const map = {
     pending: { bg: "#fef3c7", fg: "#92400e", label: "⏳ Pendente" },
-    contacted: { bg: "#dbeafe", fg: "#1e40af", label: "📞 Contatado" },
+    contacted: { bg: "#dbeafe", fg: "#1e40af", label: "Contatado" },
     resolved: { bg: "#dcfce7", fg: "#14532d", label: "✅ Resolvido" },
   };
   const c = map[status] || map.pending;
@@ -90,7 +90,7 @@ export default function ManagerCallbacksPanel() {
       <div style={{ display: "flex", gap: 6, marginBottom: 14,
                       alignItems: "center" }}>
         <span style={{ fontWeight: 800, color: "#0f172a", marginRight: 8 }}>
-          📞 OSs aguardando contato do gestor
+          OSs aguardando contato do gestor
         </span>
         {["pending", "contacted", "resolved", "all"].map((s) => (
           <button key={s} data-testid={`callback-filter-${s}`}
@@ -113,7 +113,7 @@ export default function ManagerCallbacksPanel() {
                             background: "#f1f5f9", border: "1px solid #cbd5e1",
                             borderRadius: 7, fontSize: 12, fontWeight: 700,
                             cursor: "pointer" }}>
-          🔄 Atualizar
+          Atualizar
         </button>
       </div>
 
@@ -132,7 +132,7 @@ export default function ManagerCallbacksPanel() {
         <div data-testid="callback-empty"
               style={{ padding: 40, textAlign: "center", color: "#64748b",
                         background: "#f8fafc", borderRadius: 8 }}>
-          🎉 Nenhum pedido de contato {statusFilter === "pending" ? "pendente" : ""}.
+          Nenhum pedido de contato {statusFilter === "pending" ? "pendente" : ""}.
         </div>
       )}
 
@@ -190,20 +190,20 @@ function CallbackCard({ req, onCloseImprodutiva, onCreateNew, onReleaseBack }) {
             )}
           </div>
           <div style={{ fontSize: 12, color: "#475569", marginBottom: 4 }}>
-            📍 {req.client_address || "—"}
+            {req.client_address || "—"}
             {req.client_neighborhood ? ` · ${req.client_neighborhood}` : ""}
           </div>
           <div style={{ fontSize: 12, color: "#475569", marginBottom: 4 }}>
-            👷 Técnico: <b>{req.collaborator_name}</b>
+            Técnico: <b>{req.collaborator_name}</b>
             {req.client_phone && (
-              <> · 📱 <a href={`tel:${req.client_phone}`}
+              <> · <a href={`tel:${req.client_phone}`}
                           style={{ color: "#0ea5e9" }}>{req.client_phone}</a></>
             )}
           </div>
           <div style={{ marginTop: 8, padding: 10,
                           background: "#fef3c7", borderRadius: 7,
                           fontSize: 13, color: "#78350f", lineHeight: 1.5 }}>
-            <strong>💬 Motivo:</strong> {req.motivo}
+            <strong>Motivo:</strong> {req.motivo}
           </div>
         </div>
         <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "right",
@@ -236,7 +236,7 @@ function CallbackCard({ req, onCloseImprodutiva, onCreateNew, onReleaseBack }) {
           <button data-testid={`callback-release-${req.id}`}
                     onClick={onReleaseBack}
                     style={btn("#16a34a", "#fff")}>
-            🔄 Liberar OS de volta
+            Liberar OS de volta
           </button>
           <button data-testid={`callback-close-${req.id}`}
                     onClick={onCloseImprodutiva}
@@ -249,7 +249,7 @@ function CallbackCard({ req, onCloseImprodutiva, onCreateNew, onReleaseBack }) {
         <div style={{ marginTop: 8, padding: "8px 10px",
                         background: "#f1f5f9", borderRadius: 7,
                         fontSize: 12, color: "#475569" }}>
-          📝 <b>Gestor anotou:</b> {req.manager_observacao}
+          <b>Gestor anotou:</b> {req.manager_observacao}
         </div>
       )}
       {req.status === "resolved" && (
@@ -447,7 +447,7 @@ function ReleaseBackModal({ req, collabs, onClose, onDone }) {
   }
 
   return (
-    <ModalShell title="🔄 Liberar OS de volta" onClose={onClose}>
+    <ModalShell title="Liberar OS de volta" onClose={onClose}>
       <div style={{ padding: 14, background: "#dcfce7",
                       borderRadius: 8, marginBottom: 14, fontSize: 12,
                       color: "#14532d", lineHeight: 1.5 }}>
@@ -490,7 +490,7 @@ function ReleaseBackModal({ req, collabs, onClose, onDone }) {
                   disabled={busy}
                   style={{ ...btn("#16a34a", "#fff"),
                               opacity: busy ? 0.5 : 1 }}>
-          {busy ? "Liberando…" : "🔄 Liberar de volta"}
+          {busy ? "Liberando…" : "Liberar de volta"}
         </button>
       </div>
     </ModalShell>

@@ -38,7 +38,7 @@ export default function AchievementsCard({ collaboratorId, compact = false }) {
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5,
                           textTransform: "uppercase",
                           color: "rgba(255,255,255,0.85)" }}>
-            🏅 Medalhas
+            Medalhas
           </div>
           <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>
             {earned} / {total}

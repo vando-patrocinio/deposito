@@ -50,7 +50,7 @@ export default function ParceriaPublicPage() {
       </nav>
 
       <header className="pa-hero">
-        <span className="pa-hero-pill">🎉 Exclusivo para clientes Ligo</span>
+        <span className="pa-hero-pill">Exclusivo para clientes Ligo</span>
         <h1>
           Sua internet vale<br />
           <em>muito mais.</em>
@@ -88,7 +88,7 @@ export default function ParceriaPublicPage() {
                    className={`pa-cat-pill ${filter === c ? "active" : ""}`}
                    onClick={() => setFilter(c)}
                    data-testid={`pa-cat-${c}`}>
-            {c === "Todas" ? "🎯 Todas" : c}
+            {c === "Todas" ? "Todas" : c}
           </button>
         ))}
       </div>
@@ -97,7 +97,7 @@ export default function ParceriaPublicPage() {
         <div className="pa-section-head">
           <h2>
             {filter === "Todas"
-              ? "🔥 Promoções em destaque"
+              ? "Promoções em destaque"
               : `${filter} · ${filtered.length} promoção${
                 filtered.length === 1 ? "" : "ões"}`}
           </h2>
@@ -108,7 +108,7 @@ export default function ParceriaPublicPage() {
         <div className="pa-promo-grid">
           {filtered.length === 0 ? (
             <div className="pa-empty-state">
-              <span className="em">🎁</span>
+              <span className="em"></span>
               <h3>Em breve, novidades por aqui</h3>
               <p>
                 Estamos negociando com novos parceiros nessa categoria.
@@ -139,7 +139,7 @@ export default function ParceriaPublicPage() {
             <h4>Abra o app Ligo</h4>
             <p>
               Acesse o app do cliente Ligo, toque nos 3 pontinhos do menu
-              e escolha "Meu QR Code".
+              e escolha “Meu QR Code”.
             </p>
           </div>
           <div className="pa-how-step">
@@ -172,9 +172,9 @@ export default function ParceriaPublicPage() {
 
 // ─── Promo Card (com imagem lazy + fallback elegante) ───────
 const CAT_EMOJI = {
-  Pizzaria: "🍕", "Farmácia": "💊", Oficina: "🔧",
-  Restaurante: "🍔", "Padaria": "🥐", Mercado: "🛒",
-  Outros: "🎁",
+  Pizzaria: "", "Farmácia": "", Oficina: "",
+  Restaurante: "", "Padaria": "", Mercado: "",
+  Outros: "",
 };
 function PromoCard({ promo, partner, color }) {
   const [imgState, setImgState] = useState(
@@ -212,7 +212,7 @@ function PromoCard({ promo, partner, color }) {
                 style={{ background:
                   `linear-gradient(135deg, ${color}26, ${color}0a)` }}>
             <span style={{ fontSize: 64, opacity: .85 }}>
-              {CAT_EMOJI[partner.category] || "🎁"}
+              {CAT_EMOJI[partner.category] || ""}
             </span>
           </div>
         )}
@@ -240,7 +240,7 @@ function PromoCard({ promo, partner, color }) {
           {partner.city && ` · ${partner.city}`}
         </p>
         <div className="pa-promo-offer">
-          <span>🎯</span>
+          <span></span>
           {promo.offer_summary}
         </div>
       </div>

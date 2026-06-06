@@ -3,9 +3,9 @@ ReconcileMatchModal.js — Modal de conciliação ativa.
 
 Exibe 4 abas:
   1. ✅ Auto-baixados — matches com score 100 já marcados como pagos.
-  2. 🔍 Pendentes de revisão — score 90-95, gestor escolhe quais aprovar.
-  3. 💰 PIX órfãos — recebimentos bancários sem fatura correspondente.
-  4. 📄 Faturas órfãs — faturas abertas sem PIX correspondente.
+  2. Pendentes de revisão — score 90-95, gestor escolhe quais aprovar.
+  3. PIX órfãos — recebimentos bancários sem fatura correspondente.
+  4. Faturas órfãs — faturas abertas sem PIX correspondente.
 */
 import React, { useEffect, useState } from "react";
 import { api } from "@/api";
@@ -111,7 +111,7 @@ export default function ReconcileMatchModal({ from_date, to_date, onClose,
         }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
-              🔍 Conciliação · PIX × Boletos Atlaz
+              Conciliação · PIX × Boletos Atlaz
             </div>
             <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>
               Período: {fmtDate(from_date)} → {fmtDate(to_date)}
@@ -257,7 +257,7 @@ function MatchList({ items, type, selected, setSelected }) {
           <div>
             <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700,
                             textTransform: "uppercase", letterSpacing: 0.3 }}>
-              💰 PIX bancário
+              PIX bancário
             </div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a",
                             marginTop: 2 }}>
@@ -277,7 +277,7 @@ function MatchList({ items, type, selected, setSelected }) {
           <div>
             <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700,
                             textTransform: "uppercase", letterSpacing: 0.3 }}>
-              📄 Fatura Atlaz
+              Fatura Atlaz
             </div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a",
                             marginTop: 2 }}>

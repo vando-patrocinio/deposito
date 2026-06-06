@@ -89,7 +89,7 @@ export default function OdometerConfigCard({ collabId }) {
                        marginBottom: 10 }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 800, color: "#0d9488" }}>
-            🚗 Odômetro Semanal
+            Odômetro Semanal
           </div>
           <div style={{ fontSize: 11, color: "#0f766e", marginTop: 2 }}>
             Bolha automática na Lousa do colaborador para fotografar o

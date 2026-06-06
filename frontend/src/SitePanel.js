@@ -115,7 +115,7 @@ function ConfigTab() {
 
   return (
     <div className="surface" style={{ padding: 20, borderRadius: 12 }}>
-      <Section title="🏢 Identidade do Provedor">
+      <Section title="Identidade do Provedor">
         <Grid cols={2}>
           <Field label="Nome do site / marca">
             <input className="input" value={cfg.site_name || ""}
@@ -140,7 +140,7 @@ function ConfigTab() {
         </Grid>
       </Section>
 
-      <Section title="🎨 Cores (paleta primária)">
+      <Section title="Cores (paleta primária)">
         <Grid cols={2}>
           <Field label="Cor primária (hex)">
             <input className="input" type="color"
@@ -155,7 +155,7 @@ function ConfigTab() {
         </Grid>
       </Section>
 
-      <Section title="🚀 Hero (banner principal)">
+      <Section title="Hero (banner principal)">
         <Field label="Kicker (texto pequeno acima do título)">
           <input className="input" value={cfg.hero_kicker || ""}
                   onChange={(e) => set("hero_kicker", e.target.value)} />
@@ -174,7 +174,7 @@ function ConfigTab() {
         </Field>
       </Section>
 
-      <Section title="📞 Contato e Redes">
+      <Section title="Contato e Redes">
         <Grid cols={2}>
           <Field label="Telefone 0800 (exibido no header)">
             <input className="input" value={cfg.phone_0800 || ""}
@@ -206,7 +206,7 @@ function ConfigTab() {
         </Grid>
       </Section>
 
-      <Section title="🔗 Central do assinante / 2ª via">
+      <Section title="Central do assinante / 2ª via">
         <Grid cols={2}>
           <Field label="URL Central do Assinante (Minha Conta)">
             <input className="input" value={cfg.central_url || ""}
@@ -295,7 +295,7 @@ function CombosTab() {
           </h3>
           <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
             Streamings, telefonia, TV e outros SVAs que o cliente pode adicionar
-            ao plano. Aparecem na seção "Adicione um aplicativo".
+            ao plano. Aparecem na seção “Adicione um aplicativo”.
           </p>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={add}
@@ -497,18 +497,18 @@ function LeadRow({ lead, onStatus }) {
           <span><Phone size={11} style={{ display: "inline" }} /> {lead.phone}</span>
           {lead.email && <span><Mail size={11} style={{ display: "inline" }} /> {lead.email}</span>}
           {lead.plan_interest && (
-            <span>📋 <strong>{lead.plan_interest}</strong></span>
+            <span><strong>{lead.plan_interest}</strong></span>
           )}
         </div>
         {lead.address && (
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-            📍 {fmtAddress(lead.address)}
+            {fmtAddress(lead.address)}
           </div>
         )}
         {lead.message && (
           <div style={{ fontSize: 12, color: "var(--text-secondary)",
                           marginTop: 4, fontStyle: "italic" }}>
-            "{lead.message}"
+            “{lead.message}”
           </div>
         )}
       </div>

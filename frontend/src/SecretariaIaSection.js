@@ -162,7 +162,7 @@ function MessageBubble({ msg }) {
         {msg.content}
         {msg.tools && msg.tools.length > 0 && (
           <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #cbd5e1", fontSize: 10, color: "#64748b" }}>
-            🔧 Consultou: {msg.tools.map((t) => t.name).join(", ")}
+            Consultou: {msg.tools.map((t) => t.name).join(", ")}
           </div>
         )}
       </div>
@@ -238,13 +238,13 @@ Sempre que o usuário fizer uma pergunta sobre dados operacionais (clientes, té
         </Step>
 
         <Step n={3} title="Adicione a Action">
-          <p>Role até <strong>Actions</strong> → <strong>Create new action</strong> → cole o schema abaixo em "Schema":</p>
+          <p>Role até <strong>Actions</strong> → <strong>Create new action</strong> → cole o schema abaixo em “Schema”:</p>
           <CopyBlock label="OpenAPI URL" testid="sec-gpt-openapi" small
                      onCopy={() => copy(cfg.openapi_url, "spec")}
                      copied={copiedKey === "spec"}
                      text={cfg.openapi_url} />
           <p style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-            Ou clique em "Import from URL" no GPT Builder e cole essa URL.
+            Ou clique em “Import from URL” no GPT Builder e cole essa URL.
           </p>
         </Step>
 
@@ -279,7 +279,7 @@ Sempre que o usuário fizer uma pergunta sobre dados operacionais (clientes, té
         </Step>
 
         <Step n={6} title="Salvar e testar">
-          <p>Clique <strong>Create</strong>. No chat com seu GPT, digite: "oi minha Ligo, quantos clientes eu tenho?" — ele vai chamar a Action e responder com dados reais.</p>
+          <p>Clique <strong>Create</strong>. No chat com seu GPT, digite: “oi minha Ligo, quantos clientes eu tenho?” — ele vai chamar a Action e responder com dados reais.</p>
         </Step>
       </Card>
 
@@ -381,7 +381,7 @@ function TestWebhookSection({ onTested }) {
                             background: "rgba(255,255,255,.6)", borderRadius: 4 }}>
               <span style={{ color: "#64748b" }}>Resposta da IA:</span>
               <br />
-              <em style={{ color: "#0f172a" }}>"{result.answer.slice(0, 280)}"</em>
+              <em style={{ color: "#0f172a" }}>“{result.answer.slice(0, 280)}”</em>
             </div>
           )}
           {result.network?.error && (
@@ -445,7 +445,7 @@ function ChatGptStatusBadge({ status }) {
           <>
             <br />
             <span style={{ color: "#64748b" }}>Última pergunta: </span>
-            <em style={{ color: "#0f172a" }}>"{lastQ}"</em>
+            <em style={{ color: "#0f172a" }}>“{lastQ}”</em>
           </>
         )}
       </div>

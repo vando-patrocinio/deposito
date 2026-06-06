@@ -3,12 +3,12 @@ import { Button } from "@/ui";
 import { api } from "@/api";
 
 const CATEGORIES = [
-  { id: "uniforme", label: "👕 Uniforme", color: "#0ea5e9" },
-  { id: "epi", label: "🦺 EPI", color: "#f59e0b" },
-  { id: "ferramenta", label: "🔧 Ferramenta", color: "#0d9488" },
-  { id: "veiculo", label: "🚗 Veículo", color: "#dc2626" },
-  { id: "eletronico", label: "📱 Eletrônico", color: "#16a34a" },
-  { id: "outro", label: "📦 Outro", color: "#64748b" },
+  { id: "uniforme", label: "Uniforme", color: "#0ea5e9" },
+  { id: "epi", label: "EPI", color: "#f59e0b" },
+  { id: "ferramenta", label: "Ferramenta", color: "#0d9488" },
+  { id: "veiculo", label: "Veículo", color: "#dc2626" },
+  { id: "eletronico", label: "Eletrônico", color: "#16a34a" },
+  { id: "outro", label: "Outro", color: "#64748b" },
 ];
 
 const STATUS_PILL = {
@@ -165,7 +165,7 @@ export default function AssetsSection({ collaborator, onClose }) {
                        alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a" }}>
-              🎒 Checklist de {collaborator.name}
+              Checklist de {collaborator.name}
             </h2>
             <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
               {data.summary.total || 0} item(ns) ·
@@ -175,10 +175,10 @@ export default function AssetsSection({ collaborator, onClose }) {
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Button variant="soft" onClick={() => openRomaneio(false)} data-testid="asset-print-all">
-              📄 Romaneio (todos)
+              Romaneio (todos)
             </Button>
             <Button variant="soft" onClick={() => openRomaneio(true)} data-testid="asset-print-active">
-              📄 Romaneio (só ativos)
+              Romaneio (só ativos)
             </Button>
             <Button onClick={onClose}>Fechar</Button>
           </div>
@@ -228,7 +228,7 @@ export default function AssetsSection({ collaborator, onClose }) {
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <Button onClick={save} disabled={busy} data-testid="asset-form-save">
-                {busy ? "..." : (editingId ? "💾 Atualizar" : "💾 Adicionar")}
+                {busy ? "..." : (editingId ? "Atualizar" : "Adicionar")}
               </Button>
             </div>
           </div>
@@ -310,7 +310,7 @@ export default function AssetsSection({ collaborator, onClose }) {
                                 style={btnIcon}>↩️</button>
                       )}
                       <button onClick={() => remove(a)} data-testid={`asset-delete-${a.id}`}
-                              style={{ ...btnIcon, color: "#dc2626" }}>🗑</button>
+                              style={{ ...btnIcon, color: "#dc2626" }}></button>
                     </td>
                   </tr>
                 );
@@ -374,7 +374,7 @@ function RomaneioPdfModal({ pdf, onClose, onDownload }) {
                     await window.alert("Use Ctrl+P para imprimir");
                   }
                 }} data-testid="romaneio-print-btn">
-                  🖨 Imprimir
+                  Imprimir
                 </Button>
               </>
             )}

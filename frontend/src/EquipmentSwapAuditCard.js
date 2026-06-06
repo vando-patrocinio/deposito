@@ -207,7 +207,7 @@ export default function EquipmentSwapAuditCard() {
                       </span>
                       {t.suspect > 0 && (
                         <span style={{ color: "#b91c1c", fontWeight: 800 }}>
-                          ⚠ {t.suspect}
+                          {t.suspect}
                         </span>
                       )}
                       <span style={{ color: "#64748b" }}>
@@ -259,16 +259,16 @@ export default function EquipmentSwapAuditCard() {
                       </div>
                       <div style={{ color: "#475569", fontFamily: "monospace",
                                        fontSize: 11.5 }}>
-                        <div>📤 Retirado:{" "}
+                        <div>Retirado:{" "}
                           <strong>{s.old_mac || s.old_sn || "—"}</strong>
                         </div>
-                        <div>📥 Instalado:{" "}
+                        <div>Instalado:{" "}
                           <strong>{s.new_mac || s.new_sn || "—"}</strong>
                         </div>
                       </div>
                       <div style={{ color: "#991b1b", marginTop: 4,
                                        fontSize: 11.5 }}>
-                        ⚠ ONU online há{" "}
+                        ONU online há{" "}
                         <strong>{s.uptime_minutes_at_close ?? "?"} min</strong>{" "}
                         sem reboot (limite {s.threshold_minutes} min) ·{" "}
                         ticket{" "}

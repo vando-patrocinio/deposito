@@ -7,10 +7,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
 
 const ARM_LABEL = {
-  armed_away: { icon: "🔴", label: "Armado total", color: "#dc2626" },
-  armed_stay: { icon: "🟠", label: "Armado parcial", color: "#f59e0b" },
-  disarmed: { icon: "🟢", label: "Desarmado", color: "#10b981" },
-  panic: { icon: "🚨", label: "PÂNICO", color: "#dc2626" },
+  armed_away: { icon: "", label: "Armado total", color: "#dc2626" },
+  armed_stay: { icon: "", label: "Armado parcial", color: "#f59e0b" },
+  disarmed: { icon: "", label: "Desarmado", color: "#10b981" },
+  panic: { icon: "", label: "PÂNICO", color: "#dc2626" },
 };
 
 const SEVERITY_COLOR = {
@@ -68,7 +68,7 @@ export default function SecurityHomePage() {
                      alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>
-            🏠 Segurança Residencial
+            Segurança Residencial
           </h1>
           <p style={{ color: "#64748b", fontSize: 12, margin: "2px 0 0" }}>
             Monitoramento de centrais de alarme (estilo Verisure).
@@ -91,7 +91,7 @@ export default function SecurityHomePage() {
       </div>
 
       <div style={tabBar}>
-        {[["sites", "🏠 Imóveis"], ["alarms", "🚨 Alarmes"]].map(([k, v]) => (
+        {[["sites", "Imóveis"], ["alarms", "Alarmes"]].map(([k, v]) => (
           <button key={k} onClick={() => setTab(k)}
                    style={tab === k ? tabActive : tabIdle}
                    data-testid={`sh-tab-${k}`}>{v}</button>
@@ -137,20 +137,20 @@ export default function SecurityHomePage() {
                         <button onClick={() => arm(s.id, "away")}
                                  style={miniBtn("#dc2626")}
                                  data-testid={`sh-arm-away-${s.id}`}>
-                          🔴 Armar
+                          Armar
                         </button>
                         <button onClick={() => arm(s.id, "stay")}
                                  style={miniBtn("#f59e0b")}>
-                          🟠 Parcial
+                          Parcial
                         </button>
                         <button onClick={() => disarm(s.id)}
                                  style={miniBtn("#10b981")}
                                  data-testid={`sh-disarm-${s.id}`}>
-                          🟢 Desarmar
+                          Desarmar
                         </button>
                         <button onClick={() => setShowSensorsFor(s)}
                                  style={miniBtn("#3b82f6")}>
-                          🛡️ Sensores
+                          ️ Sensores
                         </button>
                         <button onClick={() => setShowForm(s)}
                                  style={miniBtn("#64748b")}>
@@ -170,7 +170,7 @@ export default function SecurityHomePage() {
         <div style={card}>
           {!alarms.length ? (
             <div style={empty}>
-              <span style={{ fontSize: 32 }}>🎉</span>
+              <span style={{ fontSize: 32 }}></span>
               <div>Nenhum alarme ativo.</div>
             </div>
           ) : alarms.map((a) => {

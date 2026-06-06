@@ -268,9 +268,9 @@ async def admin_trail_snapped(collab_id: str,
 
 
 # iter215 — Limpeza do trail (mesma semântica do locations.py)
-_TRAIL_MAX_ACC_M = 80.0
-_TRAIL_GAP_S = 300
-_TRAIL_JUMP_M = 400.0
+_TRAIL_MAX_ACC_M = 1500.0  # iter215 — relaxado (antes 80m era estritíssimo)
+_TRAIL_GAP_S = 900         # iter215 — 15min
+_TRAIL_JUMP_M = 2000.0     # iter215 — 2km
 
 
 def _clean_and_split_points(pts: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:

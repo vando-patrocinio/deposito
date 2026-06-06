@@ -20,19 +20,19 @@ import StokHealthDashboard from "@/StokHealthDashboard";
 // ============================================================
 const SUB_TABS = [
   { id: "dashboard", label: "Dashboard" },
-  { id: "saude", label: "📊 Saúde" },
+  { id: "saude", label: "Saúde" },
   { id: "onts", label: "ONTs" },
   { id: "insumos", label: "Insumos" },
   { id: "clientes", label: "Clientes (SmartOLT)" },
   { id: "servicos", label: "Ordens de serviço" },
-  { id: "balanco", label: "📊 Balanço" },
+  { id: "balanco", label: "Balanço" },
   { id: "historico", label: "Histórico" },
-  { id: "transfers", label: "🔄 Transferências" },
-  { id: "defeitos", label: "⚠️ Defeitos" },
-  { id: "duplicados", label: "🚨 ONTs Duplicadas" },
-  { id: "audit-sn", label: "🔍 Auditoria SN" },
-  { id: "lotes", label: "📋 Retiradas em Lote" },
-  { id: "compras", label: "🛒 Central de Compras" },
+  { id: "transfers", label: "Transferências" },
+  { id: "defeitos", label: "️ Defeitos" },
+  { id: "duplicados", label: "ONTs Duplicadas" },
+  { id: "audit-sn", label: "Auditoria SN" },
+  { id: "lotes", label: "Retiradas em Lote" },
+  { id: "compras", label: "Central de Compras" },
 ];
 
 const STATUS_COLORS = {
@@ -44,10 +44,10 @@ const STATUS_COLORS = {
   ativo: { bg: "#dcfce7", color: "#166534", label: "Ativo" },
   fechado: { bg: "#e2e8f0", color: "#475569", label: "Fechado" },
   cancelado: { bg: "#fee2e2", color: "#991b1b", label: "Cancelado" },
-  erro_estoque: { bg: "#fee2e2", color: "#991b1b", label: "⚠ Erro estoque" },
-  defeito_devolver_empresa: { bg: "#fee2e2", color: "#7f1d1d", label: "⚠ Defeito · devolver" },
-  defeito_em_analise: { bg: "#fef3c7", color: "#854d0e", label: "🔬 Em análise" },
-  sucateada: { bg: "#e2e8f0", color: "#475569", label: "🗑 Sucateada" },
+  erro_estoque: { bg: "#fee2e2", color: "#991b1b", label: "Erro estoque" },
+  defeito_devolver_empresa: { bg: "#fee2e2", color: "#7f1d1d", label: "Defeito · devolver" },
+  defeito_em_analise: { bg: "#fef3c7", color: "#854d0e", label: "Em análise" },
+  sucateada: { bg: "#e2e8f0", color: "#475569", label: "Sucateada" },
 };
 
 function StatusPill({ status }) {
@@ -116,7 +116,7 @@ const btnGhost = { padding: "6px 12px", background: "transparent", color: "#0f17
 // ============================================================
 function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
   // ONTs agrupadas por técnico (location_type=tecnico) — para popover ao
-  // clicar no item "📡 ONT N" do card de cada técnico.
+  // clicar no item "ONT N" do card de cada técnico.
   const ontsByTech = React.useMemo(() => {
     const m = {};
     (onts || []).forEach((o) => {
@@ -238,23 +238,23 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
           gap: 10,
         }}>
           {hasOntStockout && (
-            <AlertCard tone="bad" icon="⛔"
+            <AlertCard tone="bad" icon=""
               title="Estoque de ONTs zerado"
               detail="Nenhuma ONT disponível no estoque da empresa." />
           )}
           {!hasOntStockout && lowOntStock && (
-            <AlertCard tone="warn" icon="⚠"
+            <AlertCard tone="warn" icon=""
               title={`Apenas ${companyOnts} ONT${companyOnts !== 1 ? "s" : ""} em estoque`}
               detail="Considere comprar mais para evitar atrasos nas instalações." />
           )}
           {stockoutItems.length > 0 && (
-            <AlertCard tone="bad" icon="⛔"
+            <AlertCard tone="bad" icon=""
               title={`${stockoutItems.length} insumo${stockoutItems.length !== 1 ? "s" : ""} zerado${stockoutItems.length !== 1 ? "s" : ""}`}
               detail={stockoutItems.slice(0, 3).map((c) => c.name).join(", ")
                 + (stockoutItems.length > 3 ? "…" : "")} />
           )}
           {lowStockItems.length > 0 && (
-            <AlertCard tone="warn" icon="⚠"
+            <AlertCard tone="warn" icon=""
               title={`${lowStockItems.length} insumo${lowStockItems.length !== 1 ? "s" : ""} com estoque baixo`}
               detail={lowStockItems.slice(0, 3).map((c) =>
                 `${c.name} (${dashboard.empresa_stock?.[c.id] || 0})`).join(", ")} />
@@ -322,7 +322,7 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
         {/* Movimento últimos 14 dias */}
         <Card title={(
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            📊 Movimento · 14 dias
+            Movimento · 14 dias
           </span>
         )} data-testid="movement-trend-card">
           <MovementChart
@@ -338,7 +338,7 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
         </Card>
 
         {/* Distribuição por localização */}
-        <Card title="📍 Onde estão as ONTs" data-testid="location-distribution-card">
+        <Card title="Onde estão as ONTs" data-testid="location-distribution-card">
           <LocationBars items={locDist} total={totalOnts} />
         </Card>
       </div>
@@ -349,7 +349,7 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
         gridTemplateColumns: "minmax(0,1.6fr) minmax(0,1fr)",
         gap: 14,
       }}>
-        <Card title="📦 Estoque da Empresa · por insumo" data-testid="empresa-stock-card">
+        <Card title="Estoque da Empresa · por insumo" data-testid="empresa-stock-card">
           <div style={{ display: "grid", gap: 10 }}>
             {consumables.map((c) => {
               const empVal = dashboard.empresa_stock?.[c.id] || 0;
@@ -405,7 +405,7 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
           </div>
         </Card>
 
-        <Card title="🔄 Movimentações recentes" data-testid="activity-feed-card">
+        <Card title="Movimentações recentes" data-testid="activity-feed-card">
           {recentActivity.length === 0 ? (
             <div style={{ padding: 14, fontSize: 12, color: "#64748b",
                             textAlign: "center" }}>
@@ -457,7 +457,7 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
 
       {/* === Row 4: Ranking técnicos === */}
       <Card title={(
-        <span>👷 Estoque por técnico</span>
+        <span>Estoque por técnico</span>
       )} data-testid="tech-rows-card">
         {dashboard.tech_rows.length === 0 ? (
           <div style={{ color: "#64748b" }}>Nenhum técnico ativo.</div>
@@ -539,7 +539,7 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
                         position: "relative",
                       }}
                     >
-                      <span>📡 ONT</span>
+                      <span>ONT</span>
                       <strong style={{
                         color: t.tech_onts === 0 ? "#94a3b8" : "#065f46",
                       }}>{t.tech_onts}</strong>
@@ -614,7 +614,7 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
                                               color: fromClient
                                                 ? "#92400e" : "#1e40af",
                                             }}>
-                                      {fromClient ? "↩️ Cliente" : "📦 Praça"}
+                                      {fromClient ? "↩️ Cliente" : "Praça"}
                                     </span>
                                     <span style={{
                                       fontSize: 10, color: "#64748b",
@@ -653,9 +653,9 @@ function DashboardSection({ dashboard, consumables, history = [], onts = [] }) {
                                               hour: "2-digit", minute: "2-digit" })
                                         : "—";
                                       const icon = {
-                                        compra: "📥",
-                                        transferencia: "🚚",
-                                        instalacao: "🏠",
+                                        compra: "",
+                                        transferencia: "",
+                                        instalacao: "",
                                         retirada: "↩️",
                                         movimentacao: "↪",
                                       }[h.type] || "•";
@@ -1153,7 +1153,7 @@ function OntsSection({ onts, technicians, reload }) {
                         onClick={() => setTraceIdent(o.scan_sn || o.mac)}
                         style={{ background: "none", border: 0, cursor: "pointer",
                                   padding: 2, fontSize: 14, opacity: 0.6 }}>
-                        🔍
+                        
                       </button>
                     </div>
                     {!/^(SN-|AUTOSN_|MANUAL-)/i.test(o.mac || "") && o.mac && (
@@ -1253,7 +1253,7 @@ function AddOntsDialog({ open, onClose, onDone }) {
         <label style={labelStyle}>SN — Número de Série (1 por linha)</label>
         <textarea data-testid="ont-add-macs" style={{ ...inputStyle, height: 140, fontFamily: "monospace" }} value={snsText} onChange={(e) => setSnsText(e.target.value)} placeholder="HUAW48F1AB2C3D&#10;ZTEG48F1ABCD01" />
         <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-          🏷️ A base é obrigatória pelo SN (impresso na etiqueta). O MAC
+          ️ A base é obrigatória pelo SN (impresso na etiqueta). O MAC
           é preenchido automaticamente quando o SmartOLT aprovisionar.
         </div>
       </div>
@@ -1373,7 +1373,7 @@ function InsumosSection({ consumables, technicians, stock, reload }) {
                                   background: "linear-gradient(135deg,#16a34a,#15803d)",
                                   marginRight: 6 }}
                        title="1 clique compra a embalagem padrão de qualquer insumo"
-                       onClick={() => setShowQuickPurchase(true)}>⚡ Compra Rápida</button>
+                       onClick={() => setShowQuickPurchase(true)}>Compra Rápida</button>
               <button data-testid="cons-purchase-btn" style={btnPrimary}
                        onClick={() => setShowPurchase(true)}>+ Compra</button>
               <button data-testid="cons-transfer-btn" style={btnSec}
@@ -1402,7 +1402,7 @@ function InsumosSection({ consumables, technicians, stock, reload }) {
           background: "#eff6ff", border: "1px solid #bfdbfe",
           color: "#1e40af", fontSize: 12, fontWeight: 600,
         }}>
-          ↗ Informe a quantidade na linha <strong>🏢 Empresa</strong>{" "}
+          ↗ Informe a quantidade na linha <strong>Empresa</strong>{" "}
           para cada insumo a transferir.
         </div>
       )}
@@ -1417,7 +1417,7 @@ function InsumosSection({ consumables, technicians, stock, reload }) {
           </thead>
           <tbody>
             <tr style={{ borderTop: "1px solid #e2e8f0", background: "#f1f5f9" }}>
-              <td style={{ padding: 10, fontWeight: 800 }}>🏢 Empresa</td>
+              <td style={{ padding: 10, fontWeight: 800 }}>Empresa</td>
               {consumables.map((c) => {
                 const avail = stock.empresa?.[c.id] || 0;
                 return (
@@ -1455,8 +1455,8 @@ function InsumosSection({ consumables, technicians, stock, reload }) {
               <tr key={t.id} style={{ borderTop: "1px solid #e2e8f0",
                                           background: transferMode && t.id === bulkTechId ? "#ecfdf5" : undefined }}>
                 <td style={{ padding: 10 }}>
-                  {transferMode && t.id === bulkTechId && <span>📥 </span>}
-                  👷 {t.name}
+                  {transferMode && t.id === bulkTechId && <span></span>}
+                  {t.name}
                 </td>
                 {consumables.map((c) => {
                   const v = stock[t.id]?.[c.id] || 0;
@@ -1471,7 +1471,7 @@ function InsumosSection({ consumables, technicians, stock, reload }) {
                                        background: isNeg ? "#fef2f2" : undefined }}
                           title={isNeg ? `Quebra: ${Math.abs(v)} ${c.unit} consumidos além do saldo` : undefined}>
                       {v}
-                      {isNeg && <span style={{ fontSize: 9, marginLeft: 2 }}>⚠</span>}
+                      {isNeg && <span style={{ fontSize: 9, marginLeft: 2 }}></span>}
                     </td>
                   );
                 })}
@@ -1543,7 +1543,7 @@ function QuickPurchaseDialog({ open, onClose, onDone, consumables }) {
 
   return (
     <Modal open={open} onClose={onClose}
-           title="⚡ Compra Rápida — 1 clique"
+           title="Compra Rápida — 1 clique"
            data-testid="quick-purchase-dialog"
            footer={<button style={btnSec} onClick={onClose}>Fechar</button>}>
       <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
@@ -1709,7 +1709,7 @@ function ServicosSection({ services, technicians, consumables, reload }) {
                 <td style={{ padding: 10, fontFamily: "monospace", fontWeight: 700 }}>{s.id}</td>
                 <td style={{ padding: 10 }}>
                   {s.type}
-                  {s.auto_opened && <span title="Auto-aberta pela Lousa" style={{ marginLeft: 4, fontSize: 10, color: "#64748b" }}>🤖</span>}
+                  {s.auto_opened && <span title="Auto-aberta pela Lousa" style={{ marginLeft: 4, fontSize: 10, color: "#64748b" }}></span>}
                   {s.auto_closed && <span title="Auto-fechada pela Lousa" style={{ marginLeft: 4, fontSize: 10, color: "#15803d" }}>✓auto</span>}
                 </td>
                 <td style={{ padding: 10 }}>{s.client_name}</td>
@@ -1718,7 +1718,7 @@ function ServicosSection({ services, technicians, consumables, reload }) {
                   <StatusPill status={s.status} />
                   {s.error_reason && (
                     <div style={{ fontSize: 10, color: "#991b1b", marginTop: 2, maxWidth: 220 }}>
-                      ⚠ {s.error_reason}
+                      {s.error_reason}
                     </div>
                   )}
                 </td>
@@ -1726,7 +1726,7 @@ function ServicosSection({ services, technicians, consumables, reload }) {
                 <td style={{ padding: 10, textAlign: "right" }}>
                   {(s.status === "ativo" || s.status === "erro_estoque") && (
                     <button style={btnGhost} onClick={() => setClosing(s)} data-testid={`svc-close-${s.id}`}>
-                      {s.status === "erro_estoque" ? "🛠 Resolver" : "✓ Fechar"}
+                      {s.status === "erro_estoque" ? "Resolver" : "✓ Fechar"}
                     </button>
                   )}
                 </td>
@@ -1852,12 +1852,12 @@ function CloseServiceDialog({ service, onClose, onDone, consumables }) {
           border: "1px solid " + (isRetirada ? "#fbbf24" : "#cbd5e1"),
         }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
-            📍 Cliente já vinculado à porta <strong>{portInfo.current_port.port_number}</strong>{" "}
+            Cliente já vinculado à porta <strong>{portInfo.current_port.port_number}</strong>{" "}
             da CTO <strong>{portInfo.current_port.cto_name}</strong>
           </div>
           {isRetirada && (
             <div data-testid="svc-close-port-release-note" style={{ fontSize: 12, color: "#92400e" }}>
-              ⚠️ Esta porta será <strong>liberada automaticamente</strong> ao concluir a retirada.
+              ️ Esta porta será <strong>liberada automaticamente</strong> ao concluir a retirada.
             </div>
           )}
           {isInstallOrMaint && (
@@ -1970,8 +1970,8 @@ function HistoricoSection({ history, reload }) {
       title={`Histórico (${filtered.length})`}
       action={
         <div style={{ display: "flex", gap: 6 }}>
-          <button style={btnGhost} onClick={() => downloadExport("csv")} data-testid="hist-export-csv">📥 CSV</button>
-          <button style={btnGhost} onClick={() => downloadExport("pdf")} data-testid="hist-export-pdf">📄 PDF</button>
+          <button style={btnGhost} onClick={() => downloadExport("csv")} data-testid="hist-export-csv">CSV</button>
+          <button style={btnGhost} onClick={() => downloadExport("pdf")} data-testid="hist-export-pdf">PDF</button>
           <button style={btnGhost} onClick={reload} data-testid="hist-reload">⟳ Atualizar</button>
         </div>
       }
@@ -2271,7 +2271,7 @@ function ClientesSection() {
                                     borderRadius: 6, fontSize: 11, fontWeight: 700,
                                     cursor: "pointer",
                                   }}>
-                          📦 Retirar
+                          Retirar
                         </button>
                       </div>
                     </td>
@@ -2343,7 +2343,7 @@ function AuditorResetButton({ onDone }) {
                 color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer",
                 display: "inline-flex", alignItems: "center", gap: 6,
               }}>
-        🗑️ Zerar estoque e lançamentos
+        ️ Zerar estoque e lançamentos
       </button>
       {open && (
         <div data-testid="auditor-reset-modal"
@@ -2360,7 +2360,7 @@ function AuditorResetButton({ onDone }) {
           }}>
             <div style={{ fontSize: 17, fontWeight: 800, color: "#991b1b",
                             marginBottom: 8 }}>
-              🗑️ Zerar Estoque · Ação Destrutiva
+              ️ Zerar Estoque · Ação Destrutiva
             </div>
             {!result && (
               <>
@@ -2372,7 +2372,7 @@ function AuditorResetButton({ onDone }) {
                   <br /><br />
                   O log da ação fica registrado em <code>stok_admin_log</code>
                   com seu e-mail e horário — não é apagado mesmo com{" "}
-                  <i>"Apagar histórico"</i> marcado.
+                  <i>“Apagar histórico”</i> marcado.
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column",
@@ -2441,7 +2441,7 @@ function AuditorResetButton({ onDone }) {
                             color: "#fff", fontSize: 13, fontWeight: 800,
                             cursor: busy ? "wait" : "pointer",
                           }}>
-                    {busy ? "Zerando…" : "🗑️ Confirmar e zerar"}
+                    {busy ? "Zerando…" : "️ Confirmar e zerar"}
                   </button>
                 </div>
               </>

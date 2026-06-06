@@ -5,8 +5,8 @@ import OntScanBatchModal from "@/OntScanBatchModal";
 import { api } from "@/api";
 
 const CATEGORY_ICON = {
-  uniforme: "👕", epi: "🦺", ferramenta: "🔧",
-  veiculo: "🚗", eletronico: "📱", outro: "📦",
+  uniforme: "", epi: "", ferramenta: "",
+  veiculo: "", eletronico: "", outro: "",
 };
 
 const STATUS_LABEL = {
@@ -97,7 +97,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
           fontSize: 12, color: "#64748b",
         }}>
           <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
-            📦 {data.items.length} item{data.items.length === 1 ? "" : "s"} no seu estoque
+            {data.items.length} item{data.items.length === 1 ? "" : "s"} no seu estoque
           </div>
           {/* Resumo por status — iter183 */}
           {data.items.length > 0 && (() => {
@@ -126,7 +126,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
                   <span style={{ padding: "3px 8px", borderRadius: 999,
                                    background: "#fae8ff", color: "#86198f",
                                    fontSize: 10, fontWeight: 800 }}>
-                    💰 R$ {totalValue.toFixed(2).replace(".", ",")}
+                    R$ {totalValue.toFixed(2).replace(".", ",")}
                   </span>
                 )}
               </div>
@@ -155,7 +155,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               boxShadow: "0 4px 12px rgba(13,148,136,.3)",
             }}>
-            📷🤖 Adicionar várias ONTs (Scan IA em lote)
+            Adicionar várias ONTs (Scan IA em lote)
           </button>
         )}
 
@@ -165,7 +165,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
             padding: 14, borderRadius: 14, marginBottom: 14,
           }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: "#78350f", marginBottom: 6 }}>
-              📝 Assine o romaneio
+              Assine o romaneio
             </div>
             <div style={{ fontSize: 12, color: "#78350f", lineHeight: 1.5, marginBottom: 8 }}>
               Você recebeu novos itens. Confira a lista e <strong>assine</strong> aceitando a
@@ -183,18 +183,18 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
           display: "flex", gap: 4, marginBottom: 12, flexWrap: "wrap",
         }}>
           {[
-            { key: "todos", label: `🗂 Todos`, count: data.items.length
+            { key: "todos", label: `Todos`, count: data.items.length
                                                   + techStock.onts.length
                                                   + techStock.consumables.filter((c) => c.qty > 0).length,
               color: "#0f172a", grad: "#475569" },
-            { key: "novos", label: `👕 Pertences`, count: novosItems.length,
+            { key: "novos", label: `Pertences`, count: novosItems.length,
               color: "#0d9488", grad: "#06b6d4" },
-            { key: "onts", label: `📡 ONTs`, count: techStock.onts.length,
+            { key: "onts", label: `ONTs`, count: techStock.onts.length,
               color: "#2563eb", grad: "#0ea5e9" },
-            { key: "insumos", label: `🔧 Insumos`,
+            { key: "insumos", label: `Insumos`,
               count: techStock.consumables.filter((c) => c.qty > 0).length,
               color: "#a16207", grad: "#eab308" },
-            { key: "retirados", label: `♻️ Retirados`, count: retiradosItems.length,
+            { key: "retirados", label: `️ Retirados`, count: retiradosItems.length,
               color: "#8b5cf6", grad: "#6366f1" },
           ].map((t) => (
             <button key={t.key}
@@ -223,7 +223,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
                 <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b",
                                 margin: "6px 0", textTransform: "uppercase",
                                 letterSpacing: 0.5 }}>
-                  📡 ONTs ({techStock.onts.length})
+                  ONTs ({techStock.onts.length})
                 </div>
               )}
               {techStock.onts.map((o, i) => (
@@ -235,7 +235,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
                        borderLeft: "4px solid #2563eb",
                        display: "flex", alignItems: "center", gap: 10,
                      }}>
-                  <div style={{ fontSize: 22 }}>📡</div>
+                  <div style={{ fontSize: 22 }}></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* iter197 — SN é o identificador principal exibido */}
                     <div style={{ fontSize: 15, fontWeight: 800, color: "#1e3a8a",
@@ -275,7 +275,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
                 <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b",
                                 margin: "12px 0 6px", textTransform: "uppercase",
                                 letterSpacing: 0.5 }}>
-                  🔧 Insumos
+                  Insumos
                 </div>
               )}
               {techStock.consumables.filter((c) => c.qty > 0).map((c) => (
@@ -287,7 +287,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
                        borderLeft: "4px solid #eab308",
                        display: "flex", alignItems: "center", gap: 10,
                      }}>
-                  <div style={{ fontSize: 22 }}>🔧</div>
+                  <div style={{ fontSize: 22 }}></div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#78350f" }}>
                       {c.name}
@@ -333,7 +333,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
                 <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b",
                                 margin: "12px 0 6px", textTransform: "uppercase",
                                 letterSpacing: 0.5 }}>
-                  👕 Pertences ({visibleItems.length})
+                  Pertences ({visibleItems.length})
                 </div>
               )}
               {visibleItems.map((a) => {
@@ -348,7 +348,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
                 <div style={{ display: "flex", justifyContent: "space-between",
                                gap: 10, marginBottom: 6, alignItems: "flex-start" }}>
                   <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>
-                    {CATEGORY_ICON[a.category] || "📦"} {a.item}
+                    {CATEGORY_ICON[a.category] || ""} {a.item}
                   </div>
                   <span style={{ padding: "2px 8px", borderRadius: 999,
                                   background: st.bg, color: st.color, fontSize: 10, fontWeight: 800 }}>
@@ -370,7 +370,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
                   <br />Entregue em <strong>{(a.delivered_at || "").slice(0, 10)}</strong>
                   {a.delivered_by && ` por ${a.delivered_by}`}
                   {a.withdrawn_from_client_name && (
-                    <><br />♻️ Retirado de <strong>{a.withdrawn_from_client_name}</strong>
+                    <><br />️ Retirado de <strong>{a.withdrawn_from_client_name}</strong>
                       {a.withdrawn_at && ` em ${(a.withdrawn_at || "").slice(0, 10)}`}
                       {a.withdrawn_by_email && (
                         <em style={{ color: "#64748b" }}> · {a.withdrawn_by_email}</em>
@@ -395,7 +395,7 @@ export default function MyAssetsModal({ collaboratorId, onClose, role = "tecnico
           <Button variant="soft" onClick={downloadRomaneio}
                   data-testid="download-romaneio-btn"
                   style={{ width: "100%", marginTop: 12 }}>
-            📄 Imprimir / baixar romaneio
+            Imprimir / baixar romaneio
           </Button>
         )}
 

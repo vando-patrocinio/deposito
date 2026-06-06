@@ -22,15 +22,15 @@ const STATUS_OPTIONS = [
 const TEMPLATES_SUGGESTED = [
   {
     name: "Aviso de manutenção",
-    body: "Olá, {nome}! 📡\n\nVamos realizar uma manutenção programada hoje das 22h às 02h. Pode haver instabilidade no sinal.\n\nObrigada pela paciência! 💜",
+    body: "Olá, {nome}! \n\nVamos realizar uma manutenção programada hoje das 22h às 02h. Pode haver instabilidade no sinal.\n\nObrigada pela paciência! ",
   },
   {
     name: "Promoção upgrade plano",
-    body: "Oi, {nome}! 🎉\n\nVi que você está com a gente há um bom tempo no plano {plano}. Que tal um upgrade com 50% off no primeiro mês?\n\nResponde aqui que eu te explico! 🚀",
+    body: "Oi, {nome}! \n\nVi que você está com a gente há um bom tempo no plano {plano}. Que tal um upgrade com 50% off no primeiro mês?\n\nResponde aqui que eu te explico! ",
   },
   {
     name: "Aviso de boleto disponível",
-    body: "Olá, {nome}! Seu boleto deste mês já está disponível. Caso precise, é só responder aqui. 💜",
+    body: "Olá, {nome}! Seu boleto deste mês já está disponível. Caso precise, é só responder aqui. ",
   },
 ];
 
@@ -264,12 +264,12 @@ export default function DisparoPromoPanel({
                       }))}
                       data-testid="promo-radius-states"
                       style={{ ...inputStyle, height: 100 }}>
-              <option value="ATIVO">🟢 Ativo</option>
+              <option value="ATIVO">Ativo</option>
               <option value="GRACE">⏳ Tolerância</option>
-              <option value="REDUZIDO">🟠 Reduzido</option>
-              <option value="WALLED_GARDEN">🔒 Wall Garden</option>
-              <option value="SUSPENSO">🔴 Suspenso</option>
-              <option value="CANCELADO">⚫ Cancelado</option>
+              <option value="REDUZIDO">Reduzido</option>
+              <option value="WALLED_GARDEN">Wall Garden</option>
+              <option value="SUSPENSO">Suspenso</option>
+              <option value="CANCELADO">Cancelado</option>
             </select>
           </Field>
           <Field label="Atraso mín. da fatura (dias)">

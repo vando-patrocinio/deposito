@@ -1284,11 +1284,17 @@ async def lookup_onu(
 
 @router.get("/onu/{external_id}/signal")
 async def get_onu_signal_live(external_id: str,
+                                force: bool = False,
                                 user: dict = Depends(require_role("gestor"))):
     """Retorna sinal vivo da ONU. Usa cache local com TTL configurado.
 
     Se cache estiver fresco (< signal_cache_seconds), retorna direto. Caso
     contrário, consulta a SmartOLT, atualiza o cache e retorna.
+
+    `force=true` (iter215): bypassa o cache TTL E o circuit-breaker local de
+    rate-limit. Usado pelo botão "Live" quando o usuário pede atualização
+    explícita do sinal. Se SmartOLT responder 403/429, marca rate-limit
+    novamente — sem prejuízo.
     """
     cid = user.get("company_id") or DEMO_COMPANY_ID
     cfg = await _get_config(cid)
@@ -1308,11 +1314,16 @@ async def get_onu_signal_live(external_id: str,
             fresh = age < cfg.signal_cache_seconds
         except Exception:
             fresh = False
-    if fresh:
+    if fresh and not force:
         return {"cached": True, "onu": onu}
     # Busca live
     if not cfg.enabled or not cfg.subdomain or not cfg.api_key:
         return {"cached": True, "onu": onu, "warning": "smartolt_disabled"}
+    # iter215: force=True limpa o circuit-breaker local pra dar uma nova chance.
+    if force:
+        await db.smartolt_config.update_one(
+            {"company_id": cid}, {"$unset": {"rate_limited_until": 1}},
+        )
     try:
         sig = await _http_get(cfg, f"/onu/get_onu_signal/{external_id}")
         st = await _http_get(cfg, f"/onu/get_onu_status/{external_id}")

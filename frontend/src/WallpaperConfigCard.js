@@ -138,7 +138,7 @@ export default function WallpaperConfigCard() {
                             borderRadius: "8px 8px 8px 2px",
                             fontSize: 11, color: "#0b1220",
                             boxShadow: "0 1px 1px rgba(11,20,26,.13)" }}>
-              Olá! Aqui é a Isabella 👋
+              Olá! Aqui é a Isabella 
             </div>
             <div style={{ position: "absolute", right: 18, top: 64,
                             background: "#d9fdd3", padding: "6px 10px",

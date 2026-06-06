@@ -192,7 +192,7 @@ export default function FleetTrailAuditPanel() {
         <div style={{ flex: 1, minWidth: 200 }}>
           <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800,
                             color: COLORS.text, letterSpacing: -0.2 }}>
-            🗺 Auditoria de Trajeto · Equipe de Campo
+            Auditoria de Trajeto · Equipe de Campo
           </h3>
           <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 4 }}>
             {day.total_techs} técnico(s) em campo · {fmtKm(day.total_distance_m)} percorridos
@@ -303,7 +303,7 @@ export default function FleetTrailAuditPanel() {
                   <span>⏱ {fmtTime(it.first)} → {fmtTime(it.last)}</span>
                   <span>⏳ {fmtDur(it.duration_s)}</span>
                   {it.stops > 0 && (
-                    <span>🛑 {it.stops}</span>
+                    <span>{it.stops}</span>
                   )}
                 </div>
               </button>
@@ -344,7 +344,7 @@ export default function FleetTrailAuditPanel() {
                 <MapContainer center={center} zoom={14}
                                   style={{ width: "100%", height: "100%" }}>
                   <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
                     attribution="&copy; OpenStreetMap" />
                   {segments.list.map((seg, idx) => (
                     <Polyline key={`seg-${idx}`} positions={seg}
@@ -407,7 +407,7 @@ export default function FleetTrailAuditPanel() {
               border: `1px dashed ${COLORS.border}`,
               color: COLORS.muted,
             }}>
-              <div style={{ fontSize: 36, marginBottom: 10 }}>🗺</div>
+              <div style={{ fontSize: 36, marginBottom: 10 }}></div>
               <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.text }}>
                 Selecione um técnico para ver o trajeto
               </div>

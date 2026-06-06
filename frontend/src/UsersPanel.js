@@ -11,9 +11,9 @@ const ROLES = [
 ];
 
 const ROLE_THEME = {
-  auditor: { bg: "#fde68a", fg: "#92400e", ring: "#f59e0b", emoji: "🔑" },
-  gestor: { bg: "#bbf7d0", fg: "#166534", ring: "#16a34a", emoji: "🧑‍💼" },
-  colaborador: { bg: "#e2e8f0", fg: "#475569", ring: "#94a3b8", emoji: "👤" },
+  auditor: { bg: "#fde68a", fg: "#92400e", ring: "#f59e0b", emoji: "" },
+  gestor: { bg: "#bbf7d0", fg: "#166534", ring: "#16a34a", emoji: "‍" },
+  colaborador: { bg: "#e2e8f0", fg: "#475569", ring: "#94a3b8", emoji: "" },
 };
 
 function initials(name) {
@@ -200,13 +200,13 @@ export default function UsersPanel() {
               onChange={(e) => setSearch(e.target.value)}
               style={{ ...inputStyle, paddingLeft: 36 }}
             />
-            <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }}>🔍</span>
+            <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }}></span>
           </div>
           <div style={{ display: "flex", gap: 4, background: "#f1f5f9", borderRadius: 12, padding: 4 }}>
             {[
               { v: "all", label: "Todos", n: counts.all },
-              { v: "gestor", label: "🧑‍💼", n: counts.gestor || 0 },
-              { v: "auditor", label: "🔑", n: counts.auditor || 0 },
+              { v: "gestor", label: "‍", n: counts.gestor || 0 },
+              { v: "auditor", label: "", n: counts.auditor || 0 },
             ].map((t) => (
               <button
                 key={t.v}
@@ -288,7 +288,7 @@ export default function UsersPanel() {
                   <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>{u.email}</div>
                   {linked && (
                     <div style={{ color: "#0d9488", fontSize: 11, marginTop: 4 }}>
-                      🔗 vinculado a {linked.name} ({linked.cpf})
+                      vinculado a {linked.name} ({linked.cpf})
                     </div>
                   )}
                 </div>
@@ -330,7 +330,7 @@ export default function UsersPanel() {
                     data-testid={`impersonate-${u.id}`}
                     title="Logar temporariamente como este usuário (auditoria)"
                   >
-                    🎭 Logar como
+                    Logar como
                   </Button>
                 )}
                 <Button variant="soft" onClick={() => { setPwUserId(u.id); setPwValue(""); }} data-testid={`pw-${u.id}`}>
@@ -402,7 +402,7 @@ export default function UsersPanel() {
             Colaboradores que batem ponto são cadastrados na aba <strong>Cadastro</strong>.
             <br/>
             <span style={{ fontSize: 11.5 }}>
-              💬 Para liberar acesso ao <strong>Atendimento WhatsApp</strong> de um colaborador,
+              Para liberar acesso ao <strong>Atendimento WhatsApp</strong> de um colaborador,
               vá em <strong>Cadastro → Colaboradores</strong>. Apenas <strong>auditor</strong>
               pode liberar esse acesso.
             </span>

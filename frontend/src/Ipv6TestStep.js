@@ -179,7 +179,7 @@ export default function Ipv6TestStep({ ticketId, onResult, autoRun = true }) {
         <div>
           <div style={{ fontSize: 11, fontWeight: 800, color: "#1e3a8a",
                           letterSpacing: 0.5, textTransform: "uppercase" }}>
-            🌐 Teste IPv6 obrigatório
+            Teste IPv6 obrigatório
           </div>
           {phase === "done" && (
             <div data-testid="ipv6-verdict" style={{
@@ -219,7 +219,7 @@ export default function Ipv6TestStep({ ticketId, onResult, autoRun = true }) {
               background: "#fef3c7", border: "1px solid #fbbf24",
               fontSize: 12, color: "#78350f",
             }}>
-              ⚠️ <strong>OS será marcada com IPv6 inconsistente</strong>.
+              ️ <strong>OS será marcada com IPv6 inconsistente</strong>.
               Verifique configuração do ONT/CPE e DNS antes de entregar.
             </div>
           )}
@@ -234,7 +234,7 @@ export default function Ipv6TestStep({ ticketId, onResult, autoRun = true }) {
               borderRadius: 10, border: "1px solid #cbd5e1", background: "white",
               fontWeight: 700, fontSize: 12, color: "#0f172a", cursor: "pointer",
             }}>
-            🔁 Re-testar IPv6
+            Re-testar IPv6
           </button>
         </>
       )}

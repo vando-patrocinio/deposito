@@ -73,7 +73,7 @@ export function ClosedNotesPdfPopover({ onClose }) {
           }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a",
                       marginBottom: 8 }}>
-        📄 Relatório
+        Relatório
       </div>
       {/* Seletor Modo: Finalizadas vs Abertas */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr",
@@ -96,7 +96,7 @@ export function ClosedNotesPdfPopover({ onClose }) {
                           color: mode === "open" ? "#9a3412" : "#0f172a",
                           fontSize: 12, fontWeight: 700, cursor: "pointer",
                           textAlign: "center" }}>
-          🟡 Bolhas ABERTAS
+          Bolhas ABERTAS
         </button>
       </div>
       {mode === "open" && (
@@ -150,7 +150,7 @@ export function ClosedNotesPdfPopover({ onClose }) {
         <div data-testid="lousa-pdf-err"
               style={{ marginBottom: 8, padding: 8, borderRadius: 6,
                         background: "#fef2f2", color: "#991b1b", fontSize: 11 }}>
-          ⚠ {err}
+          {err}
         </div>
       )}
       <button data-testid="lousa-pdf-generate"
@@ -161,8 +161,8 @@ export function ClosedNotesPdfPopover({ onClose }) {
                         color: "#fff", border: 0, fontSize: 13, fontWeight: 700,
                         cursor: busy ? "wait" : "pointer" }}>
         {busy ? "Gerando…" : (mode === "open"
-            ? "👁 Visualizar Bolhas Abertas"
-            : "👁 Visualizar Finalizadas")}
+            ? "Visualizar Bolhas Abertas"
+            : "Visualizar Finalizadas")}
       </button>
 
       <ViabilityHeatmapSection />
@@ -202,7 +202,7 @@ function ViabilityHeatmapSection() {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8,
                       marginBottom: 8 }}>
-        <span style={{ fontSize: 13 }}>🗺️</span>
+        <span style={{ fontSize: 13 }}>️</span>
         <strong style={{ fontSize: 12.5, color: "#0f172a" }}>
           Demanda sem cobertura
         </strong>
@@ -233,7 +233,7 @@ function ViabilityHeatmapSection() {
           fontSize: 11, color: "#64748b", textAlign: "center",
           lineHeight: 1.5,
         }}>
-          Nenhum lead aguardando viabilidade nos últimos {days} dias 🎯<br />
+          Nenhum lead aguardando viabilidade nos últimos {days} dias <br />
           Quando Isabella receber endereços fora da cobertura, eles
           aparecem aqui agrupados por bairro.
         </div>
@@ -324,8 +324,8 @@ function PrintableReport({ data, onClose, onPrint }) {
           <div>
             <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>
               {isOpen
-                ? "🟡 Bolhas Abertas — Pré-visualização"
-                : "📋 Notas Finalizadas — Pré-visualização"}
+                ? "Bolhas Abertas — Pré-visualização"
+                : "Notas Finalizadas — Pré-visualização"}
             </div>
             <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
               {isOpen ? "Todas as OS pendentes/em execução" :
@@ -342,7 +342,7 @@ function PrintableReport({ data, onClose, onPrint }) {
                               fontWeight: 700, cursor: "pointer",
                               display: "inline-flex", alignItems: "center",
                               gap: 6 }}>
-              🖨 Imprimir / Salvar PDF
+              Imprimir / Salvar PDF
             </button>
             <button data-testid="lousa-report-close"
                     onClick={onClose}
@@ -417,8 +417,8 @@ function PrintableTechBlock({ tech, isOpen }) {
     return (
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 13, color: "#94a3b8" }}>
-          👷 <b>{tech.name}</b> ·{" "}
-          <i>{isOpen ? "0 bolhas abertas" : "0 notas finalizadas"} no período</i> ⚠
+          <b>{tech.name}</b> ·{" "}
+          <i>{isOpen ? "0 bolhas abertas" : "0 notas finalizadas"} no período</i> 
         </div>
       </div>
     );
@@ -428,7 +428,7 @@ function PrintableTechBlock({ tech, isOpen }) {
     <div style={{ marginBottom: 18, pageBreakInside: "avoid" }}>
       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6,
                       color: "#0f172a" }}>
-        👷 {tech.name} ·{" "}
+        {tech.name} ·{" "}
         <span style={{ color: accent, fontWeight: 800 }}>
           {n} {isOpen
               ? (n > 1 ? "bolhas abertas" : "bolha aberta")
@@ -513,7 +513,7 @@ function PrintableTicketRow({ row, idx, isOpen }) {
   if (cd.conectores) doneParts.push(<><b>Con:</b> {cd.conectores}</>);
   if (cd.backbone) doneParts.push(<><b>Bb:</b> {cd.backbone}m</>);
   const fotos = (cd.fotos || []).filter(Boolean).length;
-  if (fotos) doneParts.push(`📷 ${fotos} foto${fotos > 1 ? "s" : ""}`);
+  if (fotos) doneParts.push(`${fotos} foto${fotos > 1 ? "s" : ""}`);
   if (cd.ping_summary) doneParts.push(<><b>Ping:</b> {String(cd.ping_summary).slice(0, 60)}</>);
   if (cd.observacoes) doneParts.push(<><b>Obs:</b> {String(cd.observacoes).slice(0, 140)}</>);
   if (row.outcome) doneParts.push(<><b>Result:</b> {row.outcome}</>);
@@ -535,7 +535,7 @@ function PrintableTicketRow({ row, idx, isOpen }) {
                     background: isInternal ? "#fef3c7" : undefined,
                     color: isInternal ? "#92400e" : undefined,
                     fontWeight: isInternal ? 700 : 400 }}>
-        {isInternal ? "🛡 Gestor" : "👷 Técnico"}
+        {isInternal ? "Gestor" : "Técnico"}
       </td>
     </tr>
   );

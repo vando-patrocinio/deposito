@@ -118,7 +118,7 @@ export default function BrandingCard() {
 
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
         <Button onClick={save} disabled={busy} data-testid="branding-save-btn">
-          {busy ? "Salvando…" : "💾 Salvar"}
+          {busy ? "Salvando…" : "Salvar"}
         </Button>
       </div>
       {msg && (
@@ -133,12 +133,12 @@ export default function BrandingCard() {
 }
 
 const ASSET_CATEGORIES = [
-  { id: "uniforme", label: "👕 Uniforme" },
-  { id: "epi", label: "🦺 EPI" },
-  { id: "ferramenta", label: "🔧 Ferramenta" },
-  { id: "veiculo", label: "🚗 Veículo" },
-  { id: "eletronico", label: "📱 Eletrônico" },
-  { id: "outro", label: "📦 Outro" },
+  { id: "uniforme", label: "Uniforme" },
+  { id: "epi", label: "EPI" },
+  { id: "ferramenta", label: "Ferramenta" },
+  { id: "veiculo", label: "Veículo" },
+  { id: "eletronico", label: "Eletrônico" },
+  { id: "outro", label: "Outro" },
 ];
 
 function DefaultAssetValues({ data, setData }) {
@@ -155,7 +155,7 @@ function DefaultAssetValues({ data, setData }) {
                   borderRadius: 12, border: "1px solid #f0abfc" }}
          data-testid="default-asset-values">
       <div style={{ fontSize: 13, fontWeight: 800, color: "#86198f", marginBottom: 4 }}>
-        💰 Valor padrão por categoria (R$)
+        Valor padrão por categoria (R$)
       </div>
       <div style={{ fontSize: 11, color: "#86198f", marginBottom: 10, opacity: 0.85 }}>
         Usado pra calcular <strong>perdas pendentes</strong> quando o pertence não tem

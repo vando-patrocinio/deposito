@@ -5,7 +5,7 @@
  *   - Fila por praça (queue-based)
  *   - Bulk select com checkboxes
  *   - Scanner SN/MAC (input com autofoco; "Enter" seleciona)
- *   - iter197c — Botão 📷 Câmera abre OntScanBatchModal (Claude Vision)
+ *   - iter197c — Botão Câmera abre OntScanBatchModal (Claude Vision)
  *     com validação em tempo real (alerta se SN não está no estoque)
  *   - Dropdown técnico
  *   - 1 botão "Transferir N selecionadas"
@@ -111,7 +111,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
           : elsewhere.location_type === "cliente"
             ? "já está instalada num cliente"
             : `está em ${elsewhere.location_type} (${elsewhere.status})`;
-        setFlash(`⚠️ ${scanInput} ${where} — não pode transferir`);
+        setFlash(`️ ${scanInput} ${where} — não pode transferir`);
       } else {
         setFlash(`❌ ${scanInput} não encontrado no estoque`);
       }
@@ -151,7 +151,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
     setSelectedMacs(newSelection);
     setScanReport(report);
     setScanModalOpen(false);
-    setFlash(`✅ ${report.ok.length} aceitas · ⚠️ ${report.elsewhere.length} alocadas · ❌ ${report.notInStock.length} não cadastradas`);
+    setFlash(`✅ ${report.ok.length} aceitas · ️ ${report.elsewhere.length} alocadas · ❌ ${report.notInStock.length} não cadastradas`);
     setTimeout(() => setFlash(""), 6000);
   }
 
@@ -167,7 +167,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
       const tech = techs.find((t) => t.id === techId);
       let msg = `✅ ${r.transferred_count} ONT(s) transferidas para ${tech?.name}`;
       if (r.skipped?.length) {
-        msg += ` · ⚠️ ${r.skipped.length} ignoradas: `
+        msg += ` · ️ ${r.skipped.length} ignoradas: `
           + r.skipped.slice(0, 3).map((s) => `${s.mac} (${s.reason})`).join(", ");
       }
       setFlash(msg);
@@ -193,7 +193,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
                        gap: 12, flexWrap: "wrap" }}>
         <div>
           <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
-            🚚 Transferir do Estoque da Praça → Técnico
+            Transferir do Estoque da Praça → Técnico
           </h3>
           <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
             Base é por <strong>SN</strong>. Use o scanner ou digite o SN.
@@ -213,7 +213,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
               fontSize: 12, color: "#92400e", fontWeight: 600,
               display: "flex", gap: 10, alignItems: "center",
             }}>
-              <span>⚠️ {semSn} ONT(s) sem SN real</span>
+              <span>️ {semSn} ONT(s) sem SN real</span>
               <button
                 data-testid="transfer-migrate-sn-btn"
                 onClick={async () => {
@@ -235,7 +235,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
                   border: 0, borderRadius: 6, fontSize: 11, fontWeight: 800,
                   cursor: "pointer",
                 }}>
-                🔧 Gerar SNs placeholder
+                Gerar SNs placeholder
               </button>
             </div>
           );
@@ -251,7 +251,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
         }}
                 data-testid="transfer-praca-filter"
                 style={inputStyle}>
-          <option value="">📦 Todas as praças</option>
+          <option value="">Todas as praças</option>
           {pracas.map((p) =>
             <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
@@ -262,7 +262,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
           onChange={(e) => setScanInput(e.target.value)}
           onKeyDown={onScan}
           data-testid="transfer-scan-input"
-          placeholder="📷 SN ou MAC + Enter…"
+          placeholder="SN ou MAC + Enter…"
           style={{ ...inputStyle, fontFamily: "monospace" }}
         />
 
@@ -274,13 +274,13 @@ export default function TransferToTechPanel({ pracas = [] }) {
           style={{ padding: "0 12px", background: "#0f172a", color: "white",
                     border: "none", borderRadius: 8, fontWeight: 800,
                     fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>
-          📷 Câmera
+          Câmera
         </button>
 
         <select value={techId} onChange={(e) => setTechId(e.target.value)}
                 data-testid="transfer-tech-select"
                 style={inputStyle}>
-          <option value="">👷 Selecione o técnico…</option>
+          <option value="">Selecione o técnico…</option>
           {techs.map((t) =>
             <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
@@ -297,7 +297,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
             whiteSpace: "nowrap",
           }}
         >
-          {busy ? "..." : `🚚 Transferir ${selectedMacs.size}`}
+          {busy ? "..." : `Transferir ${selectedMacs.size}`}
         </button>
       </div>
 
@@ -306,10 +306,10 @@ export default function TransferToTechPanel({ pracas = [] }) {
               style={{ marginBottom: 10, padding: "8px 12px",
                         borderRadius: 8, fontSize: 13,
                         background: flash.startsWith("❌") ? "#fee2e2"
-                                    : flash.startsWith("⚠️") ? "#fef3c7"
+                                    : flash.startsWith("️") ? "#fef3c7"
                                     : "#d1fae5",
                         color: flash.startsWith("❌") ? "#991b1b"
-                                : flash.startsWith("⚠️") ? "#92400e"
+                                : flash.startsWith("️") ? "#92400e"
                                 : "#065f46" }}>
           {flash}
         </div>
@@ -322,7 +322,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
                         background: "#fef3c7", border: "1.5px solid #f59e0b",
                         borderRadius: 10, fontSize: 12 }}>
           <div style={{ fontWeight: 800, color: "#92400e", marginBottom: 6 }}>
-            ⚠️ {scanReport.elsewhere.length + scanReport.notInStock.length} etiqueta(s) escaneada(s) com problema:
+            ️ {scanReport.elsewhere.length + scanReport.notInStock.length} etiqueta(s) escaneada(s) com problema:
           </div>
           {scanReport.elsewhere.map((e, i) => (
             <div key={`e${i}`} style={{ marginBottom: 3, fontFamily: "monospace" }}>
@@ -395,7 +395,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
                   <div style={{ fontFamily: "monospace", fontWeight: 800,
                                   color: needsRealSn ? "#a16207" : "#0f172a",
                                   fontSize: 13 }}>
-                    🏷️ SN: {sn || "— vazio —"}
+                    ️ SN: {sn || "— vazio —"}
                   </div>
                   <div style={{ fontFamily: "monospace", fontSize: 10,
                                   color: "#64748b" }}>
@@ -436,7 +436,7 @@ export default function TransferToTechPanel({ pracas = [] }) {
                 </span>
                 {o.praca_id && (
                   <span style={{ fontSize: 11, color: "#0369a1", fontWeight: 600 }}>
-                    📦 {pracaNameById[o.praca_id] || o.praca_id}
+                    {pracaNameById[o.praca_id] || o.praca_id}
                   </span>
                 )}
               </label>

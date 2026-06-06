@@ -146,13 +146,13 @@ export default function OnboardingPage({ token: tokenProp }) {
             <Check size={36} color="white" strokeWidth={3} />
           </div>
           <h2 style={{ marginTop: 16, color: "#0f766e" }}>
-            Tudo certo! 🚀
+            Tudo certo! 
           </h2>
           <p style={{ color: "#475569", fontSize: 14, lineHeight: 1.6 }}>
             Recebemos seus documentos e nossa equipe vai validar tudo
             em instantes.
             <br /><br />
-            <strong>Ligo Fibra — A Internet que te faz feliz! 🤩</strong>
+            <strong>Ligo Fibra — A Internet que te faz feliz! </strong>
           </p>
         </div>
       </Shell>
@@ -465,11 +465,11 @@ function LivenessStep({ token, onComplete, uploaded }) {
   // Sequência: 3 capturas guiadas (esquerda, direita, sorriso)
   const POSES = [
     { key: "left", label: "Vire a cabeça pra ESQUERDA",
-      hint: "Olhe pra esquerda, sem tirar o documento da mão", emoji: "👈" },
+      hint: "Olhe pra esquerda, sem tirar o documento da mão", emoji: "" },
     { key: "right", label: "Vire a cabeça pra DIREITA",
-      hint: "Agora vire devagar pra direita", emoji: "👉" },
-    { key: "smile", label: "Olhe pra frente e SORRIA 😄",
-      hint: "Centralize o rosto no oval e sorria!", emoji: "😄" },
+      hint: "Agora vire devagar pra direita", emoji: "" },
+    { key: "smile", label: "Olhe pra frente e SORRIA ",
+      hint: "Centralize o rosto no oval e sorria!", emoji: "" },
   ];
   const [poseIdx, setPoseIdx] = useState(0);
   const [captured, setCaptured] = useState({});

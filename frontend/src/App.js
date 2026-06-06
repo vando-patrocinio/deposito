@@ -44,6 +44,7 @@ import FleetTrackingPage from "@/fleet/FleetTrackingPage";
 import SecurityHomePage from "@/security/SecurityHomePage";
 import ParceriaAdminPage from "@/parceria/ParceriaAdminPage";
 import ReferralsAdminPanel from "@/ReferralsAdminPanel";
+import LoyaltyRankingPanel from "@/LoyaltyRankingPanel";
 import WifiHotspotPanel from "@/WifiHotspotPanel";
 import SitePanel from "@/SitePanel";
 import ContractsPanel from "@/ContractsPanel";
@@ -316,6 +317,8 @@ const NAV_GROUPS = [
         roles: ["administrador", "gestor", "financeiro"] },
       { id: "referrals-admin", icon: Calculator, label: "Indique e Ganhe",
         roles: ["administrador", "gestor", "financeiro"] },
+      { id: "loyalty-ranking", icon: Calculator, label: "Clientes Fidelidade",
+        roles: ["administrador", "gestor", "financeiro"] },
       { id: "wifi-hotspot", icon: Wifi, label: "WiFi Hotspot",
         roles: ["administrador", "gestor"] },
     ],
@@ -404,7 +407,7 @@ function PublicAccessBanner() {
         fontSize: 13,
       }}
     >
-      <span aria-hidden style={{ fontSize: 16 }}>🔓</span>
+      <span aria-hidden style={{ fontSize: 16 }}></span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <strong style={{ fontWeight: 700 }}>Acesso público ativo</strong>
         <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 1 }}>
@@ -1215,6 +1218,7 @@ function AppContent() {
           {view === "security-home" && <SecurityHomePage />}
           {view === "parcerias" && <ParceriaAdminPage />}
           {view === "referrals-admin" && <ReferralsAdminPanel />}
+          {view === "loyalty-ranking" && <LoyaltyRankingPanel />}
           {view === "wifi-hotspot" && <WifiHotspotPanel />}
           {view === "site" && <SitePanel />}
           {view === "contracts" && <ContractsPanel currentUser={user} />}

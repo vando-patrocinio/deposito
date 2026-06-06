@@ -201,7 +201,7 @@ function AlertRow({ alert, onResolve }) {
           ✓ Resolvido como <strong>{RESOLUTION_LABEL[alert.resolution] || alert.resolution}</strong>
           {alert.resolved_by && <> por {alert.resolved_by}</>}
           {alert.resolution_notes && (
-            <div style={{ fontStyle: "italic", marginTop: 2 }}>"{alert.resolution_notes}"</div>
+            <div style={{ fontStyle: "italic", marginTop: 2 }}>“{alert.resolution_notes}”</div>
           )}
         </div>
       )}

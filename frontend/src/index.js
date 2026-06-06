@@ -14,6 +14,7 @@ import ReferralLandingPage from "@/ReferralLandingPage";
 import ClienteIndicaApp from "@/cliente/ClienteIndicaApp";
 import WifiCaptivePortal from "@/WifiCaptivePortal";
 import WifiShowcasePage from "@/WifiShowcasePage";
+import LousaTvPanel from "@/lousa/LousaTvPanel";
 
 // iter212a — Roteamento standalone do portal white-label (Fleet)
 // Aciona com `?portal=fleet` OU pathname iniciado em `/fleet-portal`.
@@ -54,6 +55,10 @@ const _isWifiCaptive = window.location.pathname.startsWith("/wifi/");
 const _isWifiShowcase = _params.get("showcase") === "wifi"
   || window.location.pathname === "/wifi-vitrine"
   || window.location.pathname === "/wifi-vitrine/";
+// Lousa TV — view-only Kanban para SmartTV (token público)
+const _isLousaTv = _params.get("portal") === "lousa-tv"
+  || window.location.pathname === "/lousa-tv"
+  || window.location.pathname === "/lousa-tv/";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
@@ -61,16 +66,17 @@ root.render(
     {_isReferralLanding ? <ReferralLandingPage code={_refCode} />
       : _isWifiCaptive ? <WifiCaptivePortal />
         : _isWifiShowcase ? <WifiShowcasePage />
-          : _isClienteIndica ? <ClienteIndicaApp />
-            : _isParceiroPWA ? <ParceiroPWA magicToken={_parceiroSegment} />
-              : _isSejaParceiro ? <SejaParceiroLanding />
-                : _isPartnerDetail ? <PartnerDetailPage />
-                  : _isFleetPortal ? <FleetPortalApp />
-                    : _isSecurityPortal ? <SecurityPortalApp />
-                      : _isPartnerPortal ? <PartnerPortalApp />
-                        : _isClientPortal ? <ClientPortalApp />
-                          : _isShowcase ? <ParceriaPublicPage />
-                            : <App />}
+          : _isLousaTv ? <LousaTvPanel />
+            : _isClienteIndica ? <ClienteIndicaApp />
+              : _isParceiroPWA ? <ParceiroPWA magicToken={_parceiroSegment} />
+                : _isSejaParceiro ? <SejaParceiroLanding />
+                  : _isPartnerDetail ? <PartnerDetailPage />
+                    : _isFleetPortal ? <FleetPortalApp />
+                      : _isSecurityPortal ? <SecurityPortalApp />
+                        : _isPartnerPortal ? <PartnerPortalApp />
+                          : _isClientPortal ? <ClientPortalApp />
+                            : _isShowcase ? <ParceriaPublicPage />
+                              : <App />}
   </React.StrictMode>,
 );
 

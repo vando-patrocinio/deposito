@@ -405,7 +405,7 @@ export default function WhatsAppChatLayout() {
                 vendo só conversas de <strong>{attendantFilter.name}</strong> —
                 {" "}<strong>NENHUMA conversa</strong> encontrada com esse filtro.
                 <span style={{ marginLeft: 6, color: "#92400e", fontSize: 11.5 }}>
-                  (Sem conversas? Clique em "Limpar filtro" pra ver tudo.)
+                  (Sem conversas? Clique em “Limpar filtro” pra ver tudo.)
                 </span>
               </>
             ) : (
@@ -693,7 +693,7 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
                   ) : bucketConvs.length === 0 ? (
                     <div style={{ padding: "12px 10px", textAlign: "center",
                                   color: "#64748b", fontSize: 11.5 }}>
-                      Sem conversas em "{b.label}"
+                      Sem conversas em “{b.label}”
                     </div>
                   ) : bucketConvs.map((c) => (
                     <ConvRow key={c.phone} conv={c}
@@ -722,7 +722,7 @@ function BucketSidebar({ bucket, setBucket, counts, unreadByBucket,
           fontSize: 13, fontWeight: 600,
           boxShadow: "0 2px 6px rgba(59,130,246,.25)",
         }}>
-          <span style={{ fontSize: 14 }}>🎉</span>
+          <span style={{ fontSize: 14 }}></span>
           <span style={{ flex: 1 }}>
             Tudo <strong>pronto</strong>, canal ativo e configurado.
           </span>
@@ -932,7 +932,7 @@ function ConvRow({ conv, selected, onClick, profile, authUser, onAssignSelf }) {
                   whiteSpace: "nowrap",
                 }}
               >
-                🔧 {conv.last_tech_collab_name}
+                {conv.last_tech_collab_name}
               </div>
             )}
           </div>
@@ -1156,7 +1156,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
   const [correctingMsg, setCorrectingMsg] = useState(null);
   /* Toggle global do botão "Enviar com IA" (configurado no Central IA → Isabella) */
   const [polishEnabled, setPolishEnabled] = useState(true);
-  /* ⚠️ Status de vínculo: detecta phone vinculado a 2+ subscribers
+  /* ️ Status de vínculo: detecta phone vinculado a 2+ subscribers
      (cenário em que a Isabella usa dados errados de cliente homônimo) */
   const [linkStatus, setLinkStatus] = useState(null);
   // Banner de conflito de vínculo começa colapsado por padrão (libera espaço
@@ -1197,7 +1197,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
   }, [conv]);
 
   /* Ao abrir conversa: checa se phone tem mais de 1 subscriber vinculado.
-     Se tiver, mostra banner ⚠️ no header pra atendente ficar atento. */
+     Se tiver, mostra banner ️ no header pra atendente ficar atento. */
   useEffect(() => {
     if (!conv?.phone) { setLinkStatus(null); return; }
     let alive = true;
@@ -1539,7 +1539,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
   /* Timeline mesclada: mensagens reais (WhatsApp) + coaching INTERNO (só você vê),
      ordenado por created_at. Mantém este hook ANTES de qualquer early return
      pra atender a regra dos React Hooks.
-     Iter75: insere separadores `{_kind:"daydiv"}` entre mensagens de dias
+     Iter75: insere separadores `{_kind: "daydiv"}` entre mensagens de dias
      diferentes para criar o efeito de "quebra de chat por dia" igual WhatsApp. */
   const timeline = useMemo(() => {
     const items = [
@@ -1923,7 +1923,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
         />
       )}
 
-      {/* ⚠️ Banner de conflito de vínculo: phone vinculado a 2+ subscribers.
+      {/* ️ Banner de conflito de vínculo: phone vinculado a 2+ subscribers.
          Causa de "Isabella chamou cliente de nome errado" / dados misturados.
          RETRÁTIL — usuário pode colapsar para liberar espaço da conversa. */}
       {linkStatus?.has_conflict && (
@@ -1943,7 +1943,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
               cursor: "pointer", textAlign: "left",
               display: "flex", alignItems: "center", gap: 8, color: "inherit",
             }}>
-            <span style={{ fontSize: 14, lineHeight: 1 }}>⚠️</span>
+            <span style={{ fontSize: 14, lineHeight: 1 }}>️</span>
             <span style={{ flex: 1, fontWeight: 700 }}>
               Vinculado a {linkStatus.linked_count} clientes
               {linkBannerCollapsed && (
@@ -1993,7 +1993,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
                       color: "#92400e", fontSize: 11, fontWeight: 600,
                       cursor: "pointer",
                     }}>
-                    Desvincular "{s.name}"
+                    Desvincular “{s.name}”
                   </button>
                 ))}
               </div>
@@ -2194,7 +2194,7 @@ function ChatThread({ conv, attendants, contactProfile, onWarmContact, onChange,
         <input className="input" placeholder={isAi
           ? "Assuma a conversa para responder manualmente..."
           : (recording
-              ? `🔴 Gravando áudio... ${recDuration}s — clique no microfone novamente para enviar`
+              ? `Gravando áudio... ${recDuration}s — clique no microfone novamente para enviar`
               : "Digite sua mensagem (vai pro cliente via WhatsApp)...")}
           value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !sending && send()}
@@ -3068,7 +3068,7 @@ function PdfResultToast({ result, onClose }) {
         </div>
       ) : (
         <div style={{ marginTop: 6, fontSize: 11, color: "#92400e" }}>
-          ⚠ Cliente não cadastrado — PDF salvo, mas sem vínculo
+          Cliente não cadastrado — PDF salvo, mas sem vínculo
         </div>
       )}
     </div>
@@ -3139,8 +3139,8 @@ function MsgBubble({ msg, onCorrect }) {
                          letterSpacing: 0.5, display: "flex", alignItems: "center", gap: 6 }}>
             {failed
               ? (isCorrection
-                  ? "⚠ Correção · não enviada"
-                  : "⚠ Isabella IA — falhou")
+                  ? "Correção · não enviada"
+                  : "Isabella IA — falhou")
               : (isCorrection ? "Isabella IA · Corrigida" : "Isabella IA")}
             {!failed && msg.text && onCorrect && (
               <button

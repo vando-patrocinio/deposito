@@ -194,9 +194,9 @@ function FormCard({ info, form, setForm, busy, err, onSubmit }) {
           display: "flex", flexWrap: "wrap", gap: 6,
           marginTop: 14, position: "relative", zIndex: 2,
         }}>
-          <Chip>📡 100% Fibra Óptica</Chip>
-          <Chip>📶 Wi-Fi premium</Chip>
-          <Chip>⚡ Instalação rápida</Chip>
+          <Chip>100% Fibra Óptica</Chip>
+          <Chip>Wi-Fi premium</Chip>
+          <Chip>Instalação rápida</Chip>
         </div>
       </div>
 
@@ -277,7 +277,7 @@ function FormCard({ info, form, setForm, busy, err, onSubmit }) {
           gap: 6, justifyContent: "center",
           color: "#94a3b8", fontSize: 11,
         }}>
-          <span>🔒</span> Seus dados ficam protegidos · Sem spam
+          <span></span> Seus dados ficam protegidos · Sem spam
         </div>
       </div>
     </div>
@@ -344,7 +344,7 @@ function SuccessCard({ ownerName }) {
           display: "grid", placeItems: "center",
           boxShadow: "0 12px 30px rgba(0,0,0,.18)",
         }}>
-          <span style={{ fontSize: 44 }}>🚀</span>
+          <span style={{ fontSize: 44 }}></span>
         </div>
         <h1 style={{
           margin: 0, fontSize: 28, fontWeight: 900, letterSpacing: -1,
@@ -384,7 +384,7 @@ function InvalidLinkCard({ message }) {
       <div style={{
         padding: "32px 22px", textAlign: "center", color: "#0f172a",
       }}>
-        <div style={{ fontSize: 56, marginBottom: 8 }}>🔗</div>
+        <div style={{ fontSize: 56, marginBottom: 8 }}></div>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900,
                       color: "#dc2626" }}>Link inválido</h1>
         <p style={{ color: "#64748b", marginTop: 8, fontSize: 14 }}>

@@ -68,7 +68,7 @@ export function Shell({ children, testid = "cliente-shell" }) {
 /**
  * Topo roxo gradient com curva inferior. Aceita props:
  *  - pillLabel: ex. "● PROGRAMA INDIQUE E GANHE"
- *  - greeting: "OLÁ,"  greetingName: "Maria 👋"
+ *  - greeting: "OLÁ,"  greetingName: "Maria "
  *  - subtitle: JSX livre (pode ter <span> laranja)
  *  - onBack, onLogout: handlers (botões só aparecem se passados)
  */
@@ -237,7 +237,7 @@ export function ProfileSheet({ me, marginTop = -60, onShowQR }) {
                 fontSize: 13.5, fontWeight: 700, color: COLORS.slate900,
                 textAlign: "left", fontFamily: "inherit",
               }}>
-              <span style={{ fontSize: 18 }}>📱</span>
+              <span style={{ fontSize: 18 }}></span>
               Meu QR Code de cliente
             </button>
           </div>
@@ -289,7 +289,7 @@ export function ProfileSheet({ me, marginTop = -60, onShowQR }) {
             flexShrink: 0,
             boxShadow: "0 8px 18px rgba(45,126,255,.35)",
           }}>
-            <span style={{ fontSize: 26 }}>📊</span>
+            <span style={{ fontSize: 26 }}></span>
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{
@@ -316,7 +316,7 @@ export function ProfileSheet({ me, marginTop = -60, onShowQR }) {
           marginTop: 12, display: "flex", alignItems: "center", gap: 8,
           fontSize: 13, color: COLORS.slate500, fontWeight: 600,
         }}>
-          <span style={{ fontSize: 16 }}>📁</span>
+          <span style={{ fontSize: 16 }}></span>
           <span style={{ fontWeight: 700, color: COLORS.slate700,
             letterSpacing: 1.2, textTransform: "uppercase", fontSize: 11 }}>
             Filial

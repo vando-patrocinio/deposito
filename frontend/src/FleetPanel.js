@@ -227,8 +227,8 @@ function VehicleRow({ v, onOpen }) {
         </div>
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
           {v.current_collaborator_name
-            ? <>👤 {v.current_collaborator_name}</>
-            : "⚠ Sem responsável"}{" "}
+            ? <>{v.current_collaborator_name}</>
+            : "Sem responsável"}{" "}
           {v.km_atual ? <>· {v.km_atual.toLocaleString("pt-BR")} km</> : null}
         </div>
       </div>
@@ -393,10 +393,10 @@ function VehicleDetailModal({ vehicle, collaborators, onClose, onEdit, onReload 
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2, color: "#0f172a" }}>
                     {v.current_collaborator_name
-                      ? <>👤 {v.current_collaborator_name}{v.current_collaborator_phone && <span style={{
+                      ? <>{v.current_collaborator_name}{v.current_collaborator_phone && <span style={{
                           fontSize: 12, color: "#64748b", fontWeight: 500, marginLeft: 8,
                         }}>· {v.current_collaborator_phone}</span>}</>
-                      : <span style={{ color: "#dc2626" }}>⚠ Sem responsável</span>}
+                      : <span style={{ color: "#dc2626" }}>Sem responsável</span>}
                   </div>
                 </div>
                 <button data-testid="veh-detail-assign-btn"
@@ -653,7 +653,7 @@ function VehicleEditorModal({ vehicle, collaborators, onClose, onSaved }) {
       }}>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800,
                       marginBottom: 14 }}>
-          {isNew ? "🚗 Novo veículo" : `Editar — ${vehicle.placa}`}
+          {isNew ? "Novo veículo" : `Editar — ${vehicle.placa}`}
         </h3>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
                        gap: 10 }}>
@@ -744,7 +744,7 @@ function VehicleEditorModal({ vehicle, collaborators, onClose, onSaved }) {
             padding: 10, borderRadius: 7, marginTop: 8,
             background: "#fef2f2", color: "#991b1b", fontSize: 12,
             border: "1px solid #fecaca",
-          }}>⚠ {err}</div>
+          }}>{err}</div>
         )}
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end",
@@ -1166,7 +1166,7 @@ function TransfersTab() {
             className="btn btn-ghost btn-sm"
             title="Abrir romaneio em PDF para impressão e assinatura física"
             onClick={() => openPdf(t.id)}>
-            📄 Imprimir
+            Imprimir
           </button>
           {t.status === "pending" && (
             <button data-testid={`tx-sign-${t.id}`}
@@ -1308,7 +1308,7 @@ function FuelTab() {
             display: "inline-flex", alignItems: "center", gap: 6,
             cursor: "pointer", marginLeft: 6,
           }}>
-          📂 Importar TicketLog
+          Importar TicketLog
         </button>
         {showImporter && (
           <TicketLogImporter
@@ -1321,7 +1321,7 @@ function FuelTab() {
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0",
                         borderRadius: 10, padding: 12, marginBottom: 14 }}>
           <div style={{ marginBottom: 10 }}>
-            <Field label="📸 Foto da NF do posto (OCR Claude vision)">
+            <Field label="Foto da NF do posto (OCR Claude vision)">
               <input data-testid="fuel-ocr-input" type="file"
                 accept="image/*" capture="environment"
                 onChange={(e) => handleReceiptFile(e.target.files?.[0])} />
@@ -1485,7 +1485,7 @@ function KpisTab({ kpis }) {
                       marginTop: 14 }}>
         <RankingCard
           testid="rank-fuel-cost"
-          title="🔥 Top 5 — Maior custo combustível (mês)"
+          title="Top 5 — Maior custo combustível (mês)"
           subtitle="Quem mais gastou neste mês"
           color="#f59e0b"
           items={kpis.rankings.top_fuel_cost}
@@ -1509,7 +1509,7 @@ function KpisTab({ kpis }) {
         />
         <RankingCard
           testid="rank-rejected"
-          title="⚠️ Top 5 — Mais vistorias recusadas (90d)"
+          title="️ Top 5 — Mais vistorias recusadas (90d)"
           subtitle="Veículos problemáticos pra trocar / revisar"
           color="#dc2626"
           items={kpis.rankings.top_rejected_inspections}
@@ -1666,17 +1666,17 @@ function OdometerTab() {
       {/* KPI cards gerais */}
       <div style={{ display: "grid", gap: 10,
                           gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-        <KpiCard label="🚗 KM rodados (total)" value={fmt(s.total_km, " km")}
+        <KpiCard label="KM rodados (total)" value={fmt(s.total_km, " km")}
                     color="#0d9488" />
-        <KpiCard label="📋 OS executadas" value={fmt(s.total_os_executadas)}
+        <KpiCard label="OS executadas" value={fmt(s.total_os_executadas)}
                     color="#7c3aed" />
-        <KpiCard label="📏 km / nota" value={fmt(s.km_por_nota_geral, " km")}
+        <KpiCard label="km / nota" value={fmt(s.km_por_nota_geral, " km")}
                     color="#f59e0b" />
-        <KpiCard label="💰 R$ / nota" value={fmt(s.custo_por_nota_geral, "")}
+        <KpiCard label="R$ / nota" value={fmt(s.custo_por_nota_geral, "")}
                     prefix="R$ " color="#dc2626" />
-        <KpiCard label="⛽ Consumo médio" value={fmt(s.media_km_l_geral, " km/l")}
+        <KpiCard label="Consumo médio" value={fmt(s.media_km_l_geral, " km/l")}
                     color="#16a34a" />
-        <KpiCard label="💸 R$ / km" value={fmt(s.custo_por_km_geral, "")}
+        <KpiCard label="R$ / km" value={fmt(s.custo_por_km_geral, "")}
                     prefix="R$ " color="#0ea5e9" />
       </div>
 
@@ -1782,7 +1782,7 @@ function OdometerTab() {
               </div>
               <div style={{ fontSize: 9, color: "#94a3b8" }}>
                 {r.captured_at?.slice(0, 10)}
-                {" · "}{r.kind === "start" ? "🌅" : "🌙"}
+                {" · "}{r.kind === "start" ? "" : ""}
                 {" "}IA {r.ai_confidence || 0}%
               </div>
             </button>

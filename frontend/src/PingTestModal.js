@@ -78,7 +78,7 @@ export default function PingTestModal({ open, onClose, defaultHost = "", ticketI
             display: "grid", placeItems: "center", color: "white",
             fontWeight: 800, fontSize: 16,
           }}>
-            🛰
+            
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>
@@ -160,7 +160,7 @@ export default function PingTestModal({ open, onClose, defaultHost = "", ticketI
                     cursor: busy ? "wait" : "pointer",
                     boxShadow: "0 2px 8px rgba(14,165,233,.3)",
                   }}>
-            {busy ? "Testando..." : "🛰 Testar agora"}
+            {busy ? "Testando..." : "Testar agora"}
           </button>
         </form>
 
@@ -168,7 +168,7 @@ export default function PingTestModal({ open, onClose, defaultHost = "", ticketI
           <div data-testid="ping-error" style={{
             marginTop: 12, padding: 10, background: "#fef2f2",
             color: "#991b1b", borderRadius: 8, fontSize: 12, fontWeight: 600,
-          }}>⚠️ {err}</div>
+          }}>️ {err}</div>
         )}
 
         {result && (
@@ -181,7 +181,7 @@ export default function PingTestModal({ open, onClose, defaultHost = "", ticketI
                 borderRadius: 8, fontSize: 11, color: "#065f46",
                 display: "flex", alignItems: "center", gap: 6,
               }}>
-                📎 <span><strong>Resultado salvo na OS</strong>
+                <span><strong>Resultado salvo na OS</strong>
                   <span style={{
                     marginLeft: 4, fontFamily: "ui-monospace,monospace",
                     background: "rgba(255,255,255,.7)",
@@ -285,9 +285,9 @@ function PingResultCard({ result }) {
           background: "rgba(255,255,255,.6)", borderRadius: 6,
           color: "#475569", lineHeight: 1.5,
         }}>
-          {result.avg_ms < 50 ? "🟢 Latência excelente"
-            : result.avg_ms < 150 ? "🟡 Latência ok"
-            : "🔴 Latência alta — verifique a rede"}
+          {result.avg_ms < 50 ? "Latência excelente"
+            : result.avg_ms < 150 ? "Latência ok"
+            : "Latência alta — verifique a rede"}
         </div>
       )}
     </div>

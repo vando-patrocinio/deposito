@@ -620,7 +620,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
               width: 22, height: 22, borderRadius: "50%",
               background: "#f59e0b", color: "white",
               fontSize: 13, fontWeight: 800, flexShrink: 0,
-            }}>👁</span>
+            }}></span>
             <span style={{ flex: 1, minWidth: 0, lineHeight: 1.3 }}>
               Você está vendo o app de{" "}
               <strong data-testid="admin-test-target-name" style={{
@@ -760,7 +760,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                       boxShadow: "0 4px 12px rgba(37,99,235,.25)",
                     }}
                   >
-                    📡 Cadastro Rede (CTO / CE / Cabo)
+                    Cadastro Rede (CTO / CE / Cabo)
                   </button>
 
                   {/* Resumo do último serviço */}
@@ -855,7 +855,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                   boxShadow: "0 4px 12px rgba(37,99,235,.25)",
                 }}
               >
-                📡 Cadastro Rede (CTO / CE / Cabo)
+                Cadastro Rede (CTO / CE / Cabo)
               </button>
 
 
@@ -1051,7 +1051,7 @@ function CollaboratorAppInner({ mobile = false, forcedCollabId = null, onLogout 
                   ts: Date.now(),
                   type: isOffline ? "CTO (offline)" : "CTO",
                   message: isOffline
-                    ? `📤 ${cto?.name || "Cadastro"} salvo na fila offline. Envia automaticamente quando voltar a internet.`
+                    ? `${cto?.name || "Cadastro"} salvo na fila offline. Envia automaticamente quando voltar a internet.`
                     : `CTO ${cto?.name} enviada para validação.`,
                 });
                 setScreen("home");
@@ -1383,7 +1383,7 @@ function CollabLoginScreen({ onSuccess, isAdminTest, collabs, setCollabId, appCa
           border: "1.5px solid #06b6d4",
         }}>
           <div style={{ fontWeight: 800, fontSize: 13, color: "#0e7490", marginBottom: 4 }}>
-            🔓 Acesso administrativo liberado
+            Acesso administrativo liberado
           </div>
           <div style={{ fontSize: 11, color: "#155e75", marginBottom: 10 }}>
             Olá <strong>{loggedUser?.name || loggedUser?.email}</strong> · você tem
@@ -1474,7 +1474,7 @@ function CollabLoginScreen({ onSuccess, isAdminTest, collabs, setCollabId, appCa
             background: "#fef2f2", color: "#991b1b", padding: 10,
             borderRadius: 8, fontSize: 12, marginBottom: 12, fontWeight: 600,
           }}>
-            ⚠️ {err}
+            ️ {err}
           </div>
         )}
 
@@ -1512,7 +1512,7 @@ function CollabLoginScreen({ onSuccess, isAdminTest, collabs, setCollabId, appCa
         }}>
           <summary style={{ cursor: "pointer", fontSize: 12,
                               fontWeight: 700, color: "#7f1d1d" }}>
-            🔓 Modo administrador — acesso direto sem login
+            Modo administrador — acesso direto sem login
           </summary>
           <p style={{ margin: "8px 0", fontSize: 11, color: "#991b1b" }}>
             Você está logado como admin/auditor. Pode abrir a Lousa de qualquer técnico.

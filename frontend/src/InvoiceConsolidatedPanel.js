@@ -89,7 +89,7 @@ export default function InvoiceConsolidatedPanel() {
                      alignItems: "center", marginBottom: 14, gap: 12 }}>
         <div>
           <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
-            📑 Notas Fiscais (visão consolidada)
+            Notas Fiscais (visão consolidada)
           </h3>
           <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
             {data.total} nota(s) — cada NF agrupa todos os lançamentos relacionados.
@@ -100,7 +100,7 @@ export default function InvoiceConsolidatedPanel() {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           data-testid="invoice-filter"
-          placeholder="🔍 Buscar fornecedor ou nº NF…"
+          placeholder="Buscar fornecedor ou nº NF…"
           style={{ padding: "8px 12px", border: "1px solid #cbd5e1",
                     borderRadius: 8, fontSize: 13, width: 280 }} />
       </div>
@@ -243,7 +243,7 @@ export default function InvoiceConsolidatedPanel() {
                       <div style={{ marginTop: 10, padding: 8,
                                       background: "#f8fafc", borderRadius: 6,
                                       fontSize: 11, color: "#475569" }}>
-                        📎 Arquivo original: <strong>{nf.purchases[0].file_name}</strong>
+                        Arquivo original: <strong>{nf.purchases[0].file_name}</strong>
                       </div>
                     )}
                   </div>

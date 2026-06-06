@@ -718,6 +718,9 @@ async def ensure_repair_ticket(
         "created_at": now_iso(),
         "updated_at": now_iso(),
         "source": "whatsapp_ai_auto",
+        # iter237 — borda VERDE na Lousa (origem cliente: cliente acionou
+        # a Isabella no WhatsApp e ela criou o ticket em nome dele)
+        "origin_source": "isabella_ai",
         "ai_diagnosis": {
             "trigger_text": triggered_by_text,
             "status": conn_info.get("status"),

@@ -3,12 +3,12 @@ import React, { useEffect, useState } from "react";
 import { api } from "@/api";
 
 const KIND_LABEL = {
-  geofence_entry: "📍 Entrou em cerca",
-  geofence_exit: "🚪 Saiu de cerca",
-  speed: "⚡ Excesso de velocidade",
+  geofence_entry: "Entrou em cerca",
+  geofence_exit: "Saiu de cerca",
+  speed: "Excesso de velocidade",
   panic: "🆘 Pânico",
-  low_battery: "🪫 Bateria fraca",
-  sos: "🚨 SOS",
+  low_battery: "Bateria fraca",
+  sos: "SOS",
 };
 
 export default function FleetEventsTab({ vehicles }) {
@@ -59,7 +59,7 @@ export default function FleetEventsTab({ vehicles }) {
             <option key={v.id} value={v.id}>{v.placa}</option>
           ))}
         </select>
-        <button onClick={reload} style={btn}>🔄 Atualizar</button>
+        <button onClick={reload} style={btn}>Atualizar</button>
       </div>
 
       <div style={card}>

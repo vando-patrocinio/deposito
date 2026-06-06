@@ -64,7 +64,7 @@ export default function ChurnReasonsKpiCard() {
         <div>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800,
                           color: "#0f172a", letterSpacing: -0.2 }}>
-            📊 KPI · Motivos de Cancelamento
+            KPI · Motivos de Cancelamento
           </h3>
           <p style={{ margin: "4px 0 0", fontSize: 12, color: "#64748b" }}>
             Análise das OS de retirada finalizadas — base para estratégia
@@ -86,7 +86,7 @@ export default function ChurnReasonsKpiCard() {
               boxShadow: "0 1px 2px rgba(91,33,182,.3)",
               display: "inline-flex", alignItems: "center", gap: 4,
             }}>
-            🤖 {aiLoading ? "Analisando…" : "Análise IA"}
+            {aiLoading ? "Analisando…" : "Análise IA"}
           </button>
           {[7, 30, 90, 180].map((d) => (
             <button
@@ -244,7 +244,7 @@ export default function ChurnReasonsKpiCard() {
                                 justifyContent: "space-between",
                                 alignItems: "center", marginBottom: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 18 }}>🤖</span>
+                  <span style={{ fontSize: 18 }}></span>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 800,
                                       color: "#5b21b6" }}>
@@ -267,7 +267,7 @@ export default function ChurnReasonsKpiCard() {
                 <div data-testid="churn-ai-loading"
                       style={{ padding: 20, color: "#7c3aed",
                                   fontSize: 13, textAlign: "center" }}>
-                  🧠 Analisando observações com Claude 4.6… (10-30s)
+                  Analisando observações com Claude 4.6… (10-30s)
                 </div>
               )}
 
@@ -276,7 +276,7 @@ export default function ChurnReasonsKpiCard() {
                       style={{ padding: 10, background: "#fee2e2",
                                   borderRadius: 6, color: "#991b1b",
                                   fontSize: 12 }}>
-                  ⚠ {aiErr}
+                  {aiErr}
                 </div>
               )}
 
@@ -307,7 +307,7 @@ export default function ChurnReasonsKpiCard() {
                             fontSize: 12, color: "#991b1b", marginBottom: 12,
                             fontWeight: 600,
                           }}>
-                      🚨 Alerta: {aiData.top_risk}
+                      Alerta: {aiData.top_risk}
                     </div>
                   )}
 
@@ -359,13 +359,13 @@ export default function ChurnReasonsKpiCard() {
                           borderRadius: 6, fontSize: 12, color: "#065f46",
                           fontWeight: 600, lineHeight: 1.4,
                         }}>
-                          💡 {t.recommended_action}
+                          {t.recommended_action}
                         </div>
                         {t.potential_savings_clients_per_month > 0 && (
                           <div style={{ marginTop: 6, fontSize: 11,
                                             fontWeight: 700,
                                             color: "#0d9488" }}>
-                            💰 Retenção potencial:{" "}
+                            Retenção potencial:{" "}
                             {t.potential_savings_clients_per_month} cliente
                             {t.potential_savings_clients_per_month !== 1 ? "s" : ""}/mês
                           </div>

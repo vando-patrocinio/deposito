@@ -171,7 +171,7 @@ export default function StokTransfersPanel() {
           <Activity size={24} />
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontWeight: 800, fontSize: 16 }}>🔄 Transferências de ONT</div>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Transferências de ONT</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
             Estoque do técnico ↔ Cliente · validação automática com SmartOLT · aprovação manual quando MAC diverge.
           </div>

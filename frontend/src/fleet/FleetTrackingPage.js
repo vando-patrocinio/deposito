@@ -192,7 +192,7 @@ export default function FleetTrackingPage() {
         <div className="ft-header-row">
           <div>
             <h1 className="ft-title">
-              <span className="ft-title-icon">📡</span>
+              <span className="ft-title-icon"></span>
               Rastreamento de Frota
             </h1>
             <p className="ft-subtitle">
@@ -205,7 +205,7 @@ export default function FleetTrackingPage() {
                      data-testid="fleet-tracking-emergency-btn"
                      title="Bloquear veículo em sinistro/roubo">
               <span className="ft-pulse-dot" />
-              🚨 <span className="ft-btn-label">Emergência</span>
+              <span className="ft-btn-label">Emergência</span>
             </button>
             <button onClick={() => setShowForm({ edit: null })}
                      className="ft-btn ft-btn-primary"
@@ -217,7 +217,7 @@ export default function FleetTrackingPage() {
 
         {/* KPI STRIP */}
         <div className="ft-kpi-strip" data-testid="fleet-kpi-strip">
-          <KPICard label="Total" value={kpis.total} icon="🚗"
+          <KPICard label="Total" value={kpis.total} icon=""
                     color="#0f172a"
                     active={statusFilter === null}
                     onClick={() => setStatusFilter(null)} />
@@ -236,7 +236,7 @@ export default function FleetTrackingPage() {
                     active={statusFilter === "offline"}
                     onClick={() => setStatusFilter(
                       statusFilter === "offline" ? null : "offline")} />
-          <KPICard label="Excesso" value={kpis.overspeed} icon="⚡"
+          <KPICard label="Excesso" value={kpis.overspeed} icon=""
                     color={STATUS_COLOR.overspeed}
                     active={statusFilter === "overspeed"}
                     onClick={() => setStatusFilter(
@@ -247,12 +247,12 @@ export default function FleetTrackingPage() {
       {/* TABS */}
       <nav className="ft-tabs">
         {[
-          ["live", "🗺️", "Tempo Real"],
+          ["live", "️", "Tempo Real"],
           ["history", "⏱️", "Histórico"],
-          ["geofences", "📐", "Cercas"],
-          ["events", "🚨", "Alertas"],
-          ["reports", "📊", "Relatórios"],
-          ["tenants", "🏢", "Clientes"],
+          ["geofences", "", "Cercas"],
+          ["events", "", "Alertas"],
+          ["reports", "", "Relatórios"],
+          ["tenants", "", "Clientes"],
         ].map(([id, icon, label]) => (
           <button key={id}
                    data-testid={`fleet-tab-${id}`}
@@ -283,7 +283,7 @@ export default function FleetTrackingPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="🔍 Buscar placa, modelo…"
+                placeholder="Buscar placa, modelo…"
                 className="ft-search"
                 data-testid="fleet-search-input"
               />
@@ -329,12 +329,12 @@ export default function FleetTrackingPage() {
           <main className="ft-map-wrap" data-testid="fleet-map">
             <button className="ft-aside-toggle"
                      onClick={() => setDrawerOpen((p) => !p)}>
-              ☰ Veículos ({filtered.length})
+              Veículos ({filtered.length})
             </button>
             <MapContainer center={center} zoom={13}
                             style={{ height: "100%", width: "100%" }}
                             zoomControl={false}>
-              <TileLayer attribution='&copy; OpenStreetMap'
+              <TileLayer attribution='Mapa &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contribuidores &copy; <a href="https://carto.com/attributions">CARTO</a>'
                            url={tileUrl} />
               <FitToMarkers vehicles={vehicles} />
               {selected?.lat && (
@@ -385,7 +385,7 @@ export default function FleetTrackingPage() {
                          className={`ft-map-style-btn ${mapStyle === s ? "active" : ""}`}
                          onClick={() => setMapStyle(s)}
                          data-testid={`fleet-mapstyle-${s}`}>
-                  {s === "light" ? "🌞" : s === "dark" ? "🌙" : "🛰️"}
+                  {s === "light" ? "" : s === "dark" ? "" : "️"}
                 </button>
               ))}
             </div>
@@ -420,8 +420,8 @@ export default function FleetTrackingPage() {
                 <Stat label="Velocidade"
                        value={`${(selected.speed_kmh || 0).toFixed(0)} km/h`} />
                 <Stat label="Ignição"
-                       value={selected.ignition === true ? "🔑 Ligada"
-                         : selected.ignition === false ? "🔌 Desligada" : "—"} />
+                       value={selected.ignition === true ? "Ligada"
+                         : selected.ignition === false ? "Desligada" : "—"} />
                 <Stat label="Última atualização"
                        value={fmtMin(selected.ts)} />
                 <Stat label="Limite"
@@ -429,7 +429,7 @@ export default function FleetTrackingPage() {
               </div>
               {selected.lat && (
                 <div className="ft-inspector-loc">
-                  📍 {selected.lat.toFixed(5)}, {selected.lng.toFixed(5)}
+                  {selected.lat.toFixed(5)}, {selected.lng.toFixed(5)}
                   <a target="_blank" rel="noreferrer"
                       href={`https://www.google.com/maps?q=${selected.lat},${selected.lng}`}>
                     Google Maps ↗
@@ -445,7 +445,7 @@ export default function FleetTrackingPage() {
                 <button className="ft-btn ft-btn-danger-soft"
                          onClick={() => setShowEmergency(true)}
                          data-testid="fleet-inspector-block">
-                  🔒 Bloquear/Liberar
+                  Bloquear/Liberar
                 </button>
                 <button className="ft-btn ft-btn-secondary"
                          onClick={() => setShowForm({ edit: selected })}

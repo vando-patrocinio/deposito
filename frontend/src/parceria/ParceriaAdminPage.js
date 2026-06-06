@@ -56,11 +56,11 @@ export default function ParceriaAdminPage() {
   const copyMagicLink = async (p) => {
     // iter230 — agora aponta pro PWA do parceiro em /parceiro/{token}
     const link = `${window.location.origin}/parceiro/${p.magic_token}`;
-    const msg = `Olá ${p.name}! 🎁\n\n` +
+    const msg = `Olá ${p.name}! \n\n` +
       `Você é parceiro Ligo Vantagens. Use este link único pra ` +
       `gerenciar suas promoções no celular (não precisa de senha):\n\n` +
       `${link}\n\n` +
-      `📷 Pelo link você consegue cadastrar fotos, % desconto, e ler ` +
+      `Pelo link você consegue cadastrar fotos, % desconto, e ler ` +
       `o QR code dos clientes Ligo no caixa.`;
     try {
       await navigator.clipboard.writeText(msg);
@@ -85,7 +85,7 @@ export default function ParceriaAdminPage() {
                          alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>
-            🎁 Parcerias Comerciais
+            Parcerias Comerciais
           </h1>
           <p style={{ fontSize: 12, color: "#64748b",
                         margin: "2px 0 0" }}>
@@ -97,22 +97,22 @@ export default function ParceriaAdminPage() {
           <a href="/?showcase=parcerias" target="_blank" rel="noreferrer"
               data-testid="pa-admin-link-vitrine"
               style={ghostBtn}>
-            🌐 Ver vitrine pública
+            Ver vitrine pública
           </a>
           <a href="/seja-parceiro" target="_blank" rel="noreferrer"
               data-testid="pa-admin-link-landing"
               style={ghostBtn}>
-            🤝 Landing "Seja parceiro"
+            Landing “Seja parceiro”
           </a>
           <a href="/?portal=parceiro" target="_blank" rel="noreferrer"
               data-testid="pa-admin-link-partner-login"
               style={ghostBtn}>
-            🔐 Portal do parceiro (login)
+            Portal do parceiro (login)
           </a>
           <a href="/cliente" target="_blank" rel="noreferrer"
               data-testid="pa-admin-link-cliente"
               style={ghostBtn}>
-            📱 App do cliente Ligo
+            App do cliente Ligo
           </a>
         </div>
       </header>
@@ -129,9 +129,9 @@ export default function ParceriaAdminPage() {
 
       <div style={tabBar}>
         {[
-          ["partners", "🏪 Parceiros"],
-          ["promotions", "🎁 Promoções"],
-          ["redemptions", `📜 Redenções${
+          ["partners", "Parceiros"],
+          ["promotions", "Promoções"],
+          ["redemptions", `Redenções${
             reds.filter((r) => !r.paid).length
               ? ` (${reds.filter((r) => !r.paid).length})` : ""}`],
         ].map(([k, v]) => (
@@ -199,20 +199,20 @@ export default function ParceriaAdminPage() {
                                          textDecoration: "none",
                                          display: "inline-block" }}
                               data-testid={`pa-link-${p.id}`}>
-                            🔗 Site
+                            Site
                           </a>
                         )}
                         {p.magic_token && (
                           <button style={miniBtn("#f59e0b")}
                                    onClick={() => copyMagicLink(p)}
                                    data-testid={`pa-magic-${p.id}`}>
-                            🪄 Link mágico
+                            Link mágico
                           </button>
                         )}
                         <button style={miniBtn("#3b82f6")}
                                  onClick={() => setShowUsersFor(p)}
                                  data-testid={`pa-users-${p.id}`}>
-                          👤 Acesso
+                          Acesso
                         </button>
                         <button style={miniBtn("#64748b")}
                                  onClick={() => setShowPartnerForm(p)}>
@@ -220,7 +220,7 @@ export default function ParceriaAdminPage() {
                         </button>
                         <button style={miniBtn("#dc2626")}
                                  onClick={() => delPartner(p.id, p.name)}>
-                          🗑
+                          
                         </button>
                       </td>
                     </tr>
@@ -327,7 +327,7 @@ export default function ParceriaAdminPage() {
                         <button style={miniBtn("#10b981")}
                                  onClick={() => markPaid(r.id)}
                                  data-testid={`pa-mark-paid-${r.id}`}>
-                          💰 Marcar pago
+                          Marcar pago
                         </button>
                       )}
                     </td>
@@ -601,16 +601,16 @@ function PartnerUsersModal({ partner, onClose }) {
           <div style={{ fontWeight: 800, marginBottom: 6 }}>
             ✓ Acesso criado!
           </div>
-          <div>📧 <code>{created.email}</code></div>
-          <div>🔗 Login: <code>{created.login_url}</code></div>
+          <div><code>{created.email}</code></div>
+          <div>Login: <code>{created.login_url}</code></div>
           {created.partner_url && (
-            <div>🌐 Página: <code>{created.partner_url}</code></div>
+            <div>Página: <code>{created.partner_url}</code></div>
           )}
           <button onClick={() => navigator.clipboard.writeText(
             `Página do parceiro: ${created.partner_url || created.login_url}\n` +
             `Login: ${created.login_url}\nE-mail: ${created.email}`)}
                    style={{ ...secBtn, marginTop: 8 }}>
-            📋 Copiar credenciais
+            Copiar credenciais
           </button>
         </div>
       ) : null}

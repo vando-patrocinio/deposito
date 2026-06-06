@@ -632,7 +632,7 @@ function FiliaisTab() {
                 padding: "2px 8px", borderRadius: 999,
                 background: "#ecfdf5", color: "#047857",
                 fontSize: 11, fontWeight: 600,
-              }}>👤 {collabName[r.default_collaborator_id]}</span>
+              }}>{collabName[r.default_collaborator_id]}</span>
             : <span style={{ color: "#cbd5e1", fontSize: 11 }}>—</span> },
         { key: "active", label: "Ativa",
           render: (r) => r.active ? "✓" : "—" },
@@ -744,7 +744,7 @@ function MappingSummaryCard({ collabName }) {
       )}
       {filiais.length === 0 ? (
         <div style={{ fontSize: 11.5, color: "#15803d", fontStyle: "italic" }}>
-          Nenhuma filial cadastrada. Clique em "Importar do Atlaz" pra trazer todas
+          Nenhuma filial cadastrada. Clique em “Importar do Atlaz” pra trazer todas
           as filiais já configuradas em Sistema → Configurações → Atlaz.
         </div>
       ) : mapped.length === 0 ? (
@@ -761,9 +761,9 @@ function MappingSummaryCard({ collabName }) {
               border: "1px solid #bbf7d0",
               display: "inline-flex", alignItems: "center", gap: 5,
             }}>
-              🏢 {f.name}
+              {f.name}
               <span style={{ color: "#94a3b8" }}>→</span>
-              👤 {collabName[f.default_collaborator_id] || "(técnico removido)"}
+              {collabName[f.default_collaborator_id] || "(técnico removido)"}
             </span>
           ))}
         </div>

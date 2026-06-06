@@ -192,7 +192,7 @@ export default function PracasPanel() {
                         padding: "2px 7px", borderRadius: 999,
                         background: "#dbeafe", border: "1px solid #93c5fd",
                         color: "#1e40af", fontSize: 10.5, fontWeight: 700,
-                      }}>🏢 {b}</span>
+                      }}>{b}</span>
                     ))}
                   </div>
                 )}
@@ -382,7 +382,7 @@ export default function PracasPanel() {
                         background: "#dbeafe", border: "1px solid #93c5fd",
                         color: "#1e40af", fontSize: 12, fontWeight: 600,
                       }}>
-                        🏢 {b}
+                        {b}
                         <button
                           type="button"
                           onClick={() => setForm({

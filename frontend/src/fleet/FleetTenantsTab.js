@@ -96,7 +96,7 @@ export default function FleetTenantsTab() {
             <button onClick={() => setPortalFor(t)}
                      data-testid={`fleet-tnt-portal-${t.id}`}
                      style={{ ...dangerBtn, background: "#7c3aed" }}>
-              👤 Usuários do portal
+              Usuários do portal
             </button>
             <button onClick={() => remove(t.id)} style={dangerBtn}>
               Excluir

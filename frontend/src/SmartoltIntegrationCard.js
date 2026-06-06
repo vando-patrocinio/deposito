@@ -105,9 +105,9 @@ export default function SmartoltIntegrationCard() {
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-        <Button onClick={save} data-testid="smartolt-save-btn">💾 Salvar</Button>
-        <Button variant="soft" onClick={test} disabled={testing} data-testid="smartolt-test-btn">{testing ? "Testando…" : "🔌 Testar conexão"}</Button>
-        <Button variant="soft" onClick={sync} disabled={syncing || !cfg.enabled} data-testid="smartolt-sync-btn">{syncing ? "Sincronizando…" : "🔄 Sincronizar ONUs agora"}</Button>
+        <Button onClick={save} data-testid="smartolt-save-btn">Salvar</Button>
+        <Button variant="soft" onClick={test} disabled={testing} data-testid="smartolt-test-btn">{testing ? "Testando…" : "Testar conexão"}</Button>
+        <Button variant="soft" onClick={sync} disabled={syncing || !cfg.enabled} data-testid="smartolt-sync-btn">{syncing ? "Sincronizando…" : "Sincronizar ONUs agora"}</Button>
       </div>
 
       {cfg.last_sync_at && (

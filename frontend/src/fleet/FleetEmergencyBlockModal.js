@@ -9,7 +9,7 @@
  *  5. Campo opcional "Motivo / Nº B.O." (auditoria)
  *  6. Envia comando `block` (RELAY,1<senha>#) para o gateway
  *  7. Mostra confirmação e instrui operador
- *  8. Botão "🔓 Liberar veículo" disponível depois (caso falso alarme)
+ *  8. Botão "Liberar veículo" disponível depois (caso falso alarme)
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "@/api";
@@ -75,7 +75,7 @@ export default function FleetEmergencyBlockModal({ vehicles, onClose,
                        alignItems: "flex-start", marginBottom: 8 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 20, color: "#991b1b" }}>
-              🚨 Bloqueio de Emergência
+              Bloqueio de Emergência
             </h2>
             <p style={{ margin: "4px 0 0", fontSize: 12,
                           color: "#64748b" }}>
@@ -102,7 +102,7 @@ export default function FleetEmergencyBlockModal({ vehicles, onClose,
                 {vehicles.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.placa} {v.modelo ? `· ${v.modelo}` : ""}
-                    {v.online ? " · 🟢 online" : " · ⚪ offline"}
+                    {v.online ? " · online" : " · offline"}
                   </option>
                 ))}
               </select>
@@ -126,14 +126,14 @@ export default function FleetEmergencyBlockModal({ vehicles, onClose,
                   <div>
                     <div style={infoLbl}>Status</div>
                     <div style={{ fontWeight: 700 }}>
-                      {veh.online ? "🟢 ONLINE" : "⚪ OFFLINE (cmd fila)"}
+                      {veh.online ? "ONLINE" : "OFFLINE (cmd fila)"}
                     </div>
                   </div>
                 </div>
                 {veh.lat && (
                   <div style={{ marginTop: 8, fontSize: 12,
                                   color: "#475569" }}>
-                    📍 Última posição: {veh.lat.toFixed(5)},{" "}
+                    Última posição: {veh.lat.toFixed(5)},{" "}
                     {veh.lng.toFixed(5)}
                     {" · "}
                     <a target="_blank" rel="noreferrer"
@@ -143,15 +143,15 @@ export default function FleetEmergencyBlockModal({ vehicles, onClose,
                     </a>
                     <br />
                     {veh.ts && (
-                      <span>🕒 Última atualização:{" "}
+                      <span>Última atualização:{" "}
                         {new Date(veh.ts).toLocaleString("pt-BR")}</span>
                     )}
                     {" · "}
-                    🔑 Ignição:{" "}
+                    Ignição:{" "}
                     {veh.ignition === true ? "ligada"
                       : veh.ignition === false ? "desligada" : "?"}
                     {" · "}
-                    🚗 {(veh.speed_kmh || 0).toFixed(0)} km/h
+                    {(veh.speed_kmh || 0).toFixed(0)} km/h
                   </div>
                 )}
               </div>
@@ -199,7 +199,7 @@ export default function FleetEmergencyBlockModal({ vehicles, onClose,
                                  opacity: canSend ? 1 : 0.4,
                                  cursor: canSend ? "pointer" : "not-allowed" }}
                        data-testid="fleet-emergency-block-confirm">
-                {busy ? "Enviando…" : "🔒 BLOQUEAR AGORA"}
+                {busy ? "Enviando…" : "BLOQUEAR AGORA"}
               </button>
             </div>
           </>
@@ -214,8 +214,8 @@ export default function FleetEmergencyBlockModal({ vehicles, onClose,
                 ? "#f59e0b" : "#16a34a"}` }}>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>
                 {sent.kind === "block"
-                  ? "🔒 Comando de BLOQUEIO enfileirado"
-                  : "🔓 Comando de LIBERAÇÃO enfileirado"}
+                  ? "Comando de BLOQUEIO enfileirado"
+                  : "Comando de LIBERAÇÃO enfileirado"}
               </div>
               <div style={{ fontSize: 13 }}>
                 Veículo <b>{sent.vehicle.placa}</b> ·
@@ -236,7 +236,7 @@ export default function FleetEmergencyBlockModal({ vehicles, onClose,
               <div style={{ marginTop: 12, padding: 10, background: "white",
                               borderRadius: 6, fontSize: 12,
                               color: "#475569" }}>
-                <b>📋 Como funciona:</b>
+                <b>Como funciona:</b>
                 <ol style={{ margin: "4px 0 0 18px", padding: 0 }}>
                   <li>Comando fica na fila do backend</li>
                   <li>Gateway TCP (na VPS) puxa a cada 60s</li>
@@ -245,7 +245,7 @@ export default function FleetEmergencyBlockModal({ vehicles, onClose,
                       : "RELAY,0<senha>#"}
                   </code> via TCP ao rastreador</li>
                   <li>Rastreador aciona/libera o relé (corta/restitui partida)</li>
-                  <li>Status muda pra "ack" automaticamente</li>
+                  <li>Status muda pra “ack” automaticamente</li>
                 </ol>
               </div>
             </div>
@@ -263,7 +263,7 @@ export default function FleetEmergencyBlockModal({ vehicles, onClose,
                          style={{ ...secBtn, color: "#16a34a",
                                     borderColor: "#16a34a" }}
                          data-testid="fleet-emergency-unblock">
-                  🔓 Liberar veículo (desfazer)
+                  Liberar veículo (desfazer)
                 </button>
               ) : <div />}
               <button onClick={onClose} style={primaryBtn}>

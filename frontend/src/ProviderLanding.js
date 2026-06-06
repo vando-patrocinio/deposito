@@ -247,7 +247,7 @@ function StatsBar() {
   const stats = [
     { v: "99.9%", l: "Uptime garantido" },
     { v: "+50 mil", l: "Lares conectados" },
-    { v: "4.9★", l: "Avaliação Google" },
+    { v: "4.9", l: "Avaliação Google" },
     { v: "24/7", l: "Suporte humano" },
   ];
   return (
@@ -474,15 +474,15 @@ function CombosMarquee({ config }) {
 }
 function comboEmoji(n) {
   n = (n || "").toLowerCase();
-  if (n.includes("disney")) return "🏰";
-  if (n.includes("hbo")) return "🎬";
-  if (n.includes("globo")) return "📺";
-  if (n.includes("deezer") || n.includes("spotify")) return "🎵";
-  if (n.includes("sky")) return "📡";
-  if (n.includes("paramount")) return "⛰️";
-  if (n.includes("noggin")) return "👶";
-  if (n.includes("telefone")) return "☎️";
-  if (n.includes("celular")) return "📱";
+  if (n.includes("disney")) return "";
+  if (n.includes("hbo")) return "";
+  if (n.includes("globo")) return "";
+  if (n.includes("deezer") || n.includes("spotify")) return "";
+  if (n.includes("sky")) return "";
+  if (n.includes("paramount")) return "️";
+  if (n.includes("noggin")) return "";
+  if (n.includes("telefone")) return "️";
+  if (n.includes("celular")) return "";
   return "✨";
 }
 
@@ -537,16 +537,16 @@ function Testimonials() {
   const data = [
     { name: "Cláudia Mendes", bairro: "Copacabana", rating: 5,
       text: "Trocamos da operadora antiga e nunca mais tive Netflix travando.",
-      avatar: "👩🏻" },
+      avatar: "" },
     { name: "Roberto Silva", bairro: "Tijuca", rating: 5,
       text: "O técnico chegou no dia agendado e instalou em 1 hora. Recomendo.",
-      avatar: "👨🏽" },
+      avatar: "" },
     { name: "Patrícia Lima", bairro: "Barra da Tijuca", rating: 5,
       text: "Suporte resolve por WhatsApp em 5 minutos. Atendimento humano de verdade.",
-      avatar: "👩🏾" },
+      avatar: "" },
     { name: "André Oliveira", bairro: "Botafogo", rating: 5,
       text: "Plano de 1 giga, ping de 8ms jogando FPS. Internet de gamer.",
-      avatar: "🧑🏻‍💻" },
+      avatar: "‍" },
   ];
   return (
     <section className="py-24 px-6 lg:px-10 bg-slate-50">
@@ -569,7 +569,7 @@ function Testimonials() {
                 ))}
               </div>
               <p className="text-sm text-slate-700 leading-relaxed">
-                "{t.text}"
+                “{t.text}”
               </p>
               <div className="mt-5 flex items-center gap-3 pt-4 border-t border-slate-100">
                 <div className="w-10 h-10 rounded-full bg-indigo-50
@@ -619,7 +619,7 @@ function AppShowcase({ config }) {
                   className="inline-flex items-center gap-2 px-5 py-3 rounded-xl
                               bg-slate-900 text-white text-sm font-bold
                               hover:bg-slate-800 transition">
-                🤖 Google Play
+                Google Play
               </a>
             )}
             {config.app_ios_url && (
@@ -627,7 +627,7 @@ function AppShowcase({ config }) {
                   className="inline-flex items-center gap-2 px-5 py-3 rounded-xl
                               bg-slate-900 text-white text-sm font-bold
                               hover:bg-slate-800 transition">
-                🍎 App Store
+                App Store
               </a>
             )}
             {!config.app_android_url && !config.app_ios_url && (
@@ -812,7 +812,7 @@ function LeadFormSection({ config, plans }) {
                                 transition" />
             {err && (
               <div className="px-5 py-3 rounded-xl bg-red-500/20 border border-red-400/30
-                                text-red-200 text-sm">⚠ {err}</div>
+                                text-red-200 text-sm">{err}</div>
             )}
             <button type="submit" disabled={busy} data-testid="lead-submit"
                      className="w-full py-4 rounded-xl bg-[#4F46E5]

@@ -24,6 +24,8 @@ import OsClientChat from "@/OsClientChat";
 import OsAlvaroSummary from "@/OsAlvaroSummary";
 import { fmtAddress, fmtPhone, fmtName, fmtRelato, safeText } from "@/utils/format";
 import ErrorBoundary from "@/ErrorBoundary";
+import RompimentoCloseForm from "./lousa/RompimentoCloseForm";
+import SmartoltLiveCard from "./lousa/SmartoltLiveCard";
 
 /**
  * LousaMobile — vista da Lousa (bolhas) no app do colaborador.
@@ -426,6 +428,27 @@ export default function LousaMobile({ collaboratorId, onBack, isAdminTest = fals
         setErr(msg);
         setTimeout(() => alert(
           "❌ FORA DA ÁREA DO SERVIÇO\n\n" + msg
+        ), 30);
+      } else if (e?.response?.status === 400
+                  && detail?.code === "CTO_PORT_REQUIRED") {
+        // iter215z — Porta da CTO obrigatória (instalação/reparo)
+        setErr(detail.message || "Porta da CTO obrigatória");
+        setTimeout(() => alert(
+          "🔌 PORTA DA CTO OBRIGATÓRIA\n\n" + (detail.message || "")
+        ), 30);
+      } else if (e?.response?.status === 409
+                  && detail?.code === "CTO_PORT_OCCUPIED_BY_OTHER") {
+        // iter215aa — porta destino já ocupada por outro cliente
+        const occ = detail.occupied_by || {};
+        const extra = occ.client_name
+          ? `\n\nPorta ocupada por: ${occ.client_name}`
+          : "";
+        setErr(detail.message || "Porta ocupada por outro cliente");
+        setTimeout(() => alert(
+          "🚫 PORTA OCUPADA POR OUTRO CLIENTE\n\n"
+          + (detail.message || "") + extra
+          + "\n\nVolte ao passo da CTO e escolha outra porta livre, "
+          + "ou peça pro gestor retirar o cliente atual."
         ), 30);
       } else {
         // iter211g — mensagem específica para Network Error / timeout
@@ -1611,6 +1634,8 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   // iter166 — Foto da CTO obrigatória + Validar MAC contra SmartOLT
   const [ctoPhotoRequired, setCtoPhotoRequired] = useState(false);
   const [macValidationRequired, setMacValidationRequired] = useState(false);
+  // iter215z — Porta da CTO obrigatória em instalação/reparo (regra global)
+  const [ctoPortRequired, setCtoPortRequired] = useState(true);
   // iter199 — Quando a CTO foi cadastrada há < 5 dias, pula a foto da CTO
   // (já foi fotografada no cadastro recente). State guarda o ID da CTO
   // verificada e a flag is_recent retornada pelo backend.
@@ -1621,6 +1646,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
       setIpv6TestRequired(false);
       setCtoPhotoRequired(false);
       setMacValidationRequired(false);
+      setCtoPortRequired(true);
       return;
     }
     api._client.get(`/public/os-validation-toggles/${cid}`)
@@ -1628,11 +1654,13 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
         setIpv6TestRequired(!!r.data?.ipv6_test_required);
         setCtoPhotoRequired(!!r.data?.cto_photo_required);
         setMacValidationRequired(!!r.data?.mac_validation_required);
+        setCtoPortRequired(r.data?.cto_port_required !== false);  // default ON
       })
       .catch(() => {
         setIpv6TestRequired(false);
         setCtoPhotoRequired(false);
         setMacValidationRequired(false);
+        setCtoPortRequired(true);
       });
   }, [collaboratorId]);
   const [ctoSelected, setCtoSelected] = useState(null);
@@ -1776,6 +1804,7 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
     || ticket.type === "troca"
     || ticket.type === "troca_endereco";
   const isWithdraw = ticket.type === "retirada";
+  const isRompimento = ticket.type === "rompimento";
   // ONT do estoque é oferecida em qualquer fluxo de cliente final
   // (instalação, troca, troca de endereço, ponto adicional, reparo).
   const needsTechOnts = [
@@ -2087,6 +2116,21 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   const insumosStepNum = 4;
 
   async function submit() {
+    // iter215z — REGRA GLOBAL: porta da CTO OBRIGATÓRIA em instalação/reparo.
+    // Bloqueia o submit cedo, com alerta claro. Backend também valida.
+    if (ctoPortRequired && (isInstall || isRepair) && !isFullUnlock) {
+      if (!ctoSelected?.id || !ctoPortSelected) {
+        window.alert(
+          `🔌 Porta da CTO obrigatória\n\n`
+          + `Para finalizar uma OS de ${isInstall ? "instalação" : "reparo"} `
+          + `você precisa selecionar a CTO e a porta.\n\n`
+          + `Volte ao passo "CTO + Porta", escolha a caixa e a porta `
+          + `livre. O cliente será registrado automaticamente na porta `
+          + `e na Base de Portas.`,
+        );
+        return;
+      }
+    }
     // iter176 — Registra correção do OCR (best-effort, fire-and-forget)
     if (ocrOriginal && (ocrOriginal.mac || ocrOriginal.sn)) {
       const fnorm = (s) => (s || "").trim().toUpperCase().replace(/[:\-.\s]/g, "");
@@ -2267,6 +2311,19 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
   };
   const macStyle = macStatus ? macColors[macStatus] : null;
 
+  // Rompimento: fluxo de fechamento totalmente diferente (relato livre + IA).
+  // Renderiza UI dedicada e ignora steps de Sinal/CTO/Insumos.
+  if (isRompimento) {
+    return (
+      <RompimentoCloseForm
+        ticket={ticket}
+        collaboratorId={collaboratorId}
+        onClose={onClose}
+        onFinalized={onRefresh}
+      />
+    );
+  }
+
   return (
     <div data-testid="ticket-detail">
       {isFullUnlock && (
@@ -2419,6 +2476,19 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
           </>
         )}
       </div>
+
+      {/* SmartOLT Live (iter215): permite ao técnico forçar refresh do sinal
+          via botão "Live" — bypassa cache TTL + circuit-breaker de rate-limit
+          no backend. */}
+      {ticket.client_snapshot && (
+        (ticket.client_snapshot.pppoe_user || ticket.client_snapshot.name) && (
+          <SmartoltLiveCard
+            ticketId={ticket.id}
+            collaboratorId={collaboratorId}
+            initiallyExpanded={false}
+          />
+        )
+      )}
 
       <div style={{
         background: "#f1f5f9", padding: 12, borderRadius: 12, marginTop: 12,
@@ -2777,8 +2847,8 @@ function TicketDetail({ ticket, onClose, onFinalize, busy, err, onRefresh,
                     Este SN NÃO é o equipamento do cliente
                     {withdrawSnCheck.client_name ? ` ${withdrawSnCheck.client_name}` : ""}.
                     Confirme se está retirando o equipamento certo. Se foi
-                    trocado anteriormente sem registro, marque "Equipamento
-                    com defeito" no step de Insumos para forçar análise.
+                    trocado anteriormente sem registro, marque “Equipamento
+                    com defeito” no step de Insumos para forçar análise.
                   </div>
                 </>
               )}
@@ -4184,7 +4254,7 @@ function BlockedCloseModal({ info, onClose }) {
                        fontSize: 11, color: "#1e40af",
                        lineHeight: 1.5, marginBottom: 14 }}>
           🔒 Você <b>não pode finalizar</b> esta OS. Ela ficará marcada
-          como "aguardando contato do gestor" e será resolvida pelo
+          como “aguardando contato do gestor” e será resolvida pelo
           gestor depois que ele conversar com o cliente.
         </div>
         <button onClick={onClose}

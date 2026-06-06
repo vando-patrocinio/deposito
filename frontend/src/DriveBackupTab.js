@@ -403,7 +403,7 @@ export default function DriveBackupTab() {
                       border: "1px solid #e2e8f0", borderRadius: 8,
                       fontSize: 11, color: "#475569" }}>
             <summary style={{ cursor: "pointer", fontWeight: 700, color: "#0f172a" }}>
-              📊 Próximo snapshot — <strong>{snapshotInfo.collections_included}</strong> coleções
+              Próximo snapshot — <strong>{snapshotInfo.collections_included}</strong> coleções
               · <strong>{snapshotInfo.total_docs.toLocaleString("pt-BR")}</strong> documentos
               {snapshotInfo.filesystem_assets?.total_files > 0 && (
                 <> · <strong>{snapshotInfo.filesystem_assets.total_files}</strong> arquivos
@@ -417,7 +417,7 @@ export default function DriveBackupTab() {
                               border: "1px solid #bfdbfe", borderRadius: 6 }}>
                 <div style={{ fontWeight: 700, fontSize: 11, color: "#1e40af",
                                 marginBottom: 4 }}>
-                  📎 Arquivos físicos no tarball (salvos no Drive como .files.tar.gz)
+                  Arquivos físicos no tarball (salvos no Drive como .files.tar.gz)
                 </div>
                 <table style={{ width: "100%", fontSize: 11,
                                   fontFamily: "JetBrains Mono, monospace",
@@ -452,7 +452,7 @@ export default function DriveBackupTab() {
             )}
             <div style={{ marginTop: 8, maxHeight: 200, overflowY: "auto" }}>
               <div style={{ fontWeight: 700, fontSize: 11, color: "#0f172a", marginBottom: 4 }}>
-                💾 Coleções MongoDB
+                Coleções MongoDB
               </div>
               <table style={{ width: "100%", fontSize: 11,
                                 fontFamily: "JetBrains Mono, monospace",
@@ -474,7 +474,7 @@ export default function DriveBackupTab() {
                       </td>
                       <td style={{ padding: "3px 6px", textAlign: "center",
                                     color: r.masked_when_no_secrets ? "#dc2626" : "#cbd5e1" }}>
-                        {r.masked_when_no_secrets ? "🔒" : "—"}
+                        {r.masked_when_no_secrets ? "" : "—"}
                       </td>
                     </tr>
                   ))}
@@ -493,7 +493,7 @@ export default function DriveBackupTab() {
         )}
 
         <div style={{ marginTop: 8, padding: 10, background: "#ecfeff", border: "1px solid #67e8f9", borderRadius: 8, fontSize: 11, color: "#0e7490", lineHeight: 1.55 }} data-testid="drive-wa-session-info">
-          <strong>🟢 Inclui sessão WhatsApp:</strong> a coleção <code>wa_auth_state</code>{" "}
+          <strong>Inclui sessão WhatsApp:</strong> a coleção <code>wa_auth_state</code>{" "}
           (creds + keys Signal protocol) entra em cada snapshot. Se o Mongo
           travar, você restaura aqui e o Baileys reconecta automaticamente
           sem precisar escanear QR Code de novo.
@@ -569,7 +569,7 @@ function NotConnected({ onConnect, busy, error, onBackupLocal, busyLocal }) {
 }
 
 function BackupList({ items, localItems, onRestore }) {
-  if (!items.length) return <div style={{ padding: 16, color: "#94a3b8", textAlign: "center", fontSize: 13 }}>Nenhum backup ainda. Clique "Fazer backup agora".</div>;
+  if (!items.length) return <div style={{ padding: 16, color: "#94a3b8", textAlign: "center", fontSize: 13 }}>Nenhum backup ainda. Clique “Fazer backup agora”.</div>;
   const localByFile = Object.fromEntries((localItems || []).map((b) => [b.file_id, b]));
   return (
     <div style={{ maxHeight: 460, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -770,7 +770,7 @@ function BootstrapCard({ onRestored }) {
                              color: tarFile ? "#92400e" : "#94a3b8",
                              cursor: busy ? "not-allowed" : "pointer",
                              fontSize: 11, fontWeight: 600 }}>
-              📎 {tarFile ? tarFile.name : "Anexar .files.tar.gz (opcional)"}
+              {tarFile ? tarFile.name : "Anexar .files.tar.gz (opcional)"}
             </button>
             {tarFile && (
               <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 3,
@@ -803,7 +803,7 @@ function BootstrapCard({ onRestored }) {
           </select>
           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4, lineHeight: 1.45 }}>
             {mode === "replace"
-              ? "⚠️ Use só em servidor vazio. Apaga collections antes."
+              ? "️ Use só em servidor vazio. Apaga collections antes."
               : "✓ Seguro: faz upsert por id, não apaga nada."}
           </div>
         </div>
@@ -850,7 +850,7 @@ function BootstrapCard({ onRestored }) {
           <div style={{ marginTop: 8, fontSize: 11, padding: 8,
                           background: "#fffbeb", border: "1px solid #fde68a",
                           borderRadius: 6, color: "#92400e", lineHeight: 1.5 }}>
-            <strong>📋 Próximos passos:</strong>
+            <strong>Próximos passos:</strong>
             <ol style={{ margin: "4px 0 0 16px", padding: 0 }}>
               <li>Reinicie o backend para recarregar configs em memória (cache de planos/agentes IA).</li>
               <li>Conecte o Google Drive nesta instância para retomar backups diários.</li>
@@ -908,7 +908,7 @@ function DirectDownloadLink() {
           border: "1px dashed #cbd5e1", borderRadius: 6,
           padding: "8px 10px", cursor: "pointer", textAlign: "left",
         }}>
-        🔗 Gerar link direto (pra abrir fora do preview e escolher "Salvar como…")
+        Gerar link direto (pra abrir fora do preview e escolher “Salvar como…”)
       </button>
     );
   }
@@ -919,12 +919,12 @@ function DirectDownloadLink() {
                    border: "1px solid #bfdbfe", borderRadius: 8 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a",
                      marginBottom: 6 }}>
-        🔗 Link direto pro backup
+        Link direto pro backup
       </div>
       <div style={{ fontSize: 11, color: "#1e40af", marginBottom: 8,
                      lineHeight: 1.5 }}>
         Esse link contém um token de acesso. Cole numa <b>aba normal do Chrome
-        (fora do preview do Emergent)</b> pra que o "Salvar como…" do
+        (fora do preview do Emergent)</b> pra que o “Salvar como…” do
         navegador funcione e você escolha onde guardar.
       </div>
       <textarea
@@ -943,7 +943,7 @@ function DirectDownloadLink() {
       <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
         <Button onClick={copy} data-testid="drive-direct-link-copy"
                 style={{ fontSize: 11, padding: "6px 10px" }}>
-          {copied ? "✓ Copiado!" : "📋 Copiar link"}
+          {copied ? "✓ Copiado!" : "Copiar link"}
         </Button>
         <Button onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
                 data-testid="drive-direct-link-open"
@@ -961,7 +961,7 @@ function DirectDownloadLink() {
       <div style={{ marginTop: 8, padding: 8, background: "#fef9c3",
                      border: "1px solid #fde047", borderRadius: 6,
                      fontSize: 10, color: "#713f12", lineHeight: 1.5 }}>
-        ⚠️ <b>Importante:</b> esse link inclui seu token de autenticação.
+        ️ <b>Importante:</b> esse link inclui seu token de autenticação.
         Não compartilhe nem mande pra outra pessoa. Validade: até seu próximo
         logout (mantém vivo enquanto você estiver logado no SmartProv).
       </div>

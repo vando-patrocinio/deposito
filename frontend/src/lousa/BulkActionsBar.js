@@ -28,10 +28,10 @@ export default function BulkActionsBar({ selectedIds, onClear, onDone }) {
         }}>
           {count} selecionada{count > 1 ? "s" : ""}
         </span>
-        <button data-testid="bulk-action-reagendar" onClick={() => setPopup("reagendar")} style={pillBtn("#3b82f6")}>📅 Reagendar</button>
+        <button data-testid="bulk-action-reagendar" onClick={() => setPopup("reagendar")} style={pillBtn("#3b82f6")}>Reagendar</button>
         <button data-testid="bulk-action-encerrar" onClick={() => setPopup("encerrar")} style={pillBtn("#64748b")}>✓ Encerrar</button>
         <button data-testid="bulk-action-cancelar" onClick={() => setPopup("cancelar")} style={pillBtn("#dc2626")}>✗ Cancelar</button>
-        <button data-testid="bulk-action-ia" onClick={() => setPopup("ia")} style={pillBtn("#a855f7")}>🤖 IA</button>
+        <button data-testid="bulk-action-ia" onClick={() => setPopup("ia")} style={pillBtn("#a855f7")}>IA</button>
         <button data-testid="bulk-clear" onClick={onClear} style={{
           background: "transparent", color: "white", border: "1px solid rgba(255,255,255,.25)",
           borderRadius: 999, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700,
@@ -67,7 +67,7 @@ function pillBtn(color) {
 const ACTION_TITLES = {
   encerrar: { icon: "✓", title: "Encerrar serviços em lote", color: "#64748b", verb: "encerrar", confirmLabel: "Encerrar" },
   cancelar: { icon: "✗", title: "Cancelar serviços em lote", color: "#dc2626", verb: "cancelar", confirmLabel: "Cancelar serviços" },
-  reagendar: { icon: "📅", title: "Reagendar serviços em lote", color: "#3b82f6", verb: "reagendar", confirmLabel: "Reagendar" },
+  reagendar: { icon: "", title: "Reagendar serviços em lote", color: "#3b82f6", verb: "reagendar", confirmLabel: "Reagendar" },
 };
 
 function BulkActionModal({ action, ticketIds, onClose, onDone }) {
@@ -207,7 +207,7 @@ function BulkAiModal({ ticketIds, onClose }) {
   return (
     <Overlay onClose={onClose}>
       <div data-testid="bulk-ai-modal" onClick={(e) => e.stopPropagation()} style={modalCss(640)}>
-        <h2 style={{ margin: 0, fontSize: 18 }}>🤖 Avaliação IA — lote de {ticketIds.length}</h2>
+        <h2 style={{ margin: 0, fontSize: 18 }}>Avaliação IA — lote de {ticketIds.length}</h2>
         <p style={{ color: "#64748b", fontSize: 12, margin: "6px 0 14px" }}>
           Score heurístico (sinais cumulativos: SLA, distância, histórico, gap, geofence).
         </p>
@@ -230,7 +230,7 @@ function BulkAiModal({ ticketIds, onClose }) {
                   <div style={{ fontSize: 13, fontWeight: 700 }}>{it.client_name} <span style={{ color: "#94a3b8", fontWeight: 400, fontSize: 11 }}>· {it.type} · {it.status}</span></div>
                   <div style={{ fontSize: 11, color: "#475569" }}>
                     <strong>{it.verdict}</strong>
-                    {it.duration_minutes != null && <> · 🕐 {Math.round(it.duration_minutes)}min</>}
+                    {it.duration_minutes != null && <> · {Math.round(it.duration_minutes)}min</>}
                     {it.signals?.length > 0 && <> · {it.signals.length} sinal(is)</>}
                   </div>
                   {it.signals?.length > 0 && (

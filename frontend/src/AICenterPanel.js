@@ -221,7 +221,7 @@ function RepairMapSection({ days }) {
           <MapContainer center={center} zoom={6} style={{ height: "100%", width: "100%" }} scrollWheelZoom>
             <TileLayer
               attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a>"
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
               subdomains={["a", "b", "c"]} />
             <FitBoundsOnUpdate points={points} bbox={d.bbox} />
             {points.map((p) => {
@@ -245,7 +245,7 @@ function RepairMapSection({ days }) {
                           {p.signal_quality && <span style={{ color: "var(--text-secondary)", marginLeft: 4 }}>({p.signal_quality})</span>}
                         </div>
                       )}
-                      {p.relato && <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-secondary)" }}>"{p.relato}"</div>}
+                      {p.relato && <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-secondary)" }}>“{p.relato}”</div>}
                       {p.scheduled_time && (
                         <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
                           {new Date(p.scheduled_time).toLocaleString("pt-BR")}
@@ -373,7 +373,7 @@ function CriticalMapSection() {
                         style={{ height: "100%", width: "100%" }} scrollWheelZoom>
             <TileLayer
               attribution="&copy; OpenStreetMap"
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
               subdomains={["a", "b", "c"]} />
             <FitBoundsOnUpdate points={points} bbox={d.bbox} />
             {points.map((p) => {
@@ -510,7 +510,7 @@ function DefectiveSection({ days }) {
           </tbody>
         </table>
         <div style={{ fontSize: 10, color: "#64748b", marginTop: 6 }}>
-          🤖 Fabricante identificado pela IA a partir do prefixo do número de série (padrão IEEE) — não pelo modelo do SmartOLT.
+          Fabricante identificado pela IA a partir do prefixo do número de série (padrão IEEE) — não pelo modelo do SmartOLT.
         </div>
       </Card>
       <Card title="Top ONTs com mais chamados">
@@ -815,11 +815,11 @@ function InsightsSection({ days }) {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {DASHBOARDS.map((k) => (
             <Button key={k} variant="soft" disabled={generating} onClick={() => generate(k)} data-testid={`insight-gen-${k}`}>
-              {generating ? "🤖 Gerando…" : `Analisar ${k.replace("_", " ")}`}
+              {generating ? "Gerando…" : `Analisar ${k.replace("_", " ")}`}
             </Button>
           ))}
         </div>
-        {err && <div style={{ marginTop: 10, padding: 10, background: "#fee2e2", color: "#7f1d1d", borderRadius: 8 }}>⚠ {err}</div>}
+        {err && <div style={{ marginTop: 10, padding: 10, background: "#fee2e2", color: "#7f1d1d", borderRadius: 8 }}>{err}</div>}
       </Card>
 
       <Card title={`Histórico de insights (${history.length})`}>
@@ -911,7 +911,7 @@ function ManufacturerQualitySection({ days }) {
           padding: "10px 14px", marginBottom: 14, fontSize: 12,
           background: "var(--warning-soft)", color: "var(--warning-soft-fg)",
         }}>
-          ⚠ <strong>{d.unmatched_calls}</strong> chamado(s) de reparo não foram cruzados — o nome do cliente no Atlaz não bate com o nome no SmartOLT. Verifique a sincronização ou ajuste a normalização de nomes para começar a ver a taxa de defeito por marca.
+          <strong>{d.unmatched_calls}</strong> chamado(s) de reparo não foram cruzados — o nome do cliente no Atlaz não bate com o nome no SmartOLT. Verifique a sincronização ou ajuste a normalização de nomes para começar a ver a taxa de defeito por marca.
         </div>
       )}
       {d.rows.length === 0 ? (
@@ -1027,14 +1027,14 @@ function DistrictsSection({ days }) {
         display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
         gap: 10, marginBottom: 18,
       }}>
-        <KpiCard icon="👥" color="#0f172a" label="Total assinantes"
+        <KpiCard icon="" color="#0f172a" label="Total assinantes"
                   value={data.total_subscribers} />
-        <KpiCard icon="🏘️" color="#4f46e5" label="Bairros únicos"
+        <KpiCard icon="️" color="#4f46e5" label="Bairros únicos"
                   value={data.unique_districts}
                   sub={`fuzzy-merged ${data.raw_unique_before_merge - data.unique_districts} variantes`} />
-        <KpiCard icon="📍" color="#16a34a" label="Com bairro"
+        <KpiCard icon="" color="#16a34a" label="Com bairro"
                   value={data.total_with_district} />
-        <KpiCard icon="⚠️" color="#f59e0b" label="Sem bairro"
+        <KpiCard icon="️" color="#f59e0b" label="Sem bairro"
                   value={data.no_district}
                   sub="precisam de cadastro" />
       </div>
@@ -1066,7 +1066,7 @@ function DistrictsSection({ days }) {
                     cursor: aiBusy ? "wait" : "pointer",
                     display: "inline-flex", alignItems: "center", gap: 6,
                   }}>
-          🤖 {aiBusy ? "Analisando…" : "Revisar com IA"}
+          {aiBusy ? "Analisando…" : "Revisar com IA"}
         </button>
       </div>
 
@@ -1079,13 +1079,13 @@ function DistrictsSection({ days }) {
         }}>
           <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6,
                           color: aiReview.ok ? "#5b21b6" : "#991b1b" }}>
-            🤖 Revisão da IA ({aiReview.reviewed || 0} bairros analisados)
+            Revisão da IA ({aiReview.reviewed || 0} bairros analisados)
           </div>
           {aiReview.ok ? (
             <AIReviewView suggestions={aiReview.suggestions} />
           ) : (
             <div style={{ fontSize: 12, color: "#991b1b" }}>
-              ⚠ {aiReview.error || "Falha na revisão"}
+              {aiReview.error || "Falha na revisão"}
             </div>
           )}
         </div>
@@ -1180,7 +1180,7 @@ function DistrictsSection({ days }) {
                       background: "white", border: "1px solid #cbd5e1",
                       fontFamily: "ui-monospace,monospace",
                     }}>
-                      "{v.name}" <strong>×{v.count}</strong>
+                      “{v.name}” <strong>×{v.count}</strong>
                     </span>
                   ))}
                 </div>

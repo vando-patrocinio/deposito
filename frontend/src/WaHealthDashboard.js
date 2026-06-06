@@ -146,7 +146,7 @@ export default function WaHealthDashboard() {
         </div>
       </Card>
 
-      {/* 🚨 BANNER CRÍTICO — quando detecta cenário de desconexão repetida */}
+      {/* BANNER CRÍTICO — quando detecta cenário de desconexão repetida */}
       {criticalSession && (
         <Card
           data-testid="wa-health-critical-banner"
@@ -184,7 +184,7 @@ export default function WaHealthDashboard() {
                   </>
                 ) : null}
                 {" "}Esse padrão acontece quando <b>alguém está clicando
-                "Desconectar dispositivo" no celular</b> ou quando o
+                “Desconectar dispositivo” no celular</b> ou quando o
                 <b> número está logado em outro WhatsApp Web/Desktop</b>.
               </div>
               <div style={{
@@ -310,7 +310,7 @@ function SidecarCard({ sidecar }) {
         )}
         {sidecar.error && (
           <div style={{ marginTop: 4, color: "#dc2626", fontSize: 10 }}>
-            ⚠ {String(sidecar.error).slice(0, 80)}
+            {String(sidecar.error).slice(0, 80)}
           </div>
         )}
       </div>

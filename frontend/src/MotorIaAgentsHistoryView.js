@@ -214,7 +214,7 @@ export default function MotorIaAgentsHistoryView() {
           color: hover.kind === "outage" ? "#b45309" : "#6d28d9",
           display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
         }} data-testid="history-tooltip-incident">
-          <strong>{hover.kind === "outage" ? "🟡 PANE" : "🟣 ALERTA"}</strong>
+          <strong>{hover.kind === "outage" ? "PANE" : "ALERTA"}</strong>
           <strong>{hover.title}</strong>
           <span style={{ opacity: 0.8 }}>· {hover.detail}</span>
           <span style={{ opacity: 0.7 }}>·</span>

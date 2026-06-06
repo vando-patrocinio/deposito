@@ -23,13 +23,13 @@ export const CARGO = {
 };
 
 export const CARGO_META = {
-  [CARGO.TECNICO]:     { label: "Técnico",                  emoji: "🔧", grupo: "campo" },
-  [CARGO.REPARADOR]:   { label: "Reparador",                emoji: "🔧", grupo: "campo" },
-  [CARGO.INSTALADOR]:  { label: "Instalador",               emoji: "📡", grupo: "campo" },
-  [CARGO.ASSOCIADO]:   { label: "Associado",                emoji: "🤝", grupo: "campo" },
-  [CARGO.AUX_ADMIN]:   { label: "Auxiliar Administrativo",  emoji: "📋", grupo: "admin" },
-  [CARGO.ATENDENTE]:   { label: "Atendente",                emoji: "💬", grupo: "admin" },
-  [CARGO.ALMOXARIFE]:  { label: "Almoxarife (Estoque Praça)", emoji: "📦", grupo: "admin" },
+  [CARGO.TECNICO]:     { label: "Técnico",                  emoji: "", grupo: "campo" },
+  [CARGO.REPARADOR]:   { label: "Reparador",                emoji: "", grupo: "campo" },
+  [CARGO.INSTALADOR]:  { label: "Instalador",               emoji: "", grupo: "campo" },
+  [CARGO.ASSOCIADO]:   { label: "Associado",                emoji: "", grupo: "campo" },
+  [CARGO.AUX_ADMIN]:   { label: "Auxiliar Administrativo",  emoji: "", grupo: "admin" },
+  [CARGO.ATENDENTE]:   { label: "Atendente",                emoji: "", grupo: "admin" },
+  [CARGO.ALMOXARIFE]:  { label: "Almoxarife (Estoque Praça)", emoji: "", grupo: "admin" },
 };
 
 // Cargos que aparecem na Lousa de Serviços
@@ -51,7 +51,7 @@ export const COMPRAS_CARGOS = new Set([CARGO.ALMOXARIFE]);
 export function cargoLabel(cargo) {
   return CARGO_META[cargo]?.label || cargo || "—";
 }
-export function cargoEmoji(cargo) { return CARGO_META[cargo]?.emoji || "👤"; }
+export function cargoEmoji(cargo) { return CARGO_META[cargo]?.emoji || ""; }
 export function isLousaCargo(cargo) { return LOUSA_CARGOS.has(cargo); }
 export function clockInEnabledFor(cargo) { return !NO_CLOCK_CARGOS.has(cargo); }
 export function isAtendimentoCargo(cargo) { return ATENDIMENTO_CARGOS.has(cargo); }
@@ -70,11 +70,11 @@ export function inferCargoFromLegacy(role) {
 
 export const CARGO_OPTIONS_GROUPED = [
   {
-    label: "🛠 Campo (Lousa de Agendamento)",
+    label: "Campo (Lousa de Agendamento)",
     options: [CARGO.TECNICO, CARGO.REPARADOR, CARGO.INSTALADOR, CARGO.ASSOCIADO],
   },
   {
-    label: "💼 Administrativo (Atendimento)",
+    label: "Administrativo (Atendimento)",
     options: [CARGO.AUX_ADMIN, CARGO.ATENDENTE],
   },
 ];

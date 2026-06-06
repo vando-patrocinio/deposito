@@ -285,7 +285,7 @@ export default function CtoInlineFlow({
             <div style={{ fontSize: 10, fontWeight: 800,
                               color: "#065f46", letterSpacing: 0.5,
                               textTransform: "uppercase" }}>
-              📍 Endereço da CTO {state.address?.endereco
+              Endereço da CTO {state.address?.endereco
                 ? "· detectado por GPS" : "· aguardando GPS"}
             </div>
           </div>
@@ -336,7 +336,7 @@ export default function CtoInlineFlow({
               fontSize: 11, color: "#065f46", lineHeight: 1.5,
               display: "flex", alignItems: "center", gap: 8,
             }}>
-              <span style={{ fontSize: 14 }}>🌆</span>
+              <span style={{ fontSize: 14 }}></span>
               <span>
                 <strong>{state.address.cidade_detected}</strong>
                 {state.address?.estado_detected
@@ -383,7 +383,7 @@ export default function CtoInlineFlow({
           <div data-testid="cto-inline-err" style={{
             marginTop: 10, padding: 10, borderRadius: 8,
             background: "#fee2e2", color: "#991b1b", fontSize: 12,
-          }}>⚠ {err}</div>
+          }}>{err}</div>
         )}
 
         <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
@@ -412,7 +412,7 @@ export default function CtoInlineFlow({
                             border: 0,
                             color: "#fff", fontWeight: 700, fontSize: 14,
                             cursor: "pointer" }}>
-            {(state.photo || isFullUnlock || !ctoPhotoRequired) ? "Continuar →" : "📸 Tirar foto da CTO e continuar →"}
+            {(state.photo || isFullUnlock || !ctoPhotoRequired) ? "Continuar →" : "Tirar foto da CTO e continuar →"}
           </button>
         </div>
       </div>
@@ -461,7 +461,7 @@ export default function CtoInlineFlow({
                               border: "1.5px dashed #dc2626",
                               background: "#fef2f2" }}>
               <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 20 }}>📷</span>
+                <span style={{ fontSize: 20 }}></span>
                 <span style={{ color: "#991b1b", fontWeight: 700 }}>
                   Tirar foto da CTO (obrigatório)
                 </span>
@@ -562,8 +562,8 @@ export default function CtoInlineFlow({
         Rede (Bal/Des)
       </label>
       {[
-        { v: "balanceada", l: "Rede balanceada", d: "Sinal igual em todas as portas", icon: "⚖️" },
-        { v: "desbalanceada", l: "Rede desbalanceada", d: "Sinal varia por porta (splitter)", icon: "⚙️" },
+        { v: "balanceada", l: "Rede balanceada", d: "Sinal igual em todas as portas", icon: "️" },
+        { v: "desbalanceada", l: "Rede desbalanceada", d: "Sinal varia por porta (splitter)", icon: "️" },
       ].map((opt) => (
         <button key={opt.v} data-testid={`cto-inline-net-${opt.v.slice(0,3)}`}
                 onClick={() => setState((s) => ({ ...s, networkType: opt.v,
@@ -741,7 +741,7 @@ export default function CtoInlineFlow({
         <div data-testid="cto-inline-err-b" style={{
           marginTop: 10, padding: 10, borderRadius: 8,
           background: "#fee2e2", color: "#991b1b", fontSize: 12,
-        }}>⚠ {err}</div>
+        }}>{err}</div>
       )}
 
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
@@ -782,7 +782,7 @@ export default function CtoInlineFlow({
                   boxShadow: "0 20px 50px rgba(15,23,42,.4)",
                 }}>
             <div style={{ fontSize: 28, textAlign: "center", marginBottom: 8 }}>
-              🔄
+              
             </div>
             <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800,
                             color: "#0f172a", textAlign: "center",

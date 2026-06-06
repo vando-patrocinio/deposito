@@ -276,7 +276,7 @@ export default function BoletoPdfPreviewCard() {
             background: "rgba(106,27,154,.06)",
             border: "1px solid rgba(106,27,154,.15)",
           }}>
-            💡 <b>Recomendado:</b> PNG com fundo transparente, proporção horizontal (3:1), mínimo 300x100px. Máx 2 MB.
+            <b>Recomendado:</b> PNG com fundo transparente, proporção horizontal (3:1), mínimo 300x100px. Máx 2 MB.
           </div>
         </div>
       </div>

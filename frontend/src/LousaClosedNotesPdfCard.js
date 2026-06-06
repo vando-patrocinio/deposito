@@ -56,7 +56,7 @@ export default function LousaClosedNotesPdfCard() {
     <div data-testid="lousa-pdf-card" style={card}>
       <div style={{ display: "flex", alignItems: "center", gap: 10,
                        marginBottom: 12, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 18 }}>📄</span>
+        <span style={{ fontSize: 18 }}></span>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>
             Relatório PDF · Fechamento de Notas
@@ -126,7 +126,7 @@ export default function LousaClosedNotesPdfCard() {
                   color: "#fff", fontWeight: 700, fontSize: 13,
                   cursor: busy ? "wait" : "pointer", width: "100%",
                 }}>
-        {busy ? "Gerando PDF..." : "📥 Baixar PDF"}
+        {busy ? "Gerando PDF..." : "Baixar PDF"}
       </button>
     </div>
   );

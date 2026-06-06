@@ -113,7 +113,7 @@ export default function ReleaseStuckBubbleModal({ onClose, onReleased }) {
           border: "1px solid #fed7aa", color: "#9a3412",
           fontSize: 12, marginBottom: 14, lineHeight: 1.5,
         }}>
-          ⚠ Esta ação será <strong>registrada nos logs</strong> e enviará uma
+          Esta ação será <strong>registrada nos logs</strong> e enviará uma
           <strong> notificação a todos os administradores</strong>. A bolha
           voltará ao status <em>pendente</em> e poderá ser reaberta pelo
           técnico. <strong>Libera apenas 1 bolha por clique</strong> — se houver
@@ -131,7 +131,7 @@ export default function ReleaseStuckBubbleModal({ onClose, onReleased }) {
         ) : error ? (
           <div style={{ padding: 12, borderRadius: 8, background: "#fee2e2",
                          color: "#991b1b", fontSize: 12 }}>
-            ⚠ {error}
+            {error}
           </div>
         ) : stuck.length === 0 ? (
           <div style={{ padding: 30, textAlign: "center", color: "#16a34a",

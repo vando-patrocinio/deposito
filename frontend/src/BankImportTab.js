@@ -233,11 +233,11 @@ export default function BankImportTab() {
                         gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
                         gap: 10, marginBottom: 14 }}>
           {[
-            { id: "sicoob", label: "Sicoob", icon: "🏦",
+            { id: "sicoob", label: "Sicoob", icon: "",
               hint: "Extrato OFX/CSV oficial do Sicoob" },
-            { id: "outros", label: "Outros bancos", icon: "🏛️",
+            { id: "outros", label: "Outros bancos", icon: "️",
               hint: "Qualquer banco com exportação OFX padrão" },
-            { id: "atlaz", label: "Atlaz", icon: "🔌",
+            { id: "atlaz", label: "Atlaz", icon: "",
               hint: atlazSummary
                 ? `${atlazSummary.paid_invoices} faturas pagas disponíveis`
                 : "Recebimentos sincronizados da Atlaz V2" },
@@ -289,13 +289,13 @@ export default function BankImportTab() {
                 transação como entrada/saída e sugere fornecedor + categoria.
                 {source === "sicoob" && (
                   <div style={{ marginTop: 4, fontSize: 12, color: "#0369a1" }}>
-                    📄 <strong>PDF Sicoob:</strong> suportado para extratos
+                    <strong>PDF Sicoob:</strong> suportado para extratos
                     digitais (com camada de texto). Limite: 10 MB.
                   </div>
                 )}
               </div>
               <div style={{ marginTop: 6, fontSize: 11.5, color: "#64748b" }}>
-                💡 {source === "sicoob"
+                {source === "sicoob"
                   ? "Sicoob → Internet Banking → Extrato → Exportar OFX (preferencial) ou Imprimir/Salvar PDF"
                   : "Procure no internet banking: \"Exportar OFX\" "
                   + "ou \"Extrato em arquivo\""}
@@ -348,7 +348,7 @@ export default function BankImportTab() {
                 De
               </label>
               <input type="date" value={atlazFrom}
-                      data-testid="bi-atlaz-from"
+                      data-testid="bi-atlaz-from "
                       onChange={(e) => setAtlazFrom(e.target.value)}
                       style={{ padding: "6px 8px",
                                 border: "1px solid #cbd5e1",
@@ -392,7 +392,7 @@ export default function BankImportTab() {
                 style={{ marginTop: 10, padding: 10,
                           background: "#fee2e2", borderRadius: 8,
                           color: "#991b1b", fontSize: 12 }}>
-            ⚠ {typeof err === "string" ? err : "Erro"}
+            {typeof err === "string" ? err : "Erro"}
           </div>
         )}
         {ok && (
@@ -428,7 +428,7 @@ export default function BankImportTab() {
           </div>
 
           {staging.duplicate_count > 0 && (
-            <AlertCard tone="info" icon="🔁"
+            <AlertCard tone="info" icon=""
               testId="bi-alert-duplicates"
               title={`${staging.duplicate_count} transação(ões) já existem no caixa`}
               detail="Foram marcadas para ignorar (caixinha desmarcada). Você pode reativar manualmente." />
@@ -436,13 +436,13 @@ export default function BankImportTab() {
 
           {/* Banner IA em background */}
           {staging.ai_status === "running" && (
-            <AlertCard tone="info" icon="🤖"
+            <AlertCard tone="info" icon=""
               testId="bi-alert-ai-running"
               title={`Claude Sonnet 4.5 classificando ${staging.ai_pending || 0} transação(ões)…`}
               detail="A IA está sugerindo tipo, fornecedor e categoria. Os campos vão se preencher automaticamente — você pode ir cadastrando fornecedores/categorias enquanto isso." />
           )}
           {staging.ai_status === "failed" && (
-            <AlertCard tone="warn" icon="⚠️"
+            <AlertCard tone="warn" icon="️"
               testId="bi-alert-ai-failed"
               title="IA falhou ao classificar"
               detail={staging.ai_error || "Você pode classificar manualmente abaixo."} />
@@ -528,7 +528,7 @@ export default function BankImportTab() {
                           {it.reason && (
                             <div style={{ fontSize: 10, color: "#94a3b8",
                                               marginTop: 2, fontStyle: "italic" }}>
-                              💡 {it.reason}
+                              {it.reason}
                             </div>
                           )}
                         </td>
@@ -602,7 +602,7 @@ export default function BankImportTab() {
                           {isDup && (
                             <div style={{ fontSize: 9, color: "#a16207",
                                               fontWeight: 700, marginTop: 2 }}>
-                              ⚠ Já no caixa
+                              Já no caixa
                             </div>
                           )}
                         </td>

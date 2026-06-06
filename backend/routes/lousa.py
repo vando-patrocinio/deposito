@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from core import (
     DEMO_COMPANY_ID,
@@ -47,7 +47,7 @@ router = APIRouter(prefix="/api", tags=["lousa"])
 # Models
 # -------------------------------------------------------------------------
 Priority = Literal["normal", "horario", "prioridade", "urgente"]
-TicketType = Literal["reparo", "instalacao", "retirada", "prioridade", "preventiva", "venda"]
+TicketType = Literal["reparo", "instalacao", "retirada", "prioridade", "preventiva", "venda", "rompimento"]
 TicketStatus = Literal[
     "pendente", "aberta", "aguardando_atendimento",
     "finalizada", "encerrada", "reagendada", "cancelada"
@@ -57,6 +57,7 @@ Outcome = Literal["sucesso", "informada"]
 POINTS_BY_TYPE: Dict[str, float] = {
     "instalacao": 3.0, "retirada": 1.5, "reparo": 1.0,
     "prioridade": 2.5, "preventiva": 1.5, "venda": 2.0,
+    "rompimento": 2.5,
 }
 PRIORITY_RANK = {"urgente": -1, "prioridade": 0, "horario": 1, "normal": 2}
 ADMIN_RESOLVED = ("encerrada", "reagendada", "cancelada")
@@ -72,6 +73,123 @@ from utils.normalize import (
     norm_string as _norm_string,
     normalize_fields as _normalize_client_snapshot,
 )
+
+
+# ---------------------------------------------------------------------------
+# iter215aa — Helper centralizado pra vincular cliente à porta da CTO com
+# regras de exclusividade:
+#   1. Se a porta destino já tem OUTRO cliente → bloqueia (HTTP 409)
+#   2. Se o cliente já está em OUTRA porta → libera a antiga (port_swap)
+#   3. Idempotente: se já tá vinculado à mesma porta, no-op
+# Substitui os `db.ctos.update_one` brutos que faziam o vínculo sem checar
+# se a porta estava livre, permitindo sobrescrever cliente alheio.
+# ---------------------------------------------------------------------------
+async def _smart_link_client_to_port(
+    *, company_id: str, cto_id: str, port_number: int,
+    client_id: Optional[str], client_name: Optional[str],
+    client_pppoe: Optional[str], actor_email: Optional[str],
+    actor_id: Optional[str], actor_name: Optional[str],
+    ticket_id: Optional[str] = None,
+) -> dict:
+    """Vincula cliente à porta da CTO seguindo as regras de exclusividade.
+
+    Retorna {ok, action, message, prev_cto_id?, prev_port_number?}.
+    Lança HTTPException(409) se a porta destino estiver ocupada por
+    outro cliente.
+    """
+    from fastapi import HTTPException as _HE
+    from routes.stok import (
+        _find_client_cto_port, _free_cto_port, _occupy_cto_port,
+    )
+    port_number = int(port_number)
+    # 1) Cliente já está em alguma porta? (XOR atribuição vs swap)
+    current = None
+    if client_id:
+        current = await _find_client_cto_port(company_id, client_id)
+    if (current and current["cto_id"] == cto_id
+            and int(current["port_number"]) == port_number):
+        return {"ok": True, "action": "noop",
+                "message": "Cliente já vinculado a esta porta"}
+    # 2) Verifica se a porta destino tem cliente diferente
+    target_cto = await db.ctos.find_one(
+        {"id": cto_id, "company_id": company_id},
+        {"_id": 0, "id": 1, "name": 1, "ports": 1},
+    )
+    if not target_cto:
+        raise _HE(404, f"CTO {cto_id} não encontrada")
+    target_port = next(
+        (p for p in (target_cto.get("ports") or [])
+         if int(p.get("number") or 0) == port_number),
+        None,
+    )
+    if not target_port:
+        raise _HE(404,
+                  f"Porta {port_number} não existe na CTO {target_cto.get('name')}")
+    existing_client_id = target_port.get("client_subscriber_id")
+    is_occupied_by_other = (
+        target_port.get("status") == "used"
+        and existing_client_id
+        and existing_client_id != client_id
+    )
+    if is_occupied_by_other:
+        raise _HE(409, {
+            "code": "CTO_PORT_OCCUPIED_BY_OTHER",
+            "message": (
+                f"A porta {port_number} da CTO "
+                f"{target_cto.get('name') or cto_id} já está OCUPADA "
+                f"pelo cliente '{target_port.get('client_name') or '?'}'. "
+                "Cada porta só pode ter UM cliente ativo. Para vincular "
+                "este cliente aqui, primeiro retire o cliente atual "
+                "(OS de retirada) ou escolha outra porta livre."
+            ),
+            "occupied_by": {
+                "client_subscriber_id": existing_client_id,
+                "client_name": target_port.get("client_name"),
+            },
+        })
+    # 3) Ocupa a nova porta (idempotente se for o mesmo cliente)
+    is_swap = current is not None
+    ok = await _occupy_cto_port(
+        company_id, cto_id, port_number, client_id, client_name,
+        client_pppoe, actor_email,
+        actor_name=actor_name, ticket_id=ticket_id,
+        is_swap=is_swap,
+        prev_cto_id=current["cto_id"] if current else None,
+        prev_port_number=current["port_number"] if current else None,
+    )
+    if not ok:
+        # Não deveria chegar aqui (já checamos acima), mas resguarda.
+        raise _HE(409, "Não foi possível vincular cliente à porta")
+    # 4) Libera porta antiga (port_swap)
+    freed_msg = None
+    if current and (current["cto_id"] != cto_id
+                    or int(current["port_number"]) != port_number):
+        await _free_cto_port(
+            company_id, current["cto_id"], int(current["port_number"]),
+            actor_email, "port_swap",
+            client_id=None,  # já logado como port_swap em _occupy_cto_port
+        )
+        freed_msg = (f"Porta antiga {current['port_number']} "
+                     f"({current.get('cto_name') or current['cto_id']}) liberada")
+    # 5) Registra connected_via_ticket (rastreabilidade adicional)
+    if ticket_id:
+        await db.ctos.update_one(
+            {"id": cto_id, "company_id": company_id,
+             "ports.number": port_number},
+            {"$set": {
+                "ports.$.connected_at": now_iso(),
+                "ports.$.connected_via_ticket": ticket_id,
+            }},
+        )
+    action = "swap" if is_swap else "link"
+    msg = (f"Cliente vinculado à porta {port_number}"
+           + (f"; {freed_msg}" if freed_msg else ""))
+    return {
+        "ok": True, "action": action, "message": msg,
+        "prev_cto_id": current["cto_id"] if current else None,
+        "prev_port_number": (int(current["port_number"])
+                             if current else None),
+    }
 
 
 def _normalize_ticket(t: dict) -> dict:
@@ -252,6 +370,31 @@ class TicketIn(BaseModel):
     scheduled_time: Optional[str] = None
     assigned_collaborator_id: str
     test_history: List[NetworkTest] = Field(default_factory=list)
+
+    @field_validator("scheduled_time")
+    @classmethod
+    def _validate_scheduled_time(cls, v):
+        # Grade da Lousa: 09:00–18:00 (inclusivo). Aceita formatos
+        # "YYYY-MM-DDTHH:MM" ou ISO completo. Rejeita horas fora da grade.
+        if not v:
+            return v
+        try:
+            # extrai HH:MM
+            import re
+            m = re.search(r"T(\d{2}):(\d{2})", v)
+            if not m:
+                return v  # formato inesperado — não bloqueia
+            h = int(m.group(1))
+            mn = int(m.group(2))
+            if h < 9:
+                raise ValueError(f"Horário {h:02d}:{mn:02d} antes da grade (09:00).")
+            if h > 18 or (h == 18 and mn > 0):
+                raise ValueError(f"Horário {h:02d}:{mn:02d} após a grade (18:00).")
+        except ValueError:
+            raise
+        except Exception:
+            pass
+        return v
 
 
 class ReorderItem(BaseModel):
@@ -874,13 +1017,14 @@ async def lousa_grid(
         "prioridade": int(settings.get("sla_prioridade_minutes", 45)),
         "preventiva": int(settings.get("sla_preventiva_minutes", 90)),
         "venda": int(settings.get("sla_venda_minutes", 60)),
+        "rompimento": int(settings.get("sla_rompimento_minutes", 180)),
     }
     warning_pct = int(settings.get("sla_warning_pct", 80))
     yellow_min = int(settings.get("sla_yellow_minutes", 15))
-    red_after_min = int(settings.get("sla_red_after_minutes", 0))
+    red_after_min = int(settings.get("sla_red_after_minutes", 30))
     pending_grace_min = int(settings.get("sla_pending_grace_minutes", 60))
     blink = bool(settings.get("sla_blink_when_overdue", True))
-    grid_start = int(settings.get("lousa_grid_start_hour", 8))
+    grid_start = int(settings.get("lousa_grid_start_hour", 9))
     grid_end = int(settings.get("lousa_grid_end_hour", 18))
     slot_minutes = int(settings.get("lousa_grid_slot_minutes", 60))
     max_per_slot = int(settings.get("lousa_grid_max_per_slot", 2))
@@ -960,6 +1104,12 @@ async def lousa_grid(
             if t.get("closed_at"):
                 prev_close_iso = t["closed_at"]
 
+        # Marca pin manual ANTES de recomputar grid_slot, pra preservar
+        # drag-and-drop do gestor durante a redistribuição (iter215).
+        manual_pins: set[str] = {
+            t["id"] for t in tickets
+            if t.get("grid_slot") and t["grid_slot"] in fixed_slots
+        }
         for i, t in enumerate(tickets):
             if is_historical:
                 t["locked"] = True
@@ -974,23 +1124,57 @@ async def lousa_grid(
             t["ai_score"] = await heuristic_score_for_ticket(t, sla_minutes=sla_min)
         for t in recent_resolved:
             t["duration_minutes"] = compute_duration_minutes(t)
+
+        # ------------------------------------------------------------------
+        # Redistribuição automática (iter215): se um slot tem >= 2 bolhas E
+        # existe slot vazio na grade do mesmo técnico, move a bolha extra
+        # para o slot vazio mais próximo. Preserva bolhas pinadas manualmente
+        # pelo gestor (drag-and-drop).
+        # ------------------------------------------------------------------
+        slot_to_tickets: dict[str, list] = {sl: [] for sl in fixed_slots}
+        for t in tickets:
+            sl = t.get("grid_slot")
+            if sl in slot_to_tickets:
+                slot_to_tickets[sl].append(t)
+        for _ in range(200):
+            empty_slots = [sl for sl in fixed_slots if not slot_to_tickets[sl]]
+            if not empty_slots:
+                break
+            overcrowded = sorted(
+                [(sl, ts) for sl, ts in slot_to_tickets.items() if len(ts) > 1],
+                key=lambda x: -len(x[1]),
+            )
+            moved_any = False
+            for src_slot, src_tickets in overcrowded:
+                movable = [t for t in src_tickets if t["id"] not in manual_pins]
+                if not movable:
+                    continue
+                moved = movable[-1]
+                src_tickets.remove(moved)
+                src_idx = fixed_slots.index(src_slot)
+                empty_slots.sort(key=lambda sl: abs(fixed_slots.index(sl) - src_idx))
+                dst_slot = empty_slots[0]
+                moved["grid_slot"] = dst_slot
+                slot_to_tickets[dst_slot].append(moved)
+                moved_any = True
+                break
+            if not moved_any:
+                break
+
         # Monta slots fixos com bolhas de cada slot (sempre exibe TODOS slots)
         slots_data = []
         for slot_label in fixed_slots:
-            in_slot = [t for t in tickets if t["grid_slot"] == slot_label]
+            in_slot = slot_to_tickets[slot_label]
             slots_data.append({"slot": slot_label, "tickets": in_slot, "full": len(in_slot) >= max_per_slot})
         unscheduled = [t for t in tickets if t["grid_slot"] == "sem_horario"]
 
-        # Regra de exibição (pedido do usuário, 21/05/2026):
-        # - Externos (clock_in_enabled=False) → sempre aparecem na lousa
-        # - Internos/CLT (clock_in_enabled=True) → SÓ aparecem se tiverem
-        #   ao menos 1 bolha (ativa em modo "hoje" ou qualquer bolha no
-        #   modo histórico).
-        is_external = (c.get("clock_in_enabled") is False)
+        # Regra de exibição (pedido do usuário, iter215):
+        # SÓ aparece coluna de colaborador que TEM bolha. Sem bolha →
+        # não renderiza, independente de externo/interno ou histórico.
         has_any_bubble = bool(tickets) or bool(unscheduled) or (
             is_historical and bool(recent_resolved)
         )
-        if not is_external and not has_any_bubble:
+        if not has_any_bubble:
             continue
 
         columns.append({
@@ -1054,9 +1238,10 @@ async def lousa_grid(
 
 
 def _build_fixed_slots(start_hour: int, end_hour: int, slot_minutes: int) -> list[str]:
-    """Retorna lista de labels de slots fixos: ['08:00', '09:00', ...]"""
+    """Retorna lista de labels de slots fixos: ['09:00', '10:00', ..., '18:00'].
+    `end_hour` é INCLUSIVO (iter215) — grade vai de 09:00 ATÉ 18:00 inclusive."""
     slots = []
-    total_min = (end_hour - start_hour) * 60
+    total_min = ((end_hour - start_hour) + 1) * 60
     n = max(1, total_min // max(1, slot_minutes))
     for i in range(n):
         m = start_hour * 60 + i * slot_minutes
@@ -1065,28 +1250,45 @@ def _build_fixed_slots(start_hour: int, end_hour: int, slot_minutes: int) -> lis
 
 
 def _slot_for_ticket(t: dict, slots: list[str], slot_minutes: int) -> str:
-    """Determina em qual slot fixo a bolha cai. Prioridade:
-    1. grid_slot já atribuído manualmente
-    2. scheduled_time arredondado p/ baixo no slot mais próximo
-    3. 'sem_horario' (cai num slot virtual)
+    """Determina em qual slot fixo a bolha cai. Toda bolha SEMPRE cai em algum
+    slot da grade — não existe 'sem_horario' (regra de negócio iter215).
+
+    Prioridade:
+    1. grid_slot já atribuído manualmente (se válido).
+    2. scheduled_time arredondado p/ baixo no slot que contém o horário.
+    3. scheduled_time fora do range → clampa pro primeiro/último slot.
+    4. Sem scheduled_time → tenta created_at; senão cai no primeiro slot.
     """
+    if not slots:
+        return ""
+    first_slot, last_slot = slots[0], slots[-1]
     if t.get("grid_slot") and t["grid_slot"] in slots:
         return t["grid_slot"]
-    sched = t.get("scheduled_time")
+    sched = t.get("scheduled_time") or t.get("created_at")
     if sched:
         try:
             hour = int(sched[11:13])
             minute = int(sched[14:16])
             total = hour * 60 + minute
-            # Encontra slot que contém esse horário
+            first_h, first_m = int(first_slot[:2]), int(first_slot[3:5])
+            last_h, last_m = int(last_slot[:2]), int(last_slot[3:5])
+            first_total = first_h * 60 + first_m
+            last_total = last_h * 60 + last_m
+            # Antes do grid → primeiro slot
+            if total < first_total:
+                return first_slot
+            # No range
             for s in slots:
                 sh, sm = int(s[:2]), int(s[3:5])
                 slot_start = sh * 60 + sm
                 if slot_start <= total < slot_start + slot_minutes:
                     return s
+            # Depois do último slot
+            if total >= last_total:
+                return last_slot
         except Exception:
             pass
-    return "sem_horario"
+    return first_slot
 
 
 @router.get("/lousa/me")
@@ -2907,7 +3109,51 @@ async def get_ticket_signal(ticket_id: str,
     strategy = "pppoe" if pppoe else "name"
     if refresh:
         try:
-            live = await get_onu_signal_live(onu["unique_external_id"], user=user)
+            live = await get_onu_signal_live(onu["unique_external_id"],
+                                                  force=True, user=user)
+            return {"found": True, "match_strategy": strategy, **live}
+        except HTTPException:
+            pass
+        except Exception as e:
+            return {"found": True, "match_strategy": strategy, "cached": True,
+                    "onu": onu, "warning": f"refresh_failed: {e}"}
+    return {"found": True, "match_strategy": strategy, "cached": True, "onu": onu}
+
+
+@router.get("/lousa/public/tickets/{ticket_id}/signal")
+async def get_ticket_signal_public(ticket_id: str,
+                                       collaborator_id: str,
+                                       refresh: bool = False):
+    """Versão PÚBLICA (sem auth) do /signal — usada pelo app do colaborador
+    no LousaMobile. Verifica que a OS pertence ao colaborador antes de
+    devolver o sinal. Suporta `refresh=true` (Live) com force-bypass do
+    rate-limit (iter215)."""
+    t = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Nota não encontrada")
+    if t.get("assigned_collaborator_id") != collaborator_id:
+        raise HTTPException(403, "Esta OS não pertence a este colaborador")
+    snap = t.get("client_snapshot") or {}
+    pppoe = (snap.get("pppoe_user") or "").strip()
+    name = (snap.get("name") or "").strip()
+    if not pppoe and not name:
+        return {"found": False, "reason": "missing_pppoe_and_name"}
+    try:
+        from routes.smartolt import (resolve_signal_for_ticket,
+                                              get_onu_signal_live)
+    except ImportError:
+        return {"found": False, "reason": "smartolt_module_missing"}
+    onu = await resolve_signal_for_ticket(t)
+    if not onu:
+        return {"found": False, "reason": "no_match", "pppoe": pppoe, "name": name}
+    strategy = "pppoe" if pppoe else "name"
+    # Sintetiza um "user" compatível com o endpoint live
+    fake_user = {"company_id": t.get("company_id") or DEMO_COMPANY_ID,
+                 "role": "colaborador", "id": collaborator_id}
+    if refresh:
+        try:
+            live = await get_onu_signal_live(onu["unique_external_id"],
+                                                  force=True, user=fake_user)
             return {"found": True, "match_strategy": strategy, **live}
         except HTTPException:
             pass
@@ -3293,6 +3539,38 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
     if t["type"] == "instalacao" and not cd.ont:
         raise HTTPException(400, "ONT é obrigatório para instalação")
 
+    # iter215z — Porta da CTO OBRIGATÓRIA em instalação e reparo (regra
+    # global pedida pelo user 2026-06). Bloqueia o fechamento se cto_id
+    # ou cto_port_number ausentes. Admin/auditor (is_admin_test) e
+    # super-unlock (full unlock) podem driblar — mas a OS recebe flag.
+    company_id_for_toggles = t.get("company_id") or DEMO_COMPANY_ID
+    try:
+        _toggles_doc = await db.aihub_settings.find_one(
+            {"company_id": company_id_for_toggles,
+             "key": "os_validation_toggles"},
+            {"_id": 0, "value": 1},
+        ) or {}
+        _toggles = (_toggles_doc.get("value") or {})
+        cto_port_required = bool(_toggles.get("cto_port_required", True))
+    except Exception:
+        cto_port_required = True
+    if (cto_port_required
+            and t["type"] in ("instalacao", "reparo")
+            and not is_admin_test):
+        if not cd.cto_id or not cd.cto_port_number:
+            raise HTTPException(400, {
+                "code": "CTO_PORT_REQUIRED",
+                "message": (
+                    f"OS de {t['type']} exige seleção da CTO e da porta "
+                    "(regra global). Volte ao passo da CTO, escolha a "
+                    "caixa, a porta livre e finalize. O cliente será "
+                    "registrado automaticamente na porta e na Base de "
+                    "Portas."
+                ),
+                "missing_cto_id": not cd.cto_id,
+                "missing_cto_port_number": not cd.cto_port_number,
+            })
+
     company_id = t.get("company_id") or DEMO_COMPANY_ID
 
     # ============================================================
@@ -3587,57 +3865,31 @@ async def public_finalize_ticket(ticket_id: str, payload: PublicFinalizeIn,
             },
         }},
     )
-    # Vincula cliente à porta da CTO (instalação)
+    # Vincula cliente à porta da CTO (instalação/reparo).
+    # iter215aa — Agora usa _smart_link_client_to_port que valida:
+    #   • porta ocupada por OUTRO cliente → bloqueia (HTTP 409)
+    #   • cliente em OUTRA porta → libera antiga (port_swap)
+    #   • mesma porta/cliente → no-op
     if cd.cto_id and cd.cto_port_number:
         try:
             cs = t.get("client_snapshot") or {}
-            await db.ctos.update_one(
-                {
-                    "id": cd.cto_id,
-                    "company_id": company_id,
-                    "ports.number": cd.cto_port_number,
-                },
-                {"$set": {
-                    "ports.$.status": "used",
-                    "ports.$.client_subscriber_id": cs.get("id"),
-                    "ports.$.client_name": cs.get("name"),
-                    "ports.$.client_pppoe": cs.get("pppoe_user") or t.get("pppoe_user"),
-                    "ports.$.connected_at": now_iso(),
-                    "ports.$.connected_via_ticket": ticket_id,
-                }},
+            coll_doc = await db.collaborators.find_one(
+                {"id": cid}, {"_id": 0, "name": 1, "email": 1}) or {}
+            await _smart_link_client_to_port(
+                company_id=company_id,
+                cto_id=cd.cto_id,
+                port_number=cd.cto_port_number,
+                client_id=cs.get("id"),
+                client_name=cs.get("name"),
+                client_pppoe=cs.get("pppoe_user") or t.get("pppoe_user"),
+                actor_email=coll_doc.get("email"),
+                actor_id=cid,
+                actor_name=coll_doc.get("name"),
+                ticket_id=ticket_id,
             )
-            # iter183 — Sync Base de Portas após vínculo
-            try:
-                from routes.cto_ports_base import sync_port_from_cto
-                await sync_port_from_cto(company_id, cd.cto_id, cd.cto_port_number)
-            except Exception as _e:
-                logger.warning("[lousa] sync cto_ports falhou cto=%s p=%s: %s",
-                                  cd.cto_id, cd.cto_port_number, _e)
-            # iter163 — registra evento de vínculo de porta no histórico do cliente
-            if cs.get("id"):
-                try:
-                    cto_doc = await db.ctos.find_one(
-                        {"id": cd.cto_id, "company_id": company_id},
-                        {"_id": 0, "name": 1})
-                    coll_doc = await db.collaborators.find_one(
-                        {"id": cid}, {"_id": 0, "name": 1, "email": 1}) or {}
-                    from services import client_equipment_history as _ceh
-                    await _ceh.log_event(
-                        company_id=company_id,
-                        client_id=cs.get("id"),
-                        client_name=cs.get("name"),
-                        action="port_link",
-                        cto_id=cd.cto_id,
-                        cto_name=(cto_doc or {}).get("name"),
-                        cto_port_number=cd.cto_port_number,
-                        actor_id=cid,
-                        actor_name=coll_doc.get("name"),
-                        actor_email=coll_doc.get("email"),
-                        ticket_id=ticket_id,
-                        notes="Vínculo na finalização da OS",
-                    )
-                except Exception as _e:
-                    logger.warning("[lousa] ceh port_link falhou: %s", _e)
+        except HTTPException:
+            # Porta ocupada por outro cliente — propaga pro técnico
+            raise
         except Exception as e:
             logger.warning("[lousa] vínculo CTO porta falhou: %s", e)
     # Background: análise IA da foto da CTO (se houver foto tirada nesta OS)
@@ -4457,60 +4709,31 @@ async def admin_close_ticket(ticket_id: str, payload: AdminCloseIn,
                 )
                 logger.info("[lousa] admin instalacao auto-close: %s",
                             close_result)
-            # Vincula porta da CTO ao cliente (mesma lógica de
-            # public_finalize_ticket lines 2977-3024).
+            # Vincula porta da CTO ao cliente.
+            # iter215aa — usa _smart_link_client_to_port (mesma regra de
+            # exclusividade do fluxo público: porta ocupada por outro
+            # cliente bloqueia; cliente em outra porta libera a antiga).
             cto_id = cd.get("cto_id")
             cto_port = cd.get("cto_port_number")
             if cto_id and cto_port:
                 try:
                     cs = t.get("client_snapshot") or {}
-                    await db.ctos.update_one(
-                        {
-                            "id": cto_id,
-                            "company_id": company_id,
-                            "ports.number": int(cto_port),
-                        },
-                        {"$set": {
-                            "ports.$.status": "used",
-                            "ports.$.client_subscriber_id": cs.get("id"),
-                            "ports.$.client_name": cs.get("name"),
-                            "ports.$.client_pppoe": (cs.get("pppoe_user")
-                                                     or t.get("pppoe_user")),
-                            "ports.$.connected_at": now_iso(),
-                            "ports.$.connected_via_ticket": ticket_id,
-                        }},
+                    await _smart_link_client_to_port(
+                        company_id=company_id,
+                        cto_id=cto_id,
+                        port_number=int(cto_port),
+                        client_id=cs.get("id"),
+                        client_name=cs.get("name"),
+                        client_pppoe=(cs.get("pppoe_user")
+                                      or t.get("pppoe_user")),
+                        actor_email=user.get("email"),
+                        actor_id=user.get("id"),
+                        actor_name=(user.get("name")
+                                    or user.get("email")),
+                        ticket_id=ticket_id,
                     )
-                    try:
-                        from routes.cto_ports_base import sync_port_from_cto
-                        await sync_port_from_cto(company_id, cto_id, int(cto_port))
-                    except Exception as _e:
-                        logger.warning(
-                            "[lousa] sync cto_ports admin falhou: %s", _e)
-                    if cs.get("id"):
-                        try:
-                            cto_doc = await db.ctos.find_one(
-                                {"id": cto_id, "company_id": company_id},
-                                {"_id": 0, "name": 1})
-                            from services import client_equipment_history as _ceh
-                            await _ceh.log_event(
-                                company_id=company_id,
-                                client_id=cs.get("id"),
-                                client_name=cs.get("name"),
-                                action="port_link",
-                                cto_id=cto_id,
-                                cto_name=(cto_doc or {}).get("name"),
-                                cto_port_number=int(cto_port),
-                                actor_id=user.get("id"),
-                                actor_name=(user.get("name")
-                                            or user.get("email")),
-                                actor_email=user.get("email"),
-                                ticket_id=ticket_id,
-                                notes=("Vínculo na finalização da OS pelo "
-                                       "gestor (admin-close)"),
-                            )
-                        except Exception as _e:
-                            logger.warning(
-                                "[lousa] ceh port_link admin falhou: %s", _e)
+                except HTTPException:
+                    raise
                 except Exception as e:
                     logger.warning(
                         "[lousa] vínculo CTO porta admin falhou: %s", e)
@@ -5515,9 +5738,7 @@ async def _ach_count_type(db, cid: str, ttype: str) -> int:
 
 async def _ach_max_streak(db, cid: str) -> int:
     """Maior streak histórico (até 365 dias atrás)."""
-    from datetime import datetime, timezone, timedelta
-    now = datetime.now(timezone.utc)
-    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    from datetime import datetime
     days_set = set()
     cursor = db.tickets.find(
         {"assigned_collaborator_id": cid, "status": "finalizada"},
@@ -5688,7 +5909,6 @@ async def geofence_ping(payload: GeofencePingIn):
     )
 
     # Chamados abertos do técnico hoje
-    today = _today_br_iso()
     open_ticket = await db.tickets.find_one(
         {
             "assigned_collaborator_id": cid,
@@ -5944,6 +6164,205 @@ async def admin_optimize_route(payload: AdminRouteOptimizeIn,
         current_lat=float(lat), current_lng=float(lng),
         apply=payload.apply,
     ))
+
+
+# ─────────────────────────────────────────────────────────────
+# AUTO-DISTRIBUIÇÃO NA GRADE DE HORÁRIO (iter237)
+# ─────────────────────────────────────────────────────────────
+
+class AutoDistributeIn(BaseModel):
+    collaborator_id: Optional[str] = None  # se None, processa todos do tenant
+    slot_minutes: int = 60                   # 1 bolha por hora por padrão
+    work_start_hour: int = 8                 # janela de trabalho do dia
+    work_end_hour: int = 18
+    allow_double_per_slot: bool = True       # último caso: 2 por slot
+
+
+@router.post("/lousa/auto-distribute")
+async def lousa_auto_distribute(payload: AutoDistributeIn,
+                                  user: dict = Depends(get_current_user)):
+    """Distribui bolhas PENDENTES sem horário travado em slots da grade,
+    em ordem logística (nearest-neighbor a partir do GPS do técnico).
+
+    Regras (definidas pelo Vando):
+    1. Bolhas com priority ∈ {urgente, horario, prioridade} NÃO se movem
+       — elas têm slot fixo respeitado pela alocação.
+    2. Bolhas normais sem horário ou com horário "frouxo" são alocadas
+       no próximo slot livre, escolhendo a mais PRÓXIMA do ponto atual
+       (GPS do técnico ou bolha anterior já alocada).
+    3. Se todos os slots estiverem ocupados, permite 2 por slot (último
+       caso) escolhendo o slot cuja vizinha geográfica é mais próxima.
+    4. Nunca deixa bolha sem horário na grade — todas vão pra algum slot.
+    """
+    company_id = user.get("company_id") or DEMO_COMPANY_ID
+    today = _today_br_iso()
+    # Lista de colaboradores a processar
+    coll_filter: dict = {"company_id": company_id}
+    if payload.collaborator_id:
+        coll_filter = {"id": payload.collaborator_id}
+    colls = await db.collaborators.find(
+        coll_filter,
+        {"_id": 0, "id": 1, "name": 1, "last_position": 1},
+    ).to_list(1000)
+    summary = []
+    for col in colls:
+        moved = await _auto_distribute_one(col, today, payload)
+        if moved:
+            summary.append(moved)
+    return {"ok": True, "today": today,
+            "collaborators_processed": len(summary), "details": summary}
+
+
+async def _auto_distribute_one(col: dict, today: str,
+                                 payload: "AutoDistributeIn") -> Optional[dict]:
+    """Aloca bolhas flexíveis na grade de horário do colaborador."""
+    cid = col["id"]
+    # 1) Lista todas as bolhas pendentes do tech no dia
+    cur = db.tickets.find(
+        {
+            "assigned_collaborator_id": cid,
+            "status": {"$in": ["pendente", "aguardando_atendimento"]},
+        },
+        {"_id": 0, "id": 1, "priority": 1, "scheduled_time": 1,
+          "client_snapshot": 1, "service_date": 1, "opened_at": 1,
+          "created_at": 1, "position": 1},
+    )
+    tickets = []
+    async for t in cur:
+        if _ticket_day_iso(t) != today:
+            continue
+        tickets.append(t)
+    if not tickets:
+        return None
+
+    # 2) Separa fixas vs flexíveis
+    FIXED_PRIORITIES = {"urgente", "horario", "prioridade"}
+    fixed = [t for t in tickets if t.get("priority") in FIXED_PRIORITIES
+              and t.get("scheduled_time")]
+    flex = [t for t in tickets if t not in fixed]
+    if not flex:
+        return {"collaborator_id": cid, "name": col.get("name"),
+                "moved": 0, "reason": "Todas as bolhas têm horário fixo."}
+
+    # 3) Gera slots da janela de trabalho
+    slot_min = max(15, int(payload.slot_minutes))
+    slots = []
+    h = int(payload.work_start_hour)
+    m = 0
+    while h < int(payload.work_end_hour):
+        slots.append(f"{h:02d}:{m:02d}")
+        m += slot_min
+        if m >= 60:
+            h += m // 60
+            m = m % 60
+    if not slots:
+        return None
+
+    # 4) Marca slots ocupados pelas fixas
+    occupied = {}  # slot -> [ticket_id]
+    for t in fixed:
+        st = (t.get("scheduled_time") or "")[:5]
+        if st in slots:
+            occupied.setdefault(st, []).append(t["id"])
+
+    # 5) Ponto de partida: GPS atual do tech (last_position do collaborator)
+    last = col.get("last_position") or {}
+    cur_lat = last.get("lat")
+    cur_lng = last.get("lng")
+    # Se não tem GPS, parte da 1ª bolha fixa (se houver)
+    if not (isinstance(cur_lat, (int, float))
+            and isinstance(cur_lng, (int, float))) and fixed:
+        snap = fixed[0].get("client_snapshot") or {}
+        if isinstance(snap.get("latitude"), (int, float)):
+            cur_lat = float(snap["latitude"])
+            cur_lng = float(snap["longitude"])
+
+    # 6) Itera flex em ordem de proximidade (nearest-neighbor)
+    flex_with_geo = []
+    flex_without_geo = []
+    for t in flex:
+        snap = t.get("client_snapshot") or {}
+        lat = snap.get("latitude")
+        lng = snap.get("longitude")
+        if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
+            t["_lat"] = float(lat)
+            t["_lng"] = float(lng)
+            flex_with_geo.append(t)
+        else:
+            flex_without_geo.append(t)
+
+    def _next_nearest(lat, lng, pool):
+        if lat is None or not pool:
+            return pool[0] if pool else None
+        return min(pool, key=lambda x: _haversine_km(
+            lat, lng, x["_lat"], x["_lng"]))
+
+    # Slots ainda livres
+    free_slots = [s for s in slots if s not in occupied]
+    moved = []
+    pool = flex_with_geo[:]
+
+    for slot in free_slots:
+        if not pool and not flex_without_geo:
+            break
+        if pool:
+            nxt = _next_nearest(cur_lat, cur_lng, pool)
+            cur_lat, cur_lng = nxt["_lat"], nxt["_lng"]
+            pool.remove(nxt)
+        else:
+            nxt = flex_without_geo.pop(0)
+        await db.tickets.update_one(
+            {"id": nxt["id"]},
+            {"$set": {"scheduled_time": slot,
+                       "auto_distributed_at": now_iso()}},
+        )
+        occupied.setdefault(slot, []).append(nxt["id"])
+        moved.append({"ticket_id": nxt["id"], "slot": slot})
+
+    # 7) Se sobrou bolha sem slot → permite 2 por slot
+    remaining = pool + flex_without_geo
+    if remaining and payload.allow_double_per_slot:
+        for r in remaining:
+            # escolhe slot com menos bolhas E geograficamente mais perto
+            best_slot = min(slots, key=lambda s: (
+                len(occupied.get(s, [])),
+                _slot_proximity_cost(s, r, occupied, tickets),
+            ))
+            await db.tickets.update_one(
+                {"id": r["id"]},
+                {"$set": {"scheduled_time": best_slot,
+                           "auto_distributed_at": now_iso(),
+                           "auto_distributed_overflow": True}},
+            )
+            occupied.setdefault(best_slot, []).append(r["id"])
+            moved.append({"ticket_id": r["id"], "slot": best_slot,
+                            "overflow": True})
+
+    return {"collaborator_id": cid, "name": col.get("name"),
+            "moved": len(moved), "slots": moved}
+
+
+def _slot_proximity_cost(slot: str, candidate: dict,
+                            occupied: dict, all_tickets: list) -> float:
+    """Custo geográfico de colocar `candidate` no `slot` — distância média
+    ao ticket já alocado naquele slot."""
+    if "_lat" not in candidate:
+        return 999999.0
+    ids_in_slot = occupied.get(slot, [])
+    if not ids_in_slot:
+        return 0.0
+    by_id = {t["id"]: t for t in all_tickets}
+    dists = []
+    for tid in ids_in_slot:
+        t = by_id.get(tid)
+        if not t:
+            continue
+        snap = t.get("client_snapshot") or {}
+        if isinstance(snap.get("latitude"), (int, float)):
+            dists.append(_haversine_km(
+                candidate["_lat"], candidate["_lng"],
+                float(snap["latitude"]), float(snap["longitude"])))
+    return min(dists) if dists else 50.0
 
 
 
@@ -6712,6 +7131,7 @@ async def lousa_briefing(user: dict = Depends(require_role("gestor")),
         "prioridade": int(settings.get("sla_prioridade_minutes", 45)),
         "preventiva": int(settings.get("sla_preventiva_minutes", 90)),
         "venda": int(settings.get("sla_venda_minutes", 60)),
+        "rompimento": int(settings.get("sla_rompimento_minutes", 180)),
     }
     worst_score = None
     worst_ticket = None

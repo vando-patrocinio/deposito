@@ -409,11 +409,11 @@ function Step3({ vehicle, gateway, smsText, carrier, connectStatus }) {
         </div>
         <div style={{ marginTop: 6, fontSize: 13, color: "#1E1B4B",
                          lineHeight: 1.6 }}>
-          🚗 <b>{vehicle.placa}</b> — {vehicle.marca} {vehicle.modelo}<br/>
-          📡 IMEI {vehicle.imei}<br/>
-          📶 Chip {CARRIERS.find((c) => c.id === carrier)?.label}{" "}
+          <b>{vehicle.placa}</b> — {vehicle.marca} {vehicle.modelo}<br/>
+          IMEI {vehicle.imei}<br/>
+          Chip {CARRIERS.find((c) => c.id === carrier)?.label}{" "}
             ({CARRIERS.find((c) => c.id === carrier)?.apn})<br/>
-          🛰️ Servidor: <code>{gateway.host}:{gateway.port}</code>
+          ️ Servidor: <code>{gateway.host}:{gateway.port}</code>
         </div>
       </div>
 
@@ -429,7 +429,7 @@ function Step3({ vehicle, gateway, smsText, carrier, connectStatus }) {
               background: copied ? "#10b981" : "#7c3aed",
               color: "white", border: "none", fontSize: 11,
               fontWeight: 800, cursor: "pointer",
-            }}>{copied ? "✓ Copiado!" : "📋 Copiar"}</button>
+            }}>{copied ? "✓ Copiado!" : "Copiar"}</button>
         </div>
         <pre data-testid="wiz-sms-text" style={{
           background: "#0F172A", color: "#FCD34D", padding: 14,
@@ -446,7 +446,7 @@ function Step3({ vehicle, gateway, smsText, carrier, connectStatus }) {
               padding: "12px", borderRadius: 12,
               background: "#10b981", color: "white",
               fontWeight: 900, fontSize: 13.5, textDecoration: "none",
-            }}>📨 Abrir SMS pronto pro {vehicle.sim_phone}</a>
+            }}>Abrir SMS pronto pro {vehicle.sim_phone}</a>
         )}
 
         <p style={{ margin: "10px 0 0", fontSize: 11.5, color: "#6B7280",
@@ -493,7 +493,7 @@ function ConnectionStatus({ connectStatus, isOrphan }) {
         background: "#FFFBEB", border: "1px solid #FBBF24",
         color: "#92400E", fontSize: 13, fontWeight: 600, lineHeight: 1.5,
       }}>
-        ⚠ Detectamos pings desse IMEI, mas há <b>{connectStatus.orphan_pings_same_imei}</b>{" "}
+        Detectamos pings desse IMEI, mas há <b>{connectStatus.orphan_pings_same_imei}</b>{" "}
         registros órfãos. Verifique se o IMEI está digitado corretamente.
       </div>
     );
@@ -507,7 +507,7 @@ function ConnectionStatus({ connectStatus, isOrphan }) {
     }}>
       <div style={{ display: "inline-block",
                        animation: "pulse 1.4s ease-in-out infinite",
-                       fontSize: 28 }}>📡</div>
+                       fontSize: 28 }}></div>
       <div style={{ marginTop: 6 }}>Aguardando 1º ping do GPS...</div>
       <div style={{ fontSize: 11, color: "#64748B", marginTop: 4 }}>
         Após enviar o SMS, ligue o veículo. Pode levar 1-2 minutos.

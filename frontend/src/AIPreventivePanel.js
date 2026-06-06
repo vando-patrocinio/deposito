@@ -65,10 +65,10 @@ export default function AIPreventivePanel({ onClose, embedded = false }) {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Button variant="soft" onClick={() => doScan(false)} disabled={scanning} data-testid="ai-scan-btn">
-            {scanning ? "🔄 Escaneando…" : "🔍 Escanear agora"}
+            {scanning ? "Escaneando…" : "Escanear agora"}
           </Button>
           <Button variant="soft" onClick={() => doScan(true)} disabled={scanning} data-testid="ai-scan-force-btn">
-            ⚡ Scan força
+            Scan força
           </Button>
           {!embedded && <Button onClick={onClose}>Fechar</Button>}
         </div>
@@ -82,8 +82,8 @@ export default function AIPreventivePanel({ onClose, embedded = false }) {
       )}
       <div style={{ display: "flex", gap: 4, padding: 4, background: "#e2e8f0", borderRadius: 12, marginBottom: 14, width: "fit-content" }}>
         {[
-          { id: "suggestions", label: `📋 Sugestões (${suggestions.length})` },
-          { id: "capacity", label: "📊 Capacidade dos técnicos" },
+          { id: "suggestions", label: `Sugestões (${suggestions.length})` },
+          { id: "capacity", label: "Capacidade dos técnicos" },
         ].map((tdef) => (
           <button key={tdef.id} onClick={() => setTab(tdef.id)}
                   data-testid={`ai-tab-${tdef.id}`}
@@ -131,7 +131,7 @@ export default function AIPreventivePanel({ onClose, embedded = false }) {
         <Card title={`${suggestions.length} sugestão(ões) pendente(s)`} data-testid="ai-suggestions-card">
           {suggestions.length === 0 ? (
             <div style={{ padding: 30, textAlign: "center", color: "#64748b" }}>
-              Sem sugestões pendentes. Clique em <strong>🔍 Escanear agora</strong> para gerar novas.
+              Sem sugestões pendentes. Clique em <strong>Escanear agora</strong> para gerar novas.
             </div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -148,7 +148,7 @@ export default function AIPreventivePanel({ onClose, embedded = false }) {
                     </td>
                     <td style={css.td}>
                       <span style={s.urgency === "critical" ? css.pillCritical : css.pillWarn}>
-                        📶 {s.rx_dbm.toFixed(1)} dBm
+                        {s.rx_dbm.toFixed(1)} dBm
                       </span>
                       <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>{s.urgency}</div>
                     </td>

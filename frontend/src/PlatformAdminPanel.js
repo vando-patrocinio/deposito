@@ -233,7 +233,7 @@ export default function PlatformAdminPanel() {
               cursor: deleting ? "not-allowed" : "pointer",
               display: "flex", alignItems: "center", gap: 6,
             }}
-          >🗑 {deleting ? "Apagando…" : "Apagar selecionadas"}</button>
+          >{deleting ? "Apagando…" : "Apagar selecionadas"}</button>
         </div>
       )}
 
@@ -344,7 +344,7 @@ function ConfirmDeleteModal({ companies, busy, onCancel, onConfirm }) {
           background: "#fee2e2", color: "#dc2626",
           display: "grid", placeItems: "center", marginBottom: 14,
           fontSize: 28,
-        }}>⚠️</div>
+        }}>️</div>
 
         <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>
           Apagar {companies.length} empresa(s)?

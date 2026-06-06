@@ -76,7 +76,7 @@ export default function SmartOltPushPanel() {
       <div>
         <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0,
                        color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
-          📡 Fila SmartOLT
+          Fila SmartOLT
         </h1>
         <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0 0" }}>
           CTOs criadas localmente que serão registradas no SmartOLT (apenas as
@@ -88,7 +88,7 @@ export default function SmartOltPushPanel() {
         <button data-testid="smartolt-run-sweep"
                 onClick={runSweep} disabled={running}
                 style={btnPrimary}>
-          {running ? "⏳ Sincronizando…" : "⚡ Forçar sincronia agora"}
+          {running ? "⏳ Sincronizando…" : "Forçar sincronia agora"}
         </button>
         {data?.pending_count > 0 && (
           <button data-testid="smartolt-retry-all"
@@ -111,17 +111,17 @@ export default function SmartOltPushPanel() {
                     ...btnPrimary,
                     background: "linear-gradient(135deg,#f59e0b,#d97706)",
                   }}>
-            🔁 Sincronizar TODAS ({data.pending_count})
+            Sincronizar TODAS ({data.pending_count})
           </button>
         )}
         <button data-testid="smartolt-reload"
                 onClick={reload} disabled={loading} style={btnSecondary}>
-          {loading ? "⏳" : "🔄"} Atualizar
+          {loading ? "⏳" : ""} Atualizar
         </button>
         {data && (
           <span style={{ fontSize: 12, color: "#64748b" }}>
             {data.pending_count > 0
-              ? `🟡 ${data.pending_count} pendente(s) · 🟢 ${data.synced_recent?.length || 0} sincronizadas recentes`
+              ? `${data.pending_count} pendente(s) · ${data.synced_recent?.length || 0} sincronizadas recentes`
               : "✅ Tudo em dia"}
           </span>
         )}
@@ -145,10 +145,10 @@ export default function SmartOltPushPanel() {
       <div style={cardStyle} data-testid="smartolt-pending">
         <h3 style={{ margin: "0 0 10px", fontSize: 16, fontWeight: 700,
                       color: "#7c2d12" }}>
-          🟡 Aguardando sincronia
+          Aguardando sincronia
         </h3>
         {!data?.pending?.length ? (
-          <div style={emptyStyle}>Sem CTOs pendentes. 🎉</div>
+          <div style={emptyStyle}>Sem CTOs pendentes. </div>
         ) : (
           <div style={{ display: "grid", gap: 6 }}>
             {data.pending.map((c) => (
@@ -163,7 +163,7 @@ export default function SmartOltPushPanel() {
                 {c.smartolt_olt_name && (
                   <span style={{ fontSize: 10, color: "#0f766e",
                                     fontFamily: "monospace" }}>
-                    📡 {c.smartolt_olt_name}
+                    {c.smartolt_olt_name}
                   </span>
                 )}
                 {c.smartolt_sync_attempts > 0 && (
@@ -192,7 +192,7 @@ export default function SmartOltPushPanel() {
       <div style={cardStyle} data-testid="smartolt-synced">
         <h3 style={{ margin: "0 0 10px", fontSize: 16, fontWeight: 700,
                       color: "#065f46" }}>
-          🟢 Sincronizadas recentemente
+          Sincronizadas recentemente
         </h3>
         {!data?.synced_recent?.length ? (
           <div style={emptyStyle}>Nenhuma CTO sincronizada ainda.</div>
@@ -209,7 +209,7 @@ export default function SmartOltPushPanel() {
                 </span>
                 <span style={{ fontSize: 10, color: "#0f766e",
                                   fontFamily: "monospace" }}>
-                  📡 {c.smartolt_olt_name || "—"}
+                  {c.smartolt_olt_name || "—"}
                 </span>
                 <span style={{ flex: 1, fontSize: 11, color: "#64748b" }}>
                   Sincronizada em {TS(c.smartolt_synced_at)}

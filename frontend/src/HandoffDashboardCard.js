@@ -227,7 +227,7 @@ export default function HandoffDashboardCard() {
                   ))}
                 </div>
                 <div style={{ fontSize: 11, color: "#78350f", marginTop: 6, lineHeight: 1.4 }}>
-                  💡 Muitos handoffs na mesma conversa pode indicar que os prompts dos agentes
+                  Muitos handoffs na mesma conversa pode indicar que os prompts dos agentes
                   precisam de ajuste ou que o cliente tem dúvidas mistas (vendas + suporte + cobrança).
                 </div>
               </div>

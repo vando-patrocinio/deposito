@@ -345,7 +345,7 @@ function ElementMapPicker({
                 key={`${center.lat.toFixed(4)}-${center.lng.toFixed(4)}`}
               >
                 <TileLayer
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
                   attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 />
 
@@ -556,7 +556,7 @@ function OrphanLinkSuggestionCard({ items, checked, onToggle }) {
       <div style={{ display: "flex", justifyContent: "space-between",
                        alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: "#9a3412" }}>
-          🧵 {items.length} cabo(s) órfão(s) próximo(s)
+          {items.length} cabo(s) órfão(s) próximo(s)
         </div>
         <label style={{ display: "inline-flex", alignItems: "center",
                             gap: 6, fontSize: 12, color: "#7c2d12",
@@ -575,7 +575,7 @@ function OrphanLinkSuggestionCard({ items, checked, onToggle }) {
             fontSize: 12, color: "#7c2d12",
           }}>
             • <strong>{it.cable_name}</strong>
-            {" "}({it.end === "from" ? "Origem" : "Destino"}, {it.distance_m}m)
+            {" "}({it.end === "from " ? "Origem" : "Destino"}, {it.distance_m}m)
           </div>
         ))}
         {items.length > 5 && (
@@ -1007,7 +1007,7 @@ function CableTrackRecorder({
                   boxShadow: mode === "auto"
                     ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
                 }}>
-          🛣️ Auto (rua)
+          ️ Auto (rua)
         </button>
         <button data-testid="track-mode-gps"
                 onClick={() => { if (!recording) setMode("gps"); }}
@@ -1020,7 +1020,7 @@ function CableTrackRecorder({
                   boxShadow: mode === "gps"
                     ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
                 }}>
-          📡 GPS andando
+          GPS andando
         </button>
         <button data-testid="track-mode-manual"
                 onClick={() => { if (!recording) setMode("manual"); }}
@@ -1044,8 +1044,8 @@ function CableTrackRecorder({
                          style={{ height: "100%", width: "100%" }}
                          key={`${mapCenter[0].toFixed(4)}-${mapCenter[1].toFixed(4)}`}>
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contribuidores © <a href="https://carto.com/attributions">CARTO</a>' />
           {/* Click handler para modo manual */}
           {mode === "manual" && (
             <MapClickHandlerLeaf onClick={addManualWaypoint} />
@@ -1199,7 +1199,7 @@ function CableTrackRecorder({
                          ...primaryBtn, flex: 1, background: "#10b981",
                          opacity: autoRouting ? 0.6 : 1,
                        }}>
-              📍 {autoStart ? "Refazer Início" : "Marcar Início"}
+              {autoStart ? "Refazer Início" : "Marcar Início"}
             </button>
             <button data-testid="track-auto-end"
                        onClick={markEnd}
@@ -1208,7 +1208,7 @@ function CableTrackRecorder({
                          ...primaryBtn, flex: 1, background: "#dc2626",
                          opacity: autoRouting ? 0.6 : 1,
                        }}>
-              📍 {autoEnd ? "Refazer Fim" : "Marcar Fim"}
+              {autoEnd ? "Refazer Fim" : "Marcar Fim"}
             </button>
             {(autoStart || autoEnd) && (
               <button data-testid="track-auto-clear"
@@ -1233,13 +1233,13 @@ function CableTrackRecorder({
             ) : (
               <>
                 <strong>Como usar:</strong> Vá fisicamente até onde o cabo
-                {" "}começa, toque <strong>"Marcar Início"</strong>. Depois vá
-                {" "}até onde termina e toque <strong>"Marcar Fim"</strong>.
+                {" "}começa, toque <strong>“Marcar Início”</strong>. Depois vá
+                {" "}até onde termina e toque <strong>“Marcar Fim”</strong>.
                 {" "}O sistema completa o trajeto pelas ruas automaticamente.
                 {autoStart && autoEnd && (
                   <>
                     <br /><br />
-                    💡 <strong>Ajuste fino (Google Maps-like):</strong>{" "}
+                    <strong>Ajuste fino (Google Maps-like):</strong>{" "}
                     <strong>Arraste qualquer trecho da linha verde</strong>
                     {" "}pra desviar o trajeto (puxa como borracha). Os
                     {" "}pontos brancos criados podem ser arrastados de novo
@@ -1296,7 +1296,7 @@ function CableTrackRecorder({
             color: "#1e40af", fontSize: 12, lineHeight: 1.4,
             border: "1px solid #bfdbfe",
           }}>
-            👆 Toque no mapa para adicionar waypoints
+            Toque no mapa para adicionar waypoints
             {" "}(poste, esquina, emenda...). Origem já incluída como ponto 1.
           </div>
           <button data-testid="track-manual-undo"
@@ -1505,8 +1505,8 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                   : "");
           const stampPromise = stampFieldPhoto(dataUrl, {
             lat: gps?.lat, lng: gps?.lng,
-            label: elementType === "cto" ? "📦 FOTO CTO"
-                    : elementType === "ce" ? "🏢 FOTO CE" : "🔌 FOTO CABO",
+            label: elementType === "cto" ? "FOTO CTO"
+                    : elementType === "ce" ? "FOTO CE" : "FOTO CABO",
             collaborator: technician?.name || "",
             element: elementName,
           });
@@ -1755,7 +1755,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
     if (hasUnsavedData()) {
       const ok = window.confirm(
         "Você tem dados não salvos neste cadastro. Tem certeza que deseja sair?\n\n"
-        + "💡 Dica: termine o cadastro — se estiver sem internet, ele é "
+        + "Dica: termine o cadastro — se estiver sem internet, ele é "
         + "salvo automaticamente na fila offline.",
       );
       if (!ok) return;
@@ -1950,7 +1950,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
           window.dispatchEvent(new CustomEvent("smartprov:toast", {
             detail: {
               kind: "info",
-              icon: "📡",
+              icon: "",
               title: "Sincronizando com SmartOLT…",
               message: `CTO ${r.name || ""} será registrada em ${r.smartolt_olt_name}.`,
               durationMs: 8000,
@@ -2273,7 +2273,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                           padding: "14px 14px",
                         }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 20 }}>📷</span>
+                    <span style={{ fontSize: 20 }}></span>
                     <span style={{ color: C_TEXT, fontWeight: 600 }}>
                       Tirar foto da {elementLabel}
                     </span>
@@ -2578,10 +2578,10 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
             {[
               { v: "balanceada", l: "Rede balanceada",
                 d: "Sinal distribuído de forma equilibrada entre as portas.",
-                icon: "⚖️" },
+                icon: "️" },
               { v: "desbalanceada", l: "Rede desbalanceada",
                 d: "Sinal distribuído de forma desbalanceada entre as portas.",
-                icon: "⚙️" },
+                icon: "️" },
             ].map((opt) => (
               <button key={opt.v} data-testid={`cto-net-${opt.v.slice(0,3)}`}
                       onClick={() => setNetworkType(opt.v)}
@@ -2716,7 +2716,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                 background: "#ecfdf5", border: "1px solid #6ee7b7",
                 fontSize: 11, color: "#065f46",
               }}>
-                📡 OLT detectada pelo GPS: <strong>{gpsVlanSuggestion.matched_olt}</strong>
+                OLT detectada pelo GPS: <strong>{gpsVlanSuggestion.matched_olt}</strong>
                 {gpsVlanSuggestion.bairro_match
                   ? ` · Bairro ${gpsVlanSuggestion.bairro_match.bairro} (VLAN ${gpsVlanSuggestion.suggested_vlan})`
                   : ` · sem bairro cadastrado nessa OLT — usando VLAN 1`}
@@ -2844,20 +2844,20 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
             </p>
 
             <div style={{ ...cardBase, padding: "4px 0" }}>
-              <SummaryRow icon="🏠" label="Endereço de referência"
+              <SummaryRow icon="" label="Endereço de referência"
                 value={`${address.endereco}, ${address.numero}${address.referencia ? "\n" + address.referencia : ""}`} />
-              <SummaryRow icon="🏷" label="Bairro" value={bairroSelected?.bairro} />
-              <SummaryRow icon="📍" label="Posição GPS"
+              <SummaryRow icon="" label="Bairro" value={bairroSelected?.bairro} />
+              <SummaryRow icon="" label="Posição GPS"
                 value={gps.lat ? `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}` : "—"} />
-              <SummaryRow icon="🏷" label="Nomenclatura da CTO"
+              <SummaryRow icon="" label="Nomenclatura da CTO"
                 value={suggested.name} highlight />
               <SummaryRow icon="▦" label="Quantidade de portas"
                 value={`${capacity} portas`} />
-              <SummaryRow icon="🔗" label="Tipo de rede"
+              <SummaryRow icon="" label="Tipo de rede"
                 value={networkType === "balanceada" ? "Rede balanceada" : "Rede desbalanceada"} />
-              <SummaryRow icon="🔀" label="Splitter"
+              <SummaryRow icon="" label="Splitter"
                 value={splitter || "—"} />
-              <SummaryRow icon="🔢" label="Nº da caixa"
+              <SummaryRow icon="" label="Nº da caixa"
                 value={boxNumber.trim() || "Não informado"}
                 last={!photo} />
               {photo && (
@@ -2865,7 +2865,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                                  borderTop: `1px solid ${C_BORDER}` }}>
                   <div style={{ fontSize: 10, color: C_MUTED, fontWeight: 700,
                                    textTransform: "uppercase", letterSpacing: 0.5,
-                                   marginBottom: 8 }}>📷 Foto da CTO</div>
+                                   marginBottom: 8 }}>Foto da CTO</div>
                   <img src={photo} alt="Foto CTO"
                     style={{ width: "100%", borderRadius: 10,
                               border: `1px solid ${C_BORDER}`,
@@ -2937,13 +2937,13 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
             {[
               { v: "aerea", l: "Aérea",
                 d: "Instalada no poste, suspensa pelo cordoalha do cabo.",
-                icon: "🪜" },
+                icon: "" },
               { v: "subterranea", l: "Subterrânea",
                 d: "Direcional/enterrada (dutos plásticos no solo).",
-                icon: "🕳️" },
+                icon: "️" },
               { v: "camara", l: "Câmara/Caixa de passagem",
                 d: "Em câmara de inspeção concreto/PVC (handhole/manhole).",
-                icon: "🏗️" },
+                icon: "️" },
             ].map((opt) => (
               <button key={opt.v} data-testid={`ce-tipo-${opt.v}`}
                       onClick={() => setCeInstallType(opt.v)}
@@ -3001,7 +3001,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                         padding: "14px 14px",
                       }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 20 }}>📷</span>
+                  <span style={{ fontSize: 20 }}></span>
                   <span style={{ color: C_TEXT, fontWeight: 600 }}>
                     Foto da bandeja aberta
                   </span>
@@ -3034,16 +3034,16 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
             </p>
 
             <div style={{ ...cardBase, padding: "4px 0" }}>
-              <SummaryRow icon="🏠" label="Endereço"
+              <SummaryRow icon="" label="Endereço"
                 value={`${address.endereco}, ${address.numero}${address.referencia ? "\n" + address.referencia : ""}`} />
-              <SummaryRow icon="🏷" label="Bairro" value={bairroSelected?.bairro} />
-              <SummaryRow icon="📍" label="Posição GPS"
+              <SummaryRow icon="" label="Bairro" value={bairroSelected?.bairro} />
+              <SummaryRow icon="" label="Posição GPS"
                 value={gps.lat ? `${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}` : "—"} />
-              <SummaryRow icon="🏷" label="Nomenclatura"
+              <SummaryRow icon="" label="Nomenclatura"
                 value={suggested.name} highlight />
               <SummaryRow icon="▤" label="Bandejas/Emendas"
                 value={`${bandejasTotal} emendas`} />
-              <SummaryRow icon="🏗️" label="Tipo de instalação"
+              <SummaryRow icon="️" label="Tipo de instalação"
                 value={({ aerea: "Aérea", subterranea: "Subterrânea",
                             camara: "Câmara de passagem" })[ceInstallType] || "—"}
                 last={!photo && !photoExtra} />
@@ -3052,7 +3052,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                                  borderTop: `1px solid ${C_BORDER}` }}>
                   <div style={{ fontSize: 10, color: C_MUTED, fontWeight: 700,
                                    textTransform: "uppercase", letterSpacing: 0.5,
-                                   marginBottom: 8 }}>📷 Fotos</div>
+                                   marginBottom: 8 }}>Fotos</div>
                   <div style={{ display: "grid",
                                    gridTemplateColumns: photo && photoExtra ? "1fr 1fr" : "1fr",
                                    gap: 8 }}>
@@ -3131,7 +3131,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                   {caboFrom ? (
                     <>✓ Origem: <strong>{caboFrom.name}</strong></>
                   ) : (
-                    <>🔗 Vincular Origem</>
+                    <>Vincular Origem</>
                   )}
                 </button>
                 <button data-testid="cabo-lancar-link-destino"
@@ -3149,13 +3149,13 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                   {caboTo ? (
                     <>✓ Destino: <strong>{caboTo.name}</strong></>
                   ) : (
-                    <>🔗 Vincular Destino</>
+                    <>Vincular Destino</>
                   )}
                 </button>
               </div>
               {(!caboFrom || !caboTo) && (
                 <div style={{ marginTop: 8, fontSize: 11, color: "#92400e" }}>
-                  ⚠️ Cabo ficará como <strong>"cabo solto"</strong> até as
+                  ️ Cabo ficará como <strong>“cabo solto”</strong> até as
                   pontas serem vinculadas (linha laranja tracejada no mapa).
                 </div>
               )}
@@ -3316,11 +3316,11 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                   <div><strong>+ Margem (sobra):</strong> {extraMargin} m
                     ({Math.round(extraMargin/2)}m × 2 pontas)</div>
                   <div style={{ marginTop: 4, fontWeight: 800 }}>
-                    🎯 Total: {((cableRoute.distance_m || 0) + extraMargin).toFixed(0)} m
+                    Total: {((cableRoute.distance_m || 0) + extraMargin).toFixed(0)} m
                   </div>
                   {cableRoute.source === "haversine_fallback" && (
                     <div style={{ fontSize: 10, color: "#a16207", marginTop: 4 }}>
-                      ⚠️ OSRM offline · usando linha reta como aproximação
+                      ️ OSRM offline · usando linha reta como aproximação
                     </div>
                   )}
                 </div>
@@ -3367,7 +3367,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
               placeholder="20" />
             <div style={{ fontSize: 10, color: C_MUTED, marginTop: -4,
                             marginBottom: 14 }}>
-              💡 Padrão: 10m em cada ponta (CE/CTO) = 20m total
+              Padrão: 10m em cada ponta (CE/CTO) = 20m total
             </div>
 
             <label style={labelStyle}>Fibras ocupadas (opcional)</label>
@@ -3437,7 +3437,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                         padding: "14px 14px",
                       }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 20 }}>📷</span>
+                  <span style={{ fontSize: 20 }}></span>
                   <span style={{ color: C_TEXT, fontWeight: 600 }}>
                     Foto da plaqueta de identificação
                   </span>
@@ -3471,15 +3471,15 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
             </p>
 
             <div style={{ ...cardBase, padding: "4px 0" }}>
-              <SummaryRow icon="🏷" label="Nomenclatura"
+              <SummaryRow icon="" label="Nomenclatura"
                 value={suggested.name} highlight />
               <SummaryRow icon="➡️" label="De" value={caboFrom?.name} />
-              <SummaryRow icon="🎯" label="Para" value={caboTo?.name} />
-              <SummaryRow icon="🌾" label="Capacidade de fibras"
+              <SummaryRow icon="" label="Para" value={caboTo?.name} />
+              <SummaryRow icon="" label="Capacidade de fibras"
                 value={`${fibrasTotal} FO`} />
-              <SummaryRow icon="⚡" label="Fibras ocupadas"
+              <SummaryRow icon="" label="Fibras ocupadas"
                 value={`${fibrasOcupadas || 0} / ${fibrasTotal || 0}`} />
-              <SummaryRow icon="🪢" label="Tipo de cabo"
+              <SummaryRow icon="" label="Tipo de cabo"
                 value={({ drop: "Drop",
                             distribuicao: "Distribuição",
                             backbone: "Backbone" })[cableType] || "—"}
@@ -3490,7 +3490,7 @@ export default function CadastroCTOWizard({ onClose, onCreated, technician }) {
                   <div style={{ fontSize: 10, color: C_MUTED, fontWeight: 700,
                                    textTransform: "uppercase", letterSpacing: 0.5,
                                    marginBottom: 8 }}>
-                    📷 Foto da plaqueta
+                    Foto da plaqueta
                   </div>
                   <img src={photoExtra} alt="Plaqueta"
                     style={{ width: "100%", borderRadius: 10,
@@ -3575,7 +3575,7 @@ function SentinelaPanel({ checking, result, ticketOpened, onOpenTicket, onRetake
         display: "flex", alignItems: "center", gap: 10,
         fontSize: 12, color: "#475569",
       }}>
-        <span style={{ fontSize: 16 }}>🤖</span>
+        <span style={{ fontSize: 16 }}></span>
         <span><strong>Sentinela IA</strong> analisando a foto...</span>
       </div>
     );
@@ -3586,7 +3586,7 @@ function SentinelaPanel({ checking, result, ticketOpened, onOpenTicket, onRetake
   const palette = action === "approve"
     ? { bg: "#f0fdf4", bd: "#86efac", fg: "#15803d", icon: "✓" }
     : action === "open_ticket"
-      ? { bg: "#fffbeb", bd: "#fde68a", fg: "#a16207", icon: "⚠" }
+      ? { bg: "#fffbeb", bd: "#fde68a", fg: "#a16207", icon: "" }
       : { bg: "#fef2f2", bd: "#fca5a5", fg: "#b91c1c", icon: "✕" };
   const score = result.score ?? 0;
 
@@ -3622,7 +3622,7 @@ function SentinelaPanel({ checking, result, ticketOpened, onOpenTicket, onRetake
                   fontSize: 12.5, fontWeight: 700, cursor: "pointer",
                   width: "100%",
                 }}>
-          📷 Tirar nova foto
+          Tirar nova foto
         </button>
       )}
 
@@ -3635,7 +3635,7 @@ function SentinelaPanel({ checking, result, ticketOpened, onOpenTicket, onRetake
                   fontSize: 12.5, fontWeight: 700, cursor: "pointer",
                   width: "100%",
                 }}>
-          🛠 Abrir chamado de manutenção
+          Abrir chamado de manutenção
         </button>
       )}
 

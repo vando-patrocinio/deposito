@@ -52,11 +52,11 @@ export default function SentimentDashboardCard() {
 
   // ScoreVisual: emoji + cor baseado no score
   const scoreEmoji = (s) => {
-    if (s >= 0.5) return "😄";
-    if (s >= 0.15) return "🙂";
-    if (s >= -0.15) return "😐";
-    if (s >= -0.5) return "😟";
-    return "😡";
+    if (s >= 0.5) return "";
+    if (s >= 0.15) return "";
+    if (s >= -0.15) return "";
+    if (s >= -0.5) return "";
+    return "";
   };
   const scoreLabel = (s) => {
     if (s >= 0.5) return "Excelente";
@@ -288,12 +288,12 @@ export default function SentimentDashboardCard() {
                       fontFamily: "JetBrains Mono, monospace",
                       border: "1px solid #fecaca",
                     }}>
-                      {p.phone} · {p.count}x 😡
+                      {p.phone} · {p.count}x 
                     </span>
                   ))}
                 </div>
                 <div style={{ fontSize: 11, color: "#7f1d1d", marginTop: 6, lineHeight: 1.4 }}>
-                  💡 Esses clientes mostraram insatisfação. Considere uma ligação proativa ou desconto retenção.
+                  Esses clientes mostraram insatisfação. Considere uma ligação proativa ou desconto retenção.
                 </div>
               </div>
             )}

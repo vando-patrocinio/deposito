@@ -875,7 +875,7 @@ function SubscriberEditor({ data, setData, onSaved, onCancel }) {
         {cepError && (
           <div data-testid="sub-cep-error"
             style={{ marginTop: 4, fontSize: 11, color: "#dc2626" }}>
-            ⚠ {cepError}
+            {cepError}
           </div>
         )}
       </Field>

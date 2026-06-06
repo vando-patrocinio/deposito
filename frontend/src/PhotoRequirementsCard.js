@@ -25,8 +25,8 @@ const TICKET_TYPE_LABELS = {
   venda: "Venda",
 };
 
-const ICONS = ["📷", "📦", "📡", "🏷️", "🔌", "🪧", "📜", "✍️", "🏠", "🌳",
-                  "⚡", "🛠️", "🧰", "🔧", "📋", "🧾", "📍"];
+const ICONS = ["", "", "", "️", "", "", "", "✍️", "", "",
+                  "", "️", "", "", "", "", ""];
 
 export default function PhotoRequirementsCard() {
   const [items, setItems] = useState([]);
@@ -36,7 +36,7 @@ export default function PhotoRequirementsCard() {
   const [msg, setMsg] = useState("");
   const [adding, setAdding] = useState(false);
   const [newItem, setNewItem] = useState({
-    id: "", label: "", icon: "📷", instruction: "", ticket_types: [],
+    id: "", label: "", icon: "", instruction: "", ticket_types: [],
     stamp_location: false,
   });
 
@@ -108,14 +108,14 @@ export default function PhotoRequirementsCard() {
     }
     setItems((prev) => [...prev, {
       id, label: newItem.label.trim(),
-      icon: newItem.icon || "📷",
+      icon: newItem.icon || "",
       instruction: newItem.instruction || "",
       ticket_types: newItem.ticket_types || [],
       required: true, is_default: false,
       sort_order: (prev.length + 1) * 10,
       stamp_location: !!newItem.stamp_location,
     }]);
-    setNewItem({ id: "", label: "", icon: "📷", instruction: "",
+    setNewItem({ id: "", label: "", icon: "", instruction: "",
                  ticket_types: [], stamp_location: false });
     setAdding(false);
   };
@@ -124,7 +124,7 @@ export default function PhotoRequirementsCard() {
     setSaving(true); setMsg("");
     try {
       const payload = items.map((it) => ({
-        id: it.id, label: it.label, icon: it.icon || "📷",
+        id: it.id, label: it.label, icon: it.icon || "",
         instruction: it.instruction || "",
         ticket_types: it.ticket_types || [],
         required: !!it.required, sort_order: it.sort_order || 100,
@@ -142,7 +142,7 @@ export default function PhotoRequirementsCard() {
   if (loading) return <Card title="Cardápio de fotos da OS">Carregando…</Card>;
 
   return (
-    <Card title="📷 Cardápio de fotos obrigatórias na OS"
+    <Card title="Cardápio de fotos obrigatórias na OS"
           data-testid="photo-reqs-card"
           style={{ gridColumn: "1 / -1" }}>
       <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 14px" }}>
@@ -179,7 +179,7 @@ export default function PhotoRequirementsCard() {
                 </label>
 
                 {/* Icon picker */}
-                <select value={it.icon || "📷"}
+                <select value={it.icon || ""}
                           onChange={(e) => setItem(it.id, { icon: e.target.value })}
                           data-testid={`photo-req-icon-${it.id}`}
                           style={{ padding: "4px 6px", border: "1px solid #cbd5e1",
@@ -240,7 +240,7 @@ export default function PhotoRequirementsCard() {
                         style={{ width: 16, height: 16 }} />
                 <span style={{ fontSize: 11, fontWeight: 700,
                                 color: it.stamp_location ? "#0e7490" : "#64748b" }}>
-                  📍 Carimbar local/data/dispositivo na própria foto
+                  Carimbar local/data/dispositivo na própria foto
                 </span>
                 {it.stamp_location && (
                   <span style={{ fontSize: 9, color: "#0e7490",
@@ -282,7 +282,7 @@ export default function PhotoRequirementsCard() {
               {isDefault && (
                 <div style={{ marginTop: 6, fontSize: 10, color: "#64748b",
                                 fontStyle: "italic" }}>
-                  🔒 Foto padrão do sistema — não pode ser excluída, apenas desligada.
+                  Foto padrão do sistema — não pode ser excluída, apenas desligada.
                 </div>
               )}
             </div>
@@ -372,7 +372,7 @@ export default function PhotoRequirementsCard() {
                       style={{ width: 16, height: 16 }} />
               <span style={{ fontSize: 11, fontWeight: 700,
                               color: newItem.stamp_location ? "#0e7490" : "#64748b" }}>
-                📍 Carimbar local/data/dispositivo na própria foto
+                Carimbar local/data/dispositivo na própria foto
               </span>
             </label>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
@@ -391,7 +391,7 @@ export default function PhotoRequirementsCard() {
       <div style={{ marginTop: 14, display: "flex", gap: 10,
                       alignItems: "center", flexWrap: "wrap" }}>
         <Button onClick={save} disabled={saving} data-testid="photo-req-save">
-          {saving ? "Salvando…" : "💾 Salvar cardápio"}
+          {saving ? "Salvando…" : "Salvar cardápio"}
         </Button>
         <Button variant="secondary" onClick={reload} disabled={saving}>
           Descartar mudanças

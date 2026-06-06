@@ -43,10 +43,10 @@ function SignalBlock({ ticketId }) {
   };
 
   if (loading) {
-    return <div style={baseStyle} data-testid="signal-block-loading">📶 Buscando sinal SmartOLT…</div>;
+    return <div style={baseStyle} data-testid="signal-block-loading">Buscando sinal SmartOLT…</div>;
   }
   if (err) {
-    return <div style={{ ...baseStyle, background: "#fee2e2", color: "#7f1d1d" }} data-testid="signal-block-error">⚠️ {err}</div>;
+    return <div style={{ ...baseStyle, background: "#fee2e2", color: "#7f1d1d" }} data-testid="signal-block-error">️ {err}</div>;
   }
   if (!data?.found) {
     const reason = data?.reason || "no_match";
@@ -57,7 +57,7 @@ function SignalBlock({ ticketId }) {
     }[reason] || "Não foi possível resolver o cliente no SmartOLT.";
     return (
       <div style={{ ...baseStyle, background: "#fef9c3", color: "#713f12" }} data-testid="signal-block-not-found">
-        📶 {friendly}
+        {friendly}
       </div>
     );
   }
@@ -70,7 +70,7 @@ function SignalBlock({ ticketId }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>
-            📶 Sinal SmartOLT · match {data.match_strategy}
+            Sinal SmartOLT · match {data.match_strategy}
             {data.cached === false && <span style={{ marginLeft: 6, color: "#16a34a" }}>● live</span>}
             {data.cached === true && <span style={{ marginLeft: 6, color: "#64748b" }}>● cache</span>}
           </div>
@@ -93,7 +93,7 @@ function SignalBlock({ ticketId }) {
             <div style={{ fontFamily: "monospace", color: "#64748b" }}>SN: {onu.sn || onu.unique_external_id}</div>
             {onu.last_status_change && <div style={{ color: "#64748b" }}>Última mudança de status: {onu.last_status_change}</div>}
           </div>
-          {data.warning && <div style={{ marginTop: 6, fontSize: 11, color: "#a16207" }}>⚠ {data.warning}</div>}
+          {data.warning && <div style={{ marginTop: 6, fontSize: 11, color: "#a16207" }}>{data.warning}</div>}
         </div>
         <button
           type="button"
@@ -105,7 +105,7 @@ function SignalBlock({ ticketId }) {
             whiteSpace: "nowrap",
           }}
         >
-          {refreshing ? "🔄 …" : "🔄 Live"}
+          {refreshing ? "…" : "Live"}
         </button>
       </div>
     </div>
@@ -167,12 +167,13 @@ export default function EditTicketModal({ ticket, onClose, onSave, busy }) {
           <div>
             <label style={{ fontSize: 12, color: "#64748b" }}>Tipo</label>
             <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} style={css} data-testid="edit-type">
-              <option value="reparo">🔧 Reparo</option>
-              <option value="instalacao">📡 Instalação</option>
-              <option value="retirada">📦 Retirada</option>
-              <option value="prioridade">🚨 Prioridade</option>
-              <option value="preventiva">🛡️ Preventiva</option>
-              <option value="venda">💼 Venda</option>
+              <option value="reparo">Reparo</option>
+              <option value="instalacao">Instalação</option>
+              <option value="retirada">Retirada</option>
+              <option value="prioridade">Prioridade</option>
+              <option value="preventiva">️ Preventiva</option>
+              <option value="venda">Venda</option>
+              <option value="rompimento">Rompimento</option>
             </select>
           </div>
           <div>
@@ -180,7 +181,7 @@ export default function EditTicketModal({ ticket, onClose, onSave, busy }) {
             <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })} style={css}>
               <option value="normal">Normal</option>
               <option value="horario">Horário marcado</option>
-              <option value="prioridade">🚨 Prioridade</option>
+              <option value="prioridade">Prioridade</option>
             </select>
           </div>
         </div>

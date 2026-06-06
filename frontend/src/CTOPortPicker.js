@@ -165,7 +165,7 @@ export default function CTOPortPicker({
                     </div>
                     <div style={{ fontSize: 11, color: full ? "#991b1b" : "#475569",
                                     marginTop: 2 }}>
-                      {full ? "🔴 LOTADA" : `${freeN}/${total} portas livres`}
+                      {full ? "LOTADA" : `${freeN}/${total} portas livres`}
                     </div>
                   </div>
                   <span style={{ color: "#94a3b8" }}>›</span>
@@ -207,7 +207,7 @@ export default function CTOPortPicker({
               background: "#fee2e2", color: "#991b1b",
               border: "1px solid #fca5a5", fontSize: 12, lineHeight: 1.4,
             }}>
-              🔴 CTO está <strong>LOTADA</strong>. Cadastre uma nova CTO
+              CTO está <strong>LOTADA</strong>. Cadastre uma nova CTO
               para conectar este cliente.
             </div>
           )}

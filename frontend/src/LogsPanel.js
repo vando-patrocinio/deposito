@@ -3,12 +3,12 @@ import { api } from "@/api";
 import { Button, Card, Icon } from "@/ui";
 
 const TYPE_META = {
-  login:        { label: "Login senha", icon: "🔐", color: "#0ea5e9" },
-  collab_login: { label: "Login Google (Colab.)", icon: "📱", color: "#16a34a" },
-  impersonation:{ label: "Impersonation", icon: "🎭", color: "#0d9488" },
-  system:       { label: "Sistema", icon: "⚙️", color: "#f59e0b" },
-  push:         { label: "Push", icon: "🔔", color: "#0284c7" },
-  clock:        { label: "Ponto (manual/auditoria)", icon: "🕒", color: "#dc2626" },
+  login:        { label: "Login senha", icon: "", color: "#0ea5e9" },
+  collab_login: { label: "Login Google (Colab.)", icon: "", color: "#16a34a" },
+  impersonation:{ label: "Impersonation", icon: "", color: "#0d9488" },
+  system:       { label: "Sistema", icon: "️", color: "#f59e0b" },
+  push:         { label: "Push", icon: "", color: "#0284c7" },
+  clock:        { label: "Ponto (manual/auditoria)", icon: "", color: "#dc2626" },
 };
 
 function fmt(at) {

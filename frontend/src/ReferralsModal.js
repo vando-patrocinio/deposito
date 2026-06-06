@@ -92,7 +92,7 @@ export default function ReferralsModal({ collaboratorId, onClose }) {
                             border: 0, color: "#fff", fontSize: 20,
                             width: 32, height: 32, borderRadius: "50%",
                             cursor: "pointer", lineHeight: 0 }}>×</button>
-          <div style={{ fontSize: 32, marginBottom: 6 }}>🎁</div>
+          <div style={{ fontSize: 32, marginBottom: 6 }}></div>
           <h2 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 800,
                           letterSpacing: -0.4 }}>
             Indique e Ganhe + Metas
@@ -113,15 +113,15 @@ export default function ReferralsModal({ collaboratorId, onClose }) {
               borderRadius: 999, display: "inline-flex",
               alignItems: "center", gap: 8, backdropFilter: "blur(8px)",
             }}>
-              <span style={{ fontSize: 16 }}>🏆</span>
+              <span style={{ fontSize: 16 }}></span>
               {data.ranking.position ? (
                 <span style={{ fontSize: 12, fontWeight: 700,
                                   letterSpacing: 0.3 }}>
                   Sua posição: <strong style={{ fontSize: 14 }}>#{data.ranking.position}</strong>
                   {" "}de {data.ranking.total_referrers}
-                  {data.ranking.position === 1 && " 👑"}
-                  {data.ranking.position === 2 && " 🥈"}
-                  {data.ranking.position === 3 && " 🥉"}
+                  {data.ranking.position === 1 && " "}
+                  {data.ranking.position === 2 && " "}
+                  {data.ranking.position === 3 && " "}
                 </span>
               ) : (
                 <span style={{ fontSize: 12, fontWeight: 600,
@@ -197,7 +197,7 @@ export default function ReferralsModal({ collaboratorId, onClose }) {
                       display: "inline-flex", alignItems: "center",
                       justifyContent: "center", gap: 6,
                     }}>
-                    {copied ? "✓ Copiado!" : "📋 Copiar"}
+                    {copied ? "✓ Copiado!" : "Copiar"}
                   </button>
                   <button
                     data-testid="referrals-share-btn"
@@ -210,7 +210,7 @@ export default function ReferralsModal({ collaboratorId, onClose }) {
                       display: "inline-flex", alignItems: "center",
                       justifyContent: "center", gap: 6,
                     }}>
-                    🚀 Compartilhar
+                    Compartilhar
                   </button>
                 </div>
               </div>
@@ -222,7 +222,7 @@ export default function ReferralsModal({ collaboratorId, onClose }) {
                 fontSize: 12, color: "#78350f", lineHeight: 1.6,
               }}>
                 <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 13 }}>
-                  💡 Como funciona
+                  Como funciona
                 </div>
                 <ol style={{ paddingLeft: 18, margin: 0 }}>
                   <li>Compartilhe seu link com amigos e conhecidos.</li>
@@ -262,7 +262,7 @@ export default function ReferralsModal({ collaboratorId, onClose }) {
                   textAlign: "center", padding: 16, color: C_MUTED,
                   fontSize: 12, fontStyle: "italic",
                 }}>
-                  Ainda sem indicações. Compartilhe seu link! 🚀
+                  Ainda sem indicações. Compartilhe seu link! 
                 </div>
               )}
             </>
@@ -310,7 +310,7 @@ function GoalCard({ goal }) {
                           color: reached ? "#14532d" : "#78350f",
                           letterSpacing: 1, textTransform: "uppercase",
                           marginBottom: 2 }}>
-            🎯 Meta de Bônus
+            Meta de Bônus
           </div>
           <div style={{ fontSize: 14, fontWeight: 800,
                           color: reached ? "#14532d" : "#78350f",
@@ -348,9 +348,9 @@ function GoalCard({ goal }) {
         fontWeight: 600,
       }}>
         {reached
-          ? "🎉 Parabéns! Bônus de R$ " + goal.bonus_brl.toFixed(0) + " desbloqueado!"
+          ? "Parabéns! Bônus de R$ " + goal.bonus_brl.toFixed(0) + " desbloqueado!"
           : remaining === 1
-          ? "🔥 Falta SÓ 1 instalação pra desbloquear o bônus!"
+          ? "Falta SÓ 1 instalação pra desbloquear o bônus!"
           : `Faltam ${remaining} instalações pro bônus de R$ ${goal.bonus_brl.toFixed(0)}.`}
       </div>
     </div>

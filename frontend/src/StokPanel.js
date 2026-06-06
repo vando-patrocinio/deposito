@@ -180,7 +180,7 @@ function OntsTab() {
                 <tr key={o.mac} data-testid={`ont-row-${o.mac}`}>
                   <td style={td}><code>{o.mac}</code></td>
                   <td style={td}>{o.model}</td>
-                  <td style={td}>{o.location_type === "empresa" ? "Empresa" : o.location_type === "tecnico" ? `🛠 ${tech?.name || o.location_id}` : `👤 Cliente`}</td>
+                  <td style={td}>{o.location_type === "empresa" ? "Empresa" : o.location_type === "tecnico" ? `${tech?.name || o.location_id}` : `Cliente`}</td>
                   <td style={td}>{o.client_name || "—"}</td>
                   <td style={td}><span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "#f1f5f9", color: "#475569" }}>{o.status}</span></td>
                   <td style={td}>
@@ -353,7 +353,7 @@ function ServicosTab() {
                   <td style={td}><code>{s.id}</code></td><td style={td}>{s.type}</td>
                   <td style={td}>{s.client_name}</td><td style={td}>{tech?.name || "—"}</td>
                   <td style={td}><span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 999, background: s.status === "ativo" ? "#dcfce7" : "#f1f5f9", color: s.status === "ativo" ? "#166534" : "#475569" }}>{s.status}</span></td>
-                  <td style={td}>{s.ticket_id ? <span title={`Bolha ${s.ticket_id}`} style={{ fontSize: 10, color: "#1e40af" }}>🔗 Lousa</span> : "Manual"}</td>
+                  <td style={td}>{s.ticket_id ? <span title={`Bolha ${s.ticket_id}`} style={{ fontSize: 10, color: "#1e40af" }}>Lousa</span> : "Manual"}</td>
                   <td style={td}>{s.status === "ativo" && <Button variant="soft" onClick={() => close(s)} data-testid={`svc-close-${s.id}`}>✓ Fechar</Button>}</td>
                 </tr>
               );

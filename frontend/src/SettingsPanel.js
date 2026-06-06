@@ -12,6 +12,7 @@ import AiConfigCard from "@/AiConfigCard";
 import RetiradaTemplateCard from "@/RetiradaTemplateCard";
 import OsValidationTogglesCard from "@/OsValidationTogglesCard";
 import PhotoRequirementsCard from "@/PhotoRequirementsCard";
+import PreventiveOsCard from "@/PreventiveOsCard";
 
 export default function SettingsPanel() {
   const [s, setS] = useState(null);
@@ -162,11 +163,11 @@ export default function SettingsPanel() {
           marginTop: 12, padding: 12, background: "#f8fafc",
           border: "1px solid #e2e8f0", borderRadius: 12,
         }}>
-          <strong style={{ fontSize: 13, color: "#0f172a" }}>🚦 Quando alertar</strong>
+          <strong style={{ fontSize: 13, color: "#0f172a" }}>Quando alertar</strong>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
             <div>
               <label style={{ fontSize: 11, color: "#78350f", fontWeight: 700 }}>
-                🟡 Pisca AMARELO faltando (min)
+                Pisca AMARELO faltando (min)
               </label>
               <input
                 data-testid="inp-sla-yellow"
@@ -181,7 +182,7 @@ export default function SettingsPanel() {
             </div>
             <div>
               <label style={{ fontSize: 11, color: "#7f1d1d", fontWeight: 700 }}>
-                🔴 Pisca VERMELHO após (min)
+                Pisca VERMELHO após (min)
               </label>
               <input
                 data-testid="inp-sla-red"
@@ -252,7 +253,7 @@ export default function SettingsPanel() {
           marginTop: 10, padding: 10, background: "#f0fdf4",
           border: "1px solid #86efac", borderRadius: 10, fontSize: 12, color: "#15803d",
         }}>
-          📊 <strong>Prévia:</strong> {Math.max(1, ((form.lousa_grid_end_hour - form.lousa_grid_start_hour) * 60) / form.lousa_grid_slot_minutes)} slots de {form.lousa_grid_slot_minutes}min entre {String(form.lousa_grid_start_hour).padStart(2, "0")}:00 e {String(form.lousa_grid_end_hour).padStart(2, "0")}:00 — {form.lousa_grid_max_per_slot} bolha(s)/slot
+          <strong>Prévia:</strong> {Math.max(1, ((form.lousa_grid_end_hour - form.lousa_grid_start_hour) * 60) / form.lousa_grid_slot_minutes)} slots de {form.lousa_grid_slot_minutes}min entre {String(form.lousa_grid_start_hour).padStart(2, "0")}:00 e {String(form.lousa_grid_end_hour).padStart(2, "0")}:00 — {form.lousa_grid_max_per_slot} bolha(s)/slot
         </div>
       </Card>
 
@@ -311,8 +312,8 @@ export default function SettingsPanel() {
           marginTop: 10, padding: 10, background: "#fef3c7",
           border: "1px solid #fde68a", borderRadius: 10, fontSize: 12, color: "#92400e",
         }}>
-          ⚠️ <strong>Atenção:</strong> ao ativar, dispositivos com relógio desajustado serão bloqueados.
-          Recomende aos colaboradores ativarem "Hora automática" no Android/iOS antes.
+          <strong>Atenção:</strong> ao ativar, dispositivos com relógio desajustado serão bloqueados.
+          Recomende aos colaboradores ativarem <code>Hora automática</code> no Android/iOS antes.
         </div>
       </Card>
 
@@ -394,14 +395,14 @@ export default function SettingsPanel() {
           </div>
         </Field>
         <p style={{ color: "#94a3b8", fontSize: 12, marginTop: 6 }}>
-          ⚙️ A nova frequência entra em vigor automaticamente nos celulares dos colaboradores assim que o app estiver aberto/recarregado.
+          ️ A nova frequência entra em vigor automaticamente nos celulares dos colaboradores assim que o app estiver aberto/recarregado.
         </p>
       </Card>
 
       <Card title="Testar envio de e-mail" style={{ gridColumn: "1 / -1" }}>
         <p style={{ color: "#64748b", margin: "0 0 10px", fontSize: 14 }}>
           Envie um e-mail de teste agora para verificar se a integração está funcionando.
-          ⚠️ Em conta Resend gratuita sem domínio próprio, o destinatário precisa ser o e-mail cadastrado na sua conta Resend.
+          ️ Em conta Resend gratuita sem domínio próprio, o destinatário precisa ser o e-mail cadastrado na sua conta Resend.
         </p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <input
@@ -446,7 +447,7 @@ export default function SettingsPanel() {
               <li>Pronto — agora pode enviar para qualquer colaborador.</li>
             </ol>
             <p style={{ background: "#f1f5f9", padding: 10, borderRadius: 12, fontSize: 13 }}>
-              💡 Dica: se usar Cloudflare como DNS, desligue o "proxy" (nuvem laranja) nesses registros — só nuvem cinza/DNS only.
+              Dica: se usar Cloudflare como DNS, desligue o <code>proxy</code> (nuvem laranja) nesses registros — só nuvem cinza/DNS only.
             </p>
           </div>
         )}
@@ -480,7 +481,7 @@ export default function SettingsPanel() {
           </Field>
         </div>
         <p style={{ color: "#94a3b8", fontSize: 12, marginTop: 6 }}>
-          🚨 Banner aparece quando: (a) projeção &gt; orçamento; (b) projeção &ge; 90% do orçamento; ou (c)
+          Banner aparece quando: (a) projeção &gt; orçamento; (b) projeção &ge; 90% do orçamento; ou (c)
           projeção excede o realizado em mais de {form.he_alert_threshold_pct || 30}%.
         </p>
       </Card>
@@ -561,6 +562,7 @@ export default function SettingsPanel() {
       <RetiradaTemplateCard />
       <OsValidationTogglesCard />
       <PhotoRequirementsCard />
+      <PreventiveOsCard />
       <PublicAccessPanel />
       <ConnectionsCard />
       <AtlazIntegrationCard />

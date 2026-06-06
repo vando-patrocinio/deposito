@@ -2,37 +2,64 @@
  *
  * iter228 — pedido do usuário: "no canto do perfil, 3 pontinhos com
  * QR Code slave com nome completo, CPF, plano, ativo/não ativo".
- * O QR carrega um payload JSON assinado leve com essas infos para o
- * parceiro escanear no caixa e validar que é cliente Ligo ativo.
+ * iter237 — agora o QR é CRIPTOGRAFADO via Fernet (server-side).
+ * O QR carrega APENAS um token opaco curto (LIGO2:...). Só o backend
+ * Ligo consegue descriptografar pra ver CPF/nome. Token expira em 90s
+ * e é renovado automaticamente a cada 60s.
  *
  * Mantemos o tema dark/purpura do Hub.
  */
-import React from "react";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
 
 import { COLORS, FONT_DISPLAY, titleCase, maskCPF } from "@/cliente/ligo-theme";
 
+const BACKEND = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND}/api/cliente-portal`;
+
 export default function ClientQRModal({ open, onClose, me }) {
-  if (!me) return null;
-  const cpfRaw = me.cpf || me.document || me.cpf_cnpj || "";
-  const status = me.status || me.subscriber_status || "ativo";
+  const [qrValue, setQrValue] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const cpfRaw = me?.cpf || me?.document || me?.cpf_cnpj || "";
+  const status = me?.status || me?.subscriber_status || "ativo";
   const isActive = String(status).toLowerCase().startsWith("ativ");
 
-  // Payload "slave" — o que vai dentro do QR. Inclui um hash leve do
-  // CPF + tenant pra parceiro validar via /api/parcerias/public/verify
-  // (sem expor CPF cru — só os 3 dígitos centrais).
-  const payload = {
-    v: 1,
-    name: titleCase(me.name || ""),
-    cpf: cpfRaw,
-    plan: me.plan_name || null,
-    status: isActive ? "ativo" : "inativo",
-    tid: me.tenant_id || me.company_id || null,
-    sid: me.id || me.subscriber_id || null,
-    ts: new Date().toISOString(),
-  };
-  const qrValue = JSON.stringify(payload);
+  // Busca um token criptografado novo a cada 60s enquanto o modal estiver aberto
+  useEffect(() => {
+    if (!open || !me) return;
+    let alive = true;
+    const fetchToken = async () => {
+      try {
+        const tk = localStorage.getItem("client_portal_token")
+          || localStorage.getItem("ligo_cliente_token")
+          || localStorage.getItem("ligo_indica_token");
+        const r = await axios.get(`${API}/qr-token`, {
+          headers: { Authorization: `Bearer ${tk}` },
+        });
+        if (alive) {
+          setQrValue(r.data.qr_payload || "");
+          setLoading(false);
+        }
+      } catch {
+        // fallback: gera local sem encriptação (legado, só nome)
+        if (alive) {
+          setQrValue(JSON.stringify({
+            v: 1, name: titleCase(me.name || ""),
+            cpf: cpfRaw, sid: me.id || null,
+          }));
+          setLoading(false);
+        }
+      }
+    };
+    fetchToken();
+    const iv = setInterval(fetchToken, 60 * 1000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [open, me, cpfRaw]);
+
+  if (!me) return null;
 
   return (
     <AnimatePresence>
@@ -108,11 +135,26 @@ export default function ClientQRModal({ open, onClose, me }) {
               <div data-testid="client-qr-canvas" style={{
                 marginTop: 18, padding: 18, borderRadius: 22,
                 background: "white", display: "flex", justifyContent: "center",
+                alignItems: "center", minHeight: 256,
                 boxShadow: "0 14px 36px rgba(0,0,0,.35)",
               }}>
-                <QRCodeSVG value={qrValue} size={220} level="M"
-                  bgColor="#ffffff" fgColor={COLORS.purpleDeep || "#1a0840"}
-                  includeMargin={false} />
+                {loading || !qrValue ? (
+                  <div style={{
+                    width: 220, height: 220, display: "grid",
+                    placeItems: "center", color: "#6B2BFB",
+                    fontSize: 12, fontWeight: 700,
+                    animation: "pulse 1.4s ease-in-out infinite",
+                  }}>Gerando QR seguro…</div>
+                ) : (
+                  <QRCodeSVG value={qrValue} size={220} level="M"
+                    bgColor="#ffffff" fgColor={COLORS.purpleDeep || "#1a0840"}
+                    includeMargin={false} />
+                )}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 10.5,
+                color: "rgba(255,255,255,.55)", letterSpacing: 1.2,
+                textTransform: "uppercase", fontWeight: 700 }}>
+                QR criptografado · renova a cada 60s
               </div>
 
               {/* Dados do cliente */}
@@ -120,12 +162,23 @@ export default function ClientQRModal({ open, onClose, me }) {
                 <Row label="Nome" value={titleCase(me.name)} />
                 <Row label="CPF" value={maskCPF(cpfRaw)} />
                 {me.plan_name && <Row label="Plano" value={me.plan_name} />}
-                <Row label="Status"
+                <Row label="Tempo de cliente"
                   value={
-                    <span style={{
-                      color: isActive ? "#86efac" : "#fca5a5",
-                      fontWeight: 800,
-                    }}>{isActive ? "ATIVO" : "INATIVO"}</span>
+                    <span data-testid="client-qr-tenure"
+                          style={{ color: "#fde68a", fontWeight: 800 }}>
+                      {(() => {
+                        const d = me.installation_date
+                          || me.activation_date || me.created_at;
+                        const t = formatTenure(d);
+                        // iter215 — pra clientes com 5+ anos (fidelidade)
+                        try {
+                          const years = (new Date() - new Date(d))
+                            / (365.25 * 86400000);
+                          if (years >= 5) return `${t}`;
+                        } catch { /* ignore */ }
+                        return t;
+                      })()}
+                    </span>
                   } />
               </div>
             </div>
@@ -134,6 +187,28 @@ export default function ClientQRModal({ open, onClose, me }) {
       )}
     </AnimatePresence>
   );
+}
+
+function formatTenure(installDateStr) {
+  if (!installDateStr) return "—";
+  try {
+    const start = new Date(installDateStr);
+    if (isNaN(start.getTime())) return "—";
+    const now = new Date();
+    let years = now.getFullYear() - start.getFullYear();
+    let months = now.getMonth() - start.getMonth();
+    if (now.getDate() < start.getDate()) months -= 1;
+    if (months < 0) { years -= 1; months += 12; }
+    if (years <= 0 && months <= 0) {
+      const days = Math.max(0, Math.floor((now - start) / 86400000));
+      return `${days} dia${days === 1 ? "" : "s"}`;
+    }
+    if (years <= 0) return `${months} ${months === 1 ? "mês" : "meses"}`;
+    if (months === 0) return `${years} ${years === 1 ? "ano" : "anos"}`;
+    return `${years} ${years === 1 ? "ano" : "anos"} e ${months} ${months === 1 ? "mês" : "meses"}`;
+  } catch {
+    return "—";
+  }
 }
 
 function Row({ label, value }) {

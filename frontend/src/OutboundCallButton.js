@@ -104,7 +104,7 @@ export default function OutboundCallButton({
                 color: "var(--warning-soft-fg)", borderRadius: 8,
                 fontSize: 12, textAlign: "center",
               }}>
-                Nenhum agente IA ativo. Crie um em "Atendimento IA".
+                Nenhum agente IA ativo. Crie um em “Atendimento IA”.
               </div>
             ) : (
               <>

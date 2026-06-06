@@ -191,10 +191,10 @@ function BoardScreen({ cid }) {
 
   if (!data) return <Loader label="Carregando quadro…" />;
   const COLS = [
-    { id: "urgente",    label: "🔴 Urgente",    color: "#ef4444" },
-    { id: "aguardando", label: "🟦 Aguardando", color: "#3b82f6" },
-    { id: "em_rota",    label: "🚐 Em rota",    color: "#f59e0b" },
-    { id: "atendendo",  label: "🛠 Atendendo",  color: "#22c55e" },
+    { id: "urgente",    label: "Urgente",    color: "#ef4444" },
+    { id: "aguardando", label: "Aguardando", color: "#3b82f6" },
+    { id: "em_rota",    label: "Em rota",    color: "#f59e0b" },
+    { id: "atendendo",  label: "Atendendo",  color: "#22c55e" },
   ];
 
   return (
@@ -360,11 +360,11 @@ function IsabellaScreen({ cid }) {
         display: "grid",
         gridTemplateColumns: "repeat(3, 1fr)", gap: 14,
       }}>
-        <LiveBucket label="🤖 Com Isabella" value={lb.with_ai}
+        <LiveBucket label="Com Isabella" value={lb.with_ai}
                      accent="#8b5cf6" />
         <LiveBucket label="⏳ Aguardando atendimento" value={lb.waiting}
                      accent="#f59e0b" pulse={lb.waiting > 0} />
-        <LiveBucket label="👤 Com humano" value={lb.with_human}
+        <LiveBucket label="Com humano" value={lb.with_human}
                      accent="#0ea5e9" />
       </div>
     </div>
@@ -448,7 +448,7 @@ function FinanceScreen({ cid }) {
           border: "1px solid rgba(34,197,94,.3)",
           display: "flex", alignItems: "center", gap: 14,
         }}>
-          <div style={{ fontSize: 36 }}>🎉</div>
+          <div style={{ fontSize: 36 }}></div>
           <div>
             <div style={{ fontSize: 13, color: "rgba(255,255,255,.55)",
                            fontWeight: 600 }}>NOVAS ATIVAÇÕES HOJE</div>
