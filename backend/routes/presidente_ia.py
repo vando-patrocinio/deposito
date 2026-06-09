@@ -636,3 +636,22 @@ async def brain_autopilot(
     from services import presidente_brain as br
     cid = _cid(user)
     return await br.autopilot_top10(cid)
+
+
+# ─────────────── V15+V16+V17 — AUTOCONSCIÊNCIA ───────────────
+@router.get("/self/audit")
+async def self_audit(user: dict = Depends(require_ai_access())):
+    from services import presidente_self_audit as sa
+    return await sa.autoconsciencia(_cid(user))
+
+
+@router.get("/self/evolution")
+async def self_evolution(user: dict = Depends(require_ai_access())):
+    from services import presidente_self_audit as sa
+    return await sa.conselho_evolucao(_cid(user))
+
+
+@router.get("/self/readiness")
+async def self_readiness(user: dict = Depends(require_ai_access())):
+    from services import presidente_self_audit as sa
+    return await sa.prontidao_comercial(_cid(user))

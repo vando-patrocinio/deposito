@@ -2,7 +2,23 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ⚡ Sprint atual — V12+V13+V14 PRESIDENTE IA CÉREBRO EXECUTIVO (09/06/2026) ✅
+## ⚡ Sprint atual — V15+V16+V17 PRESIDENTE IA AUTOCONSCIENTE (09/06/2026) ✅
+**Presidente IA agora audita o próprio SmartProv como se fosse provedor-cliente.**
+
+| Fase | Endpoint | Saída live |
+|---|---|---|
+| V15 Autoconsciência | `GET /self/audit` | 21 gargalos / ganho total se resolvido: **R$ 79.000** |
+| V16 Conselho Evolução | `GET /self/evolution` | Top 10 evoluções: **R$ 61.700 em 57h · ROI R$ 1.082/h** |
+| V17 Prontidão Comercial | `GET /self/readiness` | 1k FUNCIONA · 10k QUEBRA · 50k INVIÁVEL |
+
+**Top 3 evoluções por ROI/h:**
+1. R$ 40.000/h · 0,5h · Executor IA · `dry_run=false` em 1 ação REAJUSTE_IPCA
+2. R$ 10.000/h · 0,5h · `ALLOW_MOCK_MODULES=false`
+3. R$ 3.000/h · 1h · Índice composto `subscriber_match_log`
+
+**0 coleções novas. 1 serviço único `presidente_self_audit.py` (445 LoC). 3 endpoints sob router existente.**
+
+## ⚡ Sprint anterior — V12+V13+V14 PRESIDENTE IA CÉREBRO EXECUTIVO ✅
 **Causalidade · Digital Twin · Autopilot. 1 serviço único, 5 endpoints.**
 
 | Fase | Capacidade | Endpoint | Reuso |
