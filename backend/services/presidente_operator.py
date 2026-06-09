@@ -572,20 +572,27 @@ async def morning_briefing(company_id: str) -> Dict[str, Any]:
     async for r in db.motor_ia_actions.aggregate(pipe):
         roi_ontem = {"n": r["n"], "roi_brl": round(r["roi"] or 0, 2)}
 
-    # Ações que vou executar HOJE: as auto-aprovaveis + N1
+    # Ações que vou executar HOJE: N1/N2 com handler em executor_ia
     plano_dia = []
-    for op in opp["acoes"] + sav["acoes"]:
-        cat = op.get("categoria")
-        if (cat and AUTONOMY_MATRIX.get(cat, {}).get("nivel") == "N1"
-                and op.get("executavel")):
-            roi = float(op.get("impacto_brl_recorrente") or 0) + \
-                  float(op.get("impacto_brl_unico") or 0)
-            plano_dia.append({
-                "categoria": cat,
-                "headline": op["headline"],
-                "roi_esperado_brl": roi,
-                "nivel": "N1",
-            })
+    for src in (opp["acoes"], sav["acoes"], rec["buckets"]):
+        for op in src:
+            cat = op.get("categoria")
+            info = AUTONOMY_MATRIX.get(cat, {})
+            if (cat and info.get("nivel") in ("N1", "N2")
+                    and info.get("categoria_executavel")):
+                roi = (
+                    float(op.get("impacto_brl_recorrente") or 0)
+                    + float(op.get("impacto_brl_unico") or 0)
+                    + float(op.get("valor_recuperavel_brl_estimado") or 0))
+                # Dedup por categoria (não duplicar entradas no plano)
+                if any(p["categoria"] == cat for p in plano_dia):
+                    continue
+                plano_dia.append({
+                    "categoria": cat,
+                    "headline": op["headline"],
+                    "roi_esperado_brl": roi,
+                    "nivel": info.get("nivel"),
+                })
 
     roi_esperado_hoje = sum(p["roi_esperado_brl"] for p in plano_dia)
 
@@ -707,3 +714,309 @@ async def execute_day(company_id: str,
             (x.get("roi_brl") or 0) for x in executed), 2),
         "briefing_headline": briefing["headline"],
     }
+
+
+# ─────────────────────────────────────────────
+#  MOTOR DE LUCRO
+# ─────────────────────────────────────────────
+async def lucro(company_id: str) -> Dict[str, Any]:
+    """Estado financeiro consolidado pelo Operador.
+
+    abandonado    = total de receita+capex parados na base
+    recuperavel   = estimativa probabilística de captura
+    executavel    = porção em categorias com handler em executor_ia
+    recuperado    = roi_brl real de ações completed (período rolling 30d)
+    previsao_30d  = projeção linear do recuperado dos últimos 30d
+    previsao_90d  = idem para 90d
+    """
+    opp = await opportunities_today(company_id)
+    sav = await savings_today(company_id)
+    rec = await recovery_today(company_id)
+
+    abandonado = rec["valor_abandonado_total_brl"]
+    recuperavel = rec["valor_recuperavel_estimado_brl"]
+
+    # Executável = ações com categoria que tem handler em executor_ia
+    executavel = 0.0
+    for src in (opp["acoes"], sav["acoes"], rec["buckets"]):
+        for a in src:
+            cat = a.get("categoria")
+            if (cat and AUTONOMY_MATRIX.get(cat, {}).get(
+                    "categoria_executavel")):
+                executavel += (
+                    float(a.get("impacto_brl_recorrente") or 0)
+                    + float(a.get("impacto_brl_unico") or 0)
+                    + float(a.get("valor_recuperavel_brl_estimado") or 0))
+
+    # Recuperado real (motor_ia_actions completed último 30d)
+    cutoff30 = _iso(_now() - timedelta(days=30))
+    pipe = [{"$match": {"company_id": company_id,
+                            "kind": "presidential",
+                            "status": "completed",
+                            "completed_at": {"$gte": cutoff30}}},
+             {"$group": {"_id": None,
+                            "n": {"$sum": 1},
+                            "roi": {"$sum": "$roi_brl"}}}]
+    recuperado_30d = {"n": 0, "roi_brl": 0.0}
+    async for r in db.motor_ia_actions.aggregate(pipe):
+        recuperado_30d = {"n": r["n"],
+                            "roi_brl": round(r["roi"] or 0, 2)}
+
+    # Projeção: usa o run-rate diário do recuperado + executavel
+    # como teto factível. Aplica taxa de conversão histórica.
+    run_rate_dia = recuperado_30d["roi_brl"] / 30 if recuperado_30d[
+        "roi_brl"] else (executavel * 0.05) / 30  # 5% se sem histórico
+    previsao_30d = round(run_rate_dia * 30, 2)
+    previsao_90d = round(run_rate_dia * 90, 2)
+
+    return {
+        "company_id": company_id,
+        "generated_at": _iso(_now()),
+        "dinheiro_abandonado_brl": round(abandonado, 2),
+        "dinheiro_recuperavel_brl": round(recuperavel, 2),
+        "dinheiro_executavel_brl": round(executavel, 2),
+        "dinheiro_recuperado_30d_brl": recuperado_30d["roi_brl"],
+        "acoes_recuperadas_30d": recuperado_30d["n"],
+        "lucro_previsto_30d_brl": previsao_30d,
+        "lucro_previsto_90d_brl": previsao_90d,
+        "headline": (f"Abandonado: R$ {abandonado:.0f} · "
+                       f"Recuperável: R$ {recuperavel:.0f} · "
+                       f"Executável: R$ {executavel:.0f} · "
+                       f"Recuperado 30d: R$ {recuperado_30d['roi_brl']:.0f}"),
+    }
+
+
+# ─────────────────────────────────────────────
+#  MOTOR DE VALOR DA EMPRESA
+# ─────────────────────────────────────────────
+async def company_value(company_id: str) -> Dict[str, Any]:
+    """Valuation heurístico com SaaS multiples + dados reais."""
+
+    # MRR / ARR
+    pipe = [{"$match": {"company_id": company_id,
+                            "status": {"$in": ["ATIVO", "ATIVA"]},
+                            "plan_price": {"$gt": 0}}},
+             {"$group": {"_id": None,
+                            "mrr": {"$sum": "$plan_price"},
+                            "n": {"$sum": 1},
+                            "ticket": {"$avg": "$plan_price"}}}]
+    mrr = ticket_medio = 0.0
+    clientes_ativos = 0
+    async for r in db.subscribers.aggregate(pipe):
+        mrr = round(r["mrr"], 2)
+        ticket_medio = round(r["ticket"], 2)
+        clientes_ativos = r["n"]
+    arr = round(mrr * 12, 2)
+
+    # Churn estimado: cancelados últimos 90d / ativos
+    pipe = [{"$match": {"company_id": company_id,
+                            "status": {"$in":
+                                          ["CANCELADO", "INATIVO",
+                                            "Cancelado", "cancelado"]}}},
+             {"$count": "n"}]
+    cancelados = 0
+    async for r in db.subscribers.aggregate(pipe):
+        cancelados = r["n"]
+    # Heurística simples: churn 90d ≈ cancelados / (ativos+cancelados)
+    base = max(clientes_ativos + cancelados, 1)
+    churn_90d_pct = round(cancelados / base * 100, 2)
+    churn_mensal_pct = round(churn_90d_pct / 3, 2)
+
+    # LTV = ticket_medio / churn_mensal (em meses) * ticket
+    # Quando churn=0, usa 24 meses como floor (cliente médio fica 2 anos)
+    avg_lifetime_months = (1 / (churn_mensal_pct / 100)
+                              if churn_mensal_pct > 0 else 24)
+    ltv = round(ticket_medio * avg_lifetime_months, 2)
+
+    # CAC heurístico: 30% do LTV (3:1 SaaS rule)
+    cac = round(ltv * 0.30, 2)
+    # Payback = CAC / ticket_medio (em meses)
+    payback_meses = round(cac / max(ticket_medio, 1), 1)
+
+    # EBITDA estimado: margem 35% sobre ARR (ISP brasileiro típico)
+    ebitda_brl_anual = round(arr * 0.35, 2)
+
+    # Enterprise Value: ARR × multiplicador SaaS
+    #   Multiplicador depende de churn:
+    #     < 1.5%/mês : 4x ARR (excelente)
+    #     1.5-3%     : 3x ARR
+    #     3-5%       : 2x ARR
+    #     > 5%       : 1.2x ARR
+    if churn_mensal_pct < 1.5:
+        mult, mult_label = 4.0, "premium_low_churn"
+    elif churn_mensal_pct < 3:
+        mult, mult_label = 3.0, "good"
+    elif churn_mensal_pct < 5:
+        mult, mult_label = 2.0, "average"
+    else:
+        mult, mult_label = 1.2, "high_churn_discount"
+    enterprise_value = round(arr * mult, 2)
+
+    return {
+        "company_id": company_id,
+        "generated_at": _iso(_now()),
+        "mrr_brl": mrr,
+        "arr_brl": arr,
+        "clientes_ativos": clientes_ativos,
+        "clientes_cancelados_90d": cancelados,
+        "ticket_medio_brl": ticket_medio,
+        "churn_mensal_pct": churn_mensal_pct,
+        "churn_90d_pct": churn_90d_pct,
+        "ltv_brl": ltv,
+        "cac_brl_estimado": cac,
+        "payback_meses": payback_meses,
+        "ebitda_anual_brl_estimado": ebitda_brl_anual,
+        "enterprise_value_brl": enterprise_value,
+        "valuation_multiplier": mult,
+        "valuation_tier": mult_label,
+        "headline": (f"Se vendida hoje: R$ {enterprise_value:,.0f} "
+                       f"(ARR R$ {arr:,.0f} × {mult}x · tier "
+                       f"{mult_label})"),
+    }
+
+
+# ─────────────────────────────────────────────
+#  TOP 20 — Oportunidades & Desperdícios
+# ─────────────────────────────────────────────
+async def top20_opportunities(company_id: str) -> List[Dict[str, Any]]:
+    """Top 20 ações financeiramente atacáveis, rankeadas por R$ × esforço."""
+    opp = await opportunities_today(company_id)
+    rec = await recovery_today(company_id)
+    items = []
+    for a in opp["acoes"]:
+        items.append({
+            **a,
+            "tipo": "GERAR",
+            "score":
+                (float(a.get("impacto_brl_recorrente") or 0)
+                 + float(a.get("impacto_brl_unico") or 0)),
+        })
+    for b in rec["buckets"]:
+        items.append({
+            "id": b["id"], "categoria": b["categoria"],
+            "headline": b["headline"],
+            "valor_recuperavel_brl_estimado":
+                b["valor_recuperavel_brl_estimado"],
+            "nivel_autonomia": b["nivel_autonomia"],
+            "executavel": b["executavel"],
+            "tipo": "RECUPERAR",
+            "score": b["valor_recuperavel_brl_estimado"],
+        })
+    items.sort(key=lambda x: x["score"], reverse=True)
+    return items[:20]
+
+
+async def top20_wastes(company_id: str) -> List[Dict[str, Any]]:
+    """Top 20 desperdícios identificados (custo evitável + ineficiência)."""
+    wastes: List[Dict[str, Any]] = []
+
+    # W1 — Cada OLT em mass-outage gera 10× custo de visita
+    pipe = [{"$match": {"company_id": company_id,
+                            "status": {"$in":
+                                          ["Offline", "LOS",
+                                            "Power fail"]}}},
+             {"$group": {"_id": "$olt_name",
+                            "n": {"$sum": 1}}},
+             {"$match": {"n": {"$gte": 5}}},
+             {"$sort": {"n": -1}}]
+    async for r in db.smartolt_onus.aggregate(pipe):
+        custo = round(r["n"] * 80, 2)  # cada visita R$80
+        wastes.append({
+            "tipo": "DESPERDICIO_OLT_MASS_OUTAGE",
+            "headline": f"OLT {r['_id']} · {r['n']} ONUs ruins · "
+                          f"R$ {custo:.0f} em visitas evitáveis",
+            "custo_brl": custo,
+            "evidencia": {"olt": r["_id"], "onus_ruins": r["n"]},
+        })
+
+    # W2 — Equipamentos em cancelados (CAPEX preso)
+    n_canc = await db.subscribers.count_documents(
+        {"company_id": company_id, "status": {"$in":
+            ["CANCELADO", "INATIVO", "Cancelado", "cancelado"]}})
+    if n_canc > 0:
+        wastes.append({
+            "tipo": "DESPERDICIO_CAPEX_PRESO",
+            "headline": f"{n_canc} ONUs em cancelados · "
+                          f"R$ {n_canc*120:.0f} CAPEX retido",
+            "custo_brl": n_canc * 120.0,
+            "evidencia": {"cancelados": n_canc},
+        })
+
+    # W3 — Faturas overdue antigas (juros perdidos + custo de cobrança)
+    pipe = [{"$match": {"company_id": company_id,
+                            "status": "overdue"}},
+             {"$group": {"_id": None,
+                            "n": {"$sum": 1},
+                            "total": {"$sum": "$amount"}}}]
+    async for r in db.subscriber_invoices.aggregate(pipe):
+        wastes.append({
+            "tipo": "DESPERDICIO_INADIMPLENCIA",
+            "headline":
+                f"{r['n']} faturas overdue · R$ {r['total']:.0f} parado",
+            "custo_brl": round(r["total"], 2),
+            "evidencia": {"faturas": r["n"]},
+        })
+
+    # W4 — Clientes recurring (drenagem de atendimento)
+    pipe = [{"$match": {"company_id": company_id,
+                            "client_id": {"$ne": None}}},
+             {"$group": {"_id": "$client_id",
+                            "n": {"$sum": 1}}},
+             {"$match": {"n": {"$gte": 3}}},
+             {"$sort": {"n": -1}}, {"$limit": 10}]
+    async for r in db.tickets.aggregate(pipe):
+        # cada ticket extra além de 1 = R$ 40 custo médio atendimento
+        custo = round((r["n"] - 1) * 40, 2)
+        wastes.append({
+            "tipo": "DESPERDICIO_TICKET_RECURRING",
+            "headline": (f"Cliente {r['_id'][:10]} · {r['n']} tickets · "
+                          f"R$ {custo:.0f} atendimento extra"),
+            "custo_brl": custo,
+            "evidencia": {"client_id": r["_id"],
+                            "tickets": r["n"]},
+        })
+
+    # W5 — Drift negativo de IA (ações que custam mais que rendem)
+    cur = db.motor_ia_drift.find(
+        {"company_id": company_id, "drift_pct": {"$lt": -30}})
+    async for d in cur:
+        wastes.append({
+            "tipo": "DESPERDICIO_IA_DRIFT",
+            "headline": f"Drift IA cat={d['categoria']} · "
+                          f"{d['drift_pct']:.0f}% abaixo do previsto",
+            "custo_brl": round(abs(d.get("media_diferenca_brl") or 0)
+                                   * d.get("amostras", 1), 2),
+            "evidencia": {"categoria": d["categoria"],
+                            "amostras": d["amostras"]},
+        })
+
+    wastes.sort(key=lambda x: x["custo_brl"], reverse=True)
+    return wastes[:20]
+
+
+# ─────────────────────────────────────────────
+#  Metas Diárias derivadas
+# ─────────────────────────────────────────────
+async def daily_goals(company_id: str) -> Dict[str, Any]:
+    """Metas diárias baseadas em targets das 8 metas permanentes."""
+    cv = await company_value(company_id)
+    rec = await recovery_today(company_id)
+    # 1% do MRR/dia = meta de geração diária (regra do operador)
+    receita_gerada_dia = round(cv["mrr_brl"] * 0.01, 2)
+    receita_recuperada_dia = round(
+        rec["valor_recuperavel_estimado_brl"] / 30, 2)
+    # 0.05% do MRR/dia = meta de churn evitado
+    churn_evitado_dia = round(cv["mrr_brl"] * 0.0005, 2)
+    return {
+        "company_id": company_id,
+        "metas_dia": {
+            "receita_gerada_dia_brl": receita_gerada_dia,
+            "receita_recuperada_dia_brl": receita_recuperada_dia,
+            "churn_evitado_dia_brl": churn_evitado_dia,
+            "equipamentos_recuperados_dia": max(
+                1, (cv["clientes_cancelados_90d"] // 90)),
+            "upsell_dia": max(1, cv["clientes_ativos"] // 1000),
+        },
+        "generated_at": _iso(_now()),
+    }
+

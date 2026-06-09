@@ -2,6 +2,36 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 💰 OPERAÇÃO RECEITA AUTÔNOMA — Presidente Sócio (09/06/2026) ✅
+
+**Ordem CTO**: Presidente IA vira gerador direto de resultado. Toda
+análise termina em ação. Filosofia: pensar como dono.
+
+### Endpoints novos (5):
+- `GET /api/presidente-ia/lucro` — Motor de Lucro
+- `GET /api/presidente-ia/company-value` — Valuation diário
+- `GET /api/presidente-ia/top-opportunities` — Top 20 R$
+- `GET /api/presidente-ia/top-wastes` — Top 20 desperdícios
+- `GET /api/presidente-ia/operator/daily-goals` — Metas diárias
+
+### Saída obrigatória atingida (co-demo, 09/06/2026)
+1. Valor recuperável: **R$ 98.042,47**
+2. Valor executável: **R$ 86.283,97**
+3. Valor executado: 2 ações completed · 200 OS preventivas + 1 dunning batch · 4 auto-aprovadas
+4. Receita prevista 30d: **R$ 4.314,20** (extrapolação executável conservadora)
+5. Receita prevista 90d: **R$ 12.942,60**
+6. **Enterprise Value: R$ 15.450.055,20** (ARR 3.86M × 4x · tier premium_low_churn · churn 0.56%/mês)
+7. Top 20 oportunidades: 9 ações ranqueadas (REAJUSTE R$48k / UPGRADE R$36k / DISPARO R$6.8k / etc.)
+8. Top 20 desperdícios: 16 itens · **R$ 118.726 totais** (inadimplência R$37.9k · IA drift R$55k · OLT mass-outage R$17k · CAPEX preso R$5.6k · ticket recurring R$2.5k)
+9. ROI por ação: cada item retorna `impacto_brl_recorrente` + `impacto_brl_unico`
+10. Evidências: 2.788 subs · 6.376 invoices · 1.845 ONUs · 40 CTOs · 13.956 eventos nervoso
+
+### Filosofia executada
+Toda decisão passa pelo filtro: aumenta receita? reduz custo? reduz churn? aumenta EV? Senão, não existe. Matriz Autonomia (4 níveis × 12 ações) + 8 metas permanentes + plano diário N1+N2 + execução auto-aprovada.
+
+### Whitelist auto-aprovação expandida (Fase E)
+4 categorias N1+N2 (CONTATO_LEO_PROATIVO · CRIACAO_OS_SMARTFIELD · CAMPANHA_RETENCAO · **DISPARO_COBRANCA**). Cap R$ 25k. Kill-switch `AUTO_APPROVAL_ENABLED` (default OFF).
+
 ## 🚀 OPERAÇÃO PRESIDENTE AUTÔNOMO — Operador (09/06/2026) ✅
 
 **Ordem CTO**: Presidente IA deixa de ser analista, vira **operador**.

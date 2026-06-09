@@ -605,6 +605,55 @@ async def operator_execute_day(
     return result
 
 
+# ─── OPERAÇÃO RECEITA AUTÔNOMA — Lucro, Valor, Top 20 ───
+@router.get("/lucro")
+async def presidente_lucro(
+    user: dict = Depends(require_ai_access()),
+):
+    """Estado financeiro consolidado: abandonado · recuperável ·
+    executável · recuperado 30d · previsão 30d/90d."""
+    from services import presidente_operator as op
+    return await op.lucro(_cid(user))
+
+
+@router.get("/company-value")
+async def presidente_company_value(
+    user: dict = Depends(require_ai_access()),
+):
+    """Valuation diário: MRR · ARR · Churn · LTV · CAC · Payback ·
+    EBITDA · Enterprise Value."""
+    from services import presidente_operator as op
+    return await op.company_value(_cid(user))
+
+
+@router.get("/top-opportunities")
+async def presidente_top_opportunities(
+    user: dict = Depends(require_ai_access()),
+):
+    """Top 20 oportunidades financeiras (gerar + recuperar)."""
+    from services import presidente_operator as op
+    return {"items": await op.top20_opportunities(_cid(user))}
+
+
+@router.get("/top-wastes")
+async def presidente_top_wastes(
+    user: dict = Depends(require_ai_access()),
+):
+    """Top 20 desperdícios identificados (CAPEX preso, inadimplência,
+    OLT mass-outage, ticket recurring, drift de IA)."""
+    from services import presidente_operator as op
+    return {"items": await op.top20_wastes(_cid(user))}
+
+
+@router.get("/operator/daily-goals")
+async def operator_daily_goals(
+    user: dict = Depends(require_ai_access()),
+):
+    """Metas diárias derivadas das 8 metas permanentes."""
+    from services import presidente_operator as op
+    return await op.daily_goals(_cid(user))
+
+
 # ─────────────── GOVERNADOR V11 — Presidente como Governador ──────────
 #  10 endpoints, todos consolidando dados que já existem.
 

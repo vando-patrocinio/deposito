@@ -953,12 +953,14 @@ import os as _os
 #   - CONTATO_LEO_PROATIVO: enfileira mensagem proativa; reversível
 #   - CRIACAO_OS_SMARTFIELD: abre OS preventiva; técnico ainda valida
 #   - CAMPANHA_RETENCAO: enfileira na mass_messaging_queue; gated por WA
-# Categorias EXCLUÍDAS por design (mexem em $ direto):
-#   - REAJUSTE_IPCA, DISPARO_COBRANCA → sempre exigem humano
+#   - DISPARO_COBRANCA: enfileira régua em dunning_events; reversível
+# Categorias EXCLUÍDAS por design (mexem em $ recorrente direto):
+#   - REAJUSTE_IPCA → sempre exige humano
 AUTO_APPROVAL_WHITELIST = {
     "CONTATO_LEO_PROATIVO",
     "CRIACAO_OS_SMARTFIELD",
     "CAMPANHA_RETENCAO",
+    "DISPARO_COBRANCA",
 }
 
 AUTO_APPROVAL_MAX_IMPACT_BRL = float(
