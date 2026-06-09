@@ -2,7 +2,48 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ⚡ Sprint atual — V20 DIRETOR DE EVOLUÇÃO CONTÍNUA (09/06/2026) ✅
+## 🟢 OPERAÇÃO 90% — Execução Sprint (09/06/2026) ✅
+
+**Ordem CTO**: parar criação de novas IAs/dashboards. Foco em hardening,
+autonomia e estabilidade para elevar maturidade SaaS 78% → 90%.
+
+**Ordem de execução cumprida**: A1 (testing) → fix crítico → E (autonomia) →
+exec real → A3 (S3) → D (multi-tenant) → B (hardening WA) → C (cobertura) →
+auto-auditoria → recalcular prontidão.
+
+| Fase | Entrega | Resultado |
+|---|---|---|
+| A1 — Testing pós-mock-off | `iteration_98.json` · 28/28 pytest verde | Backend ESTÁVEL · zero quebras críticas |
+| Fix crítico | `scheduler_v51.py` — `asyncio.run()` em thread → coroutine direta no AsyncIOScheduler | Erro `Future attached to a different loop` extinto |
+| Fase E — Autonomia | `executor_ia.py` (+185 LoC) · 3 endpoints `/auto-approval/{policy,scan,audit}` · whitelist={CONTATO_LEO_PROATIVO, CRIACAO_OS_SMARTFIELD, CAMPANHA_RETENCAO} · cap R$ 5k · conselho ≥5/6 · `AUTO_APPROVAL_ENABLED` kill-switch | E2E validado: 1 ação CRIACAO_OS_SMARTFIELD auto-aprovada e EXECUTADA REAL (dry_run=false) → 100 OS preventivas criadas em `smart_repairs` |
+| Fase A3 — Backup S3 fallback | `services/s3_backup.py` + 4 endpoints `/api/admin/backup/s3/{status,upload-latest,daily,list}` · placeholders no .env · degrada graciosamente | Aguardando CTO preencher `AWS_ACCESS_KEY_ID/SECRET/S3_BACKUP_BUCKET` |
+| Fase D — Multi-tenant | Limpeza 107 órfãos + 31 docs teste · novo endpoint `/multitenant/companies` | Audit **BLINDADO/CLEAN** · co-pilot-1 visível em ONBOARDING |
+| Fase B — Hardening WA | `wa_dispatcher.py` (+138 LoC) · circuit breaker em memória (threshold 5 falhas / cooldown 120s) · métricas `wa_dispatch_metrics` com TTL 7d · endpoint `/wa/dispatcher-status` | Pronto para 10k clientes sem flap |
+| Fase C — Cobertura nervosa | Reset checkpoints + resync 10.017 eventos | **55.26% (21/38)** · meta >50% **ATINGIDA** (era 15.79% pós-cleanup) |
+| Auto-auditoria | `/self/audit` re-rodado pós-OP90 | **15 gargalos** (eram 21) · backlog **R$ 43.500** (era R$ 79.000) — redução R$ 35.500 |
+| Recalcular prontidão | `/self/readiness` | 1k FUNCIONA c/3 fixes triviais · 10k QUEBRA s/ hardening · 50k INVIÁVEL s/ rearquitetura |
+
+### Endpoints novos (zero novos dashboards/IAs, conforme ordem CTO)
+- `GET /api/presidente-ia/auto-approval/policy`
+- `POST /api/presidente-ia/auto-approval/scan`
+- `GET /api/presidente-ia/auto-approval/audit`
+- `GET /api/presidente-ia/wa/dispatcher-status`
+- `GET /api/ai-center/multitenant/companies`
+- `GET /api/admin/backup/s3/{status,list}`
+- `POST /api/admin/backup/s3/{upload-latest,daily}`
+
+### Bloqueadores pendentes para hit 90%
+- 🔴 Backup off-site (CTO precisa: fluxo OAuth Google Drive **ou** preencher AWS creds no .env)
+- 🟡 `wa_baileys` 4× stateful sem fila externa (refactor profundo, P2)
+- 🟡 `lousa.py` 8.2k LoC e `whatsapp_baileys.py` 5.2k LoC (monólitos P2)
+- 🟡 Coleções financeiras vazias (financeiro_lancamentos, dre_snapshots, billing_invoices, dunning_events, payments) — backfill ou popular via integração
+
+### Coleções/índices novos nesta sprint
+- `wa_dispatch_metrics` (TTL 7d em `ts` + composto `company_id+ts`)
+- Removidas: 31 docs de tenants teste (`test-tese-*`, `co-test-v14`) + 107 órfãos motor_ia_*/audit_log
+- `nervous_checkpoints` resetada (29 docs) → re-emitiu 10.017 eventos
+
+## ⚡ Sprint anterior — V20 DIRETOR DE EVOLUÇÃO CONTÍNUA (09/06/2026) ✅
 **5 endpoints sob `/evolution/*`. 1 serviço único.**
 
 | Fase | Endpoint | Saída live |
