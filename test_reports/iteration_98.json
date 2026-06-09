@@ -1,0 +1,39 @@
+{
+  "summary": "iter98 — Backend validation pós-mock-off (ALLOW_MOCK_MODULES=false). 28/28 pytest tests PASS. Login admin@empresa.com OK retornando JWT + company_id=co-demo. Todos os endpoints V10-V20 do Presidente IA (executive, governador/saude, governador/relatorio-diario, state-of-presidency, brain/autopilot/top10, self/audit, self/readiness, self/evolution, evolution/backlog, evolution/sprints, evolution/roadmap, actions) respondem 200. Mock guard funcionando: /api/security-home/* devolve 503 corretamente. AI Center painéis 7/7 OK (cash/war-room, cash/go-live, financial/summary, blockers/audit, nervous-system/coverage, autonomous/summary, multitenant/audit, multitenant/tenants). Scheduler V5.1 corrigido — logs pós-restart 19:25 mostram apenas 'V5.1 scheduler job registered (30min)' SEM o erro 'attached to a different loop' que ocorria antes. Índices Mongo OK em subscriber_match_log (company_sub_created) e subscriber_invoices (company_sub_due, company_paid). TTL scheduler_locks ativo (expireAfterSeconds:900, unique:job_id).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/ai-center/blockers/list", "issue": "Endpoint inexistente — o caminho correto é /api/ai-center/blockers/audit. Spec do CTO usou /list mas o router (ai_center_blockers.py) só expõe /audit, /healing-score, /healing-history. NÃO é regressão pós-mock-off, é divergência de spec."},
+      {"endpoint": "/api/health", "issue": "Não existe rota /api/health genérica. A rota de health funcional é /api/health-panel/deep (requer auth). Considerar adicionar alias /api/health público (sem auth) para load balancer/k8s probe."},
+      {"endpoint": "/api/ai-center/multitenant/tenants", "issue": "Tenant 'co-pilot-1' existe na coleção `companies` (confirmado via mongo) mas NÃO aparece em /multitenant/tenants porque esse endpoint retorna distribuição agregada por company_id na coleção `subscribers` (e co-pilot-1 ainda não tem subscribers seedados). Isolamento OK, mas se a Fase D quer expor a lista REAL de tenants cadastrados, considerar endpoint dedicado tipo /multitenant/companies que leia direto de `companies`."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter98_post_mockoff.py",
+    "/app/test_reports/pytest/iter98_results.xml"
+  ],
+  "action_items": [
+    "[OPCIONAL — Fase D] Criar /api/ai-center/multitenant/companies (lista direta de companies, não agregação de subscribers) para o CTO ver TODOS os tenants cadastrados independente de ter dados ainda.",
+    "[OPCIONAL — Hardening] Adicionar alias público /api/health (sem auth) para probes externos; hoje só /api/health-panel/deep responde e exige token.",
+    "[BAIXA] Atualizar a spec do CTO substituindo /api/ai-center/blockers/list por /api/ai-center/blockers/audit (path correto).",
+    "[NÃO BLOQUEANTE — Fase E precondition] /api/presidente-ia/actions retorna lista vazia no co-demo; quando começar a implementar whitelist de auto-aprovação, seed alguns actions pendentes para testes ponta-a-ponta."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/services/scheduler_v51.py — fix do asyncio loop está OK, logs pós-restart confirmam ausência do erro 'Future attached to a different loop'. Manter monitoramento por algumas horas para garantir que não volte.",
+    "/app/backend/services/multitenant_audit.py:65 — tenants_distribution() é meio enganoso pelo nome: ele retorna apenas tenants COM subscribers (agregação em $group). Renomear para subscribers_by_tenant() ou adicionar segundo endpoint que liste companies cadastradas. Hoje um tenant zerado fica invisível.",
+    "/app/backend/routes/ai_center_blockers.py — endpoints expostos são /audit, /healing-score, /healing-history. Sem rota /list. Padronizar nomenclatura entre blockers/* e cash/* (estes usam /war-room, /go-live) — atualmente cada subnamespace tem convenção própria.",
+    "/app/backend/.env — ALLOW_MOCK_MODULES=false confirmado. self/audit responde 200 sem flagear o item como aberto. OK pós-mock-off.",
+    "Coleção subscriber_match_log tem apenas índice company_sub_created. Avaliar se precisa de outro composto (company_id, status, created_at) dependendo dos padrões de query da Fase C (nervous coverage)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter98_post_mockoff.py"
+  ],
+  "success_rate": {"backend": "100% (28/28 pytest, com 3 findings reportados como minor)", "frontend": "N/A — não testado por instrução do main agent"},
+  "test_credentials": "admin@empresa.com / 123456 (super admin auditor company_id=co-demo)",
+  "seed_data_creation": "Nenhum seed criado. Apenas leituras GET autenticadas. Nenhuma modificação no banco.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "POST mock-off: backend está ESTÁVEL. Nenhum endpoint listado retornou 500. Os 3 'failures' iniciais foram 2 paths errados na spec do CTO (blockers/list -> blockers/audit ; /api/health -> /api/health-panel/deep) e 1 expectativa de visibilidade de tenant zerado (co-pilot-1 sem subscribers). Scheduler V5.1 não loga mais 'attached to a different loop' após o restart das 19:25 (confirmado em /var/log/supervisor/backend.err.log). Para Fase E (whitelist de auto-aprovação), começar por /api/presidente-ia/actions + /api/presidente-ia/actions/{id}/ledger — ambos respondem 200 e podem ser estendidos. Tenants reais cadastrados em companies: co-demo + co-pilot-1. Subscribers existentes em: co-demo, test-tese-ccbfb3, test-tese-1d11c2, co-test-v14. Limpar os tenants 'test-tese-*' e 'co-test-v14' antes da Fase D se forem dados de teste antigos.",
+  "rca of the issue": "Não houve quebra real pós-mock-off. (1) /blockers/list 404 → spec do CTO citou path incorreto, a rota real é /blockers/audit (verificado em /app/backend/routes/ai_center_blockers.py linha 19). (2) /api/health 404 → handler está em /api/health-panel/deep (backend_health_routes.py). (3) co-pilot-1 fora de /multitenant/tenants → endpoint agrega subscribers por company_id; tenant zerado não aparece. Tenant ESTÁ no banco (db.companies)."
+}

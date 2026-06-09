@@ -39,19 +39,9 @@ def start_scheduler(scheduler) -> None:
     except Exception:
         pass
 
-    def _runner():
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.ensure_future(run_failure_risk_cycle())
-            else:
-                loop.run_until_complete(run_failure_risk_cycle())
-        except RuntimeError:
-            asyncio.run(run_failure_risk_cycle())
-        except Exception as e:  # noqa: BLE001
-            logger.warning("V5.1 scheduler runner error: %r", e)
-
-    scheduler.add_job(_runner, "interval", minutes=30,
+    # AsyncIOScheduler suporta coroutines nativamente — passar direto
+    # evita o "Future attached to a different loop" do executor de thread.
+    scheduler.add_job(run_failure_risk_cycle, "interval", minutes=30,
                       id=job_id, max_instances=1,
                       coalesce=True, replace_existing=True)
     logger.info("V5.1 scheduler job registered (30min).")
