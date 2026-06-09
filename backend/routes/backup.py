@@ -828,3 +828,46 @@ async def weekly_migrate_job() -> None:
             "last_error": str(e),
         })
         logger.exception("[migrate-cron] erro inesperado")
+
+
+
+# ─────────────── FASE A3 — Off-site backup AWS S3 ───────────────
+#  Fallback do Google Drive (token OAuth expirado). Super-admin only.
+
+@router.get("/s3/status")
+async def s3_backup_status(user: Dict[str, Any] = Depends(get_current_user)):
+    """Diagnóstico: mostra se S3 está configurado e o que falta."""
+    _require_super_admin(user)
+    from services import s3_backup
+    return s3_backup.get_status()
+
+
+@router.post("/s3/upload-latest")
+async def s3_backup_upload_latest(
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Empacota o último mongodump e envia para S3. Idempotente."""
+    _require_super_admin(user)
+    from services import s3_backup
+    return s3_backup.upload_latest_snapshot()
+
+
+@router.post("/s3/daily")
+async def s3_backup_daily(
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Roda o ciclo completo: snapshot local + upload S3 + purge."""
+    _require_super_admin(user)
+    from services import s3_backup
+    return await s3_backup.daily_backup_job()
+
+
+@router.get("/s3/list")
+async def s3_backup_list(
+    limit: int = 50,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Lista snapshots remotos no bucket."""
+    _require_super_admin(user)
+    from services import s3_backup
+    return {"items": s3_backup.list_remote_backups(limit=limit)}

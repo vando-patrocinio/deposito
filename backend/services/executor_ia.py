@@ -930,3 +930,178 @@ _EXECUTORS = {
     "CRIACAO_OS_SMARTFIELD": _exec_criar_os_smartfield,
     "CAMPANHA_RETENCAO": _exec_campanha_retencao,
 }
+
+
+# ─────────────────────────────────────────────
+#  FASE E — AUTONOMIA REAL (whitelist explícita)
+# ─────────────────────────────────────────────
+#
+#  Política de auto-aprovação para ações de baixo risco.
+#  Premissas:
+#    1. Kill-switch global via env AUTO_APPROVAL_ENABLED (default OFF).
+#    2. Whitelist EXPLÍCITA — categoria não listada NUNCA é auto-aprovada.
+#    3. Consenso forte do Conselho (>=5/6) obrigatório.
+#    4. Impacto estimado <= cap configurado (default R$ 5.000).
+#    5. Toda auto-aprovação fica auditável via flag auto_approved=true
+#       no doc da ação + history entry com actor="auto_pilot".
+#  Ações executoras (a partir daqui) continuam exigindo chamada explícita
+#  de execute_action — auto-aprovação NÃO dispara execução, só aprova.
+# ─────────────────────────────────────────────
+import os as _os
+
+# Categorias seguras (idempotentes / reversíveis / não-financeiras):
+#   - CONTATO_LEO_PROATIVO: enfileira mensagem proativa; reversível
+#   - CRIACAO_OS_SMARTFIELD: abre OS preventiva; técnico ainda valida
+#   - CAMPANHA_RETENCAO: enfileira na mass_messaging_queue; gated por WA
+# Categorias EXCLUÍDAS por design (mexem em $ direto):
+#   - REAJUSTE_IPCA, DISPARO_COBRANCA → sempre exigem humano
+AUTO_APPROVAL_WHITELIST = {
+    "CONTATO_LEO_PROATIVO",
+    "CRIACAO_OS_SMARTFIELD",
+    "CAMPANHA_RETENCAO",
+}
+
+AUTO_APPROVAL_MAX_IMPACT_BRL = float(
+    _os.environ.get("AUTO_APPROVAL_MAX_IMPACT_BRL") or 5000.0)
+AUTO_APPROVAL_MIN_COUNCIL_APPROVALS = int(
+    _os.environ.get("AUTO_APPROVAL_MIN_COUNCIL_APPROVALS") or 5)
+AUTO_APPROVAL_APPROVER_LABEL = "auto_pilot"
+
+
+def is_auto_approval_enabled() -> bool:
+    """Kill-switch global. CTO pode desligar instantaneamente via env."""
+    v = (_os.environ.get("AUTO_APPROVAL_ENABLED") or "false").strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
+
+def get_auto_approval_policy() -> Dict[str, Any]:
+    """Retorna política atual para auditoria/UI."""
+    return {
+        "enabled": is_auto_approval_enabled(),
+        "whitelist": sorted(AUTO_APPROVAL_WHITELIST),
+        "max_impact_brl": AUTO_APPROVAL_MAX_IMPACT_BRL,
+        "min_council_approvals": AUTO_APPROVAL_MIN_COUNCIL_APPROVALS,
+        "approver_label": AUTO_APPROVAL_APPROVER_LABEL,
+        "excluded_categories": sorted(
+            set(CATEGORIAS_EXECUTAVEIS.keys()) - AUTO_APPROVAL_WHITELIST),
+    }
+
+
+def evaluate_auto_approval(action: Dict[str, Any]) -> Dict[str, Any]:
+    """Avalia se uma ação pode ser auto-aprovada. Retorna decisão
+    detalhada com motivos (passe/falhe), sem alterar o banco."""
+    reasons: List[str] = []
+    eligible = True
+
+    if not is_auto_approval_enabled():
+        return {"eligible": False, "reasons": [
+            "AUTO_APPROVAL_ENABLED=false (kill-switch global desligado)"]}
+
+    if action.get("status") != "pending":
+        eligible = False
+        reasons.append(
+            f"status='{action.get('status')}' — só ações pending "
+            "são candidatas")
+
+    cat = action.get("categoria")
+    if cat not in AUTO_APPROVAL_WHITELIST:
+        eligible = False
+        reasons.append(
+            f"categoria '{cat}' não está na whitelist "
+            f"{sorted(AUTO_APPROVAL_WHITELIST)}")
+
+    impact = float(action.get("impacto_estimado_brl") or 0)
+    if impact > AUTO_APPROVAL_MAX_IMPACT_BRL:
+        eligible = False
+        reasons.append(
+            f"impacto R$ {impact:.2f} > cap "
+            f"R$ {AUTO_APPROVAL_MAX_IMPACT_BRL:.2f}")
+
+    consensus = action.get("council_consensus") or {}
+    approvals = int(consensus.get("approved_count") or 0)
+    if approvals < AUTO_APPROVAL_MIN_COUNCIL_APPROVALS:
+        eligible = False
+        reasons.append(
+            f"conselho aprovou {approvals}/6 (mínimo "
+            f"{AUTO_APPROVAL_MIN_COUNCIL_APPROVALS} exigido)")
+
+    if eligible:
+        reasons.append(
+            f"OK · categoria whitelisted · impacto R$ {impact:.2f} "
+            f"<= cap · conselho {approvals}/6")
+
+    return {"eligible": eligible, "reasons": reasons,
+              "categoria": cat, "impacto_brl": impact,
+              "council_approvals": approvals}
+
+
+async def auto_approve_action(action_id: str,
+                                   justification: str = "") -> Dict[str, Any]:
+    """Auto-aprova uma ação SE elegível. Marca auto_approved=true."""
+    act = await _require_action(action_id)
+    decision = evaluate_auto_approval(act)
+    if not decision["eligible"]:
+        raise ValueError(
+            f"ação {action_id} não elegível para auto-aprovação: "
+            f"{'; '.join(decision['reasons'])}")
+
+    full_just = (justification or "Auto-aprovação política: "
+                  + "; ".join(decision["reasons"]))
+    await approve_action(
+        action_id, approver=AUTO_APPROVAL_APPROVER_LABEL,
+        justification=full_just)
+    # Marca flag de auditoria
+    await db.motor_ia_actions.update_one(
+        {"id": action_id},
+        {"$set": {"auto_approved": True,
+                     "auto_approval_decision": decision}})
+    logger.info(
+        "[auto_approval] action=%s categoria=%s approver=%s impacto=R$%.2f",
+        action_id, act.get("categoria"), AUTO_APPROVAL_APPROVER_LABEL,
+        float(act.get("impacto_estimado_brl") or 0))
+    return await get_action(action_id)
+
+
+async def scan_and_auto_approve(company_id: str,
+                                     limit: int = 50) -> Dict[str, Any]:
+    """Varre ações pending do tenant e auto-aprova elegíveis."""
+    if not is_auto_approval_enabled():
+        return {"enabled": False, "approved": [], "skipped": [],
+                  "msg": "AUTO_APPROVAL_ENABLED=false — nada feito"}
+
+    cursor = db.motor_ia_actions.find(
+        {"company_id": company_id, "kind": "presidential",
+         "status": "pending"},
+        {"_id": 0}).sort([("created_at", 1)]).limit(limit)
+    candidates = await cursor.to_list(limit)
+
+    approved, skipped = [], []
+    for act in candidates:
+        decision = evaluate_auto_approval(act)
+        if decision["eligible"]:
+            try:
+                a = await auto_approve_action(act["id"])
+                approved.append({"id": act["id"],
+                                    "categoria": act["categoria"],
+                                    "impacto_brl": act.get(
+                                        "impacto_estimado_brl"),
+                                    "approved_at": a.get("approved_at")})
+            except Exception as e:  # noqa: BLE001
+                skipped.append({"id": act["id"], "reason": repr(e)})
+        else:
+            skipped.append({"id": act["id"],
+                              "categoria": act.get("categoria"),
+                              "reasons": decision["reasons"]})
+
+    return {"enabled": True, "company_id": company_id,
+              "scanned": len(candidates),
+              "approved": approved, "skipped": skipped}
+
+
+async def list_auto_approved_actions(company_id: str,
+                                          limit: int = 100) -> List[Dict]:
+    """Auditoria: lista todas as ações com auto_approved=true."""
+    cursor = db.motor_ia_actions.find(
+        {"company_id": company_id, "auto_approved": True},
+        {"_id": 0}).sort([("approved_at", -1)]).limit(limit)
+    return await cursor.to_list(limit)

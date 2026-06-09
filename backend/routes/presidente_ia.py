@@ -464,6 +464,65 @@ async def learning_drift(
     return {"drifts": await cursor.to_list(50)}
 
 
+# ─────────────── FASE E — AUTONOMIA REAL (auto-aprovação) ──────────
+#  3 endpoints. Whitelist explícita + kill-switch via env.
+
+@router.get("/auto-approval/policy")
+async def auto_approval_policy(
+    user: dict = Depends(require_ai_access()),
+):
+    """Política atual de auto-aprovação. Inclui whitelist, caps e
+    status do kill-switch global AUTO_APPROVAL_ENABLED."""
+    from services import executor_ia as ex
+    return ex.get_auto_approval_policy()
+
+
+@router.post("/auto-approval/scan")
+async def auto_approval_scan(
+    body: Dict[str, Any] = Body(default_factory=dict),
+    user: dict = Depends(require_ai_access()),
+    _: bool = Depends(rate_limit(10, 600, "auto_approval_scan")),
+):
+    """Varre ações pending do tenant e auto-aprova as elegíveis.
+    Respeita whitelist + cap de impacto + consenso forte do conselho."""
+    from services import executor_ia as ex
+    cid = _cid(user)
+    limit = int(body.get("limit") or 50)
+    result = await ex.scan_and_auto_approve(cid, limit=limit)
+    await _audit(user, "ia", "auto_approval_scan",
+                    target=cid,
+                    data={"approved": len(result.get("approved", [])),
+                            "skipped": len(result.get("skipped", []))})
+    return result
+
+
+@router.get("/auto-approval/audit")
+async def auto_approval_audit(
+    limit: int = 100,
+    user: dict = Depends(require_ai_access()),
+):
+    """Lista todas as ações auto-aprovadas para auditoria reversível."""
+    from services import executor_ia as ex
+    cid = _cid(user)
+    items = await ex.list_auto_approved_actions(cid, limit=limit)
+    return {"company_id": cid, "count": len(items), "items": items}
+
+
+# ─────────────── FASE B — Hardening WhatsApp ──────────
+#  Status do circuit breaker + métricas agregadas do dispatcher.
+
+@router.get("/wa/dispatcher-status")
+async def wa_dispatcher_status(
+    hours: int = 24,
+    user: dict = Depends(require_ai_access()),
+):
+    """Diagnóstico do dispatcher WhatsApp: circuit breaker por tenant +
+    sucesso/latência das últimas N horas."""
+    from services import wa_dispatcher as wa
+    cid = _cid(user)
+    return await wa.metrics_summary(company_id=cid, hours=hours)
+
+
 # ─────────────── GOVERNADOR V11 — Presidente como Governador ──────────
 #  10 endpoints, todos consolidando dados que já existem.
 
