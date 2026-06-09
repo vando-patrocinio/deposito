@@ -546,3 +546,190 @@ def register_scheduler(scheduler) -> None:
         id=job_id, max_instances=1,
         coalesce=True, replace_existing=True)
     log.info("[presidente_cash] daily_closing_job registered (23:59)")
+
+
+# ─────────────────────────────────────────────
+# FASE 6 — CROSS-TENANT BENCHMARK
+# ─────────────────────────────────────────────
+async def cross_tenant_ranking() -> Dict[str, Any]:
+    """Ranking de empresas por dinheiro confirmado.
+    Mostra Empresa A +R$X, Empresa B +R$Y, total +R$N."""
+    tenants = await db.companies.find(
+        {}, {"_id": 0, "id": 1, "name": 1}).to_list(200)
+    pipe = [{"$group": {"_id": "$company_id",
+                             "n": {"$sum": 1},
+                             "confirmado":
+                                 {"$sum": "$valor_confirmado_brl"},
+                             "previsto":
+                                 {"$sum": "$valor_previsto_brl"}}}]
+    by_cid: Dict[str, Any] = {}
+    async for r in db.executive_ledger.aggregate(pipe):
+        by_cid[r["_id"]] = r
+
+    rows = []
+    for t in tenants:
+        cid = t.get("id")
+        if not cid:
+            continue
+        info = by_cid.get(cid, {"n": 0, "confirmado": 0, "previsto": 0})
+        # ARR estimado por empresa (para benchmark)
+        async for arr in db.subscribers.aggregate(
+            [{"$match": {"company_id": cid,
+                              "status": {"$in": ["ATIVO", "ATIVA"]},
+                              "plan_price": {"$gt": 0}}},
+             {"$group": {"_id": None,
+                              "mrr": {"$sum": "$plan_price"},
+                              "n": {"$sum": 1}}}]):
+            mrr = arr["mrr"]
+            n_subs = arr["n"]
+            break
+        else:
+            mrr = 0
+            n_subs = 0
+        rows.append({
+            "company_id": cid,
+            "name": t.get("name") or cid,
+            "subscribers_ativos": n_subs,
+            "mrr_brl": round(mrr, 2),
+            "acoes_executadas": info["n"],
+            "caixa_confirmado_brl": round(info["confirmado"], 2),
+            "caixa_previsto_brl": round(info["previsto"], 2),
+            "taxa_acerto_pct":
+                (round(info["confirmado"] / info["previsto"] * 100, 1)
+                 if info["previsto"] else 0.0),
+        })
+    rows.sort(key=lambda x: x["caixa_confirmado_brl"], reverse=True)
+    total = round(sum(r["caixa_confirmado_brl"] for r in rows), 2)
+    return {
+        "tenants": rows,
+        "total_caixa_confirmado_brl": total,
+        "n_tenants": len(rows),
+        "generated_at": _iso(_now()),
+    }
+
+
+async def per_client_value(company_id: str,
+                                limit: int = 50) -> List[Dict[str, Any]]:
+    """Score por cliente = LTV − tickets_extra_cost.
+    Cliente que dá dinheiro vs cliente que custa."""
+    # Top recurring (custam mais)
+    pipe = [{"$match": {"company_id": company_id,
+                            "client_id": {"$ne": None}}},
+             {"$group": {"_id": "$client_id",
+                            "n_tickets": {"$sum": 1}}},
+             {"$sort": {"n_tickets": -1}}, {"$limit": limit}]
+    rows = []
+    async for r in db.tickets.aggregate(pipe):
+        sub = await db.subscribers.find_one(
+            {"company_id": company_id, "id": r["_id"]},
+            {"_id": 0, "id": 1, "name": 1, "plan_price": 1,
+             "status": 1})
+        if not sub:
+            continue
+        plan = sub.get("plan_price") or 0
+        ltv = plan * 24  # 24 meses heurística
+        custo_extra = (r["n_tickets"] - 1) * 40
+        score = round(ltv - custo_extra, 2)
+        rows.append({
+            "client_id": r["_id"],
+            "plan_price_brl": plan,
+            "tickets": r["n_tickets"],
+            "ltv_brl": ltv,
+            "custo_extra_brl": custo_extra,
+            "score_brl": score,
+            "status": sub.get("status"),
+        })
+    return rows
+
+
+# ─────────────────────────────────────────────
+# FASE 7 — AUDITORIA FINAL (10 perguntas)
+# ─────────────────────────────────────────────
+async def final_audit() -> Dict[str, Any]:
+    """Responde as 10 perguntas obrigatórias do CTO."""
+    cross = await cross_tenant_ranking()
+    total_confirmado = cross["total_caixa_confirmado_brl"]
+
+    # Soma por módulo agregada cross-tenant
+    pipe = [{"$group": {"_id": "$modulo",
+                             "confirmado":
+                                 {"$sum": "$valor_confirmado_brl"},
+                             "n": {"$sum": 1}}}]
+    modulos = []
+    async for r in db.executive_ledger.aggregate(pipe):
+        modulos.append({"modulo": r["_id"],
+                          "confirmado_brl": round(r["confirmado"], 2),
+                          "acoes": r["n"]})
+    modulos.sort(key=lambda x: x["confirmado_brl"], reverse=True)
+
+    # Ranking IAs cross-tenant
+    pipe = [{"$group": {"_id": "$responsavel",
+                             "confirmado":
+                                 {"$sum": "$valor_confirmado_brl"},
+                             "n": {"$sum": 1}}}]
+    ias = []
+    async for r in db.executive_ledger.aggregate(pipe):
+        ias.append({"ia": r["_id"],
+                     "confirmado_brl": round(r["confirmado"], 2),
+                     "acoes": r["n"]})
+    ias.sort(key=lambda x: x["confirmado_brl"], reverse=True)
+
+    # Top action cross-tenant
+    top_action = None
+    async for r in db.executive_ledger.find(
+        {}, {"_id": 0}).sort("valor_confirmado_brl", -1).limit(1):
+        top_action = r
+
+    # Recuperado (Cobrança + Retenção)
+    recuperado = sum(m["confirmado_brl"] for m in modulos
+                       if m["modulo"] in ("Cobrança", "Retenção"))
+    # Evitado (Smart Field + CAPEX)
+    evitado = sum(m["confirmado_brl"] for m in modulos
+                    if m["modulo"] in ("Smart Field", "CAPEX"))
+    # Gerado (Receita + Indicação + cross-sell)
+    gerado = sum(m["confirmado_brl"] for m in modulos
+                   if m["modulo"] in
+                       ("Receita", "Indicação", "PlayHub",
+                        "Ligo Móvel", "Security Home", "Fleet"))
+
+    # Top empresa
+    top_empresa = cross["tenants"][0] if cross["tenants"] else None
+
+    # Per-client top
+    clientes_top = await per_client_value(
+        top_empresa["company_id"] if top_empresa else "co-demo",
+        limit=10) if top_empresa else []
+
+    # Valor SmartProv (sum dos EVs dos tenants)
+    valor_smartprov = 0.0
+    from services.presidente_operator import company_value
+    evs = []
+    for t in cross["tenants"]:
+        try:
+            cv = await company_value(t["company_id"])
+            evs.append({"company_id": t["company_id"],
+                          "name": t["name"],
+                          "ev_brl": cv["enterprise_value_brl"]})
+            valor_smartprov += cv["enterprise_value_brl"]
+        except Exception:
+            pass
+
+    return {
+        "generated_at": _iso(_now()),
+        "perguntas": {
+            "1_quanto_smartprov_gerou_brl": round(gerado, 2),
+            "2_quanto_recuperou_brl": round(recuperado, 2),
+            "3_quanto_evitou_perder_brl": round(evitado, 2),
+            "4_acao_que_gerou_mais_caixa": top_action,
+            "5_ia_que_gerou_mais_caixa": ias[0] if ias else None,
+            "6_modulo_que_gerou_mais_caixa":
+                modulos[0] if modulos else None,
+            "7_empresa_que_gerou_mais_caixa": top_empresa,
+            "8_top_10_clientes_valor": clientes_top,
+            "9_valor_por_empresa": evs,
+            "10_valor_total_smartprov_brl": round(valor_smartprov, 2),
+        },
+        "total_caixa_confirmado_cross_tenant_brl": total_confirmado,
+        "modulos_cross_tenant": modulos,
+        "ias_cross_tenant": ias,
+    }

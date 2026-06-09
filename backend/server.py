@@ -728,6 +728,12 @@ async def _startup() -> None:
         _cash.register_scheduler(scheduler)
     except Exception as e:
         logger.warning("[startup] presidente_cash falhou: %r", e)
+    # OPERAÇÃO MATURIDADE COMERCIAL — reconciliador 03:00
+    try:
+        from services import cash_reconciler as _rec
+        _rec.register_scheduler(scheduler)
+    except Exception as e:
+        logger.warning("[startup] cash_reconciler falhou: %r", e)
     scheduler.add_job(holidays_refresh_job, CronTrigger(day="1", hour=3, minute=0),
                       id="holidays_refresh", replace_existing=True)
     scheduler.add_job(location_logs_cleanup_job, CronTrigger(hour="*/6", minute=10),

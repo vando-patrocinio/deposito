@@ -978,6 +978,31 @@ AUTO_APPROVAL_MIN_COUNCIL_APPROVALS = int(
 AUTO_APPROVAL_APPROVER_LABEL = "auto_pilot"
 
 
+async def confidence_cap_for_category(company_id: str,
+                                              categoria: str) -> float:
+    """RAMPA DE CONFIANÇA — cap por categoria varia com taxa_acerto.
+
+        < 50%   → R$ 5.000
+        50–70%  → R$ 25.000
+        > 70%   → R$ 50.000
+        > 85%   → R$ 100.000
+
+    Sem histórico (amostras<3) usa o cap conservador global do .env.
+    """
+    drift = await db.motor_ia_drift.find_one(
+        {"company_id": company_id, "categoria": categoria})
+    if not drift or (drift.get("amostras") or 0) < 3:
+        return AUTO_APPROVAL_MAX_IMPACT_BRL
+    taxa = float(drift.get("taxa_acerto") or 0.0)
+    if taxa >= 0.85:
+        return 100_000.0
+    if taxa >= 0.70:
+        return 50_000.0
+    if taxa >= 0.50:
+        return 25_000.0
+    return 5_000.0
+
+
 def is_auto_approval_enabled() -> bool:
     """Kill-switch global. CTO pode desligar instantaneamente via env."""
     v = (_os.environ.get("AUTO_APPROVAL_ENABLED") or "false").strip().lower()
@@ -994,12 +1019,23 @@ def get_auto_approval_policy() -> Dict[str, Any]:
         "approver_label": AUTO_APPROVAL_APPROVER_LABEL,
         "excluded_categories": sorted(
             set(CATEGORIAS_EXECUTAVEIS.keys()) - AUTO_APPROVAL_WHITELIST),
+        "confidence_ramp": {
+            "rule": "Cap por categoria varia com motor_ia_drift.taxa_acerto",
+            "lt_50_pct": 5000.0,
+            "50_70_pct": 25000.0,
+            "70_85_pct": 50000.0,
+            "gte_85_pct": 100000.0,
+            "cold_start_pct_amostras_lt_3": AUTO_APPROVAL_MAX_IMPACT_BRL,
+        },
     }
 
 
 def evaluate_auto_approval(action: Dict[str, Any]) -> Dict[str, Any]:
     """Avalia se uma ação pode ser auto-aprovada. Retorna decisão
-    detalhada com motivos (passe/falhe), sem alterar o banco."""
+    detalhada com motivos (passe/falhe), sem alterar o banco.
+    Importante: para o cap por categoria via rampa de confiança,
+    use ``evaluate_auto_approval_async``. Esta versão usa o cap
+    global do .env (compatibilidade)."""
     reasons: List[str] = []
     eligible = True
 
@@ -1021,11 +1057,13 @@ def evaluate_auto_approval(action: Dict[str, Any]) -> Dict[str, Any]:
             f"{sorted(AUTO_APPROVAL_WHITELIST)}")
 
     impact = float(action.get("impacto_estimado_brl") or 0)
-    if impact > AUTO_APPROVAL_MAX_IMPACT_BRL:
+    # Cap aplicado pode ser sobrescrito por evaluate_auto_approval_async
+    cap = action.get("_dynamic_cap_brl") or AUTO_APPROVAL_MAX_IMPACT_BRL
+    if impact > cap:
         eligible = False
         reasons.append(
             f"impacto R$ {impact:.2f} > cap "
-            f"R$ {AUTO_APPROVAL_MAX_IMPACT_BRL:.2f}")
+            f"R$ {cap:.2f}")
 
     consensus = action.get("council_consensus") or {}
     approvals = int(consensus.get("approved_count") or 0)
@@ -1042,14 +1080,28 @@ def evaluate_auto_approval(action: Dict[str, Any]) -> Dict[str, Any]:
 
     return {"eligible": eligible, "reasons": reasons,
               "categoria": cat, "impacto_brl": impact,
-              "council_approvals": approvals}
+              "council_approvals": approvals,
+              "cap_aplicado_brl": cap}
+
+
+async def evaluate_auto_approval_async(
+        action: Dict[str, Any]) -> Dict[str, Any]:
+    """Versão async com rampa de confiança (cap por categoria)."""
+    cid = action.get("company_id")
+    cat = action.get("categoria")
+    if cid and cat:
+        dyn_cap = await confidence_cap_for_category(cid, cat)
+        action = {**action, "_dynamic_cap_brl": dyn_cap}
+    return evaluate_auto_approval(action)
 
 
 async def auto_approve_action(action_id: str,
                                    justification: str = "") -> Dict[str, Any]:
-    """Auto-aprova uma ação SE elegível. Marca auto_approved=true."""
+    """Auto-aprova uma ação SE elegível. Marca auto_approved=true.
+    Aplica RAMPA DE CONFIANÇA: cap dinâmico por categoria via
+    motor_ia_drift.taxa_acerto."""
     act = await _require_action(action_id)
-    decision = evaluate_auto_approval(act)
+    decision = await evaluate_auto_approval_async(act)
     if not decision["eligible"]:
         raise ValueError(
             f"ação {action_id} não elegível para auto-aprovação: "
@@ -1087,7 +1139,7 @@ async def scan_and_auto_approve(company_id: str,
 
     approved, skipped = [], []
     for act in candidates:
-        decision = evaluate_auto_approval(act)
+        decision = await evaluate_auto_approval_async(act)
         if decision["eligible"]:
             try:
                 a = await auto_approve_action(act["id"])

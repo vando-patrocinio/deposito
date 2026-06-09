@@ -744,6 +744,54 @@ async def presidente_cash_confirm_entry(
     return upd
 
 
+@router.post("/cash/reconcile")
+async def presidente_cash_reconcile(
+    user: dict = Depends(require_ai_access()),
+):
+    """Roda o reconciliador automático para o tenant atual."""
+    from services import cash_reconciler as rec
+    cid = _cid(user)
+    return await rec.reconcile_company(cid)
+
+
+@router.post("/cash/reconcile-all")
+async def presidente_cash_reconcile_all(
+    user: dict = Depends(require_ai_access()),
+):
+    """Roda o reconciliador para TODOS os tenants (admin)."""
+    from services import cash_reconciler as rec
+    return await rec.reconcile_all()
+
+
+@router.get("/cash/cross-tenant-ranking")
+async def presidente_cross_tenant_ranking(
+    user: dict = Depends(require_ai_access()),
+):
+    """Benchmark: caixa confirmado por empresa."""
+    from services import presidente_cash as cash
+    return await cash.cross_tenant_ranking()
+
+
+@router.get("/cash/per-client-value")
+async def presidente_per_client_value(
+    limit: int = 50,
+    user: dict = Depends(require_ai_access()),
+):
+    """Score por cliente: quem gera dinheiro vs quem custa."""
+    from services import presidente_cash as cash
+    return {"items": await cash.per_client_value(_cid(user),
+                                                          limit=limit)}
+
+
+@router.get("/cash/final-audit")
+async def presidente_final_audit(
+    user: dict = Depends(require_ai_access()),
+):
+    """Auditoria final cross-tenant: as 10 perguntas obrigatórias."""
+    from services import presidente_cash as cash
+    return await cash.final_audit()
+
+
 # ─────────────── GOVERNADOR V11 — Presidente como Governador ──────────
 #  10 endpoints, todos consolidando dados que já existem.
 

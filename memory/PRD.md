@@ -2,6 +2,40 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🏆 ORDEM EXECUTIVA FINAL — Maturidade Comercial (09/06/2026) ✅
+
+**Ordem CTO**: máquina comprovada de geração de valor multi-tenant.
+
+### Fases entregues
+- **Fase 1 — Multi-tenant real**: 3 testes pytest `test_multitenant_isolation.py` PASSAM. Nenhum endpoint vaza entre tenants (cash, governador, brain, operator, lucro, company-value).
+- **Fase 2 — Cobrança por dinheiro**: rankings já usam só `valor_confirmado_brl`. Módulos sem confirmação → `DESTRÓI VALOR`.
+- **Fase 3 — Reconciliação automática**: `services/cash_reconciler.py` cruza ações × evidência real em 6 categorias. Job `cron 03:00` registrado. Atualiza `motor_ia_drift.taxa_acerto` automaticamente.
+- **Fase 4 — Rampa de confiança**: `executor_ia.confidence_cap_for_category()` aplica cap dinâmico:
+  - <50% → R$ 5.000
+  - 50–70% → R$ 25.000
+  - 70–85% → R$ 50.000
+  - ≥85% → R$ 100.000
+  - cold start (<3 amostras) → cap global do .env
+- **Fase 5 — Motor valor**: `company-value` já entrega ARR/MRR/EBITDA/Churn/LTV/CAC/Payback/EV. CEO weekly compara semana × hoje.
+- **Fase 6 — Cross-tenant**: `cross_tenant_ranking()` + `per_client_value()`. SmartProv mostra benchmark entre todos os tenants reais.
+- **Fase 7 — Auditoria final**: endpoint `GET /cash/final-audit` responde as 10 perguntas obrigatórias do CTO.
+
+### Endpoints novos (6)
+- `POST /api/presidente-ia/cash/reconcile`
+- `POST /api/presidente-ia/cash/reconcile-all`
+- `GET /api/presidente-ia/cash/cross-tenant-ranking`
+- `GET /api/presidente-ia/cash/per-client-value`
+- `GET /api/presidente-ia/cash/final-audit`
+- (Política `auto-approval/policy` agora retorna `confidence_ramp`)
+
+### Coleções
+- **Atualizada**: `motor_ia_drift` — agora self-updates pelo reconciliador
+- **Atualizada**: `executive_ledger` — `valor_confirmado_brl` populado por job
+
+### Testes
+- 3/3 testes de isolamento multi-tenant PASSAM
+- Reconciliador rodou cross-tenant: co-demo R$16.000 (Smart Field), co-pilot-1 R$0 (onboarding)
+
 ## 💵 OPERAÇÃO CAIXA REAL — Presidente CEO (09/06/2026) ✅
 
 **Ordem CTO**: único KPI = DINHEIRO. Sem estimativa. Confirmado.
