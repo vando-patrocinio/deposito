@@ -89,23 +89,37 @@ const ActiveProfileKpis = ({ active, profileData, kpis, loading }) => {
 };
 
 // ─── Profile Card (lista) ─────────────────────────────────
-const ProfileItem = ({ profile, onActivate, onDelete }) => {
+const ProfileItem = ({ profile, onActivate, onDelete,
+                       onEnable, onDisable }) => {
   const [busy, setBusy] = useState(false);
   return (
-    <Card className={`border ${profile.active
+    <Card className={`border ${profile.enabled
       ? "border-emerald-300 bg-emerald-50/40"
-      : "border-slate-200"}`}
+      : "border-slate-200 opacity-70"}`}
       data-testid={`grafana-profile-${profile.profile}`}>
       <CardContent className="p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-sm font-semibold text-slate-900">
               {profile.profile}
             </span>
-            {profile.active && (
+            {profile.enabled ? (
               <Badge className="bg-emerald-600 text-white text-[10px]
                 gap-1">
                 <Check className="w-3 h-3" /> ATIVO
+              </Badge>
+            ) : (
+              <Badge variant="outline"
+                className="text-slate-500 border-slate-300
+                bg-white text-[10px]">
+                DESATIVADO
+              </Badge>
+            )}
+            {profile.active && (
+              <Badge variant="outline"
+                className="text-blue-700 border-blue-200 bg-blue-50
+                text-[10px]">
+                principal
               </Badge>
             )}
             {profile.configured ? (
@@ -123,32 +137,41 @@ const ProfileItem = ({ profile, onActivate, onDelete }) => {
             )}
           </div>
           <div className="flex items-center gap-1">
-            {!profile.active && profile.configured && (
+            {profile.enabled ? (
               <Button size="sm" variant="outline" disabled={busy}
                 onClick={async () => {
                   setBusy(true);
-                  try { await onActivate(profile.profile); }
+                  try { await onDisable(profile.profile); }
                   finally { setBusy(false); }
                 }}
-                data-testid={`profile-activate-${profile.profile}`}>
+                data-testid={`profile-disable-${profile.profile}`}>
+                Desativar
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try { await onEnable(profile.profile); }
+                  finally { setBusy(false); }
+                }}
+                className="text-emerald-700"
+                data-testid={`profile-enable-${profile.profile}`}>
                 Ativar
               </Button>
             )}
-            {!profile.active && (
-              <Button size="sm" variant="ghost" disabled={busy}
-                onClick={async () => {
-                  if (!window.confirm(
-                    `Excluir perfil "${profile.profile}"?`)) return;
-                  setBusy(true);
-                  try { await onDelete(profile.profile); }
-                  finally { setBusy(false); }
-                }}
-                className="text-rose-600 hover:text-rose-700
-                hover:bg-rose-50"
-                data-testid={`profile-delete-${profile.profile}`}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
-            )}
+            <Button size="sm" variant="ghost" disabled={busy}
+              onClick={async () => {
+                if (!window.confirm(
+                  `Excluir perfil "${profile.profile}"?`)) return;
+                setBusy(true);
+                try { await onDelete(profile.profile); }
+                finally { setBusy(false); }
+              }}
+              className="text-rose-600 hover:text-rose-700
+              hover:bg-rose-50"
+              data-testid={`profile-delete-${profile.profile}`}>
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-1.5">
@@ -394,6 +417,28 @@ const GrafanaMultiProfile = () => {
     }
   };
 
+  const onEnable = async (profile) => {
+    try {
+      await api.post(
+        `/api/admin/integrations/grafana/profiles/${profile}/enable`);
+      toast.success(`Perfil "${profile}" habilitado no pool`);
+      reload();
+    } catch (e) {
+      toast.error(`Falha ao habilitar: ${e.message}`);
+    }
+  };
+
+  const onDisable = async (profile) => {
+    try {
+      await api.post(
+        `/api/admin/integrations/grafana/profiles/${profile}/disable`);
+      toast.success(`Perfil "${profile}" desabilitado`);
+      reload();
+    } catch (e) {
+      toast.error(`Falha ao desabilitar: ${e.message}`);
+    }
+  };
+
   const onDelete = async (profile) => {
     try {
       await api.delete(
@@ -420,10 +465,13 @@ const GrafanaMultiProfile = () => {
 
       <div className="flex items-center justify-between">
         <div className="text-xs text-slate-500">
-          {data?.active ? (
-            <span>Perfil ativo: <strong className="text-slate-800
-              font-mono">{data.active}</strong> ·
-              {profiles.length} perfil(is) cadastrado(s)</span>
+          {data?.enabled_count > 0 ? (
+            <span>
+              <strong className="text-emerald-700">
+                {data.enabled_count} ativo(s)
+              </strong> de {profiles.length} perfil(is) — todos rodam em
+              paralelo
+            </span>
           ) : (
             <span>Nenhum perfil cadastrado ainda.</span>
           )}
@@ -443,7 +491,8 @@ const GrafanaMultiProfile = () => {
           <div className="space-y-2">
             {profiles.map((p) => (
               <ProfileItem key={p.profile} profile={p}
-                onActivate={onActivate} onDelete={onDelete} />
+                onActivate={onActivate} onDelete={onDelete}
+                onEnable={onEnable} onDisable={onDisable} />
             ))}
           </div>
           <AddProfileForm onSaved={reload}

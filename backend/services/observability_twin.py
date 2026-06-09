@@ -199,6 +199,95 @@ class ZabbixConnector:
             params["eventids"] = eventids
         return await self._rpc("event.get", params)
 
+
+    async def discover_onus(
+        self, max_items: int = 5000
+    ) -> Dict[str, Any]:
+        """Descobre ONUs direto via Zabbix API (item.get + host.get).
+
+        Funciona quando o ZabbixConnector tem url + (token OU user+pass)
+        cadastrados. Diferente do discovery via Grafana proxy, este
+        autentica direto no Zabbix e tem acesso pleno."""
+        await self._load_from_vault()
+        if not self.is_real:
+            return {"onus": [], "onu_count": 0,
+                    "note": "Zabbix não configurado"}
+        patterns = ["onu", "ont", "gpon", "epon",
+                     "pon.onu", "pon_onu", "rxpower", "txpower",
+                     "serial", "macaddress"]
+        all_items: List[Dict[str, Any]] = []
+        for pat in patterns:
+            res = await self._rpc("item.get", {
+                "output": ["itemid", "key_", "name", "lastvalue",
+                            "hostid", "value_type", "units"],
+                "selectHosts": ["hostid", "host", "name"],
+                "search": {"key_": pat},
+                "searchByAny": True,
+                "limit": max_items,
+            })
+            result = (res or {}).get("result") or []
+            for it in result:
+                it["_pattern"] = pat
+            all_items.extend(result)
+        # Dedup
+        seen = set()
+        dedup = []
+        for it in all_items:
+            iid = it.get("itemid")
+            if iid in seen:
+                continue
+            seen.add(iid)
+            dedup.append(it)
+        # Group by host
+        by_host: Dict[str, Dict[str, Any]] = {}
+        for it in dedup:
+            hosts = it.get("hosts") or []
+            if not hosts:
+                continue
+            h = hosts[0]
+            hid = h.get("hostid")
+            if not hid:
+                continue
+            key = (it.get("key_") or "").lower()
+            name = (it.get("name") or "").lower()
+            val = it.get("lastvalue")
+            slot = by_host.setdefault(hid, {
+                "hostid": hid,
+                "host": h.get("host"),
+                "name": h.get("name"),
+                "source": "zabbix",
+                "sn": None, "mac": None,
+                "signal_rx_dbm": None, "signal_tx_dbm": None,
+                "status": None, "raw_keys": [],
+            })
+            slot["raw_keys"].append({
+                "key": it.get("key_"), "name": it.get("name"),
+                "value": val, "units": it.get("units")})
+            blob = key + " " + name
+            if ("sn" in blob or "serial" in blob) and slot["sn"] is None:
+                slot["sn"] = val
+            elif "mac" in blob and slot["mac"] is None:
+                slot["mac"] = val
+            elif "rx" in blob and ("power" in blob or "dbm" in blob
+                                     or "sinal" in blob):
+                try:
+                    slot["signal_rx_dbm"] = float(val)
+                except Exception:
+                    slot["signal_rx_dbm"] = val
+            elif "tx" in blob and ("power" in blob or "dbm" in blob):
+                try:
+                    slot["signal_tx_dbm"] = float(val)
+                except Exception:
+                    slot["signal_tx_dbm"] = val
+            elif ("status" in blob or "state" in blob) \
+                    and slot["status"] is None:
+                slot["status"] = val
+        return {
+            "items_returned": len(dedup),
+            "onus": list(by_host.values()),
+            "onu_count": len(by_host),
+        }
+
     async def close(self) -> None:
         if getattr(self, "_own_client", None) is not None:
             await self._own_client.aclose()
@@ -301,7 +390,12 @@ async def ingest_zabbix_problems(
 # FASE 3 — GRAFANA CONNECTOR
 # ═══════════════════════════════════════════════════════════
 class GrafanaConnector:
-    def __init__(self, http_client: Optional[httpx.AsyncClient] = None):
+    def __init__(self, http_client: Optional[httpx.AsyncClient] = None,
+                 profile: Optional[str] = None):
+        """profile=None usa env+active_profile do vault.
+        profile="default" ou "foo" força carga desse perfil específico
+        (independente do `active_profile`). Usado pelo pool multi-ativo."""
+        self.profile = profile
         self.url = (os.environ.get("GRAFANA_URL") or "").rstrip("/")
         self.token = (
             os.environ.get("GRAFANA_SERVICE_ACCOUNT_TOKEN") or "")
@@ -331,10 +425,11 @@ class GrafanaConnector:
             from services import secrets_vault as _v
             if not _v.is_available():
                 return
-            active = await _v.get_secret(
+            # Permite forçar um perfil específico (pool multi-ativo)
+            target = self.profile or await _v.get_secret(
                 "integration:grafana:active_profile")
-            if active:
-                prefix = f"integration:grafana:profiles:{active}"
+            if target:
+                prefix = f"integration:grafana:profiles:{target}"
                 u = await _v.get_secret(f"{prefix}:url")
                 tk = await _v.get_secret(f"{prefix}:token")
                 usr = await _v.get_secret(f"{prefix}:user")
@@ -348,6 +443,11 @@ class GrafanaConnector:
                 pw = await _v.get_secret("integration:grafana:password")
                 org = await _v.get_secret("integration:grafana:org_id")
             if u:
+                # Strip /login, /admin etc que usuários colam por engano
+                u = u.rstrip("/")
+                for trail in ("/login", "/sa", "/admin", "/dashboards"):
+                    if u.lower().endswith(trail):
+                        u = u[:-len(trail)]
                 self.url = u.rstrip("/")
             if tk:
                 self.token = tk
@@ -536,6 +636,199 @@ class GrafanaConnector:
                     if uid else None,
             })
         return olts
+
+
+    async def list_zabbix_datasources(self) -> List[Dict[str, Any]]:
+        """Datasources do tipo Zabbix (alexanderzobnin-zabbix-datasource)."""
+        await self._load_from_vault()
+        ds = await self.get_datasources()
+        return [d for d in (ds or [])
+                if "zabbix" in (d.get("type") or "").lower()]
+
+    async def zabbix_via_proxy(self, ds_id: int,
+                                method: str,
+                                params: Dict[str, Any]) -> Any:
+        """Chama Zabbix JSON-RPC via Grafana data proxy.
+
+        Permite consultar host.get / item.get etc usando as credenciais
+        do Grafana (não precisa Zabbix API key separada).
+        Endpoint: POST /api/datasources/proxy/{id}/api_jsonrpc.php
+        """
+        await self._load_from_vault()
+        if not self.is_real or not ds_id:
+            return None
+        c = await self._client()
+        headers = {"Content-Type": "application/json-rpc",
+                    "Accept": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        if self.org_id:
+            headers["X-Grafana-Org-Id"] = self.org_id
+        body = {"jsonrpc": "2.0", "method": method,
+                "params": params, "id": 1}
+        r = await c.post(
+            f"{self.url}/api/datasources/proxy/{ds_id}/api_jsonrpc.php",
+            json=body, headers=headers)
+        if r.status_code in (401, 403):
+            logger.warning("[grafana] zabbix proxy %s on %s "
+                            "— role insuficiente",
+                            r.status_code, method)
+            return None
+        try:
+            return r.json()
+        except Exception:
+            return {"error": r.text[:200]}
+
+    async def discover_onus(
+        self, max_items: int = 2000
+    ) -> Dict[str, Any]:
+        """Descobre ONUs via Zabbix proxy: SN, MAC, sinal RX/TX.
+
+        Estratégia:
+        1) Lista datasources Zabbix do Grafana.
+        2) Para cada Zabbix DS, faz item.get com vários patterns em key_
+           (onu, gpon, pon.onu, ont, serial, mac, rxpower, txpower).
+        3) Agrupa por host (= ONU) extraindo campos relevantes.
+
+        Limitação: o Grafana data proxy NÃO repassa as credenciais do
+        Zabbix plugin (auth interno do plugin). Para obter dados reais
+        de ONUs, cadastre o Zabbix diretamente em "Credenciais → Zabbix"
+        (URL + API Token) — o ZabbixConnector consulta direto.
+        """
+        zds = await self.list_zabbix_datasources()
+        if not zds:
+            return {"datasources": 0, "items": [], "onus": [],
+                    "note": "Nenhum datasource Zabbix encontrado"}
+        # Patterns que cobrem templates Huawei/ZTE/Datacom/Parks/FH comuns
+        patterns = ["onu", "ont", "gpon", "epon",
+                     "pon.onu", "pon_onu", "rxpower", "txpower",
+                     "serial", "sn[", "mac.address", "macaddress"]
+        all_items: List[Dict[str, Any]] = []
+        proxy_unauthorized = False
+        for ds in zds:
+            for pat in patterns:
+                res = await self.zabbix_via_proxy(
+                    ds.get("id"), "item.get",
+                    {"output": ["itemid", "key_", "name", "lastvalue",
+                                 "hostid", "value_type", "units"],
+                     "selectHosts": ["hostid", "host", "name"],
+                     "search": {"key_": pat},
+                     "searchByAny": True,
+                     "limit": max_items})
+                if isinstance(res, dict) and "error" in res:
+                    err = res.get("error") or {}
+                    if isinstance(err, dict) and \
+                            "authorized" in str(err.get("data", "")).lower():
+                        proxy_unauthorized = True
+                        break
+                    continue
+                result = (res or {}).get("result") or []
+                for it in result:
+                    it["_ds_id"] = ds.get("id")
+                    it["_ds_name"] = ds.get("name")
+                    it["_pattern"] = pat
+                all_items.extend(result)
+            if proxy_unauthorized:
+                break
+
+        # Dedup itens pelo itemid
+        seen = set()
+        dedup = []
+        for it in all_items:
+            iid = it.get("itemid")
+            if iid in seen:
+                continue
+            seen.add(iid)
+            dedup.append(it)
+        all_items = dedup
+
+        # Agrupa por host (cada ONU é um host no Zabbix)
+        by_host: Dict[str, Dict[str, Any]] = {}
+        for it in all_items:
+            hosts = it.get("hosts") or []
+            if not hosts:
+                continue
+            h = hosts[0]
+            hid = h.get("hostid")
+            if not hid:
+                continue
+            key = (it.get("key_") or "").lower()
+            name = (it.get("name") or "").lower()
+            val = it.get("lastvalue")
+            slot = by_host.setdefault(hid, {
+                "hostid": hid,
+                "host": h.get("host"),
+                "name": h.get("name"),
+                "datasource": it.get("_ds_name"),
+                "sn": None, "mac": None,
+                "signal_rx_dbm": None, "signal_tx_dbm": None,
+                "status": None, "raw_keys": [],
+            })
+            slot["raw_keys"].append({"key": it.get("key_"),
+                                       "name": it.get("name"),
+                                       "value": val,
+                                       "units": it.get("units")})
+            blob = key + " " + name
+            if ("sn" in blob or "serial" in blob) and slot["sn"] is None:
+                slot["sn"] = val
+            elif "mac" in blob and slot["mac"] is None:
+                slot["mac"] = val
+            elif "rx" in blob and ("power" in blob or "dbm" in blob
+                                     or "sinal" in blob):
+                try:
+                    slot["signal_rx_dbm"] = float(val)
+                except Exception:
+                    slot["signal_rx_dbm"] = val
+            elif "tx" in blob and ("power" in blob or "dbm" in blob):
+                try:
+                    slot["signal_tx_dbm"] = float(val)
+                except Exception:
+                    slot["signal_tx_dbm"] = val
+            elif ("status" in blob or "state" in blob
+                    or "estado" in blob) and slot["status"] is None:
+                slot["status"] = val
+
+        return {
+            "datasources": len(zds),
+            "items_returned": len(all_items),
+            "onus": list(by_host.values()),
+            "onu_count": len(by_host),
+            "proxy_unauthorized": proxy_unauthorized,
+            "hint": ("O Grafana NÃO repassa credenciais do plugin Zabbix "
+                     "via proxy. Cadastre o Zabbix em 'Credenciais → "
+                     "Zabbix' (URL + API Token) para descoberta real."
+                     if proxy_unauthorized else None),
+        }
+
+
+async def list_enabled_grafana_connectors() -> List["GrafanaConnector"]:
+    """Retorna lista de GrafanaConnector para cada perfil enabled.
+
+    Lê do vault todos os perfis e instancia um connector por perfil,
+    excluindo os marcados como `enabled=false`."""
+    from services import secrets_vault as _v
+    from database import db as _db
+    if not _v.is_available():
+        return [GrafanaConnector()]
+    profiles = set()
+    async for doc in _db.secrets_vault.find(
+            {"name": {"$regex": "^integration:grafana:profiles:"}},
+            {"name": 1}):
+        parts = doc["name"].split(":")
+        if len(parts) >= 5:
+            profiles.add(parts[3])
+    if not profiles:
+        return [GrafanaConnector()]  # fallback legado
+    out = []
+    for p in sorted(profiles):
+        enabled = await _v.get_secret(
+            f"integration:grafana:profiles:{p}:enabled")
+        if enabled == "false":
+            continue
+        out.append(GrafanaConnector(profile=p))
+    return out
+
+
 
 
 

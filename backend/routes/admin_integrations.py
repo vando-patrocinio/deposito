@@ -35,7 +35,7 @@ from services import secrets_vault as vault
 router = APIRouter(prefix="/api/admin/integrations",
                     tags=["admin-integrations"])
 
-GRAFANA_FIELDS = ("url", "user", "password", "token", "org_id")
+GRAFANA_FIELDS = ("url", "user", "password", "token", "org_id", "enabled")
 ZABBIX_FIELDS = ("url", "user", "password", "api_token")
 PROFILE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 
@@ -126,19 +126,26 @@ class ZabbixCreds(BaseModel):
 @router.get("/grafana/profiles")
 async def grafana_profiles(user=Depends(require_role(
         "administrador", "auditor"))):
-    """Lista todos os perfis Grafana cadastrados + qual está ativo."""
+    """Lista todos os perfis Grafana cadastrados.
+    Após P0.6: TODOS os perfis com `enabled=true` (default) rodam em
+    paralelo. `active` (legado) ainda indica qual era o "principal".
+    """
     await _ensure_legacy_migrated()
     profiles = await _list_profiles()
     active = await _get_active_profile()
     out: List[Dict[str, Any]] = []
     for p in profiles:
         fields = {}
-        for f in GRAFANA_FIELDS:
+        for f in ("url", "user", "password", "token", "org_id"):
             v = await vault.get_secret(_gk(p, f), scope="global")
             fields[f] = {
                 "set": bool(v),
                 "preview": (v[:18] + "...") if v and f == "url" else None,
             }
+        # Enabled default = True; só False se explicitamente desabilitado
+        enabled_raw = await vault.get_secret(
+            _gk(p, "enabled"), scope="global")
+        enabled = enabled_raw != "false"
         configured = bool(fields["url"]["set"]) and (
             bool(fields["token"]["set"])
             or (bool(fields["user"]["set"])
@@ -146,10 +153,12 @@ async def grafana_profiles(user=Depends(require_role(
         out.append({
             "profile": p,
             "active": (p == active),
+            "enabled": enabled,
             "configured": configured,
             "fields": fields,
         })
     return {"profiles": out, "active": active,
+             "enabled_count": sum(1 for x in out if x["enabled"]),
              "vault_available": vault.is_available()}
 
 
@@ -163,6 +172,14 @@ async def grafana_profile_save(profile: str, creds: GrafanaCreds,
             "Vault indisponível — SECRETS_MASTER_KEY ausente no .env")
     profile = _validate_profile(profile)
     actor = _actor(user)
+    # Normaliza URL: remove sufixos /login, /admin, /sa que usuários
+    # colam por engano (a URL canônica do Grafana é o domain root).
+    if creds.url:
+        u = creds.url.rstrip("/")
+        for trail in ("/login", "/sa", "/admin", "/dashboards"):
+            if u.lower().endswith(trail):
+                u = u[:-len(trail)]
+        creds.url = u.rstrip("/")
     saved = []
     for f in GRAFANA_FIELDS:
         v = getattr(creds, f, "") or ""
@@ -179,6 +196,35 @@ async def grafana_profile_save(profile: str, creds: GrafanaCreds,
             scope="global", updated_by=actor,
             hint="Perfil Grafana ativo")
     return {"ok": True, "profile": profile, "saved_fields": saved}
+
+
+@router.post("/grafana/profiles/{profile}/enable")
+async def grafana_profile_enable(profile: str,
+                                  user=Depends(require_role("administrador"))):
+    """Marca perfil como ativo no pool (será consultado em paralelo)."""
+    profile = _validate_profile(profile)
+    profiles = await _list_profiles()
+    if profile not in profiles:
+        raise HTTPException(404, f"Perfil '{profile}' não existe")
+    await vault.set_secret(
+        name=_gk(profile, "enabled"), value="true", scope="global",
+        updated_by=_actor(user), hint=f"Grafana {profile} enabled")
+    return {"ok": True, "profile": profile, "enabled": True}
+
+
+@router.post("/grafana/profiles/{profile}/disable")
+async def grafana_profile_disable(profile: str,
+                                   user=Depends(require_role(
+                                       "administrador"))):
+    """Remove perfil do pool de consultas paralelas (mantém credenciais)."""
+    profile = _validate_profile(profile)
+    profiles = await _list_profiles()
+    if profile not in profiles:
+        raise HTTPException(404, f"Perfil '{profile}' não existe")
+    await vault.set_secret(
+        name=_gk(profile, "enabled"), value="false", scope="global",
+        updated_by=_actor(user), hint=f"Grafana {profile} disabled")
+    return {"ok": True, "profile": profile, "enabled": False}
 
 
 @router.post("/grafana/profiles/{profile}/activate")

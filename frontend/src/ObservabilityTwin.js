@@ -17,6 +17,8 @@ import ObservabilityOnusTab
   from "@/components/ObservabilityOnusTab";
 import ObservabilityOnusGrafanaTab
   from "@/components/ObservabilityOnusGrafanaTab";
+import ObservabilityDiscoveryTab
+  from "@/components/ObservabilityDiscoveryTab";
 import { api } from "@/lib/apiClient";
 
 const getJSON = (path) => api.get(path);
@@ -194,6 +196,10 @@ const ObservabilityTwin = () => {
                 data-testid="obs-tab-onus-grafana">
                 ONT/ONU (Grafana)
               </TabsTrigger>
+              <TabsTrigger value="discovery"
+                data-testid="obs-tab-discovery">
+                Discovery
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="resumo" className="space-y-5 pt-4">
@@ -234,6 +240,10 @@ const ObservabilityTwin = () => {
 
             <TabsContent value="onus-grafana" className="pt-4">
               <ObservabilityOnusGrafanaTab />
+            </TabsContent>
+
+            <TabsContent value="discovery" className="pt-4">
+              <ObservabilityDiscoveryTab />
             </TabsContent>
           </Tabs>
         </>

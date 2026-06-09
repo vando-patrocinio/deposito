@@ -1,6 +1,6 @@
 """ai_center_observability.py — Endpoints REST Observability Twin."""
 from __future__ import annotations
-from typing import Dict, List
+from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from database import db
 from core import require_role
@@ -141,6 +141,194 @@ async def grafana_olts(user=Depends(require_role("administrador",
     finally:
         await conn.close()
 
+
+
+@router.get("/grafana/olts/all")
+async def grafana_olts_all(user=Depends(require_role(
+        "administrador", "auditor", "gestor"))):
+    """Agrega OLTs de TODOS os perfis Grafana habilitados (multi-ativo).
+
+    Permite ver simultaneamente OLTs cadastradas em N Grafanas
+    (ex: cliente A + cliente B + matriz)."""
+    import asyncio as _asyncio
+    connectors = await twin.list_enabled_grafana_connectors()
+    if not connectors:
+        return {"profiles": 0, "kpis": {}, "items": []}
+
+    async def _one(c):
+        try:
+            olts = await c.list_olt_dashboards()
+            kpis_items = []
+            for o in olts:
+                d = await c.get_dashboard_detail(o["uid"])
+                pc = po = pn = pa = 0
+                if d:
+                    stack = list(d.get("dashboard", {}).get(
+                        "panels", []))
+                    while stack:
+                        p = stack.pop()
+                        pc += 1
+                        t = (p.get("title") or "").lower()
+                        if "onu" in t or "ont" in t:
+                            pn += 1
+                        if "pon" in t:
+                            po += 1
+                        if "alerta" in t or "alert" in t:
+                            pa += 1
+                        if p.get("panels"):
+                            stack.extend(p["panels"])
+                o["panels"] = pc
+                o["pon_panels"] = po
+                o["onu_panels"] = pn
+                o["alert_panels"] = pa
+                o["_profile"] = c.profile or "default"
+                kpis_items.append(o)
+            return {
+                "profile": c.profile or "default",
+                "url": c.url,
+                "olts": kpis_items,
+            }
+        finally:
+            try:
+                await c.close()
+            except Exception:
+                pass
+
+    per_profile = await _asyncio.gather(*[_one(c) for c in connectors],
+                                           return_exceptions=True)
+    profiles_out = [p for p in per_profile if isinstance(p, dict)]
+
+    # Agrega KPIs cross-profile
+    agg = {"olts_monitored": 0, "total_panels": 0,
+            "pon_panels": 0, "onu_panels": 0, "alert_panels": 0,
+            "vendors": {}}
+    all_items = []
+    for p in profiles_out:
+        for o in p["olts"]:
+            agg["olts_monitored"] += 1
+            agg["total_panels"] += o.get("panels", 0)
+            agg["pon_panels"] += o.get("pon_panels", 0)
+            agg["onu_panels"] += o.get("onu_panels", 0)
+            agg["alert_panels"] += o.get("alert_panels", 0)
+            v = o.get("vendor") or "UNKNOWN"
+            agg["vendors"][v] = agg["vendors"].get(v, 0) + 1
+            all_items.append(o)
+    return {
+        "profiles": len(profiles_out),
+        "kpis": agg,
+        "items": all_items,
+        "per_profile": [{"profile": p["profile"], "url": p["url"],
+                          "olt_count": len(p["olts"])}
+                         for p in profiles_out],
+    }
+
+
+@router.post("/grafana/discover-onus")
+async def grafana_discover_onus(
+    user=Depends(require_role("administrador", "auditor", "gestor"))
+):
+    """Discovery REAL de ONT/ONU.
+
+    Estratégia híbrida:
+    1) Tenta Grafana proxy (data source Zabbix) — funciona se o data
+       source aceitar passar credenciais (raramente acontece).
+    2) Fallback automático: tenta `ZabbixConnector` direto (se Zabbix
+       estiver cadastrado em Credenciais → Zabbix).
+    """
+    import asyncio as _asyncio
+    connectors = await twin.list_enabled_grafana_connectors()
+
+    async def _one_graf(c):
+        try:
+            res = await c.discover_onus()
+            for o in (res.get("onus") or []):
+                o["_profile"] = c.profile or "default"
+                o["_grafana_url"] = c.url
+                o["_source"] = "grafana_proxy"
+            return res
+        except Exception as e:
+            return {"_error": repr(e)[:200],
+                    "profile": c.profile or "default"}
+        finally:
+            try:
+                await c.close()
+            except Exception:
+                pass
+
+    results = await _asyncio.gather(*[_one_graf(c) for c in connectors],
+                                       return_exceptions=True)
+    all_onus: List[Dict[str, Any]] = []
+    total_items = 0
+    profiles_summary: List[Dict[str, Any]] = []
+    any_proxy_unauth = False
+    for i, r in enumerate(results):
+        prof = connectors[i].profile or "default"
+        if isinstance(r, dict) and "_error" not in r:
+            all_onus.extend(r.get("onus") or [])
+            total_items += r.get("items_returned", 0)
+            if r.get("proxy_unauthorized"):
+                any_proxy_unauth = True
+            profiles_summary.append({
+                "profile": prof, "source": "grafana_proxy",
+                "datasources": r.get("datasources", 0),
+                "onus_found": r.get("onu_count", 0),
+                "items": r.get("items_returned", 0),
+                "note": r.get("note"),
+                "proxy_unauthorized": r.get("proxy_unauthorized", False),
+                "hint": r.get("hint"),
+            })
+        else:
+            profiles_summary.append({
+                "profile": prof, "source": "grafana_proxy",
+                "error": (r.get("_error")
+                          if isinstance(r, dict) else repr(r)[:200]),
+            })
+
+    # Fallback: Zabbix direto, se cadastrado
+    zbx = twin.ZabbixConnector()
+    try:
+        await zbx._load_from_vault()
+        zbx_result = None
+        if zbx.is_real:
+            zbx_result = await zbx.discover_onus()
+            for o in (zbx_result.get("onus") or []):
+                o["_source"] = "zabbix_direct"
+                all_onus.append(o)
+            profiles_summary.append({
+                "profile": "_zabbix_direct",
+                "source": "zabbix_direct",
+                "onus_found": zbx_result.get("onu_count", 0),
+                "items": zbx_result.get("items_returned", 0),
+            })
+        else:
+            profiles_summary.append({
+                "profile": "_zabbix_direct",
+                "source": "zabbix_direct",
+                "configured": False,
+                "hint": ("Cadastre Zabbix em Credenciais → Zabbix "
+                          "(URL + API Token) para discovery completo."),
+            })
+    finally:
+        try:
+            await zbx.close()
+        except Exception:
+            pass
+
+    return {
+        "profiles": len(connectors),
+        "total_items": total_items,
+        "onu_count": len(all_onus),
+        "onus": all_onus,
+        "per_profile": profiles_summary,
+        "fallback_required": any_proxy_unauth and not zbx.is_real,
+        "guidance": (
+            "Grafana proxy não autentica no Zabbix automaticamente. "
+            "Para discovery completo de ONUs (SN, MAC, sinal), "
+            "cadastre as credenciais Zabbix diretamente em "
+            "'Credenciais Integração → aba Zabbix'."
+            if any_proxy_unauth and not zbx.is_real else None
+        ),
+    }
 
 
 @router.get("/grafana/diagnose")
