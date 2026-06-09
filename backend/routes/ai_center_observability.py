@@ -286,9 +286,10 @@ async def grafana_discover_onus(
 
     # Fallback: Zabbix direto, se cadastrado
     zbx = twin.ZabbixConnector()
+    zbx_configured = False
     try:
         await zbx._load_from_vault()
-        zbx_result = None
+        zbx_configured = zbx.is_real
         if zbx.is_real:
             zbx_result = await zbx.discover_onus()
             for o in (zbx_result.get("onus") or []):
@@ -314,19 +315,71 @@ async def grafana_discover_onus(
         except Exception:
             pass
 
+    # Discovery via OLT SNMP direto (fonte mais confiável)
+    try:
+        from routes.olt_registry import (_list_profile_names, _k,
+                                            _load_poller)
+        olt_names = await _list_profile_names()
+        from services import secrets_vault as _v
+        enabled_olts = []
+        for n in olt_names:
+            en = await _v.get_secret(_k(n, "enabled"), scope="global")
+            if en != "false":
+                enabled_olts.append(n)
+        import asyncio as _aio
+
+        async def _one_olt(n):
+            try:
+                p = await _load_poller(n)
+                r = await p.discover_onus()
+                for o in (r.get("onus") or []):
+                    o["_source"] = "olt_snmp"
+                    o["_olt"] = n
+                    o["_host"] = p.host
+                return {"profile": n, "host": p.host,
+                        "onu_count": r.get("onu_count", 0),
+                        "onus": r.get("onus", []),
+                        "errors": r.get("errors")}
+            except Exception as e:
+                return {"profile": n, "error": repr(e)[:200]}
+
+        olt_results = await _aio.gather(*[_one_olt(n) for n in enabled_olts],
+                                            return_exceptions=True)
+        for rr in olt_results:
+            if isinstance(rr, dict) and "error" not in rr:
+                all_onus.extend(rr.get("onus") or [])
+                profiles_summary.append({
+                    "profile": rr["profile"],
+                    "source": "olt_snmp",
+                    "host": rr.get("host"),
+                    "onus_found": rr.get("onu_count", 0),
+                    "errors": rr.get("errors"),
+                })
+            elif isinstance(rr, dict):
+                profiles_summary.append({
+                    "profile": rr["profile"],
+                    "source": "olt_snmp",
+                    "error": rr.get("error"),
+                })
+    except Exception as e:
+        profiles_summary.append({
+            "profile": "_olt_snmp", "source": "olt_snmp",
+            "error": repr(e)[:200],
+        })
+
     return {
         "profiles": len(connectors),
         "total_items": total_items,
         "onu_count": len(all_onus),
         "onus": all_onus,
         "per_profile": profiles_summary,
-        "fallback_required": any_proxy_unauth and not zbx.is_real,
+        "fallback_required": any_proxy_unauth and not zbx_configured,
         "guidance": (
             "Grafana proxy não autentica no Zabbix automaticamente. "
             "Para discovery completo de ONUs (SN, MAC, sinal), "
-            "cadastre as credenciais Zabbix diretamente em "
-            "'Credenciais Integração → aba Zabbix'."
-            if any_proxy_unauth and not zbx.is_real else None
+            "cadastre as credenciais Zabbix em 'Credenciais Integração "
+            "→ aba Zabbix' OU cadastre OLTs SNMP direto em 'aba OLT (SNMP)'."
+            if any_proxy_unauth and not zbx_configured else None
         ),
     }
 

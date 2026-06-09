@@ -709,6 +709,12 @@ async def _startup() -> None:
     scheduler.start()
     scheduler.add_job(monthly_email_job, CronTrigger(day="last", hour=23, minute=30),
                       id="monthly_email", replace_existing=True)
+    # OLT SNMP polling — atualiza cache a cada 5min
+    try:
+        from services.olt_polling_scheduler import setup_olt_polling
+        setup_olt_polling(scheduler)
+    except Exception as e:
+        logger.warning("[startup] olt_polling falhou: %r", e)
     scheduler.add_job(holidays_refresh_job, CronTrigger(day="1", hour=3, minute=0),
                       id="holidays_refresh", replace_existing=True)
     scheduler.add_job(location_logs_cleanup_job, CronTrigger(hour="*/6", minute=10),

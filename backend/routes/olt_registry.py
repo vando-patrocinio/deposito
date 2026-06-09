@@ -145,11 +145,52 @@ async def disable_profile(name: str,
     return {"ok": True, "enabled": False}
 
 
+@router.get("/cached")
+async def cached_discovery(user=Depends(require_role(
+        "administrador", "auditor", "gestor"))):
+    """Retorna último snapshot cacheado das OLTs (sem latência SNMP).
+
+    Atualizado pelo scheduler a cada 5 minutos. Use este endpoint para
+    UIs e dashboards que precisam de resposta instantânea."""
+    from database import db
+    all_onus = []
+    summary = []
+    async for doc in db.olt_snmp_cache.find({}):
+        if doc.get("error"):
+            summary.append({"profile": doc.get("profile"),
+                             "error": doc.get("error"),
+                             "polled_at": doc.get("polled_at")})
+            continue
+        for o in (doc.get("onus") or []):
+            o2 = dict(o)
+            o2["_olt"] = doc.get("profile")
+            o2["_source"] = "olt_snmp_cache"
+            all_onus.append(o2)
+        summary.append({
+            "profile": doc.get("profile"),
+            "onu_count": doc.get("onu_count", 0),
+            "polled_at": doc.get("polled_at"),
+            "errors": doc.get("errors"),
+        })
+    return {"onu_count": len(all_onus), "onus": all_onus,
+             "per_olt": summary,
+             "source": "cache (atualizado a cada 5min)"}
+
+
+@router.post("/poll-now")
+async def force_poll(user=Depends(require_role("administrador",
+                                                  "auditor"))):
+    """Força polling imediato de todas OLTs habilitadas + atualiza cache."""
+    from services.olt_polling_scheduler import poll_all_and_cache
+    return await poll_all_and_cache()
+
+
 async def _load_poller(profile: str) -> VsolSnmpPoller:
     host = await vault.get_secret(_k(profile, "host"), scope="global")
     port = await vault.get_secret(_k(profile, "port"), scope="global")
     version = await vault.get_secret(_k(profile, "version"), scope="global")
     comm = await vault.get_secret(_k(profile, "community"), scope="global")
+    vendor = await vault.get_secret(_k(profile, "vendor"), scope="global")
     if not host or not comm:
         raise HTTPException(400,
             f"Perfil '{profile}' incompleto (host/community)")
@@ -157,6 +198,7 @@ async def _load_poller(profile: str) -> VsolSnmpPoller:
         host=host, community=comm,
         port=int(port or 161),
         version=version or "v2c",
+        vendor=vendor or "vsol",
     )
 
 

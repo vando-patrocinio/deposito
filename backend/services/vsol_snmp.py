@@ -33,37 +33,76 @@ from pysnmp.hlapi.v3arch.asyncio import (
 
 logger = logging.getLogger(__name__)
 
-# OIDs base (V-SOL/Realtek)
-OID_BASE = "1.3.6.1.4.1.5875.800.3.10.1.1"
-OIDS = {
-    "sn": f"{OID_BASE}.10",
-    "mac": f"{OID_BASE}.11",
-    "alias": f"{OID_BASE}.12",
-    "rx_power": f"{OID_BASE}.30",
-    "tx_power": f"{OID_BASE}.31",
-    "status": f"{OID_BASE}.50",
-    "distance": f"{OID_BASE}.60",
+# OIDs base por vendor
+# V-SOL/Realtek
+OID_VSOL = "1.3.6.1.4.1.5875.800.3.10.1.1"
+# Huawei (HUAWEI-XPON-ONT-MIB / hwGponDeviceMib)
+OID_HUAWEI = "1.3.6.1.4.1.2011.6.128.1.1.2.43.1"
+# ZTE (ZXAN-XGPON-ONU-MIB)
+OID_ZTE = "1.3.6.1.4.1.3902.1015.2.2.1"
+
+# Mapeamento {field: oid_offset}. Cada vendor expõe os mesmos campos
+# em offsets distintos. Para Huawei/ZTE, validado em templates Zabbix
+# públicos (zabbix-templates/huawei-xpon, zabbix-templates/zte-c320).
+VENDOR_OIDS = {
+    "vsol": {
+        "sn": f"{OID_VSOL}.10",
+        "mac": f"{OID_VSOL}.11",
+        "alias": f"{OID_VSOL}.12",
+        "rx_power": f"{OID_VSOL}.30",
+        "tx_power": f"{OID_VSOL}.31",
+        "status": f"{OID_VSOL}.50",
+        "distance": f"{OID_VSOL}.60",
+        "dbm_divider": 10,  # 0.1 dBm
+    },
+    "huawei": {
+        # hwGponDeviceOntControlTable / hwGponOntOpticalDdmInfoTable
+        "sn": f"{OID_HUAWEI}.4",    # SerialNumber
+        "mac": f"{OID_HUAWEI}.8",   # MAC
+        "alias": f"{OID_HUAWEI}.9",  # Description
+        "rx_power": "1.3.6.1.4.1.2011.6.128.1.1.2.51.1.4",   # OntOpticalRxPower
+        "tx_power": "1.3.6.1.4.1.2011.6.128.1.1.2.51.1.5",   # OntOpticalTxPower
+        "status": f"{OID_HUAWEI}.15",  # RunStatus
+        "distance": f"{OID_HUAWEI}.20",
+        "dbm_divider": 100,  # 0.01 dBm
+    },
+    "zte": {
+        # ZXAN-XGPON-ONU-MIB::zxGponOnuInfo
+        "sn": f"{OID_ZTE}.1.5",    # SerialNumber
+        "mac": f"{OID_ZTE}.1.7",   # MAC
+        "alias": f"{OID_ZTE}.1.4",  # Name
+        "rx_power": "1.3.6.1.4.1.3902.1015.2.6.1.1.3",   # ONUOpticalRxPower
+        "tx_power": "1.3.6.1.4.1.3902.1015.2.6.1.1.4",   # ONUOpticalTxPower
+        "status": f"{OID_ZTE}.1.13",   # AdminState
+        "distance": f"{OID_ZTE}.1.18",
+        "dbm_divider": 100,  # 0.01 dBm
+    },
 }
 
-STATUS_MAP = {
-    1: "online",
-    2: "offline",
-    3: "los",
-    4: "power-down",
-    5: "dying-gasp",
-}
+STATUS_MAP_VSOL = {1: "online", 2: "offline", 3: "los",
+                    4: "power-down", 5: "dying-gasp"}
+STATUS_MAP_HUAWEI = {1: "online", 2: "offline", 3: "los"}
+STATUS_MAP_ZTE = {1: "online", 2: "offline", 3: "los", 4: "lops"}
+
+VENDOR_STATUS = {"vsol": STATUS_MAP_VSOL, "huawei": STATUS_MAP_HUAWEI,
+                  "zte": STATUS_MAP_ZTE}
 
 
-def _decimal_dbm(raw_val) -> Optional[float]:
-    """V-SOL retorna potência em 0.1 dBm (signed int).
-    Ex: -257 = -25.7 dBm; valor 0 ou 1000 = inválido/desligado."""
+def _decimal_dbm_div(raw_val, divider: int = 10) -> Optional[float]:
+    """Converte raw int para dBm. Default divider=10 (V-SOL),
+    100 (Huawei/ZTE)."""
     try:
         v = int(raw_val)
     except (TypeError, ValueError):
         return None
-    if v in (0, 1000, -1000, 65535):
+    if v in (0, 1000, 10000, -1000, -10000, 65535, 2147483647):
         return None
-    return round(v / 10.0, 1)
+    return round(v / float(divider), 1)
+
+
+# Compat com código existente
+def _decimal_dbm(raw_val) -> Optional[float]:
+    return _decimal_dbm_div(raw_val, 10)
 
 
 def _decode_mac(raw) -> Optional[str]:
@@ -103,13 +142,19 @@ def _decode_sn(raw) -> Optional[str]:
 class VsolSnmpPoller:
     def __init__(self, host: str, community: str = "public",
                  port: int = 161, version: str = "v2c",
-                 timeout: float = 5.0, retries: int = 1):
+                 timeout: float = 5.0, retries: int = 1,
+                 vendor: str = "vsol"):
         self.host = host
         self.community = community
         self.port = port
-        self.version = version  # "v1" | "v2c" (v3 fica para próxima)
+        self.version = version  # "v1" | "v2c"
         self.timeout = timeout
         self.retries = retries
+        self.vendor = (vendor or "vsol").lower()
+        if self.vendor not in VENDOR_OIDS:
+            self.vendor = "vsol"
+        self._oids = VENDOR_OIDS[self.vendor]
+        self._status_map = VENDOR_STATUS[self.vendor]
 
     async def _walk(self, oid: str,
                      max_rows: int = 5000) -> List[tuple]:
@@ -155,13 +200,15 @@ class VsolSnmpPoller:
             return {"ok": False, "error": repr(e)[:200]}
 
     async def discover_onus(self) -> Dict[str, Any]:
-        """Polla os 7 OIDs em paralelo e cruza por instance suffix."""
-        coros = {field: self._walk(o) for field, o in OIDS.items()}
+        """Polla os OIDs do vendor em paralelo e cruza por instance suffix."""
+        oids = {k: v for k, v in self._oids.items() if k != "dbm_divider"}
+        coros = {field: self._walk(o) for field, o in oids.items()}
         keys = list(coros.keys())
         vals = await asyncio.gather(*coros.values(),
                                        return_exceptions=True)
         bundles: Dict[str, Dict[str, Any]] = {}
         errors: Dict[str, str] = {}
+        divider = self._oids.get("dbm_divider", 10)
         for field, val in zip(keys, vals):
             if isinstance(val, Exception):
                 errors[field] = repr(val)[:120]
@@ -175,12 +222,12 @@ class VsolSnmpPoller:
                 elif field == "alias":
                     slot["alias"] = str(raw) if raw else None
                 elif field == "rx_power":
-                    slot["signal_rx_dbm"] = _decimal_dbm(raw)
+                    slot["signal_rx_dbm"] = _decimal_dbm_div(raw, divider)
                 elif field == "tx_power":
-                    slot["signal_tx_dbm"] = _decimal_dbm(raw)
+                    slot["signal_tx_dbm"] = _decimal_dbm_div(raw, divider)
                 elif field == "status":
                     try:
-                        slot["status"] = STATUS_MAP.get(
+                        slot["status"] = self._status_map.get(
                             int(raw), f"unknown({raw})")
                     except Exception:
                         slot["status"] = str(raw)
@@ -189,18 +236,19 @@ class VsolSnmpPoller:
                         slot["distance_m"] = int(raw)
                     except Exception:
                         pass
-        # Decodifica suffix -> pon/slot/port/onu (heurística V-SOL:
-        # suffix tipicamente: slot.port.onuId)
         for suffix, slot in bundles.items():
             parts = suffix.split(".")
             if len(parts) >= 3:
                 slot["slot"] = parts[-3]
                 slot["port"] = parts[-2]
                 slot["onu_id"] = parts[-1]
-            slot["host"] = (f"ONU-{slot.get('slot','?')}/{slot.get('port','?')}/"
+            slot["vendor"] = self.vendor
+            slot["host"] = (f"ONU-{slot.get('slot','?')}/"
+                              f"{slot.get('port','?')}/"
                               f"{slot.get('onu_id','?')}")
         return {
             "host": self.host,
+            "vendor": self.vendor,
             "community": "***",
             "onu_count": len(bundles),
             "onus": list(bundles.values()),
