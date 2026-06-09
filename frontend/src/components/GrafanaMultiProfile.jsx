@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Plus, Trash2, Check, Eye, EyeOff, ShieldCheck,
-  AlertTriangle, RefreshCw,
+  AlertTriangle, RefreshCw, Server, LayoutGrid, Radio, Activity,
 } from "lucide-react";
 import { api } from "@/lib/apiClient";
 
@@ -27,6 +27,66 @@ const FieldStatus = ({ label, set, preview }) => (
     </span>
   </div>
 );
+
+// ─── KPI Strip (do perfil ATIVO) ──────────────────────────
+const KpiMini = ({ icon: Icon, label, value, tone }) => (
+  <div className={`rounded-lg border px-3 py-2 ${tone} flex items-center
+    gap-2 flex-1 min-w-[110px]`}>
+    <Icon className="w-4 h-4 opacity-70 flex-shrink-0" />
+    <div className="min-w-0">
+      <div className="text-[9px] uppercase tracking-wider text-slate-500
+        font-semibold leading-none">{label}</div>
+      <div className="text-base font-bold leading-tight mt-0.5
+        truncate">{value}</div>
+    </div>
+  </div>
+);
+
+const ActiveProfileKpis = ({ active, profileData, kpis, loading }) => {
+  if (!active) return null;
+  return (
+    <div className="rounded-lg border border-emerald-200
+      bg-gradient-to-r from-emerald-50/70 to-emerald-50/30 p-3 space-y-2"
+      data-testid="grafana-active-kpis">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider
+            text-emerald-700 font-bold">Perfil Ativo</span>
+          <Badge className="bg-emerald-600 text-white font-mono text-xs
+            px-2.5">
+            {active}
+          </Badge>
+          {profileData?.fields?.url?.preview && (
+            <span className="text-[10px] text-slate-500 font-mono">
+              {profileData.fields.url.preview}
+            </span>
+          )}
+        </div>
+        {loading && (
+          <RefreshCw className="w-3.5 h-3.5 text-emerald-600
+            animate-spin" />
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <KpiMini icon={Server} label="OLTs Monitorados"
+          value={kpis?.olts_monitored ?? "—"}
+          tone="border-emerald-200 bg-white" />
+        <KpiMini icon={LayoutGrid} label="Total Panels"
+          value={kpis?.total_panels ?? "—"}
+          tone="border-slate-200 bg-white" />
+        <KpiMini icon={Radio} label="PON"
+          value={kpis?.pon_panels ?? "—"}
+          tone="border-blue-200 bg-white" />
+        <KpiMini icon={Activity} label="ONU/ONT"
+          value={kpis?.onu_panels ?? "—"}
+          tone="border-emerald-200 bg-white" />
+        <KpiMini icon={AlertTriangle} label="Alertas"
+          value={kpis?.alert_panels ?? "—"}
+          tone="border-amber-200 bg-white" />
+      </div>
+    </div>
+  );
+};
 
 // ─── Profile Card (lista) ─────────────────────────────────
 const ProfileItem = ({ profile, onActivate, onDelete }) => {
@@ -296,6 +356,7 @@ const AddProfileForm = ({ onSaved, existingProfiles }) => {
 // ─── Main ─────────────────────────────────────────────────
 const GrafanaMultiProfile = () => {
   const [data, setData] = useState(null);
+  const [olts, setOlts] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
 
@@ -306,9 +367,12 @@ const GrafanaMultiProfile = () => {
     (async () => {
       setLoading(true);
       try {
-        const r = await api.get(
-          "/api/admin/integrations/grafana/profiles");
-        if (!cancelled) setData(r);
+        const [r, o] = await Promise.all([
+          api.get("/api/admin/integrations/grafana/profiles"),
+          api.get("/api/ai-center/observability/grafana/olts")
+            .catch(() => null),
+        ]);
+        if (!cancelled) { setData(r); setOlts(o); }
       } catch (e) {
         if (!cancelled) toast.error(
           `Falha ao listar perfis: ${e.message}`);
@@ -343,9 +407,17 @@ const GrafanaMultiProfile = () => {
 
   const profiles = data?.profiles || [];
   const existingNames = profiles.map((p) => p.profile);
+  const activeProfile = profiles.find((p) => p.active);
 
   return (
     <div className="space-y-3" data-testid="grafana-multi-profile">
+      {/* KPIs do perfil ativo */}
+      <ActiveProfileKpis
+        active={data?.active}
+        profileData={activeProfile}
+        kpis={olts?.kpis}
+        loading={loading} />
+
       <div className="flex items-center justify-between">
         <div className="text-xs text-slate-500">
           {data?.active ? (
