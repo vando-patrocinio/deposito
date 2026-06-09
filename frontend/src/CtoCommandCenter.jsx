@@ -19,7 +19,8 @@ const API = process.env.REACT_APP_BACKEND_URL || "";
 
 async function fetchJson(path, init) {
   try {
-    const token = localStorage.getItem("token");
+    // P0.5 — usa chave correta `ponto_token` (não `token`).
+    const token = localStorage.getItem("ponto_token");
     const headers = {
       ...(init?.headers || {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
