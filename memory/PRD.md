@@ -2,7 +2,16 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ⚡ Sprint atual — Card UI Credenciais Observabilidade (09/06/2026) ✅
+## ⚡ Sprint atual — SNMP Direto Multi-Vendor + Merge Discovery (09/06/2026) ✅
+**Independência operacional**: visibilidade ONU/OLT sem depender de Grafana/Zabbix:
+- ✅ `services/vsol_snmp.py` com OIDs V-SOL/Realtek + Huawei + ZTE (+ status maps + dbm_divider por vendor)
+- ✅ CRUD de OLTs em `routes/olt_registry.py` com perfis no `secrets_vault` (host/port/version/community/vendor/label/enabled)
+- ✅ `services/olt_polling_scheduler.py` poll a cada 5min em paralelo, cache em `db.olt_snmp_cache`
+- ✅ Endpoints `/api/admin/integrations/olt/{profiles,profiles/{name}/{save,enable,disable,ping,discover},discover-all,cached,poll-now}` — HTTP 200 verificados
+- ✅ Aba **Discovery do Observability Twin** mescla 3 fontes (Grafana proxy / Zabbix direto / SNMP direto), com KPIs separados, "Status por OLT — SNMP Direto" e botão "Forçar Poll SNMP"
+- ✅ Card UI `OltSnmpCard.jsx` para cadastro de OLTs SNMP
+
+## ⚡ Sprint anterior — Card UI Credenciais Observabilidade (09/06/2026) ✅
 **Ordem direta do CTO** atendendo o pedido após o "UI Freeze" revogado:
 - ✅ Card UI completo (Grafana + Zabbix) em `components/ObservabilityCredentialsCard.jsx`
 - ✅ Sidebar entry "Credenciais Integração" funcional (era quebrado por import `./api` inexistente)
