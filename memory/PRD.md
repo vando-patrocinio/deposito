@@ -2,7 +2,27 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ⚡ Sprint atual — V11 PRESIDENTE IA GOVERNADOR (09/06/2026) ✅
+## ⚡ Sprint atual — V12+V13+V14 PRESIDENTE IA CÉREBRO EXECUTIVO (09/06/2026) ✅
+**Causalidade · Digital Twin · Autopilot. 1 serviço único, 5 endpoints.**
+
+| Fase | Capacidade | Endpoint | Reuso |
+|---|---|---|---|
+| V12 | Causality Engine por ação | `GET /brain/causality/{action_id}` | snapshots `motor_ia_kpis` + `motor_ia_drift` (P1) |
+| V12 | Causality summary 30d | `GET /brain/causality-summary` | agrega cima |
+| V13 | Digital Twin de cliente | `GET /brain/twin/subscriber/{id}` | subscribers + smartolt_onus + ctos + tickets + invoices + smart_installs/repairs + wa_conversations |
+| V13 | Digital Twin global | `GET /brain/twin/global` | aggregations leves |
+| V14 | Autopilot top 10 | `GET /brain/autopilot/top10` | presidente_executive + governador.cobranca + executor_ia.consult_memory + drift |
+
+**Saídas funcionais (live):**
+- Causality_score 0-100 por ação, 4 fatores (sinal/isolamento/histórico/temporal), veredicto CAUSA_FORTE/PROVÁVEL/FRACA/INDETERMINADO.
+- Digital twin de 1 cliente devolve LTV, lucro líquido, motivo raiz, técnico instalador, OLT/CTO, financeiro 24m, WA conversas.
+- Autopilot devolve top 10 ranqueado por valor esperado (R$ × confiança) com `se_autopilot_autorizado: "...executaria as N decisões..."`.
+
+**Coleções novas:** **0** (V12 lê snapshots; V13 lê coleções existentes; V14 agrega em memória).
+
+**Pytest V14:** 1/1 PASSED (cobre 3 fases sequencialmente).
+
+## ⚡ Sprint anterior — V11 PRESIDENTE IA GOVERNADOR (09/06/2026) ✅
 **10 capacidades de governança via agregação de dados existentes. Zero IA nova, zero dashboard, zero executor novo.**
 
 | # | Capacidade | Endpoint | Reuso |

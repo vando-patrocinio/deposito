@@ -589,3 +589,50 @@ async def gov_relatorio(
     from services import governador_ia as gov
     cid = _cid(user)
     return await gov.relatorio_presidencial_diario(cid, force=force)
+
+
+# ─────────────── CÉREBRO V12+V13+V14 ───────────────
+@router.get("/brain/causality/{action_id}")
+async def brain_causality(action_id: str,
+                              user: dict = Depends(require_ai_access())):
+    from services import presidente_brain as br
+    try:
+        return await br.causality_for_action(action_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.get("/brain/causality-summary")
+async def brain_causality_summary(
+        user: dict = Depends(require_ai_access())):
+    from services import presidente_brain as br
+    cid = _cid(user)
+    return await br.causality_summary_30d(cid)
+
+
+@router.get("/brain/twin/subscriber/{subscriber_id}")
+async def brain_twin_subscriber(
+        subscriber_id: str,
+        user: dict = Depends(require_ai_access())):
+    from services import presidente_brain as br
+    try:
+        return await br.digital_twin_subscriber(subscriber_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.get("/brain/twin/global")
+async def brain_twin_global(
+        user: dict = Depends(require_ai_access())):
+    from services import presidente_brain as br
+    cid = _cid(user)
+    return await br.digital_twin_global(cid)
+
+
+@router.get("/brain/autopilot/top10")
+async def brain_autopilot(
+        user: dict = Depends(require_ai_access()),
+        _: bool = Depends(rate_limit(10, 600, "autopilot"))):
+    from services import presidente_brain as br
+    cid = _cid(user)
+    return await br.autopilot_top10(cid)
