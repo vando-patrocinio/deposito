@@ -1,0 +1,133 @@
+{
+  "phone_alvo": "+5521998176526",
+  "tenant": "co-demo",
+  "executado_em": "2026-06-09T23:10:07.804075+00:00",
+  "scenarios": [
+    {
+      "scenario_id": "cobranca",
+      "label": "Cobrança",
+      "input_text": "[FASE2-cobranca] Oi, minha fatura desse mês está vencida há 5 dias. Tem como me mandar a segunda via do boleto pra eu pagar hoje?",
+      "http_status": 200,
+      "loop_total_s": 5.23,
+      "inbound_persisted": true,
+      "outbound_persisted": true,
+      "inbound_subscriber_linked": true,
+      "outbound_subscriber_linked": true,
+      "reply_text": "Oi Pamela! 👋\n\nClaro, vou te ajudar com isso.\n\nVou te passar pro time de cobrança que já manda a 2ª via na hora e te ajuda com qualquer dúvida sobre a fatura, tá bom?\n\n[ROTEAR_COBRANCA]",
+      "reply_keyword_hits": [
+        "fatura",
+        "via"
+      ],
+      "loop_closed": true,
+      "status_emoji": "✅"
+    },
+    {
+      "scenario_id": "upgrade",
+      "label": "Upgrade de plano",
+      "input_text": "[FASE2-upgrade] Quero saber se vocês têm um plano mais rápido. Tô com 300 mega e quero upgrade pra 1 giga. Qual o preço?",
+      "http_status": 200,
+      "loop_total_s": 3.05,
+      "inbound_persisted": true,
+      "outbound_persisted": true,
+      "inbound_subscriber_linked": true,
+      "outbound_subscriber_linked": true,
+      "reply_text": "Oi! 👋 Tudo bem?\n\nQue bom que quer mais velocidade! 🚀\n\nAntes de te passar o valor certinho, me conta: quantas pessoas usam a internet aí em casa?",
+      "reply_keyword_hits": [
+        "valor"
+      ],
+      "loop_closed": true,
+      "status_emoji": "✅"
+    },
+    {
+      "scenario_id": "retencao",
+      "label": "Retenção",
+      "input_text": "[FASE2-retencao] Já decidi cancelar a internet de vocês. O sinal cai toda hora e estou sem paciência. Como faço pra cancelar?",
+      "http_status": 200,
+      "loop_total_s": 5.52,
+      "inbound_persisted": true,
+      "outbound_persisted": true,
+      "inbound_subscriber_linked": true,
+      "outbound_subscriber_linked": true,
+      "reply_text": "Poxa, entendo sua frustração. 😕\n\nAntes de abrir o cancelamento, me conta uma coisa:\n\nEssa queda de sinal tá acontecendo o dia todo ou em horários específicos?\n\nPosso agendar um técnico pra ir aí hoje mesmo resolver isso, sem custo nenhum pra você.\n\nOu se preferir, te passo 30% off por 3 meses enquanto a gente ajusta tudo certinho.\n\nO que acha?",
+      "reply_keyword_hits": [
+        "cancel"
+      ],
+      "loop_closed": true,
+      "status_emoji": "✅"
+    },
+    {
+      "scenario_id": "ex_cliente",
+      "label": "Ex-cliente querendo voltar",
+      "input_text": "[FASE2-ex-cliente] Eu era cliente de vocês ano passado e cancelei. Agora quero voltar. Tem como reativar meu plano antigo de 500 mega?",
+      "http_status": 200,
+      "loop_total_s": 2.69,
+      "inbound_persisted": true,
+      "outbound_persisted": true,
+      "inbound_subscriber_linked": true,
+      "outbound_subscriber_linked": true,
+      "reply_text": "Oi! Que bom te ver de volta! 😊\n\nVou verificar seu cadastro aqui.\n\nPode me passar seu CPF pra eu localizar certinho?",
+      "reply_keyword_hits": [],
+      "loop_closed": true,
+      "status_emoji": "🟡"
+    },
+    {
+      "scenario_id": "security",
+      "label": "Security Home (alarme)",
+      "input_text": "[FASE2-security] Vi que vocês têm sistema de alarme residencial. Quero proteger minha casa com câmeras e sensor de porta. Como funciona?",
+      "http_status": 200,
+      "loop_total_s": 4.11,
+      "inbound_persisted": true,
+      "outbound_persisted": true,
+      "inbound_subscriber_linked": true,
+      "outbound_subscriber_linked": true,
+      "reply_text": "Oi! 👋\n\nOlha, a gente é especialista em internet fibra, streamings e conectividade — não trabalhamos com alarme ou câmeras de segurança.\n\nMas posso te ajudar com internet de alta velocidade pra rodar suas câmeras sem travar, se você já tiver o sistema! \n\nQual seu bairro? Vejo a cobertura aqui 🙂",
+      "reply_keyword_hits": [
+        "alarme",
+        "câmera",
+        "segur"
+      ],
+      "loop_closed": true,
+      "status_emoji": "✅"
+    },
+    {
+      "scenario_id": "playhub",
+      "label": "PlayHub (streaming)",
+      "input_text": "[FASE2-playhub] Ouvi falar do PlayHub de vocês. É um combo com Netflix e canais? Quero contratar junto com a internet.",
+      "http_status": 200,
+      "loop_total_s": 4.37,
+      "inbound_persisted": true,
+      "outbound_persisted": true,
+      "inbound_subscriber_linked": true,
+      "outbound_subscriber_linked": true,
+      "reply_text": "Oi! 👋\n\nO PlayHub é nosso combo de streaming + canais ao vivo, perfeito pra quem quer tudo num lugar só!\n\nEle vem com Netflix, Disney+, HBO Max, Paramount+, Globoplay e mais de 100 canais (esporte, filme, série, infantil).\n\nPra montar seu combo ideal, me conta: quantas pessoas vão usar a internet aí na sua casa?",
+      "reply_keyword_hits": [
+        "playhub",
+        "streaming",
+        "netflix",
+        "canais",
+        "combo"
+      ],
+      "loop_closed": true,
+      "status_emoji": "✅"
+    },
+    {
+      "scenario_id": "ligo_movel",
+      "label": "Ligo Móvel (chip)",
+      "input_text": "[FASE2-ligo-movel] Vocês têm chip de celular agora? Vi um anúncio do Ligo Móvel. Quero portar meu número da Vivo pra vocês.",
+      "http_status": 200,
+      "loop_total_s": 3.06,
+      "inbound_persisted": true,
+      "outbound_persisted": true,
+      "inbound_subscriber_linked": true,
+      "outbound_subscriber_linked": true,
+      "reply_text": "Temos sim! 🎉\n\nO Ligo Móvel é nosso chip 5G com internet + voz ilimitada pra qualquer operadora.\n\nVocê já é cliente Ligo fibra ou seria o primeiro serviço com a gente?",
+      "reply_keyword_hits": [
+        "chip",
+        "móvel",
+        "ligo"
+      ],
+      "loop_closed": true,
+      "status_emoji": "✅"
+    }
+  ]
+}

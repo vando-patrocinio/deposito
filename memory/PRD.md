@@ -2,6 +2,35 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
+## 🚨 OPERAÇÃO VALIDAR RECEITA REAL — Fases 1-5 ✅ (12/02/2026)
+
+**Ordem CTO**: validar 100% do ciclo comercial da Isabella e descobrir o gargalo de escala. Escopo restrito ao número `21998176526` (subscriber `sub-89c314c0d98f`, tenant `co-demo`). Zero mocks.
+
+### Entregas
+- **Fase 1 — Mapeamento real** → `/app/docs/pipeline_isabella_map.md` com diagrama do pipeline Twilio + Baileys, coleções tocadas e 7 gargalos teóricos
+- **Fase 4 — Stress test** → `scripts/stress_test_isabella.py` executado em 10/25/50/100 msgs concorrentes. Raw em `/app/docs/fase4_stress_test_result.json`
+- **Fases 2+3 — 7 cenários comerciais + validação loop** → `scripts/scenarios_test_isabella.py`, raw em `/app/docs/fase2_3_scenarios_result.json`. Resultado: **7/7 loops fechados**, 6/7 com keyword esperada
+- **Fase 5 — Relatório final** → `/app/docs/RELATORIO_GARGALO_ESCALA.md`
+
+### Achados-chave
+- 🔴 **GARGALO**: handler `POST /api/whatsapp-twilio/webhook` é **síncrono** — bloqueia até LLM (3-5s) + Twilio Send (1-3s) terminarem. Twilio dá timeout em 15s e faz retry → multiplica carga por 4×
+- Pipeline colapsa entre **25 e 50 mensagens concorrentes**. Em 100 concorrentes: **0/100 inbound persistidas, 18% loop fechado**
+- **Fix de 1 commit**: mover `_generate_and_send_twilio_reply` para `BackgroundTasks` (mesmo padrão de `whatsapp_baileys.py:1450`)
+- **Impacto financeiro estimado destravado**: R$ 86k–142k/mês
+- Achados secundários: A1 fallback agent=Jerusa, A2 Isabella recusa Security Home, A3 sem sessão Baileys p/ co-demo, A4 rate-limit 120/min em prod
+
+### Auditoria de escopo
+- 192 inbound + 91 outbound injetados no DB, **todos para 21998176526** (verificado)
+- 0 mensagens vazaram para clientes reais
+
+### Próximas ações pendentes (aguardando aprovação CTO)
+- **P0**: Aplicar patch do webhook Twilio (§6 do relatório) e re-rodar Fase 4
+- **P1**: Atualizar treinamento Isabella para reconhecer Security Home (A2)
+- **P1**: Abrir sessão Baileys para `co-demo` (redundância)
+- **P2**: Corrigir fallback de auto-reply de Jerusa → Isabella (A1)
+
+
+
 ## 🏆 ORDEM EXECUTIVA FINAL — Maturidade Comercial (09/06/2026) ✅
 
 **Ordem CTO**: máquina comprovada de geração de valor multi-tenant.

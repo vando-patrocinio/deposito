@@ -1,0 +1,116 @@
+{
+  "phone_alvo": "+5521998176526",
+  "tenant": "co-demo",
+  "executado_em": "2026-06-09T23:08:01.790963+00:00",
+  "rounds": [
+    {
+      "round": "R10",
+      "size": 10,
+      "wall_clock_s": 6.16,
+      "throughput_rps": 1.62,
+      "http_status": {
+        "200": 10
+      },
+      "latency_ms_avg": 5449.9,
+      "latency_ms_p50": 5554.4,
+      "latency_ms_p95": 6103.9,
+      "latency_ms_p99": 6103.9,
+      "latency_ms_max": 6103.9,
+      "db_delta_inbound": 10,
+      "db_delta_outbound": 10,
+      "inbound_loss": 0,
+      "outbound_loss": 0,
+      "loop_closed_pct": 100.0,
+      "before": {
+        "inbound": 299,
+        "outbound": 344
+      },
+      "after": {
+        "inbound": 309,
+        "outbound": 354
+      }
+    },
+    {
+      "round": "R25",
+      "size": 25,
+      "wall_clock_s": 24.27,
+      "throughput_rps": 1.03,
+      "http_status": {
+        "200": 25
+      },
+      "latency_ms_avg": 11010.7,
+      "latency_ms_p50": 8921.1,
+      "latency_ms_p95": 24209.5,
+      "latency_ms_p99": 24247.8,
+      "latency_ms_max": 24247.8,
+      "db_delta_inbound": 25,
+      "db_delta_outbound": 25,
+      "inbound_loss": 0,
+      "outbound_loss": 0,
+      "loop_closed_pct": 100.0,
+      "before": {
+        "inbound": 309,
+        "outbound": 354
+      },
+      "after": {
+        "inbound": 334,
+        "outbound": 379
+      }
+    },
+    {
+      "round": "R50",
+      "size": 50,
+      "wall_clock_s": 60.18,
+      "throughput_rps": 0.83,
+      "http_status": {
+        "200": 29,
+        "-1": 21
+      },
+      "latency_ms_avg": 34283.9,
+      "latency_ms_p50": 24424.2,
+      "latency_ms_p95": 60153.6,
+      "latency_ms_p99": 60156.4,
+      "latency_ms_max": 60156.4,
+      "db_delta_inbound": 50,
+      "db_delta_outbound": 29,
+      "inbound_loss": 0,
+      "outbound_loss": 21,
+      "loop_closed_pct": 58.0,
+      "before": {
+        "inbound": 334,
+        "outbound": 379
+      },
+      "after": {
+        "inbound": 384,
+        "outbound": 408
+      }
+    },
+    {
+      "round": "R100",
+      "size": 100,
+      "wall_clock_s": 60.36,
+      "throughput_rps": 1.66,
+      "http_status": {
+        "-1": 100
+      },
+      "latency_ms_avg": 60203.4,
+      "latency_ms_p50": 60190.6,
+      "latency_ms_p95": 60327.1,
+      "latency_ms_p99": 60333.1,
+      "latency_ms_max": 60333.1,
+      "db_delta_inbound": 0,
+      "db_delta_outbound": 18,
+      "inbound_loss": 100,
+      "outbound_loss": 82,
+      "loop_closed_pct": 18.0,
+      "before": {
+        "inbound": 384,
+        "outbound": 408
+      },
+      "after": {
+        "inbound": 384,
+        "outbound": 426
+      }
+    }
+  ]
+}
