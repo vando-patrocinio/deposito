@@ -81,8 +81,18 @@ def _extract_payload(body: bytes, max_keys: int = 6) -> dict:
 
 
 async def auto_emit_middleware(request: Request, call_next):
-    """Middleware FastAPI. Roda APÓS o handler. Só emite em status 2xx."""
-    # captura body uma vez (consumido por baixo do FastAPI)
+    """Middleware FastAPI. Roda APÓS o handler. Só emite em status 2xx.
+
+    Otimização: só consome `request.body()` se o path/método casa com
+    alguma RULE. Caso contrário, deixa o body intacto para o handler
+    (evita 'No response returned' em uploads/streams).
+    """
+    match = _match(request.url.path, request.method)
+    if not match:
+        # rota não interessa ao auto-emit — não toca no body
+        return await call_next(request)
+
+    # Captura body apenas para rotas mapeadas
     body = b""
     try:
         body = await request.body()
@@ -93,27 +103,24 @@ async def auto_emit_middleware(request: Request, call_next):
 
     try:
         if 200 <= response.status_code < 300:
-            match = _match(request.url.path, request.method)
-            if match:
-                kind, severity = match
-                user = getattr(request.state, "user", None)
-                # se rbac middleware já populou state.user → company_id
-                company_id = None
-                if isinstance(user, dict):
-                    company_id = user.get("company_id")
-                payload = _extract_payload(body)
-                from services.event_emitters import emit_business
-                await emit_business(
-                    kind=kind,
-                    company_id=company_id,
-                    actor=user if isinstance(user, dict) else None,
-                    payload={**payload,
-                             "_auto_emitted": True,
-                             "path": request.url.path,
-                             "method": request.method},
-                    severity=severity,
-                    source="auto_emit_middleware",
-                )
+            kind, severity = match
+            user = getattr(request.state, "user", None)
+            company_id = None
+            if isinstance(user, dict):
+                company_id = user.get("company_id")
+            payload = _extract_payload(body)
+            from services.event_emitters import emit_business
+            await emit_business(
+                kind=kind,
+                company_id=company_id,
+                actor=user if isinstance(user, dict) else None,
+                payload={**payload,
+                         "_auto_emitted": True,
+                         "path": request.url.path,
+                         "method": request.method},
+                severity=severity,
+                source="auto_emit_middleware",
+            )
     except Exception as e:  # noqa: BLE001
         log.debug("[auto_emit] falha: %s", e)
     return response

@@ -2,7 +2,30 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ⚡ Sprint atual — PRESIDENTE IA V10 · Cérebro Executivo Monetizado (09/06/2026) ✅
+## ⚡ Sprint atual — P0 PRIMEIRO CLIENTE PAGANTE (09/06/2026) ✅
+**6 ações entregues. Zero módulo novo. Zero IA nova. Zero versão paralela.**
+
+| # | Ação | Status | Entrega |
+|---|---|---|---|
+| 1 | Backup off-site | 🟥 BLOQUEADO_HUMANO | `memory/OFFSITE_BACKUP_RECOVERY_REPORT.md` — runbook OAuth para CTO |
+| 2 | ALLOW_MOCK auditado | 🟩 PRONTO PARA FALSE | `memory/MOCK_DEPENDENCY_AUDIT.md` — 1 módulo afetado (security_home POC) |
+| 3 | White-label | 🟩 APLICADO | `memory/WHITE_LABEL_READINESS_REPORT.md` — `db.companies.name = "Ligotelecom"`, logo real, `/api/auth/me` retorna company_name |
+| 4 | AI Center consolidado | 🟩 DEFINIDO | `memory/AI_CENTER_CONSOLIDATION_REPORT.md` — canônico = v80, v6/v7 DEPRECATED (452 LoC órfãs) |
+| 5 | Atlaz onboarding | 🟩 AUDITADO | `memory/ATLAZ_ONBOARDING_AUDIT.md` — dry-run via `/customers/preview`, idempotente, 6.359 invoices live |
+| 6 | Logs limpos | 🟩 3/3 CORRIGIDOS | `memory/LOG_CLEANUP_REPORT.md` — causa raiz GrafanaConnector órfão + auto_emit middleware + 401 INFO |
+
+**Mudanças de código nesta sprint (totais):**
+- `backend/middleware/auto_emit_middleware.py` — fix RuntimeError "No response returned" (10 linhas reescritas)
+- `backend/services/observability_twin.py` — fix AttributeError GrafanaConnector close (causa raiz: métodos órfãos fora da classe) + Grafana 401 WARNING→INFO
+- `backend/routes/users.py` — `/api/auth/me` agora retorna company_name dinâmico (+14 linhas)
+- `db.companies` + `db.company_branding` (1 doc cada) — atualizações pontuais via mongosh
+
+**Validação live:**
+- 7/7 pytest passing (test_safety_p0 6/6 + test_presidente_executive 1/1)
+- Stress test 30 chamadas pós-fix → 30 HTTP 200 → 0 erros nos logs
+- Backend uptime 7+ min limpo após restart
+
+## ⚡ Sprint anterior — PRESIDENTE IA V10 · Cérebro Executivo Monetizado (09/06/2026) ✅
 **Ordem executiva**: o Presidente IA deixou de ser dashboard, virou decisão.
 - ✅ Novo `services/presidente_executive.py` (480 LoC) — converte toda contagem em R$, com fontes resilientes.
 - ✅ Endpoint `GET /api/presidente-ia/executive` — retorna 8 blocos: `president_score`, `riscos_criticos`, `oportunidades`, `previsao_30d`, `dinheiro_em_risco`, `dinheiro_recuperavel`, `surpresas`, `acoes_presidenciais`.

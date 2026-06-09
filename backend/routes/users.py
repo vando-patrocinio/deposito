@@ -209,6 +209,18 @@ async def auth_me(user: dict = Depends(get_current_user)):
     # Anexa flags computadas para o frontend
     user["is_super_admin"] = is_super_admin(user)
     user["can_grant_super_admin"] = can_grant_super_admin(user)
+    # White-label: anexa company_name do doc da empresa (db.companies)
+    # para o frontend não exibir "Empresa Demo" hard-coded
+    try:
+        cid = user.get("company_id")
+        if cid and not user.get("company_name"):
+            co = await db.companies.find_one(
+                {"id": cid}, {"_id": 0, "name": 1, "slug": 1})
+            if co:
+                user["company_name"] = co.get("name")
+                user["company_slug"] = co.get("slug")
+    except Exception:
+        pass
     return user
 
 

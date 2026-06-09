@@ -507,9 +507,12 @@ class GrafanaConnector:
                 self._permission_warnings = []
             self._permission_warnings.append({
                 "path": path, "status": r.status_code})
-            logger.warning(
-                "[grafana] %s on %s — role insuficiente "
-                "(precisa Admin OU Service Account Token com permissões)",
+            # Rebaixado a INFO: a aplicação trata 401/403 com fallback
+            # graceful (Viewer/Service Account com escopo limitado é
+            # cenário esperado para multi-perfil).
+            logger.info(
+                "[grafana] %s on %s — fallback acionado "
+                "(role limitada; UI exibe warning permission)",
                 r.status_code, path)
             return None
         r.raise_for_status()
@@ -800,6 +803,17 @@ class GrafanaConnector:
                      if proxy_unauthorized else None),
         }
 
+    async def get_annotations(self) -> List[Dict[str, Any]]:
+        await self._load_from_vault()
+        if not self.is_real:
+            return []
+        return await self._get("/api/annotations") or []
+
+    async def close(self) -> None:
+        if getattr(self, "_own_client", None) is not None:
+            await self._own_client.aclose()
+            self._own_client = None
+
 
 async def list_enabled_grafana_connectors() -> List["GrafanaConnector"]:
     """Retorna lista de GrafanaConnector para cada perfil enabled.
@@ -827,21 +841,6 @@ async def list_enabled_grafana_connectors() -> List["GrafanaConnector"]:
             continue
         out.append(GrafanaConnector(profile=p))
     return out
-
-
-
-
-
-    async def get_annotations(self) -> List[Dict[str, Any]]:
-        await self._load_from_vault()
-        if not self.is_real:
-            return []
-        return await self._get("/api/annotations") or []
-
-    async def close(self) -> None:
-        if getattr(self, "_own_client", None) is not None:
-            await self._own_client.aclose()
-            self._own_client = None
 
 
 async def snapshot_grafana(
