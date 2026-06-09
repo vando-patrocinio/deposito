@@ -2,7 +2,40 @@
 
 > Documento vivo. Atualizado a cada sprint.
 
-## ⚡ Sprint atual — P0 PRIMEIRO CLIENTE PAGANTE (09/06/2026) ✅
+## ⚡ Sprint atual — P1 PRESIDENTE IA COM BRAÇOS (09/06/2026) ✅
+**Ciclo completo: PROPOSE → CONSELHO → APPROVE → EXECUTE → ROI → APRENDIZADO**
+
+| Etapa | Status | Implementação |
+|---|---|---|
+| 1. Executor IA + status flow | 🟩 | `services/executor_ia.py` — 6 status, transições validadas |
+| 2. `pending_executions` fila | 🟩 | Coleção criada, aprovação enfileira automaticamente |
+| 3. Snapshot BEFORE | 🟩 | Captura em `motor_ia_kpis` (MRR/score/risco/recuperável/churn) |
+| 4. Snapshot AFTER | 🟩 | Idem após execução |
+| 5. ROI automático | 🟩 | Calculado por categoria (reajuste=ΔMRR, cobrança=Δrisco, leo/retenção=Δchurn) |
+| 6. Ledger executivo | 🟩 | `GET /actions/{id}/ledger` — quem decidiu/aprovou/executou + R$ + history |
+| 7. Memória executiva | 🟩 | `consult_memory()` obrigatório antes de propor; `GET /memory/{cat}` |
+| 8. Aprendizado (corrections + drift) | 🟩 | Registrados em `motor_ia_corrections` + `motor_ia_drift` por ciclo |
+| 9. Conselho com voto formal | 🟩 | 6 cadeiras (CEO/CFO/COO/CTO/CMO/CRO), consensus 0..6/6, divergências rastreadas |
+| 10. State of presidency (9 perguntas) | 🟩 | `GET /state-of-presidency` |
+
+**5 executores autorizados (todos dry_run-first):**
+1. `REAJUSTE_IPCA` — marca `readjustment_pending_pct` nos subscribers vencidos
+2. `DISPARO_COBRANCA` — cria batch em `dunning_events`
+3. `CONTATO_LEO_PROATIVO` — enfileira em `leo_proactive_queue`
+4. `CRIACAO_OS_SMARTFIELD` — abre OS em `smart_repairs`
+5. `CAMPANHA_RETENCAO` — enfileira em `mass_messaging_queue`
+
+**Endpoints adicionados (todos em `/api/presidente-ia/`, sem rota nova):**
+`POST actions/propose · POST actions/{id}/council-vote · POST actions/{id}/approve · POST actions/{id}/execute · POST actions/{id}/cancel · GET actions · GET actions/{id}/ledger · GET memory/{cat} · GET state-of-presidency · GET learning/drift`
+
+**Coleções criadas:** `pending_executions`, `conselho_votes` (motor_ia_kpis/corrections/drift já existiam, agora populadas).
+
+**Validação:**
+- 8/8 pytest passing (P0 safety + V10 + P1 ciclo completo)
+- E2E live testado: 5 ações × 6 votos × 5 ROIs = todos `dry_run`, mas pipeline real testado
+- Stress sem erros nos logs
+
+## ⚡ Sprint anterior — P0 PRIMEIRO CLIENTE PAGANTE (09/06/2026) ✅
 **6 ações entregues. Zero módulo novo. Zero IA nova. Zero versão paralela.**
 
 | # | Ação | Status | Entrega |

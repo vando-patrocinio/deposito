@@ -16,9 +16,9 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from core import DEMO_COMPANY_ID, get_current_user
 from database import db
@@ -288,3 +288,177 @@ async def executive_report(user: dict = Depends(require_ai_access()),
     cid = _cid(user)
     await _audit(user, "ia", "presidente_executive_view", target=cid)
     return await build_executive_report(cid)
+
+
+# ─────────────────── EXECUTOR P1 — BRAÇOS DO PRESIDENTE ───────────────────
+# Ciclo: PROPOR → CONSELHO VOTAR → APROVAR → EXECUTAR → ROI → APRENDER
+
+@router.post("/actions/propose")
+async def actions_propose(
+    body: Dict[str, Any] = Body(...),
+    user: dict = Depends(require_ai_access()),
+    _: bool = Depends(rate_limit(20, 600, "exec_propose")),
+):
+    """Presidente IA propõe uma ação executável. Consulta memória
+    antes de criar — proibido recomendar sem consultar histórico."""
+    from services import executor_ia as ex
+    cid = _cid(user)
+    categoria = body.get("categoria")
+    if categoria not in ex.CATEGORIAS_EXECUTAVEIS:
+        raise HTTPException(400, f"categoria inválida. Use: "
+                                  f"{list(ex.CATEGORIAS_EXECUTAVEIS)}")
+    # Memória obrigatória antes da recomendação
+    memoria = await ex.consult_memory(cid, categoria)
+    action = await ex.propose_action(
+        company_id=cid,
+        created_by=user.get("email") or "system",
+        categoria=categoria,
+        descricao=body.get("descricao") or
+                   ex.CATEGORIAS_EXECUTAVEIS[categoria],
+        impacto_estimado_brl=float(body.get("impacto_estimado_brl") or 0),
+        prioridade=body.get("prioridade") or "MÉDIA",
+        source="presidente_ia",
+        payload=body.get("payload") or {},
+        decision_id=body.get("decision_id"),
+    )
+    await _audit(user, "ia", "action_proposed",
+                    target=action["id"], data={"cat": categoria})
+    return {"action": action, "memoria_consultada": memoria}
+
+
+@router.post("/actions/{action_id}/council-vote")
+async def actions_council_vote(
+    action_id: str,
+    user: dict = Depends(require_ai_access()),
+    _: bool = Depends(rate_limit(20, 600, "exec_vote")),
+):
+    """Conselho IA (6 cadeiras) vota formalmente."""
+    from services import executor_ia as ex
+    result = await ex.collect_council_votes(action_id)
+    await _audit(user, "ia", "council_voted", target=action_id,
+                    data={"consensus": result["consensus"]["ratio"]})
+    return result
+
+
+@router.post("/actions/{action_id}/approve")
+async def actions_approve(
+    action_id: str,
+    body: Dict[str, Any] = Body(default_factory=dict),
+    user: dict = Depends(require_ai_access()),
+    _: bool = Depends(rate_limit(20, 600, "exec_approve")),
+):
+    """Aprovação humana. Move pending→approved e enfileira."""
+    from services import executor_ia as ex
+    try:
+        act = await ex.approve_action(
+            action_id, user.get("email") or "system",
+            body.get("justification", ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    await _audit(user, "ia", "action_approved", target=action_id)
+    return act
+
+
+@router.post("/actions/{action_id}/execute")
+async def actions_execute(
+    action_id: str,
+    body: Dict[str, Any] = Body(default_factory=dict),
+    user: dict = Depends(require_ai_access()),
+    _: bool = Depends(rate_limit(10, 600, "exec_run")),
+):
+    """Executa a ação. dry_run=True por padrão. Snapshot AFTER + ROI
+    + correção de aprendizado registrados automaticamente."""
+    from services import executor_ia as ex
+    dry_run = bool(body.get("dry_run", True))
+    try:
+        act = await ex.execute_action(
+            action_id, user.get("email") or "system", dry_run=dry_run)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    await _audit(user, "ia", "action_executed", target=action_id,
+                    data={"dry_run": dry_run,
+                            "roi_brl": act.get("roi_brl")})
+    return act
+
+
+@router.post("/actions/{action_id}/cancel")
+async def actions_cancel(
+    action_id: str,
+    body: Dict[str, Any] = Body(default_factory=dict),
+    user: dict = Depends(require_ai_access()),
+):
+    from services import executor_ia as ex
+    try:
+        act = await ex.cancel_action(
+            action_id, user.get("email") or "system",
+            body.get("reason", ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    await _audit(user, "ia", "action_cancelled", target=action_id)
+    return act
+
+
+@router.get("/actions")
+async def actions_list(
+    status: Optional[str] = None,
+    limit: int = 50,
+    user: dict = Depends(require_ai_access()),
+):
+    from services import executor_ia as ex
+    cid = _cid(user)
+    items = await ex.list_actions(cid, status=status, limit=limit)
+    queue = await ex.list_queue(cid)
+    return {"actions": items, "queue": queue}
+
+
+@router.get("/actions/{action_id}/ledger")
+async def actions_ledger(
+    action_id: str,
+    user: dict = Depends(require_ai_access()),
+):
+    """Ledger completo: quem decidiu, aprovou, executou, ROI, votos,
+    snapshots, correção de aprendizado."""
+    from services import executor_ia as ex
+    try:
+        return await ex.get_action_ledger(action_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.get("/memory/{categoria}")
+async def memory_by_category(
+    categoria: str,
+    user: dict = Depends(require_ai_access()),
+):
+    """Lê histórico de ROI por categoria (Etapa 7)."""
+    from services import executor_ia as ex
+    cid = _cid(user)
+    return await ex.consult_memory(cid, categoria)
+
+
+@router.get("/state-of-presidency")
+async def state_of_presidency_route(
+    period_days: int = 30,
+    user: dict = Depends(require_ai_access()),
+):
+    """Responde as 9 perguntas obrigatórias do P1.
+
+    1.recomendei · 2.aprovado · 3.executado · 4.gerou_resultado
+    5.dinheiro_entrou · 6.dinheiro_salvo · 7.deu_errado
+    8.aprendi · 9.farei_diferente
+    """
+    from services import executor_ia as ex
+    cid = _cid(user)
+    return await ex.state_of_presidency(cid, period_days=period_days)
+
+
+@router.get("/learning/drift")
+async def learning_drift(
+    user: dict = Depends(require_ai_access()),
+):
+    """Tabela de drift por categoria (motor_ia_drift)."""
+    cid = _cid(user)
+    cursor = db.motor_ia_drift.find(
+        {"company_id": cid}, {"_id": 0}).sort(
+            [("updated_at", -1)])
+    return {"drifts": await cursor.to_list(50)}
