@@ -12,6 +12,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -283,7 +284,14 @@ def _validate_twilio_signature(auth_token: str, url: str,
 @router.post("/webhook")
 @limiter.limit(get_limit("webhook_inbound"))
 async def webhook(request: Request):
-    """Webhook chamado pela Twilio quando o número recebe uma mensagem."""
+    """Webhook Twilio inbound — RESPONDE EM <300ms.
+
+    Hot-path:
+      1. Persiste inbound em aihub_wa_messages
+      2. Cria/atualiza wa_conversations
+      3. Agenda LLM + Twilio Send via asyncio.create_task (fire-and-forget)
+      4. Retorna HTTP 200 imediatamente
+    """
     # Pega tenant da query string
     cid = request.query_params.get("tenant") or DEMO_COMPANY_ID
     form_raw = await request.form()
@@ -319,6 +327,17 @@ async def webhook(request: Request):
     phone = re.sub(r"\D", "", phone_raw)
     if not phone:
         return {"ok": False, "error": "phone vazio"}
+
+    # Idempotência: Twilio retransmite o mesmo MessageSid em retries.
+    # Se já vimos esse SID, ignoramos para não duplicar inbound.
+    if message_sid:
+        dup = await db.aihub_wa_messages.find_one(
+            {"company_id": cid, "channel": "twilio",
+             "direction": "inbound", "message_id": message_sid},
+            {"_id": 1},
+        )
+        if dup:
+            return {"ok": True, "duplicate": True, "message_sid": message_sid}
 
     # Identifica subscriber (auto-link)
     subscriber_id = None
@@ -361,21 +380,39 @@ async def webhook(request: Request):
     logger.info("[twilio] inbound %s (%s): %s%s", phone, profile_name,
                 text[:80], f" [{num_media} media]" if num_media else "")
 
-    # Auto-reply (reusa a função do baileys, mas marca channel)
+    # Cria/atualiza conversa (UI exibe + tracking de canal)
     try:
-        from routes.whatsapp_baileys import _maybe_auto_reply
-        # Adaptamos: chamar _maybe_auto_reply e ele tentará enviar via baileys
-        # — mas como queremos Twilio, fazemos inline:
-        reply = await _generate_and_send_twilio_reply(
+        await db.wa_conversations.update_one(
+            {"company_id": cid, "phone": phone},
+            {"$set": {
+                "last_channel_id": "twilio",
+                "last_channel_name": "Twilio WhatsApp",
+                "last_inbound_at": now_iso(),
+                "subscriber_id": subscriber_id,
+            },
+             "$setOnInsert": {
+                 "company_id": cid,
+                 "phone": phone,
+                 "status": "open",
+                 "assignee_role": "ai",
+                 "created_at": now_iso(),
+             }},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning("[twilio] wa_conversations upsert falhou: %s", e)
+
+    # Agenda processamento LLM + Twilio Send via asyncio.create_task.
+    # NUNCA bloqueia o handler — Twilio recebe 200 em <300ms.
+    # asyncio.create_task ao invés de FastAPI BackgroundTasks pois slowapi
+    # interfere com a injeção de BackgroundTasks no slot do request.
+    asyncio.create_task(
+        _generate_and_send_twilio_reply(
             cid=cid, phone=phone, user_text=text,
             subscriber_id=subscriber_id, subscriber_ctx=subscriber_ctx,
         )
-        if reply:
-            return {"ok": True, "auto_reply_preview": reply[:80]}
-    except Exception as e:
-        logger.warning("[twilio] auto-reply falhou: %s", e)
-
-    return {"ok": True}
+    )
+    return {"ok": True, "queued": True, "message_sid": message_sid}
 
 
 async def _generate_and_send_twilio_reply(

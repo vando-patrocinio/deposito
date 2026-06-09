@@ -1,115 +1,116 @@
 {
   "phone_alvo": "+5521998176526",
   "tenant": "co-demo",
-  "executado_em": "2026-06-09T23:08:01.790963+00:00",
+  "executado_em": "2026-06-09T23:26:39.657330+00:00",
   "rounds": [
     {
       "round": "R10",
       "size": 10,
-      "wall_clock_s": 6.16,
-      "throughput_rps": 1.62,
+      "wall_clock_s": 0.76,
+      "throughput_rps": 13.14,
       "http_status": {
         "200": 10
       },
-      "latency_ms_avg": 5449.9,
-      "latency_ms_p50": 5554.4,
-      "latency_ms_p95": 6103.9,
-      "latency_ms_p99": 6103.9,
-      "latency_ms_max": 6103.9,
+      "latency_ms_avg": 607.3,
+      "latency_ms_p50": 686.0,
+      "latency_ms_p95": 706.7,
+      "latency_ms_p99": 706.7,
+      "latency_ms_max": 706.7,
       "db_delta_inbound": 10,
       "db_delta_outbound": 10,
       "inbound_loss": 0,
       "outbound_loss": 0,
       "loop_closed_pct": 100.0,
       "before": {
-        "inbound": 299,
-        "outbound": 344
+        "inbound": 392,
+        "outbound": 437
       },
       "after": {
-        "inbound": 309,
-        "outbound": 354
-      }
-    },
-    {
-      "round": "R25",
-      "size": 25,
-      "wall_clock_s": 24.27,
-      "throughput_rps": 1.03,
-      "http_status": {
-        "200": 25
-      },
-      "latency_ms_avg": 11010.7,
-      "latency_ms_p50": 8921.1,
-      "latency_ms_p95": 24209.5,
-      "latency_ms_p99": 24247.8,
-      "latency_ms_max": 24247.8,
-      "db_delta_inbound": 25,
-      "db_delta_outbound": 25,
-      "inbound_loss": 0,
-      "outbound_loss": 0,
-      "loop_closed_pct": 100.0,
-      "before": {
-        "inbound": 309,
-        "outbound": 354
-      },
-      "after": {
-        "inbound": 334,
-        "outbound": 379
+        "inbound": 402,
+        "outbound": 447
       }
     },
     {
       "round": "R50",
       "size": 50,
-      "wall_clock_s": 60.18,
-      "throughput_rps": 0.83,
+      "wall_clock_s": 1.07,
+      "throughput_rps": 46.61,
       "http_status": {
-        "200": 29,
-        "-1": 21
+        "200": 50
       },
-      "latency_ms_avg": 34283.9,
-      "latency_ms_p50": 24424.2,
-      "latency_ms_p95": 60153.6,
-      "latency_ms_p99": 60156.4,
-      "latency_ms_max": 60156.4,
+      "latency_ms_avg": 961.2,
+      "latency_ms_p50": 996.6,
+      "latency_ms_p95": 1042.2,
+      "latency_ms_p99": 1048.5,
+      "latency_ms_max": 1048.5,
       "db_delta_inbound": 50,
-      "db_delta_outbound": 29,
+      "db_delta_outbound": 0,
       "inbound_loss": 0,
-      "outbound_loss": 21,
-      "loop_closed_pct": 58.0,
+      "outbound_loss": 50,
+      "loop_closed_pct": 0.0,
       "before": {
-        "inbound": 334,
-        "outbound": 379
+        "inbound": 402,
+        "outbound": 447
       },
       "after": {
-        "inbound": 384,
-        "outbound": 408
+        "inbound": 452,
+        "outbound": 447
       }
     },
     {
-      "round": "R100",
-      "size": 100,
-      "wall_clock_s": 60.36,
-      "throughput_rps": 1.66,
+      "round": "R200",
+      "size": 200,
+      "wall_clock_s": 99.54,
+      "throughput_rps": 2.01,
       "http_status": {
-        "-1": 100
+        "200": 105,
+        "-1": 95
       },
-      "latency_ms_avg": 60203.4,
-      "latency_ms_p50": 60190.6,
-      "latency_ms_p95": 60327.1,
-      "latency_ms_p99": 60333.1,
-      "latency_ms_max": 60333.1,
-      "db_delta_inbound": 0,
-      "db_delta_outbound": 18,
-      "inbound_loss": 100,
-      "outbound_loss": 82,
-      "loop_closed_pct": 18.0,
+      "latency_ms_avg": 38446.1,
+      "latency_ms_p50": 3475.9,
+      "latency_ms_p95": 99479.9,
+      "latency_ms_p99": 99495.0,
+      "latency_ms_max": 99496.4,
+      "db_delta_inbound": 141,
+      "db_delta_outbound": 12,
+      "inbound_loss": 59,
+      "outbound_loss": 188,
+      "loop_closed_pct": 6.0,
       "before": {
-        "inbound": 384,
-        "outbound": 408
+        "inbound": 452,
+        "outbound": 459
       },
       "after": {
-        "inbound": 384,
-        "outbound": 426
+        "inbound": 593,
+        "outbound": 471
+      }
+    },
+    {
+      "round": "R500",
+      "size": 500,
+      "wall_clock_s": 81.78,
+      "throughput_rps": 6.11,
+      "http_status": {
+        "502": 94,
+        "-1": 406
+      },
+      "latency_ms_avg": 62288.0,
+      "latency_ms_p50": 62245.9,
+      "latency_ms_p95": 63686.2,
+      "latency_ms_p99": 65998.5,
+      "latency_ms_max": 81744.5,
+      "db_delta_inbound": 0,
+      "db_delta_outbound": 0,
+      "inbound_loss": 500,
+      "outbound_loss": 500,
+      "loop_closed_pct": 0.0,
+      "before": {
+        "inbound": 593,
+        "outbound": 471
+      },
+      "after": {
+        "inbound": 593,
+        "outbound": 471
       }
     }
   ]
